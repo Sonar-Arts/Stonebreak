@@ -143,4 +143,181 @@ public class ShortcutKey {
     public String toString() {
         return getDisplayName();
     }
+
+    /**
+     * Serialize this shortcut key to a string format for persistence.
+     * Format: "Ctrl+Shift+S", "Ctrl+S", "S", etc.
+     *
+     * @return serialized string representation
+     */
+    public String serialize() {
+        return getDisplayName();
+    }
+
+    /**
+     * Parse a shortcut key from its string representation.
+     * Handles formats like "Ctrl+Shift+S", "Ctrl+S", "S", etc.
+     *
+     * @param keybindString the string to parse (e.g., "Ctrl+Shift+S")
+     * @return the parsed ShortcutKey
+     * @throws IllegalArgumentException if the string format is invalid or contains unknown keys
+     */
+    public static ShortcutKey parse(String keybindString) throws IllegalArgumentException {
+        if (keybindString == null || keybindString.trim().isEmpty()) {
+            throw new IllegalArgumentException("Keybind string cannot be null or empty");
+        }
+
+        String[] parts = keybindString.split("\\+");
+        if (parts.length == 0) {
+            throw new IllegalArgumentException("Invalid keybind format: " + keybindString);
+        }
+
+        boolean ctrl = false;
+        boolean shift = false;
+        boolean alt = false;
+        String keyName = null;
+
+        // Parse modifiers and key
+        for (String part : parts) {
+            String trimmed = part.trim();
+            switch (trimmed) {
+                case "Ctrl":
+                    ctrl = true;
+                    break;
+                case "Shift":
+                    shift = true;
+                    break;
+                case "Alt":
+                    alt = true;
+                    break;
+                default:
+                    // This should be the key itself (last part)
+                    if (keyName != null) {
+                        throw new IllegalArgumentException("Multiple keys found in keybind: " + keybindString);
+                    }
+                    keyName = trimmed;
+                    break;
+            }
+        }
+
+        if (keyName == null) {
+            throw new IllegalArgumentException("No key found in keybind (only modifiers): " + keybindString);
+        }
+
+        // Parse the key name to GLFW key code
+        int keyCode = parseKeyName(keyName);
+        if (keyCode == -1) {
+            throw new IllegalArgumentException("Unknown key name: " + keyName);
+        }
+
+        return new ShortcutKey(keyCode, ctrl, shift, alt);
+    }
+
+    /**
+     * Parse a key name string to its GLFW key code.
+     *
+     * @param keyName the key name (e.g., "S", "Enter", "Esc")
+     * @return the GLFW key code, or -1 if not recognized
+     */
+    private static int parseKeyName(String keyName) {
+        // Single character keys (A-Z, 0-9)
+        if (keyName.length() == 1) {
+            char c = keyName.charAt(0);
+            if (c >= 'A' && c <= 'Z') {
+                return GLFW.GLFW_KEY_A + (c - 'A');
+            }
+            if (c >= '0' && c <= '9') {
+                return GLFW.GLFW_KEY_0 + (c - '0');
+            }
+            if (c == ',') return GLFW.GLFW_KEY_COMMA;
+            if (c == '.') return GLFW.GLFW_KEY_PERIOD;
+            if (c == '/') return GLFW.GLFW_KEY_SLASH;
+            if (c == '=') return GLFW.GLFW_KEY_EQUAL;
+            if (c == '-') return GLFW.GLFW_KEY_MINUS;
+        }
+
+        // Special keys
+        return switch (keyName) {
+            case "Enter" -> GLFW.GLFW_KEY_ENTER;
+            case "Esc" -> GLFW.GLFW_KEY_ESCAPE;
+            case "Del" -> GLFW.GLFW_KEY_DELETE;
+            case "Backspace" -> GLFW.GLFW_KEY_BACKSPACE;
+            case "Tab" -> GLFW.GLFW_KEY_TAB;
+            case "Space" -> GLFW.GLFW_KEY_SPACE;
+            case "Numpad +" -> GLFW.GLFW_KEY_KP_ADD;
+            case "Numpad -" -> GLFW.GLFW_KEY_KP_SUBTRACT;
+            case "Numpad 0" -> GLFW.GLFW_KEY_KP_0;
+            case "Numpad Enter" -> GLFW.GLFW_KEY_KP_ENTER;
+            default -> -1;
+        };
+    }
+
+    /**
+     * Validate whether a shortcut key combination is valid and allowed.
+     * Rejects system keys and reserved combinations.
+     *
+     * @param key the key to validate
+     * @return true if the key is valid and allowed, false otherwise
+     */
+    public static boolean isValidKeybind(ShortcutKey key) {
+        if (key == null) {
+            return false;
+        }
+
+        int keyCode = key.keyCode;
+
+        // Reject system/reserved keys
+        if (keyCode == GLFW.GLFW_KEY_F11 ||          // Fullscreen toggle
+            keyCode == GLFW.GLFW_KEY_PRINT_SCREEN ||  // Screenshot
+            keyCode == GLFW.GLFW_KEY_LEFT_SUPER ||    // Windows/Command key
+            keyCode == GLFW.GLFW_KEY_RIGHT_SUPER ||   // Windows/Command key
+            keyCode == GLFW.GLFW_KEY_PAUSE ||         // Pause/Break
+            keyCode == GLFW.GLFW_KEY_SCROLL_LOCK) {   // Scroll Lock
+            return false;
+        }
+
+        // Reject modifier-only combinations (no actual key)
+        if (keyCode == GLFW.GLFW_KEY_LEFT_CONTROL ||
+            keyCode == GLFW.GLFW_KEY_RIGHT_CONTROL ||
+            keyCode == GLFW.GLFW_KEY_LEFT_SHIFT ||
+            keyCode == GLFW.GLFW_KEY_RIGHT_SHIFT ||
+            keyCode == GLFW.GLFW_KEY_LEFT_ALT ||
+            keyCode == GLFW.GLFW_KEY_RIGHT_ALT) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Get the key code for this shortcut.
+     * Package-private for registry access.
+     */
+    int getKeyCode() {
+        return keyCode;
+    }
+
+    /**
+     * Check if Ctrl modifier is required.
+     * Package-private for registry access.
+     */
+    boolean requiresCtrl() {
+        return ctrl;
+    }
+
+    /**
+     * Check if Shift modifier is required.
+     * Package-private for registry access.
+     */
+    boolean requiresShift() {
+        return shift;
+    }
+
+    /**
+     * Check if Alt modifier is required.
+     * Package-private for registry access.
+     */
+    boolean requiresAlt() {
+        return alt;
+    }
 }

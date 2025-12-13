@@ -14,6 +14,7 @@ public class PreferencesState {
     public enum PreferencePage {
         MODEL_VIEWER("Model Viewer"),
         TEXTURE_EDITOR("Texture Editor"),
+        KEYBINDS("Keybinds"),
         COMMON("Common");
 
         private final String displayName;

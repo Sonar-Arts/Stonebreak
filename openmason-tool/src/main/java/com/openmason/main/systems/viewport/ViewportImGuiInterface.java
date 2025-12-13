@@ -73,8 +73,13 @@ public class ViewportImGuiInterface {
         // Initialize actions with dependencies
         this.actions = new ViewportActions(viewport3D, state, preferencesManager);
 
-        // Initialize keyboard shortcuts
-        this.keyboardShortcuts = new ViewportKeyboardShortcuts(actions, state);
+        // Initialize keyboard shortcuts with keybind registry
+        com.openmason.main.systems.keybinds.KeybindRegistry registry =
+                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
+        this.keyboardShortcuts = new ViewportKeyboardShortcuts(actions, state, registry);
+
+        // Register viewport keybind actions with the central registry
+        com.openmason.main.systems.viewport.ViewportKeybindActions.registerAll(registry, actions, state);
 
         // Initialize view components
         this.mainView = new ViewportMainView(state, actions, viewport3D, themeManager, preferencesManager);

@@ -277,11 +277,17 @@ public class mainOpenMason {
             projectHubScreen.setTransitionCallbacks(this::transitionToMainInterface, this::transitionToMainInterface);
             projectHubScreen.setOnPreferencesClicked(mainInterface.getShowPreferencesCallback());
 
+            // Initialize keybind system BEFORE creating viewport and texture editor
+            initializeKeybindSystem();
+
             viewportInterface = new ViewportImGuiInterface(themeManager, new PreferencesManager());
             viewportInterface.setViewport3D(mainInterface.getViewport3D());
 
             textureCreatorInterface = TextureCreatorImGui.createDefault();
             textureEditorWindow = new TextureEditorWindow(textureCreatorInterface);
+
+            // Load custom keybinds AFTER both viewport and texture editor are initialized
+            loadCustomKeybinds();
 
             wireCallbacks();
             setWindowHandles();
@@ -290,6 +296,40 @@ public class mainOpenMason {
             logger.error("Failed to initialize UI interfaces", e);
             throw new RuntimeException("UI initialization failed", e);
         }
+    }
+
+    /**
+     * Initialize the keybind system.
+     * Called before creating viewport and texture editor interfaces.
+     */
+    private void initializeKeybindSystem() {
+        logger.info("Initializing keybind system...");
+
+        // Get the keybind registry singleton
+        com.openmason.main.systems.keybinds.KeybindRegistry registry =
+                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
+
+        // Note: Viewport actions will be registered when ViewportImGuiInterface is created
+        // Note: Texture editor actions will be registered when TextureCreatorImGui.createDefault() is called
+
+        logger.info("Keybind registry initialized successfully");
+    }
+
+    /**
+     * Load custom keybinds from preferences.
+     * Called after both viewport and texture editor are created and have registered their actions.
+     */
+    private void loadCustomKeybinds() {
+        logger.info("Loading custom keybinds from preferences...");
+
+        com.openmason.main.systems.menus.preferences.PreferencesManager preferencesManager =
+                new com.openmason.main.systems.menus.preferences.PreferencesManager();
+        com.openmason.main.systems.keybinds.KeybindRegistry registry =
+                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
+
+        preferencesManager.loadKeybindsIntoRegistry(registry);
+
+        logger.info("Custom keybinds loaded successfully");
     }
 
     private void wireCallbacks() {

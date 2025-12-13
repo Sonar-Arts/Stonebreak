@@ -83,6 +83,11 @@ public class PreferencesPageRenderer {
     private final ViewportController viewport;
     private final PropertyPanelImGui propertyPanel;
 
+    // Keybind management
+    private final com.openmason.main.systems.keybinds.KeybindRegistry keybindRegistry;
+    private final com.openmason.main.systems.menus.preferences.keybinds.KeyCaptureDialog keyCaptureDialog;
+    private final com.openmason.main.systems.menus.preferences.keybinds.ConflictWarningDialog conflictDialog;
+
     /**
      * Creates a new unified preferences page renderer.
      *
@@ -102,6 +107,12 @@ public class PreferencesPageRenderer {
         this.textureCreatorImGui = textureCreatorImGui;
         this.viewport = viewport;
         this.propertyPanel = propertyPanel;
+
+        // Initialize keybind management components
+        this.keybindRegistry = com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
+        this.keyCaptureDialog = new com.openmason.main.systems.menus.preferences.keybinds.KeyCaptureDialog();
+        this.conflictDialog = new com.openmason.main.systems.menus.preferences.keybinds.ConflictWarningDialog();
+
         logger.debug("Unified preferences page renderer created");
     }
 
@@ -117,6 +128,9 @@ public class PreferencesPageRenderer {
                 break;
             case TEXTURE_EDITOR:
                 renderTextureEditorPage();
+                break;
+            case KEYBINDS:
+                renderKeybindsPage();
                 break;
             case COMMON:
                 renderCommonPage();
@@ -576,6 +590,160 @@ public class PreferencesPageRenderer {
         // Get current density index
         DensityManager.UIDensity currentDensity = themeManager.getCurrentDensity();
         densityIndex.set(currentDensity.ordinal());
+    }
+
+    // ========================================
+    // Keybinds Page
+    // ========================================
+
+    private void renderKeybindsPage() {
+        // Render dialogs (they handle their own visibility)
+        keyCaptureDialog.render();
+        conflictDialog.render();
+
+        // Get all categories
+        java.util.Set<String> categories = keybindRegistry.getAllCategories();
+
+        // Render each category
+        for (String category : categories) {
+            ImGuiComponents.renderSectionHeader(category);
+            ImGui.indent();
+
+            // Get actions in this category
+            java.util.List<com.openmason.main.systems.keybinds.KeybindAction> actions =
+                    keybindRegistry.getActionsByCategory(category);
+
+            // Render each action as a row
+            for (com.openmason.main.systems.keybinds.KeybindAction action : actions) {
+                renderKeybindRow(action);
+            }
+
+            ImGui.unindent();
+            ImGuiComponents.addSectionSeparator();
+        }
+
+        // Reset All button at bottom
+        ImGui.spacing();
+        ImGuiComponents.renderButton(
+                "Reset All to Defaults",
+                150.0f,
+                0.0f,
+                this::resetAllKeybinds
+        );
+    }
+
+    /**
+     * Render a single keybind row.
+     */
+    private void renderKeybindRow(com.openmason.main.systems.keybinds.KeybindAction action) {
+        float labelWidth = 250.0f;
+        float keyWidth = 150.0f;
+        float buttonWidth = 80.0f;
+
+        // Action name (left-aligned)
+        ImGui.text(action.getDisplayName());
+        ImGui.sameLine(labelWidth);
+
+        // Current key (button-like display)
+        com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey currentKey =
+                keybindRegistry.getKeybind(action.getId());
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.2f, 0.2f, 0.25f, 1.0f);
+        ImGui.button(currentKey.getDisplayName() + "##key_" + action.getId(), keyWidth, 0);
+        ImGui.popStyleColor();
+
+        // Rebind button
+        ImGui.sameLine();
+        if (ImGui.button("Rebind##rebind_" + action.getId(), buttonWidth, 0)) {
+            startKeybindCapture(action);
+        }
+
+        // Reset button (only show if customized)
+        ImGui.sameLine();
+        boolean isCustomized = keybindRegistry.isCustomized(action.getId());
+        if (isCustomized) {
+            if (ImGui.button("Reset##reset_" + action.getId(), 60, 0)) {
+                resetKeybind(action.getId());
+            }
+        } else {
+            ImGui.dummy(60, 0); // Maintain layout
+        }
+    }
+
+    /**
+     * Start capturing a new keybind for an action.
+     */
+    private void startKeybindCapture(com.openmason.main.systems.keybinds.KeybindAction action) {
+        keyCaptureDialog.startCapture(
+                action.getId(),
+                action.getDisplayName(),
+                () -> onKeyCaptured(action),
+                () -> logger.debug("Key capture cancelled for: {}", action.getId())
+        );
+    }
+
+    /**
+     * Handle key capture completion.
+     */
+    private void onKeyCaptured(com.openmason.main.systems.keybinds.KeybindAction action) {
+        com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey newKey =
+                keyCaptureDialog.getCapturedKey();
+
+        if (newKey == null) {
+            logger.warn("No key captured for action: {}", action.getId());
+            return;
+        }
+
+        // Check for conflicts
+        com.openmason.main.systems.keybinds.ConflictResult conflict =
+                keybindRegistry.checkConflict(action.getId(), newKey);
+
+        if (conflict.hasConflict()) {
+            // Show conflict warning
+            com.openmason.main.systems.keybinds.KeybindAction conflictingAction =
+                    conflict.getConflictingAction();
+            conflictDialog.show(
+                    action.getDisplayName(),
+                    conflictingAction.getDisplayName(),
+                    newKey.getDisplayName(),
+                    () -> {
+                        // Reassign: clear old binding and assign new
+                        keybindRegistry.setKeybind(conflictingAction.getId(), null);
+                        keybindRegistry.setKeybind(action.getId(), newKey);
+                        preferencesManager.setKeybind(action.getId(), newKey);
+                        logger.info("Keybind reassigned: {} -> {}",
+                                action.getId(), newKey.getDisplayName());
+                    },
+                    () -> logger.debug("Conflict reassignment cancelled")
+            );
+        } else {
+            // No conflict, assign directly
+            keybindRegistry.setKeybind(action.getId(), newKey);
+            preferencesManager.setKeybind(action.getId(), newKey);
+            logger.info("Keybind set: {} -> {}", action.getId(), newKey.getDisplayName());
+        }
+    }
+
+    /**
+     * Reset a single keybind to its default.
+     */
+    private void resetKeybind(String actionId) {
+        keybindRegistry.resetToDefault(actionId);
+        preferencesManager.clearKeybind(actionId);
+        logger.info("Keybind reset to default: {}", actionId);
+    }
+
+    /**
+     * Reset all keybinds to their defaults.
+     */
+    private void resetAllKeybinds() {
+        keybindRegistry.resetAllToDefaults();
+
+        // Clear all custom keybinds from preferences
+        for (com.openmason.main.systems.keybinds.KeybindAction action : keybindRegistry.getAllActions()) {
+            preferencesManager.clearKeybind(action.getId());
+        }
+
+        logger.info("All keybinds reset to defaults");
     }
 
     // ========================================

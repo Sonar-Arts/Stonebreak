@@ -1,0 +1,103 @@
+package com.openmason.main.systems.viewport;
+
+import com.openmason.main.systems.keybinds.KeybindAction;
+import com.openmason.main.systems.keybinds.KeybindRegistry;
+import com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey;
+import org.lwjgl.glfw.GLFW;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Registers all viewport-related keybindable actions.
+ * <p>
+ * This class follows the Single Responsibility Principle by handling only
+ * the registration of viewport actions with the keybind registry.
+ * </p>
+ *
+ * @author Open Mason Team
+ */
+public class ViewportKeybindActions {
+
+    private static final Logger logger = LoggerFactory.getLogger(ViewportKeybindActions.class);
+    private static final String CATEGORY = "Viewport";
+
+    /**
+     * Private constructor to prevent instantiation.
+     * This class provides only static registration methods.
+     */
+    private ViewportKeybindActions() {
+    }
+
+    /**
+     * Registers all viewport keybind actions with the registry.
+     *
+     * @param registry the keybind registry
+     * @param actions  the viewport actions executor
+     * @param state    the viewport UI state
+     */
+    public static void registerAll(KeybindRegistry registry, ViewportActions actions, ViewportUIState state) {
+        logger.debug("Registering viewport keybind actions");
+
+        // Ctrl+T: Toggle Transform Gizmo
+        registry.registerAction(new KeybindAction(
+                "viewport.toggle_gizmo",
+                "Toggle Transform Gizmo",
+                CATEGORY,
+                ShortcutKey.ctrl(GLFW.GLFW_KEY_T),
+                actions::toggleGizmo
+        ));
+
+        // Ctrl+G: Toggle Grid
+        registry.registerAction(new KeybindAction(
+                "viewport.toggle_grid",
+                "Toggle Grid",
+                CATEGORY,
+                ShortcutKey.ctrl(GLFW.GLFW_KEY_G),
+                () -> {
+                    state.getGridVisible().set(!state.getGridVisible().get());
+                    actions.toggleGrid();
+                }
+        ));
+
+        // Ctrl+Shift+A: Toggle Axes (changed from Ctrl+X to avoid conflict with Cut)
+        registry.registerAction(new KeybindAction(
+                "viewport.toggle_axes",
+                "Toggle Axes",
+                CATEGORY,
+                ShortcutKey.ctrlShift(GLFW.GLFW_KEY_A),
+                () -> {
+                    state.getAxesVisible().set(!state.getAxesVisible().get());
+                    actions.toggleAxes();
+                }
+        ));
+
+        // Ctrl+W: Toggle Wireframe
+        registry.registerAction(new KeybindAction(
+                "viewport.toggle_wireframe",
+                "Toggle Wireframe",
+                CATEGORY,
+                ShortcutKey.ctrl(GLFW.GLFW_KEY_W),
+                actions::toggleWireframe
+        ));
+
+        // Ctrl+R: Reset View
+        registry.registerAction(new KeybindAction(
+                "viewport.reset_view",
+                "Reset View",
+                CATEGORY,
+                ShortcutKey.ctrl(GLFW.GLFW_KEY_R),
+                actions::resetView
+        ));
+
+        // Ctrl+F: Fit to View
+        registry.registerAction(new KeybindAction(
+                "viewport.fit_to_view",
+                "Fit to View",
+                CATEGORY,
+                ShortcutKey.ctrl(GLFW.GLFW_KEY_F),
+                actions::fitToView
+        ));
+
+        logger.info("Registered {} viewport keybind actions", 6);
+    }
+}
