@@ -583,7 +583,7 @@ public class VertexRenderer {
 
         RendererStateUpdater stateUpdater = new RendererStateUpdater(
                 context,
-                this::rebuildVBO,
+                () -> {}, // Empty VBO rebuilder - we'll rebuild after updating fields
                 this::buildUniqueToMeshMapping
         );
 
@@ -594,6 +594,10 @@ public class VertexRenderer {
         this.vertexCount = updatedContext.vertexCount;
         this.originalToCurrentMapping = updatedContext.originalToCurrentMapping;
         this.selectedVertexIndex = updatedContext.selectedVertexIndex;
+
+        // Step 4: Rebuild VBO now that fields are updated
+        // FIX: Must rebuild AFTER fields are updated, not during applyMergeResult
+        rebuildVBO();
 
         // Return the persistent original-to-current mapping (all 8 original vertices)
         return new HashMap<>(originalToCurrentMapping);
