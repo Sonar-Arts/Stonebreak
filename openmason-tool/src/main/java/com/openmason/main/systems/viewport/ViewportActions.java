@@ -2,7 +2,7 @@ package com.openmason.main.systems.viewport;
 
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
-import com.openmason.main.systems.viewport.gizmo.GizmoState;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

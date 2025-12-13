@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.input;
 
-import com.openmason.main.systems.viewport.gizmo.rendering.GizmoRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

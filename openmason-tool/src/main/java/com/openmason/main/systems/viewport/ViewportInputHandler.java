@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport;
 
-import com.openmason.main.systems.viewport.gizmo.rendering.GizmoRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.input.*;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;

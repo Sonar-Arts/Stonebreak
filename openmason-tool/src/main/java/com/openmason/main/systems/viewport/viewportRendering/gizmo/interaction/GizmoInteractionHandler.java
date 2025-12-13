@@ -1,7 +1,7 @@
-package com.openmason.main.systems.viewport.gizmo.interaction;
+package com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction;
 
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
-import com.openmason.main.systems.viewport.gizmo.GizmoState;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import org.joml.Matrix4f;

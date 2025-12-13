@@ -1,12 +1,12 @@
-package com.openmason.main.systems.viewport.gizmo.rendering;
+package com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering;
 
-import com.openmason.main.systems.viewport.gizmo.GizmoState;
-import com.openmason.main.systems.viewport.gizmo.interaction.GizmoInteractionHandler;
-import com.openmason.main.systems.viewport.gizmo.interaction.GizmoPart;
-import com.openmason.main.systems.viewport.gizmo.modes.IGizmoMode;
-import com.openmason.main.systems.viewport.gizmo.modes.RotateMode;
-import com.openmason.main.systems.viewport.gizmo.modes.ScaleMode;
-import com.openmason.main.systems.viewport.gizmo.modes.TranslateMode;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoInteractionHandler;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoPart;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.modes.IGizmoMode;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.modes.RotateMode;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.modes.ScaleMode;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.modes.TranslateMode;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import org.joml.Matrix4f;

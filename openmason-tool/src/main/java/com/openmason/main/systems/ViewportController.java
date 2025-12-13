@@ -9,8 +9,8 @@ import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoade
 import com.openmason.main.systems.rendering.model.miscComponents.TextureLoadResult;
 import com.openmason.main.systems.viewport.ViewportCamera;
 import com.openmason.main.systems.viewport.ViewportInputHandler;
-import com.openmason.main.systems.viewport.gizmo.rendering.GizmoRenderer;
-import com.openmason.main.systems.viewport.gizmo.GizmoState;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;

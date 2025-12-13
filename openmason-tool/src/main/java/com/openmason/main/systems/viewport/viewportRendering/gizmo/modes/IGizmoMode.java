@@ -1,7 +1,7 @@
-package com.openmason.main.systems.viewport.gizmo.modes;
+package com.openmason.main.systems.viewport.viewportRendering.gizmo.modes;
 
-import com.openmason.main.systems.viewport.gizmo.GizmoState;
-import com.openmason.main.systems.viewport.gizmo.interaction.GizmoPart;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoPart;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;

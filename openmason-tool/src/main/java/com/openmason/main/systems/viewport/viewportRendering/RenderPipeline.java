@@ -3,7 +3,7 @@ package com.openmason.main.systems.viewport.viewportRendering;
 import com.openmason.main.systems.rendering.model.ModelRenderer;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
-import com.openmason.main.systems.viewport.gizmo.rendering.GizmoRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
 import com.openmason.main.systems.viewport.shaders.ShaderManager;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;

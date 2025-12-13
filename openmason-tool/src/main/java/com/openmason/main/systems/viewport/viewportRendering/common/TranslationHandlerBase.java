@@ -2,7 +2,7 @@ package com.openmason.main.systems.viewport.viewportRendering.common;
 
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
-import com.openmason.main.systems.viewport.gizmo.interaction.RaycastUtil;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.RaycastUtil;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.util.SnappingUtil;
 import org.joml.Matrix4f;

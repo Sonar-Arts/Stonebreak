@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.gizmo.geometry;
+package com.openmason.main.systems.viewport.viewportRendering.gizmo.geometry;
 
 import org.joml.Vector3f;
 

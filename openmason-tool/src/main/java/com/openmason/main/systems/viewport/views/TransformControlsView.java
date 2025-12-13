@@ -3,7 +3,7 @@ package com.openmason.main.systems.viewport.views;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.viewport.ViewportActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
-import com.openmason.main.systems.viewport.gizmo.GizmoState;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
 import org.slf4j.Logger;
