@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.mesh.operations;
+package com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,9 +18,9 @@ import java.util.Map;
  * - Interface Segregation: Simple, focused interface
  * - Dependency Inversion: Works with generic collections
  */
-public class IndexRemapper {
+public class MeshVertexIndexRemapper {
 
-    private static final Logger logger = LoggerFactory.getLogger(IndexRemapper.class);
+    private static final Logger logger = LoggerFactory.getLogger(MeshVertexIndexRemapper.class);
 
     /**
      * Result of index remapping operation.
@@ -42,7 +42,7 @@ public class IndexRemapper {
      *
      * @param mergeGroups Groups of vertex indices to merge
      */
-    public IndexRemapper(List<List<Integer>> mergeGroups) {
+    public MeshVertexIndexRemapper(List<List<Integer>> mergeGroups) {
         this.mergeGroups = mergeGroups;
     }
 

@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.mesh.operations;
+package com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations;
 
 import org.joml.Vector3f;
 import org.slf4j.Logger;
@@ -21,9 +21,9 @@ import static org.lwjgl.opengl.GL15.*;
  * - Interface Segregation: Focused interface for position updates
  * - Dependency Inversion: Depends on abstractions (arrays, maps) not concrete implementations
  */
-public class VertexPositionUpdater {
+public class MeshVertexPositionUpdater {
 
-    private static final Logger logger = LoggerFactory.getLogger(VertexPositionUpdater.class);
+    private static final Logger logger = LoggerFactory.getLogger(MeshVertexPositionUpdater.class);
 
     // References to vertex data (not owned by this class - Dependency Inversion)
     private final float[] vertexPositions;
@@ -41,11 +41,11 @@ public class VertexPositionUpdater {
      * @param vbo OpenGL VBO handle
      * @param vertexCount Number of unique vertices
      */
-    public VertexPositionUpdater(float[] vertexPositions,
-                                 float[] allMeshVertices,
-                                 Map<Integer, List<Integer>> uniqueToMeshMapping,
-                                 int vbo,
-                                 int vertexCount) {
+    public MeshVertexPositionUpdater(float[] vertexPositions,
+                                     float[] allMeshVertices,
+                                     Map<Integer, List<Integer>> uniqueToMeshMapping,
+                                     int vbo,
+                                     int vertexCount) {
         this.vertexPositions = vertexPositions;
         this.allMeshVertices = allMeshVertices;
         this.uniqueToMeshMapping = uniqueToMeshMapping;

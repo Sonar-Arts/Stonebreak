@@ -4,9 +4,6 @@ import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
-import com.openmason.main.systems.viewport.viewportRendering.mesh.operations.VertexDataTransformer;
-import com.openmason.main.systems.viewport.viewportRendering.mesh.operations.VertexMerger;
-import com.openmason.main.systems.viewport.viewportRendering.mesh.operations.VertexPositionUpdater;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -386,16 +383,8 @@ public class VertexRenderer {
             return;
         }
 
-        // Delegate to VertexPositionUpdater (Single Responsibility)
-        VertexPositionUpdater updater = new VertexPositionUpdater(
-                vertexPositions,
-                meshManager.getAllMeshVertices(),
-                meshManager.getUniqueToMeshMapping(),
-                vbo,
-                vertexCount
-        );
-
-        updater.updatePosition(uniqueIndex, position);
+        // Delegate to MeshManager to coordinate vertex position update
+        meshManager.updateVertexPosition(uniqueIndex, position, vertexPositions, vbo, vertexCount);
     }
 
     /**
@@ -487,9 +476,8 @@ public class VertexRenderer {
      * @return 8 vertex positions (24 floats) for ModelRenderer
      */
     public float[] getExpandedVertexPositions(Map<Integer, Integer> indexRemapping) {
-        // Delegate to VertexDataTransformer (Single Responsibility)
-        VertexDataTransformer transformer = new VertexDataTransformer(vertexPositions, vertexCount);
-        return transformer.expandToCubeFormat(indexRemapping);
+        // Delegate to MeshManager to coordinate vertex data transformation
+        return meshManager.expandToCubeFormat(vertexPositions, vertexCount, indexRemapping);
     }
 
     /**
@@ -507,16 +495,13 @@ public class VertexRenderer {
             return new HashMap<>();
         }
 
-        // Step 1: Perform the merge operation (Single Responsibility)
-        VertexMerger merger = new VertexMerger(
+        // Step 1: Perform the merge operation via MeshManager
+        MeshManager.MergeResult result = meshManager.mergeOverlappingVertices(
                 vertexPositions,
-                meshManager.getAllMeshVertices(),
                 vertexCount,
                 epsilon,
                 originalToCurrentMapping
         );
-
-        VertexMerger.MergeResult result = merger.merge();
 
         // If no merge occurred, return existing mapping
         if (result == null) {

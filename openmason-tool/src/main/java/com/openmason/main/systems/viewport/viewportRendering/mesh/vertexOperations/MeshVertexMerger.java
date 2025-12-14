@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.mesh.operations;
+package com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations;
 
 import org.joml.Vector3f;
 import org.slf4j.Logger;
@@ -19,9 +19,9 @@ import java.util.Map;
  * - Interface Segregation: Focused interface for merge operations
  * - Dependency Inversion: Depends on abstractions (arrays, maps), delegates to specialized classes
  */
-public class VertexMerger {
+public class MeshVertexMerger {
 
-    private static final Logger logger = LoggerFactory.getLogger(VertexMerger.class);
+    private static final Logger logger = LoggerFactory.getLogger(MeshVertexMerger.class);
 
     /**
      * Result of a vertex merge operation.
@@ -57,11 +57,11 @@ public class VertexMerger {
      * @param epsilon Distance threshold for merging
      * @param originalToCurrentMapping Persistent mapping from original to current indices
      */
-    public VertexMerger(float[] vertexPositions,
-                       float[] allMeshVertices,
-                       int vertexCount,
-                       float epsilon,
-                       Map<Integer, Integer> originalToCurrentMapping) {
+    public MeshVertexMerger(float[] vertexPositions,
+                            float[] allMeshVertices,
+                            int vertexCount,
+                            float epsilon,
+                            Map<Integer, Integer> originalToCurrentMapping) {
         this.vertexPositions = vertexPositions;
         this.allMeshVertices = allMeshVertices;
         this.vertexCount = vertexCount;
@@ -77,12 +77,12 @@ public class VertexMerger {
      */
     public MergeResult merge() {
         // Step 1: Detect merge groups using specialized detector
-        MergeGroupDetector detector = new MergeGroupDetector(vertexPositions, vertexCount, epsilon);
+        MeshMergeGroupDetector detector = new MeshMergeGroupDetector(vertexPositions, vertexCount, epsilon);
         List<List<Integer>> mergeGroups = detector.detectGroups();
 
         // Step 2: Build index remapping using specialized remapper
-        IndexRemapper remapper = new IndexRemapper(mergeGroups);
-        IndexRemapper.RemapResult remapResult = remapper.buildRemapping();
+        MeshVertexIndexRemapper remapper = new MeshVertexIndexRemapper(mergeGroups);
+        MeshVertexIndexRemapper.RemapResult remapResult = remapper.buildRemapping();
 
         // Check if any merging actually occurred
         if (remapResult.verticesToKeep.size() == vertexCount) {
@@ -91,7 +91,7 @@ public class VertexMerger {
         }
 
         // Step 3: Update persistent original-to-current mapping
-        Map<Integer, Integer> updatedOriginalMapping = IndexRemapper.updatePersistentMapping(
+        Map<Integer, Integer> updatedOriginalMapping = MeshVertexIndexRemapper.updatePersistentMapping(
                 originalToCurrentMapping,
                 remapResult.oldToNewIndex
         );

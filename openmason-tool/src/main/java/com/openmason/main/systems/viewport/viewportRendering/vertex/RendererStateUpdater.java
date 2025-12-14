@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
-import com.openmason.main.systems.viewport.viewportRendering.mesh.operations.VertexMerger;
+import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -96,10 +96,10 @@ public class RendererStateUpdater {
    * 4. Clear invalid selection
    * 5. Rebuild VBO
    *
-   * @param mergeResult The result from VertexMerger
+   * @param mergeResult The result from MeshManager
    * @return Updated context with new state
    */
-  public UpdateContext applyMergeResult(VertexMerger.MergeResult mergeResult) {
+  public UpdateContext applyMergeResult(MeshManager.MergeResult mergeResult) {
     logger.debug("Applying merge result to renderer state");
 
     // Step 1: Update vertex data

@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.mesh.operations;
+package com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations;
 
 import org.joml.Vector3f;
 import org.slf4j.Logger;
@@ -17,9 +17,9 @@ import java.util.List;
  * - Interface Segregation: Minimal, focused interface
  * - Dependency Inversion: Works with arrays, not specific data structures
  */
-public class MergeGroupDetector {
+public class MeshMergeGroupDetector {
 
-    private static final Logger logger = LoggerFactory.getLogger(MergeGroupDetector.class);
+    private static final Logger logger = LoggerFactory.getLogger(MeshMergeGroupDetector.class);
 
     private final float[] vertexPositions;
     private final int vertexCount;
@@ -32,7 +32,7 @@ public class MergeGroupDetector {
      * @param vertexCount Number of vertices
      * @param epsilon Distance threshold for considering vertices overlapping
      */
-    public MergeGroupDetector(float[] vertexPositions, int vertexCount, float epsilon) {
+    public MeshMergeGroupDetector(float[] vertexPositions, int vertexCount, float epsilon) {
         this.vertexPositions = vertexPositions;
         this.vertexCount = vertexCount;
         this.epsilon = epsilon;

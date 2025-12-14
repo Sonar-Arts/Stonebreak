@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.mesh;
 
+import com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations.*;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +37,26 @@ public class MeshManager {
             instance = new MeshManager();
         }
         return instance;
+    }
+
+    /**
+     * Result of a vertex merge operation.
+     * Encapsulates the outcome of merging overlapping vertices.
+     */
+    public static class MergeResult {
+        public final float[] newVertexPositions;
+        public final int newVertexCount;
+        public final Map<Integer, Integer> indexMapping;
+        public final Map<Integer, Integer> updatedOriginalMapping;
+
+        public MergeResult(float[] newVertexPositions, int newVertexCount,
+                          Map<Integer, Integer> indexMapping,
+                          Map<Integer, Integer> updatedOriginalMapping) {
+            this.newVertexPositions = newVertexPositions;
+            this.newVertexCount = newVertexCount;
+            this.indexMapping = indexMapping;
+            this.updatedOriginalMapping = updatedOriginalMapping;
+        }
     }
 
     /**
@@ -238,6 +259,85 @@ public class MeshManager {
         logger.debug("Mesh validation passed: {} unique vertices, {} mesh vertices",
                 uniqueCount, meshCount);
         return true;
+    }
+
+    // ========================================
+    // Mesh Operations (managed through MeshManager)
+    // ========================================
+
+    /**
+     * Update vertex position in memory, GPU, and all mesh instances.
+     * Coordinates the complete update process using MeshVertexPositionUpdater.
+     *
+     * @param uniqueIndex Unique vertex index to update
+     * @param position New position in model space
+     * @param vertexPositions Array of unique vertex positions (will be modified)
+     * @param vbo OpenGL VBO handle for GPU update
+     * @param vertexCount Total number of unique vertices
+     * @return true if update succeeded, false otherwise
+     */
+    public boolean updateVertexPosition(int uniqueIndex, Vector3f position,
+                                       float[] vertexPositions, int vbo, int vertexCount) {
+        MeshVertexPositionUpdater updater = new MeshVertexPositionUpdater(
+                vertexPositions,
+                allMeshVertices,
+                uniqueToMeshMapping,
+                vbo,
+                vertexCount
+        );
+        return updater.updatePosition(uniqueIndex, position);
+    }
+
+    /**
+     * Expand vertex positions to standard cube format (8 vertices).
+     * Convenience method using MeshVertexDataTransformer.
+     *
+     * @param vertexPositions Current vertex positions
+     * @param vertexCount Current vertex count
+     * @param indexRemapping Mapping from old indices to new indices
+     * @return Expanded vertex positions (24 floats for 8 vertices)
+     */
+    public float[] expandToCubeFormat(float[] vertexPositions, int vertexCount,
+                                     Map<Integer, Integer> indexRemapping) {
+        MeshVertexDataTransformer transformer = new MeshVertexDataTransformer(vertexPositions, vertexCount);
+        return transformer.expandToCubeFormat(indexRemapping);
+    }
+
+    /**
+     * Merge overlapping vertices by removing duplicates.
+     * Coordinates the complete merge process using MeshVertexMerger.
+     *
+     * @param vertexPositions Current vertex positions
+     * @param vertexCount Current vertex count
+     * @param epsilon Distance threshold for considering vertices overlapping
+     * @param originalToCurrentMapping Persistent mapping from original to current indices
+     * @return MergeResult with new positions and mappings, or null if no merge occurred
+     */
+    public MergeResult mergeOverlappingVertices(float[] vertexPositions,
+                                                int vertexCount,
+                                                float epsilon,
+                                                Map<Integer, Integer> originalToCurrentMapping) {
+        MeshVertexMerger merger = new MeshVertexMerger(
+                vertexPositions,
+                allMeshVertices,
+                vertexCount,
+                epsilon,
+                originalToCurrentMapping
+        );
+        MeshVertexMerger.MergeResult internalResult = merger.merge();
+
+        // Return null if no merge occurred
+        if (internalResult == null) {
+            return null;
+        }
+
+        // Convert internal result to public API result
+        return new MergeResult(
+                internalResult.newVertexPositions,
+                internalResult.newVertexCount,
+                internalResult.indexMapping,
+                internalResult.updatedOriginalMapping
+        );
     }
 
     /**

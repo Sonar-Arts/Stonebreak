@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.mesh.operations;
+package com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,9 +15,9 @@ import java.util.Map;
  * - Interface Segregation: Focused interface for data transformations
  * - Dependency Inversion: Works with arrays and maps, not concrete implementations
  */
-public class VertexDataTransformer {
+public class MeshVertexDataTransformer {
 
-    private static final Logger logger = LoggerFactory.getLogger(VertexDataTransformer.class);
+    private static final Logger logger = LoggerFactory.getLogger(MeshVertexDataTransformer.class);
 
     /**
      * Standard cube vertex count (8 corners).
@@ -33,7 +33,7 @@ public class VertexDataTransformer {
      * @param vertexPositions Array of vertex positions [x0,y0,z0, x1,y1,z1, ...]
      * @param vertexCount Number of vertices
      */
-    public VertexDataTransformer(float[] vertexPositions, int vertexCount) {
+    public MeshVertexDataTransformer(float[] vertexPositions, int vertexCount) {
         this.vertexPositions = vertexPositions;
         this.vertexCount = vertexCount;
     }
