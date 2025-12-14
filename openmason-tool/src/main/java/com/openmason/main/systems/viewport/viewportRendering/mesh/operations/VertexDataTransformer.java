@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.vertex.operations;
+package com.openmason.main.systems.viewport.viewportRendering.mesh.operations;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -142,12 +142,4 @@ public class VertexDataTransformer {
         return vertexPositions;
     }
 
-    /**
-     * Get the number of vertices.
-     *
-     * @return Vertex count
-     */
-    public int getVertexCount() {
-        return vertexCount;
-    }
 }

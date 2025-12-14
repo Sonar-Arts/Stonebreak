@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.vertex.operations;
+package com.openmason.main.systems.viewport.viewportRendering.mesh.operations;
 
 import org.joml.Vector3f;
 import org.slf4j.Logger;
