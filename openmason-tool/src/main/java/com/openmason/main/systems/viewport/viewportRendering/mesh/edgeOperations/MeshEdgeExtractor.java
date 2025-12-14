@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.edge;
+package com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations;
 
 import com.openmason.main.systems.viewport.viewportRendering.common.GeometryExtractionUtils;
 import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
@@ -11,13 +11,30 @@ import org.slf4j.LoggerFactory;
 import java.util.Collection;
 
 /**
- * Extracts edges from model data and applies transformations.
- * Implements IGeometryExtractor for consistency with VertexExtractor.
- * Uses GeometryExtractionUtils for shared functionality (DRY principle).
+ * Single Responsibility: Extracts edge geometry from model data with transformations.
+ * This class extracts edges from model parts and applies global/local transformations.
+ *
+ * SOLID Principles:
+ * - Single Responsibility: Only handles edge extraction from model data
+ * - Open/Closed: Can be extended for additional extraction strategies
+ * - Liskov Substitution: Implements IGeometryExtractor contract
+ * - Interface Segregation: Focused interface for geometry extraction
+ * - Dependency Inversion: Depends on abstractions (IGeometryExtractor, ModelDefinition)
+ *
+ * KISS Principle: Straightforward edge extraction with transformation application.
+ * DRY Principle: Uses GeometryExtractionUtils for shared validation and transformation logic.
+ * YAGNI Principle: Only implements edge extraction without unnecessary features.
+ *
+ * Thread Safety: This class is stateless and thread-safe.
+ * All data is passed as parameters and no state is maintained.
+ *
+ * Architecture Note: Supports mesh operations instead of directly feeding the renderer.
+ * This class provides mesh data that can be used by edge operation classes like
+ * MeshEdgeBufferUpdater, MeshEdgePositionUpdater, etc.
  */
-public class EdgeExtractor implements IGeometryExtractor {
+public class MeshEdgeExtractor implements IGeometryExtractor {
 
-    private static final Logger logger = LoggerFactory.getLogger(EdgeExtractor.class);
+    private static final Logger logger = LoggerFactory.getLogger(MeshEdgeExtractor.class);
 
     /**
      * Extract edges from a collection of model parts with transformation applied.

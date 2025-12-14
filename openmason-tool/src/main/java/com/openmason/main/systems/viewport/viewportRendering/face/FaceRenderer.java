@@ -1,7 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.face;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
 import com.stonebreak.model.ModelDefinition;
@@ -48,7 +47,7 @@ import static org.lwjgl.opengl.GL30.*;
  *
  * @see MeshManager
  * @see FaceHoverDetector
- * @see FaceExtractor
+ * @see MeshFaceExtractor
  */
 public class FaceRenderer {
 
@@ -82,8 +81,8 @@ public class FaceRenderer {
     // For cube: 6 faces, each connecting 4 of the 8 unique vertices
     private Map<Integer, int[]> faceToVertexMapping = new HashMap<>();
 
-    // Face extraction (Single Responsibility) - uses interface for polymorphism
-    private final IGeometryExtractor geometryExtractor = new FaceExtractor();
+    // Mesh management - delegate to MeshManager
+    private final MeshManager meshManager = MeshManager.getInstance();
 
 
     /**
@@ -164,8 +163,8 @@ public class FaceRenderer {
         }
 
         try {
-            // Extract faces using interface method (polymorphism + validation)
-            facePositions = geometryExtractor.extractGeometry(parts, transformMatrix);
+            // Extract faces using MeshManager (centralized mesh operations)
+            facePositions = meshManager.extractFaceGeometry(parts, transformMatrix);
 
             // Face positions are [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...] (4 vertices per face)
             faceCount = facePositions.length / MeshManager.FLOATS_PER_FACE_POSITION;

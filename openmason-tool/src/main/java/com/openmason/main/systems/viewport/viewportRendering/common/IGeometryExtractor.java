@@ -10,7 +10,7 @@ import java.util.Collection;
  * Extractors transform local-space model vertices into world-space geometry
  * using model transformation matrices.
  *
- * Implementations include VertexExtractor and EdgeExtractor.
+ * Implementations include MeshVertexExtractor, MeshEdgeExtractor, and MeshFaceExtractor.
  * Follows SOLID principles with Single Responsibility pattern.
  */
 public interface IGeometryExtractor {

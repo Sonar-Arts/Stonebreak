@@ -1,7 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.edge;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
 import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgeSelectionManager;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
@@ -150,12 +149,6 @@ public class EdgeRenderer {
 
     // Operation delegates (Single Responsibility Pattern)
     /**
-     * Extracts edge geometry from model parts.
-     * Uses interface for polymorphism and testability.
-     */
-    private final IGeometryExtractor geometryExtractor = new EdgeExtractor();
-
-    /**
      * Manages edge selection state and validation.
      * Validates selection indices and tracks state changes.
      */
@@ -251,8 +244,8 @@ public class EdgeRenderer {
         }
 
         try {
-            // Extract edges using interface method (polymorphism + validation)
-            float[] extractedPositions = geometryExtractor.extractGeometry(parts, transformMatrix);
+            // Extract edges using MeshManager (centralized mesh operations)
+            float[] extractedPositions = meshManager.extractEdgeGeometry(parts, transformMatrix);
 
             // Update buffer with extracted edge data (delegated to MeshManager)
             MeshEdgeBufferUpdater.UpdateResult result = meshManager.updateEdgeBuffer(vbo, extractedPositions, edgeColor);
@@ -609,7 +602,7 @@ public class EdgeRenderer {
      *
      * <p>This method delegates to {@link MeshManager#updateEdgesByPosition} which
      * searches through all edge endpoints and updates any that were at the old vertex position.
-     * This handles models where EdgeExtractor creates face-based edges (e.g., 24 edges for a cube:
+     * This handles models where MeshEdgeExtractor creates face-based edges (e.g., 24 edges for a cube:
      * 4 per face × 6 faces) instead of 12 unique edges, so multiple edge endpoints share positions.
      *
      * @param oldPosition the original position of the vertex before dragging

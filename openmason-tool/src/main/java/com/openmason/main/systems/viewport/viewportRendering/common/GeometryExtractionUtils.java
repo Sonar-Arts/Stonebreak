@@ -8,7 +8,7 @@ import java.util.Collection;
 
 /**
  * Common utility methods for geometry extraction.
- * Provides shared functionality for VertexExtractor and EdgeExtractor.
+ * Provides shared functionality for MeshVertexExtractor, MeshEdgeExtractor, and MeshFaceExtractor.
  * Follows DRY principle by centralizing common logic.
  */
 public final class GeometryExtractionUtils {

@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.vertex;
+package com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations;
 
 import com.openmason.main.systems.viewport.viewportRendering.common.GeometryExtractionUtils;
 import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
@@ -14,17 +14,38 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * Extracts vertices from model data and applies transformations.
- * Implements IGeometryExtractor for consistency with EdgeExtractor.
- * Vertices are stored in local space and rendered in world space.
+ * Single Responsibility: Extracts vertex geometry from model data with transformations.
+ * This class extracts vertices from model parts and applies global/local transformations,
+ * with support for both all vertices and unique vertex extraction.
+ *
+ * SOLID Principles:
+ * - Single Responsibility: Only handles vertex extraction from model data
+ * - Open/Closed: Can be extended for additional extraction strategies (e.g., unique vertices)
+ * - Liskov Substitution: Implements IGeometryExtractor contract
+ * - Interface Segregation: Focused interface for geometry extraction
+ * - Dependency Inversion: Depends on abstractions (IGeometryExtractor, ModelDefinition)
+ *
+ * KISS Principle: Straightforward vertex extraction with transformation application and deduplication.
+ * DRY Principle: Uses GeometryExtractionUtils for shared validation and transformation logic.
+ * YAGNI Principle: Implements vertex extraction with useful unique vertex filtering, no unnecessary features.
+ *
+ * Thread Safety: This class is stateless and thread-safe.
+ * All data is passed as parameters and no state is maintained.
+ *
+ * Architecture Note: Supports mesh operations instead of directly feeding the renderer.
+ * This class provides mesh data that can be used by vertex operation classes like
+ * MeshVertexMerger, MeshVertexPositionUpdater, etc.
  */
-public class VertexExtractor implements IGeometryExtractor {
+public class MeshVertexExtractor implements IGeometryExtractor {
 
-  private static final Logger logger = LoggerFactory.getLogger(VertexExtractor.class);
+  private static final Logger logger = LoggerFactory.getLogger(MeshVertexExtractor.class);
+
+  /** Epsilon tolerance for vertex position matching during deduplication. */
   private static final float VERTEX_EPSILON = 0.0001f;
 
   /**
    * Extracts vertices from model parts with transformation applied.
+   * Interface implementation that validates inputs using common utilities.
    *
    * @param parts Model parts to extract vertices from
    * @param globalTransform Global transformation matrix
@@ -45,6 +66,7 @@ public class VertexExtractor implements IGeometryExtractor {
 
   /**
    * Extracts vertices from model parts with transformation applied.
+   * Note: Callers should use extractGeometry() for validation, or ensure inputs are valid.
    *
    * @param parts Model parts to extract vertices from
    * @param globalTransform Global transformation matrix
@@ -98,6 +120,8 @@ public class VertexExtractor implements IGeometryExtractor {
   /**
    * Extracts unique vertices from model parts with transformation applied.
    * Deduplicates vertices at the same position using epsilon comparison.
+   * This is useful for operations that need to work with the actual mesh topology
+   * rather than the duplicated vertices used for rendering.
    *
    * @param parts Model parts to extract vertices from
    * @param globalTransform Global transformation matrix

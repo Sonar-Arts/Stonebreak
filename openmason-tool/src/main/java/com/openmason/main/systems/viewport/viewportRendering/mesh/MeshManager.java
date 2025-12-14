@@ -3,6 +3,8 @@ package com.openmason.main.systems.viewport.viewportRendering.mesh;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations.*;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.faceOperations.*;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations.*;
+import com.stonebreak.model.ModelDefinition;
+import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -456,6 +458,69 @@ public class MeshManager {
     public int[] getEdgeVertexIndices(int edgeIndex, int[][] edgeToVertexMapping) {
         MeshEdgeGeometryQuery query = new MeshEdgeGeometryQuery();
         return query.getEdgeVertexIndices(edgeIndex, edgeToVertexMapping);
+    }
+
+    // ========================================
+    // Geometry Extraction Operations (managed through MeshManager)
+    // ========================================
+
+    // Extractor instances (singleton pattern within MeshManager)
+    private final MeshVertexExtractor vertexExtractor = new MeshVertexExtractor();
+    private final MeshEdgeExtractor edgeExtractor = new MeshEdgeExtractor();
+    private final MeshFaceExtractor faceExtractor = new MeshFaceExtractor();
+
+    /**
+     * Extract vertex geometry from model parts with transformation applied.
+     * Centralizes vertex extraction through MeshManager.
+     *
+     * @param parts Model parts to extract vertices from
+     * @param globalTransform Global transformation matrix
+     * @return Array of vertex positions [x1,y1,z1, x2,y2,z2, ...]
+     */
+    public float[] extractVertexGeometry(Collection<ModelDefinition.ModelPart> parts,
+                                        Matrix4f globalTransform) {
+        return vertexExtractor.extractGeometry(parts, globalTransform);
+    }
+
+    /**
+     * Extract unique vertex geometry from model parts with transformation applied.
+     * Deduplicates vertices at the same position using epsilon comparison.
+     *
+     * @param parts Model parts to extract vertices from
+     * @param globalTransform Global transformation matrix
+     * @return Array of unique vertex positions [x1,y1,z1, x2,y2,z2, ...]
+     */
+    public float[] extractUniqueVertices(Collection<ModelDefinition.ModelPart> parts,
+                                        Matrix4f globalTransform) {
+        return vertexExtractor.extractUniqueVertices(parts, globalTransform);
+    }
+
+    /**
+     * Extract edge geometry from model parts with transformation applied.
+     * Centralizes edge extraction through MeshManager.
+     * Each face (4 vertices) generates 4 edges forming a quad outline.
+     *
+     * @param parts Model parts to extract from
+     * @param globalTransform Global transformation matrix to apply
+     * @return Array of edge endpoint positions [x1,y1,z1, x2,y2,z2, ...]
+     */
+    public float[] extractEdgeGeometry(Collection<ModelDefinition.ModelPart> parts,
+                                      Matrix4f globalTransform) {
+        return edgeExtractor.extractGeometry(parts, globalTransform);
+    }
+
+    /**
+     * Extract face geometry from model parts with transformation applied.
+     * Centralizes face extraction through MeshManager.
+     * Each face is represented as 4 vertices (quad corners) with 12 floats per face.
+     *
+     * @param parts Model parts to extract from
+     * @param globalTransform Global transformation matrix to apply
+     * @return Array of face vertex positions [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...]
+     */
+    public float[] extractFaceGeometry(Collection<ModelDefinition.ModelPart> parts,
+                                      Matrix4f globalTransform) {
+        return faceExtractor.extractGeometry(parts, globalTransform);
     }
 
     /**

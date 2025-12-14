@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.face;
+package com.openmason.main.systems.viewport.viewportRendering.mesh.faceOperations;
 
 import com.openmason.main.systems.viewport.viewportRendering.common.GeometryExtractionUtils;
 import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
@@ -11,16 +11,33 @@ import org.slf4j.LoggerFactory;
 import java.util.Collection;
 
 /**
- * Extracts faces from model data and applies transformations.
- * Implements IGeometryExtractor for consistency with VertexExtractor and EdgeExtractor.
- * Uses GeometryExtractionUtils for shared functionality (DRY principle).
+ * Single Responsibility: Extracts face geometry from model data with transformations.
+ * This class extracts faces from model parts and applies global/local transformations.
  *
- * Each face is represented as 4 vertices (quad) in counter-clockwise order.
+ * SOLID Principles:
+ * - Single Responsibility: Only handles face extraction from model data
+ * - Open/Closed: Can be extended for additional extraction strategies
+ * - Liskov Substitution: Implements IGeometryExtractor contract
+ * - Interface Segregation: Focused interface for geometry extraction
+ * - Dependency Inversion: Depends on abstractions (IGeometryExtractor, ModelDefinition)
+ *
+ * KISS Principle: Straightforward face extraction with transformation application.
+ * DRY Principle: Uses GeometryExtractionUtils for shared validation and transformation logic.
+ * YAGNI Principle: Only implements face extraction without unnecessary features.
+ *
+ * Thread Safety: This class is stateless and thread-safe.
+ * All data is passed as parameters and no state is maintained.
+ *
+ * Architecture Note: Supports mesh operations instead of directly feeding the renderer.
+ * This class provides mesh data that can be used by face operation classes like
+ * MeshFaceUpdateOperation, MeshFaceVertexMatcher, etc.
+ *
+ * Data Format: Each face is represented as 4 vertices (quad) in counter-clockwise order.
  * For a cube: 6 faces × 4 vertices × 3 floats = 72 floats total.
  */
-public class FaceExtractor implements IGeometryExtractor {
+public class MeshFaceExtractor implements IGeometryExtractor {
 
-    private static final Logger logger = LoggerFactory.getLogger(FaceExtractor.class);
+    private static final Logger logger = LoggerFactory.getLogger(MeshFaceExtractor.class);
 
     /**
      * Extract faces from a collection of model parts with transformation applied.

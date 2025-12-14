@@ -1,7 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
 import com.stonebreak.model.ModelDefinition;
@@ -19,7 +18,7 @@ import static org.lwjgl.opengl.GL30.*;
 
 /**
   * Renders model vertices as colored points, similar to Blender's vertex display mode.
-  * Vertex positions are extracted by VertexExtractor; this class handles rendering.
+  * Vertex positions are extracted by MeshVertexExtractor; this class handles rendering.
   * Supports selection highlighting (white) and modification tracking (yellow).
   */
 public class VertexRenderer {
@@ -50,10 +49,6 @@ public class VertexRenderer {
 
     // Persistent vertex merge tracking (for multi-stage merges)
     private Map<Integer, Integer> originalToCurrentMapping = new HashMap<>(); // Maps original cube vertex (0-7) to current unique vertex
-
-    // Vertex extraction (Single Responsibility) - uses interface for polymorphism
-    private final IGeometryExtractor geometryExtractor = new VertexExtractor();
-    private final VertexExtractor vertexExtractor = new VertexExtractor(); // Keep for unique vertices method
 
     // Mesh management - delegate to MeshManager
     private final MeshManager meshManager = MeshManager.getInstance();
@@ -122,11 +117,11 @@ public class VertexRenderer {
         }
 
         try {
-            // Extract ALL mesh vertices (24 for cube) for mapping - uses interface method
-            float[] allMeshVertices = geometryExtractor.extractGeometry(parts, transformMatrix);
+            // Extract ALL mesh vertices (24 for cube) for mapping - uses MeshManager
+            float[] allMeshVertices = meshManager.extractVertexGeometry(parts, transformMatrix);
 
-            // Extract UNIQUE vertices only (8 for cube) for rendering - uses specific method
-            float[] uniquePositions = vertexExtractor.extractUniqueVertices(parts, transformMatrix);
+            // Extract UNIQUE vertices only (8 for cube) for rendering - uses MeshManager
+            float[] uniquePositions = meshManager.extractUniqueVertices(parts, transformMatrix);
 
             // Store unique positions for hit testing
             vertexPositions = uniquePositions;
