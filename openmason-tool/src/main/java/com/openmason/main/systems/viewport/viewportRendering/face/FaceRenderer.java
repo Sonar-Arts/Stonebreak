@@ -2,7 +2,7 @@ package com.openmason.main.systems.viewport.viewportRendering.face;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
-import com.openmason.main.systems.viewport.viewportRendering.face.operations.FaceUpdateOperation;
+import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
@@ -26,7 +26,7 @@ import static org.lwjgl.opengl.GL30.*;
  * <p>This renderer provides visual feedback for face selection and hover states
  * by drawing colored overlays on model faces. The renderer follows SOLID principles
  * with clear separation of concerns and delegates data operations to
- * {@link com.openmason.main.systems.viewport.viewportRendering.face.operations.FaceUpdateOperation}.
+ * {@link MeshManager}.
  *
  * <h2>Rendering Strategy</h2>
  * <p>Uses two-pass rendering for clean visual separation:
@@ -47,7 +47,7 @@ import static org.lwjgl.opengl.GL30.*;
  * <p>Follows the same pattern as EdgeRenderer and VertexRenderer for consistency.
  * Uses OpenGL VBO with interleaved vertex data (position + color RGBA).
  *
- * @see com.openmason.main.systems.viewport.viewportRendering.face.operations.FaceUpdateOperation
+ * @see MeshManager
  * @see FaceHoverDetector
  * @see FaceExtractor
  */
@@ -87,8 +87,6 @@ public class FaceRenderer {
     // Face extraction (Single Responsibility) - uses interface for polymorphism
     private final IGeometryExtractor geometryExtractor = new FaceExtractor();
 
-    // Face update operation (Single Responsibility)
-    private final FaceUpdateOperation faceUpdateOperation = new FaceUpdateOperation();
 
     /**
      * Initialize the face renderer with OpenGL resources.
@@ -117,7 +115,7 @@ public class FaceRenderer {
 
             // Configure vertex attributes (interleaved: position + color with alpha)
             // Stride = FLOATS_PER_VERTEX (3 for position, 4 for color RGBA)
-            int stride = FaceUpdateOperation.FLOATS_PER_VERTEX * Float.BYTES;
+            int stride = MeshManager.FLOATS_PER_VERTEX * Float.BYTES;
 
             // Position attribute (location = 0)
             glVertexAttribPointer(0, COMPONENTS_PER_POSITION, GL_FLOAT, false, stride, 0);
@@ -145,7 +143,7 @@ public class FaceRenderer {
      * Update face data from model parts with transformation applied.
      *
      * <p>Extracts face geometry from model parts, applies transformation,
-     * and uploads vertex data to GPU. Delegates to FaceUpdateOperation
+     * and uploads vertex data to GPU. Delegates to MeshManager
      * for DRY compliance and single responsibility.
      *
      * <p>This method works with any model type through polymorphic
@@ -172,10 +170,10 @@ public class FaceRenderer {
             facePositions = geometryExtractor.extractGeometry(parts, transformMatrix);
 
             // Face positions are [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...] (4 vertices per face)
-            faceCount = facePositions.length / FaceUpdateOperation.FLOATS_PER_FACE_POSITION;
+            faceCount = facePositions.length / MeshManager.FLOATS_PER_FACE_POSITION;
 
-            // Delegate bulk VBO creation to operation class (DRY + Single Responsibility)
-            faceUpdateOperation.updateAllFaces(vbo, facePositions, faceCount, overlayRenderer.getDefaultFaceColor());
+            // Delegate bulk VBO creation to MeshManager (DRY + Single Responsibility)
+            MeshManager.getInstance().updateAllFaces(vbo, facePositions, faceCount, overlayRenderer.getDefaultFaceColor());
 
             logger.debug("Updated face data: {} faces ({} floats)", faceCount, facePositions.length);
 
@@ -188,6 +186,7 @@ public class FaceRenderer {
      * Build face-to-vertex mapping from unique vertex positions.
      * FIX: Creates mapping needed for index-based updates to prevent vertex unification.
      * Matches face corners to unique vertices using epsilon comparison.
+     * Delegates to MeshManager for clean separation of concerns.
      *
      * @param uniqueVertexPositions Array of unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
      */
@@ -204,136 +203,45 @@ public class FaceRenderer {
             return;
         }
 
-        int uniqueVertexCount = uniqueVertexPositions.length / COMPONENTS_PER_POSITION;
-        faceToVertexMapping.clear();
-
-        // For each face, find which unique vertices it connects
-        for (int faceIdx = 0; faceIdx < faceCount; faceIdx++) {
-            int[] vertexIndices = findVertexIndicesForFace(faceIdx, uniqueVertexPositions, uniqueVertexCount);
-            faceToVertexMapping.put(faceIdx, vertexIndices);
-        }
+        // Delegate to MeshManager (Single Responsibility Principle)
+        faceToVertexMapping = MeshManager.getInstance().buildFaceToVertexMapping(
+            facePositions,
+            faceCount,
+            uniqueVertexPositions,
+            VERTEX_MATCH_EPSILON
+        );
 
         logger.debug("Built face-to-vertex mapping for {} faces", faceCount);
     }
 
-    /**
-     * Find vertex indices for a specific face by matching positions.
-     *
-     * @param faceIdx the face index
-     * @param uniqueVertexPositions array of unique vertex positions
-     * @param uniqueVertexCount number of unique vertices
-     * @return array of 4 vertex indices for the face corners
-     */
-    private int[] findVertexIndicesForFace(int faceIdx, float[] uniqueVertexPositions, int uniqueVertexCount) {
-        int facePosIdx = faceIdx * FaceUpdateOperation.FLOATS_PER_FACE_POSITION;
-        int[] vertexIndices = new int[CORNERS_PER_FACE];
-
-        for (int corner = 0; corner < CORNERS_PER_FACE; corner++) {
-            Vector3f faceVertex = extractFaceCornerPosition(facePosIdx, corner);
-            int matchedIndex = findMatchingVertexIndex(faceVertex, uniqueVertexPositions, uniqueVertexCount);
-
-            vertexIndices[corner] = matchedIndex;
-
-            if (matchedIndex == -1) {
-                logger.warn("Face {} corner {} has unmatched vertex", faceIdx, corner);
-            }
-        }
-
-        return vertexIndices;
-    }
-
-    /**
-     * Extract position of a face corner.
-     *
-     * @param facePosIdx starting index of face in positions array
-     * @param corner corner index (0-3)
-     * @return position vector
-     */
-    private Vector3f extractFaceCornerPosition(int facePosIdx, int corner) {
-        int cornerPosIdx = facePosIdx + (corner * COMPONENTS_PER_POSITION);
-        return new Vector3f(
-            facePositions[cornerPosIdx],
-            facePositions[cornerPosIdx + 1],
-            facePositions[cornerPosIdx + 2]
-        );
-    }
-
-    /**
-     * Find the index of a unique vertex that matches the given position.
-     *
-     * @param position the position to match
-     * @param uniqueVertexPositions array of unique vertex positions
-     * @param uniqueVertexCount number of unique vertices
-     * @return index of matching vertex, or -1 if no match found
-     */
-    private int findMatchingVertexIndex(Vector3f position, float[] uniqueVertexPositions, int uniqueVertexCount) {
-        for (int vIdx = 0; vIdx < uniqueVertexCount; vIdx++) {
-            Vector3f uniqueVertex = extractVertexPosition(uniqueVertexPositions, vIdx);
-
-            if (position.distance(uniqueVertex) < VERTEX_MATCH_EPSILON) {
-                return vIdx;
-            }
-        }
-        return -1;
-    }
-
-    /**
-     * Extract a vertex position from the positions array.
-     *
-     * @param positions the positions array
-     * @param vertexIdx the vertex index
-     * @return position vector
-     */
-    private Vector3f extractVertexPosition(float[] positions, int vertexIdx) {
-        int vPosIdx = vertexIdx * COMPONENTS_PER_POSITION;
-        return new Vector3f(
-            positions[vPosIdx],
-            positions[vPosIdx + 1],
-            positions[vPosIdx + 2]
-        );
-    }
 
     /**
      * Get the vertex indices for a specific face.
+     * Delegates to MeshManager for clean separation of concerns.
      *
      * @param faceIndex the face index
      * @return array of 4 vertex indices [v0, v1, v2, v3], or null if invalid
      */
     public int[] getFaceVertexIndices(int faceIndex) {
-        if (faceIndex < 0 || faceIndex >= faceCount) {
-            return null;
-        }
-        return faceToVertexMapping.get(faceIndex);
+        // Delegate to MeshManager (Single Responsibility Principle)
+        return MeshManager.getInstance().getFaceVertexIndices(faceIndex, faceCount, faceToVertexMapping);
     }
 
     /**
      * Get the 4 corner vertices of a face.
+     * Delegates to MeshManager for clean separation of concerns.
      *
      * @param faceIndex the face index
      * @return array of 4 vertices [v0, v1, v2, v3], or null if invalid
      */
     public Vector3f[] getFaceVertices(int faceIndex) {
-        if (faceIndex < 0 || faceIndex >= faceCount || facePositions == null) {
-            return null;
-        }
-
-        int posIndex = faceIndex * FaceUpdateOperation.FLOATS_PER_FACE_POSITION;
-
-        if (posIndex + (FaceUpdateOperation.FLOATS_PER_FACE_POSITION - 1) >= facePositions.length) {
-            return null;
-        }
-
-        Vector3f[] vertices = new Vector3f[CORNERS_PER_FACE];
-        for (int i = 0; i < CORNERS_PER_FACE; i++) {
-            vertices[i] = extractFaceCornerPosition(posIndex, i);
-        }
-
-        return vertices;
+        // Delegate to MeshManager (Single Responsibility Principle)
+        return MeshManager.getInstance().getFaceVertices(facePositions, faceIndex, faceCount);
     }
 
     /**
      * Update face position by vertex indices (index-based update to prevent unification).
-     * Delegates to FaceUpdateOperation for clean separation of concerns.
+     * Delegates to MeshManager for clean separation of concerns.
      *
      * @param faceIndex the face index
      * @param vertexIndices array of 4 unique vertex indices
@@ -345,8 +253,8 @@ public class FaceRenderer {
             return;
         }
 
-        // Delegate to operation class (Single Responsibility Principle)
-        faceUpdateOperation.updateFace(vbo, facePositions, faceCount, faceIndex, vertexIndices, newPositions);
+        // Delegate to MeshManager (Single Responsibility Principle)
+        MeshManager.getInstance().updateFacePosition(vbo, facePositions, faceCount, faceIndex, vertexIndices, newPositions);
     }
 
     /**

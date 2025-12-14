@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.mesh;
 
+import com.openmason.main.systems.viewport.viewportRendering.mesh.faceOperations.*;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations.*;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
@@ -155,110 +156,12 @@ public class MeshManager {
     }
 
     /**
-     * Get the mesh vertex indices that correspond to a unique vertex.
-     *
-     * @param uniqueIndex Index of the unique vertex
-     * @return List of mesh vertex indices, or empty list if not found
-     */
-    public List<Integer> getMeshIndicesForUniqueVertex(int uniqueIndex) {
-        return uniqueToMeshMapping.getOrDefault(uniqueIndex, Collections.emptyList());
-    }
-
-    /**
-     * Update all mesh instances of a unique vertex to a new position.
-     * For example, when dragging corner vertex 0 on a cube, all 3 mesh instances
-     * at that corner are updated simultaneously.
-     *
-     * @param uniqueIndex Index of the unique vertex
-     * @param newPosition New position to apply
-     * @return true if any mesh vertices were updated, false otherwise
-     */
-    public boolean updateMeshInstancePositions(int uniqueIndex, Vector3f newPosition) {
-        if (allMeshVertices == null) {
-            logger.warn("Cannot update mesh instances: no mesh vertices set");
-            return false;
-        }
-
-        List<Integer> meshIndices = getMeshIndicesForUniqueVertex(uniqueIndex);
-        if (meshIndices.isEmpty()) {
-            logger.warn("No mesh indices found for unique vertex {}", uniqueIndex);
-            return false;
-        }
-
-        // Update all mesh instances at this unique vertex position
-        for (int meshIndex : meshIndices) {
-            int meshPosIndex = meshIndex * 3;
-            allMeshVertices[meshPosIndex] = newPosition.x;
-            allMeshVertices[meshPosIndex + 1] = newPosition.y;
-            allMeshVertices[meshPosIndex + 2] = newPosition.z;
-        }
-
-        logger.trace("Updated {} mesh instances for unique vertex {} to position {}",
-                meshIndices.size(), uniqueIndex, newPosition);
-
-        return true;
-    }
-
-    /**
-     * Get the count of mesh vertices.
-     *
-     * @return Number of mesh vertices, or 0 if not set
-     */
-    public int getMeshVertexCount() {
-        return allMeshVertices != null ? allMeshVertices.length / 3 : 0;
-    }
-
-    /**
-     * Get the count of unique vertices (based on mapping size).
-     *
-     * @return Number of unique vertices
-     */
-    public int getUniqueVertexCount() {
-        return uniqueToMeshMapping.size();
-    }
-
-    /**
      * Clear all mesh data and mappings.
      */
     public void clearMeshData() {
         allMeshVertices = null;
         uniqueToMeshMapping.clear();
         logger.debug("Cleared mesh data");
-    }
-
-    /**
-     * Validate mesh integrity - check if all mesh vertices are mapped to unique vertices.
-     *
-     * @param expectedUniqueCount Expected number of unique vertices
-     * @return true if mesh is valid, false otherwise
-     */
-    public boolean validateMeshIntegrity(int expectedUniqueCount) {
-        if (allMeshVertices == null) {
-            logger.warn("Mesh validation failed: no mesh vertices");
-            return false;
-        }
-
-        int meshCount = getMeshVertexCount();
-        int uniqueCount = getUniqueVertexCount();
-        int totalMappedMeshVertices = uniqueToMeshMapping.values().stream()
-                .mapToInt(List::size)
-                .sum();
-
-        if (uniqueCount != expectedUniqueCount) {
-            logger.warn("Mesh validation failed: expected {} unique vertices, found {}",
-                    expectedUniqueCount, uniqueCount);
-            return false;
-        }
-
-        if (totalMappedMeshVertices != meshCount) {
-            logger.warn("Mesh validation failed: {} mesh vertices but {} mapped",
-                    meshCount, totalMappedMeshVertices);
-            return false;
-        }
-
-        logger.debug("Mesh validation passed: {} unique vertices, {} mesh vertices",
-                uniqueCount, meshCount);
-        return true;
     }
 
     // ========================================
@@ -338,6 +241,95 @@ public class MeshManager {
                 internalResult.indexMapping,
                 internalResult.updatedOriginalMapping
         );
+    }
+
+    // ========================================
+    // Face Operations (managed through MeshManager)
+    // ========================================
+
+    // Face VBO layout constants (exposed for rendering operations)
+    public static final int FLOATS_PER_FACE_POSITION = MeshFaceUpdateOperation.FLOATS_PER_FACE_POSITION;
+    public static final int FLOATS_PER_VERTEX = MeshFaceUpdateOperation.FLOATS_PER_VERTEX;
+    public static final int VERTICES_PER_FACE = MeshFaceUpdateOperation.VERTICES_PER_FACE;
+    public static final int FLOATS_PER_FACE_VBO = MeshFaceUpdateOperation.FLOATS_PER_FACE_VBO;
+
+    /**
+     * Build face-to-vertex mapping from unique vertex positions.
+     * Coordinates the mapping process using MeshFaceMappingBuilder.
+     *
+     * @param facePositions Array of face positions
+     * @param faceCount Number of faces
+     * @param uniqueVertexPositions Array of unique vertex positions
+     * @param epsilon Distance threshold for vertex matching
+     * @return Map from face index to array of 4 unique vertex indices
+     */
+    public Map<Integer, int[]> buildFaceToVertexMapping(float[] facePositions, int faceCount,
+                                                       float[] uniqueVertexPositions, float epsilon) {
+        MeshFaceMappingBuilder builder = new MeshFaceMappingBuilder(epsilon);
+        return builder.buildMapping(facePositions, faceCount, uniqueVertexPositions);
+    }
+
+    /**
+     * Get the 4 corner vertices of a face.
+     * Convenience method using MeshFaceCornerExtractor.
+     *
+     * @param facePositions Array of face positions
+     * @param faceIndex Face index
+     * @param faceCount Total number of faces
+     * @return Array of 4 vertices [v0, v1, v2, v3], or null if invalid
+     */
+    public Vector3f[] getFaceVertices(float[] facePositions, int faceIndex, int faceCount) {
+        MeshFaceCornerExtractor extractor = new MeshFaceCornerExtractor();
+        return extractor.getFaceVertices(facePositions, faceIndex, faceCount);
+    }
+
+    /**
+     * Get face vertex indices for a face from the mapping.
+     * Convenience method using MeshFaceCornerExtractor.
+     *
+     * @param faceIndex Face index
+     * @param faceCount Total number of faces
+     * @param faceToVertexMapping Map from face index to vertex indices
+     * @return Array of 4 vertex indices [v0, v1, v2, v3], or null if invalid
+     */
+    public int[] getFaceVertexIndices(int faceIndex, int faceCount,
+                                     Map<Integer, int[]> faceToVertexMapping) {
+        MeshFaceCornerExtractor extractor = new MeshFaceCornerExtractor();
+        return extractor.getFaceVertexIndices(faceIndex, faceCount, faceToVertexMapping);
+    }
+
+    /**
+     * Update a single face's position in both CPU memory and GPU buffer.
+     * Coordinates the update process using MeshFaceUpdateOperation.
+     *
+     * @param vbo OpenGL VBO handle
+     * @param facePositions CPU-side face position array
+     * @param faceCount Total number of faces
+     * @param faceIndex Index of the face to update
+     * @param vertexIndices Array of 4 unique vertex indices
+     * @param newPositions Array of 4 new vertex positions
+     * @return true if update succeeded, false otherwise
+     */
+    public boolean updateFacePosition(int vbo, float[] facePositions, int faceCount,
+                                     int faceIndex, int[] vertexIndices, Vector3f[] newPositions) {
+        MeshFaceUpdateOperation updater = new MeshFaceUpdateOperation();
+        return updater.updateFace(vbo, facePositions, faceCount, faceIndex, vertexIndices, newPositions);
+    }
+
+    /**
+     * Bulk update all faces with VBO data creation.
+     * Coordinates the bulk update process using MeshFaceUpdateOperation.
+     *
+     * @param vbo OpenGL VBO handle
+     * @param facePositions Array of face positions
+     * @param faceCount Number of faces
+     * @param defaultColor Default color for all faces (with alpha)
+     * @return true if update succeeded, false otherwise
+     */
+    public boolean updateAllFaces(int vbo, float[] facePositions, int faceCount,
+                                 org.joml.Vector4f defaultColor) {
+        MeshFaceUpdateOperation updater = new MeshFaceUpdateOperation();
+        return updater.updateAllFaces(vbo, facePositions, faceCount, defaultColor);
     }
 
     /**

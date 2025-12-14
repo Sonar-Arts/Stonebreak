@@ -1,7 +1,7 @@
 package com.openmason.main.systems.viewport.viewportRendering.face;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.viewport.viewportRendering.face.operations.FaceUpdateOperation;
+import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -44,7 +44,7 @@ import static org.lwjgl.opengl.GL30.*;
  * </ul>
  *
  * @see FaceRenderer
- * @see FaceUpdateOperation
+ * @see MeshManager
  */
 public class FaceOverlayRenderer {
 
@@ -182,21 +182,21 @@ public class FaceOverlayRenderer {
     /**
      * Render a single face with a specific color.
      * Updates VBO color data, renders the face, then restores default color.
-     * Uses shared constants from FaceUpdateOperation for DRY compliance.
+     * Uses shared constants from MeshManager for DRY compliance.
      *
      * @param vbo The vertex buffer object for color updates
      * @param faceIndex The face index to render
      * @param color The color to use (RGBA with alpha for transparency)
      */
     private void renderFaceWithColor(int vbo, int faceIndex, Vector4f color) {
-        int dataStart = faceIndex * FaceUpdateOperation.FLOATS_PER_FACE_VBO;
+        int dataStart = faceIndex * MeshManager.FLOATS_PER_FACE_VBO;
         int colorOffsetBytes = COLOR_OFFSET_FLOATS * Float.BYTES;
 
         // Update color in VBO
         updateFaceColors(vbo, dataStart, colorOffsetBytes, color);
 
         // Render the face (2 triangles = 6 vertices)
-        glDrawArrays(GL_TRIANGLES, faceIndex * FaceUpdateOperation.VERTICES_PER_FACE, FaceUpdateOperation.VERTICES_PER_FACE);
+        glDrawArrays(GL_TRIANGLES, faceIndex * MeshManager.VERTICES_PER_FACE, MeshManager.VERTICES_PER_FACE);
 
         // Restore default color
         updateFaceColors(vbo, dataStart, colorOffsetBytes, defaultFaceColor);
@@ -214,8 +214,8 @@ public class FaceOverlayRenderer {
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
         float[] colorData = new float[] { color.x, color.y, color.z, color.w };
-        for (int i = 0; i < FaceUpdateOperation.VERTICES_PER_FACE; i++) {
-            int vboOffset = (dataStart + (i * FaceUpdateOperation.FLOATS_PER_VERTEX)) * Float.BYTES + colorOffsetBytes;
+        for (int i = 0; i < MeshManager.VERTICES_PER_FACE; i++) {
+            int vboOffset = (dataStart + (i * MeshManager.FLOATS_PER_VERTEX)) * Float.BYTES + colorOffsetBytes;
             glBufferSubData(GL_ARRAY_BUFFER, vboOffset, colorData);
         }
 

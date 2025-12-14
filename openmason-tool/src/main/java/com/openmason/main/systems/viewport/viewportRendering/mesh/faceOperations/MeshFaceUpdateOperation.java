@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.face.operations;
+package com.openmason.main.systems.viewport.viewportRendering.mesh.faceOperations;
 
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -8,17 +8,26 @@ import org.slf4j.LoggerFactory;
 import static org.lwjgl.opengl.GL15.*;
 
 /**
- * Handles face position updates in both memory and GPU buffer.
- * Single Responsibility: Updates face positions without managing other rendering concerns.
+ * Single Responsibility: Handles face position updates in both memory and GPU buffer.
+ * This class encapsulates all operations related to updating face mesh data.
+ *
+ * SOLID Principles:
+ * - Single Responsibility: Only handles face position updates
+ * - Open/Closed: Can be extended for different update strategies
+ * - Liskov Substitution: Could be abstracted to IFaceUpdater if needed
+ * - Interface Segregation: Focused interface for face updates
+ * - Dependency Inversion: Depends on abstractions (arrays, Vector3f) not concrete implementations
+ *
+ * KISS Principle: Straightforward VBO update logic without unnecessary complexity.
+ * DRY Principle: All VBO layout logic and vertex data operations are centralized here.
+ * YAGNI Principle: Only implements what's needed for face position updates.
  *
  * This operation handles both bulk face data initialization and individual face updates.
  * Each face consists of 4 vertices forming 2 triangles (6 vertices total in VBO).
- *
- * DRY Principle: All VBO layout logic and vertex data operations are centralized here.
  */
-public class FaceUpdateOperation {
+public class MeshFaceUpdateOperation {
 
-    private static final Logger logger = LoggerFactory.getLogger(FaceUpdateOperation.class);
+    private static final Logger logger = LoggerFactory.getLogger(MeshFaceUpdateOperation.class);
 
     // VBO layout constants (DRY: shared across all operations)
     public static final int FLOATS_PER_FACE_POSITION = 12;  // 4 vertices × 3 coords
