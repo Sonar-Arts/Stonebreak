@@ -55,6 +55,7 @@ public class TerrainGenerationSystem {
     private final VegetationGenerator vegetationGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
     private final TerrainFeatureRegistry terrainFeatureRegistry;
+    private final com.stonebreak.world.generation.ocean.OceanDepthRouter oceanDepthRouter;  // Ocean depth variation
 
     // Progress reporting
     private final LoadingProgressReporter progressReporter;
@@ -86,6 +87,7 @@ public class TerrainGenerationSystem {
         this.terrainGenerator = TerrainGeneratorFactory.createFromString(generatorType, seed, config, true);
         this.biomeManager = new BiomeManager(seed, config);
         this.modifierRegistry = new BiomeTerrainModifierRegistry(seed);  // Phase 2: Initialize modifier registry
+        this.oceanDepthRouter = new com.stonebreak.world.generation.ocean.OceanDepthRouter(seed, biomeManager);  // Ocean depth variation
         this.caveGenerator = new CaveNoiseGenerator(seed);  // Ridged noise cave system (cheese + spaghetti)
         this.oreGenerator = new OreGenerator(seed);
         this.vegetationGenerator = new VegetationGenerator(seed, biomeManager.getVariationRouter());
@@ -176,14 +178,21 @@ public class TerrainGenerationSystem {
                 // Sample multi-noise parameters (interpolated for 94% reduction)
                 MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleInterpolatedParameters(worldX, worldZ, SEA_LEVEL);
 
+                // Estimate biome at sea level (for ocean depth calculation)
+                BiomeType estimatedBiome = biomeManager.getBiome(worldX, worldZ);
+
                 // PASS 1: Generate base terrain height
                 int baseHeight = terrainGenerator.generateHeight(worldX, worldZ, params);
 
-                // Select biome using sampled parameters
-                BiomeType biome = biomeManager.getBiomeAtHeight(worldX, worldZ, baseHeight);
+                // Apply ocean depth offset if in ocean biome
+                float oceanOffset = oceanDepthRouter.getOceanDepthOffset(estimatedBiome, worldX, worldZ);
+                int adjustedHeight = baseHeight + (int) Math.round(oceanOffset);
+
+                // Select biome using adjusted height
+                BiomeType biome = biomeManager.getBiomeAtHeight(worldX, worldZ, adjustedHeight);
 
                 // PASS 2: Apply biome-specific terrain modifiers
-                int height = modifierRegistry.applyModifier(biome, baseHeight, params, worldX, worldZ);
+                int height = modifierRegistry.applyModifier(biome, adjustedHeight, params, worldX, worldZ);
 
                 // Cache for flood-fill (eliminates redundant recalculation)
                 terrainHeights[x][z] = height;
