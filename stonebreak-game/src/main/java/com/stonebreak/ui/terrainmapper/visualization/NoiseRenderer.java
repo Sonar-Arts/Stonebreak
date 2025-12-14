@@ -1,11 +1,15 @@
 package com.stonebreak.ui.terrainmapper.visualization;
 
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.ui.terrainmapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainmapper.visualization.impl.BiomeVisualizer;
 import com.stonebreak.ui.terrainmapper.visualization.impl.HeightMapVisualizer;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
+
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.lwjgl.nanovg.NanoVG.*;
 
@@ -40,10 +44,18 @@ public class NoiseRenderer {
     // Sampling configuration
     private static final int SAMPLE_RESOLUTION = 2; // Sample every 2 pixels
 
+    // Tooltip positioning configuration
+    private static final float TOOLTIP_OFFSET_X = 15.0f;
+    private static final float TOOLTIP_OFFSET_Y = 15.0f;
+    private static final float TOOLTIP_MARGIN = 8.0f;
+
     // Cache for performance
     private double[][] cachedSamples;
     private int cachedSamplesX;
     private int cachedSamplesZ;
+
+    // Hover lookup cache for O(1) world coord → value mapping
+    private Map<Long, Double> hoverLookupCache;
 
     // Hover state
     private int hoverWorldX = -1;
@@ -52,6 +64,31 @@ public class NoiseRenderer {
     private String hoverDisplayText = "";
     private boolean hasHoverData = false;
 
+    // Hover cache for performance optimization
+    private int cachedHoverWorldX = Integer.MIN_VALUE;
+    private int cachedHoverWorldZ = Integer.MIN_VALUE;
+    private double cachedHoverRawValue = 0.0;
+    private String cachedHoverDisplayText = "";
+
+    // Text measurement cache to avoid redundant NanoVG calls
+    private float cachedTextWidth = 0.0f;
+    private float cachedTextHeight = 0.0f;
+    private String lastMeasuredText = "";
+
+    /**
+     * Holds calculated tooltip position and dimensions.
+     */
+    private static class TooltipBounds {
+        final float x, y, width, height;
+
+        TooltipBounds(float x, float y, float width, float height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
+    }
+
     /**
      * Creates a new noise renderer.
      *
@@ -59,6 +96,18 @@ public class NoiseRenderer {
      */
     public NoiseRenderer(UIRenderer uiRenderer) {
         this.uiRenderer = uiRenderer;
+    }
+
+    /**
+     * Packs world X/Z coordinates into a single long for HashMap key.
+     * Upper 32 bits: worldX, Lower 32 bits: worldZ
+     *
+     * @param worldX World X coordinate
+     * @param worldZ World Z coordinate
+     * @return Packed coordinate key
+     */
+    private long packCoords(int worldX, int worldZ) {
+        return ((long)worldX << 32) | (worldZ & 0xFFFFFFFFL);
     }
 
     /**
@@ -113,6 +162,21 @@ public class NoiseRenderer {
                 // Sample and store raw value
                 double rawValue = visualizer.sample(worldX, worldZ, seed);
                 cachedSamples[sx][sz] = rawValue;
+            }
+        }
+
+        // Build hover lookup table for O(1) world coord → value mapping
+        hoverLookupCache = new HashMap<>(samplesX * samplesZ);
+        for (int sx = 0; sx < samplesX; sx++) {
+            for (int sz = 0; sz < samplesZ; sz++) {
+                // Recalculate world coordinates using EXACT same formula as render loop
+                float relativeX = (sx * SAMPLE_RESOLUTION) / mapWidth;
+                float relativeZ = (sz * SAMPLE_RESOLUTION) / mapHeight;
+                int worldX = worldMinX + (int)(relativeX * (worldMaxX - worldMinX));
+                int worldZ = worldMinZ + (int)(relativeZ * (worldMaxZ - worldMinZ));
+
+                long key = packCoords(worldX, worldZ);
+                hoverLookupCache.put(key, cachedSamples[sx][sz]);
             }
         }
 
@@ -187,7 +251,7 @@ public class NoiseRenderer {
             int worldMinX, int worldMinZ,
             int worldMaxX, int worldMaxZ
     ) {
-        // Check if mouse is within map bounds
+        // Guard clause: Check if mouse is within map bounds
         if (mouseX < mapX || mouseX > mapX + mapWidth ||
                 mouseY < mapY || mouseY > mapY + mapHeight) {
             hasHoverData = false;
@@ -198,6 +262,7 @@ public class NoiseRenderer {
         float relativeX = (mouseX - mapX) / mapWidth;
         float relativeZ = (mouseY - mapY) / mapHeight;
 
+        // Guard clause: Check relative coordinates
         if (relativeX < 0 || relativeX > 1 || relativeZ < 0 || relativeZ > 1) {
             hasHoverData = false;
             return;
@@ -206,8 +271,23 @@ public class NoiseRenderer {
         int worldX = worldMinX + (int) (relativeX * (worldMaxX - worldMinX));
         int worldZ = worldMinZ + (int) (relativeZ * (worldMaxZ - worldMinZ));
 
-        // Sample value at this position
-        double rawValue = visualizer.sample(worldX, worldZ, seed);
+        // Layer 1: Check if world coordinates unchanged (cache hit)
+        if (worldX == cachedHoverWorldX && worldZ == cachedHoverWorldZ) {
+            hoverWorldX = worldX;
+            hoverWorldZ = worldZ;
+            hoverValue = cachedHoverRawValue;
+            hoverDisplayText = cachedHoverDisplayText;
+            hasHoverData = true;
+            return;
+        }
+
+        // Layer 2: Try to reuse hover cache
+        double rawValue = tryLookupFromHoverCache(worldX, worldZ);
+
+        // Layer 3: Sample fresh if not in cache
+        if (Double.isNaN(rawValue)) {
+            rawValue = visualizer.sample(worldX, worldZ, seed);
+        }
 
         // Update hover state
         hoverWorldX = worldX;
@@ -215,6 +295,30 @@ public class NoiseRenderer {
         hoverValue = rawValue;
         hoverDisplayText = formatContextAwareValue(visualizer, rawValue, worldX, worldZ);
         hasHoverData = true;
+
+        // Update hover cache
+        cachedHoverWorldX = worldX;
+        cachedHoverWorldZ = worldZ;
+        cachedHoverRawValue = rawValue;
+        cachedHoverDisplayText = hoverDisplayText;
+    }
+
+    /**
+     * Looks up a cached hover value using exact world coordinate matching.
+     *
+     * @param worldX World X coordinate
+     * @param worldZ World Z coordinate
+     * @return Cached raw value if found, NaN if not in cache
+     */
+    private double tryLookupFromHoverCache(int worldX, int worldZ) {
+        // Guard clause: No cache available
+        if (hoverLookupCache == null) {
+            return Double.NaN;
+        }
+
+        long key = packCoords(worldX, worldZ);
+        Double cachedValue = hoverLookupCache.get(key);
+        return (cachedValue != null) ? cachedValue : Double.NaN;
     }
 
     /**
@@ -247,6 +351,63 @@ public class NoiseRenderer {
     }
 
     /**
+     * Calculates optimal tooltip position with terrain mapper layout awareness.
+     *
+     * Handles boundary detection and smart repositioning to keep tooltips visible
+     * within the map area (accounting for sidebar and footer).
+     *
+     * @param mouseX Mouse X position
+     * @param mouseY Mouse Y position
+     * @param textWidth Measured text width
+     * @param textHeight Measured text height
+     * @param padding Tooltip padding
+     * @param windowWidth Window width
+     * @param windowHeight Window height
+     * @return Calculated tooltip bounds
+     */
+    private TooltipBounds calculateTooltipPosition(
+            float mouseX, float mouseY,
+            float textWidth, float textHeight,
+            float padding,
+            int windowWidth, int windowHeight) {
+
+        // Calculate tooltip dimensions
+        float tooltipWidth = textWidth + (padding * 2);
+        float tooltipHeight = textHeight + (padding * 2);
+
+        // Define map area bounds (excluding sidebar and footer)
+        float mapAreaLeft = TerrainMapperConfig.SIDEBAR_WIDTH;
+        float mapAreaTop = 0;
+        float mapAreaRight = windowWidth;
+        float mapAreaBottom = windowHeight - TerrainMapperConfig.FOOTER_HEIGHT;
+
+        // Start with default position (right and above cursor)
+        float finalX = mouseX + TOOLTIP_OFFSET_X;
+        float finalY = mouseY - TOOLTIP_OFFSET_Y - tooltipHeight;
+
+        // Smart positioning: flip to opposite side if exceeding bounds
+        if (finalX + tooltipWidth > mapAreaRight - TOOLTIP_MARGIN) {
+            finalX = mouseX - tooltipWidth - TOOLTIP_OFFSET_X;  // Show to left
+        }
+
+        if (finalY < mapAreaTop + TOOLTIP_MARGIN) {
+            finalY = mouseY + TOOLTIP_OFFSET_Y;  // Show below cursor
+        }
+
+        if (finalY + tooltipHeight > mapAreaBottom - TOOLTIP_MARGIN) {
+            finalY = mouseY - tooltipHeight - TOOLTIP_OFFSET_Y;  // Show above cursor
+        }
+
+        // Ensure minimum margins are maintained (final clamping)
+        finalX = Math.max(mapAreaLeft + TOOLTIP_MARGIN,
+                Math.min(finalX, mapAreaRight - tooltipWidth - TOOLTIP_MARGIN));
+        finalY = Math.max(mapAreaTop + TOOLTIP_MARGIN,
+                Math.min(finalY, mapAreaBottom - tooltipHeight - TOOLTIP_MARGIN));
+
+        return new TooltipBounds(finalX, finalY, tooltipWidth, tooltipHeight);
+    }
+
+    /**
      * Renders the hover overlay showing the value at the cursor position.
      *
      * Displays a tooltip near the mouse cursor with:
@@ -254,10 +415,16 @@ public class NoiseRenderer {
      * - Value (formatted based on visualizer type)
      * - World coordinates
      *
+     * Smart positioning keeps the tooltip visible within the map area,
+     * automatically repositioning when near window edges.
+     *
      * @param mouseX Mouse X position (screen coordinates)
      * @param mouseY Mouse Y position (screen coordinates)
+     * @param windowWidth Window width
+     * @param windowHeight Window height
      */
-    public void renderHoverOverlay(int mouseX, int mouseY) {
+    public void renderHoverOverlay(int mouseX, int mouseY, int windowWidth, int windowHeight) {
+        // Guard clause: No hover data available
         if (!hasHoverData) {
             return;
         }
@@ -265,22 +432,30 @@ public class NoiseRenderer {
         long vg = uiRenderer.getVG();
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            // Measure text width
-            float[] bounds = new float[4];
-            nvgFontSize(vg, 14);
-            nvgFontFace(vg, "minecraft");
-            nvgTextBounds(vg, 0, 0, hoverDisplayText, bounds);
-            float textWidth = bounds[2] - bounds[0];
-            float textHeight = bounds[3] - bounds[1];
+            // Only measure text if content changed
+            if (!hoverDisplayText.equals(lastMeasuredText)) {
+                float[] bounds = new float[4];
+                nvgFontSize(vg, 14);
+                nvgFontFace(vg, "minecraft");
+                nvgTextBounds(vg, 0, 0, hoverDisplayText, bounds);
+                cachedTextWidth = bounds[2] - bounds[0];
+                cachedTextHeight = bounds[3] - bounds[1];
+                lastMeasuredText = hoverDisplayText;
+            }
 
-            // Calculate tooltip position (offset from cursor to avoid obscuring view)
-            float tooltipX = mouseX + 15;
-            float tooltipY = mouseY - 30;
+            float textWidth = cachedTextWidth;
+            float textHeight = cachedTextHeight;
             float padding = 8;
+
+            // Calculate smart tooltip position with boundary handling
+            TooltipBounds tooltip = calculateTooltipPosition(
+                    mouseX, mouseY, textWidth, textHeight, padding,
+                    windowWidth, windowHeight
+            );
 
             // Draw background
             nvgBeginPath(vg);
-            nvgRect(vg, tooltipX, tooltipY, textWidth + padding * 2, textHeight + padding * 2);
+            nvgRect(vg, tooltip.x, tooltip.y, tooltip.width, tooltip.height);
             NVGColor bgColor = NVGColor.malloc(stack);
             uiRenderer.nvgRGBA(0, 0, 0, 220, bgColor);
             nvgFillColor(vg, bgColor);
@@ -288,7 +463,7 @@ public class NoiseRenderer {
 
             // Draw border
             nvgBeginPath(vg);
-            nvgRect(vg, tooltipX, tooltipY, textWidth + padding * 2, textHeight + padding * 2);
+            nvgRect(vg, tooltip.x, tooltip.y, tooltip.width, tooltip.height);
             NVGColor borderColor = NVGColor.malloc(stack);
             uiRenderer.nvgRGBA(100, 100, 100, 255, borderColor);
             nvgStrokeColor(vg, borderColor);
@@ -302,7 +477,7 @@ public class NoiseRenderer {
             NVGColor textColor = NVGColor.malloc(stack);
             uiRenderer.nvgRGBA(255, 255, 255, 255, textColor);
             nvgFillColor(vg, textColor);
-            nvgText(vg, tooltipX + padding, tooltipY + padding, hoverDisplayText);
+            nvgText(vg, tooltip.x + padding, tooltip.y + padding, hoverDisplayText);
         }
     }
 
@@ -313,7 +488,13 @@ public class NoiseRenderer {
      */
     public void invalidateCache() {
         cachedSamples = null;
+        hoverLookupCache = null;
         hasHoverData = false;
+        // Invalidate hover cache
+        cachedHoverWorldX = Integer.MIN_VALUE;
+        cachedHoverWorldZ = Integer.MIN_VALUE;
+        // Invalidate text measurement cache
+        lastMeasuredText = "";
     }
 
     /**

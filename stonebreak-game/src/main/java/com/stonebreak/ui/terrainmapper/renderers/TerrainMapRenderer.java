@@ -100,7 +100,7 @@ public class TerrainMapRenderer {
             if (visualizationActive && noiseRenderer.hasHoverData()) {
                 int mouseX = (int) stateManager.getLastMouseX();
                 int mouseY = (int) stateManager.getLastMouseY();
-                noiseRenderer.renderHoverOverlay(mouseX, mouseY);
+                noiseRenderer.renderHoverOverlay(mouseX, mouseY, windowWidth, windowHeight);
             }
         }
     }
@@ -221,17 +221,38 @@ public class TerrainMapRenderer {
                 worldMaxX, worldMaxZ
         );
 
-        // Update hover state
+        // Calculate current mouse world coordinates
         int mouseX = (int) stateManager.getLastMouseX();
         int mouseY = (int) stateManager.getLastMouseY();
-        noiseRenderer.updateHover(
-                visualizer,
-                seed,
-                mouseX, mouseY,
-                mapX, mapY,
-                mapWidth, mapHeight,
-                worldMinX, worldMinZ,
-                worldMaxX, worldMaxZ
-        );
+
+        float relativeX = (mouseX - mapX) / mapWidth;
+        float relativeZ = (mouseY - mapY) / mapHeight;
+
+        int worldMouseX = Integer.MIN_VALUE;
+        int worldMouseZ = Integer.MIN_VALUE;
+
+        // Only calculate world coords if mouse is within map bounds
+        if (relativeX >= 0 && relativeX <= 1 && relativeZ >= 0 && relativeZ <= 1) {
+            worldMouseX = worldMinX + (int) (relativeX * (worldMaxX - worldMinX));
+            worldMouseZ = worldMinZ + (int) (relativeZ * (worldMaxZ - worldMinZ));
+        }
+
+        // Check if world coordinates changed since last frame
+        double prevWorldMouseX = stateManager.getPrevWorldMouseX();
+        double prevWorldMouseZ = stateManager.getPrevWorldMouseZ();
+
+        boolean worldPosChanged = (worldMouseX != (int) prevWorldMouseX) ||
+                                  (worldMouseZ != (int) prevWorldMouseZ);
+
+        // Only update hover if position changed or first hover
+        if (worldPosChanged || Double.isNaN(prevWorldMouseX)) {
+            noiseRenderer.updateHover(visualizer, seed, mouseX, mouseY,
+                    mapX, mapY, mapWidth, mapHeight,
+                    worldMinX, worldMinZ, worldMaxX, worldMaxZ);
+
+            // Cache current world position for next frame
+            stateManager.setPrevWorldMouseX(worldMouseX);
+            stateManager.setPrevWorldMouseZ(worldMouseZ);
+        }
     }
 }

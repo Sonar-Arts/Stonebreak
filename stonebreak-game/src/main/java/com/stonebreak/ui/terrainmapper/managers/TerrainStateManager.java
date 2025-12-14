@@ -25,6 +25,10 @@ public class TerrainStateManager {
     private double lastMouseX;
     private double lastMouseY;
 
+    // Previous mouse world coordinates for movement detection
+    private double prevWorldMouseX = Double.NaN;
+    private double prevWorldMouseZ = Double.NaN;
+
     // Button hover states
     private boolean backButtonHovered;
     private boolean createButtonHovered;
@@ -117,6 +121,9 @@ public class TerrainStateManager {
         visualizationActive = false;
 
         selectedGeneratorType = TerrainGeneratorType.HYBRID_SDF;
+
+        prevWorldMouseX = Double.NaN;
+        prevWorldMouseZ = Double.NaN;
     }
 
     // Getters and setters for text input fields
@@ -170,12 +177,20 @@ public class TerrainStateManager {
     }
 
     public void setZoom(float zoom) {
-        this.zoom = zoom;
+        if (this.zoom != zoom) {
+            this.zoom = zoom;
+            // Invalidate cached world coordinates on zoom change
+            prevWorldMouseX = Double.NaN;
+            prevWorldMouseZ = Double.NaN;
+        }
     }
 
     public void adjustPan(float deltaX, float deltaY) {
         this.panX += deltaX;
         this.panY += deltaY;
+        // Invalidate cached world coordinates on pan change
+        prevWorldMouseX = Double.NaN;
+        prevWorldMouseZ = Double.NaN;
     }
 
     // Getters and setters for mouse state
@@ -201,6 +216,22 @@ public class TerrainStateManager {
 
     public void setLastMouseY(double lastMouseY) {
         this.lastMouseY = lastMouseY;
+    }
+
+    public double getPrevWorldMouseX() {
+        return prevWorldMouseX;
+    }
+
+    public void setPrevWorldMouseX(double prevWorldMouseX) {
+        this.prevWorldMouseX = prevWorldMouseX;
+    }
+
+    public double getPrevWorldMouseZ() {
+        return prevWorldMouseZ;
+    }
+
+    public void setPrevWorldMouseZ(double prevWorldMouseZ) {
+        this.prevWorldMouseZ = prevWorldMouseZ;
     }
 
     // Getters and setters for button hover states
