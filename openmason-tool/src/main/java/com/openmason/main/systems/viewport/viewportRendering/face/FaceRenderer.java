@@ -7,7 +7,6 @@ import com.openmason.main.systems.viewport.shaders.ShaderProgram;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,7 +56,6 @@ public class FaceRenderer {
 
     // Layout constants
     private static final int COMPONENTS_PER_POSITION = 3; // x, y, z
-    private static final int CORNERS_PER_FACE = 4; // quad face
     private static final float VERTEX_MATCH_EPSILON = 0.0001f;
 
     // OpenGL resources

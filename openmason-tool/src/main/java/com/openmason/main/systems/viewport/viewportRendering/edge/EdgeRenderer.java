@@ -3,11 +3,10 @@ package com.openmason.main.systems.viewport.viewportRendering.edge;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
-import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgeBufferUpdater;
-import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgeVertexRemapper;
 import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgeSelectionManager;
-import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgeGeometryQuery;
-import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgePositionUpdater;
+import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
+import com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations.MeshEdgeBufferUpdater;
+import com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations.MeshEdgePositionUpdater;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -157,34 +156,16 @@ public class EdgeRenderer {
     private final IGeometryExtractor geometryExtractor = new EdgeExtractor();
 
     /**
-     * Handles vertex data building and GPU buffer uploads.
-     * Creates interleaved VBO data from edge positions.
-     */
-    private final EdgeBufferUpdater bufferUpdater = new EdgeBufferUpdater();
-
-    /**
-     * Handles edge-to-vertex mapping updates after vertex merging.
-     * Remaps edge indices when vertices are consolidated.
-     */
-    private final EdgeVertexRemapper vertexRemapper = new EdgeVertexRemapper();
-
-    /**
      * Manages edge selection state and validation.
      * Validates selection indices and tracks state changes.
      */
     private final EdgeSelectionManager selectionManager = new EdgeSelectionManager();
 
     /**
-     * Queries edge geometry data.
-     * Retrieves edge endpoints and vertex index mappings.
+     * Unified mesh manager for all mesh operations.
+     * Handles buffer updates, position updates, remapping, and geometry queries.
      */
-    private final EdgeGeometryQuery geometryQuery = new EdgeGeometryQuery();
-
-    /**
-     * Updates edge positions for vertex transformations.
-     * Supports position-based and index-based update strategies.
-     */
-    private final EdgePositionUpdater positionUpdater = new EdgePositionUpdater();
+    private final MeshManager meshManager = MeshManager.getInstance();
 
     /**
      * Initializes the edge renderer and allocates OpenGL resources.
@@ -273,8 +254,8 @@ public class EdgeRenderer {
             // Extract edges using interface method (polymorphism + validation)
             float[] extractedPositions = geometryExtractor.extractGeometry(parts, transformMatrix);
 
-            // Update buffer with extracted edge data (delegated to EdgeBufferUpdater)
-            EdgeBufferUpdater.UpdateResult result = bufferUpdater.updateBuffer(vbo, extractedPositions, edgeColor);
+            // Update buffer with extracted edge data (delegated to MeshManager)
+            MeshEdgeBufferUpdater.UpdateResult result = meshManager.updateEdgeBuffer(vbo, extractedPositions, edgeColor);
 
             if (result != null) {
                 edgeCount = result.getEdgeCount();
@@ -309,73 +290,10 @@ public class EdgeRenderer {
      * @param uniqueVertexPositions array of unique vertex positions in format [x0,y0,z0, x1,y1,z1, ...]
      */
     public void buildEdgeToVertexMapping(float[] uniqueVertexPositions) {
-        if (edgePositions == null || edgeCount == 0) {
-            logger.warn("Cannot build edge mapping: no edge data");
-            edgeToVertexMapping = null;
-            return;
-        }
-
-        if (uniqueVertexPositions == null || uniqueVertexPositions.length < MIN_VERTEX_ARRAY_LENGTH) {
-            logger.warn("Cannot build edge mapping: invalid unique vertex data");
-            edgeToVertexMapping = null;
-            return;
-        }
-
-        int uniqueVertexCount = uniqueVertexPositions.length / POSITION_COMPONENTS;
-        edgeToVertexMapping = new int[edgeCount][2];
-
-        // For each edge, find which unique vertices it connects
-        for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
-            int edgePosIdx = edgeIdx * FLOATS_PER_EDGE;
-
-            // Edge endpoint 1
-            Vector3f endpoint1 = new Vector3f(
-                edgePositions[edgePosIdx + 0],
-                edgePositions[edgePosIdx + 1],
-                edgePositions[edgePosIdx + 2]
-            );
-
-            // Edge endpoint 2
-            Vector3f endpoint2 = new Vector3f(
-                edgePositions[edgePosIdx + 3],
-                edgePositions[edgePosIdx + 4],
-                edgePositions[edgePosIdx + 5]
-            );
-
-            // Find matching unique vertices
-            int vertexIndex1 = -1;
-            int vertexIndex2 = -1;
-
-            for (int vIdx = 0; vIdx < uniqueVertexCount; vIdx++) {
-                int vPosIdx = vIdx * POSITION_COMPONENTS;
-                Vector3f uniqueVertex = new Vector3f(
-                    uniqueVertexPositions[vPosIdx + 0],
-                    uniqueVertexPositions[vPosIdx + 1],
-                    uniqueVertexPositions[vPosIdx + 2]
-                );
-
-                if (vertexIndex1 == NO_EDGE_SELECTED && endpoint1.distance(uniqueVertex) < POSITION_EPSILON) {
-                    vertexIndex1 = vIdx;
-                }
-                if (vertexIndex2 == NO_EDGE_SELECTED && endpoint2.distance(uniqueVertex) < POSITION_EPSILON) {
-                    vertexIndex2 = vIdx;
-                }
-
-                if (vertexIndex1 != -1 && vertexIndex2 != -1) {
-                    break; // Found both
-                }
-            }
-
-            edgeToVertexMapping[edgeIdx][0] = vertexIndex1;
-            edgeToVertexMapping[edgeIdx][1] = vertexIndex2;
-
-            if (vertexIndex1 == NO_EDGE_SELECTED || vertexIndex2 == NO_EDGE_SELECTED) {
-                logger.warn("Edge {} has unmatched endpoints: v1={}, v2={}",
-                    edgeIdx, vertexIndex1, vertexIndex2);
-            }
-        }
-
-        logger.debug("Built edge-to-vertex mapping for {} edges", edgeCount);
+        // Delegate to MeshManager for edge-to-vertex mapping
+        edgeToVertexMapping = meshManager.buildEdgeToVertexMapping(
+            edgePositions, edgeCount, uniqueVertexPositions, POSITION_EPSILON
+        );
     }
 
     /**
@@ -392,7 +310,12 @@ public class EdgeRenderer {
      * @param oldToNewIndexMap mapping from old vertex indices to new vertex indices
      */
     public void remapEdgeVertexIndices(Map<Integer, Integer> oldToNewIndexMap) {
-        vertexRemapper.remapIndices(edgeToVertexMapping, edgeCount, oldToNewIndexMap);
+        var result = meshManager.remapEdgeVertexIndices(edgeToVertexMapping, edgeCount, oldToNewIndexMap);
+
+        if (result != null && result.isSuccessful()) {
+            logger.debug("Remapped {} of {} edge vertex indices",
+                result.getRemappedEdges(), result.getTotalEdges());
+        }
     }
 
     /**
@@ -671,20 +594,20 @@ public class EdgeRenderer {
 
     /**
      * Returns the endpoint positions of an edge.
-     * Delegates to EdgeGeometryQuery for data retrieval.
+     * Delegates to MeshManager for data retrieval.
      *
      * @param edgeIndex the index of the edge to query
      * @return array containing [endpoint1, endpoint2], or null if index is invalid
      */
     public Vector3f[] getEdgeEndpoints(int edgeIndex) {
-        return geometryQuery.getEdgeEndpoints(edgeIndex, edgePositions, edgeCount);
+        return meshManager.getEdgeEndpoints(edgeIndex, edgePositions, edgeCount);
     }
 
     /**
      * Updates all edge endpoints that match a dragged vertex position.
-     * Uses position-based matching strategy via EdgePositionUpdater.
+     * Uses position-based matching strategy via MeshManager.
      *
-     * <p>This method delegates to {@link EdgePositionUpdater#updateByPosition} which
+     * <p>This method delegates to {@link MeshManager#updateEdgesByPosition} which
      * searches through all edge endpoints and updates any that were at the old vertex position.
      * This handles models where EdgeExtractor creates face-based edges (e.g., 24 edges for a cube:
      * 4 per face × 6 faces) instead of 12 unique edges, so multiple edge endpoints share positions.
@@ -698,12 +621,17 @@ public class EdgeRenderer {
             return;
         }
 
-        positionUpdater.updateByPosition(vbo, edgePositions, edgeCount, oldPosition, newPosition);
+        var result = meshManager.updateEdgesByPosition(vbo, edgePositions, edgeCount, oldPosition, newPosition);
+
+        if (result != null && result.isSuccessful()) {
+            logger.trace("Updated {} edge endpoints using {} strategy",
+                result.getUpdatedCount(), result.getStrategy());
+        }
     }
 
     /**
      * Returns the unique vertex indices for a given edge.
-     * Delegates to EdgeGeometryQuery to retrieve which unique vertices this edge connects.
+     * Delegates to MeshManager to retrieve which unique vertices this edge connects.
      *
      * <p><b>Prerequisites:</b> {@link #buildEdgeToVertexMapping} must have been called.
      *
@@ -711,14 +639,14 @@ public class EdgeRenderer {
      * @return array of [vertexIndex1, vertexIndex2], or null if mapping is not available
      */
     public int[] getEdgeVertexIndices(int edgeIndex) {
-        return geometryQuery.getEdgeVertexIndices(edgeIndex, edgeToVertexMapping);
+        return meshManager.getEdgeVertexIndices(edgeIndex, edgeToVertexMapping);
     }
 
     /**
      * Updates edges connected to specific vertex indices.
-     * Uses index-based matching strategy via EdgePositionUpdater to prevent vertex unification bugs.
+     * Uses index-based matching strategy via MeshManager to prevent vertex unification bugs.
      *
-     * <p>This method delegates to {@link EdgePositionUpdater#updateByIndices} which only
+     * <p>This method delegates to {@link MeshManager#updateEdgesByIndices} which only
      * updates edges that connect to the specified unique vertex indices. This is more precise
      * than position-based updates and prevents unintended modifications when vertices share positions.
      *
@@ -736,8 +664,13 @@ public class EdgeRenderer {
             return;
         }
 
-        positionUpdater.updateByIndices(vbo, edgePositions, edgeCount, edgeToVertexMapping,
-                                        vertexIndex1, newPosition1, vertexIndex2, newPosition2);
+        var result = meshManager.updateEdgesByIndices(vbo, edgePositions, edgeCount, edgeToVertexMapping,
+                                                     vertexIndex1, newPosition1, vertexIndex2, newPosition2);
+
+        if (result != null && result.isSuccessful()) {
+            logger.trace("Updated {} edges using {} strategy",
+                result.getUpdatedCount(), result.getStrategy());
+        }
     }
 
 }

@@ -1,33 +1,30 @@
-package com.openmason.main.systems.viewport.viewportRendering.edge.operations;
+package com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations;
 
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Queries geometric data about edges.
- * Single Responsibility: Retrieves edge endpoint positions and vertex indices.
+ * Single Responsibility: Queries geometric data about edges.
+ * This class retrieves edge endpoint positions and vertex indices.
  *
- * <p>This class encapsulates the logic for:
- * <ul>
- *   <li>Validating edge indices against array bounds</li>
- *   <li>Extracting edge endpoint positions from position arrays</li>
- *   <li>Retrieving edge-to-vertex index mappings</li>
- * </ul>
+ * SOLID Principles:
+ * - Single Responsibility: Only handles edge geometry queries
+ * - Open/Closed: Can be extended for additional query types
+ * - Liskov Substitution: Could be abstracted to IEdgeGeometryQuery if needed
+ * - Interface Segregation: Focused interface for geometry queries
+ * - Dependency Inversion: Depends on abstractions (arrays) not concrete implementations
  *
- * <p><b>Thread Safety:</b> This class is stateless and thread-safe.
+ * KISS Principle: Simple array indexing and bounds checking.
+ * DRY Principle: All edge query logic centralized in one place.
+ * YAGNI Principle: Only implements what's needed for edge geometry queries.
+ *
+ * Thread Safety: This class is stateless and thread-safe.
  * All data is passed as parameters and no state is maintained.
- *
- * <p><b>Data Format:</b> Edge positions are stored as a flat array where each edge
- * occupies 6 consecutive floats: [x1, y1, z1, x2, y2, z2]. The edge-to-vertex
- * mapping is a 2D array where mapping[edgeIndex][0] is the first vertex index
- * and mapping[edgeIndex][1] is the second vertex index.
- *
- * @see com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer
  */
-public class EdgeGeometryQuery {
+public class MeshEdgeGeometryQuery {
 
-    private static final Logger logger = LoggerFactory.getLogger(EdgeGeometryQuery.class);
+    private static final Logger logger = LoggerFactory.getLogger(MeshEdgeGeometryQuery.class);
 
     /** Number of float values per edge (2 endpoints × 3 coordinates). */
     private static final int FLOATS_PER_EDGE = 6;
@@ -36,7 +33,7 @@ public class EdgeGeometryQuery {
      * Gets the endpoint positions of an edge.
      * Extracts the 3D coordinates of both endpoints for the specified edge.
      *
-     * <p>Returns a two-element array containing the start and end points of the edge.
+     * Returns a two-element array containing the start and end points of the edge.
      * Each point is a Vector3f with x, y, z coordinates.
      *
      * @param edgeIndex the index of the edge to query (0-based)
@@ -89,7 +86,7 @@ public class EdgeGeometryQuery {
      * Gets the unique vertex indices for a given edge.
      * Returns which unique vertices this edge connects in the model.
      *
-     * <p>This is used to identify the vertex endpoints of an edge, which is critical
+     * This is used to identify the vertex endpoints of an edge, which is critical
      * for operations like edge translation that need to update connected vertices.
      * Returns a copy of the indices to prevent external modification of the mapping.
      *
