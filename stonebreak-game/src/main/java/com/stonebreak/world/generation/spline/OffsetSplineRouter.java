@@ -125,15 +125,18 @@ public class OffsetSplineRouter {
 
         // Deep Ocean Floor (continentalness = -1.00)
         // Derivative 1.0 for smooth ocean floor rise
-        continentalnessSpline.addPoint(-1.00f, buildErosionSpline(20.0f, 30.0f), 1.0f);
+        // Depressed by 10 blocks: y=10 (54 blocks below sea level 64)
+        continentalnessSpline.addPoint(-1.00f, buildErosionSpline(10.0f, 20.0f), 1.0f);
 
         // Ocean Basin (continentalness = -0.85)
         // Derivative 0.8 for gentle basin slope
-        continentalnessSpline.addPoint(-0.85f, buildErosionSpline(35.0f, 42.0f), 0.8f);
+        // Depressed by 10 blocks: y=20-30 (44-34 blocks below sea level)
+        continentalnessSpline.addPoint(-0.85f, buildErosionSpline(20.0f, 30.0f), 0.8f);
 
         // Shallow Ocean (continentalness = -0.70)
         // Derivative 1.2 for moderate slope
-        continentalnessSpline.addPoint(-0.70f, buildErosionSpline(45.0f, 55.0f), 1.2f);
+        // Depressed by 10 blocks: y=35-45 (29-19 blocks below sea level)
+        continentalnessSpline.addPoint(-0.70f, buildErosionSpline(35.0f, 45.0f), 1.2f);
 
         // Continental Shelf (continentalness = -0.55)
         // Derivative 1.5 for steepening shelf

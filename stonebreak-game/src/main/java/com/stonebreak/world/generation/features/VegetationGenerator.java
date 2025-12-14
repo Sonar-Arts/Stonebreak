@@ -6,6 +6,7 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.TreeGenerator;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.biomes.BiomeVariationRouter;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
@@ -16,15 +17,18 @@ import com.stonebreak.world.operations.WorldConfiguration;
  */
 public class VegetationGenerator {
     private final DeterministicRandom deterministicRandom;
+    private final BiomeVariationRouter variationRouter;
     private final Object treeRandomLock = new Object();
 
     /**
-     * Creates a new vegetation generator with the given seed.
+     * Creates a new vegetation generator with the given seed and variation router.
      *
      * @param seed World seed for deterministic generation
+     * @param variationRouter Biome variation router for position-based feature variation
      */
-    public VegetationGenerator(long seed) {
+    public VegetationGenerator(long seed, BiomeVariationRouter variationRouter) {
         this.deterministicRandom = new DeterministicRandom(seed);
+        this.variationRouter = variationRouter;
     }
 
     /**
@@ -72,21 +76,39 @@ public class VegetationGenerator {
                                        int worldX, int worldZ, int surfaceHeight) {
         if (biome == BiomeType.PLAINS) {
             if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS) {
-                if (deterministicRandom.shouldGenerate(worldX, worldZ, "tree", 0.01f) && surfaceHeight > 64) {
-                    // Determine tree type: 60% regular oak, 40% elm trees
-                    boolean shouldGenerateElm = deterministicRandom.shouldGenerate(worldX, worldZ, "tree_type", 0.4f);
+                // Base density: 1% (0.01f)
+                float baseDensity = 0.01f;
 
-                    if (shouldGenerateElm) {
+                // Apply variation: [0.4%, 1.6%] range
+                float densityMultiplier = variationRouter.getDensityMultiplier(worldX, worldZ);
+                float variedDensity = baseDensity * densityMultiplier;
+
+                if (deterministicRandom.shouldGenerate(worldX, worldZ, "tree", variedDensity) && surfaceHeight > 64) {
+                    // Base oak probability: 60% (elm = 40%)
+                    float baseOakProbability = 0.6f;
+
+                    // Apply type ratio shift: [30%, 90%] range
+                    float ratioShift = variationRouter.getTypeRatioShift(worldX, worldZ);
+                    float variedOakProbability = Math.max(0.1f, Math.min(0.9f, baseOakProbability + ratioShift));
+
+                    // Determine tree type
+                    boolean shouldGenerateOak = deterministicRandom.shouldGenerate(worldX, worldZ, "tree_type", variedOakProbability);
+
+                    if (shouldGenerateOak) {
+                        TreeGenerator.generateTree(world, chunk, x, surfaceHeight, z);
+                    } else {
                         TreeGenerator.generateElmTree(world, chunk, x, surfaceHeight, z,
                             deterministicRandom.getRandomForPosition(worldX, worldZ, "elm_tree"), treeRandomLock);
-                    } else {
-                        TreeGenerator.generateTree(world, chunk, x, surfaceHeight, z);
                     }
                 }
             }
         } else if (biome == BiomeType.SNOWY_PLAINS) {
             if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT) {
-                if (deterministicRandom.shouldGenerate(worldX, worldZ, "pine_tree", 0.015f) && surfaceHeight > 64) {
+                float baseDensity = 0.015f;
+                float densityMultiplier = variationRouter.getDensityMultiplier(worldX, worldZ);
+                float variedDensity = baseDensity * densityMultiplier;
+
+                if (deterministicRandom.shouldGenerate(worldX, worldZ, "pine_tree", variedDensity) && surfaceHeight > 64) {
                     TreeGenerator.generatePineTree(world, chunk, x, surfaceHeight, z);
                 }
             }
@@ -95,7 +117,11 @@ public class VegetationGenerator {
         else if (biome == BiomeType.TAIGA) {
             // Dense pine forest (3% spawn rate - denser than SNOWY_PLAINS)
             if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT) {
-                if (deterministicRandom.shouldGenerate(worldX, worldZ, "taiga_pine_tree", 0.03f) && surfaceHeight > 64) {
+                float baseDensity = 0.03f;
+                float densityMultiplier = variationRouter.getDensityMultiplier(worldX, worldZ);
+                float variedDensity = baseDensity * densityMultiplier;
+
+                if (deterministicRandom.shouldGenerate(worldX, worldZ, "taiga_pine_tree", variedDensity) && surfaceHeight > 64) {
                     TreeGenerator.generatePineTree(world, chunk, x, surfaceHeight, z);
                 }
             }
@@ -103,7 +129,11 @@ public class VegetationGenerator {
             // Very sparse pine trees (0.3% spawn rate - survival trees)
             if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRAVEL ||
                 chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.STONE) {
-                if (deterministicRandom.shouldGenerate(worldX, worldZ, "tundra_pine_tree", 0.003f) && surfaceHeight > 64) {
+                float baseDensity = 0.003f;
+                float densityMultiplier = variationRouter.getDensityMultiplier(worldX, worldZ);
+                float variedDensity = baseDensity * densityMultiplier;
+
+                if (deterministicRandom.shouldGenerate(worldX, worldZ, "tundra_pine_tree", variedDensity) && surfaceHeight > 64) {
                     TreeGenerator.generatePineTree(world, chunk, x, surfaceHeight, z);
                 }
             }

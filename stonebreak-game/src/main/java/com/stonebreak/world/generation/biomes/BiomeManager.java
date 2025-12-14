@@ -37,6 +37,7 @@ public class BiomeManager {
     private final int seaLevel;
     private final boolean useVoronoi;
     private final BiomeVoronoiGrid voronoiGrid;
+    private final BiomeVariationRouter variationRouter;
 
     /**
      * Creates a new biome manager with multi-noise parameter selection.
@@ -48,6 +49,7 @@ public class BiomeManager {
         this.noiseRouter = new NoiseRouter(seed, config);
         this.parameterTable = new BiomeParameterTable();
         this.seaLevel = WorldConfiguration.SEA_LEVEL;
+        this.variationRouter = new BiomeVariationRouter(seed);
         this.useVoronoi = config.enableVoronoiBiomes;
 
         // Initialize voronoi grid if enabled
@@ -202,6 +204,18 @@ public class BiomeManager {
      */
     public NoiseRouter getNoiseRouter() {
         return noiseRouter;
+    }
+
+    /**
+     * Gets the biome variation router for position-based feature variation.
+     *
+     * The variation router provides density and type multipliers for biome features
+     * (e.g., tree density, tree type distribution) that vary by world position.
+     *
+     * @return The variation router
+     */
+    public BiomeVariationRouter getVariationRouter() {
+        return variationRouter;
     }
 
 }

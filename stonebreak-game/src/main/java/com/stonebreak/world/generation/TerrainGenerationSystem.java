@@ -88,7 +88,7 @@ public class TerrainGenerationSystem {
         this.modifierRegistry = new BiomeTerrainModifierRegistry(seed);  // Phase 2: Initialize modifier registry
         this.caveGenerator = new CaveNoiseGenerator(seed);  // Ridged noise cave system (cheese + spaghetti)
         this.oreGenerator = new OreGenerator(seed);
-        this.vegetationGenerator = new VegetationGenerator(seed);
+        this.vegetationGenerator = new VegetationGenerator(seed, biomeManager.getVariationRouter());
         this.decorationGenerator = new SurfaceDecorationGenerator(seed);
 
         // Initialize terrain feature registry with default features (overhangs, arches)
