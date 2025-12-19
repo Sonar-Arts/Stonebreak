@@ -40,6 +40,7 @@ public class NoiseRouter {
     private final NoiseGenerator temperatureNoise;
     private final NoiseGenerator humidityNoise;
     private final NoiseGenerator regionalFlatnessNoise;
+    private final NoiseGenerator regionalElevationNoise;
 
     private final TerrainGenerationConfig config;
     private final int seaLevel;
@@ -78,6 +79,7 @@ public class NoiseRouter {
         this.temperatureNoise = new NoiseGenerator(seed + 1, NoiseConfigFactory.temperature());
         this.humidityNoise = new NoiseGenerator(seed, NoiseConfigFactory.moisture());
         this.regionalFlatnessNoise = new NoiseGenerator(seed + 13, NoiseConfigFactory.regionalFlatness());
+        this.regionalElevationNoise = new NoiseGenerator(seed + 14, NoiseConfigFactory.regionalElevation());
 
         // Initialize parameter interpolator if enabled
         if (config.enableParameterInterpolation) {
@@ -264,6 +266,19 @@ public class NoiseRouter {
      */
     public float getRegionalFlatness(int worldX, int worldZ) {
         return regionalFlatnessNoise.noise(worldX / 2250.0f, worldZ / 2250.0f);
+    }
+
+    /**
+     * Samples regional elevation noise for water generation.
+     * Continental-scale (3200-block) noise used to determine expected elevation zones.
+     * Water bodies form in basins where actual terrain is below regional elevation.
+     *
+     * @param worldX World X coordinate
+     * @param worldZ World Z coordinate
+     * @return Regional elevation noise in range [-1.0, 1.0]
+     */
+    public float getRegionalElevationNoise(int worldX, int worldZ) {
+        return regionalElevationNoise.noise(worldX / 3200.0f, worldZ / 3200.0f);
     }
 
     /**

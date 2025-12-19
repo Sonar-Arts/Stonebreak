@@ -8,7 +8,8 @@ public class WorldConfiguration {
     // World constants
     public static final int CHUNK_SIZE = 16;
     public static final int WORLD_HEIGHT = 256;
-    public static final int SEA_LEVEL = 64;
+    public static final int SEA_LEVEL = 34;  // Used for altitude-based temperature calculations
+    public static final int DEFAULT_REGIONAL_ELEVATION = 64;  // Reference elevation for water generation sweet spot
 
     // Rendering settings
     public static final int DEFAULT_RENDER_DISTANCE = 8;

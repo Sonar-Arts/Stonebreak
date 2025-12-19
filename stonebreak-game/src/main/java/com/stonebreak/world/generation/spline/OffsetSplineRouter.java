@@ -125,67 +125,67 @@ public class OffsetSplineRouter {
 
         // Deep Ocean Floor (continentalness = -1.00)
         // Derivative 1.0 for smooth ocean floor rise
-        // Depressed by 10 blocks: y=10 (54 blocks below sea level 64)
-        continentalnessSpline.addPoint(-1.00f, buildErosionSpline(10.0f, 20.0f), 1.0f);
+        // Deep ocean: y=10 (24 blocks below sea level 34)
+        continentalnessSpline.addPoint(-1.00f, buildErosionSpline(10.0f, 10.0f), 1.0f);
 
         // Ocean Basin (continentalness = -0.85)
         // Derivative 0.8 for gentle basin slope
-        // Depressed by 10 blocks: y=20-30 (44-34 blocks below sea level)
-        continentalnessSpline.addPoint(-0.85f, buildErosionSpline(20.0f, 30.0f), 0.8f);
+        // Ocean basin: y=10 (24 blocks below sea level)
+        continentalnessSpline.addPoint(-0.85f, buildErosionSpline(10.0f, 10.0f), 0.8f);
 
         // Shallow Ocean (continentalness = -0.70)
         // Derivative 1.2 for moderate slope
-        // Depressed by 10 blocks: y=35-45 (29-19 blocks below sea level)
-        continentalnessSpline.addPoint(-0.70f, buildErosionSpline(35.0f, 45.0f), 1.2f);
+        // Shallow ocean: y=10-15 (24-19 blocks below sea level)
+        continentalnessSpline.addPoint(-0.70f, buildErosionSpline(10.0f, 15.0f), 1.2f);
 
         // Continental Shelf (continentalness = -0.55)
         // Derivative 1.5 for steepening shelf
-        continentalnessSpline.addPoint(-0.55f, buildErosionSpline(58.0f, 70.0f), 1.5f);
+        continentalnessSpline.addPoint(-0.55f, buildErosionSpline(28.0f, 40.0f), 1.5f);
 
         // Coastal (continentalness = -0.40)
         // Derivative 0.8 for coastal shallows
-        continentalnessSpline.addPoint(-0.40f, buildErosionSpline(68.0f, 82.0f), 0.8f);
+        continentalnessSpline.addPoint(-0.40f, buildErosionSpline(38.0f, 52.0f), 0.8f);
 
         // Near Coast (continentalness = -0.25)
         // Derivative 1.0 for steady rise
-        continentalnessSpline.addPoint(-0.25f, buildErosionSpline(76.0f, 92.0f), 1.0f);
+        continentalnessSpline.addPoint(-0.25f, buildErosionSpline(46.0f, 62.0f), 1.0f);
 
         // Beach/Lowland (continentalness = -0.10)
         // Derivative 1.5 for approaching land (cliff preparation)
         // NOTE: This becomes 5.0 for coastal cliffs with low erosion (see buildErosionSpline)
-        continentalnessSpline.addPoint(-0.10f, buildErosionSpline(84.0f, 100.0f), 1.5f);
+        continentalnessSpline.addPoint(-0.10f, buildErosionSpline(54.0f, 70.0f), 1.5f);
 
         // Sea Level Transition (continentalness = 0.00)
         // Derivative 2.0 for sea level rise
-        continentalnessSpline.addPoint(0.00f, buildErosionSpline(95.0f, 115.0f), 2.0f);
+        continentalnessSpline.addPoint(0.00f, buildErosionSpline(65.0f, 85.0f), 2.0f);
 
         // Low Inland (continentalness = 0.15)
         // Derivative 1.8 for inland plains
-        continentalnessSpline.addPoint(0.15f, buildErosionSpline(108.0f, 130.0f), 1.8f);
+        continentalnessSpline.addPoint(0.15f, buildErosionSpline(78.0f, 100.0f), 1.8f);
 
         // Mid Inland (continentalness = 0.30)
         // Derivative 1.5 for moderate inland
-        continentalnessSpline.addPoint(0.30f, buildErosionSpline(122.0f, 145.0f), 1.5f);
+        continentalnessSpline.addPoint(0.30f, buildErosionSpline(92.0f, 115.0f), 1.5f);
 
         // High Inland (continentalness = 0.45)
         // Derivative 1.0 for high plains
-        continentalnessSpline.addPoint(0.45f, buildErosionSpline(138.0f, 162.0f), 1.0f);
+        continentalnessSpline.addPoint(0.45f, buildErosionSpline(108.0f, 132.0f), 1.0f);
 
         // Foothills (continentalness = 0.60)
         // Derivative 2.5 for foothill rise
-        continentalnessSpline.addPoint(0.60f, buildErosionSpline(155.0f, 182.0f), 2.5f);
+        continentalnessSpline.addPoint(0.60f, buildErosionSpline(125.0f, 152.0f), 2.5f);
 
         // Mountain Base (continentalness = 0.75)
         // Derivative 3.5 for steep mountain rise
-        continentalnessSpline.addPoint(0.75f, buildErosionSpline(175.0f, 205.0f), 3.5f);
+        continentalnessSpline.addPoint(0.75f, buildErosionSpline(145.0f, 175.0f), 3.5f);
 
         // High Mountains (continentalness = 0.90)
         // Derivative 4.0 for dramatic mountain walls
-        continentalnessSpline.addPoint(0.90f, buildErosionSpline(200.0f, 230.0f), 4.0f);
+        continentalnessSpline.addPoint(0.90f, buildErosionSpline(170.0f, 200.0f), 4.0f);
 
         // Mountain Peaks (continentalness = 1.00)
         // Derivative 2.0 for peak tops (not completely flat, slight rounded top)
-        continentalnessSpline.addPoint(1.00f, buildErosionSpline(220.0f, 250.0f), 2.0f);
+        continentalnessSpline.addPoint(1.00f, buildErosionSpline(190.0f, 220.0f), 2.0f);
 
         return continentalnessSpline;
     }

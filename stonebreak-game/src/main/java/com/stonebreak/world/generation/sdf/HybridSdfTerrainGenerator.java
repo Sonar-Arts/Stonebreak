@@ -70,7 +70,7 @@ public class HybridSdfTerrainGenerator implements TerrainGenerator {
         this.seed = seed;
         this.config = config;
         this.sdfConfig = sdfConfig != null ? sdfConfig : SdfTerrainConfig.getDefault();
-        this.seaLevel = 64; // TODO: Get from WorldConfiguration if available
+        this.seaLevel = 34; // TODO: Get from WorldConfiguration if available
 
         // Initialize noise router for regional flatness
         this.noiseRouter = new NoiseRouter(seed, config);

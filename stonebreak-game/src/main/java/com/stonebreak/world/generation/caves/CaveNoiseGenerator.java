@@ -54,8 +54,8 @@ public class CaveNoiseGenerator {
     private static final float SPAGHETTI_THRESHOLD = 0.15f;  // Threshold for tunnel formation
 
     // Altitude adjustment parameters
-    private static final int SURFACE_FADE_START = 100;  // Start reducing caves above this Y
-    private static final int DEEP_CAVE_START = 40;  // Full cave systems below this Y
+    private static final int SURFACE_FADE_START = 70;  // Start reducing caves above this Y
+    private static final int DEEP_CAVE_START = 10;  // Full cave systems below this Y
     private static final int MIN_CAVE_DEPTH = 10;  // No caves within 10 blocks of surface
 
     /**

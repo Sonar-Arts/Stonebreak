@@ -1459,14 +1459,12 @@ public class Game {
         System.out.printf("Delta Time: %.3f ms%n", getInstance().deltaTime * 1000);
         
         // Memory pressure warning (ZGC-optimized thresholds)
-        if (memoryUsagePercent > 90) {
+        if (memoryUsagePercent > 98) {
+            System.out.println("⚠️  CRITICAL: Memory usage above 98% - ZGC will manage automatically");
+            profiler.takeSnapshot("critical_memory_" + currentTime);
+        } else if (memoryUsagePercent > 90) {
             System.out.println("⚠️  HIGH: Memory usage above 90% - ZGC will manage automatically");
             profiler.takeSnapshot("high_memory_usage_" + currentTime);
-        }
-        if (memoryUsagePercent > 98) {
-            System.out.println("🚨 CRITICAL: Memory usage above 98% - emergency cleanup triggered!");
-            profiler.takeSnapshot("critical_memory_" + currentTime);
-            // Let MemoryProfiler handle emergency cleanup - no forced GC with ZGC
         }
         
         System.out.println("===============================================");

@@ -97,7 +97,7 @@ public class SpawnLocationCalculator {
      *
      * @param chunkX The spawn chunk X coordinate
      * @param chunkZ The spawn chunk Z coordinate
-     * @return Y coordinate of first air block above surface, or 100 if column is empty
+     * @return Y coordinate of first air block above surface, or 70 if column is empty
      */
     private int findSpawnSurfaceHeight(int chunkX, int chunkZ) {
         System.out.println("[SPAWN] Calculating spawn height at chunk (" + chunkX + ", " + chunkZ + ")...");
@@ -105,9 +105,9 @@ public class SpawnLocationCalculator {
         // Get spawn chunk
         Chunk spawnChunk = world.getChunkAt(chunkX, chunkZ);
         if (spawnChunk == null) {
-            System.err.println("[SPAWN] Calculation method: DEFAULT - Failed to get spawn chunk at (" + chunkX + ", " + chunkZ + "), using Y=100");
-            System.err.println("[SPAWN] Final calculated spawn position: (" + (chunkX * 16 + 8) + ", 100, " + (chunkZ * 16 + 8) + ")");
-            return 100;
+            System.err.println("[SPAWN] Calculation method: DEFAULT - Failed to get spawn chunk at (" + chunkX + ", " + chunkZ + "), using Y=70");
+            System.err.println("[SPAWN] Final calculated spawn position: (" + (chunkX * 16 + 8) + ", 70, " + (chunkZ * 16 + 8) + ")");
+            return 70;
         }
 
         // Log chunk state for debugging
@@ -183,9 +183,9 @@ public class SpawnLocationCalculator {
         }
 
         // Final fallback if cache unavailable or all columns are air
-        System.err.println("[SPAWN] Calculation method: DEFAULT - Using default fallback Y=100");
-        System.err.println("[SPAWN] Final calculated spawn position: (" + (chunkX * 16 + 8) + ", 100, " + (chunkZ * 16 + 8) + ")");
-        return 100;
+        System.err.println("[SPAWN] Calculation method: DEFAULT - Using default fallback Y=70");
+        System.err.println("[SPAWN] Final calculated spawn position: (" + (chunkX * 16 + 8) + ", 70, " + (chunkZ * 16 + 8) + ")");
+        return 70;
     }
 
     /**

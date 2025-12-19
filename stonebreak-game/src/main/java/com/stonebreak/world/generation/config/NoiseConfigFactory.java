@@ -294,6 +294,24 @@ public class NoiseConfigFactory {
         return new NoiseConfig(5, 0.5, 2.0);
     }
 
+    /**
+     * Regional elevation noise: Continental-scale expected elevation zones.
+     * Very low frequency (3200-block scale) for mountain/lowland/ocean regions.
+     *
+     * Used by water generation system to determine "expected elevation" at each location,
+     * creating natural basins where actual terrain is below regional expectation.
+     *
+     * Configuration:
+     * - 6 octaves for smooth continental-scale variation
+     * - 0.45 persistence for moderate detail
+     * - 2.0 lacunarity (standard)
+     *
+     * @return Noise config for regional elevation
+     */
+    public static NoiseConfig regionalElevation() {
+        return new NoiseConfig(6, 0.45, 2.0);
+    }
+
     // Prevent instantiation - this is a utility class
     private NoiseConfigFactory() {
         throw new AssertionError("NoiseConfigFactory should not be instantiated");

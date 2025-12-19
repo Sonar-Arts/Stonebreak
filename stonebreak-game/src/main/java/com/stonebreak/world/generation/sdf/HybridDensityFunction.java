@@ -134,7 +134,7 @@ public class HybridDensityFunction implements DensityFunction {
                 float baseOffset = offsetRouter.getOffset(p, chunkBlockX + x, chunkBlockZ + z);
                 float erosionFactor = 1.0f - (p.erosion * 0.4f);
                 float pvAmplification = p.peaksValleys * 8.0f;
-                float seaLevel = 64.0f;
+                float seaLevel = 34.0f;
                 float heightFromSeaLevel = baseOffset - seaLevel;
                 float jaggedness = jaggednessRouter.getJaggedness(p, chunkBlockX + x, chunkBlockZ + z);
 

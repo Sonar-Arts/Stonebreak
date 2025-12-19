@@ -59,9 +59,9 @@ public class SdfCaveSystem {
     // Cave generation parameters (matching CaveNoiseGenerator behavior)
     private static final float CAVE_DENSITY_THRESHOLD = 0.3f;  // 0.0-1.0, lower = more caves
     private static final int CAVE_MIN_Y = 10;                  // No caves below bedrock area
-    private static final int CAVE_MAX_Y = 200;                 // Reduce caves near world top
-    private static final int SURFACE_FADE_START = 100;
-    private static final int DEEP_CAVE_START = 40;
+    private static final int CAVE_MAX_Y = 170;                 // Reduce caves near world top
+    private static final int SURFACE_FADE_START = 70;
+    private static final int DEEP_CAVE_START = 10;
     private static final int MIN_CAVE_DEPTH = 10;              // Blocks from surface
 
     // Tunnel parameters (spaghetti caves)

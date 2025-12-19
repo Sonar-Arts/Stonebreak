@@ -183,63 +183,31 @@ public class MemoryProfiler {
     public void checkMemoryPressure() {
         MemoryUsage heapUsage = memoryMXBean.getHeapMemoryUsage();
         double usagePercent = (double) heapUsage.getUsed() / heapUsage.getMax() * 100;
-        
+
         // With ZGC, let the garbage collector handle memory pressure naturally
-        // Only trigger emergency cleanup at extremely high usage (98%+)
+        // No manual intervention - just informational warnings
         if (usagePercent > 98) {
-            System.out.println("🚨 EMERGENCY: Memory usage above 98%! Triggering emergency cleanup!");
-            triggerEmergencyCleanup();
-            // Let ZGC handle garbage collection - no forced System.gc()
+            System.out.println("⚠️  CRITICAL: Memory usage above 98% - ZGC will manage automatically");
+            takeSnapshot("critical_memory_" + System.currentTimeMillis());
         } else if (usagePercent > 90) {
             System.out.println("⚠️  HIGH: Memory usage above 90% - ZGC will manage automatically");
+            takeSnapshot("high_memory_usage_" + System.currentTimeMillis());
         } else if (usagePercent > 85) {
             System.out.println("ℹ️  INFO: Memory usage above 85%");
         }
-        
+
         // ZGC has very low pause times, so GC time monitoring is less critical
         // Only warn about extremely high GC pressure
         long currentGCTime = getTotalGCTime();
-        
+
         if (currentGCTime - lastGCTime > 5000) { // More than 5 seconds of GC in recent period
             System.out.printf("⚠️  WARNING: Unusual GC pressure - %d ms GC time in recent period%n",
                              currentGCTime - lastGCTime);
         }
-        
+
         lastGCTime = currentGCTime;
     }
     
-    /**
-     * Emergency cleanup when memory usage is critically high (ZGC-optimized).
-     */
-    private void triggerEmergencyCleanup() {
-        System.out.println("[EMERGENCY CLEANUP] Starting emergency memory cleanup...");
-        
-        // Clear allocation counters to free memory
-        clearAllocations();
-        
-        // Request emergency chunk unloading in World
-        try {
-            World world = Game.getWorld();
-            if (world != null) {
-                int loadedChunks = world.getLoadedChunkCount();
-                if (loadedChunks > 200) {
-                    System.out.printf("[EMERGENCY CLEANUP] %d chunks loaded - requesting emergency unloading...%n", loadedChunks);
-                    // Let the world's normal chunk management handle unloading
-                    // ZGC will clean up the freed chunks automatically
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Error during emergency chunk cleanup: " + e.getMessage());
-        }
-        
-        // Clear old snapshots to free memory (keep recent ones for debugging)
-        if (snapshots.size() > 10) {
-            System.out.printf("[EMERGENCY CLEANUP] Clearing %d old memory snapshots...%n", snapshots.size() - 5);
-            snapshots.entrySet().removeIf(entry -> snapshots.size() > 5);
-        }
-        
-        System.out.println("[EMERGENCY CLEANUP] Emergency cleanup completed - ZGC will handle memory reclamation.");
-    }
     
     private long getTotalGCTime() {
         return ManagementFactory.getGarbageCollectorMXBeans().stream()

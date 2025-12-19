@@ -6,6 +6,8 @@ import com.stonebreak.world.generation.biomes.BiomeTerrainModifierRegistry;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.caves.CaveNoiseGenerator;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
+import com.stonebreak.world.generation.config.WaterGenerationConfig;
+import com.stonebreak.world.generation.water.BasinWaterFiller;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
@@ -51,11 +53,11 @@ public class TerrainGenerationSystem {
     private final BiomeManager biomeManager;
     private final BiomeTerrainModifierRegistry modifierRegistry;  // Phase 2: Biome-specific modifiers
     private final CaveNoiseGenerator caveGenerator;  // Ridged noise-based cave system
+    private final BasinWaterFiller basinWaterFiller;  // Dynamic multi-elevation water bodies
     private final OreGenerator oreGenerator;
     private final VegetationGenerator vegetationGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
     private final TerrainFeatureRegistry terrainFeatureRegistry;
-    private final com.stonebreak.world.generation.ocean.OceanDepthRouter oceanDepthRouter;  // Ocean depth variation
 
     // Progress reporting
     private final LoadingProgressReporter progressReporter;
@@ -87,8 +89,17 @@ public class TerrainGenerationSystem {
         this.terrainGenerator = TerrainGeneratorFactory.createFromString(generatorType, seed, config, true);
         this.biomeManager = new BiomeManager(seed, config);
         this.modifierRegistry = new BiomeTerrainModifierRegistry(seed);  // Phase 2: Initialize modifier registry
-        this.oceanDepthRouter = new com.stonebreak.world.generation.ocean.OceanDepthRouter(seed, biomeManager);  // Ocean depth variation
         this.caveGenerator = new CaveNoiseGenerator(seed);  // Ridged noise cave system (cheese + spaghetti)
+
+        // Initialize dynamic water generation system
+        WaterGenerationConfig waterConfig = new WaterGenerationConfig();
+        this.basinWaterFiller = new BasinWaterFiller(
+                biomeManager.getNoiseRouter(),
+                terrainGenerator,
+                caveGenerator,
+                waterConfig
+        );
+
         this.oreGenerator = new OreGenerator(seed);
         this.vegetationGenerator = new VegetationGenerator(seed, biomeManager.getVariationRouter());
         this.decorationGenerator = new SurfaceDecorationGenerator(seed);
@@ -164,9 +175,10 @@ public class TerrainGenerationSystem {
             java.util.Arrays.fill(surfaceHeightCache[x], -1);
         }
 
-        // Cache terrain heights and biomes for flood-fill (avoids recalculation)
+        // Cache terrain heights, biomes, and noise parameters for water fill (avoids recalculation)
         int[][] terrainHeights = new int[chunkSize][chunkSize];
         BiomeType[][] biomeCache = new BiomeType[chunkSize][chunkSize];
+        MultiNoiseParameters[][] paramsCache = new MultiNoiseParameters[chunkSize][chunkSize];
 
         // Generate terrain using multi-noise system
         for (int x = 0; x < chunkSize; x++) {
@@ -178,25 +190,19 @@ public class TerrainGenerationSystem {
                 // Sample multi-noise parameters (interpolated for 94% reduction)
                 MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleInterpolatedParameters(worldX, worldZ, SEA_LEVEL);
 
-                // Estimate biome at sea level (for ocean depth calculation)
-                BiomeType estimatedBiome = biomeManager.getBiome(worldX, worldZ);
-
                 // PASS 1: Generate base terrain height
                 int baseHeight = terrainGenerator.generateHeight(worldX, worldZ, params);
 
-                // Apply ocean depth offset if in ocean biome
-                float oceanOffset = oceanDepthRouter.getOceanDepthOffset(estimatedBiome, worldX, worldZ);
-                int adjustedHeight = baseHeight + (int) Math.round(oceanOffset);
-
-                // Select biome using adjusted height
-                BiomeType biome = biomeManager.getBiomeAtHeight(worldX, worldZ, adjustedHeight);
+                // Select biome using sampled parameters
+                BiomeType biome = biomeManager.getBiomeAtHeight(worldX, worldZ, baseHeight);
 
                 // PASS 2: Apply biome-specific terrain modifiers
-                int height = modifierRegistry.applyModifier(biome, adjustedHeight, params, worldX, worldZ);
+                int height = modifierRegistry.applyModifier(biome, baseHeight, params, worldX, worldZ);
 
-                // Cache for flood-fill (eliminates redundant recalculation)
+                // Cache for water fill (eliminates redundant recalculation)
                 terrainHeights[x][z] = height;
                 biomeCache[x][z] = biome;
+                paramsCache[x][z] = params;
 
                 // Track actual surface height for this column (updated as we generate)
                 int actualSurfaceY = -1;
@@ -250,10 +256,10 @@ public class TerrainGenerationSystem {
         // Set surface height cache (eliminates ~131,000 block accesses during feature generation)
         chunk.setSurfaceHeightCache(surfaceHeightCache);
 
-        // Flood-fill ocean water from surface (keeps caves dry)
-        // Pass cached data to avoid recalculating heights/biomes
-        updateLoadingProgress("Filling Ocean Water");
-        floodFillOceanWater(chunk, terrainHeights, biomeCache);
+        // Fill water bodies using basin detection (keeps caves dry)
+        // Pass cached data to avoid recalculating heights/biomes/parameters
+        updateLoadingProgress("Filling Water Bodies");
+        basinWaterFiller.fillWaterBodies(chunk, terrainHeights, biomeCache, paramsCache);
 
         // Features will be populated after chunk registration to avoid recursion
         chunk.setFeaturesPopulated(false);
@@ -362,119 +368,6 @@ public class TerrainGenerationSystem {
             case OCEAN, DEEP_OCEAN -> BlockType.SAND;  // Sandy ocean floor
             case FROZEN_OCEAN -> BlockType.GRAVEL;  // Gravel ocean floor in cold waters
         };
-    }
-
-    /**
-     * Flood-fills ocean water from the surface down through connected air blocks.
-     *
-     * This algorithm ensures that:
-     * - Ocean water fills from sea level down to ocean floor in ocean biomes
-     * - Caves stay dry (water does not fill cave-carved spaces)
-     * - Only fills natural ocean basins, not cave systems
-     *
-     * Algorithm:
-     * 1. Identify ocean entry points (air at sea level in ocean biomes)
-     * 2. BFS flood-fill from entry points through connected air blocks
-     * 3. Fill reachable air blocks that are NOT caves with water
-     *
-     * OPTIMIZATION: Uses cached terrain heights and biomes to avoid recalculation
-     *
-     * @param chunk The chunk to fill with ocean water
-     * @param terrainHeights Cached terrain heights from generation
-     * @param biomeCache Cached biomes from generation
-     */
-    private void floodFillOceanWater(Chunk chunk, int[][] terrainHeights, BiomeType[][] biomeCache) {
-        int chunkSize = WorldConfiguration.CHUNK_SIZE;
-        boolean[][][] visited = new boolean[chunkSize][SEA_LEVEL + 1][chunkSize];
-        Queue<int[]> queue = new ArrayDeque<>(256);
-
-        // Get chunk world coordinates for continentalness lookup
-        int chunkWorldX = chunk.getChunkX() * chunkSize;
-        int chunkWorldZ = chunk.getChunkZ() * chunkSize;
-
-        // Find all ocean entry points (air at sea level in ocean biomes)
-        for (int x = 0; x < chunkSize; x++) {
-            for (int z = 0; z < chunkSize; z++) {
-                // Check if this column has air at sea level
-                if (chunk.getBlock(x, SEA_LEVEL, z) == BlockType.AIR) {
-                    // Use cached biome (no recalculation!)
-                    BiomeType biome = biomeCache[x][z];
-                    if (biome != BiomeType.OCEAN && biome != BiomeType.DEEP_OCEAN && biome != BiomeType.FROZEN_OCEAN) {
-                        // Not an ocean biome - skip this position (prevents ocean water in non-ocean biomes)
-                        continue;
-                    }
-
-                    // Check if there's solid terrain below (not air all the way down)
-                    boolean hasTerrain = false;
-                    for (int y = SEA_LEVEL - 1; y >= 0; y--) {
-                        BlockType block = chunk.getBlock(x, y, z);
-                        if (block != BlockType.AIR) {
-                            hasTerrain = true;
-                            break;
-                        }
-                    }
-                    if (hasTerrain) {
-                        // This is an ocean entry point - start flood-fill from here
-                        queue.add(new int[]{x, SEA_LEVEL, z});
-                        visited[x][SEA_LEVEL][z] = true;
-                    }
-                }
-            }
-        }
-
-        // BFS flood-fill through connected air blocks
-        // Direction offsets: +X, -X, +Y, -Y, +Z, -Z
-        int[] dx = {1, -1, 0, 0, 0, 0};
-        int[] dy = {0, 0, 1, -1, 0, 0};
-        int[] dz = {0, 0, 0, 0, 1, -1};
-
-        while (!queue.isEmpty()) {
-            int[] pos = queue.poll();
-            int x = pos[0], y = pos[1], z = pos[2];
-
-            // Calculate world coordinates for cave density check
-            int worldX = chunkWorldX + x;
-            int worldZ = chunkWorldZ + z;
-
-            // Check if this position is a cave (don't fill caves with water)
-            boolean isCave = false;
-            if (caveGenerator.canGenerateCaves(y)) {
-                // Use cached terrain height (no recalculation!)
-                int height = terrainHeights[x][z];
-                float caveDensity = caveGenerator.sampleCaveDensity(worldX, y, worldZ, height);
-                isCave = caveDensity > 0.0f;
-            }
-
-            // Fill this block with water (if it's air, at or below sea level, and NOT a cave)
-            if (y <= SEA_LEVEL && chunk.getBlock(x, y, z) == BlockType.AIR && !isCave) {
-                chunk.setBlock(x, y, z, BlockType.WATER);
-            }
-
-            // Check all 6 neighbors
-            for (int i = 0; i < 6; i++) {
-                int nx = x + dx[i];
-                int ny = y + dy[i];
-                int nz = z + dz[i];
-
-                // Bounds check (stay within chunk, don't go above sea level or below 0)
-                if (nx < 0 || nx >= chunkSize ||
-                    ny < 0 || ny > SEA_LEVEL ||
-                    nz < 0 || nz >= chunkSize) {
-                    continue;
-                }
-
-                // Skip if already visited
-                if (visited[nx][ny][nz]) {
-                    continue;
-                }
-
-                // Only spread through air blocks
-                if (chunk.getBlock(nx, ny, nz) == BlockType.AIR) {
-                    visited[nx][ny][nz] = true;
-                    queue.add(new int[]{nx, ny, nz});
-                }
-            }
-        }
     }
 
     /**

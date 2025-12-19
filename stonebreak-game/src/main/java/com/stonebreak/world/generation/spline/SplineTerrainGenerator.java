@@ -107,8 +107,8 @@ public class SplineTerrainGenerator implements TerrainGenerator {
         // Peaks (PV=1.0) get higher, valleys (PV=-1.0) get lower
         float pvAmplification = params.peaksValleys * 8.0f;
 
-        // Apply erosion to height variation from sea level (64)
-        float seaLevel = 64.0f;
+        // Apply erosion to height variation from sea level (34)
+        float seaLevel = 34.0f;
         float heightFromSeaLevel = baseOffset - seaLevel;
         float modifiedHeight = seaLevel + (heightFromSeaLevel * erosionFactor) + pvAmplification;
 
@@ -146,8 +146,8 @@ public class SplineTerrainGenerator implements TerrainGenerator {
             // Calculate flattening strength: 0% at flatness=0.3, 100% at flatness=1.0
             float flatteningStrength = Math.min(1.0f, (regionalFlatness - 0.3f) / 0.7f);
 
-            // Calculate deviation from sea level (Y=64)
-            float heightDeviation = modifiedHeight - 64.0f;
+            // Calculate deviation from sea level (Y=34)
+            float heightDeviation = modifiedHeight - 34.0f;
 
             // Apply aggressive flattening: 0.25x to 0.10x of deviation
             // flatteningStrength=0 → 0.25x, flatteningStrength=1 → 0.10x
@@ -155,7 +155,7 @@ public class SplineTerrainGenerator implements TerrainGenerator {
             float flatteningFactor = 0.25f - (flatteningStrength * 0.15f);
 
             // Apply flattening to deviation only (preserve sea level baseline)
-            modifiedHeight = 64.0f + (heightDeviation * flatteningFactor);
+            modifiedHeight = 34.0f + (heightDeviation * flatteningFactor);
         }
         // Else: mountain region (flatness <= 0.3) - no changes, preserve full Terra v.10 height
 

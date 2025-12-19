@@ -32,7 +32,7 @@ public class World {
     private final SnowLayerManager snowLayerManager;
     
     // World spawn position
-    private Vector3f spawnPosition = new Vector3f(0, 100, 0);
+    private Vector3f spawnPosition = new Vector3f(0, 70, 0);
     
     // Modular components
     private final WorldChunkStore chunkStore;
