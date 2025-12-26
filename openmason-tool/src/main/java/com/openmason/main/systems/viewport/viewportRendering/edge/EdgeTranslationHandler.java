@@ -111,6 +111,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         // Start drag in selection state
         selectionState.startDrag(planeNormal, planePoint);
         isDragging = true;
+        hasMovedDuringDrag = false;
 
         logger.debug("Started dragging edge {} on plane with normal ({}, {}, {})",
                 selectionState.getSelectedEdgeIndex(),
@@ -144,6 +145,9 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         Vector3f worldSpacePosition = calculateEdgePosition(mouseX, mouseY);
 
         if (worldSpacePosition != null) {
+            // Mark that actual movement occurred during this drag
+            hasMovedDuringDrag = true;
+
             // Calculate delta from original midpoint
             Vector3f originalMidpoint = new Vector3f(
                 selectionState.getOriginalPoint1()
@@ -186,9 +190,14 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        // TRUE MERGE: Remove duplicate vertices that ended up at the same position
-        float mergeEpsilon = 0.001f; // 1mm threshold for merging
-        java.util.Map<Integer, Integer> indexRemapping = vertexRenderer.mergeOverlappingVertices(mergeEpsilon);
+        // Only merge if actual movement occurred during the drag
+        // This prevents accidental merges when clicking without moving
+        java.util.Map<Integer, Integer> indexRemapping = new java.util.HashMap<>();
+        if (hasMovedDuringDrag) {
+            // TRUE MERGE: Remove duplicate vertices that ended up at the same position
+            float mergeEpsilon = 0.001f; // 1mm threshold for merging
+            indexRemapping = vertexRenderer.mergeOverlappingVertices(mergeEpsilon);
+        }
 
         if (!indexRemapping.isEmpty()) {
             // Remap selection state vertex indices FIRST (before using them)

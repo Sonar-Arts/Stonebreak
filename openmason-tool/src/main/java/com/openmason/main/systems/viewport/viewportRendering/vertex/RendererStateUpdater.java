@@ -1,6 +1,7 @@
 package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
+import com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations.MeshVertexMerger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -99,7 +100,7 @@ public class RendererStateUpdater {
    * @param mergeResult The result from MeshManager
    * @return Updated context with new state
    */
-  public UpdateContext applyMergeResult(MeshManager.MergeResult mergeResult) {
+  public UpdateContext applyMergeResult(MeshVertexMerger.MergeResult mergeResult) {
     logger.debug("Applying merge result to renderer state");
 
     // Step 1: Update vertex data

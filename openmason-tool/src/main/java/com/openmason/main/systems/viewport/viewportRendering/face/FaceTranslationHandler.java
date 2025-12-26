@@ -123,6 +123,7 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
         // Start drag in selection state
         selectionState.startDrag(planeNormal, planePoint);
         isDragging = true;
+        hasMovedDuringDrag = false;
 
         logger.debug("Started dragging face {} on plane with normal ({}, {}, {}), vertex indices: [{}, {}, {}, {}]",
                 faceIndex,
@@ -149,6 +150,9 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
         Vector3f worldSpacePosition = calculateFaceCentroid(mouseX, mouseY);
 
         if (worldSpacePosition != null) {
+            // Mark that actual movement occurred during this drag
+            hasMovedDuringDrag = true;
+
             // Calculate delta from original centroid
             Vector3f originalCentroid = selectionState.getCentroid();
 
@@ -211,9 +215,14 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        // TRUE MERGE: Remove duplicate vertices that ended up at the same position
-        float mergeEpsilon = 0.001f; // 1mm threshold for merging
-        java.util.Map<Integer, Integer> indexRemapping = vertexRenderer.mergeOverlappingVertices(mergeEpsilon);
+        // Only merge if actual movement occurred during the drag
+        // This prevents accidental merges when clicking without moving
+        java.util.Map<Integer, Integer> indexRemapping = new java.util.HashMap<>();
+        if (hasMovedDuringDrag) {
+            // TRUE MERGE: Remove duplicate vertices that ended up at the same position
+            float mergeEpsilon = 0.001f; // 1mm threshold for merging
+            indexRemapping = vertexRenderer.mergeOverlappingVertices(mergeEpsilon);
+        }
 
         if (!indexRemapping.isEmpty()) {
             // Remap edge vertex indices to use new vertex indices

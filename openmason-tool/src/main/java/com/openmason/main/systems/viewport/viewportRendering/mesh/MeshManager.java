@@ -26,7 +26,10 @@ public class MeshManager {
     private static final Logger logger = LoggerFactory.getLogger(MeshManager.class);
     private static final float EPSILON = 0.0001f; // Tolerance for vertex position matching
 
-    private static MeshManager instance;
+    // Thread-safe singleton using holder pattern (lazy initialization)
+    private static class InstanceHolder {
+        static final MeshManager INSTANCE = new MeshManager();
+    }
 
     // Mesh data storage
     private float[] allMeshVertices = null; // ALL mesh vertices (e.g., 24 for cube)
@@ -37,30 +40,7 @@ public class MeshManager {
     }
 
     public static MeshManager getInstance() {
-        if (instance == null) {
-            instance = new MeshManager();
-        }
-        return instance;
-    }
-
-    /**
-     * Result of a vertex merge operation.
-     * Encapsulates the outcome of merging overlapping vertices.
-     */
-    public static class MergeResult {
-        public final float[] newVertexPositions;
-        public final int newVertexCount;
-        public final Map<Integer, Integer> indexMapping;
-        public final Map<Integer, Integer> updatedOriginalMapping;
-
-        public MergeResult(float[] newVertexPositions, int newVertexCount,
-                          Map<Integer, Integer> indexMapping,
-                          Map<Integer, Integer> updatedOriginalMapping) {
-            this.newVertexPositions = newVertexPositions;
-            this.newVertexCount = newVertexCount;
-            this.indexMapping = indexMapping;
-            this.updatedOriginalMapping = updatedOriginalMapping;
-        }
+        return InstanceHolder.INSTANCE;
     }
 
     /**
@@ -219,10 +199,10 @@ public class MeshManager {
      * @param originalToCurrentMapping Persistent mapping from original to current indices
      * @return MergeResult with new positions and mappings, or null if no merge occurred
      */
-    public MergeResult mergeOverlappingVertices(float[] vertexPositions,
-                                                int vertexCount,
-                                                float epsilon,
-                                                Map<Integer, Integer> originalToCurrentMapping) {
+    public MeshVertexMerger.MergeResult mergeOverlappingVertices(float[] vertexPositions,
+                                                                  int vertexCount,
+                                                                  float epsilon,
+                                                                  Map<Integer, Integer> originalToCurrentMapping) {
         MeshVertexMerger merger = new MeshVertexMerger(
                 vertexPositions,
                 allMeshVertices,
@@ -230,20 +210,7 @@ public class MeshManager {
                 epsilon,
                 originalToCurrentMapping
         );
-        MeshVertexMerger.MergeResult internalResult = merger.merge();
-
-        // Return null if no merge occurred
-        if (internalResult == null) {
-            return null;
-        }
-
-        // Convert internal result to public API result
-        return new MergeResult(
-                internalResult.newVertexPositions,
-                internalResult.newVertexCount,
-                internalResult.indexMapping,
-                internalResult.updatedOriginalMapping
-        );
+        return merger.merge();
     }
 
     // ========================================

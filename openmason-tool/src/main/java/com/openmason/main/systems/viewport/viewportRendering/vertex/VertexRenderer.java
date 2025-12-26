@@ -2,6 +2,7 @@ package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
+import com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations.MeshVertexMerger;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
@@ -491,7 +492,7 @@ public class VertexRenderer {
         }
 
         // Step 1: Perform the merge operation via MeshManager
-        MeshManager.MergeResult result = meshManager.mergeOverlappingVertices(
+        MeshVertexMerger.MergeResult result = meshManager.mergeOverlappingVertices(
                 vertexPositions,
                 vertexCount,
                 epsilon,

@@ -35,6 +35,7 @@ public abstract class TranslationHandlerBase implements ITranslationHandler {
 
     // Drag state
     protected boolean isDragging = false;
+    protected boolean hasMovedDuringDrag = false;
     protected float dragStartMouseX = 0.0f;
     protected float dragStartMouseY = 0.0f;
 
