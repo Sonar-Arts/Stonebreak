@@ -309,20 +309,28 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
                 }
             }
 
-            // Rebuild edge-to-vertex mapping with original positions
+            // REVERT: Update edge positions to original (same pattern as updateFaceAndConnectedGeometry)
+            for (int i = 0; i < 4; i++) {
+                int v1Index = currentVertexIndices[i];
+                int v2Index = currentVertexIndices[(i + 1) % 4];
+                if (v1Index >= 0 && v2Index >= 0) {
+                    edgeRenderer.updateEdgesByVertexIndices(
+                        v1Index, originalVertices[i],
+                        v2Index, originalVertices[(i + 1) % 4]
+                    );
+                }
+            }
+
+            // Update all affected face overlays with original positions FIRST
+            // (before rebuilding mappings, since mappings need face positions to be correct)
+            updateAllAffectedFaceOverlays(currentVertexIndices);
+
+            // NOW rebuild mappings after geometry is reverted
             float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
             if (allVertexPositions != null) {
                 edgeRenderer.buildEdgeToVertexMapping(allVertexPositions);
-            }
-
-            // Rebuild face-to-vertex mapping
-            float[] facePositions = faceRenderer.getFacePositions();
-            if (facePositions != null && allVertexPositions != null) {
                 faceRenderer.buildFaceToVertexMapping(allVertexPositions);
             }
-
-            // Update all affected face overlays with original positions
-            updateAllAffectedFaceOverlays(currentVertexIndices);
 
             // REVERT: Update ModelRenderer with original positions
             if (allVertexPositions != null && modelRenderer != null) {

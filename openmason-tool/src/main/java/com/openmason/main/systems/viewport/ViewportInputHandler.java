@@ -3,6 +3,7 @@ package com.openmason.main.systems.viewport;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.input.*;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
+import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
@@ -85,6 +86,7 @@ public class ViewportInputHandler {
     /**
      * Set the translation coordinator to manage all translation handlers.
      * The coordinator is passed to each input controller to ensure mutual exclusion.
+     * Also registers with EditModeManager to cancel drags on mode switch.
      */
     public void setTranslationCoordinator(TranslationCoordinator translationCoordinator) {
         this.translationCoordinator = translationCoordinator;
@@ -93,6 +95,9 @@ public class ViewportInputHandler {
         vertexController.setTranslationCoordinator(translationCoordinator);
         edgeController.setTranslationCoordinator(translationCoordinator);
         faceController.setTranslationCoordinator(translationCoordinator);
+
+        // Register with EditModeManager to cancel drags on mode switch
+        EditModeManager.getInstance().setTranslationCoordinator(translationCoordinator);
 
         logger.debug("Translation coordinator set and distributed to input controllers");
     }

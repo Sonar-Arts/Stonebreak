@@ -1,11 +1,13 @@
 package com.openmason.main.systems.viewport.state;
 
+import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Singleton manager for the current editing mode.
  * Controls which geometry type (vertex, edge, face) can be selected and edited.
+ * Cancels active drag operations when switching modes for safety.
  * Follows Single Responsibility Principle - only manages edit mode state.
  */
 public final class EditModeManager {
@@ -15,6 +17,9 @@ public final class EditModeManager {
     private static final EditModeManager INSTANCE = new EditModeManager();
 
     private EditMode currentMode = EditMode.NONE;
+
+    // Optional reference to cancel active drags when switching modes
+    private TranslationCoordinator translationCoordinator;
 
     private EditModeManager() {
     }
@@ -38,9 +43,27 @@ public final class EditModeManager {
     }
 
     /**
+     * Sets the translation coordinator for cancelling active drags on mode switch.
+     * Should be called during viewport initialization.
+     *
+     * @param coordinator The translation coordinator
+     */
+    public void setTranslationCoordinator(TranslationCoordinator coordinator) {
+        this.translationCoordinator = coordinator;
+        logger.debug("TranslationCoordinator set in EditModeManager");
+    }
+
+    /**
      * Cycles to the next editing mode: NONE -> VERTEX -> EDGE -> FACE -> NONE
+     * Cancels any active drag operation before switching for safety.
      */
     public void cycleMode() {
+        // Cancel any active drag before switching modes (treats it as dropping the drag)
+        if (translationCoordinator != null && translationCoordinator.isDragging()) {
+            translationCoordinator.cancelDrag();
+            logger.debug("Cancelled active drag before mode switch");
+        }
+
         EditMode previousMode = currentMode;
         currentMode = currentMode.next();
         logger.debug("Edit mode changed: {} -> {}", previousMode.getDisplayName(), currentMode.getDisplayName());
@@ -48,6 +71,7 @@ public final class EditModeManager {
 
     /**
      * Sets the editing mode directly.
+     * Cancels any active drag operation before switching for safety.
      *
      * @param mode The mode to set
      */
@@ -56,6 +80,12 @@ public final class EditModeManager {
             throw new IllegalArgumentException("EditMode cannot be null");
         }
         if (currentMode != mode) {
+            // Cancel any active drag before switching modes
+            if (translationCoordinator != null && translationCoordinator.isDragging()) {
+                translationCoordinator.cancelDrag();
+                logger.debug("Cancelled active drag before mode switch");
+            }
+
             EditMode previousMode = currentMode;
             currentMode = mode;
             logger.debug("Edit mode set: {} -> {}", previousMode.getDisplayName(), currentMode.getDisplayName());
