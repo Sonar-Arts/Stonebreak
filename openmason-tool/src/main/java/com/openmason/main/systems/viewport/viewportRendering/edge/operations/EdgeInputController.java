@@ -2,6 +2,7 @@ package com.openmason.main.systems.viewport.viewportRendering.edge.operations;
 
 import com.openmason.main.systems.viewport.input.InputContext;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
+import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeHoverDetector;
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
@@ -191,9 +192,16 @@ public class EdgeInputController {
      * Update edge hover detection.
      * Performs hover detection and updates the renderer's hover state.
      * PRIORITY: Only update edge hover if vertex is NOT hovered (vertices have higher priority).
+     * Only processes hover when EditMode is EDGE.
      */
     private void updateEdgeHover(InputContext context) {
         if (edgeRenderer == null || !edgeRenderer.isInitialized() || !edgeRenderer.isEnabled()) {
+            return;
+        }
+
+        // Skip hover detection if not in EDGE edit mode
+        if (!EditModeManager.getInstance().isEdgeEditingAllowed()) {
+            edgeRenderer.setHoveredEdgeIndex(-1);
             return;
         }
 

@@ -6,6 +6,8 @@ import com.openmason.main.systems.themes.application.DensityManager;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.viewport.ViewportActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
+import com.openmason.main.systems.viewport.state.EditModeManager;
+import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
@@ -117,6 +119,9 @@ public class ViewportMainView {
 
         // Display the rendered texture directly without any widgets
         ImGui.image(colorTexture, viewportSize.x, viewportSize.y, 0, 1, 1, 0);
+
+        // Render edit mode overlay in top-left corner
+        renderEditModeOverlay(imagePos);
 
         // Check if the viewport window itself is being hovered
         boolean viewportHovered = ImGui.isWindowHovered();
@@ -247,6 +252,51 @@ public class ViewportMainView {
         }
 
         popDensityScaling();
+    }
+
+    /**
+     * Render edit mode overlay in top-left corner of viewport.
+     * Shows current mode name in orange with dark gray rounded rectangle background.
+     */
+    private void renderEditModeOverlay(ImVec2 imagePos) {
+        String modeName = EditModeManager.getInstance().getCurrentMode().getDisplayName();
+        String displayText = "Edit Mode: " + modeName;
+
+        // Calculate text size for proper rectangle sizing
+        ImVec2 textSize = new ImVec2();
+        ImGui.calcTextSize(textSize, displayText);
+
+        // Padding around text
+        float paddingX = 8.0f;
+        float paddingY = 4.0f;
+
+        // Position: top-left corner with 10px offset from viewport edge
+        float rectX = imagePos.x + 10.0f;
+        float rectY = imagePos.y + 10.0f;
+        float rectWidth = textSize.x + (paddingX * 2);
+        float rectHeight = textSize.y + (paddingY * 2);
+
+        // Colors
+        int backgroundColor = ImGui.colorConvertFloat4ToU32(0.2f, 0.2f, 0.2f, 0.85f); // Dark gray
+        int borderColor = ImGui.colorConvertFloat4ToU32(0.0f, 0.0f, 0.0f, 0.85f);     // Black
+        int textColor = ImGui.colorConvertFloat4ToU32(1.0f, 0.75f, 0.0f, 0.95f);      // Bright orange
+
+        // Corner rounding
+        float rounding = 4.0f;
+
+        // Draw using window draw list (renders on top of image)
+        ImDrawList drawList = ImGui.getWindowDrawList();
+
+        // Draw filled rounded rectangle (background)
+        drawList.addRectFilled(rectX, rectY, rectX + rectWidth, rectY + rectHeight, backgroundColor, rounding);
+
+        // Draw rounded rectangle border
+        drawList.addRect(rectX, rectY, rectX + rectWidth, rectY + rectHeight, borderColor, rounding);
+
+        // Draw centered text
+        float textX = rectX + paddingX;
+        float textY = rectY + paddingY;
+        drawList.addText(textX, textY, textColor, displayText);
     }
 
     /**

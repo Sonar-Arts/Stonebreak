@@ -1,6 +1,7 @@
 package com.openmason.main.systems.viewport.viewportRendering.face.operations;
 
 import com.openmason.main.systems.viewport.input.InputContext;
+import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
@@ -204,9 +205,16 @@ public class FaceInputController {
      * Update face hover detection.
      * PRIORITY: Only update face hover if neither vertex nor edge is hovered.
      * Vertices have highest priority, edges have second priority, faces have lowest.
+     * Only processes hover when EditMode is FACE.
      */
     private void updateFaceHover(InputContext context) {
         if (faceRenderer == null || !faceRenderer.isInitialized() || !faceRenderer.isEnabled()) {
+            return;
+        }
+
+        // Skip hover detection if not in FACE edit mode
+        if (!EditModeManager.getInstance().isFaceEditingAllowed()) {
+            faceRenderer.clearHover();
             return;
         }
 

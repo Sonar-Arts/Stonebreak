@@ -3,6 +3,8 @@ package com.openmason.main.systems.viewport;
 import com.openmason.main.systems.keybinds.KeybindAction;
 import com.openmason.main.systems.keybinds.KeybindRegistry;
 import com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey;
+import com.openmason.main.systems.viewport.state.EditMode;
+import com.openmason.main.systems.viewport.state.EditModeManager;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,6 +100,22 @@ public class ViewportKeybindActions {
                 actions::fitToView
         ));
 
-        logger.info("Registered {} viewport keybind actions", 6);
+        // Tab: Cycle Edit Mode (None -> Vertex -> Edge -> Face -> None)
+        // Automatically enables mesh rendering for non-None modes
+        registry.registerAction(new KeybindAction(
+                "viewport.cycle_edit_mode",
+                "Cycle Edit Mode",
+                CATEGORY,
+                new ShortcutKey(GLFW.GLFW_KEY_TAB, false, false, false),
+                () -> {
+                    EditModeManager.getInstance().cycleMode();
+                    // Enable mesh rendering for editing modes, disable for None
+                    boolean enableMesh = EditModeManager.getInstance().getCurrentMode() != EditMode.NONE;
+                    state.getShowVertices().set(enableMesh);
+                    actions.toggleShowVertices();
+                }
+        ));
+
+        logger.info("Registered {} viewport keybind actions", 7);
     }
 }

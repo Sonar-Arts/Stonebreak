@@ -1,5 +1,7 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
+import com.openmason.main.systems.viewport.state.EditMode;
+import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTranslationHandler;
 import com.openmason.main.systems.viewport.viewportRendering.face.FaceTranslationHandler;
@@ -76,7 +78,7 @@ public class TranslationCoordinator {
     /**
      * Handles mouse press event, delegating to the appropriate handler.
      * Ensures mutual exclusion by cancelling other handlers if one starts dragging.
-     * Priority order: Vertex > Edge > Face (lowest)
+     * Filters by current edit mode: only the handler matching the mode is tried.
      *
      * @param mouseX Mouse X position
      * @param mouseY Mouse Y position
@@ -89,28 +91,45 @@ public class TranslationCoordinator {
             return false;
         }
 
-        // Try vertex handler first (highest priority, most specific)
-        if (vertexHandler.handleMousePress(mouseX, mouseY)) {
-            activeHandler = ActiveHandler.VERTEX;
-            cancelOtherHandlers(ActiveHandler.VERTEX);
-            logger.debug("Vertex translation started");
-            return true;
+        // Get current edit mode - filter handlers based on mode
+        EditMode editMode = EditModeManager.getInstance().getCurrentMode();
+
+        // NONE mode disables all editing
+        if (editMode == EditMode.NONE) {
+            return false;
         }
 
-        // Try edge handler second (high priority)
-        if (edgeHandler.handleMousePress(mouseX, mouseY)) {
-            activeHandler = ActiveHandler.EDGE;
-            cancelOtherHandlers(ActiveHandler.EDGE);
-            logger.debug("Edge translation started");
-            return true;
-        }
+        // Try only the handler matching the current edit mode
+        switch (editMode) {
+            case VERTEX:
+                if (vertexHandler.handleMousePress(mouseX, mouseY)) {
+                    activeHandler = ActiveHandler.VERTEX;
+                    cancelOtherHandlers(ActiveHandler.VERTEX);
+                    logger.debug("Vertex translation started");
+                    return true;
+                }
+                break;
 
-        // Try face handler last (lowest priority)
-        if (faceHandler.handleMousePress(mouseX, mouseY)) {
-            activeHandler = ActiveHandler.FACE;
-            cancelOtherHandlers(ActiveHandler.FACE);
-            logger.debug("Face translation started");
-            return true;
+            case EDGE:
+                if (edgeHandler.handleMousePress(mouseX, mouseY)) {
+                    activeHandler = ActiveHandler.EDGE;
+                    cancelOtherHandlers(ActiveHandler.EDGE);
+                    logger.debug("Edge translation started");
+                    return true;
+                }
+                break;
+
+            case FACE:
+                if (faceHandler.handleMousePress(mouseX, mouseY)) {
+                    activeHandler = ActiveHandler.FACE;
+                    cancelOtherHandlers(ActiveHandler.FACE);
+                    logger.debug("Face translation started");
+                    return true;
+                }
+                break;
+
+            default:
+                break;
         }
 
         return false;

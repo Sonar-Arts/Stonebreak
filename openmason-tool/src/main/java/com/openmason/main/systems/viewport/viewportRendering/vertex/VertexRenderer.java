@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
+import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations.MeshVertexMerger;
@@ -182,12 +183,19 @@ public class VertexRenderer {
     /**
      * Handle mouse movement for vertex hover detection.
      * Follows the same pattern as GizmoRenderer.handleMouseMove().
+     * Only processes hover when EditMode is VERTEX.
      */
     public void handleMouseMove(float mouseX, float mouseY,
                                Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                Matrix4f modelMatrix,
                                int viewportWidth, int viewportHeight) {
         if (!initialized || !enabled) {
+            return;
+        }
+
+        // Skip hover detection if not in VERTEX edit mode
+        if (!EditModeManager.getInstance().isVertexEditingAllowed()) {
+            hoveredVertexIndex = -1;
             return;
         }
 
