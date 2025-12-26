@@ -72,6 +72,7 @@ public class ViewportInputHandler {
         vertexController.setVertexRenderer(vertexRenderer);
         edgeController.setVertexRenderer(vertexRenderer); // Edge controller needs vertex renderer for priority
         faceController.setVertexRenderer(vertexRenderer); // Face controller needs vertex renderer for priority
+        gizmoController.setVertexRenderer(vertexRenderer); // Gizmo controller needs vertex renderer for priority
     }
 
     /**
@@ -102,6 +103,7 @@ public class ViewportInputHandler {
     public void setEdgeRenderer(EdgeRenderer edgeRenderer) {
         edgeController.setEdgeRenderer(edgeRenderer);
         faceController.setEdgeRenderer(edgeRenderer); // Face controller needs edge renderer for priority
+        gizmoController.setEdgeRenderer(edgeRenderer); // Gizmo controller needs edge renderer for priority
     }
 
     /**
@@ -116,6 +118,7 @@ public class ViewportInputHandler {
      */
     public void setFaceRenderer(FaceRenderer faceRenderer) {
         faceController.setFaceRenderer(faceRenderer);
+        gizmoController.setFaceRenderer(faceRenderer); // Gizmo controller needs face renderer for priority
     }
 
     /**

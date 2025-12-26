@@ -190,9 +190,17 @@ public class EdgeInputController {
     /**
      * Update edge hover detection.
      * Performs hover detection and updates the renderer's hover state.
+     * PRIORITY: Only update edge hover if vertex is NOT hovered (vertices have higher priority).
      */
     private void updateEdgeHover(InputContext context) {
         if (edgeRenderer == null || !edgeRenderer.isInitialized() || !edgeRenderer.isEnabled()) {
+            return;
+        }
+
+        // PRIORITY CHECK: Only update edge hover if vertex is NOT hovered
+        int hoveredVertex = (vertexRenderer != null) ? vertexRenderer.getHoveredVertexIndex() : -1;
+        if (hoveredVertex >= 0) {
+            edgeRenderer.setHoveredEdgeIndex(-1); // Clear edge hover - vertex has priority
             return;
         }
 

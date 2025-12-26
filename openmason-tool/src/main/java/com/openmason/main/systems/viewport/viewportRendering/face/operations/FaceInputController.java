@@ -202,8 +202,8 @@ public class FaceInputController {
 
     /**
      * Update face hover detection.
-     * CRITICAL: Only block if vertex is hovered (vertices have highest priority).
-     * Edge hover doesn't block face hover - only edge SELECTION blocks face selection.
+     * PRIORITY: Only update face hover if neither vertex nor edge is hovered.
+     * Vertices have highest priority, edges have second priority, faces have lowest.
      */
     private void updateFaceHover(InputContext context) {
         if (faceRenderer == null || !faceRenderer.isInitialized() || !faceRenderer.isEnabled()) {
@@ -212,9 +212,16 @@ public class FaceInputController {
 
         // PRIORITY CHECK: Only update face hover if vertex is NOT hovered
         int hoveredVertex = (vertexRenderer != null) ? vertexRenderer.getHoveredVertexIndex() : -1;
-
         if (hoveredVertex >= 0) {
             // Vertex is hovered - clear face hover (vertex has highest priority)
+            faceRenderer.clearHover();
+            return;
+        }
+
+        // PRIORITY CHECK: Only update face hover if edge is NOT hovered
+        int hoveredEdge = (edgeRenderer != null) ? edgeRenderer.getHoveredEdgeIndex() : -1;
+        if (hoveredEdge >= 0) {
+            // Edge is hovered - clear face hover (edge has higher priority than face)
             faceRenderer.clearHover();
             return;
         }

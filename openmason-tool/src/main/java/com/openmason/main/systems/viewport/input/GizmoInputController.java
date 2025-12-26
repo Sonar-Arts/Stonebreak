@@ -1,6 +1,9 @@
 package com.openmason.main.systems.viewport.input;
 
+import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +27,9 @@ public class GizmoInputController {
     private static final Logger logger = LoggerFactory.getLogger(GizmoInputController.class);
 
     private GizmoRenderer gizmoRenderer = null;
+    private VertexRenderer vertexRenderer = null;  // For priority check
+    private EdgeRenderer edgeRenderer = null;      // For priority check
+    private FaceRenderer faceRenderer = null;      // For priority check
 
     /**
      * Set the gizmo renderer for interaction.
@@ -35,14 +41,41 @@ public class GizmoInputController {
     }
 
     /**
+     * Set the vertex renderer for priority checking.
+     * CRITICAL: Gizmo controller needs to check if a vertex is hovered before updating gizmo hover.
+     */
+    public void setVertexRenderer(VertexRenderer vertexRenderer) {
+        this.vertexRenderer = vertexRenderer;
+        logger.debug("Vertex renderer set in GizmoInputController for priority checking");
+    }
+
+    /**
+     * Set the edge renderer for priority checking.
+     * CRITICAL: Gizmo controller needs to check if an edge is hovered before updating gizmo hover.
+     */
+    public void setEdgeRenderer(EdgeRenderer edgeRenderer) {
+        this.edgeRenderer = edgeRenderer;
+        logger.debug("Edge renderer set in GizmoInputController for priority checking");
+    }
+
+    /**
+     * Set the face renderer for priority checking.
+     * CRITICAL: Gizmo controller needs to check if a face is hovered before updating gizmo hover.
+     */
+    public void setFaceRenderer(FaceRenderer faceRenderer) {
+        this.faceRenderer = faceRenderer;
+        logger.debug("Face renderer set in GizmoInputController for priority checking");
+    }
+
+    /**
      * Handle gizmo input.
      *
-     * Priority: Medium (lower than vertex/edge, higher than camera)
+     * Priority: Medium (lower than vertex/edge/face, higher than camera)
      * - If gizmo is dragging: Return true (blocks camera)
      * - If gizmo is hovered: Return true (prevents camera from starting drag)
      * - Otherwise: Return false (allows camera to process input)
      *
-     * Note: Vertex and edge controllers have higher priority and process first
+     * Note: Vertex, edge, and face controllers have higher priority and process first
      *
      * @param context Input context with mouse state
      * @return True if gizmo handled input (blocks camera)
@@ -51,6 +84,17 @@ public class GizmoInputController {
         if (gizmoRenderer == null || !gizmoRenderer.isInitialized() ||
             !gizmoRenderer.getGizmoState().isEnabled()) {
             return false; // Gizmo not available
+        }
+
+        // PRIORITY CHECK: Only update gizmo hover if no vertex/edge/face is hovered
+        int hoveredVertex = (vertexRenderer != null) ? vertexRenderer.getHoveredVertexIndex() : -1;
+        int hoveredEdge = (edgeRenderer != null) ? edgeRenderer.getHoveredEdgeIndex() : -1;
+        int hoveredFace = (faceRenderer != null) ? faceRenderer.getHoveredFaceIndex() : -1;
+
+        if (hoveredVertex >= 0 || hoveredEdge >= 0 || hoveredFace >= 0) {
+            // Higher-priority element is hovered - clear gizmo hover and don't process
+            gizmoRenderer.getGizmoState().setHoveredPart(null);
+            return false;
         }
 
         // Update gizmo hover with camera matrices for raycasting
