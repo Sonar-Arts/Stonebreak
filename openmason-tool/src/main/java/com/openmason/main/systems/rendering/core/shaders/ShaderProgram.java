@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.shaders;
+package com.openmason.main.systems.rendering.core.shaders;
 
 import org.joml.Matrix4f;
 import org.joml.Vector3f;

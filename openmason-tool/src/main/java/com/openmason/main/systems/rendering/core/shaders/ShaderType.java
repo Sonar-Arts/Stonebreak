@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.shaders;
+package com.openmason.main.systems.rendering.core.shaders;
 
 /**
  * Enumeration of shader types used in the viewport.

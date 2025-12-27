@@ -1,13 +1,13 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
-import com.openmason.main.systems.rendering.model.ModelRenderer;
+import com.openmason.main.systems.rendering.model.CubeModelRenderer;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
-import com.openmason.main.systems.viewport.shaders.ShaderManager;
-import com.openmason.main.systems.viewport.shaders.ShaderProgram;
-import com.openmason.main.systems.viewport.shaders.ShaderType;
+import com.openmason.main.systems.rendering.core.shaders.ShaderManager;
+import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
+import com.openmason.main.systems.rendering.core.shaders.ShaderType;
 import com.openmason.main.systems.viewport.state.RenderingMode;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
@@ -29,6 +29,29 @@ import static org.lwjgl.opengl.GL11.*;
  * Orchestrates the main rendering pipeline for the viewport.
  * Coordinates all render passes: grid → content → gizmo.
  * Follows Single Responsibility Principle - only handles render coordination.
+ *
+ * <h2>Render Pipeline Architecture</h2>
+ * <p>The pipeline executes in ordered passes:
+ * <ol>
+ *   <li><b>Grid Pass</b> - Infinite grid background ({@link GridRenderer})</li>
+ *   <li><b>Content Pass</b> - Block/Item/Model rendering ({@link CubeModelRenderer})</li>
+ *   <li><b>Mesh Pass</b> - Vertices, edges, faces ({@link VertexRenderer}, {@link EdgeRenderer}, {@link FaceRenderer})</li>
+ *   <li><b>UI Pass</b> - Gizmo overlays ({@link GizmoRenderer})</li>
+ * </ol>
+ *
+ * <h2>Unified Rendering API Integration</h2>
+ * <p>This class will be enhanced to use the new unified rendering API:
+ * <ul>
+ *   <li>{@link com.openmason.main.systems.rendering.api.RenderingController} - Master coordinator</li>
+ *   <li>{@link com.openmason.main.systems.rendering.api.IRenderer} - Renderer interface</li>
+ *   <li>{@link com.openmason.main.systems.rendering.api.RenderPass} - Pass ordering</li>
+ * </ul>
+ *
+ * <p>New renderers should implement {@link com.openmason.main.systems.rendering.api.IRenderer}
+ * or extend {@link com.openmason.main.systems.rendering.api.BaseRenderer}.
+ *
+ * @see com.openmason.main.systems.rendering.api.RenderingController
+ * @see com.openmason.main.systems.rendering.model.GenericModelRenderer
  */
 public class RenderPipeline {
 
@@ -49,7 +72,7 @@ public class RenderPipeline {
     private final ItemRenderer itemRenderer;
 
     // BlockModel renderer (.OMO editable models)
-    private final ModelRenderer modelRenderer;
+    private final CubeModelRenderer modelRenderer;
 
     // Gizmo renderer
     private final GizmoRenderer gizmoRenderer;
@@ -72,7 +95,7 @@ public class RenderPipeline {
      */
     public RenderPipeline(RenderContext context, ViewportResourceManager resources, ShaderManager shaderManager,
                           BlockRenderer blockRenderer, ItemRenderer itemRenderer,
-                          ModelRenderer modelRenderer,
+                          CubeModelRenderer modelRenderer,
                           GizmoRenderer gizmoRenderer) {
         this.context = context;
         this.resources = resources;
@@ -521,7 +544,7 @@ public class RenderPipeline {
     /**
      * Gets the block model renderer for external access (vertex editing, etc.).
      */
-    public ModelRenderer getBlockModelRenderer() {
+    public CubeModelRenderer getBlockModelRenderer() {
         return modelRenderer;
     }
 

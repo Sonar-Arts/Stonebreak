@@ -4,7 +4,7 @@ import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations.MeshVertexMerger;
-import com.openmason.main.systems.viewport.shaders.ShaderProgram;
+import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;

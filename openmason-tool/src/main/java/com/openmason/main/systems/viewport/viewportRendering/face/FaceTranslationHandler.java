@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.face;
 
-import com.openmason.main.systems.rendering.model.ModelRenderer;
+import com.openmason.main.systems.rendering.model.CubeModelRenderer;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
@@ -28,7 +28,7 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
     private final FaceRenderer faceRenderer;
     private final VertexRenderer vertexRenderer;
     private final EdgeRenderer edgeRenderer;
-    private final ModelRenderer modelRenderer;
+    private final CubeModelRenderer modelRenderer;
     private final RenderPipeline renderPipeline;
 
     // Face-specific drag state
@@ -51,7 +51,7 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
                                    FaceRenderer faceRenderer,
                                    VertexRenderer vertexRenderer,
                                    EdgeRenderer edgeRenderer,
-                                   ModelRenderer modelRenderer,
+                                   CubeModelRenderer modelRenderer,
                                    ViewportUIState viewportState,
                                    RenderPipeline renderPipeline,
                                    TransformState transformState) {

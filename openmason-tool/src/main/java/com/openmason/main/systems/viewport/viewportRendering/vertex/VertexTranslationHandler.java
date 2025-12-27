@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
-import com.openmason.main.systems.rendering.model.ModelRenderer;
+import com.openmason.main.systems.rendering.model.CubeModelRenderer;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
@@ -26,7 +26,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
     private final VertexRenderer vertexRenderer;
     private final EdgeRenderer edgeRenderer;
     private final FaceRenderer faceRenderer;
-    private final ModelRenderer modelRenderer;
+    private final CubeModelRenderer modelRenderer;
     private final RenderPipeline renderPipeline;
 
     /**
@@ -45,7 +45,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
                                     VertexRenderer vertexRenderer,
                                     EdgeRenderer edgeRenderer,
                                     FaceRenderer faceRenderer,
-                                    ModelRenderer modelRenderer,
+                                    CubeModelRenderer modelRenderer,
                                     ViewportUIState viewportState,
                                     RenderPipeline renderPipeline,
                                     TransformState transformState) {

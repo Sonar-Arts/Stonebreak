@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.edge;
 
-import com.openmason.main.systems.rendering.model.ModelRenderer;
+import com.openmason.main.systems.rendering.model.CubeModelRenderer;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
@@ -26,7 +26,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
     private final EdgeRenderer edgeRenderer;
     private final VertexRenderer vertexRenderer;
     private final FaceRenderer faceRenderer;
-    private final ModelRenderer modelRenderer;
+    private final CubeModelRenderer modelRenderer;
     private final RenderPipeline renderPipeline;
 
     // Edge-specific drag state
@@ -48,7 +48,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
                                    EdgeRenderer edgeRenderer,
                                    VertexRenderer vertexRenderer,
                                    FaceRenderer faceRenderer,
-                                   ModelRenderer modelRenderer,
+                                   CubeModelRenderer modelRenderer,
                                    ViewportUIState viewportState,
                                    RenderPipeline renderPipeline,
                                    TransformState transformState) {

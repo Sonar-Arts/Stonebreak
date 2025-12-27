@@ -1,7 +1,7 @@
 package com.openmason.main.systems.viewport.viewportRendering.edge;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.viewport.shaders.ShaderProgram;
+import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
 import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgeSelectionManager;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations.MeshEdgeBufferUpdater;

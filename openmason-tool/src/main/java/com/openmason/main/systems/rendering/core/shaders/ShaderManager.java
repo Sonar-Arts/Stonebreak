@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.shaders;
+package com.openmason.main.systems.rendering.core.shaders;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

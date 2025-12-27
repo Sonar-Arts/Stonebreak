@@ -4,7 +4,7 @@ import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.block.BlockManager;
 import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.main.omConfig;
-import com.openmason.main.systems.rendering.model.ModelRenderer;
+import com.openmason.main.systems.rendering.model.CubeModelRenderer;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.rendering.model.miscComponents.TextureLoadResult;
 import com.openmason.main.systems.viewport.ViewportCamera;
@@ -16,7 +16,7 @@ import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
 import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
-import com.openmason.main.systems.viewport.shaders.ShaderManager;
+import com.openmason.main.systems.rendering.core.shaders.ShaderManager;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
@@ -57,7 +57,7 @@ public class ViewportController {
     // ========== Renderers ==========
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
-    private final ModelRenderer modelRenderer;
+    private final CubeModelRenderer modelRenderer;
 
     // ========== Gizmo ==========
     private final GizmoState gizmoState;
@@ -96,7 +96,7 @@ public class ViewportController {
 
         this.blockRenderer = new BlockRenderer("Viewport");
         this.itemRenderer = new ItemRenderer("Viewport");
-        this.modelRenderer = new ModelRenderer();
+        this.modelRenderer = new CubeModelRenderer();
 
         this.omtTextureLoader = new OMTTextureLoader();
         this.currentBlockModel = null;
@@ -338,13 +338,13 @@ public class ViewportController {
 
             if (result.isSuccess()) {
                 if (result.isCubeNet()) {
-                    modelRenderer.setUVMode(ModelRenderer.UVMode.CUBE_NET);
+                    modelRenderer.setUVMode(CubeModelRenderer.UVMode.CUBE_NET);
                     logger.debug("Auto-detected CUBE_NET UV mode");
                 } else if (result.isFlat16x16()) {
-                    modelRenderer.setUVMode(ModelRenderer.UVMode.FLAT);
+                    modelRenderer.setUVMode(CubeModelRenderer.UVMode.FLAT);
                     logger.debug("Auto-detected FLAT UV mode");
                 } else {
-                    modelRenderer.setUVMode(ModelRenderer.UVMode.FLAT);
+                    modelRenderer.setUVMode(CubeModelRenderer.UVMode.FLAT);
                     logger.warn("Non-standard texture size ({}x{}), defaulting to FLAT UV mode",
                         result.getWidth(), result.getHeight());
                 }
