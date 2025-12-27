@@ -427,6 +427,28 @@ public class MeshManager {
         return query.getEdgeVertexIndices(edgeIndex, edgeToVertexMapping);
     }
 
+    /**
+     * Subdivide an edge at its midpoint.
+     * Creates a new vertex at the midpoint and replaces the original edge
+     * with two new edges connecting to the midpoint.
+     *
+     * @param edgeIndex Index of edge to subdivide
+     * @param edgePositions Current edge positions array
+     * @param edgeCount Current number of edges
+     * @param vertexPositions Current unique vertex positions array
+     * @param vertexCount Current number of unique vertices
+     * @param edgeToVertexMapping Current edge-to-vertex mapping
+     * @return SubdivisionResult with updated data, or null if subdivision failed
+     */
+    public MeshEdgeSubdivider.SubdivisionResult subdivideEdge(int edgeIndex,
+                                                               float[] edgePositions, int edgeCount,
+                                                               float[] vertexPositions, int vertexCount,
+                                                               int[][] edgeToVertexMapping) {
+        MeshEdgeSubdivider subdivider = new MeshEdgeSubdivider();
+        return subdivider.subdivide(edgeIndex, edgePositions, edgeCount,
+                                    vertexPositions, vertexCount, edgeToVertexMapping);
+    }
+
     // ========================================
     // Geometry Extraction Operations (managed through MeshManager)
     // ========================================
@@ -466,6 +488,8 @@ public class MeshManager {
      * Extract edge geometry from model parts with transformation applied.
      * Centralizes edge extraction through MeshManager.
      * Each face (4 vertices) generates 4 edges forming a quad outline.
+     * NOTE: This method returns duplicate edges (shared between faces).
+     * For unique edges, use {@link #extractUniqueEdgeGeometry}.
      *
      * @param parts Model parts to extract from
      * @param globalTransform Global transformation matrix to apply
@@ -474,6 +498,22 @@ public class MeshManager {
     public float[] extractEdgeGeometry(Collection<ModelDefinition.ModelPart> parts,
                                       Matrix4f globalTransform) {
         return edgeExtractor.extractGeometry(parts, globalTransform);
+    }
+
+    /**
+     * Extract unique edge geometry from model parts, eliminating duplicates.
+     * An edge v1<->v2 is considered the same as v2<->v1.
+     * For a cube: returns 12 unique edges instead of 24 face-based edges.
+     *
+     * @param parts Model parts to extract from
+     * @param globalTransform Global transformation matrix to apply
+     * @param uniqueVertexPositions Array of unique vertex positions for matching
+     * @return Array of unique edge endpoint positions [x1,y1,z1, x2,y2,z2, ...]
+     */
+    public float[] extractUniqueEdgeGeometry(Collection<ModelDefinition.ModelPart> parts,
+                                              Matrix4f globalTransform,
+                                              float[] uniqueVertexPositions) {
+        return edgeExtractor.extractUniqueEdges(parts, globalTransform, uniqueVertexPositions);
     }
 
     /**

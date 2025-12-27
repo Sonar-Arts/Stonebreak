@@ -428,6 +428,56 @@ public class VertexRenderer {
     }
 
     /**
+     * Get the current vertex count.
+     *
+     * @return Number of unique vertices
+     */
+    public int getVertexCount() {
+        return vertexCount;
+    }
+
+    /**
+     * Apply vertex addition from a subdivision operation.
+     * Updates vertex data structures with new vertex positions and count.
+     * Used when subdivision creates a new midpoint vertex.
+     *
+     * @param newVertexPositions Updated vertex positions array
+     * @param newVertexCount Updated vertex count
+     */
+    public void applyVertexAddition(float[] newVertexPositions, int newVertexCount) {
+        if (!initialized) {
+            logger.warn("Cannot apply vertex addition: renderer not initialized");
+            return;
+        }
+
+        if (newVertexPositions == null || newVertexCount <= 0) {
+            logger.warn("Cannot apply vertex addition: invalid parameters");
+            return;
+        }
+
+        // Update vertex data
+        this.vertexPositions = newVertexPositions;
+        this.vertexCount = newVertexCount;
+
+        // Update original-to-current mapping for new vertex (identity mapping)
+        int newVertexIndex = newVertexCount - 1;
+        originalToCurrentMapping.put(newVertexIndex, newVertexIndex);
+
+        // Rebuild VBO with new vertex data
+        rebuildVBO();
+
+        // Rebuild mesh mapping with new vertex
+        // Note: allMeshVertices may not include the new vertex yet,
+        // but the mapping will be rebuilt when edge/face updates occur
+        if (meshManager.getAllMeshVertices() != null) {
+            meshManager.buildUniqueToMeshMapping(vertexPositions, meshManager.getAllMeshVertices());
+        }
+
+        logger.debug("Applied vertex addition: now {} vertices (new vertex at index {})",
+                    vertexCount, newVertexIndex);
+    }
+
+    /**
      * Update multiple unique vertices by their indices and new positions.
      * FIX: Index-based update prevents vertex unification bug.
      * Uses uniqueToMeshMapping to update all mesh instances correctly.

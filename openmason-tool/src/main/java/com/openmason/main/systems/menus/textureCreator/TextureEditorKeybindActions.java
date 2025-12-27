@@ -98,19 +98,8 @@ public class TextureEditorKeybindActions {
         // Save Project As - keybind removed (Ctrl+Shift+S now used by viewport grid snapping)
         // Access via File menu instead
 
-        registry.registerAction(new KeybindAction(
-                "texture.export",
-                "Export (PNG/OMT)",
-                "File Operations",
-                ShortcutKey.ctrl(GLFW.GLFW_KEY_E),
-                () -> exportFormatDialog.show(format -> {
-                    if (format == ExportFormatDialog.ExportFormat.PNG) {
-                        fileOperations.exportPNG();
-                    } else if (format == ExportFormatDialog.ExportFormat.OMT) {
-                        fileOperations.exportOMT();
-                    }
-                })
-        ));
+        // Export - keybind removed (Ctrl+E now used by viewport edge subdivision)
+        // Access via File menu instead
 
         // ========== Window ==========
 
@@ -280,6 +269,6 @@ public class TextureEditorKeybindActions {
                 toolCoordinator::handleEscapeKey
         ));
 
-        logger.info("Registered {} texture editor keybind actions", 24);
+        logger.info("Registered {} texture editor keybind actions", 23);
     }
 }

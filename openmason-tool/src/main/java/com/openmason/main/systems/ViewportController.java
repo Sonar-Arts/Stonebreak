@@ -478,6 +478,31 @@ public class ViewportController {
         }
     }
 
+    // ========== Edge Operations ==========
+
+    /**
+     * Subdivide the currently hovered edge at its midpoint.
+     * Coordinates between EdgeRenderer and VertexRenderer.
+     *
+     * @return Index of newly created vertex, or -1 if failed
+     */
+    public int subdivideHoveredEdge() {
+        if (renderPipeline == null) {
+            logger.warn("Cannot subdivide edge: render pipeline not initialized");
+            return -1;
+        }
+
+        var edgeRenderer = renderPipeline.getEdgeRenderer();
+        var vertexRenderer = renderPipeline.getVertexRenderer();
+
+        if (edgeRenderer == null || vertexRenderer == null) {
+            logger.warn("Cannot subdivide edge: renderers not available");
+            return -1;
+        }
+
+        return edgeRenderer.subdivideHoveredEdge(vertexRenderer);
+    }
+
     // ========== Component Accessors ==========
 
     public ViewportCamera getCamera() { return viewportCamera; }

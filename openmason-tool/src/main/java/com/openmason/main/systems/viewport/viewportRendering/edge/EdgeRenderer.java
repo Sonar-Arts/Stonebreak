@@ -6,6 +6,8 @@ import com.openmason.main.systems.viewport.viewportRendering.edge.operations.Edg
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations.MeshEdgeBufferUpdater;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations.MeshEdgePositionUpdater;
+import com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations.MeshEdgeSubdivider;
+import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -232,6 +234,32 @@ public class EdgeRenderer {
      * @param transformMatrix transformation matrix to apply to edge positions
      */
     public void updateEdgeData(Collection<ModelDefinition.ModelPart> parts, Matrix4f transformMatrix) {
+        // Delegate to overloaded method without unique vertices (uses duplicate edges)
+        updateEdgeData(parts, transformMatrix, null);
+    }
+
+    /**
+     * Update edge data from model parts with optional deduplication.
+     *
+     * <p>This method extracts edge geometry from the given model parts and updates
+     * the internal VBO. If uniqueVertexPositions is provided, duplicate edges are
+     * eliminated (shared edges between faces are stored only once).
+     *
+     * <p><b>Side Effects:</b>
+     * <ul>
+     *   <li>Updates internal edge positions array</li>
+     *   <li>Updates edge count</li>
+     *   <li>Rebuilds edge VBO</li>
+     *   <li>Invalidates edge-to-vertex mapping (must be rebuilt)</li>
+     * </ul>
+     *
+     * @param parts collection of model parts to extract edges from
+     * @param transformMatrix transformation matrix to apply to edge positions
+     * @param uniqueVertexPositions unique vertex positions for deduplication (or null for duplicates)
+     */
+    public void updateEdgeData(Collection<ModelDefinition.ModelPart> parts,
+                                Matrix4f transformMatrix,
+                                float[] uniqueVertexPositions) {
         if (!initialized) {
             logger.warn("EdgeRenderer not initialized, cannot update edge data");
             return;
@@ -245,7 +273,14 @@ public class EdgeRenderer {
 
         try {
             // Extract edges using MeshManager (centralized mesh operations)
-            float[] extractedPositions = meshManager.extractEdgeGeometry(parts, transformMatrix);
+            float[] extractedPositions;
+            if (uniqueVertexPositions != null) {
+                // Extract unique edges (no duplicates)
+                extractedPositions = meshManager.extractUniqueEdgeGeometry(parts, transformMatrix, uniqueVertexPositions);
+            } else {
+                // Extract all edges (with duplicates for backward compatibility)
+                extractedPositions = meshManager.extractEdgeGeometry(parts, transformMatrix);
+            }
 
             // Update buffer with extracted edge data (delegated to MeshManager)
             MeshEdgeBufferUpdater.UpdateResult result = meshManager.updateEdgeBuffer(vbo, extractedPositions, edgeColor);
@@ -664,6 +699,113 @@ public class EdgeRenderer {
             logger.trace("Updated {} edges using {} strategy",
                 result.getUpdatedCount(), result.getStrategy());
         }
+    }
+
+    // ========================================
+    // Edge Subdivision Operations
+    // ========================================
+
+    /**
+     * Subdivide the currently hovered edge at its midpoint.
+     * Creates a new vertex at the midpoint and replaces the hovered edge with two new edges.
+     *
+     * <p>This operation:
+     * <ul>
+     *   <li>Validates a valid edge is hovered</li>
+     *   <li>Performs subdivision through MeshManager</li>
+     *   <li>Updates edge data structures (positions, count, mapping)</li>
+     *   <li>Updates vertex renderer with new vertex</li>
+     *   <li>Rebuilds edge VBO</li>
+     *   <li>Clears hover state (edge indices have shifted)</li>
+     * </ul>
+     *
+     * <p><b>Prerequisites:</b> {@link #buildEdgeToVertexMapping} must have been called.
+     *
+     * @param vertexRenderer VertexRenderer to update with new vertex
+     * @return Index of newly created vertex, or -1 if subdivision failed
+     */
+    public int subdivideHoveredEdge(VertexRenderer vertexRenderer) {
+        if (!initialized) {
+            logger.warn("Cannot subdivide: edge renderer not initialized");
+            return -1;
+        }
+
+        if (hoveredEdgeIndex < 0 || hoveredEdgeIndex >= edgeCount) {
+            logger.warn("Cannot subdivide: no valid hovered edge (index: {}, count: {})",
+                       hoveredEdgeIndex, edgeCount);
+            return -1;
+        }
+
+        if (edgeToVertexMapping == null) {
+            logger.warn("Cannot subdivide: edge-to-vertex mapping not built");
+            return -1;
+        }
+
+        if (vertexRenderer == null) {
+            logger.warn("Cannot subdivide: vertex renderer is null");
+            return -1;
+        }
+
+        // Get current vertex data from renderer
+        float[] vertexPositions = vertexRenderer.getAllVertexPositions();
+        int vertexCount = vertexRenderer.getVertexCount();
+
+        if (vertexPositions == null || vertexCount <= 0) {
+            logger.warn("Cannot subdivide: no vertex data available");
+            return -1;
+        }
+
+        // Perform subdivision through MeshManager
+        MeshEdgeSubdivider.SubdivisionResult result = meshManager.subdivideEdge(
+            hoveredEdgeIndex, edgePositions, edgeCount,
+            vertexPositions, vertexCount, edgeToVertexMapping
+        );
+
+        if (result == null || !result.isSuccessful()) {
+            logger.warn("Edge subdivision failed for edge {}", hoveredEdgeIndex);
+            return -1;
+        }
+
+        // Apply subdivision result to edge renderer
+        applySubdivisionResult(result);
+
+        // Update vertex renderer with new vertex
+        vertexRenderer.applyVertexAddition(result.getNewVertexPositions(), result.getNewVertexCount());
+
+        int newVertexIndex = result.getNewVertexIndex();
+        logger.info("Subdivided edge {} at midpoint, created vertex {} (edges: {} -> {})",
+                   hoveredEdgeIndex, newVertexIndex, edgeCount - 1, edgeCount);
+
+        return newVertexIndex;
+    }
+
+    /**
+     * Apply subdivision result to edge renderer state.
+     * Updates edge positions, count, mapping, and rebuilds VBO.
+     *
+     * @param result SubdivisionResult containing new edge data
+     */
+    private void applySubdivisionResult(MeshEdgeSubdivider.SubdivisionResult result) {
+        // Update edge data structures
+        this.edgePositions = result.getNewEdgePositions();
+        this.edgeCount = result.getNewEdgeCount();
+        this.edgeToVertexMapping = result.getNewEdgeToVertexMapping();
+
+        // Rebuild edge VBO with new data
+        MeshEdgeBufferUpdater.UpdateResult bufferResult =
+            meshManager.updateEdgeBuffer(vbo, edgePositions, edgeColor);
+
+        if (bufferResult == null) {
+            logger.warn("Failed to rebuild edge VBO after subdivision");
+        }
+
+        // Clear hover state - edge indices have shifted
+        hoveredEdgeIndex = NO_EDGE_SELECTED;
+
+        // Clear selection state - selected edge index may be invalid now
+        selectedEdgeIndex = NO_EDGE_SELECTED;
+
+        logger.debug("Applied subdivision result: {} edges, hover/selection cleared", edgeCount);
     }
 
 }

@@ -2,6 +2,7 @@ package com.openmason.main.systems.viewport;
 
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
+import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -131,6 +132,27 @@ public class ViewportActions {
     public void toggleShowVertices() {
         boolean show = state.getShowVertices().get();
         viewport.setShowVertices(show);
+    }
+
+    // ========== Edge Operations ==========
+
+    /**
+     * Subdivide the currently hovered edge at its midpoint.
+     * Only works in Edge edit mode.
+     */
+    public void subdivideHoveredEdge() {
+        // Check if in Edge mode
+        if (!EditModeManager.getInstance().isEdgeEditingAllowed()) {
+            logger.debug("Edge subdivision requires Edge edit mode");
+            return;
+        }
+
+        // Delegate to viewport controller
+        int newVertexIndex = viewport.subdivideHoveredEdge();
+
+        if (newVertexIndex >= 0) {
+            logger.info("Edge subdivided, created vertex at index {}", newVertexIndex);
+        }
     }
 
     // ========== Camera Operations ==========

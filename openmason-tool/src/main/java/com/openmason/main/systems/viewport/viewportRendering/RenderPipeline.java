@@ -369,17 +369,21 @@ public class RenderPipeline {
                     // Edges will be transformed by model matrix in shader (like BlockModelRenderer)
                     if (edgeDataNeedsUpdate) {
                         Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
-                        edgeRenderer.updateEdgeData(cubeParts, identityTransform);
 
-                        // FIX: Build edge-to-vertex mapping to prevent unification bug
+                        // Get unique vertex positions for edge deduplication
                         float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
+
+                        // Extract unique edges (no duplicates) using vertex positions
+                        edgeRenderer.updateEdgeData(cubeParts, identityTransform, uniqueVertexPositions);
+
+                        // Build edge-to-vertex mapping to prevent unification bug
                         if (uniqueVertexPositions != null) {
                             edgeRenderer.buildEdgeToVertexMapping(uniqueVertexPositions);
                             logger.trace("Built edge-to-vertex mapping for unification prevention");
                         }
 
                         edgeDataNeedsUpdate = false;
-                        logger.trace("Edge data extracted in model space");
+                        logger.trace("Edge data extracted in model space (unique edges only)");
                     }
 
                     ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);

@@ -4,11 +4,16 @@ import com.openmason.main.systems.viewport.viewportRendering.common.GeometryExtr
 import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Single Responsibility: Extracts edge geometry from model data with transformations.
@@ -142,4 +147,119 @@ public class MeshEdgeExtractor implements IGeometryExtractor {
 
         return result;
     }
+
+    /**
+     * Extract unique edges from model parts, eliminating duplicates.
+     * An edge v1<->v2 is considered the same as v2<->v1.
+     * For a cube: returns 12 unique edges instead of 24 face-based edges.
+     *
+     * @param parts Model parts to extract from
+     * @param globalTransform Global transformation matrix to apply
+     * @param uniqueVertexPositions Array of unique vertex positions for matching
+     * @return Array of unique edge endpoint positions [x1,y1,z1, x2,y2,z2, ...]
+     */
+    public float[] extractUniqueEdges(Collection<ModelDefinition.ModelPart> parts,
+                                       Matrix4f globalTransform,
+                                       float[] uniqueVertexPositions) {
+        if (parts == null || parts.isEmpty() || uniqueVertexPositions == null) {
+            return new float[0];
+        }
+
+        // First extract all face-based edges (with duplicates)
+        float[] allEdges = extractEdges(parts, globalTransform);
+        if (allEdges.length == 0) {
+            return new float[0];
+        }
+
+        int totalEdges = allEdges.length / FLOATS_PER_EDGE;
+        int uniqueVertexCount = uniqueVertexPositions.length / 3;
+
+        // Track seen edges using normalized key (min, max vertex indices)
+        Set<Long> seenEdges = new HashSet<>();
+        List<float[]> uniqueEdgeList = new ArrayList<>();
+
+        for (int edgeIdx = 0; edgeIdx < totalEdges; edgeIdx++) {
+            int offset = edgeIdx * FLOATS_PER_EDGE;
+
+            // Get edge endpoints
+            Vector3f p1 = new Vector3f(allEdges[offset], allEdges[offset + 1], allEdges[offset + 2]);
+            Vector3f p2 = new Vector3f(allEdges[offset + 3], allEdges[offset + 4], allEdges[offset + 5]);
+
+            // Find matching unique vertex indices
+            int v1Index = findMatchingVertex(p1, uniqueVertexPositions, uniqueVertexCount);
+            int v2Index = findMatchingVertex(p2, uniqueVertexPositions, uniqueVertexCount);
+
+            if (v1Index < 0 || v2Index < 0) {
+                logger.warn("Edge {} has unmatched vertices", edgeIdx);
+                continue;
+            }
+
+            // Create normalized edge key (order-independent)
+            long edgeKey = createEdgeKey(v1Index, v2Index);
+
+            // Only add if not already seen
+            if (!seenEdges.contains(edgeKey)) {
+                seenEdges.add(edgeKey);
+                uniqueEdgeList.add(new float[] {
+                    p1.x, p1.y, p1.z, p2.x, p2.y, p2.z
+                });
+            }
+        }
+
+        // Convert list to array
+        float[] result = new float[uniqueEdgeList.size() * FLOATS_PER_EDGE];
+        int resultOffset = 0;
+        for (float[] edge : uniqueEdgeList) {
+            System.arraycopy(edge, 0, result, resultOffset, FLOATS_PER_EDGE);
+            resultOffset += FLOATS_PER_EDGE;
+        }
+
+        logger.debug("Extracted {} unique edges from {} face-based edges",
+                    uniqueEdgeList.size(), totalEdges);
+
+        return result;
+    }
+
+    /**
+     * Find the index of the unique vertex that matches the given position.
+     *
+     * @param position Position to match
+     * @param uniqueVertexPositions Array of unique vertex positions
+     * @param vertexCount Number of unique vertices
+     * @return Vertex index, or -1 if not found
+     */
+    private int findMatchingVertex(Vector3f position, float[] uniqueVertexPositions, int vertexCount) {
+        for (int i = 0; i < vertexCount; i++) {
+            int offset = i * 3;
+            float dx = position.x - uniqueVertexPositions[offset];
+            float dy = position.y - uniqueVertexPositions[offset + 1];
+            float dz = position.z - uniqueVertexPositions[offset + 2];
+            float distSq = dx * dx + dy * dy + dz * dz;
+
+            if (distSq < VERTEX_EPSILON * VERTEX_EPSILON) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Create a normalized edge key that is order-independent.
+     * Edge (v1, v2) produces the same key as edge (v2, v1).
+     *
+     * @param v1 First vertex index
+     * @param v2 Second vertex index
+     * @return Unique key for this edge
+     */
+    private long createEdgeKey(int v1, int v2) {
+        int min = Math.min(v1, v2);
+        int max = Math.max(v1, v2);
+        return ((long) min << 32) | (max & 0xFFFFFFFFL);
+    }
+
+    /** Epsilon for vertex position matching. */
+    private static final float VERTEX_EPSILON = 0.0001f;
+
+    /** Number of floats per edge (2 endpoints × 3 coordinates). */
+    private static final int FLOATS_PER_EDGE = 6;
 }
