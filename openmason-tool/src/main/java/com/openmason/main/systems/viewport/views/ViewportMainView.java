@@ -257,6 +257,7 @@ public class ViewportMainView {
     /**
      * Render edit mode overlay in top-left corner of viewport.
      * Shows current mode name in orange with dark gray rounded rectangle background.
+     * Also shows grid snapping indicator below when enabled.
      */
     private void renderEditModeOverlay(ImVec2 imagePos) {
         String modeName = EditModeManager.getInstance().getCurrentMode().getDisplayName();
@@ -297,6 +298,56 @@ public class ViewportMainView {
         float textX = rectX + paddingX;
         float textY = rectY + paddingY;
         drawList.addText(textX, textY, textColor, displayText);
+
+        // Render grid snapping indicator below the edit mode overlay
+        renderGridSnappingIndicator(drawList, imagePos, rectY + rectHeight);
+    }
+
+    /**
+     * Render grid snapping indicator below the edit mode overlay.
+     * Only visible when grid snapping is enabled.
+     */
+    private void renderGridSnappingIndicator(ImDrawList drawList, ImVec2 imagePos, float editModeBottom) {
+        boolean snappingEnabled = state.getGridSnappingEnabled().get();
+        if (!snappingEnabled) {
+            return; // Don't show indicator when snapping is disabled
+        }
+
+        String snappingText = "Grid Snap: ON";
+
+        // Calculate text size
+        ImVec2 textSize = new ImVec2();
+        ImGui.calcTextSize(textSize, snappingText);
+
+        // Padding around text
+        float paddingX = 8.0f;
+        float paddingY = 4.0f;
+        float verticalGap = 4.0f;
+
+        // Position: below the edit mode overlay
+        float rectX = imagePos.x + 10.0f;
+        float rectY = editModeBottom + verticalGap;
+        float rectWidth = textSize.x + (paddingX * 2);
+        float rectHeight = textSize.y + (paddingY * 2);
+
+        // Colors - use green tint to indicate active snapping
+        int backgroundColor = ImGui.colorConvertFloat4ToU32(0.15f, 0.25f, 0.15f, 0.85f); // Dark green-gray
+        int borderColor = ImGui.colorConvertFloat4ToU32(0.0f, 0.0f, 0.0f, 0.85f);        // Black
+        int textColor = ImGui.colorConvertFloat4ToU32(0.4f, 1.0f, 0.4f, 0.95f);          // Bright green
+
+        // Corner rounding
+        float rounding = 4.0f;
+
+        // Draw filled rounded rectangle (background)
+        drawList.addRectFilled(rectX, rectY, rectX + rectWidth, rectY + rectHeight, backgroundColor, rounding);
+
+        // Draw rounded rectangle border
+        drawList.addRect(rectX, rectY, rectX + rectWidth, rectY + rectHeight, borderColor, rounding);
+
+        // Draw text
+        float textX = rectX + paddingX;
+        float textY = rectY + paddingY;
+        drawList.addText(textX, textY, textColor, snappingText);
     }
 
     /**

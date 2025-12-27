@@ -116,6 +116,18 @@ public class ViewportKeybindActions {
                 }
         ));
 
-        logger.info("Registered {} viewport keybind actions", 7);
+        // Ctrl+Shift+S: Toggle Grid Snapping
+        registry.registerAction(new KeybindAction(
+                "viewport.toggle_grid_snapping",
+                "Toggle Grid Snapping",
+                CATEGORY,
+                ShortcutKey.ctrlShift(GLFW.GLFW_KEY_S),
+                () -> {
+                    state.toggleGridSnapping();
+                    actions.toggleGridSnapping();
+                }
+        ));
+
+        logger.info("Registered {} viewport keybind actions", 8);
     }
 }

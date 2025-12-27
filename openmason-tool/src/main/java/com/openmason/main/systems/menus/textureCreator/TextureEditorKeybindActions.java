@@ -95,13 +95,8 @@ public class TextureEditorKeybindActions {
                 fileOperations::saveProject
         ));
 
-        registry.registerAction(new KeybindAction(
-                "texture.save_project_as",
-                "Save Project As",
-                "File Operations",
-                ShortcutKey.ctrlShift(GLFW.GLFW_KEY_S),
-                fileOperations::saveProjectAs
-        ));
+        // Save Project As - keybind removed (Ctrl+Shift+S now used by viewport grid snapping)
+        // Access via File menu instead
 
         registry.registerAction(new KeybindAction(
                 "texture.export",
@@ -285,6 +280,6 @@ public class TextureEditorKeybindActions {
                 toolCoordinator::handleEscapeKey
         ));
 
-        logger.info("Registered {} texture editor keybind actions", 25);
+        logger.info("Registered {} texture editor keybind actions", 24);
     }
 }
