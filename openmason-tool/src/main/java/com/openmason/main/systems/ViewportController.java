@@ -4,7 +4,7 @@ import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.block.BlockManager;
 import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.main.omConfig;
-import com.openmason.main.systems.rendering.model.CubeModelRenderer;
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.rendering.model.miscComponents.TextureLoadResult;
 import com.openmason.main.systems.viewport.ViewportCamera;
@@ -57,7 +57,7 @@ public class ViewportController {
     // ========== Renderers ==========
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
-    private final CubeModelRenderer modelRenderer;
+    private final GenericModelRenderer modelRenderer;
 
     // ========== Gizmo ==========
     private final GizmoState gizmoState;
@@ -96,7 +96,7 @@ public class ViewportController {
 
         this.blockRenderer = new BlockRenderer("Viewport");
         this.itemRenderer = new ItemRenderer("Viewport");
-        this.modelRenderer = new CubeModelRenderer();
+        this.modelRenderer = new GenericModelRenderer();
 
         this.omtTextureLoader = new OMTTextureLoader();
         this.currentBlockModel = null;
@@ -337,26 +337,39 @@ public class ViewportController {
                 omtTextureLoader.loadTextureComposite(texturePath);
 
             if (result.isSuccess()) {
-                if (result.isCubeNet()) {
-                    modelRenderer.setUVMode(CubeModelRenderer.UVMode.CUBE_NET);
-                    logger.debug("Auto-detected CUBE_NET UV mode");
-                } else if (result.isFlat16x16()) {
-                    modelRenderer.setUVMode(CubeModelRenderer.UVMode.FLAT);
-                    logger.debug("Auto-detected FLAT UV mode");
-                } else {
-                    modelRenderer.setUVMode(CubeModelRenderer.UVMode.FLAT);
-                    logger.warn("Non-standard texture size ({}x{}), defaulting to FLAT UV mode",
-                        result.getWidth(), result.getHeight());
-                }
+                // UV mode detection removed - GenericModelRenderer handles UVs generically
+                // (Previously auto-detected CUBE_NET vs FLAT based on texture dimensions)
 
                 currentBlockModelTextureId = result.getTextureId();
-                modelRenderer.setTexture(result);
+                modelRenderer.setTexture(result.getTextureId());
                 logger.info("Loaded BlockModel texture: {}", result);
             } else {
                 logger.error("Failed to load texture from: {}", texturePath);
             }
         } else {
             logger.warn("BlockModel has no valid texture path: {}", texturePath);
+        }
+
+        // Load geometry from BlockModel into renderer
+        com.openmason.main.systems.rendering.model.editable.ModelGeometry geometry = blockModel.getGeometry();
+        if (geometry != null) {
+            try {
+                modelRenderer.loadFromDimensions(
+                    geometry.getWidth(),
+                    geometry.getHeight(),
+                    geometry.getDepth(),
+                    geometry.getX(),
+                    geometry.getY(),
+                    geometry.getZ()
+                );
+                logger.info("Loaded BlockModel geometry: {}x{}x{} at ({}, {}, {})",
+                           geometry.getWidth(), geometry.getHeight(), geometry.getDepth(),
+                           geometry.getX(), geometry.getY(), geometry.getZ());
+            } catch (Exception e) {
+                logger.error("Failed to load geometry into renderer", e);
+            }
+        } else {
+            logger.warn("BlockModel has no geometry - model will be invisible");
         }
 
         renderingState.setBlockModelMode(blockModel.getName());

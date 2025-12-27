@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
-import com.openmason.main.systems.rendering.model.CubeModelRenderer;
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
@@ -9,6 +9,7 @@ import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
 import com.openmason.main.systems.viewport.viewportRendering.common.TranslationHandlerBase;
+import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +27,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
     private final VertexRenderer vertexRenderer;
     private final EdgeRenderer edgeRenderer;
     private final FaceRenderer faceRenderer;
-    private final CubeModelRenderer modelRenderer;
+    private final GenericModelRenderer modelRenderer;
     private final RenderPipeline renderPipeline;
 
     /**
@@ -45,7 +46,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
                                     VertexRenderer vertexRenderer,
                                     EdgeRenderer edgeRenderer,
                                     FaceRenderer faceRenderer,
-                                    CubeModelRenderer modelRenderer,
+                                    GenericModelRenderer modelRenderer,
                                     ViewportUIState viewportState,
                                     RenderPipeline renderPipeline,
                                     TransformState transformState) {
@@ -160,9 +161,10 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
 
             // REALTIME VISUAL UPDATE: Update ModelRenderer during drag (no merging)
             // This provides visual feedback showing how the final cube will look
-            float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
-            if (allVertexPositions != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(allVertexPositions);
+            // Use mesh vertices (24 for cube) instead of unique vertices (8)
+            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
+            if (meshVertices != null && modelRenderer != null) {
+                modelRenderer.updateVertexPositions(meshVertices);
             }
 
             logger.trace("Dragging vertex {} to world ({}, {}, {}) → model ({}, {}, {})",
@@ -227,18 +229,18 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
                 }
             }
 
-            // COMMIT: Update ModelRenderer with EXPANDED vertex positions (8 vertices for cube)
-            // Expand merged vertices to 8 for ModelRenderer compatibility
-            float[] expandedPositions = vertexRenderer.getExpandedVertexPositions(indexRemapping);
-            if (expandedPositions != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(expandedPositions);
-                logger.debug("Committed merged vertex drag to ModelRenderer with expanded positions");
+            // COMMIT: Update ModelRenderer with mesh vertices
+            // Use all mesh vertices (24 for cube net format)
+            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
+            if (meshVertices != null && modelRenderer != null) {
+                modelRenderer.updateVertexPositions(meshVertices);
+                logger.debug("Committed merged vertex drag to ModelRenderer with mesh vertices");
             }
         } else {
-            // No merge occurred, use regular positions
-            float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
-            if (allVertexPositions != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(allVertexPositions);
+            // No merge occurred, use mesh vertices
+            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
+            if (meshVertices != null && modelRenderer != null) {
+                modelRenderer.updateVertexPositions(meshVertices);
                 logger.debug("Committed vertex drag to ModelRenderer (no merge)");
             }
         }
@@ -278,10 +280,10 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             // Revert all face overlays that use this vertex
             updateAffectedFaceOverlays(vertexIndex);
 
-            // REVERT: Update ModelRenderer with original positions (once!)
-            float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
-            if (allVertexPositions != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(allVertexPositions);
+            // REVERT: Update ModelRenderer with original mesh vertices
+            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
+            if (meshVertices != null && modelRenderer != null) {
+                modelRenderer.updateVertexPositions(meshVertices);
                 logger.debug("Reverted ModelRenderer to original positions (cancel)");
             }
         }

@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
-import com.openmason.main.systems.rendering.model.CubeModelRenderer;
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
@@ -34,7 +34,7 @@ import static org.lwjgl.opengl.GL11.*;
  * <p>The pipeline executes in ordered passes:
  * <ol>
  *   <li><b>Grid Pass</b> - Infinite grid background ({@link GridRenderer})</li>
- *   <li><b>Content Pass</b> - Block/Item/Model rendering ({@link CubeModelRenderer})</li>
+ *   <li><b>Content Pass</b> - Block/Item/Model rendering ({@link GenericModelRenderer})</li>
  *   <li><b>Mesh Pass</b> - Vertices, edges, faces ({@link VertexRenderer}, {@link EdgeRenderer}, {@link FaceRenderer})</li>
  *   <li><b>UI Pass</b> - Gizmo overlays ({@link GizmoRenderer})</li>
  * </ol>
@@ -72,7 +72,7 @@ public class RenderPipeline {
     private final ItemRenderer itemRenderer;
 
     // BlockModel renderer (.OMO editable models)
-    private final CubeModelRenderer modelRenderer;
+    private final GenericModelRenderer modelRenderer;
 
     // Gizmo renderer
     private final GizmoRenderer gizmoRenderer;
@@ -95,7 +95,7 @@ public class RenderPipeline {
      */
     public RenderPipeline(RenderContext context, ViewportResourceManager resources, ShaderManager shaderManager,
                           BlockRenderer blockRenderer, ItemRenderer itemRenderer,
-                          CubeModelRenderer modelRenderer,
+                          GenericModelRenderer modelRenderer,
                           GizmoRenderer gizmoRenderer) {
         this.context = context;
         this.resources = resources;
@@ -303,7 +303,7 @@ public class RenderPipeline {
             matrixShader.setBool("uUseTexture", true);
 
             // Render (no state management needed - pipeline handles it)
-            modelRenderer.render();
+            modelRenderer.render(matrixShader, context, modelMatrix);
 
         } catch (Exception e) {
             logger.error("Error rendering BlockModel", e);
@@ -544,7 +544,7 @@ public class RenderPipeline {
     /**
      * Gets the block model renderer for external access (vertex editing, etc.).
      */
-    public CubeModelRenderer getBlockModelRenderer() {
+    public GenericModelRenderer getBlockModelRenderer() {
         return modelRenderer;
     }
 

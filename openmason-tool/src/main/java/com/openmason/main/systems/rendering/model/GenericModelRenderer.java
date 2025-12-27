@@ -75,16 +75,29 @@ public class GenericModelRenderer extends BaseRenderer {
                                    double originX, double originY, double originZ) {
         parts.clear();
 
-        // Create a cube part based on dimensions
-        Vector3f origin = new Vector3f((float) originX, (float) originY, (float) originZ);
-        Vector3f size = new Vector3f(width, height, depth);
+        // Scale from pixel dimensions to world units
+        // Convention: 16 pixels = 1 world unit (standard block size)
+        // This preserves aspect ratios: 16x16x16 → 1x1x1, 8x16x8 → 0.5x1x0.5, etc.
+        final float PIXELS_PER_UNIT = 16.0f;
+
+        Vector3f origin = new Vector3f(
+            (float) originX / PIXELS_PER_UNIT,
+            (float) originY / PIXELS_PER_UNIT,
+            (float) originZ / PIXELS_PER_UNIT
+        );
+
+        Vector3f size = new Vector3f(
+            width / PIXELS_PER_UNIT,
+            height / PIXELS_PER_UNIT,
+            depth / PIXELS_PER_UNIT
+        );
 
         ModelPart cubePart = ModelPart.createCube("main", origin, size);
         parts.add(cubePart);
 
         rebuildGeometry();
-        logger.info("Created model from dimensions: {}x{}x{} at ({}, {}, {})",
-                width, height, depth, originX, originY, originZ);
+        logger.info("Created model from dimensions: {}x{}x{} pixels → {}x{}x{} units at ({}, {}, {})",
+                width, height, depth, size.x, size.y, size.z, origin.x, origin.y, origin.z);
     }
 
     /**
@@ -160,6 +173,50 @@ public class GenericModelRenderer extends BaseRenderer {
         currentVertices[offset + 2] = position.z;
 
         logger.trace("Updated vertex {} to ({}, {}, {})", globalIndex, position.x, position.y, position.z);
+    }
+
+    /**
+     * Update all vertex positions at once.
+     * Compatible with CubeModelRenderer API - expects positions in format [x0,y0,z0, x1,y1,z1, ...].
+     * More efficient than multiple individual updates as it only uploads to GPU once.
+     *
+     * @param positions Array of vertex positions (must match current vertex count * 3)
+     */
+    public void updateVertexPositions(float[] positions) {
+        if (!initialized) {
+            logger.warn("Cannot update vertex positions: renderer not initialized");
+            return;
+        }
+
+        if (positions == null) {
+            logger.error("Cannot update vertex positions: positions array is null");
+            return;
+        }
+
+        if (currentVertices == null) {
+            logger.warn("Cannot update vertex positions: no vertices loaded");
+            return;
+        }
+
+        int expectedLength = currentVertices.length;
+        if (positions.length != expectedLength) {
+            logger.error("Invalid positions array: expected {} floats, got {}", expectedLength, positions.length);
+            return;
+        }
+
+        try {
+            // Update current vertices array
+            System.arraycopy(positions, 0, currentVertices, 0, positions.length);
+
+            // Build interleaved data and upload to GPU
+            float[] interleavedData = buildInterleavedData();
+            updateVBO(interleavedData);
+
+            logger.trace("Updated all {} vertex positions", positions.length / 3);
+
+        } catch (Exception e) {
+            logger.error("Error updating vertex positions", e);
+        }
     }
 
     /**
