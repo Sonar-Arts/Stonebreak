@@ -26,8 +26,10 @@ import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTransl
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler;
 import com.openmason.main.systems.viewport.viewportRendering.face.FaceTranslationHandler;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
+import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
+import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -495,7 +497,7 @@ public class ViewportController {
 
     /**
      * Subdivide the currently hovered edge at its midpoint.
-     * Coordinates between EdgeRenderer and VertexRenderer.
+     * Coordinates between EdgeRenderer, VertexRenderer, MeshManager, and GenericModelRenderer.
      *
      * @return Index of newly created vertex, or -1 if failed
      */
@@ -513,7 +515,57 @@ public class ViewportController {
             return -1;
         }
 
-        return edgeRenderer.subdivideHoveredEdge(vertexRenderer);
+        // Get edge endpoints BEFORE subdivision (for GenericModelRenderer update)
+        int hoveredEdgeIndex = edgeRenderer.getHoveredEdgeIndex();
+        Vector3f[] edgeEndpoints = edgeRenderer.getEdgeEndpoints(hoveredEdgeIndex);
+        if (edgeEndpoints == null || edgeEndpoints.length != 2) {
+            logger.warn("Cannot get edge endpoints for subdivision");
+            return -1;
+        }
+        Vector3f endpoint1 = new Vector3f(edgeEndpoints[0]);
+        Vector3f endpoint2 = new Vector3f(edgeEndpoints[1]);
+
+        // Perform subdivision on EdgeRenderer/VertexRenderer
+        int newVertexIndex = edgeRenderer.subdivideHoveredEdge(vertexRenderer);
+
+        // Sync new vertex with MeshManager and GenericModelRenderer
+        if (newVertexIndex >= 0) {
+            Vector3f newVertexPosition = vertexRenderer.getVertexPosition(newVertexIndex);
+            if (newVertexPosition != null) {
+                MeshManager meshManager = MeshManager.getInstance();
+
+                // Apply subdivision to GenericModelRenderer (updates mesh topology)
+                var modelRenderer = renderPipeline.getBlockModelRenderer();
+                if (modelRenderer != null) {
+                    int meshVertexIndex = modelRenderer.applyEdgeSubdivisionByPosition(
+                        newVertexPosition, endpoint1, endpoint2
+                    );
+
+                    if (meshVertexIndex >= 0) {
+                        // Add the new vertex to MeshManager to sync arrays
+                        meshManager.addMeshVertex(
+                            newVertexPosition.x,
+                            newVertexPosition.y,
+                            newVertexPosition.z
+                        );
+
+                        // Rebuild unique-to-mesh mapping with the new vertex
+                        float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
+                        float[] meshVertices = meshManager.getAllMeshVertices();
+                        if (uniqueVertexPositions != null && meshVertices != null) {
+                            meshManager.buildUniqueToMeshMapping(uniqueVertexPositions, meshVertices);
+                        }
+
+                        logger.debug("Applied subdivision: unique vertex {}, mesh vertex {}, topology updated",
+                            newVertexIndex, meshVertexIndex);
+                    } else {
+                        logger.warn("Failed to apply subdivision to GenericModelRenderer");
+                    }
+                }
+            }
+        }
+
+        return newVertexIndex;
     }
 
     // ========== Component Accessors ==========

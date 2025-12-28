@@ -147,6 +147,36 @@ public class MeshManager {
         logger.debug("Cleared mesh data");
     }
 
+    /**
+     * Add a new mesh vertex to the mesh vertices array.
+     * Used when subdivision creates a new vertex that needs to be tracked
+     * for proper synchronization with GenericModelRenderer.
+     *
+     * @param x X coordinate of the new vertex
+     * @param y Y coordinate of the new vertex
+     * @param z Z coordinate of the new vertex
+     * @return The index of the newly added mesh vertex
+     */
+    public int addMeshVertex(float x, float y, float z) {
+        int newIndex;
+        if (allMeshVertices == null) {
+            allMeshVertices = new float[] { x, y, z };
+            newIndex = 0;
+        } else {
+            int oldVertexCount = allMeshVertices.length / 3;
+            newIndex = oldVertexCount;
+            int newLength = allMeshVertices.length + 3;
+            float[] newMeshVertices = new float[newLength];
+            System.arraycopy(allMeshVertices, 0, newMeshVertices, 0, allMeshVertices.length);
+            newMeshVertices[allMeshVertices.length] = x;
+            newMeshVertices[allMeshVertices.length + 1] = y;
+            newMeshVertices[allMeshVertices.length + 2] = z;
+            allMeshVertices = newMeshVertices;
+        }
+        logger.debug("Added mesh vertex {} at ({}, {}, {})", newIndex, x, y, z);
+        return newIndex;
+    }
+
     // ========================================
     // Mesh Operations (managed through MeshManager)
     // ========================================
