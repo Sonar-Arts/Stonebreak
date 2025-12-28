@@ -20,6 +20,22 @@ public record ModelPart(
         int[] indices
 ) {
     /**
+     * Create a cube part with UV mapping based on the specified mode.
+     *
+     * @param name Part name
+     * @param origin Part origin (center point)
+     * @param size Size in each axis (width, height, depth)
+     * @param uvMode UV mapping mode (CUBE_NET or FLAT)
+     * @return A ModelPart representing a cube with appropriate UV coordinates
+     */
+    public static ModelPart createCube(String name, Vector3f origin, Vector3f size, UVMode uvMode) {
+        if (uvMode == UVMode.FLAT) {
+            return createCubeFlat(name, origin, size);
+        }
+        return createCubeCubeNet(name, origin, size);
+    }
+
+    /**
      * Create a cube part with proper 24-vertex format for cube net textures.
      * Uses expanded mesh format (4 vertices per face) to support proper UV mapping.
      *
@@ -29,6 +45,14 @@ public record ModelPart(
      * @return A ModelPart representing a cube with cube net UV coordinates
      */
     public static ModelPart createCube(String name, Vector3f origin, Vector3f size) {
+        return createCubeCubeNet(name, origin, size);
+    }
+
+    /**
+     * Create a cube with cube net UV mapping (64x48 layout).
+     * Face order matches ModelDefinition.ModelPart.getVerticesAtOrigin() for subdivision compatibility.
+     */
+    private static ModelPart createCubeCubeNet(String name, Vector3f origin, Vector3f size) {
         float hw = size.x / 2.0f; // half width
         float hh = size.y / 2.0f; // half height
         float hd = size.z / 2.0f; // half depth
@@ -139,6 +163,109 @@ public record ModelPart(
             indices[idx++] = baseVertex + 1;
             indices[idx++] = baseVertex + 2;
             // Triangle 2: vertices 2, 3, 0
+            indices[idx++] = baseVertex + 2;
+            indices[idx++] = baseVertex + 3;
+            indices[idx++] = baseVertex;
+        }
+
+        return new ModelPart(name, origin, vertices, texCoords, indices);
+    }
+
+    /**
+     * Create a cube with flat UV mapping (entire texture on each face).
+     */
+    private static ModelPart createCubeFlat(String name, Vector3f origin, Vector3f size) {
+        float hw = size.x / 2.0f; // half width
+        float hh = size.y / 2.0f; // half height
+        float hd = size.z / 2.0f; // half depth
+
+        // 24 vertices (4 per face × 6 faces)
+        // Same vertex positions as cube net, different UV coordinates
+        float[] vertices = {
+            // FRONT face (facing +Z) - vertices 0-3
+            -hw, -hh,  hd,  // 0: bottom-left
+             hw, -hh,  hd,  // 1: bottom-right
+             hw,  hh,  hd,  // 2: top-right
+            -hw,  hh,  hd,  // 3: top-left
+
+            // BACK face (facing -Z) - vertices 4-7
+            -hw, -hh, -hd,  // 4: bottom-left
+             hw, -hh, -hd,  // 5: bottom-right
+             hw,  hh, -hd,  // 6: top-right
+            -hw,  hh, -hd,  // 7: top-left
+
+            // LEFT face (facing -X) - vertices 8-11
+            -hw, -hh, -hd,  // 8: bottom-back
+            -hw, -hh,  hd,  // 9: bottom-front
+            -hw,  hh,  hd,  // 10: top-front
+            -hw,  hh, -hd,  // 11: top-back
+
+            // RIGHT face (facing +X) - vertices 12-15
+             hw, -hh, -hd,  // 12: bottom-back
+             hw, -hh,  hd,  // 13: bottom-front
+             hw,  hh,  hd,  // 14: top-front
+             hw,  hh, -hd,  // 15: top-back
+
+            // TOP face (facing +Y) - vertices 16-19
+            -hw,  hh, -hd,  // 16: back-left
+             hw,  hh, -hd,  // 17: back-right
+             hw,  hh,  hd,  // 18: front-right
+            -hw,  hh,  hd,  // 19: front-left
+
+            // BOTTOM face (facing -Y) - vertices 20-23
+            -hw, -hh, -hd,  // 20: back-left
+             hw, -hh, -hd,  // 21: back-right
+             hw, -hh,  hd,  // 22: front-right
+            -hw, -hh,  hd   // 23: front-left
+        };
+
+        // Flat UV mapping: entire texture (0-1) on each face
+        float[] texCoords = {
+            // FRONT face UVs (vertices 0-3)
+            0.0f, 1.0f,  // 0: bottom-left
+            1.0f, 1.0f,  // 1: bottom-right
+            1.0f, 0.0f,  // 2: top-right
+            0.0f, 0.0f,  // 3: top-left
+
+            // BACK face UVs (vertices 4-7) - mirrored horizontally
+            1.0f, 1.0f,  // 4: bottom-left (appears as right in back view)
+            0.0f, 1.0f,  // 5: bottom-right (appears as left in back view)
+            0.0f, 0.0f,  // 6: top-right
+            1.0f, 0.0f,  // 7: top-left
+
+            // LEFT face UVs (vertices 8-11)
+            0.0f, 1.0f,  // 8: bottom-back
+            1.0f, 1.0f,  // 9: bottom-front
+            1.0f, 0.0f,  // 10: top-front
+            0.0f, 0.0f,  // 11: top-back
+
+            // RIGHT face UVs (vertices 12-15) - mirrored
+            1.0f, 1.0f,  // 12: bottom-back
+            0.0f, 1.0f,  // 13: bottom-front
+            0.0f, 0.0f,  // 14: top-front
+            1.0f, 0.0f,  // 15: top-back
+
+            // TOP face UVs (vertices 16-19)
+            0.0f, 1.0f,  // 16: back-left
+            1.0f, 1.0f,  // 17: back-right
+            1.0f, 0.0f,  // 18: front-right
+            0.0f, 0.0f,  // 19: front-left
+
+            // BOTTOM face UVs (vertices 20-23)
+            0.0f, 0.0f,  // 20: back-left
+            1.0f, 0.0f,  // 21: back-right
+            1.0f, 1.0f,  // 22: front-right
+            0.0f, 1.0f   // 23: front-left
+        };
+
+        // Indices for 6 faces (2 triangles each = 36 indices)
+        int[] indices = new int[36];
+        int idx = 0;
+        for (int face = 0; face < 6; face++) {
+            int baseVertex = face * 4;
+            indices[idx++] = baseVertex;
+            indices[idx++] = baseVertex + 1;
+            indices[idx++] = baseVertex + 2;
             indices[idx++] = baseVertex + 2;
             indices[idx++] = baseVertex + 3;
             indices[idx++] = baseVertex;

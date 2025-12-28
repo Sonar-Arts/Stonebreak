@@ -144,14 +144,6 @@ public class ShaderManager {
                 if (uUseTexture) {
                     // Sample texture color
                     vec4 texColor = texture(uTexture, TexCoord);
-
-                    // Discard fully transparent pixels to prevent rendering artifacts
-                    // This is critical for multi-layer composited textures where some areas
-                    // may be transparent (alpha=0) from the PixelCanvas initialization
-                    if (texColor.a < 0.01) {
-                        discard;
-                    }
-
                     FragColor = texColor;
                 } else {
                     // Use solid color only

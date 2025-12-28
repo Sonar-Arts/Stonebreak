@@ -39,6 +39,17 @@ public class GenericModelRenderer extends BaseRenderer {
     private int textureId = 0;
     private boolean useTexture = false;
 
+    // UV mapping mode
+    private UVMode currentUVMode = UVMode.FLAT;
+
+    // Cached model dimensions for UV mode switching
+    private int cachedWidth = 0;
+    private int cachedHeight = 0;
+    private int cachedDepth = 0;
+    private double cachedOriginX = 0;
+    private double cachedOriginY = 0;
+    private double cachedOriginZ = 0;
+
     // Stride: position (3) + texCoord (2) = 5 floats
     private static final int STRIDE = 5 * Float.BYTES;
     private static final int FLOATS_PER_VERTEX = 5;
@@ -73,6 +84,21 @@ public class GenericModelRenderer extends BaseRenderer {
      */
     public void loadFromDimensions(int width, int height, int depth,
                                    double originX, double originY, double originZ) {
+        // Cache dimensions for UV mode switching
+        cachedWidth = width;
+        cachedHeight = height;
+        cachedDepth = depth;
+        cachedOriginX = originX;
+        cachedOriginY = originY;
+        cachedOriginZ = originZ;
+
+        rebuildFromCachedDimensions();
+    }
+
+    /**
+     * Rebuild geometry from cached dimensions using current UV mode.
+     */
+    private void rebuildFromCachedDimensions() {
         parts.clear();
 
         // Scale from pixel dimensions to world units
@@ -81,23 +107,51 @@ public class GenericModelRenderer extends BaseRenderer {
         final float PIXELS_PER_UNIT = 16.0f;
 
         Vector3f origin = new Vector3f(
-            (float) originX / PIXELS_PER_UNIT,
-            (float) originY / PIXELS_PER_UNIT,
-            (float) originZ / PIXELS_PER_UNIT
+            (float) cachedOriginX / PIXELS_PER_UNIT,
+            (float) cachedOriginY / PIXELS_PER_UNIT,
+            (float) cachedOriginZ / PIXELS_PER_UNIT
         );
 
         Vector3f size = new Vector3f(
-            width / PIXELS_PER_UNIT,
-            height / PIXELS_PER_UNIT,
-            depth / PIXELS_PER_UNIT
+            cachedWidth / PIXELS_PER_UNIT,
+            cachedHeight / PIXELS_PER_UNIT,
+            cachedDepth / PIXELS_PER_UNIT
         );
 
-        ModelPart cubePart = ModelPart.createCube("main", origin, size);
+        ModelPart cubePart = ModelPart.createCube("main", origin, size, currentUVMode);
         parts.add(cubePart);
 
         rebuildGeometry();
-        logger.info("Created model from dimensions: {}x{}x{} pixels → {}x{}x{} units at ({}, {}, {})",
-                width, height, depth, size.x, size.y, size.z, origin.x, origin.y, origin.z);
+        logger.info("Created model from dimensions: {}x{}x{} pixels → {}x{}x{} units at ({}, {}, {}) with UV mode: {}",
+                cachedWidth, cachedHeight, cachedDepth, size.x, size.y, size.z, origin.x, origin.y, origin.z, currentUVMode);
+    }
+
+    /**
+     * Set UV mapping mode and regenerate geometry.
+     *
+     * @param uvMode The UV mapping mode (CUBE_NET or FLAT)
+     */
+    public void setUVMode(UVMode uvMode) {
+        if (uvMode == null || uvMode == currentUVMode) {
+            return;
+        }
+
+        logger.info("Changing UV mode from {} to {}", currentUVMode, uvMode);
+        currentUVMode = uvMode;
+
+        // Only rebuild if we have cached dimensions
+        if (cachedWidth > 0 && cachedHeight > 0 && cachedDepth > 0) {
+            rebuildFromCachedDimensions();
+        }
+    }
+
+    /**
+     * Get current UV mapping mode.
+     *
+     * @return Current UV mode
+     */
+    public UVMode getUVMode() {
+        return currentUVMode;
     }
 
     /**
@@ -140,7 +194,8 @@ public class GenericModelRenderer extends BaseRenderer {
 
     /**
      * Update a vertex position by its global index.
-     * Useful for live editing/dragging.
+     * Also updates ALL other mesh vertices at the same geometric position.
+     * This is critical after subdivision where multiple mesh vertices share positions.
      *
      * @param globalIndex The global vertex index across all parts
      * @param position The new position
@@ -156,23 +211,33 @@ public class GenericModelRenderer extends BaseRenderer {
             return;
         }
 
-        // Update in current vertices array (used for interleaved data)
-        // Need to update the position part of interleaved data
-        int interleavedOffset = globalIndex * FLOATS_PER_VERTEX;
-        float[] interleavedData = buildInterleavedData();
-        if (interleavedOffset + 2 < interleavedData.length) {
-            interleavedData[interleavedOffset] = position.x;
-            interleavedData[interleavedOffset + 1] = position.y;
-            interleavedData[interleavedOffset + 2] = position.z;
-            updateVBO(interleavedData);
+        // Get the OLD position at this index to find all vertices sharing it
+        Vector3f oldPosition = new Vector3f(
+            currentVertices[offset],
+            currentVertices[offset + 1],
+            currentVertices[offset + 2]
+        );
+
+        // Find ALL mesh vertices at the old position (handles subdivision vertices)
+        java.util.List<Integer> allVerticesAtPosition = findMeshVerticesAtPosition(oldPosition, 0.001f);
+
+        // Update ALL vertices at this position
+        for (int vertexIndex : allVerticesAtPosition) {
+            int vOffset = vertexIndex * 3;
+            if (vOffset + 2 < currentVertices.length) {
+                currentVertices[vOffset] = position.x;
+                currentVertices[vOffset + 1] = position.y;
+                currentVertices[vOffset + 2] = position.z;
+            }
         }
 
-        // Update source arrays
-        currentVertices[offset] = position.x;
-        currentVertices[offset + 1] = position.y;
-        currentVertices[offset + 2] = position.z;
+        // Rebuild interleaved data and upload to GPU
+        float[] interleavedData = buildInterleavedData();
+        updateVBO(interleavedData);
 
-        logger.trace("Updated vertex {} to ({}, {}, {})", globalIndex, position.x, position.y, position.z);
+        logger.trace("Updated {} vertices at position ({}, {}, {}) to ({}, {}, {})",
+            allVerticesAtPosition.size(), oldPosition.x, oldPosition.y, oldPosition.z,
+            position.x, position.y, position.z);
     }
 
     /**
@@ -199,22 +264,67 @@ public class GenericModelRenderer extends BaseRenderer {
         }
 
         int expectedLength = currentVertices.length;
+        int updateLength = positions.length;
+
         if (positions.length != expectedLength) {
-            logger.warn("Array length mismatch in updateVertexPositions: expected {} floats ({}v), got {} floats ({}v)",
+            // After subdivision, currentVertices grows but caller may have old array size.
+            // Update only the vertices that exist in the input array (original vertices).
+            // New subdivision vertices already have correct positions.
+            logger.debug("Array length mismatch in updateVertexPositions: current {} floats ({}v), input {} floats ({}v) - updating common vertices",
                 expectedLength, expectedLength / 3, positions.length, positions.length / 3);
-            // After subdivision, arrays may have different sizes - skip update rather than crash
-            return;
+            updateLength = Math.min(positions.length, expectedLength);
         }
 
         try {
-            // Update current vertices array
-            System.arraycopy(positions, 0, currentVertices, 0, positions.length);
+            // After subdivision, mesh has more vertices than the input positions array.
+            // We need to update ALL mesh vertices that share each input position.
+            // Strategy: For each input position, find the old position at that index,
+            // then update all mesh vertices at that old position.
+
+            int inputVertexCount = positions.length / 3;
+            int meshVertexCount = currentVertices.length / 3;
+
+            if (inputVertexCount < meshVertexCount) {
+                // Post-subdivision: update by position matching
+                for (int i = 0; i < inputVertexCount; i++) {
+                    int offset = i * 3;
+                    Vector3f oldPos = new Vector3f(
+                        currentVertices[offset],
+                        currentVertices[offset + 1],
+                        currentVertices[offset + 2]
+                    );
+                    Vector3f newPos = new Vector3f(
+                        positions[offset],
+                        positions[offset + 1],
+                        positions[offset + 2]
+                    );
+
+                    // Skip if position unchanged
+                    if (oldPos.equals(newPos, 0.0001f)) {
+                        continue;
+                    }
+
+                    // Find ALL vertices at the old position and update them
+                    java.util.List<Integer> verticesAtPos = findMeshVerticesAtPosition(oldPos, 0.001f);
+                    for (int vertexIndex : verticesAtPos) {
+                        int vOffset = vertexIndex * 3;
+                        if (vOffset + 2 < currentVertices.length) {
+                            currentVertices[vOffset] = newPos.x;
+                            currentVertices[vOffset + 1] = newPos.y;
+                            currentVertices[vOffset + 2] = newPos.z;
+                        }
+                    }
+                }
+            } else {
+                // Pre-subdivision or exact match: direct copy
+                System.arraycopy(positions, 0, currentVertices, 0, updateLength);
+            }
 
             // Build interleaved data and upload to GPU
             float[] interleavedData = buildInterleavedData();
             updateVBO(interleavedData);
 
-            logger.trace("Updated all {} vertex positions", positions.length / 3);
+            logger.trace("Updated {} of {} vertex positions", updateLength / 3, currentVertices.length / 3);
 
         } catch (Exception e) {
             logger.error("Error updating vertex positions", e);
@@ -371,47 +481,52 @@ public class GenericModelRenderer extends BaseRenderer {
 
         logger.debug("Found {} mesh edge pairs for geometric edge (expect 2 for cube)", validEdgePairs.size());
 
-        // Step 1: Add the new vertex ONCE
-        int newVertexIndex = vertexCount;
+        // For cube net textures, each face has different UVs for the same geometric edge.
+        // We need to add a SEPARATE vertex (same position, different UV) for each triangle
+        // being split, so that each face maintains its own UV mapping.
 
-        // Expand currentVertices
-        int newVerticesLength = (vertexCount + 1) * 3;
+        // Step 1: First pass - count how many triangles will be split
+        int triangleCount = currentIndices.length / 3;
+        int trianglesToSplit = 0;
+
+        for (int t = 0; t < triangleCount; t++) {
+            int i0 = currentIndices[t * 3];
+            int i1 = currentIndices[t * 3 + 1];
+            int i2 = currentIndices[t * 3 + 2];
+
+            for (int[] pair : validEdgePairs) {
+                if (findEdgeInTriangle(i0, i1, i2, pair[0], pair[1]) >= 0) {
+                    trianglesToSplit++;
+                    break;
+                }
+            }
+        }
+
+        if (trianglesToSplit == 0) {
+            logger.warn("No triangles found to split");
+            return -1;
+        }
+
+        // Step 2: Expand vertex and texCoord arrays for new midpoint vertices
+        // Each split triangle gets its OWN midpoint vertex (same position, unique UV)
+        int firstNewVertexIndex = vertexCount;
+
+        int newVerticesLength = (vertexCount + trianglesToSplit) * 3;
         float[] newVertices = new float[newVerticesLength];
         if (currentVertices != null) {
             System.arraycopy(currentVertices, 0, newVertices, 0, currentVertices.length);
         }
-        newVertices[newVertexIndex * 3] = midpointPosition.x;
-        newVertices[newVertexIndex * 3 + 1] = midpointPosition.y;
-        newVertices[newVertexIndex * 3 + 2] = midpointPosition.z;
-        currentVertices = newVertices;
 
-        // Expand currentTexCoords - interpolate UV from first edge pair's endpoints
-        int newTexCoordsLength = (vertexCount + 1) * 2;
+        int newTexCoordsLength = (vertexCount + trianglesToSplit) * 2;
         float[] newTexCoords = new float[newTexCoordsLength];
         if (currentTexCoords != null) {
             System.arraycopy(currentTexCoords, 0, newTexCoords, 0, currentTexCoords.length);
         }
-        // Use first edge pair for UV interpolation
-        int[] firstPair = validEdgePairs.get(0);
-        float u1 = 0, v1 = 0, u2 = 0, v2 = 0;
-        if (currentTexCoords != null && firstPair[0] * 2 + 1 < currentTexCoords.length) {
-            u1 = currentTexCoords[firstPair[0] * 2];
-            v1 = currentTexCoords[firstPair[0] * 2 + 1];
-        }
-        if (currentTexCoords != null && firstPair[1] * 2 + 1 < currentTexCoords.length) {
-            u2 = currentTexCoords[firstPair[1] * 2];
-            v2 = currentTexCoords[firstPair[1] * 2 + 1];
-        }
-        newTexCoords[newVertexIndex * 2] = (u1 + u2) / 2.0f;
-        newTexCoords[newVertexIndex * 2 + 1] = (v1 + v2) / 2.0f;
-        currentTexCoords = newTexCoords;
 
-        vertexCount++;
-
-        // Step 2: Split ALL triangles that contain ANY of the edge pairs
+        // Step 3: Split triangles, adding a new vertex for each
         java.util.List<Integer> newIndices = new java.util.ArrayList<>();
-        int triangleCount = currentIndices.length / 3;
         int splitCount = 0;
+        int currentNewVertex = firstNewVertexIndex;
 
         for (int t = 0; t < triangleCount; t++) {
             int i0 = currentIndices[t * 3];
@@ -459,18 +574,40 @@ public class GenericModelRenderer extends BaseRenderer {
                         continue;
                 }
 
-                // Create 2 new triangles using the midpoint vertex
+                // Add new vertex at midpoint position
+                newVertices[currentNewVertex * 3] = midpointPosition.x;
+                newVertices[currentNewVertex * 3 + 1] = midpointPosition.y;
+                newVertices[currentNewVertex * 3 + 2] = midpointPosition.z;
+
+                // Interpolate UV from THIS triangle's edge vertices (not first pair)
+                // This ensures each face gets correct UV interpolation for cube net textures
+                float u1 = 0, v1 = 0, u2 = 0, v2 = 0;
+                if (currentTexCoords != null && e1 * 2 + 1 < currentTexCoords.length) {
+                    u1 = currentTexCoords[e1 * 2];
+                    v1 = currentTexCoords[e1 * 2 + 1];
+                }
+                if (currentTexCoords != null && e2 * 2 + 1 < currentTexCoords.length) {
+                    u2 = currentTexCoords[e2 * 2];
+                    v2 = currentTexCoords[e2 * 2 + 1];
+                }
+                newTexCoords[currentNewVertex * 2] = (u1 + u2) / 2.0f;
+                newTexCoords[currentNewVertex * 2 + 1] = (v1 + v2) / 2.0f;
+
+                // Create 2 new triangles using this triangle's midpoint vertex
                 newIndices.add(e1);
-                newIndices.add(newVertexIndex);
+                newIndices.add(currentNewVertex);
                 newIndices.add(oppositeVertex);
 
-                newIndices.add(newVertexIndex);
+                newIndices.add(currentNewVertex);
                 newIndices.add(e2);
                 newIndices.add(oppositeVertex);
 
                 splitCount++;
-                logger.debug("Split triangle {} ({},{},{}) on edge ({},{}) -> 2 triangles",
-                    t, i0, i1, i2, e1, e2);
+                logger.debug("Split triangle {} ({},{},{}) on edge ({},{}) -> 2 triangles, new vertex {} UV=({},{})",
+                    t, i0, i1, i2, e1, e2, currentNewVertex,
+                    newTexCoords[currentNewVertex * 2], newTexCoords[currentNewVertex * 2 + 1]);
+
+                currentNewVertex++;
             } else {
                 // Keep original triangle
                 newIndices.add(i0);
@@ -479,19 +616,24 @@ public class GenericModelRenderer extends BaseRenderer {
             }
         }
 
-        // Step 3: Update indices array
+        // Update arrays
+        currentVertices = newVertices;
+        currentTexCoords = newTexCoords;
+        vertexCount += trianglesToSplit;
+
+        // Step 4: Update indices array
         currentIndices = newIndices.stream().mapToInt(Integer::intValue).toArray();
         indexCount = currentIndices.length;
 
-        // Step 4: Rebuild GPU buffers
+        // Step 5: Rebuild GPU buffers
         float[] interleavedData = buildInterleavedData();
         updateVBO(interleavedData);
         updateEBO(currentIndices);
 
-        logger.debug("Applied subdivision: vertex {}, split {} triangles, indices {} -> {}",
-            newVertexIndex, splitCount, triangleCount * 3, indexCount);
+        logger.debug("Applied subdivision: added {} vertices (first: {}), split {} triangles, indices {} -> {}",
+            trianglesToSplit, firstNewVertexIndex, splitCount, triangleCount * 3, indexCount);
 
-        return newVertexIndex;
+        return firstNewVertexIndex;
     }
 
     /**

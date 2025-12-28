@@ -5,6 +5,7 @@ import com.openmason.main.systems.rendering.model.block.BlockManager;
 import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.main.omConfig;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.main.systems.rendering.model.UVMode;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.rendering.model.miscComponents.TextureLoadResult;
 import com.openmason.main.systems.viewport.ViewportCamera;
@@ -339,8 +340,11 @@ public class ViewportController {
                 omtTextureLoader.loadTextureComposite(texturePath);
 
             if (result.isSuccess()) {
-                // UV mode detection removed - GenericModelRenderer handles UVs generically
-                // (Previously auto-detected CUBE_NET vs FLAT based on texture dimensions)
+                // Auto-detect UV mode based on texture dimensions
+                UVMode detectedMode = UVMode.detectFromDimensions(result.getWidth(), result.getHeight());
+                modelRenderer.setUVMode(detectedMode);
+                logger.info("Auto-detected UV mode: {} for texture {}x{}",
+                    detectedMode, result.getWidth(), result.getHeight());
 
                 currentBlockModelTextureId = result.getTextureId();
                 modelRenderer.setTexture(result.getTextureId());
