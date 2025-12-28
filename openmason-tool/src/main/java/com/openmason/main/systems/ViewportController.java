@@ -519,18 +519,29 @@ public class ViewportController {
             return -1;
         }
 
-        // Get edge endpoints BEFORE subdivision (for GenericModelRenderer update)
+        // Get edge vertex indices and positions BEFORE subdivision (for GenericModelRenderer update)
+        // FIX: Use vertex positions from VertexRenderer (source of truth) instead of EdgeRenderer's
+        // edgePositions, which can drift from actual vertex positions after multiple subdivisions.
         int hoveredEdgeIndex = edgeRenderer.getHoveredEdgeIndex();
-        Vector3f[] edgeEndpoints = edgeRenderer.getEdgeEndpoints(hoveredEdgeIndex);
-        if (edgeEndpoints == null || edgeEndpoints.length != 2) {
-            logger.warn("Cannot get edge endpoints for subdivision");
+        int[] edgeVertexIndices = edgeRenderer.getEdgeVertexIndices(hoveredEdgeIndex);
+        if (edgeVertexIndices == null || edgeVertexIndices.length != 2) {
+            logger.warn("Cannot get edge vertex indices for subdivision");
             return -1;
         }
-        Vector3f endpoint1 = new Vector3f(edgeEndpoints[0]);
-        Vector3f endpoint2 = new Vector3f(edgeEndpoints[1]);
 
-        logger.info("EdgeRenderer edge {} endpoints: ({},{},{}) to ({},{},{})",
-            hoveredEdgeIndex,
+        // Get endpoint positions from VertexRenderer (ensures coordinates match GenericModelRenderer)
+        Vector3f endpoint1 = vertexRenderer.getVertexPosition(edgeVertexIndices[0]);
+        Vector3f endpoint2 = vertexRenderer.getVertexPosition(edgeVertexIndices[1]);
+        if (endpoint1 == null || endpoint2 == null) {
+            logger.warn("Cannot get vertex positions for subdivision endpoints");
+            return -1;
+        }
+        // Make copies to avoid mutation issues
+        endpoint1 = new Vector3f(endpoint1);
+        endpoint2 = new Vector3f(endpoint2);
+
+        logger.info("Subdivision: edge {} connects vertices {} and {} at ({},{},{}) to ({},{},{})",
+            hoveredEdgeIndex, edgeVertexIndices[0], edgeVertexIndices[1],
             endpoint1.x, endpoint1.y, endpoint1.z,
             endpoint2.x, endpoint2.y, endpoint2.z);
 
@@ -551,22 +562,25 @@ public class ViewportController {
                     );
 
                     if (meshVertexIndex >= 0) {
-                        // Add the new vertex to MeshManager to sync arrays
-                        meshManager.addMeshVertex(
-                            newVertexPosition.x,
-                            newVertexPosition.y,
-                            newVertexPosition.z
-                        );
+                        // CRITICAL FIX: Sync MeshManager with GenericModelRenderer's actual vertices
+                        // GenericModelRenderer may add multiple vertices (one per split triangle for UV),
+                        // so we must use its actual vertex array, not just add one vertex.
+                        float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
+                        if (modelMeshVertices != null) {
+                            meshManager.setMeshVertices(modelMeshVertices);
+                            logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices",
+                                modelMeshVertices.length / 3);
+                        }
 
-                        // Rebuild unique-to-mesh mapping with the new vertex
+                        // Rebuild unique-to-mesh mapping with the synchronized arrays
                         float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
                         float[] meshVertices = meshManager.getAllMeshVertices();
                         if (uniqueVertexPositions != null && meshVertices != null) {
                             meshManager.buildUniqueToMeshMapping(uniqueVertexPositions, meshVertices);
                         }
 
-                        logger.debug("Applied subdivision: unique vertex {}, mesh vertex {}, topology updated",
-                            newVertexIndex, meshVertexIndex);
+                        logger.debug("Applied subdivision: unique vertex {}, mesh vertices synced, topology updated",
+                            newVertexIndex);
                     } else {
                         logger.warn("Failed to apply subdivision to GenericModelRenderer");
                     }

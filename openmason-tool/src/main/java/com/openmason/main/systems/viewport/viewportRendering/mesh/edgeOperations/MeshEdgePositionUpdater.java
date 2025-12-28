@@ -161,6 +161,32 @@ public class MeshEdgePositionUpdater {
     }
 
     /**
+     * Updates edges connected to a single vertex index.
+     * Only updates edges that connect to the specified unique vertex index,
+     * providing precise control and preventing vertex unification bugs.
+     *
+     * This is a convenience method for single-vertex updates (e.g., vertex dragging).
+     * It is more reliable than position-based matching, especially after subdivision.
+     *
+     * Prerequisites: The edge-to-vertex mapping must be built before calling this method.
+     *
+     * @param vbo the OpenGL VBO handle for the edge buffer
+     * @param edgePositions edge position array in format [x1,y1,z1, x2,y2,z2, ...]
+     * @param edgeCount the total number of edges in the array
+     * @param edgeToVertexMapping 2D array mapping edge indices to pairs of vertex indices
+     * @param vertexIndex the unique vertex index that was moved
+     * @param newPosition the new position for the vertex
+     * @return UpdateResult containing update statistics, or null if input is invalid
+     */
+    public UpdateResult updateSingleVertexByIndex(int vbo, float[] edgePositions, int edgeCount,
+                                                   int[][] edgeToVertexMapping,
+                                                   int vertexIndex, Vector3f newPosition) {
+        // Delegate to the two-vertex version with same vertex for both parameters
+        return updateByIndices(vbo, edgePositions, edgeCount, edgeToVertexMapping,
+                               vertexIndex, newPosition, vertexIndex, newPosition);
+    }
+
+    /**
      * Updates edges connected to specific vertex indices.
      * Only updates edges that connect to the specified unique vertex indices,
      * providing precise control and preventing vertex unification bugs.

@@ -364,6 +364,20 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     /**
+     * Get all current mesh vertex positions.
+     * Returns a COPY to prevent external modification.
+     * Used for synchronizing MeshManager with GenericModelRenderer after subdivision.
+     *
+     * @return Copy of current vertex positions array, or null if none
+     */
+    public float[] getAllMeshVertexPositions() {
+        if (currentVertices == null) {
+            return null;
+        }
+        return currentVertices.clone();
+    }
+
+    /**
      * Find if a triangle contains a specific edge.
      * @return Edge position (0, 1, or 2) if found, -1 if not found
      */

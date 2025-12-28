@@ -116,14 +116,28 @@ public class MeshEdgeSubdivider {
 
         logger.debug("Subdividing edge {} connecting vertices {} and {}", edgeIndex, v1Index, v2Index);
 
-        // 3. Calculate midpoint position V3 = (V1 + V2) / 2
-        Vector3f midpoint = calculateMidpoint(edgeIndex, edgePositions);
-        if (midpoint == null) {
-            logger.warn("Failed to calculate midpoint for edge {}", edgeIndex);
-            return null;
-        }
+        // 3. Get V1 and V2 positions from vertex positions array (source of truth)
+        // FIX: Use vertex positions for ALL calculations to prevent coordinate drift
+        Vector3f v1Pos = new Vector3f(
+            vertexPositions[v1Index * FLOATS_PER_VERTEX],
+            vertexPositions[v1Index * FLOATS_PER_VERTEX + 1],
+            vertexPositions[v1Index * FLOATS_PER_VERTEX + 2]
+        );
+        Vector3f v2Pos = new Vector3f(
+            vertexPositions[v2Index * FLOATS_PER_VERTEX],
+            vertexPositions[v2Index * FLOATS_PER_VERTEX + 1],
+            vertexPositions[v2Index * FLOATS_PER_VERTEX + 2]
+        );
 
-        // 4. Create new vertex array with V3 appended
+        // 4. Calculate midpoint position V3 = (V1 + V2) / 2 from vertex positions
+        // FIX: Previously used edgePositions which could drift from vertex positions
+        Vector3f midpoint = new Vector3f(
+            (v1Pos.x + v2Pos.x) / 2.0f,
+            (v1Pos.y + v2Pos.y) / 2.0f,
+            (v1Pos.z + v2Pos.z) / 2.0f
+        );
+
+        // 5. Create new vertex array with V3 appended
         int newVertexCount = vertexCount + 1;
         float[] newVertexPositions = new float[newVertexCount * FLOATS_PER_VERTEX];
         System.arraycopy(vertexPositions, 0, newVertexPositions, 0, vertexPositions.length);
@@ -137,7 +151,7 @@ public class MeshEdgeSubdivider {
         logger.debug("Created new vertex {} at position ({}, {}, {})",
                     v3Index, midpoint.x, midpoint.y, midpoint.z);
 
-        // 5. Create new edge array:
+        // 6. Create new edge array:
         //    - Remove original edge at edgeIndex
         //    - Add edge V1 <-> V3
         //    - Add edge V3 <-> V2
@@ -145,18 +159,6 @@ public class MeshEdgeSubdivider {
         int newEdgeCount = edgeCount + 1;
         float[] newEdgePositions = new float[newEdgeCount * FLOATS_PER_EDGE];
         int[][] newMapping = new int[newEdgeCount][2];
-
-        // Get V1 and V2 positions from vertex positions array
-        Vector3f v1Pos = new Vector3f(
-            vertexPositions[v1Index * FLOATS_PER_VERTEX],
-            vertexPositions[v1Index * FLOATS_PER_VERTEX + 1],
-            vertexPositions[v1Index * FLOATS_PER_VERTEX + 2]
-        );
-        Vector3f v2Pos = new Vector3f(
-            vertexPositions[v2Index * FLOATS_PER_VERTEX],
-            vertexPositions[v2Index * FLOATS_PER_VERTEX + 1],
-            vertexPositions[v2Index * FLOATS_PER_VERTEX + 2]
-        );
 
         int newEdgeIdx = 0;
         for (int i = 0; i < edgeCount; i++) {
@@ -190,12 +192,22 @@ public class MeshEdgeSubdivider {
                 logger.debug("Replaced edge {} with edges {} (V{}<->V{}) and {} (V{}<->V{})",
                             i, newEdgeIdx - 2, v1Index, v3Index, newEdgeIdx - 1, v3Index, v2Index);
             } else {
-                // Copy existing edge unchanged
-                int srcOffset = i * FLOATS_PER_EDGE;
+                // Copy existing edge with positions NORMALIZED from vertex positions
+                // FIX: Previously used raw edge positions which could drift from vertex positions
+                int srcV1 = edgeToVertexMapping[i][0];
+                int srcV2 = edgeToVertexMapping[i][1];
                 int dstOffset = newEdgeIdx * FLOATS_PER_EDGE;
-                System.arraycopy(edgePositions, srcOffset, newEdgePositions, dstOffset, FLOATS_PER_EDGE);
-                newMapping[newEdgeIdx][0] = edgeToVertexMapping[i][0];
-                newMapping[newEdgeIdx][1] = edgeToVertexMapping[i][1];
+
+                // Use vertex positions (source of truth) instead of edge positions
+                newEdgePositions[dstOffset] = vertexPositions[srcV1 * FLOATS_PER_VERTEX];
+                newEdgePositions[dstOffset + 1] = vertexPositions[srcV1 * FLOATS_PER_VERTEX + 1];
+                newEdgePositions[dstOffset + 2] = vertexPositions[srcV1 * FLOATS_PER_VERTEX + 2];
+                newEdgePositions[dstOffset + 3] = vertexPositions[srcV2 * FLOATS_PER_VERTEX];
+                newEdgePositions[dstOffset + 4] = vertexPositions[srcV2 * FLOATS_PER_VERTEX + 1];
+                newEdgePositions[dstOffset + 5] = vertexPositions[srcV2 * FLOATS_PER_VERTEX + 2];
+
+                newMapping[newEdgeIdx][0] = srcV1;
+                newMapping[newEdgeIdx][1] = srcV2;
                 newEdgeIdx++;
             }
         }

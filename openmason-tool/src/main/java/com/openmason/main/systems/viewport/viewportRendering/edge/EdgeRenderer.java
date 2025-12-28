@@ -658,6 +658,40 @@ public class EdgeRenderer {
     }
 
     /**
+     * Updates edges connected to a single vertex using index-based matching.
+     * Uses the edge-to-vertex mapping for precise updates, preventing coordinate drift
+     * that can occur with position-based matching after subdivision operations.
+     *
+     * <p>This method is preferred over {@link #updateEdgesConnectedToVertex} for vertex
+     * dragging operations, especially after edge subdivision where position-based
+     * matching may fail due to floating-point coordinate differences.
+     *
+     * <p><b>Prerequisites:</b> {@link #buildEdgeToVertexMapping} must have been called.
+     *
+     * @param vertexIndex the unique vertex index that was moved
+     * @param newPosition the new position for the vertex
+     */
+    public void updateEdgesConnectedToVertexByIndex(int vertexIndex, Vector3f newPosition) {
+        if (!initialized) {
+            logger.warn("Cannot update edges: renderer not initialized");
+            return;
+        }
+
+        if (edgeToVertexMapping == null) {
+            logger.warn("Cannot update edges by index: mapping not built. Falling back to position-based update.");
+            return;
+        }
+
+        var result = meshManager.updateEdgesBySingleVertexIndex(vbo, edgePositions, edgeCount, edgeToVertexMapping,
+                                                                 vertexIndex, newPosition);
+
+        if (result != null && result.isSuccessful()) {
+            logger.trace("Updated {} edges connected to vertex {} using {} strategy",
+                result.getUpdatedCount(), vertexIndex, result.getStrategy());
+        }
+    }
+
+    /**
      * Returns the unique vertex indices for a given edge.
      * Delegates to MeshManager to retrieve which unique vertices this edge connects.
      *

@@ -346,6 +346,26 @@ public class RenderPipeline {
                     if (vertexDataNeedsUpdate) {
                         Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
                         vertexRenderer.updateVertexData(cubeParts, identityTransform);
+
+                        // CRITICAL FIX: Sync MeshManager with GenericModelRenderer's actual vertices
+                        // This ensures coordinate consistency between all systems (VertexRenderer,
+                        // EdgeRenderer, MeshManager, GenericModelRenderer) for subdivision to work
+                        // correctly at any level (n+1 subdivisions).
+                        if (modelRenderer != null && modelRenderer.isInitialized()) {
+                            float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
+                            if (modelMeshVertices != null) {
+                                var meshManager = com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager.getInstance();
+                                meshManager.setMeshVertices(modelMeshVertices);
+
+                                // Rebuild mapping with synced vertices
+                                float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
+                                if (uniqueVertexPositions != null) {
+                                    meshManager.buildUniqueToMeshMapping(uniqueVertexPositions, modelMeshVertices);
+                                }
+                                logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices", modelMeshVertices.length / 3);
+                            }
+                        }
+
                         vertexDataNeedsUpdate = false;
                         logger.trace("Vertex data extracted in model space");
                     }

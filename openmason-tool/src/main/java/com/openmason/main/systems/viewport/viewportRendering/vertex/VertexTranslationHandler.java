@@ -140,9 +140,8 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             // Mark that actual movement occurred during this drag
             hasMovedDuringDrag = true;
 
-            // Get old position BEFORE updating (needed for edge update)
+            // Get vertex index for updates
             int vertexIndex = selectionState.getSelectedVertexIndex();
-            Vector3f oldModelSpacePosition = vertexRenderer.getVertexPosition(vertexIndex);
 
             // Update selection state (world space for display)
             selectionState.updatePosition(worldSpacePosition);
@@ -150,11 +149,11 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             // Update visual preview (model space for VBO)
             vertexRenderer.updateVertexPosition(vertexIndex, modelSpacePosition);
 
-            // Update connected edge endpoints directly (model space for VBO)
-            // Pass old and new positions to find all matching endpoints
-            if (oldModelSpacePosition != null) {
-                edgeRenderer.updateEdgesConnectedToVertex(oldModelSpacePosition, modelSpacePosition);
-            }
+            // Update connected edge endpoints using INDEX-BASED matching (model space for VBO)
+            // FIX: Use index-based updates instead of position-based to prevent coordinate drift
+            // after subdivision operations. Position-based matching can fail if edge positions
+            // and vertex positions diverge even slightly.
+            edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, modelSpacePosition);
 
             // Update all face overlays that use this vertex (ensures overlays morph with geometry)
             updateAffectedFaceOverlays(vertexIndex);
@@ -263,19 +262,17 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         // Revert to original position
         selectionState.cancelDrag();
 
-        // Get current and original positions for reversion
+        // Get vertex index and original position for reversion
         int vertexIndex = selectionState.getSelectedVertexIndex();
         Vector3f originalPosition = selectionState.getOriginalPosition();
-        Vector3f currentPosition = vertexRenderer.getVertexPosition(vertexIndex);
 
         // Update visual to original position
         if (originalPosition != null) {
             vertexRenderer.updateVertexPosition(vertexIndex, originalPosition);
 
-            // Revert connected edges
-            if (currentPosition != null) {
-                edgeRenderer.updateEdgesConnectedToVertex(currentPosition, originalPosition);
-            }
+            // Revert connected edges using INDEX-BASED matching
+            // FIX: Use index-based updates for consistent behavior with handleMouseMove
+            edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, originalPosition);
 
             // Revert all face overlays that use this vertex
             updateAffectedFaceOverlays(vertexIndex);

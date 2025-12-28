@@ -431,6 +431,28 @@ public class MeshManager {
     }
 
     /**
+     * Update edge positions for a single vertex by index.
+     * Uses index-based matching strategy via MeshEdgePositionUpdater.
+     * More reliable than position-based matching, especially after subdivision.
+     *
+     * @param vbo OpenGL VBO handle
+     * @param edgePositions Edge position array
+     * @param edgeCount Total number of edges
+     * @param edgeToVertexMapping 2D array mapping edge indices to vertex indices
+     * @param vertexIndex Unique vertex index that was moved
+     * @param newPosition New position for the vertex
+     * @return UpdateResult with statistics, or null if failed
+     */
+    public MeshEdgePositionUpdater.UpdateResult updateEdgesBySingleVertexIndex(int vbo, float[] edgePositions,
+                                                                                int edgeCount,
+                                                                                int[][] edgeToVertexMapping,
+                                                                                int vertexIndex, Vector3f newPosition) {
+        MeshEdgePositionUpdater updater = new MeshEdgePositionUpdater();
+        return updater.updateSingleVertexByIndex(vbo, edgePositions, edgeCount, edgeToVertexMapping,
+                                                  vertexIndex, newPosition);
+    }
+
+    /**
      * Get edge endpoint positions.
      * Convenience method using MeshEdgeGeometryQuery.
      *
