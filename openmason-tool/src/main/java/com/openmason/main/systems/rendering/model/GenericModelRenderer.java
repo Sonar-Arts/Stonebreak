@@ -599,6 +599,10 @@ public class GenericModelRenderer extends BaseRenderer {
 
     @Override
     protected void setUniforms(ShaderProgram shader, RenderContext context, org.joml.Matrix4f modelMatrix) {
-        shader.setMat4("uModelMatrix", modelMatrix);
+        // BaseRenderer.render() already incorporates modelMatrix into uMVPMatrix (MVP = P*V*M).
+        // The MATRIX shader multiplies: gl_Position = uMVPMatrix * uModelMatrix * pos
+        // To avoid double-transformation, pass identity for uModelMatrix.
+        // This ensures the model transforms at the same rate as the wireframe overlay.
+        shader.setMat4("uModelMatrix", new org.joml.Matrix4f()); // Identity matrix
     }
 }
