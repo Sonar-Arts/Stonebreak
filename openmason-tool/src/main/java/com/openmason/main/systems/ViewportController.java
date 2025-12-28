@@ -579,6 +579,16 @@ public class ViewportController {
                             meshManager.buildUniqueToMeshMapping(uniqueVertexPositions, meshVertices);
                         }
 
+                        // CRITICAL FIX: Rebuild FaceRenderer data from GenericModelRenderer's triangles
+                        // After subdivision, face overlay geometry must match the actual mesh topology.
+                        // This rebuilds the face VBO from GenericModelRenderer's current triangles.
+                        var faceRenderer = renderPipeline.getFaceRenderer();
+                        if (faceRenderer != null) {
+                            faceRenderer.setGenericModelRenderer(modelRenderer);
+                            faceRenderer.rebuildFromGenericModelRenderer();
+                            logger.debug("Rebuilt FaceRenderer from GenericModelRenderer triangles");
+                        }
+
                         logger.debug("Applied subdivision: unique vertex {}, mesh vertices synced, topology updated",
                             newVertexIndex);
                     } else {

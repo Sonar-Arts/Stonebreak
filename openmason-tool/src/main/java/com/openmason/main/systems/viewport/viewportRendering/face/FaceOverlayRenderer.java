@@ -3,10 +3,14 @@ package com.openmason.main.systems.viewport.viewportRendering.face;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL15.*;
@@ -53,11 +57,32 @@ public class FaceOverlayRenderer {
     // Layout constants
     private static final int COMPONENTS_PER_POSITION = 3; // x, y, z
     private static final int COLOR_OFFSET_FLOATS = COMPONENTS_PER_POSITION; // Color data starts after position
+    private static final float POSITION_EPSILON = 0.01f; // Tolerance for position matching (same as GenericModelRenderer)
+
+    // Triangle mode constants (3 vertices per face, post-subdivision)
+    private static final int VERTICES_PER_TRIANGLE = 3;
+    private static final int FLOATS_PER_VERTEX_TRIANGLE = 7; // position (3) + color (4)
+    private static final int FLOATS_PER_TRIANGLE_VBO = VERTICES_PER_TRIANGLE * FLOATS_PER_VERTEX_TRIANGLE; // 21
 
     // Color definitions with alpha for transparency
     private final Vector4f defaultFaceColor = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f); // Transparent (invisible)
     private final Vector4f hoverFaceColor = new Vector4f(1.0f, 0.6f, 0.0f, 0.3f); // Orange with 30% alpha
     private final Vector4f selectedFaceColor = new Vector4f(1.0f, 1.0f, 1.0f, 0.3f); // White with 30% alpha
+
+    // Reference to GenericModelRenderer for mesh vertex position access after subdivision
+    private GenericModelRenderer genericModelRenderer = null;
+
+    // Cached mesh vertex positions from GenericModelRenderer (updated after subdivision)
+    private float[] cachedMeshVertexPositions = null;
+
+    // Triangle mode flag (true after subdivision, false for original quad faces)
+    private boolean triangleMode = false;
+
+    // Maps original face ID to list of triangle indices (used in triangle mode)
+    private java.util.Map<Integer, java.util.List<Integer>> originalFaceToTriangles = new java.util.HashMap<>();
+
+    // Total triangle count (used in triangle mode)
+    private int triangleCount = 0;
 
     /**
      * Render face overlays with semi-transparent highlighting.
@@ -182,35 +207,64 @@ public class FaceOverlayRenderer {
     /**
      * Render a single face with a specific color.
      * Updates VBO color data, renders the face, then restores default color.
-     * Uses shared constants from MeshManager for DRY compliance.
+     *
+     * <p>In triangle mode with grouped faces:
+     * <ul>
+     *   <li>faceIndex refers to the original face ID (0-5 for cube)</li>
+     *   <li>Renders ALL triangles belonging to that original face</li>
+     * </ul>
      *
      * @param vbo The vertex buffer object for color updates
-     * @param faceIndex The face index to render
+     * @param faceIndex The face index to render (original face ID in triangle mode)
      * @param color The color to use (RGBA with alpha for transparency)
      */
     private void renderFaceWithColor(int vbo, int faceIndex, Vector4f color) {
-        int dataStart = faceIndex * MeshManager.FLOATS_PER_FACE_VBO;
         int colorOffsetBytes = COLOR_OFFSET_FLOATS * Float.BYTES;
 
-        // Update color in VBO
-        updateFaceColors(vbo, dataStart, colorOffsetBytes, color);
+        if (triangleMode && originalFaceToTriangles.containsKey(faceIndex)) {
+            // Grouped triangle mode: render ALL triangles belonging to this original face
+            java.util.List<Integer> triangles = originalFaceToTriangles.get(faceIndex);
 
-        // Render the face (2 triangles = 6 vertices)
-        glDrawArrays(GL_TRIANGLES, faceIndex * MeshManager.VERTICES_PER_FACE, MeshManager.VERTICES_PER_FACE);
+            // Update colors for all triangles of this face
+            for (int triIndex : triangles) {
+                int dataStart = triIndex * FLOATS_PER_TRIANGLE_VBO;
+                updateTriangleFaceColors(vbo, dataStart, colorOffsetBytes, color);
+            }
 
-        // Restore default color
-        updateFaceColors(vbo, dataStart, colorOffsetBytes, defaultFaceColor);
+            // Render all triangles of this face
+            for (int triIndex : triangles) {
+                glDrawArrays(GL_TRIANGLES, triIndex * VERTICES_PER_TRIANGLE, VERTICES_PER_TRIANGLE);
+            }
+
+            // Restore default colors for all triangles
+            for (int triIndex : triangles) {
+                int dataStart = triIndex * FLOATS_PER_TRIANGLE_VBO;
+                updateTriangleFaceColors(vbo, dataStart, colorOffsetBytes, defaultFaceColor);
+            }
+        } else if (!triangleMode) {
+            // Quad mode: 6 vertices per face (original)
+            int dataStart = faceIndex * MeshManager.FLOATS_PER_FACE_VBO;
+
+            // Update color in VBO
+            updateQuadFaceColors(vbo, dataStart, colorOffsetBytes, color);
+
+            // Render the face (2 triangles = 6 vertices)
+            glDrawArrays(GL_TRIANGLES, faceIndex * MeshManager.VERTICES_PER_FACE, MeshManager.VERTICES_PER_FACE);
+
+            // Restore default color
+            updateQuadFaceColors(vbo, dataStart, colorOffsetBytes, defaultFaceColor);
+        }
     }
 
     /**
-     * Update color data for all vertices of a face in the VBO.
+     * Update color data for all vertices of a quad face in the VBO.
      *
      * @param vbo The vertex buffer object
-     * @param dataStart Starting offset in the VBO
+     * @param dataStart Starting offset in the VBO (in floats)
      * @param colorOffsetBytes Byte offset to color data within each vertex
      * @param color The color to set
      */
-    private void updateFaceColors(int vbo, int dataStart, int colorOffsetBytes, Vector4f color) {
+    private void updateQuadFaceColors(int vbo, int dataStart, int colorOffsetBytes, Vector4f color) {
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
         float[] colorData = new float[] { color.x, color.y, color.z, color.w };
@@ -220,6 +274,77 @@ public class FaceOverlayRenderer {
         }
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    /**
+     * Update color data for all vertices of a triangle face in the VBO.
+     *
+     * @param vbo The vertex buffer object
+     * @param dataStart Starting offset in the VBO (in floats)
+     * @param colorOffsetBytes Byte offset to color data within each vertex
+     * @param color The color to set
+     */
+    private void updateTriangleFaceColors(int vbo, int dataStart, int colorOffsetBytes, Vector4f color) {
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+        float[] colorData = new float[] { color.x, color.y, color.z, color.w };
+        for (int i = 0; i < VERTICES_PER_TRIANGLE; i++) {
+            int vboOffset = (dataStart + (i * FLOATS_PER_VERTEX_TRIANGLE)) * Float.BYTES + colorOffsetBytes;
+            glBufferSubData(GL_ARRAY_BUFFER, vboOffset, colorData);
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    /**
+     * Set triangle mode for rendering.
+     * Triangle mode is used after subdivision when faces are individual triangles
+     * rather than quads (2 triangles).
+     *
+     * @param enabled true to enable triangle mode, false for quad mode
+     */
+    public void setTriangleMode(boolean enabled) {
+        this.triangleMode = enabled;
+        logger.debug("Triangle mode set to: {}", enabled);
+    }
+
+    /**
+     * Check if triangle mode is enabled.
+     *
+     * @return true if triangle mode is enabled
+     */
+    public boolean isTriangleMode() {
+        return triangleMode;
+    }
+
+    /**
+     * Set the mapping from original face IDs to triangle indices.
+     * Used for grouped face rendering after subdivision.
+     *
+     * @param mapping Map from original face ID to list of triangle indices
+     */
+    public void setOriginalFaceToTriangles(java.util.Map<Integer, java.util.List<Integer>> mapping) {
+        this.originalFaceToTriangles = mapping != null ? mapping : new java.util.HashMap<>();
+        logger.debug("Original face to triangles mapping set: {} faces", originalFaceToTriangles.size());
+    }
+
+    /**
+     * Set the total triangle count (used in triangle mode).
+     *
+     * @param count Total number of triangles
+     */
+    public void setTriangleCount(int count) {
+        this.triangleCount = count;
+        logger.debug("Triangle count set to: {}", count);
+    }
+
+    /**
+     * Get the total triangle count.
+     *
+     * @return Total number of triangles
+     */
+    public int getTriangleCount() {
+        return triangleCount;
     }
 
     /**
@@ -279,5 +404,119 @@ public class FaceOverlayRenderer {
             this.depthMask = depthMask;
             this.cullFace = cullFace;
         }
+    }
+
+    // ========================================
+    // Methods for synchronizing with GenericModelRenderer (used after subdivision)
+    // ========================================
+
+    /**
+     * Set the GenericModelRenderer reference for mesh vertex position access.
+     * This is used after subdivision to get updated vertex positions.
+     *
+     * @param renderer The GenericModelRenderer instance
+     */
+    public void setGenericModelRenderer(GenericModelRenderer renderer) {
+        this.genericModelRenderer = renderer;
+        logger.debug("GenericModelRenderer reference set for FaceOverlayRenderer");
+    }
+
+    /**
+     * Synchronize cached mesh vertex positions from GenericModelRenderer.
+     * Call this after subdivision operations to ensure face overlay vertex
+     * attachments use the correct (updated) mesh vertex positions.
+     *
+     * <p>This mirrors the approach used in EdgeRenderer after subdivision,
+     * where mesh positions are synchronized to prevent coordinate drift.
+     */
+    public void syncMeshVertexPositions() {
+        if (genericModelRenderer == null) {
+            logger.warn("Cannot sync mesh positions: GenericModelRenderer reference not set");
+            return;
+        }
+
+        cachedMeshVertexPositions = genericModelRenderer.getAllMeshVertexPositions();
+
+        if (cachedMeshVertexPositions != null) {
+            logger.debug("Synced {} mesh vertex positions from GenericModelRenderer",
+                cachedMeshVertexPositions.length / 3);
+        }
+    }
+
+    /**
+     * Find all mesh vertex indices at a given position.
+     * Uses the same position-matching strategy as GenericModelRenderer.findMeshVerticesAtPosition().
+     * This is critical for correct vertex attachment after edge subdivision.
+     *
+     * @param position The position to search for
+     * @return List of mesh vertex indices at that position, or empty list if none found
+     */
+    public List<Integer> findMeshVerticesAtPosition(Vector3f position) {
+        // First try using GenericModelRenderer directly (most accurate)
+        if (genericModelRenderer != null) {
+            return genericModelRenderer.findMeshVerticesAtPosition(position, POSITION_EPSILON);
+        }
+
+        // Fallback to cached positions
+        java.util.List<Integer> result = new java.util.ArrayList<>();
+        if (cachedMeshVertexPositions == null || position == null) {
+            return result;
+        }
+
+        int count = cachedMeshVertexPositions.length / 3;
+        for (int i = 0; i < count; i++) {
+            float dx = cachedMeshVertexPositions[i * 3] - position.x;
+            float dy = cachedMeshVertexPositions[i * 3 + 1] - position.y;
+            float dz = cachedMeshVertexPositions[i * 3 + 2] - position.z;
+            float distSq = dx * dx + dy * dy + dz * dz;
+            if (distSq < POSITION_EPSILON * POSITION_EPSILON) {
+                result.add(i);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Get the total mesh vertex count from GenericModelRenderer.
+     * Used to determine VBO layout after subdivision.
+     *
+     * @return Total mesh vertex count, or 0 if not available
+     */
+    public int getMeshVertexCount() {
+        if (genericModelRenderer != null) {
+            return genericModelRenderer.getTotalVertexCount();
+        }
+        if (cachedMeshVertexPositions != null) {
+            return cachedMeshVertexPositions.length / 3;
+        }
+        return 0;
+    }
+
+    /**
+     * Get mesh vertex position by index.
+     * Used to determine face overlay vertex attachments.
+     *
+     * @param meshVertexIndex The mesh vertex index
+     * @return The vertex position, or null if invalid
+     */
+    public Vector3f getMeshVertexPosition(int meshVertexIndex) {
+        if (genericModelRenderer != null) {
+            return genericModelRenderer.getVertexPosition(meshVertexIndex);
+        }
+
+        if (cachedMeshVertexPositions == null || meshVertexIndex < 0) {
+            return null;
+        }
+
+        int offset = meshVertexIndex * 3;
+        if (offset + 2 >= cachedMeshVertexPositions.length) {
+            return null;
+        }
+
+        return new Vector3f(
+            cachedMeshVertexPositions[offset],
+            cachedMeshVertexPositions[offset + 1],
+            cachedMeshVertexPositions[offset + 2]
+        );
     }
 }

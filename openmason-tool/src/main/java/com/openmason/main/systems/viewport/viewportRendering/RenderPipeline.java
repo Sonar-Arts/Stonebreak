@@ -349,8 +349,8 @@ public class RenderPipeline {
 
                         // CRITICAL FIX: Sync MeshManager with GenericModelRenderer's actual vertices
                         // This ensures coordinate consistency between all systems (VertexRenderer,
-                        // EdgeRenderer, MeshManager, GenericModelRenderer) for subdivision to work
-                        // correctly at any level (n+1 subdivisions).
+                        // EdgeRenderer, FaceRenderer, MeshManager, GenericModelRenderer) for subdivision
+                        // to work correctly at any level (n+1 subdivisions).
                         if (modelRenderer != null && modelRenderer.isInitialized()) {
                             float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
                             if (modelMeshVertices != null) {
@@ -363,6 +363,9 @@ public class RenderPipeline {
                                     meshManager.buildUniqueToMeshMapping(uniqueVertexPositions, modelMeshVertices);
                                 }
                                 logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices", modelMeshVertices.length / 3);
+
+                                // Wire FaceRenderer to GenericModelRenderer for face overlay data access
+                                faceRenderer.setGenericModelRenderer(modelRenderer);
                             }
                         }
 

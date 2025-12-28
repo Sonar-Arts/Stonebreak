@@ -169,17 +169,27 @@ public class FaceInputController {
             // PRIORITY: Only select face if no vertex AND no edge is hovered
             if (hoveredVertex < 0 && hoveredEdge < 0 && hoveredFace >= 0) {
                 // Clicking on a hovered face (and no vertex or edge) - select it
-                Vector3f[] faceVertices = faceRenderer.getFaceVertices(hoveredFace);
-                int[] vertexIndices = faceRenderer.getFaceVertexIndices(hoveredFace);
+                // Handle both quad mode and triangle mode
+                Vector3f[] faceVertices;
+                int[] vertexIndices;
 
-                if (faceVertices != null && faceVertices.length == 4 &&
-                    vertexIndices != null && vertexIndices.length == 4) {
-                    // Select face with all 4 corner vertices
-                    faceSelectionState.selectFace(hoveredFace, faceVertices);
+                if (faceRenderer.isUsingTriangleMode()) {
+                    // TRIANGLE MODE: Get vertices and indices from triangle-to-face mapping
+                    faceVertices = faceRenderer.getTriangleVertexPositionsForFace(hoveredFace);
+                    vertexIndices = faceRenderer.getTriangleVertexIndicesForFace(hoveredFace);
+                } else {
+                    // QUAD MODE: Get vertices and indices from quad face data
+                    faceVertices = faceRenderer.getFaceVertices(hoveredFace);
+                    vertexIndices = faceRenderer.getFaceVertexIndices(hoveredFace);
+                }
+
+                if (faceVertices != null && faceVertices.length >= 3 &&
+                    vertexIndices != null && vertexIndices.length >= 3) {
+                    // Select face with all vertices (variable count for quad/triangle modes)
+                    faceSelectionState.selectFace(hoveredFace, faceVertices, vertexIndices);
                     faceRenderer.setSelectedFace(hoveredFace);
-                    logger.debug("Face {} selected with vertex indices [{}, {}, {}, {}]",
-                            hoveredFace,
-                            vertexIndices[0], vertexIndices[1], vertexIndices[2], vertexIndices[3]);
+                    logger.debug("Face {} selected with {} vertices (triangle mode: {})",
+                            hoveredFace, vertexIndices.length, faceRenderer.isUsingTriangleMode());
 
                     // Clear vertex and edge selection when selecting a face
                     clearVertexSelection();

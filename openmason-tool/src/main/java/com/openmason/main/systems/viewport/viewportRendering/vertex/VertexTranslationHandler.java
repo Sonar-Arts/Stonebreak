@@ -156,7 +156,10 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, modelSpacePosition);
 
             // Update all face overlays that use this vertex (ensures overlays morph with geometry)
-            updateAffectedFaceOverlays(vertexIndex);
+            // NOTE: In triangle mode, rebuildFromGenericModelRenderer() handles this below
+            if (!faceRenderer.isUsingTriangleMode()) {
+                updateAffectedFaceOverlays(vertexIndex);
+            }
 
             // REALTIME VISUAL UPDATE: Update ModelRenderer during drag (no merging)
             // This provides visual feedback showing how the final cube will look
@@ -164,6 +167,12 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
             if (meshVertices != null && modelRenderer != null) {
                 modelRenderer.updateVertexPositions(meshVertices);
+
+                // In triangle mode, face overlays need to be rebuilt from GenericModelRenderer
+                // since updateFaceByVertexIndices() only works in quad mode
+                if (faceRenderer.isUsingTriangleMode()) {
+                    faceRenderer.rebuildFromGenericModelRenderer();
+                }
             }
 
             logger.trace("Dragging vertex {} to world ({}, {}, {}) → model ({}, {}, {})",
@@ -233,6 +242,10 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
             if (meshVertices != null && modelRenderer != null) {
                 modelRenderer.updateVertexPositions(meshVertices);
+                // Rebuild face overlays in triangle mode after position update
+                if (faceRenderer.isUsingTriangleMode()) {
+                    faceRenderer.rebuildFromGenericModelRenderer();
+                }
                 logger.debug("Committed merged vertex drag to ModelRenderer with mesh vertices");
             }
         } else {
@@ -240,6 +253,10 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
             if (meshVertices != null && modelRenderer != null) {
                 modelRenderer.updateVertexPositions(meshVertices);
+                // Rebuild face overlays in triangle mode after position update
+                if (faceRenderer.isUsingTriangleMode()) {
+                    faceRenderer.rebuildFromGenericModelRenderer();
+                }
                 logger.debug("Committed vertex drag to ModelRenderer (no merge)");
             }
         }
@@ -275,12 +292,19 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, originalPosition);
 
             // Revert all face overlays that use this vertex
-            updateAffectedFaceOverlays(vertexIndex);
+            // NOTE: In triangle mode, rebuildFromGenericModelRenderer() handles this below
+            if (!faceRenderer.isUsingTriangleMode()) {
+                updateAffectedFaceOverlays(vertexIndex);
+            }
 
             // REVERT: Update ModelRenderer with original mesh vertices
             float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
             if (meshVertices != null && modelRenderer != null) {
                 modelRenderer.updateVertexPositions(meshVertices);
+                // Rebuild face overlays in triangle mode after position revert
+                if (faceRenderer.isUsingTriangleMode()) {
+                    faceRenderer.rebuildFromGenericModelRenderer();
+                }
                 logger.debug("Reverted ModelRenderer to original positions (cancel)");
             }
         }

@@ -142,6 +142,111 @@ public final class FaceHoverDetector {
     }
 
     /**
+     * Detect which triangle (if any) the mouse is hovering over.
+     * Uses ray-triangle intersection for hit detection.
+     * This variant is for triangle mode (post-subdivision) where faces are individual triangles.
+     *
+     * @param mouseX Mouse X coordinate in viewport space
+     * @param mouseY Mouse Y coordinate in viewport space
+     * @param viewportWidth Viewport width in pixels
+     * @param viewportHeight Viewport height in pixels
+     * @param viewMatrix Camera view matrix
+     * @param projectionMatrix Camera projection matrix
+     * @param modelMatrix Model transformation matrix
+     * @param trianglePositions Array of triangle vertex positions [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, ...]
+     * @param triangleCount Number of triangles
+     * @return Index of hovered triangle, or -1 if no triangle is hovered
+     */
+    public static int detectHoveredTriangle(float mouseX, float mouseY,
+                                            int viewportWidth, int viewportHeight,
+                                            Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                            Matrix4f modelMatrix,
+                                            float[] trianglePositions,
+                                            int triangleCount) {
+        if (trianglePositions == null || triangleCount <= 0) {
+            return -1;
+        }
+
+        if (viewMatrix == null || projectionMatrix == null || modelMatrix == null) {
+            logger.warn("Cannot detect triangle hover: null matrices");
+            return -1;
+        }
+
+        try {
+            // Create ray from mouse position
+            CoordinateSystem.Ray ray = CoordinateSystem.createWorldRayFromScreen(
+                mouseX, mouseY,
+                viewportWidth, viewportHeight,
+                viewMatrix, projectionMatrix
+            );
+
+            if (ray == null) {
+                logger.warn("Failed to create ray from mouse position");
+                return -1;
+            }
+
+            // Test each triangle for intersection
+            int closestTriangleIndex = -1;
+            float closestDistance = Float.POSITIVE_INFINITY;
+
+            for (int triIdx = 0; triIdx < triangleCount; triIdx++) {
+                int posStart = triIdx * 9; // 9 floats per triangle (3 vertices × 3 coords)
+
+                // Bounds check
+                if (posStart + 8 >= trianglePositions.length) {
+                    break;
+                }
+
+                // Get 3 vertices of triangle in MODEL SPACE
+                Vector3f v0_model = new Vector3f(
+                    trianglePositions[posStart + 0],
+                    trianglePositions[posStart + 1],
+                    trianglePositions[posStart + 2]
+                );
+                Vector3f v1_model = new Vector3f(
+                    trianglePositions[posStart + 3],
+                    trianglePositions[posStart + 4],
+                    trianglePositions[posStart + 5]
+                );
+                Vector3f v2_model = new Vector3f(
+                    trianglePositions[posStart + 6],
+                    trianglePositions[posStart + 7],
+                    trianglePositions[posStart + 8]
+                );
+
+                // Transform vertices from MODEL SPACE to WORLD SPACE
+                Vector3f v0 = new Vector3f();
+                Vector3f v1 = new Vector3f();
+                Vector3f v2 = new Vector3f();
+                modelMatrix.transformPosition(v0_model, v0);
+                modelMatrix.transformPosition(v1_model, v1);
+                modelMatrix.transformPosition(v2_model, v2);
+
+                float[] outT = new float[1];
+
+                // Test triangle
+                if (intersectRayTriangle(ray.origin(), ray.direction(), v0, v1, v2, outT)) {
+                    float distance = outT[0];
+                    if (distance >= 0 && distance < closestDistance) {
+                        closestDistance = distance;
+                        closestTriangleIndex = triIdx;
+                    }
+                }
+            }
+
+            if (closestTriangleIndex >= 0) {
+                logger.trace("Triangle {} hovered at distance {}", closestTriangleIndex, closestDistance);
+            }
+
+            return closestTriangleIndex;
+
+        } catch (Exception e) {
+            logger.error("Error detecting triangle hover", e);
+            return -1;
+        }
+    }
+
+    /**
      * Ray-triangle intersection using Moller-Trumbore algorithm.
      * Fast, robust algorithm that doesn't require pre-computing the plane equation.
      *

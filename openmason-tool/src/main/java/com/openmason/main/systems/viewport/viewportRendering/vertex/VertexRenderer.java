@@ -437,6 +437,33 @@ public class VertexRenderer {
     }
 
     /**
+     * Find a vertex index by position (with epsilon tolerance).
+     * Used to map GenericModelRenderer positions to VertexRenderer indices.
+     *
+     * @param position The position to search for
+     * @param epsilon Tolerance for position matching
+     * @return The vertex index, or -1 if not found
+     */
+    public int findVertexIndexByPosition(Vector3f position, float epsilon) {
+        if (vertexPositions == null || position == null) {
+            return -1;
+        }
+
+        float epsilonSq = epsilon * epsilon;
+        for (int i = 0; i < vertexCount; i++) {
+            int posIndex = i * 3;
+            float dx = vertexPositions[posIndex] - position.x;
+            float dy = vertexPositions[posIndex + 1] - position.y;
+            float dz = vertexPositions[posIndex + 2] - position.z;
+            float distSq = dx * dx + dy * dy + dz * dz;
+            if (distSq < epsilonSq) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
      * Apply vertex addition from a subdivision operation.
      * Updates vertex data structures with new vertex positions and count.
      * Used when subdivision creates a new midpoint vertex.

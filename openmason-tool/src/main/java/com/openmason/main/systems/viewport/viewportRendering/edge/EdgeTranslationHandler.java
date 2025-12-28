@@ -244,6 +244,10 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
             if (meshVertices != null && modelRenderer != null) {
                 modelRenderer.updateVertexPositions(meshVertices);
+                // Rebuild face overlays in triangle mode after position update
+                if (faceRenderer.isUsingTriangleMode()) {
+                    faceRenderer.rebuildFromGenericModelRenderer();
+                }
                 logger.debug("Committed merged edge drag to ModelRenderer with mesh vertices");
             }
         } else {
@@ -251,6 +255,10 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
             if (meshVertices != null && modelRenderer != null) {
                 modelRenderer.updateVertexPositions(meshVertices);
+                // Rebuild face overlays in triangle mode after position update
+                if (faceRenderer.isUsingTriangleMode()) {
+                    faceRenderer.rebuildFromGenericModelRenderer();
+                }
                 logger.debug("Committed edge drag to ModelRenderer (no merge)");
             }
         }
@@ -292,6 +300,10 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
             if (meshVertices != null && modelRenderer != null) {
                 modelRenderer.updateVertexPositions(meshVertices);
+                // Rebuild face overlays in triangle mode after position revert
+                if (faceRenderer.isUsingTriangleMode()) {
+                    faceRenderer.rebuildFromGenericModelRenderer();
+                }
                 logger.debug("Reverted ModelRenderer to original positions (cancel)");
             }
         }
@@ -339,6 +351,12 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
         if (meshVertices != null && modelRenderer != null) {
             modelRenderer.updateVertexPositions(meshVertices);
+
+            // In triangle mode, face overlays need to be rebuilt from GenericModelRenderer
+            // since updateFaceByVertexIndices() only works in quad mode
+            if (faceRenderer.isUsingTriangleMode()) {
+                faceRenderer.rebuildFromGenericModelRenderer();
+            }
         }
 
         logger.trace("Updated edge {} and connected geometry using indices {} and {} (prevents unification)",

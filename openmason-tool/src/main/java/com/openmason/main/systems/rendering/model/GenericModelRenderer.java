@@ -35,6 +35,11 @@ public class GenericModelRenderer extends BaseRenderer {
     private float[] currentTexCoords;
     private int[] currentIndices;
 
+    // Triangle-to-face mapping (tracks which original face each triangle belongs to)
+    // For a cube: 12 triangles total, 2 per face, so face IDs are 0-5
+    // This mapping is preserved and updated during subdivision
+    private int[] triangleToOriginalFaceId;
+
     // Texture
     private int textureId = 0;
     private boolean useTexture = false;
@@ -188,6 +193,7 @@ public class GenericModelRenderer extends BaseRenderer {
         currentVertices = null;
         currentTexCoords = null;
         currentIndices = null;
+        triangleToOriginalFaceId = null;
         vertexCount = 0;
         indexCount = 0;
     }
@@ -378,6 +384,140 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     /**
+     * Get the current triangle count.
+     * Each triangle has 3 indices in the currentIndices array.
+     *
+     * @return Number of triangles, or 0 if no indices
+     */
+    public int getTriangleCount() {
+        return currentIndices != null ? currentIndices.length / 3 : 0;
+    }
+
+    /**
+     * Get the current triangle indices.
+     * Returns a COPY to prevent external modification.
+     * Used for synchronizing face overlay data after subdivision.
+     *
+     * @return Copy of current indices array, or null if none
+     */
+    public int[] getTriangleIndices() {
+        if (currentIndices == null) {
+            return null;
+        }
+        return currentIndices.clone();
+    }
+
+    /**
+     * Get the vertex positions for a specific triangle.
+     * Used for extracting triangle geometry for face overlays.
+     *
+     * @param triangleIndex The triangle index (0-based)
+     * @return Array of 3 Vector3f positions [v0, v1, v2], or null if invalid
+     */
+    public Vector3f[] getTriangleVertices(int triangleIndex) {
+        if (currentIndices == null || currentVertices == null) {
+            return null;
+        }
+
+        int indexOffset = triangleIndex * 3;
+        if (indexOffset + 2 >= currentIndices.length) {
+            return null;
+        }
+
+        int i0 = currentIndices[indexOffset];
+        int i1 = currentIndices[indexOffset + 1];
+        int i2 = currentIndices[indexOffset + 2];
+
+        Vector3f[] result = new Vector3f[3];
+        result[0] = getVertexPosition(i0);
+        result[1] = getVertexPosition(i1);
+        result[2] = getVertexPosition(i2);
+
+        if (result[0] == null || result[1] == null || result[2] == null) {
+            return null;
+        }
+
+        return result;
+    }
+
+    /**
+     * Get the original face ID for a given triangle index.
+     * Used for face overlay grouping after subdivision.
+     *
+     * @param triangleIndex The triangle index (0-based)
+     * @return The original face ID (0-5 for cube), or -1 if invalid
+     */
+    public int getOriginalFaceIdForTriangle(int triangleIndex) {
+        if (triangleToOriginalFaceId == null || triangleIndex < 0 ||
+            triangleIndex >= triangleToOriginalFaceId.length) {
+            return -1;
+        }
+        return triangleToOriginalFaceId[triangleIndex];
+    }
+
+    /**
+     * Get all triangle indices that belong to a specific original face.
+     * Used for rendering grouped face overlays after subdivision.
+     *
+     * @param originalFaceId The original face ID (0-5 for cube)
+     * @return Array of triangle indices belonging to this face, or empty array if none
+     */
+    public int[] getAllTrianglesForOriginalFace(int originalFaceId) {
+        if (triangleToOriginalFaceId == null || originalFaceId < 0) {
+            return new int[0];
+        }
+
+        // Count triangles for this face
+        int count = 0;
+        for (int faceId : triangleToOriginalFaceId) {
+            if (faceId == originalFaceId) {
+                count++;
+            }
+        }
+
+        // Collect triangle indices
+        int[] result = new int[count];
+        int idx = 0;
+        for (int t = 0; t < triangleToOriginalFaceId.length; t++) {
+            if (triangleToOriginalFaceId[t] == originalFaceId) {
+                result[idx++] = t;
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Get the number of original faces (before subdivision).
+     * For a cube, this is always 6.
+     *
+     * @return The number of original faces
+     */
+    public int getOriginalFaceCount() {
+        if (triangleToOriginalFaceId == null || triangleToOriginalFaceId.length == 0) {
+            return 0;
+        }
+
+        // Find the maximum face ID + 1
+        int maxFaceId = 0;
+        for (int faceId : triangleToOriginalFaceId) {
+            if (faceId > maxFaceId) {
+                maxFaceId = faceId;
+            }
+        }
+        return maxFaceId + 1;
+    }
+
+    /**
+     * Check if triangle-to-face mapping is available.
+     *
+     * @return true if mapping is available
+     */
+    public boolean hasTriangleToFaceMapping() {
+        return triangleToOriginalFaceId != null && triangleToOriginalFaceId.length > 0;
+    }
+
+    /**
      * Find if a triangle contains a specific edge.
      * @return Edge position (0, 1, or 2) if found, -1 if not found
      */
@@ -539,10 +679,14 @@ public class GenericModelRenderer extends BaseRenderer {
 
         // Step 3: Split triangles, adding a new vertex for each
         java.util.List<Integer> newIndices = new java.util.ArrayList<>();
+        java.util.List<Integer> newTriangleToFaceId = new java.util.ArrayList<>();  // Track face IDs for new triangles
         int splitCount = 0;
         int currentNewVertex = firstNewVertexIndex;
 
         for (int t = 0; t < triangleCount; t++) {
+            // Get the original face ID for this triangle (to preserve during split)
+            int originalFaceId = (triangleToOriginalFaceId != null && t < triangleToOriginalFaceId.length)
+                ? triangleToOriginalFaceId[t] : (t / 2);
             int i0 = currentIndices[t * 3];
             int i1 = currentIndices[t * 3 + 1];
             int i2 = currentIndices[t * 3 + 2];
@@ -585,6 +729,7 @@ public class GenericModelRenderer extends BaseRenderer {
                         newIndices.add(i0);
                         newIndices.add(i1);
                         newIndices.add(i2);
+                        newTriangleToFaceId.add(originalFaceId);
                         continue;
                 }
 
@@ -608,13 +753,16 @@ public class GenericModelRenderer extends BaseRenderer {
                 newTexCoords[currentNewVertex * 2 + 1] = (v1 + v2) / 2.0f;
 
                 // Create 2 new triangles using this triangle's midpoint vertex
+                // Both new triangles inherit the original face ID
                 newIndices.add(e1);
                 newIndices.add(currentNewVertex);
                 newIndices.add(oppositeVertex);
+                newTriangleToFaceId.add(originalFaceId);  // First new triangle inherits face ID
 
                 newIndices.add(currentNewVertex);
                 newIndices.add(e2);
                 newIndices.add(oppositeVertex);
+                newTriangleToFaceId.add(originalFaceId);  // Second new triangle inherits face ID
 
                 splitCount++;
                 logger.debug("Split triangle {} ({},{},{}) on edge ({},{}) -> 2 triangles, new vertex {} UV=({},{})",
@@ -623,10 +771,11 @@ public class GenericModelRenderer extends BaseRenderer {
 
                 currentNewVertex++;
             } else {
-                // Keep original triangle
+                // Keep original triangle - preserve its face ID
                 newIndices.add(i0);
                 newIndices.add(i1);
                 newIndices.add(i2);
+                newTriangleToFaceId.add(originalFaceId);
             }
         }
 
@@ -635,9 +784,13 @@ public class GenericModelRenderer extends BaseRenderer {
         currentTexCoords = newTexCoords;
         vertexCount += trianglesToSplit;
 
-        // Step 4: Update indices array
+        // Step 4: Update indices array and face mapping
         currentIndices = newIndices.stream().mapToInt(Integer::intValue).toArray();
         indexCount = currentIndices.length;
+        triangleToOriginalFaceId = newTriangleToFaceId.stream().mapToInt(Integer::intValue).toArray();
+
+        logger.debug("Updated triangle-to-face mapping: {} triangles, preserving face IDs",
+            triangleToOriginalFaceId.length);
 
         // Step 5: Rebuild GPU buffers
         float[] interleavedData = buildInterleavedData();
@@ -738,6 +891,21 @@ public class GenericModelRenderer extends BaseRenderer {
 
         vertexCount = totalVertices;
         indexCount = totalIndices;
+
+        // Initialize triangle-to-face mapping
+        // For a cube: 12 triangles total (6 faces × 2 triangles each)
+        // Triangles 0-1 = face 0, triangles 2-3 = face 1, etc.
+        if (currentIndices != null) {
+            int triangleCount = currentIndices.length / 3;
+            triangleToOriginalFaceId = new int[triangleCount];
+            for (int t = 0; t < triangleCount; t++) {
+                triangleToOriginalFaceId[t] = t / 2;  // 2 triangles per original face
+            }
+            logger.debug("Initialized triangle-to-face mapping: {} triangles, {} faces",
+                triangleCount, (triangleCount + 1) / 2);
+        } else {
+            triangleToOriginalFaceId = null;
+        }
 
         // Update GPU buffers if initialized
         if (initialized) {

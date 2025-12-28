@@ -4,11 +4,16 @@ import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Manages face selection state for the viewport system.
- * Tracks selected face, 4 vertex positions (quad corners), and working plane for translation.
- * Follows the same pattern as EdgeSelectionState but with 4 vertices instead of 2 (SOLID, DRY).
+ * Tracks selected face, vertex positions (variable count for quad/triangle modes), and working plane for translation.
+ * Follows the same pattern as EdgeSelectionState (SOLID, DRY).
  * Thread-safe state management with dirty tracking.
+ *
+ * <p>Supports both quad mode (4 vertices) and triangle mode (variable vertices after subdivision).
  */
 public class FaceSelectionState {
 
@@ -17,16 +22,12 @@ public class FaceSelectionState {
     // Selection state
     private int selectedFaceIndex = -1;  // -1 means no selection
 
-    // Face vertices (4 corners of quad face)
-    private Vector3f originalVertex1 = null;
-    private Vector3f originalVertex2 = null;
-    private Vector3f originalVertex3 = null;
-    private Vector3f originalVertex4 = null;
+    // Face vertices (variable count - 4 for quads, more for subdivided faces)
+    private List<Vector3f> originalVertices = new ArrayList<>();
+    private List<Vector3f> currentVertices = new ArrayList<>();
 
-    private Vector3f currentVertex1 = null;
-    private Vector3f currentVertex2 = null;
-    private Vector3f currentVertex3 = null;
-    private Vector3f currentVertex4 = null;
+    // Mesh vertex indices (parallel to originalVertices/currentVertices)
+    private int[] vertexIndices = null;
 
     private boolean isDragging = false;
     private boolean isModified = false;
@@ -43,46 +44,59 @@ public class FaceSelectionState {
     }
 
     /**
-     * Select a face by index.
+     * Select a face by index (quad mode with 4 vertices).
      *
      * @param faceIndex the index of the face to select
      * @param vertices  array of 4 vertex positions (quad corners) in model space
      * @throws IllegalArgumentException if faceIndex is negative or vertices array invalid
      */
     public synchronized void selectFace(int faceIndex, Vector3f[] vertices) {
+        selectFace(faceIndex, vertices, null);
+    }
+
+    /**
+     * Select a face by index with vertex indices (supports variable vertex count).
+     * Used in triangle mode where faces may have more than 4 vertices after subdivision.
+     *
+     * @param faceIndex the index of the face to select
+     * @param vertices  array of vertex positions in model space (variable count)
+     * @param indices   array of mesh vertex indices (parallel to vertices), can be null for quad mode
+     * @throws IllegalArgumentException if faceIndex is negative or vertices array invalid
+     */
+    public synchronized void selectFace(int faceIndex, Vector3f[] vertices, int[] indices) {
         if (faceIndex < 0) {
             throw new IllegalArgumentException("Face index cannot be negative: " + faceIndex);
         }
-        if (vertices == null || vertices.length != 4) {
-            throw new IllegalArgumentException("Vertices array must contain exactly 4 vertices, got: " +
+        if (vertices == null || vertices.length < 3) {
+            throw new IllegalArgumentException("Vertices array must contain at least 3 vertices, got: " +
                     (vertices == null ? "null" : vertices.length));
         }
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < vertices.length; i++) {
             if (vertices[i] == null) {
                 throw new IllegalArgumentException("Vertex " + i + " cannot be null");
             }
         }
+        if (indices != null && indices.length != vertices.length) {
+            throw new IllegalArgumentException("Indices array length must match vertices length");
+        }
 
         this.selectedFaceIndex = faceIndex;
+        this.vertexIndices = indices != null ? indices.clone() : null;
 
-        // Deep copy all 4 vertices to original positions
-        this.originalVertex1 = new Vector3f(vertices[0]);
-        this.originalVertex2 = new Vector3f(vertices[1]);
-        this.originalVertex3 = new Vector3f(vertices[2]);
-        this.originalVertex4 = new Vector3f(vertices[3]);
-
-        // Initialize current positions to original
-        this.currentVertex1 = new Vector3f(vertices[0]);
-        this.currentVertex2 = new Vector3f(vertices[1]);
-        this.currentVertex3 = new Vector3f(vertices[2]);
-        this.currentVertex4 = new Vector3f(vertices[3]);
+        // Deep copy all vertices to original positions
+        this.originalVertices.clear();
+        this.currentVertices.clear();
+        for (Vector3f vertex : vertices) {
+            this.originalVertices.add(new Vector3f(vertex));
+            this.currentVertices.add(new Vector3f(vertex));
+        }
 
         this.isDragging = false;
         this.isModified = false;
         this.planeNormal = null;
         this.planePoint = null;
 
-        logger.debug("Face {} selected with 4 vertices", faceIndex);
+        logger.debug("Face {} selected with {} vertices", faceIndex, vertices.length);
     }
 
     /**
@@ -94,14 +108,9 @@ public class FaceSelectionState {
         }
 
         this.selectedFaceIndex = -1;
-        this.originalVertex1 = null;
-        this.originalVertex2 = null;
-        this.originalVertex3 = null;
-        this.originalVertex4 = null;
-        this.currentVertex1 = null;
-        this.currentVertex2 = null;
-        this.currentVertex3 = null;
-        this.currentVertex4 = null;
+        this.originalVertices.clear();
+        this.currentVertices.clear();
+        this.vertexIndices = null;
         this.isDragging = false;
         this.isModified = false;
         this.planeNormal = null;
@@ -136,9 +145,9 @@ public class FaceSelectionState {
 
     /**
      * Update the face position during drag by applying a translation delta.
-     * All 4 vertices move together by the same amount.
+     * All vertices move together by the same amount.
      *
-     * @param delta the translation delta to apply to all 4 vertices
+     * @param delta the translation delta to apply to all vertices
      * @throws IllegalStateException if not currently dragging
      */
     public synchronized void updatePosition(Vector3f delta) {
@@ -149,22 +158,23 @@ public class FaceSelectionState {
             throw new IllegalArgumentException("Delta cannot be null");
         }
 
-        // Apply delta to all 4 vertices
-        this.currentVertex1 = new Vector3f(originalVertex1).add(delta);
-        this.currentVertex2 = new Vector3f(originalVertex2).add(delta);
-        this.currentVertex3 = new Vector3f(originalVertex3).add(delta);
-        this.currentVertex4 = new Vector3f(originalVertex4).add(delta);
+        // Apply delta to all vertices
+        currentVertices.clear();
+        for (Vector3f original : originalVertices) {
+            currentVertices.add(new Vector3f(original).add(delta));
+        }
 
         // Check if position has changed from original
         float threshold = 0.001f;
         this.isModified = (delta.lengthSquared() > threshold * threshold);
 
-        logger.trace("Updated face {} position by delta ({}, {}, {}), modified={}",
+        logger.trace("Updated face {} position by delta ({}, {}, {}), modified={}, vertices={}",
                 selectedFaceIndex,
                 String.format("%.2f", delta.x),
                 String.format("%.2f", delta.y),
                 String.format("%.2f", delta.z),
-                isModified);
+                isModified,
+                currentVertices.size());
     }
 
     /**
@@ -183,10 +193,10 @@ public class FaceSelectionState {
      */
     public synchronized void cancelDrag() {
         if (isDragging) {
-            this.currentVertex1 = new Vector3f(originalVertex1);
-            this.currentVertex2 = new Vector3f(originalVertex2);
-            this.currentVertex3 = new Vector3f(originalVertex3);
-            this.currentVertex4 = new Vector3f(originalVertex4);
+            currentVertices.clear();
+            for (Vector3f original : originalVertices) {
+                currentVertices.add(new Vector3f(original));
+            }
             this.isDragging = false;
             this.isModified = false;
             logger.debug("Cancelled drag for face {}, reverted to original positions", selectedFaceIndex);
@@ -197,11 +207,11 @@ public class FaceSelectionState {
      * Revert the current positions to the original positions.
      */
     public synchronized void revertToOriginal() {
-        if (selectedFaceIndex >= 0 && originalVertex1 != null) {
-            this.currentVertex1 = new Vector3f(originalVertex1);
-            this.currentVertex2 = new Vector3f(originalVertex2);
-            this.currentVertex3 = new Vector3f(originalVertex3);
-            this.currentVertex4 = new Vector3f(originalVertex4);
+        if (selectedFaceIndex >= 0 && !originalVertices.isEmpty()) {
+            currentVertices.clear();
+            for (Vector3f original : originalVertices) {
+                currentVertices.add(new Vector3f(original));
+            }
             this.isModified = false;
             logger.debug("Reverted face {} to original positions", selectedFaceIndex);
         }
@@ -209,22 +219,21 @@ public class FaceSelectionState {
 
     /**
      * Get the centroid (center point) of the face.
-     * Calculated as the average of all 4 vertices.
+     * Calculated as the average of all vertices.
      * Useful for plane positioning during drag.
      *
      * @return the centroid, or null if no selection
      */
     public synchronized Vector3f getCentroid() {
-        if (currentVertex1 == null || currentVertex2 == null ||
-            currentVertex3 == null || currentVertex4 == null) {
+        if (currentVertices.isEmpty()) {
             return null;
         }
 
-        return new Vector3f(currentVertex1)
-                .add(currentVertex2)
-                .add(currentVertex3)
-                .add(currentVertex4)
-                .mul(0.25f);  // Divide by 4
+        Vector3f centroid = new Vector3f();
+        for (Vector3f vertex : currentVertices) {
+            centroid.add(vertex);
+        }
+        return centroid.mul(1.0f / currentVertices.size());
     }
 
     // Getters
@@ -248,37 +257,54 @@ public class FaceSelectionState {
     }
 
     /**
-     * Get the original vertices (4 corners of quad face).
+     * Get the original vertices.
      *
-     * @return array of 4 original vertex positions, or null if no selection
+     * @return array of original vertex positions (deep copied), or null if no selection
      */
     public synchronized Vector3f[] getOriginalVertices() {
-        if (originalVertex1 == null) {
+        if (originalVertices.isEmpty()) {
             return null;
         }
-        return new Vector3f[] {
-            new Vector3f(originalVertex1),
-            new Vector3f(originalVertex2),
-            new Vector3f(originalVertex3),
-            new Vector3f(originalVertex4)
-        };
+        Vector3f[] result = new Vector3f[originalVertices.size()];
+        for (int i = 0; i < originalVertices.size(); i++) {
+            result[i] = new Vector3f(originalVertices.get(i));
+        }
+        return result;
     }
 
     /**
-     * Get the current vertices (4 corners of quad face).
+     * Get the current vertices.
      *
-     * @return array of 4 current vertex positions, or null if no selection
+     * @return array of current vertex positions (deep copied), or null if no selection
      */
     public synchronized Vector3f[] getCurrentVertices() {
-        if (currentVertex1 == null) {
+        if (currentVertices.isEmpty()) {
             return null;
         }
-        return new Vector3f[] {
-            new Vector3f(currentVertex1),
-            new Vector3f(currentVertex2),
-            new Vector3f(currentVertex3),
-            new Vector3f(currentVertex4)
-        };
+        Vector3f[] result = new Vector3f[currentVertices.size()];
+        for (int i = 0; i < currentVertices.size(); i++) {
+            result[i] = new Vector3f(currentVertices.get(i));
+        }
+        return result;
+    }
+
+    /**
+     * Get the mesh vertex indices.
+     * Used in triangle mode for updating GenericModelRenderer.
+     *
+     * @return array of vertex indices, or null if not available
+     */
+    public synchronized int[] getVertexIndices() {
+        return vertexIndices != null ? vertexIndices.clone() : null;
+    }
+
+    /**
+     * Get the number of vertices in this face.
+     *
+     * @return vertex count, or 0 if no selection
+     */
+    public synchronized int getVertexCount() {
+        return currentVertices.size();
     }
 
     /**
