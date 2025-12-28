@@ -200,7 +200,9 @@ public class GenericModelRenderer extends BaseRenderer {
 
         int expectedLength = currentVertices.length;
         if (positions.length != expectedLength) {
-            logger.error("Invalid positions array: expected {} floats, got {}", expectedLength, positions.length);
+            logger.warn("Array length mismatch in updateVertexPositions: expected {} floats ({}v), got {} floats ({}v)",
+                expectedLength, expectedLength / 3, positions.length, positions.length / 3);
+            // After subdivision, arrays may have different sizes - skip update rather than crash
             return;
         }
 
@@ -252,150 +254,6 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     /**
-     * Handle edge subdivision by adding a new midpoint vertex and updating triangle topology.
-     * This method:
-     * 1. Adds the new vertex to the vertex array
-     * 2. Finds triangles that contain the edge being subdivided
-     * 3. Splits those triangles to include the new midpoint vertex
-     *
-     * @param midpointPosition Position of the new midpoint vertex
-     * @param edgeVertex1 First mesh vertex index of the subdivided edge
-     * @param edgeVertex2 Second mesh vertex index of the subdivided edge
-     * @return Index of the new vertex, or -1 if failed
-     */
-    public int applyEdgeSubdivision(Vector3f midpointPosition, int edgeVertex1, int edgeVertex2) {
-        if (!initialized) {
-            logger.warn("Cannot apply subdivision: renderer not initialized");
-            return -1;
-        }
-
-        if (midpointPosition == null) {
-            logger.warn("Cannot apply subdivision: midpoint position is null");
-            return -1;
-        }
-
-        if (currentIndices == null || currentIndices.length == 0) {
-            logger.warn("Cannot apply subdivision: no indices available");
-            return -1;
-        }
-
-        // Step 1: Add the new vertex
-        int newVertexIndex = vertexCount;
-
-        // Expand currentVertices
-        int newVerticesLength = (vertexCount + 1) * 3;
-        float[] newVertices = new float[newVerticesLength];
-        if (currentVertices != null) {
-            System.arraycopy(currentVertices, 0, newVertices, 0, currentVertices.length);
-        }
-        newVertices[newVertexIndex * 3] = midpointPosition.x;
-        newVertices[newVertexIndex * 3 + 1] = midpointPosition.y;
-        newVertices[newVertexIndex * 3 + 2] = midpointPosition.z;
-        currentVertices = newVertices;
-
-        // Expand currentTexCoords - interpolate UV from edge endpoints
-        int newTexCoordsLength = (vertexCount + 1) * 2;
-        float[] newTexCoords = new float[newTexCoordsLength];
-        if (currentTexCoords != null) {
-            System.arraycopy(currentTexCoords, 0, newTexCoords, 0, currentTexCoords.length);
-        }
-        // Interpolate UV coordinates from edge endpoints
-        float u1 = 0, v1 = 0, u2 = 0, v2 = 0;
-        if (currentTexCoords != null && edgeVertex1 * 2 + 1 < currentTexCoords.length) {
-            u1 = currentTexCoords[edgeVertex1 * 2];
-            v1 = currentTexCoords[edgeVertex1 * 2 + 1];
-        }
-        if (currentTexCoords != null && edgeVertex2 * 2 + 1 < currentTexCoords.length) {
-            u2 = currentTexCoords[edgeVertex2 * 2];
-            v2 = currentTexCoords[edgeVertex2 * 2 + 1];
-        }
-        newTexCoords[newVertexIndex * 2] = (u1 + u2) / 2.0f;
-        newTexCoords[newVertexIndex * 2 + 1] = (v1 + v2) / 2.0f;
-        currentTexCoords = newTexCoords;
-
-        vertexCount++;
-
-        // Step 2: Find and split triangles that contain the edge
-        // Each triangle that has edge (edgeVertex1, edgeVertex2) will be split into 2 triangles
-        java.util.List<Integer> newIndices = new java.util.ArrayList<>();
-        int triangleCount = currentIndices.length / 3;
-
-        for (int t = 0; t < triangleCount; t++) {
-            int i0 = currentIndices[t * 3];
-            int i1 = currentIndices[t * 3 + 1];
-            int i2 = currentIndices[t * 3 + 2];
-
-            // Check if this triangle contains the subdivided edge
-            int edgePos = findEdgeInTriangle(i0, i1, i2, edgeVertex1, edgeVertex2);
-
-            if (edgePos >= 0) {
-                // This triangle contains the edge - split it into 2 triangles
-                // edgePos indicates which edge of the triangle matches:
-                // 0: edge i0-i1, 1: edge i1-i2, 2: edge i2-i0
-                int oppositeVertex;
-                int e1, e2;
-
-                switch (edgePos) {
-                    case 0: // Edge i0-i1
-                        oppositeVertex = i2;
-                        e1 = i0;
-                        e2 = i1;
-                        break;
-                    case 1: // Edge i1-i2
-                        oppositeVertex = i0;
-                        e1 = i1;
-                        e2 = i2;
-                        break;
-                    case 2: // Edge i2-i0
-                        oppositeVertex = i1;
-                        e1 = i2;
-                        e2 = i0;
-                        break;
-                    default:
-                        // Should not happen, keep original triangle
-                        newIndices.add(i0);
-                        newIndices.add(i1);
-                        newIndices.add(i2);
-                        continue;
-                }
-
-                // Create 2 new triangles: (e1, M, opposite) and (M, e2, opposite)
-                // Maintain winding order
-                newIndices.add(e1);
-                newIndices.add(newVertexIndex);
-                newIndices.add(oppositeVertex);
-
-                newIndices.add(newVertexIndex);
-                newIndices.add(e2);
-                newIndices.add(oppositeVertex);
-
-                logger.trace("Split triangle ({},{},{}) into ({},{},{}) and ({},{},{})",
-                    i0, i1, i2, e1, newVertexIndex, oppositeVertex, newVertexIndex, e2, oppositeVertex);
-            } else {
-                // Keep original triangle
-                newIndices.add(i0);
-                newIndices.add(i1);
-                newIndices.add(i2);
-            }
-        }
-
-        // Step 3: Update indices array
-        currentIndices = newIndices.stream().mapToInt(Integer::intValue).toArray();
-        indexCount = currentIndices.length;
-
-        // Step 4: Rebuild GPU buffers
-        float[] interleavedData = buildInterleavedData();
-        updateVBO(interleavedData);
-        updateEBO(currentIndices);
-
-        logger.debug("Applied subdivision: added vertex {} at ({},{},{}), indices {} -> {}",
-            newVertexIndex, midpointPosition.x, midpointPosition.y, midpointPosition.z,
-            triangleCount * 3, indexCount);
-
-        return newVertexIndex;
-    }
-
-    /**
      * Find if a triangle contains a specific edge.
      * @return Edge position (0, 1, or 2) if found, -1 if not found
      */
@@ -444,7 +302,8 @@ public class GenericModelRenderer extends BaseRenderer {
 
     /**
      * Apply edge subdivision using endpoint positions instead of indices.
-     * Finds mesh vertices at the endpoint positions and applies subdivision.
+     * Finds ALL mesh vertex pairs at the endpoint positions and splits ALL triangles
+     * that use any of these edge pairs. This handles edges shared by multiple faces.
      *
      * @param midpointPosition Position of the new midpoint vertex
      * @param endpoint1 Position of first edge endpoint
@@ -457,35 +316,180 @@ public class GenericModelRenderer extends BaseRenderer {
             return -1;
         }
 
-        float epsilon = 0.0001f;
+        // Use larger epsilon to handle floating-point drift between systems
+        float epsilon = 0.01f;
 
-        // Find mesh vertices at endpoint positions
+        logger.info("=== SUBDIVISION DEBUG ===");
+        logger.info("Looking for endpoints: ({},{},{}) and ({},{},{})",
+            endpoint1.x, endpoint1.y, endpoint1.z, endpoint2.x, endpoint2.y, endpoint2.z);
+
+        // Print first 8 mesh vertex positions for comparison
+        if (currentVertices != null && currentVertices.length >= 24) {
+            logger.info("GenericModelRenderer first 8 vertices:");
+            for (int i = 0; i < 8 && i * 3 + 2 < currentVertices.length; i++) {
+                logger.info("  v{}: ({}, {}, {})", i,
+                    currentVertices[i * 3], currentVertices[i * 3 + 1], currentVertices[i * 3 + 2]);
+            }
+        }
+
+        // Find ALL mesh vertices at endpoint positions
         java.util.List<Integer> vertices1 = findMeshVerticesAtPosition(endpoint1, epsilon);
         java.util.List<Integer> vertices2 = findMeshVerticesAtPosition(endpoint2, epsilon);
 
+        logger.debug("Found {} vertices at endpoint1, {} vertices at endpoint2",
+            vertices1.size(), vertices2.size());
+
         if (vertices1.isEmpty() || vertices2.isEmpty()) {
-            logger.warn("Cannot apply subdivision: edge endpoints not found in mesh");
+            logger.warn("Cannot apply subdivision: edge endpoints not found in mesh. " +
+                "endpoint1 found: {}, endpoint2 found: {}", vertices1.size(), vertices2.size());
+            // Log first few mesh vertices for debugging
+            if (currentVertices != null && currentVertices.length >= 9) {
+                logger.warn("First 3 mesh vertices: ({},{},{}), ({},{},{}), ({},{},{})",
+                    currentVertices[0], currentVertices[1], currentVertices[2],
+                    currentVertices[3], currentVertices[4], currentVertices[5],
+                    currentVertices[6], currentVertices[7], currentVertices[8]);
+            }
             return -1;
         }
 
-        // For each combination, check if they form an actual edge (share a triangle)
-        // and apply subdivision to all matching edges
-        int newVertexIndex = -1;
-        boolean applied = false;
-
+        // Collect ALL valid mesh edge pairs (same geometric edge on different faces)
+        java.util.List<int[]> validEdgePairs = new java.util.ArrayList<>();
         for (int v1 : vertices1) {
             for (int v2 : vertices2) {
-                // Check if v1-v2 is an actual edge in any triangle
                 if (isEdgeInMesh(v1, v2)) {
-                    if (!applied) {
-                        // First time - apply subdivision which adds the vertex
-                        newVertexIndex = applyEdgeSubdivision(midpointPosition, v1, v2);
-                        applied = true;
-                    }
-                    // Note: applyEdgeSubdivision already handles all triangles with this edge
+                    validEdgePairs.add(new int[]{v1, v2});
+                    logger.debug("Found valid edge pair: ({}, {})", v1, v2);
                 }
             }
         }
+
+        if (validEdgePairs.isEmpty()) {
+            logger.warn("Cannot apply subdivision: no valid edge found in mesh. " +
+                "vertices1: {}, vertices2: {}", vertices1, vertices2);
+            return -1;
+        }
+
+        logger.debug("Found {} mesh edge pairs for geometric edge (expect 2 for cube)", validEdgePairs.size());
+
+        // Step 1: Add the new vertex ONCE
+        int newVertexIndex = vertexCount;
+
+        // Expand currentVertices
+        int newVerticesLength = (vertexCount + 1) * 3;
+        float[] newVertices = new float[newVerticesLength];
+        if (currentVertices != null) {
+            System.arraycopy(currentVertices, 0, newVertices, 0, currentVertices.length);
+        }
+        newVertices[newVertexIndex * 3] = midpointPosition.x;
+        newVertices[newVertexIndex * 3 + 1] = midpointPosition.y;
+        newVertices[newVertexIndex * 3 + 2] = midpointPosition.z;
+        currentVertices = newVertices;
+
+        // Expand currentTexCoords - interpolate UV from first edge pair's endpoints
+        int newTexCoordsLength = (vertexCount + 1) * 2;
+        float[] newTexCoords = new float[newTexCoordsLength];
+        if (currentTexCoords != null) {
+            System.arraycopy(currentTexCoords, 0, newTexCoords, 0, currentTexCoords.length);
+        }
+        // Use first edge pair for UV interpolation
+        int[] firstPair = validEdgePairs.get(0);
+        float u1 = 0, v1 = 0, u2 = 0, v2 = 0;
+        if (currentTexCoords != null && firstPair[0] * 2 + 1 < currentTexCoords.length) {
+            u1 = currentTexCoords[firstPair[0] * 2];
+            v1 = currentTexCoords[firstPair[0] * 2 + 1];
+        }
+        if (currentTexCoords != null && firstPair[1] * 2 + 1 < currentTexCoords.length) {
+            u2 = currentTexCoords[firstPair[1] * 2];
+            v2 = currentTexCoords[firstPair[1] * 2 + 1];
+        }
+        newTexCoords[newVertexIndex * 2] = (u1 + u2) / 2.0f;
+        newTexCoords[newVertexIndex * 2 + 1] = (v1 + v2) / 2.0f;
+        currentTexCoords = newTexCoords;
+
+        vertexCount++;
+
+        // Step 2: Split ALL triangles that contain ANY of the edge pairs
+        java.util.List<Integer> newIndices = new java.util.ArrayList<>();
+        int triangleCount = currentIndices.length / 3;
+        int splitCount = 0;
+
+        for (int t = 0; t < triangleCount; t++) {
+            int i0 = currentIndices[t * 3];
+            int i1 = currentIndices[t * 3 + 1];
+            int i2 = currentIndices[t * 3 + 2];
+
+            // Check if this triangle contains ANY of the edge pairs
+            int edgePos = -1;
+            int matchedE1 = -1, matchedE2 = -1;
+
+            for (int[] pair : validEdgePairs) {
+                edgePos = findEdgeInTriangle(i0, i1, i2, pair[0], pair[1]);
+                if (edgePos >= 0) {
+                    matchedE1 = pair[0];
+                    matchedE2 = pair[1];
+                    break;
+                }
+            }
+
+            if (edgePos >= 0) {
+                // This triangle contains one of the edges - split it
+                int oppositeVertex;
+                int e1, e2;
+
+                switch (edgePos) {
+                    case 0: // Edge i0-i1
+                        oppositeVertex = i2;
+                        e1 = i0;
+                        e2 = i1;
+                        break;
+                    case 1: // Edge i1-i2
+                        oppositeVertex = i0;
+                        e1 = i1;
+                        e2 = i2;
+                        break;
+                    case 2: // Edge i2-i0
+                        oppositeVertex = i1;
+                        e1 = i2;
+                        e2 = i0;
+                        break;
+                    default:
+                        newIndices.add(i0);
+                        newIndices.add(i1);
+                        newIndices.add(i2);
+                        continue;
+                }
+
+                // Create 2 new triangles using the midpoint vertex
+                newIndices.add(e1);
+                newIndices.add(newVertexIndex);
+                newIndices.add(oppositeVertex);
+
+                newIndices.add(newVertexIndex);
+                newIndices.add(e2);
+                newIndices.add(oppositeVertex);
+
+                splitCount++;
+                logger.debug("Split triangle {} ({},{},{}) on edge ({},{}) -> 2 triangles",
+                    t, i0, i1, i2, e1, e2);
+            } else {
+                // Keep original triangle
+                newIndices.add(i0);
+                newIndices.add(i1);
+                newIndices.add(i2);
+            }
+        }
+
+        // Step 3: Update indices array
+        currentIndices = newIndices.stream().mapToInt(Integer::intValue).toArray();
+        indexCount = currentIndices.length;
+
+        // Step 4: Rebuild GPU buffers
+        float[] interleavedData = buildInterleavedData();
+        updateVBO(interleavedData);
+        updateEBO(currentIndices);
+
+        logger.debug("Applied subdivision: vertex {}, split {} triangles, indices {} -> {}",
+            newVertexIndex, splitCount, triangleCount * 3, indexCount);
 
         return newVertexIndex;
     }

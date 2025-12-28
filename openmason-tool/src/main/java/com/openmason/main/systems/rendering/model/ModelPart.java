@@ -48,81 +48,84 @@ public record ModelPart(
 
         // 24 vertices (4 per face × 6 faces) - expanded format for proper UV mapping
         // Format: x, y, z (3 floats per vertex)
+        // IMPORTANT: Face order MUST match ModelDefinition.ModelPart.getVerticesAtOrigin()
+        // Order: Front, Back, Left, Right, Top, Bottom
         float[] vertices = {
-            // FRONT face (facing +Z) - 4 vertices
+            // FRONT face (facing +Z) - vertices 0-3
             -hw, -hh,  hd,  // 0: bottom-left
              hw, -hh,  hd,  // 1: bottom-right
              hw,  hh,  hd,  // 2: top-right
             -hw,  hh,  hd,  // 3: top-left
 
-            // BACK face (facing -Z) - 4 vertices
-             hw, -hh, -hd,  // 4: bottom-left (flipped)
-            -hw, -hh, -hd,  // 5: bottom-right
-            -hw,  hh, -hd,  // 6: top-right
-             hw,  hh, -hd,  // 7: top-left
+            // BACK face (facing -Z) - vertices 4-7
+            -hw, -hh, -hd,  // 4: bottom-left
+             hw, -hh, -hd,  // 5: bottom-right
+             hw,  hh, -hd,  // 6: top-right
+            -hw,  hh, -hd,  // 7: top-left
 
-            // TOP face (facing +Y) - 4 vertices
-            -hw,  hh,  hd,  // 8: front-left
-             hw,  hh,  hd,  // 9: front-right
-             hw,  hh, -hd,  // 10: back-right
-            -hw,  hh, -hd,  // 11: back-left
+            // LEFT face (facing -X) - vertices 8-11
+            -hw, -hh, -hd,  // 8: bottom-back
+            -hw, -hh,  hd,  // 9: bottom-front
+            -hw,  hh,  hd,  // 10: top-front
+            -hw,  hh, -hd,  // 11: top-back
 
-            // BOTTOM face (facing -Y) - 4 vertices
-            -hw, -hh, -hd,  // 12: back-left
-             hw, -hh, -hd,  // 13: back-right
-             hw, -hh,  hd,  // 14: front-right
-            -hw, -hh,  hd,  // 15: front-left
+            // RIGHT face (facing +X) - vertices 12-15
+             hw, -hh, -hd,  // 12: bottom-back
+             hw, -hh,  hd,  // 13: bottom-front
+             hw,  hh,  hd,  // 14: top-front
+             hw,  hh, -hd,  // 15: top-back
 
-            // RIGHT face (facing +X) - 4 vertices
-             hw, -hh,  hd,  // 16: bottom-front
-             hw, -hh, -hd,  // 17: bottom-back
-             hw,  hh, -hd,  // 18: top-back
-             hw,  hh,  hd,  // 19: top-front
+            // TOP face (facing +Y) - vertices 16-19
+            -hw,  hh, -hd,  // 16: back-left
+             hw,  hh, -hd,  // 17: back-right
+             hw,  hh,  hd,  // 18: front-right
+            -hw,  hh,  hd,  // 19: front-left
 
-            // LEFT face (facing -X) - 4 vertices
-            -hw, -hh, -hd,  // 20: bottom-back
-            -hw, -hh,  hd,  // 21: bottom-front
-            -hw,  hh,  hd,  // 22: top-front
-            -hw,  hh, -hd   // 23: top-back
+            // BOTTOM face (facing -Y) - vertices 20-23
+            -hw, -hh, -hd,  // 20: back-left
+             hw, -hh, -hd,  // 21: back-right
+             hw, -hh,  hd,  // 22: front-right
+            -hw, -hh,  hd   // 23: front-left
         };
 
         // Texture coordinates for each vertex (u, v interleaved)
+        // Order matches vertices: Front, Back, Left, Right, Top, Bottom
         float[] texCoords = {
-            // FRONT face UVs
+            // FRONT face UVs (vertices 0-3)
             FRONT_UV[0], FRONT_UV[3],  // 0: bottom-left
             FRONT_UV[2], FRONT_UV[3],  // 1: bottom-right
             FRONT_UV[2], FRONT_UV[1],  // 2: top-right
             FRONT_UV[0], FRONT_UV[1],  // 3: top-left
 
-            // BACK face UVs
+            // BACK face UVs (vertices 4-7)
             BACK_UV[0], BACK_UV[3],    // 4: bottom-left
             BACK_UV[2], BACK_UV[3],    // 5: bottom-right
             BACK_UV[2], BACK_UV[1],    // 6: top-right
             BACK_UV[0], BACK_UV[1],    // 7: top-left
 
-            // TOP face UVs
-            TOP_UV[0], TOP_UV[1],      // 8: front-left
-            TOP_UV[2], TOP_UV[1],      // 9: front-right
-            TOP_UV[2], TOP_UV[3],      // 10: back-right
-            TOP_UV[0], TOP_UV[3],      // 11: back-left
+            // LEFT face UVs (vertices 8-11)
+            LEFT_UV[0], LEFT_UV[3],    // 8: bottom-back
+            LEFT_UV[2], LEFT_UV[3],    // 9: bottom-front
+            LEFT_UV[2], LEFT_UV[1],    // 10: top-front
+            LEFT_UV[0], LEFT_UV[1],    // 11: top-back
 
-            // BOTTOM face UVs
-            BOTTOM_UV[0], BOTTOM_UV[1],  // 12: back-left
-            BOTTOM_UV[2], BOTTOM_UV[1],  // 13: back-right
-            BOTTOM_UV[2], BOTTOM_UV[3],  // 14: front-right
-            BOTTOM_UV[0], BOTTOM_UV[3],  // 15: front-left
+            // RIGHT face UVs (vertices 12-15)
+            RIGHT_UV[0], RIGHT_UV[3],  // 12: bottom-back
+            RIGHT_UV[2], RIGHT_UV[3],  // 13: bottom-front
+            RIGHT_UV[2], RIGHT_UV[1],  // 14: top-front
+            RIGHT_UV[0], RIGHT_UV[1],  // 15: top-back
 
-            // RIGHT face UVs
-            RIGHT_UV[0], RIGHT_UV[3],  // 16: bottom-front
-            RIGHT_UV[2], RIGHT_UV[3],  // 17: bottom-back
-            RIGHT_UV[2], RIGHT_UV[1],  // 18: top-back
-            RIGHT_UV[0], RIGHT_UV[1],  // 19: top-front
+            // TOP face UVs (vertices 16-19)
+            TOP_UV[0], TOP_UV[3],      // 16: back-left
+            TOP_UV[2], TOP_UV[3],      // 17: back-right
+            TOP_UV[2], TOP_UV[1],      // 18: front-right
+            TOP_UV[0], TOP_UV[1],      // 19: front-left
 
-            // LEFT face UVs
-            LEFT_UV[0], LEFT_UV[3],    // 20: bottom-back
-            LEFT_UV[2], LEFT_UV[3],    // 21: bottom-front
-            LEFT_UV[2], LEFT_UV[1],    // 22: top-front
-            LEFT_UV[0], LEFT_UV[1]     // 23: top-back
+            // BOTTOM face UVs (vertices 20-23)
+            BOTTOM_UV[0], BOTTOM_UV[1],  // 20: back-left
+            BOTTOM_UV[2], BOTTOM_UV[1],  // 21: back-right
+            BOTTOM_UV[2], BOTTOM_UV[3],  // 22: front-right
+            BOTTOM_UV[0], BOTTOM_UV[3]   // 23: front-left
         };
 
         // Indices for 6 faces (2 triangles each = 36 indices)

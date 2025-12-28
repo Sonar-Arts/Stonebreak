@@ -525,6 +525,11 @@ public class ViewportController {
         Vector3f endpoint1 = new Vector3f(edgeEndpoints[0]);
         Vector3f endpoint2 = new Vector3f(edgeEndpoints[1]);
 
+        logger.info("EdgeRenderer edge {} endpoints: ({},{},{}) to ({},{},{})",
+            hoveredEdgeIndex,
+            endpoint1.x, endpoint1.y, endpoint1.z,
+            endpoint2.x, endpoint2.y, endpoint2.z);
+
         // Perform subdivision on EdgeRenderer/VertexRenderer
         int newVertexIndex = edgeRenderer.subdivideHoveredEdge(vertexRenderer);
 
