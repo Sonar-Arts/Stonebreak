@@ -706,26 +706,6 @@ public class EdgeRenderer implements MeshChangeListener {
         edgeToVertices.putIfAbsent(key, new int[] { min, max });
     }
 
-    /**
-     * Helper to add a unique edge (prevents duplicates).
-     * @deprecated Use trackEdgeFace for boundary-aware edge extraction instead.
-     */
-    @Deprecated
-    private void addUniqueEdge(java.util.Set<Long> seenEdges, java.util.List<int[]> edgeList, int u0, int u1) {
-        if (u0 < 0 || u1 < 0 || u0 == u1) {
-            return;
-        }
-        // Canonical ordering: smaller index first
-        int min = Math.min(u0, u1);
-        int max = Math.max(u0, u1);
-        long key = ((long) min << 32) | (max & 0xFFFFFFFFL);
-
-        if (!seenEdges.contains(key)) {
-            seenEdges.add(key);
-            edgeList.add(new int[] { min, max });
-        }
-    }
-
     // Getters and setters
 
     /**

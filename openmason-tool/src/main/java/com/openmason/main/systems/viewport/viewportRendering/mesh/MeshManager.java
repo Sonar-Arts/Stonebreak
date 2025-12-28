@@ -13,18 +13,20 @@ import java.util.*;
 
 /**
  * Manages mesh resources for the viewport rendering system.
- * This class handles mesh vertex relationships, unique-to-mesh mapping,
- * and mesh data structure operations.
+ * This class handles mesh vertex data storage and mesh operations.
  *
  * Responsibilities:
- * - Building and maintaining unique vertex to mesh vertex mappings
  * - Managing mesh vertex data structures
  * - Providing mesh geometry information
+ * - Coordinating mesh operations (vertex updates, face operations, edge operations)
+ *
+ * Note: Unique-to-mesh vertex mapping is now owned by GenericModelRenderer.
+ * Use GenericModelRenderer.getUniqueIndexForMeshVertex() and
+ * getMeshIndicesForUniqueVertex() for mapping queries.
  */
 public class MeshManager {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshManager.class);
-    private static final float EPSILON = 0.0001f; // Tolerance for vertex position matching
 
     // Thread-safe singleton using holder pattern (lazy initialization)
     private static class InstanceHolder {
@@ -33,15 +35,6 @@ public class MeshManager {
 
     // Mesh data storage
     private float[] allMeshVertices = null; // ALL mesh vertices (e.g., 24 for cube)
-
-    /**
-     * @deprecated Use GenericModelRenderer's index-based mapping instead.
-     * GenericModelRenderer now maintains the authoritative unique-to-mesh mapping
-     * via getMeshIndicesForUniqueVertex() and getUniqueIndexForMeshVertex().
-     * This field is retained for backward compatibility during migration.
-     */
-    @Deprecated
-    private Map<Integer, List<Integer>> uniqueToMeshMapping = new HashMap<>(); // Maps unique vertex index to mesh vertex indices
 
     private MeshManager() {
         // Private constructor for singleton
@@ -79,87 +72,10 @@ public class MeshManager {
     }
 
     /**
-     * Get the unique-to-mesh mapping.
-     *
-     * @return Map from unique vertex indices to lists of mesh vertex indices
-     * @deprecated Use GenericModelRenderer's getMeshIndicesForUniqueVertex() instead.
-     * GenericModelRenderer is now the single source of truth for vertex mappings.
-     */
-    @Deprecated
-    public Map<Integer, List<Integer>> getUniqueToMeshMapping() {
-        return uniqueToMeshMapping;
-    }
-
-    /**
-     * Build mapping from unique vertex indices to mesh vertex indices.
-     * For a cube: Each of the 8 unique corner vertices maps to 3 mesh vertex instances.
-     *
-     * This is the core mesh relationship method that identifies which mesh vertices
-     * correspond to each unique geometric vertex.
-     *
-     * @param uniquePositions Array of unique vertex positions
-     * @param meshPositions Array of ALL mesh vertex positions
-     * @deprecated Use GenericModelRenderer's buildUniqueVertexMapping() instead.
-     * GenericModelRenderer now automatically builds this mapping when geometry is loaded
-     * or rebuilt. Access the mapping via getUniqueIndexForMeshVertex() and
-     * getMeshIndicesForUniqueVertex().
-     */
-    @Deprecated
-    public void buildUniqueToMeshMapping(float[] uniquePositions, float[] meshPositions) {
-        uniqueToMeshMapping.clear();
-
-        if (uniquePositions == null || meshPositions == null) {
-            logger.warn("Cannot build mapping: null positions provided");
-            return;
-        }
-
-        // For each mesh vertex, find its matching unique vertex
-        int meshVertexCount = meshPositions.length / 3;
-        int uniqueVertexCount = uniquePositions.length / 3;
-
-        for (int meshIndex = 0; meshIndex < meshVertexCount; meshIndex++) {
-            int meshPosIndex = meshIndex * 3;
-            Vector3f meshPos = new Vector3f(
-                    meshPositions[meshPosIndex],
-                    meshPositions[meshPosIndex + 1],
-                    meshPositions[meshPosIndex + 2]
-            );
-
-            // Find which unique vertex this mesh vertex matches
-            for (int uniqueIndex = 0; uniqueIndex < uniqueVertexCount; uniqueIndex++) {
-                int uniquePosIndex = uniqueIndex * 3;
-                Vector3f uniquePos = new Vector3f(
-                        uniquePositions[uniquePosIndex],
-                        uniquePositions[uniquePosIndex + 1],
-                        uniquePositions[uniquePosIndex + 2]
-                );
-
-                if (meshPos.distance(uniquePos) < EPSILON) {
-                    // Found matching unique vertex - add to mapping
-                    uniqueToMeshMapping.computeIfAbsent(uniqueIndex, k -> new ArrayList<>()).add(meshIndex);
-                    break;
-                }
-            }
-        }
-
-        logger.debug("Built vertex mapping: {} unique vertices → {} mesh vertices",
-                uniqueVertexCount, meshVertexCount);
-
-        // Log mapping for debugging (only for small models like cube)
-        if (uniqueVertexCount <= 10) {
-            for (Map.Entry<Integer, List<Integer>> entry : uniqueToMeshMapping.entrySet()) {
-                logger.trace("Unique vertex {} → mesh vertices {}",
-                        entry.getKey(), entry.getValue());
-            }
-        }
-    }
-
-    /**
-     * Clear all mesh data and mappings.
+     * Clear all mesh data.
      */
     public void clearMeshData() {
         allMeshVertices = null;
-        uniqueToMeshMapping.clear();
         logger.debug("Cleared mesh data");
     }
 
@@ -198,8 +114,9 @@ public class MeshManager {
     // ========================================
 
     /**
-     * Update vertex position in memory, GPU, and all mesh instances.
-     * Coordinates the complete update process using MeshVertexPositionUpdater.
+     * Update vertex position in memory and GPU.
+     * Coordinates the update process using MeshVertexPositionUpdater.
+     * Note: Mesh instance synchronization is now handled by GenericModelRenderer.
      *
      * @param uniqueIndex Unique vertex index to update
      * @param position New position in model space
@@ -210,10 +127,11 @@ public class MeshManager {
      */
     public boolean updateVertexPosition(int uniqueIndex, Vector3f position,
                                        float[] vertexPositions, int vbo, int vertexCount) {
+        // Pass null for mapping - GenericModelRenderer now owns mesh instance synchronization
         MeshVertexPositionUpdater updater = new MeshVertexPositionUpdater(
                 vertexPositions,
                 allMeshVertices,
-                uniqueToMeshMapping,
+                null, // Mapping owned by GenericModelRenderer
                 vbo,
                 vertexCount
         );

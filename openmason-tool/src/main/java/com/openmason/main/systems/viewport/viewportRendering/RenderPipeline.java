@@ -356,16 +356,11 @@ public class RenderPipeline {
                             if (modelMeshVertices != null) {
                                 var meshManager = com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager.getInstance();
                                 meshManager.setMeshVertices(modelMeshVertices);
-
-                                // Rebuild mapping with synced vertices
-                                float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
-                                if (uniqueVertexPositions != null) {
-                                    meshManager.buildUniqueToMeshMapping(uniqueVertexPositions, modelMeshVertices);
-                                }
                                 logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices", modelMeshVertices.length / 3);
 
                                 // Wire all renderers to GenericModelRenderer as MeshChangeListeners
                                 // This enables index-based updates (Observer pattern) instead of position matching
+                                // GenericModelRenderer now owns the unique-to-mesh mapping
                                 vertexRenderer.setModelRenderer(modelRenderer);
                                 edgeRenderer.setModelRenderer(modelRenderer);
                                 faceRenderer.setGenericModelRenderer(modelRenderer);

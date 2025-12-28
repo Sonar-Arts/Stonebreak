@@ -572,12 +572,8 @@ public class ViewportController {
                                 modelMeshVertices.length / 3);
                         }
 
-                        // Rebuild unique-to-mesh mapping with the synchronized arrays
-                        float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
-                        float[] meshVertices = meshManager.getAllMeshVertices();
-                        if (uniqueVertexPositions != null && meshVertices != null) {
-                            meshManager.buildUniqueToMeshMapping(uniqueVertexPositions, meshVertices);
-                        }
+                        // Note: GenericModelRenderer now owns the unique-to-mesh mapping
+                        // and rebuilds it automatically when geometry changes
 
                         // CRITICAL FIX: Rebuild FaceRenderer data from GenericModelRenderer's triangles
                         // After subdivision, face overlay geometry must match the actual mesh topology.

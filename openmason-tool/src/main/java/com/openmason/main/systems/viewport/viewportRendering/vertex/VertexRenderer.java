@@ -172,9 +172,8 @@ public class VertexRenderer implements MeshChangeListener {
             vertexPositions = uniquePositions;
             vertexCount = uniquePositions.length / 3;
 
-            // Delegate mesh management to MeshManager
+            // Sync mesh vertices with MeshManager (mapping is owned by GenericModelRenderer)
             meshManager.setMeshVertices(allMeshVertices);
-            meshManager.buildUniqueToMeshMapping(uniquePositions, allMeshVertices);
 
             // Initialize original-to-current mapping (identity for fresh load)
             // For a cube, this maps original vertices 0-7 to themselves initially
@@ -470,11 +469,10 @@ public class VertexRenderer implements MeshChangeListener {
             originalToCurrentMapping.put(i, i);
         }
 
-        // Sync MeshManager with the new data
+        // Sync MeshManager with the new data (mapping is owned by GenericModelRenderer)
         float[] allMeshVertices = modelRenderer.getAllMeshVertexPositions();
         if (allMeshVertices != null) {
             meshManager.setMeshVertices(allMeshVertices);
-            meshManager.buildUniqueToMeshMapping(vertexPositions, allMeshVertices);
         }
 
         // Rebuild VBO
@@ -554,8 +552,28 @@ public class VertexRenderer implements MeshChangeListener {
             return;
         }
 
-        // Delegate to MeshManager to coordinate vertex position update
+        // Update VertexRenderer's positions and VBO
         meshManager.updateVertexPosition(uniqueIndex, position, vertexPositions, vbo, vertexCount);
+
+        // Sync mesh vertices in MeshManager using GenericModelRenderer's mapping
+        // This ensures MeshManager.getAllMeshVertices() returns updated positions
+        // for the solid model to follow the wireframe
+        if (modelRenderer != null) {
+            int[] meshIndices = modelRenderer.getMeshIndicesForUniqueVertex(uniqueIndex);
+            if (meshIndices != null) {
+                float[] allMeshVertices = meshManager.getAllMeshVertices();
+                if (allMeshVertices != null) {
+                    for (int meshIndex : meshIndices) {
+                        int offset = meshIndex * 3;
+                        if (offset + 2 < allMeshVertices.length) {
+                            allMeshVertices[offset] = position.x;
+                            allMeshVertices[offset + 1] = position.y;
+                            allMeshVertices[offset + 2] = position.z;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -604,36 +622,6 @@ public class VertexRenderer implements MeshChangeListener {
     }
 
     /**
-     * Find a vertex index by position (with epsilon tolerance).
-     *
-     * @param position The position to search for
-     * @param epsilon Tolerance for position matching
-     * @return The vertex index, or -1 if not found
-     * @deprecated Use index-based lookup via GenericModelRenderer instead.
-     * Position-based matching is fragile and prone to floating-point drift.
-     * Use modelRenderer.getUniqueIndexForMeshVertex() for robust index mapping.
-     */
-    @Deprecated
-    public int findVertexIndexByPosition(Vector3f position, float epsilon) {
-        if (vertexPositions == null || position == null) {
-            return -1;
-        }
-
-        float epsilonSq = epsilon * epsilon;
-        for (int i = 0; i < vertexCount; i++) {
-            int posIndex = i * 3;
-            float dx = vertexPositions[posIndex] - position.x;
-            float dy = vertexPositions[posIndex + 1] - position.y;
-            float dz = vertexPositions[posIndex + 2] - position.z;
-            float distSq = dx * dx + dy * dy + dz * dz;
-            if (distSq < epsilonSq) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    /**
      * Apply vertex addition from a subdivision operation.
      * Updates vertex data structures with new vertex positions and count.
      * Used when subdivision creates a new midpoint vertex.
@@ -663,12 +651,8 @@ public class VertexRenderer implements MeshChangeListener {
         // Rebuild VBO with new vertex data
         rebuildVBO();
 
-        // Rebuild mesh mapping with new vertex
-        // Note: allMeshVertices may not include the new vertex yet,
-        // but the mapping will be rebuilt when edge/face updates occur
-        if (meshManager.getAllMeshVertices() != null) {
-            meshManager.buildUniqueToMeshMapping(vertexPositions, meshManager.getAllMeshVertices());
-        }
+        // Note: GenericModelRenderer owns the unique-to-mesh mapping and will
+        // rebuild it automatically when notifyGeometryRebuilt() is called
 
         logger.debug("Applied vertex addition: now {} vertices (new vertex at index {})",
                     vertexCount, newVertexIndex);
@@ -760,15 +744,17 @@ public class VertexRenderer implements MeshChangeListener {
         }
 
         // Step 2: Update renderer state with merge results (Single Responsibility)
+        // Note: GenericModelRenderer now owns the unique-to-mesh mapping, so we pass
+        // empty/no-op values for the deprecated mapping parameters
         RendererStateUpdater.UpdateContext context = new RendererStateUpdater.UpdateContext(
                 meshManager.getAllMeshVertices(),
-                meshManager.getUniqueToMeshMapping()
+                java.util.Collections.emptyMap() // Mapping now owned by GenericModelRenderer
         );
 
         RendererStateUpdater stateUpdater = new RendererStateUpdater(
                 context,
                 () -> {}, // Empty VBO rebuilder - we'll rebuild after updating fields
-                meshManager::buildUniqueToMeshMapping
+                (positions, mesh) -> {} // No-op - mapping owned by GenericModelRenderer
         );
 
         RendererStateUpdater.UpdateContext updatedContext = stateUpdater.applyMergeResult(result);
