@@ -4,6 +4,7 @@ import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.generation.spline.OffsetSplineRouter;
 import com.stonebreak.world.generation.spline.JaggednessSplineRouter;
 import com.stonebreak.world.generation.spline.FactorSplineRouter;
+import com.stonebreak.world.generation.utils.TerrainCalculations;
 
 /**
  * Complete 3D terrain density function for Minecraft 1.18+ style terrain generation.
@@ -80,18 +81,17 @@ public class TerrainDensityFunction implements DensityFunction {
         // Apply erosion factor (same as 2D generator)
         // Low erosion (-1.0) = 1.4x variation (mountainous)
         // High erosion (1.0) = 0.6x variation (flat plains)
-        float erosionFactor = 1.0f - (params.erosion * 0.4f);
+        float erosionFactor = TerrainCalculations.calculateErosionFactor(params.erosion);
 
         // Apply PV amplification (same as 2D generator)
-        float pvAmplification = params.peaksValleys * 8.0f;
+        float pvAmplification = TerrainCalculations.calculatePVAmplification(params.peaksValleys);
 
         // Calculate modified offset with erosion and PV
         float seaLevel = 64.0f;
-        float heightFromSeaLevel = baseOffset - seaLevel;
-        float targetHeight = seaLevel + (heightFromSeaLevel * erosionFactor) + pvAmplification;
+        float targetHeight = TerrainCalculations.calculateModifiedHeight(baseOffset, seaLevel, erosionFactor, pvAmplification);
 
         // Get jaggedness (peaks variation) - scaled by erosion
-        float jaggednessStrength = Math.max(0.0f, -params.erosion);
+        float jaggednessStrength = TerrainCalculations.calculateJaggednessStrength(params.erosion);
         float jaggedness = jaggednessRouter.getJaggedness(params, x, z) * jaggednessStrength;
 
         // Get 3D noise factor from spline
@@ -192,11 +192,10 @@ public class TerrainDensityFunction implements DensityFunction {
         float estimatedOffset = offsetRouter.getOffset(params, x, z);
 
         // Apply basic erosion/PV adjustments for better estimate
-        float erosionFactor = 1.0f - (params.erosion * 0.4f);
-        float pvAmplification = params.peaksValleys * 8.0f;
+        float erosionFactor = TerrainCalculations.calculateErosionFactor(params.erosion);
+        float pvAmplification = TerrainCalculations.calculatePVAmplification(params.peaksValleys);
         float seaLevel = 64.0f;
-        float heightFromSeaLevel = estimatedOffset - seaLevel;
-        float estimatedHeight = seaLevel + (heightFromSeaLevel * erosionFactor) + pvAmplification;
+        float estimatedHeight = TerrainCalculations.calculateModifiedHeight(estimatedOffset, seaLevel, erosionFactor, pvAmplification);
 
         // Set adaptive search bounds (±50 blocks from estimate)
         // This narrows search from 256 blocks to ~100 blocks (2.5x reduction)

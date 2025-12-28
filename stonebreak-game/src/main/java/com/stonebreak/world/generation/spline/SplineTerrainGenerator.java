@@ -7,6 +7,7 @@ import com.stonebreak.world.generation.debug.HeightCalculationDebugInfo;
 import com.stonebreak.world.generation.density.TerrainDensityFunction;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.generation.noise.NoiseRouter;
+import com.stonebreak.world.generation.utils.TerrainCalculations;
 
 import java.util.ArrayList;
 
@@ -93,7 +94,7 @@ public class SplineTerrainGenerator implements TerrainGenerator {
         if (params.erosion < 0.0f) {
             // Mountains: Linear amplification (unchanged from previous versions)
             // erosion=-1.0 → 1.4x, erosion=-0.5 → 1.2x, erosion=0.0 → 1.0x
-            erosionFactor = 1.0f - (params.erosion * 0.4f);
+            erosionFactor = TerrainCalculations.calculateErosionFactor(params.erosion);
         } else {
             // Plains: Quadratic dampening for maximum flatness
             // erosion=0.3 → 0.928x (7% flatter)
@@ -105,12 +106,11 @@ public class SplineTerrainGenerator implements TerrainGenerator {
 
         // Calculate PV amplification (amplifies height extremes)
         // Peaks (PV=1.0) get higher, valleys (PV=-1.0) get lower
-        float pvAmplification = params.peaksValleys * 8.0f;
+        float pvAmplification = TerrainCalculations.calculatePVAmplification(params.peaksValleys);
 
         // Apply erosion to height variation from sea level (34)
         float seaLevel = 34.0f;
-        float heightFromSeaLevel = baseOffset - seaLevel;
-        float modifiedHeight = seaLevel + (heightFromSeaLevel * erosionFactor) + pvAmplification;
+        float modifiedHeight = TerrainCalculations.calculateModifiedHeight(baseOffset, seaLevel, erosionFactor, pvAmplification);
 
         // TERRA v.10: Erosion-gated weirdness (floating islands only in mountains)
         // This prevents floating plains and keeps floating features in mountainous areas only
@@ -133,7 +133,7 @@ public class SplineTerrainGenerator implements TerrainGenerator {
         float jaggednessStrength = 0.0f;
         if (params.continentalness > 0.4f && params.erosion < 0.0f && params.peaksValleys > -0.3f) {
             // Scale by erosion: more negative = more jagged
-            jaggednessStrength = Math.max(0.0f, -params.erosion); // 0.0 to 1.0
+            jaggednessStrength = TerrainCalculations.calculateJaggednessStrength(params.erosion); // 0.0 to 1.0
         }
         float jaggedness = jaggednessRouter.getJaggedness(params, x, z) * jaggednessStrength;
 

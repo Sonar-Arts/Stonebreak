@@ -367,6 +367,12 @@ public class ChunkManager {
                         boolean isMeshReady = stateManager.isRenderable();
                         boolean isMeshGenerating = stateManager.hasState(CcoChunkState.MESH_GENERATING);
                         boolean isMeshCpuReady = stateManager.hasState(CcoChunkState.MESH_CPU_READY);
+                        boolean isUnloading = stateManager.hasState(CcoChunkState.UNLOADING);
+
+                        // Skip validation for chunks being unloaded - they're intentionally in teardown
+                        if (isUnloading) {
+                            continue; // Skip to next chunk
+                        }
 
                         // Case 1: Populated but no mesh activity (silent failure)
                         if (isPopulated && !isMeshReady && !isMeshGenerating && !isMeshCpuReady) {

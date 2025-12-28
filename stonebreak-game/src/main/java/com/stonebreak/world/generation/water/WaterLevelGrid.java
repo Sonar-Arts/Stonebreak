@@ -4,6 +4,8 @@ import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.config.WaterGenerationConfig;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.generation.noise.NoiseRouter;
+import com.stonebreak.world.generation.utils.GridInterpolation;
+import com.stonebreak.world.generation.utils.TerrainCalculations;
 
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -191,11 +193,7 @@ public class WaterLevelGrid {
      * @return Terrain height at this position
      */
     private int calculateTerrainHeight(int worldX, int worldZ) {
-        // Sample multi-noise parameters
-        MultiNoiseParameters params = noiseRouter.sampleParameters(worldX, worldZ);
-
-        // Calculate height using terrain generator
-        return terrainGenerator.generateHeight(worldX, worldZ, params);
+        return TerrainCalculations.calculateTerrainHeight(worldX, worldZ, noiseRouter, terrainGenerator);
     }
 
     /**
@@ -213,25 +211,7 @@ public class WaterLevelGrid {
      * @return Interpolated water level, or -1 if no water
      */
     private int bilinearInterpolate(int v00, int v10, int v01, int v11, float tx, float tz) {
-        // If all corners are -1 (no water), return -1
-        boolean hasWater = (v00 != -1 || v10 != -1 || v01 != -1 || v11 != -1);
-        if (!hasWater) {
-            return -1;
-        }
-
-        // If mixed water/no-water, use nearest neighbor (preserves sharp edges)
-        if (v00 == -1 || v10 == -1 || v01 == -1 || v11 == -1) {
-            // Use nearest corner
-            if (tx < 0.5f && tz < 0.5f) return v00;
-            if (tx >= 0.5f && tz < 0.5f) return v10;
-            if (tx < 0.5f && tz >= 0.5f) return v01;
-            return v11;
-        }
-
-        // Standard bilinear interpolation for all-water regions
-        float v0 = v00 * (1 - tx) + v10 * tx;
-        float v1 = v01 * (1 - tx) + v11 * tx;
-        return (int)(v0 * (1 - tz) + v1 * tz);
+        return GridInterpolation.bilinearInterpolate(v00, v10, v01, v11, tx, tz);
     }
 
     /**

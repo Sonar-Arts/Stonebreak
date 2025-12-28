@@ -8,55 +8,104 @@ import com.stonebreak.world.generation.caves.CaveNoiseGenerator;
 import com.stonebreak.world.generation.config.WaterGenerationConfig;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.generation.noise.NoiseRouter;
+import com.stonebreak.world.generation.water.basin.BasinWaterLevelGrid;
+import com.stonebreak.world.generation.water.basin.SeaLevelCalculator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Fills water bodies in chunks using grid-based water level calculation.
+ * Fills water bodies in chunks using two-tiered water generation system.
  *
- * Uses WaterLevelGrid for perfectly flat, multi-chunk water bodies:
- * - Grid-based water level calculation (256-block resolution)
- * - Bilinear interpolation for smooth transitions
- * - 50-75% faster than per-column calculation (0.5-1ms vs 2ms per chunk)
- * - Guarantees perfectly flat water surfaces across chunk boundaries
- * - Reuses cached terrain heights and noise parameters
+ * <p><strong>TWO-TIERED SYSTEM:</strong></p>
+ * <ol>
+ *     <li><strong>Sea Level (y &lt;= 64):</strong> Traditional ocean filling for terrain &lt; sea level</li>
+ *     <li><strong>Basin Detection (y &gt;= 66):</strong> Elevated lakes/ponds via rim detection</li>
+ * </ol>
  *
- * Algorithm:
+ * <p>Uses {@link SeaLevelCalculator} for fast ocean filling (O(1) per column).</p>
+ * <p>Uses {@link BasinWaterLevelGrid} for sophisticated basin detection with:</p>
+ * <ul>
+ *     <li>Rim detection (finds lowest spillover point)</li>
+ *     <li>Climate filtering (moisture, temperature)</li>
+ *     <li>Elevation falloff (exponential decay for high basins)</li>
+ *     <li>Grid-based calculation (256-block resolution)</li>
+ *     <li>Bilinear interpolation for smooth water surfaces</li>
+ * </ul>
+ *
+ * <p><strong>Algorithm:</strong></p>
+ * <pre>
  * For each column in chunk:
- *   1. Get water level using WaterLevelGrid (interpolated from grid)
- *   2. If water level > 0, fill from terrain height to water level
- *   3. Skip cave positions (keep caves dry)
- *   4. Place ICE on surface if temperature < 0.2
+ *   1. Try sea level calculator (fast path)
+ *   2. If no sea-level water, try basin calculator (slower path)
+ *   3. If water level &gt; 0, fill from terrain to water level
+ *   4. Skip cave positions (keep caves dry)
+ *   5. Place ICE on surface if temperature &lt; freezeTemperature
+ * </pre>
  *
- * Follows Single Responsibility Principle - only fills water blocks in chunks.
+ * <p><strong>Design:</strong> Follows Single Responsibility Principle - only fills water blocks in chunks.</p>
+ *
+ * @see SeaLevelCalculator
+ * @see BasinWaterLevelGrid
  */
 public class BasinWaterFiller {
 
-    private final WaterLevelGrid waterGrid;
+    // Two-tiered water calculators
+    private final SeaLevelCalculator seaLevelCalculator;
+    private final BasinWaterLevelGrid basinWaterGrid;
+
+    // Legacy calculator (deprecated, kept for A/B testing)
+    @Deprecated(since = "Two-Tiered System", forRemoval = false)
+    private final WaterLevelGrid legacyWaterGrid;
+
     private final CaveNoiseGenerator caveGenerator;
     private final WaterGenerationConfig config;
 
+    // Feature flag for legacy mode (for testing/comparison)
+    private final boolean useLegacyMode;
+
     /**
-     * Creates a new basin water filler.
+     * Creates a new basin water filler with two-tiered system.
      *
-     * @param noiseRouter Noise router for regional elevation sampling
+     * @param noiseRouter Noise router for parameter sampling
      * @param terrainGenerator Terrain generator for height calculation
      * @param caveGenerator Cave generator for dry cave checks
      * @param config Water generation configuration
+     * @param seed World seed for deterministic random
      */
     public BasinWaterFiller(NoiseRouter noiseRouter, TerrainGenerator terrainGenerator,
-                           CaveNoiseGenerator caveGenerator, WaterGenerationConfig config) {
-        this.config = config;
-        this.caveGenerator = caveGenerator;
-
-        // Initialize water level grid (replaces per-column calculator)
-        this.waterGrid = new WaterLevelGrid(noiseRouter, terrainGenerator, config);
+                           CaveNoiseGenerator caveGenerator, WaterGenerationConfig config, long seed) {
+        this(noiseRouter, terrainGenerator, caveGenerator, config, seed, false);
     }
 
     /**
-     * Fills water bodies in the chunk based on basin detection.
+     * Creates a new basin water filler with optional legacy mode.
      *
-     * Uses cached terrain heights and noise parameters to avoid recalculation.
-     * Keeps caves dry by checking cave density at each position.
+     * @param noiseRouter Noise router for parameter sampling
+     * @param terrainGenerator Terrain generator for height calculation
+     * @param caveGenerator Cave generator for dry cave checks
+     * @param config Water generation configuration
+     * @param seed World seed for deterministic random
+     * @param useLegacyMode If true, use legacy WaterLevelGrid (for A/B testing)
+     */
+    public BasinWaterFiller(NoiseRouter noiseRouter, TerrainGenerator terrainGenerator,
+                           CaveNoiseGenerator caveGenerator, WaterGenerationConfig config,
+                           long seed, boolean useLegacyMode) {
+        this.config = config;
+        this.caveGenerator = caveGenerator;
+        this.useLegacyMode = useLegacyMode;
+
+        // Initialize two-tiered calculators
+        this.seaLevelCalculator = new SeaLevelCalculator(config.seaLevel);
+        this.basinWaterGrid = new BasinWaterLevelGrid(noiseRouter, terrainGenerator, config, seed);
+
+        // Initialize legacy calculator (for comparison)
+        this.legacyWaterGrid = new WaterLevelGrid(noiseRouter, terrainGenerator, config);
+    }
+
+    /**
+     * Fills water bodies in the chunk using two-tiered system.
+     *
+     * <p>Uses cached terrain heights and noise parameters to avoid recalculation.
+     * Keeps caves dry by checking cave density at each position.</p>
      *
      * @param chunk The chunk to fill with water
      * @param terrainHeights Cached terrain heights [16][16]
@@ -81,11 +130,21 @@ public class BasinWaterFiller {
                 int terrainHeight = terrainHeights[x][z];
                 MultiNoiseParameters params = paramsCache[x][z];
 
-                // Get water level for this column (interpolated from grid)
-                int waterLevel = waterGrid.getWaterLevel(
+                // Get water level using two-tiered system (or legacy mode)
+                int waterLevel;
+                if (useLegacyMode) {
+                    // Legacy mode - use old WaterLevelGrid
+                    waterLevel = legacyWaterGrid.getWaterLevel(
                         worldX, worldZ, terrainHeight,
                         params.temperature, params.humidity
-                );
+                    );
+                } else {
+                    // Two-tiered mode - try sea level first, then basin
+                    waterLevel = calculateWaterLevelTwoTiered(
+                        worldX, worldZ, terrainHeight,
+                        params.temperature, params.humidity
+                    );
+                }
 
                 // Skip if no water should generate
                 if (waterLevel <= 0) {
@@ -97,7 +156,6 @@ public class BasinWaterFiller {
                     // Check if this position is a cave (keep caves dry)
                     boolean isCave = false;
                     if (caveGenerator.canGenerateCaves(y)) {
-                        // Sample cave density (reuse pattern from old floodFillOceanWater)
                         float caveDensity = caveGenerator.sampleCaveDensity(
                                 worldX, y, worldZ, terrainHeight
                         );
@@ -116,5 +174,56 @@ public class BasinWaterFiller {
                 }
             }
         }
+    }
+
+    /**
+     * Calculates water level using two-tiered system.
+     *
+     * <p><strong>Fast path:</strong> Try sea level first (O(1))</p>
+     * <p><strong>Slow path:</strong> Try basin detection if no sea-level water</p>
+     *
+     * @param worldX World X coordinate
+     * @param worldZ World Z coordinate
+     * @param terrainHeight Terrain height at this column
+     * @param temperature Temperature [0.0-1.0]
+     * @param humidity Humidity [0.0-1.0]
+     * @return Water level, or -1 if no water
+     */
+    private int calculateWaterLevelTwoTiered(int worldX, int worldZ, int terrainHeight,
+                                             float temperature, float humidity) {
+        // TIER 1: Sea level (fast path, O(1))
+        int seaLevel = seaLevelCalculator.calculateSeaLevel(terrainHeight);
+        if (seaLevel != -1) {
+            return seaLevel; // Found sea-level water
+        }
+
+        // TIER 2: Basin detection (slower path, grid-based)
+        int basinLevel = basinWaterGrid.getWaterLevel(
+            worldX, worldZ, terrainHeight, temperature, humidity
+        );
+        return basinLevel; // May be -1 if no basin water
+    }
+
+    /**
+     * Clears all water level caches.
+     *
+     * <p>Should be called when switching worlds or when memory pressure is high.</p>
+     */
+    public void clearCaches() {
+        basinWaterGrid.clearCache();
+        legacyWaterGrid.clearCache();
+    }
+
+    /**
+     * Gets cache statistics for debugging.
+     *
+     * @return Cache statistics string
+     */
+    public String getCacheStats() {
+        return String.format(
+            "BasinWaterFiller Caches - Basin: %d points, Legacy: %d points",
+            basinWaterGrid.getCacheSize(),
+            legacyWaterGrid.getCacheSize()
+        );
     }
 }

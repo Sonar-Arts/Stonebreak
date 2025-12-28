@@ -91,13 +91,14 @@ public class TerrainGenerationSystem {
         this.modifierRegistry = new BiomeTerrainModifierRegistry(seed);  // Phase 2: Initialize modifier registry
         this.caveGenerator = new CaveNoiseGenerator(seed);  // Ridged noise cave system (cheese + spaghetti)
 
-        // Initialize dynamic water generation system
+        // Initialize dynamic water generation system (two-tiered: sea level + basin detection)
         WaterGenerationConfig waterConfig = new WaterGenerationConfig();
         this.basinWaterFiller = new BasinWaterFiller(
                 biomeManager.getNoiseRouter(),
                 terrainGenerator,
                 caveGenerator,
-                waterConfig
+                waterConfig,
+                seed  // Required for deterministic elevation probability
         );
 
         this.oreGenerator = new OreGenerator(seed);

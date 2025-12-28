@@ -6,6 +6,7 @@ import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 import com.stonebreak.world.generation.spline.OffsetSplineRouter;
 import com.stonebreak.world.generation.spline.JaggednessSplineRouter;
+import com.stonebreak.world.generation.utils.TerrainCalculations;
 
 /**
  * Hybrid SDF-Spline terrain generator.
@@ -141,18 +142,17 @@ public class HybridSdfTerrainGenerator implements TerrainGenerator {
         float baseOffset = offsetRouter.getOffset(params, x, z);
 
         // Apply erosion factor (matches SplineTerrainGenerator)
-        float erosionFactor = 1.0f - (params.erosion * 0.4f);
+        float erosionFactor = TerrainCalculations.calculateErosionFactor(params.erosion);
 
         // Apply PV amplification
-        float pvAmplification = params.peaksValleys * 8.0f;
+        float pvAmplification = TerrainCalculations.calculatePVAmplification(params.peaksValleys);
 
         // Calculate modified offset with erosion and PV
         float seaLevelF = (float) seaLevel;
-        float heightFromSeaLevel = baseOffset - seaLevelF;
-        float height = seaLevelF + (heightFromSeaLevel * erosionFactor) + pvAmplification;
+        float height = TerrainCalculations.calculateModifiedHeight(baseOffset, seaLevelF, erosionFactor, pvAmplification);
 
         // Get jaggedness - scaled by erosion
-        float jaggednessStrength = Math.max(0.0f, -params.erosion);
+        float jaggednessStrength = TerrainCalculations.calculateJaggednessStrength(params.erosion);
         float jaggedness = jaggednessRouter.getJaggedness(params, x, z) * jaggednessStrength;
 
         // Final height

@@ -12,7 +12,9 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.*;
+import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
 import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoNeighborCoordinator;
+import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
 import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
@@ -195,6 +197,12 @@ public class World {
             if (chunk == null) {
                 return;
             }
+        }
+
+        // Skip recovery if chunk is being unloaded
+        CcoAtomicStateManager stateManager = chunk.getCcoStateManager();
+        if (stateManager.hasState(CcoChunkState.UNLOADING)) {
+            return; // Don't attempt recovery on chunks being torn down
         }
 
         // Features are now always populated during chunk generation - no need to check

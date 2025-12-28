@@ -6,6 +6,7 @@ import com.stonebreak.world.generation.spline.OffsetSplineRouter;
 import com.stonebreak.world.generation.spline.JaggednessSplineRouter;
 import com.stonebreak.world.generation.spline.FactorSplineRouter;
 import com.stonebreak.world.generation.sdf.primitives.SdfHeightfield;
+import com.stonebreak.world.generation.utils.TerrainCalculations;
 
 /**
  * Hybrid SDF-Spline density function for 3D terrain generation.
@@ -160,18 +161,17 @@ public class HybridDensityFunction implements DensityFunction {
         float baseOffset = offsetRouter.getOffset(params, x, z);
 
         // Apply erosion factor
-        float erosionFactor = 1.0f - (params.erosion * 0.4f);
+        float erosionFactor = TerrainCalculations.calculateErosionFactor(params.erosion);
 
         // Apply PV amplification
-        float pvAmplification = params.peaksValleys * 8.0f;
+        float pvAmplification = TerrainCalculations.calculatePVAmplification(params.peaksValleys);
 
         // Calculate target height
         float seaLevel = 64.0f;
-        float heightFromSeaLevel = baseOffset - seaLevel;
-        float targetHeight = seaLevel + (heightFromSeaLevel * erosionFactor) + pvAmplification;
+        float targetHeight = TerrainCalculations.calculateModifiedHeight(baseOffset, seaLevel, erosionFactor, pvAmplification);
 
         // Get jaggedness (peak variation) - scaled by erosion
-        float jaggednessStrength = Math.max(0.0f, -params.erosion);
+        float jaggednessStrength = TerrainCalculations.calculateJaggednessStrength(params.erosion);
         float jaggedness = jaggednessRouter.getJaggedness(params, x, z) * jaggednessStrength;
 
         // Final terrain surface height
@@ -248,11 +248,10 @@ public class HybridDensityFunction implements DensityFunction {
         float estimatedOffset = offsetRouter.getOffset(params, x, z);
 
         // Apply basic erosion/PV adjustments for better estimate
-        float erosionFactor = 1.0f - (params.erosion * 0.4f);
-        float pvAmplification = params.peaksValleys * 8.0f;
+        float erosionFactor = TerrainCalculations.calculateErosionFactor(params.erosion);
+        float pvAmplification = TerrainCalculations.calculatePVAmplification(params.peaksValleys);
         float seaLevel = 64.0f;
-        float heightFromSeaLevel = estimatedOffset - seaLevel;
-        float estimatedHeight = seaLevel + (heightFromSeaLevel * erosionFactor) + pvAmplification;
+        float estimatedHeight = TerrainCalculations.calculateModifiedHeight(estimatedOffset, seaLevel, erosionFactor, pvAmplification);
 
         // Set adaptive search bounds (±50 blocks from estimate)
         int minY = Math.max(0, (int) estimatedHeight - 50);

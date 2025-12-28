@@ -4,6 +4,7 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkManager;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
+import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
 import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
 import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -499,9 +500,16 @@ public final class MmsMeshPipeline {
         }
 
         synchronized (chunk) {
+            CcoAtomicStateManager stateManager = chunk.getCcoStateManager();
+
+            // Never generate meshes for chunks being unloaded
+            if (stateManager.hasState(CcoChunkState.UNLOADING)) {
+                return false;
+            }
+
             // Ready if dirty and not already generating
             return chunk.getCcoDirtyTracker().isMeshDirty() &&
-                   !chunk.getCcoStateManager().hasState(CcoChunkState.MESH_GENERATING);
+                   !stateManager.hasState(CcoChunkState.MESH_GENERATING);
         }
     }
 
