@@ -433,6 +433,57 @@ public class ViewportController {
         renderingState.setCurrentTextureVariant(variant);
     }
 
+    /**
+     * Update only the texture for the current BlockModel without rebuilding geometry.
+     * Use this when changing textures to preserve any vertex/geometry modifications.
+     * UV coordinates are updated to match the new texture type while preserving vertex positions.
+     *
+     * @param blockModel The BlockModel with updated texture path
+     */
+    public void updateBlockModelTexture(BlockModel blockModel) {
+        if (blockModel == null) {
+            logger.warn("Cannot update texture for null BlockModel");
+            return;
+        }
+
+        logger.info("Updating BlockModel texture (preserving geometry): {}", blockModel.getName());
+
+        // Delete old texture if exists
+        if (currentBlockModelTextureId > 0) {
+            omtTextureLoader.deleteTexture(currentBlockModelTextureId);
+            currentBlockModelTextureId = 0;
+        }
+
+        // Update reference (in case it changed)
+        currentBlockModel = blockModel;
+
+        // Load new texture and update UV coordinates to match texture type
+        java.nio.file.Path texturePath = blockModel.getTexturePath();
+        if (texturePath != null && java.nio.file.Files.exists(texturePath)) {
+            TextureLoadResult result = omtTextureLoader.loadTextureComposite(texturePath);
+
+            if (result.isSuccess()) {
+                // Auto-detect UV mode and update UVs without rebuilding vertex positions
+                UVMode detectedMode = UVMode.detectFromDimensions(result.getWidth(), result.getHeight());
+                modelRenderer.updateUVModeOnly(detectedMode);
+                logger.info("Updated UV mode to {} for texture {}x{} (geometry preserved)",
+                    detectedMode, result.getWidth(), result.getHeight());
+
+                currentBlockModelTextureId = result.getTextureId();
+                modelRenderer.setTexture(result.getTextureId());
+                logger.info("Updated BlockModel texture: {}", texturePath.getFileName());
+            } else {
+                logger.error("Failed to load texture from: {}", texturePath);
+                modelRenderer.setTexture(0);
+            }
+        } else {
+            logger.info("BlockModel texture cleared or path invalid: {}", texturePath);
+            modelRenderer.setTexture(0);
+        }
+
+        logger.info("BlockModel texture updated successfully: {}", blockModel.getName());
+    }
+
     // ========== Transform ==========
 
     /** Set position, rotation, and non-uniform scale */

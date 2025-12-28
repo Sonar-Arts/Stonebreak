@@ -24,11 +24,19 @@ public interface IViewportConnector {
     void setTextureVariant(String variantName);
 
     /**
-     * Reload a BlockModel in the viewport (for texture updates).
+     * Reload a BlockModel in the viewport (full reload including geometry).
      *
      * @param blockModel The BlockModel to reload
      */
     void reloadBlockModel(BlockModel blockModel);
+
+    /**
+     * Update only the texture for the current BlockModel without rebuilding geometry.
+     * Use this when changing textures to preserve any vertex/geometry modifications.
+     *
+     * @param blockModel The BlockModel with updated texture path
+     */
+    void updateBlockModelTexture(BlockModel blockModel);
 
     /**
      * Get the minimum allowed scale value.

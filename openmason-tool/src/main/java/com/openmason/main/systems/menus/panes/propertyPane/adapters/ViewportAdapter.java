@@ -46,6 +46,14 @@ public class ViewportAdapter implements IViewportConnector {
     }
 
     @Override
+    public void updateBlockModelTexture(BlockModel blockModel) {
+        if (viewport != null && blockModel != null) {
+            viewport.updateBlockModelTexture(blockModel);
+            logger.debug("Updated BlockModel texture in viewport: {}", blockModel.getName());
+        }
+    }
+
+    @Override
     public float getMinScale() {
         return viewport != null ? viewport.getMinScale() : 0.1f;
     }

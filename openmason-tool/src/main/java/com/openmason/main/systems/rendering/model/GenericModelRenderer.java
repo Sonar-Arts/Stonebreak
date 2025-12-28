@@ -171,6 +171,139 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     /**
+     * Update UV mode without rebuilding vertex positions.
+     * This preserves geometry modifications while updating texture coordinates.
+     * Works best with unsubdivided 24-vertex cubes; subdivided meshes use approximation.
+     *
+     * @param uvMode The new UV mode
+     */
+    public void updateUVModeOnly(UVMode uvMode) {
+        if (uvMode == null || uvMode == currentUVMode) {
+            return;
+        }
+
+        logger.info("Updating UV mode from {} to {} (preserving geometry)", currentUVMode, uvMode);
+        currentUVMode = uvMode;
+
+        float[] vertices = vertexManager.getVertices();
+        float[] texCoords = vertexManager.getTexCoords();
+
+        if (vertices == null || texCoords == null) {
+            logger.warn("Cannot update UVs: no vertex data");
+            return;
+        }
+
+        int vertexCount = vertices.length / 3;
+
+        // Generate new UV coordinates based on the UV mode
+        float[] newTexCoords = generateUVsForMode(uvMode, vertexCount);
+
+        // Update texture coordinates in vertex manager
+        for (int i = 0; i < vertexCount && i * 2 + 1 < newTexCoords.length; i++) {
+            vertexManager.setTexCoordDirect(i, newTexCoords[i * 2], newTexCoords[i * 2 + 1]);
+        }
+
+        // Update GPU buffers
+        if (initialized) {
+            float[] updatedTexCoords = vertexManager.getTexCoords();
+            float[] interleavedData = geometryBuilder.buildInterleavedData(vertices, updatedTexCoords);
+            updateVBO(interleavedData);
+        }
+
+        logger.info("UV mode updated to {} for {} vertices", uvMode, vertexCount);
+    }
+
+    /**
+     * Generate UV coordinates for the given mode and vertex count.
+     * For standard 24-vertex cubes, generates proper per-face UVs.
+     * For other vertex counts, uses approximation based on face index.
+     */
+    private float[] generateUVsForMode(UVMode uvMode, int vertexCount) {
+        float[] newTexCoords = new float[vertexCount * 2];
+
+        if (uvMode == UVMode.FLAT) {
+            // FLAT: each face uses 0-1 UV range
+            // Face order: Front(0-3), Back(4-7), Left(8-11), Right(12-15), Top(16-19), Bottom(20-23)
+            float[][] faceUVs = {
+                // Bottom-left, Bottom-right, Top-right, Top-left for each face
+                {0, 1, 1, 1, 1, 0, 0, 0},           // Front
+                {1, 1, 0, 1, 0, 0, 1, 0},           // Back (mirrored)
+                {0, 1, 1, 1, 1, 0, 0, 0},           // Left
+                {1, 1, 0, 1, 0, 0, 1, 0},           // Right (mirrored)
+                {0, 1, 1, 1, 1, 0, 0, 0},           // Top
+                {0, 0, 1, 0, 1, 1, 0, 1}            // Bottom
+            };
+
+            for (int i = 0; i < vertexCount; i++) {
+                int faceIndex = i / 4;  // Which face (0-5 for standard cube)
+                int vertInFace = i % 4; // Which vertex in face (0-3)
+
+                if (faceIndex < 6) {
+                    newTexCoords[i * 2] = faceUVs[faceIndex][vertInFace * 2];
+                    newTexCoords[i * 2 + 1] = faceUVs[faceIndex][vertInFace * 2 + 1];
+                } else {
+                    // Extra vertices from subdivision - use interpolated UVs
+                    // Fall back to simple 0-1 mapping
+                    newTexCoords[i * 2] = 0.5f;
+                    newTexCoords[i * 2 + 1] = 0.5f;
+                }
+            }
+        } else {
+            // CUBE_NET: specific regions for each face
+            float V_ROW_1 = 16.0f / 48.0f;  // 0.333...
+            float V_ROW_2 = 32.0f / 48.0f;  // 0.666...
+
+            // Face UV bounds: {u1, v1, u2, v2} (corners)
+            float[][] faceBounds = {
+                {0.25f, V_ROW_1, 0.5f, V_ROW_2},   // Front
+                {0.75f, V_ROW_1, 1.0f, V_ROW_2},   // Back
+                {0.0f, V_ROW_1, 0.25f, V_ROW_2},   // Left
+                {0.5f, V_ROW_1, 0.75f, V_ROW_2},   // Right
+                {0.25f, 0.0f, 0.5f, V_ROW_1},      // Top
+                {0.25f, V_ROW_2, 0.5f, 1.0f}       // Bottom
+            };
+
+            // Vertex order within face: BL, BR, TR, TL (matching ModelPart layout)
+            // UV offsets from bounds: {u_offset, v_offset} where 0=min, 1=max
+            float[][] vertUVOffsets = {
+                {0, 1}, // BL: u=u1, v=v2
+                {1, 1}, // BR: u=u2, v=v2
+                {1, 0}, // TR: u=u2, v=v1
+                {0, 0}  // TL: u=u1, v=v1
+            };
+
+            for (int i = 0; i < vertexCount; i++) {
+                int faceIndex = i / 4;
+                int vertInFace = i % 4;
+
+                if (faceIndex < 6) {
+                    float[] bounds = faceBounds[faceIndex];
+                    float[] offsets = vertUVOffsets[vertInFace];
+
+                    float u = bounds[0] + offsets[0] * (bounds[2] - bounds[0]);
+                    float v = bounds[1] + offsets[1] * (bounds[3] - bounds[1]);
+
+                    newTexCoords[i * 2] = u;
+                    newTexCoords[i * 2 + 1] = v;
+                } else {
+                    // Extra vertices from subdivision - use center of texture
+                    newTexCoords[i * 2] = 0.375f;  // Center of cube net
+                    newTexCoords[i * 2 + 1] = 0.5f;
+                }
+            }
+        }
+
+        return newTexCoords;
+    }
+
+    /**
+     * Get the current UV mode.
+     */
+    public UVMode getUVMode() {
+        return currentUVMode;
+    }
+
+    /**
      * Rebuild geometry from current parts.
      */
     private void rebuildGeometry() {
