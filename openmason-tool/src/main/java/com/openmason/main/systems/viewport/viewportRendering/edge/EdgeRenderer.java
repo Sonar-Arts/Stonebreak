@@ -1,5 +1,7 @@
 package com.openmason.main.systems.viewport.viewportRendering.edge;
 
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.main.systems.rendering.model.MeshChangeListener;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
 import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgeSelectionManager;
@@ -61,7 +63,7 @@ import static org.lwjgl.opengl.GL30.*;
  * @see com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer
  * @see com.openmason.main.systems.viewport.viewportRendering.edge.operations
  */
-public class EdgeRenderer {
+public class EdgeRenderer implements MeshChangeListener {
 
     private static final Logger logger = LoggerFactory.getLogger(EdgeRenderer.class);
 
@@ -161,6 +163,45 @@ public class EdgeRenderer {
      * Handles buffer updates, position updates, remapping, and geometry queries.
      */
     private final MeshManager meshManager = MeshManager.getInstance();
+
+    /**
+     * Reference to GenericModelRenderer for observer pattern.
+     * Receives notifications when vertex positions change or geometry is rebuilt.
+     */
+    private GenericModelRenderer modelRenderer;
+
+    /**
+     * Set the GenericModelRenderer that this EdgeRenderer observes.
+     * Registers as a MeshChangeListener to receive index-based updates.
+     *
+     * @param renderer The GenericModelRenderer to observe, or null to disconnect
+     */
+    public void setModelRenderer(GenericModelRenderer renderer) {
+        // Unregister from previous renderer
+        if (this.modelRenderer != null) {
+            this.modelRenderer.removeMeshChangeListener(this);
+        }
+
+        this.modelRenderer = renderer;
+
+        // Register with new renderer
+        if (renderer != null) {
+            renderer.addMeshChangeListener(this);
+            // Initial sync will happen when rebuildFromModel is called
+        }
+
+        logger.debug("EdgeRenderer {} model renderer",
+            renderer != null ? "connected to" : "disconnected from");
+    }
+
+    /**
+     * Get the associated GenericModelRenderer.
+     *
+     * @return The model renderer, or null if not set
+     */
+    public GenericModelRenderer getModelRenderer() {
+        return modelRenderer;
+    }
 
     /**
      * Initializes the edge renderer and allocates OpenGL resources.
@@ -486,6 +527,12 @@ public class EdgeRenderer {
      * <p>It is safe to call this method multiple times or when not initialized.
      */
     public void cleanup() {
+        // Unregister from model renderer
+        if (modelRenderer != null) {
+            modelRenderer.removeMeshChangeListener(this);
+            modelRenderer = null;
+        }
+
         if (vao != 0) {
             glDeleteVertexArrays(vao);
             vao = 0;
@@ -496,6 +543,187 @@ public class EdgeRenderer {
         }
         edgeCount = 0;
         initialized = false;
+    }
+
+    // =========================================================================
+    // MESH CHANGE LISTENER IMPLEMENTATION - Index-based updates from GenericModelRenderer
+    // =========================================================================
+
+    /**
+     * Called when a vertex position has been updated in GenericModelRenderer.
+     * Updates all edges connected to the changed vertex using index-based lookup.
+     *
+     * @param uniqueIndex The unique vertex index that changed
+     * @param newPosition The new position of the vertex
+     * @param affectedMeshIndices All mesh vertex indices that were updated
+     */
+    @Override
+    public void onVertexPositionChanged(int uniqueIndex, Vector3f newPosition, int[] affectedMeshIndices) {
+        if (!initialized || edgePositions == null || edgeToVertexMapping == null) {
+            return;
+        }
+
+        // Update all edges connected to this unique vertex
+        updateEdgesConnectedToVertexByIndex(uniqueIndex, newPosition);
+
+        logger.trace("EdgeRenderer received vertex update: unique {} -> ({}, {}, {})",
+            uniqueIndex, newPosition.x, newPosition.y, newPosition.z);
+    }
+
+    /**
+     * Called when the entire geometry has been rebuilt in GenericModelRenderer.
+     * Triggers a full rebuild of edge data from the model.
+     */
+    @Override
+    public void onGeometryRebuilt() {
+        logger.debug("EdgeRenderer received geometry rebuild notification");
+        rebuildFromModel();
+    }
+
+    /**
+     * Rebuild edge data from the associated GenericModelRenderer.
+     * Called when initially connected or when geometry is rebuilt.
+     */
+    private void rebuildFromModel() {
+        if (modelRenderer == null || !initialized) {
+            return;
+        }
+
+        // Get unique vertex positions for edge building
+        float[] uniquePositions = modelRenderer.getAllUniqueVertexPositions();
+        if (uniquePositions == null || uniquePositions.length == 0) {
+            edgeCount = 0;
+            edgePositions = null;
+            edgeToVertexMapping = null;
+            return;
+        }
+
+        // Rebuild edges from triangle topology, filtering out internal face diagonals
+        // Internal diagonals are edges that only exist within a single original face
+        // (e.g., the diagonal splitting a quad into 2 triangles)
+        int[] triangleIndices = modelRenderer.getTriangleIndices();
+        if (triangleIndices == null || triangleIndices.length == 0) {
+            return;
+        }
+
+        // Step 1: Build map of edge -> set of original face IDs
+        // An edge used by triangles from DIFFERENT faces is a boundary edge (render it)
+        // An edge used only by triangles from the SAME face is internal (skip it)
+        java.util.Map<Long, java.util.Set<Integer>> edgeToFaceIds = new java.util.HashMap<>();
+        java.util.Map<Long, int[]> edgeToVertices = new java.util.HashMap<>();
+
+        int triangleCount = triangleIndices.length / 3;
+        for (int t = 0; t < triangleCount; t++) {
+            int i0 = triangleIndices[t * 3];
+            int i1 = triangleIndices[t * 3 + 1];
+            int i2 = triangleIndices[t * 3 + 2];
+
+            // Get unique indices for these mesh vertices
+            int u0 = modelRenderer.getUniqueIndexForMeshVertex(i0);
+            int u1 = modelRenderer.getUniqueIndexForMeshVertex(i1);
+            int u2 = modelRenderer.getUniqueIndexForMeshVertex(i2);
+
+            // Get the original face ID for this triangle
+            int faceId = modelRenderer.getOriginalFaceIdForTriangle(t);
+
+            // Track which faces use each edge
+            trackEdgeFace(edgeToFaceIds, edgeToVertices, u0, u1, faceId);
+            trackEdgeFace(edgeToFaceIds, edgeToVertices, u1, u2, faceId);
+            trackEdgeFace(edgeToFaceIds, edgeToVertices, u2, u0, faceId);
+        }
+
+        // Step 2: Filter to only boundary edges (edges shared by different faces)
+        java.util.List<int[]> edgeList = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<Long, java.util.Set<Integer>> entry : edgeToFaceIds.entrySet()) {
+            // If edge is used by more than one face, it's a boundary edge - keep it
+            if (entry.getValue().size() > 1) {
+                edgeList.add(edgeToVertices.get(entry.getKey()));
+            }
+        }
+
+        // Build edge positions and mapping
+        int newEdgeCount = edgeList.size();
+        float[] newEdgePositions = new float[newEdgeCount * FLOATS_PER_EDGE];
+        int[][] newMapping = new int[newEdgeCount][2];
+
+        for (int e = 0; e < newEdgeCount; e++) {
+            int[] edge = edgeList.get(e);
+            int u0 = edge[0];
+            int u1 = edge[1];
+
+            // Get positions from unique vertex indices
+            Vector3f pos0 = modelRenderer.getUniqueVertexPosition(u0);
+            Vector3f pos1 = modelRenderer.getUniqueVertexPosition(u1);
+
+            if (pos0 != null && pos1 != null) {
+                int offset = e * FLOATS_PER_EDGE;
+                newEdgePositions[offset] = pos0.x;
+                newEdgePositions[offset + 1] = pos0.y;
+                newEdgePositions[offset + 2] = pos0.z;
+                newEdgePositions[offset + 3] = pos1.x;
+                newEdgePositions[offset + 4] = pos1.y;
+                newEdgePositions[offset + 5] = pos1.z;
+            }
+
+            newMapping[e][0] = u0;
+            newMapping[e][1] = u1;
+        }
+
+        // Update state
+        edgePositions = newEdgePositions;
+        edgeCount = newEdgeCount;
+        edgeToVertexMapping = newMapping;
+
+        // Rebuild VBO
+        MeshEdgeBufferUpdater.UpdateResult bufferResult =
+            meshManager.updateEdgeBuffer(vbo, edgePositions, edgeColor);
+
+        // Clear selection/hover (indices may have changed)
+        hoveredEdgeIndex = NO_EDGE_SELECTED;
+        selectedEdgeIndex = NO_EDGE_SELECTED;
+
+        logger.debug("EdgeRenderer rebuilt from model: {} unique edges", edgeCount);
+    }
+
+    /**
+     * Helper to track which faces use an edge.
+     * Used for filtering out internal face diagonals during rebuild.
+     */
+    private void trackEdgeFace(java.util.Map<Long, java.util.Set<Integer>> edgeToFaceIds,
+                               java.util.Map<Long, int[]> edgeToVertices,
+                               int u0, int u1, int faceId) {
+        if (u0 < 0 || u1 < 0 || u0 == u1) {
+            return;
+        }
+        // Canonical ordering: smaller index first
+        int min = Math.min(u0, u1);
+        int max = Math.max(u0, u1);
+        long key = ((long) min << 32) | (max & 0xFFFFFFFFL);
+
+        // Track the face ID for this edge
+        edgeToFaceIds.computeIfAbsent(key, k -> new java.util.HashSet<>()).add(faceId);
+        // Store vertex indices (only need to do this once per edge)
+        edgeToVertices.putIfAbsent(key, new int[] { min, max });
+    }
+
+    /**
+     * Helper to add a unique edge (prevents duplicates).
+     * @deprecated Use trackEdgeFace for boundary-aware edge extraction instead.
+     */
+    @Deprecated
+    private void addUniqueEdge(java.util.Set<Long> seenEdges, java.util.List<int[]> edgeList, int u0, int u1) {
+        if (u0 < 0 || u1 < 0 || u0 == u1) {
+            return;
+        }
+        // Canonical ordering: smaller index first
+        int min = Math.min(u0, u1);
+        int max = Math.max(u0, u1);
+        long key = ((long) min << 32) | (max & 0xFFFFFFFFL);
+
+        if (!seenEdges.contains(key)) {
+            seenEdges.add(key);
+            edgeList.add(new int[] { min, max });
+        }
     }
 
     // Getters and setters

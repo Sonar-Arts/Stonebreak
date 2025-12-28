@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.face;
 
+import com.openmason.main.systems.rendering.model.MeshChangeListener;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
@@ -51,7 +52,7 @@ import static org.lwjgl.opengl.GL30.*;
  * @see FaceHoverDetector
  * @see MeshFaceExtractor
  */
-public class FaceRenderer {
+public class FaceRenderer implements MeshChangeListener {
 
     private static final Logger logger = LoggerFactory.getLogger(FaceRenderer.class);
 
@@ -484,6 +485,12 @@ public class FaceRenderer {
      * to prevent resource leaks.
      */
     public void cleanup() {
+        // Unregister from model renderer
+        if (genericModelRenderer != null) {
+            genericModelRenderer.removeMeshChangeListener(this);
+            genericModelRenderer = null;
+        }
+
         if (vao != 0) {
             glDeleteVertexArrays(vao);
             vao = 0;
@@ -497,6 +504,89 @@ public class FaceRenderer {
         faceToVertexMapping.clear();
         initialized = false;
         logger.debug("FaceRenderer cleaned up");
+    }
+
+    // =========================================================================
+    // MESH CHANGE LISTENER IMPLEMENTATION - Index-based updates from GenericModelRenderer
+    // =========================================================================
+
+    /**
+     * Called when a vertex position has been updated in GenericModelRenderer.
+     * Updates face overlays that include the changed vertex.
+     *
+     * @param uniqueIndex The unique vertex index that changed
+     * @param newPosition The new position of the vertex
+     * @param affectedMeshIndices All mesh vertex indices that were updated
+     */
+    @Override
+    public void onVertexPositionChanged(int uniqueIndex, Vector3f newPosition, int[] affectedMeshIndices) {
+        if (!initialized) {
+            return;
+        }
+
+        // In triangle mode, we need to update trianglePositions and rebuild VBO
+        if (usingTriangleMode && genericModelRenderer != null) {
+            // Update triangle positions that use any of the affected mesh vertices
+            updateTrianglePositionsForMeshVertices(affectedMeshIndices, newPosition);
+        }
+
+        // Sync overlay renderer with updated positions
+        syncMeshVertexPositions();
+
+        logger.trace("FaceRenderer received vertex update: unique {} -> ({}, {}, {})",
+            uniqueIndex, newPosition.x, newPosition.y, newPosition.z);
+    }
+
+    /**
+     * Called when the entire geometry has been rebuilt in GenericModelRenderer.
+     * Triggers a full rebuild of face overlay data from the model.
+     */
+    @Override
+    public void onGeometryRebuilt() {
+        logger.debug("FaceRenderer received geometry rebuild notification");
+        rebuildFromGenericModelRenderer();
+    }
+
+    /**
+     * Update triangle positions for affected mesh vertices.
+     * Used during incremental vertex position updates.
+     */
+    private void updateTrianglePositionsForMeshVertices(int[] affectedMeshIndices, Vector3f newPosition) {
+        if (trianglePositions == null || genericModelRenderer == null) {
+            return;
+        }
+
+        int[] triangleIndices = genericModelRenderer.getTriangleIndices();
+        if (triangleIndices == null) {
+            return;
+        }
+
+        // For each affected mesh vertex, update any triangle vertices that reference it
+        for (int meshIdx : affectedMeshIndices) {
+            for (int t = 0; t < triangleCount; t++) {
+                int i0 = triangleIndices[t * 3];
+                int i1 = triangleIndices[t * 3 + 1];
+                int i2 = triangleIndices[t * 3 + 2];
+
+                int offset = t * 9;
+
+                if (i0 == meshIdx) {
+                    trianglePositions[offset] = newPosition.x;
+                    trianglePositions[offset + 1] = newPosition.y;
+                    trianglePositions[offset + 2] = newPosition.z;
+                }
+                if (i1 == meshIdx) {
+                    trianglePositions[offset + 3] = newPosition.x;
+                    trianglePositions[offset + 4] = newPosition.y;
+                    trianglePositions[offset + 5] = newPosition.z;
+                }
+                if (i2 == meshIdx) {
+                    trianglePositions[offset + 6] = newPosition.x;
+                    trianglePositions[offset + 7] = newPosition.y;
+                    trianglePositions[offset + 8] = newPosition.z;
+                }
+            }
+        }
     }
 
     // Getters and setters
@@ -573,15 +663,28 @@ public class FaceRenderer {
      * as GenericModelRenderer.
      *
      * <p>This mirrors the approach used in EdgeRenderer for index-based updates
-     * after subdivision.
+     * after subdivision. Also registers as a MeshChangeListener to receive
+     * notifications when vertex positions change or geometry is rebuilt.
      *
-     * @param renderer The GenericModelRenderer instance
+     * @param renderer The GenericModelRenderer instance, or null to disconnect
      * @see FaceOverlayRenderer#setGenericModelRenderer(GenericModelRenderer)
      */
     public void setGenericModelRenderer(GenericModelRenderer renderer) {
+        // Unregister from previous renderer
+        if (this.genericModelRenderer != null) {
+            this.genericModelRenderer.removeMeshChangeListener(this);
+        }
+
         this.genericModelRenderer = renderer;
         overlayRenderer.setGenericModelRenderer(renderer);
-        logger.debug("GenericModelRenderer wired to FaceRenderer/FaceOverlayRenderer");
+
+        // Register with new renderer
+        if (renderer != null) {
+            renderer.addMeshChangeListener(this);
+        }
+
+        logger.debug("FaceRenderer {} GenericModelRenderer",
+            renderer != null ? "connected to" : "disconnected from");
     }
 
     /**

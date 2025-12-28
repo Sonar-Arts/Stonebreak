@@ -33,6 +33,14 @@ public class MeshManager {
 
     // Mesh data storage
     private float[] allMeshVertices = null; // ALL mesh vertices (e.g., 24 for cube)
+
+    /**
+     * @deprecated Use GenericModelRenderer's index-based mapping instead.
+     * GenericModelRenderer now maintains the authoritative unique-to-mesh mapping
+     * via getMeshIndicesForUniqueVertex() and getUniqueIndexForMeshVertex().
+     * This field is retained for backward compatibility during migration.
+     */
+    @Deprecated
     private Map<Integer, List<Integer>> uniqueToMeshMapping = new HashMap<>(); // Maps unique vertex index to mesh vertex indices
 
     private MeshManager() {
@@ -74,7 +82,10 @@ public class MeshManager {
      * Get the unique-to-mesh mapping.
      *
      * @return Map from unique vertex indices to lists of mesh vertex indices
+     * @deprecated Use GenericModelRenderer's getMeshIndicesForUniqueVertex() instead.
+     * GenericModelRenderer is now the single source of truth for vertex mappings.
      */
+    @Deprecated
     public Map<Integer, List<Integer>> getUniqueToMeshMapping() {
         return uniqueToMeshMapping;
     }
@@ -88,7 +99,12 @@ public class MeshManager {
      *
      * @param uniquePositions Array of unique vertex positions
      * @param meshPositions Array of ALL mesh vertex positions
+     * @deprecated Use GenericModelRenderer's buildUniqueVertexMapping() instead.
+     * GenericModelRenderer now automatically builds this mapping when geometry is loaded
+     * or rebuilt. Access the mapping via getUniqueIndexForMeshVertex() and
+     * getMeshIndicesForUniqueVertex().
      */
+    @Deprecated
     public void buildUniqueToMeshMapping(float[] uniquePositions, float[] meshPositions) {
         uniqueToMeshMapping.clear();
 

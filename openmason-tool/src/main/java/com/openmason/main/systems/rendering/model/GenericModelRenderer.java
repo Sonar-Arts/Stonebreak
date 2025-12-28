@@ -40,6 +40,29 @@ public class GenericModelRenderer extends BaseRenderer {
     // This mapping is preserved and updated during subdivision
     private int[] triangleToOriginalFaceId;
 
+    // === UNIQUE VERTEX MAPPING (Phase 1 of renderer refactoring) ===
+    // Maps between mesh vertices (24 for cube) and unique geometric positions (8 for cube)
+    // This replaces position-based matching with index-based lookup
+
+    // For each unique vertex, stores ONE representative mesh index
+    // uniqueVertexIndices[uniqueIdx] -> meshIdx (the first mesh vertex at that position)
+    private int[] uniqueVertexIndices;
+
+    // For each mesh vertex, stores which unique vertex it belongs to
+    // meshToUniqueMapping[meshIdx] -> uniqueIdx
+    private int[] meshToUniqueMapping;
+
+    // For each unique vertex, stores ALL mesh indices at that position
+    // uniqueToMeshIndices.get(uniqueIdx) -> int[] of all mesh indices
+    private List<int[]> uniqueToMeshIndices;
+
+    // Number of unique geometric positions
+    private int uniqueVertexCount;
+
+    // === CHANGE NOTIFICATION SYSTEM (Phase 2 of renderer refactoring) ===
+    // Observers receive notifications when vertex positions change or geometry is rebuilt
+    private final List<MeshChangeListener> listeners = new ArrayList<>();
+
     // Texture
     private int textureId = 0;
     private boolean useTexture = false;
@@ -194,6 +217,10 @@ public class GenericModelRenderer extends BaseRenderer {
         currentTexCoords = null;
         currentIndices = null;
         triangleToOriginalFaceId = null;
+        uniqueVertexIndices = null;
+        meshToUniqueMapping = null;
+        uniqueToMeshIndices = null;
+        uniqueVertexCount = 0;
         vertexCount = 0;
         indexCount = 0;
     }
@@ -202,6 +229,7 @@ public class GenericModelRenderer extends BaseRenderer {
      * Update a vertex position by its global index.
      * Also updates ALL other mesh vertices at the same geometric position.
      * This is critical after subdivision where multiple mesh vertices share positions.
+     * Notifies all registered listeners of the change.
      *
      * @param globalIndex The global vertex index across all parts
      * @param position The new position
@@ -217,18 +245,26 @@ public class GenericModelRenderer extends BaseRenderer {
             return;
         }
 
-        // Get the OLD position at this index to find all vertices sharing it
-        Vector3f oldPosition = new Vector3f(
-            currentVertices[offset],
-            currentVertices[offset + 1],
-            currentVertices[offset + 2]
-        );
+        // Get unique index for this mesh vertex (use index-based lookup if available)
+        int uniqueIndex = getUniqueIndexForMeshVertex(globalIndex);
+        int[] affectedMeshIndices;
 
-        // Find ALL mesh vertices at the old position (handles subdivision vertices)
-        java.util.List<Integer> allVerticesAtPosition = findMeshVerticesAtPosition(oldPosition, 0.001f);
+        if (uniqueIndex >= 0) {
+            // Use index-based mapping (preferred)
+            affectedMeshIndices = getMeshIndicesForUniqueVertex(uniqueIndex);
+        } else {
+            // Fallback to position-based (during initialization or edge cases)
+            Vector3f oldPosition = new Vector3f(
+                currentVertices[offset],
+                currentVertices[offset + 1],
+                currentVertices[offset + 2]
+            );
+            java.util.List<Integer> verticesList = findMeshVerticesAtPosition(oldPosition, 0.001f);
+            affectedMeshIndices = verticesList.stream().mapToInt(Integer::intValue).toArray();
+        }
 
         // Update ALL vertices at this position
-        for (int vertexIndex : allVerticesAtPosition) {
+        for (int vertexIndex : affectedMeshIndices) {
             int vOffset = vertexIndex * 3;
             if (vOffset + 2 < currentVertices.length) {
                 currentVertices[vOffset] = position.x;
@@ -241,9 +277,13 @@ public class GenericModelRenderer extends BaseRenderer {
         float[] interleavedData = buildInterleavedData();
         updateVBO(interleavedData);
 
-        logger.trace("Updated {} vertices at position ({}, {}, {}) to ({}, {}, {})",
-            allVerticesAtPosition.size(), oldPosition.x, oldPosition.y, oldPosition.z,
-            position.x, position.y, position.z);
+        // Notify listeners of the change
+        if (uniqueIndex >= 0 && !listeners.isEmpty()) {
+            notifyVertexPositionChanged(uniqueIndex, position, affectedMeshIndices);
+        }
+
+        logger.trace("Updated {} mesh vertices for unique vertex {} to ({}, {}, {})",
+            affectedMeshIndices.length, uniqueIndex, position.x, position.y, position.z);
     }
 
     /**
@@ -564,6 +604,226 @@ public class GenericModelRenderer extends BaseRenderer {
         return result;
     }
 
+    // =========================================================================
+    // UNIQUE VERTEX MAPPING - Index-based lookup (replaces position matching)
+    // =========================================================================
+
+    /**
+     * Build the unique vertex mapping from current mesh vertices.
+     * Groups mesh vertices by position to establish unique-to-mesh relationships.
+     * Called automatically when geometry is loaded or rebuilt.
+     *
+     * For a cube: 24 mesh vertices → 8 unique positions (3 mesh vertices per corner)
+     */
+    private void buildUniqueVertexMapping() {
+        if (currentVertices == null || currentVertices.length == 0) {
+            uniqueVertexIndices = null;
+            meshToUniqueMapping = null;
+            uniqueToMeshIndices = null;
+            uniqueVertexCount = 0;
+            return;
+        }
+
+        int meshVertexCount = currentVertices.length / 3;
+        meshToUniqueMapping = new int[meshVertexCount];
+        java.util.Arrays.fill(meshToUniqueMapping, -1);
+
+        // Temporary list to collect unique positions and their mesh indices
+        List<List<Integer>> uniqueGroups = new ArrayList<>();
+        List<Integer> representativeIndices = new ArrayList<>();
+
+        float epsilon = 0.0001f;  // Tight tolerance for same-system matching
+
+        for (int meshIdx = 0; meshIdx < meshVertexCount; meshIdx++) {
+            float x = currentVertices[meshIdx * 3];
+            float y = currentVertices[meshIdx * 3 + 1];
+            float z = currentVertices[meshIdx * 3 + 2];
+
+            // Check if this position matches any existing unique vertex
+            int matchedUnique = -1;
+            for (int u = 0; u < uniqueGroups.size(); u++) {
+                int repIdx = representativeIndices.get(u);
+                float rx = currentVertices[repIdx * 3];
+                float ry = currentVertices[repIdx * 3 + 1];
+                float rz = currentVertices[repIdx * 3 + 2];
+
+                float dx = x - rx;
+                float dy = y - ry;
+                float dz = z - rz;
+                if (dx * dx + dy * dy + dz * dz < epsilon * epsilon) {
+                    matchedUnique = u;
+                    break;
+                }
+            }
+
+            if (matchedUnique >= 0) {
+                // Add to existing unique group
+                uniqueGroups.get(matchedUnique).add(meshIdx);
+                meshToUniqueMapping[meshIdx] = matchedUnique;
+            } else {
+                // Create new unique vertex
+                int newUniqueIdx = uniqueGroups.size();
+                List<Integer> newGroup = new ArrayList<>();
+                newGroup.add(meshIdx);
+                uniqueGroups.add(newGroup);
+                representativeIndices.add(meshIdx);
+                meshToUniqueMapping[meshIdx] = newUniqueIdx;
+            }
+        }
+
+        // Convert to final arrays
+        uniqueVertexCount = uniqueGroups.size();
+        uniqueVertexIndices = new int[uniqueVertexCount];
+        uniqueToMeshIndices = new ArrayList<>(uniqueVertexCount);
+
+        for (int u = 0; u < uniqueVertexCount; u++) {
+            uniqueVertexIndices[u] = representativeIndices.get(u);
+            List<Integer> group = uniqueGroups.get(u);
+            int[] meshIndices = group.stream().mapToInt(Integer::intValue).toArray();
+            uniqueToMeshIndices.add(meshIndices);
+        }
+
+        logger.debug("Built unique vertex mapping: {} mesh vertices → {} unique positions",
+            meshVertexCount, uniqueVertexCount);
+    }
+
+    /**
+     * Get the number of unique geometric vertex positions.
+     * For a standard cube, this is 8 (corners).
+     *
+     * @return Number of unique vertices
+     */
+    public int getUniqueVertexCount() {
+        return uniqueVertexCount;
+    }
+
+    /**
+     * Get the position of a unique vertex by index.
+     * This is a derived value from the mesh vertices.
+     *
+     * @param uniqueIndex The unique vertex index (0 to uniqueVertexCount-1)
+     * @return The vertex position, or null if invalid index
+     */
+    public Vector3f getUniqueVertexPosition(int uniqueIndex) {
+        if (uniqueVertexIndices == null || uniqueIndex < 0 || uniqueIndex >= uniqueVertexCount) {
+            return null;
+        }
+        int meshIdx = uniqueVertexIndices[uniqueIndex];
+        return getVertexPosition(meshIdx);
+    }
+
+    /**
+     * Get all mesh vertex indices that share a unique geometric position.
+     * For a cube corner, this returns 3 mesh indices (one per adjacent face).
+     *
+     * @param uniqueIndex The unique vertex index
+     * @return Array of mesh indices, or empty array if invalid
+     */
+    public int[] getMeshIndicesForUniqueVertex(int uniqueIndex) {
+        if (uniqueToMeshIndices == null || uniqueIndex < 0 || uniqueIndex >= uniqueVertexCount) {
+            return new int[0];
+        }
+        return uniqueToMeshIndices.get(uniqueIndex).clone();
+    }
+
+    /**
+     * Get the unique vertex index for a given mesh vertex.
+     * This is the inverse of getMeshIndicesForUniqueVertex.
+     *
+     * @param meshIndex The mesh vertex index
+     * @return The unique vertex index, or -1 if invalid
+     */
+    public int getUniqueIndexForMeshVertex(int meshIndex) {
+        if (meshToUniqueMapping == null || meshIndex < 0 || meshIndex >= meshToUniqueMapping.length) {
+            return -1;
+        }
+        return meshToUniqueMapping[meshIndex];
+    }
+
+    /**
+     * Get all unique vertex positions as an array.
+     * Format: [x0, y0, z0, x1, y1, z1, ...]
+     *
+     * @return Array of unique vertex positions, or null if none
+     */
+    public float[] getAllUniqueVertexPositions() {
+        if (uniqueVertexIndices == null || uniqueVertexCount == 0) {
+            return null;
+        }
+
+        float[] positions = new float[uniqueVertexCount * 3];
+        for (int u = 0; u < uniqueVertexCount; u++) {
+            int meshIdx = uniqueVertexIndices[u];
+            int srcOffset = meshIdx * 3;
+            int dstOffset = u * 3;
+            positions[dstOffset] = currentVertices[srcOffset];
+            positions[dstOffset + 1] = currentVertices[srcOffset + 1];
+            positions[dstOffset + 2] = currentVertices[srcOffset + 2];
+        }
+        return positions;
+    }
+
+    // =========================================================================
+    // CHANGE NOTIFICATION SYSTEM - Observer pattern for mesh updates
+    // =========================================================================
+
+    /**
+     * Add a listener to receive mesh change notifications.
+     *
+     * @param listener The listener to add
+     */
+    public void addMeshChangeListener(MeshChangeListener listener) {
+        if (listener != null && !listeners.contains(listener)) {
+            listeners.add(listener);
+            logger.debug("Added mesh change listener: {}", listener.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Remove a listener from mesh change notifications.
+     *
+     * @param listener The listener to remove
+     */
+    public void removeMeshChangeListener(MeshChangeListener listener) {
+        if (listener != null) {
+            listeners.remove(listener);
+            logger.debug("Removed mesh change listener: {}", listener.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Notify all listeners that a vertex position has changed.
+     *
+     * @param uniqueIndex The unique vertex index
+     * @param newPosition The new position
+     * @param affectedMeshIndices All mesh indices that were updated
+     */
+    private void notifyVertexPositionChanged(int uniqueIndex, Vector3f newPosition, int[] affectedMeshIndices) {
+        for (MeshChangeListener listener : listeners) {
+            try {
+                listener.onVertexPositionChanged(uniqueIndex, newPosition, affectedMeshIndices);
+            } catch (Exception e) {
+                logger.error("Error notifying listener {} of vertex change",
+                    listener.getClass().getSimpleName(), e);
+            }
+        }
+    }
+
+    /**
+     * Notify all listeners that geometry has been rebuilt.
+     * Called after subdivision, UV mode change, or model loading.
+     */
+    private void notifyGeometryRebuilt() {
+        for (MeshChangeListener listener : listeners) {
+            try {
+                listener.onGeometryRebuilt();
+            } catch (Exception e) {
+                logger.error("Error notifying listener {} of geometry rebuild",
+                    listener.getClass().getSimpleName(), e);
+            }
+        }
+    }
+
     /**
      * Apply edge subdivision using endpoint positions instead of indices.
      * Finds ALL mesh vertex pairs at the endpoint positions and splits ALL triangles
@@ -797,8 +1057,14 @@ public class GenericModelRenderer extends BaseRenderer {
         updateVBO(interleavedData);
         updateEBO(currentIndices);
 
-        logger.debug("Applied subdivision: added {} vertices (first: {}), split {} triangles, indices {} -> {}",
-            trianglesToSplit, firstNewVertexIndex, splitCount, triangleCount * 3, indexCount);
+        // Step 6: Rebuild unique vertex mapping (new vertices added)
+        buildUniqueVertexMapping();
+
+        // Step 7: Notify listeners of geometry rebuild
+        notifyGeometryRebuilt();
+
+        logger.debug("Applied subdivision: added {} vertices (first: {}), split {} triangles, indices {} -> {}, unique: {}",
+            trianglesToSplit, firstNewVertexIndex, splitCount, triangleCount * 3, indexCount, uniqueVertexCount);
 
         return firstNewVertexIndex;
     }
@@ -916,7 +1182,14 @@ public class GenericModelRenderer extends BaseRenderer {
             }
         }
 
-        logger.debug("Rebuilt geometry: {} vertices, {} indices", vertexCount, indexCount);
+        // Build unique vertex mapping for index-based lookup
+        buildUniqueVertexMapping();
+
+        // Notify listeners of geometry rebuild
+        notifyGeometryRebuilt();
+
+        logger.debug("Rebuilt geometry: {} vertices, {} indices, {} unique positions",
+            vertexCount, indexCount, uniqueVertexCount);
     }
 
     /**

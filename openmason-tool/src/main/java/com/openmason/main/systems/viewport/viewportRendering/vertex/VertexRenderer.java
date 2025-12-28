@@ -1,5 +1,7 @@
 package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.main.systems.rendering.model.MeshChangeListener;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
@@ -19,11 +21,15 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 /**
-  * Renders model vertices as colored points, similar to Blender's vertex display mode.
-  * Vertex positions are extracted by MeshVertexExtractor; this class handles rendering.
-  * Supports selection highlighting (white) and modification tracking (yellow).
-  */
-public class VertexRenderer {
+ * Renders model vertices as colored points, similar to Blender's vertex display mode.
+ * Vertex positions are extracted by MeshVertexExtractor; this class handles rendering.
+ * Supports selection highlighting (white) and modification tracking (yellow).
+ *
+ * <p>Implements MeshChangeListener to receive notifications from GenericModelRenderer
+ * when vertex positions change or geometry is rebuilt. This replaces position-based
+ * matching with index-based updates for robust synchronization.
+ */
+public class VertexRenderer implements MeshChangeListener {
 
     private static final Logger logger = LoggerFactory.getLogger(VertexRenderer.class);
 
@@ -54,6 +60,43 @@ public class VertexRenderer {
 
     // Mesh management - delegate to MeshManager
     private final MeshManager meshManager = MeshManager.getInstance();
+
+    // Reference to GenericModelRenderer for observer pattern
+    private GenericModelRenderer modelRenderer;
+
+    /**
+     * Set the GenericModelRenderer that this VertexRenderer observes.
+     * Registers as a MeshChangeListener to receive index-based updates.
+     *
+     * @param renderer The GenericModelRenderer to observe, or null to disconnect
+     */
+    public void setModelRenderer(GenericModelRenderer renderer) {
+        // Unregister from previous renderer
+        if (this.modelRenderer != null) {
+            this.modelRenderer.removeMeshChangeListener(this);
+        }
+
+        this.modelRenderer = renderer;
+
+        // Register with new renderer
+        if (renderer != null) {
+            renderer.addMeshChangeListener(this);
+            // Initial sync from model
+            rebuildFromModel();
+        }
+
+        logger.debug("VertexRenderer {} model renderer",
+            renderer != null ? "connected to" : "disconnected from");
+    }
+
+    /**
+     * Get the associated GenericModelRenderer.
+     *
+     * @return The model renderer, or null if not set
+     */
+    public GenericModelRenderer getModelRenderer() {
+        return modelRenderer;
+    }
 
     /**
      * Initialize the vertex renderer.
@@ -328,6 +371,12 @@ public class VertexRenderer {
      * Clean up OpenGL resources.
      */
     public void cleanup() {
+        // Unregister from model renderer
+        if (modelRenderer != null) {
+            modelRenderer.removeMeshChangeListener(this);
+            modelRenderer = null;
+        }
+
         if (vao != 0) {
             glDeleteVertexArrays(vao);
             vao = 0;
@@ -338,6 +387,124 @@ public class VertexRenderer {
         }
         vertexCount = 0;
         initialized = false;
+    }
+
+    // =========================================================================
+    // MESH CHANGE LISTENER IMPLEMENTATION - Index-based updates from GenericModelRenderer
+    // =========================================================================
+
+    /**
+     * Called when a vertex position has been updated in GenericModelRenderer.
+     * Updates the vertex directly by unique index - no position search needed.
+     *
+     * @param uniqueIndex The unique vertex index (maps directly to our vertex array)
+     * @param newPosition The new position of the vertex
+     * @param affectedMeshIndices All mesh vertex indices that were updated (for reference)
+     */
+    @Override
+    public void onVertexPositionChanged(int uniqueIndex, Vector3f newPosition, int[] affectedMeshIndices) {
+        if (!initialized || vertexPositions == null) {
+            return;
+        }
+
+        // Validate index bounds
+        if (uniqueIndex < 0 || uniqueIndex >= vertexCount) {
+            logger.warn("onVertexPositionChanged: uniqueIndex {} out of bounds (vertexCount={})",
+                uniqueIndex, vertexCount);
+            return;
+        }
+
+        // Update the position directly by index (no position search!)
+        int posIndex = uniqueIndex * 3;
+        vertexPositions[posIndex] = newPosition.x;
+        vertexPositions[posIndex + 1] = newPosition.y;
+        vertexPositions[posIndex + 2] = newPosition.z;
+
+        // Update the VBO for this vertex
+        updateVertexInBuffer(uniqueIndex, newPosition);
+
+        logger.trace("VertexRenderer received vertex update: unique {} -> ({}, {}, {})",
+            uniqueIndex, newPosition.x, newPosition.y, newPosition.z);
+    }
+
+    /**
+     * Called when the entire geometry has been rebuilt in GenericModelRenderer.
+     * Triggers a full rebuild of our vertex data from the model.
+     */
+    @Override
+    public void onGeometryRebuilt() {
+        logger.debug("VertexRenderer received geometry rebuild notification");
+        rebuildFromModel();
+    }
+
+    /**
+     * Rebuild vertex data from the associated GenericModelRenderer.
+     * Called when initially connected or when geometry is rebuilt.
+     */
+    private void rebuildFromModel() {
+        if (modelRenderer == null) {
+            return;
+        }
+
+        if (!initialized) {
+            logger.warn("Cannot rebuild from model: VertexRenderer not initialized");
+            return;
+        }
+
+        // Get unique vertex positions from GenericModelRenderer
+        float[] uniquePositions = modelRenderer.getAllUniqueVertexPositions();
+        if (uniquePositions == null || uniquePositions.length == 0) {
+            vertexCount = 0;
+            vertexPositions = null;
+            return;
+        }
+
+        // Update our vertex data
+        int newVertexCount = uniquePositions.length / 3;
+        vertexPositions = uniquePositions;
+        vertexCount = newVertexCount;
+
+        // Update original-to-current mapping (identity for fresh rebuild)
+        originalToCurrentMapping.clear();
+        for (int i = 0; i < vertexCount; i++) {
+            originalToCurrentMapping.put(i, i);
+        }
+
+        // Sync MeshManager with the new data
+        float[] allMeshVertices = modelRenderer.getAllMeshVertexPositions();
+        if (allMeshVertices != null) {
+            meshManager.setMeshVertices(allMeshVertices);
+            meshManager.buildUniqueToMeshMapping(vertexPositions, allMeshVertices);
+        }
+
+        // Rebuild VBO
+        rebuildVBO();
+
+        logger.debug("VertexRenderer rebuilt from model: {} unique vertices", vertexCount);
+    }
+
+    /**
+     * Update a single vertex in the GPU buffer.
+     * Used for incremental updates when positions change.
+     *
+     * @param uniqueIndex The unique vertex index
+     * @param position The new position
+     */
+    private void updateVertexInBuffer(int uniqueIndex, Vector3f position) {
+        if (!initialized || uniqueIndex < 0 || uniqueIndex >= vertexCount) {
+            return;
+        }
+
+        // Calculate offset in interleaved buffer (6 floats per vertex: pos + color)
+        int bufferOffset = uniqueIndex * 6 * Float.BYTES;
+
+        // Create position data
+        float[] posData = new float[] { position.x, position.y, position.z };
+
+        // Update just the position portion of this vertex in the VBO
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferSubData(GL_ARRAY_BUFFER, bufferOffset, posData);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
     /**
@@ -438,12 +605,15 @@ public class VertexRenderer {
 
     /**
      * Find a vertex index by position (with epsilon tolerance).
-     * Used to map GenericModelRenderer positions to VertexRenderer indices.
      *
      * @param position The position to search for
      * @param epsilon Tolerance for position matching
      * @return The vertex index, or -1 if not found
+     * @deprecated Use index-based lookup via GenericModelRenderer instead.
+     * Position-based matching is fragile and prone to floating-point drift.
+     * Use modelRenderer.getUniqueIndexForMeshVertex() for robust index mapping.
      */
+    @Deprecated
     public int findVertexIndexByPosition(Vector3f position, float epsilon) {
         if (vertexPositions == null || position == null) {
             return -1;

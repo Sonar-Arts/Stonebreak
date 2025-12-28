@@ -364,7 +364,10 @@ public class RenderPipeline {
                                 }
                                 logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices", modelMeshVertices.length / 3);
 
-                                // Wire FaceRenderer to GenericModelRenderer for face overlay data access
+                                // Wire all renderers to GenericModelRenderer as MeshChangeListeners
+                                // This enables index-based updates (Observer pattern) instead of position matching
+                                vertexRenderer.setModelRenderer(modelRenderer);
+                                edgeRenderer.setModelRenderer(modelRenderer);
                                 faceRenderer.setGenericModelRenderer(modelRenderer);
                             }
                         }

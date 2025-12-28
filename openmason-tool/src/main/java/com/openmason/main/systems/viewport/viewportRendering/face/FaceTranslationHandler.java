@@ -138,30 +138,33 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
         isDragging = true;
         hasMovedDuringDrag = false;
 
-        // In triangle mode, find ALL face vertices in VertexRenderer by position matching
+        // In triangle mode, find ALL face vertices in VertexRenderer using index-based lookup
         // This includes original corners AND subdivision midpoints
         if (faceRenderer.isUsingTriangleMode()) {
-            // Get the positions of all face vertices from GenericModelRenderer
-            Vector3f[] faceVertexPositions = faceRenderer.getTriangleVertexPositionsForFace(faceIndex);
-
-            if (faceVertexPositions != null && faceVertexPositions.length > 0) {
-                // Find corresponding VertexRenderer indices by position
-                java.util.List<Integer> wireframeIndicesList = new java.util.ArrayList<>();
+            // Get mesh indices for this face from GenericModelRenderer
+            // currentVertexIndices already contains mesh indices (set above at line 112)
+            if (currentVertexIndices != null && currentVertexIndices.length > 0 && modelRenderer != null) {
+                // Convert mesh indices to unique vertex indices using GenericModelRenderer
+                // The unique vertex index corresponds to the VertexRenderer index
+                java.util.Set<Integer> uniqueIndicesSet = new java.util.LinkedHashSet<>();
                 java.util.List<Vector3f> wireframePositionsList = new java.util.ArrayList<>();
 
-                float epsilon = 0.01f; // Tolerance for position matching
-                for (Vector3f pos : faceVertexPositions) {
-                    int vrIndex = vertexRenderer.findVertexIndexByPosition(pos, epsilon);
-                    if (vrIndex >= 0) {
-                        wireframeIndicesList.add(vrIndex);
-                        wireframePositionsList.add(new Vector3f(pos)); // Store original position
+                for (int meshIndex : currentVertexIndices) {
+                    int uniqueIndex = modelRenderer.getUniqueIndexForMeshVertex(meshIndex);
+                    if (uniqueIndex >= 0 && !uniqueIndicesSet.contains(uniqueIndex)) {
+                        uniqueIndicesSet.add(uniqueIndex);
+                        // Get position from GenericModelRenderer (single source of truth)
+                        Vector3f pos = modelRenderer.getUniqueVertexPosition(uniqueIndex);
+                        if (pos != null) {
+                            wireframePositionsList.add(new Vector3f(pos));
+                        }
                     }
                 }
 
-                if (!wireframeIndicesList.isEmpty()) {
-                    wireframeVertexIndices = wireframeIndicesList.stream().mapToInt(Integer::intValue).toArray();
+                if (!uniqueIndicesSet.isEmpty()) {
+                    wireframeVertexIndices = uniqueIndicesSet.stream().mapToInt(Integer::intValue).toArray();
                     wireframeOriginalPositions = wireframePositionsList.toArray(new Vector3f[0]);
-                    logger.debug("Found {} wireframe vertices for face {} in triangle mode",
+                    logger.debug("Found {} unique wireframe vertices for face {} in triangle mode (index-based)",
                         wireframeVertexIndices.length, faceIndex);
                 } else {
                     wireframeVertexIndices = null;
