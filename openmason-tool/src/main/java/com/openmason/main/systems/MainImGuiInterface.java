@@ -22,7 +22,7 @@ import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.themes.utils.ImGuiHelpers;
 import com.openmason.main.systems.themes.core.ThemeManager;
-import com.openmason.main.systems.menus.toolbars.ModelViewerToolbarRenderer;
+import com.openmason.main.systems.menus.toolbars.ModelEditorToolbarRenderer;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiDockNodeFlags;
@@ -64,7 +64,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private final ToolsMenuHandler toolsMenuHandler;
 
     // Toolbar
-    private final ModelViewerToolbarRenderer toolbarRenderer;
+    private final ModelEditorToolbarRenderer toolbarRenderer;
 
     // Viewport
     private ViewportController viewport3D;
@@ -112,7 +112,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         // Initialize dialogs
         // Dialogs
 
-        this.aboutDialog = new AboutDialog(uiVisibilityState, logoManager, "Model Viewer");
+        this.aboutDialog = new AboutDialog(uiVisibilityState, logoManager, "Model Editor");
 
         // Note: UnifiedPreferencesWindow will be initialized after components (needs viewport and property panel)
         this.preferencesWindow = null; // Initialized in initializeComponents()
@@ -130,7 +130,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
                 fileMenuHandler, editMenu, viewMenu, toolsMenuHandler, aboutMenu);
 
         // Initialize toolbar
-        this.toolbarRenderer = new ModelViewerToolbarRenderer(uiVisibilityState, modelState, modelOperations,
+        this.toolbarRenderer = new ModelEditorToolbarRenderer(uiVisibilityState, modelState, modelOperations,
                 viewportOperations, statusService);
 
         // Initialize components

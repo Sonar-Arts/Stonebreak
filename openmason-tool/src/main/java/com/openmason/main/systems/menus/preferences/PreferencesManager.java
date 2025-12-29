@@ -22,7 +22,7 @@ public class PreferencesManager {
     
     private static final String PREFERENCES_FILE = "openmason-tool/preferences.properties";
 
-    // 3D Model Viewer preferences
+    // 3D Model Editor preferences
     private static final String CAMERA_MOUSE_SENSITIVITY_KEY = "camera.mouse.sensitivity";
     private static final String GRID_SNAPPING_ENABLED_KEY = "viewport.grid.snapping.enabled";
     private static final String GRID_SNAPPING_INCREMENT_KEY = "viewport.grid.snapping.increment";
@@ -35,7 +35,7 @@ public class PreferencesManager {
     private static final String TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY = "texture.editor.skip.transparent.paste";
     private static final String TEXTURE_EDITOR_SHAPE_FILL_MODE_KEY = "texture.editor.shape.fill.mode";
 
-    // Default values - 3D Model Viewer
+    // Default values - 3D Model Editor
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
     private static final boolean DEFAULT_GRID_SNAPPING_ENABLED = false;
     // Default grid snapping: Half block (0.5 units) = 2 snap positions per visual grid square
@@ -102,7 +102,7 @@ public class PreferencesManager {
      * Set default preference values.
      */
     private void setDefaults() {
-        // 3D Model Viewer defaults
+        // 3D Model Editor defaults
         properties.setProperty(CAMERA_MOUSE_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_MOUSE_SENSITIVITY));
         properties.setProperty(GRID_SNAPPING_ENABLED_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_ENABLED));
         properties.setProperty(GRID_SNAPPING_INCREMENT_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_INCREMENT));

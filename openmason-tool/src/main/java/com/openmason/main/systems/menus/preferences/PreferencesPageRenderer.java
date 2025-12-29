@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Unified preferences page renderer for all Open Mason tools.
  * <p>
- * Consolidates Model Viewer, Texture Editor, and Common preference pages into a single
+ * Consolidates Model Editor, Texture Editor, and Common preference pages into a single
  * KISS-compliant class following DRY principles.
  * </p>
  * <p>
@@ -35,7 +35,7 @@ public class PreferencesPageRenderer {
 
     private static final Logger logger = LoggerFactory.getLogger(PreferencesPageRenderer.class);
 
-    // Model Viewer constants
+    // Model Editor constants
     private static final float MIN_CAMERA_SENSITIVITY = 0.1f;
     private static final float MAX_CAMERA_SENSITIVITY = 10.0f;
     private static final float MIN_VERTEX_POINT_SIZE = 1.0f;
@@ -59,7 +59,7 @@ public class PreferencesPageRenderer {
         0.0625f                             // 1/16 block
     };
 
-    // Model Viewer ImGui state holders
+    // Model Editor ImGui state holders
     private final ImFloat cameraMouseSensitivity = new ImFloat();
     private final ImInt gridSnappingIncrementIndex = new ImInt();
     private final ImFloat vertexPointSize = new ImFloat();
@@ -123,8 +123,8 @@ public class PreferencesPageRenderer {
      */
     public void render(PreferencesState.PreferencePage page) {
         switch (page) {
-            case MODEL_VIEWER:
-                renderModelViewerPage();
+            case MODEL_EDITOR:
+                renderModelEditorPage();
                 break;
             case TEXTURE_EDITOR:
                 renderTextureEditorPage();
@@ -142,12 +142,12 @@ public class PreferencesPageRenderer {
     }
 
     // ========================================
-    // Model Viewer Page
+    // Model Editor Page
     // ========================================
 
-    private void renderModelViewerPage() {
+    private void renderModelEditorPage() {
         // Sync state from preferences
-        syncModelViewerState();
+        syncModelEditorState();
 
         // Camera Settings Section
         ImGuiComponents.renderSectionHeader("Camera Settings");
@@ -169,7 +169,7 @@ public class PreferencesPageRenderer {
                 "Reset to Defaults",
                 150.0f,
                 0.0f,
-                this::resetModelViewerToDefaults
+                this::resetModelEditorToDefaults
         );
     }
 
@@ -278,7 +278,7 @@ public class PreferencesPageRenderer {
         }
     }
 
-    private void resetModelViewerToDefaults() {
+    private void resetModelEditorToDefaults() {
         // Reset camera sensitivity
         preferencesManager.setCameraMouseSensitivity(3.0f);
         if (viewport != null && viewport.getCamera() != null) {
@@ -300,10 +300,10 @@ public class PreferencesPageRenderer {
             logger.error("Failed to reset vertex point size", e);
         }
 
-        logger.info("Model Viewer preferences reset to defaults");
+        logger.info("Model Editor preferences reset to defaults");
     }
 
-    private void syncModelViewerState() {
+    private void syncModelEditorState() {
         cameraMouseSensitivity.set(preferencesManager.getCameraMouseSensitivity());
 
         // Sync grid snapping increment

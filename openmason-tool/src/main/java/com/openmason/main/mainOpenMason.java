@@ -62,7 +62,7 @@ public class mainOpenMason {
 
     // State flags
     private boolean showHomeScreen = true;
-    private boolean showModelViewer = false;
+    private boolean showModelEditor = false;
     private boolean showTextureEditor = false;
     private boolean shouldClose = false;
     private boolean cleanedUp = false;
@@ -362,7 +362,7 @@ public class mainOpenMason {
             renderComponent(projectHubScreen, deltaTime, "Project Hub");
         }
 
-        if (showModelViewer) {
+        if (showModelEditor) {
             renderComponent(mainInterface, deltaTime, "Main Interface");
             renderComponent(viewportInterface, deltaTime, "Viewport");
         }
@@ -409,7 +409,7 @@ public class mainOpenMason {
      */
     private void transitionToMainInterface() {
         showHomeScreen = false;
-        showModelViewer = true;
+        showModelEditor = true;
     }
 
     /**
@@ -417,7 +417,7 @@ public class mainOpenMason {
      */
     private void transitionToHomeScreen() {
         showHomeScreen = true;
-        showModelViewer = false;
+        showModelEditor = false;
         showTextureEditor = false;
         if (textureEditorWindow != null) {
             textureEditorWindow.hide();

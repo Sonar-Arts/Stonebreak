@@ -12,7 +12,7 @@ public class PreferencesState {
      * Available preference pages organized by tool.
      */
     public enum PreferencePage {
-        MODEL_VIEWER("Model Viewer"),
+        MODEL_EDITOR("Model Editor"),
         TEXTURE_EDITOR("Texture Editor"),
         KEYBINDS("Keybinds"),
         COMMON("Common");
@@ -36,7 +36,7 @@ public class PreferencesState {
         void onPageChanged(PreferencePage oldPage, PreferencePage newPage);
     }
 
-    private PreferencePage currentPage = PreferencePage.MODEL_VIEWER;
+    private PreferencePage currentPage = PreferencePage.MODEL_EDITOR;
     private final List<StateChangeListener> listeners = new ArrayList<>();
 
     /**
@@ -76,6 +76,6 @@ public class PreferencesState {
      * Resets the state to default values.
      */
     public void reset() {
-        setCurrentPage(PreferencePage.MODEL_VIEWER);
+        setCurrentPage(PreferencePage.MODEL_EDITOR);
     }
 }
