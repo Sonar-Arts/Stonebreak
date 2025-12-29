@@ -678,9 +678,11 @@ public class FaceRenderer implements MeshChangeListener {
         this.genericModelRenderer = renderer;
         overlayRenderer.setGenericModelRenderer(renderer);
 
-        // Register with new renderer
+        // Register with new renderer and rebuild face data
         if (renderer != null) {
             renderer.addMeshChangeListener(this);
+            // Rebuild face data from model (like VertexRenderer and EdgeRenderer do)
+            rebuildFromGenericModelRenderer();
         }
 
         logger.debug("FaceRenderer {} GenericModelRenderer",

@@ -184,10 +184,11 @@ public class EdgeRenderer implements MeshChangeListener {
 
         this.modelRenderer = renderer;
 
-        // Register with new renderer
+        // Register with new renderer and rebuild edge data
         if (renderer != null) {
             renderer.addMeshChangeListener(this);
-            // Initial sync will happen when rebuildFromModel is called
+            // Rebuild edge data from model (like VertexRenderer and FaceRenderer do)
+            rebuildFromModel();
         }
 
         logger.debug("EdgeRenderer {} model renderer",

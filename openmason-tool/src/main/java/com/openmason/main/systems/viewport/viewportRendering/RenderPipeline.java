@@ -111,6 +111,18 @@ public class RenderPipeline {
     }
 
     /**
+     * Mark all mesh data (vertices, edges, faces) as needing update.
+     * Call this when mesh data has been modified externally (e.g., after loading from file).
+     * This forces the renderers to rebuild from the model on next render.
+     */
+    public void invalidateMeshData() {
+        vertexDataNeedsUpdate = true;
+        edgeDataNeedsUpdate = true;
+        faceDataNeedsUpdate = true;
+        logger.debug("Mesh data invalidated - will rebuild on next render");
+    }
+
+    /**
      * Execute complete render pipeline.
      */
     public void render(ViewportUIState viewportState, RenderingState renderingState, TransformState transformState) {
@@ -358,6 +370,15 @@ public class RenderPipeline {
                                 meshManager.setMeshVertices(modelMeshVertices);
                                 logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices", modelMeshVertices.length / 3);
 
+                                // Initialize edge and face renderers BEFORE connecting to model
+                                // This ensures rebuildFromModel() doesn't return early due to !initialized
+                                if (!edgeRenderer.isInitialized()) {
+                                    edgeRenderer.initialize();
+                                }
+                                if (!faceRenderer.isInitialized()) {
+                                    faceRenderer.initialize();
+                                }
+
                                 // Wire all renderers to GenericModelRenderer as MeshChangeListeners
                                 // This enables index-based updates (Observer pattern) instead of position matching
                                 // GenericModelRenderer now owns the unique-to-mesh mapping
@@ -406,32 +427,40 @@ public class RenderPipeline {
             // Render edges based on current rendering mode (mirrors vertex rendering)
             switch (renderingState.getMode()) {
                 case BLOCK_MODEL:
-                    // Editable .OMO block model rendering (simple cube)
-                    Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
+                    // Editable .OMO block model rendering
 
                     // Only extract edge data ONCE (in MODEL SPACE, no transform)
                     // Edges will be transformed by model matrix in shader (like BlockModelRenderer)
                     if (edgeDataNeedsUpdate) {
-                        Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
+                        // Check if edge renderer already has data from GenericModelRenderer
+                        // (set up by setModelRenderer -> rebuildFromModel)
+                        if (edgeRenderer.getModelRenderer() == null) {
+                            // Standard cube - use cube parts
+                            Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
+                            Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
 
-                        // Get unique vertex positions for edge deduplication
-                        float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
+                            // Get unique vertex positions for edge deduplication
+                            float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
 
-                        // Extract unique edges (no duplicates) using vertex positions
-                        edgeRenderer.updateEdgeData(cubeParts, identityTransform, uniqueVertexPositions);
+                            // Extract unique edges (no duplicates) using vertex positions
+                            edgeRenderer.updateEdgeData(cubeParts, identityTransform, uniqueVertexPositions);
 
-                        // Build edge-to-vertex mapping to prevent unification bug
-                        if (uniqueVertexPositions != null) {
-                            edgeRenderer.buildEdgeToVertexMapping(uniqueVertexPositions);
-                            logger.trace("Built edge-to-vertex mapping for unification prevention");
+                            // Build edge-to-vertex mapping to prevent unification bug
+                            if (uniqueVertexPositions != null) {
+                                edgeRenderer.buildEdgeToVertexMapping(uniqueVertexPositions);
+                                logger.trace("Built edge-to-vertex mapping for unification prevention");
+                            }
+                            logger.trace("Edge data extracted from cube parts in model space");
+                        } else {
+                            // Already has data from GenericModelRenderer - don't overwrite
+                            logger.trace("Edge data already set from GenericModelRenderer");
                         }
 
                         edgeDataNeedsUpdate = false;
-                        logger.trace("Edge data extracted in model space (unique edges only)");
                     }
 
-                    ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);
-                    edgeRenderer.render(basicShaderBlockModel, context, transformState.getTransformMatrix());
+                    ShaderProgram basicShaderBlockModelEdge = shaderManager.getShaderProgram(ShaderType.BASIC);
+                    edgeRenderer.render(basicShaderBlockModelEdge, context, transformState.getTransformMatrix());
                     break;
 
                 case BLOCK:
@@ -466,24 +495,32 @@ public class RenderPipeline {
             // Render faces based on current rendering mode (mirrors edge rendering)
             switch (renderingState.getMode()) {
                 case BLOCK_MODEL:
-                    // Editable .OMO block model rendering (simple cube)
-                    Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
+                    // Editable .OMO block model rendering
 
                     // Only extract face data ONCE (in MODEL SPACE, no transform)
                     // Faces will be transformed by model matrix in shader (like BlockModelRenderer)
                     if (faceDataNeedsUpdate) {
-                        Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
-                        faceRenderer.updateFaceData(cubeParts, identityTransform);
+                        // Check if face renderer already has triangle data from GenericModelRenderer
+                        // (set up by setGenericModelRenderer -> rebuildFromGenericModelRenderer)
+                        if (!faceRenderer.isUsingTriangleMode()) {
+                            // Standard cube - use cube parts
+                            Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
+                            Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
+                            faceRenderer.updateFaceData(cubeParts, identityTransform);
 
-                        // Build face-to-vertex mapping to prevent unification bug
-                        float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
-                        if (uniqueVertexPositions != null) {
-                            faceRenderer.buildFaceToVertexMapping(uniqueVertexPositions);
-                            logger.trace("Built face-to-vertex mapping for unification prevention");
+                            // Build face-to-vertex mapping to prevent unification bug
+                            float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
+                            if (uniqueVertexPositions != null) {
+                                faceRenderer.buildFaceToVertexMapping(uniqueVertexPositions);
+                                logger.trace("Built face-to-vertex mapping for unification prevention");
+                            }
+                            logger.trace("Face data extracted from cube parts in model space");
+                        } else {
+                            // Already in triangle mode from GenericModelRenderer - don't overwrite
+                            logger.trace("Face data already in triangle mode from GenericModelRenderer");
                         }
 
                         faceDataNeedsUpdate = false;
-                        logger.trace("Face data extracted in model space");
                     }
 
                     ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);

@@ -19,7 +19,7 @@ import java.util.zip.ZipOutputStream;
  *
  * <p>Creates a ZIP-based container with:
  * <ul>
- *   <li>manifest.json - Model metadata and geometry</li>
+ *   <li>manifest.json - Model metadata, geometry, and optional custom mesh data</li>
  *   <li>texture.omt - Embedded texture file</li>
  * </ul>
  *
@@ -29,6 +29,7 @@ import java.util.zip.ZipOutputStream;
  *   <li>Embedding .OMT texture file</li>
  *   <li>Writing ZIP archive</li>
  *   <li>Atomic file operations (write to temp, then move)</li>
+ *   <li>Custom mesh data for subdivided models (v2.0+)</li>
  * </ul>
  *
  * <p>Design Principles:
@@ -39,11 +40,15 @@ import java.util.zip.ZipOutputStream;
  * </ul>
  *
  * @since 1.0
+ * @since 2.0 Added custom mesh data support
  */
 public class OMOSerializer {
 
     private static final Logger logger = LoggerFactory.getLogger(OMOSerializer.class);
     private final ObjectMapper objectMapper;
+
+    // Optional mesh data for saving subdivided models
+    private OMOFormat.MeshData pendingMeshData;
 
     /**
      * Creates a new .OMO serializer with JSON support.
@@ -51,6 +56,37 @@ public class OMOSerializer {
     public OMOSerializer() {
         this.objectMapper = new ObjectMapper();
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT); // Pretty-print JSON
+    }
+
+    /**
+     * Set custom mesh data to be saved with the next model.
+     * Call this before save() to include mesh data in the .OMO file.
+     *
+     * @param meshData The mesh data to save, or null to save standard cube
+     */
+    public void setMeshData(OMOFormat.MeshData meshData) {
+        this.pendingMeshData = meshData;
+    }
+
+    /**
+     * Clear any pending mesh data.
+     */
+    public void clearMeshData() {
+        this.pendingMeshData = null;
+    }
+
+    /**
+     * Saves a BlockModel to a .OMO file with custom mesh data.
+     * Convenience method that sets mesh data and saves in one call.
+     *
+     * @param model the model to save, must not be null
+     * @param filePath output file path, will be given .omo extension if missing
+     * @param meshData custom mesh data, or null for standard cube
+     * @return true if save succeeded
+     */
+    public boolean save(BlockModel model, String filePath, OMOFormat.MeshData meshData) {
+        setMeshData(meshData);
+        return save(model, filePath);
     }
 
     /**
@@ -124,15 +160,15 @@ public class OMOSerializer {
      * @throws IOException if write fails
      */
     private void writeManifest(ZipOutputStream zos, BlockModel model) throws IOException {
-        // Build manifest document
-        OMOFormat.Document document = buildDocument(model);
+        // Build manifest document (v1.1 with optional mesh data)
+        OMOFormat.ExtendedDocument document = buildExtendedDocument(model);
 
         // Create manifest entry
         ZipEntry manifestEntry = new ZipEntry(OMOFormat.MANIFEST_FILENAME);
         zos.putNextEntry(manifestEntry);
 
         // Serialize to JSON
-        String json = objectMapper.writeValueAsString(new ManifestDTO(document));
+        String json = objectMapper.writeValueAsString(new ExtendedManifestDTO(document));
         byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8);
 
         // Write JSON to ZIP
@@ -140,7 +176,10 @@ public class OMOSerializer {
         zos.flush();
         zos.closeEntry();
 
-        logger.debug("Wrote manifest.json ({} bytes)", jsonBytes.length);
+        // Clear pending mesh data after save
+        pendingMeshData = null;
+
+        logger.debug("Wrote manifest.json ({} bytes, hasMesh={})", jsonBytes.length, document.hasCustomMesh());
     }
 
     /**
@@ -165,12 +204,12 @@ public class OMOSerializer {
     }
 
     /**
-     * Builds an OMO document from a BlockModel.
+     * Builds an extended OMO document from a BlockModel.
      *
      * @param model the source model
-     * @return the OMO document structure
+     * @return the OMO document structure with optional mesh data
      */
-    private OMOFormat.Document buildDocument(BlockModel model) {
+    private OMOFormat.ExtendedDocument buildExtendedDocument(BlockModel model) {
         ModelGeometry geometry = model.getGeometry();
 
         OMOFormat.Position position = new OMOFormat.Position(
@@ -186,34 +225,57 @@ public class OMOSerializer {
             position
         );
 
-        return new OMOFormat.Document(
+        return new OMOFormat.ExtendedDocument(
             OMOFormat.FORMAT_VERSION,
             model.getName(),
             model.getModelType(),
             geometryData,
-            OMOFormat.DEFAULT_TEXTURE_FILENAME
+            OMOFormat.DEFAULT_TEXTURE_FILENAME,
+            pendingMeshData  // May be null for standard cube
         );
     }
 
     /**
-     * Data Transfer Object for JSON serialization of manifest.
+     * Data Transfer Object for JSON serialization of manifest (v1.1+).
      * Jackson serializes public fields automatically.
      *
      * <p>Note: Texture format auto-detected from .OMT dimensions at load time.
      */
-    private static class ManifestDTO {
+    private static class ExtendedManifestDTO {
         public String version;
         public String objectName;
         public String modelType;
         public GeometryDTO geometry;
         public String textureFile;
+        public MeshDataDTO mesh;  // Optional, null for standard cube
 
-        public ManifestDTO(OMOFormat.Document document) {
+        public ExtendedManifestDTO(OMOFormat.ExtendedDocument document) {
             this.version = document.version();
             this.objectName = document.objectName();
             this.modelType = document.modelType();
             this.geometry = new GeometryDTO(document.geometry());
             this.textureFile = document.textureFile();
+            this.mesh = document.mesh() != null ? new MeshDataDTO(document.mesh()) : null;
+        }
+    }
+
+    /**
+     * DTO for custom mesh data (v1.1+).
+     * Contains all vertex, index, and UV data for edited/subdivided models.
+     */
+    private static class MeshDataDTO {
+        public float[] vertices;      // x,y,z interleaved
+        public float[] texCoords;     // u,v interleaved
+        public int[] indices;         // Triangle indices
+        public int[] triangleToFaceId; // Face mapping
+        public String uvMode;         // "FLAT" or "CUBE_NET"
+
+        public MeshDataDTO(OMOFormat.MeshData meshData) {
+            this.vertices = meshData.vertices();
+            this.texCoords = meshData.texCoords();
+            this.indices = meshData.indices();
+            this.triangleToFaceId = meshData.triangleToFaceId();
+            this.uvMode = meshData.uvMode();
         }
     }
 

@@ -2,6 +2,8 @@ package com.openmason.main.systems;
 
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.block.BlockManager;
+import com.openmason.main.systems.rendering.model.io.omo.MeshDataExtractor;
+import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.main.omConfig;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
@@ -27,7 +29,10 @@ import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTransl
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler;
 import com.openmason.main.systems.viewport.viewportRendering.face.FaceTranslationHandler;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
+import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
+import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.joml.Vector3f;
@@ -71,6 +76,7 @@ public class ViewportController {
 
     // ========== Block Model Loading ==========
     private final OMTTextureLoader omtTextureLoader;
+    private final MeshDataExtractor meshDataExtractor;
     private BlockModel currentBlockModel;
     private int currentBlockModelTextureId = 0;
 
@@ -102,6 +108,7 @@ public class ViewportController {
         this.modelRenderer = new GenericModelRenderer();
 
         this.omtTextureLoader = new OMTTextureLoader();
+        this.meshDataExtractor = new MeshDataExtractor();
         this.currentBlockModel = null;
 
         logger.info("Viewport created successfully");
@@ -397,6 +404,70 @@ public class ViewportController {
             }
 
             currentBlockModel = null;
+        }
+    }
+
+    // ========== Mesh Data (OMO v1.1+ support) ==========
+
+    /**
+     * Extract current mesh state for saving to .OMO file.
+     * Returns null if using standard cube geometry (no modifications).
+     *
+     * @return MeshData with current vertex/index data, or null for standard cube
+     */
+    public OMOFormat.MeshData extractMeshData() {
+        return meshDataExtractor.extract(modelRenderer);
+    }
+
+    /**
+     * Check if the current mesh has been modified from a standard cube.
+     *
+     * @return true if mesh has custom geometry (subdivisions, vertex moves, etc.)
+     */
+    public boolean hasCustomMeshData() {
+        return meshDataExtractor.hasCustomMeshData(modelRenderer);
+    }
+
+    /**
+     * Load mesh state from MeshData (restored from .OMO file).
+     * This replaces the current geometry with the loaded data.
+     * Call this AFTER loadBlockModel() to apply custom mesh data.
+     *
+     * @param meshData the mesh data to load
+     */
+    public void loadMeshData(OMOFormat.MeshData meshData) {
+        meshDataExtractor.load(modelRenderer, meshData);
+
+        // Invalidate render pipeline caches to force edge/face rebuild
+        if (renderPipeline != null) {
+            renderPipeline.invalidateMeshData();
+
+            // Initialize renderers if needed (they check !initialized in rebuildFromModel)
+            VertexRenderer vertexRenderer = renderPipeline.getVertexRenderer();
+            EdgeRenderer edgeRenderer = renderPipeline.getEdgeRenderer();
+            FaceRenderer faceRenderer = renderPipeline.getFaceRenderer();
+
+            if (vertexRenderer != null && !vertexRenderer.isInitialized()) {
+                vertexRenderer.initialize();
+            }
+            if (edgeRenderer != null && !edgeRenderer.isInitialized()) {
+                edgeRenderer.initialize();
+            }
+            if (faceRenderer != null && !faceRenderer.isInitialized()) {
+                faceRenderer.initialize();
+            }
+
+            // Force immediate rebuild of all renderers from model
+            // This prevents stale data from causing issues before first render
+            if (vertexRenderer != null) {
+                vertexRenderer.setModelRenderer(modelRenderer);
+            }
+            if (edgeRenderer != null) {
+                edgeRenderer.setModelRenderer(modelRenderer);
+            }
+            if (faceRenderer != null) {
+                faceRenderer.setGenericModelRenderer(modelRenderer);
+            }
         }
     }
 

@@ -3,6 +3,7 @@ package com.openmason.main.systems.services;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.factory.BlankModelFactory;
 import com.openmason.main.systems.rendering.model.io.omo.OMODeserializer;
+import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.io.omo.OMOSerializer;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
@@ -160,6 +161,7 @@ public class ModelOperationService {
 
     /**
      * Internal method to save model to a specific file path.
+     * Extracts custom mesh data from viewport (if any) for subdivision support.
      *
      * @param filePath the path to save to
      */
@@ -167,13 +169,27 @@ public class ModelOperationService {
         statusService.updateStatus("Saving model...");
 
         try {
-            boolean success = omoSerializer.save(currentEditableModel, filePath);
+            // Extract mesh data from viewport (for subdivisions, vertex edits, etc.)
+            OMOFormat.MeshData meshData = null;
+            if (viewport != null && viewport.hasCustomMeshData()) {
+                meshData = viewport.extractMeshData();
+                if (meshData != null) {
+                    logger.info("Saving custom mesh data: {} vertices, {} triangles",
+                            meshData.getVertexCount(), meshData.getTriangleCount());
+                }
+            }
+
+            // Save with optional mesh data
+            boolean success = omoSerializer.save(currentEditableModel, filePath, meshData);
 
             if (success) {
                 modelState.setUnsavedChanges(false);
                 modelState.setCurrentModelPath(currentEditableModel.getName());
-                statusService.updateStatus("Model saved: " + filePath);
-                logger.info("Saved model to: {}", filePath);
+                String statusMsg = meshData != null
+                        ? "Model saved with custom geometry: " + filePath
+                        : "Model saved: " + filePath;
+                statusService.updateStatus(statusMsg);
+                logger.info("Saved model to: {} (hasMesh={})", filePath, meshData != null);
             } else {
                 statusService.updateStatus("Failed to save model");
                 logger.error("Save operation returned false");
@@ -228,6 +244,7 @@ public class ModelOperationService {
 
     /**
      * Load a .OMO model from a specific file path.
+     * Loads custom mesh data (if any) for subdivision support.
      *
      * @param filePath the path to load from
      */
@@ -240,20 +257,36 @@ public class ModelOperationService {
             if (loadedModel != null) {
                 currentEditableModel = loadedModel;
 
+                // Get mesh data (loaded by deserializer from v2.0 files)
+                OMOFormat.MeshData meshData = omoDeserializer.getLastLoadedMeshData();
+
                 // Update state
                 modelState.setModelLoaded(true);
                 modelState.setCurrentModelPath(loadedModel.getName());
                 modelState.setUnsavedChanges(false);
                 modelState.setModelSource(ModelState.ModelSource.OMO_FILE); // Mark as .OMO file
 
-                // Update statistics (single cube for now)
-                modelState.updateStatistics(1, 24, 12);
-
                 // Load into viewport if available
                 if (viewport != null) {
+                    // First load base model (dimensions, texture)
                     viewport.loadBlockModel(currentEditableModel);
-                    statusService.updateStatus("Loaded .OMO model: " + loadedModel.getName());
+
+                    // Then apply custom mesh data if present
+                    if (meshData != null && meshData.hasCustomGeometry()) {
+                        viewport.loadMeshData(meshData);
+                        logger.info("Applied custom mesh data: {} vertices, {} triangles",
+                                meshData.getVertexCount(), meshData.getTriangleCount());
+
+                        // Update statistics with actual counts
+                        modelState.updateStatistics(1, meshData.getVertexCount(), meshData.getTriangleCount());
+                        statusService.updateStatus("Loaded .OMO model with custom geometry: " + loadedModel.getName());
+                    } else {
+                        // Standard cube: 1 part, 24 vertices, 12 triangles
+                        modelState.updateStatistics(1, 24, 12);
+                        statusService.updateStatus("Loaded .OMO model: " + loadedModel.getName());
+                    }
                 } else {
+                    modelState.updateStatistics(1, 24, 12);
                     statusService.updateStatus("Loaded .OMO model: " + loadedModel.getName() +
                                               " (viewport not available)");
                     logger.warn("Viewport not set - model loaded but not displayed");
@@ -264,7 +297,7 @@ public class ModelOperationService {
                     propertiesPanel.setEditableModel(currentEditableModel);
                 }
 
-                logger.info("Loaded .OMO model from: {}", filePath);
+                logger.info("Loaded .OMO model from: {} (hasMesh={})", filePath, meshData != null);
             } else {
                 statusService.updateStatus("Failed to load .OMO model");
                 logger.error("Deserializer returned null");

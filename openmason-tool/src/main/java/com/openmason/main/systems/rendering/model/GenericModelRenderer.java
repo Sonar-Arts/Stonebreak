@@ -5,6 +5,7 @@ import com.openmason.main.systems.rendering.api.GeometryData;
 import com.openmason.main.systems.rendering.api.RenderPass;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
 import com.openmason.main.systems.rendering.model.gmr.*;
+import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import org.joml.Vector3f;
 
@@ -669,6 +670,106 @@ public class GenericModelRenderer extends BaseRenderer {
     public void setTexture(int textureId) {
         this.textureId = textureId;
         this.useTexture = textureId > 0;
+    }
+
+    // =========================================================================
+    // MESH DATA LOADING (for .OMO format)
+    // =========================================================================
+
+    /**
+     * Load mesh state from MeshData (restored from .OMO file).
+     * This replaces the current geometry with the loaded data.
+     *
+     * @param meshData the mesh data to load
+     */
+    public void loadMeshData(OMOFormat.MeshData meshData) {
+        if (meshData == null || !meshData.hasCustomGeometry()) {
+            logger.debug("No custom mesh data to load");
+            return;
+        }
+
+        float[] vertices = meshData.vertices();
+        float[] texCoords = meshData.texCoords();
+        int[] indices = meshData.indices();
+        int[] triangleToFaceId = meshData.triangleToFaceId();
+        String uvModeStr = meshData.uvMode();
+
+        // Update UV mode
+        if (uvModeStr != null) {
+            try {
+                currentUVMode = UVMode.valueOf(uvModeStr);
+            } catch (IllegalArgumentException e) {
+                logger.warn("Unknown UV mode '{}', defaulting to FLAT", uvModeStr);
+                currentUVMode = UVMode.FLAT;
+            }
+        }
+
+        // Clear parts (we're loading direct mesh data, not part-based)
+        parts.clear();
+
+        // Set vertex data
+        vertexManager.setData(vertices.clone(), texCoords != null ? texCoords.clone() : null, indices != null ? indices.clone() : null);
+
+        // Update counts
+        vertexCount = vertices.length / 3;
+        indexCount = indices != null ? indices.length : 0;
+
+        // Restore face mapping
+        if (triangleToFaceId != null && triangleToFaceId.length > 0) {
+            faceMapper.setMapping(triangleToFaceId.clone());
+        } else if (indices != null) {
+            faceMapper.initializeStandardMapping(indices.length / 3);
+        } else {
+            faceMapper.clear();
+        }
+
+        // Rebuild unique vertex mapping
+        uniqueMapper.buildMapping(vertices);
+
+        // Update GPU buffers if initialized
+        if (initialized) {
+            float[] interleavedData = geometryBuilder.buildInterleavedData(vertices, texCoords);
+            updateVBO(interleavedData);
+            if (indices != null) {
+                updateEBO(indices);
+            }
+        }
+
+        // Notify listeners
+        changeNotifier.notifyGeometryRebuilt();
+
+        logger.info("Loaded custom mesh data: {} vertices, {} triangles, {} unique positions, uvMode={}",
+                vertexCount, indexCount / 3, uniqueMapper.getUniqueVertexCount(), currentUVMode);
+    }
+
+    /**
+     * Get current texture coordinates array.
+     * Useful for debugging and mesh data extraction.
+     *
+     * @return copy of texture coordinates array, or null if none
+     */
+    public float[] getTexCoords() {
+        float[] texCoords = vertexManager.getTexCoords();
+        return texCoords != null ? texCoords.clone() : null;
+    }
+
+    /**
+     * Get current triangle indices array.
+     * Useful for debugging and mesh data extraction.
+     *
+     * @return copy of indices array, or null if none
+     */
+    public int[] getIndices() {
+        return vertexManager.getIndices() != null ? vertexManager.getIndices().clone() : null;
+    }
+
+    /**
+     * Get current face mapping array.
+     *
+     * @return copy of face mapping, or null if none
+     */
+    public int[] getTriangleToFaceMapping() {
+        return faceMapper.getMappingCopy();
     }
 
     // =========================================================================
