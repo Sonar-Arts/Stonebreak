@@ -22,7 +22,7 @@
         <joml.version>1.10.5</joml.version>
         <lwjgl.natives>natives-windows</lwjgl.natives>
         <jackson.version>2.15.2</jackson.version>
-        <javafx.version>21</javafx.version>
+        <javafx.version>26-ea+18</javafx.version>
         <javafx.maven.plugin.version>0.0.8</javafx.maven.plugin.version>
         <junit.version>5.10.0</junit.version>
         <mockito.version>5.5.0</mockito.version>
