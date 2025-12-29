@@ -51,8 +51,9 @@ public class VertexRenderer implements MeshChangeListener {
     private int hoveredVertexIndex = -1; // -1 means no vertex is hovered
     private float[] vertexPositions = null; // Store positions for hit testing (unique vertices only)
 
-    // Selection state
-    private int selectedVertexIndex = -1; // -1 means no vertex is selected
+    // Selection state - supports multi-selection
+    private int selectedVertexIndex = -1; // -1 means no vertex is selected (for backward compat)
+    private Set<Integer> selectedVertexIndices = new HashSet<>(); // Multi-selection support
     private Set<Integer> modifiedVertices = new HashSet<>(); // Indices of modified vertices
 
     // Persistent vertex merge tracking (for multi-stage merges)
@@ -324,7 +325,7 @@ public class VertexRenderer implements MeshChangeListener {
             shader.setFloat("uIntensity", normalIntensity);
             for (int i = 0; i < vertexCount; i++) {
                 // Skip hovered and selected vertices (will render separately)
-                if (i == hoveredVertexIndex || i == selectedVertexIndex) {
+                if (i == hoveredVertexIndex || selectedVertexIndices.contains(i)) {
                     continue;
                 }
 
@@ -339,16 +340,20 @@ public class VertexRenderer implements MeshChangeListener {
             }
 
             // Render hovered vertex (if any and not selected)
-            if (hoveredVertexIndex >= 0 && hoveredVertexIndex != selectedVertexIndex) {
+            if (hoveredVertexIndex >= 0 && !selectedVertexIndices.contains(hoveredVertexIndex)) {
                 shader.setFloat("uIntensity", hoverIntensity);
                 glDrawArrays(GL_POINTS, hoveredVertexIndex, 1);
             }
 
-            // Render selected vertex last (always on top) with larger point size
-            if (selectedVertexIndex >= 0) {
+            // Render all selected vertices last (always on top) with larger point size
+            if (!selectedVertexIndices.isEmpty()) {
                 glPointSize(selectedPointSize);
                 shader.setFloat("uIntensity", selectedIntensity);
-                glDrawArrays(GL_POINTS, selectedVertexIndex, 1);
+                for (int selectedIndex : selectedVertexIndices) {
+                    if (selectedIndex >= 0 && selectedIndex < vertexCount) {
+                        glDrawArrays(GL_POINTS, selectedIndex, 1);
+                    }
+                }
             }
 
             glBindVertexArray(0);
@@ -506,7 +511,7 @@ public class VertexRenderer implements MeshChangeListener {
     }
 
     /**
-     * Set the selected vertex index.
+     * Set the selected vertex index (single selection - replaces any existing selection).
      * @param index Vertex index to select, or -1 to clear selection
      */
     public void setSelectedVertex(int index) {
@@ -515,15 +520,53 @@ public class VertexRenderer implements MeshChangeListener {
             return;
         }
 
-        if (selectedVertexIndex != index) {
-            selectedVertexIndex = index;
-            logger.debug("Selected vertex set to: {}", index);
+        // Clear existing and set new single selection
+        selectedVertexIndices.clear();
+        if (index >= 0) {
+            selectedVertexIndices.add(index);
         }
+        selectedVertexIndex = index;
+        logger.debug("Selected vertex set to: {}", index);
     }
 
     /**
-     * Get the currently selected vertex index.
-     * @return Selected vertex index, or -1 if no selection
+     * Update the selection with a set of vertex indices (multi-selection).
+     * @param indices Set of vertex indices to select
+     */
+    public void updateSelectionSet(Set<Integer> indices) {
+        selectedVertexIndices.clear();
+        if (indices != null) {
+            for (Integer index : indices) {
+                if (index >= 0 && index < vertexCount) {
+                    selectedVertexIndices.add(index);
+                }
+            }
+        }
+        // Update backward compat field
+        selectedVertexIndex = selectedVertexIndices.isEmpty() ? -1 : selectedVertexIndices.iterator().next();
+        logger.debug("Updated vertex selection set: {} vertices", selectedVertexIndices.size());
+    }
+
+    /**
+     * Get the set of selected vertex indices.
+     * @return Copy of the selected vertex indices set
+     */
+    public Set<Integer> getSelectedVertexIndices() {
+        return new HashSet<>(selectedVertexIndices);
+    }
+
+    /**
+     * Check if a specific vertex is selected.
+     * @param index Vertex index to check
+     * @return true if the vertex is selected
+     */
+    public boolean isVertexSelected(int index) {
+        return selectedVertexIndices.contains(index);
+    }
+
+    /**
+     * Get the currently selected vertex index (backward compatibility).
+     * @return First selected vertex index, or -1 if no selection
      */
     public int getSelectedVertexIndex() {
         return selectedVertexIndex;
@@ -533,6 +576,7 @@ public class VertexRenderer implements MeshChangeListener {
      * Clear the current selection.
      */
     public void clearSelection() {
+        selectedVertexIndices.clear();
         selectedVertexIndex = -1;
         logger.debug("Vertex selection cleared");
     }

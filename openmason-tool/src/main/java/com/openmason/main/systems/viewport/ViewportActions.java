@@ -155,6 +155,26 @@ public class ViewportActions {
         }
     }
 
+    /**
+     * Subdivide all currently selected edges at their midpoints.
+     * If no edges are selected, falls back to subdividing the hovered edge.
+     * Only works in Edge edit mode.
+     */
+    public void subdivideSelectedEdges() {
+        // Check if in Edge mode
+        if (!EditModeManager.getInstance().isEdgeEditingAllowed()) {
+            logger.debug("Edge subdivision requires Edge edit mode");
+            return;
+        }
+
+        // Delegate to viewport controller
+        int count = viewport.subdivideSelectedEdges();
+
+        if (count > 0) {
+            logger.info("Subdivided {} edges", count);
+        }
+    }
+
     // ========== Camera Operations ==========
 
     public void updateCameraMode() {

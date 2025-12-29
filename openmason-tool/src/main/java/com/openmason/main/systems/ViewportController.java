@@ -719,6 +719,106 @@ public class ViewportController {
         return newVertexIndex;
     }
 
+    /**
+     * Subdivide all currently selected edges at their midpoints.
+     * If no edges are selected, falls back to subdividing the hovered edge.
+     * Edges are processed in descending order to prevent index shifting issues.
+     *
+     * @return Number of edges successfully subdivided
+     */
+    public int subdivideSelectedEdges() {
+        if (renderPipeline == null) {
+            logger.warn("Cannot subdivide edges: render pipeline not initialized");
+            return 0;
+        }
+
+        var edgeRenderer = renderPipeline.getEdgeRenderer();
+        var vertexRenderer = renderPipeline.getVertexRenderer();
+
+        if (edgeRenderer == null || vertexRenderer == null) {
+            logger.warn("Cannot subdivide edges: renderers not available");
+            return 0;
+        }
+
+        // Get selected edges from EdgeSelectionState
+        java.util.Set<Integer> selectedEdges = edgeSelectionState.getSelectedEdgeIndices();
+
+        if (selectedEdges.isEmpty()) {
+            // Fall back to hovered edge if no selection
+            logger.debug("No edges selected, falling back to hovered edge");
+            int result = subdivideHoveredEdge();
+            return result >= 0 ? 1 : 0;
+        }
+
+        // Sort edges in DESCENDING order to prevent index shifting
+        java.util.List<Integer> sortedEdges = new java.util.ArrayList<>(selectedEdges);
+        sortedEdges.sort(java.util.Collections.reverseOrder());
+
+        int successCount = 0;
+        for (int edgeIndex : sortedEdges) {
+            // Get edge vertex indices and positions BEFORE subdivision
+            int[] edgeVertexIndices = edgeRenderer.getEdgeVertexIndices(edgeIndex);
+            if (edgeVertexIndices == null || edgeVertexIndices.length != 2) {
+                logger.warn("Cannot get edge vertex indices for edge {}", edgeIndex);
+                continue;
+            }
+
+            // Get endpoint positions from VertexRenderer
+            Vector3f endpoint1 = vertexRenderer.getVertexPosition(edgeVertexIndices[0]);
+            Vector3f endpoint2 = vertexRenderer.getVertexPosition(edgeVertexIndices[1]);
+            if (endpoint1 == null || endpoint2 == null) {
+                logger.warn("Cannot get vertex positions for edge {}", edgeIndex);
+                continue;
+            }
+            // Make copies to avoid mutation issues
+            endpoint1 = new Vector3f(endpoint1);
+            endpoint2 = new Vector3f(endpoint2);
+
+            // Perform subdivision
+            int newVertexIndex = edgeRenderer.subdivideEdgeByIndex(edgeIndex, vertexRenderer);
+
+            if (newVertexIndex >= 0) {
+                // Sync with GenericModelRenderer
+                Vector3f newVertexPosition = vertexRenderer.getVertexPosition(newVertexIndex);
+                if (newVertexPosition != null) {
+                    MeshManager meshManager = MeshManager.getInstance();
+                    var modelRenderer = renderPipeline.getBlockModelRenderer();
+
+                    if (modelRenderer != null) {
+                        int meshVertexIndex = modelRenderer.applyEdgeSubdivisionByPosition(
+                            newVertexPosition, endpoint1, endpoint2
+                        );
+
+                        if (meshVertexIndex >= 0) {
+                            float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
+                            if (modelMeshVertices != null) {
+                                meshManager.setMeshVertices(modelMeshVertices);
+                            }
+                        }
+                    }
+                }
+                successCount++;
+            }
+        }
+
+        // Rebuild face overlays after all subdivisions
+        if (successCount > 0) {
+            var faceRenderer = renderPipeline.getFaceRenderer();
+            var modelRenderer = renderPipeline.getBlockModelRenderer();
+            if (faceRenderer != null && modelRenderer != null) {
+                faceRenderer.setGenericModelRenderer(modelRenderer);
+                faceRenderer.rebuildFromGenericModelRenderer();
+            }
+        }
+
+        // Clear edge selection (indices are invalid after subdivision)
+        edgeSelectionState.clearSelection();
+        edgeRenderer.clearSelection();
+
+        logger.info("Subdivided {} edges", successCount);
+        return successCount;
+    }
+
     // ========== Component Accessors ==========
 
     public ViewportCamera getCamera() { return viewportCamera; }

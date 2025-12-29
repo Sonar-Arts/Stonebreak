@@ -14,7 +14,9 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL15.*;
@@ -76,8 +78,9 @@ public class FaceRenderer implements MeshChangeListener {
     private int hoveredFaceIndex = -1; // -1 means no face is hovered
     private float[] facePositions = null; // Store positions for hit testing
 
-    // Selection state
-    private int selectedFaceIndex = -1; // -1 means no face is selected
+    // Selection state - supports multi-selection
+    private int selectedFaceIndex = -1; // -1 means no face is selected (backward compat)
+    private Set<Integer> selectedFaceIndices = new HashSet<>();
 
     // Face-to-vertex mapping (FIX: prevents vertex unification bug)
     // Maps face index → array of 4 unique vertex indices [v0, v1, v2, v3]
@@ -617,6 +620,11 @@ public class FaceRenderer implements MeshChangeListener {
             return;
         }
 
+        // Clear and set single selection
+        selectedFaceIndices.clear();
+        if (faceIndex >= 0) {
+            selectedFaceIndices.add(faceIndex);
+        }
         this.selectedFaceIndex = faceIndex;
 
         if (faceIndex >= 0) {
@@ -626,7 +634,43 @@ public class FaceRenderer implements MeshChangeListener {
         }
     }
 
+    /**
+     * Update the selection with a set of face indices (multi-selection).
+     * @param indices Set of face indices to select
+     */
+    public void updateSelectionSet(Set<Integer> indices) {
+        selectedFaceIndices.clear();
+        if (indices != null) {
+            for (Integer index : indices) {
+                if (index >= 0 && index < faceCount) {
+                    selectedFaceIndices.add(index);
+                }
+            }
+        }
+        // Update backward compat field
+        selectedFaceIndex = selectedFaceIndices.isEmpty() ? -1 : selectedFaceIndices.iterator().next();
+        logger.debug("Updated face selection set: {} faces", selectedFaceIndices.size());
+    }
+
+    /**
+     * Get the set of selected face indices.
+     * @return Copy of the selected face indices set
+     */
+    public Set<Integer> getSelectedFaceIndices() {
+        return new HashSet<>(selectedFaceIndices);
+    }
+
+    /**
+     * Check if a specific face is selected.
+     * @param index Face index to check
+     * @return true if the face is selected
+     */
+    public boolean isFaceSelected(int index) {
+        return selectedFaceIndices.contains(index);
+    }
+
     public void clearSelection() {
+        selectedFaceIndices.clear();
         this.selectedFaceIndex = -1;
     }
 

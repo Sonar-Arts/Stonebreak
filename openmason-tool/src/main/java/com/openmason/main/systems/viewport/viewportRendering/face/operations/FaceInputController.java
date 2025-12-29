@@ -168,7 +168,7 @@ public class FaceInputController {
 
             // PRIORITY: Only select face if no vertex AND no edge is hovered
             if (hoveredVertex < 0 && hoveredEdge < 0 && hoveredFace >= 0) {
-                // Clicking on a hovered face (and no vertex or edge) - select it
+                // Clicking on a hovered face (and no vertex or edge)
                 // Handle both quad mode and triangle mode
                 Vector3f[] faceVertices;
                 int[] vertexIndices;
@@ -185,21 +185,31 @@ public class FaceInputController {
 
                 if (faceVertices != null && faceVertices.length >= 3 &&
                     vertexIndices != null && vertexIndices.length >= 3) {
-                    // Select face with all vertices (variable count for quad/triangle modes)
-                    faceSelectionState.selectFace(hoveredFace, faceVertices, vertexIndices);
-                    faceRenderer.setSelectedFace(hoveredFace);
-                    logger.debug("Face {} selected with {} vertices (triangle mode: {})",
-                            hoveredFace, vertexIndices.length, faceRenderer.isUsingTriangleMode());
 
-                    // Clear vertex and edge selection when selecting a face
+                    if (context.shiftDown) {
+                        // Shift+click: Toggle this face in selection
+                        faceSelectionState.toggleFace(hoveredFace, faceVertices, vertexIndices);
+                        faceRenderer.updateSelectionSet(faceSelectionState.getSelectedFaceIndices());
+                        logger.debug("Face {} toggled in selection (now {} selected)",
+                                hoveredFace, faceSelectionState.getSelectionCount());
+                    } else {
+                        // Normal click: Replace selection with this face
+                        faceSelectionState.selectFace(hoveredFace, faceVertices, vertexIndices);
+                        faceRenderer.setSelectedFace(hoveredFace);
+                        logger.debug("Face {} selected with {} vertices (triangle mode: {})",
+                                hoveredFace, vertexIndices.length, faceRenderer.isUsingTriangleMode());
+                    }
+
+                    // Clear vertex and edge selection when selecting a face (mutual exclusivity)
                     clearVertexSelection();
                     clearEdgeSelection();
 
                     return true; // Block lower-priority controllers
                 }
             } else {
-                // Clicking on empty space (no vertex, no edge, no face) - deselect face if something was selected
-                if (hoveredVertex < 0 && hoveredEdge < 0 && hoveredFace < 0 && faceSelectionState.hasSelection()) {
+                // Clicking on empty space - only clear if NOT holding Shift
+                if (hoveredVertex < 0 && hoveredEdge < 0 && hoveredFace < 0 &&
+                    !context.shiftDown && faceSelectionState.hasSelection()) {
                     faceSelectionState.clearSelection();
                     faceRenderer.clearSelection();
                     logger.debug("Face selection cleared (clicked on empty space)");

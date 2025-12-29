@@ -19,7 +19,9 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.FloatBuffer;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL15.*;
@@ -137,9 +139,11 @@ public class EdgeRenderer implements MeshChangeListener {
     /** Cached edge positions for hover detection [x1,y1,z1, x2,y2,z2, ...]. */
     private float[] edgePositions = null;
 
-    // Selection state
-    /** Index of currently selected edge, or -1 if no edge is selected. */
+    // Selection state - supports multi-selection
+    /** Index of currently selected edge, or -1 if no edge is selected (backward compat). */
     private int selectedEdgeIndex = NO_EDGE_SELECTED;
+    /** Set of selected edge indices for multi-selection. */
+    private Set<Integer> selectedEdgeIndices = new HashSet<>();
 
     // Edge-to-vertex mapping for precise updates
     /**
@@ -454,38 +458,78 @@ public class EdgeRenderer implements MeshChangeListener {
             // Set normal intensity for all edges
             shader.setFloat("uIntensity", NORMAL_INTENSITY);
 
-            // Render all edges at once with appropriate color
-            if (hoveredEdgeIndex >= 0) {
-                // Render non-hovered edges normally (black)
-                for (int i = 0; i < edgeCount; i++) {
-                    if (i != hoveredEdgeIndex) {
-                        glDrawArrays(GL_LINES, i * VERTICES_PER_EDGE, VERTICES_PER_EDGE);
+            // Selected edge color (white)
+            Vector3f selectedColor = new Vector3f(1.0f, 1.0f, 1.0f);
+
+            // Render edges in layers: normal -> selected -> hovered (on top)
+            // First, render non-selected, non-hovered edges normally (black)
+            for (int i = 0; i < edgeCount; i++) {
+                if (i != hoveredEdgeIndex && !selectedEdgeIndices.contains(i)) {
+                    glDrawArrays(GL_LINES, i * VERTICES_PER_EDGE, VERTICES_PER_EDGE);
+                }
+            }
+
+            // Second, render selected edges in white (unless also hovered)
+            if (!selectedEdgeIndices.isEmpty()) {
+                shader.setFloat("uIntensity", NORMAL_INTENSITY);
+                glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+                for (int selectedIdx : selectedEdgeIndices) {
+                    if (selectedIdx != hoveredEdgeIndex && selectedIdx >= 0 && selectedIdx < edgeCount) {
+                        // Update selected edge color to white temporarily
+                        int selectedVertexStart = selectedIdx * VERTICES_PER_EDGE;
+                        int vboOffset = (selectedVertexStart * VERTEX_STRIDE_BYTES) + COLOR_OFFSET_BYTES;
+
+                        glBufferSubData(GL_ARRAY_BUFFER, vboOffset, new float[] {
+                            selectedColor.x, selectedColor.y, selectedColor.z
+                        });
+                        glBufferSubData(GL_ARRAY_BUFFER, vboOffset + VERTEX_STRIDE_BYTES, new float[] {
+                            selectedColor.x, selectedColor.y, selectedColor.z
+                        });
+                    }
+                }
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+                // Draw selected edges
+                for (int selectedIdx : selectedEdgeIndices) {
+                    if (selectedIdx != hoveredEdgeIndex && selectedIdx >= 0 && selectedIdx < edgeCount) {
+                        glDrawArrays(GL_LINES, selectedIdx * VERTICES_PER_EDGE, VERTICES_PER_EDGE);
                     }
                 }
 
-                // Update hovered edge color to orange temporarily
+                // Restore black color for selected edges
+                glBindBuffer(GL_ARRAY_BUFFER, vbo);
+                for (int selectedIdx : selectedEdgeIndices) {
+                    if (selectedIdx >= 0 && selectedIdx < edgeCount) {
+                        int selectedVertexStart = selectedIdx * VERTICES_PER_EDGE;
+                        int vboOffset = (selectedVertexStart * VERTEX_STRIDE_BYTES) + COLOR_OFFSET_BYTES;
+
+                        glBufferSubData(GL_ARRAY_BUFFER, vboOffset, new float[] {
+                            edgeColor.x, edgeColor.y, edgeColor.z
+                        });
+                        glBufferSubData(GL_ARRAY_BUFFER, vboOffset + VERTEX_STRIDE_BYTES, new float[] {
+                            edgeColor.x, edgeColor.y, edgeColor.z
+                        });
+                    }
+                }
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+                shader.setFloat("uIntensity", NORMAL_INTENSITY);
+            }
+
+            // Third, render hovered edge in orange (on top of everything)
+            if (hoveredEdgeIndex >= 0) {
+                shader.setFloat("uIntensity", NORMAL_INTENSITY);
                 int hoveredVertexStart = hoveredEdgeIndex * VERTICES_PER_EDGE;
                 int vboOffset = (hoveredVertexStart * VERTEX_STRIDE_BYTES) + COLOR_OFFSET_BYTES;
 
-                // Create buffer with orange color for both vertices of the edge
-                FloatBuffer orangeBuffer = BufferUtils.createFloatBuffer(6);
-                orangeBuffer.put(hoverEdgeColor.x).put(hoverEdgeColor.y).put(hoverEdgeColor.z);  // Vertex 1
-                orangeBuffer.put(hoverEdgeColor.x).put(hoverEdgeColor.y).put(hoverEdgeColor.z);  // Vertex 2
-                orangeBuffer.flip();
-
                 // Update VBO with orange color for hovered edge
                 glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-                // Update first vertex color
                 glBufferSubData(GL_ARRAY_BUFFER, vboOffset, new float[] {
                     hoverEdgeColor.x, hoverEdgeColor.y, hoverEdgeColor.z
                 });
-
-                // Update second vertex color
                 glBufferSubData(GL_ARRAY_BUFFER, vboOffset + VERTEX_STRIDE_BYTES, new float[] {
                     hoverEdgeColor.x, hoverEdgeColor.y, hoverEdgeColor.z
                 });
-
                 glBindBuffer(GL_ARRAY_BUFFER, 0);
 
                 // Render hovered edge with orange color
@@ -500,9 +544,6 @@ public class EdgeRenderer implements MeshChangeListener {
                     edgeColor.x, edgeColor.y, edgeColor.z
                 });
                 glBindBuffer(GL_ARRAY_BUFFER, 0);
-            } else {
-                // No hover - render all edges normally (black)
-                glDrawArrays(GL_LINES, 0, edgeCount * VERTICES_PER_EDGE);
             }
 
             glBindVertexArray(0);
@@ -802,7 +843,7 @@ public class EdgeRenderer implements MeshChangeListener {
     }
 
     /**
-     * Sets the selected edge by index.
+     * Sets the selected edge by index (single selection - replaces any existing selection).
      * Delegates to EdgeSelectionManager for validation and state management.
      *
      * @param edgeIndex the index of the edge to select, or -1 to clear selection
@@ -813,7 +854,47 @@ public class EdgeRenderer implements MeshChangeListener {
 
         if (result != null) {
             this.selectedEdgeIndex = result.getSelectedIndex();
+            // Update set for multi-selection support
+            selectedEdgeIndices.clear();
+            if (this.selectedEdgeIndex >= 0) {
+                selectedEdgeIndices.add(this.selectedEdgeIndex);
+            }
         }
+    }
+
+    /**
+     * Update the selection with a set of edge indices (multi-selection).
+     * @param indices Set of edge indices to select
+     */
+    public void updateSelectionSet(Set<Integer> indices) {
+        selectedEdgeIndices.clear();
+        if (indices != null) {
+            for (Integer index : indices) {
+                if (index >= 0 && index < edgeCount) {
+                    selectedEdgeIndices.add(index);
+                }
+            }
+        }
+        // Update backward compat field
+        selectedEdgeIndex = selectedEdgeIndices.isEmpty() ? NO_EDGE_SELECTED : selectedEdgeIndices.iterator().next();
+        logger.debug("Updated edge selection set: {} edges", selectedEdgeIndices.size());
+    }
+
+    /**
+     * Get the set of selected edge indices.
+     * @return Copy of the selected edge indices set
+     */
+    public Set<Integer> getSelectedEdgeIndices() {
+        return new HashSet<>(selectedEdgeIndices);
+    }
+
+    /**
+     * Check if a specific edge is selected.
+     * @param index Edge index to check
+     * @return true if the edge is selected
+     */
+    public boolean isEdgeSelected(int index) {
+        return selectedEdgeIndices.contains(index);
     }
 
     /**
@@ -826,6 +907,7 @@ public class EdgeRenderer implements MeshChangeListener {
 
         if (result != null) {
             this.selectedEdgeIndex = result.getSelectedIndex();
+            selectedEdgeIndices.clear();
         }
     }
 
@@ -1045,10 +1127,77 @@ public class EdgeRenderer implements MeshChangeListener {
         // Clear hover state - edge indices have shifted
         hoveredEdgeIndex = NO_EDGE_SELECTED;
 
-        // Clear selection state - selected edge index may be invalid now
+        // Clear selection state - selected edge indices may be invalid now
         selectedEdgeIndex = NO_EDGE_SELECTED;
+        selectedEdgeIndices.clear();
 
         logger.debug("Applied subdivision result: {} edges, hover/selection cleared", edgeCount);
+    }
+
+    /**
+     * Subdivide a specific edge by index at its midpoint.
+     * Used for batch operations where the hovered edge is not relevant.
+     *
+     * <p>This method performs the same subdivision as {@link #subdivideHoveredEdge},
+     * but uses an explicit edge index parameter.
+     *
+     * @param edgeIndex Index of the edge to subdivide
+     * @param vertexRenderer VertexRenderer to update with new vertex
+     * @return Index of newly created vertex, or -1 if subdivision failed
+     */
+    public int subdivideEdgeByIndex(int edgeIndex, VertexRenderer vertexRenderer) {
+        if (!initialized) {
+            logger.warn("Cannot subdivide: edge renderer not initialized");
+            return -1;
+        }
+
+        if (edgeIndex < 0 || edgeIndex >= edgeCount) {
+            logger.warn("Cannot subdivide: invalid edge index (index: {}, count: {})",
+                       edgeIndex, edgeCount);
+            return -1;
+        }
+
+        if (edgeToVertexMapping == null) {
+            logger.warn("Cannot subdivide: edge-to-vertex mapping not built");
+            return -1;
+        }
+
+        if (vertexRenderer == null) {
+            logger.warn("Cannot subdivide: vertex renderer is null");
+            return -1;
+        }
+
+        // Get current vertex data from renderer
+        float[] vertexPositions = vertexRenderer.getAllVertexPositions();
+        int vertexCount = vertexRenderer.getVertexCount();
+
+        if (vertexPositions == null || vertexCount <= 0) {
+            logger.warn("Cannot subdivide: no vertex data available");
+            return -1;
+        }
+
+        // Perform subdivision through MeshManager
+        MeshEdgeSubdivider.SubdivisionResult result = meshManager.subdivideEdge(
+            edgeIndex, edgePositions, edgeCount,
+            vertexPositions, vertexCount, edgeToVertexMapping
+        );
+
+        if (result == null || !result.isSuccessful()) {
+            logger.warn("Edge subdivision failed for edge {}", edgeIndex);
+            return -1;
+        }
+
+        // Apply subdivision result to edge renderer
+        applySubdivisionResult(result);
+
+        // Update vertex renderer with new vertex
+        vertexRenderer.applyVertexAddition(result.getNewVertexPositions(), result.getNewVertexCount());
+
+        int newVertexIndex = result.getNewVertexIndex();
+        logger.info("Subdivided edge {} at midpoint, created vertex {} (edges: {} -> {})",
+                   edgeIndex, newVertexIndex, edgeCount - 1, edgeCount);
+
+        return newVertexIndex;
     }
 
 }

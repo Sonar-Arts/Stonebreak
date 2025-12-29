@@ -4,12 +4,11 @@ import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 /**
  * Manages face selection state for the viewport system.
- * Tracks selected face, vertex positions (variable count for quad/triangle modes), and working plane for translation.
+ * Supports multi-selection: tracks multiple selected faces with their vertex positions.
  * Follows the same pattern as EdgeSelectionState (SOLID, DRY).
  * Thread-safe state management with dirty tracking.
  *
@@ -19,15 +18,13 @@ public class FaceSelectionState {
 
     private static final Logger logger = LoggerFactory.getLogger(FaceSelectionState.class);
 
-    // Selection state
-    private int selectedFaceIndex = -1;  // -1 means no selection
+    // Multi-selection state (LinkedHashSet preserves insertion order)
+    private final Set<Integer> selectedFaceIndices = new LinkedHashSet<>();
 
-    // Face vertices (variable count - 4 for quads, more for subdivided faces)
-    private List<Vector3f> originalVertices = new ArrayList<>();
-    private List<Vector3f> currentVertices = new ArrayList<>();
-
-    // Mesh vertex indices (parallel to originalVertices/currentVertices)
-    private int[] vertexIndices = null;
+    // Per-face data: vertex indices and positions
+    private final Map<Integer, int[]> faceVertexIndices = new HashMap<>();
+    private final Map<Integer, Vector3f[]> originalVertices = new HashMap<>();
+    private final Map<Integer, Vector3f[]> currentVertices = new HashMap<>();
 
     private boolean isDragging = false;
     private boolean isModified = false;
@@ -44,10 +41,10 @@ public class FaceSelectionState {
     }
 
     /**
-     * Select a face by index (quad mode with 4 vertices).
+     * Select a face by index (quad mode with 4 vertices), replacing any existing selection.
      *
      * @param faceIndex the index of the face to select
-     * @param vertices  array of 4 vertex positions (quad corners) in model space
+     * @param vertices  array of vertex positions (quad corners) in model space
      * @throws IllegalArgumentException if faceIndex is negative or vertices array invalid
      */
     public synchronized void selectFace(int faceIndex, Vector3f[] vertices) {
@@ -55,21 +52,55 @@ public class FaceSelectionState {
     }
 
     /**
-     * Select a face by index with vertex indices (supports variable vertex count).
-     * Used in triangle mode where faces may have more than 4 vertices after subdivision.
+     * Select a face by index with vertex indices, replacing any existing selection.
      *
      * @param faceIndex the index of the face to select
      * @param vertices  array of vertex positions in model space (variable count)
-     * @param indices   array of mesh vertex indices (parallel to vertices), can be null for quad mode
+     * @param indices   array of mesh vertex indices (parallel to vertices), can be null
      * @throws IllegalArgumentException if faceIndex is negative or vertices array invalid
      */
     public synchronized void selectFace(int faceIndex, Vector3f[] vertices, int[] indices) {
+        validateFaceInput(faceIndex, vertices, indices);
+
+        clearSelection();
+        addFaceToSelection(faceIndex, vertices, indices);
+
+        logger.debug("Face {} selected with {} vertices", faceIndex, vertices.length);
+    }
+
+    /**
+     * Toggle a face in the selection (add if not selected, remove if selected).
+     * Use this for Shift+click multi-selection.
+     *
+     * @param faceIndex the index of the face to toggle
+     * @param vertices  array of vertex positions in model space
+     * @param indices   array of mesh vertex indices (can be null)
+     */
+    public synchronized void toggleFace(int faceIndex, Vector3f[] vertices, int[] indices) {
+        validateFaceInput(faceIndex, vertices, indices);
+
+        if (selectedFaceIndices.contains(faceIndex)) {
+            // Remove from selection
+            selectedFaceIndices.remove(faceIndex);
+            faceVertexIndices.remove(faceIndex);
+            originalVertices.remove(faceIndex);
+            currentVertices.remove(faceIndex);
+            logger.debug("Face {} removed from selection (now {} selected)",
+                    faceIndex, selectedFaceIndices.size());
+        } else {
+            // Add to selection
+            addFaceToSelection(faceIndex, vertices, indices);
+            logger.debug("Face {} added to selection (now {} selected)",
+                    faceIndex, selectedFaceIndices.size());
+        }
+    }
+
+    private void validateFaceInput(int faceIndex, Vector3f[] vertices, int[] indices) {
         if (faceIndex < 0) {
             throw new IllegalArgumentException("Face index cannot be negative: " + faceIndex);
         }
         if (vertices == null || vertices.length < 3) {
-            throw new IllegalArgumentException("Vertices array must contain at least 3 vertices, got: " +
-                    (vertices == null ? "null" : vertices.length));
+            throw new IllegalArgumentException("Vertices array must contain at least 3 vertices");
         }
         for (int i = 0; i < vertices.length; i++) {
             if (vertices[i] == null) {
@@ -79,73 +110,79 @@ public class FaceSelectionState {
         if (indices != null && indices.length != vertices.length) {
             throw new IllegalArgumentException("Indices array length must match vertices length");
         }
+    }
 
-        this.selectedFaceIndex = faceIndex;
-        this.vertexIndices = indices != null ? indices.clone() : null;
+    private void addFaceToSelection(int faceIndex, Vector3f[] vertices, int[] indices) {
+        selectedFaceIndices.add(faceIndex);
+        faceVertexIndices.put(faceIndex, indices != null ? indices.clone() : null);
 
-        // Deep copy all vertices to original positions
-        this.originalVertices.clear();
-        this.currentVertices.clear();
-        for (Vector3f vertex : vertices) {
-            this.originalVertices.add(new Vector3f(vertex));
-            this.currentVertices.add(new Vector3f(vertex));
+        // Deep copy vertices
+        Vector3f[] origCopy = new Vector3f[vertices.length];
+        Vector3f[] currCopy = new Vector3f[vertices.length];
+        for (int i = 0; i < vertices.length; i++) {
+            origCopy[i] = new Vector3f(vertices[i]);
+            currCopy[i] = new Vector3f(vertices[i]);
         }
+        originalVertices.put(faceIndex, origCopy);
+        currentVertices.put(faceIndex, currCopy);
+    }
 
-        this.isDragging = false;
-        this.isModified = false;
-        this.planeNormal = null;
-        this.planePoint = null;
-
-        logger.debug("Face {} selected with {} vertices", faceIndex, vertices.length);
+    /**
+     * Check if a specific face is in the current selection.
+     *
+     * @param faceIndex the face index to check
+     * @return true if the face is selected, false otherwise
+     */
+    public synchronized boolean isSelected(int faceIndex) {
+        return selectedFaceIndices.contains(faceIndex);
     }
 
     /**
      * Clear the current selection.
      */
     public synchronized void clearSelection() {
-        if (selectedFaceIndex >= 0) {
-            logger.debug("Clearing face selection (was face {})", selectedFaceIndex);
+        if (!selectedFaceIndices.isEmpty()) {
+            logger.debug("Clearing face selection (was {} faces)", selectedFaceIndices.size());
         }
 
-        this.selectedFaceIndex = -1;
-        this.originalVertices.clear();
-        this.currentVertices.clear();
-        this.vertexIndices = null;
-        this.isDragging = false;
-        this.isModified = false;
-        this.planeNormal = null;
-        this.planePoint = null;
+        selectedFaceIndices.clear();
+        faceVertexIndices.clear();
+        originalVertices.clear();
+        currentVertices.clear();
+        isDragging = false;
+        isModified = false;
+        planeNormal = null;
+        planePoint = null;
     }
 
     /**
-     * Start dragging the selected face.
+     * Start dragging all selected faces.
      *
      * @param planeNormal the normal vector of the working plane
-     * @param planePoint  a point on the working plane (usually the face centroid)
+     * @param planePoint  a point on the working plane (usually the first face's centroid)
      * @throws IllegalStateException if no face is selected
      */
     public synchronized void startDrag(Vector3f planeNormal, Vector3f planePoint) {
-        if (selectedFaceIndex < 0) {
+        if (selectedFaceIndices.isEmpty()) {
             throw new IllegalStateException("Cannot start drag: no face selected");
         }
         if (planeNormal == null || planePoint == null) {
             throw new IllegalArgumentException("Plane normal and point cannot be null");
         }
 
-        this.isDragging = true;
+        isDragging = true;
         this.planeNormal = new Vector3f(planeNormal).normalize();
         this.planePoint = new Vector3f(planePoint);
 
-        logger.debug("Started dragging face {} on plane with normal ({}, {}, {})",
-                selectedFaceIndex,
+        logger.debug("Started dragging {} faces on plane with normal ({}, {}, {})",
+                selectedFaceIndices.size(),
                 String.format("%.2f", this.planeNormal.x),
                 String.format("%.2f", this.planeNormal.y),
                 String.format("%.2f", this.planeNormal.z));
     }
 
     /**
-     * Update the face position during drag by applying a translation delta.
-     * All vertices move together by the same amount.
+     * Update all selected face positions during drag by applying a translation delta.
      *
      * @param delta the translation delta to apply to all vertices
      * @throws IllegalStateException if not currently dragging
@@ -158,23 +195,28 @@ public class FaceSelectionState {
             throw new IllegalArgumentException("Delta cannot be null");
         }
 
-        // Apply delta to all vertices
-        currentVertices.clear();
-        for (Vector3f original : originalVertices) {
-            currentVertices.add(new Vector3f(original).add(delta));
+        // Apply delta to all selected faces
+        for (Integer faceIndex : selectedFaceIndices) {
+            Vector3f[] original = originalVertices.get(faceIndex);
+            if (original != null) {
+                Vector3f[] updated = new Vector3f[original.length];
+                for (int i = 0; i < original.length; i++) {
+                    updated[i] = new Vector3f(original[i]).add(delta);
+                }
+                currentVertices.put(faceIndex, updated);
+            }
         }
 
         // Check if position has changed from original
         float threshold = 0.001f;
-        this.isModified = (delta.lengthSquared() > threshold * threshold);
+        isModified = (delta.lengthSquared() > threshold * threshold);
 
-        logger.trace("Updated face {} position by delta ({}, {}, {}), modified={}, vertices={}",
-                selectedFaceIndex,
+        logger.trace("Updated {} face positions by delta ({}, {}, {}), modified={}",
+                selectedFaceIndices.size(),
                 String.format("%.2f", delta.x),
                 String.format("%.2f", delta.y),
                 String.format("%.2f", delta.z),
-                isModified,
-                currentVertices.size());
+                isModified);
     }
 
     /**
@@ -182,133 +224,225 @@ public class FaceSelectionState {
      */
     public synchronized void endDrag() {
         if (isDragging) {
-            this.isDragging = false;
-            logger.debug("Ended drag for face {}, modified={}",
-                    selectedFaceIndex, isModified);
+            isDragging = false;
+            logger.debug("Ended drag for {} faces, modified={}",
+                    selectedFaceIndices.size(), isModified);
         }
     }
 
     /**
-     * Cancel the drag operation, reverting to original positions.
+     * Cancel the drag operation, reverting all faces to original positions.
      */
     public synchronized void cancelDrag() {
         if (isDragging) {
-            currentVertices.clear();
-            for (Vector3f original : originalVertices) {
-                currentVertices.add(new Vector3f(original));
+            for (Integer faceIndex : selectedFaceIndices) {
+                Vector3f[] original = originalVertices.get(faceIndex);
+                if (original != null) {
+                    Vector3f[] reverted = new Vector3f[original.length];
+                    for (int i = 0; i < original.length; i++) {
+                        reverted[i] = new Vector3f(original[i]);
+                    }
+                    currentVertices.put(faceIndex, reverted);
+                }
             }
-            this.isDragging = false;
-            this.isModified = false;
-            logger.debug("Cancelled drag for face {}, reverted to original positions", selectedFaceIndex);
+            isDragging = false;
+            isModified = false;
+            logger.debug("Cancelled drag for {} faces, reverted to original positions",
+                    selectedFaceIndices.size());
         }
     }
 
     /**
-     * Revert the current positions to the original positions.
+     * Revert all current positions to original positions.
      */
     public synchronized void revertToOriginal() {
-        if (selectedFaceIndex >= 0 && !originalVertices.isEmpty()) {
-            currentVertices.clear();
-            for (Vector3f original : originalVertices) {
-                currentVertices.add(new Vector3f(original));
+        if (!selectedFaceIndices.isEmpty()) {
+            for (Integer faceIndex : selectedFaceIndices) {
+                Vector3f[] original = originalVertices.get(faceIndex);
+                if (original != null) {
+                    Vector3f[] reverted = new Vector3f[original.length];
+                    for (int i = 0; i < original.length; i++) {
+                        reverted[i] = new Vector3f(original[i]);
+                    }
+                    currentVertices.put(faceIndex, reverted);
+                }
             }
-            this.isModified = false;
-            logger.debug("Reverted face {} to original positions", selectedFaceIndex);
+            isModified = false;
+            logger.debug("Reverted {} faces to original positions", selectedFaceIndices.size());
         }
     }
 
     /**
-     * Get the centroid (center point) of the face.
-     * Calculated as the average of all vertices.
-     * Useful for plane positioning during drag.
+     * Get the centroid of the first selected face.
      *
      * @return the centroid, or null if no selection
      */
     public synchronized Vector3f getCentroid() {
-        if (currentVertices.isEmpty()) {
+        if (selectedFaceIndices.isEmpty()) {
+            return null;
+        }
+        Integer firstIndex = selectedFaceIndices.iterator().next();
+        Vector3f[] current = currentVertices.get(firstIndex);
+        if (current == null || current.length == 0) {
             return null;
         }
 
         Vector3f centroid = new Vector3f();
-        for (Vector3f vertex : currentVertices) {
+        for (Vector3f vertex : current) {
             centroid.add(vertex);
         }
-        return centroid.mul(1.0f / currentVertices.size());
+        return centroid.mul(1.0f / current.length);
     }
 
     // Getters
 
     /**
-     * Check if a face is currently selected.
+     * Check if any face is currently selected.
      *
-     * @return true if a face is selected, false otherwise
+     * @return true if at least one face is selected, false otherwise
      */
     public synchronized boolean hasSelection() {
-        return selectedFaceIndex >= 0;
+        return !selectedFaceIndices.isEmpty();
     }
 
     /**
-     * Get the selected face index.
+     * Get the number of selected faces.
      *
-     * @return the face index, or -1 if no selection
+     * @return the count of selected faces
+     */
+    public synchronized int getSelectionCount() {
+        return selectedFaceIndices.size();
+    }
+
+    /**
+     * Get all selected face indices.
+     *
+     * @return a copy of the selected face indices set
+     */
+    public synchronized Set<Integer> getSelectedFaceIndices() {
+        return new LinkedHashSet<>(selectedFaceIndices);
+    }
+
+    /**
+     * Get the first selected face index (for backward compatibility).
+     *
+     * @return the first face index, or -1 if no selection
      */
     public synchronized int getSelectedFaceIndex() {
-        return selectedFaceIndex;
+        return selectedFaceIndices.isEmpty() ? -1 : selectedFaceIndices.iterator().next();
     }
 
     /**
-     * Get the original vertices.
+     * Get the vertex indices for a specific face.
      *
-     * @return array of original vertex positions (deep copied), or null if no selection
+     * @param faceIndex the face index
+     * @return array of vertex indices, or null if not in selection
      */
-    public synchronized Vector3f[] getOriginalVertices() {
-        if (originalVertices.isEmpty()) {
-            return null;
-        }
-        Vector3f[] result = new Vector3f[originalVertices.size()];
-        for (int i = 0; i < originalVertices.size(); i++) {
-            result[i] = new Vector3f(originalVertices.get(i));
-        }
-        return result;
+    public synchronized int[] getFaceVertexIndices(int faceIndex) {
+        int[] indices = faceVertexIndices.get(faceIndex);
+        return indices != null ? indices.clone() : null;
     }
 
     /**
-     * Get the current vertices.
-     *
-     * @return array of current vertex positions (deep copied), or null if no selection
-     */
-    public synchronized Vector3f[] getCurrentVertices() {
-        if (currentVertices.isEmpty()) {
-            return null;
-        }
-        Vector3f[] result = new Vector3f[currentVertices.size()];
-        for (int i = 0; i < currentVertices.size(); i++) {
-            result[i] = new Vector3f(currentVertices.get(i));
-        }
-        return result;
-    }
-
-    /**
-     * Get the mesh vertex indices.
-     * Used in triangle mode for updating GenericModelRenderer.
+     * Get the mesh vertex indices of the first selected face (for backward compatibility).
      *
      * @return array of vertex indices, or null if not available
      */
     public synchronized int[] getVertexIndices() {
-        return vertexIndices != null ? vertexIndices.clone() : null;
+        if (selectedFaceIndices.isEmpty()) return null;
+        Integer firstIndex = selectedFaceIndices.iterator().next();
+        int[] indices = faceVertexIndices.get(firstIndex);
+        return indices != null ? indices.clone() : null;
     }
 
     /**
-     * Get the number of vertices in this face.
+     * Get the original vertices for a specific face.
+     *
+     * @param faceIndex the face index
+     * @return array of original vertex positions, or null if not in selection
+     */
+    public synchronized Vector3f[] getOriginalVertices(int faceIndex) {
+        Vector3f[] verts = originalVertices.get(faceIndex);
+        if (verts == null) return null;
+        Vector3f[] result = new Vector3f[verts.length];
+        for (int i = 0; i < verts.length; i++) {
+            result[i] = new Vector3f(verts[i]);
+        }
+        return result;
+    }
+
+    /**
+     * Get the original vertices of the first selected face (for backward compatibility).
+     *
+     * @return array of original vertex positions, or null if no selection
+     */
+    public synchronized Vector3f[] getOriginalVertices() {
+        if (selectedFaceIndices.isEmpty()) return null;
+        Integer firstIndex = selectedFaceIndices.iterator().next();
+        return getOriginalVertices(firstIndex);
+    }
+
+    /**
+     * Get the current vertices for a specific face.
+     *
+     * @param faceIndex the face index
+     * @return array of current vertex positions, or null if not in selection
+     */
+    public synchronized Vector3f[] getCurrentVertices(int faceIndex) {
+        Vector3f[] verts = currentVertices.get(faceIndex);
+        if (verts == null) return null;
+        Vector3f[] result = new Vector3f[verts.length];
+        for (int i = 0; i < verts.length; i++) {
+            result[i] = new Vector3f(verts[i]);
+        }
+        return result;
+    }
+
+    /**
+     * Get the current vertices of the first selected face (for backward compatibility).
+     *
+     * @return array of current vertex positions, or null if no selection
+     */
+    public synchronized Vector3f[] getCurrentVertices() {
+        if (selectedFaceIndices.isEmpty()) return null;
+        Integer firstIndex = selectedFaceIndices.iterator().next();
+        return getCurrentVertices(firstIndex);
+    }
+
+    /**
+     * Get the number of vertices in the first selected face.
      *
      * @return vertex count, or 0 if no selection
      */
     public synchronized int getVertexCount() {
-        return currentVertices.size();
+        if (selectedFaceIndices.isEmpty()) return 0;
+        Integer firstIndex = selectedFaceIndices.iterator().next();
+        Vector3f[] verts = currentVertices.get(firstIndex);
+        return verts != null ? verts.length : 0;
     }
 
     /**
-     * Check if currently dragging a face.
+     * Get all unique vertex indices across all selected faces.
+     *
+     * @return set of unique vertex indices
+     */
+    public synchronized Set<Integer> getAllSelectedVertexIndices() {
+        Set<Integer> allVertices = new HashSet<>();
+        for (Integer faceIndex : selectedFaceIndices) {
+            int[] indices = faceVertexIndices.get(faceIndex);
+            if (indices != null) {
+                for (int idx : indices) {
+                    if (idx >= 0) {
+                        allVertices.add(idx);
+                    }
+                }
+            }
+        }
+        return allVertices;
+    }
+
+    /**
+     * Check if currently dragging faces.
      *
      * @return true if dragging, false otherwise
      */
@@ -317,7 +451,7 @@ public class FaceSelectionState {
     }
 
     /**
-     * Check if the selected face has been modified (position changed from original).
+     * Check if any selected face has been modified.
      *
      * @return true if modified, false otherwise
      */
@@ -345,10 +479,12 @@ public class FaceSelectionState {
 
     @Override
     public synchronized String toString() {
-        if (selectedFaceIndex < 0) {
+        if (selectedFaceIndices.isEmpty()) {
             return "FaceSelectionState{no selection}";
         }
-        return String.format("FaceSelectionState{index=%d, dragging=%s, modified=%s}",
-                selectedFaceIndex, isDragging, isModified);
+        return String.format("FaceSelectionState{count=%d, indices=%s, dragging=%s, modified=%s}",
+                selectedFaceIndices.size(),
+                selectedFaceIndices,
+                isDragging, isModified);
     }
 }

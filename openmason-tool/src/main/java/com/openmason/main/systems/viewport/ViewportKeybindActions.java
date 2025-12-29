@@ -128,13 +128,13 @@ public class ViewportKeybindActions {
                 }
         ));
 
-        // Ctrl+E: Subdivide Edge (Edge mode only)
+        // Ctrl+E: Subdivide Edge (Edge mode only) - subdivides all selected edges, or hovered if none selected
         registry.registerAction(new KeybindAction(
                 "viewport.subdivide_edge",
                 "Subdivide Edge",
                 CATEGORY,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_E),
-                actions::subdivideHoveredEdge
+                actions::subdivideSelectedEdges
         ));
 
         logger.info("Registered {} viewport keybind actions", 9);

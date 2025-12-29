@@ -134,21 +134,30 @@ public class VertexInputController {
             int hoveredVertex = vertexRenderer.getHoveredVertexIndex();
 
             if (hoveredVertex >= 0) {
-                // Clicking on a hovered vertex - select it
+                // Clicking on a hovered vertex
                 Vector3f vertexPosition = vertexRenderer.getVertexPosition(hoveredVertex);
                 if (vertexPosition != null) {
-                    vertexSelectionState.selectVertex(hoveredVertex, vertexPosition);
-                    vertexRenderer.setSelectedVertex(hoveredVertex);
-                    logger.debug("Vertex {} selected at position ({}, {}, {})",
-                            hoveredVertex,
-                            String.format("%.2f", vertexPosition.x),
-                            String.format("%.2f", vertexPosition.y),
-                            String.format("%.2f", vertexPosition.z));
+                    if (context.shiftDown) {
+                        // Shift+click: Toggle this vertex in selection
+                        vertexSelectionState.toggleVertex(hoveredVertex, vertexPosition);
+                        vertexRenderer.updateSelectionSet(vertexSelectionState.getSelectedVertexIndices());
+                        logger.debug("Vertex {} toggled in selection (now {} selected)",
+                                hoveredVertex, vertexSelectionState.getSelectionCount());
+                    } else {
+                        // Normal click: Replace selection with this vertex
+                        vertexSelectionState.selectVertex(hoveredVertex, vertexPosition);
+                        vertexRenderer.setSelectedVertex(hoveredVertex);
+                        logger.debug("Vertex {} selected at position ({}, {}, {})",
+                                hoveredVertex,
+                                String.format("%.2f", vertexPosition.x),
+                                String.format("%.2f", vertexPosition.y),
+                                String.format("%.2f", vertexPosition.z));
+                    }
                     return true; // Block lower-priority controllers
                 }
             } else {
-                // Clicking on empty space - deselect if something was selected
-                if (vertexSelectionState.hasSelection()) {
+                // Clicking on empty space - only clear if NOT holding Shift
+                if (!context.shiftDown && vertexSelectionState.hasSelection()) {
                     vertexSelectionState.clearSelection();
                     vertexRenderer.clearSelection();
                     logger.debug("Vertex selection cleared (clicked on empty space)");

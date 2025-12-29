@@ -14,6 +14,8 @@ import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Set;
+
 /**
  * Handles edge translation through plane-constrained dragging.
  * Extends TranslationHandlerBase for shared functionality (DRY, SOLID).
@@ -129,19 +131,6 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        // CRITICAL: Get OLD positions from renderer BEFORE updating
-        // After the first frame, positions are no longer at "original" - they're at the last updated positions
-        int edgeIndex = selectionState.getSelectedEdgeIndex();
-        Vector3f[] oldEndpoints = edgeRenderer.getEdgeEndpoints(edgeIndex);
-
-        if (oldEndpoints == null || oldEndpoints.length != 2) {
-            logger.warn("Cannot get current edge endpoints for edge {}", edgeIndex);
-            return;
-        }
-
-        Vector3f oldPoint1 = oldEndpoints[0];
-        Vector3f oldPoint2 = oldEndpoints[1];
-
         // Calculate the new position using ray-plane intersection (world space)
         Vector3f worldSpacePosition = calculateEdgePosition(mouseX, mouseY);
 
@@ -149,7 +138,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             // Mark that actual movement occurred during this drag
             hasMovedDuringDrag = true;
 
-            // Calculate delta from original midpoint
+            // Calculate delta from original midpoint (first edge's midpoint)
             Vector3f originalMidpoint = new Vector3f(
                 selectionState.getOriginalPoint1()
             ).add(selectionState.getOriginalPoint2()).mul(0.5f);
@@ -164,25 +153,66 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             // Convert delta to model space
             Vector3f modelSpaceDelta = worldToModelSpaceDelta(delta);
 
-            // Update selection state with delta
+            // Update selection state with delta (applies to all selected edges)
             selectionState.updatePosition(modelSpaceDelta);
 
-            // Calculate NEW positions (original + accumulated delta)
-            Vector3f newPoint1 = selectionState.getCurrentPoint1();
-            Vector3f newPoint2 = selectionState.getCurrentPoint2();
+            // Get all unique vertex indices from all selected edges
+            Set<Integer> allVertexIndices = selectionState.getAllSelectedVertexIndices();
 
-            // FIX: Update geometry using index-based methods (prevents unification)
-            updateEdgeAndConnectedGeometry(newPoint1, newPoint2, edgeIndex);
+            // Update each unique vertex position
+            for (int vertexIndex : allVertexIndices) {
+                // Get the original position for this vertex from any edge that uses it
+                Vector3f originalPos = getOriginalVertexPosition(vertexIndex);
+                if (originalPos != null) {
+                    Vector3f newPos = new Vector3f(originalPos).add(modelSpaceDelta);
+                    vertexRenderer.updateVertexPosition(vertexIndex, newPos);
+                    edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, newPos);
+                }
+            }
+
+            // Update affected face overlays
+            for (int vertexIndex : allVertexIndices) {
+                if (!faceRenderer.isUsingTriangleMode()) {
+                    updateAffectedFaceOverlaysForVertex(vertexIndex);
+                }
+            }
+
+            // REALTIME VISUAL UPDATE: Update ModelRenderer during drag
+            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
+            if (meshVertices != null && modelRenderer != null) {
+                modelRenderer.updateVertexPositions(meshVertices);
+                if (faceRenderer.isUsingTriangleMode()) {
+                    faceRenderer.rebuildFromGenericModelRenderer();
+                }
+            }
 
             dragStartDelta.set(modelSpaceDelta);
 
-            logger.trace("Dragging edge {} from ({},{},{}) ({},{},{}) to ({},{},{}) ({},{},{})",
-                    edgeIndex,
-                    String.format("%.2f", oldPoint1.x), String.format("%.2f", oldPoint1.y), String.format("%.2f", oldPoint1.z),
-                    String.format("%.2f", oldPoint2.x), String.format("%.2f", oldPoint2.y), String.format("%.2f", oldPoint2.z),
-                    String.format("%.2f", newPoint1.x), String.format("%.2f", newPoint1.y), String.format("%.2f", newPoint1.z),
-                    String.format("%.2f", newPoint2.x), String.format("%.2f", newPoint2.y), String.format("%.2f", newPoint2.z));
+            logger.trace("Dragging {} edges by delta ({}, {}, {})",
+                    selectionState.getSelectionCount(),
+                    String.format("%.2f", modelSpaceDelta.x),
+                    String.format("%.2f", modelSpaceDelta.y),
+                    String.format("%.2f", modelSpaceDelta.z));
         }
+    }
+
+    /**
+     * Get the original position of a vertex from the selected edges.
+     * Searches all selected edges for one that contains this vertex.
+     */
+    private Vector3f getOriginalVertexPosition(int vertexIndex) {
+        for (int edgeIndex : selectionState.getSelectedEdgeIndices()) {
+            int[] edgeVerts = selectionState.getEdgeVertexIndices(edgeIndex);
+            Vector3f[] originalEndpoints = selectionState.getOriginalEndpoints(edgeIndex);
+            if (edgeVerts != null && originalEndpoints != null) {
+                if (edgeVerts[0] == vertexIndex) {
+                    return new Vector3f(originalEndpoints[0]);
+                } else if (edgeVerts[1] == vertexIndex) {
+                    return new Vector3f(originalEndpoints[1]);
+                }
+            }
+        }
+        return null;
     }
 
     @Override
@@ -275,41 +305,46 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        // Get vertex indices and original positions
-        int vertexIndex1 = selectionState.getVertexIndex1();
-        int vertexIndex2 = selectionState.getVertexIndex2();
+        // Get all unique vertex indices before cancelling
+        Set<Integer> allVertexIndices = selectionState.getAllSelectedVertexIndices();
+
+        // Store original positions before cancel (cancel will revert currentEndpoints to originalEndpoints)
+        java.util.Map<Integer, Vector3f> originalPositions = new java.util.HashMap<>();
+        for (int vertexIndex : allVertexIndices) {
+            Vector3f originalPos = getOriginalVertexPosition(vertexIndex);
+            if (originalPos != null) {
+                originalPositions.put(vertexIndex, originalPos);
+            }
+        }
 
         // Revert to original position in selection state
         selectionState.cancelDrag();
 
-        // Get original positions (after cancel, current = original)
-        Vector3f originalPoint1 = selectionState.getOriginalPoint1();
-        Vector3f originalPoint2 = selectionState.getOriginalPoint2();
-
-        if (originalPoint1 != null && originalPoint2 != null && vertexIndex1 >= 0 && vertexIndex2 >= 0) {
-            // FIX: Revert specific vertices by index (prevents unification)
-            vertexRenderer.updateVerticesByIndices(vertexIndex1, originalPoint1, vertexIndex2, originalPoint2);
-
-            // FIX: Revert edges by vertex indices (prevents unification)
-            edgeRenderer.updateEdgesByVertexIndices(vertexIndex1, originalPoint1, vertexIndex2, originalPoint2);
-
-            // Revert all face overlays that use these vertices
-            updateAffectedFaceOverlays(vertexIndex1, vertexIndex2);
-
-            // REVERT: Update ModelRenderer with original mesh vertices
-            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-            if (meshVertices != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(meshVertices);
-                // Rebuild face overlays in triangle mode after position revert
-                if (faceRenderer.isUsingTriangleMode()) {
-                    faceRenderer.rebuildFromGenericModelRenderer();
+        // Revert each vertex to its original position
+        for (int vertexIndex : allVertexIndices) {
+            Vector3f originalPos = originalPositions.get(vertexIndex);
+            if (originalPos != null) {
+                vertexRenderer.updateVertexPosition(vertexIndex, originalPos);
+                edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, originalPos);
+                if (!faceRenderer.isUsingTriangleMode()) {
+                    updateAffectedFaceOverlaysForVertex(vertexIndex);
                 }
-                logger.debug("Reverted ModelRenderer to original positions (cancel)");
             }
         }
 
+        // REVERT: Update ModelRenderer with original mesh vertices
+        float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
+        if (meshVertices != null && modelRenderer != null) {
+            modelRenderer.updateVertexPositions(meshVertices);
+            if (faceRenderer.isUsingTriangleMode()) {
+                faceRenderer.rebuildFromGenericModelRenderer();
+            }
+            logger.debug("Reverted ModelRenderer to original positions (cancel)");
+        }
+
         isDragging = false;
-        logger.debug("Cancelled edge drag, reverted all changes to original positions");
+        logger.debug("Cancelled edge drag for {} edges, reverted all changes to original positions",
+                allVertexIndices.size() / 2);
     }
 
     /**
@@ -390,6 +425,17 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
      * @param vertexIndex2 The index of the second vertex of the edge
      */
     private void updateAffectedFaceOverlays(int vertexIndex1, int vertexIndex2) {
+        updateAffectedFaceOverlaysForVertex(vertexIndex1);
+        updateAffectedFaceOverlaysForVertex(vertexIndex2);
+    }
+
+    /**
+     * Update all face overlays that use a specific vertex.
+     * This ensures face overlays morph to match the new geometry shape.
+     *
+     * @param vertexIndex The index of the vertex that was modified
+     */
+    private void updateAffectedFaceOverlaysForVertex(int vertexIndex) {
         if (faceRenderer == null || !faceRenderer.isInitialized()) {
             return;
         }
@@ -399,7 +445,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        // Iterate through all faces and update those that use either vertex
+        // Iterate through all faces and update those that use this vertex
         for (int faceIdx = 0; faceIdx < faceCount; faceIdx++) {
             int[] faceVertexIndices = faceRenderer.getFaceVertexIndices(faceIdx);
 
@@ -407,10 +453,10 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
                 continue;
             }
 
-            // Check if this face uses either vertex
+            // Check if this face uses this vertex
             boolean faceUsesVertex = false;
             for (int vIdx : faceVertexIndices) {
-                if (vIdx == vertexIndex1 || vIdx == vertexIndex2) {
+                if (vIdx == vertexIndex) {
                     faceUsesVertex = true;
                     break;
                 }
@@ -419,20 +465,20 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             if (faceUsesVertex) {
                 // Get current positions of all 4 vertices of this face
                 Vector3f[] newPositions = new Vector3f[4];
+                boolean allValid = true;
                 for (int i = 0; i < 4; i++) {
                     newPositions[i] = vertexRenderer.getVertexPosition(faceVertexIndices[i]);
                     if (newPositions[i] == null) {
                         logger.warn("Cannot update face {}: vertex {} position is null", faceIdx, faceVertexIndices[i]);
+                        allValid = false;
                         break;
                     }
                 }
 
                 // Update the face overlay with new vertex positions
-                if (newPositions[0] != null && newPositions[1] != null &&
-                    newPositions[2] != null && newPositions[3] != null) {
+                if (allValid) {
                     faceRenderer.updateFaceByVertexIndices(faceIdx, faceVertexIndices, newPositions);
-                    logger.trace("Updated face {} overlay due to edge vertices {}, {} modification",
-                                faceIdx, vertexIndex1, vertexIndex2);
+                    logger.trace("Updated face {} overlay due to vertex {} modification", faceIdx, vertexIndex);
                 }
             }
         }

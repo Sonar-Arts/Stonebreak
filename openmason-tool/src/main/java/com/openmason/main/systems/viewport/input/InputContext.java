@@ -29,6 +29,11 @@ public class InputContext {
     public final float mouseWheel;
     public final ImVec2 mouseDelta;
 
+    // Modifier key state
+    public final boolean shiftDown;
+    public final boolean ctrlDown;
+    public final boolean altDown;
+
     // Viewport dimensions
     public final int viewportWidth;
     public final int viewportHeight;
@@ -53,6 +58,9 @@ public class InputContext {
      * @param viewportHeight Height of viewport in pixels
      * @param viewMatrix Camera view matrix
      * @param projectionMatrix Camera projection matrix
+     * @param shiftDown Whether Shift key is currently held down
+     * @param ctrlDown Whether Ctrl key is currently held down
+     * @param altDown Whether Alt key is currently held down
      */
     public InputContext(
             float mouseX,
@@ -67,7 +75,10 @@ public class InputContext {
             int viewportWidth,
             int viewportHeight,
             Matrix4f viewMatrix,
-            Matrix4f projectionMatrix
+            Matrix4f projectionMatrix,
+            boolean shiftDown,
+            boolean ctrlDown,
+            boolean altDown
     ) {
         this.mouseX = mouseX;
         this.mouseY = mouseY;
@@ -82,5 +93,8 @@ public class InputContext {
         this.viewportHeight = viewportHeight;
         this.viewMatrix = viewMatrix;
         this.projectionMatrix = projectionMatrix;
+        this.shiftDown = shiftDown;
+        this.ctrlDown = ctrlDown;
+        this.altDown = altDown;
     }
 }

@@ -14,6 +14,8 @@ import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Set;
+
 /**
  * Handles vertex translation through plane-constrained dragging.
  * Extends TranslationHandlerBase for shared functionality (DRY, SOLID).
@@ -126,6 +128,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         }
 
         // Calculate new vertex position using ray-plane intersection (world space)
+        // This is based on the first selected vertex's plane
         Vector3f worldSpacePosition = calculateVertexPosition(mouseX, mouseY);
 
         if (worldSpacePosition != null) {
@@ -134,55 +137,59 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
                 worldSpacePosition = applyGridSnapping(worldSpacePosition);
             }
 
-            // Convert from world space to model space (from base class)
-            Vector3f modelSpacePosition = worldToModelSpace(worldSpacePosition);
+            // Calculate delta from original position of first vertex
+            Vector3f originalPosition = selectionState.getOriginalPosition();
+            if (originalPosition == null) {
+                return;
+            }
+            Vector3f worldDelta = new Vector3f(worldSpacePosition).sub(originalPosition);
 
             // Mark that actual movement occurred during this drag
             hasMovedDuringDrag = true;
 
-            // Get vertex index for updates
-            int vertexIndex = selectionState.getSelectedVertexIndex();
+            // Update selection state with delta (applies to all selected vertices)
+            selectionState.updatePositionsByDelta(worldDelta);
 
-            // Update selection state (world space for display)
-            selectionState.updatePosition(worldSpacePosition);
+            // Get all selected vertex indices
+            Set<Integer> selectedIndices = selectionState.getSelectedVertexIndices();
 
-            // Update visual preview (model space for VBO)
-            vertexRenderer.updateVertexPosition(vertexIndex, modelSpacePosition);
+            // Update each selected vertex
+            for (int vertexIndex : selectedIndices) {
+                // Get the new current position for this vertex
+                Vector3f currentWorldPos = selectionState.getCurrentPosition(vertexIndex);
+                if (currentWorldPos == null) continue;
 
-            // Update connected edge endpoints using INDEX-BASED matching (model space for VBO)
-            // FIX: Use index-based updates instead of position-based to prevent coordinate drift
-            // after subdivision operations. Position-based matching can fail if edge positions
-            // and vertex positions diverge even slightly.
-            edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, modelSpacePosition);
+                // Convert from world space to model space (from base class)
+                Vector3f modelSpacePosition = worldToModelSpace(currentWorldPos);
 
-            // Update all face overlays that use this vertex (ensures overlays morph with geometry)
-            // NOTE: In triangle mode, rebuildFromGenericModelRenderer() handles this below
-            if (!faceRenderer.isUsingTriangleMode()) {
-                updateAffectedFaceOverlays(vertexIndex);
+                // Update visual preview (model space for VBO)
+                vertexRenderer.updateVertexPosition(vertexIndex, modelSpacePosition);
+
+                // Update connected edge endpoints using INDEX-BASED matching (model space for VBO)
+                edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, modelSpacePosition);
+
+                // Update all face overlays that use this vertex (ensures overlays morph with geometry)
+                if (!faceRenderer.isUsingTriangleMode()) {
+                    updateAffectedFaceOverlays(vertexIndex);
+                }
             }
 
             // REALTIME VISUAL UPDATE: Update ModelRenderer during drag (no merging)
-            // This provides visual feedback showing how the final cube will look
-            // Use mesh vertices (24 for cube) instead of unique vertices (8)
             float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
             if (meshVertices != null && modelRenderer != null) {
                 modelRenderer.updateVertexPositions(meshVertices);
 
                 // In triangle mode, face overlays need to be rebuilt from GenericModelRenderer
-                // since updateFaceByVertexIndices() only works in quad mode
                 if (faceRenderer.isUsingTriangleMode()) {
                     faceRenderer.rebuildFromGenericModelRenderer();
                 }
             }
 
-            logger.trace("Dragging vertex {} to world ({}, {}, {}) → model ({}, {}, {})",
-                    vertexIndex,
-                    String.format("%.2f", worldSpacePosition.x),
-                    String.format("%.2f", worldSpacePosition.y),
-                    String.format("%.2f", worldSpacePosition.z),
-                    String.format("%.2f", modelSpacePosition.x),
-                    String.format("%.2f", modelSpacePosition.y),
-                    String.format("%.2f", modelSpacePosition.z));
+            logger.trace("Dragging {} vertices by delta ({}, {}, {})",
+                    selectedIndices.size(),
+                    String.format("%.2f", worldDelta.x),
+                    String.format("%.2f", worldDelta.y),
+                    String.format("%.2f", worldDelta.z));
         }
     }
 
@@ -276,41 +283,43 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        // Revert to original position
+        // Get all selected indices before cancelling (cancelDrag reverts positions internally)
+        Set<Integer> selectedIndices = selectionState.getSelectedVertexIndices();
+
+        // Revert all vertices to original positions in state
         selectionState.cancelDrag();
 
-        // Get vertex index and original position for reversion
-        int vertexIndex = selectionState.getSelectedVertexIndex();
-        Vector3f originalPosition = selectionState.getOriginalPosition();
+        // Revert each selected vertex's visual representation
+        for (int vertexIndex : selectedIndices) {
+            Vector3f originalPosition = selectionState.getOriginalPosition(vertexIndex);
 
-        // Update visual to original position
-        if (originalPosition != null) {
-            vertexRenderer.updateVertexPosition(vertexIndex, originalPosition);
+            if (originalPosition != null) {
+                vertexRenderer.updateVertexPosition(vertexIndex, originalPosition);
 
-            // Revert connected edges using INDEX-BASED matching
-            // FIX: Use index-based updates for consistent behavior with handleMouseMove
-            edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, originalPosition);
+                // Revert connected edges using INDEX-BASED matching
+                edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, originalPosition);
 
-            // Revert all face overlays that use this vertex
-            // NOTE: In triangle mode, rebuildFromGenericModelRenderer() handles this below
-            if (!faceRenderer.isUsingTriangleMode()) {
-                updateAffectedFaceOverlays(vertexIndex);
-            }
-
-            // REVERT: Update ModelRenderer with original mesh vertices
-            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-            if (meshVertices != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(meshVertices);
-                // Rebuild face overlays in triangle mode after position revert
-                if (faceRenderer.isUsingTriangleMode()) {
-                    faceRenderer.rebuildFromGenericModelRenderer();
+                // Revert all face overlays that use this vertex
+                if (!faceRenderer.isUsingTriangleMode()) {
+                    updateAffectedFaceOverlays(vertexIndex);
                 }
-                logger.debug("Reverted ModelRenderer to original positions (cancel)");
             }
         }
 
+        // REVERT: Update ModelRenderer with original mesh vertices
+        float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
+        if (meshVertices != null && modelRenderer != null) {
+            modelRenderer.updateVertexPositions(meshVertices);
+            // Rebuild face overlays in triangle mode after position revert
+            if (faceRenderer.isUsingTriangleMode()) {
+                faceRenderer.rebuildFromGenericModelRenderer();
+            }
+            logger.debug("Reverted ModelRenderer to original positions (cancel)");
+        }
+
         isDragging = false;
-        logger.debug("Cancelled vertex drag, reverted to original position");
+        logger.debug("Cancelled vertex drag for {} vertices, reverted to original positions",
+                selectedIndices.size());
     }
 
     /**

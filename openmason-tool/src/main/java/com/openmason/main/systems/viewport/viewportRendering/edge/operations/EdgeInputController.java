@@ -156,27 +156,35 @@ public class EdgeInputController {
 
             // PRIORITY: Only select edge if no vertex is hovered
             if (hoveredVertex < 0 && hoveredEdge >= 0) {
-                // Clicking on a hovered edge (and no vertex) - select it
+                // Clicking on a hovered edge (and no vertex)
                 Vector3f[] endpoints = edgeRenderer.getEdgeEndpoints(hoveredEdge);
-                int[] vertexIndices = edgeRenderer.getEdgeVertexIndices(hoveredEdge); // FIX: Get vertex indices
+                int[] vertexIndices = edgeRenderer.getEdgeVertexIndices(hoveredEdge);
 
                 if (endpoints != null && endpoints.length == 2 && vertexIndices != null && vertexIndices.length == 2) {
-                    // FIX: Pass vertex indices to prevent unification bug
-                    edgeSelectionState.selectEdge(hoveredEdge, endpoints[0], endpoints[1], vertexIndices[0], vertexIndices[1]);
-                    edgeRenderer.setSelectedEdge(hoveredEdge);
-                    logger.debug("Edge {} selected (vertices {}, {}) with endpoints ({}, {}, {}) - ({}, {}, {})",
-                            hoveredEdge, vertexIndices[0], vertexIndices[1],
-                            String.format("%.2f", endpoints[0].x), String.format("%.2f", endpoints[0].y), String.format("%.2f", endpoints[0].z),
-                            String.format("%.2f", endpoints[1].x), String.format("%.2f", endpoints[1].y), String.format("%.2f", endpoints[1].z));
+                    if (context.shiftDown) {
+                        // Shift+click: Toggle this edge in selection
+                        edgeSelectionState.toggleEdge(hoveredEdge, endpoints[0], endpoints[1], vertexIndices[0], vertexIndices[1]);
+                        edgeRenderer.updateSelectionSet(edgeSelectionState.getSelectedEdgeIndices());
+                        logger.debug("Edge {} toggled in selection (now {} selected)",
+                                hoveredEdge, edgeSelectionState.getSelectionCount());
+                    } else {
+                        // Normal click: Replace selection with this edge
+                        edgeSelectionState.selectEdge(hoveredEdge, endpoints[0], endpoints[1], vertexIndices[0], vertexIndices[1]);
+                        edgeRenderer.setSelectedEdge(hoveredEdge);
+                        logger.debug("Edge {} selected (vertices {}, {}) with endpoints ({}, {}, {}) - ({}, {}, {})",
+                                hoveredEdge, vertexIndices[0], vertexIndices[1],
+                                String.format("%.2f", endpoints[0].x), String.format("%.2f", endpoints[0].y), String.format("%.2f", endpoints[0].z),
+                                String.format("%.2f", endpoints[1].x), String.format("%.2f", endpoints[1].y), String.format("%.2f", endpoints[1].z));
+                    }
 
-                    // Clear vertex selection when selecting an edge
+                    // Clear vertex selection when selecting an edge (mutual exclusivity)
                     clearVertexSelection();
 
                     return true; // Block lower-priority controllers
                 }
             } else {
-                // Clicking on empty space (no vertex, no edge) - deselect edge if something was selected
-                if (hoveredVertex < 0 && hoveredEdge < 0 && edgeSelectionState.hasSelection()) {
+                // Clicking on empty space (no vertex, no edge) - only clear if NOT holding Shift
+                if (hoveredVertex < 0 && hoveredEdge < 0 && !context.shiftDown && edgeSelectionState.hasSelection()) {
                     edgeSelectionState.clearSelection();
                     edgeRenderer.clearSelection();
                     logger.debug("Edge selection cleared (clicked on empty space)");

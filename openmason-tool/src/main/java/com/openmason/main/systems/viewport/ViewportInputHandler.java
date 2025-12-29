@@ -206,7 +206,10 @@ public class ViewportInputHandler {
                 (int) imageWidth,
                 (int) imageHeight,
                 viewportCamera.getViewMatrix(),
-                viewportCamera.getProjectionMatrix()
+                viewportCamera.getProjectionMatrix(),
+                ImGui.getIO().getKeyShift(),
+                ImGui.getIO().getKeyCtrl(),
+                ImGui.getIO().getKeyAlt()
         );
 
         // ========== Priority-Based Input Routing ==========
