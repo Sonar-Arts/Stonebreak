@@ -1,5 +1,6 @@
 package com.openmason.main.systems.rendering.model;
 
+import com.openmason.main.systems.rendering.model.gmr.UVCoordinateGenerator;
 import org.joml.Vector3f;
 
 /**
@@ -19,6 +20,8 @@ public record ModelPart(
         float[] texCoords,
         int[] indices
 ) {
+    // Shared UV generator for DRY compliance
+    private static final UVCoordinateGenerator UV_GENERATOR = new UVCoordinateGenerator();
     /**
      * Create a cube part with UV mapping based on the specified mode.
      *
@@ -53,28 +56,34 @@ public record ModelPart(
      * Face order matches ModelDefinition.ModelPart.getVerticesAtOrigin() for subdivision compatibility.
      */
     private static ModelPart createCubeCubeNet(String name, Vector3f origin, Vector3f size) {
+        float[] vertices = createCubeVertices(size);
+        float[] texCoords = UV_GENERATOR.generateCubeNetTexCoords();
+        int[] indices = createCubeIndices();
+
+        return new ModelPart(name, origin, vertices, texCoords, indices);
+    }
+
+    /**
+     * Create a cube with flat UV mapping (entire texture on each face).
+     */
+    private static ModelPart createCubeFlat(String name, Vector3f origin, Vector3f size) {
+        float[] vertices = createCubeVertices(size);
+        float[] texCoords = UV_GENERATOR.generateFlatTexCoords();
+        int[] indices = createCubeIndices();
+
+        return new ModelPart(name, origin, vertices, texCoords, indices);
+    }
+
+    /**
+     * Create cube vertex positions for a 24-vertex cube.
+     * Face order: Front, Back, Left, Right, Top, Bottom (4 vertices each)
+     */
+    private static float[] createCubeVertices(Vector3f size) {
         float hw = size.x / 2.0f; // half width
         float hh = size.y / 2.0f; // half height
         float hd = size.z / 2.0f; // half depth
 
-        // Cube net UV coordinates for 64x48 texture (Minecraft-style layout)
-        // Row heights: 16/48 = 0.333..., 32/48 = 0.666...
-        float V_ROW_1 = 16.0f / 48.0f;  // 0.333333...
-        float V_ROW_2 = 32.0f / 48.0f;  // 0.666666...
-
-        // Face UV bounds: {u1, v1, u2, v2} (top-left to bottom-right in texture space)
-        float[] TOP_UV = {0.25f, 0.0f, 0.5f, V_ROW_1};
-        float[] LEFT_UV = {0.0f, V_ROW_1, 0.25f, V_ROW_2};
-        float[] FRONT_UV = {0.25f, V_ROW_1, 0.5f, V_ROW_2};
-        float[] RIGHT_UV = {0.5f, V_ROW_1, 0.75f, V_ROW_2};
-        float[] BACK_UV = {0.75f, V_ROW_1, 1.0f, V_ROW_2};
-        float[] BOTTOM_UV = {0.25f, V_ROW_2, 0.5f, 1.0f};
-
-        // 24 vertices (4 per face × 6 faces) - expanded format for proper UV mapping
-        // Format: x, y, z (3 floats per vertex)
-        // IMPORTANT: Face order MUST match ModelDefinition.ModelPart.getVerticesAtOrigin()
-        // Order: Front, Back, Left, Right, Top, Bottom
-        float[] vertices = {
+        return new float[] {
             // FRONT face (facing +Z) - vertices 0-3
             -hw, -hh,  hd,  // 0: bottom-left
              hw, -hh,  hd,  // 1: bottom-right
@@ -111,49 +120,13 @@ public record ModelPart(
              hw, -hh,  hd,  // 22: front-right
             -hw, -hh,  hd   // 23: front-left
         };
+    }
 
-        // Texture coordinates for each vertex (u, v interleaved)
-        // Order matches vertices: Front, Back, Left, Right, Top, Bottom
-        float[] texCoords = {
-            // FRONT face UVs (vertices 0-3)
-            FRONT_UV[0], FRONT_UV[3],  // 0: bottom-left
-            FRONT_UV[2], FRONT_UV[3],  // 1: bottom-right
-            FRONT_UV[2], FRONT_UV[1],  // 2: top-right
-            FRONT_UV[0], FRONT_UV[1],  // 3: top-left
-
-            // BACK face UVs (vertices 4-7)
-            BACK_UV[0], BACK_UV[3],    // 4: bottom-left
-            BACK_UV[2], BACK_UV[3],    // 5: bottom-right
-            BACK_UV[2], BACK_UV[1],    // 6: top-right
-            BACK_UV[0], BACK_UV[1],    // 7: top-left
-
-            // LEFT face UVs (vertices 8-11)
-            LEFT_UV[0], LEFT_UV[3],    // 8: bottom-back
-            LEFT_UV[2], LEFT_UV[3],    // 9: bottom-front
-            LEFT_UV[2], LEFT_UV[1],    // 10: top-front
-            LEFT_UV[0], LEFT_UV[1],    // 11: top-back
-
-            // RIGHT face UVs (vertices 12-15)
-            RIGHT_UV[0], RIGHT_UV[3],  // 12: bottom-back
-            RIGHT_UV[2], RIGHT_UV[3],  // 13: bottom-front
-            RIGHT_UV[2], RIGHT_UV[1],  // 14: top-front
-            RIGHT_UV[0], RIGHT_UV[1],  // 15: top-back
-
-            // TOP face UVs (vertices 16-19)
-            TOP_UV[0], TOP_UV[3],      // 16: back-left
-            TOP_UV[2], TOP_UV[3],      // 17: back-right
-            TOP_UV[2], TOP_UV[1],      // 18: front-right
-            TOP_UV[0], TOP_UV[1],      // 19: front-left
-
-            // BOTTOM face UVs (vertices 20-23)
-            BOTTOM_UV[0], BOTTOM_UV[1],  // 20: back-left
-            BOTTOM_UV[2], BOTTOM_UV[1],  // 21: back-right
-            BOTTOM_UV[2], BOTTOM_UV[3],  // 22: front-right
-            BOTTOM_UV[0], BOTTOM_UV[3]   // 23: front-left
-        };
-
-        // Indices for 6 faces (2 triangles each = 36 indices)
-        // Counter-clockwise winding for front-facing polygons
+    /**
+     * Create cube indices for 6 faces (2 triangles each = 36 indices).
+     * Counter-clockwise winding for front-facing polygons.
+     */
+    private static int[] createCubeIndices() {
         int[] indices = new int[36];
         int idx = 0;
         for (int face = 0; face < 6; face++) {
@@ -167,111 +140,7 @@ public record ModelPart(
             indices[idx++] = baseVertex + 3;
             indices[idx++] = baseVertex;
         }
-
-        return new ModelPart(name, origin, vertices, texCoords, indices);
-    }
-
-    /**
-     * Create a cube with flat UV mapping (entire texture on each face).
-     */
-    private static ModelPart createCubeFlat(String name, Vector3f origin, Vector3f size) {
-        float hw = size.x / 2.0f; // half width
-        float hh = size.y / 2.0f; // half height
-        float hd = size.z / 2.0f; // half depth
-
-        // 24 vertices (4 per face × 6 faces)
-        // Same vertex positions as cube net, different UV coordinates
-        float[] vertices = {
-            // FRONT face (facing +Z) - vertices 0-3
-            -hw, -hh,  hd,  // 0: bottom-left
-             hw, -hh,  hd,  // 1: bottom-right
-             hw,  hh,  hd,  // 2: top-right
-            -hw,  hh,  hd,  // 3: top-left
-
-            // BACK face (facing -Z) - vertices 4-7
-            -hw, -hh, -hd,  // 4: bottom-left
-             hw, -hh, -hd,  // 5: bottom-right
-             hw,  hh, -hd,  // 6: top-right
-            -hw,  hh, -hd,  // 7: top-left
-
-            // LEFT face (facing -X) - vertices 8-11
-            -hw, -hh, -hd,  // 8: bottom-back
-            -hw, -hh,  hd,  // 9: bottom-front
-            -hw,  hh,  hd,  // 10: top-front
-            -hw,  hh, -hd,  // 11: top-back
-
-            // RIGHT face (facing +X) - vertices 12-15
-             hw, -hh, -hd,  // 12: bottom-back
-             hw, -hh,  hd,  // 13: bottom-front
-             hw,  hh,  hd,  // 14: top-front
-             hw,  hh, -hd,  // 15: top-back
-
-            // TOP face (facing +Y) - vertices 16-19
-            -hw,  hh, -hd,  // 16: back-left
-             hw,  hh, -hd,  // 17: back-right
-             hw,  hh,  hd,  // 18: front-right
-            -hw,  hh,  hd,  // 19: front-left
-
-            // BOTTOM face (facing -Y) - vertices 20-23
-            -hw, -hh, -hd,  // 20: back-left
-             hw, -hh, -hd,  // 21: back-right
-             hw, -hh,  hd,  // 22: front-right
-            -hw, -hh,  hd   // 23: front-left
-        };
-
-        // Flat UV mapping: entire texture (0-1) on each face
-        float[] texCoords = {
-            // FRONT face UVs (vertices 0-3)
-            0.0f, 1.0f,  // 0: bottom-left
-            1.0f, 1.0f,  // 1: bottom-right
-            1.0f, 0.0f,  // 2: top-right
-            0.0f, 0.0f,  // 3: top-left
-
-            // BACK face UVs (vertices 4-7) - mirrored horizontally
-            1.0f, 1.0f,  // 4: bottom-left (appears as right in back view)
-            0.0f, 1.0f,  // 5: bottom-right (appears as left in back view)
-            0.0f, 0.0f,  // 6: top-right
-            1.0f, 0.0f,  // 7: top-left
-
-            // LEFT face UVs (vertices 8-11)
-            0.0f, 1.0f,  // 8: bottom-back
-            1.0f, 1.0f,  // 9: bottom-front
-            1.0f, 0.0f,  // 10: top-front
-            0.0f, 0.0f,  // 11: top-back
-
-            // RIGHT face UVs (vertices 12-15) - mirrored
-            1.0f, 1.0f,  // 12: bottom-back
-            0.0f, 1.0f,  // 13: bottom-front
-            0.0f, 0.0f,  // 14: top-front
-            1.0f, 0.0f,  // 15: top-back
-
-            // TOP face UVs (vertices 16-19)
-            0.0f, 1.0f,  // 16: back-left
-            1.0f, 1.0f,  // 17: back-right
-            1.0f, 0.0f,  // 18: front-right
-            0.0f, 0.0f,  // 19: front-left
-
-            // BOTTOM face UVs (vertices 20-23)
-            0.0f, 0.0f,  // 20: back-left
-            1.0f, 0.0f,  // 21: back-right
-            1.0f, 1.0f,  // 22: front-right
-            0.0f, 1.0f   // 23: front-left
-        };
-
-        // Indices for 6 faces (2 triangles each = 36 indices)
-        int[] indices = new int[36];
-        int idx = 0;
-        for (int face = 0; face < 6; face++) {
-            int baseVertex = face * 4;
-            indices[idx++] = baseVertex;
-            indices[idx++] = baseVertex + 1;
-            indices[idx++] = baseVertex + 2;
-            indices[idx++] = baseVertex + 2;
-            indices[idx++] = baseVertex + 3;
-            indices[idx++] = baseVertex;
-        }
-
-        return new ModelPart(name, origin, vertices, texCoords, indices);
+        return indices;
     }
 
     /**

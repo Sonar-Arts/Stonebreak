@@ -9,7 +9,6 @@ import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import org.joml.Vector3f;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.lwjgl.opengl.GL11.*;
@@ -27,19 +26,17 @@ import static org.lwjgl.opengl.GL20.*;
  * - Arbitrary vertex counts (not cube-locked)
  * - OMO format loading support
  *
- * Architecture:
- * - Delegates to subsystems for specific responsibilities (SOLID principles)
+ * Architecture (SOLID principles):
  * - IVertexDataManager: Vertex position management
  * - IUniqueVertexMapper: Index-based unique vertex lookup
  * - IMeshChangeNotifier: Observer pattern for mesh changes
  * - ITriangleFaceMapper: Triangle-to-face mapping
  * - ISubdivisionProcessor: Edge subdivision operations
  * - IGeometryDataBuilder: Interleaved data construction
+ * - IUVCoordinateGenerator: UV texture coordinate generation
+ * - IModelStateManager: Model parts, dimensions, UV mode state
  */
 public class GenericModelRenderer extends BaseRenderer {
-
-    // Multi-part model data
-    private final List<ModelPart> parts = new ArrayList<>();
 
     // Subsystems (dependency injection via interfaces)
     private final IVertexDataManager vertexManager;
@@ -48,21 +45,12 @@ public class GenericModelRenderer extends BaseRenderer {
     private final ITriangleFaceMapper faceMapper;
     private final ISubdivisionProcessor subdivisionProcessor;
     private final IGeometryDataBuilder geometryBuilder;
+    private final IUVCoordinateGenerator uvGenerator;
+    private final IModelStateManager stateManager;
 
-    // Texture state
+    // Texture state (kept inline per KISS - only 3 lines)
     private int textureId = 0;
     private boolean useTexture = false;
-
-    // UV mapping mode
-    private UVMode currentUVMode = UVMode.FLAT;
-
-    // Cached model dimensions for UV mode switching
-    private int cachedWidth = 0;
-    private int cachedHeight = 0;
-    private int cachedDepth = 0;
-    private double cachedOriginX = 0;
-    private double cachedOriginY = 0;
-    private double cachedOriginZ = 0;
 
     /**
      * Create a GenericModelRenderer with default subsystems.
@@ -74,7 +62,9 @@ public class GenericModelRenderer extends BaseRenderer {
             new MeshChangeNotifier(),
             new TriangleFaceMapper(),
             new SubdivisionProcessor(),
-            new GeometryDataBuilder()
+            new GeometryDataBuilder(),
+            new UVCoordinateGenerator(),
+            new ModelStateManager()
         );
     }
 
@@ -87,13 +77,17 @@ public class GenericModelRenderer extends BaseRenderer {
             IMeshChangeNotifier changeNotifier,
             ITriangleFaceMapper faceMapper,
             ISubdivisionProcessor subdivisionProcessor,
-            IGeometryDataBuilder geometryBuilder) {
+            IGeometryDataBuilder geometryBuilder,
+            IUVCoordinateGenerator uvGenerator,
+            IModelStateManager stateManager) {
         this.vertexManager = vertexManager;
         this.uniqueMapper = uniqueMapper;
         this.changeNotifier = changeNotifier;
         this.faceMapper = faceMapper;
         this.subdivisionProcessor = subdivisionProcessor;
         this.geometryBuilder = geometryBuilder;
+        this.uvGenerator = uvGenerator;
+        this.stateManager = stateManager;
         logger.debug("GenericModelRenderer created with subsystems");
     }
 
@@ -117,13 +111,7 @@ public class GenericModelRenderer extends BaseRenderer {
      */
     public void loadFromDimensions(int width, int height, int depth,
                                    double originX, double originY, double originZ) {
-        cachedWidth = width;
-        cachedHeight = height;
-        cachedDepth = depth;
-        cachedOriginX = originX;
-        cachedOriginY = originY;
-        cachedOriginZ = originZ;
-
+        stateManager.setDimensions(width, height, depth, originX, originY, originZ);
         rebuildFromCachedDimensions();
     }
 
@@ -131,42 +119,36 @@ public class GenericModelRenderer extends BaseRenderer {
      * Rebuild geometry from cached dimensions using current UV mode.
      */
     private void rebuildFromCachedDimensions() {
-        parts.clear();
+        stateManager.clearParts();
 
-        final float PIXELS_PER_UNIT = 16.0f;
+        IModelStateManager.ModelDimensions dims = stateManager.getDimensions();
+        if (dims == null) {
+            return;
+        }
 
-        Vector3f origin = new Vector3f(
-            (float) cachedOriginX / PIXELS_PER_UNIT,
-            (float) cachedOriginY / PIXELS_PER_UNIT,
-            (float) cachedOriginZ / PIXELS_PER_UNIT
-        );
+        Vector3f origin = dims.getOriginInUnits();
+        Vector3f size = dims.getSizeInUnits();
 
-        Vector3f size = new Vector3f(
-            cachedWidth / PIXELS_PER_UNIT,
-            cachedHeight / PIXELS_PER_UNIT,
-            cachedDepth / PIXELS_PER_UNIT
-        );
-
-        ModelPart cubePart = ModelPart.createCube("main", origin, size, currentUVMode);
-        parts.add(cubePart);
+        ModelPart cubePart = ModelPart.createCube("main", origin, size, stateManager.getUVMode());
+        stateManager.addPart(cubePart);
 
         rebuildGeometry();
         logger.info("Created model from dimensions: {}x{}x{} pixels -> {}x{}x{} units at ({}, {}, {}) with UV mode: {}",
-                cachedWidth, cachedHeight, cachedDepth, size.x, size.y, size.z, origin.x, origin.y, origin.z, currentUVMode);
+                dims.width(), dims.height(), dims.depth(), size.x, size.y, size.z, origin.x, origin.y, origin.z, stateManager.getUVMode());
     }
 
     /**
      * Set UV mapping mode and regenerate geometry.
      */
     public void setUVMode(UVMode uvMode) {
-        if (uvMode == null || uvMode == currentUVMode) {
+        if (uvMode == null || uvMode == stateManager.getUVMode()) {
             return;
         }
 
-        logger.info("Changing UV mode from {} to {}", currentUVMode, uvMode);
-        currentUVMode = uvMode;
+        logger.info("Changing UV mode from {} to {}", stateManager.getUVMode(), uvMode);
+        stateManager.setUVMode(uvMode);
 
-        if (cachedWidth > 0 && cachedHeight > 0 && cachedDepth > 0) {
+        if (stateManager.hasDimensions()) {
             rebuildFromCachedDimensions();
         }
     }
@@ -179,12 +161,12 @@ public class GenericModelRenderer extends BaseRenderer {
      * @param uvMode The new UV mode
      */
     public void updateUVModeOnly(UVMode uvMode) {
-        if (uvMode == null || uvMode == currentUVMode) {
+        if (uvMode == null || uvMode == stateManager.getUVMode()) {
             return;
         }
 
-        logger.info("Updating UV mode from {} to {} (preserving geometry)", currentUVMode, uvMode);
-        currentUVMode = uvMode;
+        logger.info("Updating UV mode from {} to {} (preserving geometry)", stateManager.getUVMode(), uvMode);
+        stateManager.setUVMode(uvMode);
 
         float[] vertices = vertexManager.getVertices();
         float[] texCoords = vertexManager.getTexCoords();
@@ -194,13 +176,13 @@ public class GenericModelRenderer extends BaseRenderer {
             return;
         }
 
-        int vertexCount = vertices.length / 3;
+        int currentVertexCount = vertices.length / 3;
 
         // Generate new UV coordinates based on the UV mode
-        float[] newTexCoords = generateUVsForMode(uvMode, vertexCount);
+        float[] newTexCoords = uvGenerator.generateUVs(uvMode, currentVertexCount);
 
         // Update texture coordinates in vertex manager
-        for (int i = 0; i < vertexCount && i * 2 + 1 < newTexCoords.length; i++) {
+        for (int i = 0; i < currentVertexCount && i * 2 + 1 < newTexCoords.length; i++) {
             vertexManager.setTexCoordDirect(i, newTexCoords[i * 2], newTexCoords[i * 2 + 1]);
         }
 
@@ -211,104 +193,21 @@ public class GenericModelRenderer extends BaseRenderer {
             updateVBO(interleavedData);
         }
 
-        logger.info("UV mode updated to {} for {} vertices", uvMode, vertexCount);
-    }
-
-    /**
-     * Generate UV coordinates for the given mode and vertex count.
-     * For standard 24-vertex cubes, generates proper per-face UVs.
-     * For other vertex counts, uses approximation based on face index.
-     */
-    private float[] generateUVsForMode(UVMode uvMode, int vertexCount) {
-        float[] newTexCoords = new float[vertexCount * 2];
-
-        if (uvMode == UVMode.FLAT) {
-            // FLAT: each face uses 0-1 UV range
-            // Face order: Front(0-3), Back(4-7), Left(8-11), Right(12-15), Top(16-19), Bottom(20-23)
-            float[][] faceUVs = {
-                // Bottom-left, Bottom-right, Top-right, Top-left for each face
-                {0, 1, 1, 1, 1, 0, 0, 0},           // Front
-                {1, 1, 0, 1, 0, 0, 1, 0},           // Back (mirrored)
-                {0, 1, 1, 1, 1, 0, 0, 0},           // Left
-                {1, 1, 0, 1, 0, 0, 1, 0},           // Right (mirrored)
-                {0, 1, 1, 1, 1, 0, 0, 0},           // Top
-                {0, 0, 1, 0, 1, 1, 0, 1}            // Bottom
-            };
-
-            for (int i = 0; i < vertexCount; i++) {
-                int faceIndex = i / 4;  // Which face (0-5 for standard cube)
-                int vertInFace = i % 4; // Which vertex in face (0-3)
-
-                if (faceIndex < 6) {
-                    newTexCoords[i * 2] = faceUVs[faceIndex][vertInFace * 2];
-                    newTexCoords[i * 2 + 1] = faceUVs[faceIndex][vertInFace * 2 + 1];
-                } else {
-                    // Extra vertices from subdivision - use interpolated UVs
-                    // Fall back to simple 0-1 mapping
-                    newTexCoords[i * 2] = 0.5f;
-                    newTexCoords[i * 2 + 1] = 0.5f;
-                }
-            }
-        } else {
-            // CUBE_NET: specific regions for each face
-            float V_ROW_1 = 16.0f / 48.0f;  // 0.333...
-            float V_ROW_2 = 32.0f / 48.0f;  // 0.666...
-
-            // Face UV bounds: {u1, v1, u2, v2} (corners)
-            float[][] faceBounds = {
-                {0.25f, V_ROW_1, 0.5f, V_ROW_2},   // Front
-                {0.75f, V_ROW_1, 1.0f, V_ROW_2},   // Back
-                {0.0f, V_ROW_1, 0.25f, V_ROW_2},   // Left
-                {0.5f, V_ROW_1, 0.75f, V_ROW_2},   // Right
-                {0.25f, 0.0f, 0.5f, V_ROW_1},      // Top
-                {0.25f, V_ROW_2, 0.5f, 1.0f}       // Bottom
-            };
-
-            // Vertex order within face: BL, BR, TR, TL (matching ModelPart layout)
-            // UV offsets from bounds: {u_offset, v_offset} where 0=min, 1=max
-            float[][] vertUVOffsets = {
-                {0, 1}, // BL: u=u1, v=v2
-                {1, 1}, // BR: u=u2, v=v2
-                {1, 0}, // TR: u=u2, v=v1
-                {0, 0}  // TL: u=u1, v=v1
-            };
-
-            for (int i = 0; i < vertexCount; i++) {
-                int faceIndex = i / 4;
-                int vertInFace = i % 4;
-
-                if (faceIndex < 6) {
-                    float[] bounds = faceBounds[faceIndex];
-                    float[] offsets = vertUVOffsets[vertInFace];
-
-                    float u = bounds[0] + offsets[0] * (bounds[2] - bounds[0]);
-                    float v = bounds[1] + offsets[1] * (bounds[3] - bounds[1]);
-
-                    newTexCoords[i * 2] = u;
-                    newTexCoords[i * 2 + 1] = v;
-                } else {
-                    // Extra vertices from subdivision - use center of texture
-                    newTexCoords[i * 2] = 0.375f;  // Center of cube net
-                    newTexCoords[i * 2 + 1] = 0.5f;
-                }
-            }
-        }
-
-        return newTexCoords;
+        logger.info("UV mode updated to {} for {} vertices", uvMode, currentVertexCount);
     }
 
     /**
      * Get the current UV mode.
      */
     public UVMode getUVMode() {
-        return currentUVMode;
+        return stateManager.getUVMode();
     }
 
     /**
      * Rebuild geometry from current parts.
      */
     private void rebuildGeometry() {
-        if (parts.isEmpty()) {
+        if (!stateManager.hasParts()) {
             vertexManager.setData(null, null, null);
             faceMapper.clear();
             uniqueMapper.clear();
@@ -317,64 +216,32 @@ public class GenericModelRenderer extends BaseRenderer {
             return;
         }
 
-        // Calculate total sizes
-        int totalVertices = 0;
-        int totalIndices = 0;
-        for (ModelPart part : parts) {
-            totalVertices += part.getVertexCount();
-            totalIndices += part.getIndexCount();
-        }
-
-        // Allocate arrays
-        float[] vertices = new float[totalVertices * 3];
-        float[] texCoords = new float[totalVertices * 2];
-        int[] indices = totalIndices > 0 ? new int[totalIndices] : null;
-
-        // Copy data from parts
-        int vertexOffset = 0;
-        int indexOffset = 0;
-        int baseVertex = 0;
-
-        for (ModelPart part : parts) {
-            if (part.vertices() != null) {
-                System.arraycopy(part.vertices(), 0, vertices, vertexOffset * 3, part.vertices().length);
-            }
-            if (part.texCoords() != null) {
-                System.arraycopy(part.texCoords(), 0, texCoords, vertexOffset * 2, part.texCoords().length);
-            }
-            if (part.indices() != null && indices != null) {
-                for (int i = 0; i < part.indices().length; i++) {
-                    indices[indexOffset + i] = part.indices()[i] + baseVertex;
-                }
-                indexOffset += part.indices().length;
-            }
-            baseVertex += part.getVertexCount();
-            vertexOffset += part.getVertexCount();
-        }
+        // Aggregate all parts via state manager
+        IModelStateManager.AggregatedGeometry geometry = stateManager.aggregateParts();
 
         // Update subsystems
-        vertexManager.setData(vertices, texCoords, indices);
-        vertexCount = totalVertices;
-        indexCount = totalIndices;
+        vertexManager.setData(geometry.vertices(), geometry.texCoords(), geometry.indices());
+        vertexCount = geometry.vertexCount();
+        indexCount = geometry.indexCount();
 
         // Initialize face mapping
-        if (indices != null) {
-            faceMapper.initializeStandardMapping(indices.length / 3);
+        if (geometry.indices() != null) {
+            faceMapper.initializeStandardMapping(geometry.indices().length / 3);
         } else {
             faceMapper.clear();
         }
 
         // Update GPU buffers if initialized
         if (initialized) {
-            float[] interleavedData = geometryBuilder.buildInterleavedData(vertices, texCoords);
+            float[] interleavedData = geometryBuilder.buildInterleavedData(geometry.vertices(), geometry.texCoords());
             updateVBO(interleavedData);
-            if (indices != null) {
-                updateEBO(indices);
+            if (geometry.indices() != null) {
+                updateEBO(geometry.indices());
             }
         }
 
         // Build unique vertex mapping
-        uniqueMapper.buildMapping(vertices);
+        uniqueMapper.buildMapping(geometry.vertices());
 
         // Notify listeners
         changeNotifier.notifyGeometryRebuilt();
@@ -697,15 +564,15 @@ public class GenericModelRenderer extends BaseRenderer {
         // Update UV mode
         if (uvModeStr != null) {
             try {
-                currentUVMode = UVMode.valueOf(uvModeStr);
+                stateManager.setUVMode(UVMode.valueOf(uvModeStr));
             } catch (IllegalArgumentException e) {
                 logger.warn("Unknown UV mode '{}', defaulting to FLAT", uvModeStr);
-                currentUVMode = UVMode.FLAT;
+                stateManager.setUVMode(UVMode.FLAT);
             }
         }
 
         // Clear parts (we're loading direct mesh data, not part-based)
-        parts.clear();
+        stateManager.clearParts();
 
         // Set vertex data
         vertexManager.setData(vertices.clone(), texCoords != null ? texCoords.clone() : null, indices != null ? indices.clone() : null);
@@ -739,7 +606,7 @@ public class GenericModelRenderer extends BaseRenderer {
         changeNotifier.notifyGeometryRebuilt();
 
         logger.info("Loaded custom mesh data: {} vertices, {} triangles, {} unique positions, uvMode={}",
-                vertexCount, indexCount / 3, uniqueMapper.getUniqueVertexCount(), currentUVMode);
+                vertexCount, indexCount / 3, uniqueMapper.getUniqueVertexCount(), stateManager.getUVMode());
     }
 
     /**
