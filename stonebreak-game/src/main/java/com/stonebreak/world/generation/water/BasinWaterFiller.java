@@ -4,7 +4,6 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.world.generation.caves.CaveNoiseGenerator;
 import com.stonebreak.world.generation.config.WaterGenerationConfig;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.generation.noise.NoiseRouter;
@@ -37,8 +36,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  *   1. Try sea level calculator (fast path)
  *   2. If no sea-level water, try basin calculator (slower path)
  *   3. If water level &gt; 0, fill from terrain to water level
- *   4. Skip cave positions (keep caves dry)
- *   5. Place ICE on surface if temperature &lt; freezeTemperature
+ *   4. Place WATER in air blocks, ICE on surface if temperature &lt; freezeTemperature
  * </pre>
  *
  * <p><strong>Design:</strong> Follows Single Responsibility Principle - only fills water blocks in chunks.</p>
@@ -56,7 +54,6 @@ public class BasinWaterFiller {
     @Deprecated(since = "Two-Tiered System", forRemoval = false)
     private final WaterLevelGrid legacyWaterGrid;
 
-    private final CaveNoiseGenerator caveGenerator;
     private final WaterGenerationConfig config;
 
     // Feature flag for legacy mode (for testing/comparison)
@@ -67,13 +64,12 @@ public class BasinWaterFiller {
      *
      * @param noiseRouter Noise router for parameter sampling
      * @param terrainGenerator Terrain generator for height calculation
-     * @param caveGenerator Cave generator for dry cave checks
      * @param config Water generation configuration
      * @param seed World seed for deterministic random
      */
     public BasinWaterFiller(NoiseRouter noiseRouter, TerrainGenerator terrainGenerator,
-                           CaveNoiseGenerator caveGenerator, WaterGenerationConfig config, long seed) {
-        this(noiseRouter, terrainGenerator, caveGenerator, config, seed, false);
+                           WaterGenerationConfig config, long seed) {
+        this(noiseRouter, terrainGenerator, config, seed, false);
     }
 
     /**
@@ -81,16 +77,13 @@ public class BasinWaterFiller {
      *
      * @param noiseRouter Noise router for parameter sampling
      * @param terrainGenerator Terrain generator for height calculation
-     * @param caveGenerator Cave generator for dry cave checks
      * @param config Water generation configuration
      * @param seed World seed for deterministic random
      * @param useLegacyMode If true, use legacy WaterLevelGrid (for A/B testing)
      */
     public BasinWaterFiller(NoiseRouter noiseRouter, TerrainGenerator terrainGenerator,
-                           CaveNoiseGenerator caveGenerator, WaterGenerationConfig config,
-                           long seed, boolean useLegacyMode) {
+                           WaterGenerationConfig config, long seed, boolean useLegacyMode) {
         this.config = config;
-        this.caveGenerator = caveGenerator;
         this.useLegacyMode = useLegacyMode;
 
         // Initialize two-tiered calculators
@@ -105,7 +98,7 @@ public class BasinWaterFiller {
      * Fills water bodies in the chunk using two-tiered system.
      *
      * <p>Uses cached terrain heights and noise parameters to avoid recalculation.
-     * Keeps caves dry by checking cave density at each position.</p>
+     * Places water in all air blocks up to water level.</p>
      *
      * @param chunk The chunk to fill with water
      * @param terrainHeights Cached terrain heights [16][16]
@@ -152,18 +145,10 @@ public class BasinWaterFiller {
                 }
 
                 // Fill water column from terrain height to water level
-                for (int y = terrainHeight + 1; y <= waterLevel; y++) {
-                    // Check if this position is a cave (keep caves dry)
-                    boolean isCave = false;
-                    if (caveGenerator.canGenerateCaves(y)) {
-                        float caveDensity = caveGenerator.sampleCaveDensity(
-                                worldX, y, worldZ, terrainHeight
-                        );
-                        isCave = caveDensity > 0.0f;
-                    }
-
-                    // Only place water/ice if position is air and not a cave
-                    if (!isCave && chunk.getBlock(x, y, z) == BlockType.AIR) {
+                // terrainHeight represents first air Y-coordinate, so start there (no +1 needed)
+                for (int y = terrainHeight; y <= waterLevel; y++) {
+                    // Place water in any air block
+                    if (chunk.getBlock(x, y, z) == BlockType.AIR) {
                         // Ice formation: freeze surface in cold biomes
                         if (y == waterLevel && params.temperature < config.freezeTemperature) {
                             chunk.setBlock(x, y, z, BlockType.ICE);

@@ -148,8 +148,8 @@ public class WaterGenerationConfig {
         this.gridSampleResolution = 17;
 
         // Two-tiered system fields
-        this.seaLevel = 63;
-        this.basinMinimumElevation = 66;
+        this.seaLevel = 64;
+        this.basinMinimumElevation = 65;
         this.basinMinimumDepth = 3;
         this.elevationDecayRate = 0.03f;
     }

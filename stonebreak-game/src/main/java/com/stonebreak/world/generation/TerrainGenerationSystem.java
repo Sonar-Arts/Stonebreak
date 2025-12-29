@@ -96,7 +96,6 @@ public class TerrainGenerationSystem {
         this.basinWaterFiller = new BasinWaterFiller(
                 biomeManager.getNoiseRouter(),
                 terrainGenerator,
-                caveGenerator,
                 waterConfig,
                 seed  // Required for deterministic elevation probability
         );
