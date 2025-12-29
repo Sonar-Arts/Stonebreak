@@ -476,8 +476,9 @@ public class FaceRenderer implements MeshChangeListener {
         }
 
         // Delegate to overlay renderer (Single Responsibility Principle)
+        // Pass the full selection set for multi-selection support
         overlayRenderer.render(vao, vbo, shader, context, modelMatrix,
-                             hoveredFaceIndex, selectedFaceIndex, faceCount);
+                             hoveredFaceIndex, selectedFaceIndices, faceCount);
     }
 
     /**

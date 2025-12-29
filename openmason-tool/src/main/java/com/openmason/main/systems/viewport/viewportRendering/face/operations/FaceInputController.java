@@ -143,21 +143,7 @@ public class FaceInputController {
             return true; // Block lower-priority controllers while dragging
         }
 
-        // Start drag on selected face
-        if (context.mouseInBounds && context.mouseClicked && faceSelectionState.hasSelection()) {
-            int selectedFace = faceRenderer.getSelectedFaceIndex();
-            int hoveredFace = faceRenderer.getHoveredFaceIndex();
-
-            // Check if clicking on the selected face
-            if (selectedFace >= 0 && selectedFace == hoveredFace) {
-                // Start dragging via coordinator (ensures mutual exclusion)
-                if (translationCoordinator != null &&
-                    translationCoordinator.handleMousePress(context.mouseX, context.mouseY)) {
-                    logger.debug("Started translation drag on face {}", selectedFace);
-                    return true;
-                }
-            }
-        }
+        // NOTE: Click-to-drag removed. Use G key for grab mode (Blender-style).
 
         // Handle mouse click for face selection (if not dragging)
         // CRITICAL: Only select face if NOT hovering over a vertex OR edge (faces have lowest priority)
@@ -186,18 +172,18 @@ public class FaceInputController {
                 if (faceVertices != null && faceVertices.length >= 3 &&
                     vertexIndices != null && vertexIndices.length >= 3) {
 
-                    if (context.shiftDown) {
-                        // Shift+click: Toggle this face in selection
+                    if (faceSelectionState.isSelected(hoveredFace)) {
+                        // Click on selected → unselect it
                         faceSelectionState.toggleFace(hoveredFace, faceVertices, vertexIndices);
                         faceRenderer.updateSelectionSet(faceSelectionState.getSelectedFaceIndices());
-                        logger.debug("Face {} toggled in selection (now {} selected)",
+                        logger.debug("Face {} unselected (now {} selected)",
                                 hoveredFace, faceSelectionState.getSelectionCount());
                     } else {
-                        // Normal click: Replace selection with this face
-                        faceSelectionState.selectFace(hoveredFace, faceVertices, vertexIndices);
-                        faceRenderer.setSelectedFace(hoveredFace);
-                        logger.debug("Face {} selected with {} vertices (triangle mode: {})",
-                                hoveredFace, vertexIndices.length, faceRenderer.isUsingTriangleMode());
+                        // Click on unselected → add to selection (multi-select)
+                        faceSelectionState.toggleFace(hoveredFace, faceVertices, vertexIndices);
+                        faceRenderer.updateSelectionSet(faceSelectionState.getSelectedFaceIndices());
+                        logger.debug("Face {} added to selection (now {} selected)",
+                                hoveredFace, faceSelectionState.getSelectionCount());
                     }
 
                     // Clear vertex and edge selection when selecting a face (mutual exclusivity)
@@ -206,16 +192,8 @@ public class FaceInputController {
 
                     return true; // Block lower-priority controllers
                 }
-            } else {
-                // Clicking on empty space - only clear if NOT holding Shift
-                if (hoveredVertex < 0 && hoveredEdge < 0 && hoveredFace < 0 &&
-                    !context.shiftDown && faceSelectionState.hasSelection()) {
-                    faceSelectionState.clearSelection();
-                    faceRenderer.clearSelection();
-                    logger.debug("Face selection cleared (clicked on empty space)");
-                    return true; // Block lower-priority controllers
-                }
             }
+            // Clicking on empty space → do nothing (use ESC to clear selection)
         }
 
         return false; // No face input handled

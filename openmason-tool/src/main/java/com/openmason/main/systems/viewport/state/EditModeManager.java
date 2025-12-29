@@ -1,13 +1,16 @@
 package com.openmason.main.systems.viewport.state;
 
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
+import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Singleton manager for the current editing mode.
  * Controls which geometry type (vertex, edge, face) can be selected and edited.
- * Cancels active drag operations when switching modes for safety.
+ * Cancels active drag operations and clears selections when switching modes.
  * Follows Single Responsibility Principle - only manages edit mode state.
  */
 public final class EditModeManager {
@@ -20,6 +23,16 @@ public final class EditModeManager {
 
     // Optional reference to cancel active drags when switching modes
     private TranslationCoordinator translationCoordinator;
+
+    // Selection states for clearing on mode switch
+    private VertexSelectionState vertexSelectionState;
+    private EdgeSelectionState edgeSelectionState;
+    private FaceSelectionState faceSelectionState;
+
+    // Renderers for visual updates on mode switch
+    private VertexRenderer vertexRenderer;
+    private EdgeRenderer edgeRenderer;
+    private FaceRenderer faceRenderer;
 
     private EditModeManager() {
     }
@@ -54,8 +67,53 @@ public final class EditModeManager {
     }
 
     /**
+     * Sets selection states and renderers for clearing on mode switch.
+     * Should be called during viewport initialization.
+     */
+    public void setSelectionComponents(VertexSelectionState vertexState, EdgeSelectionState edgeState,
+                                        FaceSelectionState faceState, VertexRenderer vRenderer,
+                                        EdgeRenderer eRenderer, FaceRenderer fRenderer) {
+        this.vertexSelectionState = vertexState;
+        this.edgeSelectionState = edgeState;
+        this.faceSelectionState = faceState;
+        this.vertexRenderer = vRenderer;
+        this.edgeRenderer = eRenderer;
+        this.faceRenderer = fRenderer;
+        logger.debug("Selection components set in EditModeManager");
+    }
+
+    /**
+     * Clears all selections (vertex, edge, face).
+     * Called when switching edit modes to start fresh.
+     */
+    private void clearAllSelections() {
+        if (vertexSelectionState != null) {
+            vertexSelectionState.clearSelection();
+        }
+        if (edgeSelectionState != null) {
+            edgeSelectionState.clearSelection();
+        }
+        if (faceSelectionState != null) {
+            faceSelectionState.clearSelection();
+        }
+
+        // Update visual state
+        if (vertexRenderer != null) {
+            vertexRenderer.clearSelection();
+        }
+        if (edgeRenderer != null) {
+            edgeRenderer.clearSelection();
+        }
+        if (faceRenderer != null) {
+            faceRenderer.clearSelection();
+        }
+
+        logger.debug("Cleared all selections on mode switch");
+    }
+
+    /**
      * Cycles to the next editing mode: NONE -> VERTEX -> EDGE -> FACE -> NONE
-     * Cancels any active drag operation before switching for safety.
+     * Cancels any active drag operation and clears all selections before switching.
      */
     public void cycleMode() {
         // Cancel any active drag before switching modes (treats it as dropping the drag)
@@ -64,6 +122,9 @@ public final class EditModeManager {
             logger.debug("Cancelled active drag before mode switch");
         }
 
+        // Clear all selections when switching modes
+        clearAllSelections();
+
         EditMode previousMode = currentMode;
         currentMode = currentMode.next();
         logger.debug("Edit mode changed: {} -> {}", previousMode.getDisplayName(), currentMode.getDisplayName());
@@ -71,7 +132,7 @@ public final class EditModeManager {
 
     /**
      * Sets the editing mode directly.
-     * Cancels any active drag operation before switching for safety.
+     * Cancels any active drag operation and clears all selections before switching.
      *
      * @param mode The mode to set
      */
@@ -85,6 +146,9 @@ public final class EditModeManager {
                 translationCoordinator.cancelDrag();
                 logger.debug("Cancelled active drag before mode switch");
             }
+
+            // Clear all selections when switching modes
+            clearAllSelections();
 
             EditMode previousMode = currentMode;
             currentMode = mode;

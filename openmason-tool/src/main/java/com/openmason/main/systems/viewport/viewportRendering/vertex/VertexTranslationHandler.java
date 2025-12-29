@@ -109,6 +109,10 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
 
         // Start drag in selection state
         selectionState.startDrag(planeNormal, planePoint);
+
+        // Calculate initial hit point for delta-based movement (no jump to mouse)
+        calculateInitialDragHitPoint(mouseX, mouseY, planePoint, planeNormal);
+
         isDragging = true;
         hasMovedDuringDrag = false;
 
@@ -127,22 +131,22 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        // Calculate new vertex position using ray-plane intersection (world space)
-        // This is based on the first selected vertex's plane
-        Vector3f worldSpacePosition = calculateVertexPosition(mouseX, mouseY);
+        // Get plane info from selection state
+        Vector3f planeNormal = selectionState.getPlaneNormal();
+        Vector3f planePoint = selectionState.getPlanePoint();
 
-        if (worldSpacePosition != null) {
-            // Apply grid snapping if enabled (from base class)
+        if (planeNormal == null || planePoint == null) {
+            return;
+        }
+
+        // Calculate delta from initial hit point to current mouse position (no jump)
+        Vector3f worldDelta = calculateDragDelta(mouseX, mouseY, planePoint, planeNormal);
+
+        if (worldDelta != null) {
+            // Apply grid snapping to delta if enabled
             if (viewportState != null && viewportState.getGridSnappingEnabled().get()) {
-                worldSpacePosition = applyGridSnapping(worldSpacePosition);
+                worldDelta = applyGridSnappingToDelta(worldDelta);
             }
-
-            // Calculate delta from original position of first vertex
-            Vector3f originalPosition = selectionState.getOriginalPosition();
-            if (originalPosition == null) {
-                return;
-            }
-            Vector3f worldDelta = new Vector3f(worldSpacePosition).sub(originalPosition);
 
             // Mark that actual movement occurred during this drag
             hasMovedDuringDrag = true;
@@ -270,6 +274,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
 
         selectionState.endDrag();
         isDragging = false;
+        clearInitialDragHitPoint();
 
         logger.debug("Ended vertex drag at position ({}, {}, {})",
                 String.format("%.2f", selectionState.getCurrentPosition().x),
@@ -282,6 +287,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         if (!isDragging) {
             return;
         }
+        clearInitialDragHitPoint();
 
         // Get all selected indices before cancelling (cancelDrag reverts positions internally)
         Set<Integer> selectedIndices = selectionState.getSelectedVertexIndices();

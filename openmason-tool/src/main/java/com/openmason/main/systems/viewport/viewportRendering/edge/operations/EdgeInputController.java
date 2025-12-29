@@ -132,21 +132,7 @@ public class EdgeInputController {
             return true; // Block lower-priority controllers while dragging
         }
 
-        // Start drag on selected edge
-        if (context.mouseInBounds && context.mouseClicked && edgeSelectionState.hasSelection()) {
-            int selectedEdge = edgeRenderer.getSelectedEdgeIndex();
-            int hoveredEdge = edgeRenderer.getHoveredEdgeIndex();
-
-            // Check if clicking on the selected edge
-            if (selectedEdge >= 0 && selectedEdge == hoveredEdge) {
-                // Start dragging via coordinator (ensures mutual exclusion)
-                if (translationCoordinator != null &&
-                    translationCoordinator.handleMousePress(context.mouseX, context.mouseY)) {
-                    logger.debug("Started translation drag on edge {}", selectedEdge);
-                    return true;
-                }
-            }
-        }
+        // NOTE: Click-to-drag removed. Use G key for grab mode (Blender-style).
 
         // Handle mouse click for edge selection (if not dragging)
         // CRITICAL: Only select edge if NOT hovering over a vertex (vertices have priority)
@@ -161,20 +147,18 @@ public class EdgeInputController {
                 int[] vertexIndices = edgeRenderer.getEdgeVertexIndices(hoveredEdge);
 
                 if (endpoints != null && endpoints.length == 2 && vertexIndices != null && vertexIndices.length == 2) {
-                    if (context.shiftDown) {
-                        // Shift+click: Toggle this edge in selection
+                    if (edgeSelectionState.isSelected(hoveredEdge)) {
+                        // Click on selected → unselect it
                         edgeSelectionState.toggleEdge(hoveredEdge, endpoints[0], endpoints[1], vertexIndices[0], vertexIndices[1]);
                         edgeRenderer.updateSelectionSet(edgeSelectionState.getSelectedEdgeIndices());
-                        logger.debug("Edge {} toggled in selection (now {} selected)",
+                        logger.debug("Edge {} unselected (now {} selected)",
                                 hoveredEdge, edgeSelectionState.getSelectionCount());
                     } else {
-                        // Normal click: Replace selection with this edge
-                        edgeSelectionState.selectEdge(hoveredEdge, endpoints[0], endpoints[1], vertexIndices[0], vertexIndices[1]);
-                        edgeRenderer.setSelectedEdge(hoveredEdge);
-                        logger.debug("Edge {} selected (vertices {}, {}) with endpoints ({}, {}, {}) - ({}, {}, {})",
-                                hoveredEdge, vertexIndices[0], vertexIndices[1],
-                                String.format("%.2f", endpoints[0].x), String.format("%.2f", endpoints[0].y), String.format("%.2f", endpoints[0].z),
-                                String.format("%.2f", endpoints[1].x), String.format("%.2f", endpoints[1].y), String.format("%.2f", endpoints[1].z));
+                        // Click on unselected → add to selection (multi-select)
+                        edgeSelectionState.toggleEdge(hoveredEdge, endpoints[0], endpoints[1], vertexIndices[0], vertexIndices[1]);
+                        edgeRenderer.updateSelectionSet(edgeSelectionState.getSelectedEdgeIndices());
+                        logger.debug("Edge {} added to selection (now {} selected)",
+                                hoveredEdge, edgeSelectionState.getSelectionCount());
                     }
 
                     // Clear vertex selection when selecting an edge (mutual exclusivity)
@@ -182,15 +166,8 @@ public class EdgeInputController {
 
                     return true; // Block lower-priority controllers
                 }
-            } else {
-                // Clicking on empty space (no vertex, no edge) - only clear if NOT holding Shift
-                if (hoveredVertex < 0 && hoveredEdge < 0 && !context.shiftDown && edgeSelectionState.hasSelection()) {
-                    edgeSelectionState.clearSelection();
-                    edgeRenderer.clearSelection();
-                    logger.debug("Edge selection cleared (clicked on empty space)");
-                    return true; // Block lower-priority controllers
-                }
             }
+            // Clicking on empty space → do nothing (use ESC to clear selection)
         }
 
         return false; // No edge input handled

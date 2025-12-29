@@ -227,11 +227,20 @@ public class VertexSelectionState {
 
     /**
      * End the drag operation, committing the position changes.
+     * Updates original positions to current positions so subsequent drags start from here.
      */
     public synchronized void endDrag() {
         if (isDragging) {
+            // Commit current positions as new original positions
+            for (Integer vertexIndex : selectedVertexIndices) {
+                Vector3f currentPos = currentPositions.get(vertexIndex);
+                if (currentPos != null) {
+                    originalPositions.put(vertexIndex, new Vector3f(currentPos));
+                }
+            }
+
             isDragging = false;
-            logger.debug("Ended drag for {} vertices, modified={}",
+            logger.debug("Ended drag for {} vertices, modified={}, positions committed",
                     selectedVertexIndices.size(), isModified);
         }
     }

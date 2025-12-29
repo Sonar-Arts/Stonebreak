@@ -113,6 +113,10 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
 
         // Start drag in selection state
         selectionState.startDrag(planeNormal, planePoint);
+
+        // Calculate initial hit point for delta-based movement (no jump to mouse)
+        calculateInitialDragHitPoint(mouseX, mouseY, planePoint, planeNormal);
+
         isDragging = true;
         hasMovedDuringDrag = false;
 
@@ -131,19 +135,20 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        // Calculate the new position using ray-plane intersection (world space)
-        Vector3f worldSpacePosition = calculateEdgePosition(mouseX, mouseY);
+        // Get plane info from selection state
+        Vector3f planeNormal = selectionState.getPlaneNormal();
+        Vector3f planePoint = selectionState.getPlanePoint();
 
-        if (worldSpacePosition != null) {
+        if (planeNormal == null || planePoint == null) {
+            return;
+        }
+
+        // Calculate delta from initial hit point to current mouse position (no jump)
+        Vector3f delta = calculateDragDelta(mouseX, mouseY, planePoint, planeNormal);
+
+        if (delta != null) {
             // Mark that actual movement occurred during this drag
             hasMovedDuringDrag = true;
-
-            // Calculate delta from original midpoint (first edge's midpoint)
-            Vector3f originalMidpoint = new Vector3f(
-                selectionState.getOriginalPoint1()
-            ).add(selectionState.getOriginalPoint2()).mul(0.5f);
-
-            Vector3f delta = new Vector3f(worldSpacePosition).sub(originalMidpoint);
 
             // Apply grid snapping to the delta if enabled (from base class)
             if (viewportState != null && viewportState.getGridSnappingEnabled().get()) {
@@ -295,6 +300,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
 
         selectionState.endDrag();
         isDragging = false;
+        clearInitialDragHitPoint();
 
         logger.debug("Ended edge drag at edge {}", selectionState.getSelectedEdgeIndex());
     }
@@ -304,6 +310,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         if (!isDragging) {
             return;
         }
+        clearInitialDragHitPoint();
 
         // Get all unique vertex indices before cancelling
         Set<Integer> allVertexIndices = selectionState.getAllSelectedVertexIndices();

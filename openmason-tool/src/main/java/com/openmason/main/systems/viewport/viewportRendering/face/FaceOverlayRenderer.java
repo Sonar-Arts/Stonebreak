@@ -85,7 +85,7 @@ public class FaceOverlayRenderer {
     private int triangleCount = 0;
 
     /**
-     * Render face overlays with semi-transparent highlighting.
+     * Render face overlays with semi-transparent highlighting (single selection - backward compat).
      * KISS: Only render hovered/selected faces, skip default (transparent) faces.
      *
      * @param vao The vertex array object to bind
@@ -99,7 +99,29 @@ public class FaceOverlayRenderer {
      */
     public void render(int vao, int vbo, ShaderProgram shader, RenderContext context,
                       Matrix4f modelMatrix, int hoveredFaceIndex, int selectedFaceIndex, int faceCount) {
-        if (!shouldRender(hoveredFaceIndex, selectedFaceIndex, faceCount)) {
+        java.util.Set<Integer> selectedSet = new java.util.HashSet<>();
+        if (selectedFaceIndex >= 0) {
+            selectedSet.add(selectedFaceIndex);
+        }
+        render(vao, vbo, shader, context, modelMatrix, hoveredFaceIndex, selectedSet, faceCount);
+    }
+
+    /**
+     * Render face overlays with semi-transparent highlighting (multi-selection).
+     * KISS: Only render hovered/selected faces, skip default (transparent) faces.
+     *
+     * @param vao The vertex array object to bind
+     * @param vbo The vertex buffer object for color updates
+     * @param shader The shader program to use
+     * @param context The render context
+     * @param modelMatrix The model transformation matrix
+     * @param hoveredFaceIndex The currently hovered face index (-1 if none)
+     * @param selectedFaceIndices Set of selected face indices
+     * @param faceCount Total number of faces
+     */
+    public void render(int vao, int vbo, ShaderProgram shader, RenderContext context,
+                      Matrix4f modelMatrix, int hoveredFaceIndex, java.util.Set<Integer> selectedFaceIndices, int faceCount) {
+        if (!shouldRender(hoveredFaceIndex, selectedFaceIndices, faceCount)) {
             return;
         }
 
@@ -108,7 +130,7 @@ public class FaceOverlayRenderer {
             RenderState previousState = setupRenderState();
 
             glBindVertexArray(vao);
-            renderVisibleFaces(vbo, hoveredFaceIndex, selectedFaceIndex);
+            renderVisibleFaces(vbo, hoveredFaceIndex, selectedFaceIndices);
             glBindVertexArray(0);
 
             restoreRenderState(previousState);
@@ -121,20 +143,20 @@ public class FaceOverlayRenderer {
     }
 
     /**
-     * Check if overlay rendering should proceed.
+     * Check if overlay rendering should proceed (multi-selection).
      *
      * @param hoveredFaceIndex The hovered face index
-     * @param selectedFaceIndex The selected face index
+     * @param selectedFaceIndices Set of selected face indices
      * @param faceCount Total number of faces
      * @return true if should render, false otherwise
      */
-    private boolean shouldRender(int hoveredFaceIndex, int selectedFaceIndex, int faceCount) {
+    private boolean shouldRender(int hoveredFaceIndex, java.util.Set<Integer> selectedFaceIndices, int faceCount) {
         if (faceCount == 0) {
             return false;
         }
 
         // Only render if there's something to show
-        return hoveredFaceIndex >= 0 || selectedFaceIndex >= 0;
+        return hoveredFaceIndex >= 0 || (selectedFaceIndices != null && !selectedFaceIndices.isEmpty());
     }
 
     /**
@@ -188,19 +210,25 @@ public class FaceOverlayRenderer {
     }
 
     /**
-     * Render visible faces (hovered and/or selected).
+     * Render visible faces (hovered and/or selected) - multi-selection support.
      *
      * @param vbo The vertex buffer object for color updates
      * @param hoveredFaceIndex The hovered face index
-     * @param selectedFaceIndex The selected face index
+     * @param selectedFaceIndices Set of selected face indices
      */
-    private void renderVisibleFaces(int vbo, int hoveredFaceIndex, int selectedFaceIndex) {
+    private void renderVisibleFaces(int vbo, int hoveredFaceIndex, java.util.Set<Integer> selectedFaceIndices) {
+        // Render hovered face first (on top)
         if (hoveredFaceIndex >= 0) {
             renderFaceWithColor(vbo, hoveredFaceIndex, hoverFaceColor);
         }
 
-        if (selectedFaceIndex >= 0 && selectedFaceIndex != hoveredFaceIndex) {
-            renderFaceWithColor(vbo, selectedFaceIndex, selectedFaceColor);
+        // Render all selected faces (except hovered one to avoid double-render)
+        if (selectedFaceIndices != null) {
+            for (int selectedFaceIndex : selectedFaceIndices) {
+                if (selectedFaceIndex >= 0 && selectedFaceIndex != hoveredFaceIndex) {
+                    renderFaceWithColor(vbo, selectedFaceIndex, selectedFaceColor);
+                }
+            }
         }
     }
 

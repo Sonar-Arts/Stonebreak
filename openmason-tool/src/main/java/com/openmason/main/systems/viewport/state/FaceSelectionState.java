@@ -221,11 +221,24 @@ public class FaceSelectionState {
 
     /**
      * End the drag operation, committing the position change.
+     * Updates original vertices to current vertices so subsequent drags start from here.
      */
     public synchronized void endDrag() {
         if (isDragging) {
+            // Commit current vertices as new original vertices
+            for (Integer faceIndex : selectedFaceIndices) {
+                Vector3f[] currentVerts = currentVertices.get(faceIndex);
+                if (currentVerts != null && currentVerts.length > 0) {
+                    Vector3f[] newOriginal = new Vector3f[currentVerts.length];
+                    for (int i = 0; i < currentVerts.length; i++) {
+                        newOriginal[i] = new Vector3f(currentVerts[i]);
+                    }
+                    originalVertices.put(faceIndex, newOriginal);
+                }
+            }
+
             isDragging = false;
-            logger.debug("Ended drag for {} faces, modified={}",
+            logger.debug("Ended drag for {} faces, modified={}, positions committed",
                     selectedFaceIndices.size(), isModified);
         }
     }

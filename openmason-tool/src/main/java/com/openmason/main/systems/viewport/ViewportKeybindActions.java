@@ -137,6 +137,15 @@ public class ViewportKeybindActions {
                 actions::subdivideSelectedEdges
         ));
 
-        logger.info("Registered {} viewport keybind actions", 9);
+        // G: Grab Selection (Blender-style) - start dragging all selected items
+        registry.registerAction(new KeybindAction(
+                "viewport.grab_selection",
+                "Grab Selection",
+                CATEGORY,
+                ShortcutKey.simple(GLFW.GLFW_KEY_G),
+                actions::startGrabMode
+        ));
+
+        logger.info("Registered {} viewport keybind actions", 10);
     }
 }

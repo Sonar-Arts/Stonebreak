@@ -40,6 +40,10 @@ public class ViewportInputHandler {
     // Translation coordinator for mutual exclusion
     private TranslationCoordinator translationCoordinator;
 
+    // Last known viewport-relative mouse position (for G key grab)
+    private float lastViewportMouseX = 0;
+    private float lastViewportMouseY = 0;
+
     public ViewportInputHandler(ViewportCamera viewportCamera) {
         this.viewportCamera = viewportCamera;
 
@@ -168,6 +172,10 @@ public class ViewportInputHandler {
         float viewportMouseX = mousePos.x - imagePos.x;
         float viewportMouseY = mousePos.y - imagePos.y;
 
+        // Track last viewport mouse position for G key grab
+        this.lastViewportMouseX = viewportMouseX;
+        this.lastViewportMouseY = viewportMouseY;
+
         // Check if mouse is within viewport bounds
         boolean mouseInBounds = !mouseCaptureManager.isMouseCaptured() && (mousePos.x >= imagePos.x &&
                 mousePos.x < imagePos.x + imageWidth &&
@@ -276,6 +284,49 @@ public class ViewportInputHandler {
 
     public boolean isDragging() {
         return cameraController.isDragging();
+    }
+
+    /**
+     * Get the translation coordinator for direct access to grab operations.
+     * Used by keybind actions for G key grab mode.
+     *
+     * @return The translation coordinator, or null if not set
+     */
+    public TranslationCoordinator getTranslationCoordinator() {
+        return translationCoordinator;
+    }
+
+    /**
+     * Start or confirm grab mode from keybind (G key).
+     * Uses the last known viewport mouse position as the drag reference point.
+     * Blender-style: Press G to grab, press G again to confirm.
+     *
+     * @return true if grab started or confirmed, false otherwise
+     */
+    public boolean startGrabMode() {
+        if (translationCoordinator == null) {
+            logger.debug("Cannot start grab: translation coordinator not set");
+            return false;
+        }
+
+        // If already dragging, G confirms the drag
+        if (translationCoordinator.isDragging()) {
+            // Final position update before committing
+            translationCoordinator.handleMouseMove(lastViewportMouseX, lastViewportMouseY);
+            // Commit the final position
+            translationCoordinator.handleMouseRelease(lastViewportMouseX, lastViewportMouseY);
+            logger.info("Confirmed grab mode from keybind (G pressed again)");
+            return true;
+        }
+
+        boolean started = translationCoordinator.handleMousePress(lastViewportMouseX, lastViewportMouseY);
+        if (started) {
+            logger.info("Started grab mode from keybind at ({}, {})", lastViewportMouseX, lastViewportMouseY);
+        } else {
+            logger.debug("Grab mode not started: no selection or wrong edit mode");
+        }
+
+        return started;
     }
 
 }

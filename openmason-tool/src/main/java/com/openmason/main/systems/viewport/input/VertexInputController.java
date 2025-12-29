@@ -113,21 +113,7 @@ public class VertexInputController {
             return true; // Block lower-priority controllers while dragging
         }
 
-        // Start drag on selected vertex
-        if (context.mouseInBounds && context.mouseClicked && vertexSelectionState.hasSelection()) {
-            int selectedVertex = vertexRenderer.getSelectedVertexIndex();
-            int hoveredVertex = vertexRenderer.getHoveredVertexIndex();
-
-            // Check if clicking on the selected vertex
-            if (selectedVertex >= 0 && selectedVertex == hoveredVertex) {
-                // Start dragging via coordinator (ensures mutual exclusion)
-                if (translationCoordinator != null &&
-                    translationCoordinator.handleMousePress(context.mouseX, context.mouseY)) {
-                    logger.debug("Started translation drag on vertex {}", selectedVertex);
-                    return true;
-                }
-            }
-        }
+        // NOTE: Click-to-drag removed. Use G key for grab mode (Blender-style).
 
         // Handle mouse click for vertex selection (if not dragging)
         if (context.mouseInBounds && context.mouseClicked) {
@@ -137,33 +123,23 @@ public class VertexInputController {
                 // Clicking on a hovered vertex
                 Vector3f vertexPosition = vertexRenderer.getVertexPosition(hoveredVertex);
                 if (vertexPosition != null) {
-                    if (context.shiftDown) {
-                        // Shift+click: Toggle this vertex in selection
+                    if (vertexSelectionState.isSelected(hoveredVertex)) {
+                        // Click on selected → unselect it
                         vertexSelectionState.toggleVertex(hoveredVertex, vertexPosition);
                         vertexRenderer.updateSelectionSet(vertexSelectionState.getSelectedVertexIndices());
-                        logger.debug("Vertex {} toggled in selection (now {} selected)",
+                        logger.debug("Vertex {} unselected (now {} selected)",
                                 hoveredVertex, vertexSelectionState.getSelectionCount());
                     } else {
-                        // Normal click: Replace selection with this vertex
-                        vertexSelectionState.selectVertex(hoveredVertex, vertexPosition);
-                        vertexRenderer.setSelectedVertex(hoveredVertex);
-                        logger.debug("Vertex {} selected at position ({}, {}, {})",
-                                hoveredVertex,
-                                String.format("%.2f", vertexPosition.x),
-                                String.format("%.2f", vertexPosition.y),
-                                String.format("%.2f", vertexPosition.z));
+                        // Click on unselected → add to selection (multi-select)
+                        vertexSelectionState.toggleVertex(hoveredVertex, vertexPosition);
+                        vertexRenderer.updateSelectionSet(vertexSelectionState.getSelectedVertexIndices());
+                        logger.debug("Vertex {} added to selection (now {} selected)",
+                                hoveredVertex, vertexSelectionState.getSelectionCount());
                     }
                     return true; // Block lower-priority controllers
                 }
-            } else {
-                // Clicking on empty space - only clear if NOT holding Shift
-                if (!context.shiftDown && vertexSelectionState.hasSelection()) {
-                    vertexSelectionState.clearSelection();
-                    vertexRenderer.clearSelection();
-                    logger.debug("Vertex selection cleared (clicked on empty space)");
-                    return true; // Block lower-priority controllers
-                }
             }
+            // Clicking on empty space → do nothing (use ESC to clear selection)
         }
 
         return false; // No vertex input handled

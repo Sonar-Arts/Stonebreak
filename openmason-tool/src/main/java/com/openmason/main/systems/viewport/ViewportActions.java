@@ -254,4 +254,18 @@ public class ViewportActions {
         logger.info("Applying rendering settings");
         // Future implementation for applying rendering quality settings
     }
+
+    // ========== Grab Mode (G Key) ==========
+
+    /**
+     * Start grab mode from keybind (G key).
+     * Blender-style: Press G to grab and move all selected items.
+     * Works in Vertex, Edge, or Face edit mode with active selection.
+     */
+    public void startGrabMode() {
+        boolean started = viewport.startGrabMode();
+        if (started) {
+            logger.info("Grab mode started (G key)");
+        }
+    }
 }

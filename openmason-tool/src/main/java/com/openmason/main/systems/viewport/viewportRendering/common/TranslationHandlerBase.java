@@ -38,6 +38,7 @@ public abstract class TranslationHandlerBase implements ITranslationHandler {
     protected boolean hasMovedDuringDrag = false;
     protected float dragStartMouseX = 0.0f;
     protected float dragStartMouseY = 0.0f;
+    protected Vector3f initialDragHitPoint = null; // Initial plane hit point for delta calculation
 
     /**
      * Creates a new TranslationHandlerBase.
@@ -263,5 +264,57 @@ public abstract class TranslationHandlerBase implements ITranslationHandler {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Calculates and stores the initial hit point on the drag plane.
+     * Call this in handleMousePress after setting up the plane.
+     * This enables delta-based movement (no jump to mouse position).
+     *
+     * @param mouseX Mouse X position
+     * @param mouseY Mouse Y position
+     * @param planePoint Point on the drag plane
+     * @param planeNormal Normal of the drag plane
+     */
+    protected void calculateInitialDragHitPoint(float mouseX, float mouseY,
+                                                 Vector3f planePoint, Vector3f planeNormal) {
+        CoordinateSystem.Ray ray = createMouseRay(mouseX, mouseY);
+        initialDragHitPoint = intersectRayPlane(ray, planePoint, planeNormal, new Vector3f(planePoint));
+        logger.trace("Initial drag hit point: ({}, {}, {})",
+                String.format("%.2f", initialDragHitPoint.x),
+                String.format("%.2f", initialDragHitPoint.y),
+                String.format("%.2f", initialDragHitPoint.z));
+    }
+
+    /**
+     * Calculates the movement delta from initial hit point to current mouse position.
+     * Returns the world-space delta that should be applied to original positions.
+     *
+     * @param mouseX Current mouse X position
+     * @param mouseY Current mouse Y position
+     * @param planePoint Point on the drag plane
+     * @param planeNormal Normal of the drag plane
+     * @return Delta from initial hit point to current hit point, or null if invalid
+     */
+    protected Vector3f calculateDragDelta(float mouseX, float mouseY,
+                                          Vector3f planePoint, Vector3f planeNormal) {
+        if (initialDragHitPoint == null) {
+            logger.warn("Initial drag hit point not set");
+            return null;
+        }
+
+        CoordinateSystem.Ray ray = createMouseRay(mouseX, mouseY);
+        Vector3f currentHitPoint = intersectRayPlane(ray, planePoint, planeNormal, initialDragHitPoint);
+
+        // Return delta from initial to current
+        return new Vector3f(currentHitPoint).sub(initialDragHitPoint);
+    }
+
+    /**
+     * Clears the initial drag hit point.
+     * Call this when drag ends or is cancelled.
+     */
+    protected void clearInitialDragHitPoint() {
+        initialDragHitPoint = null;
     }
 }

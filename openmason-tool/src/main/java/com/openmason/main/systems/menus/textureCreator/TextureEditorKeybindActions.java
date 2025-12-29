@@ -191,7 +191,7 @@ public class TextureEditorKeybindActions {
                 "texture.toggle_grid",
                 "Toggle Grid",
                 "View",
-                ShortcutKey.simple(GLFW.GLFW_KEY_G),
+                ShortcutKey.ctrlShift(GLFW.GLFW_KEY_G),
                 () -> state.getShowGrid().set(!state.getShowGrid().get())
         ));
 

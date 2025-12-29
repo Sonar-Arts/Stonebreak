@@ -208,11 +208,23 @@ public class EdgeSelectionState {
 
     /**
      * End the drag operation, committing the position change.
+     * Updates original endpoints to current endpoints so subsequent drags start from here.
      */
     public synchronized void endDrag() {
         if (isDragging) {
+            // Commit current endpoints as new original endpoints
+            for (Integer edgeIndex : selectedEdgeIndices) {
+                Vector3f[] currentEps = currentEndpoints.get(edgeIndex);
+                if (currentEps != null && currentEps.length == 2) {
+                    originalEndpoints.put(edgeIndex, new Vector3f[] {
+                        new Vector3f(currentEps[0]),
+                        new Vector3f(currentEps[1])
+                    });
+                }
+            }
+
             isDragging = false;
-            logger.debug("Ended drag for {} edges, modified={}",
+            logger.debug("Ended drag for {} edges, modified={}, positions committed",
                     selectedEdgeIndices.size(), isModified);
         }
     }

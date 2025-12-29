@@ -24,6 +24,7 @@ import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
+import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTranslationHandler;
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler;
@@ -245,6 +246,17 @@ public class ViewportController {
                 // Connect coordinator to input handler
                 inputHandler.setTranslationCoordinator(translationCoordinator);
                 logger.debug("Translation coordinator connected to input handler");
+
+                // Connect selection components to EditModeManager for clearing on mode switch
+                EditModeManager.getInstance().setSelectionComponents(
+                    vertexSelectionState,
+                    edgeSelectionState,
+                    faceSelectionState,
+                    renderPipeline.getVertexRenderer(),
+                    renderPipeline.getEdgeRenderer(),
+                    renderPipeline.getFaceRenderer()
+                );
+                logger.debug("Selection components connected to EditModeManager");
             }
 
             viewportState.setViewportInitialized(true);
@@ -823,6 +835,20 @@ public class ViewportController {
 
     public ViewportCamera getCamera() { return viewportCamera; }
     public ViewportInputHandler getInputHandler() { return inputHandler; }
+
+    /**
+     * Start grab mode from keybind (G key).
+     * Blender-style: Press G to grab and move all selected items.
+     *
+     * @return true if grab started successfully, false otherwise
+     */
+    public boolean startGrabMode() {
+        if (inputHandler == null) {
+            logger.warn("Cannot start grab: input handler not initialized");
+            return false;
+        }
+        return inputHandler.startGrabMode();
+    }
 
     public void resetCamera() {
         if (viewportCamera != null) viewportCamera.reset();
