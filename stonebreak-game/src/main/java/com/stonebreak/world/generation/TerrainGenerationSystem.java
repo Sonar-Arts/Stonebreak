@@ -592,4 +592,31 @@ public class TerrainGenerationSystem {
         // Delegate to terrain generator to collect debug info
         return terrainGenerator.getHeightCalculationDebugInfo(x, z, params);
     }
+
+    /**
+     * Gets the terrain generator for external systems (e.g., structure finding).
+     *
+     * @return The terrain generator
+     */
+    public TerrainGenerator getTerrainGenerator() {
+        return terrainGenerator;
+    }
+
+    /**
+     * Gets the biome manager for external systems (e.g., structure finding).
+     *
+     * @return The biome manager
+     */
+    public BiomeManager getBiomeManager() {
+        return biomeManager;
+    }
+
+    /**
+     * Gets the basin water filler for external systems (e.g., structure finding).
+     *
+     * @return The basin water filler
+     */
+    public BasinWaterFiller getBasinWaterFiller() {
+        return basinWaterFiller;
+    }
 }

@@ -33,9 +33,10 @@ public class ChatMessageManager {
     }
 
     /**
-     * Add a message with custom color
+     * Add a message with custom color.
+     * Thread-safe: Can be called from background threads (e.g., async command results).
      */
-    public void addMessage(String text, float[] color) {
+    public synchronized void addMessage(String text, float[] color) {
         if (text == null || text.trim().isEmpty()) {
             return;
         }
@@ -61,9 +62,10 @@ public class ChatMessageManager {
     }
 
     /**
-     * Update message lifecycle with chat state
+     * Update message lifecycle with chat state.
+     * Thread-safe: Synchronized to prevent concurrent modification.
      */
-    public void update(boolean isChatOpen) {
+    public synchronized void update(boolean isChatOpen) {
         // Only remove old messages when chat is closed
         if (!isChatOpen) {
             Iterator<ChatMessage> iterator = messages.iterator();
@@ -77,16 +79,18 @@ public class ChatMessageManager {
     }
 
     /**
-     * Get visible messages based on chat state
+     * Get visible messages based on chat state.
+     * Thread-safe: Synchronized to prevent concurrent access.
      */
-    public List<ChatMessage> getVisibleMessages(boolean isChatOpen) {
+    public synchronized List<ChatMessage> getVisibleMessages(boolean isChatOpen) {
         return getVisibleMessages(isChatOpen, 0);
     }
 
     /**
-     * Get visible messages based on chat state with scroll offset
+     * Get visible messages based on chat state with scroll offset.
+     * Thread-safe: Synchronized to prevent concurrent access.
      */
-    public List<ChatMessage> getVisibleMessages(boolean isChatOpen, int scrollOffset) {
+    public synchronized List<ChatMessage> getVisibleMessages(boolean isChatOpen, int scrollOffset) {
         if (isChatOpen) {
             return getHistoryMessages(scrollOffset);
         } else {
@@ -95,23 +99,26 @@ public class ChatMessageManager {
     }
 
     /**
-     * Clear all messages
+     * Clear all messages.
+     * Thread-safe: Synchronized to prevent concurrent modification.
      */
-    public void clear() {
+    public synchronized void clear() {
         messages.clear();
     }
 
     /**
-     * Get total message count
+     * Get total message count.
+     * Thread-safe: Synchronized to prevent concurrent access.
      */
-    public int getMessageCount() {
+    public synchronized int getMessageCount() {
         return messages.size();
     }
 
     /**
-     * Get chat history count
+     * Get chat history count.
+     * Thread-safe: Synchronized to prevent concurrent access.
      */
-    public int getHistoryCount() {
+    public synchronized int getHistoryCount() {
         return chatHistory.size();
     }
 
@@ -208,9 +215,10 @@ public class ChatMessageManager {
     }
 
     /**
-     * Get chat history (past 20 messages)
+     * Get chat history (past 20 messages).
+     * Thread-safe: Synchronized to prevent concurrent access.
      */
-    public List<ChatMessage> getChatHistory() {
+    public synchronized List<ChatMessage> getChatHistory() {
         return new ArrayList<>(chatHistory);
     }
 }

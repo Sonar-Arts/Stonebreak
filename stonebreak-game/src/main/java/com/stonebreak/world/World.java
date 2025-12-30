@@ -42,6 +42,7 @@ public class World {
     private final MmsMeshPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
     private final WaterSystem waterSystem;
+    private final com.stonebreak.world.structure.StructureFinder structureFinder;
 
     public World() {
         this(new WorldConfiguration());
@@ -93,6 +94,9 @@ public class World {
 
         this.terrainSystem = new TerrainGenerationSystem(seed, com.stonebreak.world.generation.config.TerrainGenerationConfig.defaultConfig(), generatorType, com.stonebreak.world.generation.LoadingProgressReporter.NULL);
         this.snowLayerManager = new SnowLayerManager();
+
+        // Initialize structure finder (depends on terrainSystem)
+        this.structureFinder = new com.stonebreak.world.structure.StructureFinder(this);
 
         // Initialize modular components
         this.errorReporter = new ChunkErrorReporter();
@@ -661,12 +665,30 @@ public class World {
         // The terrain system seed cannot be changed after construction
         // This will log a warning if attempting to change an existing seed
         if (terrainSystem.getSeed() != seed) {
-            System.err.println("Warning: Attempting to set seed " + seed + 
-                " but terrain system already has seed " + terrainSystem.getSeed() + 
+            System.err.println("Warning: Attempting to set seed " + seed +
+                " but terrain system already has seed " + terrainSystem.getSeed() +
                 ". Seed cannot be changed after world creation.");
         }
     }
-    
+
+    /**
+     * Gets the terrain generation system for external systems (e.g., structure finding).
+     *
+     * @return The terrain generation system
+     */
+    public TerrainGenerationSystem getTerrainGenerationSystem() {
+        return terrainSystem;
+    }
+
+    /**
+     * Gets the structure finder service for locating structures in the world.
+     *
+     * @return The structure finder service
+     */
+    public com.stonebreak.world.structure.StructureFinder getStructureFinder() {
+        return structureFinder;
+    }
+
     /**
      * Gets the world spawn position
      */

@@ -211,4 +211,13 @@ public class BasinWaterFiller {
             legacyWaterGrid.getCacheSize()
         );
     }
+
+    /**
+     * Gets the basin water level grid for external systems (e.g., structure finding).
+     *
+     * @return The basin water level grid
+     */
+    public BasinWaterLevelGrid getBasinWaterLevelGrid() {
+        return basinWaterGrid;
+    }
 }
