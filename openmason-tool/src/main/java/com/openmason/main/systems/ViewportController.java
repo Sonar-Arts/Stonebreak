@@ -674,61 +674,57 @@ public class ViewportController {
         endpoint1 = new Vector3f(endpoint1);
         endpoint2 = new Vector3f(endpoint2);
 
-        logger.info("Subdivision: edge {} connects vertices {} and {} at ({},{},{}) to ({},{},{})",
+        // Calculate midpoint
+        Vector3f midpoint = new Vector3f(
+            (endpoint1.x + endpoint2.x) / 2.0f,
+            (endpoint1.y + endpoint2.y) / 2.0f,
+            (endpoint1.z + endpoint2.z) / 2.0f
+        );
+
+        logger.info("Subdivision: edge {} connects vertices {} and {} at ({},{},{}) to ({},{},{}), midpoint: ({},{},{})",
             hoveredEdgeIndex, edgeVertexIndices[0], edgeVertexIndices[1],
             endpoint1.x, endpoint1.y, endpoint1.z,
-            endpoint2.x, endpoint2.y, endpoint2.z);
+            endpoint2.x, endpoint2.y, endpoint2.z,
+            midpoint.x, midpoint.y, midpoint.z);
 
-        // Perform subdivision on EdgeRenderer/VertexRenderer
-        int newVertexIndex = edgeRenderer.subdivideHoveredEdge(vertexRenderer);
-
-        // Sync new vertex with MeshManager and GenericModelRenderer
-        if (newVertexIndex >= 0) {
-            Vector3f newVertexPosition = vertexRenderer.getVertexPosition(newVertexIndex);
-            if (newVertexPosition != null) {
-                MeshManager meshManager = MeshManager.getInstance();
-
-                // Apply subdivision to GenericModelRenderer (updates mesh topology)
-                var modelRenderer = renderPipeline.getBlockModelRenderer();
-                if (modelRenderer != null) {
-                    int meshVertexIndex = modelRenderer.applyEdgeSubdivisionByPosition(
-                        newVertexPosition, endpoint1, endpoint2
-                    );
-
-                    if (meshVertexIndex >= 0) {
-                        // CRITICAL FIX: Sync MeshManager with GenericModelRenderer's actual vertices
-                        // GenericModelRenderer may add multiple vertices (one per split triangle for UV),
-                        // so we must use its actual vertex array, not just add one vertex.
-                        float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
-                        if (modelMeshVertices != null) {
-                            meshManager.setMeshVertices(modelMeshVertices);
-                            logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices",
-                                modelMeshVertices.length / 3);
-                        }
-
-                        // Note: GenericModelRenderer now owns the unique-to-mesh mapping
-                        // and rebuilds it automatically when geometry changes
-
-                        // CRITICAL FIX: Rebuild FaceRenderer data from GenericModelRenderer's triangles
-                        // After subdivision, face overlay geometry must match the actual mesh topology.
-                        // This rebuilds the face VBO from GenericModelRenderer's current triangles.
-                        var faceRenderer = renderPipeline.getFaceRenderer();
-                        if (faceRenderer != null) {
-                            faceRenderer.setGenericModelRenderer(modelRenderer);
-                            faceRenderer.rebuildFromGenericModelRenderer();
-                            logger.debug("Rebuilt FaceRenderer from GenericModelRenderer triangles");
-                        }
-
-                        logger.debug("Applied subdivision: unique vertex {}, mesh vertices synced, topology updated",
-                            newVertexIndex);
-                    } else {
-                        logger.warn("Failed to apply subdivision to GenericModelRenderer");
-                    }
-                }
-            }
+        // Apply subdivision to GenericModelRenderer (single source of truth)
+        // This triggers EdgeRenderer.onGeometryRebuilt() via MeshChangeListener
+        var modelRenderer = renderPipeline.getBlockModelRenderer();
+        if (modelRenderer == null) {
+            logger.warn("Cannot subdivide: model renderer not available");
+            return -1;
         }
 
-        return newVertexIndex;
+        int meshVertexIndex = modelRenderer.applyEdgeSubdivisionByPosition(
+            midpoint, endpoint1, endpoint2
+        );
+
+        if (meshVertexIndex >= 0) {
+            // Sync MeshManager with GenericModelRenderer's actual vertices
+            // GenericModelRenderer may add multiple vertices (one per split triangle for UV)
+            MeshManager meshManager = MeshManager.getInstance();
+            float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
+            if (modelMeshVertices != null) {
+                meshManager.setMeshVertices(modelMeshVertices);
+                logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices",
+                    modelMeshVertices.length / 3);
+            }
+
+            // Rebuild FaceRenderer data from GenericModelRenderer's triangles
+            // After subdivision, face overlay geometry must match the actual mesh topology
+            var faceRenderer = renderPipeline.getFaceRenderer();
+            if (faceRenderer != null) {
+                faceRenderer.setGenericModelRenderer(modelRenderer);
+                faceRenderer.rebuildFromGenericModelRenderer();
+                logger.debug("Rebuilt FaceRenderer from GenericModelRenderer triangles");
+            }
+
+            logger.info("Subdivided edge {}, created mesh vertex {}", hoveredEdgeIndex, meshVertexIndex);
+            return meshVertexIndex;
+        } else {
+            logger.warn("Failed to apply subdivision to GenericModelRenderer");
+            return -1;
+        }
     }
 
     /**
@@ -762,52 +758,62 @@ public class ViewportController {
             return result >= 0 ? 1 : 0;
         }
 
-        // Sort edges in DESCENDING order to prevent index shifting
-        java.util.List<Integer> sortedEdges = new java.util.ArrayList<>(selectedEdges);
-        sortedEdges.sort(java.util.Collections.reverseOrder());
+        var modelRenderer = renderPipeline.getBlockModelRenderer();
+        if (modelRenderer == null) {
+            logger.warn("Cannot subdivide: model renderer not available");
+            return 0;
+        }
 
-        int successCount = 0;
-        for (int edgeIndex : sortedEdges) {
-            // Get edge vertex indices and positions BEFORE subdivision
+        // Collect all edge endpoint positions BEFORE any subdivision
+        // (positions will be copied, so they remain valid even as mesh changes)
+        java.util.List<Vector3f[]> edgeEndpoints = new java.util.ArrayList<>();
+        for (int edgeIndex : selectedEdges) {
             int[] edgeVertexIndices = edgeRenderer.getEdgeVertexIndices(edgeIndex);
             if (edgeVertexIndices == null || edgeVertexIndices.length != 2) {
                 logger.warn("Cannot get edge vertex indices for edge {}", edgeIndex);
                 continue;
             }
 
-            // Get endpoint positions from VertexRenderer
             Vector3f endpoint1 = vertexRenderer.getVertexPosition(edgeVertexIndices[0]);
             Vector3f endpoint2 = vertexRenderer.getVertexPosition(edgeVertexIndices[1]);
             if (endpoint1 == null || endpoint2 == null) {
                 logger.warn("Cannot get vertex positions for edge {}", edgeIndex);
                 continue;
             }
-            // Make copies to avoid mutation issues
-            endpoint1 = new Vector3f(endpoint1);
-            endpoint2 = new Vector3f(endpoint2);
 
-            // Perform subdivision
-            int newVertexIndex = edgeRenderer.subdivideEdgeByIndex(edgeIndex, vertexRenderer);
+            // Store copies of endpoints
+            edgeEndpoints.add(new Vector3f[] {
+                new Vector3f(endpoint1),
+                new Vector3f(endpoint2)
+            });
+        }
 
-            if (newVertexIndex >= 0) {
-                // Sync with GenericModelRenderer
-                Vector3f newVertexPosition = vertexRenderer.getVertexPosition(newVertexIndex);
-                if (newVertexPosition != null) {
-                    MeshManager meshManager = MeshManager.getInstance();
-                    var modelRenderer = renderPipeline.getBlockModelRenderer();
+        // Apply subdivisions to GenericModelRenderer
+        // EdgeRenderer automatically rebuilds after each via MeshChangeListener
+        MeshManager meshManager = MeshManager.getInstance();
+        int successCount = 0;
 
-                    if (modelRenderer != null) {
-                        int meshVertexIndex = modelRenderer.applyEdgeSubdivisionByPosition(
-                            newVertexPosition, endpoint1, endpoint2
-                        );
+        for (Vector3f[] endpoints : edgeEndpoints) {
+            Vector3f endpoint1 = endpoints[0];
+            Vector3f endpoint2 = endpoints[1];
 
-                        if (meshVertexIndex >= 0) {
-                            float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
-                            if (modelMeshVertices != null) {
-                                meshManager.setMeshVertices(modelMeshVertices);
-                            }
-                        }
-                    }
+            // Calculate midpoint
+            Vector3f midpoint = new Vector3f(
+                (endpoint1.x + endpoint2.x) / 2.0f,
+                (endpoint1.y + endpoint2.y) / 2.0f,
+                (endpoint1.z + endpoint2.z) / 2.0f
+            );
+
+            // Apply subdivision to GenericModelRenderer (single source of truth)
+            int meshVertexIndex = modelRenderer.applyEdgeSubdivisionByPosition(
+                midpoint, endpoint1, endpoint2
+            );
+
+            if (meshVertexIndex >= 0) {
+                // Sync MeshManager with GenericModelRenderer's vertices
+                float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
+                if (modelMeshVertices != null) {
+                    meshManager.setMeshVertices(modelMeshVertices);
                 }
                 successCount++;
             }
@@ -816,8 +822,7 @@ public class ViewportController {
         // Rebuild face overlays after all subdivisions
         if (successCount > 0) {
             var faceRenderer = renderPipeline.getFaceRenderer();
-            var modelRenderer = renderPipeline.getBlockModelRenderer();
-            if (faceRenderer != null && modelRenderer != null) {
+            if (faceRenderer != null) {
                 faceRenderer.setGenericModelRenderer(modelRenderer);
                 faceRenderer.rebuildFromGenericModelRenderer();
             }

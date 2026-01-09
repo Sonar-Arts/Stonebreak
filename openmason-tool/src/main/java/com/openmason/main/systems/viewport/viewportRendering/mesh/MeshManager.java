@@ -413,28 +413,6 @@ public class MeshManager {
         return query.getEdgeVertexIndices(edgeIndex, edgeToVertexMapping);
     }
 
-    /**
-     * Subdivide an edge at its midpoint.
-     * Creates a new vertex at the midpoint and replaces the original edge
-     * with two new edges connecting to the midpoint.
-     *
-     * @param edgeIndex Index of edge to subdivide
-     * @param edgePositions Current edge positions array
-     * @param edgeCount Current number of edges
-     * @param vertexPositions Current unique vertex positions array
-     * @param vertexCount Current number of unique vertices
-     * @param edgeToVertexMapping Current edge-to-vertex mapping
-     * @return SubdivisionResult with updated data, or null if subdivision failed
-     */
-    public MeshEdgeSubdivider.SubdivisionResult subdivideEdge(int edgeIndex,
-                                                               float[] edgePositions, int edgeCount,
-                                                               float[] vertexPositions, int vertexCount,
-                                                               int[][] edgeToVertexMapping) {
-        MeshEdgeSubdivider subdivider = new MeshEdgeSubdivider();
-        return subdivider.subdivide(edgeIndex, edgePositions, edgeCount,
-                                    vertexPositions, vertexCount, edgeToVertexMapping);
-    }
-
     // ========================================
     // Geometry Extraction Operations (managed through MeshManager)
     // ========================================
