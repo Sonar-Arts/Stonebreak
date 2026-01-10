@@ -42,7 +42,7 @@ public class LayerManager {
 
         // Create default layer
         addLayer("Background");
-        logger.debug("Layer manager initialized: {}x{}", canvasWidth, canvasHeight);
+        logger.trace("Layer manager initialized: {}x{}", canvasWidth, canvasHeight);
     }
 
     /**
@@ -55,7 +55,7 @@ public class LayerManager {
         layers.add(newLayer);
         activeLayerIndex = layers.size() - 1; // New layer becomes active
         compositeCacheDirty = true;
-        logger.debug("Added layer: {}", name);
+        logger.trace("Added layer: {}", name);
     }
 
     /**
@@ -71,7 +71,7 @@ public class LayerManager {
         layers.add(index, layer);
         activeLayerIndex = index;
         compositeCacheDirty = true;
-        logger.debug("Added layer at index {}: {}", index, layer.getName());
+        logger.trace("Added layer at index {}: {}", index, layer.getName());
     }
 
     /**

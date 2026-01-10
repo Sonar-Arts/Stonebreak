@@ -37,7 +37,7 @@ public class KeybindRegistry {
      * Private constructor for singleton pattern.
      */
     private KeybindRegistry() {
-        logger.debug("KeybindRegistry initialized");
+        logger.trace("KeybindRegistry initialized");
     }
 
     /**
@@ -93,7 +93,7 @@ public class KeybindRegistry {
         // Add default binding to current bindings
         currentBindings.put(action.getDefaultKey(), action.getId());
 
-        logger.debug("Registered action: {} ({}) -> {}",
+        logger.trace("Registered action: {} ({}) -> {}",
             action.getId(), action.getDisplayName(), action.getDefaultKey().getDisplayName());
     }
 
