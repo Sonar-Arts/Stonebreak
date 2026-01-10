@@ -7,9 +7,7 @@ import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.main.omConfig;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
-import com.openmason.main.systems.rendering.model.UVMode;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
-import com.openmason.main.systems.rendering.model.miscComponents.TextureLoadResult;
 import com.openmason.main.systems.viewport.ViewportCamera;
 import com.openmason.main.systems.viewport.ViewportInputHandler;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
@@ -32,11 +30,9 @@ import com.openmason.main.systems.viewport.viewportRendering.face.FaceTranslatio
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
-import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,11 +71,11 @@ public class ViewportController {
     // ========== Input & UI ==========
     private final ViewportInputHandler inputHandler;
 
-    // ========== Block Model Loading ==========
-    private final OMTTextureLoader omtTextureLoader;
     private final MeshDataExtractor meshDataExtractor;
-    private BlockModel currentBlockModel;
-    private int currentBlockModelTextureId = 0;
+    private final com.openmason.main.systems.viewport.content.ContentTypeManager contentTypeManager;
+
+    // ========== Services ==========
+    private com.openmason.main.systems.services.EdgeOperationService edgeOperationService;
 
     // ========== Constructor ==========
 
@@ -108,11 +104,18 @@ public class ViewportController {
         this.itemRenderer = new ItemRenderer("Viewport");
         this.modelRenderer = new GenericModelRenderer();
 
-        this.omtTextureLoader = new OMTTextureLoader();
+        // Content loading (SOLID refactored)
+        // ========== Content Loading (SOLID refactored) ==========
+        OMTTextureLoader omtTextureLoader = new OMTTextureLoader();
         this.meshDataExtractor = new MeshDataExtractor();
-        this.currentBlockModel = null;
+        com.openmason.main.systems.viewport.content.BlockModelLoader blockModelLoader = new com.openmason.main.systems.viewport.content.BlockModelLoader(
+                omtTextureLoader, modelRenderer
+        );
+        this.contentTypeManager = new com.openmason.main.systems.viewport.content.ContentTypeManager(
+                blockModelLoader, renderingState, transformState
+        );
 
-        logger.info("Viewport created successfully");
+        logger.info("Viewport created successfully with SOLID content management");
     }
 
     // ========== Lifecycle ==========
@@ -152,6 +155,12 @@ public class ViewportController {
                 blockRenderer, itemRenderer,
                     modelRenderer, gizmoRenderer
             );
+
+            // Initialize EdgeOperationService after RenderPipeline is ready
+            this.edgeOperationService = new com.openmason.main.systems.services.EdgeOperationService(
+                renderPipeline, edgeSelectionState
+            );
+            logger.debug("EdgeOperationService initialized");
 
             // Load vertex point size from config
             try {
@@ -335,94 +344,16 @@ public class ViewportController {
         logger.trace("Viewport resized to {}x{}", width, height);
     }
 
-    // ========== Content Loading ==========
+    // ========== Content Loading (Delegating to SOLID classes) ==========
 
     /**
      * Load BlockModel (.OMO file) for editing.
      * Loads embedded texture, sets up rendering, and resets camera.
+     *
+     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → BlockModelLoader.
      */
     public void loadBlockModel(BlockModel blockModel) {
-        if (blockModel == null) {
-            logger.error("Cannot load null BlockModel");
-            return;
-        }
-
-        logger.info("Loading BlockModel: {}", blockModel.getName());
-
-        unloadBlockModel();
-        currentBlockModel = blockModel;
-
-        // Load texture and auto-detect UV mode
-        java.nio.file.Path texturePath = blockModel.getTexturePath();
-        if (texturePath != null && java.nio.file.Files.exists(texturePath)) {
-            TextureLoadResult result =
-                omtTextureLoader.loadTextureComposite(texturePath);
-
-            if (result.isSuccess()) {
-                // Auto-detect UV mode based on texture dimensions
-                UVMode detectedMode = UVMode.detectFromDimensions(result.getWidth(), result.getHeight());
-                modelRenderer.setUVMode(detectedMode);
-                logger.info("Auto-detected UV mode: {} for texture {}x{}",
-                    detectedMode, result.getWidth(), result.getHeight());
-
-                currentBlockModelTextureId = result.getTextureId();
-                modelRenderer.setTexture(result.getTextureId());
-                logger.info("Loaded BlockModel texture: {}", result);
-            } else {
-                logger.error("Failed to load texture from: {}", texturePath);
-            }
-        } else {
-            logger.warn("BlockModel has no valid texture path: {}", texturePath);
-        }
-
-        // Load geometry from BlockModel into renderer (LEGACY support only)
-        com.openmason.main.systems.rendering.model.editable.ModelGeometry geometry = blockModel.getGeometry();
-        if (geometry != null) {
-            try {
-                // LEGACY: Generate mesh from dimensions for old BlockModel format
-                // TODO: Modern models should provide topology via .omo files, not dimensions
-                @SuppressWarnings("deprecation")
-                com.openmason.main.systems.rendering.model.io.omo.OMOFormat.MeshData meshData =
-                    com.openmason.main.systems.rendering.model.LegacyGeometryGenerator.generateLegacyBoxMesh(
-                        geometry.getWidth(),
-                        geometry.getHeight(),
-                        geometry.getDepth(),
-                        geometry.getX(),
-                        geometry.getY(),
-                        geometry.getZ(),
-                        com.openmason.main.systems.rendering.model.UVMode.CUBE_NET // Legacy default
-                    );
-                modelRenderer.loadMeshData(meshData);
-                logger.info("Loaded legacy BlockModel geometry: {}x{}x{} at ({}, {}, {})",
-                           geometry.getWidth(), geometry.getHeight(), geometry.getDepth(),
-                           geometry.getX(), geometry.getY(), geometry.getZ());
-            } catch (Exception e) {
-                logger.error("Failed to load geometry into renderer", e);
-            }
-        } else {
-            logger.warn("BlockModel has no geometry - model will be invisible");
-        }
-
-        renderingState.setBlockModelMode(blockModel.getName());
-        transformState.resetPosition();
-
-        logger.info("BlockModel loaded successfully: {}", blockModel.getName());
-    }
-
-    /**
-     * Unload current BlockModel and free texture.
-     */
-    private void unloadBlockModel() {
-        if (currentBlockModel != null) {
-            logger.info("Unloading BlockModel: {}", currentBlockModel.getName());
-
-            if (currentBlockModelTextureId > 0) {
-                omtTextureLoader.deleteTexture(currentBlockModelTextureId);
-                currentBlockModelTextureId = 0;
-            }
-
-            currentBlockModel = null;
-        }
+        contentTypeManager.switchToBlockModel(blockModel);
     }
 
     // ========== Mesh Data (OMO v1.1+ support) ==========
@@ -435,15 +366,6 @@ public class ViewportController {
      */
     public OMOFormat.MeshData extractMeshData() {
         return meshDataExtractor.extract(modelRenderer);
-    }
-
-    /**
-     * Check if the current mesh has been modified from a standard cube.
-     *
-     * @return true if mesh has custom geometry (subdivisions, vertex moves, etc.)
-     */
-    public boolean hasCustomMeshData() {
-        return meshDataExtractor.hasCustomMeshData(modelRenderer);
     }
 
     /**
@@ -491,35 +413,29 @@ public class ViewportController {
 
     /**
      * Set block to render in viewport.
+     *
+     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager.
      */
     public void setSelectedBlock(BlockType blockType) {
-        if (blockType == null) {
-            logger.warn("Cannot set null block type");
-            return;
-        }
-
-        renderingState.setBlockMode(blockType);
-        transformState.resetPosition();
+        contentTypeManager.switchToBlock(blockType);
     }
 
     /**
      * Set item to render in viewport.
+     *
+     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager.
      */
     public void setSelectedItem(ItemType itemType) {
-        if (itemType == null) {
-            logger.warn("Cannot set null item type");
-            return;
-        }
-
-        renderingState.setItemMode(itemType);
-        transformState.resetPosition();
+        contentTypeManager.switchToItem(itemType);
     }
 
     /**
      * Set texture variant for current model.
+     *
+     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager.
      */
     public void setCurrentTextureVariant(String variant) {
-        renderingState.setCurrentTextureVariant(variant);
+        contentTypeManager.setTextureVariant(variant);
     }
 
     /**
@@ -527,50 +443,12 @@ public class ViewportController {
      * Use this when changing textures to preserve any vertex/geometry modifications.
      * UV coordinates are updated to match the new texture type while preserving vertex positions.
      *
+     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → BlockModelLoader.
+     *
      * @param blockModel The BlockModel with updated texture path
      */
     public void updateBlockModelTexture(BlockModel blockModel) {
-        if (blockModel == null) {
-            logger.warn("Cannot update texture for null BlockModel");
-            return;
-        }
-
-        logger.info("Updating BlockModel texture (preserving geometry): {}", blockModel.getName());
-
-        // Delete old texture if exists
-        if (currentBlockModelTextureId > 0) {
-            omtTextureLoader.deleteTexture(currentBlockModelTextureId);
-            currentBlockModelTextureId = 0;
-        }
-
-        // Update reference (in case it changed)
-        currentBlockModel = blockModel;
-
-        // Load new texture and update UV coordinates to match texture type
-        java.nio.file.Path texturePath = blockModel.getTexturePath();
-        if (texturePath != null && java.nio.file.Files.exists(texturePath)) {
-            TextureLoadResult result = omtTextureLoader.loadTextureComposite(texturePath);
-
-            if (result.isSuccess()) {
-                // Auto-detect UV mode and update UVs without rebuilding vertex positions
-                UVMode detectedMode = UVMode.detectFromDimensions(result.getWidth(), result.getHeight());
-                modelRenderer.updateUVModeOnly(detectedMode);
-                logger.info("Updated UV mode to {} for texture {}x{} (geometry preserved)",
-                    detectedMode, result.getWidth(), result.getHeight());
-
-                currentBlockModelTextureId = result.getTextureId();
-                modelRenderer.setTexture(result.getTextureId());
-                logger.info("Updated BlockModel texture: {}", texturePath.getFileName());
-            } else {
-                logger.error("Failed to load texture from: {}", texturePath);
-                modelRenderer.setTexture(0);
-            }
-        } else {
-            logger.info("BlockModel texture cleared or path invalid: {}", texturePath);
-            modelRenderer.setTexture(0);
-        }
-
-        logger.info("BlockModel texture updated successfully: {}", blockModel.getName());
+        contentTypeManager.updateBlockModelTexture(blockModel);
     }
 
     // ========== Transform ==========
@@ -637,209 +515,35 @@ public class ViewportController {
         }
     }
 
-    // ========== Edge Operations ==========
+    // ========== Edge Operations (Delegated to EdgeOperationService) ==========
 
     /**
      * Subdivide the currently hovered edge at its midpoint.
-     * Coordinates between EdgeRenderer, VertexRenderer, MeshManager, and GenericModelRenderer.
+     * Delegates to EdgeOperationService for proper separation of concerns.
      *
      * @return Index of newly created vertex, or -1 if failed
      */
     public int subdivideHoveredEdge() {
-        if (renderPipeline == null) {
-            logger.warn("Cannot subdivide edge: render pipeline not initialized");
+        if (edgeOperationService == null) {
+            logger.warn("Cannot subdivide edge: EdgeOperationService not initialized");
             return -1;
         }
-
-        var edgeRenderer = renderPipeline.getEdgeRenderer();
-        var vertexRenderer = renderPipeline.getVertexRenderer();
-
-        if (edgeRenderer == null || vertexRenderer == null) {
-            logger.warn("Cannot subdivide edge: renderers not available");
-            return -1;
-        }
-
-        // Get edge vertex indices and positions BEFORE subdivision (for GenericModelRenderer update)
-        // FIX: Use vertex positions from VertexRenderer (source of truth) instead of EdgeRenderer's
-        // edgePositions, which can drift from actual vertex positions after multiple subdivisions.
-        int hoveredEdgeIndex = edgeRenderer.getHoveredEdgeIndex();
-        int[] edgeVertexIndices = edgeRenderer.getEdgeVertexIndices(hoveredEdgeIndex);
-        if (edgeVertexIndices == null || edgeVertexIndices.length != 2) {
-            logger.warn("Cannot get edge vertex indices for subdivision");
-            return -1;
-        }
-
-        // Get endpoint positions from VertexRenderer (ensures coordinates match GenericModelRenderer)
-        Vector3f endpoint1 = vertexRenderer.getVertexPosition(edgeVertexIndices[0]);
-        Vector3f endpoint2 = vertexRenderer.getVertexPosition(edgeVertexIndices[1]);
-        if (endpoint1 == null || endpoint2 == null) {
-            logger.warn("Cannot get vertex positions for subdivision endpoints");
-            return -1;
-        }
-        // Make copies to avoid mutation issues
-        endpoint1 = new Vector3f(endpoint1);
-        endpoint2 = new Vector3f(endpoint2);
-
-        // Calculate midpoint
-        Vector3f midpoint = new Vector3f(
-            (endpoint1.x + endpoint2.x) / 2.0f,
-            (endpoint1.y + endpoint2.y) / 2.0f,
-            (endpoint1.z + endpoint2.z) / 2.0f
-        );
-
-        logger.info("Subdivision: edge {} connects vertices {} and {} at ({},{},{}) to ({},{},{}), midpoint: ({},{},{})",
-            hoveredEdgeIndex, edgeVertexIndices[0], edgeVertexIndices[1],
-            endpoint1.x, endpoint1.y, endpoint1.z,
-            endpoint2.x, endpoint2.y, endpoint2.z,
-            midpoint.x, midpoint.y, midpoint.z);
-
-        // Apply subdivision to GenericModelRenderer (single source of truth)
-        // This triggers EdgeRenderer.onGeometryRebuilt() via MeshChangeListener
-        var modelRenderer = renderPipeline.getBlockModelRenderer();
-        if (modelRenderer == null) {
-            logger.warn("Cannot subdivide: model renderer not available");
-            return -1;
-        }
-
-        int meshVertexIndex = modelRenderer.applyEdgeSubdivisionByPosition(
-            midpoint, endpoint1, endpoint2
-        );
-
-        if (meshVertexIndex >= 0) {
-            // Sync MeshManager with GenericModelRenderer's actual vertices
-            // GenericModelRenderer may add multiple vertices (one per split triangle for UV)
-            MeshManager meshManager = MeshManager.getInstance();
-            float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
-            if (modelMeshVertices != null) {
-                meshManager.setMeshVertices(modelMeshVertices);
-                logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices",
-                    modelMeshVertices.length / 3);
-            }
-
-            // Rebuild FaceRenderer data from GenericModelRenderer's triangles
-            // After subdivision, face overlay geometry must match the actual mesh topology
-            var faceRenderer = renderPipeline.getFaceRenderer();
-            if (faceRenderer != null) {
-                faceRenderer.setGenericModelRenderer(modelRenderer);
-                faceRenderer.rebuildFromGenericModelRenderer();
-                logger.debug("Rebuilt FaceRenderer from GenericModelRenderer triangles");
-            }
-
-            logger.info("Subdivided edge {}, created mesh vertex {}", hoveredEdgeIndex, meshVertexIndex);
-            return meshVertexIndex;
-        } else {
-            logger.warn("Failed to apply subdivision to GenericModelRenderer");
-            return -1;
-        }
+        return edgeOperationService.subdivideHoveredEdge();
     }
 
     /**
      * Subdivide all currently selected edges at their midpoints.
      * If no edges are selected, falls back to subdividing the hovered edge.
-     * Edges are processed in descending order to prevent index shifting issues.
+     * Delegates to EdgeOperationService for proper separation of concerns.
      *
      * @return Number of edges successfully subdivided
      */
     public int subdivideSelectedEdges() {
-        if (renderPipeline == null) {
-            logger.warn("Cannot subdivide edges: render pipeline not initialized");
+        if (edgeOperationService == null) {
+            logger.warn("Cannot subdivide edges: EdgeOperationService not initialized");
             return 0;
         }
-
-        var edgeRenderer = renderPipeline.getEdgeRenderer();
-        var vertexRenderer = renderPipeline.getVertexRenderer();
-
-        if (edgeRenderer == null || vertexRenderer == null) {
-            logger.warn("Cannot subdivide edges: renderers not available");
-            return 0;
-        }
-
-        // Get selected edges from EdgeSelectionState
-        java.util.Set<Integer> selectedEdges = edgeSelectionState.getSelectedEdgeIndices();
-
-        if (selectedEdges.isEmpty()) {
-            // Fall back to hovered edge if no selection
-            logger.debug("No edges selected, falling back to hovered edge");
-            int result = subdivideHoveredEdge();
-            return result >= 0 ? 1 : 0;
-        }
-
-        var modelRenderer = renderPipeline.getBlockModelRenderer();
-        if (modelRenderer == null) {
-            logger.warn("Cannot subdivide: model renderer not available");
-            return 0;
-        }
-
-        // Collect all edge endpoint positions BEFORE any subdivision
-        // (positions will be copied, so they remain valid even as mesh changes)
-        java.util.List<Vector3f[]> edgeEndpoints = new java.util.ArrayList<>();
-        for (int edgeIndex : selectedEdges) {
-            int[] edgeVertexIndices = edgeRenderer.getEdgeVertexIndices(edgeIndex);
-            if (edgeVertexIndices == null || edgeVertexIndices.length != 2) {
-                logger.warn("Cannot get edge vertex indices for edge {}", edgeIndex);
-                continue;
-            }
-
-            Vector3f endpoint1 = vertexRenderer.getVertexPosition(edgeVertexIndices[0]);
-            Vector3f endpoint2 = vertexRenderer.getVertexPosition(edgeVertexIndices[1]);
-            if (endpoint1 == null || endpoint2 == null) {
-                logger.warn("Cannot get vertex positions for edge {}", edgeIndex);
-                continue;
-            }
-
-            // Store copies of endpoints
-            edgeEndpoints.add(new Vector3f[] {
-                new Vector3f(endpoint1),
-                new Vector3f(endpoint2)
-            });
-        }
-
-        // Apply subdivisions to GenericModelRenderer
-        // EdgeRenderer automatically rebuilds after each via MeshChangeListener
-        MeshManager meshManager = MeshManager.getInstance();
-        int successCount = 0;
-
-        for (Vector3f[] endpoints : edgeEndpoints) {
-            Vector3f endpoint1 = endpoints[0];
-            Vector3f endpoint2 = endpoints[1];
-
-            // Calculate midpoint
-            Vector3f midpoint = new Vector3f(
-                (endpoint1.x + endpoint2.x) / 2.0f,
-                (endpoint1.y + endpoint2.y) / 2.0f,
-                (endpoint1.z + endpoint2.z) / 2.0f
-            );
-
-            // Apply subdivision to GenericModelRenderer (single source of truth)
-            int meshVertexIndex = modelRenderer.applyEdgeSubdivisionByPosition(
-                midpoint, endpoint1, endpoint2
-            );
-
-            if (meshVertexIndex >= 0) {
-                // Sync MeshManager with GenericModelRenderer's vertices
-                float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
-                if (modelMeshVertices != null) {
-                    meshManager.setMeshVertices(modelMeshVertices);
-                }
-                successCount++;
-            }
-        }
-
-        // Rebuild face overlays after all subdivisions
-        if (successCount > 0) {
-            var faceRenderer = renderPipeline.getFaceRenderer();
-            if (faceRenderer != null) {
-                faceRenderer.setGenericModelRenderer(modelRenderer);
-                faceRenderer.rebuildFromGenericModelRenderer();
-            }
-        }
-
-        // Clear edge selection (indices are invalid after subdivision)
-        edgeSelectionState.clearSelection();
-        edgeRenderer.clearSelection();
-
-        logger.info("Subdivided {} edges", successCount);
-        return successCount;
+        return edgeOperationService.subdivideSelectedEdges();
     }
 
     // ========== Component Accessors ==========
