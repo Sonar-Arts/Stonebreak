@@ -18,6 +18,13 @@ import java.util.Map;
  * - Liskov Substitution: Could implement IMerger interface if needed
  * - Interface Segregation: Focused interface for merge operations
  * - Dependency Inversion: Depends on abstractions (arrays, maps), delegates to specialized classes
+ *
+ * Shape-Blind Design:
+ * This operation is data-driven and orchestrates merge operations on vertex data from
+ * GenericModelRenderer (GMR). GMR is the single source of truth for mesh topology.
+ * Merging works with any vertex count determined by GMR's data model.
+ *
+ * Data Flow: GMR vertex data → Group detection → Index remapping → Position averaging → Merged vertices
  */
 public class MeshVertexMerger {
 

@@ -16,6 +16,13 @@ import java.util.List;
  * - Open/Closed: Could be extended for different grouping strategies
  * - Interface Segregation: Minimal, focused interface
  * - Dependency Inversion: Works with arrays, not specific data structures
+ *
+ * Shape-Blind Design:
+ * This operation is data-driven and works with vertex data from GenericModelRenderer (GMR).
+ * GMR is the single source of truth for mesh topology. Vertex counts and positions
+ * are determined by GMR's data model, not hardcoded geometry assumptions.
+ *
+ * Data Flow: GMR provides vertex positions → Group detection → Merge groups
  */
 public class MeshMergeGroupDetector {
 

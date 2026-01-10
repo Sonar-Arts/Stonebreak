@@ -40,7 +40,7 @@ public class MeshManager {
     }
 
     // Mesh data storage
-    private float[] allMeshVertices = null; // ALL mesh vertices (e.g., 24 for cube)
+    private float[] allMeshVertices = null; // ALL mesh vertices (count determined by GMR)
 
     private MeshManager() {
         // Private constructor for singleton
@@ -145,18 +145,41 @@ public class MeshManager {
     }
 
     /**
-     * Expand vertex positions to standard cube format (8 vertices).
-     * Convenience method using MeshVertexDataTransformer.
+     * Expand vertex positions to a target vertex count.
+     * After merging, we may have fewer vertices than the original mesh structure.
+     * This expands back to the target count using index remapping.
+     *
+     * This is a shape-blind method that works with any target vertex count
+     * determined by GMR's data model.
+     *
+     * @param vertexPositions Current vertex positions
+     * @param vertexCount Current vertex count
+     * @param indexRemapping Mapping from old indices to new indices
+     * @param targetVertexCount Target number of vertices (data-driven from GMR)
+     * @return Expanded vertex positions array
+     */
+    public float[] expandPositions(float[] vertexPositions, int vertexCount,
+                                  Map<Integer, Integer> indexRemapping,
+                                  int targetVertexCount) {
+        MeshVertexDataTransformer transformer = new MeshVertexDataTransformer(vertexPositions, vertexCount);
+        return transformer.expandPositions(indexRemapping, targetVertexCount);
+    }
+
+    /**
+     * Expand vertex positions to cube format (8 vertices).
+     * Convenience method for backwards compatibility with cube-based code.
      *
      * @param vertexPositions Current vertex positions
      * @param vertexCount Current vertex count
      * @param indexRemapping Mapping from old indices to new indices
      * @return Expanded vertex positions (24 floats for 8 vertices)
+     * @deprecated Use {@link #expandPositions(float[], int, Map, int)} with explicit target count from GMR
      */
+    @Deprecated
     public float[] expandToCubeFormat(float[] vertexPositions, int vertexCount,
                                      Map<Integer, Integer> indexRemapping) {
-        MeshVertexDataTransformer transformer = new MeshVertexDataTransformer(vertexPositions, vertexCount);
-        return transformer.expandToCubeFormat(indexRemapping);
+        // Backwards compatibility: assume 8 vertices for legacy cube-based code
+        return expandPositions(vertexPositions, vertexCount, indexRemapping, 8);
     }
 
     /**

@@ -20,6 +20,13 @@ import static org.lwjgl.opengl.GL15.*;
  * - Liskov Substitution: Could be abstracted to IVertexUpdater if needed
  * - Interface Segregation: Focused interface for position updates
  * - Dependency Inversion: Depends on abstractions (arrays, maps) not concrete implementations
+ *
+ * Shape-Blind Design:
+ * This operation is data-driven and works with vertex data from GenericModelRenderer (GMR).
+ * GMR is the single source of truth for mesh topology. Vertex updates work with any
+ * vertex count and mesh structure determined by GMR's data model.
+ *
+ * Data Flow: Position change → Memory update → GPU VBO update → Mesh instance synchronization
  */
 public class MeshVertexPositionUpdater {
 
@@ -150,7 +157,9 @@ public class MeshVertexPositionUpdater {
     /**
      * Update ALL mesh instances of this unique vertex.
      * CRITICAL FIX: Prevents the "cloning" bug where old vertex stays visible.
-     * For a cube, each corner vertex appears in 3 mesh instances.
+     *
+     * Mesh instances are determined by GMR's data model - a unique vertex may appear
+     * in multiple mesh instances depending on the topology.
      */
     private void updateMeshInstances(int uniqueIndex, Vector3f position) {
         if (allMeshVertices == null || uniqueToMeshMapping == null) {

@@ -14,15 +14,17 @@ import java.util.Map;
  * - Open/Closed: Can be extended with new transformation strategies
  * - Interface Segregation: Focused interface for data transformations
  * - Dependency Inversion: Works with arrays and maps, not concrete implementations
+ *
+ * Shape-Blind Design:
+ * This operation is data-driven and works with vertex data from GenericModelRenderer (GMR).
+ * GMR is the single source of truth for mesh topology. Vertex counts and expansion targets
+ * are determined by GMR's data model, not hardcoded geometry assumptions.
+ *
+ * Data Flow: GMR provides vertex data → Transformations → Expanded/compressed formats
  */
 public class MeshVertexDataTransformer {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshVertexDataTransformer.class);
-
-    /**
-     * Standard cube vertex count (8 corners).
-     */
-    private static final int CUBE_VERTEX_COUNT = 8;
 
     private final float[] vertexPositions;
     private final int vertexCount;
@@ -40,14 +42,15 @@ public class MeshVertexDataTransformer {
 
     /**
      * Expand vertex positions to a target count using index remapping.
-     * After merging, we may have fewer than 8 vertices, but ModelRenderer expects 8.
-     * This method expands the merged vertices back to 8 using the index remapping.
+     * After merging, we may have fewer vertices than the original mesh structure.
+     * This method expands the merged vertices back to the target count using the index remapping.
      *
      * Use Case: When vertices have been merged and we need to provide the full
-     * set of original positions for rendering or export.
+     * set of original positions for rendering or export. The target count is
+     * determined by GMR's mesh data model.
      *
      * @param indexRemapping Mapping from old indices to new indices
-     * @param targetVertexCount Expected number of vertices (typically 8 for cubes)
+     * @param targetVertexCount Expected number of vertices (data-driven from GMR)
      * @return Expanded vertex positions array, or original if no expansion needed
      */
     public float[] expandPositions(Map<Integer, Integer> indexRemapping, int targetVertexCount) {
@@ -100,14 +103,17 @@ public class MeshVertexDataTransformer {
     }
 
     /**
-     * Expand positions to standard cube format (8 vertices).
-     * Convenience method that uses the standard cube vertex count.
+     * Expand positions to a specific target format.
+     * This is a convenience method for backwards compatibility.
      *
      * @param indexRemapping Mapping from old indices to new indices
-     * @return Expanded vertex positions (24 floats for 8 vertices)
+     * @param targetVertexCount Target vertex count for expansion
+     * @return Expanded vertex positions array
+     * @deprecated Use {@link #expandPositions(Map, int)} directly with explicit target count from GMR
      */
-    public float[] expandToCubeFormat(Map<Integer, Integer> indexRemapping) {
-        return expandPositions(indexRemapping, CUBE_VERTEX_COUNT);
+    @Deprecated
+    public float[] expandToFormat(Map<Integer, Integer> indexRemapping, int targetVertexCount) {
+        return expandPositions(indexRemapping, targetVertexCount);
     }
 
     /**

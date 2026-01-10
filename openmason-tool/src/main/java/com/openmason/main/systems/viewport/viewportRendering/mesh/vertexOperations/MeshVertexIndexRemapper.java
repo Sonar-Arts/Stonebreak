@@ -17,6 +17,13 @@ import java.util.Map;
  * - Open/Closed: Could be extended for different remapping strategies
  * - Interface Segregation: Simple, focused interface
  * - Dependency Inversion: Works with generic collections
+ *
+ * Shape-Blind Design:
+ * This operation is data-driven and works with merge groups from GenericModelRenderer (GMR).
+ * GMR is the single source of truth for mesh topology. Index mappings are built
+ * from detected merge groups without assumptions about vertex counts or geometry.
+ *
+ * Data Flow: Merge groups → Index remapping → Updated vertex references
  */
 public class MeshVertexIndexRemapper {
 
