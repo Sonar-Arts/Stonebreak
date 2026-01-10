@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
  * Tracks which original face each triangle belongs to.
  * Preserves face IDs through subdivision operations.
  *
- * Supports arbitrary geometry - not locked to cube topology.
+ * Supports arbitrary geometry
  */
 public class TriangleFaceMapper implements ITriangleFaceMapper {
 
