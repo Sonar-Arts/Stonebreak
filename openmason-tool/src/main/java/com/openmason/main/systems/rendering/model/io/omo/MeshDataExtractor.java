@@ -10,6 +10,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Handles extraction and loading of mesh data for .OMO file serialization.
  *
+ * <p><strong>TEXTURE SYSTEM LIMITATION:</strong> Current version extracts/loads legacy
+ * texture data (raw texCoords + uvMode string). Future versions will support per-face
+ * texture atlas coordinates, transformations, and flexible mapping modes.
+ *
  * <p>This class is responsible for:
  * <ul>
  *   <li>Extracting current mesh state from a renderer for saving</li>

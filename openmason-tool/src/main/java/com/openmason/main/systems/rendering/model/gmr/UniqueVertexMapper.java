@@ -8,8 +8,7 @@ import java.util.*;
 
 /**
  * Implementation of IUniqueVertexMapper.
- * Maps between mesh vertices and unique geometric positions using spatial hashing for O(n) performance.
- * For a cube: 24 mesh vertices map to 8 unique positions (3 mesh vertices per corner).
+ * Maps between mesh vertices and unique geometric positions using spatial hashing
  */
 public class UniqueVertexMapper implements IUniqueVertexMapper {
 

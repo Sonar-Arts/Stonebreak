@@ -17,6 +17,10 @@ import java.util.zip.ZipOutputStream;
 /**
  * Serializer for Open Mason Object (.OMO) file format.
  *
+ * <p><strong>TEXTURE SYSTEM LIMITATION:</strong> Current version saves legacy texture data
+ * (raw texCoords + uvMode string). Future versions will support per-face texture atlas
+ * coordinates, transformations, and flexible mapping modes. Will require texture creator upgrade.
+ *
  * <p>Creates a ZIP-based container with:
  * <ul>
  *   <li>manifest.json - Model metadata, geometry, and mesh data</li>

@@ -18,6 +18,10 @@ import java.util.zip.ZipInputStream;
 /**
  * Deserializer for Open Mason Object (.OMO) file format.
  *
+ * <p><strong>TEXTURE SYSTEM LIMITATION:</strong> Current version loads legacy texture data
+ * (raw texCoords + uvMode string). Future versions will support per-face texture atlas
+ * coordinates, transformations, and flexible mapping modes. Will require texture creator upgrade.
+ *
  * <p>Reads ZIP-based .OMO files and reconstructs BlockModel instances.
  * The deserializer:
  * <ul>

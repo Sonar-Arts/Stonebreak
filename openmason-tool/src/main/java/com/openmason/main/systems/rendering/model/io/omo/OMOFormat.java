@@ -143,14 +143,23 @@ public final class OMOFormat {
     /**
      * Custom mesh data for subdivided/edited models (v2.0+).
      *
+     * <p><strong>TEXTURE SYSTEM LIMITATION:</strong> Current texture assignment uses raw
+     * texCoords array with simple uvMode string. Future versions will support:
+     * <ul>
+     *   <li>Per-face texture atlas coordinate specification</li>
+     *   <li>Texture transformation (rotation, scale, offset) per face</li>
+     *   <li>Texture wrapping and tiling modes</li>
+     *   <li>Support for arbitrary geometry (not cube-locked)</li>
+     * </ul>
+     *
      * <p>When present, this overrides the standard cube generation.
      * Contains all data needed to reconstruct the exact mesh state.
      *
      * @param vertices Vertex positions (x,y,z interleaved), null for standard cube
-     * @param texCoords Texture coordinates (u,v interleaved), null for standard cube
+     * @param texCoords Texture coordinates (u,v interleaved), null for standard cube - LEGACY: Will be replaced with per-face texture mapping
      * @param indices Triangle indices, null for non-indexed geometry
      * @param triangleToFaceId Face mapping for triangles (preserves original face ID through subdivision)
-     * @param uvMode UV mapping mode ("FLAT" or "CUBE_NET")
+     * @param uvMode UV mapping mode ("FLAT" or "CUBE_NET") - LEGACY: Cube-specific, will be replaced with flexible texture assignment
      */
     public record MeshData(
             float[] vertices,

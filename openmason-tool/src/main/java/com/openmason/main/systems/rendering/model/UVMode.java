@@ -3,12 +3,24 @@ package com.openmason.main.systems.rendering.model;
 /**
  * Defines UV mapping modes for texture application on 3D models.
  *
- * <p>Different texture formats require different UV coordinate layouts:
+ * <p><strong>DEPRECATION NOTICE:</strong> This enum contains hardcoded cube-specific assumptions.
+ * A future texture system will replace this with:
+ * <ul>
+ *   <li>Per-face texture atlas coordinate specification</li>
+ *   <li>Support for arbitrary geometry (not cube-locked)</li>
+ *   <li>Texture transformation (rotation, scale, offset)</li>
+ *   <li>Texture wrapping and tiling modes</li>
+ * </ul>
+ *
+ * <p>Current texture formats (LEGACY):
  * <ul>
  *   <li>CUBE_NET: 64x48 cube net layout with 6 faces arranged in cross pattern</li>
  *   <li>FLAT: Simple 0-1 UV mapping where entire texture is applied to each face</li>
  * </ul>
+ *
+ * @deprecated Will be replaced with flexible texture assignment system in future texture creator upgrade
  */
+@Deprecated
 public enum UVMode {
     /**
      * Cube net UV mapping for 64x48 (or proportionally scaled) textures.

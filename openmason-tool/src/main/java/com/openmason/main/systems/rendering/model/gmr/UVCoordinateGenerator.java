@@ -6,12 +6,27 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Default implementation of IUVCoordinateGenerator.
- * Generates UV coordinates for cube-based models with support for
- * flat (per-face) and cube net (unwrapped) layouts.
  *
- * Face order for standard 24-vertex cubes:
+ * <p><strong>DEPRECATION NOTICE:</strong> This class contains hardcoded cube-specific logic
+ * that should not exist. Cubes should receive no special treatment in texture assignment.
+ *
+ * <p><strong>Future Direction:</strong> Replace with a flexible texture assignment system that:
+ * <ul>
+ *   <li>Supports arbitrary geometry (not locked to cube topology)</li>
+ *   <li>Allows per-face texture atlas coordinate specification</li>
+ *   <li>Supports texture wrapping, tiling, and transformation</li>
+ *   <li>Eliminates hardcoded layout constants (CUBE_NET_FACE_BOUNDS, etc.)</li>
+ * </ul>
+ *
+ * <p>Current implementation generates UV coordinates for cube-based models with support for
+ * flat (per-face) and cube net (unwrapped) layouts. This is legacy functionality only.
+ *
+ * <p>Face order for standard 24-vertex cubes (LEGACY):
  * Front(0-3), Back(4-7), Left(8-11), Right(12-15), Top(16-19), Bottom(20-23)
+ *
+ * @deprecated Cube-specific implementation. Will be replaced with flexible texture system.
  */
+@Deprecated
 public class UVCoordinateGenerator implements IUVCoordinateGenerator {
 
     private static final Logger logger = LoggerFactory.getLogger(UVCoordinateGenerator.class);
@@ -50,7 +65,11 @@ public class UVCoordinateGenerator implements IUVCoordinateGenerator {
         {0, 0}  // TL: u=u1, v=v1
     };
 
+    /**
+     * @deprecated Assumes cube topology. Replace with per-face texture coordinate specification.
+     */
     @Override
+    @Deprecated
     public float[] generateUVs(UVMode mode, int vertexCount) {
         if (mode == null) {
             logger.warn("UV mode is null, defaulting to FLAT");
@@ -63,7 +82,12 @@ public class UVCoordinateGenerator implements IUVCoordinateGenerator {
         };
     }
 
+    /**
+     * @deprecated Hardcoded cube-specific UV generation. No special treatment for cubes
+     *             should exist. Replace with flexible per-face texture assignment.
+     */
     @Override
+    @Deprecated
     public float[] generateFlatUVs(int vertexCount) {
         float[] texCoords = new float[vertexCount * 2];
 
@@ -84,7 +108,13 @@ public class UVCoordinateGenerator implements IUVCoordinateGenerator {
         return texCoords;
     }
 
+    /**
+     * @deprecated Hardcoded cube-specific UV generation with Minecraft-style 64x48 layout.
+     *             No special treatment for cubes should exist. Replace with flexible
+     *             per-face texture assignment using atlas coordinates.
+     */
     @Override
+    @Deprecated
     public float[] generateCubeNetUVs(int vertexCount) {
         float[] texCoords = new float[vertexCount * 2];
 
@@ -111,7 +141,12 @@ public class UVCoordinateGenerator implements IUVCoordinateGenerator {
         return texCoords;
     }
 
+    /**
+     * @deprecated Hardcoded cube face bounds. No special treatment for cubes should exist.
+     *             Replace with texture atlas coordinate lookup for arbitrary faces.
+     */
     @Override
+    @Deprecated
     public float[] getCubeNetFaceBounds(int faceIndex) {
         if (faceIndex < 0 || faceIndex >= CUBE_NET_FACE_BOUNDS.length) {
             return null;
@@ -124,8 +159,13 @@ public class UVCoordinateGenerator implements IUVCoordinateGenerator {
      * Uses the same layout as generateCubeNetUVs but returns the specific
      * UV array format expected by ModelPart (matching vertex order).
      *
+     * <p><strong>LEGACY:</strong> Hardcoded 24-vertex cube layout. No special treatment
+     * for cubes should exist in future texture systems.
+     *
      * @return UV coordinates array for 24-vertex cube
+     * @deprecated Cube-specific method. Replace with flexible texture coordinate specification.
      */
+    @Deprecated
     public float[] generateCubeNetTexCoords() {
         return new float[] {
             // FRONT face UVs (vertices 0-3)
@@ -170,8 +210,13 @@ public class UVCoordinateGenerator implements IUVCoordinateGenerator {
      * Generate flat UV coordinates for ModelPart creation.
      * Each face maps to the full 0-1 UV range.
      *
+     * <p><strong>LEGACY:</strong> Hardcoded 24-vertex cube layout. No special treatment
+     * for cubes should exist in future texture systems.
+     *
      * @return UV coordinates array for 24-vertex cube
+     * @deprecated Cube-specific method. Replace with flexible texture coordinate specification.
      */
+    @Deprecated
     public float[] generateFlatTexCoords() {
         return new float[] {
             // FRONT face UVs (vertices 0-3)
