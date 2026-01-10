@@ -20,17 +20,26 @@ import static org.lwjgl.opengl.GL15.*;
  * KISS Principle: Simple interleaved buffer format (position + color).
  * DRY Principle: All buffer creation logic centralized in one place.
  * YAGNI Principle: Only implements what's needed for edge rendering.
+ *
+ * Shape-Blind Design:
+ * This operation is data-driven and operates on edge data provided by GenericModelRenderer (GMR).
+ * GMR is the single source of truth for mesh topology and edge connectivity.
+ * Edge structure (endpoints per edge) is determined by GMR's data model.
+ *
+ * Data Flow: GMR extracts edge data → MeshManager operations → GPU buffer updates
  */
 public class MeshEdgeBufferUpdater {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshEdgeBufferUpdater.class);
 
-    // Constants for data layout
-    private static final int FLOATS_PER_EDGE = 6;           // 2 endpoints × 3 coords
+    // Constants for data layout (reflects GMR's edge data format)
+    // Note: These constants represent the current data format from GMR.
+    // Edge topology is determined by GMR's mesh data model.
     private static final int FLOATS_PER_POSITION = 3;       // x, y, z
     private static final int FLOATS_PER_COLOR = 3;          // r, g, b
     private static final int FLOATS_PER_VERTEX = FLOATS_PER_POSITION + FLOATS_PER_COLOR;
-    private static final int VERTICES_PER_EDGE = 2;         // 2 endpoints per edge
+    private static final int VERTICES_PER_EDGE = 2;         // Edge endpoints (data-driven from GMR)
+    private static final int FLOATS_PER_EDGE = VERTICES_PER_EDGE * FLOATS_PER_POSITION; // Endpoint coords per edge
 
     /**
      * Result of buffer update operation.
@@ -57,12 +66,13 @@ public class MeshEdgeBufferUpdater {
     /**
      * Update the VBO with interleaved vertex data from edge positions.
      * Creates vertex data with position and color attributes for each endpoint.
+     * This method operates on edge data provided by GMR without assuming specific topology.
      *
      * @param vbo The OpenGL VBO handle to update
-     * @param edgePositions Raw edge position data [x1,y1,z1, x2,y2,z2, ...] (2 endpoints per edge)
+     * @param edgePositions Raw edge position data from GMR [x1,y1,z1, x2,y2,z2, ...] (endpoints per edge)
      * @param edgeColor The color to apply to all edges
      * @return UpdateResult containing edge count and positions, or null if input invalid
-     * @throws IllegalArgumentException if edgePositions array length is not a multiple of 6
+     * @throws IllegalArgumentException if edgePositions array length doesn't match expected edge format
      */
     public UpdateResult updateBuffer(int vbo, float[] edgePositions, Vector3f edgeColor) {
         if (edgePositions == null || edgePositions.length == 0) {
@@ -72,7 +82,8 @@ public class MeshEdgeBufferUpdater {
 
         if (edgePositions.length % FLOATS_PER_EDGE != 0) {
             throw new IllegalArgumentException(
-                "Edge positions array length must be multiple of 6 (got " + edgePositions.length + ")"
+                "Edge positions array length must be multiple of " + FLOATS_PER_EDGE +
+                " (got " + edgePositions.length + "). Data format mismatch with GMR."
             );
         }
 
@@ -103,10 +114,11 @@ public class MeshEdgeBufferUpdater {
     /**
      * Build interleaved vertex data from edge positions and color.
      * Creates array with format: [x,y,z,r,g,b, x,y,z,r,g,b, ...] for each endpoint.
+     * Processes edge data from GMR into GPU-ready format.
      *
-     * @param edgePositions Raw edge positions [x1,y1,z1, x2,y2,z2, ...]
+     * @param edgePositions Raw edge positions from GMR [x1,y1,z1, x2,y2,z2, ...]
      * @param edgeColor Color to apply to all vertices
-     * @return Interleaved vertex data array
+     * @return Interleaved vertex data array ready for GPU upload
      */
     private float[] buildInterleavedVertexData(float[] edgePositions, Vector3f edgeColor) {
         int vertexCount = (edgePositions.length / FLOATS_PER_POSITION);

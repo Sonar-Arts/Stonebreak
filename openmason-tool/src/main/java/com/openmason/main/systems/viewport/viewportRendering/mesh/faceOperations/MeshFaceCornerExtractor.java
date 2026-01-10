@@ -7,17 +7,6 @@ import org.slf4j.LoggerFactory;
 /**
  * Single Responsibility: Extracts face corner positions from face position arrays.
  * This class encapsulates the logic of retrieving vertex positions for face corners.
- *
- * SOLID Principles:
- * - Single Responsibility: Only handles face corner position extraction
- * - Open/Closed: Can be extended for different extraction strategies
- * - Liskov Substitution: Could be abstracted to ICornerExtractor if needed
- * - Interface Segregation: Focused interface for corner extraction
- * - Dependency Inversion: Depends on abstractions (arrays, Vector3f) not concrete implementations
- *
- * KISS Principle: Simple array indexing and Vector3f creation.
- * DRY Principle: All face corner extraction logic centralized in one place.
- * YAGNI Principle: Only implements what's needed for corner position retrieval.
  */
 public class MeshFaceCornerExtractor {
 

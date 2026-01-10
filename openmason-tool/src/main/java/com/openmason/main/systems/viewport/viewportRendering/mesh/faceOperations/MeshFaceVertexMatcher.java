@@ -7,17 +7,6 @@ import org.slf4j.LoggerFactory;
 /**
  * Single Responsibility: Matches vertex positions using epsilon-based comparison.
  * This class encapsulates the logic of finding which unique vertex matches a given position.
- *
- * SOLID Principles:
- * - Single Responsibility: Only handles vertex position matching
- * - Open/Closed: Can be extended for different matching strategies (e.g., grid-based)
- * - Liskov Substitution: Could be abstracted to IVertexMatcher if needed
- * - Interface Segregation: Focused interface for position matching
- * - Dependency Inversion: Depends on abstractions (Vector3f) not concrete implementations
- *
- * KISS Principle: Simple linear search with epsilon comparison.
- * DRY Principle: All vertex matching logic centralized in one place.
- * YAGNI Principle: Only implements what's needed - no complex spatial indexing.
  */
 public class MeshFaceVertexMatcher {
 

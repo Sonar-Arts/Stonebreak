@@ -18,12 +18,31 @@ import org.slf4j.LoggerFactory;
  * KISS Principle: Simple position-matching algorithm using epsilon comparison.
  * DRY Principle: All edge mapping logic centralized in one place.
  * YAGNI Principle: Only implements what's needed for edge-to-vertex mapping.
+ *
+ * Shape-Blind Design:
+ * This operation is data-driven and operates on edge data provided by GenericModelRenderer (GMR).
+ * GMR is the single source of truth for mesh topology and edge connectivity.
+ * Edge structure (vertices per edge) is determined by GMR's data model.
+ *
+ * Data Flow: GMR extracts edge data → MeshManager operations → Mapping construction
  */
 public class MeshEdgeMappingBuilder {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshEdgeMappingBuilder.class);
     private static final int POSITION_COMPONENTS = 3; // x, y, z
-    private static final int FLOATS_PER_EDGE = 6; // 2 endpoints × 3 coordinates
+
+    /**
+     * Number of floats per edge in GMR's current data format.
+     * This represents edge endpoints × 3 coordinates (data-driven from GMR).
+     */
+    private static final int FLOATS_PER_EDGE = 6;
+
+    /**
+     * Number of vertices per edge in GMR's current data format.
+     * Edge topology is determined by GMR's data model.
+     */
+    private static final int VERTICES_PER_EDGE = FLOATS_PER_EDGE / POSITION_COMPONENTS;
+
     private static final int MIN_VERTEX_ARRAY_LENGTH = 3; // Minimum one vertex
     private static final int NO_EDGE_SELECTED = -1;
 
@@ -42,13 +61,15 @@ public class MeshEdgeMappingBuilder {
      * Build edge-to-vertex mapping from unique vertex positions.
      * Creates a mapping that identifies which unique vertices each edge connects.
      *
-     * The algorithm matches edge endpoints to unique vertices using epsilon-based
+     * The algorithm matches edge vertices to unique vertices using epsilon-based
      * floating-point comparison for robustness against numerical precision issues.
      *
-     * @param edgePositions Array of edge positions [x1,y1,z1, x2,y2,z2, ...]
+     * The number of vertices per edge is determined by GMR's data model.
+     *
+     * @param edgePositions Array of edge positions from GMR [x1,y1,z1, x2,y2,z2, ...]
      * @param edgeCount Number of edges
      * @param uniqueVertexPositions Array of unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
-     * @return 2D array mapping edge index to vertex indices [edgeIdx][0=v1, 1=v2]
+     * @return 2D array mapping edge index to vertex indices [edgeIdx][vertex indices...]
      */
     public int[][] buildMapping(float[] edgePositions, int edgeCount, float[] uniqueVertexPositions) {
         // Validate inputs
@@ -57,36 +78,30 @@ public class MeshEdgeMappingBuilder {
         }
 
         int uniqueVertexCount = uniqueVertexPositions.length / POSITION_COMPONENTS;
-        int[][] mapping = new int[edgeCount][2];
+        int[][] mapping = new int[edgeCount][VERTICES_PER_EDGE];
 
         // For each edge, find which unique vertices it connects
         for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
             int edgePosIdx = edgeIdx * FLOATS_PER_EDGE;
 
-            // Edge endpoint 1
-            Vector3f endpoint1 = new Vector3f(
-                edgePositions[edgePosIdx + 0],
-                edgePositions[edgePosIdx + 1],
-                edgePositions[edgePosIdx + 2]
-            );
+            // Extract and match all vertices for this edge (based on GMR's data format)
+            for (int vertexInEdge = 0; vertexInEdge < VERTICES_PER_EDGE; vertexInEdge++) {
+                int posOffset = edgePosIdx + (vertexInEdge * POSITION_COMPONENTS);
 
-            // Edge endpoint 2
-            Vector3f endpoint2 = new Vector3f(
-                edgePositions[edgePosIdx + 3],
-                edgePositions[edgePosIdx + 4],
-                edgePositions[edgePosIdx + 5]
-            );
+                Vector3f edgeVertex = new Vector3f(
+                    edgePositions[posOffset + 0],
+                    edgePositions[posOffset + 1],
+                    edgePositions[posOffset + 2]
+                );
 
-            // Find matching unique vertices
-            int vertexIndex1 = findMatchingVertex(endpoint1, uniqueVertexPositions, uniqueVertexCount);
-            int vertexIndex2 = findMatchingVertex(endpoint2, uniqueVertexPositions, uniqueVertexCount);
+                // Find matching unique vertex
+                int vertexIndex = findMatchingVertex(edgeVertex, uniqueVertexPositions, uniqueVertexCount);
+                mapping[edgeIdx][vertexInEdge] = vertexIndex;
 
-            mapping[edgeIdx][0] = vertexIndex1;
-            mapping[edgeIdx][1] = vertexIndex2;
-
-            if (vertexIndex1 == NO_EDGE_SELECTED || vertexIndex2 == NO_EDGE_SELECTED) {
-                logger.warn("Edge {} has unmatched endpoints: v1={}, v2={}",
-                    edgeIdx, vertexIndex1, vertexIndex2);
+                if (vertexIndex == NO_EDGE_SELECTED) {
+                    logger.warn("Edge {} vertex {} has no matching unique vertex",
+                        edgeIdx, vertexInEdge);
+                }
             }
         }
 
@@ -112,14 +127,14 @@ public class MeshEdgeMappingBuilder {
     }
 
     /**
-     * Find the unique vertex index that matches the given endpoint position.
+     * Find the unique vertex index that matches the given edge vertex position.
      *
-     * @param endpoint Edge endpoint position
+     * @param edgeVertex Edge vertex position from GMR data
      * @param uniqueVertexPositions Array of unique vertex positions
      * @param uniqueVertexCount Number of unique vertices
      * @return Matching vertex index, or -1 if no match found
      */
-    private int findMatchingVertex(Vector3f endpoint, float[] uniqueVertexPositions, int uniqueVertexCount) {
+    private int findMatchingVertex(Vector3f edgeVertex, float[] uniqueVertexPositions, int uniqueVertexCount) {
         for (int vIdx = 0; vIdx < uniqueVertexCount; vIdx++) {
             int vPosIdx = vIdx * POSITION_COMPONENTS;
             Vector3f uniqueVertex = new Vector3f(
@@ -128,7 +143,7 @@ public class MeshEdgeMappingBuilder {
                 uniqueVertexPositions[vPosIdx + 2]
             );
 
-            if (endpoint.distance(uniqueVertex) < vertexMatchEpsilon) {
+            if (edgeVertex.distance(uniqueVertex) < vertexMatchEpsilon) {
                 return vIdx;
             }
         }

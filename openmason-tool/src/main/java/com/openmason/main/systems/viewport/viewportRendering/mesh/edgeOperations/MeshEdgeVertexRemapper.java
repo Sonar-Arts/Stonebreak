@@ -19,14 +19,20 @@ import java.util.Map;
  * KISS Principle: Simple mapping lookup and replacement algorithm.
  * DRY Principle: All remapping logic centralized in one place.
  * YAGNI Principle: Only implements what's needed for edge index remapping.
+ *
+ * Shape-Blind Design:
+ * This operation is data-driven and works with edge-to-vertex mappings from GenericModelRenderer (GMR).
+ * GMR is the single source of truth for mesh topology and edge connectivity.
+ * Edge structure (vertices per edge) is determined by GMR's data model.
+ *
+ * Data Flow: GMR provides mappings → MeshManager operations → Remapping after vertex changes
  */
 public class MeshEdgeVertexRemapper {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshEdgeVertexRemapper.class);
 
+    /** Sentinel value indicating an invalid/unmatched vertex index. */
     private static final int INVALID_VERTEX_INDEX = -1;
-    private static final int VERTEX_1_INDEX = 0;
-    private static final int VERTEX_2_INDEX = 1;
 
     /**
      * Result of remapping operation.
@@ -64,7 +70,10 @@ public class MeshEdgeVertexRemapper {
      * Remap edge vertex indices using the provided index mapping.
      * Updates the edge-to-vertex mapping array in-place with new vertex indices.
      *
-     * @param edgeToVertexMapping 2D array mapping edge index to vertex indices [edgeIdx][0=v1, 1=v2]
+     * This method works with edge mappings from GMR where vertex counts per edge
+     * are determined by the data model.
+     *
+     * @param edgeToVertexMapping 2D array mapping edge index to vertex indices arrays [edgeIdx][vertex indices...]
      * @param edgeCount Total number of edges
      * @param oldToNewIndexMap Mapping from old vertex indices to new vertex indices
      * @return RemapResult containing statistics about the remapping operation, or null if input invalid
@@ -80,29 +89,42 @@ public class MeshEdgeVertexRemapper {
 
         // Process each edge
         for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
-            int oldVertexIndex1 = edgeToVertexMapping[edgeIdx][VERTEX_1_INDEX];
-            int oldVertexIndex2 = edgeToVertexMapping[edgeIdx][VERTEX_2_INDEX];
-
-            // Skip edges with invalid indices
-            if (isInvalidIndex(oldVertexIndex1, oldVertexIndex2)) {
+            int[] oldVertexIndices = edgeToVertexMapping[edgeIdx];
+            if (oldVertexIndices == null) {
                 skippedEdges++;
                 continue;
             }
 
-            // Attempt to remap both vertices
-            Integer newVertexIndex1 = oldToNewIndexMap.get(oldVertexIndex1);
-            Integer newVertexIndex2 = oldToNewIndexMap.get(oldVertexIndex2);
+            // Check if any vertices in this edge have invalid indices
+            if (hasInvalidIndex(oldVertexIndices)) {
+                skippedEdges++;
+                continue;
+            }
 
-            if (canRemap(newVertexIndex1, newVertexIndex2)) {
+            // Attempt to remap all vertices in this edge (based on GMR's data model)
+            boolean allRemapped = true;
+            int[] newVertexIndices = new int[oldVertexIndices.length];
+
+            for (int vertexInEdge = 0; vertexInEdge < oldVertexIndices.length; vertexInEdge++) {
+                Integer newIndex = oldToNewIndexMap.get(oldVertexIndices[vertexInEdge]);
+                if (newIndex == null) {
+                    allRemapped = false;
+                    break;
+                }
+                newVertexIndices[vertexInEdge] = newIndex;
+            }
+
+            if (allRemapped) {
                 // Update mapping with new indices
-                edgeToVertexMapping[edgeIdx][VERTEX_1_INDEX] = newVertexIndex1;
-                edgeToVertexMapping[edgeIdx][VERTEX_2_INDEX] = newVertexIndex2;
+                for (int vertexInEdge = 0; vertexInEdge < oldVertexIndices.length; vertexInEdge++) {
+                    edgeToVertexMapping[edgeIdx][vertexInEdge] = newVertexIndices[vertexInEdge];
+                }
                 remappedEdges++;
 
-                logRemappedEdge(edgeIdx, oldVertexIndex1, oldVertexIndex2, newVertexIndex1, newVertexIndex2);
+                logRemappedEdge(edgeIdx, oldVertexIndices, newVertexIndices);
             } else {
                 // Log warning for unmapped vertices
-                logUnmappedEdge(edgeIdx, oldVertexIndex1, oldVertexIndex2);
+                logUnmappedEdge(edgeIdx, oldVertexIndices);
                 skippedEdges++;
             }
         }
@@ -141,41 +163,50 @@ public class MeshEdgeVertexRemapper {
     }
 
     /**
-     * Check if either vertex index is invalid.
+     * Check if any vertex index in the array is invalid.
      *
-     * @param vertexIndex1 First vertex index
-     * @param vertexIndex2 Second vertex index
-     * @return true if either index is invalid
+     * @param vertexIndices Array of vertex indices to check
+     * @return true if any index is invalid
      */
-    private boolean isInvalidIndex(int vertexIndex1, int vertexIndex2) {
-        return vertexIndex1 == INVALID_VERTEX_INDEX || vertexIndex2 == INVALID_VERTEX_INDEX;
-    }
-
-    /**
-     * Check if both new vertex indices are valid for remapping.
-     *
-     * @param newVertexIndex1 New index for first vertex
-     * @param newVertexIndex2 New index for second vertex
-     * @return true if both indices are non-null
-     */
-    private boolean canRemap(Integer newVertexIndex1, Integer newVertexIndex2) {
-        return newVertexIndex1 != null && newVertexIndex2 != null;
+    private boolean hasInvalidIndex(int[] vertexIndices) {
+        for (int index : vertexIndices) {
+            if (index == INVALID_VERTEX_INDEX) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
      * Log details of a successfully remapped edge.
      */
-    private void logRemappedEdge(int edgeIdx, int oldV1, int oldV2, int newV1, int newV2) {
-        logger.trace("Remapped edge {} vertices: ({}, {}) -> ({}, {})",
-                edgeIdx, oldV1, oldV2, newV1, newV2);
+    private void logRemappedEdge(int edgeIdx, int[] oldIndices, int[] newIndices) {
+        if (logger.isTraceEnabled()) {
+            logger.trace("Remapped edge {} vertices: {} -> {}",
+                    edgeIdx, arrayToString(oldIndices), arrayToString(newIndices));
+        }
     }
 
     /**
      * Log warning for an edge with vertices not in the remap.
      */
-    private void logUnmappedEdge(int edgeIdx, int v1, int v2) {
-        logger.warn("Edge {} has vertices not in remap: v1={}, v2={}",
-                edgeIdx, v1, v2);
+    private void logUnmappedEdge(int edgeIdx, int[] vertexIndices) {
+        logger.warn("Edge {} has vertices not in remap: {}",
+                edgeIdx, arrayToString(vertexIndices));
+    }
+
+    /**
+     * Convert an int array to a readable string format.
+     */
+    private String arrayToString(int[] array) {
+        if (array == null) return "null";
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < array.length; i++) {
+            sb.append(array[i]);
+            if (i < array.length - 1) sb.append(", ");
+        }
+        sb.append("]");
+        return sb.toString();
     }
 
     /**

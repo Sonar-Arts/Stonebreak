@@ -21,8 +21,15 @@ import static org.lwjgl.opengl.GL15.*;
  * DRY Principle: All edge update logic centralized in one place.
  * YAGNI Principle: Only implements what's needed for edge position updates.
  *
+ * Shape-Blind Design:
+ * This operation is data-driven and operates on edge data provided by GenericModelRenderer (GMR).
+ * GMR is the single source of truth for mesh topology and edge connectivity.
+ * Edge structure (vertices per edge) is determined by GMR's data model.
+ *
  * Thread Safety: This class is stateless and thread-safe.
  * However, OpenGL calls must be made from the OpenGL context thread.
+ *
+ * Data Flow: GMR extracts edge data → MeshManager operations → Position updates → GPU
  */
 public class MeshEdgePositionUpdater {
 
@@ -31,17 +38,23 @@ public class MeshEdgePositionUpdater {
     /** Position matching tolerance for floating-point comparison. */
     private static final float POSITION_EPSILON = 0.0001f;
 
-    /** Number of float values per endpoint position (x, y, z). */
+    /** Number of float values per vertex position (x, y, z). */
     private static final int FLOATS_PER_ENDPOINT = 3;
 
     /** Number of float values per vertex in VBO (x, y, z, r, g, b interleaved). */
     private static final int FLOATS_PER_VERTEX_DATA = 6;
 
-    /** Number of float values per edge in position array (2 endpoints × 3 coords). */
+    /**
+     * Number of float values per edge in position array from GMR.
+     * Reflects edge vertices × 3 coords (data-driven from GMR).
+     */
     private static final int FLOATS_PER_EDGE_POSITIONS = 6;
 
-    /** Number of endpoints per edge. */
-    private static final int ENDPOINTS_PER_EDGE = 2;
+    /**
+     * Number of vertices per edge in GMR's current data format.
+     * Edge topology is determined by GMR's data model.
+     */
+    private static final int ENDPOINTS_PER_EDGE = FLOATS_PER_EDGE_POSITIONS / FLOATS_PER_ENDPOINT;
 
     /**
      * Result of a position update operation.
@@ -89,15 +102,17 @@ public class MeshEdgePositionUpdater {
     }
 
     /**
-     * Updates all edge endpoints that match a dragged vertex position.
-     * Searches through ALL edge endpoints and updates any that were at the old vertex position
+     * Updates all edge vertices that match a dragged vertex position.
+     * Searches through ALL edge vertices and updates any that were at the old vertex position
      * using epsilon-based floating-point comparison.
+     *
+     * This method operates on edge data from GMR without assuming specific topology.
      *
      * Warning: This method may update unintended edges if vertices share
      * the same position. For precise updates, use updateByIndices instead.
      *
      * @param vbo the OpenGL VBO handle for the edge buffer
-     * @param edgePositions edge position array in format [x1,y1,z1, x2,y2,z2, ...]
+     * @param edgePositions edge position array from GMR in format [x1,y1,z1, x2,y2,z2, ...]
      * @param edgeCount the total number of edges in the array
      * @param oldPosition the original position of the vertex before dragging
      * @param newPosition the new position of the vertex after dragging
@@ -119,7 +134,7 @@ public class MeshEdgePositionUpdater {
             int updatedCount = 0;
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-            // Search through ALL edge endpoints (2 endpoints per edge)
+            // Search through ALL edge vertices (vertices per edge from GMR)
             int totalEndpoints = edgeCount * ENDPOINTS_PER_EDGE;
             for (int endpointIdx = 0; endpointIdx < totalEndpoints; endpointIdx++) {
                 int posIndex = endpointIdx * FLOATS_PER_ENDPOINT;
@@ -168,12 +183,15 @@ public class MeshEdgePositionUpdater {
      * This is a convenience method for single-vertex updates (e.g., vertex dragging).
      * It is more reliable than position-based matching, especially after subdivision.
      *
+     * This method works with edge data from GMR where vertex counts per edge
+     * are determined by the data model.
+     *
      * Prerequisites: The edge-to-vertex mapping must be built before calling this method.
      *
      * @param vbo the OpenGL VBO handle for the edge buffer
-     * @param edgePositions edge position array in format [x1,y1,z1, x2,y2,z2, ...]
+     * @param edgePositions edge position array from GMR in format [x1,y1,z1, x2,y2,z2, ...]
      * @param edgeCount the total number of edges in the array
-     * @param edgeToVertexMapping 2D array mapping edge indices to pairs of vertex indices
+     * @param edgeToVertexMapping 2D array mapping edge indices to vertex indices arrays
      * @param vertexIndex the unique vertex index that was moved
      * @param newPosition the new position for the vertex
      * @return UpdateResult containing update statistics, or null if input is invalid
@@ -191,12 +209,15 @@ public class MeshEdgePositionUpdater {
      * Only updates edges that connect to the specified unique vertex indices,
      * providing precise control and preventing vertex unification bugs.
      *
+     * This method works with edge data from GMR where vertex counts per edge
+     * are determined by the data model.
+     *
      * Prerequisites: The edge-to-vertex mapping must be built before calling this method.
      *
      * @param vbo the OpenGL VBO handle for the edge buffer
-     * @param edgePositions edge position array in format [x1,y1,z1, x2,y2,z2, ...]
+     * @param edgePositions edge position array from GMR in format [x1,y1,z1, x2,y2,z2, ...]
      * @param edgeCount the total number of edges in the array
-     * @param edgeToVertexMapping 2D array mapping edge indices to pairs of vertex indices
+     * @param edgeToVertexMapping 2D array mapping edge indices to vertex indices arrays
      * @param vertexIndex1 the first unique vertex index that was moved
      * @param newPosition1 the new position for the first vertex
      * @param vertexIndex2 the second unique vertex index that was moved
@@ -228,56 +249,47 @@ public class MeshEdgePositionUpdater {
 
             // Scan all edges and update those connected to either vertex
             for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
-                int v1 = edgeToVertexMapping[edgeIdx][0];
-                int v2 = edgeToVertexMapping[edgeIdx][1];
-
-                // Check if this edge connects to either of the moved vertices
-                Vector3f newEndpoint1 = null;
-                Vector3f newEndpoint2 = null;
-                boolean endpoint1Updated = false;
-                boolean endpoint2Updated = false;
-
-                // Determine new positions for this edge's endpoints
-                if (v1 == vertexIndex1) {
-                    newEndpoint1 = newPosition1;
-                    endpoint1Updated = true;
-                } else if (v1 == vertexIndex2) {
-                    newEndpoint1 = newPosition2;
-                    endpoint1Updated = true;
+                int[] edgeVertexIndices = edgeToVertexMapping[edgeIdx];
+                if (edgeVertexIndices == null) {
+                    continue;
                 }
 
-                if (v2 == vertexIndex1) {
-                    newEndpoint2 = newPosition1;
-                    endpoint2Updated = true;
-                } else if (v2 == vertexIndex2) {
-                    newEndpoint2 = newPosition2;
-                    endpoint2Updated = true;
+                boolean edgeUpdated = false;
+                int edgePosIdx = edgeIdx * FLOATS_PER_EDGE_POSITIONS;
+
+                // Check all vertices in this edge (based on GMR's data model)
+                for (int vertexInEdge = 0; vertexInEdge < edgeVertexIndices.length; vertexInEdge++) {
+                    int vertexIndex = edgeVertexIndices[vertexInEdge];
+                    Vector3f newPosition = null;
+
+                    // Determine if this vertex needs updating
+                    if (vertexIndex == vertexIndex1) {
+                        newPosition = newPosition1;
+                    } else if (vertexIndex == vertexIndex2) {
+                        newPosition = newPosition2;
+                    }
+
+                    // Update this vertex if it matches one of the moved vertices
+                    if (newPosition != null) {
+                        // Calculate position in edge position array
+                        int posOffset = edgePosIdx + (vertexInEdge * FLOATS_PER_ENDPOINT);
+
+                        // Calculate endpoint index in VBO
+                        int endpointIdx = edgeIdx * ENDPOINTS_PER_EDGE + vertexInEdge;
+
+                        // Update in GPU buffer
+                        updateEndpointInBuffer(vbo, endpointIdx, newPosition);
+
+                        // Update in CPU array
+                        edgePositions[posOffset + 0] = newPosition.x;
+                        edgePositions[posOffset + 1] = newPosition.y;
+                        edgePositions[posOffset + 2] = newPosition.z;
+
+                        edgeUpdated = true;
+                    }
                 }
 
-                // Update this edge if either endpoint changed
-                if (endpoint1Updated || endpoint2Updated) {
-                    int edgePosIdx = edgeIdx * FLOATS_PER_EDGE_POSITIONS;
-
-                    // Update endpoint 1 if changed
-                    if (endpoint1Updated && newEndpoint1 != null) {
-                        int endpointIdx1 = edgeIdx * ENDPOINTS_PER_EDGE; // First endpoint of this edge
-                        updateEndpointInBuffer(vbo, endpointIdx1, newEndpoint1);
-
-                        edgePositions[edgePosIdx + 0] = newEndpoint1.x;
-                        edgePositions[edgePosIdx + 1] = newEndpoint1.y;
-                        edgePositions[edgePosIdx + 2] = newEndpoint1.z;
-                    }
-
-                    // Update endpoint 2 if changed
-                    if (endpoint2Updated && newEndpoint2 != null) {
-                        int endpointIdx2 = edgeIdx * ENDPOINTS_PER_EDGE + 1; // Second endpoint of this edge
-                        updateEndpointInBuffer(vbo, endpointIdx2, newEndpoint2);
-
-                        edgePositions[edgePosIdx + 3] = newEndpoint2.x;
-                        edgePositions[edgePosIdx + 4] = newEndpoint2.y;
-                        edgePositions[edgePosIdx + 5] = newEndpoint2.z;
-                    }
-
+                if (edgeUpdated) {
                     updatedCount++;
                 }
             }

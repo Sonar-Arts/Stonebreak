@@ -8,38 +8,38 @@ import org.slf4j.LoggerFactory;
  * Single Responsibility: Queries geometric data about edges.
  * This class retrieves edge endpoint positions and vertex indices.
  *
- * SOLID Principles:
- * - Single Responsibility: Only handles edge geometry queries
- * - Open/Closed: Can be extended for additional query types
- * - Liskov Substitution: Could be abstracted to IEdgeGeometryQuery if needed
- * - Interface Segregation: Focused interface for geometry queries
- * - Dependency Inversion: Depends on abstractions (arrays) not concrete implementations
- *
- * KISS Principle: Simple array indexing and bounds checking.
- * DRY Principle: All edge query logic centralized in one place.
- * YAGNI Principle: Only implements what's needed for edge geometry queries.
+ * Shape-Blind Design:
+ * This operation is data-driven and queries edge data provided by GenericModelRenderer (GMR).
+ * GMR is the single source of truth for mesh topology and edge connectivity.
+ * Edge structure (endpoints per edge) is determined by GMR's data model.
  *
  * Thread Safety: This class is stateless and thread-safe.
  * All data is passed as parameters and no state is maintained.
+ *
+ * Data Flow: GMR extracts edge data → MeshManager operations → Query operations
  */
 public class MeshEdgeGeometryQuery {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshEdgeGeometryQuery.class);
 
-    /** Number of float values per edge (2 endpoints × 3 coordinates). */
+    /**
+     * Number of float values per edge in GMR's data format.
+     * This represents the current edge data structure from GMR (endpoints × 3 coordinates).
+     */
     private static final int FLOATS_PER_EDGE = 6;
 
     /**
      * Gets the endpoint positions of an edge.
-     * Extracts the 3D coordinates of both endpoints for the specified edge.
+     * Extracts the 3D coordinates of all endpoints for the specified edge from GMR data.
      *
-     * Returns a two-element array containing the start and end points of the edge.
+     * Returns an array containing the endpoint positions of the edge.
      * Each point is a Vector3f with x, y, z coordinates.
+     * The number and structure of endpoints is determined by GMR's data model.
      *
      * @param edgeIndex the index of the edge to query (0-based)
-     * @param edgePositions array of edge positions in format [x1,y1,z1, x2,y2,z2, ...]
+     * @param edgePositions array of edge positions from GMR in format [x1,y1,z1, x2,y2,z2, ...]
      * @param edgeCount the total number of edges in the array
-     * @return array containing [endpoint1, endpoint2], or null if the index is invalid
+     * @return array containing edge endpoints, or null if the index is invalid
      *         or the position data is unavailable
      */
     public Vector3f[] getEdgeEndpoints(int edgeIndex, float[] edgePositions, int edgeCount) {
@@ -65,14 +65,13 @@ public class MeshEdgeGeometryQuery {
             return null;
         }
 
-        // Extract endpoint 1
+        // Extract endpoints based on GMR's current edge data format
         Vector3f point1 = new Vector3f(
             edgePositions[posIndex + 0],
             edgePositions[posIndex + 1],
             edgePositions[posIndex + 2]
         );
 
-        // Extract endpoint 2
         Vector3f point2 = new Vector3f(
             edgePositions[posIndex + 3],
             edgePositions[posIndex + 4],
@@ -90,9 +89,12 @@ public class MeshEdgeGeometryQuery {
      * for operations like edge translation that need to update connected vertices.
      * Returns a copy of the indices to prevent external modification of the mapping.
      *
+     * The number of vertices per edge is determined by GMR's data model and may vary
+     * based on the mesh topology.
+     *
      * @param edgeIndex the edge index to query (0-based)
-     * @param edgeToVertexMapping 2D array mapping edge indices to pairs of vertex indices
-     * @return array of [vertexIndex1, vertexIndex2], or null if the mapping is unavailable
+     * @param edgeToVertexMapping 2D array mapping edge indices to vertex indices arrays
+     * @return array of vertex indices for this edge, or null if the mapping is unavailable
      *         or the edge index is invalid
      */
     public int[] getEdgeVertexIndices(int edgeIndex, int[][] edgeToVertexMapping) {
@@ -109,10 +111,17 @@ public class MeshEdgeGeometryQuery {
             return null;
         }
 
+        // Get the vertex indices for this edge
+        int[] edgeVertices = edgeToVertexMapping[edgeIndex];
+        if (edgeVertices == null) {
+            logger.trace("No vertex mapping found for edge {}", edgeIndex);
+            return null;
+        }
+
         // Return copy to prevent external modification
-        return new int[] {
-            edgeToVertexMapping[edgeIndex][0],
-            edgeToVertexMapping[edgeIndex][1]
-        };
+        // Copy all vertices, not assuming a fixed count
+        int[] copy = new int[edgeVertices.length];
+        System.arraycopy(edgeVertices, 0, copy, 0, edgeVertices.length);
+        return copy;
     }
 }
