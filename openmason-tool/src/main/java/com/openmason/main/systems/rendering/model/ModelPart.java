@@ -12,13 +12,15 @@ import org.joml.Vector3f;
  * @param vertices Vertex positions array (x, y, z interleaved)
  * @param texCoords Texture coordinates array (u, v interleaved)
  * @param indices Index array for indexed drawing (null for non-indexed)
+ * @param trianglesPerFace Topology hint: triangles per logical face (2 for quads, 1 for triangles, null for 1:1 default)
  */
 public record ModelPart(
         String name,
         Vector3f origin,
         float[] vertices,
         float[] texCoords,
-        int[] indices
+        int[] indices,
+        Integer trianglesPerFace
 ) {
     // Shared UV generator for DRY compliance
     private static final UVCoordinateGenerator UV_GENERATOR = new UVCoordinateGenerator();
@@ -54,24 +56,26 @@ public record ModelPart(
     /**
      * Create a cube with cube net UV mapping (64x48 layout).
      * Face order matches ModelDefinition.ModelPart.getVerticesAtOrigin() for subdivision compatibility.
+     * Cubes use quad topology: 2 triangles per face = 6 logical faces.
      */
     private static ModelPart createCubeCubeNet(String name, Vector3f origin, Vector3f size) {
         float[] vertices = createCubeVertices(size);
         float[] texCoords = UV_GENERATOR.generateCubeNetTexCoords();
         int[] indices = createCubeIndices();
 
-        return new ModelPart(name, origin, vertices, texCoords, indices);
+        return new ModelPart(name, origin, vertices, texCoords, indices, 2); // Quad topology
     }
 
     /**
      * Create a cube with flat UV mapping (entire texture on each face).
+     * Cubes use quad topology: 2 triangles per face = 6 logical faces.
      */
     private static ModelPart createCubeFlat(String name, Vector3f origin, Vector3f size) {
         float[] vertices = createCubeVertices(size);
         float[] texCoords = UV_GENERATOR.generateFlatTexCoords();
         int[] indices = createCubeIndices();
 
-        return new ModelPart(name, origin, vertices, texCoords, indices);
+        return new ModelPart(name, origin, vertices, texCoords, indices, 2); // Quad topology
     }
 
     /**
@@ -145,6 +149,7 @@ public record ModelPart(
 
     /**
      * Create a part from raw vertex data.
+     * Uses 1:1 triangle-to-face mapping (arbitrary topology).
      *
      * @param name Part name
      * @param vertices Raw vertex positions
@@ -153,7 +158,7 @@ public record ModelPart(
      * @return A ModelPart with the given geometry
      */
     public static ModelPart createFromVertices(String name, float[] vertices, float[] texCoords, int[] indices) {
-        return new ModelPart(name, new Vector3f(0, 0, 0), vertices, texCoords, indices);
+        return new ModelPart(name, new Vector3f(0, 0, 0), vertices, texCoords, indices, null); // Arbitrary topology
     }
 
     /**
@@ -216,6 +221,6 @@ public record ModelPart(
         newVertices[offset + 1] = position.y;
         newVertices[offset + 2] = position.z;
 
-        return new ModelPart(name, origin, newVertices, texCoords, indices);
+        return new ModelPart(name, origin, newVertices, texCoords, indices, trianglesPerFace);
     }
 }

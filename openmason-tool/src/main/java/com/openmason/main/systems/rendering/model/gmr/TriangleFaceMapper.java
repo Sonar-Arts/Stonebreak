@@ -5,8 +5,10 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Implementation of ITriangleFaceMapper.
- * Tracks which original face (0-5 for cube) each triangle belongs to.
+ * Tracks which original face each triangle belongs to.
  * Preserves face IDs through subdivision operations.
+ *
+ * Supports arbitrary geometry - not locked to cube topology.
  */
 public class TriangleFaceMapper implements ITriangleFaceMapper {
 
@@ -21,15 +23,32 @@ public class TriangleFaceMapper implements ITriangleFaceMapper {
             return;
         }
 
-        // For a cube: 12 triangles total (6 faces x 2 triangles each)
-        // Triangles 0-1 = face 0, triangles 2-3 = face 1, etc.
+        // 1:1 mapping - each triangle is its own face (default, no assumptions)
         triangleToFaceId = new int[triangleCount];
         for (int t = 0; t < triangleCount; t++) {
-            triangleToFaceId[t] = t / 2;  // 2 triangles per original face
+            triangleToFaceId[t] = t;
         }
 
-        logger.debug("Initialized standard triangle-to-face mapping: {} triangles, {} faces",
-            triangleCount, (triangleCount + 1) / 2);
+        logger.debug("Initialized 1:1 triangle-to-face mapping: {} triangles = {} faces",
+            triangleCount, triangleCount);
+    }
+
+    @Override
+    public void initializeWithTopology(int triangleCount, int trianglesPerFace) {
+        if (triangleCount <= 0 || trianglesPerFace <= 0) {
+            triangleToFaceId = null;
+            return;
+        }
+
+        // Explicit topology (opt-in for custom face grouping)
+        triangleToFaceId = new int[triangleCount];
+        for (int t = 0; t < triangleCount; t++) {
+            triangleToFaceId[t] = t / trianglesPerFace;
+        }
+
+        int faceCount = (triangleCount + trianglesPerFace - 1) / trianglesPerFace;
+        logger.debug("Initialized explicit topology mapping: {} triangles, {} tris/face = {} faces",
+            triangleCount, trianglesPerFace, faceCount);
     }
 
     @Override

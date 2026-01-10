@@ -845,7 +845,7 @@ public class FaceRenderer implements MeshChangeListener {
             overlayRenderer.setTriangleCount(triangleCount);
             overlayRenderer.syncMeshVertexPositions();
 
-            logger.info("Rebuilt face data from GenericModelRenderer: {} original faces, {} triangles",
+            logger.debug("Rebuilt face data from GenericModelRenderer: {} original faces, {} triangles",
                 faceCount, triangleCount);
 
             // Log face-to-triangle mapping for debugging

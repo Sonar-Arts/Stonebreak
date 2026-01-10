@@ -139,13 +139,21 @@ public interface IModelStateManager {
 
     /**
      * Immutable record holding aggregated geometry from all parts.
+     *
+     * @param vertices Aggregated vertex positions
+     * @param texCoords Aggregated texture coordinates
+     * @param indices Aggregated indices
+     * @param vertexCount Total vertex count
+     * @param indexCount Total index count
+     * @param trianglesPerFace Topology hint from parts (null if mixed/unknown, 2 for quads, 1 for triangles)
      */
     record AggregatedGeometry(
             float[] vertices,
             float[] texCoords,
             int[] indices,
             int vertexCount,
-            int indexCount
+            int indexCount,
+            Integer trianglesPerFace
     ) {
         /**
          * Check if geometry is empty.

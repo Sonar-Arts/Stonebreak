@@ -95,7 +95,7 @@ public class ModelStateManager implements IModelStateManager {
     @Override
     public AggregatedGeometry aggregateParts() {
         if (parts.isEmpty()) {
-            return new AggregatedGeometry(null, null, null, 0, 0);
+            return new AggregatedGeometry(null, null, null, 0, 0, null);
         }
 
         int totalVertices = getTotalVertexCount();
@@ -104,6 +104,9 @@ public class ModelStateManager implements IModelStateManager {
         float[] vertices = new float[totalVertices * 3];
         float[] texCoords = new float[totalVertices * 2];
         int[] indices = totalIndices > 0 ? new int[totalIndices] : null;
+
+        // Detect consistent topology across all parts
+        Integer commonTopology = detectCommonTopology();
 
         int vertexOffset = 0;
         int indexOffset = 0;
@@ -132,7 +135,37 @@ public class ModelStateManager implements IModelStateManager {
             vertexOffset += part.getVertexCount();
         }
 
-        logger.trace("Aggregated {} parts: {} vertices, {} indices", parts.size(), totalVertices, totalIndices);
-        return new AggregatedGeometry(vertices, texCoords, indices, totalVertices, totalIndices);
+        logger.trace("Aggregated {} parts: {} vertices, {} indices, topology: {}",
+                parts.size(), totalVertices, totalIndices, commonTopology != null ? commonTopology + " tris/face" : "mixed");
+        return new AggregatedGeometry(vertices, texCoords, indices, totalVertices, totalIndices, commonTopology);
+    }
+
+    /**
+     * Detect if all parts share a common topology hint.
+     *
+     * @return Common trianglesPerFace value, or null if mixed/unknown
+     */
+    private Integer detectCommonTopology() {
+        if (parts.isEmpty()) {
+            return null;
+        }
+
+        Integer firstTopology = parts.get(0).trianglesPerFace();
+
+        for (ModelPart part : parts) {
+            Integer partTopology = part.trianglesPerFace();
+
+            // If any part has null topology, fall back to 1:1
+            if (partTopology == null) {
+                return null;
+            }
+
+            // If topologies don't match, fall back to 1:1
+            if (!partTopology.equals(firstTopology)) {
+                return null;
+            }
+        }
+
+        return firstTopology;
     }
 }

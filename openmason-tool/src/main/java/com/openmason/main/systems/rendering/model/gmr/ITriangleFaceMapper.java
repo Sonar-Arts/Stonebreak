@@ -2,19 +2,29 @@ package com.openmason.main.systems.rendering.model.gmr;
 
 /**
  * Interface for triangle-to-original-face mapping.
- * Tracks which original face (0-5 for cube) each triangle belongs to.
+ * Tracks which original face each triangle belongs to.
  * Preserves face IDs through subdivision operations.
+ *
+ * Supports arbitrary geometry - not locked to cube topology.
  */
 public interface ITriangleFaceMapper {
 
     /**
-     * Initialize the face mapping for a standard configuration.
-     * For a cube: 12 triangles total (6 faces x 2 triangles each).
-     * Triangles 0-1 = face 0, triangles 2-3 = face 1, etc.
+     * Initialize 1:1 mapping for generic geometry (each triangle is its own face).
+     * This is the default and treats all geometry uniformly without assumptions.
      *
      * @param triangleCount Total number of triangles
      */
     void initializeStandardMapping(int triangleCount);
+
+    /**
+     * Initialize mapping with explicit topology information (opt-in).
+     * Only use when you explicitly know the face structure and want custom grouping.
+     *
+     * @param triangleCount Total number of triangles
+     * @param trianglesPerFace Number of triangles per face (e.g., 2 for quads, 1 for triangles)
+     */
+    void initializeWithTopology(int triangleCount, int trianglesPerFace);
 
     /**
      * Set the face mapping directly.
@@ -27,13 +37,13 @@ public interface ITriangleFaceMapper {
      * Get the original face ID for a given triangle index.
      *
      * @param triangleIndex The triangle index (0-based)
-     * @return The original face ID (0-5 for cube), or -1 if invalid
+     * @return The original face ID, or -1 if invalid
      */
     int getOriginalFaceIdForTriangle(int triangleIndex);
 
     /**
      * Get the number of original faces (before subdivision).
-     * For a cube, this is always 6.
+     * Depends on topology: triangles=N, quads=N/2, mixed=varies.
      *
      * @return The number of original faces
      */

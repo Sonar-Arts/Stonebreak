@@ -224,9 +224,17 @@ public class GenericModelRenderer extends BaseRenderer {
         vertexCount = geometry.vertexCount();
         indexCount = geometry.indexCount();
 
-        // Initialize face mapping
+        // Initialize face mapping using topology metadata from parts
         if (geometry.indices() != null) {
-            faceMapper.initializeStandardMapping(geometry.indices().length / 3);
+            int triangleCount = geometry.indices().length / 3;
+
+            if (geometry.trianglesPerFace() != null && geometry.trianglesPerFace() > 0) {
+                // Use explicit topology from parts (e.g., cubes = 2 tris/face = 6 faces)
+                faceMapper.initializeWithTopology(triangleCount, geometry.trianglesPerFace());
+            } else {
+                // Default to 1:1 mapping for arbitrary geometry
+                faceMapper.initializeStandardMapping(triangleCount);
+            }
         } else {
             faceMapper.clear();
         }
@@ -581,7 +589,7 @@ public class GenericModelRenderer extends BaseRenderer {
         vertexCount = vertices.length / 3;
         indexCount = indices != null ? indices.length : 0;
 
-        // Restore face mapping
+        // Restore face mapping (1:1 triangle-to-face for all geometry)
         if (triangleToFaceId != null && triangleToFaceId.length > 0) {
             faceMapper.setMapping(triangleToFaceId.clone());
         } else if (indices != null) {
