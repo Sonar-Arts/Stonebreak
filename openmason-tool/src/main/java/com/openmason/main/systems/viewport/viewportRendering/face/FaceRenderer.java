@@ -52,7 +52,6 @@ import static org.lwjgl.opengl.GL30.*;
  *
  * @see MeshManager
  * @see FaceHoverDetector
- * @see MeshFaceExtractor
  */
 public class FaceRenderer implements MeshChangeListener {
 
@@ -150,18 +149,29 @@ public class FaceRenderer implements MeshChangeListener {
      * for DRY compliance and single responsibility.
      *
      * <p>This method works with any model type through polymorphic
-     * geometry extraction via {@link IGeometryExtractor}.
      *
      * @param parts collection of model parts to extract faces from
      * @param transformMatrix transformation to apply to face positions
      */
+    @Deprecated
     public void updateFaceData(Collection<ModelDefinition.ModelPart> parts, Matrix4f transformMatrix) {
+        logger.warn("updateFaceData(parts, transformMatrix) is deprecated. Use updateFaceDataFromGMR() instead.");
+        updateFaceDataFromGMR();
+    }
+
+    /**
+     * Update face data from GenericModelRenderer (GMR is single source of truth).
+     * This method gets face data directly from GMR instead of extracting from ModelDefinition.
+     * GMR provides the authoritative mesh topology after any subdivisions or modifications.
+     */
+    public void updateFaceDataFromGMR() {
         if (!initialized) {
             logger.warn("FaceRenderer not initialized, cannot update face data");
             return;
         }
 
-        if (parts == null || parts.isEmpty()) {
+        if (genericModelRenderer == null) {
+            logger.warn("GenericModelRenderer not set");
             faceCount = 0;
             facePositions = null;
             faceToVertexMapping.clear();
@@ -169,8 +179,8 @@ public class FaceRenderer implements MeshChangeListener {
         }
 
         try {
-            // Extract faces using MeshManager (centralized mesh operations)
-            facePositions = meshManager.extractFaceGeometry(parts, transformMatrix);
+            // Extract faces from GMR (single source of truth)
+            facePositions = genericModelRenderer.extractFacePositions();
 
             // Face positions are [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...] (4 vertices per face)
             faceCount = facePositions.length / MeshManager.FLOATS_PER_FACE_POSITION;
@@ -178,10 +188,10 @@ public class FaceRenderer implements MeshChangeListener {
             // Delegate bulk VBO creation to MeshManager (DRY + Single Responsibility)
             MeshManager.getInstance().updateAllFaces(vbo, facePositions, faceCount, overlayRenderer.getDefaultFaceColor());
 
-            logger.debug("Updated face data: {} faces ({} floats)", faceCount, facePositions.length);
+            logger.debug("Updated face data from GMR: {} faces ({} floats)", faceCount, facePositions.length);
 
         } catch (Exception e) {
-            logger.error("Error updating face data", e);
+            logger.error("Error updating face data from GMR", e);
         }
     }
 

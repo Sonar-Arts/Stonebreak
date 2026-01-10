@@ -3,8 +3,6 @@ package com.openmason.main.systems.viewport.viewportRendering.mesh;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations.*;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.faceOperations.*;
 import com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations.*;
-import com.stonebreak.model.ModelDefinition;
-import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,17 +10,25 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
- * Manages mesh resources for the viewport rendering system.
- * This class handles mesh vertex data storage and mesh operations.
+ * Manages mesh operations for the viewport rendering system.
+ * This class coordinates mesh operations on data provided by GenericModelRenderer.
+ *
+ * Architecture:
+ * - GenericModelRenderer (GMR) is the single source of truth for mesh data
+ * - MeshManager provides operations on GMR's data (buffer updates, mapping building)
+ * - Overlay renderers get data from GMR and use MeshManager for operations
  *
  * Responsibilities:
- * - Managing mesh vertex data structures
- * - Providing mesh geometry information
+ * - Managing mesh vertex data storage (temporary working data)
  * - Coordinating mesh operations (vertex updates, face operations, edge operations)
+ * - Building mappings (face-to-vertex, edge-to-vertex)
+ * - Updating GPU buffers (VBO updates for overlays)
  *
- * Note: Unique-to-mesh vertex mapping is now owned by GenericModelRenderer.
- * Use GenericModelRenderer.getUniqueIndexForMeshVertex() and
- * getMeshIndicesForUniqueVertex() for mapping queries.
+ * Data Flow:
+ * 1. GMR extracts mesh data → 2. Overlay renderers → 3. MeshManager operations → 4. GPU
+ *
+ * Note: For mesh data extraction, use GenericModelRenderer methods:
+ * - extractFacePositions(), extractEdgePositions(), getAllMeshVertexPositions(), etc.
  */
 public class MeshManager {
 
@@ -414,85 +420,23 @@ public class MeshManager {
     }
 
     // ========================================
-    // Geometry Extraction Operations (managed through MeshManager)
+    // NOTE: Geometry extraction has been moved to GenericModelRenderer
     // ========================================
-
-    // Extractor instances (singleton pattern within MeshManager)
-    private final MeshVertexExtractor vertexExtractor = new MeshVertexExtractor();
-    private final MeshEdgeExtractor edgeExtractor = new MeshEdgeExtractor();
-    private final MeshFaceExtractor faceExtractor = new MeshFaceExtractor();
-
-    /**
-     * Extract vertex geometry from model parts with transformation applied.
-     * Centralizes vertex extraction through MeshManager.
-     *
-     * @param parts Model parts to extract vertices from
-     * @param globalTransform Global transformation matrix
-     * @return Array of vertex positions [x1,y1,z1, x2,y2,z2, ...]
-     */
-    public float[] extractVertexGeometry(Collection<ModelDefinition.ModelPart> parts,
-                                        Matrix4f globalTransform) {
-        return vertexExtractor.extractGeometry(parts, globalTransform);
-    }
-
-    /**
-     * Extract unique vertex geometry from model parts with transformation applied.
-     * Deduplicates vertices at the same position using epsilon comparison.
-     *
-     * @param parts Model parts to extract vertices from
-     * @param globalTransform Global transformation matrix
-     * @return Array of unique vertex positions [x1,y1,z1, x2,y2,z2, ...]
-     */
-    public float[] extractUniqueVertices(Collection<ModelDefinition.ModelPart> parts,
-                                        Matrix4f globalTransform) {
-        return vertexExtractor.extractUniqueVertices(parts, globalTransform);
-    }
-
-    /**
-     * Extract edge geometry from model parts with transformation applied.
-     * Centralizes edge extraction through MeshManager.
-     * Each face (4 vertices) generates 4 edges forming a quad outline.
-     * NOTE: This method returns duplicate edges (shared between faces).
-     * For unique edges, use {@link #extractUniqueEdgeGeometry}.
-     *
-     * @param parts Model parts to extract from
-     * @param globalTransform Global transformation matrix to apply
-     * @return Array of edge endpoint positions [x1,y1,z1, x2,y2,z2, ...]
-     */
-    public float[] extractEdgeGeometry(Collection<ModelDefinition.ModelPart> parts,
-                                      Matrix4f globalTransform) {
-        return edgeExtractor.extractGeometry(parts, globalTransform);
-    }
-
-    /**
-     * Extract unique edge geometry from model parts, eliminating duplicates.
-     * An edge v1<->v2 is considered the same as v2<->v1.
-     * For a cube: returns 12 unique edges instead of 24 face-based edges.
-     *
-     * @param parts Model parts to extract from
-     * @param globalTransform Global transformation matrix to apply
-     * @param uniqueVertexPositions Array of unique vertex positions for matching
-     * @return Array of unique edge endpoint positions [x1,y1,z1, x2,y2,z2, ...]
-     */
-    public float[] extractUniqueEdgeGeometry(Collection<ModelDefinition.ModelPart> parts,
-                                              Matrix4f globalTransform,
-                                              float[] uniqueVertexPositions) {
-        return edgeExtractor.extractUniqueEdges(parts, globalTransform, uniqueVertexPositions);
-    }
-
-    /**
-     * Extract face geometry from model parts with transformation applied.
-     * Centralizes face extraction through MeshManager.
-     * Each face is represented as 4 vertices (quad corners) with 12 floats per face.
-     *
-     * @param parts Model parts to extract from
-     * @param globalTransform Global transformation matrix to apply
-     * @return Array of face vertex positions [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...]
-     */
-    public float[] extractFaceGeometry(Collection<ModelDefinition.ModelPart> parts,
-                                      Matrix4f globalTransform) {
-        return faceExtractor.extractGeometry(parts, globalTransform);
-    }
+    //
+    // MeshManager now operates on data extracted from GenericModelRenderer (GMR).
+    // The data flow is:
+    //   1. GMR extracts mesh data from its internal structures (vertices, indices, face mapping)
+    //   2. Overlay renderers call GMR.extractFacePositions(), GMR.extractEdgePositions(), etc.
+    //   3. MeshManager provides operations on that data (building mappings, updating buffers)
+    //
+    // This ensures GMR is the single source of truth for mesh topology.
+    //
+    // For extraction operations, use:
+    //   - GenericModelRenderer.extractFacePositions()
+    //   - GenericModelRenderer.extractEdgePositions()
+    //   - GenericModelRenderer.getAllMeshVertexPositions()
+    //   - GenericModelRenderer.getAllUniqueVertexPositions()
+    // ========================================
 
     /**
      * Cleans up all mesh resources.

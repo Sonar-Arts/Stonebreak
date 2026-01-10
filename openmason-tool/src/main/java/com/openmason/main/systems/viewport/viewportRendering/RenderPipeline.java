@@ -71,7 +71,7 @@ public class RenderPipeline {
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
 
-    // BlockModel renderer (.OMO editable models)
+    // Generic Model renderer (.OMO editable models)
     private final GenericModelRenderer modelRenderer;
 
     // Gizmo renderer

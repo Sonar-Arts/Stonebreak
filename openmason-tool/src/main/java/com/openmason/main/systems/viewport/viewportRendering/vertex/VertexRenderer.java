@@ -149,13 +149,25 @@ public class VertexRenderer implements MeshChangeListener {
      * Generic method that works with ANY model type - cow, cube, sheep, future models.
      * Extracts UNIQUE vertices only to prevent duplication bug.
      */
+    @Deprecated
     public void updateVertexData(Collection<ModelDefinition.ModelPart> parts, Matrix4f transformMatrix) {
+        logger.warn("updateVertexData(parts, transformMatrix) is deprecated. Use updateVertexDataFromGMR() instead.");
+        updateVertexDataFromGMR();
+    }
+
+    /**
+     * Update vertex data from GenericModelRenderer (GMR is single source of truth).
+     * Gets vertex data directly from GMR instead of extracting from ModelDefinition.
+     * GMR provides the authoritative mesh topology after any subdivisions or modifications.
+     */
+    public void updateVertexDataFromGMR() {
         if (!initialized) {
             logger.warn("VertexRenderer not initialized, cannot update vertex data");
             return;
         }
 
-        if (parts == null || parts.isEmpty()) {
+        if (modelRenderer == null) {
+            logger.warn("GenericModelRenderer not set");
             vertexCount = 0;
             vertexPositions = null;
             meshManager.clearMeshData();
@@ -163,11 +175,11 @@ public class VertexRenderer implements MeshChangeListener {
         }
 
         try {
-            // Extract ALL mesh vertices (24 for cube) for mapping - uses MeshManager
-            float[] allMeshVertices = meshManager.extractVertexGeometry(parts, transformMatrix);
+            // Extract ALL mesh vertices from GMR (e.g., 24 for cube) for mapping
+            float[] allMeshVertices = modelRenderer.getAllMeshVertexPositions();
 
-            // Extract UNIQUE vertices only (8 for cube) for rendering - uses MeshManager
-            float[] uniquePositions = meshManager.extractUniqueVertices(parts, transformMatrix);
+            // Extract UNIQUE vertices from GMR (e.g., 8 for cube) for rendering
+            float[] uniquePositions = modelRenderer.getAllUniqueVertexPositions();
 
             // Store unique positions for hit testing
             vertexPositions = uniquePositions;
@@ -217,8 +229,10 @@ public class VertexRenderer implements MeshChangeListener {
             glBufferData(GL_ARRAY_BUFFER, vertexData, GL_DYNAMIC_DRAW);
             glBindBuffer(GL_ARRAY_BUFFER, 0);
 
+            logger.debug("Updated vertex data from GMR: {} vertices", vertexCount);
+
         } catch (Exception e) {
-            logger.error("Error updating vertex data", e);
+            logger.error("Error updating vertex data from GMR", e);
         }
     }
 

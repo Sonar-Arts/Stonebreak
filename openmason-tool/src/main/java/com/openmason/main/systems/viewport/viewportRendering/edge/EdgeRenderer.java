@@ -262,11 +262,10 @@ public class EdgeRenderer implements MeshChangeListener {
     }
 
     /**
-     * Updates edge data from a collection of model parts with transformation.
-     * Extracts edges from model geometry and uploads to GPU buffer.
+     * Updates edge data from GenericModelRenderer.
+     * Gets edge data from GMR (single source of truth) and uploads to GPU buffer.
      *
-     * <p>This method works with any model type by using the IGeometryExtractor interface.
-     * The transformation matrix is applied to all edge positions during extraction.
+     * <p>This method works with any model type by extracting from GMR's mesh data.
      *
      * <p><b>Side Effects:</b>
      * <ul>
@@ -278,54 +277,44 @@ public class EdgeRenderer implements MeshChangeListener {
      * @param parts collection of model parts to extract edges from
      * @param transformMatrix transformation matrix to apply to edge positions
      */
+    @Deprecated
     public void updateEdgeData(Collection<ModelDefinition.ModelPart> parts, Matrix4f transformMatrix) {
-        // Delegate to overloaded method without unique vertices (uses duplicate edges)
-        updateEdgeData(parts, transformMatrix, null);
+        logger.warn("updateEdgeData(parts, transformMatrix) is deprecated. Use updateEdgeDataFromGMR() instead.");
+        updateEdgeDataFromGMR();
     }
 
     /**
-     * Update edge data from model parts with optional deduplication.
-     *
-     * <p>This method extracts edge geometry from the given model parts and updates
-     * the internal VBO. If uniqueVertexPositions is provided, duplicate edges are
-     * eliminated (shared edges between faces are stored only once).
-     *
-     * <p><b>Side Effects:</b>
-     * <ul>
-     *   <li>Updates internal edge positions array</li>
-     *   <li>Updates edge count</li>
-     *   <li>Rebuilds edge VBO</li>
-     *   <li>Invalidates edge-to-vertex mapping (must be rebuilt)</li>
-     * </ul>
-     *
-     * @param parts collection of model parts to extract edges from
-     * @param transformMatrix transformation matrix to apply to edge positions
-     * @param uniqueVertexPositions unique vertex positions for deduplication (or null for duplicates)
+     * @deprecated Use updateEdgeDataFromGMR() instead
      */
+    @Deprecated
     public void updateEdgeData(Collection<ModelDefinition.ModelPart> parts,
                                 Matrix4f transformMatrix,
                                 float[] uniqueVertexPositions) {
+        logger.warn("updateEdgeData(parts, transformMatrix, uniqueVertexPositions) is deprecated. Use updateEdgeDataFromGMR() instead.");
+        updateEdgeDataFromGMR();
+    }
+
+    /**
+     * Update edge data from GenericModelRenderer (GMR is single source of truth).
+     * This method gets edge data directly from GMR instead of extracting from ModelDefinition.
+     * GMR provides the authoritative mesh topology after any subdivisions or modifications.
+     */
+    public void updateEdgeDataFromGMR() {
         if (!initialized) {
             logger.warn("EdgeRenderer not initialized, cannot update edge data");
             return;
         }
 
-        if (parts == null || parts.isEmpty()) {
+        if (modelRenderer == null) {
+            logger.warn("GenericModelRenderer not set");
             edgeCount = 0;
             edgePositions = null;
             return;
         }
 
         try {
-            // Extract edges using MeshManager (centralized mesh operations)
-            float[] extractedPositions;
-            if (uniqueVertexPositions != null) {
-                // Extract unique edges (no duplicates)
-                extractedPositions = meshManager.extractUniqueEdgeGeometry(parts, transformMatrix, uniqueVertexPositions);
-            } else {
-                // Extract all edges (with duplicates for backward compatibility)
-                extractedPositions = meshManager.extractEdgeGeometry(parts, transformMatrix);
-            }
+            // Extract edges from GMR (single source of truth)
+            float[] extractedPositions = modelRenderer.extractEdgePositions();
 
             // Update buffer with extracted edge data (delegated to MeshManager)
             MeshEdgeBufferUpdater.UpdateResult result = meshManager.updateEdgeBuffer(vbo, extractedPositions, edgeColor);
@@ -333,6 +322,7 @@ public class EdgeRenderer implements MeshChangeListener {
             if (result != null) {
                 edgeCount = result.getEdgeCount();
                 edgePositions = result.getEdgePositions();
+                logger.debug("Updated edge data from GMR: {} edges", edgeCount);
             } else {
                 logger.warn("Buffer update failed, clearing edge data");
                 edgeCount = 0;
@@ -340,7 +330,7 @@ public class EdgeRenderer implements MeshChangeListener {
             }
 
         } catch (Exception e) {
-            logger.error("Error updating edge data", e);
+            logger.error("Error updating edge data from GMR", e);
         }
     }
 

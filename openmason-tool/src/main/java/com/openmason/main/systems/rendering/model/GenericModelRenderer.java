@@ -48,6 +48,10 @@ public class GenericModelRenderer extends BaseRenderer {
     private final IUVCoordinateGenerator uvGenerator;
     private final IModelStateManager stateManager;
 
+    // Extractors (SOLID: extraction logic separated from renderer)
+    private final GMRFaceExtractor faceExtractor;
+    private final GMREdgeExtractor edgeExtractor;
+
     // Texture state (kept inline per KISS - only 3 lines)
     private int textureId = 0;
     private boolean useTexture = false;
@@ -64,7 +68,9 @@ public class GenericModelRenderer extends BaseRenderer {
             new SubdivisionProcessor(),
             new GeometryDataBuilder(),
             new UVCoordinateGenerator(),
-            new ModelStateManager()
+            new ModelStateManager(),
+            new GMRFaceExtractor(),
+            new GMREdgeExtractor()
         );
     }
 
@@ -79,7 +85,9 @@ public class GenericModelRenderer extends BaseRenderer {
             ISubdivisionProcessor subdivisionProcessor,
             IGeometryDataBuilder geometryBuilder,
             IUVCoordinateGenerator uvGenerator,
-            IModelStateManager stateManager) {
+            IModelStateManager stateManager,
+            GMRFaceExtractor faceExtractor,
+            GMREdgeExtractor edgeExtractor) {
         this.vertexManager = vertexManager;
         this.uniqueMapper = uniqueMapper;
         this.changeNotifier = changeNotifier;
@@ -88,6 +96,8 @@ public class GenericModelRenderer extends BaseRenderer {
         this.geometryBuilder = geometryBuilder;
         this.uvGenerator = uvGenerator;
         this.stateManager = stateManager;
+        this.faceExtractor = faceExtractor;
+        this.edgeExtractor = edgeExtractor;
         logger.debug("GenericModelRenderer created with subsystems");
     }
 
@@ -679,5 +689,73 @@ public class GenericModelRenderer extends BaseRenderer {
         // To avoid double-transformation, pass identity for uModelMatrix.
         // This ensures the model transforms at the same rate as the wireframe overlay.
         shader.setMat4("uModelMatrix", new org.joml.Matrix4f()); // Identity matrix
+    }
+
+    // =========================================================================
+    // MESH DATA EXTRACTION (for MeshManager and overlay renderers)
+    // =========================================================================
+
+    /**
+     * Extract face positions from current mesh data.
+     * Each face is represented as 4 vertices (quad) with 12 floats per face.
+     * This data is used by FaceRenderer for overlay rendering.
+     *
+     * SOLID: Delegates to GMRFaceExtractor for extraction logic (Single Responsibility).
+     *
+     * @return Array of face vertex positions [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...]
+     *         or empty array if no face data available
+     */
+    public float[] extractFacePositions() {
+        return faceExtractor.extractFacePositions(
+            vertexManager.getVertices(),
+            vertexManager.getIndices(),
+            faceMapper
+        );
+    }
+
+    /**
+     * Extract edge positions from current mesh data.
+     * Each edge is represented as 2 endpoints with 6 floats per edge.
+     * This data is used by EdgeRenderer for overlay rendering.
+     *
+     * SOLID: Delegates to GMREdgeExtractor for extraction logic (Single Responsibility).
+     *
+     * @return Array of edge endpoint positions [x1,y1,z1, x2,y2,z2, ...]
+     *         or empty array if no edge data available
+     */
+    public float[] extractEdgePositions() {
+        return edgeExtractor.extractEdgePositions(
+            vertexManager.getVertices(),
+            vertexManager.getIndices(),
+            faceMapper
+        );
+    }
+
+    /**
+     * Get face count from current mesh data.
+     *
+     * @return Number of faces in the mesh
+     */
+    public int getFaceCount() {
+        return faceMapper.getOriginalFaceCount();
+    }
+
+    /**
+     * Get edge count from current mesh data.
+     * Each face contributes 4 edges.
+     *
+     * @return Number of edges in the mesh
+     */
+    public int getEdgeCount() {
+        return faceMapper.getOriginalFaceCount() * 4;
+    }
+
+    /**
+     * Get unique vertex count.
+     *
+     * @return Number of unique geometric vertices
+     */
+    public int getUniqueVertexCount() {
+        return uniqueMapper.getUniqueVertexCount();
     }
 }
