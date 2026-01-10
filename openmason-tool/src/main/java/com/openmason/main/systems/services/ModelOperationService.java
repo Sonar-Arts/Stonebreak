@@ -169,27 +169,31 @@ public class ModelOperationService {
         statusService.updateStatus("Saving model...");
 
         try {
-            // Extract mesh data from viewport (for subdivisions, vertex edits, etc.)
+            // ALWAYS extract mesh data to make .omo files self-contained
             OMOFormat.MeshData meshData = null;
-            if (viewport != null && viewport.hasCustomMeshData()) {
+            if (viewport != null) {
                 meshData = viewport.extractMeshData();
                 if (meshData != null) {
-                    logger.info("Saving custom mesh data: {} vertices, {} triangles",
-                            meshData.getVertexCount(), meshData.getTriangleCount());
+                    logger.info("Saving mesh data: {} vertices, {} triangles, {} faces",
+                            meshData.getVertexCount(), meshData.getTriangleCount(),
+                            meshData.triangleToFaceId() != null ? "mapped" : "unmapped");
+                } else {
+                    logger.warn("Failed to extract mesh data - file will not be self-contained");
                 }
             }
 
-            // Save with optional mesh data
+            // Save with mesh data (required for self-contained .omo files)
             boolean success = omoSerializer.save(currentEditableModel, filePath, meshData);
 
             if (success) {
                 modelState.setUnsavedChanges(false);
                 modelState.setCurrentModelPath(currentEditableModel.getName());
                 String statusMsg = meshData != null
-                        ? "Model saved with custom geometry: " + filePath
-                        : "Model saved: " + filePath;
+                        ? "Model saved with mesh data: " + filePath
+                        : "Model saved (WARNING: no mesh data): " + filePath;
                 statusService.updateStatus(statusMsg);
-                logger.info("Saved model to: {} (hasMesh={})", filePath, meshData != null);
+                logger.info("Saved model to: {} (hasMesh={}, selfContained={})",
+                        filePath, meshData != null, meshData != null);
             } else {
                 statusService.updateStatus("Failed to save model");
                 logger.error("Save operation returned false");
@@ -268,22 +272,24 @@ public class ModelOperationService {
 
                 // Load into viewport if available
                 if (viewport != null) {
-                    // First load base model (dimensions, texture)
-                    viewport.loadBlockModel(currentEditableModel);
-
-                    // Then apply custom mesh data if present
                     if (meshData != null && meshData.hasCustomGeometry()) {
+                        // MODERN: Load self-contained .omo file with mesh data
+                        viewport.loadBlockModel(currentEditableModel);
                         viewport.loadMeshData(meshData);
-                        logger.info("Applied custom mesh data: {} vertices, {} triangles",
+                        logger.info("Loaded self-contained .omo with mesh data: {} vertices, {} triangles",
                                 meshData.getVertexCount(), meshData.getTriangleCount());
 
                         // Update statistics with actual counts
                         modelState.updateStatistics(1, meshData.getVertexCount(), meshData.getTriangleCount());
-                        statusService.updateStatus("Loaded .OMO model with custom geometry: " + loadedModel.getName());
-                    } else {
-                        // Standard cube: 1 part, 24 vertices, 12 triangles
-                        modelState.updateStatistics(1, 24, 12);
                         statusService.updateStatus("Loaded .OMO model: " + loadedModel.getName());
+                    } else {
+                        // LEGACY: Old .omo file without mesh data - generate from dimensions
+                        logger.warn("Loading legacy .omo file without mesh data - using generation fallback");
+                        viewport.loadBlockModel(currentEditableModel);
+
+                        // Legacy cube: 1 part, 24 vertices, 12 triangles
+                        modelState.updateStatistics(1, 24, 12);
+                        statusService.updateStatus("Loaded legacy .OMO model (generated): " + loadedModel.getName());
                     }
                 } else {
                     modelState.updateStatistics(1, 24, 12);

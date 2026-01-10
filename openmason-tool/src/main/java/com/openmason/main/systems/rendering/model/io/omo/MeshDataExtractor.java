@@ -29,21 +29,12 @@ public class MeshDataExtractor {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshDataExtractor.class);
 
-    /** Standard cube has 24 vertices (4 per face * 6 faces) */
-    private static final int STANDARD_CUBE_VERTEX_COUNT = 24;
-
-    /** Standard cube has 36 indices (2 triangles per face * 3 indices * 6 faces) */
-    private static final int STANDARD_CUBE_INDEX_COUNT = 36;
-
-    /** Standard cube has 12 triangles (2 per face * 6 faces) */
-    private static final int STANDARD_CUBE_TRIANGLE_COUNT = 12;
-
     /**
      * Extract mesh data from a GenericModelRenderer for saving.
-     * Returns null if the mesh is a standard unmodified cube.
+     * Always extracts full mesh data to make .omo files self-contained.
      *
      * @param renderer the renderer to extract data from
-     * @return MeshData with current state, or null for standard cube
+     * @return MeshData with current state, or null if no data available
      */
     public OMOFormat.MeshData extract(GenericModelRenderer renderer) {
         if (renderer == null) {
@@ -57,12 +48,7 @@ public class MeshDataExtractor {
 
         // Check if we have any mesh data
         if (vertices == null || vertices.length == 0) {
-            return null;
-        }
-
-        // Check if this is a standard unmodified cube
-        if (isStandardCube(vertices, indices, renderer)) {
-            logger.debug("Standard cube geometry, no custom mesh data needed");
+            logger.warn("No vertex data available to extract");
             return null;
         }
 
@@ -77,51 +63,40 @@ public class MeshDataExtractor {
 
         String uvModeStr = renderer.getUVMode() != null ? renderer.getUVMode().name() : "FLAT";
 
-        logger.debug("Extracted mesh data: {} vertices, {} indices, uvMode={}",
+        logger.debug("Extracted mesh data: {} vertices, {} indices, {} faces, uvMode={}",
                 verticesCopy.length / 3,
                 indicesCopy != null ? indicesCopy.length : 0,
+                faceIdCopy != null ? getUniqueFaceCount(faceIdCopy) : "unknown",
                 uvModeStr);
 
         return new OMOFormat.MeshData(verticesCopy, texCoordsCopy, indicesCopy, faceIdCopy, uvModeStr);
     }
 
     /**
-     * Check if the renderer contains a standard unmodified cube.
+     * Get the number of unique faces from a triangle-to-face mapping.
      *
-     * @param vertices vertex array
-     * @param indices index array
-     * @param renderer the renderer to check
-     * @return true if standard cube, false if modified
+     * @param triangleToFaceId the mapping array
+     * @return the number of unique faces
      */
-    private boolean isStandardCube(float[] vertices, int[] indices, GenericModelRenderer renderer) {
-        // Check vertex and index counts
-        boolean isStandardCube = (vertices.length == STANDARD_CUBE_VERTEX_COUNT * 3) &&
-                (indices != null && indices.length == STANDARD_CUBE_INDEX_COUNT);
-
-        if (!isStandardCube) {
-            return false;
+    private int getUniqueFaceCount(int[] triangleToFaceId) {
+        if (triangleToFaceId == null || triangleToFaceId.length == 0) {
+            return 0;
         }
 
-        // Check if face mapping is still standard (0,0,1,1,2,2,3,3,4,4,5,5)
-        int[] triangleToFaceId = renderer.getTriangleToFaceMapping();
-        if (triangleToFaceId == null || triangleToFaceId.length != STANDARD_CUBE_TRIANGLE_COUNT) {
-            return true; // No mapping or wrong size, assume standard
-        }
-
-        for (int i = 0; i < triangleToFaceId.length; i++) {
-            if (triangleToFaceId[i] != i / 2) {
-                return false; // Modified face mapping
+        int maxFaceId = 0;
+        for (int faceId : triangleToFaceId) {
+            if (faceId > maxFaceId) {
+                maxFaceId = faceId;
             }
         }
-
-        return true;
+        return maxFaceId + 1; // Face IDs are 0-based
     }
 
     /**
-     * Check if a renderer has custom mesh data (not a standard cube).
+     * Check if a renderer has mesh data available for extraction.
      *
      * @param renderer the renderer to check
-     * @return true if mesh has been modified
+     * @return true if mesh data can be extracted
      */
     public boolean hasCustomMeshData(GenericModelRenderer renderer) {
         return extract(renderer) != null;

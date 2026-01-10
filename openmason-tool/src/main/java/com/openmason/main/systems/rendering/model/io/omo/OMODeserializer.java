@@ -25,12 +25,18 @@ import java.util.zip.ZipInputStream;
  *   <li>Extracts embedded .OMT texture file</li>
  *   <li>Reconstructs model geometry</li>
  *   <li>Creates BlockModel with loaded data</li>
- *   <li>Loads custom mesh data for subdivided models (v2.0+)</li>
+ *   <li>Loads mesh data for all models (v2.1+)</li>
+ * </ul>
+ *
+ * <p><strong>Loading behavior:</strong>
+ * <ul>
+ *   <li>Modern files (v2.1+): Include mesh data - self-contained, no generation needed</li>
+ *   <li>Legacy files (v1.0-2.0): No mesh data - require generation fallback (see ModelOperationService)</li>
  * </ul>
  *
  * <p>Validation includes:
  * <ul>
- *   <li>Format version compatibility (1.0 and 2.0)</li>
+ *   <li>Format version compatibility (1.0, 2.0, and 2.1)</li>
  *   <li>Required fields presence</li>
  *   <li>Geometry data validity</li>
  *   <li>Texture file existence</li>
@@ -41,10 +47,12 @@ import java.util.zip.ZipInputStream;
  *   <li>SOLID: Single Responsibility - only handles .OMO file reading</li>
  *   <li>KISS: Straightforward ZIP extraction and JSON parsing</li>
  *   <li>Fail-fast: Comprehensive validation with clear error messages</li>
+ *   <li>Backward Compatible: Supports legacy files without mesh data</li>
  * </ul>
  *
  * @since 1.0
- * @since 2.0 Added custom mesh data support
+ * @since 2.0 Added mesh data support
+ * @since 2.1 Mesh data expected for all new files
  */
 public class OMODeserializer {
 

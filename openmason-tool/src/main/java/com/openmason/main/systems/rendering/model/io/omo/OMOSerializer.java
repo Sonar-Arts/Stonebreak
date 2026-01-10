@@ -19,7 +19,7 @@ import java.util.zip.ZipOutputStream;
  *
  * <p>Creates a ZIP-based container with:
  * <ul>
- *   <li>manifest.json - Model metadata, geometry, and optional custom mesh data</li>
+ *   <li>manifest.json - Model metadata, geometry, and mesh data</li>
  *   <li>texture.omt - Embedded texture file</li>
  * </ul>
  *
@@ -29,18 +29,23 @@ import java.util.zip.ZipOutputStream;
  *   <li>Embedding .OMT texture file</li>
  *   <li>Writing ZIP archive</li>
  *   <li>Atomic file operations (write to temp, then move)</li>
- *   <li>Custom mesh data for subdivided models (v2.0+)</li>
+ *   <li>Mesh data for all models (v2.0+) - makes .omo files self-contained</li>
  * </ul>
+ *
+ * <p><strong>Important:</strong> All .omo files should include mesh data to be self-contained.
+ * Files without mesh data are considered legacy and require generation fallback.
  *
  * <p>Design Principles:
  * <ul>
  *   <li>SOLID: Single Responsibility - only handles .OMO file writing</li>
  *   <li>DRY: Reuses existing .OMT files (no re-encoding)</li>
  *   <li>KISS: Simple ZIP creation with JSON manifest</li>
+ *   <li>Self-Contained: Always includes full mesh topology</li>
  * </ul>
  *
  * @since 1.0
- * @since 2.0 Added custom mesh data support
+ * @since 2.0 Added mesh data support
+ * @since 2.1 Mesh data now always saved for self-contained files
  */
 public class OMOSerializer {
 
@@ -59,10 +64,13 @@ public class OMOSerializer {
     }
 
     /**
-     * Set custom mesh data to be saved with the next model.
+     * Set mesh data to be saved with the next model.
      * Call this before save() to include mesh data in the .OMO file.
      *
-     * @param meshData The mesh data to save, or null to save standard cube
+     * <p><strong>Note:</strong> Mesh data should ALWAYS be provided to make .omo files self-contained.
+     * Files without mesh data require legacy generation fallback.
+     *
+     * @param meshData The mesh data to save (should not be null for new files)
      */
     public void setMeshData(OMOFormat.MeshData meshData) {
         this.pendingMeshData = meshData;
@@ -76,12 +84,15 @@ public class OMOSerializer {
     }
 
     /**
-     * Saves a BlockModel to a .OMO file with custom mesh data.
+     * Saves a BlockModel to a .OMO file with mesh data.
      * Convenience method that sets mesh data and saves in one call.
+     *
+     * <p><strong>Note:</strong> Mesh data should ALWAYS be provided to make .omo files self-contained.
+     * Files without mesh data require legacy generation fallback.
      *
      * @param model the model to save, must not be null
      * @param filePath output file path, will be given .omo extension if missing
-     * @param meshData custom mesh data, or null for standard cube
+     * @param meshData mesh data to save (should not be null for new files)
      * @return true if save succeeded
      */
     public boolean save(BlockModel model, String filePath, OMOFormat.MeshData meshData) {
