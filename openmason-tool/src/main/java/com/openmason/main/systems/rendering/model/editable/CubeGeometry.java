@@ -4,7 +4,12 @@ import java.util.Objects;
 
 /**
  * Simple cubic geometry implementation for block models.
+ *
+ * @deprecated Legacy block model support only. Used exclusively for loading old .OMO files (v1.0-2.0).
+ *             Modern models should provide mesh data directly via .OMO files instead of cube dimensions.
+ *             See {@link com.openmason.main.systems.rendering.model.io.omo.OMOFormat} for modern format.
  */
+@Deprecated(since = "2.1", forRemoval = true)
 public class CubeGeometry implements ModelGeometry {
 
     /** Default dimension for block models (16x16x16) */
