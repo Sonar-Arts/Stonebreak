@@ -443,7 +443,7 @@ public class RenderPipeline {
                             float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
 
                             // Extract unique edges (no duplicates) using vertex positions
-                            edgeRenderer.updateEdgeData(cubeParts, identityTransform, uniqueVertexPositions);
+                            edgeRenderer.updateEdgeData();
 
                             // Build edge-to-vertex mapping to prevent unification bug
                             if (uniqueVertexPositions != null) {
