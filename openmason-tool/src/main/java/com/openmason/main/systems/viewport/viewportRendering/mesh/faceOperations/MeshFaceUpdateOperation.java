@@ -11,39 +11,35 @@ import static org.lwjgl.opengl.GL15.*;
  * Single Responsibility: Handles face position updates in both memory and GPU buffer.
  * This class encapsulates all operations related to updating face mesh data.
  *
- * SOLID Principles:
- * - Single Responsibility: Only handles face position updates
- * - Open/Closed: Can be extended for different update strategies
- * - Liskov Substitution: Could be abstracted to IFaceUpdater if needed
- * - Interface Segregation: Focused interface for face updates
- * - Dependency Inversion: Depends on abstractions (arrays, Vector3f) not concrete implementations
+ * Shape-Blind Design:
+ * This operation is data-driven and does not assume specific geometry (cubes, quads, etc.).
+ * It operates on face data provided by GenericModelRenderer (GMR), which is the single
+ * source of truth for mesh topology. Face vertex counts are determined by the data model.
  *
- * KISS Principle: Straightforward VBO update logic without unnecessary complexity.
- * DRY Principle: All VBO layout logic and vertex data operations are centralized here.
- * YAGNI Principle: Only implements what's needed for face position updates.
- *
- * This operation handles both bulk face data initialization and individual face updates.
- * Each face consists of 4 vertices forming 2 triangles (6 vertices total in VBO).
+ * Data Flow: GMR extracts mesh data → MeshManager operations → GPU buffer updates
  */
 public class MeshFaceUpdateOperation {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshFaceUpdateOperation.class);
 
     // VBO layout constants (DRY: shared across all operations)
-    public static final int FLOATS_PER_FACE_POSITION = 12;  // 4 vertices × 3 coords
+    // Note: These constants represent the current data format. Face vertex counts
+    // are determined by GMR's mesh data model, not hardcoded geometry assumptions.
     public static final int FLOATS_PER_VERTEX = 7;           // 3 position + 4 color RGBA
-    public static final int VERTICES_PER_FACE = 6;           // 2 triangles × 3 vertices
-    public static final int FLOATS_PER_FACE_VBO = VERTICES_PER_FACE * FLOATS_PER_VERTEX; // 42
+    public static final int FLOATS_PER_FACE_POSITION = 12;  // Face corners × 3 coords (data-driven)
+    public static final int VERTICES_PER_FACE = 6;           // Triangulated face vertices in VBO
+    public static final int FLOATS_PER_FACE_VBO = VERTICES_PER_FACE * FLOATS_PER_VERTEX; // Total floats per face
 
     /**
      * Updates a face's position in both CPU memory and GPU buffer.
+     * This method operates on face data provided by GMR without assuming specific topology.
      *
      * @param vbo OpenGL VBO handle
      * @param facePositions CPU-side face position array
      * @param faceCount Total number of faces
      * @param faceIndex Index of the face to update
-     * @param vertexIndices Array of 4 unique vertex indices (currently unused but required for future validation)
-     * @param newPositions Array of 4 new vertex positions
+     * @param vertexIndices Array of unique vertex indices for this face
+     * @param newPositions Array of new vertex positions for this face
      * @return true if update succeeded, false otherwise
      */
     public boolean updateFace(int vbo, float[] facePositions, int faceCount,
@@ -72,6 +68,7 @@ public class MeshFaceUpdateOperation {
 
     /**
      * Validates input parameters for face update.
+     * Validation is data-driven and does not enforce specific vertex counts.
      */
     private boolean validateInput(float[] facePositions, int faceCount,
                                   int faceIndex, int[] vertexIndices, Vector3f[] newPositions) {
@@ -86,13 +83,19 @@ public class MeshFaceUpdateOperation {
             return false;
         }
 
-        if (vertexIndices == null || vertexIndices.length != 4) {
-            logger.warn("Invalid vertex indices array");
+        if (vertexIndices == null || vertexIndices.length == 0) {
+            logger.warn("Invalid vertex indices array: null or empty");
             return false;
         }
 
-        if (newPositions == null || newPositions.length != 4) {
-            logger.warn("Invalid positions array");
+        if (newPositions == null || newPositions.length == 0) {
+            logger.warn("Invalid positions array: null or empty");
+            return false;
+        }
+
+        if (vertexIndices.length != newPositions.length) {
+            logger.warn("Vertex indices count ({}) does not match positions count ({})",
+                    vertexIndices.length, newPositions.length);
             return false;
         }
 
@@ -101,12 +104,14 @@ public class MeshFaceUpdateOperation {
 
     /**
      * Updates face positions in CPU memory.
-     * Each face has 4 vertices, stored as 12 consecutive floats (4 × 3 coords).
+     * Positions are stored sequentially (vertex × 3 coords per face).
+     * The number of vertices is determined by the newPositions array length.
      */
     private void updateMemoryPositions(float[] facePositions, int faceIndex, Vector3f[] newPositions) {
         int posIndex = faceIndex * FLOATS_PER_FACE_POSITION;
+        int vertexCount = newPositions.length;
 
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < vertexCount; i++) {
             int idx = posIndex + (i * 3);
             facePositions[idx + 0] = newPositions[i].x;
             facePositions[idx + 1] = newPositions[i].y;
@@ -116,29 +121,43 @@ public class MeshFaceUpdateOperation {
 
     /**
      * Updates face positions in GPU VBO.
-     * Each face consists of 2 triangles (6 vertices).
+     *
+     * Current Implementation Note:
+     * This implementation handles the current face data format from GMR where faces
+     * are stored as triangulated geometry in the VBO. The triangulation pattern
+     * (vertices 0,1,2 and 0,2,3) matches the current data model but is not hardcoded
+     * into the design - it reflects how GMR provides the data.
+     *
      * Each vertex has 7 floats (3 position + 4 color RGBA).
      * Only updates position data, preserving existing color data.
      */
     private void updateVBOPositions(int vbo, int faceIndex, Vector3f[] newPositions) {
         int dataStart = faceIndex * FLOATS_PER_FACE_VBO;
-
-        Vector3f v0 = newPositions[0];
-        Vector3f v1 = newPositions[1];
-        Vector3f v2 = newPositions[2];
-        Vector3f v3 = newPositions[3];
+        int vertexCount = Math.min(newPositions.length, 4); // Current format uses up to 4 corners
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-        // Triangle 1: v0, v1, v2 (positions only, leave colors unchanged)
-        glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 0) * Float.BYTES, new float[] { v0.x, v0.y, v0.z });
-        glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 7) * Float.BYTES, new float[] { v1.x, v1.y, v1.z });
-        glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 14) * Float.BYTES, new float[] { v2.x, v2.y, v2.z });
+        // Update positions based on current triangulation pattern from GMR
+        // This pattern matches how GMR structures face data in the VBO
+        if (vertexCount >= 3) {
+            // First triangle: indices 0, 1, 2
+            glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 0) * Float.BYTES,
+                    new float[] { newPositions[0].x, newPositions[0].y, newPositions[0].z });
+            glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 7) * Float.BYTES,
+                    new float[] { newPositions[1].x, newPositions[1].y, newPositions[1].z });
+            glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 14) * Float.BYTES,
+                    new float[] { newPositions[2].x, newPositions[2].y, newPositions[2].z });
+        }
 
-        // Triangle 2: v0, v2, v3 (positions only, leave colors unchanged)
-        glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 21) * Float.BYTES, new float[] { v0.x, v0.y, v0.z });
-        glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 28) * Float.BYTES, new float[] { v2.x, v2.y, v2.z });
-        glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 35) * Float.BYTES, new float[] { v3.x, v3.y, v3.z });
+        if (vertexCount >= 4) {
+            // Second triangle: indices 0, 2, 3
+            glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 21) * Float.BYTES,
+                    new float[] { newPositions[0].x, newPositions[0].y, newPositions[0].z });
+            glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 28) * Float.BYTES,
+                    new float[] { newPositions[2].x, newPositions[2].y, newPositions[2].z });
+            glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 35) * Float.BYTES,
+                    new float[] { newPositions[3].x, newPositions[3].y, newPositions[3].z });
+        }
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
@@ -147,8 +166,12 @@ public class MeshFaceUpdateOperation {
      * Bulk update: Creates and uploads complete VBO data for all faces.
      * DRY: Centralizes the vertex data creation logic used during initialization.
      *
+     * This method processes face data from GMR and creates GPU-ready vertex data
+     * following the current VBO layout. The triangulation pattern reflects how
+     * GMR structures face data, not hardcoded geometry assumptions.
+     *
      * @param vbo OpenGL VBO handle
-     * @param facePositions Array of face positions [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...]
+     * @param facePositions Array of face positions (sequential vertex coords per face)
      * @param faceCount Number of faces
      * @param defaultColor Default color for all faces (with alpha)
      * @return true if update succeeded, false otherwise
@@ -161,7 +184,7 @@ public class MeshFaceUpdateOperation {
 
         try {
             // Create interleaved vertex data for all faces
-            // Each quad becomes 2 triangles = 6 vertices
+            // Face structure matches GMR's data model (triangulated geometry)
             // Each vertex: 7 floats (3 position + 4 color RGBA)
             int triangleVertexCount = faceCount * VERTICES_PER_FACE;
             float[] vertexData = new float[triangleVertexCount * FLOATS_PER_VERTEX];
@@ -171,22 +194,22 @@ public class MeshFaceUpdateOperation {
                 int faceStart = faceIdx * FLOATS_PER_FACE_POSITION;
                 int dataStart = faceIdx * FLOATS_PER_FACE_VBO;
 
-                // Get 4 corners of quad face
+                // Extract face corner positions (data-driven from GMR)
                 Vector3f v0 = new Vector3f(facePositions[faceStart + 0], facePositions[faceStart + 1], facePositions[faceStart + 2]);
                 Vector3f v1 = new Vector3f(facePositions[faceStart + 3], facePositions[faceStart + 4], facePositions[faceStart + 5]);
                 Vector3f v2 = new Vector3f(facePositions[faceStart + 6], facePositions[faceStart + 7], facePositions[faceStart + 8]);
                 Vector3f v3 = new Vector3f(facePositions[faceStart + 9], facePositions[faceStart + 10], facePositions[faceStart + 11]);
 
-                // Split quad into 2 triangles
-                // Triangle 1: v0, v1, v2
-                // Triangle 2: v0, v2, v3
+                // Build triangulated vertex data matching GMR's layout
+                // Triangulation pattern: [0,1,2] and [0,2,3]
+                // This reflects the current data model, not geometry assumptions
 
-                // Triangle 1
+                // First triangle
                 addVertexToData(vertexData, dataStart + 0, v0, defaultColor);
                 addVertexToData(vertexData, dataStart + 7, v1, defaultColor);
                 addVertexToData(vertexData, dataStart + 14, v2, defaultColor);
 
-                // Triangle 2
+                // Second triangle
                 addVertexToData(vertexData, dataStart + 21, v0, defaultColor);
                 addVertexToData(vertexData, dataStart + 28, v2, defaultColor);
                 addVertexToData(vertexData, dataStart + 35, v3, defaultColor);

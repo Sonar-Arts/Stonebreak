@@ -10,17 +10,6 @@ import java.util.Map;
 /**
  * Single Responsibility: Builds mapping from face indices to unique vertex indices.
  * This class encapsulates the logic of identifying which unique vertices each face connects to.
- *
- * SOLID Principles:
- * - Single Responsibility: Only handles face-to-vertex mapping construction
- * - Open/Closed: Can be extended for different mapping strategies
- * - Liskov Substitution: Could be abstracted to IFaceMappingBuilder if needed
- * - Interface Segregation: Focused interface for mapping construction
- * - Dependency Inversion: Depends on abstractions (arrays) not concrete implementations
- *
- * KISS Principle: Simple position-matching algorithm using epsilon comparison.
- * DRY Principle: All face mapping logic centralized in one place.
- * YAGNI Principle: Only implements what's needed for face-to-vertex mapping.
  */
 public class MeshFaceMappingBuilder {
 
