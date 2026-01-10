@@ -4,13 +4,11 @@ import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 /**
  * Implementation of IUniqueVertexMapper.
- * Maps between mesh vertices and unique geometric positions.
+ * Maps between mesh vertices and unique geometric positions using spatial hashing for O(n) performance.
  * For a cube: 24 mesh vertices map to 8 unique positions (3 mesh vertices per corner).
  */
 public class UniqueVertexMapper implements IUniqueVertexMapper {
@@ -33,9 +31,54 @@ public class UniqueVertexMapper implements IUniqueVertexMapper {
     // Number of unique geometric positions
     private int uniqueVertexCount;
 
+    /**
+     * Spatial hash key for efficient vertex lookup.
+     * Partitions 3D space into grid cells for O(1) neighbor queries.
+     */
+    private static class SpatialKey {
+        final int x, y, z;
+
+        // Constructor from world position
+        SpatialKey(float px, float py, float pz, float cellSize) {
+            this.x = (int) Math.floor(px / cellSize);
+            this.y = (int) Math.floor(py / cellSize);
+            this.z = (int) Math.floor(pz / cellSize);
+        }
+
+        // Constructor from grid coordinates (for neighbor lookup)
+        SpatialKey(int gridX, int gridY, int gridZ) {
+            this.x = gridX;
+            this.y = gridY;
+            this.z = gridZ;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof SpatialKey)) return false;
+            SpatialKey key = (SpatialKey) o;
+            return x == key.x && y == key.y && z == key.z;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = x;
+            result = 31 * result + y;
+            result = 31 * result + z;
+            return result;
+        }
+    }
+
     @Override
     public void buildMapping(float[] vertices) {
         if (vertices == null || vertices.length == 0) {
+            clear();
+            return;
+        }
+
+        // Validate array length
+        if (vertices.length % 3 != 0) {
+            logger.error("Invalid vertices array length: {} (must be divisible by 3)", vertices.length);
             clear();
             return;
         }
@@ -44,29 +87,53 @@ public class UniqueVertexMapper implements IUniqueVertexMapper {
         meshToUniqueMapping = new int[meshVertexCount];
         Arrays.fill(meshToUniqueMapping, -1);
 
-        // Temporary list to collect unique positions and their mesh indices
+        // Temporary lists to collect unique positions and their mesh indices
         List<List<Integer>> uniqueGroups = new ArrayList<>();
         List<Integer> representativeIndices = new ArrayList<>();
+
+        // Spatial hash for O(n) lookup instead of O(n²)
+        // Cell size is 2x epsilon to ensure neighboring cells catch all potential matches
+        float cellSize = DEFAULT_EPSILON * 2.0f;
+        Map<SpatialKey, List<Integer>> spatialHash = new HashMap<>();
 
         for (int meshIdx = 0; meshIdx < meshVertexCount; meshIdx++) {
             float x = vertices[meshIdx * 3];
             float y = vertices[meshIdx * 3 + 1];
             float z = vertices[meshIdx * 3 + 2];
 
-            // Check if this position matches any existing unique vertex
-            int matchedUnique = -1;
-            for (int u = 0; u < uniqueGroups.size(); u++) {
-                int repIdx = representativeIndices.get(u);
-                float rx = vertices[repIdx * 3];
-                float ry = vertices[repIdx * 3 + 1];
-                float rz = vertices[repIdx * 3 + 2];
+            SpatialKey baseKey = new SpatialKey(x, y, z, cellSize);
 
-                float dx = x - rx;
-                float dy = y - ry;
-                float dz = z - rz;
-                if (dx * dx + dy * dy + dz * dz < DEFAULT_EPSILON * DEFAULT_EPSILON) {
-                    matchedUnique = u;
-                    break;
+            // Search for matching vertex in this cell and 26 neighboring cells
+            int matchedUnique = -1;
+            searchLoop:
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        SpatialKey neighborKey = new SpatialKey(
+                            baseKey.x + dx,
+                            baseKey.y + dy,
+                            baseKey.z + dz
+                        );
+
+                        List<Integer> candidates = spatialHash.get(neighborKey);
+                        if (candidates != null) {
+                            for (int candidateIdx : candidates) {
+                                float cx = vertices[candidateIdx * 3];
+                                float cy = vertices[candidateIdx * 3 + 1];
+                                float cz = vertices[candidateIdx * 3 + 2];
+
+                                float dx2 = x - cx;
+                                float dy2 = y - cy;
+                                float dz2 = z - cz;
+                                float distSq = dx2 * dx2 + dy2 * dy2 + dz2 * dz2;
+
+                                if (distSq < DEFAULT_EPSILON * DEFAULT_EPSILON) {
+                                    matchedUnique = meshToUniqueMapping[candidateIdx];
+                                    break searchLoop;
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -83,6 +150,9 @@ public class UniqueVertexMapper implements IUniqueVertexMapper {
                 representativeIndices.add(meshIdx);
                 meshToUniqueMapping[meshIdx] = newUniqueIdx;
             }
+
+            // Add current vertex to spatial hash
+            spatialHash.computeIfAbsent(baseKey, k -> new ArrayList<>()).add(meshIdx);
         }
 
         // Convert to final arrays
@@ -93,7 +163,12 @@ public class UniqueVertexMapper implements IUniqueVertexMapper {
         for (int u = 0; u < uniqueVertexCount; u++) {
             uniqueVertexIndices[u] = representativeIndices.get(u);
             List<Integer> group = uniqueGroups.get(u);
-            int[] meshIndices = group.stream().mapToInt(Integer::intValue).toArray();
+
+            // Convert to array without stream overhead
+            int[] meshIndices = new int[group.size()];
+            for (int i = 0; i < group.size(); i++) {
+                meshIndices[i] = group.get(i);
+            }
             uniqueToMeshIndices.add(meshIndices);
         }
 
