@@ -375,19 +375,25 @@ public class ViewportController {
             logger.warn("BlockModel has no valid texture path: {}", texturePath);
         }
 
-        // Load geometry from BlockModel into renderer
+        // Load geometry from BlockModel into renderer (LEGACY support only)
         com.openmason.main.systems.rendering.model.editable.ModelGeometry geometry = blockModel.getGeometry();
         if (geometry != null) {
             try {
-                modelRenderer.loadFromDimensions(
-                    geometry.getWidth(),
-                    geometry.getHeight(),
-                    geometry.getDepth(),
-                    geometry.getX(),
-                    geometry.getY(),
-                    geometry.getZ()
-                );
-                logger.info("Loaded BlockModel geometry: {}x{}x{} at ({}, {}, {})",
+                // LEGACY: Generate mesh from dimensions for old BlockModel format
+                // TODO: Modern models should provide topology via .omo files, not dimensions
+                @SuppressWarnings("deprecation")
+                com.openmason.main.systems.rendering.model.io.omo.OMOFormat.MeshData meshData =
+                    com.openmason.main.systems.rendering.model.LegacyGeometryGenerator.generateLegacyBoxMesh(
+                        geometry.getWidth(),
+                        geometry.getHeight(),
+                        geometry.getDepth(),
+                        geometry.getX(),
+                        geometry.getY(),
+                        geometry.getZ(),
+                        com.openmason.main.systems.rendering.model.UVMode.CUBE_NET // Legacy default
+                    );
+                modelRenderer.loadMeshData(meshData);
+                logger.info("Loaded legacy BlockModel geometry: {}x{}x{} at ({}, {}, {})",
                            geometry.getWidth(), geometry.getHeight(), geometry.getDepth(),
                            geometry.getX(), geometry.getY(), geometry.getZ());
             } catch (Exception e) {

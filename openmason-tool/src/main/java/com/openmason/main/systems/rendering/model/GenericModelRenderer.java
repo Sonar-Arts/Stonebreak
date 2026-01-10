@@ -17,13 +17,13 @@ import static org.lwjgl.opengl.GL20.*;
 
 /**
  * Generic model renderer supporting arbitrary geometry.
- * NOT locked to 8-vertex cube topology - supports any vertex count.
+ * supports any vertex count.
  * Extends BaseRenderer for consistent initialization and rendering.
  *
  * Features:
  * - Multi-part model support
  * - Dynamic vertex updates for editing
- * - Arbitrary vertex counts (not cube-locked)
+ * - Arbitrary vertex counts
  * - OMO format loading support
  *
  * Architecture (SOLID principles):
@@ -105,52 +105,18 @@ public class GenericModelRenderer extends BaseRenderer {
     // MODEL LOADING & GEOMETRY MANAGEMENT
     // =========================================================================
 
-    /**
-     * Load model from OMO format document dimensions.
-     * Creates a cube based on the geometry dimensions in the document.
-     */
-    public void loadFromDimensions(int width, int height, int depth,
-                                   double originX, double originY, double originZ) {
-        stateManager.setDimensions(width, height, depth, originX, originY, originZ);
-        rebuildFromCachedDimensions();
-    }
+    // REMOVED: loadFromDimensions() and rebuildFromCachedDimensions()
+    // GenericModelRenderer should NOT generate geometry - it only loads and renders topology.
+    // Use LegacyGeometryGenerator for legacy BlockModel support, or provide explicit mesh data via loadMeshData().
 
     /**
-     * Rebuild geometry from cached dimensions using current UV mode.
-     */
-    private void rebuildFromCachedDimensions() {
-        stateManager.clearParts();
-
-        IModelStateManager.ModelDimensions dims = stateManager.getDimensions();
-        if (dims == null) {
-            return;
-        }
-
-        Vector3f origin = dims.getOriginInUnits();
-        Vector3f size = dims.getSizeInUnits();
-
-        ModelPart cubePart = ModelPart.createCube("main", origin, size, stateManager.getUVMode());
-        stateManager.addPart(cubePart);
-
-        rebuildGeometry();
-        logger.info("Created model from dimensions: {}x{}x{} pixels -> {}x{}x{} units at ({}, {}, {}) with UV mode: {}",
-                dims.width(), dims.height(), dims.depth(), size.x, size.y, size.z, origin.x, origin.y, origin.z, stateManager.getUVMode());
-    }
-
-    /**
-     * Set UV mapping mode and regenerate geometry.
+     * Set UV mapping mode and update texture coordinates for existing geometry.
+     * Note: This only works if geometry is already loaded. For new models, provide
+     * mesh data with the correct UV mode via loadMeshData().
      */
     public void setUVMode(UVMode uvMode) {
-        if (uvMode == null || uvMode == stateManager.getUVMode()) {
-            return;
-        }
-
-        logger.info("Changing UV mode from {} to {}", stateManager.getUVMode(), uvMode);
-        stateManager.setUVMode(uvMode);
-
-        if (stateManager.hasDimensions()) {
-            rebuildFromCachedDimensions();
-        }
+        // Delegate to updateUVModeOnly which handles the full logic
+        updateUVModeOnly(uvMode);
     }
 
     /**
@@ -229,7 +195,7 @@ public class GenericModelRenderer extends BaseRenderer {
             int triangleCount = geometry.indices().length / 3;
 
             if (geometry.trianglesPerFace() != null && geometry.trianglesPerFace() > 0) {
-                // Use explicit topology from parts (e.g., cubes = 2 tris/face = 6 faces)
+                // Use explicit topology from parts (e.g., quads = 2 tris/face, triangles = 1 tri/face)
                 faceMapper.initializeWithTopology(triangleCount, geometry.trianglesPerFace());
             } else {
                 // Default to 1:1 mapping for arbitrary geometry

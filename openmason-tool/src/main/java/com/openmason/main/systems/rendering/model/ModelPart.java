@@ -24,15 +24,21 @@ public record ModelPart(
 ) {
     // Shared UV generator for DRY compliance
     private static final UVCoordinateGenerator UV_GENERATOR = new UVCoordinateGenerator();
+
     /**
-     * Create a cube part with UV mapping based on the specified mode.
+     * LEGACY: Create a cube part with UV mapping based on the specified mode.
+     *
+     * <p><strong>DO NOT USE FOR NEW MODELS.</strong> This method exists only for legacy
+     * BlockModel support. New models should provide explicit topology, not generate it.
      *
      * @param name Part name
      * @param origin Part origin (center point)
      * @param size Size in each axis (width, height, depth)
      * @param uvMode UV mapping mode (CUBE_NET or FLAT)
      * @return A ModelPart representing a cube with appropriate UV coordinates
+     * @deprecated Legacy support only - use explicit mesh data for new models
      */
+    @Deprecated
     public static ModelPart createCube(String name, Vector3f origin, Vector3f size, UVMode uvMode) {
         if (uvMode == UVMode.FLAT) {
             return createCubeFlat(name, origin, size);
@@ -41,14 +47,19 @@ public record ModelPart(
     }
 
     /**
-     * Create a cube part with proper 24-vertex format for cube net textures.
+     * LEGACY: Create a cube part with proper 24-vertex format for cube net textures.
      * Uses expanded mesh format (4 vertices per face) to support proper UV mapping.
+     *
+     * <p><strong>DO NOT USE FOR NEW MODELS.</strong> This method exists only for legacy
+     * BlockModel support. New models should provide explicit topology, not generate it.
      *
      * @param name Part name
      * @param origin Part origin (center point)
      * @param size Size in each axis (width, height, depth)
      * @return A ModelPart representing a cube with cube net UV coordinates
+     * @deprecated Legacy support only - use explicit mesh data for new models
      */
+    @Deprecated
     public static ModelPart createCube(String name, Vector3f origin, Vector3f size) {
         return createCubeCubeNet(name, origin, size);
     }
