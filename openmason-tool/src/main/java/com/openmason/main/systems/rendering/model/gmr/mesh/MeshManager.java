@@ -240,27 +240,30 @@ public class MeshManager {
     }
 
     /**
-     * Get the 4 corner vertices of a face.
+     * Get the corner vertices of a face.
      * Convenience method using MeshFaceCornerExtractor.
+     * Supports arbitrary face topology (triangles, quads, n-gons, or mixed).
      *
      * @param facePositions Array of face positions
      * @param faceIndex Face index
      * @param faceCount Total number of faces
-     * @return Array of 4 vertices [v0, v1, v2, v3], or null if invalid
+     * @param verticesPerFace Number of vertices per face (topology determined by GMR)
+     * @return Array of vertices [v0, v1, v2, ..., vN] (length = verticesPerFace), or null if invalid
      */
-    public Vector3f[] getFaceVertices(float[] facePositions, int faceIndex, int faceCount) {
+    public Vector3f[] getFaceVertices(float[] facePositions, int faceIndex, int faceCount, int verticesPerFace) {
         MeshFaceCornerExtractor extractor = new MeshFaceCornerExtractor();
-        return extractor.getFaceVertices(facePositions, faceIndex, faceCount);
+        return extractor.getFaceVertices(facePositions, faceIndex, faceCount, verticesPerFace);
     }
 
     /**
      * Get face vertex indices for a face from the mapping.
      * Convenience method using MeshFaceCornerExtractor.
+     * Array length depends on face topology (e.g., 3 for triangles, 4 for quads).
      *
      * @param faceIndex Face index
      * @param faceCount Total number of faces
      * @param faceToVertexMapping Map from face index to vertex indices
-     * @return Array of 4 vertex indices [v0, v1, v2, v3], or null if invalid
+     * @return Array of vertex indices [v0, v1, v2, ..., vN], or null if invalid
      */
     public int[] getFaceVertexIndices(int faceIndex, int faceCount,
                                      Map<Integer, int[]> faceToVertexMapping) {

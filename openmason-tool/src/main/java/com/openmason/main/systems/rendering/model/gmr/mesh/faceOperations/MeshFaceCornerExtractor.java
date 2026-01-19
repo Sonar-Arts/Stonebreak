@@ -7,40 +7,48 @@ import org.slf4j.LoggerFactory;
 /**
  * Single Responsibility: Extracts face corner positions from face position arrays.
  * This class encapsulates the logic of retrieving vertex positions for face corners.
+ *
+ * Shape-Blind Design:
+ * This operation is data-driven and works with arbitrary face topology from GenericModelRenderer (GMR).
+ * GMR is the single source of truth for mesh topology. Face extraction works with any vertex count
+ * per face and mesh structure determined by GMR's data model. Supports triangles, quads, n-gons,
+ * and mixed topology without hardcoded assumptions.
  */
 public class MeshFaceCornerExtractor {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshFaceCornerExtractor.class);
     private static final int COMPONENTS_PER_POSITION = 3; // x, y, z
-    private static final int CORNERS_PER_FACE = 4; // quad face
-    private static final int FLOATS_PER_FACE_POSITION = 12; // 4 corners × 3 components
 
     /**
-     * Get the 4 corner vertices of a face.
+     * Get the corner vertices of a face.
+     * Supports arbitrary face topology (triangles, quads, n-gons, or mixed).
      *
      * @param facePositions Array of face positions [v0x,v0y,v0z, v1x,v1y,v1z, ...]
      * @param faceIndex Face index
      * @param faceCount Total number of faces
-     * @return Array of 4 vertices [v0, v1, v2, v3], or null if invalid
+     * @param verticesPerFace Number of vertices per face (topology determined by GMR)
+     * @return Array of vertices [v0, v1, v2, ..., vN] (length = verticesPerFace), or null if invalid
      */
-    public Vector3f[] getFaceVertices(float[] facePositions, int faceIndex, int faceCount) {
+    public Vector3f[] getFaceVertices(float[] facePositions, int faceIndex, int faceCount, int verticesPerFace) {
         // Validate inputs
-        if (!validateInputs(facePositions, faceIndex, faceCount)) {
+        if (!validateInputs(facePositions, faceIndex, faceCount, verticesPerFace)) {
             return null;
         }
 
-        int posIndex = faceIndex * FLOATS_PER_FACE_POSITION;
+        // Calculate floats per face dynamically based on topology
+        int floatsPerFacePosition = verticesPerFace * COMPONENTS_PER_POSITION;
+        int posIndex = faceIndex * floatsPerFacePosition;
 
         // Bounds check
-        if (posIndex + (FLOATS_PER_FACE_POSITION - 1) >= facePositions.length) {
+        if (posIndex + (floatsPerFacePosition - 1) >= facePositions.length) {
             logger.warn("Face index {} out of bounds for face positions array", faceIndex);
             return null;
         }
 
-        // Extract 4 corners
-        Vector3f[] vertices = new Vector3f[CORNERS_PER_FACE];
-        for (int i = 0; i < CORNERS_PER_FACE; i++) {
-            vertices[i] = extractFaceCornerPosition(facePositions, posIndex, i);
+        // Extract vertices dynamically
+        Vector3f[] vertices = new Vector3f[verticesPerFace];
+        for (int i = 0; i < verticesPerFace; i++) {
+            vertices[i] = extractFaceCornerPosition(facePositions, posIndex, i, verticesPerFace);
         }
 
         return vertices;
@@ -48,24 +56,26 @@ public class MeshFaceCornerExtractor {
 
     /**
      * Extract position of a specific face corner.
+     * Works with any face topology determined by GMR's data model.
      *
      * @param facePositions Array of face positions
      * @param facePosIdx Starting index of face in positions array
-     * @param corner Corner index (0-3)
+     * @param vertexIdx Vertex index within the face (0 to verticesPerFace-1)
+     * @param verticesPerFace Number of vertices per face (topology determined by GMR)
      * @return Position vector
      */
-    public Vector3f extractFaceCornerPosition(float[] facePositions, int facePosIdx, int corner) {
+    public Vector3f extractFaceCornerPosition(float[] facePositions, int facePosIdx, int vertexIdx, int verticesPerFace) {
         if (facePositions == null) {
             logger.warn("Cannot extract corner position: face positions array is null");
             return new Vector3f();
         }
 
-        if (corner < 0 || corner >= CORNERS_PER_FACE) {
-            logger.warn("Invalid corner index: {} (must be 0-3)", corner);
+        if (vertexIdx < 0 || vertexIdx >= verticesPerFace) {
+            logger.warn("Invalid vertex index: {} (must be 0-{})", vertexIdx, verticesPerFace - 1);
             return new Vector3f();
         }
 
-        int cornerPosIdx = facePosIdx + (corner * COMPONENTS_PER_POSITION);
+        int cornerPosIdx = facePosIdx + (vertexIdx * COMPONENTS_PER_POSITION);
 
         // Bounds check
         if (cornerPosIdx + 2 >= facePositions.length) {
@@ -82,11 +92,12 @@ public class MeshFaceCornerExtractor {
 
     /**
      * Get face vertex indices for a face from the mapping.
+     * Array length depends on face topology (e.g., 3 for triangles, 4 for quads).
      *
      * @param faceIndex Face index
      * @param faceCount Total number of faces
      * @param faceToVertexMapping Map from face index to vertex indices
-     * @return Array of 4 vertex indices [v0, v1, v2, v3], or null if invalid
+     * @return Array of vertex indices [v0, v1, v2, ..., vN], or null if invalid
      */
     public int[] getFaceVertexIndices(int faceIndex, int faceCount,
                                      java.util.Map<Integer, int[]> faceToVertexMapping) {
@@ -106,7 +117,7 @@ public class MeshFaceCornerExtractor {
     /**
      * Validate inputs for face vertex extraction.
      */
-    private boolean validateInputs(float[] facePositions, int faceIndex, int faceCount) {
+    private boolean validateInputs(float[] facePositions, int faceIndex, int faceCount, int verticesPerFace) {
         if (facePositions == null) {
             logger.warn("Cannot get face vertices: face positions array is null");
             return false;
@@ -114,6 +125,11 @@ public class MeshFaceCornerExtractor {
 
         if (faceIndex < 0 || faceIndex >= faceCount) {
             logger.warn("Invalid face index: {} (valid range: 0-{})", faceIndex, faceCount - 1);
+            return false;
+        }
+
+        if (verticesPerFace <= 0) {
+            logger.warn("Cannot get face vertices: invalid verticesPerFace ({})", verticesPerFace);
             return false;
         }
 

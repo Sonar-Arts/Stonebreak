@@ -363,7 +363,8 @@ public class FaceRenderer implements MeshChangeListener {
             };
         } else {
             // Quad mode: Delegate to MeshManager (Single Responsibility Principle)
-            return MeshManager.getInstance().getFaceVertices(facePositions, faceIndex, faceCount);
+            // Quad topology: 4 vertices per face
+            return MeshManager.getInstance().getFaceVertices(facePositions, faceIndex, faceCount, 4);
         }
     }
 
