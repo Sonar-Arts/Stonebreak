@@ -73,14 +73,12 @@ public class TriangleFaceMapper implements ITriangleFaceMapper {
             return 0;
         }
 
-        // Find the maximum face ID + 1
-        int maxFaceId = 0;
+        // Count unique face IDs (handles gaps in face indices like Blender)
+        java.util.Set<Integer> uniqueFaceIds = new java.util.HashSet<>();
         for (int faceId : triangleToFaceId) {
-            if (faceId > maxFaceId) {
-                maxFaceId = faceId;
-            }
+            uniqueFaceIds.add(faceId);
         }
-        return maxFaceId + 1;
+        return uniqueFaceIds.size();
     }
 
     @Override
