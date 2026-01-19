@@ -215,10 +215,15 @@ public class MeshManager {
     // ========================================
 
     // Face VBO layout constants (exposed for rendering operations)
-    public static final int FLOATS_PER_FACE_POSITION = MeshFaceUpdateOperation.FLOATS_PER_FACE_POSITION;
-    public static final int FLOATS_PER_VERTEX = MeshFaceUpdateOperation.FLOATS_PER_VERTEX;
-    public static final int VERTICES_PER_FACE = MeshFaceUpdateOperation.VERTICES_PER_FACE;
-    public static final int FLOATS_PER_FACE_VBO = MeshFaceUpdateOperation.FLOATS_PER_FACE_VBO;
+    // Note: These are deprecated. Use topology-aware methods instead.
+    @Deprecated
+    public static final int FLOATS_PER_FACE_POSITION = 12; // 4 vertices × 3 coords (legacy quad format)
+    @Deprecated
+    public static final int FLOATS_PER_VERTEX = 7; // pos(3) + color(4)
+    @Deprecated
+    public static final int VERTICES_PER_FACE = 6; // 6 VBO vertices per face after triangulation
+    @Deprecated
+    public static final int FLOATS_PER_FACE_VBO = 42; // 6 vertices × 7 floats
 
     /**
      * Build face-to-vertex mapping from unique vertex positions.
@@ -320,8 +325,11 @@ public class MeshManager {
     // ========================================
 
     // Edge VBO layout constants (exposed for rendering operations)
-    public static final int FLOATS_PER_EDGE = 6; // 2 endpoints × 3 coordinates
-    public static final int ENDPOINTS_PER_EDGE = 2;
+    // Note: These are deprecated. Use topology-aware methods instead.
+    @Deprecated
+    public static final int FLOATS_PER_EDGE = 6; // 2 vertices × 3 coordinates (legacy format)
+    @Deprecated
+    public static final int ENDPOINTS_PER_EDGE = 2; // Legacy: 2 vertices per edge
 
     /**
      * Build edge-to-vertex mapping from unique vertex positions.
@@ -329,14 +337,15 @@ public class MeshManager {
      *
      * @param edgePositions Array of edge positions [x1,y1,z1, x2,y2,z2, ...]
      * @param edgeCount Number of edges
+     * @param verticesPerEdge Number of vertices per edge (derived from GMR topology)
      * @param uniqueVertexPositions Array of unique vertex positions
      * @param epsilon Distance threshold for vertex matching
-     * @return 2D array mapping edge index to vertex indices [edgeIdx][0=v1, 1=v2]
+     * @return 2D array mapping edge index to vertex indices arrays
      */
-    public int[][] buildEdgeToVertexMapping(float[] edgePositions, int edgeCount,
+    public int[][] buildEdgeToVertexMapping(float[] edgePositions, int edgeCount, int verticesPerEdge,
                                            float[] uniqueVertexPositions, float epsilon) {
         MeshEdgeMappingBuilder builder = new MeshEdgeMappingBuilder(epsilon);
-        return builder.buildMapping(edgePositions, edgeCount, uniqueVertexPositions);
+        return builder.buildMapping(edgePositions, verticesPerEdge, uniqueVertexPositions);
     }
 
     /**
@@ -345,13 +354,14 @@ public class MeshManager {
      *
      * @param vbo OpenGL VBO handle
      * @param edgePositions Edge position data
+     * @param verticesPerEdge Number of vertices per edge (derived from GMR topology)
      * @param edgeColor Color to apply to all edges
      * @return UpdateResult with edge count and positions, or null if failed
      */
     public MeshEdgeBufferUpdater.UpdateResult updateEdgeBuffer(int vbo, float[] edgePositions,
-                                                               Vector3f edgeColor) {
+                                                               int verticesPerEdge, Vector3f edgeColor) {
         MeshEdgeBufferUpdater updater = new MeshEdgeBufferUpdater();
-        return updater.updateBuffer(vbo, edgePositions, edgeColor);
+        return updater.updateBuffer(vbo, edgePositions, verticesPerEdge, edgeColor);
     }
 
     /**
@@ -377,16 +387,17 @@ public class MeshManager {
      * @param vbo OpenGL VBO handle
      * @param edgePositions Edge position array
      * @param edgeCount Total number of edges
+     * @param verticesPerEdge Number of vertices per edge (derived from GMR topology)
      * @param oldPosition Original position of vertex before dragging
      * @param newPosition New position of vertex after dragging
      * @return UpdateResult with statistics, or null if failed
      */
     public MeshEdgePositionUpdater.UpdateResult updateEdgesByPosition(int vbo, float[] edgePositions,
-                                                                      int edgeCount,
+                                                                      int edgeCount, int verticesPerEdge,
                                                                       Vector3f oldPosition,
                                                                       Vector3f newPosition) {
         MeshEdgePositionUpdater updater = new MeshEdgePositionUpdater();
-        return updater.updateByPosition(vbo, edgePositions, edgeCount, oldPosition, newPosition);
+        return updater.updateByPosition(vbo, edgePositions, verticesPerEdge, oldPosition, newPosition);
     }
 
     /**
@@ -396,6 +407,7 @@ public class MeshManager {
      * @param vbo OpenGL VBO handle
      * @param edgePositions Edge position array
      * @param edgeCount Total number of edges
+     * @param verticesPerEdge Number of vertices per edge (derived from GMR topology)
      * @param edgeToVertexMapping 2D array mapping edge indices to vertex indices
      * @param vertexIndex1 First unique vertex index that was moved
      * @param newPosition1 New position for first vertex
@@ -404,12 +416,12 @@ public class MeshManager {
      * @return UpdateResult with statistics, or null if failed
      */
     public MeshEdgePositionUpdater.UpdateResult updateEdgesByIndices(int vbo, float[] edgePositions,
-                                                                     int edgeCount,
+                                                                     int edgeCount, int verticesPerEdge,
                                                                      int[][] edgeToVertexMapping,
                                                                      int vertexIndex1, Vector3f newPosition1,
                                                                      int vertexIndex2, Vector3f newPosition2) {
         MeshEdgePositionUpdater updater = new MeshEdgePositionUpdater();
-        return updater.updateByIndices(vbo, edgePositions, edgeCount, edgeToVertexMapping,
+        return updater.updateByIndices(vbo, edgePositions, verticesPerEdge, edgeToVertexMapping,
                                        vertexIndex1, newPosition1, vertexIndex2, newPosition2);
     }
 
@@ -421,32 +433,33 @@ public class MeshManager {
      * @param vbo OpenGL VBO handle
      * @param edgePositions Edge position array
      * @param edgeCount Total number of edges
+     * @param verticesPerEdge Number of vertices per edge (derived from GMR topology)
      * @param edgeToVertexMapping 2D array mapping edge indices to vertex indices
      * @param vertexIndex Unique vertex index that was moved
      * @param newPosition New position for the vertex
      * @return UpdateResult with statistics, or null if failed
      */
     public MeshEdgePositionUpdater.UpdateResult updateEdgesBySingleVertexIndex(int vbo, float[] edgePositions,
-                                                                                int edgeCount,
+                                                                                int edgeCount, int verticesPerEdge,
                                                                                 int[][] edgeToVertexMapping,
                                                                                 int vertexIndex, Vector3f newPosition) {
         MeshEdgePositionUpdater updater = new MeshEdgePositionUpdater();
-        return updater.updateSingleVertexByIndex(vbo, edgePositions, edgeCount, edgeToVertexMapping,
+        return updater.updateSingleVertexByIndex(vbo, edgePositions, verticesPerEdge, edgeToVertexMapping,
                                                   vertexIndex, newPosition);
     }
 
     /**
-     * Get edge endpoint positions.
+     * Get edge vertex positions.
      * Convenience method using MeshEdgeGeometryQuery.
      *
      * @param edgeIndex Edge index
      * @param edgePositions Array of edge positions
-     * @param edgeCount Total number of edges
-     * @return Array of [endpoint1, endpoint2], or null if invalid
+     * @param verticesPerEdge Number of vertices per edge (derived from GMR topology)
+     * @return Array of vertices, or null if invalid
      */
-    public Vector3f[] getEdgeEndpoints(int edgeIndex, float[] edgePositions, int edgeCount) {
+    public Vector3f[] getEdgeVertices(int edgeIndex, float[] edgePositions, int verticesPerEdge) {
         MeshEdgeGeometryQuery query = new MeshEdgeGeometryQuery();
-        return query.getEdgeEndpoints(edgeIndex, edgePositions, edgeCount);
+        return query.getEdgeVertices(edgeIndex, edgePositions, verticesPerEdge);
     }
 
     /**

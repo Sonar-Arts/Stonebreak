@@ -5,44 +5,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Single Responsibility: Builds mapping from edge indices to unique vertex indices.
- * This class encapsulates the logic of identifying which unique vertices each edge connects to.
- *
- * SOLID Principles:
- * - Single Responsibility: Only handles edge-to-vertex mapping construction
- * - Open/Closed: Can be extended for different mapping strategies
- * - Liskov Substitution: Could be abstracted to IEdgeMappingBuilder if needed
- * - Interface Segregation: Focused interface for mapping construction
- * - Dependency Inversion: Depends on abstractions (arrays) not concrete implementations
- *
- * KISS Principle: Simple position-matching algorithm using epsilon comparison.
- * DRY Principle: All edge mapping logic centralized in one place.
- * YAGNI Principle: Only implements what's needed for edge-to-vertex mapping.
+ * Builds mapping from edge indices to unique vertex indices.
+ * Identifies which unique vertices each edge connects by matching edge vertex positions
+ * to unique vertex positions using epsilon-based comparison.
  *
  * Shape-Blind Design:
- * This operation is data-driven and operates on edge data provided by GenericModelRenderer (GMR).
- * GMR is the single source of truth for mesh topology and edge connectivity.
- * Edge structure (vertices per edge) is determined by GMR's data model.
- *
- * Data Flow: GMR extracts edge data → MeshManager operations → Mapping construction
+ * Operates on edge data provided by GenericModelRenderer (GMR) without assuming specific topology.
+ * GMR is the single source of truth for mesh structure and edge connectivity.
+ * All edge structure information (vertices per edge) is derived from the data itself,
+ * not from hardcoded assumptions.
  */
 public class MeshEdgeMappingBuilder {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshEdgeMappingBuilder.class);
     private static final int POSITION_COMPONENTS = 3; // x, y, z
-
-    /**
-     * Number of floats per edge in GMR's current data format.
-     * This represents edge endpoints × 3 coordinates (data-driven from GMR).
-     */
-    private static final int FLOATS_PER_EDGE = 6;
-
-    /**
-     * Number of vertices per edge in GMR's current data format.
-     * Edge topology is determined by GMR's data model.
-     */
-    private static final int VERTICES_PER_EDGE = FLOATS_PER_EDGE / POSITION_COMPONENTS;
-
     private static final int MIN_VERTEX_ARRAY_LENGTH = 3; // Minimum one vertex
     private static final int NO_EDGE_SELECTED = -1;
 
@@ -64,32 +40,37 @@ public class MeshEdgeMappingBuilder {
      * The algorithm matches edge vertices to unique vertices using epsilon-based
      * floating-point comparison for robustness against numerical precision issues.
      *
-     * The number of vertices per edge is determined by GMR's data model.
+     * The number of vertices per edge is derived from the actual edge data structure
+     * provided by GMR, not from hardcoded assumptions.
      *
      * @param edgePositions Array of edge positions from GMR [x1,y1,z1, x2,y2,z2, ...]
-     * @param edgeCount Number of edges
+     * @param verticesPerEdge Number of vertices per edge (derived from GMR data model)
      * @param uniqueVertexPositions Array of unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
      * @return 2D array mapping edge index to vertex indices [edgeIdx][vertex indices...]
      */
-    public int[][] buildMapping(float[] edgePositions, int edgeCount, float[] uniqueVertexPositions) {
+    public int[][] buildMapping(float[] edgePositions, int verticesPerEdge, float[] uniqueVertexPositions) {
         // Validate inputs
-        if (!validateInputs(edgePositions, edgeCount, uniqueVertexPositions)) {
+        if (!validateInputs(edgePositions, verticesPerEdge, uniqueVertexPositions)) {
             return null;
         }
 
+        // Derive edge count from data
+        int floatsPerEdge = verticesPerEdge * POSITION_COMPONENTS;
+        int edgeCount = edgePositions.length / floatsPerEdge;
         int uniqueVertexCount = uniqueVertexPositions.length / POSITION_COMPONENTS;
-        int[][] mapping = new int[edgeCount][VERTICES_PER_EDGE];
+
+        int[][] mapping = new int[edgeCount][verticesPerEdge];
 
         // For each edge, find which unique vertices it connects
         for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
-            int edgePosIdx = edgeIdx * FLOATS_PER_EDGE;
+            int edgePosIdx = edgeIdx * floatsPerEdge;
 
-            // Extract and match all vertices for this edge (based on GMR's data format)
-            for (int vertexInEdge = 0; vertexInEdge < VERTICES_PER_EDGE; vertexInEdge++) {
+            // Extract and match all vertices for this edge
+            for (int vertexInEdge = 0; vertexInEdge < verticesPerEdge; vertexInEdge++) {
                 int posOffset = edgePosIdx + (vertexInEdge * POSITION_COMPONENTS);
 
                 Vector3f edgeVertex = new Vector3f(
-                    edgePositions[posOffset + 0],
+                    edgePositions[posOffset],
                     edgePositions[posOffset + 1],
                     edgePositions[posOffset + 2]
                 );
@@ -105,16 +86,29 @@ public class MeshEdgeMappingBuilder {
             }
         }
 
-        logger.debug("Built edge-to-vertex mapping for {} edges", edgeCount);
+        logger.debug("Built edge-to-vertex mapping for {} edges ({} vertices per edge)",
+                     edgeCount, verticesPerEdge);
         return mapping;
     }
 
     /**
      * Validate inputs for mapping construction.
      */
-    private boolean validateInputs(float[] edgePositions, int edgeCount, float[] uniqueVertexPositions) {
-        if (edgePositions == null || edgeCount == 0) {
+    private boolean validateInputs(float[] edgePositions, int verticesPerEdge, float[] uniqueVertexPositions) {
+        if (edgePositions == null || edgePositions.length == 0) {
             logger.warn("Cannot build edge mapping: no edge data");
+            return false;
+        }
+
+        if (verticesPerEdge <= 0) {
+            logger.warn("Cannot build edge mapping: invalid vertices per edge ({})", verticesPerEdge);
+            return false;
+        }
+
+        int floatsPerEdge = verticesPerEdge * POSITION_COMPONENTS;
+        if (edgePositions.length % floatsPerEdge != 0) {
+            logger.warn("Cannot build edge mapping: edge positions length {} not divisible by {} (vertices per edge: {})",
+                       edgePositions.length, floatsPerEdge, verticesPerEdge);
             return false;
         }
 
@@ -138,7 +132,7 @@ public class MeshEdgeMappingBuilder {
         for (int vIdx = 0; vIdx < uniqueVertexCount; vIdx++) {
             int vPosIdx = vIdx * POSITION_COMPONENTS;
             Vector3f uniqueVertex = new Vector3f(
-                uniqueVertexPositions[vPosIdx + 0],
+                uniqueVertexPositions[vPosIdx],
                 uniqueVertexPositions[vPosIdx + 1],
                 uniqueVertexPositions[vPosIdx + 2]
             );

@@ -6,26 +6,13 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 
 /**
- * Single Responsibility: Handles remapping of edge-to-vertex indices after vertex merging operations.
- * This class updates edge-to-vertex mappings when vertex indices change.
- *
- * SOLID Principles:
- * - Single Responsibility: Only handles edge index remapping
- * - Open/Closed: Can be extended for different remapping strategies
- * - Liskov Substitution: Could be abstracted to IEdgeRemapper if needed
- * - Interface Segregation: Focused interface for remapping operations
- * - Dependency Inversion: Depends on abstractions (maps, arrays) not concrete implementations
- *
- * KISS Principle: Simple mapping lookup and replacement algorithm.
- * DRY Principle: All remapping logic centralized in one place.
- * YAGNI Principle: Only implements what's needed for edge index remapping.
+ * Handles remapping of edge-to-vertex indices after vertex merging operations.
+ * Updates edge-to-vertex mappings when vertex indices change.
  *
  * Shape-Blind Design:
- * This operation is data-driven and works with edge-to-vertex mappings from GenericModelRenderer (GMR).
- * GMR is the single source of truth for mesh topology and edge connectivity.
- * Edge structure (vertices per edge) is determined by GMR's data model.
- *
- * Data Flow: GMR provides mappings → MeshManager operations → Remapping after vertex changes
+ * Operates on edge-to-vertex mappings from GenericModelRenderer (GMR) without assuming specific topology.
+ * GMR is the single source of truth for mesh structure and edge connectivity.
+ * Edge structure (vertices per edge) is derived from the data itself, not from hardcoded assumptions.
  */
 public class MeshEdgeVertexRemapper {
 
@@ -69,9 +56,7 @@ public class MeshEdgeVertexRemapper {
     /**
      * Remap edge vertex indices using the provided index mapping.
      * Updates the edge-to-vertex mapping array in-place with new vertex indices.
-     *
-     * This method works with edge mappings from GMR where vertex counts per edge
-     * are determined by the data model.
+     * Vertex count per edge is determined by the actual data structure from GMR.
      *
      * @param edgeToVertexMapping 2D array mapping edge index to vertex indices arrays [edgeIdx][vertex indices...]
      * @param edgeCount Total number of edges
@@ -101,7 +86,7 @@ public class MeshEdgeVertexRemapper {
                 continue;
             }
 
-            // Attempt to remap all vertices in this edge (based on GMR's data model)
+            // Attempt to remap all vertices in this edge (count determined by GMR data)
             boolean allRemapped = true;
             int[] newVertexIndices = new int[oldVertexIndices.length];
 

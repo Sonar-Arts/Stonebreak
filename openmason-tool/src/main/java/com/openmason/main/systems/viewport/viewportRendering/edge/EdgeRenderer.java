@@ -302,7 +302,7 @@ public class EdgeRenderer implements MeshChangeListener {
             float[] extractedPositions = modelRenderer.extractEdgePositions();
 
             // Update buffer with extracted edge data (delegated to MeshManager)
-            MeshEdgeBufferUpdater.UpdateResult result = meshManager.updateEdgeBuffer(vbo, extractedPositions, edgeColor);
+            MeshEdgeBufferUpdater.UpdateResult result = meshManager.updateEdgeBuffer(vbo, extractedPositions, VERTICES_PER_EDGE, edgeColor);
 
             if (result != null) {
                 edgeCount = result.getEdgeCount();
@@ -340,7 +340,7 @@ public class EdgeRenderer implements MeshChangeListener {
     public void buildEdgeToVertexMapping(float[] uniqueVertexPositions) {
         // Delegate to MeshManager for edge-to-vertex mapping
         edgeToVertexMapping = meshManager.buildEdgeToVertexMapping(
-            edgePositions, edgeCount, uniqueVertexPositions, POSITION_EPSILON
+            edgePositions, edgeCount, VERTICES_PER_EDGE, uniqueVertexPositions, POSITION_EPSILON
         );
     }
 
@@ -684,7 +684,7 @@ public class EdgeRenderer implements MeshChangeListener {
 
         // Rebuild VBO
         MeshEdgeBufferUpdater.UpdateResult bufferResult =
-            meshManager.updateEdgeBuffer(vbo, edgePositions, edgeColor);
+            meshManager.updateEdgeBuffer(vbo, edgePositions, VERTICES_PER_EDGE, edgeColor);
 
         // Clear selection/hover (indices may have changed)
         hoveredEdgeIndex = NO_EDGE_SELECTED;
@@ -839,7 +839,7 @@ public class EdgeRenderer implements MeshChangeListener {
      * @return array containing [endpoint1, endpoint2], or null if index is invalid
      */
     public Vector3f[] getEdgeEndpoints(int edgeIndex) {
-        return meshManager.getEdgeEndpoints(edgeIndex, edgePositions, edgeCount);
+        return meshManager.getEdgeVertices(edgeIndex, edgePositions, VERTICES_PER_EDGE);
     }
 
     /**
@@ -860,7 +860,7 @@ public class EdgeRenderer implements MeshChangeListener {
             return;
         }
 
-        var result = meshManager.updateEdgesByPosition(vbo, edgePositions, edgeCount, oldPosition, newPosition);
+        var result = meshManager.updateEdgesByPosition(vbo, edgePositions, edgeCount, VERTICES_PER_EDGE, oldPosition, newPosition);
 
         if (result != null && result.isSuccessful()) {
             logger.trace("Updated {} edge endpoints using {} strategy",
@@ -893,7 +893,7 @@ public class EdgeRenderer implements MeshChangeListener {
             return;
         }
 
-        var result = meshManager.updateEdgesBySingleVertexIndex(vbo, edgePositions, edgeCount, edgeToVertexMapping,
+        var result = meshManager.updateEdgesBySingleVertexIndex(vbo, edgePositions, edgeCount, VERTICES_PER_EDGE, edgeToVertexMapping,
                                                                  vertexIndex, newPosition);
 
         if (result != null && result.isSuccessful()) {
@@ -937,7 +937,7 @@ public class EdgeRenderer implements MeshChangeListener {
             return;
         }
 
-        var result = meshManager.updateEdgesByIndices(vbo, edgePositions, edgeCount, edgeToVertexMapping,
+        var result = meshManager.updateEdgesByIndices(vbo, edgePositions, edgeCount, VERTICES_PER_EDGE, edgeToVertexMapping,
                                                      vertexIndex1, newPosition1, vertexIndex2, newPosition2);
 
         if (result != null && result.isSuccessful()) {

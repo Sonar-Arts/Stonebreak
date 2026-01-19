@@ -5,80 +5,81 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Single Responsibility: Queries geometric data about edges.
- * This class retrieves edge endpoint positions and vertex indices.
+ * Queries geometric data about edges.
+ * Retrieves edge vertex positions and vertex indices from mesh data.
  *
  * Shape-Blind Design:
- * This operation is data-driven and queries edge data provided by GenericModelRenderer (GMR).
- * GMR is the single source of truth for mesh topology and edge connectivity.
- * Edge structure (endpoints per edge) is determined by GMR's data model.
+ * Operates on edge data provided by GenericModelRenderer (GMR) without assuming specific topology.
+ * GMR is the single source of truth for mesh structure and edge connectivity.
+ * All edge structure information (vertices per edge) is derived from the data itself,
+ * not from hardcoded assumptions.
  *
  * Thread Safety: This class is stateless and thread-safe.
  * All data is passed as parameters and no state is maintained.
- *
- * Data Flow: GMR extracts edge data → MeshManager operations → Query operations
  */
 public class MeshEdgeGeometryQuery {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshEdgeGeometryQuery.class);
+    private static final int FLOATS_PER_POSITION = 3; // x, y, z
 
     /**
-     * Number of float values per edge in GMR's data format.
-     * This represents the current edge data structure from GMR (endpoints × 3 coordinates).
-     */
-    private static final int FLOATS_PER_EDGE = 6;
-
-    /**
-     * Gets the endpoint positions of an edge.
-     * Extracts the 3D coordinates of all endpoints for the specified edge from GMR data.
+     * Gets the vertex positions of an edge.
+     * Extracts the 3D coordinates of all vertices for the specified edge from GMR data.
      *
-     * Returns an array containing the endpoint positions of the edge.
+     * Returns an array containing the vertex positions of the edge.
      * Each point is a Vector3f with x, y, z coordinates.
-     * The number and structure of endpoints is determined by GMR's data model.
+     * The number and structure of vertices is determined by GMR's data model.
      *
      * @param edgeIndex the index of the edge to query (0-based)
      * @param edgePositions array of edge positions from GMR in format [x1,y1,z1, x2,y2,z2, ...]
-     * @param edgeCount the total number of edges in the array
-     * @return array containing edge endpoints, or null if the index is invalid
+     * @param verticesPerEdge number of vertices per edge (derived from GMR data model)
+     * @return array containing edge vertices, or null if the index is invalid
      *         or the position data is unavailable
      */
-    public Vector3f[] getEdgeEndpoints(int edgeIndex, float[] edgePositions, int edgeCount) {
+    public Vector3f[] getEdgeVertices(int edgeIndex, float[] edgePositions, int verticesPerEdge) {
+        // Validate inputs
+        if (edgePositions == null) {
+            logger.trace("Edge positions array is null");
+            return null;
+        }
+
+        if (verticesPerEdge <= 0) {
+            logger.trace("Invalid vertices per edge: {}", verticesPerEdge);
+            return null;
+        }
+
+        // Derive edge count from data
+        int floatsPerEdge = verticesPerEdge * FLOATS_PER_POSITION;
+        int edgeCount = edgePositions.length / floatsPerEdge;
+
         // Validate edge index
         if (edgeIndex < 0 || edgeIndex >= edgeCount) {
             logger.trace("Invalid edge index: {}, valid range is 0 to {}", edgeIndex, edgeCount - 1);
             return null;
         }
 
-        // Validate edge positions array
-        if (edgePositions == null) {
-            logger.trace("Edge positions array is null");
-            return null;
-        }
-
         // Calculate position index
-        int posIndex = edgeIndex * FLOATS_PER_EDGE;
+        int posIndex = edgeIndex * floatsPerEdge;
 
         // Validate array bounds
-        if (posIndex + (FLOATS_PER_EDGE - 1) >= edgePositions.length) {
+        if (posIndex + (floatsPerEdge - 1) >= edgePositions.length) {
             logger.warn("Edge position index out of bounds: {} >= {}",
-                posIndex + (FLOATS_PER_EDGE - 1), edgePositions.length);
+                posIndex + (floatsPerEdge - 1), edgePositions.length);
             return null;
         }
 
-        // Extract endpoints based on GMR's current edge data format
-        Vector3f point1 = new Vector3f(
-            edgePositions[posIndex + 0],
-            edgePositions[posIndex + 1],
-            edgePositions[posIndex + 2]
-        );
+        // Extract all vertices for this edge
+        Vector3f[] vertices = new Vector3f[verticesPerEdge];
+        for (int i = 0; i < verticesPerEdge; i++) {
+            int offset = posIndex + (i * FLOATS_PER_POSITION);
+            vertices[i] = new Vector3f(
+                edgePositions[offset],
+                edgePositions[offset + 1],
+                edgePositions[offset + 2]
+            );
+        }
 
-        Vector3f point2 = new Vector3f(
-            edgePositions[posIndex + 3],
-            edgePositions[posIndex + 4],
-            edgePositions[posIndex + 5]
-        );
-
-        return new Vector3f[] { point1, point2 };
+        return vertices;
     }
 
     /**
@@ -119,7 +120,6 @@ public class MeshEdgeGeometryQuery {
         }
 
         // Return copy to prevent external modification
-        // Copy all vertices, not assuming a fixed count
         int[] copy = new int[edgeVertices.length];
         System.arraycopy(edgeVertices, 0, copy, 0, edgeVertices.length);
         return copy;
