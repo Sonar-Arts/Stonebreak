@@ -223,17 +223,20 @@ public class MeshManager {
     /**
      * Build face-to-vertex mapping from unique vertex positions.
      * Coordinates the mapping process using MeshFaceMappingBuilder.
+     * Supports arbitrary face topology determined by GMR's data model.
      *
      * @param facePositions Array of face positions
      * @param faceCount Number of faces
+     * @param verticesPerFace Number of vertices per face (topology from GMR)
      * @param uniqueVertexPositions Array of unique vertex positions
      * @param epsilon Distance threshold for vertex matching
-     * @return Map from face index to array of 4 unique vertex indices
+     * @return Map from face index to array of vertex indices (array length = verticesPerFace)
      */
     public Map<Integer, int[]> buildFaceToVertexMapping(float[] facePositions, int faceCount,
+                                                       int verticesPerFace,
                                                        float[] uniqueVertexPositions, float epsilon) {
         MeshFaceMappingBuilder builder = new MeshFaceMappingBuilder(epsilon);
-        return builder.buildMapping(facePositions, faceCount, uniqueVertexPositions);
+        return builder.buildMapping(facePositions, faceCount, verticesPerFace, uniqueVertexPositions);
     }
 
     /**
@@ -268,24 +271,30 @@ public class MeshManager {
     /**
      * Update a single face's position in both CPU memory and GPU buffer.
      * Coordinates the update process using MeshFaceUpdateOperation.
+     * Shape-blind: Uses topology determined by GMR's data model.
      *
      * @param vbo OpenGL VBO handle
      * @param facePositions CPU-side face position array
      * @param faceCount Total number of faces
      * @param faceIndex Index of the face to update
-     * @param vertexIndices Array of 4 unique vertex indices
-     * @param newPositions Array of 4 new vertex positions
+     * @param vertexIndices Array of unique vertex indices
+     * @param newPositions Array of new vertex positions
      * @return true if update succeeded, false otherwise
      */
     public boolean updateFacePosition(int vbo, float[] facePositions, int faceCount,
                                      int faceIndex, int[] vertexIndices, Vector3f[] newPositions) {
         MeshFaceUpdateOperation updater = new MeshFaceUpdateOperation();
-        return updater.updateFace(vbo, facePositions, faceCount, faceIndex, vertexIndices, newPositions);
+        // Current topology: 4 vertices per face (quad), 6 VBO vertices after triangulation
+        int verticesPerFace = newPositions.length; // Shape-blind: derive from actual data
+        int vboVerticesPerFace = VERTICES_PER_FACE; // Current format: 6 VBO vertices per face
+        return updater.updateFace(vbo, facePositions, faceCount, faceIndex,
+                                  verticesPerFace, vertexIndices, newPositions, vboVerticesPerFace);
     }
 
     /**
      * Bulk update all faces with VBO data creation.
      * Coordinates the bulk update process using MeshFaceUpdateOperation.
+     * Shape-blind: Uses topology determined by GMR's data model.
      *
      * @param vbo OpenGL VBO handle
      * @param facePositions Array of face positions
@@ -296,7 +305,11 @@ public class MeshManager {
     public boolean updateAllFaces(int vbo, float[] facePositions, int faceCount,
                                  org.joml.Vector4f defaultColor) {
         MeshFaceUpdateOperation updater = new MeshFaceUpdateOperation();
-        return updater.updateAllFaces(vbo, facePositions, faceCount, defaultColor);
+        // Current topology: 4 vertices per face (quad), 6 VBO vertices after triangulation
+        int verticesPerFace = 4; // Current format: quad faces
+        int vboVerticesPerFace = VERTICES_PER_FACE; // Current format: 6 VBO vertices per face
+        return updater.updateAllFaces(vbo, facePositions, faceCount,
+                                      verticesPerFace, vboVerticesPerFace, defaultColor);
     }
 
     // ========================================

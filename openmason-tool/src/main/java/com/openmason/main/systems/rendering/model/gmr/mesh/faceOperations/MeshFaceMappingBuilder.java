@@ -10,13 +10,17 @@ import java.util.Map;
 /**
  * Single Responsibility: Builds mapping from face indices to unique vertex indices.
  * This class encapsulates the logic of identifying which unique vertices each face connects to.
+ *
+ * Shape-Blind Design:
+ * This operation is data-driven and works with arbitrary face topology from GenericModelRenderer (GMR).
+ * GMR is the single source of truth for mesh topology. Face mapping works with any vertex count
+ * per face and mesh structure determined by GMR's data model. Supports triangles, quads, n-gons,
+ * and mixed topology without hardcoded assumptions.
  */
 public class MeshFaceMappingBuilder {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshFaceMappingBuilder.class);
     private static final int COMPONENTS_PER_POSITION = 3; // x, y, z
-    private static final int CORNERS_PER_FACE = 4; // quad face
-    private static final int FLOATS_PER_FACE_POSITION = 12; // 4 corners × 3 components
 
     private final float vertexMatchEpsilon;
 
@@ -31,17 +35,20 @@ public class MeshFaceMappingBuilder {
 
     /**
      * Build face-to-vertex mapping from unique vertex positions.
-     * Maps each face index to array of 4 unique vertex indices [v0, v1, v2, v3].
+     * Maps each face index to array of vertex indices [v0, v1, v2, ..., vN].
+     * Supports arbitrary face topology (triangles, quads, n-gons, or mixed).
      *
-     * @param facePositions Array of face positions [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...]
+     * @param facePositions Array of face positions [v0x,v0y,v0z, v1x,v1y,v1z, ...]
      * @param faceCount Number of faces
+     * @param verticesPerFace Number of vertices per face (topology determined by GMR)
      * @param uniqueVertexPositions Array of unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
-     * @return Map from face index to array of 4 unique vertex indices
+     * @return Map from face index to array of vertex indices (array length = verticesPerFace)
      */
     public Map<Integer, int[]> buildMapping(float[] facePositions, int faceCount,
+                                           int verticesPerFace,
                                            float[] uniqueVertexPositions) {
         // Validate inputs
-        if (!validateInputs(facePositions, faceCount, uniqueVertexPositions)) {
+        if (!validateInputs(facePositions, faceCount, verticesPerFace, uniqueVertexPositions)) {
             return new HashMap<>();
         }
 
@@ -53,13 +60,15 @@ public class MeshFaceMappingBuilder {
             int[] vertexIndices = findVertexIndicesForFace(
                 faceIdx,
                 facePositions,
+                verticesPerFace,
                 uniqueVertexPositions,
                 uniqueVertexCount
             );
             mapping.put(faceIdx, vertexIndices);
         }
 
-        logger.debug("Built face-to-vertex mapping for {} faces", faceCount);
+        logger.debug("Built face-to-vertex mapping for {} faces ({} vertices/face)",
+                faceCount, verticesPerFace);
         return mapping;
     }
 
@@ -67,9 +76,15 @@ public class MeshFaceMappingBuilder {
      * Validate inputs for mapping construction.
      */
     private boolean validateInputs(float[] facePositions, int faceCount,
+                                   int verticesPerFace,
                                    float[] uniqueVertexPositions) {
         if (facePositions == null || faceCount == 0) {
             logger.warn("Cannot build face mapping: no face data");
+            return false;
+        }
+
+        if (verticesPerFace <= 0) {
+            logger.warn("Cannot build face mapping: invalid verticesPerFace ({})", verticesPerFace);
             return false;
         }
 
@@ -83,33 +98,38 @@ public class MeshFaceMappingBuilder {
 
     /**
      * Find vertex indices for a specific face by matching positions.
+     * Face topology is determined by GMR's data model - supports any vertex count per face.
      *
      * @param faceIdx Face index
      * @param facePositions Array of face positions
+     * @param verticesPerFace Number of vertices per face (topology from GMR)
      * @param uniqueVertexPositions Array of unique vertex positions
      * @param uniqueVertexCount Number of unique vertices
-     * @return Array of 4 vertex indices for the face corners
+     * @return Array of vertex indices for the face (length = verticesPerFace)
      */
     private int[] findVertexIndicesForFace(int faceIdx, float[] facePositions,
+                                          int verticesPerFace,
                                           float[] uniqueVertexPositions,
                                           int uniqueVertexCount) {
-        int facePosIdx = faceIdx * FLOATS_PER_FACE_POSITION;
-        int[] vertexIndices = new int[CORNERS_PER_FACE];
+        // Calculate face position index dynamically based on topology
+        int floatsPerFacePosition = verticesPerFace * COMPONENTS_PER_POSITION;
+        int facePosIdx = faceIdx * floatsPerFacePosition;
+        int[] vertexIndices = new int[verticesPerFace];
 
         MeshFaceVertexMatcher matcher = new MeshFaceVertexMatcher(vertexMatchEpsilon);
 
-        for (int corner = 0; corner < CORNERS_PER_FACE; corner++) {
-            Vector3f faceVertex = extractFaceCornerPosition(facePositions, facePosIdx, corner);
+        for (int vertexIdx = 0; vertexIdx < verticesPerFace; vertexIdx++) {
+            Vector3f faceVertex = extractFaceCornerPosition(facePositions, facePosIdx, vertexIdx);
             int matchedIndex = matcher.findMatchingVertexIndex(
                 faceVertex,
                 uniqueVertexPositions,
                 uniqueVertexCount
             );
 
-            vertexIndices[corner] = matchedIndex;
+            vertexIndices[vertexIdx] = matchedIndex;
 
             if (matchedIndex == -1) {
-                logger.warn("Face {} corner {} has unmatched vertex", faceIdx, corner);
+                logger.warn("Face {} vertex {} has unmatched vertex", faceIdx, vertexIdx);
             }
         }
 
@@ -117,19 +137,20 @@ public class MeshFaceMappingBuilder {
     }
 
     /**
-     * Extract position of a face corner.
+     * Extract position of a face vertex.
+     * Works with any face topology determined by GMR's data model.
      *
      * @param facePositions Array of face positions
      * @param facePosIdx Starting index of face in positions array
-     * @param corner Corner index (0-3)
+     * @param vertexIdx Vertex index within the face (0 to verticesPerFace-1)
      * @return Position vector
      */
-    private Vector3f extractFaceCornerPosition(float[] facePositions, int facePosIdx, int corner) {
-        int cornerPosIdx = facePosIdx + (corner * COMPONENTS_PER_POSITION);
+    private Vector3f extractFaceCornerPosition(float[] facePositions, int facePosIdx, int vertexIdx) {
+        int vertexPosIdx = facePosIdx + (vertexIdx * COMPONENTS_PER_POSITION);
         return new Vector3f(
-            facePositions[cornerPosIdx],
-            facePositions[cornerPosIdx + 1],
-            facePositions[cornerPosIdx + 2]
+            facePositions[vertexPosIdx],
+            facePositions[vertexPosIdx + 1],
+            facePositions[vertexPosIdx + 2]
         );
     }
 }

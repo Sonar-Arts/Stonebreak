@@ -228,9 +228,11 @@ public class FaceRenderer implements MeshChangeListener {
         }
 
         // Delegate to MeshManager (Single Responsibility Principle)
+        // Use VERTICES_PER_FACE from MeshManager (currently quad-specific, but will be refactored to be shape-blind)
         faceToVertexMapping = MeshManager.getInstance().buildFaceToVertexMapping(
             facePositions,
             faceCount,
+            MeshManager.VERTICES_PER_FACE,
             uniqueVertexPositions,
             VERTEX_MATCH_EPSILON
         );

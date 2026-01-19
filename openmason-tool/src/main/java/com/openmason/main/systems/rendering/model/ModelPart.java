@@ -159,20 +159,6 @@ public record ModelPart(
     }
 
     /**
-     * Create a part from raw vertex data.
-     * Uses 1:1 triangle-to-face mapping (arbitrary topology).
-     *
-     * @param name Part name
-     * @param vertices Raw vertex positions
-     * @param texCoords Raw texture coordinates
-     * @param indices Raw indices (can be null for non-indexed)
-     * @return A ModelPart with the given geometry
-     */
-    public static ModelPart createFromVertices(String name, float[] vertices, float[] texCoords, int[] indices) {
-        return new ModelPart(name, new Vector3f(0, 0, 0), vertices, texCoords, indices, null); // Arbitrary topology
-    }
-
-    /**
      * Get vertex count.
      *
      * @return Number of vertices
@@ -191,15 +177,6 @@ public record ModelPart(
     }
 
     /**
-     * Check if this part uses indexed drawing.
-     *
-     * @return true if indexed
-     */
-    public boolean isIndexed() {
-        return indices != null && indices.length > 0;
-    }
-
-    /**
      * Get position of a specific vertex.
      *
      * @param index Vertex index
@@ -213,25 +190,4 @@ public record ModelPart(
         return new Vector3f(vertices[offset], vertices[offset + 1], vertices[offset + 2]);
     }
 
-    /**
-     * Create a new ModelPart with an updated vertex position.
-     * Since records are immutable, this creates a copy.
-     *
-     * @param index Vertex index to update
-     * @param position New position
-     * @return New ModelPart with updated vertex, or this if invalid
-     */
-    public ModelPart withUpdatedVertex(int index, Vector3f position) {
-        if (vertices == null || index < 0 || index >= getVertexCount()) {
-            return this;
-        }
-
-        float[] newVertices = vertices.clone();
-        int offset = index * 3;
-        newVertices[offset] = position.x;
-        newVertices[offset + 1] = position.y;
-        newVertices[offset + 2] = position.z;
-
-        return new ModelPart(name, origin, newVertices, texCoords, indices, trianglesPerFace);
-    }
 }
