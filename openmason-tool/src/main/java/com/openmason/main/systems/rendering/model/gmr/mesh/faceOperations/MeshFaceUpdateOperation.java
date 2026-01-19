@@ -56,7 +56,7 @@ public class MeshFaceUpdateOperation {
 
     /**
      * Updates a face's position in both CPU memory and GPU buffer.
-     * Shape-blind: Accepts topology parameters for arbitrary face structure.
+     * Shape-blind: Accepts topology parameters and triangulation pattern for arbitrary face structure.
      *
      * @param vbo OpenGL VBO handle
      * @param facePositions CPU-side face position array
@@ -65,15 +65,20 @@ public class MeshFaceUpdateOperation {
      * @param verticesPerFace Number of vertices per face (topology from GMR)
      * @param vertexIndices Array of unique vertex indices for this face
      * @param newPositions Array of new vertex positions for this face
-     * @param vboVerticesPerFace Number of vertices per face in VBO (after triangulation)
+     * @param triangulationPattern Pattern defining how polygon corners map to VBO triangles
      * @return true if update succeeded, false otherwise
      */
     public boolean updateFace(int vbo, float[] facePositions, int faceCount, int faceIndex,
                              int verticesPerFace, int[] vertexIndices, Vector3f[] newPositions,
-                             int vboVerticesPerFace) {
+                             TriangulationPattern triangulationPattern) {
 
         // Validation
         if (!validateInput(facePositions, faceCount, faceIndex, verticesPerFace, vertexIndices, newPositions)) {
+            return false;
+        }
+
+        if (triangulationPattern == null || !triangulationPattern.isValid()) {
+            logger.warn("Invalid triangulation pattern");
             return false;
         }
 
@@ -82,7 +87,7 @@ public class MeshFaceUpdateOperation {
             updateMemoryPositions(facePositions, faceIndex, verticesPerFace, newPositions);
 
             // Update GPU-side positions
-            updateVBOPositions(vbo, faceIndex, vboVerticesPerFace, newPositions);
+            updateVBOPositions(vbo, faceIndex, triangulationPattern, newPositions);
 
             logger.trace("Updated face {} overlay position", faceIndex);
             return true;
@@ -95,13 +100,13 @@ public class MeshFaceUpdateOperation {
 
     /**
      * Legacy method for backward compatibility.
-     * @deprecated Use {@link #updateFace(int, float[], int, int, int, int[], Vector3f[], int)} instead
+     * @deprecated Use {@link #updateFace(int, float[], int, int, int, int[], Vector3f[], TriangulationPattern)} instead
      */
     @Deprecated
     public boolean updateFace(int vbo, float[] facePositions, int faceCount,
                              int faceIndex, int[] vertexIndices, Vector3f[] newPositions) {
-        // Default to quad topology (4 vertices per face, 6 VBO vertices after triangulation)
-        return updateFace(vbo, facePositions, faceCount, faceIndex, 4, vertexIndices, newPositions, 6);
+        // Default to quad topology (4 vertices per face, quad triangulation pattern)
+        return updateFace(vbo, facePositions, faceCount, faceIndex, 4, vertexIndices, newPositions, TriangulationPattern.QUAD);
     }
 
     /**
@@ -175,50 +180,35 @@ public class MeshFaceUpdateOperation {
 
     /**
      * Updates face positions in GPU VBO.
-     * Shape-blind: Calculates VBO offsets dynamically based on VBO topology from GMR.
+     * Shape-blind: Uses triangulation pattern to map polygon corners to VBO triangles.
      *
      * VBO Layout:
      * - Each vertex: FLOATS_PER_VERTEX floats (3 position + 4 color RGBA)
      * - Only updates position data, preserving existing color data
      *
-     * Current implementation handles quad triangulation pattern (0,1,2) and (0,2,3).
-     * This represents the current VBO format from GMR. To support arbitrary topology,
-     * triangulation indices would need to be passed as a parameter.
-     *
      * @param vbo OpenGL VBO handle
      * @param faceIndex Index of the face to update
-     * @param vboVerticesPerFace Number of vertices per face in VBO (after triangulation)
+     * @param triangulationPattern Pattern defining how polygon corners map to VBO triangles
      * @param newPositions Array of new corner positions (before triangulation)
      */
-    private void updateVBOPositions(int vbo, int faceIndex, int vboVerticesPerFace, Vector3f[] newPositions) {
+    private void updateVBOPositions(int vbo, int faceIndex, TriangulationPattern triangulationPattern, Vector3f[] newPositions) {
+        int vboVerticesPerFace = triangulationPattern.getVBOVertexCount();
         int floatsPerFaceVBO = vboVerticesPerFace * FLOATS_PER_VERTEX;
         int dataStart = faceIndex * floatsPerFaceVBO;
-        int cornerCount = newPositions.length;
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-        // Current implementation: Hardcoded quad triangulation pattern
-        // TODO: Parameterize triangulation indices for full shape-blindness
-        // For now, handles the current VBO format: quads triangulated as (0,1,2) and (0,2,3)
+        // Update each VBO vertex using the triangulation pattern
+        for (int vboVertexIdx = 0; vboVertexIdx < vboVerticesPerFace; vboVertexIdx++) {
+            int cornerIdx = triangulationPattern.getCornerIndex(vboVertexIdx);
 
-        if (cornerCount >= 3 && vboVerticesPerFace >= 3) {
-            // First triangle: vertices 0, 1, 2
-            glBufferSubData(GL_ARRAY_BUFFER, (long) dataStart * Float.BYTES,
-                    new float[] { newPositions[0].x, newPositions[0].y, newPositions[0].z });
-            glBufferSubData(GL_ARRAY_BUFFER, (long) (dataStart + FLOATS_PER_VERTEX) * Float.BYTES,
-                    new float[] { newPositions[1].x, newPositions[1].y, newPositions[1].z });
-            glBufferSubData(GL_ARRAY_BUFFER, (long) (dataStart + FLOATS_PER_VERTEX * 2) * Float.BYTES,
-                    new float[] { newPositions[2].x, newPositions[2].y, newPositions[2].z });
-        }
+            if (cornerIdx < newPositions.length) {
+                Vector3f position = newPositions[cornerIdx];
+                int offset = dataStart + (vboVertexIdx * FLOATS_PER_VERTEX);
 
-        if (cornerCount == 4 && vboVerticesPerFace == 6) {
-            // Second triangle: vertices 0, 2, 3
-            glBufferSubData(GL_ARRAY_BUFFER, (long) (dataStart + FLOATS_PER_VERTEX * 3) * Float.BYTES,
-                    new float[] { newPositions[0].x, newPositions[0].y, newPositions[0].z });
-            glBufferSubData(GL_ARRAY_BUFFER, (long) (dataStart + FLOATS_PER_VERTEX * 4) * Float.BYTES,
-                    new float[] { newPositions[2].x, newPositions[2].y, newPositions[2].z });
-            glBufferSubData(GL_ARRAY_BUFFER, (long) (dataStart + FLOATS_PER_VERTEX * 5) * Float.BYTES,
-                    new float[] { newPositions[3].x, newPositions[3].y, newPositions[3].z });
+                glBufferSubData(GL_ARRAY_BUFFER, (long) offset * Float.BYTES,
+                        new float[] { position.x, position.y, position.z });
+            }
         }
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -227,35 +217,36 @@ public class MeshFaceUpdateOperation {
     /**
      * Bulk update: Creates and uploads complete VBO data for all faces.
      * DRY: Centralizes the vertex data creation logic used during initialization.
-     * Shape-blind: Accepts topology parameters for arbitrary face structure.
-     *
-     * Current implementation handles quad triangulation pattern (0,1,2) and (0,2,3).
-     * To support arbitrary topology, triangulation indices would need to be passed as a parameter.
+     * Shape-blind: Accepts topology parameters and triangulation pattern for arbitrary face structure.
      *
      * @param vbo OpenGL VBO handle
      * @param facePositions Array of face positions (sequential vertex coords per face)
      * @param faceCount Number of faces
      * @param verticesPerFace Number of vertices per face (topology from GMR)
-     * @param vboVerticesPerFace Number of vertices per face in VBO (after triangulation)
+     * @param triangulationPattern Pattern defining how polygon corners map to VBO triangles
      * @param defaultColor Default color for all faces (with alpha)
      * @return true if update succeeded, false otherwise
      */
     public boolean updateAllFaces(int vbo, float[] facePositions, int faceCount,
-                                  int verticesPerFace, int vboVerticesPerFace, Vector4f defaultColor) {
+                                  int verticesPerFace, TriangulationPattern triangulationPattern, Vector4f defaultColor) {
         if (facePositions == null || faceCount == 0) {
             logger.warn("Cannot update all faces: invalid data");
             return false;
         }
 
-        if (verticesPerFace <= 0 || vboVerticesPerFace <= 0) {
-            logger.warn("Cannot update all faces: invalid topology (verticesPerFace={}, vboVerticesPerFace={})",
-                    verticesPerFace, vboVerticesPerFace);
+        if (verticesPerFace <= 0) {
+            logger.warn("Cannot update all faces: invalid topology (verticesPerFace={})", verticesPerFace);
+            return false;
+        }
+
+        if (triangulationPattern == null || !triangulationPattern.isValid()) {
+            logger.warn("Cannot update all faces: invalid triangulation pattern");
             return false;
         }
 
         try {
             // Create interleaved vertex data for all faces
-            // Shape-blind: Uses parameterized topology
+            int vboVerticesPerFace = triangulationPattern.getVBOVertexCount();
             int totalVBOVertices = faceCount * vboVerticesPerFace;
             float[] vertexData = new float[totalVBOVertices * FLOATS_PER_VERTEX];
 
@@ -267,30 +258,28 @@ public class MeshFaceUpdateOperation {
                 int faceStart = faceIdx * floatsPerFacePosition;
                 int dataStart = faceIdx * floatsPerFaceVBO;
 
-                // Current implementation: Hardcoded quad triangulation pattern
-                // TODO: Parameterize triangulation indices for full shape-blindness
+                // Load corner positions
+                Vector3f[] corners = new Vector3f[verticesPerFace];
+                for (int cornerIdx = 0; cornerIdx < verticesPerFace; cornerIdx++) {
+                    int posIdx = faceStart + (cornerIdx * COMPONENTS_PER_POSITION);
+                    corners[cornerIdx] = new Vector3f(
+                        facePositions[posIdx],
+                        facePositions[posIdx + 1],
+                        facePositions[posIdx + 2]
+                    );
+                }
 
-                if (verticesPerFace == 4 && vboVerticesPerFace == 6) {
-                    // Quad triangulated as (0,1,2) and (0,2,3)
-                    Vector3f v0 = new Vector3f(facePositions[faceStart], facePositions[faceStart + 1], facePositions[faceStart + 2]);
-                    Vector3f v1 = new Vector3f(facePositions[faceStart + 3], facePositions[faceStart + 4], facePositions[faceStart + 5]);
-                    Vector3f v2 = new Vector3f(facePositions[faceStart + 6], facePositions[faceStart + 7], facePositions[faceStart + 8]);
-                    Vector3f v3 = new Vector3f(facePositions[faceStart + 9], facePositions[faceStart + 10], facePositions[faceStart + 11]);
+                // Use triangulation pattern to create VBO vertices
+                for (int vboVertexIdx = 0; vboVertexIdx < vboVerticesPerFace; vboVertexIdx++) {
+                    int cornerIdx = triangulationPattern.getCornerIndex(vboVertexIdx);
 
-                    // First triangle: vertices 0, 1, 2
-                    addVertexToData(vertexData, dataStart, v0, defaultColor);
-                    addVertexToData(vertexData, dataStart + FLOATS_PER_VERTEX, v1, defaultColor);
-                    addVertexToData(vertexData, dataStart + FLOATS_PER_VERTEX * 2, v2, defaultColor);
-
-                    // Second triangle: vertices 0, 2, 3
-                    addVertexToData(vertexData, dataStart + FLOATS_PER_VERTEX * 3, v0, defaultColor);
-                    addVertexToData(vertexData, dataStart + FLOATS_PER_VERTEX * 4, v2, defaultColor);
-                    addVertexToData(vertexData, dataStart + FLOATS_PER_VERTEX * 5, v3, defaultColor);
-                } else {
-                    logger.warn("Unsupported topology: verticesPerFace={}, vboVerticesPerFace={}",
-                            verticesPerFace, vboVerticesPerFace);
-                    // For now, only quad topology is implemented
-                    // Future: Add support for arbitrary triangulation patterns
+                    if (cornerIdx < corners.length) {
+                        int offset = dataStart + (vboVertexIdx * FLOATS_PER_VERTEX);
+                        addVertexToData(vertexData, offset, corners[cornerIdx], defaultColor);
+                    } else {
+                        logger.warn("Triangulation pattern references invalid corner index: {} (max: {})",
+                                cornerIdx, corners.length - 1);
+                    }
                 }
             }
 
@@ -310,12 +299,12 @@ public class MeshFaceUpdateOperation {
 
     /**
      * Legacy method for backward compatibility.
-     * @deprecated Use {@link #updateAllFaces(int, float[], int, int, int, Vector4f)} instead
+     * @deprecated Use {@link #updateAllFaces(int, float[], int, int, TriangulationPattern, Vector4f)} instead
      */
     @Deprecated
     public boolean updateAllFaces(int vbo, float[] facePositions, int faceCount, Vector4f defaultColor) {
-        // Default to quad topology (4 vertices per face, 6 VBO vertices after triangulation)
-        return updateAllFaces(vbo, facePositions, faceCount, 4, 6, defaultColor);
+        // Default to quad topology (4 vertices per face, quad triangulation pattern)
+        return updateAllFaces(vbo, facePositions, faceCount, 4, TriangulationPattern.QUAD, defaultColor);
     }
 
     /**

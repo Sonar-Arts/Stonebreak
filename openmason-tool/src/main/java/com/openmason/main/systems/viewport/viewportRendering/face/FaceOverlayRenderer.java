@@ -283,6 +283,30 @@ public class FaceOverlayRenderer {
     }
 
     /**
+     * Update color data for all vertices of a primitive in the VBO.
+     * Generic method that works with any primitive type and vertex layout.
+     *
+     * @param vbo The vertex buffer object
+     * @param dataStart Starting offset in the VBO (in floats)
+     * @param colorOffsetBytes Byte offset to color data within each vertex
+     * @param color The color to set
+     * @param vertexCount Number of vertices in the primitive
+     * @param floatsPerVertex Number of floats per vertex (position + color + other attributes)
+     */
+    private void updatePrimitiveColors(int vbo, int dataStart, int colorOffsetBytes, Vector4f color,
+                                      int vertexCount, int floatsPerVertex) {
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+        float[] colorData = new float[] { color.x, color.y, color.z, color.w };
+        for (int i = 0; i < vertexCount; i++) {
+            int vboOffset = (dataStart + (i * floatsPerVertex)) * Float.BYTES + colorOffsetBytes;
+            glBufferSubData(GL_ARRAY_BUFFER, vboOffset, colorData);
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    /**
      * Update color data for all vertices of a polygon primitive in the VBO.
      * Works with any tessellated polygon (pre-converted to triangles).
      *
@@ -292,15 +316,8 @@ public class FaceOverlayRenderer {
      * @param color The color to set
      */
     private void updatePolygonColors(int vbo, int dataStart, int colorOffsetBytes, Vector4f color) {
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-        float[] colorData = new float[] { color.x, color.y, color.z, color.w };
-        for (int i = 0; i < MeshManager.VERTICES_PER_FACE; i++) {
-            int vboOffset = (dataStart + (i * MeshManager.FLOATS_PER_VERTEX)) * Float.BYTES + colorOffsetBytes;
-            glBufferSubData(GL_ARRAY_BUFFER, vboOffset, colorData);
-        }
-
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        updatePrimitiveColors(vbo, dataStart, colorOffsetBytes, color,
+                             MeshManager.VERTICES_PER_FACE, MeshManager.FLOATS_PER_VERTEX);
     }
 
     /**
@@ -313,15 +330,8 @@ public class FaceOverlayRenderer {
      * @param color The color to set
      */
     private void updateTriangleFaceColors(int vbo, int dataStart, int colorOffsetBytes, Vector4f color) {
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-        float[] colorData = new float[] { color.x, color.y, color.z, color.w };
-        for (int i = 0; i < VERTICES_PER_TRIANGLE; i++) {
-            int vboOffset = (dataStart + (i * FLOATS_PER_VERTEX_TRIANGLE)) * Float.BYTES + colorOffsetBytes;
-            glBufferSubData(GL_ARRAY_BUFFER, vboOffset, colorData);
-        }
-
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        updatePrimitiveColors(vbo, dataStart, colorOffsetBytes, color,
+                             VERTICES_PER_TRIANGLE, FLOATS_PER_VERTEX_TRIANGLE);
     }
 
     /**

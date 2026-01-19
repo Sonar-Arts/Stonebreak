@@ -292,11 +292,15 @@ public class MeshManager {
     public boolean updateFacePosition(int vbo, float[] facePositions, int faceCount,
                                      int faceIndex, int[] vertexIndices, Vector3f[] newPositions) {
         MeshFaceUpdateOperation updater = new MeshFaceUpdateOperation();
-        // Current topology: 4 vertices per face (quad), 6 VBO vertices after triangulation
-        int verticesPerFace = newPositions.length; // Shape-blind: derive from actual data
-        int vboVerticesPerFace = VERTICES_PER_FACE; // Current format: 6 VBO vertices per face
+        // Shape-blind: derive topology from actual data
+        int verticesPerFace = newPositions.length;
+
+        // Use quad triangulation pattern (standard for current GMR format)
+        com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern pattern =
+            com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.QUAD;
+
         return updater.updateFace(vbo, facePositions, faceCount, faceIndex,
-                                  verticesPerFace, vertexIndices, newPositions, vboVerticesPerFace);
+                                  verticesPerFace, vertexIndices, newPositions, pattern);
     }
 
     /**
@@ -313,11 +317,15 @@ public class MeshManager {
     public boolean updateAllFaces(int vbo, float[] facePositions, int faceCount,
                                  org.joml.Vector4f defaultColor) {
         MeshFaceUpdateOperation updater = new MeshFaceUpdateOperation();
-        // Current topology: 4 vertices per face (quad), 6 VBO vertices after triangulation
-        int verticesPerFace = 4; // Current format: quad faces
-        int vboVerticesPerFace = VERTICES_PER_FACE; // Current format: 6 VBO vertices per face
+        // Shape-blind: Current format is quad faces (4 vertices per face)
+        int verticesPerFace = 4;
+
+        // Use quad triangulation pattern (standard for current GMR format)
+        com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern pattern =
+            com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.QUAD;
+
         return updater.updateAllFaces(vbo, facePositions, faceCount,
-                                      verticesPerFace, vboVerticesPerFace, defaultColor);
+                                      verticesPerFace, pattern, defaultColor);
     }
 
     // ========================================

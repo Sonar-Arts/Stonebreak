@@ -20,7 +20,7 @@ import java.util.Map;
 public class MeshFaceMappingBuilder {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshFaceMappingBuilder.class);
-    private static final int COMPONENTS_PER_POSITION = 3; // x, y, z
+    private static final int COMPONENTS_PER_POSITION = 3; // x, y, z (for stride calculations)
 
     private final float vertexMatchEpsilon;
 
@@ -119,7 +119,7 @@ public class MeshFaceMappingBuilder {
         MeshFaceVertexMatcher matcher = new MeshFaceVertexMatcher(vertexMatchEpsilon);
 
         for (int vertexIdx = 0; vertexIdx < verticesPerFace; vertexIdx++) {
-            Vector3f faceVertex = extractFaceCornerPosition(facePositions, facePosIdx, vertexIdx);
+            Vector3f faceVertex = FaceCornerPositionExtractor.extractSimple(facePositions, facePosIdx, vertexIdx);
             int matchedIndex = matcher.findMatchingVertexIndex(
                 faceVertex,
                 uniqueVertexPositions,
@@ -134,23 +134,5 @@ public class MeshFaceMappingBuilder {
         }
 
         return vertexIndices;
-    }
-
-    /**
-     * Extract position of a face vertex.
-     * Works with any face topology determined by GMR's data model.
-     *
-     * @param facePositions Array of face positions
-     * @param facePosIdx Starting index of face in positions array
-     * @param vertexIdx Vertex index within the face (0 to verticesPerFace-1)
-     * @return Position vector
-     */
-    private Vector3f extractFaceCornerPosition(float[] facePositions, int facePosIdx, int vertexIdx) {
-        int vertexPosIdx = facePosIdx + (vertexIdx * COMPONENTS_PER_POSITION);
-        return new Vector3f(
-            facePositions[vertexPosIdx],
-            facePositions[vertexPosIdx + 1],
-            facePositions[vertexPosIdx + 2]
-        );
     }
 }

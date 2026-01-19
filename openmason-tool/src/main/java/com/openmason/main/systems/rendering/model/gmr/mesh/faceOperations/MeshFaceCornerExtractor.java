@@ -48,46 +48,10 @@ public class MeshFaceCornerExtractor {
         // Extract vertices dynamically
         Vector3f[] vertices = new Vector3f[verticesPerFace];
         for (int i = 0; i < verticesPerFace; i++) {
-            vertices[i] = extractFaceCornerPosition(facePositions, posIndex, i, verticesPerFace);
+            vertices[i] = FaceCornerPositionExtractor.extractFaceCornerPosition(facePositions, posIndex, i, verticesPerFace);
         }
 
         return vertices;
-    }
-
-    /**
-     * Extract position of a specific face corner.
-     * Works with any face topology determined by GMR's data model.
-     *
-     * @param facePositions Array of face positions
-     * @param facePosIdx Starting index of face in positions array
-     * @param vertexIdx Vertex index within the face (0 to verticesPerFace-1)
-     * @param verticesPerFace Number of vertices per face (topology determined by GMR)
-     * @return Position vector
-     */
-    public Vector3f extractFaceCornerPosition(float[] facePositions, int facePosIdx, int vertexIdx, int verticesPerFace) {
-        if (facePositions == null) {
-            logger.warn("Cannot extract corner position: face positions array is null");
-            return new Vector3f();
-        }
-
-        if (vertexIdx < 0 || vertexIdx >= verticesPerFace) {
-            logger.warn("Invalid vertex index: {} (must be 0-{})", vertexIdx, verticesPerFace - 1);
-            return new Vector3f();
-        }
-
-        int cornerPosIdx = facePosIdx + (vertexIdx * COMPONENTS_PER_POSITION);
-
-        // Bounds check
-        if (cornerPosIdx + 2 >= facePositions.length) {
-            logger.warn("Corner position index out of bounds");
-            return new Vector3f();
-        }
-
-        return new Vector3f(
-            facePositions[cornerPosIdx],
-            facePositions[cornerPosIdx + 1],
-            facePositions[cornerPosIdx + 2]
-        );
     }
 
     /**
