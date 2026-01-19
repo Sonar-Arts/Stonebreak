@@ -4,7 +4,7 @@ import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
+import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import org.joml.Vector3f;

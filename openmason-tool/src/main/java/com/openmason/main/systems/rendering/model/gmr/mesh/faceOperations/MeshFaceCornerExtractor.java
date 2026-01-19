@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.mesh.faceOperations;
+package com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations;
 
 import org.joml.Vector3f;
 import org.slf4j.Logger;

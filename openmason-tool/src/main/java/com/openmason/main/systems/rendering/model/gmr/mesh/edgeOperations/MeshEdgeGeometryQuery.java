@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations;
+package com.openmason.main.systems.rendering.model.gmr.mesh.edgeOperations;
 
 import org.joml.Vector3f;
 import org.slf4j.Logger;

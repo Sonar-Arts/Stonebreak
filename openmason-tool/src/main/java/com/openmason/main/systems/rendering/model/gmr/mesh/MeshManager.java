@@ -1,8 +1,12 @@
-package com.openmason.main.systems.viewport.viewportRendering.mesh;
+package com.openmason.main.systems.rendering.model.gmr.mesh;
 
-import com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations.*;
-import com.openmason.main.systems.viewport.viewportRendering.mesh.faceOperations.*;
-import com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations.*;
+import com.openmason.main.systems.rendering.model.gmr.mesh.edgeOperations.*;
+import com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.MeshFaceCornerExtractor;
+import com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.MeshFaceMappingBuilder;
+import com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.MeshFaceUpdateOperation;
+import com.openmason.main.systems.rendering.model.gmr.mesh.vertexOperations.MeshVertexDataTransformer;
+import com.openmason.main.systems.rendering.model.gmr.mesh.vertexOperations.MeshVertexMerger;
+import com.openmason.main.systems.rendering.model.gmr.mesh.vertexOperations.MeshVertexPositionUpdater;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -193,9 +197,9 @@ public class MeshManager {
      * @return MergeResult with new positions and mappings, or null if no merge occurred
      */
     public MeshVertexMerger.MergeResult mergeOverlappingVertices(float[] vertexPositions,
-                                                                  int vertexCount,
-                                                                  float epsilon,
-                                                                  Map<Integer, Integer> originalToCurrentMapping) {
+                                                                 int vertexCount,
+                                                                 float epsilon,
+                                                                 Map<Integer, Integer> originalToCurrentMapping) {
         MeshVertexMerger merger = new MeshVertexMerger(
                 vertexPositions,
                 allMeshVertices,

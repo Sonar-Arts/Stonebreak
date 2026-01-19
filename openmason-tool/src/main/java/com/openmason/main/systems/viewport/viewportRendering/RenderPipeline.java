@@ -3,6 +3,7 @@ package com.openmason.main.systems.viewport.viewportRendering;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
+import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
 import com.openmason.main.systems.rendering.core.shaders.ShaderManager;
@@ -366,7 +367,7 @@ public class RenderPipeline {
                         if (modelRenderer != null && modelRenderer.isInitialized()) {
                             float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
                             if (modelMeshVertices != null) {
-                                var meshManager = com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager.getInstance();
+                                var meshManager = MeshManager.getInstance();
                                 meshManager.setMeshVertices(modelMeshVertices);
                                 logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices", modelMeshVertices.length / 3);
 

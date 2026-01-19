@@ -1,7 +1,7 @@
 package com.openmason.main.systems.viewport.viewportRendering.face;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
+import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import org.joml.Matrix4f;

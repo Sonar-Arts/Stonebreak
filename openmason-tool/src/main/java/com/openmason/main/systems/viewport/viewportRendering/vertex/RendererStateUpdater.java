@@ -1,7 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
-import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
-import com.openmason.main.systems.viewport.viewportRendering.mesh.vertexOperations.MeshVertexMerger;
+import com.openmason.main.systems.rendering.model.gmr.mesh.vertexOperations.MeshVertexMerger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

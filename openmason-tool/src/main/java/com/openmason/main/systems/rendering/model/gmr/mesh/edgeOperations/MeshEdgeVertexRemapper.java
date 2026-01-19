@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.mesh.edgeOperations;
+package com.openmason.main.systems.rendering.model.gmr.mesh.edgeOperations;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

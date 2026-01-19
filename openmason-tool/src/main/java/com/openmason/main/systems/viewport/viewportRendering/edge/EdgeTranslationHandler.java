@@ -9,7 +9,7 @@ import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.common.TranslationHandlerBase;
-import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
+import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
