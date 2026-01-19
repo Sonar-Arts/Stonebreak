@@ -1,5 +1,6 @@
-package com.openmason.main.systems.rendering.model.gmr;
+package com.openmason.main.systems.rendering.model.gmr.extraction;
 
+import com.openmason.main.systems.rendering.model.gmr.mapping.ITriangleFaceMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

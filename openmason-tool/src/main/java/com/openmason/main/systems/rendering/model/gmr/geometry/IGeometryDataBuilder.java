@@ -1,4 +1,4 @@
-package com.openmason.main.systems.rendering.model.gmr;
+package com.openmason.main.systems.rendering.model.gmr.geometry;
 
 /**
  * Interface for constructing interleaved vertex data for GPU upload.

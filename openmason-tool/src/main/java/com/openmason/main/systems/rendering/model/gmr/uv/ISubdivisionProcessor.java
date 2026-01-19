@@ -1,5 +1,6 @@
-package com.openmason.main.systems.rendering.model.gmr;
+package com.openmason.main.systems.rendering.model.gmr.uv;
 
+import com.openmason.main.systems.rendering.model.gmr.mapping.ITriangleFaceMapper;
 import org.joml.Vector3f;
 
 /**

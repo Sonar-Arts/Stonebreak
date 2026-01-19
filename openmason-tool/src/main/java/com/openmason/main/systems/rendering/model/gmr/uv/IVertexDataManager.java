@@ -1,4 +1,4 @@
-package com.openmason.main.systems.rendering.model.gmr;
+package com.openmason.main.systems.rendering.model.gmr.uv;
 
 import org.joml.Vector3f;
 

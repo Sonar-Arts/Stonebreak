@@ -1,9 +1,6 @@
 package com.openmason.main.systems.rendering.model.io.omo;
 
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
-import com.openmason.main.systems.rendering.model.UVMode;
-import com.openmason.main.systems.rendering.model.gmr.ITriangleFaceMapper;
-import com.openmason.main.systems.rendering.model.gmr.IVertexDataManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

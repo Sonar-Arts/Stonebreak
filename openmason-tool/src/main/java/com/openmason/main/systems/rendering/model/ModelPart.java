@@ -1,6 +1,6 @@
 package com.openmason.main.systems.rendering.model;
 
-import com.openmason.main.systems.rendering.model.gmr.UVCoordinateGenerator;
+import com.openmason.main.systems.rendering.model.gmr.uv.UVCoordinateGenerator;
 import org.joml.Vector3f;
 
 /**

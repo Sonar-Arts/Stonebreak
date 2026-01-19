@@ -1,4 +1,4 @@
-package com.openmason.main.systems.rendering.model.gmr;
+package com.openmason.main.systems.rendering.model.gmr.notification;
 
 import com.openmason.main.systems.rendering.model.MeshChangeListener;
 import org.joml.Vector3f;

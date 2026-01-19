@@ -1,4 +1,4 @@
-package com.openmason.main.systems.rendering.model.gmr;
+package com.openmason.main.systems.rendering.model.gmr.mapping;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

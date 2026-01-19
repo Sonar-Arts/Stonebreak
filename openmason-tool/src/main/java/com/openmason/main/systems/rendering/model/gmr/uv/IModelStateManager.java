@@ -1,4 +1,4 @@
-package com.openmason.main.systems.rendering.model.gmr;
+package com.openmason.main.systems.rendering.model.gmr.uv;
 
 import com.openmason.main.systems.rendering.model.ModelPart;
 import com.openmason.main.systems.rendering.model.UVMode;

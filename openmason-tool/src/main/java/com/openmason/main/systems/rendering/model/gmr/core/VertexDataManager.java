@@ -1,5 +1,6 @@
-package com.openmason.main.systems.rendering.model.gmr;
+package com.openmason.main.systems.rendering.model.gmr.core;
 
+import com.openmason.main.systems.rendering.model.gmr.uv.IVertexDataManager;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
