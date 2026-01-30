@@ -14,10 +14,11 @@ updates:
     commit-message:
       prefix: "deps"
       include: "scope"
+    target-branch: "main"
     reviewers:
-      - "Cheeseyacht"
+      - "Cheese_yacht"
     assignees:
-      - "Cheeseyacht"
+      - "Cheese_yacht"
     # Group related dependency updates
     groups:
       lwjgl:
@@ -47,6 +48,7 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
+    target-branch: "main"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
@@ -55,6 +57,30 @@ updates:
     commit-message:
       prefix: "deps(game)"
       include: "scope"
+    reviewers:
+      - "Cheese_yacht"
+    assignees:
+      - "Cheese_yacht"
+    groups:
+      lwjgl:
+        patterns:
+          - "org.lwjgl:*"
+        update-types:
+          - "minor"
+          - "patch"
+      jackson:
+        patterns:
+          - "com.fasterxml.jackson.*:*"
+        update-types:
+          - "minor"
+          - "patch"
+      logging:
+        patterns:
+          - "org.slf4j:*"
+          - "ch.qos.logback:*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Monitor openmason-tool module
   - package-ecosystem: "maven"
@@ -63,6 +89,7 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
+    target-branch: "main"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
@@ -71,10 +98,20 @@ updates:
     commit-message:
       prefix: "deps(openmason)"
       include: "scope"
+    reviewers:
+      - "Cheese_yacht"
+    assignees:
+      - "Cheese_yacht"
     groups:
       imgui:
         patterns:
           - "io.github.spair:imgui-java-*"
+        update-types:
+          - "minor"
+          - "patch"
+      lwjgl:
+        patterns:
+          - "org.lwjgl:*"
         update-types:
           - "minor"
           - "patch"
@@ -86,9 +123,14 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
+    target-branch: "main"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "github-actions"
     commit-message:
       prefix: "ci"
+    reviewers:
+      - "Cheese_yacht"
+    assignees:
+      - "Cheese_yacht"
