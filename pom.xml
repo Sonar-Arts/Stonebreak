@@ -23,9 +23,7 @@
         <lwjgl.natives>natives-windows</lwjgl.natives>
         <jackson.version>2.21.0</jackson.version>
         <jackson.version.annotations>2.21</jackson.version.annotations>
-        <javafx.version>21</javafx.version>
-        <javafx.maven.plugin.version>0.0.8</javafx.maven.plugin.version>
-        <junit.version>5.10.0</junit.version>
+<junit.version>5.10.0</junit.version>
         <mockito.version>5.5.0</mockito.version>
     </properties>
 
@@ -144,28 +142,6 @@
                 <version>${jackson.version}</version>
             </dependency>
             
-            <!-- JavaFX for openmason-tool UI -->
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-controls</artifactId>
-                <version>${javafx.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-fxml</artifactId>
-                <version>${javafx.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-swing</artifactId>
-                <version>${javafx.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-web</artifactId>
-                <version>${javafx.version}</version>
-            </dependency>
-
             <!-- JUnit 5 (Jupiter) for testing -->
             <dependency>
                 <groupId>org.junit.jupiter</groupId>
