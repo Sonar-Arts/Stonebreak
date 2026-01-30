@@ -208,6 +208,10 @@ public class mainOpenMason {
 
         imGuiGlfw.init(window, true);
         imGuiGl3.init("#version 330 core");
+
+        // In imgui-java 1.87+, OpenGL device objects are lazily created on the first
+        // newFrame() call rather than during init(). Trigger creation before main loop.
+        imGuiGl3.newFrame();
     }
 
     /**
@@ -464,8 +468,8 @@ public class mainOpenMason {
     }
 
     private void cleanupImGui() {
-        imGuiGl3.dispose();
-        imGuiGlfw.dispose();
+        imGuiGl3.shutdown();
+        imGuiGlfw.shutdown();
         ImGui.destroyContext();
     }
 

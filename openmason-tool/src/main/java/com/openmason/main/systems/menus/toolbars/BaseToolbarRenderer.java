@@ -89,7 +89,7 @@ public abstract class BaseToolbarRenderer {
             pushHighlightedButtonStyle();
         }
 
-        boolean clicked = ImGui.imageButton(textureId, size, size);
+        boolean clicked = ImGui.imageButton("##icon" + textureId, textureId, size, size);
 
         if (highlighted) {
             popHighlightedButtonStyle();
