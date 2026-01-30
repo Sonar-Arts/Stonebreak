@@ -71,6 +71,13 @@ updates:
     commit-message:
       prefix: "deps(openmason)"
       include: "scope"
+    groups:
+      imgui:
+        patterns:
+          - "io.github.spair:imgui-java-*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Monitor GitHub Actions if present
   - package-ecosystem: "github-actions"

@@ -194,7 +194,7 @@ public class OMTImportDialog {
             }
 
             // Handle ESC key to close
-            if (ImGui.isKeyPressed(ImGui.getKeyIndex(imgui.flag.ImGuiKey.Escape))) {
+            if (ImGui.isKeyPressed(imgui.flag.ImGuiKey.Escape)) {
                 confirmedChoice = ImportMode.NONE;
                 isOpen = false;
                 ImGui.closeCurrentPopup();

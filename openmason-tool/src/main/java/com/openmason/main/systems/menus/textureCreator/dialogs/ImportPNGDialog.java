@@ -194,7 +194,7 @@ public class ImportPNGDialog {
             }
 
             // Handle ESC key to close
-            if (ImGui.isKeyPressed(ImGui.getKeyIndex(imgui.flag.ImGuiKey.Escape))) {
+            if (ImGui.isKeyPressed(imgui.flag.ImGuiKey.Escape)) {
                 isOpen = false;
                 ImGui.closeCurrentPopup();
             }
