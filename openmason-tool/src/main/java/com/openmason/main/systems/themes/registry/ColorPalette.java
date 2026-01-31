@@ -115,7 +115,7 @@ public class ColorPalette {
         theme.setStyleVar(ImGuiStyleVar.PopupBorderSize, 1.0f);
         theme.setStyleVar(ImGuiStyleVar.FrameBorderSize, 0.0f);
 
-        logger.debug("Created dark theme with {} colors and {} style vars",
+        logger.trace("Created dark theme with {} colors and {} style vars",
                      theme.getColorCount(), theme.getStyleVarCount());
 
         // Mark as read-only AFTER all colors and styles are set
@@ -222,7 +222,7 @@ public class ColorPalette {
         theme.setStyleVar(ImGuiStyleVar.PopupBorderSize, 1.0f);
         theme.setStyleVar(ImGuiStyleVar.FrameBorderSize, 0.0f);
 
-        logger.debug("Created light theme with {} colors and {} style vars",
+        logger.trace("Created light theme with {} colors and {} style vars",
                      theme.getColorCount(), theme.getStyleVarCount());
 
         // Mark as read-only AFTER all colors and styles are set
@@ -329,7 +329,7 @@ public class ColorPalette {
         theme.setStyleVar(ImGuiStyleVar.PopupBorderSize, 2.0f);
         theme.setStyleVar(ImGuiStyleVar.FrameBorderSize, 1.0f);
 
-        logger.debug("Created high contrast theme with {} colors and {} style vars",
+        logger.trace("Created high contrast theme with {} colors and {} style vars",
                      theme.getColorCount(), theme.getStyleVarCount());
 
         // Mark as read-only AFTER all colors and styles are set
@@ -436,7 +436,7 @@ public class ColorPalette {
         theme.setStyleVar(ImGuiStyleVar.PopupBorderSize, 1.0f);
         theme.setStyleVar(ImGuiStyleVar.FrameBorderSize, 0.0f);
 
-        logger.debug("Created blue theme with {} colors and {} style vars",
+        logger.trace("Created blue theme with {} colors and {} style vars",
                      theme.getColorCount(), theme.getStyleVarCount());
 
         // Mark as read-only AFTER all colors and styles are set
@@ -563,7 +563,7 @@ public class ColorPalette {
         theme.setStyleVar(ImGuiStyleVar.PopupBorderSize, 1.0f);
         theme.setStyleVar(ImGuiStyleVar.FrameBorderSize, 0.0f);
 
-        logger.debug("Created Mason Spectrum Light theme with {} colors and {} style vars",
+        logger.trace("Created Mason Spectrum Light theme with {} colors and {} style vars",
                      theme.getColorCount(), theme.getStyleVarCount());
 
         // Mark as read-only AFTER all colors and styles are set
@@ -690,7 +690,7 @@ public class ColorPalette {
         theme.setStyleVar(ImGuiStyleVar.PopupBorderSize, 1.0f);
         theme.setStyleVar(ImGuiStyleVar.FrameBorderSize, 0.0f);
 
-        logger.debug("Created Mason Spectrum Dark theme with {} colors and {} style vars",
+        logger.trace("Created Mason Spectrum Dark theme with {} colors and {} style vars",
                      theme.getColorCount(), theme.getStyleVarCount());
 
         // Mark as read-only AFTER all colors and styles are set

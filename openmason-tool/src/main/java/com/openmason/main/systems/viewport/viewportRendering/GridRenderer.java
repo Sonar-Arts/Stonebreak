@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
-import com.openmason.main.systems.viewport.shaders.ShaderProgram;
+import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;

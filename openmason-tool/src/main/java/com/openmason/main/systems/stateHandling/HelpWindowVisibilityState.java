@@ -8,7 +8,7 @@ import imgui.type.ImBoolean;
  * Follows Interface Segregation Principle by providing only help-related visibility methods.
  *
  * <p>This interface enables the HelpMenuHandler to work with any state management class
- * that can show/hide an about dialog, making it reusable across Model Viewer, Texture Creator,
+ * that can show/hide an about dialog, making it reusable across Model Editor, Texture Creator,
  * and future tools.</p>
  *
  * @author Open Mason Team

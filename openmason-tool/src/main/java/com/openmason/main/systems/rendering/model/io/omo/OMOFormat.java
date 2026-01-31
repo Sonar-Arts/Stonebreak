@@ -4,11 +4,20 @@ import java.util.Objects;
 
 /**
  * Open Mason Object (.OMO) file format specification.
+ *
+ * <p>Version History:
+ * <ul>
+ *   <li>1.0 - Initial format with basic geometry dimensions</li>
+ *   <li>1.1 - Added custom mesh data support for subdivision (vertices, indices, UVs, face mapping)</li>
+ * </ul>
  */
 public final class OMOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.0";
+    public static final String FORMAT_VERSION = "1.1";
+
+    /** Minimum supported format version for reading */
+    public static final String MIN_SUPPORTED_VERSION = "1.0";
 
     /** File extension for OMO files */
     public static final String FILE_EXTENSION = ".omo";
@@ -129,5 +138,143 @@ public final class OMOFormat {
                         Double.compare(position.z, z) == 0;
             }
 
+    }
+
+    /**
+     * Custom mesh data for subdivided/edited models (v2.0+).
+     *
+     * <p><strong>TEXTURE SYSTEM LIMITATION:</strong> Current texture assignment uses raw
+     * texCoords array with simple uvMode string. Future versions will support:
+     * <ul>
+     *   <li>Per-face texture atlas coordinate specification</li>
+     *   <li>Texture transformation (rotation, scale, offset) per face</li>
+     *   <li>Texture wrapping and tiling modes</li>
+     *   <li>Support for arbitrary geometry (not cube-locked)</li>
+     * </ul>
+     *
+     * <p>When present, this overrides the standard cube generation.
+     * Contains all data needed to reconstruct the exact mesh state.
+     *
+     * @param vertices Vertex positions (x,y,z interleaved), null for standard cube
+     * @param texCoords Texture coordinates (u,v interleaved), null for standard cube - LEGACY: Will be replaced with per-face texture mapping
+     * @param indices Triangle indices, null for non-indexed geometry
+     * @param triangleToFaceId Face mapping for triangles (preserves original face ID through subdivision)
+     * @param uvMode UV mapping mode ("FLAT" or "CUBE_NET") - LEGACY: Cube-specific, will be replaced with flexible texture assignment
+     */
+    public record MeshData(
+            float[] vertices,
+            float[] texCoords,
+            int[] indices,
+            int[] triangleToFaceId,
+            String uvMode
+    ) {
+        /**
+         * Check if this mesh data represents custom geometry (not a standard cube).
+         *
+         * @return true if custom mesh data is present
+         */
+        public boolean hasCustomGeometry() {
+            return vertices != null && vertices.length > 0;
+        }
+
+        /**
+         * Get the vertex count.
+         *
+         * @return number of vertices, or 0 if none
+         */
+        public int getVertexCount() {
+            return vertices != null ? vertices.length / 3 : 0;
+        }
+
+        /**
+         * Get the triangle count.
+         *
+         * @return number of triangles, or 0 if none
+         */
+        public int getTriangleCount() {
+            return indices != null ? indices.length / 3 : 0;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof MeshData meshData)) return false;
+            return java.util.Arrays.equals(vertices, meshData.vertices) &&
+                    java.util.Arrays.equals(texCoords, meshData.texCoords) &&
+                    java.util.Arrays.equals(indices, meshData.indices) &&
+                    java.util.Arrays.equals(triangleToFaceId, meshData.triangleToFaceId) &&
+                    Objects.equals(uvMode, meshData.uvMode);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = java.util.Arrays.hashCode(vertices);
+            result = 31 * result + java.util.Arrays.hashCode(texCoords);
+            result = 31 * result + java.util.Arrays.hashCode(indices);
+            result = 31 * result + java.util.Arrays.hashCode(triangleToFaceId);
+            result = 31 * result + Objects.hashCode(uvMode);
+            return result;
+        }
+    }
+
+    /**
+     * Extended document structure (v1.1+) with optional mesh data.
+     *
+     * <p>Extends the base Document to include custom mesh data for
+     * subdivided or edited models.
+     *
+     * @param version Format version
+     * @param objectName Model name
+     * @param modelType Model type identifier
+     * @param geometry Base geometry dimensions (used for standard cubes or as reference)
+     * @param textureFile Embedded texture filename
+     * @param mesh Custom mesh data (null for standard cube, present for edited models)
+     */
+    public record ExtendedDocument(
+            String version,
+            String objectName,
+            String modelType,
+            GeometryData geometry,
+            String textureFile,
+            MeshData mesh
+    ) {
+        public ExtendedDocument {
+            Objects.requireNonNull(version, "version cannot be null");
+            Objects.requireNonNull(objectName, "objectName cannot be null");
+            Objects.requireNonNull(modelType, "modelType cannot be null");
+            Objects.requireNonNull(geometry, "geometry cannot be null");
+            Objects.requireNonNull(textureFile, "textureFile cannot be null");
+            // mesh can be null (standard cube)
+        }
+
+        /**
+         * Check if this document has custom mesh data.
+         *
+         * @return true if custom mesh data is present
+         */
+        public boolean hasCustomMesh() {
+            return mesh != null && mesh.hasCustomGeometry();
+        }
+
+        /**
+         * Convert to base Document for backward compatibility checks.
+         *
+         * @return Document with same base fields
+         */
+        public Document toBaseDocument() {
+            return new Document(version, objectName, modelType, geometry, textureFile);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof ExtendedDocument that)) return false;
+            return Objects.equals(version, that.version) &&
+                    Objects.equals(objectName, that.objectName) &&
+                    Objects.equals(modelType, that.modelType) &&
+                    Objects.equals(geometry, that.geometry) &&
+                    Objects.equals(textureFile, that.textureFile) &&
+                    Objects.equals(mesh, that.mesh);
+        }
     }
 }

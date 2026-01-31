@@ -130,7 +130,7 @@ public class ThemeRegistry {
             ThemeEntry entry = new ThemeEntry(theme, category, source);
             themeRegistry.put(name, entry);
 
-            logger.debug("Registered theme '{}' in category {} from source '{}'",
+            logger.trace("Registered theme '{}' in category {} from source '{}'",
                         name, category, source);
             return true;
             

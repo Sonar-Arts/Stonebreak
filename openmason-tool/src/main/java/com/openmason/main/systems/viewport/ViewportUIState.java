@@ -161,6 +161,10 @@ public class ViewportUIState {
         showGizmo.set(!showGizmo.get());
     }
 
+    public void toggleGridSnapping() {
+        gridSnappingEnabled.set(!gridSnappingEnabled.get());
+    }
+
     public boolean isInitialized() {
         return viewportInitialized;
     }

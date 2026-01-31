@@ -11,8 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Controller for the 3D viewport (MVC).
- * Adheres to SOLID: Single Responsibility, Open/Closed, Interface Segregation, Dependency Inversion.
+ * Controller for the Viewport (MVC).
  */
 public class ViewportImGuiInterface {
 
@@ -74,8 +73,13 @@ public class ViewportImGuiInterface {
         // Initialize actions with dependencies
         this.actions = new ViewportActions(viewport3D, state, preferencesManager);
 
-        // Initialize keyboard shortcuts
-        this.keyboardShortcuts = new ViewportKeyboardShortcuts(actions, state);
+        // Initialize keyboard shortcuts with keybind registry
+        com.openmason.main.systems.keybinds.KeybindRegistry registry =
+                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
+        this.keyboardShortcuts = new ViewportKeyboardShortcuts(actions, state, registry);
+
+        // Register viewport keybind actions with the central registry
+        com.openmason.main.systems.viewport.ViewportKeybindActions.registerAll(registry, actions, state);
 
         // Initialize view components
         this.mainView = new ViewportMainView(state, actions, viewport3D, themeManager, preferencesManager);
@@ -136,11 +140,11 @@ public class ViewportImGuiInterface {
     }
 
     /**
-     * Set the shared 3D viewport instance.
+     * Set the shared viewport instance.
      */
     public void setViewport3D(ViewportController viewport) {
         this.viewport3D = viewport;
-        logger.info("Shared 3D viewport injected into ViewportImGuiInterface: {}",
+        logger.info("Shared Viewport injected into ViewportImGuiInterface: {}",
                    viewport != null ? System.identityHashCode(viewport) : "NULL");
 
         // Initialize components now that viewport is available

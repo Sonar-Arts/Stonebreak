@@ -17,59 +17,35 @@ public class ViewportKeyboardShortcuts {
 
     private final ViewportActions actions;
     private final ViewportUIState state;
+    private final com.openmason.main.systems.keybinds.KeybindRegistry registry;
 
     /**
      * Constructor with dependency injection.
      * @param actions The viewport actions to execute
      * @param state The viewport state to access
+     * @param registry The keybind registry for customizable shortcuts
      */
-    public ViewportKeyboardShortcuts(ViewportActions actions, ViewportUIState state) {
+    public ViewportKeyboardShortcuts(ViewportActions actions, ViewportUIState state,
+                                    com.openmason.main.systems.keybinds.KeybindRegistry registry) {
         this.actions = actions;
         this.state = state;
+        this.registry = registry;
     }
 
     /**
      * Handle viewport-specific keyboard shortcuts.
+     * Now uses the keybind registry for customizable shortcuts.
      * Should only be called when the viewport window is focused and not actively typing.
      */
     public void handleKeyboardShortcuts() {
-        ImGuiIO io = ImGui.getIO();
-        boolean ctrlPressed = io.getKeyCtrl();
-
-        if (!ctrlPressed) {
-            return; // All current shortcuts require Ctrl
-        }
-
-        // Ctrl+T: Toggle Transform Gizmo
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_T)) {
-            actions.toggleGizmo();
-        }
-
-        // Ctrl+G: Toggle Grid
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_G)) {
-            state.getGridVisible().set(!state.getGridVisible().get());
-            actions.toggleGrid();
-        }
-
-        // Ctrl+X: Toggle Axes
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_X)) {
-            state.getAxesVisible().set(!state.getAxesVisible().get());
-            actions.toggleAxes();
-        }
-
-        // Ctrl+W: Toggle Wireframe
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_W)) {
-            actions.toggleWireframe();
-        }
-
-        // Ctrl+R: Reset View
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_R)) {
-            actions.resetView();
-        }
-
-        // Ctrl+F: Fit to View
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_F)) {
-            actions.fitToView();
+        // Iterate through all viewport actions in the registry
+        for (com.openmason.main.systems.keybinds.KeybindAction action : registry.getActionsByCategory("Viewport")) {
+            com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey key =
+                    registry.getKeybind(action.getId());
+            if (key.isPressed()) {
+                action.execute();
+                return; // Only execute first matching shortcut
+            }
         }
     }
 

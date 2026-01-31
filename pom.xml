@@ -15,16 +15,15 @@
     </modules>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <lwjgl.version>3.3.6</lwjgl.version>
+        <lwjgl.version>3.4.0</lwjgl.version>
         <joml.version>1.10.5</joml.version>
         <lwjgl.natives>natives-windows</lwjgl.natives>
-        <jackson.version>2.20</jackson.version>
-        <javafx.version>21</javafx.version>
-        <javafx.maven.plugin.version>0.0.8</javafx.maven.plugin.version>
+        <jackson.version>2.21</jackson.version>
         <junit.version>5.10.0</junit.version>
+<junit.version>5.10.0</junit.version>
         <mockito.version>5.5.0</mockito.version>
     </properties>
 
@@ -135,7 +134,7 @@
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
                 <artifactId>jackson-annotations</artifactId>
-                <version>${jackson.version}</version>
+                <version>${jackson.version.annotations}</version>
             </dependency>
             <dependency>
                 <groupId>com.fasterxml.jackson.datatype</groupId>
@@ -143,28 +142,6 @@
                 <version>${jackson.version}</version>
             </dependency>
             
-            <!-- JavaFX for openmason-tool UI -->
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-controls</artifactId>
-                <version>${javafx.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-fxml</artifactId>
-                <version>${javafx.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-swing</artifactId>
-                <version>${javafx.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-web</artifactId>
-                <version>${javafx.version}</version>
-            </dependency>
-
             <!-- JUnit 5 (Jupiter) for testing -->
             <dependency>
                 <groupId>org.junit.jupiter</groupId>
@@ -186,13 +163,6 @@
                 <version>${mockito.version}</version>
                 <scope>test</scope>
             </dependency>
-            <dependency>
-                <groupId>org.mockito</groupId>
-                <artifactId>mockito-junit-jupiter</artifactId>
-                <version>${mockito.version}</version>
-                <scope>test</scope>
-            </dependency>
-
             <!-- JUnit Platform Suite for test suites -->
             <dependency>
                 <groupId>org.junit.platform</groupId>
@@ -215,9 +185,9 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.10.1</version>
+                    <version>3.13.0</version>
                     <configuration>
-                        <release>17</release>
+                        <release>25</release>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -228,7 +198,7 @@
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>exec-maven-plugin</artifactId>
-                    <version>3.1.0</version>
+                    <version>3.6.3</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

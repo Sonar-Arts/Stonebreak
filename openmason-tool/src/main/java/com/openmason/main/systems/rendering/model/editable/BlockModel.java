@@ -5,7 +5,13 @@ import java.util.Objects;
 
 /**
  * Concrete implementation of a simple single-cube block model.
+ *
+ * @deprecated Legacy block model support only. Used exclusively for loading old .OMO files (v1.0-2.0).
+ *             Modern models should provide complete mesh topology via .OMO files instead of relying on
+ *             single-cube dimensions. See {@link com.openmason.main.systems.rendering.model.io.omo.OMOFormat}
+ *             for modern format with embedded mesh data.
  */
+@Deprecated(since = "2.1", forRemoval = true)
 public class BlockModel implements EditableModel {
 
     /** Model type identifier for single-cube blocks */

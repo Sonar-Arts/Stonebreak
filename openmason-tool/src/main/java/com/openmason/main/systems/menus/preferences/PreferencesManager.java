@@ -22,7 +22,7 @@ public class PreferencesManager {
     
     private static final String PREFERENCES_FILE = "openmason-tool/preferences.properties";
 
-    // 3D Model Viewer preferences
+    // 3D Model Editor preferences
     private static final String CAMERA_MOUSE_SENSITIVITY_KEY = "camera.mouse.sensitivity";
     private static final String GRID_SNAPPING_ENABLED_KEY = "viewport.grid.snapping.enabled";
     private static final String GRID_SNAPPING_INCREMENT_KEY = "viewport.grid.snapping.increment";
@@ -35,7 +35,7 @@ public class PreferencesManager {
     private static final String TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY = "texture.editor.skip.transparent.paste";
     private static final String TEXTURE_EDITOR_SHAPE_FILL_MODE_KEY = "texture.editor.shape.fill.mode";
 
-    // Default values - 3D Model Viewer
+    // Default values - 3D Model Editor
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
     private static final boolean DEFAULT_GRID_SNAPPING_ENABLED = false;
     // Default grid snapping: Half block (0.5 units) = 2 snap positions per visual grid square
@@ -102,7 +102,7 @@ public class PreferencesManager {
      * Set default preference values.
      */
     private void setDefaults() {
-        // 3D Model Viewer defaults
+        // 3D Model Editor defaults
         properties.setProperty(CAMERA_MOUSE_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_MOUSE_SENSITIVITY));
         properties.setProperty(GRID_SNAPPING_ENABLED_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_ENABLED));
         properties.setProperty(GRID_SNAPPING_INCREMENT_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_INCREMENT));
@@ -182,6 +182,79 @@ public class PreferencesManager {
     public void setGridSnappingIncrement(float increment) {
         properties.setProperty(GRID_SNAPPING_INCREMENT_KEY, String.valueOf(increment));
         savePreferences();
+    }
+
+    // Keybinds Settings
+
+    private static final String KEYBIND_PREFIX = "keybind.";
+
+    /**
+     * Get custom keybind for an action (null if using default).
+     *
+     * @param actionId the action ID (e.g., "viewport.toggle_grid")
+     * @return the custom keybind, or null if using default
+     */
+    public com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey getKeybind(String actionId) {
+        String value = properties.getProperty(KEYBIND_PREFIX + actionId);
+        if (value != null) {
+            try {
+                return com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey.parse(value);
+            } catch (IllegalArgumentException e) {
+                logger.warn("Invalid keybind for {}: {}, using default", actionId, value, e);
+            }
+        }
+        return null; // Use default
+    }
+
+    /**
+     * Set custom keybind for an action.
+     *
+     * @param actionId the action ID (e.g., "viewport.toggle_grid")
+     * @param key      the keybind to set
+     */
+    public void setKeybind(String actionId, com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey key) {
+        if (key == null) {
+            clearKeybind(actionId);
+            return;
+        }
+        properties.setProperty(KEYBIND_PREFIX + actionId, key.serialize());
+        savePreferences();
+        logger.debug("Saved custom keybind: {} -> {}", actionId, key.serialize());
+    }
+
+    /**
+     * Clear custom keybind (revert to default).
+     *
+     * @param actionId the action ID
+     */
+    public void clearKeybind(String actionId) {
+        properties.remove(KEYBIND_PREFIX + actionId);
+        savePreferences();
+        logger.debug("Cleared custom keybind: {}", actionId);
+    }
+
+    /**
+     * Load all custom keybinds into the registry on startup.
+     *
+     * @param registry the keybind registry to populate
+     */
+    public void loadKeybindsIntoRegistry(com.openmason.main.systems.keybinds.KeybindRegistry registry) {
+        int loadedCount = 0;
+        for (String key : properties.stringPropertyNames()) {
+            if (key.startsWith(KEYBIND_PREFIX)) {
+                String actionId = key.substring(KEYBIND_PREFIX.length());
+                com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey customKey = getKeybind(actionId);
+                if (customKey != null) {
+                    try {
+                        registry.setKeybind(actionId, customKey);
+                        loadedCount++;
+                    } catch (IllegalArgumentException e) {
+                        logger.warn("Failed to load keybind for {}: {}", actionId, e.getMessage());
+                    }
+                }
+            }
+        }
+        logger.info("Loaded {} custom keybinds from preferences", loadedCount);
     }
 
     // Texture Creator Settings

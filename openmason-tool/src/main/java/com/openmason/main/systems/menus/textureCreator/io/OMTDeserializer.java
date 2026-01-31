@@ -118,11 +118,11 @@ public class OMTDeserializer {
                 // Store based on entry type
                 if (OMTFormat.MANIFEST_FILENAME.equals(entryName)) {
                     archive.manifestData = entryData;
-                    logger.debug("Extracted manifest.json ({} bytes)", entryData.length);
+                    logger.trace("Extracted manifest.json ({} bytes)", entryData.length);
                 } else if (entryName.startsWith(OMTFormat.LAYER_FILENAME_PREFIX)
                         && entryName.endsWith(OMTFormat.LAYER_FILENAME_SUFFIX)) {
                     archive.layerData.put(entryName, entryData);
-                    logger.debug("Extracted {} ({} bytes)", entryName, entryData.length);
+                    logger.trace("Extracted {} ({} bytes)", entryName, entryData.length);
                 } else {
                     logger.warn("Ignoring unknown entry in .OMT archive: {}", entryName);
                 }

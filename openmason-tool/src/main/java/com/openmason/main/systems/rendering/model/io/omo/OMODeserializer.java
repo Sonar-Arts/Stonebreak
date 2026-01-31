@@ -18,6 +18,10 @@ import java.util.zip.ZipInputStream;
 /**
  * Deserializer for Open Mason Object (.OMO) file format.
  *
+ * <p><strong>TEXTURE SYSTEM LIMITATION:</strong> Current version loads legacy texture data
+ * (raw texCoords + uvMode string). Future versions will support per-face texture atlas
+ * coordinates, transformations, and flexible mapping modes. Will require texture creator upgrade.
+ *
  * <p>Reads ZIP-based .OMO files and reconstructs BlockModel instances.
  * The deserializer:
  * <ul>
@@ -25,11 +29,18 @@ import java.util.zip.ZipInputStream;
  *   <li>Extracts embedded .OMT texture file</li>
  *   <li>Reconstructs model geometry</li>
  *   <li>Creates BlockModel with loaded data</li>
+ *   <li>Loads mesh data for all models (v2.1+)</li>
+ * </ul>
+ *
+ * <p><strong>Loading behavior:</strong>
+ * <ul>
+ *   <li>Modern files (v2.1+): Include mesh data - self-contained, no generation needed</li>
+ *   <li>Legacy files (v1.0-2.0): No mesh data - require generation fallback (see ModelOperationService)</li>
  * </ul>
  *
  * <p>Validation includes:
  * <ul>
- *   <li>Format version compatibility</li>
+ *   <li>Format version compatibility (1.0, 2.0, and 2.1)</li>
  *   <li>Required fields presence</li>
  *   <li>Geometry data validity</li>
  *   <li>Texture file existence</li>
@@ -40,14 +51,20 @@ import java.util.zip.ZipInputStream;
  *   <li>SOLID: Single Responsibility - only handles .OMO file reading</li>
  *   <li>KISS: Straightforward ZIP extraction and JSON parsing</li>
  *   <li>Fail-fast: Comprehensive validation with clear error messages</li>
+ *   <li>Backward Compatible: Supports legacy files without mesh data</li>
  * </ul>
  *
  * @since 1.0
+ * @since 2.0 Added mesh data support
+ * @since 2.1 Mesh data expected for all new files
  */
 public class OMODeserializer {
 
     private static final Logger logger = LoggerFactory.getLogger(OMODeserializer.class);
     private final ObjectMapper objectMapper;
+
+    // Last loaded mesh data (accessible after load())
+    private OMOFormat.MeshData lastLoadedMeshData;
 
     /**
      * Creates a new .OMO deserializer with JSON support.
@@ -57,12 +74,26 @@ public class OMODeserializer {
     }
 
     /**
+     * Get the mesh data from the last successful load() call.
+     * Returns null if no mesh data was present (v1.0 file or standard cube).
+     *
+     * @return the loaded mesh data, or null
+     */
+    public OMOFormat.MeshData getLastLoadedMeshData() {
+        return lastLoadedMeshData;
+    }
+
+    /**
      * Loads a BlockModel from a .OMO file.
+     * After loading, call getLastLoadedMeshData() to retrieve any custom mesh data.
      *
      * @param filePath path to the .OMO file
      * @return the loaded BlockModel, or null if loading failed
      */
     public BlockModel load(String filePath) {
+        // Clear previous mesh data
+        lastLoadedMeshData = null;
+
         if (filePath == null || filePath.trim().isEmpty()) {
             logger.error("Invalid file path");
             return null;
@@ -82,6 +113,9 @@ public class OMODeserializer {
             // Load document from ZIP
             LoadedData loadedData = loadFromZip(path);
 
+            // Store mesh data for external access
+            lastLoadedMeshData = loadedData.meshData();
+
             // Build BlockModel from loaded data
             BlockModel model = buildModel(loadedData);
 
@@ -89,7 +123,8 @@ public class OMODeserializer {
             model.setFilePath(path);
             model.markClean();
 
-            logger.info("Loaded .OMO file: {}", filePath);
+            logger.info("Loaded .OMO file: {} (version={}, hasMesh={})",
+                    filePath, loadedData.document().version(), lastLoadedMeshData != null);
             return model;
 
         } catch (Exception e) {
@@ -102,11 +137,12 @@ public class OMODeserializer {
      * Loads manifest and texture from ZIP file.
      *
      * @param path path to the .OMO ZIP file
-     * @return loaded data containing manifest and texture path
+     * @return loaded data containing manifest, texture path, and optional mesh data
      * @throws IOException if reading fails
      */
     private LoadedData loadFromZip(Path path) throws IOException {
         OMOFormat.Document document = null;
+        OMOFormat.MeshData meshData = null;
         Path texturePath = null;
 
         try (FileInputStream fis = new FileInputStream(path.toFile());
@@ -117,9 +153,11 @@ public class OMODeserializer {
                 String entryName = entry.getName();
 
                 if (OMOFormat.MANIFEST_FILENAME.equals(entryName)) {
-                    // Read manifest.json
-                    document = readManifest(zis);
-                    logger.debug("Loaded manifest.json");
+                    // Read manifest.json (may contain mesh data in v2.0+)
+                    ManifestParseResult result = readManifestV2(zis);
+                    document = result.document;
+                    meshData = result.meshData;
+                    logger.debug("Loaded manifest.json (version={})", document.version());
 
                 } else if (OMOFormat.DEFAULT_TEXTURE_FILENAME.equals(entryName)) {
                     // Extract texture.omt to temporary file
@@ -139,17 +177,23 @@ public class OMODeserializer {
             throw new IOException("Missing texture.omt in .OMO file");
         }
 
-        return new LoadedData(document, texturePath);
+        return new LoadedData(document, texturePath, meshData);
     }
 
     /**
+     * Result of parsing manifest.json.
+     */
+    private record ManifestParseResult(OMOFormat.Document document, OMOFormat.MeshData meshData) {}
+
+    /**
      * Reads and parses manifest.json from ZIP stream.
+     * Supports both v1.0 and v2.0 formats.
      *
      * @param zis ZIP input stream positioned at manifest entry
-     * @return parsed OMO document
+     * @return parsed result containing document and optional mesh data
      * @throws IOException if read or parse fails
      */
-    private OMOFormat.Document readManifest(ZipInputStream zis) throws IOException {
+    private ManifestParseResult readManifestV2(ZipInputStream zis) throws IOException {
         // Read JSON from stream
         byte[] jsonBytes = readStreamToByteArray(zis);
         String json = new String(jsonBytes, StandardCharsets.UTF_8);
@@ -159,9 +203,9 @@ public class OMODeserializer {
 
         // Validate version
         String version = root.get("version").asText();
-        if (!OMOFormat.FORMAT_VERSION.equals(version)) {
-            logger.warn("Format version mismatch: expected {}, got {}",
-                       OMOFormat.FORMAT_VERSION, version);
+        if (!isVersionSupported(version)) {
+            throw new IOException("Unsupported format version: " + version +
+                    " (supported: " + OMOFormat.MIN_SUPPORTED_VERSION + " to " + OMOFormat.FORMAT_VERSION + ")");
         }
 
         // Extract fields
@@ -186,9 +230,94 @@ public class OMODeserializer {
             width, height, depth, position
         );
 
-        // Note: Texture format is auto-detected from .OMT dimensions at runtime
-        return new OMOFormat.Document(version, objectName, modelType,
+        OMOFormat.Document document = new OMOFormat.Document(version, objectName, modelType,
                                      geometryData, textureFile);
+
+        // Parse mesh data if present (v2.0+)
+        OMOFormat.MeshData meshData = null;
+        JsonNode meshNode = root.get("mesh");
+        if (meshNode != null && !meshNode.isNull()) {
+            meshData = parseMeshData(meshNode);
+            logger.debug("Loaded custom mesh data: {} vertices, {} triangles",
+                    meshData.getVertexCount(), meshData.getTriangleCount());
+        }
+
+        return new ManifestParseResult(document, meshData);
+    }
+
+    /**
+     * Check if a format version is supported.
+     *
+     * @param version the version string to check
+     * @return true if supported
+     */
+    private boolean isVersionSupported(String version) {
+        if (version == null) return false;
+        try {
+            double v = Double.parseDouble(version);
+            double minV = Double.parseDouble(OMOFormat.MIN_SUPPORTED_VERSION);
+            double maxV = Double.parseDouble(OMOFormat.FORMAT_VERSION);
+            return v >= minV && v <= maxV;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Parse mesh data from JSON node.
+     *
+     * @param meshNode the mesh JSON node
+     * @return parsed MeshData
+     */
+    private OMOFormat.MeshData parseMeshData(JsonNode meshNode) {
+        // Parse vertices
+        float[] vertices = null;
+        JsonNode verticesNode = meshNode.get("vertices");
+        if (verticesNode != null && verticesNode.isArray()) {
+            vertices = new float[verticesNode.size()];
+            for (int i = 0; i < verticesNode.size(); i++) {
+                vertices[i] = (float) verticesNode.get(i).asDouble();
+            }
+        }
+
+        // Parse texCoords
+        float[] texCoords = null;
+        JsonNode texCoordsNode = meshNode.get("texCoords");
+        if (texCoordsNode != null && texCoordsNode.isArray()) {
+            texCoords = new float[texCoordsNode.size()];
+            for (int i = 0; i < texCoordsNode.size(); i++) {
+                texCoords[i] = (float) texCoordsNode.get(i).asDouble();
+            }
+        }
+
+        // Parse indices
+        int[] indices = null;
+        JsonNode indicesNode = meshNode.get("indices");
+        if (indicesNode != null && indicesNode.isArray()) {
+            indices = new int[indicesNode.size()];
+            for (int i = 0; i < indicesNode.size(); i++) {
+                indices[i] = indicesNode.get(i).asInt();
+            }
+        }
+
+        // Parse triangleToFaceId
+        int[] triangleToFaceId = null;
+        JsonNode faceIdNode = meshNode.get("triangleToFaceId");
+        if (faceIdNode != null && faceIdNode.isArray()) {
+            triangleToFaceId = new int[faceIdNode.size()];
+            for (int i = 0; i < faceIdNode.size(); i++) {
+                triangleToFaceId[i] = faceIdNode.get(i).asInt();
+            }
+        }
+
+        // Parse uvMode
+        String uvMode = null;
+        JsonNode uvModeNode = meshNode.get("uvMode");
+        if (uvModeNode != null && !uvModeNode.isNull()) {
+            uvMode = uvModeNode.asText();
+        }
+
+        return new OMOFormat.MeshData(vertices, texCoords, indices, triangleToFaceId, uvMode);
     }
 
     /**
@@ -264,8 +393,12 @@ public class OMODeserializer {
     }
 
     /**
-         * Container for loaded manifest and texture data.
-         */
-        private record LoadedData(OMOFormat.Document document, Path texturePath) {
+     * Container for loaded manifest, texture, and mesh data.
+     *
+     * @param document The parsed manifest document
+     * @param texturePath Path to extracted texture file
+     * @param meshData Optional custom mesh data (null for standard cube)
+     */
+    private record LoadedData(OMOFormat.Document document, Path texturePath, OMOFormat.MeshData meshData) {
     }
 }

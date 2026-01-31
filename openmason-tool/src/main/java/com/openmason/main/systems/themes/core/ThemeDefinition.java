@@ -117,7 +117,7 @@ public class ThemeDefinition {
         for (Map.Entry<Integer, Float> entry : this.styleVars.entrySet()) {
             copy.setStyleVar(entry.getKey(), entry.getValue());
         }
-        logger.debug("Created copy of theme: {} -> {}", this.name, copy.name);
+        logger.trace("Created copy of theme: {} -> {}", this.name, copy.name);
         return copy;
     }
     
@@ -138,7 +138,7 @@ public class ThemeDefinition {
             logger.warn("Theme '{}' has no colors or style variables defined", name);
         }
         
-        logger.debug("Theme validation passed: {}", name);
+        logger.trace("Theme validation passed: {}", name);
     }
     
     // Utility methods
