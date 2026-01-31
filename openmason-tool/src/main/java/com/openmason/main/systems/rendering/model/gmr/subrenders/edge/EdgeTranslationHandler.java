@@ -5,7 +5,7 @@ import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
-import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
+import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.common.TranslationHandlerBase;
@@ -30,7 +30,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
     private final VertexRenderer vertexRenderer;
     private final FaceRenderer faceRenderer;
     private final GenericModelRenderer modelRenderer;
-    private final RenderPipeline renderPipeline;
+    private final ViewportRenderPipeline viewportRenderPipeline;
 
     // Edge-specific drag state
     private Vector3f dragStartDelta = new Vector3f(); // Track accumulated translation
@@ -44,7 +44,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
      * @param faceRenderer The face renderer for updating face overlays
      * @param modelRenderer The block model renderer for updating the solid mesh
      * @param viewportState The viewport state for grid snapping settings
-     * @param renderPipeline The render pipeline for marking data dirty
+     * @param viewportRenderPipeline The render pipeline for marking data dirty
      * @param transformState The transform state for model space conversions
      */
     public EdgeTranslationHandler(EdgeSelectionState selectionState,
@@ -53,7 +53,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
                                    FaceRenderer faceRenderer,
                                    GenericModelRenderer modelRenderer,
                                    ViewportUIState viewportState,
-                                   RenderPipeline renderPipeline,
+                                   ViewportRenderPipeline viewportRenderPipeline,
                                    TransformState transformState) {
         super(viewportState, transformState);
 
@@ -72,8 +72,8 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         if (modelRenderer == null) {
             throw new IllegalArgumentException("BlockModelRenderer cannot be null");
         }
-        if (renderPipeline == null) {
-            throw new IllegalArgumentException("RenderPipeline cannot be null");
+        if (viewportRenderPipeline == null) {
+            throw new IllegalArgumentException("ViewportRenderPipeline cannot be null");
         }
 
         this.selectionState = selectionState;
@@ -81,7 +81,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         this.vertexRenderer = vertexRenderer;
         this.faceRenderer = faceRenderer;
         this.modelRenderer = modelRenderer;
-        this.renderPipeline = renderPipeline;
+        this.viewportRenderPipeline = viewportRenderPipeline;
     }
 
     @Override

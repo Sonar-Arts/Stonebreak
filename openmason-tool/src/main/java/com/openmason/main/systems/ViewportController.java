@@ -10,12 +10,12 @@ import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.viewport.ViewportCamera;
 import com.openmason.main.systems.viewport.ViewportInputHandler;
+import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
 import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
 import com.openmason.main.systems.rendering.core.shaders.ShaderManager;
 import com.openmason.main.systems.viewport.state.RenderingState;
@@ -49,7 +49,7 @@ public class ViewportController {
     private final ViewportResourceManager resourceManager;
     private final ViewportCamera viewportCamera;
     private final RenderContext renderContext;
-    private RenderPipeline renderPipeline;
+    private ViewportRenderPipeline viewportRenderPipeline;
 
     // ========== State ==========
     private final ViewportUIState viewportState;
@@ -150,15 +150,15 @@ public class ViewportController {
             gizmoState.setEnabled(true);
             transformState.setGizmoEnabled(true);
 
-            this.renderPipeline = new RenderPipeline(
+            this.viewportRenderPipeline = new ViewportRenderPipeline(
                 renderContext, resourceManager, shaderManager,
                 blockRenderer, itemRenderer,
                     modelRenderer, gizmoRenderer
             );
 
-            // Initialize EdgeOperationService after RenderPipeline is ready
+            // Initialize EdgeOperationService after ViewportRenderPipeline is ready
             this.edgeOperationService = new com.openmason.main.systems.services.EdgeOperationService(
-                renderPipeline, edgeSelectionState
+                    viewportRenderPipeline, edgeSelectionState
             );
             logger.debug("EdgeOperationService initialized");
 
@@ -166,8 +166,8 @@ public class ViewportController {
             try {
                 omConfig omConfig = new omConfig();
                 float vertexPointSize = omConfig.getVertexPointSize();
-                if (renderPipeline.getVertexRenderer() != null) {
-                    renderPipeline.getVertexRenderer().setPointSize(vertexPointSize);
+                if (viewportRenderPipeline.getVertexRenderer() != null) {
+                    viewportRenderPipeline.getVertexRenderer().setPointSize(vertexPointSize);
                     logger.debug("Loaded vertex point size: {}", vertexPointSize);
                 }
             } catch (Exception e) {
@@ -175,14 +175,14 @@ public class ViewportController {
             }
 
             // Connect renderers to input handler for hover detection
-            if (renderPipeline.getVertexRenderer() != null) {
-                inputHandler.setVertexRenderer(renderPipeline.getVertexRenderer());
+            if (viewportRenderPipeline.getVertexRenderer() != null) {
+                inputHandler.setVertexRenderer(viewportRenderPipeline.getVertexRenderer());
             }
-            if (renderPipeline.getEdgeRenderer() != null) {
-                inputHandler.setEdgeRenderer(renderPipeline.getEdgeRenderer());
+            if (viewportRenderPipeline.getEdgeRenderer() != null) {
+                inputHandler.setEdgeRenderer(viewportRenderPipeline.getEdgeRenderer());
             }
-            if (renderPipeline.getFaceRenderer() != null) {
-                inputHandler.setFaceRenderer(renderPipeline.getFaceRenderer());
+            if (viewportRenderPipeline.getFaceRenderer() != null) {
+                inputHandler.setFaceRenderer(viewportRenderPipeline.getFaceRenderer());
             }
 
             // Connect vertex selection state for vertex manipulation
@@ -202,18 +202,18 @@ public class ViewportController {
             logger.debug("Transform state connected to input handler");
 
             // Create translation handlers and coordinator
-            if (renderPipeline.getVertexRenderer() != null && renderPipeline.getEdgeRenderer() != null &&
-                renderPipeline.getFaceRenderer() != null && renderPipeline.getBlockModelRenderer() != null) {
+            if (viewportRenderPipeline.getVertexRenderer() != null && viewportRenderPipeline.getEdgeRenderer() != null &&
+                viewportRenderPipeline.getFaceRenderer() != null && viewportRenderPipeline.getBlockModelRenderer() != null) {
 
                 // Create vertex translation handler
                 VertexTranslationHandler vertexTranslationHandler = new VertexTranslationHandler(
                     vertexSelectionState,
-                    renderPipeline.getVertexRenderer(),
-                    renderPipeline.getEdgeRenderer(),
-                    renderPipeline.getFaceRenderer(),
-                    renderPipeline.getBlockModelRenderer(),
+                    viewportRenderPipeline.getVertexRenderer(),
+                    viewportRenderPipeline.getEdgeRenderer(),
+                    viewportRenderPipeline.getFaceRenderer(),
+                    viewportRenderPipeline.getBlockModelRenderer(),
                     viewportState,
-                    renderPipeline,
+                        viewportRenderPipeline,
                     transformState
                 );
                 logger.debug("Vertex translation handler created");
@@ -221,12 +221,12 @@ public class ViewportController {
                 // Create edge translation handler
                 EdgeTranslationHandler edgeTranslationHandler = new EdgeTranslationHandler(
                     edgeSelectionState,
-                    renderPipeline.getEdgeRenderer(),
-                    renderPipeline.getVertexRenderer(),
-                    renderPipeline.getFaceRenderer(),
-                    renderPipeline.getBlockModelRenderer(),
+                    viewportRenderPipeline.getEdgeRenderer(),
+                    viewportRenderPipeline.getVertexRenderer(),
+                    viewportRenderPipeline.getFaceRenderer(),
+                    viewportRenderPipeline.getBlockModelRenderer(),
                     viewportState,
-                    renderPipeline,
+                        viewportRenderPipeline,
                     transformState
                 );
                 logger.debug("Edge translation handler created");
@@ -234,12 +234,12 @@ public class ViewportController {
                 // Create face translation handler
                 FaceTranslationHandler faceTranslationHandler = new FaceTranslationHandler(
                     faceSelectionState,
-                    renderPipeline.getFaceRenderer(),
-                    renderPipeline.getVertexRenderer(),
-                    renderPipeline.getEdgeRenderer(),
-                    renderPipeline.getBlockModelRenderer(),
+                    viewportRenderPipeline.getFaceRenderer(),
+                    viewportRenderPipeline.getVertexRenderer(),
+                    viewportRenderPipeline.getEdgeRenderer(),
+                    viewportRenderPipeline.getBlockModelRenderer(),
                     viewportState,
-                    renderPipeline,
+                        viewportRenderPipeline,
                     transformState
                 );
                 logger.debug("Face translation handler created");
@@ -261,9 +261,9 @@ public class ViewportController {
                     vertexSelectionState,
                     edgeSelectionState,
                     faceSelectionState,
-                    renderPipeline.getVertexRenderer(),
-                    renderPipeline.getEdgeRenderer(),
-                    renderPipeline.getFaceRenderer()
+                    viewportRenderPipeline.getVertexRenderer(),
+                    viewportRenderPipeline.getEdgeRenderer(),
+                    viewportRenderPipeline.getFaceRenderer()
                 );
                 logger.debug("Selection components connected to EditModeManager");
             }
@@ -291,8 +291,8 @@ public class ViewportController {
             catch (Exception e) { logger.error("Error cleaning up gizmo renderer", e); }
         }
 
-        if (renderPipeline != null) {
-            try { renderPipeline.cleanup(); }
+        if (viewportRenderPipeline != null) {
+            try { viewportRenderPipeline.cleanup(); }
             catch (Exception e) { logger.error("Error cleaning up render pipeline", e); }
         }
 
@@ -323,7 +323,7 @@ public class ViewportController {
             initialize();
         }
 
-        renderPipeline.render(viewportState, renderingState, transformState);
+        viewportRenderPipeline.render(viewportState, renderingState, transformState);
     }
 
     /**
@@ -379,13 +379,13 @@ public class ViewportController {
         meshDataExtractor.load(modelRenderer, meshData);
 
         // Invalidate render pipeline caches to force edge/face rebuild
-        if (renderPipeline != null) {
-            renderPipeline.invalidateMeshData();
+        if (viewportRenderPipeline != null) {
+            viewportRenderPipeline.invalidateMeshData();
 
             // Initialize renderers if needed (they check !initialized in rebuildFromModel)
-            VertexRenderer vertexRenderer = renderPipeline.getVertexRenderer();
-            EdgeRenderer edgeRenderer = renderPipeline.getEdgeRenderer();
-            FaceRenderer faceRenderer = renderPipeline.getFaceRenderer();
+            VertexRenderer vertexRenderer = viewportRenderPipeline.getVertexRenderer();
+            EdgeRenderer edgeRenderer = viewportRenderPipeline.getEdgeRenderer();
+            FaceRenderer faceRenderer = viewportRenderPipeline.getFaceRenderer();
 
             if (vertexRenderer != null && !vertexRenderer.isInitialized()) {
                 vertexRenderer.initialize();
@@ -498,20 +498,20 @@ public class ViewportController {
 
     public void setShowVertices(boolean showVertices) {
         viewportState.getShowVertices().set(showVertices);
-        if (renderPipeline != null && renderPipeline.getVertexRenderer() != null) {
-            renderPipeline.getVertexRenderer().setEnabled(showVertices);
+        if (viewportRenderPipeline != null && viewportRenderPipeline.getVertexRenderer() != null) {
+            viewportRenderPipeline.getVertexRenderer().setEnabled(showVertices);
         }
-        if (renderPipeline != null && renderPipeline.getEdgeRenderer() != null) {
-            renderPipeline.getEdgeRenderer().setEnabled(showVertices);
+        if (viewportRenderPipeline != null && viewportRenderPipeline.getEdgeRenderer() != null) {
+            viewportRenderPipeline.getEdgeRenderer().setEnabled(showVertices);
         }
-        if (renderPipeline != null && renderPipeline.getFaceRenderer() != null) {
-            renderPipeline.getFaceRenderer().setEnabled(showVertices);
+        if (viewportRenderPipeline != null && viewportRenderPipeline.getFaceRenderer() != null) {
+            viewportRenderPipeline.getFaceRenderer().setEnabled(showVertices);
         }
     }
 
     public void setVertexPointSize(float size) {
-        if (renderPipeline != null && renderPipeline.getVertexRenderer() != null) {
-            renderPipeline.getVertexRenderer().setPointSize(size);
+        if (viewportRenderPipeline != null && viewportRenderPipeline.getVertexRenderer() != null) {
+            viewportRenderPipeline.getVertexRenderer().setPointSize(size);
         }
     }
 

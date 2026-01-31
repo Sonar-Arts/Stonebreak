@@ -7,7 +7,7 @@ import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
+import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
 import com.openmason.main.systems.viewport.viewportRendering.common.TranslationHandlerBase;
 import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import org.joml.Vector3f;
@@ -30,7 +30,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
     private final EdgeRenderer edgeRenderer;
     private final FaceRenderer faceRenderer;
     private final GenericModelRenderer modelRenderer;
-    private final RenderPipeline renderPipeline;
+    private final ViewportRenderPipeline viewportRenderPipeline;
 
     /**
      * Creates a new VertexTranslationHandler.
@@ -41,7 +41,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
      * @param faceRenderer The face renderer for updating face overlays
      * @param modelRenderer The block model renderer for updating the solid cube mesh
      * @param viewportState The viewport state for grid snapping settings
-     * @param renderPipeline The render pipeline for marking edge data dirty
+     * @param viewportRenderPipeline The render pipeline for marking edge data dirty
      * @param transformState The transform state for model space conversions
      */
     public VertexTranslationHandler(VertexSelectionState selectionState,
@@ -50,7 +50,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
                                     FaceRenderer faceRenderer,
                                     GenericModelRenderer modelRenderer,
                                     ViewportUIState viewportState,
-                                    RenderPipeline renderPipeline,
+                                    ViewportRenderPipeline viewportRenderPipeline,
                                     TransformState transformState) {
         super(viewportState, transformState);
 
@@ -69,8 +69,8 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         if (modelRenderer == null) {
             throw new IllegalArgumentException("BlockModelRenderer cannot be null");
         }
-        if (renderPipeline == null) {
-            throw new IllegalArgumentException("RenderPipeline cannot be null");
+        if (viewportRenderPipeline == null) {
+            throw new IllegalArgumentException("ViewportRenderPipeline cannot be null");
         }
 
         this.selectionState = selectionState;
@@ -78,7 +78,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         this.edgeRenderer = edgeRenderer;
         this.faceRenderer = faceRenderer;
         this.modelRenderer = modelRenderer;
-        this.renderPipeline = renderPipeline;
+        this.viewportRenderPipeline = viewportRenderPipeline;
     }
 
     @Override

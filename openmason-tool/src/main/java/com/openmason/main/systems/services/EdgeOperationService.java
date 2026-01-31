@@ -1,7 +1,7 @@
 package com.openmason.main.systems.services;
 
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
-import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
+import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
 import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
@@ -24,11 +24,11 @@ public class EdgeOperationService {
 
     private static final Logger logger = LoggerFactory.getLogger(EdgeOperationService.class);
 
-    private final RenderPipeline renderPipeline;
+    private final ViewportRenderPipeline viewportRenderPipeline;
     private final EdgeSelectionState edgeSelectionState;
 
-    public EdgeOperationService(RenderPipeline renderPipeline, EdgeSelectionState edgeSelectionState) {
-        this.renderPipeline = renderPipeline;
+    public EdgeOperationService(ViewportRenderPipeline viewportRenderPipeline, EdgeSelectionState edgeSelectionState) {
+        this.viewportRenderPipeline = viewportRenderPipeline;
         this.edgeSelectionState = edgeSelectionState;
     }
 
@@ -39,14 +39,14 @@ public class EdgeOperationService {
      * @return Index of newly created vertex, or -1 if failed
      */
     public int subdivideHoveredEdge() {
-        if (renderPipeline == null) {
+        if (viewportRenderPipeline == null) {
             logger.warn("Cannot subdivide edge: render pipeline not initialized");
             return -1;
         }
 
-        EdgeRenderer edgeRenderer = renderPipeline.getEdgeRenderer();
-        VertexRenderer vertexRenderer = renderPipeline.getVertexRenderer();
-        GenericModelRenderer modelRenderer = renderPipeline.getBlockModelRenderer();
+        EdgeRenderer edgeRenderer = viewportRenderPipeline.getEdgeRenderer();
+        VertexRenderer vertexRenderer = viewportRenderPipeline.getVertexRenderer();
+        GenericModelRenderer modelRenderer = viewportRenderPipeline.getBlockModelRenderer();
 
         if (edgeRenderer == null || vertexRenderer == null || modelRenderer == null) {
             logger.warn("Cannot subdivide edge: renderers not available");
@@ -106,14 +106,14 @@ public class EdgeOperationService {
      * @return Number of edges successfully subdivided
      */
     public int subdivideSelectedEdges() {
-        if (renderPipeline == null) {
+        if (viewportRenderPipeline == null) {
             logger.warn("Cannot subdivide edges: render pipeline not initialized");
             return 0;
         }
 
-        EdgeRenderer edgeRenderer = renderPipeline.getEdgeRenderer();
-        VertexRenderer vertexRenderer = renderPipeline.getVertexRenderer();
-        GenericModelRenderer modelRenderer = renderPipeline.getBlockModelRenderer();
+        EdgeRenderer edgeRenderer = viewportRenderPipeline.getEdgeRenderer();
+        VertexRenderer vertexRenderer = viewportRenderPipeline.getVertexRenderer();
+        GenericModelRenderer modelRenderer = viewportRenderPipeline.getBlockModelRenderer();
 
         if (edgeRenderer == null || vertexRenderer == null || modelRenderer == null) {
             logger.warn("Cannot subdivide edges: renderers not available");
@@ -208,7 +208,7 @@ public class EdgeOperationService {
         }
 
         // Rebuild FaceRenderer data from GenericModelRenderer's triangles
-        FaceRenderer faceRenderer = renderPipeline.getFaceRenderer();
+        FaceRenderer faceRenderer = viewportRenderPipeline.getFaceRenderer();
         if (faceRenderer != null) {
             faceRenderer.setGenericModelRenderer(modelRenderer);
             faceRenderer.rebuildFromGenericModelRenderer();

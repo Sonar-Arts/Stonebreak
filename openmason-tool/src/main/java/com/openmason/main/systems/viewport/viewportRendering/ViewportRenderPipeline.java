@@ -54,9 +54,9 @@ import static org.lwjgl.opengl.GL11.*;
  * @see com.openmason.main.systems.rendering.api.RenderingController
  * @see com.openmason.main.systems.rendering.model.GenericModelRenderer
  */
-public class RenderPipeline {
+public class ViewportRenderPipeline {
 
-    private static final Logger logger = LoggerFactory.getLogger(RenderPipeline.class);
+    private static final Logger logger = LoggerFactory.getLogger(ViewportRenderPipeline.class);
 
     private final RenderContext context;
     private final ViewportResourceManager resources;
@@ -94,10 +94,10 @@ public class RenderPipeline {
     /**
      * Create render pipeline with all required dependencies.
      */
-    public RenderPipeline(RenderContext context, ViewportResourceManager resources, ShaderManager shaderManager,
-                          BlockRenderer blockRenderer, ItemRenderer itemRenderer,
-                          GenericModelRenderer modelRenderer,
-                          GizmoRenderer gizmoRenderer) {
+    public ViewportRenderPipeline(RenderContext context, ViewportResourceManager resources, ShaderManager shaderManager,
+                                  BlockRenderer blockRenderer, ItemRenderer itemRenderer,
+                                  GenericModelRenderer modelRenderer,
+                                  GizmoRenderer gizmoRenderer) {
         this.context = context;
         this.resources = resources;
         this.shaderManager = shaderManager;
@@ -621,6 +621,6 @@ public class RenderPipeline {
         if (faceRenderer.isInitialized()) {
             faceRenderer.cleanup();
         }
-        logger.debug("RenderPipeline cleanup complete");
+        logger.debug("ViewportRenderPipeline cleanup complete");
     }
 }
