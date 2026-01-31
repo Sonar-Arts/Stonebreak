@@ -82,9 +82,13 @@ public class FaceRenderer implements MeshChangeListener {
     private Set<Integer> selectedFaceIndices = new HashSet<>();
 
     // Face-to-vertex mapping (FIX: prevents vertex unification bug)
-    // Maps face index → array of 4 unique vertex indices [v0, v1, v2, v3]
+    // Maps face index → array of unique vertex indices [v0, v1, ..., vN]
     // For cube: 6 faces, each connecting 4 of the 8 unique vertices
     private Map<Integer, int[]> faceToVertexMapping = new HashMap<>();
+
+    // Topology info from structured face extraction
+    private int[] storedVerticesPerFace = null; // vertex count per face, or null for legacy quad format
+    private int[] storedFaceOffsets = null; // float offset into facePositions per face, or null for legacy
 
     // Mesh management - delegate to MeshManager
     private final MeshManager meshManager = MeshManager.getInstance();
@@ -163,6 +167,8 @@ public class FaceRenderer implements MeshChangeListener {
      * Update face data from GenericModelRenderer (GMR is single source of truth).
      * This method gets face data directly from GMR instead of extracting from ModelDefinition.
      * GMR provides the authoritative mesh topology after any subdivisions or modifications.
+     *
+     * Topology-aware: uses structured face extraction to support any face vertex count.
      */
     public void updateFaceDataFromGMR() {
         if (!initialized) {
@@ -179,14 +185,31 @@ public class FaceRenderer implements MeshChangeListener {
         }
 
         try {
-            // Extract faces from GMR (single source of truth)
-            facePositions = genericModelRenderer.extractFacePositions();
+            // Extract topology-aware face data for rendering
+            var faceData = genericModelRenderer.extractFaceData();
+            if (faceData != null) {
+                storedVerticesPerFace = faceData.verticesPerFace();
+                storedFaceOffsets = faceData.faceOffsets();
 
-            // Face positions are [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...] (4 vertices per face)
-            faceCount = facePositions.length / MeshManager.FLOATS_PER_FACE_POSITION;
+                // Use legacy quad extraction for facePositions (used by hover detector
+                // which assumes fixed 12 floats per face). The topology-aware data is
+                // used for VBO rendering and getFaceVertices().
+                facePositions = genericModelRenderer.extractFacePositions();
+                faceCount = facePositions.length / MeshManager.FLOATS_PER_FACE_POSITION;
 
-            // Delegate bulk VBO creation to MeshManager (DRY + Single Responsibility)
-            MeshManager.getInstance().updateAllFaces(vbo, facePositions, faceCount, overlayRenderer.getDefaultFaceColor());
+                // Delegate bulk VBO creation to MeshManager with topology info
+                MeshManager.getInstance().updateAllFaces(vbo, faceData.positions(), faceData.faceCount(),
+                    storedVerticesPerFace, overlayRenderer.getDefaultFaceColor());
+            } else {
+                // Fallback to legacy extraction
+                facePositions = genericModelRenderer.extractFacePositions();
+                faceCount = facePositions.length / MeshManager.FLOATS_PER_FACE_POSITION;
+                storedVerticesPerFace = null;
+                storedFaceOffsets = null;
+
+                MeshManager.getInstance().updateAllFaces(vbo, facePositions, faceCount,
+                    overlayRenderer.getDefaultFaceColor());
+            }
 
             logger.debug("Updated face data from GMR: {} faces ({} floats)", faceCount, facePositions.length);
 
@@ -361,9 +384,13 @@ public class FaceRenderer implements MeshChangeListener {
                 new Vector3f(facePositions[offset + 3], facePositions[offset + 4], facePositions[offset + 5]),
                 new Vector3f(facePositions[offset + 6], facePositions[offset + 7], facePositions[offset + 8])
             };
+        } else if (storedVerticesPerFace != null && storedFaceOffsets != null && faceIndex < storedVerticesPerFace.length) {
+            // Topology-aware mode: use stored per-face vertex counts
+            int vertCount = storedVerticesPerFace[faceIndex];
+            int offset = storedFaceOffsets[faceIndex];
+            return MeshManager.getInstance().getFaceVertices(facePositions, faceIndex, faceCount, vertCount);
         } else {
-            // Quad mode: Delegate to MeshManager (Single Responsibility Principle)
-            // Quad topology: 4 vertices per face
+            // Legacy quad mode: Delegate to MeshManager
             return MeshManager.getInstance().getFaceVertices(facePositions, faceIndex, faceCount, 4);
         }
     }
@@ -518,6 +545,8 @@ public class FaceRenderer implements MeshChangeListener {
         }
         faceCount = 0;
         facePositions = null;
+        storedVerticesPerFace = null;
+        storedFaceOffsets = null;
         faceToVertexMapping.clear();
         initialized = false;
         logger.debug("FaceRenderer cleaned up");

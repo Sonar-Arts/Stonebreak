@@ -74,4 +74,51 @@ public interface ITriangleFaceMapper {
      * Clear the face mapping.
      */
     void clear();
+
+    /**
+     * Get the upper bound for face ID iteration.
+     * This is maxFaceId + 1, suitable for use as a loop bound:
+     * {@code for (int faceId = 0; faceId < getFaceIdUpperBound(); faceId++)}
+     *
+     * Unlike {@link #getOriginalFaceCount()} which counts unique IDs (and thus can't be
+     * used as an iteration bound when face IDs have gaps), this method guarantees that
+     * all valid face IDs fall within [0, upperBound).
+     *
+     * Gap face IDs (IDs with no triangles) will return 0 from topology query methods
+     * like {@link #getTriangleCountForFace(int)}.
+     *
+     * @return maxFaceId + 1, or 0 if no mapping
+     */
+    int getFaceIdUpperBound();
+
+    /**
+     * Get the number of triangles that belong to a specific face.
+     *
+     * @param faceId The face ID to query
+     * @return Number of triangles for this face, or 0 if invalid
+     */
+    int getTriangleCountForFace(int faceId);
+
+    /**
+     * Get the number of vertices forming a specific face's polygon.
+     * Derived from triangle count: N triangles in a fan = N + 2 vertices.
+     *
+     * @param faceId The face ID to query
+     * @return Number of vertices for this face, or 0 if invalid
+     */
+    default int getVertexCountForFace(int faceId) {
+        int triCount = getTriangleCountForFace(faceId);
+        return triCount > 0 ? triCount + 2 : 0;
+    }
+
+    /**
+     * Get the number of edges forming a specific face's polygon outline.
+     * A polygon with N vertices has N edges.
+     *
+     * @param faceId The face ID to query
+     * @return Number of edges for this face, or 0 if invalid
+     */
+    default int getEdgeCountForFace(int faceId) {
+        return getVertexCountForFace(faceId);
+    }
 }

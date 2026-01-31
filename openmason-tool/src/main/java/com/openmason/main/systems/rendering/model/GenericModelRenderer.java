@@ -661,9 +661,26 @@ public class GenericModelRenderer extends BaseRenderer {
      *
      * @return Array of face vertex positions [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...]
      *         or empty array if no face data available
+     * @deprecated Use {@link #extractFaceData()} for topology-aware extraction
      */
+    @Deprecated
     public float[] extractFacePositions() {
         return faceExtractor.extractFacePositions(
+            vertexManager.getVertices(),
+            vertexManager.getIndices(),
+            faceMapper
+        );
+    }
+
+    /**
+     * Extract face data with full topology information.
+     * Returns structured result with per-face vertex counts and offsets,
+     * supporting any face topology (triangles, quads, n-gons).
+     *
+     * @return FaceExtractionResult with positions and topology info, or null if no data
+     */
+    public GMRFaceExtractor.FaceExtractionResult extractFaceData() {
+        return faceExtractor.extractFaceData(
             vertexManager.getVertices(),
             vertexManager.getIndices(),
             faceMapper
@@ -674,6 +691,7 @@ public class GenericModelRenderer extends BaseRenderer {
      * Extract edge positions from current mesh data.
      * Each edge is represented as 2 endpoints with 6 floats per edge.
      * This data is used by EdgeRenderer for overlay rendering.
+     * Topology-aware: faces with N vertices contribute N edges.
      *
      * SOLID: Delegates to GMREdgeExtractor for extraction logic (Single Responsibility).
      *
@@ -699,12 +717,17 @@ public class GenericModelRenderer extends BaseRenderer {
 
     /**
      * Get edge count from current mesh data.
-     * Assumes quad topology (4 edges per face), consistent with GMREdgeExtractor.
+     * Topology-aware: sums edges per face based on actual face vertex counts.
      *
      * @return Number of edges in the mesh
      */
     public int getEdgeCount() {
-        return faceMapper.getOriginalFaceCount() * GMREdgeExtractor.EDGES_PER_FACE;
+        int upperBound = faceMapper.getFaceIdUpperBound();
+        int totalEdges = 0;
+        for (int i = 0; i < upperBound; i++) {
+            totalEdges += faceMapper.getEdgeCountForFace(i);
+        }
+        return totalEdges;
     }
 
     /**

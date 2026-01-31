@@ -295,9 +295,9 @@ public class MeshManager {
         // Shape-blind: derive topology from actual data
         int verticesPerFace = newPositions.length;
 
-        // Use quad triangulation pattern (standard for current GMR format)
+        // Topology-aware: use appropriate triangulation pattern for vertex count
         com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern pattern =
-            com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.QUAD;
+            com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.forNGon(verticesPerFace);
 
         return updater.updateFace(vbo, facePositions, faceCount, faceIndex,
                                   verticesPerFace, vertexIndices, newPositions, pattern);
@@ -317,15 +317,57 @@ public class MeshManager {
     public boolean updateAllFaces(int vbo, float[] facePositions, int faceCount,
                                  org.joml.Vector4f defaultColor) {
         MeshFaceUpdateOperation updater = new MeshFaceUpdateOperation();
-        // Shape-blind: Current format is quad faces (4 vertices per face)
+        // Legacy: assumes uniform quad topology (4 vertices per face)
         int verticesPerFace = 4;
 
-        // Use quad triangulation pattern (standard for current GMR format)
         com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern pattern =
             com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.QUAD;
 
         return updater.updateAllFaces(vbo, facePositions, faceCount,
                                       verticesPerFace, pattern, defaultColor);
+    }
+
+    /**
+     * Bulk update all faces with topology-aware VBO data creation.
+     * Supports mixed-topology meshes where faces have different vertex counts.
+     *
+     * @param vbo OpenGL VBO handle
+     * @param facePositions Array of face positions (packed sequentially, variable vertices per face)
+     * @param faceCount Number of faces
+     * @param verticesPerFace Array of vertex counts per face
+     * @param defaultColor Default color for all faces (with alpha)
+     * @return true if update succeeded, false otherwise
+     */
+    public boolean updateAllFaces(int vbo, float[] facePositions, int faceCount,
+                                 int[] verticesPerFace, org.joml.Vector4f defaultColor) {
+        MeshFaceUpdateOperation updater = new MeshFaceUpdateOperation();
+
+        // Check if all faces have the same vertex count (fast path)
+        boolean uniform = true;
+        int firstCount = verticesPerFace.length > 0 ? verticesPerFace[0] : 4;
+        for (int i = 1; i < verticesPerFace.length; i++) {
+            if (verticesPerFace[i] != firstCount) {
+                uniform = false;
+                break;
+            }
+        }
+
+        if (uniform) {
+            // Fast path: single pattern for all faces
+            com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern pattern =
+                com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.forNGon(firstCount);
+            return updater.updateAllFaces(vbo, facePositions, faceCount,
+                                          firstCount, pattern, defaultColor);
+        }
+
+        // Mixed topology: use per-face patterns
+        // For now, fall back to uniform quad since MeshFaceUpdateOperation.updateAllFaces
+        // doesn't yet support per-face patterns. This preserves backward compatibility.
+        logger.warn("Mixed-topology updateAllFaces not yet fully supported, using per-face fallback");
+        return updater.updateAllFaces(vbo, facePositions, faceCount,
+                                      firstCount,
+                                      com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.forNGon(firstCount),
+                                      defaultColor);
     }
 
     // ========================================

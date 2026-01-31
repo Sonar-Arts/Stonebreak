@@ -640,12 +640,33 @@ public class EdgeRenderer implements MeshChangeListener {
             trackEdgeFace(edgeToFaceIds, edgeToVertices, u2, u0, faceId);
         }
 
-        // Step 2: Filter to only boundary edges (edges shared by different faces)
+        // Step 2: Filter edges - keep boundary edges (shared by 2+ faces) AND
+        // polygon boundary edges (used by only 1 face but connecting adjacent polygon vertices)
         java.util.List<int[]> edgeList = new java.util.ArrayList<>();
         for (java.util.Map.Entry<Long, java.util.Set<Integer>> entry : edgeToFaceIds.entrySet()) {
-            // If edge is used by more than one face, it's a boundary edge - keep it
-            if (entry.getValue().size() > 1) {
+            int faceUsageCount = entry.getValue().size();
+            if (faceUsageCount > 1) {
+                // Boundary edge between two different faces - always keep
                 edgeList.add(edgeToVertices.get(entry.getKey()));
+            } else {
+                // Edge used by only one face - it's either a polygon boundary edge
+                // (on an open mesh) or an internal diagonal from fan triangulation.
+                // Internal diagonals in fan triangulation always include vertex 0 of the fan
+                // and connect to a non-adjacent vertex. For closed meshes (like cubes),
+                // all polygon edges are shared by 2 faces, so single-face edges are diagonals.
+                // For open meshes, we keep single-face edges since they form the visible outline.
+                //
+                // Heuristic: if total face count equals edgeToFaceIds entries that have size > 1
+                // divided by expected edges, this is likely a closed mesh. But simpler:
+                // check if the mesh has any face that shares NO edges with another face.
+                // For now, keep all single-face edges on meshes with only 1 face total,
+                // and filter them on multi-face meshes (where they are internal diagonals).
+                int totalFaceCount = modelRenderer.getOriginalFaceCount();
+                if (totalFaceCount <= 1) {
+                    // Single-face mesh (open): keep all edges as polygon outline
+                    edgeList.add(edgeToVertices.get(entry.getKey()));
+                }
+                // Multi-face mesh: single-face edges are internal diagonals - skip them
             }
         }
 

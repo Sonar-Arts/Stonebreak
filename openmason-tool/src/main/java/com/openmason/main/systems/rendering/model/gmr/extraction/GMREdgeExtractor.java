@@ -15,12 +15,8 @@ import java.util.Set;
  * This extractor operates on GMR's vertex buffer, index buffer, and face mapping to produce
  * edge data for overlay rendering. Each edge is represented as 2 endpoints (6 floats).
  *
- * SOLID Principles:
- * - Single Responsibility: Only handles edge extraction from GMR mesh data
- * - Open/Closed: Can be extended for different edge extraction strategies
- * - Liskov Substitution: Implements consistent extraction contract
- * - Interface Segregation: Focused on edge extraction only
- * - Dependency Inversion: Operates on data abstractions, not concrete GMR internals
+ * Topology-aware: Supports faces with any vertex count (triangles, quads, n-gons)
+ * by querying the face mapper for per-face vertex counts.
  *
  * Architecture:
  * - Input: GMR's vertices (float[]), indices (int[]), and ITriangleFaceMapper
@@ -31,11 +27,13 @@ public class GMREdgeExtractor {
 
     private static final Logger logger = LoggerFactory.getLogger(GMREdgeExtractor.class);
     private static final int FLOATS_PER_EDGE = 6; // 2 endpoints × 3 coords
+
+    @Deprecated
     public static final int EDGES_PER_FACE = 4; // Quad has 4 edges
 
     /**
      * Extract edge positions from GMR mesh data.
-     * Each face contributes 4 edges forming a quad outline.
+     * Each face contributes edges equal to its vertex count, forming a polygon outline.
      *
      * @param vertices Vertex position buffer from GMR
      * @param indices Index buffer from GMR
@@ -49,26 +47,35 @@ public class GMREdgeExtractor {
             return new float[0];
         }
 
-        int faceCount = faceMapper.getOriginalFaceCount();
-        if (faceCount == 0) {
+        int faceIdUpperBound = faceMapper.getFaceIdUpperBound();
+        if (faceIdUpperBound == 0) {
             return new float[0];
         }
 
-        // Each face has 4 edges, each edge has 6 floats (2 endpoints × 3 coords)
-        float[] edgePositions = new float[faceCount * EDGES_PER_FACE * FLOATS_PER_EDGE];
+        // Compute total edge count dynamically from per-face topology
+        // Uses upper bound to handle non-contiguous face IDs (gap IDs contribute 0 edges)
+        int totalEdgeCount = 0;
+        for (int faceId = 0; faceId < faceIdUpperBound; faceId++) {
+            totalEdgeCount += faceMapper.getEdgeCountForFace(faceId);
+        }
+
+        float[] edgePositions = new float[totalEdgeCount * FLOATS_PER_EDGE];
         int offset = 0;
 
         // Extract edges for each face
-        for (int faceId = 0; faceId < faceCount; faceId++) {
+        for (int faceId = 0; faceId < faceIdUpperBound; faceId++) {
+            if (faceMapper.getTriangleCountForFace(faceId) == 0) {
+                continue; // Skip gap face IDs
+            }
             offset = extractFaceEdges(faceId, vertices, indices, faceMapper, edgePositions, offset);
         }
 
-        logger.debug("Extracted {} edges ({} floats)", faceCount * EDGES_PER_FACE, edgePositions.length);
+        logger.debug("Extracted {} edges ({} floats)", totalEdgeCount, edgePositions.length);
         return edgePositions;
     }
 
     /**
-     * Extract the 4 edges of a single face.
+     * Extract the edges of a single face based on its actual vertex count.
      *
      * @param faceId Face ID to extract edges from
      * @param vertices Vertex buffer
@@ -80,22 +87,21 @@ public class GMREdgeExtractor {
      */
     private int extractFaceEdges(int faceId, float[] vertices, int[] indices,
                                   ITriangleFaceMapper faceMapper, float[] output, int offset) {
+        int expectedVertexCount = faceMapper.getVertexCountForFace(faceId);
+
         // Find all triangles belonging to this face
         List<Integer> trianglesForFace = findTrianglesForFace(faceId, indices, faceMapper);
 
         if (trianglesForFace.isEmpty()) {
-            // No triangles - write zeros
-            return writeZeroEdges(output, offset);
+            // No triangles - write zeros for the expected number of edges
+            return writeZeroEdges(output, offset, expectedVertexCount);
         }
 
-        // Extract unique vertices forming the face quad
+        // Extract unique vertices forming the face polygon
         Integer[] vertexIndices = extractFaceVertexIndices(trianglesForFace, indices);
 
-        // Pad to 4 vertices if needed
-        vertexIndices = padToQuad(vertexIndices);
-
-        // Generate 4 edges: v0→v1, v1→v2, v2→v3, v3→v0
-        return writeQuadEdges(vertexIndices, vertices, output, offset);
+        // Generate edges: v0→v1, v1→v2, ..., vN-1→v0
+        return writePolygonEdges(vertexIndices, vertices, output, offset);
     }
 
     /**
@@ -130,28 +136,14 @@ public class GMREdgeExtractor {
     }
 
     /**
-     * Pad vertex indices to 4 if fewer (for degenerate faces).
+     * Write edges forming a polygon outline for any vertex count.
+     * For N vertices: v0→v1, v1→v2, ..., vN-1→v0.
      */
-    private Integer[] padToQuad(Integer[] vertexIndices) {
-        if (vertexIndices.length >= 4) {
-            return vertexIndices;
-        }
-
-        Integer[] padded = new Integer[4];
-        for (int i = 0; i < 4; i++) {
-            padded[i] = i < vertexIndices.length ? vertexIndices[i] : vertexIndices[vertexIndices.length - 1];
-        }
-
-        return padded;
-    }
-
-    /**
-     * Write 4 edges forming a quad outline: v0→v1, v1→v2, v2→v3, v3→v0.
-     */
-    private int writeQuadEdges(Integer[] vertexIndices, float[] vertices, float[] output, int offset) {
-        for (int edge = 0; edge < EDGES_PER_FACE; edge++) {
+    private int writePolygonEdges(Integer[] vertexIndices, float[] vertices, float[] output, int offset) {
+        int vertexCount = vertexIndices.length;
+        for (int edge = 0; edge < vertexCount; edge++) {
             int v1Idx = vertexIndices[edge];
-            int v2Idx = vertexIndices[(edge + 1) % 4];
+            int v2Idx = vertexIndices[(edge + 1) % vertexCount];
 
             offset = writeEdgeEndpoint(v1Idx, vertices, output, offset);
             offset = writeEdgeEndpoint(v2Idx, vertices, output, offset);
@@ -180,10 +172,15 @@ public class GMREdgeExtractor {
     }
 
     /**
-     * Write zero-filled edges for a face with no triangles (24 floats = 4 edges × 6 floats).
+     * Write zero-filled edges for a face with no triangles.
+     *
+     * @param output Output buffer
+     * @param offset Current offset
+     * @param edgeCount Number of edges to write zeros for
+     * @return Updated offset
      */
-    private int writeZeroEdges(float[] output, int offset) {
-        for (int i = 0; i < EDGES_PER_FACE * FLOATS_PER_EDGE; i++) {
+    private int writeZeroEdges(float[] output, int offset, int edgeCount) {
+        for (int i = 0; i < edgeCount * FLOATS_PER_EDGE; i++) {
             output[offset++] = 0.0f;
         }
         return offset;
