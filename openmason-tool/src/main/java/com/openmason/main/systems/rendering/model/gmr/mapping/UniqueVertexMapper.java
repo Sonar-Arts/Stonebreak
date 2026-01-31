@@ -1,5 +1,6 @@
 package com.openmason.main.systems.rendering.model.gmr.mapping;
 
+import com.openmason.main.systems.rendering.model.gmr.GMRConstants;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +14,7 @@ import java.util.*;
 public class UniqueVertexMapper implements IUniqueVertexMapper {
 
     private static final Logger logger = LoggerFactory.getLogger(UniqueVertexMapper.class);
-    private static final float DEFAULT_EPSILON = 0.0001f;
+    private static final float DEFAULT_EPSILON = GMRConstants.VERTEX_POSITION_EPSILON;
 
     // For each unique vertex, stores ONE representative mesh index
     // uniqueVertexIndices[uniqueIdx] -> meshIdx (the first mesh vertex at that position)

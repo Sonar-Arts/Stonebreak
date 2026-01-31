@@ -1,5 +1,6 @@
 package com.openmason.main.systems.rendering.model.gmr.mesh.edgeOperations;
 
+import com.openmason.main.systems.rendering.model.gmr.GMRConstants;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +25,7 @@ public class MeshEdgePositionUpdater {
     private static final Logger logger = LoggerFactory.getLogger(MeshEdgePositionUpdater.class);
 
     /** Position matching tolerance for floating-point comparison. */
-    private static final float POSITION_EPSILON = 0.0001f;
+    private static final float POSITION_EPSILON = GMRConstants.VERTEX_POSITION_EPSILON;
 
     /** Number of float values per vertex position (x, y, z). */
     private static final int FLOATS_PER_POSITION = 3;

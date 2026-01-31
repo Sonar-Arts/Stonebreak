@@ -4,10 +4,7 @@ import com.openmason.main.systems.rendering.model.gmr.mapping.ITriangleFaceMappe
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Single Responsibility: Extract face positions from GenericModelRenderer's internal mesh data.
@@ -189,39 +186,12 @@ public class GMRFaceExtractor {
         return writeFacePositionsLegacy(vertexIndices, vertices, output, offset);
     }
 
-    /**
-     * Find all triangle indices that belong to a specific face.
-     */
     private List<Integer> findTrianglesForFace(int faceId, int[] indices, ITriangleFaceMapper faceMapper) {
-        List<Integer> triangles = new ArrayList<>();
-        int triangleCount = indices.length / 3;
-
-        for (int triIdx = 0; triIdx < triangleCount; triIdx++) {
-            if (faceMapper.getOriginalFaceIdForTriangle(triIdx) == faceId) {
-                triangles.add(triIdx);
-            }
-        }
-
-        return triangles;
+        return FaceTriangleQuery.findTrianglesForFace(faceId, indices, faceMapper);
     }
 
-    /**
-     * Extract unique vertex indices from face triangles.
-     * For a quad split as [v0,v1,v2] and [v0,v2,v3], returns [v0, v1, v2, v3].
-     */
     private Integer[] extractFaceVertexIndices(List<Integer> triangles, int[] indices) {
-        Set<Integer> uniqueVertexIndices = new LinkedHashSet<>();
-
-        for (int triIdx : triangles) {
-            int i0 = indices[triIdx * 3];
-            int i1 = indices[triIdx * 3 + 1];
-            int i2 = indices[triIdx * 3 + 2];
-            uniqueVertexIndices.add(i0);
-            uniqueVertexIndices.add(i1);
-            uniqueVertexIndices.add(i2);
-        }
-
-        return uniqueVertexIndices.toArray(new Integer[0]);
+        return FaceTriangleQuery.extractFaceVertexIndices(triangles, indices);
     }
 
     /**

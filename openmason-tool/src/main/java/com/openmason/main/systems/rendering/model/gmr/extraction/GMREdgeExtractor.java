@@ -4,10 +4,7 @@ import com.openmason.main.systems.rendering.model.gmr.mapping.ITriangleFaceMappe
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Single Responsibility: Extract edge positions from GenericModelRenderer's internal mesh data.
@@ -104,35 +101,12 @@ public class GMREdgeExtractor {
         return writePolygonEdges(vertexIndices, vertices, output, offset);
     }
 
-    /**
-     * Find all triangle indices that belong to a specific face.
-     */
     private List<Integer> findTrianglesForFace(int faceId, int[] indices, ITriangleFaceMapper faceMapper) {
-        List<Integer> triangles = new ArrayList<>();
-        int triangleCount = indices.length / 3;
-
-        for (int triIdx = 0; triIdx < triangleCount; triIdx++) {
-            if (faceMapper.getOriginalFaceIdForTriangle(triIdx) == faceId) {
-                triangles.add(triIdx);
-            }
-        }
-
-        return triangles;
+        return FaceTriangleQuery.findTrianglesForFace(faceId, indices, faceMapper);
     }
 
-    /**
-     * Extract unique vertex indices from face triangles.
-     */
     private Integer[] extractFaceVertexIndices(List<Integer> triangles, int[] indices) {
-        Set<Integer> uniqueVertexIndices = new LinkedHashSet<>();
-
-        for (int triIdx : triangles) {
-            uniqueVertexIndices.add(indices[triIdx * 3]);
-            uniqueVertexIndices.add(indices[triIdx * 3 + 1]);
-            uniqueVertexIndices.add(indices[triIdx * 3 + 2]);
-        }
-
-        return uniqueVertexIndices.toArray(new Integer[0]);
+        return FaceTriangleQuery.extractFaceVertexIndices(triangles, indices);
     }
 
     /**

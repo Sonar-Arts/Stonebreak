@@ -1,5 +1,6 @@
 package com.openmason.main.systems.rendering.model.gmr.uv;
 
+import com.openmason.main.systems.rendering.model.gmr.GMRConstants;
 import com.openmason.main.systems.rendering.model.gmr.mapping.ITriangleFaceMapper;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
@@ -16,7 +17,7 @@ import java.util.List;
 public class SubdivisionProcessor implements ISubdivisionProcessor {
 
     private static final Logger logger = LoggerFactory.getLogger(SubdivisionProcessor.class);
-    private static final float ENDPOINT_EPSILON = 0.01f;  // Cross-system tolerance
+    private static final float ENDPOINT_EPSILON = GMRConstants.SUBDIVISION_TOLERANCE;
 
     @Override
     public SubdivisionResult applyEdgeSubdivision(
