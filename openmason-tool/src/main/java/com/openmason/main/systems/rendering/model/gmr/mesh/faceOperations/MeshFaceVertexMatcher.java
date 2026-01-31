@@ -26,7 +26,7 @@ public class MeshFaceVertexMatcher {
 
     /**
      * Find the index of a unique vertex that matches the given position.
-     * Uses epsilon-based distance comparison.
+     * Uses epsilon-based squared distance comparison to avoid sqrt overhead.
      *
      * @param position Position to match
      * @param uniqueVertexPositions Array of unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
@@ -46,32 +46,21 @@ public class MeshFaceVertexMatcher {
             return -1;
         }
 
+        float epsilonSq = epsilon * epsilon;
+
         // Linear search with epsilon comparison (KISS: simple and sufficient for small vertex counts)
         for (int vIdx = 0; vIdx < uniqueVertexCount; vIdx++) {
-            Vector3f uniqueVertex = extractVertexPosition(uniqueVertexPositions, vIdx);
+            int vPosIdx = vIdx * COMPONENTS_PER_POSITION;
+            float dx = position.x - uniqueVertexPositions[vPosIdx];
+            float dy = position.y - uniqueVertexPositions[vPosIdx + 1];
+            float dz = position.z - uniqueVertexPositions[vPosIdx + 2];
 
-            if (position.distance(uniqueVertex) < epsilon) {
+            if (dx * dx + dy * dy + dz * dz < epsilonSq) {
                 return vIdx;
             }
         }
 
         // No match found
         return -1;
-    }
-
-    /**
-     * Extract a vertex position from the positions array.
-     *
-     * @param positions Array of positions
-     * @param vertexIdx Vertex index
-     * @return Position vector
-     */
-    private Vector3f extractVertexPosition(float[] positions, int vertexIdx) {
-        int vPosIdx = vertexIdx * COMPONENTS_PER_POSITION;
-        return new Vector3f(
-            positions[vPosIdx],
-            positions[vPosIdx + 1],
-            positions[vPosIdx + 2]
-        );
     }
 }

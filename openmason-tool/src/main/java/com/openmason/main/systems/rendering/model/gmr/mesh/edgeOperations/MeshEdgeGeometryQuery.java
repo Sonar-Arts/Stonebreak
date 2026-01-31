@@ -58,15 +58,8 @@ public class MeshEdgeGeometryQuery {
             return null;
         }
 
-        // Calculate position index
+        // Calculate position index (bounds guaranteed by edgeIndex < edgeCount above)
         int posIndex = edgeIndex * floatsPerEdge;
-
-        // Validate array bounds
-        if (posIndex + (floatsPerEdge - 1) >= edgePositions.length) {
-            logger.warn("Edge position index out of bounds: {} >= {}",
-                posIndex + (floatsPerEdge - 1), edgePositions.length);
-            return null;
-        }
 
         // Extract all vertices for this edge
         Vector3f[] vertices = new Vector3f[verticesPerEdge];

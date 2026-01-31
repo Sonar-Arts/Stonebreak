@@ -1,6 +1,5 @@
 package com.openmason.main.systems.rendering.model.gmr.mesh.vertexOperations;
 
-import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,6 +53,7 @@ public class MeshMergeGroupDetector {
     public List<List<Integer>> detectGroups() {
         List<List<Integer>> mergeGroups = new ArrayList<>();
         boolean[] processed = new boolean[vertexCount];
+        float epsilonSq = epsilon * epsilon;
 
         for (int i = 0; i < vertexCount; i++) {
             if (processed[i]) continue;
@@ -62,15 +62,21 @@ public class MeshMergeGroupDetector {
             List<Integer> group = new ArrayList<>();
             group.add(i);
 
-            Vector3f pos1 = getVertexPosition(i);
+            int posI = i * 3;
+            float ix = vertexPositions[posI];
+            float iy = vertexPositions[posI + 1];
+            float iz = vertexPositions[posI + 2];
 
             // Find all other vertices at the same position
             for (int j = i + 1; j < vertexCount; j++) {
                 if (processed[j]) continue;
 
-                Vector3f pos2 = getVertexPosition(j);
+                int posJ = j * 3;
+                float dx = ix - vertexPositions[posJ];
+                float dy = iy - vertexPositions[posJ + 1];
+                float dz = iz - vertexPositions[posJ + 2];
 
-                if (pos1.distance(pos2) < epsilon) {
+                if (dx * dx + dy * dy + dz * dz < epsilonSq) {
                     group.add(j);
                     processed[j] = true;
                 }
@@ -91,15 +97,4 @@ public class MeshMergeGroupDetector {
         return mergeGroups;
     }
 
-    /**
-     * Get vertex position by index.
-     */
-    private Vector3f getVertexPosition(int index) {
-        int posIndex = index * 3;
-        return new Vector3f(
-                vertexPositions[posIndex],
-                vertexPositions[posIndex + 1],
-                vertexPositions[posIndex + 2]
-        );
-    }
 }

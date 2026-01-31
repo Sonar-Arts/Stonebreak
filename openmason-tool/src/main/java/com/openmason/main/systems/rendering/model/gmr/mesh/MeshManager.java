@@ -214,16 +214,6 @@ public class MeshManager {
     // Face Operations (managed through MeshManager)
     // ========================================
 
-    // Face VBO layout constants (exposed for rendering operations)
-    // Note: These are deprecated. Use topology-aware methods instead.
-    @Deprecated
-    public static final int FLOATS_PER_FACE_POSITION = 12; // 4 vertices × 3 coords (legacy quad format)
-    @Deprecated
-    public static final int FLOATS_PER_VERTEX = 7; // pos(3) + color(4)
-    @Deprecated
-    public static final int VERTICES_PER_FACE = 6; // 6 VBO vertices per face after triangulation
-    @Deprecated
-    public static final int FLOATS_PER_FACE_VBO = 42; // 6 vertices × 7 floats
 
     /**
      * Build face-to-vertex mapping from unique vertex positions.
@@ -360,26 +350,18 @@ public class MeshManager {
                                           firstCount, pattern, defaultColor);
         }
 
-        // Mixed topology: use per-face patterns
-        // For now, fall back to uniform quad since MeshFaceUpdateOperation.updateAllFaces
-        // doesn't yet support per-face patterns. This preserves backward compatibility.
-        logger.warn("Mixed-topology updateAllFaces not yet fully supported, using per-face fallback");
-        return updater.updateAllFaces(vbo, facePositions, faceCount,
-                                      firstCount,
-                                      com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.forNGon(firstCount),
-                                      defaultColor);
+        // Mixed topology: per-face pattern support not yet implemented.
+        // Refusing to silently produce incorrect geometry by using a single pattern for all faces.
+        throw new UnsupportedOperationException(
+            "Mixed-topology updateAllFaces is not yet supported. " +
+            "All faces must have the same vertex count. " +
+            "Found varying vertex counts starting with " + firstCount);
     }
 
     // ========================================
     // Edge Operations (managed through MeshManager)
     // ========================================
 
-    // Edge VBO layout constants (exposed for rendering operations)
-    // Note: These are deprecated. Use topology-aware methods instead.
-    @Deprecated
-    public static final int FLOATS_PER_EDGE = 6; // 2 vertices × 3 coordinates (legacy format)
-    @Deprecated
-    public static final int ENDPOINTS_PER_EDGE = 2; // Legacy: 2 vertices per edge
 
     /**
      * Build edge-to-vertex mapping from unique vertex positions.

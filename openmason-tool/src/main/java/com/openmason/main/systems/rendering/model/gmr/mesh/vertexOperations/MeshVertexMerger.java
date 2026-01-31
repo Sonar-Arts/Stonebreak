@@ -180,27 +180,25 @@ public class MeshVertexMerger {
     private void updateMeshVertices(float[] newVertexPositions, float epsilon) {
         int meshVertexCount = allMeshVertices.length / 3;
         int newVertexCount = newVertexPositions.length / 3;
+        float epsilonSq = epsilon * epsilon;
 
         for (int meshIdx = 0; meshIdx < meshVertexCount; meshIdx++) {
             int meshPosIdx = meshIdx * 3;
-            Vector3f meshPos = new Vector3f(
-                    allMeshVertices[meshPosIdx],
-                    allMeshVertices[meshPosIdx + 1],
-                    allMeshVertices[meshPosIdx + 2]
-            );
+            float mx = allMeshVertices[meshPosIdx];
+            float my = allMeshVertices[meshPosIdx + 1];
+            float mz = allMeshVertices[meshPosIdx + 2];
 
             // Find which new vertex this mesh vertex should reference
             for (int newIdx = 0; newIdx < newVertexCount; newIdx++) {
-                Vector3f newPos = new Vector3f(
-                        newVertexPositions[newIdx * 3],
-                        newVertexPositions[newIdx * 3 + 1],
-                        newVertexPositions[newIdx * 3 + 2]
-                );
+                int newPosIdx = newIdx * 3;
+                float dx = mx - newVertexPositions[newPosIdx];
+                float dy = my - newVertexPositions[newPosIdx + 1];
+                float dz = mz - newVertexPositions[newPosIdx + 2];
 
-                if (meshPos.distance(newPos) < epsilon) {
-                    allMeshVertices[meshPosIdx] = newPos.x;
-                    allMeshVertices[meshPosIdx + 1] = newPos.y;
-                    allMeshVertices[meshPosIdx + 2] = newPos.z;
+                if (dx * dx + dy * dy + dz * dz < epsilonSq) {
+                    allMeshVertices[meshPosIdx] = newVertexPositions[newPosIdx];
+                    allMeshVertices[meshPosIdx + 1] = newVertexPositions[newPosIdx + 1];
+                    allMeshVertices[meshPosIdx + 2] = newVertexPositions[newPosIdx + 2];
                     break;
                 }
             }

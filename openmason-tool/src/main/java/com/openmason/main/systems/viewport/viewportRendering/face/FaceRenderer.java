@@ -59,6 +59,8 @@ public class FaceRenderer implements MeshChangeListener {
 
     // Layout constants
     private static final int COMPONENTS_PER_POSITION = 3; // x, y, z
+    private static final int LEGACY_CORNERS_PER_FACE = 4; // Legacy quad assumption: 4 corner vertices
+    private static final int LEGACY_FLOATS_PER_FACE_POSITION = LEGACY_CORNERS_PER_FACE * COMPONENTS_PER_POSITION; // 12
     private static final float VERTEX_MATCH_EPSILON = 0.0001f;
 
     // OpenGL resources
@@ -121,7 +123,7 @@ public class FaceRenderer implements MeshChangeListener {
 
             // Configure vertex attributes (interleaved: position + color with alpha)
             // Stride = FLOATS_PER_VERTEX (3 for position, 4 for color RGBA)
-            int stride = MeshManager.FLOATS_PER_VERTEX * Float.BYTES;
+            int stride = FaceOverlayRenderer.FLOATS_PER_VERTEX * Float.BYTES;
 
             // Position attribute (location = 0)
             glVertexAttribPointer(0, COMPONENTS_PER_POSITION, GL_FLOAT, false, stride, 0);
@@ -191,24 +193,32 @@ public class FaceRenderer implements MeshChangeListener {
                 storedVerticesPerFace = faceData.verticesPerFace();
                 storedFaceOffsets = faceData.faceOffsets();
 
-                // Use legacy quad extraction for facePositions (used by hover detector
+                // Face count from topology (not derived from array division)
+                faceCount = faceData.faceCount();
+
+                // Legacy quad extraction for facePositions (used by hover detector
                 // which assumes fixed 12 floats per face). The topology-aware data is
                 // used for VBO rendering and getFaceVertices().
                 facePositions = genericModelRenderer.extractFacePositions();
-                faceCount = facePositions.length / MeshManager.FLOATS_PER_FACE_POSITION;
 
                 // Delegate bulk VBO creation to MeshManager with topology info
-                MeshManager.getInstance().updateAllFaces(vbo, faceData.positions(), faceData.faceCount(),
+                MeshManager.getInstance().updateAllFaces(vbo, faceData.positions(), faceCount,
                     storedVerticesPerFace, overlayRenderer.getDefaultFaceColor());
+
+                // Compute shape-blind VBO layout from topology for overlay rendering
+                computeAndSetFaceVBOLayout(storedVerticesPerFace);
             } else {
-                // Fallback to legacy extraction
+                // Fallback to legacy extraction (assumes quads)
                 facePositions = genericModelRenderer.extractFacePositions();
-                faceCount = facePositions.length / MeshManager.FLOATS_PER_FACE_POSITION;
+                faceCount = facePositions.length / LEGACY_FLOATS_PER_FACE_POSITION;
                 storedVerticesPerFace = null;
                 storedFaceOffsets = null;
 
                 MeshManager.getInstance().updateAllFaces(vbo, facePositions, faceCount,
                     overlayRenderer.getDefaultFaceColor());
+
+                // Legacy VBO layout: uniform quads → 6 VBO vertices per face
+                computeAndSetFaceVBOLayout(faceCount, LEGACY_CORNERS_PER_FACE);
             }
 
             logger.debug("Updated face data from GMR: {} faces ({} floats)", faceCount, facePositions.length);
@@ -216,6 +226,49 @@ public class FaceRenderer implements MeshChangeListener {
         } catch (Exception e) {
             logger.error("Error updating face data from GMR", e);
         }
+    }
+
+    /**
+     * Compute per-face VBO layout from per-face vertex count array (topology-aware path).
+     * Uses TriangulationPattern to determine VBO vertex count for each face.
+     *
+     * @param verticesPerFace array of corner counts per face from GMR topology
+     */
+    private void computeAndSetFaceVBOLayout(int[] verticesPerFace) {
+        int[] offsets = new int[verticesPerFace.length];
+        int[] counts = new int[verticesPerFace.length];
+        int cumulativeOffset = 0;
+
+        for (int i = 0; i < verticesPerFace.length; i++) {
+            var pattern = com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.forNGon(verticesPerFace[i]);
+            int vboVertexCount = pattern.getVBOVertexCount();
+            offsets[i] = cumulativeOffset;
+            counts[i] = vboVertexCount;
+            cumulativeOffset += vboVertexCount;
+        }
+
+        overlayRenderer.setFaceVBOLayout(offsets, counts);
+    }
+
+    /**
+     * Compute per-face VBO layout for uniform topology (all faces have same corner count).
+     *
+     * @param faceCount number of faces
+     * @param cornersPerFace uniform corner count for all faces
+     */
+    private void computeAndSetFaceVBOLayout(int faceCount, int cornersPerFace) {
+        var pattern = com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.forNGon(cornersPerFace);
+        int vboVertexCount = pattern.getVBOVertexCount();
+
+        int[] offsets = new int[faceCount];
+        int[] counts = new int[faceCount];
+
+        for (int i = 0; i < faceCount; i++) {
+            offsets[i] = i * vboVertexCount;
+            counts[i] = vboVertexCount;
+        }
+
+        overlayRenderer.setFaceVBOLayout(offsets, counts);
     }
 
     /**
@@ -250,12 +303,16 @@ public class FaceRenderer implements MeshChangeListener {
             return;
         }
 
+        // Derive corner count from topology; fall back to 4 (quad) for legacy
+        int cornersPerFace = (storedVerticesPerFace != null && storedVerticesPerFace.length > 0)
+            ? storedVerticesPerFace[0]
+            : LEGACY_CORNERS_PER_FACE;
+
         // Delegate to MeshManager (Single Responsibility Principle)
-        // Use VERTICES_PER_FACE from MeshManager (currently quad-specific, but will be refactored to be shape-blind)
         faceToVertexMapping = MeshManager.getInstance().buildFaceToVertexMapping(
             facePositions,
             faceCount,
-            MeshManager.VERTICES_PER_FACE,
+            cornersPerFace,
             uniqueVertexPositions,
             VERTEX_MATCH_EPSILON
         );

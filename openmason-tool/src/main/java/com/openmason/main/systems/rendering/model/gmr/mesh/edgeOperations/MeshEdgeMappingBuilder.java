@@ -61,6 +61,9 @@ public class MeshEdgeMappingBuilder {
 
         int[][] mapping = new int[edgeCount][verticesPerEdge];
 
+        // Reuse a single Vector3f to avoid allocation per edge vertex
+        Vector3f edgeVertex = new Vector3f();
+
         // For each edge, find which unique vertices it connects
         for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
             int edgePosIdx = edgeIdx * floatsPerEdge;
@@ -69,7 +72,7 @@ public class MeshEdgeMappingBuilder {
             for (int vertexInEdge = 0; vertexInEdge < verticesPerEdge; vertexInEdge++) {
                 int posOffset = edgePosIdx + (vertexInEdge * POSITION_COMPONENTS);
 
-                Vector3f edgeVertex = new Vector3f(
+                edgeVertex.set(
                     edgePositions[posOffset],
                     edgePositions[posOffset + 1],
                     edgePositions[posOffset + 2]
@@ -122,6 +125,7 @@ public class MeshEdgeMappingBuilder {
 
     /**
      * Find the unique vertex index that matches the given edge vertex position.
+     * Uses component-wise squared distance to avoid Vector3f allocation and sqrt per comparison.
      *
      * @param edgeVertex Edge vertex position from GMR data
      * @param uniqueVertexPositions Array of unique vertex positions
@@ -129,15 +133,14 @@ public class MeshEdgeMappingBuilder {
      * @return Matching vertex index, or -1 if no match found
      */
     private int findMatchingVertex(Vector3f edgeVertex, float[] uniqueVertexPositions, int uniqueVertexCount) {
+        float epsilonSq = vertexMatchEpsilon * vertexMatchEpsilon;
         for (int vIdx = 0; vIdx < uniqueVertexCount; vIdx++) {
             int vPosIdx = vIdx * POSITION_COMPONENTS;
-            Vector3f uniqueVertex = new Vector3f(
-                uniqueVertexPositions[vPosIdx],
-                uniqueVertexPositions[vPosIdx + 1],
-                uniqueVertexPositions[vPosIdx + 2]
-            );
+            float dx = edgeVertex.x - uniqueVertexPositions[vPosIdx];
+            float dy = edgeVertex.y - uniqueVertexPositions[vPosIdx + 1];
+            float dz = edgeVertex.z - uniqueVertexPositions[vPosIdx + 2];
 
-            if (edgeVertex.distance(uniqueVertex) < vertexMatchEpsilon) {
+            if (dx * dx + dy * dy + dz * dz < epsilonSq) {
                 return vIdx;
             }
         }

@@ -1,7 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.face;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import org.joml.Matrix4f;
@@ -59,14 +58,16 @@ public class FaceOverlayRenderer {
 
     private static final Logger logger = LoggerFactory.getLogger(FaceOverlayRenderer.class);
 
-    // Layout constants
+    // Layout constants — topology-independent vertex data format
     private static final int COMPONENTS_PER_POSITION = 3; // x, y, z
     private static final int COLOR_OFFSET_FLOATS = COMPONENTS_PER_POSITION; // Color data starts after position
 
-    // Triangle mode constants (3 vertices per triangle primitive, post-subdivision)
+    /** Floats per vertex in the VBO: position(3) + color RGBA(4). Topology-independent. */
+    static final int FLOATS_PER_VERTEX = 7;
+
+    // Triangle mode constant (post-subdivision: 3 vertices per triangle)
     private static final int VERTICES_PER_TRIANGLE = 3;
-    private static final int FLOATS_PER_VERTEX_TRIANGLE = 7; // position (3) + color (4)
-    private static final int FLOATS_PER_TRIANGLE_VBO = VERTICES_PER_TRIANGLE * FLOATS_PER_VERTEX_TRIANGLE; // 21
+    private static final int FLOATS_PER_TRIANGLE_VBO = VERTICES_PER_TRIANGLE * FLOATS_PER_VERTEX;
 
     // Color definitions with alpha for transparency
     private final Vector4f defaultPrimitiveColor = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f); // Transparent (invisible)
@@ -81,6 +82,12 @@ public class FaceOverlayRenderer {
 
     // Maps original primitive ID to list of triangle indices (used in triangle mode)
     private java.util.Map<Integer, java.util.List<Integer>> originalFaceToTriangles = new java.util.HashMap<>();
+
+    // Shape-blind polygon mode VBO layout (computed from topology, not hardcoded)
+    // faceVBOVertexOffsets[i] = first VBO vertex index for face i
+    // faceVBOVertexCounts[i] = number of VBO vertices for face i (triangleCount * 3)
+    private int[] faceVBOVertexOffsets = null;
+    private int[] faceVBOVertexCounts = null;
 
     /**
      * Render primitive overlays with semi-transparent highlighting (single selection - backward compat).
@@ -267,18 +274,20 @@ public class FaceOverlayRenderer {
                 int dataStart = triIndex * FLOATS_PER_TRIANGLE_VBO;
                 updateTriangleFaceColors(vbo, dataStart, colorOffsetBytes, defaultPrimitiveColor);
             }
-        } else if (!triangleMode) {
-            // Polygon mode: uses pre-tessellated geometry with fixed vertex count per primitive
-            int dataStart = faceIndex * MeshManager.FLOATS_PER_FACE_VBO;
+        } else if (!triangleMode && faceVBOVertexOffsets != null && faceIndex < faceVBOVertexOffsets.length) {
+            // Shape-blind polygon mode: per-face VBO layout from topology
+            int vboVertexOffset = faceVBOVertexOffsets[faceIndex];
+            int vboVertexCount = faceVBOVertexCounts[faceIndex];
+            int dataStart = vboVertexOffset * FLOATS_PER_VERTEX;
 
             // Update color in VBO
-            updatePolygonColors(vbo, dataStart, colorOffsetBytes, color);
+            updatePrimitiveColors(vbo, dataStart, colorOffsetBytes, color, vboVertexCount, FLOATS_PER_VERTEX);
 
             // Render the primitive (tessellated into triangles)
-            glDrawArrays(GL_TRIANGLES, faceIndex * MeshManager.VERTICES_PER_FACE, MeshManager.VERTICES_PER_FACE);
+            glDrawArrays(GL_TRIANGLES, vboVertexOffset, vboVertexCount);
 
             // Restore default color
-            updatePolygonColors(vbo, dataStart, colorOffsetBytes, defaultPrimitiveColor);
+            updatePrimitiveColors(vbo, dataStart, colorOffsetBytes, defaultPrimitiveColor, vboVertexCount, FLOATS_PER_VERTEX);
         }
     }
 
@@ -307,20 +316,6 @@ public class FaceOverlayRenderer {
     }
 
     /**
-     * Update color data for all vertices of a polygon primitive in the VBO.
-     * Works with any tessellated polygon (pre-converted to triangles).
-     *
-     * @param vbo The vertex buffer object
-     * @param dataStart Starting offset in the VBO (in floats)
-     * @param colorOffsetBytes Byte offset to color data within each vertex
-     * @param color The color to set
-     */
-    private void updatePolygonColors(int vbo, int dataStart, int colorOffsetBytes, Vector4f color) {
-        updatePrimitiveColors(vbo, dataStart, colorOffsetBytes, color,
-                             MeshManager.VERTICES_PER_FACE, MeshManager.FLOATS_PER_VERTEX);
-    }
-
-    /**
      * Update color data for all vertices of a triangle primitive in the VBO.
      * Used in subdivided/triangulated mode where primitives are individual triangles.
      *
@@ -331,7 +326,20 @@ public class FaceOverlayRenderer {
      */
     private void updateTriangleFaceColors(int vbo, int dataStart, int colorOffsetBytes, Vector4f color) {
         updatePrimitiveColors(vbo, dataStart, colorOffsetBytes, color,
-                             VERTICES_PER_TRIANGLE, FLOATS_PER_VERTEX_TRIANGLE);
+                             VERTICES_PER_TRIANGLE, FLOATS_PER_VERTEX);
+    }
+
+    /**
+     * Set per-face VBO layout for shape-blind polygon mode rendering.
+     * Computed from topology data (TriangulationPattern) by the caller.
+     *
+     * @param vertexOffsets per-face VBO vertex offset (cumulative)
+     * @param vertexCounts per-face VBO vertex count (from TriangulationPattern.getVBOVertexCount())
+     */
+    public void setFaceVBOLayout(int[] vertexOffsets, int[] vertexCounts) {
+        this.faceVBOVertexOffsets = vertexOffsets;
+        this.faceVBOVertexCounts = vertexCounts;
+        logger.debug("Set shape-blind face VBO layout for {} faces", vertexOffsets != null ? vertexOffsets.length : 0);
     }
 
     /**

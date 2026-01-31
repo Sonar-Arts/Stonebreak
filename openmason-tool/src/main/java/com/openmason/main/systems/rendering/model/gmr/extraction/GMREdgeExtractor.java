@@ -147,14 +147,15 @@ public class GMREdgeExtractor {
 
     /**
      * Write zero-filled edges for a face with no triangles.
+     * For a polygon with N vertices, there are exactly N edges.
      *
      * @param output Output buffer
      * @param offset Current offset
-     * @param edgeCount Number of edges to write zeros for
+     * @param expectedEdgeCount Number of edges to write zeros for (equals vertex count for polygons)
      * @return Updated offset
      */
-    private int writeZeroEdges(float[] output, int offset, int edgeCount) {
-        for (int i = 0; i < edgeCount * FLOATS_PER_EDGE; i++) {
+    private int writeZeroEdges(float[] output, int offset, int expectedEdgeCount) {
+        for (int i = 0; i < expectedEdgeCount * FLOATS_PER_EDGE; i++) {
             output[offset++] = 0.0f;
         }
         return offset;
