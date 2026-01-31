@@ -4,6 +4,8 @@ import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.MeshChangeListener;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshEdge;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.operations.EdgeSelectionManager;
 import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
@@ -592,98 +594,30 @@ public class EdgeRenderer implements MeshChangeListener {
     /**
      * Rebuild edge data from the associated GenericModelRenderer.
      * Called when initially connected or when geometry is rebuilt.
+     * Uses MeshTopology for edge extraction when available.
      */
     private void rebuildFromModel() {
         if (modelRenderer == null || !initialized) {
             return;
         }
 
-        // Get unique vertex positions for edge building
-        float[] uniquePositions = modelRenderer.getAllUniqueVertexPositions();
-        if (uniquePositions == null || uniquePositions.length == 0) {
+        MeshTopology topology = modelRenderer.getTopology();
+        if (topology == null) {
+            logger.debug("No topology available, clearing edge data");
             edgeCount = 0;
             edgePositions = null;
             edgeToVertexMapping = null;
             return;
         }
 
-        // Rebuild edges from triangle topology, filtering out internal face diagonals
-        // Internal diagonals are edges that only exist within a single original face
-        // (e.g., the diagonal splitting a quad into 2 triangles)
-        int[] triangleIndices = modelRenderer.getTriangleIndices();
-        if (triangleIndices == null || triangleIndices.length == 0) {
-            return;
-        }
-
-        // Step 1: Build map of edge -> set of original face IDs
-        // An edge used by triangles from DIFFERENT faces is a boundary edge (render it)
-        // An edge used only by triangles from the SAME face is internal (skip it)
-        java.util.Map<Long, java.util.Set<Integer>> edgeToFaceIds = new java.util.HashMap<>();
-        java.util.Map<Long, int[]> edgeToVertices = new java.util.HashMap<>();
-
-        int triangleCount = triangleIndices.length / 3;
-        for (int t = 0; t < triangleCount; t++) {
-            int i0 = triangleIndices[t * 3];
-            int i1 = triangleIndices[t * 3 + 1];
-            int i2 = triangleIndices[t * 3 + 2];
-
-            // Get unique indices for these mesh vertices
-            int u0 = modelRenderer.getUniqueIndexForMeshVertex(i0);
-            int u1 = modelRenderer.getUniqueIndexForMeshVertex(i1);
-            int u2 = modelRenderer.getUniqueIndexForMeshVertex(i2);
-
-            // Get the original face ID for this triangle
-            int faceId = modelRenderer.getOriginalFaceIdForTriangle(t);
-
-            // Track which faces use each edge
-            trackEdgeFace(edgeToFaceIds, edgeToVertices, u0, u1, faceId);
-            trackEdgeFace(edgeToFaceIds, edgeToVertices, u1, u2, faceId);
-            trackEdgeFace(edgeToFaceIds, edgeToVertices, u2, u0, faceId);
-        }
-
-        // Step 2: Filter edges - keep boundary edges (shared by 2+ faces) AND
-        // polygon boundary edges (used by only 1 face but connecting adjacent polygon vertices)
-        java.util.List<int[]> edgeList = new java.util.ArrayList<>();
-        for (java.util.Map.Entry<Long, java.util.Set<Integer>> entry : edgeToFaceIds.entrySet()) {
-            int faceUsageCount = entry.getValue().size();
-            if (faceUsageCount > 1) {
-                // Boundary edge between two different faces - always keep
-                edgeList.add(edgeToVertices.get(entry.getKey()));
-            } else {
-                // Edge used by only one face - it's either a polygon boundary edge
-                // (on an open mesh) or an internal diagonal from fan triangulation.
-                // Internal diagonals in fan triangulation always include vertex 0 of the fan
-                // and connect to a non-adjacent vertex. For closed meshes (like cubes),
-                // all polygon edges are shared by 2 faces, so single-face edges are diagonals.
-                // For open meshes, we keep single-face edges since they form the visible outline.
-                //
-                // Heuristic: if total face count equals edgeToFaceIds entries that have size > 1
-                // divided by expected edges, this is likely a closed mesh. But simpler:
-                // check if the mesh has any face that shares NO edges with another face.
-                // For now, keep all single-face edges on meshes with only 1 face total,
-                // and filter them on multi-face meshes (where they are internal diagonals).
-                int totalFaceCount = modelRenderer.getOriginalFaceCount();
-                if (totalFaceCount <= 1) {
-                    // Single-face mesh (open): keep all edges as polygon outline
-                    edgeList.add(edgeToVertices.get(entry.getKey()));
-                }
-                // Multi-face mesh: single-face edges are internal diagonals - skip them
-            }
-        }
-
-        // Build edge positions and mapping
-        int newEdgeCount = edgeList.size();
+        int newEdgeCount = topology.getEdgeCount();
         float[] newEdgePositions = new float[newEdgeCount * FLOATS_PER_EDGE];
         int[][] newMapping = new int[newEdgeCount][2];
 
         for (int e = 0; e < newEdgeCount; e++) {
-            int[] edge = edgeList.get(e);
-            int u0 = edge[0];
-            int u1 = edge[1];
-
-            // Get positions from unique vertex indices
-            Vector3f pos0 = modelRenderer.getUniqueVertexPosition(u0);
-            Vector3f pos1 = modelRenderer.getUniqueVertexPosition(u1);
+            MeshEdge edge = topology.getEdge(e);
+            Vector3f pos0 = modelRenderer.getUniqueVertexPosition(edge.vertexA());
+            Vector3f pos1 = modelRenderer.getUniqueVertexPosition(edge.vertexB());
 
             if (pos0 != null && pos1 != null) {
                 int offset = e * FLOATS_PER_EDGE;
@@ -695,8 +629,8 @@ public class EdgeRenderer implements MeshChangeListener {
                 newEdgePositions[offset + 5] = pos1.z;
             }
 
-            newMapping[e][0] = u0;
-            newMapping[e][1] = u1;
+            newMapping[e][0] = edge.vertexA();
+            newMapping[e][1] = edge.vertexB();
         }
 
         // Update state
@@ -705,35 +639,13 @@ public class EdgeRenderer implements MeshChangeListener {
         edgeToVertexMapping = newMapping;
 
         // Rebuild VBO
-        MeshEdgeBufferUpdater.UpdateResult bufferResult =
-            meshManager.updateEdgeBuffer(vbo, edgePositions, VERTICES_PER_EDGE, edgeColor);
+        meshManager.updateEdgeBuffer(vbo, edgePositions, VERTICES_PER_EDGE, edgeColor);
 
         // Clear selection/hover (indices may have changed)
         hoveredEdgeIndex = NO_EDGE_SELECTED;
         selectedEdgeIndex = NO_EDGE_SELECTED;
 
-        logger.debug("EdgeRenderer rebuilt from model: {} unique edges", edgeCount);
-    }
-
-    /**
-     * Helper to track which faces use an edge.
-     * Used for filtering out internal face diagonals during rebuild.
-     */
-    private void trackEdgeFace(java.util.Map<Long, java.util.Set<Integer>> edgeToFaceIds,
-                               java.util.Map<Long, int[]> edgeToVertices,
-                               int u0, int u1, int faceId) {
-        if (u0 < 0 || u1 < 0 || u0 == u1) {
-            return;
-        }
-        // Canonical ordering: smaller index first
-        int min = Math.min(u0, u1);
-        int max = Math.max(u0, u1);
-        long key = ((long) min << 32) | (max & 0xFFFFFFFFL);
-
-        // Track the face ID for this edge
-        edgeToFaceIds.computeIfAbsent(key, k -> new java.util.HashSet<>()).add(faceId);
-        // Store vertex indices (only need to do this once per edge)
-        edgeToVertices.putIfAbsent(key, new int[] { min, max });
+        logger.debug("EdgeRenderer rebuilt from topology: {} edges", edgeCount);
     }
 
     // Getters and setters

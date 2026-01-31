@@ -15,6 +15,8 @@ import com.openmason.main.systems.rendering.model.gmr.mapping.TriangleFaceMapper
 import com.openmason.main.systems.rendering.model.gmr.mapping.UniqueVertexMapper;
 import com.openmason.main.systems.rendering.model.gmr.notification.IMeshChangeNotifier;
 import com.openmason.main.systems.rendering.model.gmr.notification.MeshChangeNotifier;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopologyBuilder;
 import com.openmason.main.systems.rendering.model.gmr.uv.*;
 import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
@@ -66,6 +68,9 @@ public class GenericModelRenderer extends BaseRenderer {
     // Texture state (kept inline per KISS - only 3 lines)
     private int textureId = 0;
     private boolean useTexture = false;
+
+    // Topology index for O(1) adjacency queries
+    private MeshTopology topology;
 
     // Cached identity matrix to avoid per-frame allocation in setUniforms
     private static final org.joml.Matrix4f IDENTITY_MATRIX = new org.joml.Matrix4f();
@@ -391,6 +396,16 @@ public class GenericModelRenderer extends BaseRenderer {
         return uniqueMapper.getAllUniqueVertexPositions(vertexManager.getVertices());
     }
 
+    /**
+     * Get the current mesh topology index.
+     * Provides O(1) adjacency queries for edges, faces, and vertex connectivity.
+     *
+     * @return The topology index, or null if not yet built
+     */
+    public MeshTopology getTopology() {
+        return topology;
+    }
+
     // =========================================================================
     // CHANGE NOTIFICATION (delegated to IMeshChangeNotifier)
     // =========================================================================
@@ -455,7 +470,13 @@ public class GenericModelRenderer extends BaseRenderer {
         // Rebuild unique vertex mapping
         uniqueMapper.buildMapping(vertexManager.getVertices());
 
+        // Rebuild topology index
+        this.topology = MeshTopologyBuilder.build(
+            vertexManager.getVertices(), vertexManager.getIndices(),
+            faceMapper, uniqueMapper);
+
         // Notify listeners
+        changeNotifier.notifyTopologyRebuilt(topology);
         changeNotifier.notifyGeometryRebuilt();
 
         logger.debug("Applied subdivision: added {} vertices (first: {}), indices {} -> {}, unique: {}",
@@ -532,6 +553,11 @@ public class GenericModelRenderer extends BaseRenderer {
         // Rebuild unique vertex mapping
         uniqueMapper.buildMapping(vertices);
 
+        // Rebuild topology index
+        this.topology = MeshTopologyBuilder.build(
+            vertexManager.getVertices(), vertexManager.getIndices(),
+            faceMapper, uniqueMapper);
+
         // Update GPU buffers if initialized
         if (initialized) {
             float[] interleavedData = geometryBuilder.buildInterleavedData(
@@ -543,6 +569,7 @@ public class GenericModelRenderer extends BaseRenderer {
         }
 
         // Notify listeners
+        changeNotifier.notifyTopologyRebuilt(topology);
         changeNotifier.notifyGeometryRebuilt();
 
         logger.info("Loaded custom mesh data: {} vertices, {} triangles, {} unique positions, uvMode={}",

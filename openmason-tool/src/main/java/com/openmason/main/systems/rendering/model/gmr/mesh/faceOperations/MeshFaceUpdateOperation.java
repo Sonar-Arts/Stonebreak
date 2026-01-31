@@ -308,6 +308,98 @@ public class MeshFaceUpdateOperation {
     }
 
     /**
+     * Bulk update: Creates and uploads complete VBO data for faces with mixed topology.
+     * Each face can have a different vertex count (triangles, quads, n-gons mixed).
+     *
+     * @param vbo OpenGL VBO handle
+     * @param facePositions Packed face positions (variable vertices per face, sequential)
+     * @param faceCount Number of faces
+     * @param verticesPerFace Per-face vertex counts
+     * @param faceOffsets Per-face float offsets into facePositions
+     * @param defaultColor Default color for all faces (with alpha)
+     * @return true if update succeeded, false otherwise
+     */
+    public boolean updateAllFacesMixed(int vbo, float[] facePositions, int faceCount,
+                                        int[] verticesPerFace, int[] faceOffsets,
+                                        Vector4f defaultColor) {
+        if (facePositions == null || faceCount == 0) {
+            logger.warn("Cannot update all faces (mixed): invalid data");
+            return false;
+        }
+
+        if (verticesPerFace == null || verticesPerFace.length != faceCount) {
+            logger.warn("Cannot update all faces (mixed): verticesPerFace length mismatch");
+            return false;
+        }
+
+        if (faceOffsets == null || faceOffsets.length != faceCount) {
+            logger.warn("Cannot update all faces (mixed): faceOffsets length mismatch");
+            return false;
+        }
+
+        try {
+            // Pre-compute triangulation patterns and total VBO vertex count
+            TriangulationPattern[] patterns = new TriangulationPattern[faceCount];
+            int totalVBOVertices = 0;
+
+            for (int i = 0; i < faceCount; i++) {
+                patterns[i] = TriangulationPattern.forNGon(verticesPerFace[i]);
+                totalVBOVertices += patterns[i].getVBOVertexCount();
+            }
+
+            // Build VBO data with variable stride per face
+            float[] vertexData = new float[totalVBOVertices * FLOATS_PER_VERTEX];
+            int vboOffset = 0;
+
+            for (int faceIdx = 0; faceIdx < faceCount; faceIdx++) {
+                int vpf = verticesPerFace[faceIdx];
+                int faceStart = faceOffsets[faceIdx];
+                TriangulationPattern pattern = patterns[faceIdx];
+                int vboVerticesForFace = pattern.getVBOVertexCount();
+
+                // Load corner positions
+                Vector3f[] corners = new Vector3f[vpf];
+                for (int cornerIdx = 0; cornerIdx < vpf; cornerIdx++) {
+                    int posIdx = faceStart + (cornerIdx * COMPONENTS_PER_POSITION);
+                    corners[cornerIdx] = new Vector3f(
+                        facePositions[posIdx],
+                        facePositions[posIdx + 1],
+                        facePositions[posIdx + 2]
+                    );
+                }
+
+                // Use triangulation pattern to create VBO vertices
+                for (int vboVertexIdx = 0; vboVertexIdx < vboVerticesForFace; vboVertexIdx++) {
+                    int cornerIdx = pattern.getCornerIndex(vboVertexIdx);
+
+                    if (cornerIdx < corners.length) {
+                        int dataIdx = vboOffset + (vboVertexIdx * FLOATS_PER_VERTEX);
+                        addVertexToData(vertexData, dataIdx, corners[cornerIdx], defaultColor);
+                    } else {
+                        logger.warn("Mixed triangulation references invalid corner index: {} (max: {})",
+                                cornerIdx, corners.length - 1);
+                    }
+                }
+
+                vboOffset += vboVerticesForFace * FLOATS_PER_VERTEX;
+            }
+
+            // Upload to GPU
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBufferData(GL_ARRAY_BUFFER, vertexData, GL_DYNAMIC_DRAW);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+            logger.debug("Bulk updated {} faces (mixed topology, {} VBO vertices) to VBO",
+                faceCount, totalVBOVertices);
+            return true;
+
+        } catch (Exception e) {
+            logger.error("Error during mixed-topology bulk face update", e);
+            return false;
+        }
+    }
+
+    /**
      * Helper method to add vertex data to interleaved array.
      * DRY: Used by bulk update to construct vertex data with proper VBO layout.
      * Shape-blind: Writes vertex data in the established VBO format (7 floats per vertex).

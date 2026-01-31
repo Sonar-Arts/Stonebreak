@@ -370,12 +370,27 @@ public class MeshManager {
                                           firstCount, pattern, defaultColor);
         }
 
-        // Mixed topology: per-face pattern support not yet implemented.
-        // Refusing to silently produce incorrect geometry by using a single pattern for all faces.
-        throw new UnsupportedOperationException(
-            "Mixed-topology updateAllFaces is not yet supported. " +
-            "All faces must have the same vertex count. " +
-            "Found varying vertex counts starting with " + firstCount);
+        // Mixed topology: delegate to per-face pattern method
+        int[] faceOffsets = computeFaceOffsets(verticesPerFace);
+        return updater.updateAllFacesMixed(vbo, facePositions, faceCount,
+                                            verticesPerFace, faceOffsets, defaultColor);
+    }
+
+    /**
+     * Compute float offsets into a packed face positions array from per-face vertex counts.
+     * Each face's positions occupy verticesPerFace[i] * 3 floats.
+     *
+     * @param verticesPerFace Per-face vertex counts
+     * @return Array of float offsets (one per face)
+     */
+    private int[] computeFaceOffsets(int[] verticesPerFace) {
+        int[] offsets = new int[verticesPerFace.length];
+        int cumulative = 0;
+        for (int i = 0; i < verticesPerFace.length; i++) {
+            offsets[i] = cumulative;
+            cumulative += verticesPerFace[i] * 3; // 3 floats per vertex position
+        }
+        return offsets;
     }
 
     // ========================================

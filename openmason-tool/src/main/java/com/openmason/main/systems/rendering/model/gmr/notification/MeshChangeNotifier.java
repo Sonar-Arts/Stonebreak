@@ -1,6 +1,7 @@
 package com.openmason.main.systems.rendering.model.gmr.notification;
 
 import com.openmason.main.systems.rendering.model.MeshChangeListener;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,5 +69,17 @@ public class MeshChangeNotifier implements IMeshChangeNotifier {
     @Override
     public boolean hasListener(MeshChangeListener listener) {
         return listener != null && listeners.contains(listener);
+    }
+
+    @Override
+    public void notifyTopologyRebuilt(MeshTopology topology) {
+        for (MeshChangeListener listener : listeners) {
+            try {
+                listener.onTopologyRebuilt(topology);
+            } catch (Exception e) {
+                logger.error("Error notifying listener {} of topology rebuild",
+                    listener.getClass().getSimpleName(), e);
+            }
+        }
     }
 }

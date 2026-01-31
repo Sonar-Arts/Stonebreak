@@ -1,6 +1,8 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.face;
 
 import com.openmason.main.systems.rendering.model.MeshChangeListener;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshFace;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
@@ -305,7 +307,23 @@ public class FaceRenderer implements MeshChangeListener {
             return;
         }
 
-        // Prefer topology-aware data when available
+        // Fast path: use topology index when available (O(1) lookups, no epsilon matching)
+        if (genericModelRenderer != null) {
+            MeshTopology topology = genericModelRenderer.getTopology();
+            if (topology != null) {
+                faceToVertexMapping.clear();
+                for (int i = 0; i < topology.getFaceCount(); i++) {
+                    MeshFace face = topology.getFace(i);
+                    if (face != null) {
+                        faceToVertexMapping.put(face.faceId(), face.vertexIndices().clone());
+                    }
+                }
+                logger.debug("Built face-to-vertex mapping from topology for {} faces", faceToVertexMapping.size());
+                return;
+            }
+        }
+
+        // Fallback: epsilon-based position matching
         if (topologyFacePositions != null && storedVerticesPerFace != null && storedFaceOffsets != null) {
             faceToVertexMapping = MeshManager.getInstance().buildFaceToVertexMapping(
                 topologyFacePositions,
