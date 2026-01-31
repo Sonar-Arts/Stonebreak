@@ -21,8 +21,8 @@
         <lwjgl.version>3.4.0</lwjgl.version>
         <joml.version>1.10.5</joml.version>
         <lwjgl.natives>natives-windows</lwjgl.natives>
-        <jackson.version>2.21.0</jackson.version>
-        <jackson.version.annotations>2.21</jackson.version.annotations>
+        <jackson.version>2.21</jackson.version>
+        <junit.version>5.10.0</junit.version>
 <junit.version>5.10.0</junit.version>
         <mockito.version>5.5.0</mockito.version>
     </properties>
