@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.face;
+package com.openmason.main.systems.rendering.model.gmr.subrenders.face;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;

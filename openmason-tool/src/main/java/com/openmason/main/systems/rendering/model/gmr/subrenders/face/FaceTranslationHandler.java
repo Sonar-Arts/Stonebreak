@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.face;
+package com.openmason.main.systems.rendering.model.gmr.subrenders.face;
 
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
@@ -6,8 +6,8 @@ import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
-import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.common.TranslationHandlerBase;
 import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import org.joml.Vector3f;

@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.vertex;
+package com.openmason.main.systems.rendering.model.gmr.subrenders.vertex;
 
 import org.joml.Matrix4f;
 import org.joml.Vector4f;

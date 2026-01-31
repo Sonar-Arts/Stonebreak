@@ -1,10 +1,11 @@
-package com.openmason.main.systems.viewport.viewportRendering.edge;
+package com.openmason.main.systems.rendering.model.gmr.subrenders.edge;
 
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.MeshChangeListener;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgeSelectionManager;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.operations.EdgeSelectionManager;
 import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.rendering.model.gmr.mesh.edgeOperations.MeshEdgeBufferUpdater;
 import org.joml.Matrix4f;
@@ -55,7 +56,7 @@ import static org.lwjgl.opengl.GL30.*;
  * <p><b>Data Format:</b> Edges are stored in an interleaved VBO format with 6 floats
  * per vertex (x, y, z, r, g, b). Edge positions are cached separately for hover detection.
  *
- * @see com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer
+ * @see VertexRenderer
  * @see com.openmason.main.systems.viewport.viewportRendering.edge.operations
  */
 public class EdgeRenderer implements MeshChangeListener {

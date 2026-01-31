@@ -2,9 +2,9 @@ package com.openmason.main.systems.viewport.viewportRendering;
 
 import com.openmason.main.systems.viewport.state.EditMode;
 import com.openmason.main.systems.viewport.state.EditModeManager;
-import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler;
-import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTranslationHandler;
-import com.openmason.main.systems.viewport.viewportRendering.face.FaceTranslationHandler;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeTranslationHandler;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexTranslationHandler;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceTranslationHandler;
 import org.joml.Matrix4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

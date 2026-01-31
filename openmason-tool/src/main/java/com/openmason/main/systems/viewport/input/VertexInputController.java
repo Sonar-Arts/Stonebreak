@@ -1,7 +1,7 @@
 package com.openmason.main.systems.viewport.input;
 
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
-import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import imgui.ImGui;
 import org.joml.Matrix4f;

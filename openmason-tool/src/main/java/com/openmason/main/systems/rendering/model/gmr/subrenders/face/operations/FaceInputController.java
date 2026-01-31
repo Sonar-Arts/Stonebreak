@@ -1,11 +1,11 @@
-package com.openmason.main.systems.viewport.viewportRendering.face.operations;
+package com.openmason.main.systems.rendering.model.gmr.subrenders.face.operations;
 
 import com.openmason.main.systems.viewport.input.InputContext;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
-import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import imgui.ImGui;
 import org.joml.Matrix4f;

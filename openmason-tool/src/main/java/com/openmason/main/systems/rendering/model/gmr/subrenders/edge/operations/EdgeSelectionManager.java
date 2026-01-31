@@ -1,5 +1,6 @@
-package com.openmason.main.systems.viewport.viewportRendering.edge.operations;
+package com.openmason.main.systems.rendering.model.gmr.subrenders.edge.operations;
 
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,7 +18,7 @@ import org.slf4j.LoggerFactory;
  * <p><b>Thread Safety:</b> This class is stateless and thread-safe.
  * Selection state is managed externally and passed as parameters.
  *
- * @see com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer
+ * @see EdgeRenderer
  */
 public class EdgeSelectionManager {
 

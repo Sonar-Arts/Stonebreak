@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.vertex;
+package com.openmason.main.systems.rendering.model.gmr.subrenders.vertex;
 
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.MeshChangeListener;

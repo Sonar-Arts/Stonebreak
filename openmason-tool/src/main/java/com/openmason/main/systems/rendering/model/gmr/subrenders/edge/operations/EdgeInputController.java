@@ -1,11 +1,11 @@
-package com.openmason.main.systems.viewport.viewportRendering.edge.operations;
+package com.openmason.main.systems.rendering.model.gmr.subrenders.edge.operations;
 
 import com.openmason.main.systems.viewport.input.InputContext;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.state.EditModeManager;
-import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeHoverDetector;
-import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeHoverDetector;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import imgui.ImGui;
 import org.joml.Matrix4f;
