@@ -2,14 +2,13 @@ package com.openmason.main.systems.viewport;
 
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
-import com.openmason.main.systems.viewport.gizmo.GizmoState;
+import com.openmason.main.systems.viewport.state.EditModeManager;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Handles all viewport business logic and operations.
- * Follows Single Responsibility Principle - only executes actions.
- * Follows Dependency Inversion Principle - depends on abstractions (interfaces).
  */
 public class ViewportActions {
 
@@ -21,9 +20,6 @@ public class ViewportActions {
 
     /**
      * Constructor with dependency injection.
-     * @param viewport The 3D viewport to operate on
-     * @param state The viewport state
-     * @param preferencesManager The preferences manager for persistence
      */
     public ViewportActions(ViewportController viewport, ViewportUIState state, PreferencesManager preferencesManager) {
         this.viewport = viewport;
@@ -138,6 +134,47 @@ public class ViewportActions {
         viewport.setShowVertices(show);
     }
 
+    // ========== Edge Operations ==========
+
+    /**
+     * Subdivide the currently hovered edge at its midpoint.
+     * Only works in Edge edit mode.
+     */
+    public void subdivideHoveredEdge() {
+        // Check if in Edge mode
+        if (!EditModeManager.getInstance().isEdgeEditingAllowed()) {
+            logger.debug("Edge subdivision requires Edge edit mode");
+            return;
+        }
+
+        // Delegate to viewport controller
+        int newVertexIndex = viewport.subdivideHoveredEdge();
+
+        if (newVertexIndex >= 0) {
+            logger.info("Edge subdivided, created vertex at index {}", newVertexIndex);
+        }
+    }
+
+    /**
+     * Subdivide all currently selected edges at their midpoints.
+     * If no edges are selected, falls back to subdividing the hovered edge.
+     * Only works in Edge edit mode.
+     */
+    public void subdivideSelectedEdges() {
+        // Check if in Edge mode
+        if (!EditModeManager.getInstance().isEdgeEditingAllowed()) {
+            logger.debug("Edge subdivision requires Edge edit mode");
+            return;
+        }
+
+        // Delegate to viewport controller
+        int count = viewport.subdivideSelectedEdges();
+
+        if (count > 0) {
+            logger.info("Subdivided {} edges", count);
+        }
+    }
+
     // ========== Camera Operations ==========
 
     public void updateCameraMode() {
@@ -216,5 +253,19 @@ public class ViewportActions {
     public void applyRenderingSettings() {
         logger.info("Applying rendering settings");
         // Future implementation for applying rendering quality settings
+    }
+
+    // ========== Grab Mode (G Key) ==========
+
+    /**
+     * Start grab mode from keybind (G key).
+     * Blender-style: Press G to grab and move all selected items.
+     * Works in Vertex, Edge, or Face edit mode with active selection.
+     */
+    public void startGrabMode() {
+        boolean started = viewport.startGrabMode();
+        if (started) {
+            logger.info("Grab mode started (G key)");
+        }
     }
 }

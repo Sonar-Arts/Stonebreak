@@ -17,8 +17,6 @@
     <description>Tool for texture and model generation utilities for Stonebreak</description>
     
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
@@ -63,29 +61,29 @@
         <dependency>
             <groupId>io.github.spair</groupId>
             <artifactId>imgui-java-binding</artifactId>
-            <version>1.86.11</version>
+            <version>1.90.0</version>
         </dependency>
         <dependency>
             <groupId>io.github.spair</groupId>
             <artifactId>imgui-java-lwjgl3</artifactId>
-            <version>1.86.11</version>
+            <version>1.90.0</version>
         </dependency>
         <dependency>
             <groupId>io.github.spair</groupId>
             <artifactId>imgui-java-natives-windows</artifactId>
-            <version>1.86.11</version>
+            <version>1.90.0</version>
             <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>io.github.spair</groupId>
             <artifactId>imgui-java-natives-linux</artifactId>
-            <version>1.86.11</version>
+            <version>1.90.0</version>
             <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>io.github.spair</groupId>
             <artifactId>imgui-java-natives-macos</artifactId>
-            <version>1.86.11</version>
+            <version>1.90.0</version>
             <scope>runtime</scope>
         </dependency>
 
@@ -125,20 +123,13 @@
         <dependency>
             <groupId>org.apache.xmlgraphics</groupId>
             <artifactId>batik-transcoder</artifactId>
-            <version>1.17</version>
+            <version>1.19</version>
         </dependency>
         <dependency>
             <groupId>org.apache.xmlgraphics</groupId>
             <artifactId>batik-codec</artifactId>
             <version>1.17</version>
         </dependency>
-        <dependency>
-            <groupId>org.apache.xmlgraphics</groupId>
-            <artifactId>batik-rasterizer</artifactId>
-            <version>1.17</version>
-        </dependency>
-        
-        
         <!-- Stonebreak Game Module for shared resources -->
         <dependency>
             <groupId>com.stonebreak</groupId>
@@ -173,55 +164,6 @@
             <version>1.4.14</version>
         </dependency>
         
-        <!-- Testing Dependencies -->
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
-            <version>5.10.1</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-engine</artifactId>
-            <version>5.10.1</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-params</artifactId>
-            <version>5.10.1</version>
-            <scope>test</scope>
-        </dependency>
-        
-        <!-- Mockito for mocking -->
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-core</artifactId>
-            <version>5.8.0</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-junit-jupiter</artifactId>
-            <version>5.8.0</version>
-            <scope>test</scope>
-        </dependency>
-        
-        <!-- AssertJ for fluent assertions -->
-        <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
-            <version>3.24.2</version>
-            <scope>test</scope>
-        </dependency>
-        
-        <!-- Awaitility for asynchronous testing -->
-        <dependency>
-            <groupId>org.awaitility</groupId>
-            <artifactId>awaitility</artifactId>
-            <version>4.2.0</version>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
 
 

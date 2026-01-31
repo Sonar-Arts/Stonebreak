@@ -245,64 +245,26 @@ public class TextureCreatorImGui {
 
     /**
      * Register keyboard shortcuts (declarative).
+     * Now uses the central KeybindRegistry for customizable keybinds.
      */
     private void registerKeyboardShortcuts() {
-        // File operations
-        shortcutManager.register(ShortcutKey.ctrl(GLFW.GLFW_KEY_N), newTextureDialog::show);
-        shortcutManager.register(ShortcutKey.ctrl(GLFW.GLFW_KEY_O), fileOperations::openProject);
-        shortcutManager.register(ShortcutKey.ctrl(GLFW.GLFW_KEY_S), fileOperations::saveProject);
-        shortcutManager.register(ShortcutKey.ctrlShift(GLFW.GLFW_KEY_S), fileOperations::saveProjectAs);
-        shortcutManager.register(ShortcutKey.ctrl(GLFW.GLFW_KEY_E), () ->
-            exportFormatDialog.show(format -> {
-                if (format == ExportFormatDialog.ExportFormat.PNG) fileOperations.exportPNG();
-                else if (format == ExportFormatDialog.ExportFormat.OMT) fileOperations.exportOMT();
-            }));
+        // Register all texture editor actions with the central keybind registry
+        com.openmason.main.systems.keybinds.KeybindRegistry registry =
+                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
 
-        // Window
-        shortcutManager.register(ShortcutKey.ctrl(GLFW.GLFW_KEY_COMMA),
-            windowState::togglePreferencesWindow);
+        TextureEditorKeybindActions.registerAll(
+                registry,
+                newTextureDialog,
+                fileOperations,
+                exportFormatDialog,
+                windowState,
+                controller,
+                state,
+                pasteCoordinator,
+                toolCoordinator
+        );
 
-        // Edit
-        shortcutManager.register(ShortcutKey.ctrl(GLFW.GLFW_KEY_Z), controller::undo);
-        shortcutManager.register(ShortcutKey.ctrl(GLFW.GLFW_KEY_Y), controller::redo);
-
-        // Clipboard
-        shortcutManager.register(ShortcutKey.ctrl(GLFW.GLFW_KEY_C), () -> {
-            if (state.hasSelection()) controller.copySelection();
-        });
-        shortcutManager.register(ShortcutKey.ctrl(GLFW.GLFW_KEY_X), () -> {
-            if (state.hasSelection()) controller.cutSelection();
-        });
-        shortcutManager.register(ShortcutKey.ctrl(GLFW.GLFW_KEY_V), () -> {
-            if (pasteCoordinator.canPaste()) pasteCoordinator.initiatePaste();
-        });
-
-        // Selection
-        shortcutManager.register(ShortcutKey.simple(GLFW.GLFW_KEY_DELETE), controller::deleteSelection);
-        shortcutManager.register(ShortcutKey.simple(GLFW.GLFW_KEY_BACKSPACE), controller::deleteSelection);
-
-        // View
-        shortcutManager.register(ShortcutKey.simple(GLFW.GLFW_KEY_G),
-            () -> state.getShowGrid().set(!state.getShowGrid().get()));
-        shortcutManager.register(ShortcutKey.simple(GLFW.GLFW_KEY_EQUAL),
-            () -> controller.getCanvasState().zoomIn(ZOOM_FACTOR));
-        shortcutManager.register(ShortcutKey.simple(GLFW.GLFW_KEY_KP_ADD),
-            () -> controller.getCanvasState().zoomIn(ZOOM_FACTOR));
-        shortcutManager.register(ShortcutKey.simple(GLFW.GLFW_KEY_MINUS),
-            () -> controller.getCanvasState().zoomOut(ZOOM_FACTOR));
-        shortcutManager.register(ShortcutKey.simple(GLFW.GLFW_KEY_KP_SUBTRACT),
-            () -> controller.getCanvasState().zoomOut(ZOOM_FACTOR));
-        shortcutManager.register(ShortcutKey.simple(GLFW.GLFW_KEY_0),
-            () -> controller.getCanvasState().resetView());
-        shortcutManager.register(ShortcutKey.simple(GLFW.GLFW_KEY_KP_0),
-            () -> controller.getCanvasState().resetView());
-
-        // Tool operations (delegated to ToolCoordinator)
-        shortcutManager.register(ShortcutKey.simple(GLFW.GLFW_KEY_ENTER), toolCoordinator::handleEnterKey);
-        shortcutManager.register(ShortcutKey.simple(GLFW.GLFW_KEY_KP_ENTER), toolCoordinator::handleEnterKey);
-        shortcutManager.register(ShortcutKey.simple(GLFW.GLFW_KEY_ESCAPE), toolCoordinator::handleEscapeKey);
-
-        logger.debug("Registered {} keyboard shortcuts", shortcutManager.getShortcutCount());
+        logger.debug("Registered texture editor keyboard shortcuts with keybind registry");
     }
 
     /**
@@ -504,7 +466,25 @@ public class TextureCreatorImGui {
      * This allows proper focus-based shortcut handling in windowed mode.
      */
     public void handleKeyboardShortcuts() {
-        shortcutManager.handleInput();
+        // Use the central keybind registry for customizable shortcuts
+        com.openmason.main.systems.keybinds.KeybindRegistry registry =
+                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
+
+        // Check all texture editor categories for matching keybinds
+        String[] categories = {"File Operations", "Window", "Edit", "Clipboard",
+                               "Selection", "View", "Tools"};
+
+        for (String category : categories) {
+            for (com.openmason.main.systems.keybinds.KeybindAction action :
+                    registry.getActionsByCategory(category)) {
+                com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey key =
+                        registry.getKeybind(action.getId());
+                if (key.isPressed()) {
+                    action.execute();
+                    return; // Only execute first matching shortcut
+                }
+            }
+        }
     }
 
     /**

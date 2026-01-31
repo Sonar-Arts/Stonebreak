@@ -154,7 +154,7 @@ public class OMTSerializer {
         zos.flush(); // Ensure data is written to stream
         zos.closeEntry();
 
-        logger.debug("Wrote manifest.json ({} bytes)", jsonBytes.length);
+        logger.trace("Wrote manifest.json ({} bytes)", jsonBytes.length);
     }
 
     /**
@@ -181,7 +181,7 @@ public class OMTSerializer {
         zos.flush(); // Ensure data is written to stream
         zos.closeEntry();
 
-        logger.debug("Wrote {} ({} bytes)", filename, pngData.length);
+        logger.trace("Wrote {} ({} bytes)", filename, pngData.length);
     }
 
     /**

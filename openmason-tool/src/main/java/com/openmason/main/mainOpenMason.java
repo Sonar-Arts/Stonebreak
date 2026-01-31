@@ -62,7 +62,7 @@ public class mainOpenMason {
 
     // State flags
     private boolean showHomeScreen = true;
-    private boolean showModelViewer = false;
+    private boolean showModelEditor = false;
     private boolean showTextureEditor = false;
     private boolean shouldClose = false;
     private boolean cleanedUp = false;
@@ -208,6 +208,10 @@ public class mainOpenMason {
 
         imGuiGlfw.init(window, true);
         imGuiGl3.init("#version 330 core");
+
+        // In imgui-java 1.87+, OpenGL device objects are lazily created on the first
+        // newFrame() call rather than during init(). Trigger creation before main loop.
+        imGuiGl3.newFrame();
     }
 
     /**
@@ -277,11 +281,17 @@ public class mainOpenMason {
             projectHubScreen.setTransitionCallbacks(this::transitionToMainInterface, this::transitionToMainInterface);
             projectHubScreen.setOnPreferencesClicked(mainInterface.getShowPreferencesCallback());
 
+            // Initialize keybind system BEFORE creating viewport and texture editor
+            initializeKeybindSystem();
+
             viewportInterface = new ViewportImGuiInterface(themeManager, new PreferencesManager());
             viewportInterface.setViewport3D(mainInterface.getViewport3D());
 
             textureCreatorInterface = TextureCreatorImGui.createDefault();
             textureEditorWindow = new TextureEditorWindow(textureCreatorInterface);
+
+            // Load custom keybinds AFTER both viewport and texture editor are initialized
+            loadCustomKeybinds();
 
             wireCallbacks();
             setWindowHandles();
@@ -290,6 +300,40 @@ public class mainOpenMason {
             logger.error("Failed to initialize UI interfaces", e);
             throw new RuntimeException("UI initialization failed", e);
         }
+    }
+
+    /**
+     * Initialize the keybind system.
+     * Called before creating viewport and texture editor interfaces.
+     */
+    private void initializeKeybindSystem() {
+        logger.info("Initializing keybind system...");
+
+        // Get the keybind registry singleton
+        com.openmason.main.systems.keybinds.KeybindRegistry registry =
+                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
+
+        // Note: Viewport actions will be registered when ViewportImGuiInterface is created
+        // Note: Texture editor actions will be registered when TextureCreatorImGui.createDefault() is called
+
+        logger.info("Keybind registry initialized successfully");
+    }
+
+    /**
+     * Load custom keybinds from preferences.
+     * Called after both viewport and texture editor are created and have registered their actions.
+     */
+    private void loadCustomKeybinds() {
+        logger.info("Loading custom keybinds from preferences...");
+
+        com.openmason.main.systems.menus.preferences.PreferencesManager preferencesManager =
+                new com.openmason.main.systems.menus.preferences.PreferencesManager();
+        com.openmason.main.systems.keybinds.KeybindRegistry registry =
+                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
+
+        preferencesManager.loadKeybindsIntoRegistry(registry);
+
+        logger.info("Custom keybinds loaded successfully");
     }
 
     private void wireCallbacks() {
@@ -322,7 +366,7 @@ public class mainOpenMason {
             renderComponent(projectHubScreen, deltaTime, "Project Hub");
         }
 
-        if (showModelViewer) {
+        if (showModelEditor) {
             renderComponent(mainInterface, deltaTime, "Main Interface");
             renderComponent(viewportInterface, deltaTime, "Viewport");
         }
@@ -369,7 +413,7 @@ public class mainOpenMason {
      */
     private void transitionToMainInterface() {
         showHomeScreen = false;
-        showModelViewer = true;
+        showModelEditor = true;
     }
 
     /**
@@ -377,7 +421,7 @@ public class mainOpenMason {
      */
     private void transitionToHomeScreen() {
         showHomeScreen = true;
-        showModelViewer = false;
+        showModelEditor = false;
         showTextureEditor = false;
         if (textureEditorWindow != null) {
             textureEditorWindow.hide();
@@ -424,8 +468,8 @@ public class mainOpenMason {
     }
 
     private void cleanupImGui() {
-        imGuiGl3.dispose();
-        imGuiGlfw.dispose();
+        imGuiGl3.shutdown();
+        imGuiGlfw.shutdown();
         ImGui.destroyContext();
     }
 

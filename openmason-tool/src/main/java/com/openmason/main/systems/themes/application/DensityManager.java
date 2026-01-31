@@ -69,7 +69,7 @@ public class DensityManager {
         densityLock.lock();
         try {
             if (currentDensity == density) {
-                logger.debug("Density already set to: {}", density.getDisplayName());
+                logger.trace("Density already set to: {}", density.getDisplayName());
                 return;
             }
             
@@ -125,7 +125,7 @@ public class DensityManager {
         }
         
         if (currentDensity == UIDensity.NORMAL) {
-            logger.debug("No density scaling needed for theme: {}", theme.getName());
+            logger.trace("No density scaling needed for theme: {}", theme.getName());
             return theme;
         }
         
@@ -152,7 +152,7 @@ public class DensityManager {
             scaleThemeStyleVarWithMin(scaledTheme, ImGuiStyleVar.PopupBorderSize, scale, 0.5f);
             scaleThemeStyleVarWithMin(scaledTheme, ImGuiStyleVar.FrameBorderSize, scale, 0.0f);
             
-            logger.debug("Applied density scaling {}x to theme: {}", scale, theme.getName());
+            logger.trace("Applied density scaling {}x to theme: {}", scale, theme.getName());
             return scaledTheme;
             
         } catch (Exception e) {

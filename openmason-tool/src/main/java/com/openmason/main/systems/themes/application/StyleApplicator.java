@@ -31,7 +31,7 @@ public class StyleApplicator {
         }
         
         try {
-            logger.debug("Applying theme: {} with {} colors and {} style vars", 
+            logger.trace("Applying theme: {} with {} colors and {} style vars",
                         theme.getName(), theme.getColorCount(), theme.getStyleVarCount());
             
             // Reset any previously applied styles
@@ -58,7 +58,7 @@ public class StyleApplicator {
     private static void applyColors(ThemeDefinition theme) {
         Map<Integer, ImVec4> colors = theme.getColors();
         if (colors.isEmpty()) {
-            logger.debug("No colors to apply for theme: {}", theme.getName());
+            logger.trace("No colors to apply for theme: {}", theme.getName());
             return;
         }
         
@@ -79,8 +79,8 @@ public class StyleApplicator {
                 logger.warn("Failed to apply color {}: {}", entry.getKey(), e.getMessage());
             }
         }
-        
-        logger.debug("Applied {} out of {} colors", appliedColors, colors.size());
+
+        logger.trace("Applied {} out of {} colors", appliedColors, colors.size());
     }
     
     /**
@@ -89,7 +89,7 @@ public class StyleApplicator {
     private static void applyStyleVariables(ThemeDefinition theme) {
         Map<Integer, Float> styleVars = theme.getStyleVars();
         if (styleVars.isEmpty()) {
-            logger.debug("No style variables to apply for theme: {}", theme.getName());
+            logger.trace("No style variables to apply for theme: {}", theme.getName());
             return;
         }
         
@@ -110,8 +110,8 @@ public class StyleApplicator {
                 logger.warn("Failed to apply style var {}: {}", entry.getKey(), e.getMessage());
             }
         }
-        
-        logger.debug("Applied {} out of {} style variables", appliedStyleVars, styleVars.size());
+
+        logger.trace("Applied {} out of {} style variables", appliedStyleVars, styleVars.size());
     }
     
     /**

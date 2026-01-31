@@ -3,6 +3,7 @@ package com.openmason.main.systems.services;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.factory.BlankModelFactory;
 import com.openmason.main.systems.rendering.model.io.omo.OMODeserializer;
+import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.io.omo.OMOSerializer;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
@@ -160,6 +161,7 @@ public class ModelOperationService {
 
     /**
      * Internal method to save model to a specific file path.
+     * Extracts custom mesh data from viewport (if any) for subdivision support.
      *
      * @param filePath the path to save to
      */
@@ -167,13 +169,31 @@ public class ModelOperationService {
         statusService.updateStatus("Saving model...");
 
         try {
-            boolean success = omoSerializer.save(currentEditableModel, filePath);
+            // ALWAYS extract mesh data to make .omo files self-contained
+            OMOFormat.MeshData meshData = null;
+            if (viewport != null) {
+                meshData = viewport.extractMeshData();
+                if (meshData != null) {
+                    logger.info("Saving mesh data: {} vertices, {} triangles, {} faces",
+                            meshData.getVertexCount(), meshData.getTriangleCount(),
+                            meshData.triangleToFaceId() != null ? "mapped" : "unmapped");
+                } else {
+                    logger.warn("Failed to extract mesh data - file will not be self-contained");
+                }
+            }
+
+            // Save with mesh data (required for self-contained .omo files)
+            boolean success = omoSerializer.save(currentEditableModel, filePath, meshData);
 
             if (success) {
                 modelState.setUnsavedChanges(false);
                 modelState.setCurrentModelPath(currentEditableModel.getName());
-                statusService.updateStatus("Model saved: " + filePath);
-                logger.info("Saved model to: {}", filePath);
+                String statusMsg = meshData != null
+                        ? "Model saved with mesh data: " + filePath
+                        : "Model saved (WARNING: no mesh data): " + filePath;
+                statusService.updateStatus(statusMsg);
+                logger.info("Saved model to: {} (hasMesh={}, selfContained={})",
+                        filePath, meshData != null, meshData != null);
             } else {
                 statusService.updateStatus("Failed to save model");
                 logger.error("Save operation returned false");
@@ -228,6 +248,7 @@ public class ModelOperationService {
 
     /**
      * Load a .OMO model from a specific file path.
+     * Loads custom mesh data (if any) for subdivision support.
      *
      * @param filePath the path to load from
      */
@@ -240,20 +261,38 @@ public class ModelOperationService {
             if (loadedModel != null) {
                 currentEditableModel = loadedModel;
 
+                // Get mesh data (loaded by deserializer from v2.0 files)
+                OMOFormat.MeshData meshData = omoDeserializer.getLastLoadedMeshData();
+
                 // Update state
                 modelState.setModelLoaded(true);
                 modelState.setCurrentModelPath(loadedModel.getName());
                 modelState.setUnsavedChanges(false);
                 modelState.setModelSource(ModelState.ModelSource.OMO_FILE); // Mark as .OMO file
 
-                // Update statistics (single cube for now)
-                modelState.updateStatistics(1, 24, 12);
-
                 // Load into viewport if available
                 if (viewport != null) {
-                    viewport.loadBlockModel(currentEditableModel);
-                    statusService.updateStatus("Loaded .OMO model: " + loadedModel.getName());
+                    if (meshData != null && meshData.hasCustomGeometry()) {
+                        // MODERN: Load self-contained .omo file with mesh data
+                        viewport.loadBlockModel(currentEditableModel);
+                        viewport.loadMeshData(meshData);
+                        logger.info("Loaded self-contained .omo with mesh data: {} vertices, {} triangles",
+                                meshData.getVertexCount(), meshData.getTriangleCount());
+
+                        // Update statistics with actual counts
+                        modelState.updateStatistics(1, meshData.getVertexCount(), meshData.getTriangleCount());
+                        statusService.updateStatus("Loaded .OMO model: " + loadedModel.getName());
+                    } else {
+                        // LEGACY: Old .omo file without mesh data - generate from dimensions
+                        logger.warn("Loading legacy .omo file without mesh data - using generation fallback");
+                        viewport.loadBlockModel(currentEditableModel);
+
+                        // Legacy cube: 1 part, 24 vertices, 12 triangles
+                        modelState.updateStatistics(1, 24, 12);
+                        statusService.updateStatus("Loaded legacy .OMO model (generated): " + loadedModel.getName());
+                    }
                 } else {
+                    modelState.updateStatistics(1, 24, 12);
                     statusService.updateStatus("Loaded .OMO model: " + loadedModel.getName() +
                                               " (viewport not available)");
                     logger.warn("Viewport not set - model loaded but not displayed");
@@ -264,7 +303,7 @@ public class ModelOperationService {
                     propertiesPanel.setEditableModel(currentEditableModel);
                 }
 
-                logger.info("Loaded .OMO model from: {}", filePath);
+                logger.info("Loaded .OMO model from: {} (hasMesh={})", filePath, meshData != null);
             } else {
                 statusService.updateStatus("Failed to load .OMO model");
                 logger.error("Deserializer returned null");

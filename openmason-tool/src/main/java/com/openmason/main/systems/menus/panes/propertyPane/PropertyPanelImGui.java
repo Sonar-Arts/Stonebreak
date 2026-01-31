@@ -92,10 +92,10 @@ public class PropertyPanelImGui {
         textureChooserSection.setOnTextureChanged(texturePath -> {
             logger.debug("Texture changed: {}", texturePath);
             // Texture change is handled by BlockModel.setTexturePath() (marks model dirty)
-            // Reload the BlockModel in the viewport to apply the new texture
+            // Update texture only (not geometry) to preserve any vertex/geometry modifications
             if (currentEditableModel != null && viewportConnector != null && viewportConnector.isConnected()) {
-                viewportConnector.reloadBlockModel(currentEditableModel);
-                logger.info("Reloaded BlockModel with new texture: {}", texturePath);
+                viewportConnector.updateBlockModelTexture(currentEditableModel);
+                logger.info("Updated BlockModel texture (geometry preserved): {}", texturePath);
             }
         });
 

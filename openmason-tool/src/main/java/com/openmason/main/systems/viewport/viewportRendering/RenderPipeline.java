@@ -1,18 +1,23 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
-import com.openmason.main.systems.rendering.model.blockmodel.BlockModelRenderer;
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
-import com.openmason.main.systems.viewport.gizmo.rendering.GizmoRenderer;
+import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
-import com.openmason.main.systems.viewport.shaders.ShaderManager;
-import com.openmason.main.systems.viewport.shaders.ShaderProgram;
-import com.openmason.main.systems.viewport.shaders.ShaderType;
+import com.openmason.main.systems.rendering.core.shaders.ShaderManager;
+import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
+import com.openmason.main.systems.rendering.core.shaders.ShaderType;
 import com.openmason.main.systems.viewport.state.RenderingMode;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
+import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
 import com.stonebreak.model.ModelDefinition;
+import org.joml.Matrix4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,6 +30,29 @@ import static org.lwjgl.opengl.GL11.*;
  * Orchestrates the main rendering pipeline for the viewport.
  * Coordinates all render passes: grid → content → gizmo.
  * Follows Single Responsibility Principle - only handles render coordination.
+ *
+ * <h2>Render Pipeline Architecture</h2>
+ * <p>The pipeline executes in ordered passes:
+ * <ol>
+ *   <li><b>Grid Pass</b> - Infinite grid background ({@link GridRenderer})</li>
+ *   <li><b>Content Pass</b> - Block/Item/Model rendering ({@link GenericModelRenderer})</li>
+ *   <li><b>Mesh Pass</b> - Vertices, edges, faces ({@link VertexRenderer}, {@link EdgeRenderer}, {@link FaceRenderer})</li>
+ *   <li><b>UI Pass</b> - Gizmo overlays ({@link GizmoRenderer})</li>
+ * </ol>
+ *
+ * <h2>Unified Rendering API Integration</h2>
+ * <p>This class will be enhanced to use the new unified rendering API:
+ * <ul>
+ *   <li>{@link com.openmason.main.systems.rendering.api.RenderingController} - Master coordinator</li>
+ *   <li>{@link com.openmason.main.systems.rendering.api.IRenderer} - Renderer interface</li>
+ *   <li>{@link com.openmason.main.systems.rendering.api.RenderPass} - Pass ordering</li>
+ * </ul>
+ *
+ * <p>New renderers should implement {@link com.openmason.main.systems.rendering.api.IRenderer}
+ * or extend {@link com.openmason.main.systems.rendering.api.BaseRenderer}.
+ *
+ * @see com.openmason.main.systems.rendering.api.RenderingController
+ * @see com.openmason.main.systems.rendering.model.GenericModelRenderer
  */
 public class RenderPipeline {
 
@@ -38,13 +66,14 @@ public class RenderPipeline {
     private final GridRenderer gridRenderer;
     private final VertexRenderer vertexRenderer;
     private final EdgeRenderer edgeRenderer;
+    private final FaceRenderer faceRenderer;
 
     // External renderers (blocks, items)
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
 
-    // BlockModel renderer (.OMO editable models)
-    private final BlockModelRenderer blockModelRenderer;
+    // Generic Model renderer (.OMO editable models)
+    private final GenericModelRenderer modelRenderer;
 
     // Gizmo renderer
     private final GizmoRenderer gizmoRenderer;
@@ -53,12 +82,21 @@ public class RenderPipeline {
     private long lastDiagnosticLogTime = 0;
     private static final long DIAGNOSTIC_LOG_INTERVAL_MS = 2000;
 
+    // Vertex data caching to prevent unnecessary updates
+    private boolean vertexDataNeedsUpdate = true;
+
+    // Edge data caching to prevent unnecessary updates (same pattern as vertices)
+    private boolean edgeDataNeedsUpdate = true;
+
+    // Face data caching to prevent unnecessary updates (same pattern as edges)
+    private boolean faceDataNeedsUpdate = true;
+
     /**
      * Create render pipeline with all required dependencies.
      */
     public RenderPipeline(RenderContext context, ViewportResourceManager resources, ShaderManager shaderManager,
                           BlockRenderer blockRenderer, ItemRenderer itemRenderer,
-                          BlockModelRenderer blockModelRenderer,
+                          GenericModelRenderer modelRenderer,
                           GizmoRenderer gizmoRenderer) {
         this.context = context;
         this.resources = resources;
@@ -66,10 +104,23 @@ public class RenderPipeline {
         this.gridRenderer = new GridRenderer();
         this.vertexRenderer = new VertexRenderer();
         this.edgeRenderer = new EdgeRenderer();
+        this.faceRenderer = new FaceRenderer();
         this.blockRenderer = blockRenderer;
         this.itemRenderer = itemRenderer;
-        this.blockModelRenderer = blockModelRenderer;
+        this.modelRenderer = modelRenderer;
         this.gizmoRenderer = gizmoRenderer;
+    }
+
+    /**
+     * Mark all mesh data (vertices, edges, faces) as needing update.
+     * Call this when mesh data has been modified externally (e.g., after loading from file).
+     * This forces the renderers to rebuild from the model on next render.
+     */
+    public void invalidateMeshData() {
+        vertexDataNeedsUpdate = true;
+        edgeDataNeedsUpdate = true;
+        faceDataNeedsUpdate = true;
+        logger.debug("Mesh data invalidated - will rebuild on next render");
     }
 
     /**
@@ -119,10 +170,11 @@ public class RenderPipeline {
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
 
-            // PASS 3: Render mesh (vertices + edges, debug overlay, Blender-style)
+            // PASS 3: Render mesh (vertices + edges + faces, debug overlay, Blender-style)
             if (viewportState.getShowVertices().get()) {
                 renderVertices(renderingState, transformState);
                 renderEdges(renderingState, transformState);
+                renderFaces(renderingState, transformState);  // Render face overlays LAST for proper blending
             }
 
             // PASS 4: Render gizmo (after content, always in fill mode)
@@ -239,7 +291,7 @@ public class RenderPipeline {
      */
     private void renderBlockModel(TransformState transformState) {
         try {
-            if (!blockModelRenderer.isInitialized()) {
+            if (!modelRenderer.isInitialized()) {
                 logger.warn("BlockModelRenderer not initialized");
                 return;
             }
@@ -264,7 +316,7 @@ public class RenderPipeline {
             matrixShader.setBool("uUseTexture", true);
 
             // Render (no state management needed - pipeline handles it)
-            blockModelRenderer.render();
+            modelRenderer.render(matrixShader, context, modelMatrix);
 
         } catch (Exception e) {
             logger.error("Error rendering BlockModel", e);
@@ -301,10 +353,48 @@ public class RenderPipeline {
                 case BLOCK_MODEL:
                     // Editable .OMO block model rendering (simple cube)
                     Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
-                    vertexRenderer.updateVertexData(cubeParts, transformState.getTransformMatrix());
+
+                    // Only extract vertex data ONCE (in MODEL SPACE, no transform)
+                    // Vertices will be transformed by model matrix in shader (like BlockModelRenderer)
+                    if (vertexDataNeedsUpdate) {
+                        Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
+                        vertexRenderer.updateVertexData(cubeParts, identityTransform);
+
+                        // CRITICAL FIX: Sync MeshManager with GenericModelRenderer's actual vertices
+                        // This ensures coordinate consistency between all systems (VertexRenderer,
+                        // EdgeRenderer, FaceRenderer, MeshManager, GenericModelRenderer) for subdivision
+                        // to work correctly at any level (n+1 subdivisions).
+                        if (modelRenderer != null && modelRenderer.isInitialized()) {
+                            float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
+                            if (modelMeshVertices != null) {
+                                var meshManager = MeshManager.getInstance();
+                                meshManager.setMeshVertices(modelMeshVertices);
+                                logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices", modelMeshVertices.length / 3);
+
+                                // Initialize edge and face renderers BEFORE connecting to model
+                                // This ensures rebuildFromModel() doesn't return early due to !initialized
+                                if (!edgeRenderer.isInitialized()) {
+                                    edgeRenderer.initialize();
+                                }
+                                if (!faceRenderer.isInitialized()) {
+                                    faceRenderer.initialize();
+                                }
+
+                                // Wire all renderers to GenericModelRenderer as MeshChangeListeners
+                                // This enables index-based updates (Observer pattern) instead of position matching
+                                // GenericModelRenderer now owns the unique-to-mesh mapping
+                                vertexRenderer.setModelRenderer(modelRenderer);
+                                edgeRenderer.setModelRenderer(modelRenderer);
+                                faceRenderer.setGenericModelRenderer(modelRenderer);
+                            }
+                        }
+
+                        vertexDataNeedsUpdate = false;
+                        logger.trace("Vertex data extracted in model space");
+                    }
 
                     ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);
-                    vertexRenderer.render(basicShaderBlockModel, context);
+                    vertexRenderer.render(basicShaderBlockModel, context, transformState.getTransformMatrix());
                     break;
 
                 case BLOCK:
@@ -338,12 +428,40 @@ public class RenderPipeline {
             // Render edges based on current rendering mode (mirrors vertex rendering)
             switch (renderingState.getMode()) {
                 case BLOCK_MODEL:
-                    // Editable .OMO block model rendering (simple cube)
-                    Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
-                    edgeRenderer.updateEdgeData(cubeParts, transformState.getTransformMatrix());
+                    // Editable .OMO block model rendering
 
-                    ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);
-                    edgeRenderer.render(basicShaderBlockModel, context);
+                    // Only extract edge data ONCE (in MODEL SPACE, no transform)
+                    // Edges will be transformed by model matrix in shader (like BlockModelRenderer)
+                    if (edgeDataNeedsUpdate) {
+                        // Check if edge renderer already has data from GenericModelRenderer
+                        // (set up by setModelRenderer -> rebuildFromModel)
+                        if (edgeRenderer.getModelRenderer() == null) {
+                            // Standard cube - use cube parts
+                            Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
+                            Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
+
+                            // Get unique vertex positions for edge deduplication
+                            float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
+
+                            // Extract unique edges (no duplicates) using vertex positions
+                            edgeRenderer.updateEdgeData();
+
+                            // Build edge-to-vertex mapping to prevent unification bug
+                            if (uniqueVertexPositions != null) {
+                                edgeRenderer.buildEdgeToVertexMapping(uniqueVertexPositions);
+                                logger.trace("Built edge-to-vertex mapping for unification prevention");
+                            }
+                            logger.trace("Edge data extracted from cube parts in model space");
+                        } else {
+                            // Already has data from GenericModelRenderer - don't overwrite
+                            logger.trace("Edge data already set from GenericModelRenderer");
+                        }
+
+                        edgeDataNeedsUpdate = false;
+                    }
+
+                    ShaderProgram basicShaderBlockModelEdge = shaderManager.getShaderProgram(ShaderType.BASIC);
+                    edgeRenderer.render(basicShaderBlockModelEdge, context, transformState.getTransformMatrix());
                     break;
 
                 case BLOCK:
@@ -363,6 +481,71 @@ public class RenderPipeline {
             logger.error("Error rendering edges", e);
         }
     }
+
+    /**
+     * Render faces pass (semi-transparent overlays for hover/selection).
+     * Renders LAST for proper blending on top of model.
+     */
+    private void renderFaces(RenderingState renderingState, TransformState transformState) {
+        try {
+            // Initialize face renderer if needed
+            if (!faceRenderer.isInitialized()) {
+                faceRenderer.initialize();
+            }
+
+            // Render faces based on current rendering mode (mirrors edge rendering)
+            switch (renderingState.getMode()) {
+                case BLOCK_MODEL:
+                    // Editable .OMO block model rendering
+
+                    // Only extract face data ONCE (in MODEL SPACE, no transform)
+                    // Faces will be transformed by model matrix in shader (like BlockModelRenderer)
+                    if (faceDataNeedsUpdate) {
+                        // Check if face renderer already has triangle data from GenericModelRenderer
+                        // (set up by setGenericModelRenderer -> rebuildFromGenericModelRenderer)
+                        if (!faceRenderer.isUsingTriangleMode()) {
+                            // Standard cube - use cube parts
+                            Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
+                            Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
+                            faceRenderer.updateFaceData(cubeParts, identityTransform);
+
+                            // Build face-to-vertex mapping to prevent unification bug
+                            float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
+                            if (uniqueVertexPositions != null) {
+                                faceRenderer.buildFaceToVertexMapping(uniqueVertexPositions);
+                                logger.trace("Built face-to-vertex mapping for unification prevention");
+                            }
+                            logger.trace("Face data extracted from cube parts in model space");
+                        } else {
+                            // Already in triangle mode from GenericModelRenderer - don't overwrite
+                            logger.trace("Face data already in triangle mode from GenericModelRenderer");
+                        }
+
+                        faceDataNeedsUpdate = false;
+                    }
+
+                    ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);
+                    faceRenderer.render(basicShaderBlockModel, context, transformState.getTransformMatrix());
+                    break;
+
+                case BLOCK:
+                    // Single block rendering
+                    // TODO: Implement face extraction for Block rendering
+                    logger.trace("BLOCK mode - faces not yet supported");
+                    break;
+
+                case ITEM:
+                    // Item rendering
+                    // TODO: Implement face extraction for Item rendering
+                    logger.trace("ITEM mode - faces not yet supported");
+                    break;
+            }
+
+        } catch (Exception e) {
+            logger.error("Error rendering faces", e);
+        }
+    }
+
 
     /**
      * Create a simple 1x1x1 cube model part.
@@ -411,6 +594,20 @@ public class RenderPipeline {
     }
 
     /**
+     * Gets the face renderer for external access (preferences, etc.).
+     */
+    public FaceRenderer getFaceRenderer() {
+        return faceRenderer;
+    }
+
+    /**
+     * Gets the block model renderer for external access (vertex editing, etc.).
+     */
+    public GenericModelRenderer getBlockModelRenderer() {
+        return modelRenderer;
+    }
+
+    /**
      * Clean up all render pipeline resources.
      */
     public void cleanup() {
@@ -422,6 +619,9 @@ public class RenderPipeline {
         }
         if (edgeRenderer.isInitialized()) {
             edgeRenderer.cleanup();
+        }
+        if (faceRenderer.isInitialized()) {
+            faceRenderer.cleanup();
         }
         logger.debug("RenderPipeline cleanup complete");
     }
