@@ -216,13 +216,13 @@ public class MeshManager {
 
 
     /**
-     * Build face-to-vertex mapping from unique vertex positions.
+     * Build face-to-vertex mapping from unique vertex positions (uniform topology).
      * Coordinates the mapping process using MeshFaceMappingBuilder.
-     * Supports arbitrary face topology determined by GMR's data model.
+     * All faces must have the same vertex count.
      *
      * @param facePositions Array of face positions
      * @param faceCount Number of faces
-     * @param verticesPerFace Number of vertices per face (topology from GMR)
+     * @param verticesPerFace Number of vertices per face (uniform for all faces)
      * @param uniqueVertexPositions Array of unique vertex positions
      * @param epsilon Distance threshold for vertex matching
      * @return Map from face index to array of vertex indices (array length = verticesPerFace)
@@ -232,6 +232,26 @@ public class MeshManager {
                                                        float[] uniqueVertexPositions, float epsilon) {
         MeshFaceMappingBuilder builder = new MeshFaceMappingBuilder(epsilon);
         return builder.buildMapping(facePositions, faceCount, verticesPerFace, uniqueVertexPositions);
+    }
+
+    /**
+     * Build face-to-vertex mapping from unique vertex positions (mixed topology).
+     * Coordinates the mapping process using MeshFaceMappingBuilder.
+     * Each face can have a different vertex count.
+     *
+     * @param facePositions Packed face positions array (variable vertices per face)
+     * @param faceCount Number of faces
+     * @param verticesPerFace Per-face vertex counts from GMR topology
+     * @param faceOffsets Per-face float offsets into facePositions
+     * @param uniqueVertexPositions Array of unique vertex positions
+     * @param epsilon Distance threshold for vertex matching
+     * @return Map from face index to array of vertex indices
+     */
+    public Map<Integer, int[]> buildFaceToVertexMapping(float[] facePositions, int faceCount,
+                                                       int[] verticesPerFace, int[] faceOffsets,
+                                                       float[] uniqueVertexPositions, float epsilon) {
+        MeshFaceMappingBuilder builder = new MeshFaceMappingBuilder(epsilon);
+        return builder.buildMapping(facePositions, faceCount, verticesPerFace, faceOffsets, uniqueVertexPositions);
     }
 
     /**

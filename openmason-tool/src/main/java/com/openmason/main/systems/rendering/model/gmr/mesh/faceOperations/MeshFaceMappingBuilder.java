@@ -34,13 +34,13 @@ public class MeshFaceMappingBuilder {
     }
 
     /**
-     * Build face-to-vertex mapping from unique vertex positions.
+     * Build face-to-vertex mapping from unique vertex positions (uniform topology).
      * Maps each face index to array of vertex indices [v0, v1, v2, ..., vN].
-     * Supports arbitrary face topology (triangles, quads, n-gons, or mixed).
+     * All faces must have the same vertex count.
      *
      * @param facePositions Array of face positions [v0x,v0y,v0z, v1x,v1y,v1z, ...]
      * @param faceCount Number of faces
-     * @param verticesPerFace Number of vertices per face (topology determined by GMR)
+     * @param verticesPerFace Number of vertices per face (uniform for all faces)
      * @param uniqueVertexPositions Array of unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
      * @return Map from face index to array of vertex indices (array length = verticesPerFace)
      */
@@ -57,9 +57,11 @@ public class MeshFaceMappingBuilder {
 
         // For each face, find which unique vertices it connects
         for (int faceIdx = 0; faceIdx < faceCount; faceIdx++) {
+            int facePosIdx = faceIdx * verticesPerFace * COMPONENTS_PER_POSITION;
             int[] vertexIndices = findVertexIndicesForFace(
                 faceIdx,
                 facePositions,
+                facePosIdx,
                 verticesPerFace,
                 uniqueVertexPositions,
                 uniqueVertexCount
@@ -69,6 +71,54 @@ public class MeshFaceMappingBuilder {
 
         logger.debug("Built face-to-vertex mapping for {} faces ({} vertices/face)",
                 faceCount, verticesPerFace);
+        return mapping;
+    }
+
+    /**
+     * Build face-to-vertex mapping from unique vertex positions (mixed topology).
+     * Maps each face index to array of vertex indices. Each face can have a
+     * different vertex count, with offsets providing the position into the
+     * packed positions array.
+     *
+     * @param facePositions Packed face positions array (variable vertices per face)
+     * @param faceCount Number of faces
+     * @param verticesPerFace Per-face vertex counts from GMR topology
+     * @param faceOffsets Per-face float offsets into facePositions
+     * @param uniqueVertexPositions Array of unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
+     * @return Map from face index to array of vertex indices
+     */
+    public Map<Integer, int[]> buildMapping(float[] facePositions, int faceCount,
+                                           int[] verticesPerFace, int[] faceOffsets,
+                                           float[] uniqueVertexPositions) {
+        if (facePositions == null || faceCount == 0 || verticesPerFace == null || faceOffsets == null) {
+            logger.warn("Cannot build face mapping: invalid topology data");
+            return new HashMap<>();
+        }
+
+        if (uniqueVertexPositions == null || uniqueVertexPositions.length < COMPONENTS_PER_POSITION) {
+            logger.warn("Cannot build face mapping: invalid unique vertex data");
+            return new HashMap<>();
+        }
+
+        int uniqueVertexCount = uniqueVertexPositions.length / COMPONENTS_PER_POSITION;
+        Map<Integer, int[]> mapping = new HashMap<>();
+
+        for (int faceIdx = 0; faceIdx < faceCount; faceIdx++) {
+            int vertCount = verticesPerFace[faceIdx];
+            int facePosIdx = faceOffsets[faceIdx];
+
+            int[] vertexIndices = findVertexIndicesForFace(
+                faceIdx,
+                facePositions,
+                facePosIdx,
+                vertCount,
+                uniqueVertexPositions,
+                uniqueVertexCount
+            );
+            mapping.put(faceIdx, vertexIndices);
+        }
+
+        logger.debug("Built face-to-vertex mapping for {} faces (mixed topology)", faceCount);
         return mapping;
     }
 
@@ -100,20 +150,18 @@ public class MeshFaceMappingBuilder {
      * Find vertex indices for a specific face by matching positions.
      * Face topology is determined by GMR's data model - supports any vertex count per face.
      *
-     * @param faceIdx Face index
+     * @param faceIdx Face index (for logging)
      * @param facePositions Array of face positions
-     * @param verticesPerFace Number of vertices per face (topology from GMR)
+     * @param facePosIdx Starting float offset for this face in facePositions
+     * @param verticesPerFace Number of vertices for this face
      * @param uniqueVertexPositions Array of unique vertex positions
      * @param uniqueVertexCount Number of unique vertices
      * @return Array of vertex indices for the face (length = verticesPerFace)
      */
     private int[] findVertexIndicesForFace(int faceIdx, float[] facePositions,
-                                          int verticesPerFace,
+                                          int facePosIdx, int verticesPerFace,
                                           float[] uniqueVertexPositions,
                                           int uniqueVertexCount) {
-        // Calculate face position index dynamically based on topology
-        int floatsPerFacePosition = verticesPerFace * COMPONENTS_PER_POSITION;
-        int facePosIdx = faceIdx * floatsPerFacePosition;
         int[] vertexIndices = new int[verticesPerFace];
 
         MeshFaceVertexMatcher matcher = new MeshFaceVertexMatcher(vertexMatchEpsilon);

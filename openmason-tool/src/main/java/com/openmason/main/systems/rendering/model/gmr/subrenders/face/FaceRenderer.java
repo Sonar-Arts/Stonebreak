@@ -271,16 +271,17 @@ public class FaceRenderer implements MeshChangeListener {
 
     /**
      * Build face-to-vertex mapping from unique vertex positions.
-     * FIX: Creates mapping needed for index-based updates to prevent vertex unification.
+     * Creates mapping needed for index-based updates to prevent vertex unification.
      * Matches face corners to unique vertices using epsilon comparison.
      * Delegates to MeshManager for clean separation of concerns.
+     *
+     * <p>Uses topology-aware positions and per-face offsets when available (from
+     * {@link #updateFaceDataFromGMR()}), supporting mixed topology (triangles, quads,
+     * n-gons). Falls back to legacy quad format only when topology data is absent.
      *
      * <p><b>Note:</b> In triangle mode, this method preserves the existing mapping
      * from quad mode so that original corner vertices can still be accessed for
      * wireframe updates during face translation.
-     *
-     * <p><b>Note:</b> This mapping operates on legacy quad facePositions (12 floats/face),
-     * so always uses LEGACY_CORNERS_PER_FACE regardless of topology-aware data.
      *
      * @param uniqueVertexPositions Array of unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
      */
@@ -289,10 +290,10 @@ public class FaceRenderer implements MeshChangeListener {
         // to original VertexRenderer indices, which is needed for wireframe updates
         if (usingTriangleMode) {
             logger.debug("Preserving existing face-to-vertex mapping in triangle mode");
-            return; // Don't rebuild or clear - keep the mapping from quad mode
+            return;
         }
 
-        if (facePositions == null || faceCount == 0) {
+        if (faceCount == 0) {
             logger.warn("Cannot build face mapping: no face data");
             faceToVertexMapping.clear();
             return;
@@ -304,17 +305,30 @@ public class FaceRenderer implements MeshChangeListener {
             return;
         }
 
-        // facePositions is always legacy quad format (12 floats/face), so always use quad corners
-        int cornersPerFace = LEGACY_CORNERS_PER_FACE;
-
-        // Delegate to MeshManager (Single Responsibility Principle)
-        faceToVertexMapping = MeshManager.getInstance().buildFaceToVertexMapping(
-            facePositions,
-            faceCount,
-            cornersPerFace,
-            uniqueVertexPositions,
-            VERTEX_MATCH_EPSILON
-        );
+        // Prefer topology-aware data when available
+        if (topologyFacePositions != null && storedVerticesPerFace != null && storedFaceOffsets != null) {
+            faceToVertexMapping = MeshManager.getInstance().buildFaceToVertexMapping(
+                topologyFacePositions,
+                faceCount,
+                storedVerticesPerFace,
+                storedFaceOffsets,
+                uniqueVertexPositions,
+                VERTEX_MATCH_EPSILON
+            );
+        } else if (facePositions != null) {
+            // Legacy fallback: quad format (12 floats/face)
+            faceToVertexMapping = MeshManager.getInstance().buildFaceToVertexMapping(
+                facePositions,
+                faceCount,
+                LEGACY_CORNERS_PER_FACE,
+                uniqueVertexPositions,
+                VERTEX_MATCH_EPSILON
+            );
+        } else {
+            logger.warn("Cannot build face mapping: no face position data available");
+            faceToVertexMapping.clear();
+            return;
+        }
 
         logger.debug("Built face-to-vertex mapping for {} faces", faceCount);
     }
