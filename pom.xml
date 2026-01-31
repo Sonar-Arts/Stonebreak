@@ -19,7 +19,7 @@
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <lwjgl.version>3.4.0</lwjgl.version>
-        <joml.version>1.10.5</joml.version>
+        <joml.version>1.10.8</joml.version>
         <lwjgl.natives>natives-windows</lwjgl.natives>
         <jackson.version>2.21.0</jackson.version>
         <jackson.version.annotations>2.21</jackson.version.annotations>
