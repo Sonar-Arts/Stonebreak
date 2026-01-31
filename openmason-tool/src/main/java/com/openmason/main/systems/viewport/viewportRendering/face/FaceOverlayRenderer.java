@@ -2,11 +2,17 @@ package com.openmason.main.systems.viewport.viewportRendering.face;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
-import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.opengl.GL20.*;
@@ -52,7 +58,6 @@ import static org.lwjgl.opengl.GL30.*;
  * </ul>
  *
  * @see FaceRenderer
- * @see MeshManager
  */
 public class FaceOverlayRenderer {
 
@@ -74,14 +79,11 @@ public class FaceOverlayRenderer {
     private final Vector4f hoverPrimitiveColor = new Vector4f(1.0f, 0.6f, 0.0f, 0.3f); // Orange with 30% alpha
     private final Vector4f selectedPrimitiveColor = new Vector4f(1.0f, 1.0f, 1.0f, 0.3f); // White with 30% alpha
 
-    // Reference to GenericModelRenderer for mesh vertex position access after subdivision
-    private GenericModelRenderer genericModelRenderer = null;
-
     // Triangle mode flag (true after subdivision, false for pre-tessellated polygon mode)
     private boolean triangleMode = false;
 
     // Maps original primitive ID to list of triangle indices (used in triangle mode)
-    private java.util.Map<Integer, java.util.List<Integer>> originalFaceToTriangles = new java.util.HashMap<>();
+    private Map<Integer, List<Integer>> originalFaceToTriangles = new HashMap<>();
 
     // Shape-blind polygon mode VBO layout (computed from topology, not hardcoded)
     // faceVBOVertexOffsets[i] = first VBO vertex index for face i
@@ -104,7 +106,7 @@ public class FaceOverlayRenderer {
      */
     public void render(int vao, int vbo, ShaderProgram shader, RenderContext context,
                       Matrix4f modelMatrix, int hoveredFaceIndex, int selectedFaceIndex, int faceCount) {
-        java.util.Set<Integer> selectedSet = new java.util.HashSet<>();
+        Set<Integer> selectedSet = new HashSet<>();
         if (selectedFaceIndex >= 0) {
             selectedSet.add(selectedFaceIndex);
         }
@@ -125,7 +127,7 @@ public class FaceOverlayRenderer {
      * @param faceCount Total number of primitives
      */
     public void render(int vao, int vbo, ShaderProgram shader, RenderContext context,
-                      Matrix4f modelMatrix, int hoveredFaceIndex, java.util.Set<Integer> selectedFaceIndices, int faceCount) {
+                      Matrix4f modelMatrix, int hoveredFaceIndex, Set<Integer> selectedFaceIndices, int faceCount) {
         if (!shouldRender(hoveredFaceIndex, selectedFaceIndices, faceCount)) {
             return;
         }
@@ -155,7 +157,7 @@ public class FaceOverlayRenderer {
      * @param faceCount Total number of primitives
      * @return true if should render, false otherwise
      */
-    private boolean shouldRender(int hoveredFaceIndex, java.util.Set<Integer> selectedFaceIndices, int faceCount) {
+    private boolean shouldRender(int hoveredFaceIndex, Set<Integer> selectedFaceIndices, int faceCount) {
         if (faceCount == 0) {
             return false;
         }
@@ -221,7 +223,7 @@ public class FaceOverlayRenderer {
      * @param hoveredFaceIndex The hovered primitive index
      * @param selectedFaceIndices Set of selected primitive indices
      */
-    private void renderVisibleFaces(int vbo, int hoveredFaceIndex, java.util.Set<Integer> selectedFaceIndices) {
+    private void renderVisibleFaces(int vbo, int hoveredFaceIndex, Set<Integer> selectedFaceIndices) {
         // Render hovered primitive first (on top)
         if (hoveredFaceIndex >= 0) {
             renderFaceWithColor(vbo, hoveredFaceIndex, hoverPrimitiveColor);
@@ -256,7 +258,7 @@ public class FaceOverlayRenderer {
 
         if (triangleMode && originalFaceToTriangles.containsKey(faceIndex)) {
             // Grouped triangle mode: render ALL triangles belonging to this original primitive
-            java.util.List<Integer> triangles = originalFaceToTriangles.get(faceIndex);
+            List<Integer> triangles = originalFaceToTriangles.get(faceIndex);
 
             // Update colors for all triangles of this primitive
             for (int triIndex : triangles) {
@@ -360,19 +362,9 @@ public class FaceOverlayRenderer {
      *
      * @param mapping Map from original primitive ID to list of triangle indices
      */
-    public void setOriginalFaceToTriangles(java.util.Map<Integer, java.util.List<Integer>> mapping) {
-        this.originalFaceToTriangles = mapping != null ? mapping : new java.util.HashMap<>();
+    public void setOriginalFaceToTriangles(Map<Integer, List<Integer>> mapping) {
+        this.originalFaceToTriangles = mapping != null ? mapping : new HashMap<>();
         logger.debug("Original primitive to triangles mapping set: {} primitives", originalFaceToTriangles.size());
-    }
-
-    /**
-     * Set the total triangle count (used in triangle mode).
-     *
-     * @param count Total number of triangles
-     */
-    public void setTriangleCount(int count) {
-        // Total triangle count (used in triangle mode)
-        logger.debug("Triangle count set to: {}", count);
     }
 
     /**
@@ -402,46 +394,9 @@ public class FaceOverlayRenderer {
     }
 
     /**
-         * Holds previous OpenGL render state for restoration.
-         */
-        private record RenderState(int depthFunc, boolean depthMask, boolean cullFace) {
-    }
-
-    // ========================================
-    // Methods for synchronizing with GenericModelRenderer (used after subdivision)
-    // ========================================
-
-    /**
-     * Set the GenericModelRenderer reference for mesh vertex position access.
-     * This is used after subdivision to get updated vertex positions.
-     *
-     * @param renderer The GenericModelRenderer instance
+     * Holds previous OpenGL render state for restoration.
      */
-    public void setGenericModelRenderer(GenericModelRenderer renderer) {
-        this.genericModelRenderer = renderer;
-        logger.debug("GenericModelRenderer reference set for FaceOverlayRenderer");
+    private record RenderState(int depthFunc, boolean depthMask, boolean cullFace) {
     }
 
-    /**
-     * Synchronize cached mesh vertex positions from GenericModelRenderer.
-     * Call this after subdivision operations to ensure primitive overlay vertex
-     * attachments use the correct (updated) mesh vertex positions.
-     *
-     * <p>This mirrors the approach used in EdgeRenderer after subdivision,
-     * where mesh positions are synchronized to prevent coordinate drift.
-     */
-    public void syncMeshVertexPositions() {
-        if (genericModelRenderer == null) {
-            logger.warn("Cannot sync mesh positions: GenericModelRenderer reference not set");
-            return;
-        }
-
-        // Cached mesh vertex positions from GenericModelRenderer (updated after subdivision)
-        float[] cachedMeshVertexPositions = genericModelRenderer.getAllMeshVertexPositions();
-
-        if (cachedMeshVertexPositions != null) {
-            logger.debug("Synced {} mesh vertex positions from GenericModelRenderer",
-                cachedMeshVertexPositions.length / 3);
-        }
-    }
 }

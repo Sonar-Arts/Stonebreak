@@ -504,10 +504,8 @@ public class RenderPipeline {
                         // Check if face renderer already has triangle data from GenericModelRenderer
                         // (set up by setGenericModelRenderer -> rebuildFromGenericModelRenderer)
                         if (!faceRenderer.isUsingTriangleMode()) {
-                            // Standard cube - use cube parts
-                            Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
-                            Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
-                            faceRenderer.updateFaceData(cubeParts, identityTransform);
+                            // Standard mode - extract face data from GMR (single source of truth)
+                            faceRenderer.updateFaceDataFromGMR();
 
                             // Build face-to-vertex mapping to prevent unification bug
                             float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
@@ -515,7 +513,7 @@ public class RenderPipeline {
                                 faceRenderer.buildFaceToVertexMapping(uniqueVertexPositions);
                                 logger.trace("Built face-to-vertex mapping for unification prevention");
                             }
-                            logger.trace("Face data extracted from cube parts in model space");
+                            logger.trace("Face data extracted from GMR in model space");
                         } else {
                             // Already in triangle mode from GenericModelRenderer - don't overwrite
                             logger.trace("Face data already in triangle mode from GenericModelRenderer");
