@@ -210,13 +210,22 @@ public abstract class BaseRenderer implements IRenderer {
      * @param indices New index data
      */
     protected void updateEBO(int[] indices) {
-        if (!initialized || ebo == 0) {
+        if (!initialized) {
             return;
         }
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices, GL_DYNAMIC_DRAW);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        // Create EBO on demand if it doesn't exist yet (e.g., model loaded after init)
+        if (ebo == 0) {
+            glBindVertexArray(vao);
+            ebo = glGenBuffers();
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices, GL_DYNAMIC_DRAW);
+            glBindVertexArray(0);
+        } else {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices, GL_DYNAMIC_DRAW);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        }
         indexCount = indices.length;
     }
 

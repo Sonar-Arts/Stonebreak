@@ -67,6 +67,9 @@ public class GenericModelRenderer extends BaseRenderer {
     private int textureId = 0;
     private boolean useTexture = false;
 
+    // Cached identity matrix to avoid per-frame allocation in setUniforms
+    private static final org.joml.Matrix4f IDENTITY_MATRIX = new org.joml.Matrix4f();
+
     /**
      * Create a GenericModelRenderer with default subsystems.
      */
@@ -132,22 +135,15 @@ public class GenericModelRenderer extends BaseRenderer {
 
     /**
      * Set UV mapping mode and update texture coordinates for existing geometry.
+     * This preserves geometry modifications (vertex positions) while updating texture coordinates.
+     * Works best with unsubdivided 24-vertex cubes; subdivided meshes use approximation.
+     *
      * Note: This only works if geometry is already loaded. For new models, provide
      * mesh data with the correct UV mode via loadMeshData().
-     */
-    public void setUVMode(UVMode uvMode) {
-        // Delegate to updateUVModeOnly which handles the full logic
-        updateUVModeOnly(uvMode);
-    }
-
-    /**
-     * Update UV mode without rebuilding vertex positions.
-     * This preserves geometry modifications while updating texture coordinates.
-     * Works best with unsubdivided 24-vertex cubes; subdivided meshes use approximation.
      *
      * @param uvMode The new UV mode
      */
-    public void updateUVModeOnly(UVMode uvMode) {
+    public void setUVMode(UVMode uvMode) {
         if (uvMode == null || uvMode == stateManager.getUVMode()) {
             return;
         }
@@ -188,61 +184,6 @@ public class GenericModelRenderer extends BaseRenderer {
      */
     public UVMode getUVMode() {
         return stateManager.getUVMode();
-    }
-
-    /**
-     * Rebuild geometry from current parts.
-     */
-    private void rebuildGeometry() {
-        if (!stateManager.hasParts()) {
-            vertexManager.setData(null, null, null);
-            faceMapper.clear();
-            uniqueMapper.clear();
-            vertexCount = 0;
-            indexCount = 0;
-            return;
-        }
-
-        // Aggregate all parts via state manager
-        IModelStateManager.AggregatedGeometry geometry = stateManager.aggregateParts();
-
-        // Update subsystems
-        vertexManager.setData(geometry.vertices(), geometry.texCoords(), geometry.indices());
-        vertexCount = geometry.vertexCount();
-        indexCount = geometry.indexCount();
-
-        // Initialize face mapping using topology metadata from parts
-        if (geometry.indices() != null) {
-            int triangleCount = geometry.indices().length / 3;
-
-            if (geometry.trianglesPerFace() != null && geometry.trianglesPerFace() > 0) {
-                // Use explicit topology from parts (e.g., quads = 2 tris/face, triangles = 1 tri/face)
-                faceMapper.initializeWithTopology(triangleCount, geometry.trianglesPerFace());
-            } else {
-                // Default to 1:1 mapping for arbitrary geometry
-                faceMapper.initializeStandardMapping(triangleCount);
-            }
-        } else {
-            faceMapper.clear();
-        }
-
-        // Update GPU buffers if initialized
-        if (initialized) {
-            float[] interleavedData = geometryBuilder.buildInterleavedData(geometry.vertices(), geometry.texCoords());
-            updateVBO(interleavedData);
-            if (geometry.indices() != null) {
-                updateEBO(geometry.indices());
-            }
-        }
-
-        // Build unique vertex mapping
-        uniqueMapper.buildMapping(geometry.vertices());
-
-        // Notify listeners
-        changeNotifier.notifyGeometryRebuilt();
-
-        logger.debug("Rebuilt geometry: {} vertices, {} indices, {} unique positions",
-            vertexCount, indexCount, uniqueMapper.getUniqueVertexCount());
     }
 
     // =========================================================================
@@ -339,6 +280,9 @@ public class GenericModelRenderer extends BaseRenderer {
             float[] interleavedData = geometryBuilder.buildInterleavedData(
                 vertexManager.getVertices(), vertexManager.getTexCoords());
             updateVBO(interleavedData);
+
+            // Rebuild unique vertex mapping to stay in sync
+            uniqueMapper.buildMapping(vertexManager.getVertices());
 
             logger.trace("Updated {} of {} vertex positions", updateLength / 3, currentVertices.length / 3);
         } catch (Exception e) {
@@ -480,10 +424,10 @@ public class GenericModelRenderer extends BaseRenderer {
 
         // Log first 8 mesh vertex positions for debugging
         float[] vertices = vertexManager.getVertices();
-        if (vertices != null && vertices.length >= 24) {
-            logger.info("GenericModelRenderer first 8 vertices:");
+        if (vertices != null && vertices.length >= 24 && logger.isTraceEnabled()) {
+            logger.trace("GenericModelRenderer first 8 vertices:");
             for (int i = 0; i < 8 && i * 3 + 2 < vertices.length; i++) {
-                logger.info("  v{}: ({}, {}, {})", i, vertices[i * 3], vertices[i * 3 + 1], vertices[i * 3 + 2]);
+                logger.trace("  v{}: ({}, {}, {})", i, vertices[i * 3], vertices[i * 3 + 1], vertices[i * 3 + 2]);
             }
         }
 
@@ -590,10 +534,11 @@ public class GenericModelRenderer extends BaseRenderer {
 
         // Update GPU buffers if initialized
         if (initialized) {
-            float[] interleavedData = geometryBuilder.buildInterleavedData(vertices, texCoords);
+            float[] interleavedData = geometryBuilder.buildInterleavedData(
+                vertexManager.getVertices(), vertexManager.getTexCoords());
             updateVBO(interleavedData);
-            if (indices != null) {
-                updateEBO(indices);
+            if (vertexManager.getIndices() != null) {
+                updateEBO(vertexManager.getIndices());
             }
         }
 
@@ -622,7 +567,8 @@ public class GenericModelRenderer extends BaseRenderer {
      * @return copy of indices array, or null if none
      */
     public int[] getIndices() {
-        return vertexManager.getIndices() != null ? vertexManager.getIndices().clone() : null;
+        int[] indices = vertexManager.getIndices();
+        return indices != null ? indices.clone() : null;
     }
 
     /**
@@ -699,7 +645,7 @@ public class GenericModelRenderer extends BaseRenderer {
         // The MATRIX shader multiplies: gl_Position = uMVPMatrix * uModelMatrix * pos
         // To avoid double-transformation, pass identity for uModelMatrix.
         // This ensures the model transforms at the same rate as the wireframe overlay.
-        shader.setMat4("uModelMatrix", new org.joml.Matrix4f()); // Identity matrix
+        shader.setMat4("uModelMatrix", IDENTITY_MATRIX);
     }
 
     // =========================================================================
@@ -753,12 +699,12 @@ public class GenericModelRenderer extends BaseRenderer {
 
     /**
      * Get edge count from current mesh data.
-     * Each face contributes 4 edges.
+     * Assumes quad topology (4 edges per face), consistent with GMREdgeExtractor.
      *
      * @return Number of edges in the mesh
      */
     public int getEdgeCount() {
-        return faceMapper.getOriginalFaceCount() * 4;
+        return faceMapper.getOriginalFaceCount() * GMREdgeExtractor.EDGES_PER_FACE;
     }
 
     /**

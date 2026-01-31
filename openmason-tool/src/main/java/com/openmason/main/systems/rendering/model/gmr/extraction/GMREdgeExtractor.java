@@ -31,7 +31,7 @@ public class GMREdgeExtractor {
 
     private static final Logger logger = LoggerFactory.getLogger(GMREdgeExtractor.class);
     private static final int FLOATS_PER_EDGE = 6; // 2 endpoints × 3 coords
-    private static final int EDGES_PER_FACE = 4; // Quad has 4 edges
+    public static final int EDGES_PER_FACE = 4; // Quad has 4 edges
 
     /**
      * Extract edge positions from GMR mesh data.

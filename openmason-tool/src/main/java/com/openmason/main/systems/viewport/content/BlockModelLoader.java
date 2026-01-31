@@ -162,7 +162,7 @@ public class BlockModelLoader {
             if (result.isSuccess()) {
                 // Auto-detect UV mode and update UVs without rebuilding vertex positions
                 UVMode detectedMode = UVMode.detectFromDimensions(result.getWidth(), result.getHeight());
-                modelRenderer.updateUVModeOnly(detectedMode);
+                modelRenderer.setUVMode(detectedMode);
                 logger.info("Updated UV mode to {} for texture {}x{} (geometry preserved)",
                     detectedMode, result.getWidth(), result.getHeight());
 
