@@ -38,22 +38,19 @@ module com.openmason {
     requires stonebreak.game;
     
     // Open packages for Jackson JSON processing
-    opens com.openmason.model to com.fasterxml.jackson.databind;
-    opens com.openmason.texture to com.fasterxml.jackson.databind;
-    opens com.openmason.ui.themes.core to com.fasterxml.jackson.databind;
-    opens com.openmason.ui.themes.registry to com.fasterxml.jackson.databind;
-    opens com.openmason.ui.themes.persistence to com.fasterxml.jackson.databind;
-    opens com.openmason.ui.components.textureCreator.io to com.fasterxml.jackson.databind;
+    opens com.openmason.main.systems.themes.core to com.fasterxml.jackson.databind;
+    opens com.openmason.main.systems.themes.registry to com.fasterxml.jackson.databind;
+    opens com.openmason.main.systems.themes.persistence to com.fasterxml.jackson.databind;
+    opens com.openmason.main.systems.menus.textureCreator.io to com.fasterxml.jackson.databind;
+    opens com.openmason.main.systems.rendering.model.io.omo to com.fasterxml.jackson.databind;
 
     // Export packages for potential future extensions
-    exports com.openmason.app;
-    exports com.openmason.ui;
-    exports com.openmason.ui.themes.core;
-    exports com.openmason.ui.themes.registry;
-    exports com.openmason.ui.themes.persistence;
-    exports com.openmason.ui.themes.application;
-    exports com.openmason.ui.themes.preview;
-    exports com.openmason.ui.themes.utils;
-    exports com.openmason.model;
-    exports com.openmason.texture;
+    exports com.openmason.main;
+    exports com.openmason.main.systems;
+    exports com.openmason.main.systems.themes.core;
+    exports com.openmason.main.systems.themes.registry;
+    exports com.openmason.main.systems.themes.persistence;
+    exports com.openmason.main.systems.themes.application;
+    exports com.openmason.main.systems.themes.utils;
+    exports com.openmason.main.systems.viewport;
 }

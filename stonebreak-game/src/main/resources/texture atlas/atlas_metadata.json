@@ -1,7 +1,7 @@
 {
   "atlasVersion" : "1.0",
   "schemaVersion" : "1.0.0",
-  "generatedAt" : "2025-10-01T16:54:18.108274200Z",
+  "generatedAt" : "2025-11-03T17:12:48.017633700Z",
   "textureSize" : 16,
   "atlasSize" : {
     "width" : 256,
@@ -25,7 +25,7 @@
       "height" : 16
     },
     "magma_bottom" : {
-      "x" : 16,
+      "x" : 112,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -39,7 +39,7 @@
       "height" : 16
     },
     "wood_planks_custom_north" : {
-      "x" : 144,
+      "x" : 48,
       "width" : 16,
       "y" : 96,
       "type" : "block_cube_cross",
@@ -151,7 +151,7 @@
       "height" : 16
     },
     "dirt_block_east" : {
-      "x" : 192,
+      "x" : 96,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -193,16 +193,16 @@
       "height" : 16
     },
     "iron_ore_south" : {
-      "x" : 144,
+      "x" : 48,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "red_sand_south" : {
-      "x" : 192,
+      "x" : 32,
       "width" : 16,
-      "y" : 160,
+      "y" : 176,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -242,14 +242,14 @@
       "height" : 16
     },
     "red_sand_west" : {
-      "x" : 224,
+      "x" : 64,
       "width" : 16,
-      "y" : 160,
+      "y" : 176,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "wood_planks_custom_bottom" : {
-      "x" : 128,
+      "x" : 32,
       "width" : 16,
       "y" : 96,
       "type" : "block_cube_cross",
@@ -284,7 +284,7 @@
       "height" : 16
     },
     "grass_block_bottom" : {
-      "x" : 48,
+      "x" : 144,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -305,23 +305,23 @@
       "height" : 16
     },
     "elm_wood_planks_custom_south" : {
-      "x" : 64,
+      "x" : 160,
       "width" : 16,
       "y" : 96,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "sandstone_north" : {
-      "x" : 16,
+      "x" : 176,
       "width" : 16,
-      "y" : 176,
+      "y" : 160,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "sandstone_south" : {
-      "x" : 32,
+      "x" : 192,
       "width" : 16,
-      "y" : 176,
+      "y" : 160,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -333,7 +333,7 @@
       "height" : 16
     },
     "sandstone_top" : {
-      "x" : 240,
+      "x" : 144,
       "width" : 16,
       "y" : 160,
       "type" : "block_cube_cross",
@@ -361,9 +361,9 @@
       "height" : 16
     },
     "sandstone_east" : {
-      "x" : 48,
+      "x" : 208,
       "width" : 16,
-      "y" : 176,
+      "y" : 160,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -403,9 +403,9 @@
       "height" : 16
     },
     "sandstone_bottom" : {
-      "x" : 0,
+      "x" : 160,
       "width" : 16,
-      "y" : 176,
+      "y" : 160,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -536,14 +536,14 @@
       "height" : 16
     },
     "red_sand_bottom" : {
-      "x" : 160,
+      "x" : 0,
       "width" : 16,
-      "y" : 160,
+      "y" : 176,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "magma_top" : {
-      "x" : 0,
+      "x" : 96,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -585,9 +585,9 @@
       "height" : 16
     },
     "red_sand_east" : {
-      "x" : 208,
+      "x" : 48,
       "width" : 16,
-      "y" : 160,
+      "y" : 176,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -648,7 +648,7 @@
       "height" : 16
     },
     "magma_south" : {
-      "x" : 48,
+      "x" : 144,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -683,7 +683,7 @@
       "height" : 16
     },
     "dirt_block_south" : {
-      "x" : 176,
+      "x" : 80,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -718,7 +718,7 @@
       "height" : 16
     },
     "magma_east" : {
-      "x" : 64,
+      "x" : 160,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -746,7 +746,7 @@
       "height" : 16
     },
     "elm_wood_planks_custom_top" : {
-      "x" : 16,
+      "x" : 112,
       "width" : 16,
       "y" : 96,
       "type" : "block_cube_cross",
@@ -774,7 +774,7 @@
       "height" : 16
     },
     "wood_planks_custom_top" : {
-      "x" : 112,
+      "x" : 16,
       "width" : 16,
       "y" : 96,
       "type" : "block_cube_cross",
@@ -788,7 +788,7 @@
       "height" : 16
     },
     "elm_wood_planks_custom_bottom" : {
-      "x" : 32,
+      "x" : 128,
       "width" : 16,
       "y" : 96,
       "type" : "block_cube_cross",
@@ -816,7 +816,7 @@
       "height" : 16
     },
     "grass_block_east" : {
-      "x" : 96,
+      "x" : 192,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -830,7 +830,7 @@
       "height" : 16
     },
     "magma_west" : {
-      "x" : 80,
+      "x" : 176,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -858,7 +858,7 @@
       "height" : 16
     },
     "iron_ore_bottom" : {
-      "x" : 112,
+      "x" : 16,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -956,7 +956,7 @@
       "height" : 16
     },
     "iron_ore_east" : {
-      "x" : 160,
+      "x" : 64,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -977,14 +977,14 @@
       "height" : 16
     },
     "elm_wood_planks_custom_west" : {
-      "x" : 96,
+      "x" : 192,
       "width" : 16,
       "y" : 96,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "red_sand_top" : {
-      "x" : 144,
+      "x" : 240,
       "width" : 16,
       "y" : 160,
       "type" : "block_cube_cross",
@@ -998,7 +998,7 @@
       "height" : 16
     },
     "dirt_block_bottom" : {
-      "x" : 144,
+      "x" : 48,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -1026,9 +1026,9 @@
       "height" : 16
     },
     "red_sand_north" : {
-      "x" : 176,
+      "x" : 16,
       "width" : 16,
-      "y" : 160,
+      "y" : 176,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -1089,7 +1089,7 @@
       "height" : 16
     },
     "iron_ore_west" : {
-      "x" : 176,
+      "x" : 80,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -1110,7 +1110,7 @@
       "height" : 16
     },
     "grass_block_north" : {
-      "x" : 64,
+      "x" : 160,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -1124,21 +1124,21 @@
       "height" : 16
     },
     "elm_wood_planks_custom_east" : {
-      "x" : 80,
+      "x" : 176,
       "width" : 16,
       "y" : 96,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "sandstone_west" : {
-      "x" : 64,
+      "x" : 224,
       "width" : 16,
-      "y" : 176,
+      "y" : 160,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "dirt_block_top" : {
-      "x" : 128,
+      "x" : 32,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -1159,7 +1159,7 @@
       "height" : 16
     },
     "grass_block_south" : {
-      "x" : 80,
+      "x" : 176,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -1180,7 +1180,7 @@
       "height" : 16
     },
     "iron_ore_top" : {
-      "x" : 96,
+      "x" : 0,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -1208,21 +1208,21 @@
       "height" : 16
     },
     "elm_wood_planks_custom_north" : {
-      "x" : 48,
+      "x" : 144,
       "width" : 16,
       "y" : 96,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "iron_ore_north" : {
-      "x" : 128,
+      "x" : 32,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "wood_planks_custom_east" : {
-      "x" : 176,
+      "x" : 80,
       "width" : 16,
       "y" : 96,
       "type" : "block_cube_cross",
@@ -1236,7 +1236,7 @@
       "height" : 16
     },
     "wood_planks_custom_south" : {
-      "x" : 160,
+      "x" : 64,
       "width" : 16,
       "y" : 96,
       "type" : "block_cube_cross",
@@ -1250,7 +1250,7 @@
       "height" : 16
     },
     "wood_planks_custom_west" : {
-      "x" : 192,
+      "x" : 96,
       "width" : 16,
       "y" : 96,
       "type" : "block_cube_cross",
@@ -1278,7 +1278,7 @@
       "height" : 16
     },
     "dirt_block_west" : {
-      "x" : 208,
+      "x" : 112,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -1313,14 +1313,14 @@
       "height" : 16
     },
     "magma_north" : {
-      "x" : 32,
+      "x" : 128,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "grass_block_top" : {
-      "x" : 32,
+      "x" : 128,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -1369,7 +1369,7 @@
       "height" : 16
     },
     "grass_block_west" : {
-      "x" : 112,
+      "x" : 208,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -1383,7 +1383,7 @@
       "height" : 16
     },
     "dirt_block_north" : {
-      "x" : 160,
+      "x" : 64,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",

@@ -15,6 +15,7 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
+import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.PauseMenu;
@@ -642,6 +643,36 @@ public class InputHandler {
             return;
         }
         
+        // If death menu is active, it handles clicks for respawn button
+        com.stonebreak.ui.DeathMenu deathMenu = Game.getInstance().getDeathMenu();
+        if (deathMenu != null && deathMenu.isVisible()) {
+            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+                UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
+                if (uiRenderer != null) {
+                    int windowWidth = Game.getWindowWidth();
+                    int windowHeight = Game.getWindowHeight();
+
+                    if (deathMenu.isRespawnButtonClicked(currentMouseX, currentMouseY, uiRenderer, windowWidth, windowHeight)) {
+                        // Respawn the player
+                        Player player = Game.getInstance().getPlayer();
+                        if (player != null) {
+                            player.respawn();
+                        }
+
+                        // Hide death menu
+                        deathMenu.setVisible(false);
+
+                        // Update mouse capture state (will recapture since death menu is now hidden)
+                        MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
+                        if (mouseCaptureManager != null) {
+                            mouseCaptureManager.updateCaptureState();
+                        }
+                    }
+                }
+            }
+            return; // Don't process other inputs while death menu is visible
+        }
+
         // If pause menu is active, it handles clicks for its buttons
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible()) { // Main pause menu (Escape)
@@ -812,6 +843,14 @@ public class InputHandler {
         currentMouseY = ypos;
 
         // Update UI hover states
+        com.stonebreak.ui.DeathMenu deathMenu = Game.getInstance().getDeathMenu();
+        if (deathMenu != null && deathMenu.isVisible()) {
+            UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
+            if (uiRenderer != null) {
+                deathMenu.updateHover(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight());
+            }
+        }
+
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible()) {
             UIRenderer uiRenderer = Game.getInstance().getUIRenderer();

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Console appender for stdout -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} -- %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Root logger - default level INFO -->
+    <root level="INFO">
+        <appender-ref ref="STDOUT" />
+    </root>
+
+    <!-- OpenMason specific loggers -->
+
+    <!-- Theme system - reduce initialization noise -->
+    <logger name="com.openmason.main.systems.themes.registry.ColorPalette" level="INFO" />
+    <logger name="com.openmason.main.systems.themes.registry.ThemeRegistry" level="INFO" />
+    <logger name="com.openmason.main.systems.themes.core.ThemeDefinition" level="INFO" />
+    <logger name="com.openmason.main.systems.themes.application.StyleApplicator" level="INFO" />
+    <logger name="com.openmason.main.systems.themes.application.DensityManager" level="INFO" />
+    <logger name="com.openmason.main.systems.themes.core.ThemeManager" level="INFO" />
+
+    <!-- Keybind system - reduce registration noise -->
+    <logger name="com.openmason.main.systems.keybinds.KeybindRegistry" level="INFO" />
+    <logger name="com.openmason.main.systems.viewport.ViewportKeybindActions" level="INFO" />
+    <logger name="com.openmason.main.systems.menus.textureCreator.TextureEditorKeybindActions" level="INFO" />
+
+    <!-- Texture system - reduce OMT serialization noise -->
+    <logger name="com.openmason.main.systems.menus.textureCreator.io.OMTSerializer" level="INFO" />
+    <logger name="com.openmason.main.systems.menus.textureCreator.io.OMTDeserializer" level="INFO" />
+    <logger name="com.openmason.main.systems.menus.textureCreator.layers.LayerManager" level="INFO" />
+
+    <!-- Rendering system - reduce initialization noise -->
+    <logger name="com.openmason.main.systems.rendering.model.GenericModelRenderer" level="INFO" />
+    <logger name="com.openmason.main.systems.rendering.model.gmr" level="INFO" />
+    <logger name="com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader" level="INFO" />
+
+    <!-- Viewport system - reduce state change noise -->
+    <logger name="com.openmason.main.systems.viewport.state" level="INFO" />
+
+    <!-- Model browser - reduce thumbnail cache noise -->
+    <logger name="com.openmason.main.systems.menus.panes.modelBrowser.thumbnails" level="INFO" />
+
+    <!-- General subsystem initialization - reduce noise -->
+    <logger name="com.openmason.main.systems.MainImGuiInterface" level="INFO" />
+    <logger name="com.openmason.main.systems.menus.panes.propertyPane" level="INFO" />
+    <logger name="com.openmason.main.systems.menus.textureCreator" level="INFO" />
+    <logger name="com.openmason.main.systems.services" level="INFO" />
+    <logger name="com.openmason.main.systems.menus.toolbars" level="INFO" />
+    <logger name="com.openmason.main.systems.menus.dialogs" level="INFO" />
+    <logger name="com.openmason.main.systems.menus.preferences" level="INFO" />
+
+    <!-- Keep critical systems at DEBUG for troubleshooting -->
+    <!-- Uncomment these if you need detailed debugging -->
+    <!-- <logger name="com.openmason.main.systems.ViewportController" level="DEBUG" /> -->
+    <!-- <logger name="com.openmason.main.systems.services.ModelOperationService" level="DEBUG" /> -->
+
+</configuration>

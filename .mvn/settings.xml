@@ -2,15 +2,13 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
                       http://maven.apache.org/xsd/settings-1.0.0.xsd">
-
+  
   <profiles>
     <profile>
       <id>stonebreak-java25</id>
       <properties>
-        <java.home>C:\Program Files\Java\jdk-25</java.home>
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
-        <maven.compiler.release>25</maven.compiler.release>
       </properties>
     </profile>
   </profiles>
@@ -18,5 +16,5 @@
   <activeProfiles>
     <activeProfile>stonebreak-java25</activeProfile>
   </activeProfiles>
-
+  
 </settings>

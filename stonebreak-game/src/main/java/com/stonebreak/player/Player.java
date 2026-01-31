@@ -50,6 +50,22 @@ public class Player {      // Player settings
     // Reference to the world (mutable for world switching)
     private World world;
 
+    // Health system
+    private float health;
+    private float maxHealth;
+    private static final float HEALTH_PER_HEART = 2.0f; // 10 hearts = 20 health
+    private static final int MAX_HEARTS = 10;
+    private boolean isDead;
+
+    // Fall damage tracking
+    private float previousY;
+    private boolean wasFalling;
+
+    // Spawn protection to prevent instant death when loading chunks
+    private boolean spawnProtection;
+    private float spawnProtectionTimer;
+    private static final float SPAWN_PROTECTION_DURATION = 2.0f; // 2 seconds of spawn protection
+
     // Block placement validation service
     private final IBlockPlacementService blockPlacementService;
     // Inventory
@@ -71,9 +87,6 @@ public class Player {      // Player settings
     private static final float NORMAL_JUMP_GRACE_PERIOD = 0.2f; // Grace period for normal jumps (200ms)
     private static final float FLY_SPEED = MOVE_SPEED * 2.5f; // Flight movement speed (250% of walking speed)
     private static final float FLY_VERTICAL_SPEED = 15.0f; // Vertical flight speed (ascent/descent)
-
-    // Player health
-    private float health = 20.0f; // Player health (full health)
 
     // Save/load state tracking
     private boolean isLoadedFromSave = false; // Track if player data was loaded from save
@@ -106,12 +119,42 @@ public class Player {      // Player settings
         this.wasJumpPressed = false;
         this.lastSpaceKeyTime = 0.0f;
         this.lastNormalJumpTime = 0.0f;
-        this.health = 20.0f;
+
+        // Initialize health system
+        this.maxHealth = MAX_HEARTS * HEALTH_PER_HEART;
+        this.health = maxHealth;
+        this.isDead = false;
+        this.previousY = position.y;
+        this.wasFalling = false;
+
+        // Initialize spawn protection (active for initial spawn)
+        this.spawnProtection = true;
+        this.spawnProtectionTimer = 0.0f;
     }
       /**
      * Updates the player's position and camera.
      */
     public void update() {
+        // Don't update if dead
+        if (isDead) {
+            return;
+        }
+
+        // Update spawn protection timer
+        if (spawnProtection) {
+            spawnProtectionTimer += Game.getDeltaTime();
+            if (spawnProtectionTimer >= SPAWN_PROTECTION_DURATION) {
+                spawnProtection = false;
+                System.out.println("Spawn protection ended - fall damage now active");
+            }
+
+            // Also disable spawn protection early if player is safely on ground
+            if (onGround && spawnProtectionTimer > 0.5f) {
+                spawnProtection = false;
+                System.out.println("Spawn protection ended early - player safely on ground");
+            }
+        }
+
         // Check if player is in water
         physicallyInWater = isPartiallyInWater();
         
@@ -246,6 +289,9 @@ public class Player {      // Player settings
         if (Game.getWorld() != null) {
             Game.getSoundSystem().setListenerFromCamera(position, camera.getFront(), camera.getUp());
         }
+
+        // Calculate fall damage
+        calculateFallDamage();
     }
     
     /**
@@ -543,6 +589,189 @@ public class Player {      // Player settings
                 velocity.z = 0; // Moving towards -Z but got pushed towards +Z
             }
         }
+    }
+
+    /**
+     * Calculates and applies fall damage based on fall distance.
+     * Player takes 1 heart (2 health) of damage for every 3 blocks fallen.
+     */
+    private void calculateFallDamage() {
+        // Don't calculate fall damage during spawn protection
+        if (spawnProtection) {
+            // Reset fall tracking during spawn protection to prevent damage after protection ends
+            previousY = position.y;
+            wasFalling = false;
+            return;
+        }
+
+        // Track if player is currently falling
+        if (!onGround && velocity.y < 0 && !isFlying) {
+            wasFalling = true;
+        }
+
+        // Check if player just landed
+        if (onGround && wasFalling) {
+            float fallDistance = previousY - position.y;
+
+            // Only apply damage if fall distance is significant (more than 3 blocks)
+            if (fallDistance > 3.0f) {
+                // Calculate damage: 1 heart (2 health) per 3 blocks fallen
+                float damage = ((fallDistance - 3.0f) / 3.0f) * HEALTH_PER_HEART;
+                damage(damage);
+            }
+
+            wasFalling = false;
+        }
+
+        // Update previousY when on ground or starting to fall
+        if (onGround || !wasFalling) {
+            previousY = position.y;
+        }
+    }
+
+    /**
+     * Damages the player by the specified amount.
+     */
+    public void damage(float amount) {
+        if (isDead) return;
+
+        System.out.println("DEBUG: Player took " + amount + " damage. Health: " + health + " -> " + (health - amount));
+        health -= amount;
+        if (health <= 0) {
+            health = 0;
+            System.out.println("DEBUG: Health <= 0, calling die()");
+            die();
+        }
+    }
+
+    /**
+     * Heals the player by the specified amount.
+     */
+    public void heal(float amount) {
+        if (isDead) return;
+
+        health = Math.min(health + amount, maxHealth);
+    }
+
+    /**
+     * Handles player death.
+     */
+    private void die() {
+        System.out.println("DEBUG: Player died at position: " + position);
+        System.out.println("DEBUG: Checking inventory BEFORE dropAllItems():");
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            ItemStack stack = inventory.getHotbarSlot(i);
+            if (stack != null && !stack.isEmpty()) {
+                System.out.println("  Hotbar slot " + i + " HAS ITEMS: " + stack.getCount());
+            }
+        }
+
+        isDead = true;
+
+        // Drop all items from inventory
+        dropAllItems();
+
+        // Stop all movement
+        velocity.set(0, 0, 0);
+
+        System.out.println("DEBUG: Player death handling complete");
+    }
+
+    /**
+     * Drops all items from the player's inventory.
+     */
+    private void dropAllItems() {
+        System.out.println("DEBUG: dropAllItems() called - dropping all inventory items on death");
+        System.out.println("DEBUG: Inventory object: " + inventory);
+        System.out.println("DEBUG: World object: " + world);
+
+        // Drop all hotbar items
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            ItemStack stack = inventory.getHotbarSlot(i);
+            System.out.println("DEBUG: Hotbar slot " + i + ": " + (stack == null ? "NULL" : (stack.isEmpty() ? "EMPTY" : stack.getCount() + "x items")));
+            if (stack != null && !stack.isEmpty()) {
+                System.out.println("DEBUG: Dropping hotbar slot " + i + ": " + stack.getCount() + "x items");
+                dropItemStack(stack);
+                // Clear the slot by setting count to 0 and item to AIR
+                stack.clear();
+                System.out.println("DEBUG: After clear() - slot " + i + " is now: " + (stack.isEmpty() ? "EMPTY" : stack.getCount() + "x items"));
+            }
+        }
+
+        // Drop all main inventory items
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
+            ItemStack stack = inventory.getMainInventorySlot(i);
+            System.out.println("DEBUG: Main inventory slot " + i + ": " + (stack == null ? "NULL" : (stack.isEmpty() ? "EMPTY" : stack.getCount() + "x items")));
+            if (stack != null && !stack.isEmpty()) {
+                System.out.println("DEBUG: Dropping main inventory slot " + i + ": " + stack.getCount() + "x items");
+                dropItemStack(stack);
+                // Clear the slot by setting count to 0 and item to AIR
+                stack.clear();
+            }
+        }
+
+        System.out.println("DEBUG: dropAllItems() finished");
+    }
+
+    /**
+     * Helper method to drop an entire item stack.
+     */
+    private void dropItemStack(ItemStack stack) {
+        Vector3f dropPosition = new Vector3f(position.x, position.y + 0.5f, position.z);
+        System.out.println("DEBUG: dropItemStack called at position " + dropPosition + " for stack: " + stack.getCount() + " items");
+
+        if (stack.isPlaceable()) {
+            // Drop placeable items as block drops
+            BlockType blockType = stack.asBlockType();
+            if (blockType != null) {
+                System.out.println("DEBUG: Creating " + stack.getCount() + " block drops of type " + blockType.getName());
+                // Create one drop for entire stack
+                for (int j = 0; j < stack.getCount(); j++) {
+                    DropUtil.createBlockDrop(world, dropPosition, blockType);
+                }
+            }
+        } else {
+            // Drop tools and other items as item drops
+            System.out.println("DEBUG: Creating item drop for non-placeable item");
+            // Create one ItemStack drop for the entire stack
+            DropUtil.createItemDrop(world, dropPosition, stack.copy());
+        }
+    }
+
+    /**
+     * Respawns the player at spawn position with full health.
+     */
+    public void respawn() {
+        System.out.println("DEBUG: Respawn called");
+        System.out.println("DEBUG: Checking inventory BEFORE respawn:");
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            ItemStack stack = inventory.getHotbarSlot(i);
+            if (stack != null && !stack.isEmpty()) {
+                System.out.println("  Hotbar slot " + i + " HAS ITEMS: " + stack.getCount());
+            }
+        }
+
+        // Reset health
+        health = maxHealth;
+        isDead = false;
+
+        // Reset position to spawn (high Y to ensure safe spawn)
+        position.set(0, 100, 0);
+        velocity.set(0, 0, 0);
+
+        // Reset fall damage tracking
+        previousY = position.y;
+        wasFalling = false;
+
+        // Enable spawn protection to prevent instant death from chunks loading
+        spawnProtection = true;
+        spawnProtectionTimer = 0.0f;
+        System.out.println("Spawn protection enabled - fall damage disabled for " + SPAWN_PROTECTION_DURATION + " seconds");
+
+        // Reset camera
+        camera.setPosition(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
+
+        System.out.println("DEBUG: Respawn complete");
     }
 
     /**
@@ -1609,17 +1838,38 @@ public class Player {      // Player settings
     }
 
     /**
+     * Gets the player's current health.
+     */
+    public float getHealth() {
+        return health;
+    }
+
+    /**
+     * Gets the player's maximum health.
+     */
+    public float getMaxHealth() {
+        return maxHealth;
+    }
+
+    /**
+     * Gets whether the player is dead.
+     */
+    public boolean isDead() {
+        return isDead;
+    }
+
+    /**
+     * Gets the player's health as a number of hearts.
+     */
+    public int getHearts() {
+        return (int) Math.ceil(health / HEALTH_PER_HEART);
+    }
+
+    /**
      * Returns whether the player is currently on the ground.
      */
     public boolean isOnGround() {
         return onGround;
-    }
-
-    /**
-     * Returns the player's current health.
-     */
-    public float getHealth() {
-        return health;
     }
 
     /**
@@ -1763,10 +2013,18 @@ public class Player {      // Player settings
                 inventory.resetToStartingItems();
             }
 
+            // Enable spawn protection for new worlds
+            spawnProtection = true;
+            spawnProtectionTimer = 0.0f;
+            System.out.println("Spawn protection enabled for new world - fall damage disabled for " + SPAWN_PROTECTION_DURATION + " seconds");
+
             System.out.println("Player data reset for new world");
         } else {
             // Player data was loaded from save - preserve position and state
-            System.out.println("Player data loaded from save - preserving position and state");
+            // But still enable spawn protection to prevent instant death from chunk loading
+            spawnProtection = true;
+            spawnProtectionTimer = 0.0f;
+            System.out.println("Player data loaded from save - preserving position and state (spawn protection enabled)");
         }
     }
 

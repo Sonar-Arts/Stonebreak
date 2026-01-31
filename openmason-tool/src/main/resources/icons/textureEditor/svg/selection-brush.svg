@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Selection Brush - Inspired by Photoshop Quick Selection Tool -->
+
+  <!-- Brush handle (diagonal from upper-right to lower-left) -->
+  <path d="M24 6 L14 16"
+        stroke="#4A90E2"
+        stroke-width="3"
+        stroke-linecap="round"/>
+
+  <!-- Brush tip (solid circle at the end of handle) -->
+  <circle cx="12" cy="16" r="4"
+          fill="#4A90E2"/>
+
+  <!-- Selection indicator (dashed circle around brush tip) -->
+  <circle cx="12" cy="16" r="7"
+          fill="none"
+          stroke="#3399FF"
+          stroke-width="2.5"
+          stroke-dasharray="4,3"/>
+</svg>

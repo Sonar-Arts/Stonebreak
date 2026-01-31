@@ -15,6 +15,7 @@ import com.stonebreak.rendering.CowTextureAtlas;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.*;
 import com.stonebreak.ui.chat.ChatSystem;
+import com.stonebreak.ui.DeathMenu;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
@@ -47,6 +48,7 @@ public class Game {
     private TextureAtlas textureAtlas;
     // Note: Using static CowTextureAtlas instead of instance variable
     private PauseMenu pauseMenu;
+    private DeathMenu deathMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
     private RecipeScreen recipeScreen; // Added RecipeBookScreen
@@ -131,6 +133,7 @@ public class Game {
         this.mouseCaptureManager = new MouseCaptureManager(window);
 
         this.pauseMenu = new PauseMenu();
+        this.deathMenu = new DeathMenu();
         this.waterEffects = new WaterEffects(); // Initialize water effects
 
         // Initialize sound system
@@ -567,7 +570,7 @@ public class Game {
         } else {
             System.out.println("[STARTUP] Skipping world component initialization (null world or player)");
         }
-        
+
         // Initialize memory leak detector
         this.memoryLeakDetector = MemoryLeakDetector.getInstance();
         this.memoryLeakDetector.startMonitoring();
@@ -750,6 +753,15 @@ public class Game {
         // Update player
         if (player != null) {
             player.update();
+
+            // Check if player died and show death menu
+            if (player.isDead() && !deathMenu.isVisible()) {
+                deathMenu.setVisible(true);
+                // Release mouse capture when death menu appears
+                if (mouseCaptureManager != null) {
+                    mouseCaptureManager.updateCaptureState();
+                }
+            }
         }
         
         // Update water effects
@@ -916,7 +928,16 @@ public class Game {
      */
     public PauseMenu getPauseMenu() {
         return pauseMenu;
-    }    /**
+    }
+
+    /**
+     * Gets the death menu.
+     */
+    public DeathMenu getDeathMenu() {
+        return deathMenu;
+    }
+
+    /**
      * Gets the inventory screen.
      */
     public InventoryScreen getInventoryScreen() {

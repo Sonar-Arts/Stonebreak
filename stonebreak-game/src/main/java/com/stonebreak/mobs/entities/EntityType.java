@@ -13,7 +13,7 @@ public enum EntityType {
     // Entity position.y = body bottom (model Y=0), legHeight = 0.62f
     // Entity height = distance from body bottom to body top = 0.4f
     COW("Cow", 10.0f, 1.2f, 0.4f, 1.1f, 1.3f, 0.62f, true),
-    
+
     // Drop entities (small, physics-based items)
     BLOCK_DROP("Block Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false),
     ITEM_DROP("Item Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false),

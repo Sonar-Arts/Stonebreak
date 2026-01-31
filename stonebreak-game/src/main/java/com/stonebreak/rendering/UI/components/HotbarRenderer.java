@@ -10,6 +10,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.player.Player;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
 
@@ -89,6 +90,54 @@ public class HotbarRenderer {
                 if (hotbarItems[i].getCount() > 1) {
                     itemCountRenderer.renderItemCount(hotbarItems[i].getCount(), slotPos);
                 }
+            }
+        }
+
+        // Render health hearts above the hotbar
+        renderHealthHearts(screenWidth, screenHeight, layout);
+    }
+
+    /**
+     * Renders health hearts above the hotbar.
+     */
+    private void renderHealthHearts(int screenWidth, int screenHeight, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = com.stonebreak.core.Game.getInstance().getPlayer();
+        if (player == null) return;
+
+        float health = player.getHealth();
+        float maxHealth = player.getMaxHealth();
+        int hearts = (int) Math.ceil(maxHealth / 2.0f);
+        float filledHearts = health / 2.0f;
+
+        int heartSize = 16;
+        int heartSpacing = 8;
+        int totalWidth = hearts * (heartSize + heartSpacing) - heartSpacing;
+        int startX = (screenWidth - totalWidth) / 2;
+        int startY = layout.backgroundY - 30;
+
+        try (MemoryStack stack = stackPush()) {
+            for (int i = 0; i < hearts; i++) {
+                float x = startX + i * (heartSize + heartSpacing);
+                float y = startY;
+                float heartFill = Math.max(0, Math.min(1, filledHearts - i));
+
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, heartSize, heartSize);
+                nvgFillColor(vg, nvgRGBA((byte)60, (byte)60, (byte)60, (byte)200, NVGColor.malloc(stack)));
+                nvgFill(vg);
+
+                if (heartFill > 0) {
+                    nvgBeginPath(vg);
+                    nvgRect(vg, x, y + (heartSize * (1 - heartFill)), heartSize, heartSize * heartFill);
+                    nvgFillColor(vg, nvgRGBA((byte)255, (byte)0, (byte)0, (byte)255, NVGColor.malloc(stack)));
+                    nvgFill(vg);
+                }
+
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, heartSize, heartSize);
+                nvgStrokeColor(vg, nvgRGBA((byte)0, (byte)0, (byte)0, (byte)255, NVGColor.malloc(stack)));
+                nvgStrokeWidth(vg, 2.0f);
+                nvgStroke(vg);
             }
         }
     }

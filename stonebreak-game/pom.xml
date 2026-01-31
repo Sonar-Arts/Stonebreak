@@ -101,6 +101,14 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
@@ -122,13 +130,7 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <!-- Byte Buddy - override Mockito's version for Java 25 compatibility -->
+        <!-- Byte Buddy - override Mockito's version for Java 24 compatibility -->
         <dependency>
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy</artifactId>
@@ -138,7 +140,7 @@
         <dependency>
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy-agent</artifactId>
-            <version>1.15.11</version>
+            <version>1.18.4</version>
             <scope>test</scope>
         </dependency>
 
@@ -153,12 +155,6 @@
             <artifactId>junit-platform-suite-engine</artifactId>
             <scope>test</scope>
         </dependency>
-
-        <!-- Fastutil for high-performance primitive collections -->
-        <dependency>
-            <groupId>it.unimi.dsi</groupId>
-            <artifactId>fastutil</artifactId>
-        </dependency>
     </dependencies>
 
     <build>
@@ -166,11 +162,6 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <compilerArgs>
-                        <arg>--enable-preview</arg>
-                    </compilerArgs>
-                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -203,45 +194,43 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>com.stonebreak.core.Main</mainClass>
-                    <arguments>
-                        <!-- Enable preview features for JDK 25 -->
-                        <argument>--enable-preview</argument>
-                        <!-- Enable native access for LWJGL modules (required for Java 21+) -->
-                        <argument>--enable-native-access=ALL-UNNAMED</argument>
-                        <!-- Alternative: use specific module list instead of ALL-UNNAMED:
-                             enable-native-access=org.lwjgl,org.lwjgl.opengl,org.lwjgl.glfw,org.lwjgl.stb,org.lwjgl.nanovg,org.lwjgl.openal
-                        -->
-
-                        <!-- Java 25 compatibility flags -->
-                        <argument>--add-exports=java.base/sun.nio.ch=ALL-UNNAMED</argument>
-                        <argument>--add-exports=java.base/sun.security.util=ALL-UNNAMED</argument>
-
-                        <!-- Use generational ZGC for ultra-low latency gaming performance -->
-                        <argument>-XX:+UseZGC</argument>
-                        <argument>-XX:+UnlockExperimentalVMOptions</argument>
-                        <argument>-XX:+ZGenerational</argument>
-
-                        <!-- Heap size configuration -->
-                        <argument>-Xms2g</argument>
-                        <argument>-Xmx4g</argument>
-
-                        <!-- Performance optimizations -->
-                        <argument>-XX:+UseLargePages</argument>
-                        <argument>-XX:+UseStringDeduplication</argument>
-
-                        <!-- Advanced JIT optimizations -->
-                        <argument>-XX:+UseCompressedOops</argument>
-                        <argument>-XX:+UseCompressedClassPointers</argument>
-
-                        <!-- Thread local allocation optimization -->
-                        <argument>-XX:+UseTLAB</argument>
-                        <argument>-XX:+ResizeTLAB</argument>
-
+                    <options>
+                        <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
+                        <option>--enable-native-access=ALL-UNNAMED</option>
+                        <!-- Alternative: specific modules if needed -->
+                        <!-- <option>enable-native-access=org.lwjgl,org.lwjgl.opengl,org.lwjgl.glfw,org.lwjgl.stb,org.lwjgl.nanovg,org.lwjgl.openal</option> -->
+                        
+                        <!-- Java 24+ compatibility flags -->
+                        <option>--add-exports=java.base/sun.nio.ch=ALL-UNNAMED</option>
+                        <option>--add-exports=java.base/sun.security.util=ALL-UNNAMED</option>
+                        
+                        <!-- Use ZGC for ultra-low latency gaming performance -->
+                        <option>-XX:+UseZGC</option>
+                        <option>-XX:+UnlockExperimentalVMOptions</option>
+                        <!-- Enable generational ZGC for better allocation patterns -->
+                        <option>-XX:+UseZGenerationalGC</option>
+                        <!-- Increase heap size for better performance -->
+                        <option>-Xms2g</option>
+                        <option>-Xmx4g</option>
+                        <!-- Optimize for consistent low-latency performance -->
+                        <option>-XX:+UseLargePages</option>
+                        <option>-XX:+UseTransparentHugePages</option>
+                        <!-- Reduce allocation overhead -->
+                        <option>-XX:+UseStringDeduplication</option>
+                        <!-- Enable advanced JIT optimizations -->
+                        <option>-XX:+UseCompressedOops</option>
+                        <option>-XX:+UseCompressedClassPointers</option>
+                        <!-- Optimize thread local allocation -->
+                        <option>-XX:+UseTLAB</option>
+                        <option>-XX:+ResizeTLAB</option>
+                        <!-- Enable biased locking for better synchronization -->
+                        <option>-XX:+UseBiasedLocking</option>
+                        
                         <!-- Additional stability flags for native library interaction -->
-                        <argument>-Djava.library.path=.</argument>
-                        <argument>-Dorg.lwjgl.util.Debug=true</argument>
-                        <argument>-Dorg.lwjgl.util.NoChecks=false</argument>
-                    </arguments>
+                        <option>-Djava.library.path=.</option>
+                        <option>-Dorg.lwjgl.util.Debug=true</option>
+                        <option>-Dorg.lwjgl.util.NoChecks=false</option>
+                    </options>
                 </configuration>
             </plugin>
         </plugins>

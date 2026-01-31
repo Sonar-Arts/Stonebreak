@@ -11,14 +11,14 @@ out vec3 viewDirection;
 out vec3 cameraPos;
 
 void main() {
-    // Create large sky dome around camera
+    // Create large sky dome around viewportCamera
     vec3 skyPos = cameraPosition + aPos * 1000.0;
     
     // Pass world position for fragment shader calculations
     worldPos = skyPos;
     cameraPos = cameraPosition;
     
-    // Calculate view direction from camera to sky position
+    // Calculate view direction from viewportCamera to sky position
     viewDirection = normalize(skyPos - cameraPosition);
     
     // Transform to screen space

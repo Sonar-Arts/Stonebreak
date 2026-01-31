@@ -52,7 +52,8 @@ public class EntityRenderer {
     private int debugSphereVAO;
     private int debugSphereVBO;
     private int debugSphereTexVBO;
-    
+
+
     /**
      * Initialize the entity renderer. Called by the main Renderer.
      */
@@ -293,13 +294,13 @@ public class EntityRenderer {
         ModelDefinition.setUseBakedVertices(true);
         try {
             ModelDefinition.ModelPart[] parts = ModelLoader.getAllPartsStrict(ModelLoader.getCowModel("standard_cow_baked"));
-            
+
             String[] partNames = {"body", "head", "front_left", "front_right", "back_left", "back_right", "left_horn", "right_horn", "udder", "tail"};
-            
+
             for (int i = 0; i < parts.length; i++) {
                 ModelDefinition.ModelPart part = parts[i];
                 String partName = partNames[i];
-                
+
                 createModelPart(EntityType.COW, partName, part);
             }
         } finally {
@@ -450,9 +451,12 @@ public class EntityRenderer {
 
         shader.bind();
 
-        // Bind texture
+        // Bind appropriate texture based on entity type
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, CowTextureAtlas.getTextureId());
+        switch (entityType) {
+            case COW -> GL11.glBindTexture(GL11.GL_TEXTURE_2D, CowTextureAtlas.getTextureId());
+            default -> GL11.glBindTexture(GL11.GL_TEXTURE_2D, CowTextureAtlas.getTextureId()); // Fallback
+        }
         shader.setUniform("textureSampler", 0);
 
         // Set common uniforms
@@ -529,30 +533,30 @@ public class EntityRenderer {
         String currentAnimation = "IDLE";
         float animationTime = System.currentTimeMillis() / 1000.0f; // Default fallback
         String textureVariant = "default";
-        
+
         if (entity instanceof com.stonebreak.mobs.cow.Cow cow) {
             currentAnimation = cow.getCurrentAnimation();
             // Use the cow's animation controller time for consistent timing
             animationTime = cow.getAnimationController().getTotalAnimationTime();
             textureVariant = cow.getTextureVariant();
         }
-        
+
         // Get animated cow model parts from JSON model system (using baked coordinates)
         ModelDefinition.ModelPart[] animatedParts = ModelLoader.getAnimatedParts("standard_cow_baked", currentAnimation, animationTime);
-        
+
         String[] partNames = {"body", "head", "front_left", "front_right", "back_left", "back_right", "left_horn", "right_horn", "udder", "tail"};
         Map<String, Integer> cowVaoMap = vaoMaps.get(EntityType.COW);
         Map<String, Integer> cowVertexCountMap = vertexCountMaps.get(EntityType.COW);
-        
-        // Render each part of the cow  
+
+        // Render each part of the cow
         for (int i = 0; i < animatedParts.length && i < partNames.length; i++) {
             ModelDefinition.ModelPart part = animatedParts[i];
             String partName = partNames[i];
-            
+
             if (cowVaoMap.containsKey(partName)) {
                 // Update texture coordinates for this variant if needed
                 updateTextureCoordinatesForVariant(EntityType.COW, partName, part, textureVariant);
-                
+
                 // Create model matrix for this part
                 Matrix4f partMatrix = new Matrix4f(baseMatrix)
                     .translate(part.getPositionVector())
@@ -562,9 +566,9 @@ public class EntityRenderer {
                         (float) Math.toRadians(part.getRotation().z)
                     )
                     .scale(part.getScale());
-                
+
                 shader.setUniform("model", partMatrix);
-                
+
                 // Render this part
                 GL30.glBindVertexArray(cowVaoMap.get(partName));
                 GL11.glDrawElements(GL11.GL_TRIANGLES, cowVertexCountMap.get(partName), GL11.GL_UNSIGNED_INT, 0);
