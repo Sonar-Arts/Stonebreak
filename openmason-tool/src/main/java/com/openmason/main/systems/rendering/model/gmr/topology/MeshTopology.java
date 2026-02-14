@@ -17,6 +17,7 @@ import java.util.Set;
  *   <li>{@link #vertexClassifier()} — valence, boundary, interior, pole queries</li>
  *   <li>{@link #faceEdgeTraversal()} — winding-aware directed edge traversal within faces</li>
  *   <li>{@link #edgeLoopTracer()} — edge loop and edge ring tracing across quad faces</li>
+ *   <li>{@link #faceLoopTracer()} — face loop tracing across quad faces</li>
  *   <li>{@link #faceIslandDetector()} — connected component (island) detection for faces</li>
  *   <li>{@link MeshGeometry} — stateless geometry math (static utility)</li>
  * </ul>
@@ -65,6 +66,7 @@ public class MeshTopology {
     private final VertexClassifier vertexClassifier;
     private final FaceEdgeTraversal faceEdgeTraversal;
     private final EdgeLoopTracer edgeLoopTracer;
+    private final FaceLoopTracer faceLoopTracer;
     private final FaceIslandDetector faceIslandDetector;
 
     /**
@@ -118,6 +120,7 @@ public class MeshTopology {
         this.vertexClassifier = new VertexClassifier(edges, vertexToEdges, uniformTopology, uniformVerticesPerFace);
         this.faceEdgeTraversal = new FaceEdgeTraversal(faces);
         this.edgeLoopTracer = new EdgeLoopTracer(edges, faces);
+        this.faceLoopTracer = new FaceLoopTracer(edges, faces);
         this.faceIslandDetector = new FaceIslandDetector(faces.length, faceToAdjacentFaces);
     }
 
@@ -163,6 +166,16 @@ public class MeshTopology {
      */
     public EdgeLoopTracer edgeLoopTracer() {
         return edgeLoopTracer;
+    }
+
+    /**
+     * Get the face loop tracer for face loop traversal
+     * across quad faces.
+     *
+     * @return The face loop tracer (never null)
+     */
+    public FaceLoopTracer faceLoopTracer() {
+        return faceLoopTracer;
     }
 
     /**
@@ -605,6 +618,15 @@ public class MeshTopology {
     /** @see EdgeLoopTracer#traceEdgeRing(int) */
     public List<Integer> traceEdgeRing(int startEdgeId) {
         return edgeLoopTracer.traceEdgeRing(startEdgeId);
+    }
+
+    // =========================================================================
+    // FACE LOOP TRACING (delegation to FaceLoopTracer)
+    // =========================================================================
+
+    /** @see FaceLoopTracer#traceFaceLoop(int, int) */
+    public List<Integer> traceFaceLoop(int startFaceId, int directionEdgeId) {
+        return faceLoopTracer.traceFaceLoop(startFaceId, directionEdgeId);
     }
 
     // =========================================================================
