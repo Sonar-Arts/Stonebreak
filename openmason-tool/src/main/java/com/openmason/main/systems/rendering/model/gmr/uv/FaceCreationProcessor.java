@@ -23,6 +23,10 @@ import java.util.*;
  * {@code (v0,v1,v2), (v0,v2,v3), ..., (v0,v(N-1),vN)}
  *
  * <p>Topology must be rebuilt via {@code MeshTopologyBuilder} after applying the result.
+ *
+ * <p>TODO: Net textures (CUBE_NET) do not properly reconnect upon face re-addition for
+ * triangulated geometry. This is acceptable — the texture system will move away from
+ * net-based UV modes in favor of per-face UV assignment.
  */
 public final class FaceCreationProcessor {
 
