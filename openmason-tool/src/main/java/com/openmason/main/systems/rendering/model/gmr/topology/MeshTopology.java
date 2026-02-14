@@ -14,6 +14,7 @@ import java.util.Map;
  * <ul>
  *   <li>{@link #edgeClassifier()} — edge classification, auto-sharp, crease weights</li>
  *   <li>{@link #vertexClassifier()} — valence, boundary, interior, pole queries</li>
+ *   <li>{@link #faceEdgeTraversal()} — winding-aware directed edge traversal within faces</li>
  *   <li>{@link MeshGeometry} — stateless geometry math (static utility)</li>
  * </ul>
  *
@@ -59,6 +60,7 @@ public class MeshTopology {
     // Composed sub-services
     private final EdgeClassifier edgeClassifier;
     private final VertexClassifier vertexClassifier;
+    private final FaceEdgeTraversal faceEdgeTraversal;
 
     /**
      * Package-private constructor used by MeshTopologyBuilder.
@@ -107,6 +109,7 @@ public class MeshTopology {
         // Compose sub-services
         this.edgeClassifier = new EdgeClassifier(edges, autoSharpThresholdRadians, faceNormals);
         this.vertexClassifier = new VertexClassifier(edges, vertexToEdges, uniformTopology, uniformVerticesPerFace);
+        this.faceEdgeTraversal = new FaceEdgeTraversal(faces);
     }
 
     // =========================================================================
@@ -131,6 +134,16 @@ public class MeshTopology {
      */
     public VertexClassifier vertexClassifier() {
         return vertexClassifier;
+    }
+
+    /**
+     * Get the face-edge traversal service for winding-aware directed
+     * edge traversal within faces.
+     *
+     * @return The face-edge traversal service (never null)
+     */
+    public FaceEdgeTraversal faceEdgeTraversal() {
+        return faceEdgeTraversal;
     }
 
     // =========================================================================
@@ -428,6 +441,25 @@ public class MeshTopology {
         long key = MeshGeometry.canonicalFacePairKey(faceIdA, faceIdB);
         Integer edgeId = facePairToEdgeId.get(key);
         return edgeId != null ? edges[edgeId] : null;
+    }
+
+    // =========================================================================
+    // DIRECTED EDGE TRAVERSAL (delegation to FaceEdgeTraversal)
+    // =========================================================================
+
+    /** @see FaceEdgeTraversal#getNextEdgeInFace(int, int) */
+    public int getNextEdgeInFace(int faceId, int edgeId) {
+        return faceEdgeTraversal.getNextEdgeInFace(faceId, edgeId);
+    }
+
+    /** @see FaceEdgeTraversal#getPrevEdgeInFace(int, int) */
+    public int getPrevEdgeInFace(int faceId, int edgeId) {
+        return faceEdgeTraversal.getPrevEdgeInFace(faceId, edgeId);
+    }
+
+    /** @see FaceEdgeTraversal#getDirectedVertices(int, int) */
+    public int[] getDirectedVertices(int faceId, int edgeId) {
+        return faceEdgeTraversal.getDirectedVertices(faceId, edgeId);
     }
 
     // =========================================================================
