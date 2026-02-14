@@ -15,6 +15,7 @@ import java.util.Set;
  * <ul>
  *   <li>{@link #edgeClassifier()} — edge classification, auto-sharp, crease weights</li>
  *   <li>{@link #vertexClassifier()} — valence, boundary, interior, pole queries</li>
+ *   <li>{@link #vertexRingQuery()} — connected vertices and ordered vertex ring traversal</li>
  *   <li>{@link #faceEdgeTraversal()} — winding-aware directed edge traversal within faces</li>
  *   <li>{@link #edgeLoopTracer()} — edge loop and edge ring tracing across quad faces</li>
  *   <li>{@link #faceLoopTracer()} — face loop tracing across quad faces</li>
@@ -68,6 +69,7 @@ public class MeshTopology {
     private final EdgeLoopTracer edgeLoopTracer;
     private final FaceLoopTracer faceLoopTracer;
     private final FaceIslandDetector faceIslandDetector;
+    private final VertexRingQuery vertexRingQuery;
 
     /**
      * Package-private constructor used by MeshTopologyBuilder.
@@ -122,6 +124,7 @@ public class MeshTopology {
         this.edgeLoopTracer = new EdgeLoopTracer(edges, faces);
         this.faceLoopTracer = new FaceLoopTracer(edges, faces);
         this.faceIslandDetector = new FaceIslandDetector(faces.length, faceToAdjacentFaces);
+        this.vertexRingQuery = new VertexRingQuery(edges, faces, vertexToEdges, vertexToFaces, edgeKeyToId);
     }
 
     // =========================================================================
@@ -186,6 +189,16 @@ public class MeshTopology {
      */
     public FaceIslandDetector faceIslandDetector() {
         return faceIslandDetector;
+    }
+
+    /**
+     * Get the vertex ring query service for connected vertex lists
+     * and ordered vertex ring traversal.
+     *
+     * @return The vertex ring query service (never null)
+     */
+    public VertexRingQuery vertexRingQuery() {
+        return vertexRingQuery;
     }
 
     // =========================================================================
@@ -704,6 +717,20 @@ public class MeshTopology {
     /** @see VertexClassifier#isPole(int) */
     public boolean isPoleVertex(int uniqueVertexIdx) {
         return vertexClassifier.isPole(uniqueVertexIdx);
+    }
+
+    // =========================================================================
+    // VERTEX RING QUERIES (delegation to VertexRingQuery)
+    // =========================================================================
+
+    /** @see VertexRingQuery#getConnectedVertices(int) */
+    public List<Integer> getConnectedVertices(int uniqueVertexIdx) {
+        return vertexRingQuery.getConnectedVertices(uniqueVertexIdx);
+    }
+
+    /** @see VertexRingQuery#getOrderedVertexRing(int) */
+    public List<Integer> getOrderedVertexRing(int uniqueVertexIdx) {
+        return vertexRingQuery.getOrderedVertexRing(uniqueVertexIdx);
     }
 
     // =========================================================================
