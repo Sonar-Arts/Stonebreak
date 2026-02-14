@@ -457,6 +457,78 @@ public class MeshTopology {
     }
 
     // =========================================================================
+    // CONVENIENCE QUERIES
+    // =========================================================================
+
+    /**
+     * Get the face IDs adjacent to an edge.
+     * Convenience wrapper around {@code getEdge(edgeId).adjacentFaceIds()}.
+     *
+     * @param edgeId Edge identifier (0..edgeCount-1)
+     * @return Array of adjacent face IDs, or empty array if out of range
+     */
+    public int[] getFacesForEdge(int edgeId) {
+        if (edgeId < 0 || edgeId >= edges.length) {
+            return new int[0];
+        }
+        return edges[edgeId].adjacentFaceIds();
+    }
+
+    /**
+     * Get the face on the other side of an edge from a known face.
+     * Only works for manifold edges (exactly 2 adjacent faces).
+     *
+     * @param edgeId      Edge identifier (0..edgeCount-1)
+     * @param knownFaceId The face we're coming from
+     * @return The other face ID, or -1 if the edge is boundary, non-manifold,
+     *         out of range, or knownFaceId is not adjacent
+     */
+    public int getOtherFace(int edgeId, int knownFaceId) {
+        if (edgeId < 0 || edgeId >= edges.length) {
+            return -1;
+        }
+        int[] adjFaces = edges[edgeId].adjacentFaceIds();
+        if (adjFaces == null || adjFaces.length != 2) {
+            return -1;
+        }
+        if (adjFaces[0] == knownFaceId) return adjFaces[1];
+        if (adjFaces[1] == knownFaceId) return adjFaces[0];
+        return -1;
+    }
+
+    /**
+     * Get the edge across a quad face from the given edge (the opposite edge).
+     * Only meaningful for quad faces (4 vertices/edges).
+     *
+     * <p>In a quad with edges [e0, e1, e2, e3], the opposite of e0 is e2,
+     * the opposite of e1 is e3, etc.
+     *
+     * @param faceId Face identifier (must be a quad)
+     * @param edgeId Edge identifier (must belong to this face)
+     * @return The opposite edge ID, or -1 if the face is not a quad,
+     *         the edge is not in the face, or either ID is out of range
+     */
+    public int getOppositeEdge(int faceId, int edgeId) {
+        if (faceId < 0 || faceId >= faces.length) {
+            return -1;
+        }
+        MeshFace face = faces[faceId];
+        if (face.vertexCount() != 4) {
+            return -1;
+        }
+        int[] faceEdges = face.edgeIds();
+        if (faceEdges == null) {
+            return -1;
+        }
+        for (int i = 0; i < faceEdges.length; i++) {
+            if (faceEdges[i] == edgeId) {
+                return faceEdges[(i + 2) % 4];
+            }
+        }
+        return -1;
+    }
+
+    // =========================================================================
     // DIRECTED EDGE TRAVERSAL (delegation to FaceEdgeTraversal)
     // =========================================================================
 
