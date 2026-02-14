@@ -198,6 +198,10 @@ public class ViewportController {
             inputHandler.setTransformState(transformState);
             logger.debug("Transform state connected to input handler");
 
+            // Connect model renderer for edge insertion (J key)
+            inputHandler.setModelRenderer(modelRenderer);
+            logger.debug("Model renderer connected to input handler for edge insertion");
+
             // Create translation handlers and coordinator
             if (viewportRenderPipeline.getVertexRenderer() != null && viewportRenderPipeline.getEdgeRenderer() != null &&
                 viewportRenderPipeline.getFaceRenderer() != null && viewportRenderPipeline.getBlockModelRenderer() != null) {

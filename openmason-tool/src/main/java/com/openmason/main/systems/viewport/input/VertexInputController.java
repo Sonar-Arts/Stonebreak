@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport.input;
 
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
@@ -9,6 +10,9 @@ import org.joml.Vector3f;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.Iterator;
+import java.util.Set;
 
 /**
  * Handles all vertex selection and manipulation input for the viewport.
@@ -34,6 +38,7 @@ public class VertexInputController {
     private VertexSelectionState vertexSelectionState = null;
     private TranslationCoordinator translationCoordinator = null;
     private com.openmason.main.systems.viewport.state.TransformState transformState = null;
+    private GenericModelRenderer modelRenderer = null;
 
     /**
      * Set the vertex renderer for hover detection.
@@ -69,6 +74,14 @@ public class VertexInputController {
     }
 
     /**
+     * Set the generic model renderer for edge insertion operations.
+     */
+    public void setModelRenderer(GenericModelRenderer modelRenderer) {
+        this.modelRenderer = modelRenderer;
+        logger.debug("Model renderer set in VertexInputController");
+    }
+
+    /**
      * Handle vertex input.
      *
      * @param context Input context with mouse state
@@ -95,6 +108,26 @@ public class VertexInputController {
                 vertexSelectionState.clearSelection();
                 vertexRenderer.clearSelection();
                 logger.debug("Vertex selection cleared (ESC key pressed)");
+                return true;
+            }
+        }
+
+        // Handle J key to insert edge between 2 selected vertices (face split)
+        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_J)) {
+            if (vertexSelectionState.getSelectionCount() == 2 && modelRenderer != null) {
+                Set<Integer> selected = vertexSelectionState.getSelectedVertexIndices();
+                Iterator<Integer> it = selected.iterator();
+                int vertA = it.next();
+                int vertB = it.next();
+
+                boolean success = modelRenderer.insertEdgeBetweenVertices(vertA, vertB);
+                if (success) {
+                    vertexSelectionState.clearSelection();
+                    vertexRenderer.clearSelection();
+                    logger.info("Edge inserted between vertices {} and {} (J key)", vertA, vertB);
+                } else {
+                    logger.warn("Edge insertion failed between vertices {} and {}", vertA, vertB);
+                }
                 return true;
             }
         }

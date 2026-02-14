@@ -506,6 +506,64 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     // =========================================================================
+    // EDGE INSERTION (face splitting between two existing vertices)
+    // =========================================================================
+
+    /**
+     * Insert an edge between two unique vertices, splitting shared faces.
+     * No new vertices are created — only the index array and face mapping change.
+     *
+     * @param uniqueVertexA First unique vertex index
+     * @param uniqueVertexB Second unique vertex index
+     * @return true if the edge was inserted successfully
+     */
+    public boolean insertEdgeBetweenVertices(int uniqueVertexA, int uniqueVertexB) {
+        if (!initialized) {
+            logger.warn("Cannot insert edge: renderer not initialized");
+            return false;
+        }
+        if (topology == null) {
+            logger.warn("Cannot insert edge: topology not available");
+            return false;
+        }
+
+        EdgeInsertionProcessor processor = new EdgeInsertionProcessor();
+        EdgeInsertionProcessor.InsertionResult result = processor.insertEdge(
+            uniqueVertexA, uniqueVertexB, topology, vertexManager, faceMapper);
+
+        if (!result.success()) {
+            logger.warn("Edge insertion failed: {}", result.errorMessage());
+            return false;
+        }
+
+        // Update index array and face mapping
+        vertexManager.setIndices(result.newIndices());
+        indexCount = result.newIndices().length;
+        faceMapper.setMapping(result.newTriangleToFaceId());
+
+        // Rebuild GPU buffers (VBO unchanged — no new vertices; EBO updated)
+        updateEBO(result.newIndices());
+
+        // Rebuild unique vertex mapping (vertex array unchanged, but rebuild for consistency)
+        uniqueMapper.buildMapping(vertexManager.getVertices());
+
+        // Rebuild topology index
+        this.topology = MeshTopologyBuilder.build(
+            vertexManager.getVertices(), vertexManager.getIndices(),
+            faceMapper, uniqueMapper);
+
+        // Notify listeners
+        changeNotifier.notifyTopologyRebuilt(topology);
+        changeNotifier.notifyGeometryRebuilt();
+
+        logger.debug("Inserted edge between unique vertices {} and {}: {} triangles, {} faces",
+            uniqueVertexA, uniqueVertexB,
+            result.newIndices().length / 3, result.newFaceCount());
+
+        return true;
+    }
+
+    // =========================================================================
     // TEXTURE MANAGEMENT
     // =========================================================================
 

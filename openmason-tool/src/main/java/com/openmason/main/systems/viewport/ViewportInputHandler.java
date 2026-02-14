@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport;
 
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.input.*;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
@@ -144,6 +145,13 @@ public class ViewportInputHandler {
         vertexController.setTransformState(transformState);
         edgeController.setTransformState(transformState);
         faceController.setTransformState(transformState);
+    }
+
+    /**
+     * Set the generic model renderer for edge insertion operations (J key).
+     */
+    public void setModelRenderer(GenericModelRenderer modelRenderer) {
+        vertexController.setModelRenderer(modelRenderer);
     }
 
     /**
