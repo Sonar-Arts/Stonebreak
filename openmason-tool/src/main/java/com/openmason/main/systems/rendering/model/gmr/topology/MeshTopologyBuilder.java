@@ -20,6 +20,7 @@ import java.util.*;
  *   <li>Uses {@link FaceTriangleQuery#extractFaceVertexIndices} per face for ordered polygon vertices</li>
  *   <li>Filters edges: keeps boundary (2+ faces) and open-mesh outline edges</li>
  *   <li>Assigns stable edgeId (0..N-1), builds adjacency indices</li>
+ *   <li>Constructs all 15 sub-services</li>
  *   <li>Returns immutable {@link MeshTopology}</li>
  * </ol>
  *
@@ -253,19 +254,84 @@ public final class MeshTopologyBuilder {
             );
         }
 
+        // Step 10: Construct all 15 sub-services
+        // Immutable shared references
+        Map<Long, Integer> immutableEdgeKeyToId = Collections.unmodifiableMap(edgeKeyToId);
+        List<List<Integer>> immutableFaceToAdjacentFaces = Collections.unmodifiableList(faceToAdjacentFaces);
+        Map<Long, Integer> immutableFacePairToEdgeId = Collections.unmodifiableMap(facePairToEdgeId);
+
+        // Independent sub-services (no inter-service dependencies)
+        IndexMappingQuery indexMappingQuery = new IndexMappingQuery(
+                meshToUniqueMapping, uniqueToMeshIndices, uniqueVertexCount,
+                triangleToFaceId, triangleCount);
+
+        TopologyMetadataQuery topologyMetadataQuery = new TopologyMetadataQuery(
+                uniform, firstCount, faces);
+
+        ElementAdjacencyQuery elementAdjacencyQuery = new ElementAdjacencyQuery(
+                edges, faces, immutableVertexToEdges, immutableVertexToFaces,
+                immutableFaceToAdjacentFaces, immutableFacePairToEdgeId);
+
+        // Face geometry cache (root of dirty-tracking chain)
+        FaceGeometryCache faceGeometryCache = new FaceGeometryCache(
+                faces, uniqueToMeshIndices, faceNormals, faceCentroids,
+                faceAreas, vertices);
+
+        // Edge classifier (needs face normals from FaceGeometryCache)
+        EdgeClassifier edgeClassifier = new EdgeClassifier(
+                edges, EdgeClassifier.DEFAULT_THRESHOLD, faceNormals);
+
+        // Compute initial dihedral angles for DihedralAngleCache
+        float[] dihedralAngles = new float[edges.length];
+        for (int i = 0; i < edges.length; i++) {
+            int[] adjFaces = edges[i].adjacentFaceIds();
+            if (adjFaces.length == 2) {
+                dihedralAngles[i] = MeshGeometry.computeDihedralAngle(
+                        faceNormals[adjFaces[0]], faceNormals[adjFaces[1]]);
+            } else {
+                dihedralAngles[i] = Float.NaN;
+            }
+        }
+
+        // Dihedral angle cache (needs FaceGeometryCache + EdgeClassifier)
+        DihedralAngleCache dihedralAngleCache = new DihedralAngleCache(
+                edges, dihedralAngles, faceGeometryCache, edgeClassifier);
+
+        // Vertex normal cache (needs FaceGeometryCache)
+        VertexNormalCache vertexNormalCache = new VertexNormalCache(
+                vertexNormals, faceGeometryCache, immutableVertexToFaces);
+
+        // Existing sub-services (unchanged construction)
+        VertexClassifier vertexClassifier = new VertexClassifier(
+                edges, immutableVertexToEdges, uniform, firstCount);
+
+        FaceEdgeTraversal faceEdgeTraversal = new FaceEdgeTraversal(faces);
+
+        EdgeLoopTracer edgeLoopTracer = new EdgeLoopTracer(edges, faces);
+
+        FaceLoopTracer faceLoopTracer = new FaceLoopTracer(edges, faces);
+
+        FaceIslandDetector faceIslandDetector = new FaceIslandDetector(
+                faces.length, immutableFaceToAdjacentFaces);
+
+        VertexRingQuery vertexRingQuery = new VertexRingQuery(
+                edges, faces, immutableVertexToEdges, immutableVertexToFaces,
+                immutableEdgeKeyToId);
+
+        VertexAdjacencyQuery vertexAdjacencyQuery = new VertexAdjacencyQuery(
+                immutableEdgeKeyToId, edges, immutableVertexToEdges);
+
+        VertexBoundaryWalker vertexBoundaryWalker = new VertexBoundaryWalker(
+                edges, immutableVertexToEdges);
+
+        // Construct MeshTopology with all 15 sub-services
         MeshTopology topology = new MeshTopology(
-            edges, faces, faceNormals, faceCentroids, faceAreas, vertexNormals,
-            Collections.unmodifiableMap(edgeKeyToId),
-            immutableVertexToEdges,
-            immutableVertexToFaces,
-            Collections.unmodifiableList(faceToAdjacentFaces),
-            Collections.unmodifiableMap(facePairToEdgeId),
-            uniform, firstCount,
-            meshToUniqueMapping, uniqueToMeshIndices, uniqueVertexCount,
-            triangleToFaceId, triangleCount,
-            EdgeClassifier.DEFAULT_THRESHOLD,
-            vertices
-        );
+                edges, faces, immutableEdgeKeyToId,
+                indexMappingQuery, topologyMetadataQuery, elementAdjacencyQuery,
+                faceGeometryCache, dihedralAngleCache, vertexNormalCache,
+                edgeClassifier, vertexClassifier, faceEdgeTraversal,
+                edgeLoopTracer, faceLoopTracer, faceIslandDetector,
+                vertexRingQuery, vertexAdjacencyQuery, vertexBoundaryWalker);
 
         logger.debug("Built MeshTopology: {} edges, {} faces, {} unique verts, {} triangles, uniform={} (vpf={})",
             edgeCount, faces.length, uniqueVertexCount, triangleCount, uniform, firstCount);
