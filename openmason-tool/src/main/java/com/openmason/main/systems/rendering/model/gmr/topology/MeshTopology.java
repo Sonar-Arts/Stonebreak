@@ -82,7 +82,8 @@ public class MeshTopology {
                  int[] meshToUniqueMapping, int[][] uniqueToMeshIndices,
                  int uniqueVertexCount,
                  int[] triangleToFaceId, int triangleCount,
-                 float autoSharpThresholdRadians) {
+                 float autoSharpThresholdRadians,
+                 float[] vertices) {
         this.edges = edges;
         this.faces = faces;
         this.faceNormals = faceNormals;
@@ -101,6 +102,7 @@ public class MeshTopology {
         this.uniqueVertexCount = uniqueVertexCount;
         this.triangleToFaceId = triangleToFaceId;
         this.triangleCount = triangleCount;
+        this.verticesRef = vertices;
         this.faceDirty = new boolean[faces.length];
         this.vertexNormalDirty = new boolean[uniqueVertexCount];
         this.edgeDirty = new boolean[edges.length];
@@ -393,6 +395,36 @@ public class MeshTopology {
         }
         ensureFaceClean(faceId);
         return faceAreas[faceId];
+    }
+
+    /**
+     * Check whether a face is planar within a given tolerance.
+     * Measures the maximum distance from any vertex to the plane defined
+     * by the face normal and centroid.
+     *
+     * <p>Trivially true for triangles (3 vertices are always coplanar).
+     * For quads and n-gons, returns true when the maximum vertex-to-plane
+     * distance is at most {@code tolerance}.
+     *
+     * @param faceId    Face identifier
+     * @param tolerance Maximum allowed distance from the face plane (must be &ge; 0)
+     * @return true if all vertices lie within tolerance of the face plane,
+     *         or false if out of range or vertex data is unavailable
+     * @see MeshGeometry#computeMaxDistanceToPlane(int[], int[][], float[], Vector3f, Vector3f)
+     */
+    public boolean isFacePlanar(int faceId, float tolerance) {
+        if (faceId < 0 || faceId >= faces.length || verticesRef == null) {
+            return false;
+        }
+        MeshFace face = faces[faceId];
+        if (face.vertexCount() <= 3) {
+            return true;
+        }
+        ensureFaceClean(faceId);
+        float maxDist = MeshGeometry.computeMaxDistanceToPlane(
+                face.vertexIndices(), uniqueToMeshIndices, verticesRef,
+                faceNormals[faceId], faceCentroids[faceId]);
+        return maxDist <= tolerance;
     }
 
     // =========================================================================

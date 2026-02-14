@@ -263,7 +263,8 @@ public final class MeshTopologyBuilder {
             uniform, firstCount,
             meshToUniqueMapping, uniqueToMeshIndices, uniqueVertexCount,
             triangleToFaceId, triangleCount,
-            EdgeClassifier.DEFAULT_THRESHOLD
+            EdgeClassifier.DEFAULT_THRESHOLD,
+            vertices
         );
 
         logger.debug("Built MeshTopology: {} edges, {} faces, {} unique verts, {} triangles, uniform={} (vpf={})",

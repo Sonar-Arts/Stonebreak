@@ -145,6 +145,49 @@ public final class MeshGeometry {
     }
 
     /**
+     * Compute the maximum distance from any vertex to the best-fit plane of a face.
+     * The plane is defined by the face normal and centroid.
+     *
+     * <p>Trivially returns 0 for triangles (3 vertices are always coplanar).
+     * For quads and n-gons, measures the absolute distance from each vertex
+     * to the plane, returning the maximum.
+     *
+     * @param uniqueVertexIndices Ordered unique vertex indices of the face
+     * @param uniqueToMesh       Mapping from unique vertex index to mesh indices
+     * @param vertices           Vertex positions (x,y,z interleaved, indexed by mesh index)
+     * @param normal             Precomputed face normal (unit vector)
+     * @param centroid           Precomputed face centroid
+     * @return Maximum absolute distance from any vertex to the face plane,
+     *         or 0 for triangles and degenerate faces
+     */
+    public static float computeMaxDistanceToPlane(int[] uniqueVertexIndices, int[][] uniqueToMesh,
+                                                   float[] vertices, Vector3f normal, Vector3f centroid) {
+        int count = uniqueVertexIndices.length;
+        if (count <= 3) {
+            return 0.0f;
+        }
+
+        float normalLen = normal.lengthSquared();
+        if (normalLen < 1e-16f) {
+            return 0.0f;
+        }
+
+        float maxDist = 0.0f;
+        for (int i = 0; i < count; i++) {
+            int meshIdx = uniqueToMesh[uniqueVertexIndices[i]][0];
+            float vx = vertices[meshIdx * 3]     - centroid.x;
+            float vy = vertices[meshIdx * 3 + 1] - centroid.y;
+            float vz = vertices[meshIdx * 3 + 2] - centroid.z;
+
+            float dist = Math.abs(vx * normal.x + vy * normal.y + vz * normal.z);
+            if (dist > maxDist) {
+                maxDist = dist;
+            }
+        }
+        return maxDist;
+    }
+
+    /**
      * Compute a canonical key for a pair of face IDs.
      * Packs the smaller ID into the high bits, the larger into the low bits.
      *
