@@ -177,6 +177,13 @@ public class ViewportInputHandler {
     }
 
     /**
+     * @return true if the knife tool is currently active
+     */
+    public boolean isKnifeToolActive() {
+        return knifeController.isActive();
+    }
+
+    /**
      * Handle input for camera controls with priority-based routing.
      *
      * Priority System: vertex > edge > face > gizmo > camera

@@ -569,6 +569,13 @@ public class ViewportController {
     }
 
     /**
+     * @return true if the knife tool is currently active
+     */
+    public boolean isKnifeToolActive() {
+        return inputHandler != null && inputHandler.isKnifeToolActive();
+    }
+
+    /**
      * Start grab mode from keybind (G key).
      * Blender-style: Press G to grab and move all selected items.
      *

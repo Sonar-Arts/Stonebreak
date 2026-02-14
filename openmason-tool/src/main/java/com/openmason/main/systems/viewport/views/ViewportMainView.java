@@ -299,18 +299,22 @@ public class ViewportMainView {
         float textY = rectY + paddingY;
         drawList.addText(textX, textY, textColor, displayText);
 
-        // Render grid snapping indicator below the edit mode overlay
-        renderGridSnappingIndicator(drawList, imagePos, rectY + rectHeight);
+        // Render stacked indicators below the edit mode overlay
+        float indicatorBottom = rectY + rectHeight;
+        indicatorBottom = renderGridSnappingIndicator(drawList, imagePos, indicatorBottom);
+        renderKnifeToolIndicator(drawList, imagePos, indicatorBottom);
     }
 
     /**
      * Render grid snapping indicator below the edit mode overlay.
      * Only visible when grid snapping is enabled.
+     *
+     * @return Bottom Y of the rendered indicator, or {@code aboveBottom} if not rendered
      */
-    private void renderGridSnappingIndicator(ImDrawList drawList, ImVec2 imagePos, float editModeBottom) {
+    private float renderGridSnappingIndicator(ImDrawList drawList, ImVec2 imagePos, float aboveBottom) {
         boolean snappingEnabled = state.getGridSnappingEnabled().get();
         if (!snappingEnabled) {
-            return; // Don't show indicator when snapping is disabled
+            return aboveBottom;
         }
 
         String snappingText = "Grid Snap: ON";
@@ -324,9 +328,9 @@ public class ViewportMainView {
         float paddingY = 4.0f;
         float verticalGap = 4.0f;
 
-        // Position: below the edit mode overlay
+        // Position: below the previous indicator
         float rectX = imagePos.x + 10.0f;
-        float rectY = editModeBottom + verticalGap;
+        float rectY = aboveBottom + verticalGap;
         float rectWidth = textSize.x + (paddingX * 2);
         float rectHeight = textSize.y + (paddingY * 2);
 
@@ -348,6 +352,54 @@ public class ViewportMainView {
         float textX = rectX + paddingX;
         float textY = rectY + paddingY;
         drawList.addText(textX, textY, textColor, snappingText);
+
+        return rectY + rectHeight;
+    }
+
+    /**
+     * Render knife tool indicator below the previous indicator.
+     * Only visible when the knife tool is active. Shows "Knife Tool | Esc to cancel".
+     */
+    private void renderKnifeToolIndicator(ImDrawList drawList, ImVec2 imagePos, float aboveBottom) {
+        if (!viewport.isKnifeToolActive()) {
+            return;
+        }
+
+        String knifeText = "Knife Tool  |  Esc to cancel";
+
+        // Calculate text size
+        ImVec2 textSize = new ImVec2();
+        ImGui.calcTextSize(textSize, knifeText);
+
+        // Padding around text
+        float paddingX = 8.0f;
+        float paddingY = 4.0f;
+        float verticalGap = 4.0f;
+
+        // Position: below the previous indicator
+        float rectX = imagePos.x + 10.0f;
+        float rectY = aboveBottom + verticalGap;
+        float rectWidth = textSize.x + (paddingX * 2);
+        float rectHeight = textSize.y + (paddingY * 2);
+
+        // Colors - orange tint matching the knife tool preview color
+        int backgroundColor = ImGui.colorConvertFloat4ToU32(0.3f, 0.2f, 0.1f, 0.85f);   // Dark orange-brown
+        int borderColor = ImGui.colorConvertFloat4ToU32(0.0f, 0.0f, 0.0f, 0.85f);        // Black
+        int textColor = ImGui.colorConvertFloat4ToU32(1.0f, 0.6f, 0.0f, 0.95f);          // Orange
+
+        // Corner rounding
+        float rounding = 4.0f;
+
+        // Draw filled rounded rectangle (background)
+        drawList.addRectFilled(rectX, rectY, rectX + rectWidth, rectY + rectHeight, backgroundColor, rounding);
+
+        // Draw rounded rectangle border
+        drawList.addRect(rectX, rectY, rectX + rectWidth, rectY + rectHeight, borderColor, rounding);
+
+        // Draw text
+        float textX = rectX + paddingX;
+        float textY = rectY + paddingY;
+        drawList.addText(textX, textY, textColor, knifeText);
     }
 
     /**

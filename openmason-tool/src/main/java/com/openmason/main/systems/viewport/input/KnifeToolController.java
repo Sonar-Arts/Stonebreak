@@ -162,9 +162,13 @@ public class KnifeToolController {
         // Update edge renderer hover for visual feedback
         edgeRenderer.setHoveredEdgeIndex(hitResult.isHit() ? hitResult.edgeIndex() : -1);
 
-        // Update preview (no cut point yet, just hover highlight)
+        // Show hover point where cut will land
         if (previewRenderer != null) {
             previewRenderer.clearPreview();
+            if (hitResult.isHit()) {
+                Vector3f hoverPos = computePositionOnEdge(hitResult);
+                previewRenderer.setHoverPoint(hoverPos);
+            }
         }
 
         // Handle click on valid edge
@@ -251,13 +255,15 @@ public class KnifeToolController {
         // Update hover: only highlight valid second edges
         edgeRenderer.setHoveredEdgeIndex(isValidSecondEdge ? hitResult.edgeIndex() : -1);
 
-        // Update preview: show line from first cut to second hover position
+        // Update preview: show line from first cut to second hover position + hover point
         if (previewRenderer != null) {
             previewRenderer.setCutPoint(state.firstCutPosition());
             if (isValidSecondEdge && secondCutPos != null) {
                 previewRenderer.setPreviewLine(state.firstCutPosition(), secondCutPos);
+                previewRenderer.setHoverPoint(secondCutPos);
             } else {
                 previewRenderer.setPreviewLine(null, null);
+                previewRenderer.setHoverPoint(null);
             }
         }
 
@@ -329,6 +335,36 @@ public class KnifeToolController {
     // =========================================================================
     // HELPERS
     // =========================================================================
+
+    /**
+     * Compute the world-space position on an edge from a hit result's t parameter.
+     *
+     * @return Interpolated position, or null if the edge cannot be resolved
+     */
+    private Vector3f computePositionOnEdge(EdgeHoverDetector.EdgeHitResult hitResult) {
+        MeshTopology topology = modelRenderer.getTopology();
+        if (topology == null) {
+            return null;
+        }
+
+        MeshEdge edge = topology.getEdge(hitResult.edgeIndex());
+        if (edge == null) {
+            return null;
+        }
+
+        Vector3f posA = modelRenderer.getUniqueVertexPosition(edge.vertexA());
+        Vector3f posB = modelRenderer.getUniqueVertexPosition(edge.vertexB());
+        if (posA == null || posB == null) {
+            return null;
+        }
+
+        float t = hitResult.t();
+        return new Vector3f(
+            posA.x * (1f - t) + posB.x * t,
+            posA.y * (1f - t) + posB.y * t,
+            posA.z * (1f - t) + posB.z * t
+        );
+    }
 
     /**
      * Run edge hover detection with parameter using EdgeHoverDetector.

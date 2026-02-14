@@ -39,9 +39,13 @@ public class KnifePreviewRenderer {
     private Vector3f endPoint = null;
     private boolean hasPreviewLine = false;
 
-    // Cut point indicator
+    // Cut point indicator (committed first cut)
     private Vector3f cutPoint = null;
     private boolean hasCutPoint = false;
+
+    // Hover point indicator (where the next cut will land)
+    private Vector3f hoverPoint = null;
+    private boolean hasHoverPoint = false;
 
     /**
      * Initialize OpenGL resources. Lazily allocates a small VAO/VBO.
@@ -97,14 +101,26 @@ public class KnifePreviewRenderer {
     }
 
     /**
+     * Set the hover point indicator (shows where the next cut will land on the hovered edge).
+     *
+     * @param point Hover position in model space, or null to clear
+     */
+    public void setHoverPoint(Vector3f point) {
+        this.hoverPoint = point;
+        this.hasHoverPoint = (point != null);
+    }
+
+    /**
      * Clear all preview state.
      */
     public void clearPreview() {
         this.startPoint = null;
         this.endPoint = null;
         this.cutPoint = null;
+        this.hoverPoint = null;
         this.hasPreviewLine = false;
         this.hasCutPoint = false;
+        this.hasHoverPoint = false;
     }
 
     /**
@@ -121,7 +137,7 @@ public class KnifePreviewRenderer {
      * @return true if the preview renderer is active and has something to draw
      */
     public boolean isActive() {
-        return active && (hasPreviewLine || hasCutPoint);
+        return active && (hasPreviewLine || hasCutPoint || hasHoverPoint);
     }
 
     /**
@@ -139,7 +155,7 @@ public class KnifePreviewRenderer {
      * @param modelMatrix Model transformation matrix
      */
     public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
-        if (!initialized || !active || (!hasPreviewLine && !hasCutPoint)) {
+        if (!initialized || !active || (!hasPreviewLine && !hasCutPoint && !hasHoverPoint)) {
             return;
         }
 
@@ -174,12 +190,23 @@ public class KnifePreviewRenderer {
             }
 
             if (hasCutPoint) {
-                // Draw a small point at the cut location
+                // Draw a small point at the committed cut location
                 float[] pointData = {
                     cutPoint.x, cutPoint.y, cutPoint.z,
                     PREVIEW_COLOR.x, PREVIEW_COLOR.y, PREVIEW_COLOR.z
                 };
                 glBufferSubData(GL_ARRAY_BUFFER, 0, pointData);
+                glPointSize(8.0f);
+                glDrawArrays(GL_POINTS, 0, 1);
+            }
+
+            if (hasHoverPoint) {
+                // Draw a point where the next cut will land on the hovered edge
+                float[] hoverData = {
+                    hoverPoint.x, hoverPoint.y, hoverPoint.z,
+                    PREVIEW_COLOR.x, PREVIEW_COLOR.y, PREVIEW_COLOR.z
+                };
+                glBufferSubData(GL_ARRAY_BUFFER, 0, hoverData);
                 glPointSize(8.0f);
                 glDrawArrays(GL_POINTS, 0, 1);
             }
