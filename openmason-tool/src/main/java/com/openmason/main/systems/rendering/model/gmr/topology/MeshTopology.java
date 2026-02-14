@@ -7,32 +7,23 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Lightweight topology index providing O(1) adjacency queries.
- * Wraps existing flat vertex/index arrays without replacing them.
+ * Thin coordinator composing focused topology services into a unified index.
+ * Built by {@link MeshTopologyBuilder} from GMR's flat vertex/index arrays.
  *
- * <p>Built by {@link MeshTopologyBuilder} from GMR's flat arrays, this class
- * provides efficient lookups for:
+ * <p>Callers can access sub-services directly for focused work:
  * <ul>
- *   <li>Edge by ID or vertex pair</li>
- *   <li>Face by ID with cached normal, centroid, and area</li>
- *   <li>Vertex smooth normals (area-weighted average of adjacent face normals)</li>
- *   <li>Edges connected to a vertex</li>
- *   <li>Faces adjacent to a vertex</li>
- *   <li>Faces adjacent to a face (sharing an edge)</li>
- *   <li>Shared edge between two adjacent faces</li>
- *   <li>Uniform vs mixed topology detection</li>
+ *   <li>{@link #edgeClassifier()} — edge classification, auto-sharp, crease weights</li>
+ *   <li>{@link #vertexClassifier()} — valence, boundary, interior, pole queries</li>
+ *   <li>{@link MeshGeometry} — stateless geometry math (static utility)</li>
  * </ul>
  *
- * <p>All data is immutable after construction. Thread-safe for read access.
+ * <p>All delegation methods are retained for backward compatibility.
  */
 public class MeshTopology {
 
+    // Core topology data
     private final MeshEdge[] edges;
     private final MeshFace[] faces;
-    private final Vector3f[] faceNormals;
-    private final Vector3f[] faceCentroids;
-    private final float[] faceAreas;
-    private final Vector3f[] vertexNormals;       // per-unique-vertex smooth normals
     private final Map<Long, Integer> edgeKeyToId;
     private final List<List<Integer>> vertexToEdges;
     private final List<List<Integer>> vertexToFaces;
@@ -41,21 +32,33 @@ public class MeshTopology {
     private final boolean uniformTopology;
     private final int uniformVerticesPerFace;
 
-    // Embedded mapper data (consolidated from UniqueVertexMapper + TriangleFaceMapper)
-    private final int[] meshToUniqueMapping;      // meshIdx → uniqueIdx
-    private final int[][] uniqueToMeshIndices;    // uniqueIdx → meshIdx[]
+    // Embedded mapper data
+    private final int[] meshToUniqueMapping;
+    private final int[][] uniqueToMeshIndices;
     private final int uniqueVertexCount;
-    private final int[] triangleToFaceId;         // triIdx → faceId
+    private final int[] triangleToFaceId;
     private final int triangleCount;
+
+    // Face geometry cache (normals, centroids, areas)
+    private final Vector3f[] faceNormals;
+    private final Vector3f[] faceCentroids;
+    private final float[] faceAreas;
+
+    // Vertex normal cache
+    private final Vector3f[] vertexNormals;
 
     // Dihedral angles (per-edge, radians)
     private final float[] dihedralAngles;
 
-    // Lazy recomputation on vertex move
+    // Lazy recomputation dirty flags
     private final boolean[] faceDirty;
     private final boolean[] vertexNormalDirty;
     private final boolean[] edgeDirty;
     private float[] verticesRef;
+
+    // Composed sub-services
+    private final EdgeClassifier edgeClassifier;
+    private final VertexClassifier vertexClassifier;
 
     /**
      * Package-private constructor used by MeshTopologyBuilder.
@@ -71,7 +74,8 @@ public class MeshTopology {
                  boolean uniformTopology, int uniformVerticesPerFace,
                  int[] meshToUniqueMapping, int[][] uniqueToMeshIndices,
                  int uniqueVertexCount,
-                 int[] triangleToFaceId, int triangleCount) {
+                 int[] triangleToFaceId, int triangleCount,
+                 float autoSharpThresholdRadians) {
         this.edges = edges;
         this.faces = faces;
         this.faceNormals = faceNormals;
@@ -94,11 +98,39 @@ public class MeshTopology {
         this.vertexNormalDirty = new boolean[uniqueVertexCount];
         this.edgeDirty = new boolean[edges.length];
 
-        // Compute initial dihedral angles from precomputed face normals
+        // Compute initial dihedral angles
         this.dihedralAngles = new float[edges.length];
         for (int i = 0; i < edges.length; i++) {
             dihedralAngles[i] = computeDihedralAngleForEdge(edges[i]);
         }
+
+        // Compose sub-services
+        this.edgeClassifier = new EdgeClassifier(edges, autoSharpThresholdRadians, faceNormals);
+        this.vertexClassifier = new VertexClassifier(edges, vertexToEdges, uniformTopology, uniformVerticesPerFace);
+    }
+
+    // =========================================================================
+    // SUB-SERVICE ACCESSORS
+    // =========================================================================
+
+    /**
+     * Get the edge classifier for direct access to edge classification,
+     * auto-sharp threshold, and crease weight operations.
+     *
+     * @return The edge classifier (never null)
+     */
+    public EdgeClassifier edgeClassifier() {
+        return edgeClassifier;
+    }
+
+    /**
+     * Get the vertex classifier for direct access to valence,
+     * boundary, interior, and pole queries.
+     *
+     * @return The vertex classifier (never null)
+     */
+    public VertexClassifier vertexClassifier() {
+        return vertexClassifier;
     }
 
     // =========================================================================
@@ -120,7 +152,6 @@ public class MeshTopology {
 
     /**
      * Get an edge by its two vertex endpoints (O(1) via hash map).
-     * Order of v0/v1 does not matter; canonical ordering is applied internally.
      *
      * @param v0 First vertex index
      * @param v1 Second vertex index
@@ -129,36 +160,20 @@ public class MeshTopology {
     public MeshEdge getEdgeByVertices(int v0, int v1) {
         long key = MeshEdge.canonicalKey(v0, v1);
         Integer id = edgeKeyToId.get(key);
-        if (id == null) {
-            return null;
-        }
-        return edges[id];
+        return id != null ? edges[id] : null;
     }
 
-    /**
-     * Get the total number of edges.
-     *
-     * @return Edge count
-     */
+    /** @return Total number of edges */
     public int getEdgeCount() {
         return edges.length;
     }
 
     /**
-     * Get the dihedral angle at an edge — the angle between the normals of
-     * its two adjacent faces, in radians.
-     *
-     * <ul>
-     *   <li>{@code 0} = coplanar (normals point in the same direction)</li>
-     *   <li>{@code π} = faces fold 180° apart (normals point in opposite directions)</li>
-     *   <li>{@code Float.NaN} = open edge (single face) or non-manifold edge (3+ faces)</li>
-     * </ul>
-     *
-     * <p>Lazily recomputes when adjacent face normals have been invalidated
-     * by a vertex position change.
+     * Get the dihedral angle at an edge in radians.
+     * Lazily recomputes when dirtied by a vertex move.
      *
      * @param edgeId Edge identifier (0..edgeCount-1)
-     * @return Dihedral angle in radians, or {@code Float.NaN} if undefined or out of range
+     * @return Angle in radians (0..π), or {@code Float.NaN} if undefined or out of range
      */
     public float getDihedralAngle(int edgeId) {
         if (edgeId < 0 || edgeId >= edges.length) {
@@ -166,6 +181,114 @@ public class MeshTopology {
         }
         ensureEdgeClean(edgeId);
         return dihedralAngles[edgeId];
+    }
+
+    // =========================================================================
+    // EDGE CLASSIFICATION (delegation to EdgeClassifier)
+    // =========================================================================
+
+    /** @see EdgeClassifier#get(int) */
+    public EdgeClassification getEdgeClassification(int edgeId) {
+        ensureEdgeClean(edgeId);
+        return edgeClassifier.get(edgeId);
+    }
+
+    /** @see EdgeClassifier#getKind(int) */
+    public EdgeKind getEdgeKind(int edgeId) {
+        ensureEdgeClean(edgeId);
+        return edgeClassifier.getKind(edgeId);
+    }
+
+    /** @see EdgeClassifier#isSharp(int) */
+    public boolean isEdgeSharp(int edgeId) {
+        ensureEdgeClean(edgeId);
+        return edgeClassifier.isSharp(edgeId);
+    }
+
+    /** @see EdgeClassifier#isSeam(int) */
+    public boolean isEdgeSeam(int edgeId) {
+        ensureEdgeClean(edgeId);
+        return edgeClassifier.isSeam(edgeId);
+    }
+
+    /** @see EdgeClassifier#getCreaseWeight(int) */
+    public float getEdgeCreaseWeight(int edgeId) {
+        ensureEdgeClean(edgeId);
+        return edgeClassifier.getCreaseWeight(edgeId);
+    }
+
+    /** @see EdgeClassifier#isOpen(int) */
+    public boolean isOpenEdge(int edgeId) {
+        return edgeClassifier.isOpen(edgeId);
+    }
+
+    /** @see EdgeClassifier#isManifold(int) */
+    public boolean isManifoldEdge(int edgeId) {
+        return edgeClassifier.isManifold(edgeId);
+    }
+
+    /** @see EdgeClassifier#isNonManifold(int) */
+    public boolean isNonManifoldEdge(int edgeId) {
+        return edgeClassifier.isNonManifold(edgeId);
+    }
+
+    /** @see EdgeClassifier#setSharp(int, boolean) */
+    public void setEdgeSharp(int edgeId, boolean sharp) {
+        edgeClassifier.setSharp(edgeId, sharp);
+    }
+
+    /** @see EdgeClassifier#setSeam(int, boolean) */
+    public void setEdgeSeam(int edgeId, boolean seam) {
+        edgeClassifier.setSeam(edgeId, seam);
+    }
+
+    /** @see EdgeClassifier#setCreaseWeight(int, float) */
+    public void setEdgeCreaseWeight(int edgeId, float creaseWeight) {
+        edgeClassifier.setCreaseWeight(edgeId, creaseWeight);
+    }
+
+    /** @see EdgeClassifier#getThresholdRadians() */
+    public float getAutoSharpThresholdRadians() {
+        return edgeClassifier.getThresholdRadians();
+    }
+
+    /** @see EdgeClassifier#getThresholdDegrees() */
+    public float getAutoSharpThresholdDegrees() {
+        return edgeClassifier.getThresholdDegrees();
+    }
+
+    /**
+     * Update the auto-sharp threshold and reclassify all edges.
+     *
+     * @param thresholdRadians New threshold in radians (clamped to [0, π])
+     */
+    public void setAutoSharpThreshold(float thresholdRadians) {
+        // Ensure all edges are clean before bulk reclassification
+        for (int i = 0; i < edges.length; i++) {
+            ensureEdgeClean(i);
+        }
+        edgeClassifier.setThreshold(thresholdRadians, dihedralAngles);
+    }
+
+    /**
+     * Update the auto-sharp threshold (in degrees) and reclassify all edges.
+     *
+     * @param thresholdDegrees New threshold in degrees (clamped to [0, 180])
+     */
+    public void setAutoSharpThresholdDegrees(float thresholdDegrees) {
+        setAutoSharpThreshold((float) Math.toRadians(
+            Math.clamp(thresholdDegrees, 0.0f, 180.0f)
+        ));
+    }
+
+    /** @see EdgeClassifier#countByKind(EdgeKind) */
+    public int countEdgesByKind(EdgeKind kind) {
+        return edgeClassifier.countByKind(kind);
+    }
+
+    /** @see EdgeClassifier#countSharp() */
+    public int countSharpEdges() {
+        return edgeClassifier.countSharp();
     }
 
     // =========================================================================
@@ -185,18 +308,13 @@ public class MeshTopology {
         return faces[faceId];
     }
 
-    /**
-     * Get the total number of faces.
-     *
-     * @return Face count
-     */
+    /** @return Total number of faces */
     public int getFaceCount() {
         return faces.length;
     }
 
     /**
-     * Get the cached normal for a face.
-     * Lazily recomputes if the face was dirtied by a vertex move.
+     * Get the cached normal for a face. Lazily recomputes if dirty.
      *
      * @param faceId Face identifier
      * @return The face normal (unit vector), or null if out of range
@@ -210,11 +328,10 @@ public class MeshTopology {
     }
 
     /**
-     * Get the cached centroid for a face.
-     * Lazily recomputes if the face was dirtied by a vertex move.
+     * Get the cached centroid for a face. Lazily recomputes if dirty.
      *
      * @param faceId Face identifier
-     * @return The face centroid (average of vertex positions), or null if out of range
+     * @return The face centroid, or null if out of range
      */
     public Vector3f getFaceCentroid(int faceId) {
         if (faceId < 0 || faceId >= faceCentroids.length) {
@@ -225,8 +342,7 @@ public class MeshTopology {
     }
 
     /**
-     * Get the cached area for a face.
-     * Lazily recomputes if the face was dirtied by a vertex move.
+     * Get the cached area for a face. Lazily recomputes if dirty.
      *
      * @param faceId Face identifier
      * @return The face area, or {@code Float.NaN} if out of range
@@ -240,14 +356,12 @@ public class MeshTopology {
     }
 
     // =========================================================================
-    // VERTEX NORMAL QUERIES (smooth shading)
+    // VERTEX NORMAL QUERIES
     // =========================================================================
 
     /**
      * Get the smooth (area-weighted) normal for a unique vertex.
-     * Computed as the normalized weighted average of adjacent face normals,
-     * where each face normal is weighted by its face area. Lazily recomputes
-     * if the vertex normal was dirtied by a vertex position change.
+     * Lazily recomputes if dirty.
      *
      * @param uniqueVertexIdx Unique vertex index
      * @return The vertex normal (unit vector), or null if out of range
@@ -311,42 +425,26 @@ public class MeshTopology {
      * @return The shared edge, or null if the faces are not adjacent
      */
     public MeshEdge getSharedEdge(int faceIdA, int faceIdB) {
-        long key = canonicalFacePairKey(faceIdA, faceIdB);
+        long key = MeshGeometry.canonicalFacePairKey(faceIdA, faceIdB);
         Integer edgeId = facePairToEdgeId.get(key);
-        if (edgeId == null) {
-            return null;
-        }
-        return edges[edgeId];
+        return edgeId != null ? edges[edgeId] : null;
     }
 
     // =========================================================================
     // TOPOLOGY QUERIES
     // =========================================================================
 
-    /**
-     * Check if all faces have the same vertex count.
-     *
-     * @return true if topology is uniform
-     */
+    /** @return true if all faces have the same vertex count */
     public boolean isUniformTopology() {
         return uniformTopology;
     }
 
-    /**
-     * Get the uniform vertex count per face (only valid when {@link #isUniformTopology()} is true).
-     *
-     * @return Vertices per face, or -1 if mixed topology
-     */
+    /** @return Vertices per face if uniform, or -1 if mixed */
     public int getUniformVerticesPerFace() {
         return uniformTopology ? uniformVerticesPerFace : -1;
     }
 
-    /**
-     * Get per-face vertex counts as an array.
-     * Useful for mixed-topology rendering paths.
-     *
-     * @return Array of vertex counts per face
-     */
+    /** @return Array of vertex counts per face */
     public int[] getVerticesPerFace() {
         int[] result = new int[faces.length];
         for (int i = 0; i < faces.length; i++) {
@@ -355,12 +453,7 @@ public class MeshTopology {
         return result;
     }
 
-    /**
-     * Compute float offsets into a packed face positions array.
-     * Each face's positions occupy {@code vertexCount * 3} floats.
-     *
-     * @return Array of float offsets (one per face)
-     */
+    /** @return Array of float offsets into a packed face positions array */
     public int[] computeFacePositionOffsets() {
         int[] offsets = new int[faces.length];
         int cumulative = 0;
@@ -372,91 +465,31 @@ public class MeshTopology {
     }
 
     // =========================================================================
-    // VERTEX CLASSIFICATION
+    // VERTEX CLASSIFICATION (delegation to VertexClassifier)
     // =========================================================================
 
-    /**
-     * Get the valence (edge count) of a unique vertex.
-     * Valence is the number of edges connected to the vertex.
-     *
-     * @param uniqueVertexIdx Unique vertex index
-     * @return Edge count, or 0 if out of range
-     */
+    /** @see VertexClassifier#getValence(int) */
     public int getVertexValence(int uniqueVertexIdx) {
-        return getEdgesForVertex(uniqueVertexIdx).size();
+        return vertexClassifier.getValence(uniqueVertexIdx);
     }
 
-    /**
-     * Check if a vertex lies on the mesh boundary.
-     * A boundary vertex has at least one connected edge with only 1 adjacent face
-     * (an open edge).
-     *
-     * @param uniqueVertexIdx Unique vertex index
-     * @return true if any connected edge is open (single adjacent face)
-     */
+    /** @see VertexClassifier#isBoundary(int) */
     public boolean isBoundaryVertex(int uniqueVertexIdx) {
-        List<Integer> edgeIds = getEdgesForVertex(uniqueVertexIdx);
-        for (int edgeId : edgeIds) {
-            if (edges[edgeId].adjacentFaceCount() == 1) {
-                return true;
-            }
-        }
-        return false;
+        return vertexClassifier.isBoundary(uniqueVertexIdx);
     }
 
-    /**
-     * Check if a vertex is fully interior (not on the mesh boundary).
-     * An interior vertex has all connected edges shared by exactly 2 faces.
-     *
-     * @param uniqueVertexIdx Unique vertex index
-     * @return true if all connected edges are shared by 2 faces
-     */
+    /** @see VertexClassifier#isInterior(int) */
     public boolean isInteriorVertex(int uniqueVertexIdx) {
-        List<Integer> edgeIds = getEdgesForVertex(uniqueVertexIdx);
-        if (edgeIds.isEmpty()) {
-            return false;
-        }
-        for (int edgeId : edgeIds) {
-            if (edges[edgeId].adjacentFaceCount() != 2) {
-                return false;
-            }
-        }
-        return true;
+        return vertexClassifier.isInterior(uniqueVertexIdx);
     }
 
-    /**
-     * Check if a vertex is a topology pole — a vertex whose valence differs
-     * from the expected regular valence for the mesh type.
-     *
-     * <p>Expected valence by mesh type:
-     * <ul>
-     *   <li>Quad mesh (4 vertices/face): expected valence = 4</li>
-     *   <li>Triangle mesh (3 vertices/face): expected valence = 6</li>
-     * </ul>
-     *
-     * <p>Only meaningful for uniform-topology meshes. Returns false for
-     * mixed-topology meshes or unrecognized face types.
-     *
-     * @param uniqueVertexIdx Unique vertex index
-     * @return true if valence differs from the expected regular valence
-     */
+    /** @see VertexClassifier#isPole(int) */
     public boolean isPoleVertex(int uniqueVertexIdx) {
-        if (!uniformTopology) {
-            return false;
-        }
-        int expectedValence = switch (uniformVerticesPerFace) {
-            case 4 -> 4;  // Quad mesh: regular vertex has 4 edges
-            case 3 -> 6;  // Triangle mesh: regular vertex has 6 edges
-            default -> -1;
-        };
-        if (expectedValence == -1) {
-            return false;
-        }
-        return getVertexValence(uniqueVertexIdx) != expectedValence;
+        return vertexClassifier.isPole(uniqueVertexIdx);
     }
 
     // =========================================================================
-    // VERTEX MAPPING QUERIES (consolidated from UniqueVertexMapper)
+    // VERTEX MAPPING QUERIES
     // =========================================================================
 
     /**
@@ -485,17 +518,13 @@ public class MeshTopology {
         return uniqueToMeshIndices[uniqueIdx].clone();
     }
 
-    /**
-     * Get the number of unique geometric vertex positions.
-     *
-     * @return Unique vertex count
-     */
+    /** @return Number of unique geometric vertex positions */
     public int getUniqueVertexCount() {
         return uniqueVertexCount;
     }
 
     // =========================================================================
-    // TRIANGLE-FACE MAPPING QUERIES (consolidated from TriangleFaceMapper)
+    // TRIANGLE-FACE MAPPING QUERIES
     // =========================================================================
 
     /**
@@ -511,11 +540,7 @@ public class MeshTopology {
         return triangleToFaceId[triIdx];
     }
 
-    /**
-     * Get the total number of triangles in the mesh.
-     *
-     * @return Triangle count
-     */
+    /** @return Total number of triangles in the mesh */
     public int getTriangleCount() {
         return triangleCount;
     }
@@ -526,10 +551,8 @@ public class MeshTopology {
 
     /**
      * Mark all faces adjacent to a moved vertex as dirty.
-     * Normals, centroids, areas, and vertex normals will be lazily recomputed on the next query.
-     *
-     * <p>Vertex normals are dirtied for every vertex on every affected face, because a face
-     * normal change propagates to all vertices that reference that face in their weighted average.
+     * Normals, centroids, areas, vertex normals, dihedral angles, and edge
+     * classifications will be lazily recomputed on the next query.
      *
      * @param uniqueVertexIndex The unique vertex that moved
      * @param vertices          Current vertex positions (x,y,z interleaved)
@@ -543,14 +566,12 @@ public class MeshTopology {
 
                 MeshFace face = faces[faceId];
 
-                // Dirty vertex normals for every vertex on this face
                 for (int v : face.vertexIndices()) {
                     if (v >= 0 && v < vertexNormalDirty.length) {
                         vertexNormalDirty[v] = true;
                     }
                 }
 
-                // Dirty dihedral angles for every edge on this face
                 for (int eid : face.edgeIds()) {
                     if (eid >= 0 && eid < edgeDirty.length) {
                         edgeDirty[eid] = true;
@@ -564,34 +585,18 @@ public class MeshTopology {
     // LAZY RECOMPUTATION
     // =========================================================================
 
-    /**
-     * Ensure a face's cached normal, centroid, and area are up-to-date.
-     * No-op if the face is already clean.
-     */
     private void ensureFaceClean(int faceId) {
-        if (faceDirty[faceId] && verticesRef != null) {
-            recomputeFace(faceId);
+        if (faceId >= 0 && faceId < faceDirty.length && faceDirty[faceId] && verticesRef != null) {
+            int[] verts = faces[faceId].vertexIndices();
+            faceNormals[faceId] = MeshGeometry.computeNormal(verts, uniqueToMeshIndices, verticesRef);
+            faceCentroids[faceId] = MeshGeometry.computeCentroid(verts, uniqueToMeshIndices, verticesRef);
+            faceAreas[faceId] = MeshGeometry.computeArea(verts, uniqueToMeshIndices, verticesRef);
             faceDirty[faceId] = false;
         }
     }
 
-    /**
-     * Recompute normal, centroid, and area for a single face.
-     */
-    private void recomputeFace(int faceId) {
-        int[] verts = faces[faceId].vertexIndices();
-        faceNormals[faceId] = computeNormal(verts, uniqueToMeshIndices, verticesRef);
-        faceCentroids[faceId] = computeCentroid(verts, uniqueToMeshIndices, verticesRef);
-        faceAreas[faceId] = computeArea(verts, uniqueToMeshIndices, verticesRef);
-    }
-
-    /**
-     * Ensure an edge's cached dihedral angle is up-to-date.
-     * Forces adjacent faces clean first (dihedral angle depends on face normals).
-     * No-op if the edge is already clean.
-     */
     private void ensureEdgeClean(int edgeId) {
-        if (!edgeDirty[edgeId]) {
+        if (edgeId < 0 || edgeId >= edgeDirty.length || !edgeDirty[edgeId]) {
             return;
         }
         MeshEdge edge = edges[edgeId];
@@ -599,183 +604,27 @@ public class MeshTopology {
             ensureFaceClean(faceId);
         }
         dihedralAngles[edgeId] = computeDihedralAngleForEdge(edge);
+        edgeClassifier.reclassify(edgeId, dihedralAngles[edgeId]);
         edgeDirty[edgeId] = false;
     }
 
-    /**
-     * Ensure a vertex's cached smooth normal is up-to-date.
-     * Forces all adjacent faces clean first (vertex normal depends on face normals and areas).
-     * No-op if the vertex normal is already clean.
-     */
     private void ensureVertexNormalClean(int uniqueVertexIdx) {
         if (!vertexNormalDirty[uniqueVertexIdx]) {
             return;
         }
-        // Ensure all adjacent faces are clean before recomputing the weighted average
         List<Integer> adjacentFaceIds = getFacesForVertex(uniqueVertexIdx);
         for (int faceId : adjacentFaceIds) {
             ensureFaceClean(faceId);
         }
-        recomputeVertexNormal(uniqueVertexIdx, adjacentFaceIds);
+        vertexNormals[uniqueVertexIdx] = MeshGeometry.computeVertexNormal(adjacentFaceIds, faceNormals, faceAreas);
         vertexNormalDirty[uniqueVertexIdx] = false;
     }
 
-    /**
-     * Recompute the smooth normal for a single vertex as the area-weighted average
-     * of its adjacent face normals.
-     */
-    private void recomputeVertexNormal(int uniqueVertexIdx, List<Integer> adjacentFaceIds) {
-        vertexNormals[uniqueVertexIdx] = computeVertexNormal(adjacentFaceIds, faceNormals, faceAreas);
-    }
-
-    // =========================================================================
-    // STATIC GEOMETRY COMPUTATIONS
-    // =========================================================================
-
-    /**
-     * Compute a canonical key for a pair of face IDs.
-     * Packs the smaller ID into the high bits, the larger into the low bits.
-     *
-     * @param faceA First face ID
-     * @param faceB Second face ID
-     * @return Packed long suitable for use as a map key
-     */
-    static long canonicalFacePairKey(int faceA, int faceB) {
-        int min = Math.min(faceA, faceB);
-        int max = Math.max(faceA, faceB);
-        return ((long) min << 32) | (max & 0xFFFFFFFFL);
-    }
-
-    /**
-     * Compute a smooth vertex normal as the area-weighted average of adjacent face normals.
-     * Larger faces contribute more to the result, which is the standard weighting approach.
-     *
-     * @param adjacentFaceIds Face IDs adjacent to the vertex
-     * @param faceNormals     Precomputed face normals array
-     * @param faceAreas       Precomputed face areas array
-     * @return Normalized vertex normal, or zero vector if no valid adjacent faces
-     */
-    static Vector3f computeVertexNormal(List<Integer> adjacentFaceIds,
-                                        Vector3f[] faceNormals, float[] faceAreas) {
-        float nx = 0, ny = 0, nz = 0;
-
-        for (int faceId : adjacentFaceIds) {
-            if (faceId < 0 || faceId >= faceNormals.length) {
-                continue;
-            }
-            Vector3f fn = faceNormals[faceId];
-            float area = faceAreas[faceId];
-            nx += fn.x * area;
-            ny += fn.y * area;
-            nz += fn.z * area;
-        }
-
-        Vector3f result = new Vector3f(nx, ny, nz);
-        float len = result.length();
-        if (len > 1e-8f) {
-            result.div(len);
-        }
-        return result;
-    }
-
-    /**
-     * Compute a face normal using Newell's method.
-     * Works for triangles, quads, and arbitrary planar polygons.
-     *
-     * @param uniqueVertexIndices Ordered unique vertex indices of the face
-     * @param uniqueToMesh       Mapping from unique vertex index to mesh indices
-     * @param vertices           Vertex positions (x,y,z interleaved, indexed by mesh index)
-     * @return Normalized face normal, or zero vector for degenerate faces
-     */
-    static Vector3f computeNormal(int[] uniqueVertexIndices, int[][] uniqueToMesh, float[] vertices) {
-        float normalX = 0, normalY = 0, normalZ = 0;
-        int count = uniqueVertexIndices.length;
-
-        for (int i = 0; i < count; i++) {
-            int currMesh = uniqueToMesh[uniqueVertexIndices[i]][0];
-            int nextMesh = uniqueToMesh[uniqueVertexIndices[(i + 1) % count]][0];
-
-            float cx = vertices[currMesh * 3],     cy = vertices[currMesh * 3 + 1],     cz = vertices[currMesh * 3 + 2];
-            float nx = vertices[nextMesh * 3],     ny = vertices[nextMesh * 3 + 1],     nz = vertices[nextMesh * 3 + 2];
-
-            normalX += (cy - ny) * (cz + nz);
-            normalY += (cz - nz) * (cx + nx);
-            normalZ += (cx - nx) * (cy + ny);
-        }
-
-        Vector3f result = new Vector3f(normalX, normalY, normalZ);
-        float len = result.length();
-        if (len > 1e-8f) {
-            result.div(len);
-        }
-        return result;
-    }
-
-    /**
-     * Compute a face centroid (average of vertex positions).
-     *
-     * @param uniqueVertexIndices Ordered unique vertex indices of the face
-     * @param uniqueToMesh       Mapping from unique vertex index to mesh indices
-     * @param vertices           Vertex positions (x,y,z interleaved, indexed by mesh index)
-     * @return Face centroid
-     */
-    static Vector3f computeCentroid(int[] uniqueVertexIndices, int[][] uniqueToMesh, float[] vertices) {
-        float cx = 0, cy = 0, cz = 0;
-        int count = uniqueVertexIndices.length;
-
-        for (int i = 0; i < count; i++) {
-            int meshIdx = uniqueToMesh[uniqueVertexIndices[i]][0];
-            cx += vertices[meshIdx * 3];
-            cy += vertices[meshIdx * 3 + 1];
-            cz += vertices[meshIdx * 3 + 2];
-        }
-
-        return new Vector3f(cx / count, cy / count, cz / count);
-    }
-
-    /**
-     * Compute a face area using the magnitude of Newell's cross product sum.
-     * Works for triangles, quads, and arbitrary planar polygons.
-     *
-     * @param uniqueVertexIndices Ordered unique vertex indices of the face
-     * @param uniqueToMesh       Mapping from unique vertex index to mesh indices
-     * @param vertices           Vertex positions (x,y,z interleaved, indexed by mesh index)
-     * @return Face area (half the magnitude of the Newell normal), or 0 for degenerate faces
-     */
-    static float computeArea(int[] uniqueVertexIndices, int[][] uniqueToMesh, float[] vertices) {
-        float normalX = 0, normalY = 0, normalZ = 0;
-        int count = uniqueVertexIndices.length;
-
-        for (int i = 0; i < count; i++) {
-            int currMesh = uniqueToMesh[uniqueVertexIndices[i]][0];
-            int nextMesh = uniqueToMesh[uniqueVertexIndices[(i + 1) % count]][0];
-
-            float cx = vertices[currMesh * 3],     cy = vertices[currMesh * 3 + 1],     cz = vertices[currMesh * 3 + 2];
-            float nx = vertices[nextMesh * 3],     ny = vertices[nextMesh * 3 + 1],     nz = vertices[nextMesh * 3 + 2];
-
-            normalX += (cy - ny) * (cz + nz);
-            normalY += (cz - nz) * (cx + nx);
-            normalZ += (cx - nx) * (cy + ny);
-        }
-
-        return 0.5f * (float) Math.sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ);
-    }
-
-    /**
-     * Compute the dihedral angle for a single edge from the current face normals.
-     * Only defined for manifold edges (exactly 2 adjacent faces).
-     *
-     * @param edge The edge to compute for
-     * @return Angle in radians (0..π), or {@code Float.NaN} for non-manifold/open edges
-     */
     private float computeDihedralAngleForEdge(MeshEdge edge) {
         int[] adjFaces = edge.adjacentFaceIds();
         if (adjFaces.length != 2) {
             return Float.NaN;
         }
-        Vector3f n0 = faceNormals[adjFaces[0]];
-        Vector3f n1 = faceNormals[adjFaces[1]];
-        float dot = Math.clamp(n0.dot(n1), -1.0f, 1.0f);
-        return (float) Math.acos(dot);
+        return MeshGeometry.computeDihedralAngle(faceNormals[adjFaces[0]], faceNormals[adjFaces[1]]);
     }
 }

@@ -193,7 +193,7 @@ public final class MeshTopologyBuilder {
                     if (fA >= 0 && fA < faces.length && fB >= 0 && fB < faces.length) {
                         faceAdjSets.get(fA).add(fB);
                         faceAdjSets.get(fB).add(fA);
-                        long pairKey = MeshTopology.canonicalFacePairKey(fA, fB);
+                        long pairKey = MeshGeometry.canonicalFacePairKey(fA, fB);
                         facePairToEdgeId.put(pairKey, edge.edgeId());
                     }
                 }
@@ -240,15 +240,15 @@ public final class MeshTopologyBuilder {
         float[] faceAreas = new float[faces.length];
         for (int i = 0; i < faces.length; i++) {
             int[] verts = faces[i].vertexIndices();
-            faceNormals[i] = MeshTopology.computeNormal(verts, uniqueToMeshIndices, vertices);
-            faceCentroids[i] = MeshTopology.computeCentroid(verts, uniqueToMeshIndices, vertices);
-            faceAreas[i] = MeshTopology.computeArea(verts, uniqueToMeshIndices, vertices);
+            faceNormals[i] = MeshGeometry.computeNormal(verts, uniqueToMeshIndices, vertices);
+            faceCentroids[i] = MeshGeometry.computeCentroid(verts, uniqueToMeshIndices, vertices);
+            faceAreas[i] = MeshGeometry.computeArea(verts, uniqueToMeshIndices, vertices);
         }
 
         // Step 9: Compute per-vertex smooth normals (area-weighted average of adjacent face normals)
         Vector3f[] vertexNormals = new Vector3f[uniqueVertexCount];
         for (int v = 0; v < uniqueVertexCount; v++) {
-            vertexNormals[v] = MeshTopology.computeVertexNormal(
+            vertexNormals[v] = MeshGeometry.computeVertexNormal(
                 immutableVertexToFaces.get(v), faceNormals, faceAreas
             );
         }
@@ -262,7 +262,8 @@ public final class MeshTopologyBuilder {
             Collections.unmodifiableMap(facePairToEdgeId),
             uniform, firstCount,
             meshToUniqueMapping, uniqueToMeshIndices, uniqueVertexCount,
-            triangleToFaceId, triangleCount
+            triangleToFaceId, triangleCount,
+            EdgeClassifier.DEFAULT_THRESHOLD
         );
 
         logger.debug("Built MeshTopology: {} edges, {} faces, {} unique verts, {} triangles, uniform={} (vpf={})",
