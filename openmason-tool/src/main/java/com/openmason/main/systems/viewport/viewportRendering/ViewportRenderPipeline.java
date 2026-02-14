@@ -501,24 +501,8 @@ public class ViewportRenderPipeline {
                     // Only extract face data ONCE (in MODEL SPACE, no transform)
                     // Faces will be transformed by model matrix in shader (like BlockModelRenderer)
                     if (faceDataNeedsUpdate) {
-                        // Check if face renderer already has triangle data from GenericModelRenderer
-                        // (set up by setGenericModelRenderer -> rebuildFromGenericModelRenderer)
-                        if (!faceRenderer.isUsingTriangleMode()) {
-                            // Standard mode - extract face data from GMR (single source of truth)
-                            faceRenderer.updateFaceDataFromGMR();
-
-                            // Build face-to-vertex mapping to prevent unification bug
-                            float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
-                            if (uniqueVertexPositions != null) {
-                                faceRenderer.buildFaceToVertexMapping(uniqueVertexPositions);
-                                logger.trace("Built face-to-vertex mapping for unification prevention");
-                            }
-                            logger.trace("Face data extracted from GMR in model space");
-                        } else {
-                            // Already in triangle mode from GenericModelRenderer - don't overwrite
-                            logger.trace("Face data already in triangle mode from GenericModelRenderer");
-                        }
-
+                        // Face data managed by GenericModelRenderer via rebuildFromGenericModelRenderer()
+                        logger.trace("Face data managed by topology-backed triangle rendering");
                         faceDataNeedsUpdate = false;
                     }
 

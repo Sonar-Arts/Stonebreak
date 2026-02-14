@@ -62,8 +62,6 @@ public class FaceRenderer implements MeshChangeListener {
 
     // Layout constants
     private static final int COMPONENTS_PER_POSITION = 3; // x, y, z
-    private static final int LEGACY_CORNERS_PER_FACE = 4; // Legacy quad assumption: 4 corner vertices
-    private static final int LEGACY_FLOATS_PER_FACE_POSITION = LEGACY_CORNERS_PER_FACE * COMPONENTS_PER_POSITION; // 12
     private static final float VERTEX_MATCH_EPSILON = 0.0001f;
 
     // OpenGL resources
@@ -80,7 +78,6 @@ public class FaceRenderer implements MeshChangeListener {
 
     // Hover state
     private int hoveredFaceIndex = -1; // -1 means no face is hovered
-    private float[] facePositions = null; // Store positions for hit testing (legacy quad format)
 
     // Selection state - multi-selection only
     private Set<Integer> selectedFaceIndices = new HashSet<>();
@@ -97,9 +94,6 @@ public class FaceRenderer implements MeshChangeListener {
 
     // GenericModelRenderer integration (for subdivision support)
     private GenericModelRenderer genericModelRenderer = null;
-
-    // Flag indicating face data is from triangles (post-subdivision) vs quads (original)
-    private boolean usingTriangleMode = false;
 
     // Maps original face ID (0-5 for cube) to list of triangle indices in GenericModelRenderer
     private Map<Integer, List<Integer>> originalFaceToTriangles = new HashMap<>();
@@ -179,7 +173,6 @@ public class FaceRenderer implements MeshChangeListener {
         if (genericModelRenderer == null) {
             logger.warn("GenericModelRenderer not set");
             faceCount = 0;
-            facePositions = null;
             topologyFacePositions = null;
             faceToVertexMapping.clear();
             return;
@@ -188,40 +181,26 @@ public class FaceRenderer implements MeshChangeListener {
         try {
             // Extract topology-aware face data for rendering
             var faceData = genericModelRenderer.extractFaceData();
-            if (faceData != null) {
-                storedVerticesPerFace = faceData.verticesPerFace();
-                storedFaceOffsets = faceData.faceOffsets();
-                topologyFacePositions = faceData.positions();
-
-                // Face count from topology (not derived from array division)
-                faceCount = faceData.faceCount();
-
-                // Legacy quad extraction for facePositions (used by hover detector
-                // which assumes fixed 12 floats per face).
-                facePositions = genericModelRenderer.extractFacePositions();
-
-                // Delegate bulk VBO creation to MeshManager with topology info
-                MeshManager.getInstance().updateAllFaces(vbo, topologyFacePositions, faceCount,
-                    storedVerticesPerFace, overlayRenderer.getDefaultFaceColor());
-
-                // Compute shape-blind VBO layout from topology for overlay rendering
-                computeAndSetFaceVBOLayout(storedVerticesPerFace);
-            } else {
-                // Fallback to legacy extraction (assumes quads)
-                facePositions = genericModelRenderer.extractFacePositions();
-                faceCount = facePositions.length / LEGACY_FLOATS_PER_FACE_POSITION;
-                storedVerticesPerFace = null;
-                storedFaceOffsets = null;
-                topologyFacePositions = null;
-
-                MeshManager.getInstance().updateAllFaces(vbo, facePositions, faceCount,
-                    overlayRenderer.getDefaultFaceColor());
-
-                // Legacy VBO layout: uniform quads -> 6 VBO vertices per face
-                computeAndSetFaceVBOLayout(faceCount, LEGACY_CORNERS_PER_FACE);
+            if (faceData == null) {
+                logger.warn("GenericModelRenderer returned null face data");
+                return;
             }
 
-            logger.debug("Updated face data from GMR: {} faces ({} floats)", faceCount, facePositions.length);
+            storedVerticesPerFace = faceData.verticesPerFace();
+            storedFaceOffsets = faceData.faceOffsets();
+            topologyFacePositions = faceData.positions();
+
+            // Face count from topology (not derived from array division)
+            faceCount = faceData.faceCount();
+
+            // Delegate bulk VBO creation to MeshManager with topology info
+            MeshManager.getInstance().updateAllFaces(vbo, topologyFacePositions, faceCount,
+                storedVerticesPerFace, overlayRenderer.getDefaultFaceColor());
+
+            // Compute shape-blind VBO layout from topology for overlay rendering
+            computeAndSetFaceVBOLayout(storedVerticesPerFace);
+
+            logger.debug("Updated face data from GMR: {} faces", faceCount);
 
         } catch (Exception e) {
             logger.error("Error updating face data from GMR", e);
@@ -251,27 +230,6 @@ public class FaceRenderer implements MeshChangeListener {
     }
 
     /**
-     * Compute per-face VBO layout for uniform topology (all faces have same corner count).
-     *
-     * @param faceCount number of faces
-     * @param cornersPerFace uniform corner count for all faces
-     */
-    private void computeAndSetFaceVBOLayout(int faceCount, int cornersPerFace) {
-        var pattern = com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.forNGon(cornersPerFace);
-        int vboVertexCount = pattern.getVBOVertexCount();
-
-        int[] offsets = new int[faceCount];
-        int[] counts = new int[faceCount];
-
-        for (int i = 0; i < faceCount; i++) {
-            offsets[i] = i * vboVertexCount;
-            counts[i] = vboVertexCount;
-        }
-
-        overlayRenderer.setFaceVBOLayout(offsets, counts);
-    }
-
-    /**
      * Build face-to-vertex mapping from unique vertex positions.
      * Creates mapping needed for index-based updates to prevent vertex unification.
      * Matches face corners to unique vertices using epsilon comparison.
@@ -288,13 +246,6 @@ public class FaceRenderer implements MeshChangeListener {
      * @param uniqueVertexPositions Array of unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
      */
     public void buildFaceToVertexMapping(float[] uniqueVertexPositions) {
-        // In triangle mode, preserve existing mapping - it maps original face IDs
-        // to original VertexRenderer indices, which is needed for wireframe updates
-        if (usingTriangleMode) {
-            logger.debug("Preserving existing face-to-vertex mapping in triangle mode");
-            return;
-        }
-
         if (faceCount == 0) {
             logger.warn("Cannot build face mapping: no face data");
             faceToVertexMapping.clear();
@@ -333,15 +284,6 @@ public class FaceRenderer implements MeshChangeListener {
                 uniqueVertexPositions,
                 VERTEX_MATCH_EPSILON
             );
-        } else if (facePositions != null) {
-            // Legacy fallback: quad format (12 floats/face)
-            faceToVertexMapping = MeshManager.getInstance().buildFaceToVertexMapping(
-                facePositions,
-                faceCount,
-                LEGACY_CORNERS_PER_FACE,
-                uniqueVertexPositions,
-                VERTEX_MATCH_EPSILON
-            );
         } else {
             logger.warn("Cannot build face mapping: no face position data available");
             faceToVertexMapping.clear();
@@ -353,43 +295,15 @@ public class FaceRenderer implements MeshChangeListener {
 
 
     /**
-     * Get the vertex indices for a specific face.
-     * Delegates to MeshManager for clean separation of concerns.
-     *
-     * <p><b>Note:</b> This method only works in quad mode. In triangle mode,
-     * use {@link #getTriangleVertexIndicesForFace(int)} instead.
-     *
-     * @param faceIndex the face index
-     * @return array of 4 vertex indices [v0, v1, v2, v3], or null if invalid or in triangle mode
-     */
-    public int[] getFaceVertexIndices(int faceIndex) {
-        // Not applicable in triangle mode
-        if (usingTriangleMode) {
-            logger.debug("getFaceVertexIndices not applicable in triangle mode - use getTriangleVertexIndicesForFace()");
-            return null;
-        }
-
-        // Delegate to MeshManager (Single Responsibility Principle)
-        return MeshManager.getInstance().getFaceVertexIndices(faceIndex, faceCount, faceToVertexMapping);
-    }
-
-    /**
      * Get all unique vertex indices for all triangles belonging to an original face.
-     * Used in triangle mode (post-subdivision) for face translation.
-     *
-     * <p>Returns the mesh vertex indices from GenericModelRenderer that make up
+     * Returns the mesh vertex indices from GenericModelRenderer that make up
      * all triangles of the specified original face. The returned indices can be
      * used to update vertex positions during face translation.
      *
      * @param originalFaceId the original face ID (0-5 for cube)
-     * @return array of unique vertex indices, or null if invalid or not in triangle mode
+     * @return array of unique vertex indices, or null if invalid
      */
     public int[] getTriangleVertexIndicesForFace(int originalFaceId) {
-        if (!usingTriangleMode) {
-            logger.debug("getTriangleVertexIndicesForFace only applicable in triangle mode");
-            return null;
-        }
-
         if (genericModelRenderer == null) {
             logger.warn("Cannot get triangle vertex indices: GenericModelRenderer not set");
             return null;
@@ -449,10 +363,8 @@ public class FaceRenderer implements MeshChangeListener {
     }
 
     /**
-     * Get the vertices of a face.
-     * In quad mode, returns 4 vertices [v0, v1, v2, v3].
-     * In triangle mode, returns 3 vertices [v0, v1, v2].
-     * In topology-aware mode, returns N vertices using stored offsets.
+     * Get the vertices of a face using topology-aware data.
+     * Returns N vertices using stored per-face offsets.
      *
      * @param faceIndex the face index
      * @return array of vertices, or null if invalid
@@ -462,23 +374,8 @@ public class FaceRenderer implements MeshChangeListener {
             return null;
         }
 
-        if (usingTriangleMode) {
-            // Triangle mode: use trianglePositions (9 floats per triangle)
-            if (facePositions == null) {
-                return null;
-            }
-            int offset = faceIndex * 9;
-            if (offset + 8 >= facePositions.length) {
-                return null;
-            }
-            return new Vector3f[] {
-                new Vector3f(facePositions[offset], facePositions[offset + 1], facePositions[offset + 2]),
-                new Vector3f(facePositions[offset + 3], facePositions[offset + 4], facePositions[offset + 5]),
-                new Vector3f(facePositions[offset + 6], facePositions[offset + 7], facePositions[offset + 8])
-            };
-        } else if (storedVerticesPerFace != null && storedFaceOffsets != null
+        if (storedVerticesPerFace != null && storedFaceOffsets != null
                    && topologyFacePositions != null && faceIndex < storedVerticesPerFace.length) {
-            // Topology-aware mode: use stored per-face offsets into topology positions
             int vertCount = storedVerticesPerFace[faceIndex];
             int floatOffset = storedFaceOffsets[faceIndex];
             Vector3f[] vertices = new Vector3f[vertCount];
@@ -491,38 +388,8 @@ public class FaceRenderer implements MeshChangeListener {
                 );
             }
             return vertices;
-        } else if (facePositions != null) {
-            // Legacy quad mode: Delegate to MeshManager
-            return MeshManager.getInstance().getFaceVertices(facePositions, faceIndex, faceCount, 4);
         }
         return null;
-    }
-
-    /**
-     * Update face position by vertex indices (index-based update to prevent unification).
-     * Delegates to MeshManager for clean separation of concerns.
-     *
-     * <p><b>Note:</b> This method only works in quad mode. In triangle mode, face data
-     * should be rebuilt from GenericModelRenderer instead.
-     *
-     * @param faceIndex the face index
-     * @param vertexIndices array of 4 unique vertex indices
-     * @param newPositions array of 4 new positions
-     */
-    public void updateFaceByVertexIndices(int faceIndex, int[] vertexIndices, Vector3f[] newPositions) {
-        if (!initialized) {
-            logger.warn("Cannot update face: renderer not initialized");
-            return;
-        }
-
-        // Skip in triangle mode - use rebuildFromGenericModelRenderer() instead
-        if (usingTriangleMode) {
-            logger.debug("Skipping face update in triangle mode - use rebuildFromGenericModelRenderer()");
-            return;
-        }
-
-        // Delegate to MeshManager (Single Responsibility Principle)
-        MeshManager.getInstance().updateFacePosition(vbo, facePositions, faceCount, faceIndex, vertexIndices, newPositions);
     }
 
     /**
@@ -550,8 +417,8 @@ public class FaceRenderer implements MeshChangeListener {
 
         int newHoveredFace;
 
-        if (usingTriangleMode && trianglePositions != null && triangleCount > 0) {
-            // Post-subdivision: hit test all triangles, return original face ID
+        if (trianglePositions != null && triangleCount > 0) {
+            // Hit test all triangles, return original face ID
             int hitTriangle = FaceHoverDetector.detectHoveredTriangle(
                 mouseX, mouseY,
                 viewportWidth, viewportHeight,
@@ -566,15 +433,6 @@ public class FaceRenderer implements MeshChangeListener {
             } else {
                 newHoveredFace = -1;
             }
-        } else if (facePositions != null) {
-            // Quad mode: 4 vertices per face (12 floats)
-            newHoveredFace = FaceHoverDetector.detectHoveredFace(
-                mouseX, mouseY,
-                viewportWidth, viewportHeight,
-                viewMatrix, projectionMatrix, modelMatrix,
-                facePositions,
-                faceCount
-            );
         } else {
             newHoveredFace = -1;
         }
@@ -584,8 +442,8 @@ public class FaceRenderer implements MeshChangeListener {
             int previousHover = hoveredFaceIndex;
             hoveredFaceIndex = newHoveredFace;
 
-            logger.debug("Face hover changed: {} -> {} (total faces: {}, triangleMode: {})",
-                        previousHover, hoveredFaceIndex, faceCount, usingTriangleMode);
+            logger.debug("Face hover changed: {} -> {} (total faces: {})",
+                        previousHover, hoveredFaceIndex, faceCount);
         }
     }
 
@@ -647,7 +505,6 @@ public class FaceRenderer implements MeshChangeListener {
             vbo = 0;
         }
         faceCount = 0;
-        facePositions = null;
         topologyFacePositions = null;
         storedVerticesPerFace = null;
         storedFaceOffsets = null;
@@ -674,9 +531,8 @@ public class FaceRenderer implements MeshChangeListener {
             return;
         }
 
-        // In triangle mode, we need to update trianglePositions and rebuild VBO
-        if (usingTriangleMode && genericModelRenderer != null) {
-            // Update triangle positions that use any of the affected mesh vertices
+        // Update trianglePositions for affected mesh vertices
+        if (genericModelRenderer != null) {
             updateTrianglePositionsForMeshVertices(affectedMeshIndices, newPosition);
         }
 
@@ -823,10 +679,6 @@ public class FaceRenderer implements MeshChangeListener {
         return faceCount;
     }
 
-    public float[] getFacePositions() {
-        return facePositions;
-    }
-
     // ========================================
     // GenericModelRenderer Integration (for subdivision support)
     // ========================================
@@ -897,10 +749,8 @@ public class FaceRenderer implements MeshChangeListener {
         if (triangleCount == 0) {
             logger.warn("GenericModelRenderer has no triangles");
             faceCount = 0;
-            facePositions = null;
             trianglePositions = null;
             originalFaceToTriangles.clear();
-            usingTriangleMode = false;
             return;
         }
 
@@ -945,7 +795,6 @@ public class FaceRenderer implements MeshChangeListener {
 
             // Keep original face count (6 for cube), not triangle count
             faceCount = originalFaceCount;
-            usingTriangleMode = true;
 
             // Rebuild VBO with all triangles
             rebuildGroupedTriangleVBO(meshVertices, triangleIndices);
@@ -1019,15 +868,6 @@ public class FaceRenderer implements MeshChangeListener {
         glBindBuffer(GL_ARRAY_BUFFER, 0);
 
         logger.debug("Rebuilt grouped triangle VBO: {} triangles, {} floats", triangleCount, vboData.length);
-    }
-
-    /**
-     * Check if face renderer is using triangle mode (post-subdivision).
-     *
-     * @return true if using triangle mode, false if using quad mode
-     */
-    public boolean isUsingTriangleMode() {
-        return usingTriangleMode;
     }
 
     /**

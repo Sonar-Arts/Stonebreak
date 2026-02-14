@@ -155,19 +155,9 @@ public class FaceInputController {
             // PRIORITY: Only select face if no vertex AND no edge is hovered
             if (hoveredVertex < 0 && hoveredEdge < 0 && hoveredFace >= 0) {
                 // Clicking on a hovered face (and no vertex or edge)
-                // Handle both quad mode and triangle mode
-                Vector3f[] faceVertices;
-                int[] vertexIndices;
-
-                if (faceRenderer.isUsingTriangleMode()) {
-                    // TRIANGLE MODE: Get vertices and indices from triangle-to-face mapping
-                    faceVertices = faceRenderer.getTriangleVertexPositionsForFace(hoveredFace);
-                    vertexIndices = faceRenderer.getTriangleVertexIndicesForFace(hoveredFace);
-                } else {
-                    // QUAD MODE: Get vertices and indices from quad face data
-                    faceVertices = faceRenderer.getFaceVertices(hoveredFace);
-                    vertexIndices = faceRenderer.getFaceVertexIndices(hoveredFace);
-                }
+                // Get vertices and indices from topology-backed triangle data
+                Vector3f[] faceVertices = faceRenderer.getTriangleVertexPositionsForFace(hoveredFace);
+                int[] vertexIndices = faceRenderer.getTriangleVertexIndicesForFace(hoveredFace);
 
                 if (faceVertices != null && faceVertices.length >= 3 &&
                     vertexIndices != null && vertexIndices.length >= 3) {

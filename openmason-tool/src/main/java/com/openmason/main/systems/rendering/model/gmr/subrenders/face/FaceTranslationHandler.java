@@ -9,7 +9,6 @@ import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipel
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.common.TranslationHandlerBase;
-import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +18,8 @@ import org.slf4j.LoggerFactory;
  * Extends TranslationHandlerBase for shared functionality (DRY, SOLID).
  * Uses Blender-style plane-constrained movement for intuitive 3D editing.
  *
- * Moves all 4 corner vertices of a face together, maintaining face shape.
+ * Moves all corner vertices of a face together, maintaining face shape.
+ * Uses topology-backed triangle rendering via GenericModelRenderer.
  */
 public class FaceTranslationHandler extends TranslationHandlerBase {
 
@@ -34,7 +34,7 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
 
     // Face-specific drag state - now supports multi-selection
     private Vector3f dragStartDelta = new Vector3f(); // Track accumulated translation
-    private int[] currentVertexIndices = null; // ALL unique vertices from ALL selected faces (mesh indices in triangle mode)
+    private int[] currentVertexIndices = null; // ALL unique mesh vertices from ALL selected faces
     private java.util.Map<Integer, Vector3f> vertexOriginalPositions = new java.util.HashMap<>(); // Original positions per vertex index
 
     // Wireframe drag state (tracks ALL face vertices in VertexRenderer for all selected faces)
@@ -111,13 +111,7 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
         java.util.Set<Integer> selectedFaces = selectionState.getSelectedFaceIndices();
 
         for (int faceIndex : selectedFaces) {
-            int[] faceVerts;
-            if (faceRenderer.isUsingTriangleMode()) {
-                faceVerts = faceRenderer.getTriangleVertexIndicesForFace(faceIndex);
-            } else {
-                faceVerts = faceRenderer.getFaceVertexIndices(faceIndex);
-            }
-
+            int[] faceVerts = faceRenderer.getTriangleVertexIndicesForFace(faceIndex);
             if (faceVerts != null) {
                 for (int vertIdx : faceVerts) {
                     allVertexIndicesSet.add(vertIdx);
@@ -132,14 +126,9 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
 
         currentVertexIndices = allVertexIndicesSet.stream().mapToInt(Integer::intValue).toArray();
 
-        // Store original positions for all vertices
+        // Store original positions for all vertices from GenericModelRenderer
         for (int vertIdx : currentVertexIndices) {
-            Vector3f pos;
-            if (faceRenderer.isUsingTriangleMode() && modelRenderer != null) {
-                pos = modelRenderer.getVertexPosition(vertIdx);
-            } else {
-                pos = vertexRenderer.getVertexPosition(vertIdx);
-            }
+            Vector3f pos = modelRenderer.getVertexPosition(vertIdx);
             if (pos != null) {
                 vertexOriginalPositions.put(vertIdx, new Vector3f(pos));
             }
@@ -166,48 +155,37 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
         isDragging = true;
         hasMovedDuringDrag = false;
 
-        // In triangle mode, find ALL unique vertices in VertexRenderer for wireframe sync
-        if (faceRenderer.isUsingTriangleMode() && modelRenderer != null) {
-            java.util.Set<Integer> uniqueIndicesSet = new java.util.LinkedHashSet<>();
-            java.util.List<Vector3f> wireframePositionsList = new java.util.ArrayList<>();
+        // Find ALL unique vertices in VertexRenderer for wireframe sync
+        java.util.Set<Integer> uniqueIndicesSet = new java.util.LinkedHashSet<>();
+        java.util.List<Vector3f> wireframePositionsList = new java.util.ArrayList<>();
 
-            for (int meshIndex : currentVertexIndices) {
-                int uniqueIndex = modelRenderer.getUniqueIndexForMeshVertex(meshIndex);
-                if (uniqueIndex >= 0 && !uniqueIndicesSet.contains(uniqueIndex)) {
-                    uniqueIndicesSet.add(uniqueIndex);
-                    Vector3f pos = modelRenderer.getUniqueVertexPosition(uniqueIndex);
-                    if (pos != null) {
-                        wireframePositionsList.add(new Vector3f(pos));
-                    }
+        for (int meshIndex : currentVertexIndices) {
+            int uniqueIndex = modelRenderer.getUniqueIndexForMeshVertex(meshIndex);
+            if (uniqueIndex >= 0 && !uniqueIndicesSet.contains(uniqueIndex)) {
+                uniqueIndicesSet.add(uniqueIndex);
+                Vector3f pos = modelRenderer.getUniqueVertexPosition(uniqueIndex);
+                if (pos != null) {
+                    wireframePositionsList.add(new Vector3f(pos));
                 }
-            }
-
-            if (!uniqueIndicesSet.isEmpty()) {
-                wireframeVertexIndices = uniqueIndicesSet.stream().mapToInt(Integer::intValue).toArray();
-                wireframeOriginalPositions = wireframePositionsList.toArray(new Vector3f[0]);
-                logger.debug("Found {} unique wireframe vertices for {} faces in triangle mode",
-                    wireframeVertexIndices.length, selectedFaces.size());
-            } else {
-                wireframeVertexIndices = null;
-                wireframeOriginalPositions = null;
-            }
-        } else {
-            // Quad mode: wireframe vertices are the same as currentVertexIndices
-            wireframeVertexIndices = currentVertexIndices.clone();
-            wireframeOriginalPositions = new Vector3f[currentVertexIndices.length];
-            for (int i = 0; i < currentVertexIndices.length; i++) {
-                Vector3f pos = vertexOriginalPositions.get(currentVertexIndices[i]);
-                wireframeOriginalPositions[i] = pos != null ? new Vector3f(pos) : new Vector3f();
             }
         }
 
-        logger.debug("Started dragging {} faces on plane with normal ({}, {}, {}), {} unique vertices (triangle mode: {})",
+        if (!uniqueIndicesSet.isEmpty()) {
+            wireframeVertexIndices = uniqueIndicesSet.stream().mapToInt(Integer::intValue).toArray();
+            wireframeOriginalPositions = wireframePositionsList.toArray(new Vector3f[0]);
+            logger.debug("Found {} unique wireframe vertices for {} faces",
+                wireframeVertexIndices.length, selectedFaces.size());
+        } else {
+            wireframeVertexIndices = null;
+            wireframeOriginalPositions = null;
+        }
+
+        logger.debug("Started dragging {} faces on plane with normal ({}, {}, {}), {} unique vertices",
                 selectedFaces.size(),
                 String.format("%.2f", planeNormal.x),
                 String.format("%.2f", planeNormal.y),
                 String.format("%.2f", planeNormal.z),
-                currentVertexIndices.length,
-                faceRenderer.isUsingTriangleMode());
+                currentVertexIndices.length);
 
         return true;
     }
@@ -249,21 +227,12 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
             // Update selection state with delta
             selectionState.updatePosition(modelSpaceDelta);
 
-            // Apply delta to ALL vertices from ALL selected faces
-            boolean isTriangleMode = faceRenderer.isUsingTriangleMode();
-
+            // Apply delta to ALL vertices from ALL selected faces via GenericModelRenderer
             for (int vertIdx : currentVertexIndices) {
                 Vector3f originalPos = vertexOriginalPositions.get(vertIdx);
                 if (originalPos != null) {
                     Vector3f newPos = new Vector3f(originalPos).add(modelSpaceDelta);
-
-                    if (isTriangleMode && modelRenderer != null) {
-                        // Update in GenericModelRenderer (mesh vertices)
-                        modelRenderer.updateVertexPosition(vertIdx, newPos);
-                    } else {
-                        // Update in VertexRenderer (unique vertices)
-                        vertexRenderer.updateVertexPosition(vertIdx, newPos);
-                    }
+                    modelRenderer.updateVertexPosition(vertIdx, newPos);
                 }
             }
 
@@ -278,19 +247,8 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
                 }
             }
 
-            // Rebuild face overlay in triangle mode, update in quad mode
-            if (isTriangleMode) {
-                faceRenderer.rebuildFromGenericModelRenderer();
-            } else {
-                // Update all affected face overlays
-                updateAllAffectedFaceOverlays(currentVertexIndices);
-
-                // Update solid model mesh (realtime visual feedback)
-                float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-                if (meshVertices != null && modelRenderer != null) {
-                    modelRenderer.updateVertexPositions(meshVertices);
-                }
-            }
+            // Rebuild face overlay from GenericModelRenderer
+            faceRenderer.rebuildFromGenericModelRenderer();
 
             dragStartDelta.set(modelSpaceDelta);
 
@@ -309,75 +267,9 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        boolean isTriangleMode = faceRenderer.isUsingTriangleMode();
-
-        if (isTriangleMode) {
-            // TRIANGLE MODE: GenericModelRenderer already has updated positions
-            // Just rebuild face overlay to sync
-            faceRenderer.rebuildFromGenericModelRenderer();
-            logger.debug("Committed face drag in triangle mode");
-        } else {
-            // QUAD MODE: Original vertex merge logic
-            // Only merge if actual movement occurred during the drag
-            java.util.Map<Integer, Integer> indexRemapping = new java.util.HashMap<>();
-            if (hasMovedDuringDrag) {
-                // TRUE MERGE: Remove duplicate vertices that ended up at the same position
-                float mergeEpsilon = 0.001f; // 1mm threshold for merging
-                indexRemapping = vertexRenderer.mergeOverlappingVertices(mergeEpsilon);
-            }
-
-            if (!indexRemapping.isEmpty()) {
-                // Remap edge vertex indices to use new vertex indices
-                edgeRenderer.remapEdgeVertexIndices(indexRemapping);
-
-                // Rebuild edge-to-vertex mapping with new vertex data
-                float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
-                if (uniqueVertexPositions != null) {
-                    edgeRenderer.buildEdgeToVertexMapping(uniqueVertexPositions);
-                    logger.debug("Merged vertices and rebuilt edge mapping after face drag");
-                }
-
-                // Rebuild face-to-vertex mapping with new vertex data
-                float[] facePositions = faceRenderer.getFacePositions();
-                if (facePositions != null && uniqueVertexPositions != null) {
-                    faceRenderer.buildFaceToVertexMapping(uniqueVertexPositions);
-                    logger.debug("Rebuilt face-to-vertex mapping after merge");
-
-                    // Update ALL face overlays with new positions after merge
-                    for (int faceIdx = 0; faceIdx < faceRenderer.getFaceCount(); faceIdx++) {
-                        int[] faceVertexIndices = faceRenderer.getFaceVertexIndices(faceIdx);
-                        if (faceVertexIndices != null && faceVertexIndices.length == 4) {
-                            Vector3f[] newPositions = new Vector3f[4];
-                            boolean allValid = true;
-                            for (int i = 0; i < 4; i++) {
-                                newPositions[i] = vertexRenderer.getVertexPosition(faceVertexIndices[i]);
-                                if (newPositions[i] == null) {
-                                    allValid = false;
-                                    break;
-                                }
-                            }
-                            if (allValid) {
-                                faceRenderer.updateFaceByVertexIndices(faceIdx, faceVertexIndices, newPositions);
-                            }
-                        }
-                    }
-                }
-
-                // COMMIT: Update ModelRenderer with mesh vertices
-                float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-                if (meshVertices != null && modelRenderer != null) {
-                    modelRenderer.updateVertexPositions(meshVertices);
-                    logger.debug("Committed merged face drag to ModelRenderer with mesh vertices");
-                }
-            } else {
-                // No merge occurred, use mesh vertices
-                float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-                if (meshVertices != null && modelRenderer != null) {
-                    modelRenderer.updateVertexPositions(meshVertices);
-                    logger.debug("Committed face drag to ModelRenderer (no merge)");
-                }
-            }
-        }
+        // GenericModelRenderer already has updated positions — rebuild face overlay to sync
+        faceRenderer.rebuildFromGenericModelRenderer();
+        logger.debug("Committed face drag");
 
         selectionState.endDrag();
         isDragging = false;
@@ -407,17 +299,11 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
         // Revert to original position in selection state
         selectionState.cancelDrag();
 
-        boolean isTriangleMode = faceRenderer.isUsingTriangleMode();
-
-        // Revert ALL vertices to their original positions
+        // Revert ALL vertices to their original positions in GenericModelRenderer
         for (int vertIdx : currentVertexIndices) {
             Vector3f originalPos = vertexOriginalPositions.get(vertIdx);
             if (originalPos != null) {
-                if (isTriangleMode && modelRenderer != null) {
-                    modelRenderer.updateVertexPosition(vertIdx, originalPos);
-                } else {
-                    vertexRenderer.updateVertexPosition(vertIdx, originalPos);
-                }
+                modelRenderer.updateVertexPosition(vertIdx, originalPos);
             }
         }
 
@@ -431,27 +317,8 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
             }
         }
 
-        if (isTriangleMode) {
-            faceRenderer.rebuildFromGenericModelRenderer();
-            logger.debug("Reverted {} vertices in triangle mode (cancel)", currentVertexIndices.length);
-        } else {
-            // Update all affected face overlays with original positions
-            updateAllAffectedFaceOverlays(currentVertexIndices);
-
-            // Rebuild mappings after geometry is reverted
-            float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
-            if (allVertexPositions != null) {
-                edgeRenderer.buildEdgeToVertexMapping(allVertexPositions);
-                faceRenderer.buildFaceToVertexMapping(allVertexPositions);
-            }
-
-            // REVERT: Update ModelRenderer with original mesh vertices
-            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-            if (meshVertices != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(meshVertices);
-                logger.debug("Reverted ModelRenderer to original positions (cancel)");
-            }
-        }
+        faceRenderer.rebuildFromGenericModelRenderer();
+        logger.debug("Reverted {} vertices (cancel)", currentVertexIndices.length);
 
         isDragging = false;
         currentVertexIndices = null;
@@ -467,8 +334,8 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
      *
      * REALTIME UPDATE:
      * - Layer 1: Update vertices in GenericModelRenderer
-     * - Layer 2: Update edges connected to these vertices (quad mode only)
-     * - Layer 3: Rebuild face overlay (triangle mode) or update face overlays (quad mode)
+     * - Layer 2: Rebuild face overlay from GenericModelRenderer
+     * - Layer 3: Update wireframe (VertexRenderer + EdgeRenderer)
      *
      * @param newVertices New positions of all face vertices
      * @param vertexIndices Indices of the vertices
@@ -490,82 +357,26 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        boolean isTriangleMode = faceRenderer.isUsingTriangleMode();
-
-        if (isTriangleMode) {
-            // TRIANGLE MODE: Update GenericModelRenderer directly
-            // Each vertex index refers to a mesh vertex in GenericModelRenderer
-            for (int i = 0; i < vertexIndices.length; i++) {
-                if (vertexIndices[i] >= 0 && modelRenderer != null) {
-                    modelRenderer.updateVertexPosition(vertexIndices[i], newVertices[i]);
-                }
+        // Update GenericModelRenderer directly
+        for (int i = 0; i < vertexIndices.length; i++) {
+            if (vertexIndices[i] >= 0) {
+                modelRenderer.updateVertexPosition(vertexIndices[i], newVertices[i]);
             }
-
-            // Rebuild face overlay from updated GenericModelRenderer
-            faceRenderer.rebuildFromGenericModelRenderer();
-
-            // Update wireframe (VertexRenderer + EdgeRenderer) with translation delta
-            Vector3f[] originalVerts = selectionState.getOriginalVertices();
-            Vector3f[] currentVerts = selectionState.getCurrentVertices();
-            if (originalVerts != null && currentVerts != null && originalVerts.length > 0 && currentVerts.length > 0) {
-                Vector3f delta = new Vector3f(currentVerts[0]).sub(originalVerts[0]);
-                updateTriangleModeWireframe(delta);
-            }
-
-            logger.trace("Updated {} vertices in triangle mode for face {}",
-                vertexIndices.length, selectionState.getSelectedFaceIndex());
-
-        } else {
-            // QUAD MODE: Original 4-vertex logic
-            // LAYER 1: Update vertices (4 corners of face)
-            for (int i = 0; i < vertexIndices.length; i++) {
-                if (vertexIndices[i] >= 0) {
-                    vertexRenderer.updateVertexPosition(vertexIndices[i], newVertices[i]);
-                }
-            }
-
-            // LAYER 2: Update edges (all edges connected to these vertices)
-            // Update edges connected to each vertex pair forming the face outline
-            for (int i = 0; i < vertexIndices.length; i++) {
-                int v1Index = vertexIndices[i];
-                int v2Index = vertexIndices[(i + 1) % vertexIndices.length];
-
-                if (v1Index >= 0 && v2Index >= 0) {
-                    edgeRenderer.updateEdgesByVertexIndices(
-                        v1Index, newVertices[i],
-                        v2Index, newVertices[(i + 1) % vertexIndices.length]
-                    );
-                }
-            }
-
-            // Also update diagonal edges if they exist (for quads)
-            if (vertexIndices.length == 4) {
-                if (vertexIndices[0] >= 0 && vertexIndices[2] >= 0) {
-                    edgeRenderer.updateEdgesByVertexIndices(
-                        vertexIndices[0], newVertices[0],
-                        vertexIndices[2], newVertices[2]
-                    );
-                }
-                if (vertexIndices[1] >= 0 && vertexIndices[3] >= 0) {
-                    edgeRenderer.updateEdgesByVertexIndices(
-                        vertexIndices[1], newVertices[1],
-                        vertexIndices[3], newVertices[3]
-                    );
-                }
-            }
-
-            // LAYER 3: Update solid model mesh (realtime visual feedback)
-            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-            if (meshVertices != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(meshVertices);
-            }
-
-            // LAYER 4: Update ALL face overlays affected by the modified vertices
-            updateAllAffectedFaceOverlays(vertexIndices);
-
-            logger.trace("Updated face and connected geometry for {} vertices in quad mode",
-                vertexIndices.length);
         }
+
+        // Rebuild face overlay from updated GenericModelRenderer
+        faceRenderer.rebuildFromGenericModelRenderer();
+
+        // Update wireframe (VertexRenderer + EdgeRenderer) with translation delta
+        Vector3f[] originalVerts = selectionState.getOriginalVertices();
+        Vector3f[] currentVerts = selectionState.getCurrentVertices();
+        if (originalVerts != null && currentVerts != null && originalVerts.length > 0 && currentVerts.length > 0) {
+            Vector3f delta = new Vector3f(currentVerts[0]).sub(originalVerts[0]);
+            updateWireframe(delta);
+        }
+
+        logger.trace("Updated {} vertices for face {}",
+            vertexIndices.length, selectionState.getSelectedFaceIndex());
     }
 
     /**
@@ -588,12 +399,12 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
     }
 
     /**
-     * Update wireframe vertices and edges in triangle mode.
+     * Update wireframe vertices and edges.
      * Applies delta to stored original positions, updating both VertexRenderer and EdgeRenderer.
      *
      * @param delta Translation delta to apply, or null to revert to original positions
      */
-    private void updateTriangleModeWireframe(Vector3f delta) {
+    private void updateWireframe(Vector3f delta) {
         if (wireframeVertexIndices == null || wireframeOriginalPositions == null ||
             wireframeVertexIndices.length == 0) {
             return;
@@ -607,77 +418,6 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
 
                 vertexRenderer.updateVertexPosition(wireframeVertexIndices[i], newPos);
                 edgeRenderer.updateEdgesConnectedToVertexByIndex(wireframeVertexIndices[i], newPos);
-            }
-        }
-    }
-
-    /**
-     * Update ALL face overlays that use any of the modified vertices.
-     * This ensures that when a face is dragged, OTHER faces that share the same
-     * vertices also have their overlays updated to match the new geometry.
-     *
-     * <p>Note: This method is only used in quad mode. In triangle mode,
-     * rebuildFromGenericModelRenderer() handles face overlay updates.
-     *
-     * @param modifiedVertexIndices Indices of the vertices that were modified
-     */
-    private void updateAllAffectedFaceOverlays(int[] modifiedVertexIndices) {
-        if (faceRenderer == null || !faceRenderer.isInitialized()) {
-            return;
-        }
-
-        // This method is only for quad mode
-        if (faceRenderer.isUsingTriangleMode()) {
-            return;
-        }
-
-        if (modifiedVertexIndices == null || modifiedVertexIndices.length < 3) {
-            return;
-        }
-
-        int faceCount = faceRenderer.getFaceCount();
-        if (faceCount == 0) {
-            return;
-        }
-
-        // Iterate through ALL faces and update any that use any of the modified vertices
-        for (int faceIdx = 0; faceIdx < faceCount; faceIdx++) {
-            int[] faceVertexIndices = faceRenderer.getFaceVertexIndices(faceIdx);
-
-            if (faceVertexIndices == null || faceVertexIndices.length < 3) {
-                continue;
-            }
-
-            // Check if this face uses any of the modified vertices
-            boolean faceUsesModifiedVertex = false;
-            for (int faceVIdx : faceVertexIndices) {
-                for (int modVIdx : modifiedVertexIndices) {
-                    if (faceVIdx == modVIdx) {
-                        faceUsesModifiedVertex = true;
-                        break;
-                    }
-                }
-                if (faceUsesModifiedVertex) break;
-            }
-
-            if (faceUsesModifiedVertex) {
-                // Get current positions of all vertices of this face
-                Vector3f[] newPositions = new Vector3f[faceVertexIndices.length];
-                boolean allValid = true;
-                for (int i = 0; i < faceVertexIndices.length; i++) {
-                    newPositions[i] = vertexRenderer.getVertexPosition(faceVertexIndices[i]);
-                    if (newPositions[i] == null) {
-                        logger.warn("Cannot update face {}: vertex {} position is null", faceIdx, faceVertexIndices[i]);
-                        allValid = false;
-                        break;
-                    }
-                }
-
-                // Update the face overlay with new vertex positions
-                if (allValid) {
-                    faceRenderer.updateFaceByVertexIndices(faceIdx, faceVertexIndices, newPositions);
-                    logger.trace("Updated face {} overlay due to shared vertices with dragged face", faceIdx);
-                }
             }
         }
     }
