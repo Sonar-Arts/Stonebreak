@@ -3,6 +3,7 @@ package com.openmason.main.systems.rendering.model.gmr.topology;
 import com.openmason.main.systems.rendering.model.gmr.extraction.FaceTriangleQuery;
 import com.openmason.main.systems.rendering.model.gmr.mapping.ITriangleFaceMapper;
 import com.openmason.main.systems.rendering.model.gmr.mapping.IUniqueVertexMapper;
+import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -205,8 +206,15 @@ public final class MeshTopologyBuilder {
         // Copy triangle-to-face mapping
         int[] triangleToFaceId = faceMapper.getMappingCopy();
 
+        // Step 8: Compute per-face normals
+        Vector3f[] faceNormals = new Vector3f[faces.length];
+        for (int i = 0; i < faces.length; i++) {
+            faceNormals[i] = MeshTopology.computeNormal(
+                    faces[i].vertexIndices(), uniqueToMeshIndices, vertices);
+        }
+
         MeshTopology topology = new MeshTopology(
-            edges, faces,
+            edges, faces, faceNormals,
             Collections.unmodifiableMap(edgeKeyToId),
             immutableVertexToEdges,
             immutableVertexToFaces,

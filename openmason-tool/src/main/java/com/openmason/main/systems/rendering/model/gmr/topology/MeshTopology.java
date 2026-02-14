@@ -1,5 +1,7 @@
 package com.openmason.main.systems.rendering.model.gmr.topology;
 
+import org.joml.Vector3f;
+
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +26,7 @@ public class MeshTopology {
 
     private final MeshEdge[] edges;
     private final MeshFace[] faces;
+    private final Vector3f[] faceNormals;
     private final Map<Long, Integer> edgeKeyToId;
     private final List<List<Integer>> vertexToEdges;
     private final List<List<Integer>> vertexToFaces;
@@ -40,7 +43,7 @@ public class MeshTopology {
     /**
      * Package-private constructor used by MeshTopologyBuilder.
      */
-    MeshTopology(MeshEdge[] edges, MeshFace[] faces,
+    MeshTopology(MeshEdge[] edges, MeshFace[] faces, Vector3f[] faceNormals,
                  Map<Long, Integer> edgeKeyToId,
                  List<List<Integer>> vertexToEdges,
                  List<List<Integer>> vertexToFaces,
@@ -50,6 +53,7 @@ public class MeshTopology {
                  int[] triangleToFaceId, int triangleCount) {
         this.edges = edges;
         this.faces = faces;
+        this.faceNormals = faceNormals;
         this.edgeKeyToId = edgeKeyToId;
         this.vertexToEdges = vertexToEdges;
         this.vertexToFaces = vertexToFaces;
@@ -129,6 +133,19 @@ public class MeshTopology {
      */
     public int getFaceCount() {
         return faces.length;
+    }
+
+    /**
+     * Get the cached normal for a face.
+     *
+     * @param faceId Face identifier
+     * @return The face normal (unit vector), or null if out of range
+     */
+    public Vector3f getFaceNormal(int faceId) {
+        if (faceId < 0 || faceId >= faceNormals.length) {
+            return null;
+        }
+        return faceNormals[faceId];
     }
 
     // =========================================================================
@@ -276,5 +293,59 @@ public class MeshTopology {
      */
     public int getTriangleCount() {
         return triangleCount;
+    }
+
+    // =========================================================================
+    // FACE NORMAL UPDATES
+    // =========================================================================
+
+    /**
+     * Recompute normals for all faces adjacent to a moved vertex.
+     * Call this from {@code onVertexPositionChanged} to keep normals in sync.
+     *
+     * @param uniqueVertexIndex The unique vertex that moved
+     * @param vertices          Current vertex positions (x,y,z interleaved)
+     */
+    public void recomputeAffectedFaceNormals(int uniqueVertexIndex, float[] vertices) {
+        List<Integer> affectedFaceIds = getFacesForVertex(uniqueVertexIndex);
+        for (int faceId : affectedFaceIds) {
+            if (faceId >= 0 && faceId < faces.length) {
+                faceNormals[faceId] = computeNormal(faces[faceId].vertexIndices(),
+                        uniqueToMeshIndices, vertices);
+            }
+        }
+    }
+
+    /**
+     * Compute a face normal using Newell's method.
+     * Works for triangles, quads, and arbitrary planar polygons.
+     *
+     * @param uniqueVertexIndices Ordered unique vertex indices of the face
+     * @param uniqueToMesh       Mapping from unique vertex index to mesh indices
+     * @param vertices            Vertex positions (x,y,z interleaved, indexed by mesh index)
+     * @return Normalized face normal, or zero vector for degenerate faces
+     */
+    static Vector3f computeNormal(int[] uniqueVertexIndices, int[][] uniqueToMesh, float[] vertices) {
+        float normalX = 0, normalY = 0, normalZ = 0;
+        int count = uniqueVertexIndices.length;
+
+        for (int i = 0; i < count; i++) {
+            int currMesh = uniqueToMesh[uniqueVertexIndices[i]][0];
+            int nextMesh = uniqueToMesh[uniqueVertexIndices[(i + 1) % count]][0];
+
+            float cx = vertices[currMesh * 3],     cy = vertices[currMesh * 3 + 1],     cz = vertices[currMesh * 3 + 2];
+            float nx = vertices[nextMesh * 3],     ny = vertices[nextMesh * 3 + 1],     nz = vertices[nextMesh * 3 + 2];
+
+            normalX += (cy - ny) * (cz + nz);
+            normalY += (cz - nz) * (cx + nx);
+            normalZ += (cx - nx) * (cy + ny);
+        }
+
+        Vector3f result = new Vector3f(normalX, normalY, normalZ);
+        float len = result.length();
+        if (len > 1e-8f) {
+            result.div(len);
+        }
+        return result;
     }
 }
