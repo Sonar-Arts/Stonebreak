@@ -436,21 +436,8 @@ public class ViewportRenderPipeline {
                         // Check if edge renderer already has data from GenericModelRenderer
                         // (set up by setModelRenderer -> rebuildFromModel)
                         if (edgeRenderer.getModelRenderer() == null) {
-                            // Standard cube - use cube parts
-                            Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
-                            Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
-
-                            // Get unique vertex positions for edge deduplication
-                            float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
-
-                            // Extract unique edges (no duplicates) using vertex positions
+                            // Standard cube - use cube parts (topology handles edge mapping)
                             edgeRenderer.updateEdgeData();
-
-                            // Build edge-to-vertex mapping to prevent unification bug
-                            if (uniqueVertexPositions != null) {
-                                edgeRenderer.buildEdgeToVertexMapping(uniqueVertexPositions);
-                                logger.trace("Built edge-to-vertex mapping for unification prevention");
-                            }
                             logger.trace("Edge data extracted from cube parts in model space");
                         } else {
                             // Already has data from GenericModelRenderer - don't overwrite

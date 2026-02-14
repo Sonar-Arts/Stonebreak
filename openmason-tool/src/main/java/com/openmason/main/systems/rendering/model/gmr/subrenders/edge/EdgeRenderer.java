@@ -16,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 
 import static org.lwjgl.opengl.GL11.*;
@@ -46,8 +45,7 @@ import static org.lwjgl.opengl.GL30.*;
  * <p><b>Rendering Pipeline:</b>
  * <ol>
  *   <li>Initialize OpenGL resources (VAO, VBO) with {@link #initialize()}</li>
- *   <li>Update edge data from model parts with {@link #updateEdgeData}</li>
- *   <li>Build edge-to-vertex mapping with {@link #buildEdgeToVertexMapping}</li>
+ *   <li>Connect to GenericModelRenderer via {@link #setModelRenderer} (topology provides edge mapping)</li>
  *   <li>Render edges each frame with {@link #render}</li>
  *   <li>Clean up resources on shutdown with {@link #cleanup()}</li>
  * </ol>
@@ -135,15 +133,8 @@ public class EdgeRenderer implements MeshChangeListener {
     /** Set of selected edge indices for multi-selection. */
     private Set<Integer> selectedEdgeIndices = new HashSet<>();
 
-    // Edge-to-vertex mapping for precise updates
-    /**
-     * Maps edge index to unique vertex indices.
-     * Format: edgeToVertexMapping[edgeIndex][0] = vertexIndex1,
-     *         edgeToVertexMapping[edgeIndex][1] = vertexIndex2.
-     * Prevents vertex unification bugs during edge position updates.
-     * For a cube: 12 edges connecting 8 unique vertices.
-     */
-    private int[][] edgeToVertexMapping = null;
+    // Topology index for O(1) adjacency queries (replaces edgeToVertexMapping)
+    private MeshTopology topology = null;
 
     // Operation delegates (Single Responsibility Pattern)
     /**
@@ -319,53 +310,6 @@ public class EdgeRenderer implements MeshChangeListener {
 
         } catch (Exception e) {
             logger.error("Error updating edge data from GMR", e);
-        }
-    }
-
-    /**
-     * Builds edge-to-vertex mapping from unique vertex positions.
-     * Creates a mapping that identifies which unique vertices each edge connects.
-     *
-     * <p>This mapping is essential for index-based edge position updates, which prevent
-     * vertex unification bugs when multiple edges share the same spatial position but
-     * represent different logical connections.
-     *
-     * <p>The algorithm matches edge endpoints to unique vertices using epsilon-based
-     * floating-point comparison for robustness against numerical precision issues.
-     *
-     * <p><b>Prerequisites:</b> {@link #updateEdgeData} must be called first to populate edge data.
-     *
-     * <p><b>Time Complexity:</b> O(E × V) where E is edge count and V is vertex count.
-     * For typical models, this completes in milliseconds.
-     *
-     * @param uniqueVertexPositions array of unique vertex positions in format [x0,y0,z0, x1,y1,z1, ...]
-     */
-    public void buildEdgeToVertexMapping(float[] uniqueVertexPositions) {
-        // Delegate to MeshManager for edge-to-vertex mapping
-        edgeToVertexMapping = meshManager.buildEdgeToVertexMapping(
-            edgePositions, edgeCount, VERTICES_PER_EDGE, uniqueVertexPositions, POSITION_EPSILON
-        );
-    }
-
-    /**
-     * Remaps edge vertex indices after vertices have been merged.
-     * Updates the edge-to-vertex mapping to use new vertex indices post-consolidation.
-     *
-     * <p>This method is typically called after vertex merging operations that consolidate
-     * duplicate or nearby vertices. It ensures edges correctly reference the updated
-     * vertex indices.
-     *
-     * <p><b>Prerequisites:</b> {@link #buildEdgeToVertexMapping} must have been called
-     * to create the initial mapping.
-     *
-     * @param oldToNewIndexMap mapping from old vertex indices to new vertex indices
-     */
-    public void remapEdgeVertexIndices(Map<Integer, Integer> oldToNewIndexMap) {
-        var result = meshManager.remapEdgeVertexIndices(edgeToVertexMapping, edgeCount, oldToNewIndexMap);
-
-        if (result != null && result.isSuccessful()) {
-            logger.debug("Remapped {} of {} edge vertex indices",
-                result.getRemappedEdges(), result.getTotalEdges());
         }
     }
 
@@ -570,7 +514,7 @@ public class EdgeRenderer implements MeshChangeListener {
      */
     @Override
     public void onVertexPositionChanged(int uniqueIndex, Vector3f newPosition, int[] affectedMeshIndices) {
-        if (!initialized || edgePositions == null || edgeToVertexMapping == null) {
+        if (!initialized || edgePositions == null || topology == null) {
             return;
         }
 
@@ -592,6 +536,19 @@ public class EdgeRenderer implements MeshChangeListener {
     }
 
     /**
+     * Called when the mesh topology has been rebuilt.
+     * Stores the topology reference for O(1) adjacency queries.
+     *
+     * @param topology The new topology index, or null if unavailable
+     */
+    @Override
+    public void onTopologyRebuilt(MeshTopology topology) {
+        this.topology = topology;
+        logger.debug("EdgeRenderer received topology update: {} edges",
+            topology != null ? topology.getEdgeCount() : 0);
+    }
+
+    /**
      * Rebuild edge data from the associated GenericModelRenderer.
      * Called when initially connected or when geometry is rebuilt.
      * Uses MeshTopology for edge extraction when available.
@@ -601,21 +558,22 @@ public class EdgeRenderer implements MeshChangeListener {
             return;
         }
 
-        MeshTopology topology = modelRenderer.getTopology();
-        if (topology == null) {
+        MeshTopology topo = modelRenderer.getTopology();
+        if (topo == null) {
             logger.debug("No topology available, clearing edge data");
             edgeCount = 0;
             edgePositions = null;
-            edgeToVertexMapping = null;
+            this.topology = null;
             return;
         }
 
-        int newEdgeCount = topology.getEdgeCount();
+        this.topology = topo;
+
+        int newEdgeCount = topo.getEdgeCount();
         float[] newEdgePositions = new float[newEdgeCount * FLOATS_PER_EDGE];
-        int[][] newMapping = new int[newEdgeCount][2];
 
         for (int e = 0; e < newEdgeCount; e++) {
-            MeshEdge edge = topology.getEdge(e);
+            MeshEdge edge = topo.getEdge(e);
             Vector3f pos0 = modelRenderer.getUniqueVertexPosition(edge.vertexA());
             Vector3f pos1 = modelRenderer.getUniqueVertexPosition(edge.vertexB());
 
@@ -628,15 +586,11 @@ public class EdgeRenderer implements MeshChangeListener {
                 newEdgePositions[offset + 4] = pos1.y;
                 newEdgePositions[offset + 5] = pos1.z;
             }
-
-            newMapping[e][0] = edge.vertexA();
-            newMapping[e][1] = edge.vertexB();
         }
 
         // Update state
         edgePositions = newEdgePositions;
         edgeCount = newEdgeCount;
-        edgeToVertexMapping = newMapping;
 
         // Rebuild VBO
         meshManager.updateEdgeBuffer(vbo, edgePositions, VERTICES_PER_EDGE, edgeColor);
@@ -644,6 +598,7 @@ public class EdgeRenderer implements MeshChangeListener {
         // Clear selection/hover (indices may have changed)
         hoveredEdgeIndex = NO_EDGE_SELECTED;
         selectedEdgeIndex = NO_EDGE_SELECTED;
+        selectedEdgeIndices.clear();
 
         logger.debug("EdgeRenderer rebuilt from topology: {} edges", edgeCount);
     }
@@ -803,15 +758,9 @@ public class EdgeRenderer implements MeshChangeListener {
     }
 
     /**
-     * Updates edges connected to a single vertex using index-based matching.
-     * Uses the edge-to-vertex mapping for precise updates, preventing coordinate drift
+     * Updates edges connected to a single vertex using topology O(1) lookup.
+     * Uses MeshTopology adjacency index for precise updates, preventing coordinate drift
      * that can occur with position-based matching after subdivision operations.
-     *
-     * <p>This method is preferred over {@link #updateEdgesConnectedToVertex} for vertex
-     * dragging operations, especially after edge subdivision where position-based
-     * matching may fail due to floating-point coordinate differences.
-     *
-     * <p><b>Prerequisites:</b> {@link #buildEdgeToVertexMapping} must have been called.
      *
      * @param vertexIndex the unique vertex index that was moved
      * @param newPosition the new position for the vertex
@@ -822,42 +771,85 @@ public class EdgeRenderer implements MeshChangeListener {
             return;
         }
 
-        if (edgeToVertexMapping == null) {
-            logger.warn("Cannot update edges by index: mapping not built. Falling back to position-based update.");
+        if (topology == null) {
+            logger.warn("Cannot update edges by index: topology not available.");
             return;
         }
 
-        var result = meshManager.updateEdgesBySingleVertexIndex(vbo, edgePositions, edgeCount, VERTICES_PER_EDGE, edgeToVertexMapping,
-                                                                 vertexIndex, newPosition);
-
-        if (result != null && result.isSuccessful()) {
-            logger.trace("Updated {} edges connected to vertex {} using {} strategy",
-                result.getUpdatedCount(), vertexIndex, result.getStrategy());
+        java.util.List<Integer> connectedEdgeIds = topology.getEdgesForVertex(vertexIndex);
+        if (connectedEdgeIds.isEmpty()) {
+            return;
         }
+
+        int updatedCount = 0;
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        try {
+            float[] positionData = new float[] { newPosition.x, newPosition.y, newPosition.z };
+
+            for (int edgeId : connectedEdgeIds) {
+                MeshEdge edge = topology.getEdge(edgeId);
+                if (edge == null || edgeId >= edgeCount) {
+                    continue;
+                }
+
+                int edgePosIdx = edgeId * FLOATS_PER_EDGE;
+
+                // Determine which endpoint(s) match and update
+                if (edge.vertexA() == vertexIndex) {
+                    // Update first endpoint in CPU array
+                    edgePositions[edgePosIdx] = newPosition.x;
+                    edgePositions[edgePosIdx + 1] = newPosition.y;
+                    edgePositions[edgePosIdx + 2] = newPosition.z;
+
+                    // Update first endpoint in GPU VBO (vertex 0 of this edge)
+                    int vboVertexIdx = edgeId * VERTICES_PER_EDGE;
+                    long offset = (long) vboVertexIdx * VERTEX_STRIDE_BYTES;
+                    glBufferSubData(GL_ARRAY_BUFFER, offset, positionData);
+                    updatedCount++;
+                }
+
+                if (edge.vertexB() == vertexIndex) {
+                    // Update second endpoint in CPU array
+                    edgePositions[edgePosIdx + 3] = newPosition.x;
+                    edgePositions[edgePosIdx + 4] = newPosition.y;
+                    edgePositions[edgePosIdx + 5] = newPosition.z;
+
+                    // Update second endpoint in GPU VBO (vertex 1 of this edge)
+                    int vboVertexIdx = edgeId * VERTICES_PER_EDGE + 1;
+                    long offset = (long) vboVertexIdx * VERTEX_STRIDE_BYTES;
+                    glBufferSubData(GL_ARRAY_BUFFER, offset, positionData);
+                    updatedCount++;
+                }
+            }
+        } finally {
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+        }
+
+        logger.trace("Updated {} edge endpoints connected to vertex {} via topology",
+            updatedCount, vertexIndex);
     }
 
     /**
      * Returns the unique vertex indices for a given edge.
-     * Delegates to MeshManager to retrieve which unique vertices this edge connects.
-     *
-     * <p><b>Prerequisites:</b> {@link #buildEdgeToVertexMapping} must have been called.
+     * Uses topology for O(1) lookup.
      *
      * @param edgeIndex the edge index to query
-     * @return array of [vertexIndex1, vertexIndex2], or null if mapping is not available
+     * @return array of [vertexIndex1, vertexIndex2], or null if topology is not available
      */
     public int[] getEdgeVertexIndices(int edgeIndex) {
-        return meshManager.getEdgeVertexIndices(edgeIndex, edgeToVertexMapping);
+        if (topology == null) {
+            return null;
+        }
+        MeshEdge edge = topology.getEdge(edgeIndex);
+        if (edge == null) {
+            return null;
+        }
+        return new int[] { edge.vertexA(), edge.vertexB() };
     }
 
     /**
      * Updates edges connected to specific vertex indices.
-     * Uses index-based matching strategy via MeshManager to prevent vertex unification bugs.
-     *
-     * <p>This method delegates to {@link MeshManager#updateEdgesByIndices} which only
-     * updates edges that connect to the specified unique vertex indices. This is more precise
-     * than position-based updates and prevents unintended modifications when vertices share positions.
-     *
-     * <p><b>Prerequisites:</b> {@link #buildEdgeToVertexMapping} must have been called.
+     * Uses topology O(1) lookup to find and update connected edges for both vertices.
      *
      * @param vertexIndex1 the first unique vertex index that was moved
      * @param newPosition1 the new position for the first vertex
@@ -871,12 +863,10 @@ public class EdgeRenderer implements MeshChangeListener {
             return;
         }
 
-        var result = meshManager.updateEdgesByIndices(vbo, edgePositions, edgeCount, VERTICES_PER_EDGE, edgeToVertexMapping,
-                                                     vertexIndex1, newPosition1, vertexIndex2, newPosition2);
-
-        if (result != null && result.isSuccessful()) {
-            logger.trace("Updated {} edges using {} strategy",
-                result.getUpdatedCount(), result.getStrategy());
+        // Update both vertices via topology-backed method
+        updateEdgesConnectedToVertexByIndex(vertexIndex1, newPosition1);
+        if (vertexIndex1 != vertexIndex2) {
+            updateEdgesConnectedToVertexByIndex(vertexIndex2, newPosition2);
         }
     }
 

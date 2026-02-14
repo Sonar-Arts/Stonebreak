@@ -289,6 +289,12 @@ public class GenericModelRenderer extends BaseRenderer {
             // Rebuild unique vertex mapping to stay in sync
             uniqueMapper.buildMapping(vertexManager.getVertices());
 
+            // Rebuild topology to reflect new vertex positions
+            this.topology = MeshTopologyBuilder.build(
+                vertexManager.getVertices(), vertexManager.getIndices(),
+                faceMapper, uniqueMapper);
+            changeNotifier.notifyTopologyRebuilt(topology);
+
             logger.trace("Updated {} of {} vertex positions", updateLength / 3, currentVertices.length / 3);
         } catch (Exception e) {
             logger.error("Error updating vertex positions", e);
@@ -345,8 +351,12 @@ public class GenericModelRenderer extends BaseRenderer {
 
     /**
      * Get the original face ID for a given triangle index.
+     * Routes through topology when available for consistency.
      */
     public int getOriginalFaceIdForTriangle(int triangleIndex) {
+        if (topology != null) {
+            return topology.getOriginalFaceIdForTriangle(triangleIndex);
+        }
         return faceMapper.getOriginalFaceIdForTriangle(triangleIndex);
     }
 
@@ -377,15 +387,23 @@ public class GenericModelRenderer extends BaseRenderer {
 
     /**
      * Get all mesh vertex indices that share a unique geometric position.
+     * Routes through topology when available for consistency.
      */
     public int[] getMeshIndicesForUniqueVertex(int uniqueIndex) {
+        if (topology != null) {
+            return topology.getMeshIndicesForUniqueVertex(uniqueIndex);
+        }
         return uniqueMapper.getMeshIndicesForUniqueVertex(uniqueIndex);
     }
 
     /**
      * Get the unique vertex index for a given mesh vertex.
+     * Routes through topology when available for consistency.
      */
     public int getUniqueIndexForMeshVertex(int meshIndex) {
+        if (topology != null) {
+            return topology.getUniqueIndexForMeshVertex(meshIndex);
+        }
         return uniqueMapper.getUniqueIndexForMeshVertex(meshIndex);
     }
 

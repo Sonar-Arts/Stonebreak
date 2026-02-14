@@ -205,32 +205,13 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             indexRemapping = vertexRenderer.mergeOverlappingVertices(mergeEpsilon);
         }
 
-        if (!indexRemapping.isEmpty()) {
-            // Remap edge vertex indices to use new vertex indices
-            edgeRenderer.remapEdgeVertexIndices(indexRemapping);
-
-            // Rebuild edge-to-vertex mapping with new vertex data
-            float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
-            if (uniqueVertexPositions != null) {
-                edgeRenderer.buildEdgeToVertexMapping(uniqueVertexPositions);
-                logger.debug("Merged vertices and rebuilt edge mapping after vertex drag");
-            }
-
-            // COMMIT: Update ModelRenderer with mesh vertices
-            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-            if (meshVertices != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(meshVertices);
-                faceRenderer.rebuildFromGenericModelRenderer();
-                logger.debug("Committed merged vertex drag to ModelRenderer with mesh vertices");
-            }
-        } else {
-            // No merge occurred, use mesh vertices
-            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-            if (meshVertices != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(meshVertices);
-                faceRenderer.rebuildFromGenericModelRenderer();
-                logger.debug("Committed vertex drag to ModelRenderer (no merge)");
-            }
+        // COMMIT: Update ModelRenderer with mesh vertices
+        // Topology rebuild in updateVertexPositions() handles edge/face updates via observer pattern
+        float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
+        if (meshVertices != null && modelRenderer != null) {
+            modelRenderer.updateVertexPositions(meshVertices);
+            faceRenderer.rebuildFromGenericModelRenderer();
+            logger.debug("Committed vertex drag to ModelRenderer{}", !indexRemapping.isEmpty() ? " (with merge)" : "");
         }
 
         selectionState.endDrag();

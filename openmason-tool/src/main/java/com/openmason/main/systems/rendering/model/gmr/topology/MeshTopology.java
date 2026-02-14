@@ -30,6 +30,13 @@ public class MeshTopology {
     private final boolean uniformTopology;
     private final int uniformVerticesPerFace;
 
+    // Embedded mapper data (consolidated from UniqueVertexMapper + TriangleFaceMapper)
+    private final int[] meshToUniqueMapping;      // meshIdx → uniqueIdx
+    private final int[][] uniqueToMeshIndices;    // uniqueIdx → meshIdx[]
+    private final int uniqueVertexCount;
+    private final int[] triangleToFaceId;         // triIdx → faceId
+    private final int triangleCount;
+
     /**
      * Package-private constructor used by MeshTopologyBuilder.
      */
@@ -37,7 +44,10 @@ public class MeshTopology {
                  Map<Long, Integer> edgeKeyToId,
                  List<List<Integer>> vertexToEdges,
                  List<List<Integer>> vertexToFaces,
-                 boolean uniformTopology, int uniformVerticesPerFace) {
+                 boolean uniformTopology, int uniformVerticesPerFace,
+                 int[] meshToUniqueMapping, int[][] uniqueToMeshIndices,
+                 int uniqueVertexCount,
+                 int[] triangleToFaceId, int triangleCount) {
         this.edges = edges;
         this.faces = faces;
         this.edgeKeyToId = edgeKeyToId;
@@ -45,6 +55,11 @@ public class MeshTopology {
         this.vertexToFaces = vertexToFaces;
         this.uniformTopology = uniformTopology;
         this.uniformVerticesPerFace = uniformVerticesPerFace;
+        this.meshToUniqueMapping = meshToUniqueMapping;
+        this.uniqueToMeshIndices = uniqueToMeshIndices;
+        this.uniqueVertexCount = uniqueVertexCount;
+        this.triangleToFaceId = triangleToFaceId;
+        this.triangleCount = triangleCount;
     }
 
     // =========================================================================
@@ -180,5 +195,70 @@ public class MeshTopology {
             result[i] = faces[i].vertexCount();
         }
         return result;
+    }
+
+    // =========================================================================
+    // VERTEX MAPPING QUERIES (consolidated from UniqueVertexMapper)
+    // =========================================================================
+
+    /**
+     * Get the unique vertex index for a given mesh vertex index.
+     *
+     * @param meshIdx Mesh vertex index
+     * @return Unique vertex index, or -1 if out of range
+     */
+    public int getUniqueIndexForMeshVertex(int meshIdx) {
+        if (meshToUniqueMapping == null || meshIdx < 0 || meshIdx >= meshToUniqueMapping.length) {
+            return -1;
+        }
+        return meshToUniqueMapping[meshIdx];
+    }
+
+    /**
+     * Get all mesh vertex indices that share the same unique geometric position.
+     *
+     * @param uniqueIdx Unique vertex index
+     * @return Clone of mesh indices array, or empty array if out of range
+     */
+    public int[] getMeshIndicesForUniqueVertex(int uniqueIdx) {
+        if (uniqueToMeshIndices == null || uniqueIdx < 0 || uniqueIdx >= uniqueToMeshIndices.length) {
+            return new int[0];
+        }
+        return uniqueToMeshIndices[uniqueIdx].clone();
+    }
+
+    /**
+     * Get the number of unique geometric vertex positions.
+     *
+     * @return Unique vertex count
+     */
+    public int getUniqueVertexCount() {
+        return uniqueVertexCount;
+    }
+
+    // =========================================================================
+    // TRIANGLE-FACE MAPPING QUERIES (consolidated from TriangleFaceMapper)
+    // =========================================================================
+
+    /**
+     * Get the original face ID for a given triangle index.
+     *
+     * @param triIdx Triangle index (0-based)
+     * @return Original face ID, or -1 if out of range
+     */
+    public int getOriginalFaceIdForTriangle(int triIdx) {
+        if (triangleToFaceId == null || triIdx < 0 || triIdx >= triangleToFaceId.length) {
+            return -1;
+        }
+        return triangleToFaceId[triIdx];
+    }
+
+    /**
+     * Get the total number of triangles in the mesh.
+     *
+     * @return Triangle count
+     */
+    public int getTriangleCount() {
+        return triangleCount;
     }
 }

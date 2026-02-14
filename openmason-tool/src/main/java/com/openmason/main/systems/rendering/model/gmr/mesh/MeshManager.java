@@ -1,8 +1,6 @@
 package com.openmason.main.systems.rendering.model.gmr.mesh;
 
 import com.openmason.main.systems.rendering.model.gmr.mesh.edgeOperations.*;
-import com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.MeshFaceCornerExtractor;
-import com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.MeshFaceMappingBuilder;
 import com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.MeshFaceUpdateOperation;
 import com.openmason.main.systems.rendering.model.gmr.mesh.vertexOperations.MeshVertexDataTransformer;
 import com.openmason.main.systems.rendering.model.gmr.mesh.vertexOperations.MeshVertexMerger;
@@ -214,78 +212,6 @@ public class MeshManager {
     // Face Operations (managed through MeshManager)
     // ========================================
 
-
-    /**
-     * Build face-to-vertex mapping from unique vertex positions (uniform topology).
-     * Coordinates the mapping process using MeshFaceMappingBuilder.
-     * All faces must have the same vertex count.
-     *
-     * @param facePositions Array of face positions
-     * @param faceCount Number of faces
-     * @param verticesPerFace Number of vertices per face (uniform for all faces)
-     * @param uniqueVertexPositions Array of unique vertex positions
-     * @param epsilon Distance threshold for vertex matching
-     * @return Map from face index to array of vertex indices (array length = verticesPerFace)
-     */
-    public Map<Integer, int[]> buildFaceToVertexMapping(float[] facePositions, int faceCount,
-                                                       int verticesPerFace,
-                                                       float[] uniqueVertexPositions, float epsilon) {
-        MeshFaceMappingBuilder builder = new MeshFaceMappingBuilder(epsilon);
-        return builder.buildMapping(facePositions, faceCount, verticesPerFace, uniqueVertexPositions);
-    }
-
-    /**
-     * Build face-to-vertex mapping from unique vertex positions (mixed topology).
-     * Coordinates the mapping process using MeshFaceMappingBuilder.
-     * Each face can have a different vertex count.
-     *
-     * @param facePositions Packed face positions array (variable vertices per face)
-     * @param faceCount Number of faces
-     * @param verticesPerFace Per-face vertex counts from GMR topology
-     * @param faceOffsets Per-face float offsets into facePositions
-     * @param uniqueVertexPositions Array of unique vertex positions
-     * @param epsilon Distance threshold for vertex matching
-     * @return Map from face index to array of vertex indices
-     */
-    public Map<Integer, int[]> buildFaceToVertexMapping(float[] facePositions, int faceCount,
-                                                       int[] verticesPerFace, int[] faceOffsets,
-                                                       float[] uniqueVertexPositions, float epsilon) {
-        MeshFaceMappingBuilder builder = new MeshFaceMappingBuilder(epsilon);
-        return builder.buildMapping(facePositions, faceCount, verticesPerFace, faceOffsets, uniqueVertexPositions);
-    }
-
-    /**
-     * Get the corner vertices of a face.
-     * Convenience method using MeshFaceCornerExtractor.
-     * Supports arbitrary face topology (triangles, quads, n-gons, or mixed).
-     *
-     * @param facePositions Array of face positions
-     * @param faceIndex Face index
-     * @param faceCount Total number of faces
-     * @param verticesPerFace Number of vertices per face (topology determined by GMR)
-     * @return Array of vertices [v0, v1, v2, ..., vN] (length = verticesPerFace), or null if invalid
-     */
-    public Vector3f[] getFaceVertices(float[] facePositions, int faceIndex, int faceCount, int verticesPerFace) {
-        MeshFaceCornerExtractor extractor = new MeshFaceCornerExtractor();
-        return extractor.getFaceVertices(facePositions, faceIndex, faceCount, verticesPerFace);
-    }
-
-    /**
-     * Get face vertex indices for a face from the mapping.
-     * Convenience method using MeshFaceCornerExtractor.
-     * Array length depends on face topology (e.g., 3 for triangles, 4 for quads).
-     *
-     * @param faceIndex Face index
-     * @param faceCount Total number of faces
-     * @param faceToVertexMapping Map from face index to vertex indices
-     * @return Array of vertex indices [v0, v1, v2, ..., vN], or null if invalid
-     */
-    public int[] getFaceVertexIndices(int faceIndex, int faceCount,
-                                     Map<Integer, int[]> faceToVertexMapping) {
-        MeshFaceCornerExtractor extractor = new MeshFaceCornerExtractor();
-        return extractor.getFaceVertexIndices(faceIndex, faceCount, faceToVertexMapping);
-    }
-
     /**
      * Update a single face's position in both CPU memory and GPU buffer.
      * Coordinates the update process using MeshFaceUpdateOperation.
@@ -399,23 +325,6 @@ public class MeshManager {
 
 
     /**
-     * Build edge-to-vertex mapping from unique vertex positions.
-     * Coordinates the mapping process using MeshEdgeMappingBuilder.
-     *
-     * @param edgePositions Array of edge positions [x1,y1,z1, x2,y2,z2, ...]
-     * @param edgeCount Number of edges
-     * @param verticesPerEdge Number of vertices per edge (derived from GMR topology)
-     * @param uniqueVertexPositions Array of unique vertex positions
-     * @param epsilon Distance threshold for vertex matching
-     * @return 2D array mapping edge index to vertex indices arrays
-     */
-    public int[][] buildEdgeToVertexMapping(float[] edgePositions, int edgeCount, int verticesPerEdge,
-                                           float[] uniqueVertexPositions, float epsilon) {
-        MeshEdgeMappingBuilder builder = new MeshEdgeMappingBuilder(epsilon);
-        return builder.buildMapping(edgePositions, verticesPerEdge, uniqueVertexPositions);
-    }
-
-    /**
      * Update edge buffer with interleaved vertex data.
      * Coordinates the buffer update process using MeshEdgeBufferUpdater.
      *
@@ -429,22 +338,6 @@ public class MeshManager {
                                                                int verticesPerEdge, Vector3f edgeColor) {
         MeshEdgeBufferUpdater updater = new MeshEdgeBufferUpdater();
         return updater.updateBuffer(vbo, edgePositions, verticesPerEdge, edgeColor);
-    }
-
-    /**
-     * Remap edge vertex indices after vertex merging.
-     * Coordinates the remapping process using MeshEdgeVertexRemapper.
-     *
-     * @param edgeToVertexMapping 2D array mapping edge index to vertex indices
-     * @param edgeCount Total number of edges
-     * @param oldToNewIndexMap Mapping from old to new vertex indices
-     * @return RemapResult with statistics, or null if failed
-     */
-    public MeshEdgeVertexRemapper.RemapResult remapEdgeVertexIndices(int[][] edgeToVertexMapping,
-                                                                     int edgeCount,
-                                                                     Map<Integer, Integer> oldToNewIndexMap) {
-        MeshEdgeVertexRemapper remapper = new MeshEdgeVertexRemapper();
-        return remapper.remapIndices(edgeToVertexMapping, edgeCount, oldToNewIndexMap);
     }
 
     /**
@@ -468,54 +361,6 @@ public class MeshManager {
     }
 
     /**
-     * Update edge positions by vertex indices.
-     * Uses index-based matching strategy via MeshEdgePositionUpdater.
-     *
-     * @param vbo OpenGL VBO handle
-     * @param edgePositions Edge position array
-     * @param edgeCount Total number of edges
-     * @param verticesPerEdge Number of vertices per edge (derived from GMR topology)
-     * @param edgeToVertexMapping 2D array mapping edge indices to vertex indices
-     * @param vertexIndex1 First unique vertex index that was moved
-     * @param newPosition1 New position for first vertex
-     * @param vertexIndex2 Second unique vertex index that was moved
-     * @param newPosition2 New position for second vertex
-     * @return UpdateResult with statistics, or null if failed
-     */
-    public MeshEdgePositionUpdater.UpdateResult updateEdgesByIndices(int vbo, float[] edgePositions,
-                                                                     int edgeCount, int verticesPerEdge,
-                                                                     int[][] edgeToVertexMapping,
-                                                                     int vertexIndex1, Vector3f newPosition1,
-                                                                     int vertexIndex2, Vector3f newPosition2) {
-        MeshEdgePositionUpdater updater = new MeshEdgePositionUpdater();
-        return updater.updateByIndices(vbo, edgePositions, verticesPerEdge, edgeToVertexMapping,
-                                       vertexIndex1, newPosition1, vertexIndex2, newPosition2);
-    }
-
-    /**
-     * Update edge positions for a single vertex by index.
-     * Uses index-based matching strategy via MeshEdgePositionUpdater.
-     * More reliable than position-based matching, especially after subdivision.
-     *
-     * @param vbo OpenGL VBO handle
-     * @param edgePositions Edge position array
-     * @param edgeCount Total number of edges
-     * @param verticesPerEdge Number of vertices per edge (derived from GMR topology)
-     * @param edgeToVertexMapping 2D array mapping edge indices to vertex indices
-     * @param vertexIndex Unique vertex index that was moved
-     * @param newPosition New position for the vertex
-     * @return UpdateResult with statistics, or null if failed
-     */
-    public MeshEdgePositionUpdater.UpdateResult updateEdgesBySingleVertexIndex(int vbo, float[] edgePositions,
-                                                                                int edgeCount, int verticesPerEdge,
-                                                                                int[][] edgeToVertexMapping,
-                                                                                int vertexIndex, Vector3f newPosition) {
-        MeshEdgePositionUpdater updater = new MeshEdgePositionUpdater();
-        return updater.updateSingleVertexByIndex(vbo, edgePositions, verticesPerEdge, edgeToVertexMapping,
-                                                  vertexIndex, newPosition);
-    }
-
-    /**
      * Get edge vertex positions.
      * Convenience method using MeshEdgeGeometryQuery.
      *
@@ -527,19 +372,6 @@ public class MeshManager {
     public Vector3f[] getEdgeVertices(int edgeIndex, float[] edgePositions, int verticesPerEdge) {
         MeshEdgeGeometryQuery query = new MeshEdgeGeometryQuery();
         return query.getEdgeVertices(edgeIndex, edgePositions, verticesPerEdge);
-    }
-
-    /**
-     * Get edge vertex indices from mapping.
-     * Convenience method using MeshEdgeGeometryQuery.
-     *
-     * @param edgeIndex Edge index
-     * @param edgeToVertexMapping Map from edge index to vertex indices
-     * @return Array of [vertexIndex1, vertexIndex2], or null if invalid
-     */
-    public int[] getEdgeVertexIndices(int edgeIndex, int[][] edgeToVertexMapping) {
-        MeshEdgeGeometryQuery query = new MeshEdgeGeometryQuery();
-        return query.getEdgeVertexIndices(edgeIndex, edgeToVertexMapping);
     }
 
     // ========================================

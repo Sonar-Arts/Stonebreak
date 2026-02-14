@@ -1,8 +1,6 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.face;
 
 import com.openmason.main.systems.rendering.model.MeshChangeListener;
-import com.openmason.main.systems.rendering.model.gmr.topology.MeshFace;
-import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
@@ -81,11 +79,6 @@ public class FaceRenderer implements MeshChangeListener {
 
     // Selection state - multi-selection only
     private Set<Integer> selectedFaceIndices = new HashSet<>();
-
-    // Face-to-vertex mapping (FIX: prevents vertex unification bug)
-    // Maps face index -> array of unique vertex indices [v0, v1, ..., vN]
-    // For cube: 6 faces, each connecting 4 of the 8 unique vertices
-    private Map<Integer, int[]> faceToVertexMapping = new HashMap<>();
 
     // Topology info from structured face extraction
     private int[] storedVerticesPerFace = null; // vertex count per face, or null for legacy quad format
@@ -174,7 +167,6 @@ public class FaceRenderer implements MeshChangeListener {
             logger.warn("GenericModelRenderer not set");
             faceCount = 0;
             topologyFacePositions = null;
-            faceToVertexMapping.clear();
             return;
         }
 
@@ -228,71 +220,6 @@ public class FaceRenderer implements MeshChangeListener {
 
         overlayRenderer.setFaceVBOLayout(offsets, counts);
     }
-
-    /**
-     * Build face-to-vertex mapping from unique vertex positions.
-     * Creates mapping needed for index-based updates to prevent vertex unification.
-     * Matches face corners to unique vertices using epsilon comparison.
-     * Delegates to MeshManager for clean separation of concerns.
-     *
-     * <p>Uses topology-aware positions and per-face offsets when available (from
-     * {@link #updateFaceDataFromGMR()}), supporting mixed topology (triangles, quads,
-     * n-gons). Falls back to legacy quad format only when topology data is absent.
-     *
-     * <p><b>Note:</b> In triangle mode, this method preserves the existing mapping
-     * from quad mode so that original corner vertices can still be accessed for
-     * wireframe updates during face translation.
-     *
-     * @param uniqueVertexPositions Array of unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
-     */
-    public void buildFaceToVertexMapping(float[] uniqueVertexPositions) {
-        if (faceCount == 0) {
-            logger.warn("Cannot build face mapping: no face data");
-            faceToVertexMapping.clear();
-            return;
-        }
-
-        if (uniqueVertexPositions == null || uniqueVertexPositions.length < COMPONENTS_PER_POSITION) {
-            logger.warn("Cannot build face mapping: invalid unique vertex data");
-            faceToVertexMapping.clear();
-            return;
-        }
-
-        // Fast path: use topology index when available (O(1) lookups, no epsilon matching)
-        if (genericModelRenderer != null) {
-            MeshTopology topology = genericModelRenderer.getTopology();
-            if (topology != null) {
-                faceToVertexMapping.clear();
-                for (int i = 0; i < topology.getFaceCount(); i++) {
-                    MeshFace face = topology.getFace(i);
-                    if (face != null) {
-                        faceToVertexMapping.put(face.faceId(), face.vertexIndices().clone());
-                    }
-                }
-                logger.debug("Built face-to-vertex mapping from topology for {} faces", faceToVertexMapping.size());
-                return;
-            }
-        }
-
-        // Fallback: epsilon-based position matching
-        if (topologyFacePositions != null && storedVerticesPerFace != null && storedFaceOffsets != null) {
-            faceToVertexMapping = MeshManager.getInstance().buildFaceToVertexMapping(
-                topologyFacePositions,
-                faceCount,
-                storedVerticesPerFace,
-                storedFaceOffsets,
-                uniqueVertexPositions,
-                VERTEX_MATCH_EPSILON
-            );
-        } else {
-            logger.warn("Cannot build face mapping: no face position data available");
-            faceToVertexMapping.clear();
-            return;
-        }
-
-        logger.debug("Built face-to-vertex mapping for {} faces", faceCount);
-    }
-
 
     /**
      * Get all unique vertex indices for all triangles belonging to an original face.
@@ -508,7 +435,6 @@ public class FaceRenderer implements MeshChangeListener {
         topologyFacePositions = null;
         storedVerticesPerFace = null;
         storedFaceOffsets = null;
-        faceToVertexMapping.clear();
         initialized = false;
         logger.debug("FaceRenderer cleaned up");
     }

@@ -186,16 +186,37 @@ public final class MeshTopologyBuilder {
             }
         }
 
+        // Step 7: Extract mapper data into topology
+        int meshVertexCount = vertices.length / 3;
+
+        // Copy mesh-to-unique mapping
+        int[] meshToUniqueMapping = new int[meshVertexCount];
+        for (int i = 0; i < meshVertexCount; i++) {
+            meshToUniqueMapping[i] = uniqueMapper.getUniqueIndexForMeshVertex(i);
+        }
+
+        // Copy unique-to-mesh mapping
+        int[][] uniqueToMeshIndices = new int[uniqueVertexCount][];
+        for (int i = 0; i < uniqueVertexCount; i++) {
+            int[] meshIndices = uniqueMapper.getMeshIndicesForUniqueVertex(i);
+            uniqueToMeshIndices[i] = meshIndices != null ? meshIndices.clone() : new int[0];
+        }
+
+        // Copy triangle-to-face mapping
+        int[] triangleToFaceId = faceMapper.getMappingCopy();
+
         MeshTopology topology = new MeshTopology(
             edges, faces,
             Collections.unmodifiableMap(edgeKeyToId),
             immutableVertexToEdges,
             immutableVertexToFaces,
-            uniform, firstCount
+            uniform, firstCount,
+            meshToUniqueMapping, uniqueToMeshIndices, uniqueVertexCount,
+            triangleToFaceId, triangleCount
         );
 
-        logger.debug("Built MeshTopology: {} edges, {} faces, uniform={} (vpf={})",
-            edgeCount, faces.length, uniform, firstCount);
+        logger.debug("Built MeshTopology: {} edges, {} faces, {} unique verts, {} triangles, uniform={} (vpf={})",
+            edgeCount, faces.length, uniqueVertexCount, triangleCount, uniform, firstCount);
 
         return topology;
     }
