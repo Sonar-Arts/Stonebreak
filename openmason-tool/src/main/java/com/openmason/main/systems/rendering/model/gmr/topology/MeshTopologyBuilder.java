@@ -217,8 +217,16 @@ public final class MeshTopologyBuilder {
             faceAreas[i] = MeshTopology.computeArea(verts, uniqueToMeshIndices, vertices);
         }
 
+        // Step 9: Compute per-vertex smooth normals (area-weighted average of adjacent face normals)
+        Vector3f[] vertexNormals = new Vector3f[uniqueVertexCount];
+        for (int v = 0; v < uniqueVertexCount; v++) {
+            vertexNormals[v] = MeshTopology.computeVertexNormal(
+                immutableVertexToFaces.get(v), faceNormals, faceAreas
+            );
+        }
+
         MeshTopology topology = new MeshTopology(
-            edges, faces, faceNormals, faceCentroids, faceAreas,
+            edges, faces, faceNormals, faceCentroids, faceAreas, vertexNormals,
             Collections.unmodifiableMap(edgeKeyToId),
             immutableVertexToEdges,
             immutableVertexToFaces,

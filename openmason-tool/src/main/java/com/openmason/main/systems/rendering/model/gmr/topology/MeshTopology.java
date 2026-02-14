@@ -14,7 +14,8 @@ import java.util.Map;
  * provides efficient lookups for:
  * <ul>
  *   <li>Edge by ID or vertex pair</li>
- *   <li>Face by ID</li>
+ *   <li>Face by ID with cached normal, centroid, and area</li>
+ *   <li>Vertex smooth normals (area-weighted average of adjacent face normals)</li>
  *   <li>Edges connected to a vertex</li>
  *   <li>Faces adjacent to a vertex</li>
  *   <li>Uniform vs mixed topology detection</li>
@@ -29,6 +30,7 @@ public class MeshTopology {
     private final Vector3f[] faceNormals;
     private final Vector3f[] faceCentroids;
     private final float[] faceAreas;
+    private final Vector3f[] vertexNormals;       // per-unique-vertex smooth normals
     private final Map<Long, Integer> edgeKeyToId;
     private final List<List<Integer>> vertexToEdges;
     private final List<List<Integer>> vertexToFaces;
@@ -44,6 +46,7 @@ public class MeshTopology {
 
     // Lazy recomputation on vertex move
     private final boolean[] faceDirty;
+    private final boolean[] vertexNormalDirty;
     private float[] verticesRef;
 
     /**
@@ -51,6 +54,7 @@ public class MeshTopology {
      */
     MeshTopology(MeshEdge[] edges, MeshFace[] faces,
                  Vector3f[] faceNormals, Vector3f[] faceCentroids, float[] faceAreas,
+                 Vector3f[] vertexNormals,
                  Map<Long, Integer> edgeKeyToId,
                  List<List<Integer>> vertexToEdges,
                  List<List<Integer>> vertexToFaces,
@@ -63,6 +67,7 @@ public class MeshTopology {
         this.faceNormals = faceNormals;
         this.faceCentroids = faceCentroids;
         this.faceAreas = faceAreas;
+        this.vertexNormals = vertexNormals;
         this.edgeKeyToId = edgeKeyToId;
         this.vertexToEdges = vertexToEdges;
         this.vertexToFaces = vertexToFaces;
@@ -74,6 +79,7 @@ public class MeshTopology {
         this.triangleToFaceId = triangleToFaceId;
         this.triangleCount = triangleCount;
         this.faceDirty = new boolean[faces.length];
+        this.vertexNormalDirty = new boolean[uniqueVertexCount];
     }
 
     // =========================================================================
@@ -188,6 +194,27 @@ public class MeshTopology {
         }
         ensureFaceClean(faceId);
         return faceAreas[faceId];
+    }
+
+    // =========================================================================
+    // VERTEX NORMAL QUERIES (smooth shading)
+    // =========================================================================
+
+    /**
+     * Get the smooth (area-weighted) normal for a unique vertex.
+     * Computed as the normalized weighted average of adjacent face normals,
+     * where each face normal is weighted by its face area. Lazily recomputes
+     * if the vertex normal was dirtied by a vertex position change.
+     *
+     * @param uniqueVertexIdx Unique vertex index
+     * @return The vertex normal (unit vector), or null if out of range
+     */
+    public Vector3f getVertexNormal(int uniqueVertexIdx) {
+        if (uniqueVertexIdx < 0 || uniqueVertexIdx >= vertexNormals.length) {
+            return null;
+        }
+        ensureVertexNormalClean(uniqueVertexIdx);
+        return vertexNormals[uniqueVertexIdx];
     }
 
     // =========================================================================
@@ -343,7 +370,10 @@ public class MeshTopology {
 
     /**
      * Mark all faces adjacent to a moved vertex as dirty.
-     * Normals, centroids, and areas will be lazily recomputed on the next query.
+     * Normals, centroids, areas, and vertex normals will be lazily recomputed on the next query.
+     *
+     * <p>Vertex normals are dirtied for every vertex on every affected face, because a face
+     * normal change propagates to all vertices that reference that face in their weighted average.
      *
      * @param uniqueVertexIndex The unique vertex that moved
      * @param vertices          Current vertex positions (x,y,z interleaved)
@@ -354,6 +384,14 @@ public class MeshTopology {
         for (int faceId : affectedFaceIds) {
             if (faceId >= 0 && faceId < faceDirty.length) {
                 faceDirty[faceId] = true;
+
+                // Dirty vertex normals for every vertex on this face
+                MeshFace face = faces[faceId];
+                for (int v : face.vertexIndices()) {
+                    if (v >= 0 && v < vertexNormalDirty.length) {
+                        vertexNormalDirty[v] = true;
+                    }
+                }
             }
         }
     }
@@ -383,9 +421,67 @@ public class MeshTopology {
         faceAreas[faceId] = computeArea(verts, uniqueToMeshIndices, verticesRef);
     }
 
+    /**
+     * Ensure a vertex's cached smooth normal is up-to-date.
+     * Forces all adjacent faces clean first (vertex normal depends on face normals and areas).
+     * No-op if the vertex normal is already clean.
+     */
+    private void ensureVertexNormalClean(int uniqueVertexIdx) {
+        if (!vertexNormalDirty[uniqueVertexIdx]) {
+            return;
+        }
+        // Ensure all adjacent faces are clean before recomputing the weighted average
+        List<Integer> adjacentFaceIds = getFacesForVertex(uniqueVertexIdx);
+        for (int faceId : adjacentFaceIds) {
+            ensureFaceClean(faceId);
+        }
+        recomputeVertexNormal(uniqueVertexIdx, adjacentFaceIds);
+        vertexNormalDirty[uniqueVertexIdx] = false;
+    }
+
+    /**
+     * Recompute the smooth normal for a single vertex as the area-weighted average
+     * of its adjacent face normals.
+     */
+    private void recomputeVertexNormal(int uniqueVertexIdx, List<Integer> adjacentFaceIds) {
+        vertexNormals[uniqueVertexIdx] = computeVertexNormal(adjacentFaceIds, faceNormals, faceAreas);
+    }
+
     // =========================================================================
     // STATIC GEOMETRY COMPUTATIONS
     // =========================================================================
+
+    /**
+     * Compute a smooth vertex normal as the area-weighted average of adjacent face normals.
+     * Larger faces contribute more to the result, which is the standard weighting approach.
+     *
+     * @param adjacentFaceIds Face IDs adjacent to the vertex
+     * @param faceNormals     Precomputed face normals array
+     * @param faceAreas       Precomputed face areas array
+     * @return Normalized vertex normal, or zero vector if no valid adjacent faces
+     */
+    static Vector3f computeVertexNormal(List<Integer> adjacentFaceIds,
+                                        Vector3f[] faceNormals, float[] faceAreas) {
+        float nx = 0, ny = 0, nz = 0;
+
+        for (int faceId : adjacentFaceIds) {
+            if (faceId < 0 || faceId >= faceNormals.length) {
+                continue;
+            }
+            Vector3f fn = faceNormals[faceId];
+            float area = faceAreas[faceId];
+            nx += fn.x * area;
+            ny += fn.y * area;
+            nz += fn.z * area;
+        }
+
+        Vector3f result = new Vector3f(nx, ny, nz);
+        float len = result.length();
+        if (len > 1e-8f) {
+            result.div(len);
+        }
+        return result;
+    }
 
     /**
      * Compute a face normal using Newell's method.
