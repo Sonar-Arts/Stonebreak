@@ -505,6 +505,62 @@ public class GenericModelRenderer extends BaseRenderer {
         return result.firstNewVertexIndex();
     }
 
+    /**
+     * Apply edge subdivision at an arbitrary parametric position using unique vertex indices.
+     * The new vertex is placed at {@code lerp(posA, posB, t)} along the edge.
+     *
+     * @param uniqueVertexA First unique vertex index of the edge
+     * @param uniqueVertexB Second unique vertex index of the edge
+     * @param t Parametric position along the edge (0 = vertexA, 1 = vertexB)
+     * @return Unique vertex index of the newly created vertex, or -1 on failure
+     */
+    public int subdivideEdgeAtParameter(int uniqueVertexA, int uniqueVertexB, float t) {
+        if (!initialized) {
+            logger.warn("Cannot apply parameterized subdivision: renderer not initialized");
+            return -1;
+        }
+
+        ISubdivisionProcessor.SubdivisionResult result = subdivisionProcessor.applyEdgeSubdivisionAtParameter(
+            uniqueVertexA, uniqueVertexB, t, vertexManager, faceMapper, uniqueMapper, vertexCount);
+
+        if (!result.success()) {
+            logger.warn("Parameterized subdivision failed: {}", result.errorMessage());
+            return -1;
+        }
+
+        // Update state
+        vertexCount += result.newVertexCount();
+        vertexManager.setIndices(result.newIndices());
+        indexCount = result.newIndices().length;
+        faceMapper.setMapping(result.newTriangleToFaceId());
+
+        // Rebuild GPU buffers
+        float[] interleavedData = geometryBuilder.buildInterleavedData(
+            vertexManager.getVertices(), vertexManager.getTexCoords());
+        updateVBO(interleavedData);
+        updateEBO(result.newIndices());
+
+        // Rebuild unique vertex mapping
+        uniqueMapper.buildMapping(vertexManager.getVertices());
+
+        // Rebuild topology index
+        this.topology = MeshTopologyBuilder.build(
+            vertexManager.getVertices(), vertexManager.getIndices(),
+            faceMapper, uniqueMapper);
+
+        // Find unique index of the new vertex
+        int newUniqueIndex = uniqueMapper.getUniqueIndexForMeshVertex(result.firstNewVertexIndex());
+
+        // Notify listeners
+        changeNotifier.notifyTopologyRebuilt(topology);
+        changeNotifier.notifyGeometryRebuilt();
+
+        logger.debug("Applied parameterized subdivision (t={}): unique vertices ({}, {}) -> new unique vertex {}",
+            t, uniqueVertexA, uniqueVertexB, newUniqueIndex);
+
+        return newUniqueIndex;
+    }
+
     // =========================================================================
     // EDGE INSERTION (face splitting between two existing vertices)
     // =========================================================================

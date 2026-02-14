@@ -14,6 +14,7 @@ import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.KnifePreviewRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
 import org.slf4j.Logger;
@@ -73,6 +74,9 @@ public class ViewportRenderPipeline {
     // Gizmo renderer
     private final GizmoRenderer gizmoRenderer;
 
+    // Knife tool preview renderer
+    private final KnifePreviewRenderer knifePreviewRenderer;
+
     // Diagnostic throttling
     private long lastDiagnosticLogTime = 0;
     private static final long DIAGNOSTIC_LOG_INTERVAL_MS = 2000;
@@ -104,6 +108,7 @@ public class ViewportRenderPipeline {
         this.itemRenderer = itemRenderer;
         this.modelRenderer = modelRenderer;
         this.gizmoRenderer = gizmoRenderer;
+        this.knifePreviewRenderer = new KnifePreviewRenderer();
     }
 
     /**
@@ -169,6 +174,7 @@ public class ViewportRenderPipeline {
             if (viewportState.getShowVertices().get()) {
                 renderVertices(renderingState, transformState);
                 renderEdges(renderingState, transformState);
+                renderKnifePreview(transformState);  // Render knife preview after edges, before faces
                 renderFaces(renderingState, transformState);  // Render face overlays LAST for proper blending
             }
 
@@ -509,6 +515,27 @@ public class ViewportRenderPipeline {
 
 
     /**
+     * Render knife tool preview (cut point + preview line).
+     * Renders after edges and before faces for correct layering.
+     */
+    private void renderKnifePreview(TransformState transformState) {
+        if (knifePreviewRenderer == null || !knifePreviewRenderer.isActive()) {
+            return;
+        }
+
+        try {
+            if (!knifePreviewRenderer.isInitialized()) {
+                knifePreviewRenderer.initialize();
+            }
+
+            ShaderProgram basicShader = shaderManager.getShaderProgram(ShaderType.BASIC);
+            knifePreviewRenderer.render(basicShader, context, transformState.getTransformMatrix());
+        } catch (Exception e) {
+            logger.error("Error rendering knife preview", e);
+        }
+    }
+
+    /**
      * Check if diagnostic logging should occur (throttled).
      */
     private boolean shouldLogDiagnostics() {
@@ -549,6 +576,13 @@ public class ViewportRenderPipeline {
     }
 
     /**
+     * Gets the knife preview renderer for external access (knife tool wiring).
+     */
+    public KnifePreviewRenderer getKnifePreviewRenderer() {
+        return knifePreviewRenderer;
+    }
+
+    /**
      * Clean up all render pipeline resources.
      */
     public void cleanup() {
@@ -563,6 +597,9 @@ public class ViewportRenderPipeline {
         }
         if (faceRenderer.isInitialized()) {
             faceRenderer.cleanup();
+        }
+        if (knifePreviewRenderer != null && knifePreviewRenderer.isInitialized()) {
+            knifePreviewRenderer.cleanup();
         }
         logger.debug("ViewportRenderPipeline cleanup complete");
     }

@@ -255,6 +255,20 @@ public class ViewportActions {
         // Future implementation for applying rendering quality settings
     }
 
+    // ========== Knife Tool (K Key) ==========
+
+    /**
+     * Toggle the knife tool from keybind (K key).
+     * Only works in Edge edit mode. Two-click workflow for face splitting.
+     */
+    public void toggleKnifeTool() {
+        if (!EditModeManager.getInstance().isEdgeEditingAllowed()) {
+            logger.debug("Knife tool requires Edge edit mode");
+            return;
+        }
+        viewport.toggleKnifeTool();
+    }
+
     // ========== Grab Mode (G Key) ==========
 
     /**

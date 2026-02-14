@@ -146,6 +146,15 @@ public class ViewportKeybindActions {
                 actions::startGrabMode
         ));
 
-        logger.info("Registered {} viewport keybind actions", 10);
+        // K: Knife Tool (Edge mode only) - two-click face splitting
+        registry.registerAction(new KeybindAction(
+                "viewport.knife_tool",
+                "Knife Tool",
+                CATEGORY,
+                ShortcutKey.simple(GLFW.GLFW_KEY_K),
+                actions::toggleKnifeTool
+        ));
+
+        logger.info("Registered {} viewport keybind actions", 11);
     }
 }

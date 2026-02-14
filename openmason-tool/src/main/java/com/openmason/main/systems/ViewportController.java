@@ -198,9 +198,15 @@ public class ViewportController {
             inputHandler.setTransformState(transformState);
             logger.debug("Transform state connected to input handler");
 
-            // Connect model renderer for edge insertion (J key)
+            // Connect model renderer for edge insertion (J key) and knife tool (K key)
             inputHandler.setModelRenderer(modelRenderer);
             logger.debug("Model renderer connected to input handler for edge insertion");
+
+            // Connect knife preview renderer for visual feedback
+            if (viewportRenderPipeline.getKnifePreviewRenderer() != null) {
+                inputHandler.setKnifePreviewRenderer(viewportRenderPipeline.getKnifePreviewRenderer());
+                logger.debug("Knife preview renderer connected to input handler");
+            }
 
             // Create translation handlers and coordinator
             if (viewportRenderPipeline.getVertexRenderer() != null && viewportRenderPipeline.getEdgeRenderer() != null &&
@@ -551,6 +557,16 @@ public class ViewportController {
 
     public ViewportCamera getCamera() { return viewportCamera; }
     public ViewportInputHandler getInputHandler() { return inputHandler; }
+
+    /**
+     * Toggle the knife tool from keybind (K key).
+     * Delegates to ViewportInputHandler → KnifeToolController.
+     */
+    public void toggleKnifeTool() {
+        if (inputHandler != null) {
+            inputHandler.toggleKnifeTool();
+        }
+    }
 
     /**
      * Start grab mode from keybind (G key).

@@ -1,6 +1,7 @@
 package com.openmason.main.systems.rendering.model.gmr.uv;
 
 import com.openmason.main.systems.rendering.model.gmr.mapping.ITriangleFaceMapper;
+import com.openmason.main.systems.rendering.model.gmr.mapping.IUniqueVertexMapper;
 import org.joml.Vector3f;
 
 /**
@@ -49,6 +50,27 @@ public interface ISubdivisionProcessor {
         Vector3f endpoint2,
         IVertexDataManager vertexManager,
         ITriangleFaceMapper faceMapper,
+        int currentVertexCount
+    );
+
+    /**
+     * Apply edge subdivision at an arbitrary parametric position using unique vertex indices.
+     * Splits all triangles sharing the edge, placing the new vertex at {@code lerp(posA, posB, t)}.
+     *
+     * @param uniqueVertexA First unique vertex index of the edge
+     * @param uniqueVertexB Second unique vertex index of the edge
+     * @param t Parametric position along the edge (0 = vertexA, 1 = vertexB)
+     * @param vertexManager Vertex data manager for reading/updating vertex data
+     * @param faceMapper Face mapper for reading/updating face mappings
+     * @param uniqueMapper Unique vertex mapper for resolving unique to mesh indices
+     * @param currentVertexCount Current number of vertices
+     * @return SubdivisionResult with new vertex info and updated arrays
+     */
+    SubdivisionResult applyEdgeSubdivisionAtParameter(
+        int uniqueVertexA, int uniqueVertexB, float t,
+        IVertexDataManager vertexManager,
+        ITriangleFaceMapper faceMapper,
+        IUniqueVertexMapper uniqueMapper,
         int currentVertexCount
     );
 

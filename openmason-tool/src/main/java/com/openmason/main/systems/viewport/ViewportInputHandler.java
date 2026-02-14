@@ -1,6 +1,7 @@
 package com.openmason.main.systems.viewport;
 
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.KnifePreviewRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.input.*;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
@@ -37,6 +38,7 @@ public class ViewportInputHandler {
     private final VertexInputController vertexController;
     private final EdgeInputController edgeController;
     private final FaceInputController faceController;
+    private final KnifeToolController knifeController;
 
     // Translation coordinator for mutual exclusion
     private TranslationCoordinator translationCoordinator;
@@ -55,6 +57,7 @@ public class ViewportInputHandler {
         this.vertexController = new VertexInputController();
         this.edgeController = new EdgeInputController();
         this.faceController = new FaceInputController();
+        this.knifeController = new KnifeToolController();
     }
 
     /**
@@ -114,6 +117,7 @@ public class ViewportInputHandler {
         edgeController.setEdgeRenderer(edgeRenderer);
         faceController.setEdgeRenderer(edgeRenderer); // Face controller needs edge renderer for priority
         gizmoController.setEdgeRenderer(edgeRenderer); // Gizmo controller needs edge renderer for priority
+        knifeController.setEdgeRenderer(edgeRenderer); // Knife tool needs edge renderer for hover detection
     }
 
     /**
@@ -145,14 +149,31 @@ public class ViewportInputHandler {
         vertexController.setTransformState(transformState);
         edgeController.setTransformState(transformState);
         faceController.setTransformState(transformState);
+        knifeController.setTransformState(transformState);
     }
 
     /**
-     * Set the generic model renderer for mesh operations (J key edge insert, F key face create, X key face delete).
+     * Set the generic model renderer for mesh operations (J key edge insert, F key face create, X key face delete, K knife tool).
      */
     public void setModelRenderer(GenericModelRenderer modelRenderer) {
         vertexController.setModelRenderer(modelRenderer);
         faceController.setModelRenderer(modelRenderer);
+        knifeController.setModelRenderer(modelRenderer);
+    }
+
+    /**
+     * Set the knife tool preview renderer for visual feedback.
+     */
+    public void setKnifePreviewRenderer(KnifePreviewRenderer previewRenderer) {
+        knifeController.setPreviewRenderer(previewRenderer);
+    }
+
+    /**
+     * Toggle the knife tool on/off.
+     * Delegates to KnifeToolController.
+     */
+    public void toggleKnifeTool() {
+        knifeController.toggle();
     }
 
     /**
@@ -238,7 +259,12 @@ public class ViewportInputHandler {
             return; // Camera drag in progress, block all other controllers
         }
 
-        // Priority 1: Vertex (highest)
+        // Priority 0: Knife tool (highest when active — modal tool consumes all input)
+        if (knifeController.handleInput(context)) {
+            return; // Knife tool handled input, block all lower-priority controllers
+        }
+
+        // Priority 1: Vertex
         // Vertex selection and manipulation gets highest priority (most precise editing)
         if (vertexController.handleInput(context)) {
             return; // Vertex handled input, block all lower-priority controllers
