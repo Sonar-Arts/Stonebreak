@@ -1,7 +1,6 @@
 package com.openmason.main.systems.viewport.content;
 
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
-import com.openmason.main.systems.rendering.model.LegacyGeometryGenerator;
 import com.openmason.main.systems.rendering.model.UVMode;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.editable.ModelGeometry;
@@ -245,18 +244,8 @@ public class BlockModelLoader {
         }
 
         try {
-            // LEGACY: Generate mesh from dimensions for old BlockModel format
-            // TODO: Modern models should provide topology via .omo files, not dimensions
-            @SuppressWarnings("deprecation")
-            OMOFormat.MeshData meshData = LegacyGeometryGenerator.generateLegacyBoxMesh(
-                geometry.getWidth(),
-                geometry.getHeight(),
-                geometry.getDepth(),
-                geometry.getX(),
-                geometry.getY(),
-                geometry.getZ(),
-                UVMode.CUBE_NET // Legacy default
-            );
+            // Generate mesh from dimensions for legacy BlockModel format
+            OMOFormat.MeshData meshData = generateBoxMesh(geometry);
 
             modelRenderer.loadMeshData(meshData);
             logger.info("Loaded legacy BlockModel geometry: {}x{}x{} at ({}, {}, {})",
@@ -268,6 +257,45 @@ public class BlockModelLoader {
             logger.error("Failed to load geometry into renderer", e);
             return new GeometryLoadStatus(false, "Geometry load exception: " + e.getMessage());
         }
+    }
+
+    /**
+     * Generate box mesh data from geometry dimensions.
+     * Converts pixel dimensions to units and creates a cube with quad topology.
+     *
+     * @param geometry The model geometry with dimensions and origin
+     * @return MeshData for the box geometry
+     */
+    private OMOFormat.MeshData generateBoxMesh(ModelGeometry geometry) {
+        org.joml.Vector3f size = new org.joml.Vector3f(
+            geometry.getWidth() / 16f,
+            geometry.getHeight() / 16f,
+            geometry.getDepth() / 16f
+        );
+        org.joml.Vector3f origin = new org.joml.Vector3f(
+            (float) geometry.getX(),
+            (float) geometry.getY(),
+            (float) geometry.getZ()
+        );
+
+        @SuppressWarnings("deprecation")
+        com.openmason.main.systems.rendering.model.ModelPart part =
+            com.openmason.main.systems.rendering.model.ModelPart.createCube("legacy_box", origin, size, UVMode.CUBE_NET);
+
+        // Generate quad topology mapping (every 2 triangles = 1 face)
+        int triangleCount = part.indices().length / 3;
+        int[] triangleToFaceId = new int[triangleCount];
+        for (int i = 0; i < triangleCount; i++) {
+            triangleToFaceId[i] = i / 2;
+        }
+
+        return new OMOFormat.MeshData(
+            part.vertices(),
+            part.texCoords(),
+            part.indices(),
+            triangleToFaceId,
+            UVMode.CUBE_NET.name()
+        );
     }
 
     // ========== Result Classes ==========

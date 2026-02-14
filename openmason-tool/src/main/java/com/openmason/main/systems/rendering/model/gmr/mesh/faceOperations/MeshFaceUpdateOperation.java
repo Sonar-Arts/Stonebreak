@@ -45,15 +45,6 @@ public class MeshFaceUpdateOperation {
     public static final int FLOATS_PER_VERTEX = 7;           // 3 position + 4 color RGBA
     public static final int COMPONENTS_PER_POSITION = 3;     // x, y, z
 
-    // Legacy constants for backward compatibility with existing callers
-    // TODO: Remove once all callers are updated to use parameterized methods
-    @Deprecated
-    public static final int FLOATS_PER_FACE_POSITION = 12;   // Legacy: 4 corners × 3 coords
-    @Deprecated
-    public static final int VERTICES_PER_FACE = 6;            // Legacy: 2 triangles × 3 vertices
-    @Deprecated
-    public static final int FLOATS_PER_FACE_VBO = VERTICES_PER_FACE * FLOATS_PER_VERTEX;
-
     /**
      * Updates a face's position in both CPU memory and GPU buffer.
      * Shape-blind: Accepts topology parameters and triangulation pattern for arbitrary face structure.
@@ -96,17 +87,6 @@ public class MeshFaceUpdateOperation {
             logger.error("Error updating face position for face {}", faceIndex, e);
             return false;
         }
-    }
-
-    /**
-     * Legacy method for backward compatibility.
-     * @deprecated Use {@link #updateFace(int, float[], int, int, int, int[], Vector3f[], TriangulationPattern)} instead
-     */
-    @Deprecated
-    public boolean updateFace(int vbo, float[] facePositions, int faceCount,
-                             int faceIndex, int[] vertexIndices, Vector3f[] newPositions) {
-        // Default to quad topology (4 vertices per face, quad triangulation pattern)
-        return updateFace(vbo, facePositions, faceCount, faceIndex, 4, vertexIndices, newPositions, TriangulationPattern.QUAD);
     }
 
     /**
@@ -295,16 +275,6 @@ public class MeshFaceUpdateOperation {
             logger.error("Error during bulk face update", e);
             return false;
         }
-    }
-
-    /**
-     * Legacy method for backward compatibility.
-     * @deprecated Use {@link #updateAllFaces(int, float[], int, int, TriangulationPattern, Vector4f)} instead
-     */
-    @Deprecated
-    public boolean updateAllFaces(int vbo, float[] facePositions, int faceCount, Vector4f defaultColor) {
-        // Default to quad topology (4 vertices per face, quad triangulation pattern)
-        return updateAllFaces(vbo, facePositions, faceCount, 4, TriangulationPattern.QUAD, defaultColor);
     }
 
     /**

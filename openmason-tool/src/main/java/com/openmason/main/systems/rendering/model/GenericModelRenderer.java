@@ -136,7 +136,7 @@ public class GenericModelRenderer extends BaseRenderer {
 
     // REMOVED: loadFromDimensions() and rebuildFromCachedDimensions()
     // GenericModelRenderer should NOT generate geometry - it only loads and renders topology.
-    // Use LegacyGeometryGenerator for legacy BlockModel support, or provide explicit mesh data via loadMeshData().
+    // Provide explicit mesh data via loadMeshData().
 
     /**
      * Set UV mapping mode and update texture coordinates for existing geometry.

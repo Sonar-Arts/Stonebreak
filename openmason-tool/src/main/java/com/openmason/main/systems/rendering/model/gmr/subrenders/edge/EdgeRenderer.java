@@ -39,7 +39,7 @@ import static org.lwjgl.opengl.GL30.*;
  *   <li>Hover detection with orange highlight feedback</li>
  *   <li>Selection support with white highlight feedback</li>
  *   <li>Edge-to-vertex mapping for precise position updates</li>
- *   <li>Supports both position-based and index-based edge updates</li>
+ *   <li>Index-based edge updates via topology adjacency</li>
  *   <li>Integrates with viewport input controllers for interaction</li>
  * </ul>
  *
@@ -88,9 +88,6 @@ public class EdgeRenderer implements MeshChangeListener {
 
     /** Number of components in color attribute (r, g, b). */
     private static final int COLOR_COMPONENTS = 3;
-
-    /** Epsilon tolerance for vertex position matching. */
-    private static final float POSITION_EPSILON = 0.0001f;
 
     /** Index value indicating no edge is selected or hovered. */
     private static final int NO_EDGE_SELECTED = -1;
@@ -259,21 +256,6 @@ public class EdgeRenderer implements MeshChangeListener {
      *
      * @param transformMatrix transformation matrix to apply to edge positions
      */
-    @Deprecated
-    public void updateEdgeData(Matrix4f transformMatrix) {
-        logger.warn("updateEdgeData(parts, transformMatrix) is deprecated. Use updateEdgeDataFromGMR() instead.");
-        updateEdgeDataFromGMR();
-    }
-
-    /**
-     * @deprecated Use updateEdgeDataFromGMR() instead
-     */
-    @Deprecated
-    public void updateEdgeData() {
-        logger.warn("updateEdgeData(parts, transformMatrix, uniqueVertexPositions) is deprecated. Use updateEdgeDataFromGMR() instead.");
-        updateEdgeDataFromGMR();
-    }
-
     /**
      * Update edge data from GenericModelRenderer (GMR is single source of truth).
      * This method gets edge data directly from GMR instead of extracting from ModelDefinition.
@@ -731,32 +713,6 @@ public class EdgeRenderer implements MeshChangeListener {
     public Vector3f[] getEdgeEndpoints(int edgeIndex) {
         MeshEdgeGeometryQuery query = new MeshEdgeGeometryQuery();
         return query.getEdgeVertices(edgeIndex, edgePositions, VERTICES_PER_EDGE);
-    }
-
-    /**
-     * Updates all edge endpoints that match a dragged vertex position.
-     * Uses position-based matching strategy via MeshManager.
-     *
-     * <p>This method delegates to {@link MeshManager#updateEdgesByPosition} which
-     * searches through all edge endpoints and updates any that were at the old vertex position.
-     * This handles models where MeshEdgeExtractor creates face-based edges (e.g., 24 edges for a cube:
-     * 4 per face × 6 faces) instead of 12 unique edges, so multiple edge endpoints share positions.
-     *
-     * @param oldPosition the original position of the vertex before dragging
-     * @param newPosition the new position of the vertex after dragging
-     */
-    public void updateEdgesConnectedToVertex(Vector3f oldPosition, Vector3f newPosition) {
-        if (!initialized) {
-            logger.warn("Cannot update edge endpoints: renderer not initialized");
-            return;
-        }
-
-        var result = meshManager.updateEdgesByPosition(vbo, edgePositions, edgeCount, VERTICES_PER_EDGE, oldPosition, newPosition);
-
-        if (result != null && result.isSuccessful()) {
-            logger.trace("Updated {} edge endpoints using {} strategy",
-                result.getUpdatedCount(), result.getStrategy());
-        }
     }
 
     /**

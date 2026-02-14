@@ -1,6 +1,5 @@
 package com.openmason.main.systems.rendering.model.gmr.mesh.edgeOperations;
 
-import com.openmason.main.systems.rendering.model.gmr.GMRConstants;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,9 +22,6 @@ import static org.lwjgl.opengl.GL15.*;
 public class MeshEdgePositionUpdater {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshEdgePositionUpdater.class);
-
-    /** Position matching tolerance for floating-point comparison. */
-    private static final float POSITION_EPSILON = GMRConstants.VERTEX_POSITION_EPSILON;
 
     /** Number of float values per vertex position (x, y, z). */
     private static final int FLOATS_PER_POSITION = 3;
@@ -65,97 +61,10 @@ public class MeshEdgePositionUpdater {
      */
     public enum UpdateStrategy {
         /**
-         * Match by old position using epsilon comparison.
-         * May affect multiple edges if vertices share the same position.
-         */
-        POSITION_BASED,
-
-        /**
          * Match by vertex indices using edge-to-vertex mapping.
-         * More precise and prevents unintended vertex unification.
-         * Recommended for most use cases.
+         * Precise and prevents unintended vertex unification.
          */
         INDEX_BASED
-    }
-
-    /**
-     * Updates all edge vertices that match a dragged vertex position.
-     * Searches through ALL edge vertices and updates any that were at the old vertex position
-     * using epsilon-based floating-point comparison.
-     *
-     * Operates on edge data from GMR without assuming specific topology.
-     * The number of vertices per edge is derived from the actual data.
-     *
-     * Warning: This method may update unintended edges if vertices share
-     * the same position. For precise updates, use updateByIndices instead.
-     *
-     * @param vbo the OpenGL VBO handle for the edge buffer
-     * @param edgePositions edge position array from GMR in format [x1,y1,z1, x2,y2,z2, ...]
-     * @param verticesPerEdge number of vertices per edge (derived from GMR data model)
-     * @param oldPosition the original position of the vertex before dragging
-     * @param newPosition the new position of the vertex after dragging
-     * @return UpdateResult containing update statistics, or null if input is invalid
-     */
-    public UpdateResult updateByPosition(int vbo, float[] edgePositions, int verticesPerEdge,
-                                         Vector3f oldPosition, Vector3f newPosition) {
-        // Validate inputs
-        if (!validateBasicInputs(edgePositions, verticesPerEdge, newPosition)) {
-            return null;
-        }
-
-        if (oldPosition == null) {
-            logger.warn("Cannot update edge vertices: old position is null");
-            return null;
-        }
-
-        try {
-            int updatedCount = 0;
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-            try {
-                // Derive edge count from data
-                int floatsPerEdge = verticesPerEdge * FLOATS_PER_POSITION;
-                int edgeCount = edgePositions.length / floatsPerEdge;
-                int totalVertices = edgeCount * verticesPerEdge;
-                float epsilonSq = POSITION_EPSILON * POSITION_EPSILON;
-
-                // Search through ALL edge vertices
-                for (int vertexIdx = 0; vertexIdx < totalVertices; vertexIdx++) {
-                    int posIndex = vertexIdx * FLOATS_PER_POSITION;
-
-                    // Check if this vertex matches the old vertex position
-                    if (posIndex + 2 < edgePositions.length) {
-                        float dx = edgePositions[posIndex] - oldPosition.x;
-                        float dy = edgePositions[posIndex + 1] - oldPosition.y;
-                        float dz = edgePositions[posIndex + 2] - oldPosition.z;
-
-                        if (dx * dx + dy * dy + dz * dz < epsilonSq) {
-                            // Found a matching vertex - update it!
-                            updateVertexInBuffer(vbo, vertexIdx, newPosition);
-                            updateVertexInArray(edgePositions, posIndex, newPosition);
-                            updatedCount++;
-                        }
-                    }
-                }
-            } finally {
-                glBindBuffer(GL_ARRAY_BUFFER, 0);
-            }
-
-            logger.trace("Updated {} edge vertices from ({}, {}, {}) to ({}, {}, {})",
-                updatedCount,
-                String.format("%.2f", oldPosition.x),
-                String.format("%.2f", oldPosition.y),
-                String.format("%.2f", oldPosition.z),
-                String.format("%.2f", newPosition.x),
-                String.format("%.2f", newPosition.y),
-                String.format("%.2f", newPosition.z));
-
-            return new UpdateResult(updatedCount, UpdateStrategy.POSITION_BASED);
-
-        } catch (Exception e) {
-            logger.error("Error updating edge vertices by position", e);
-            return null;
-        }
     }
 
     /**
@@ -342,17 +251,4 @@ public class MeshEdgePositionUpdater {
         glBufferSubData(GL_ARRAY_BUFFER, offset, positionData);
     }
 
-    /**
-     * Updates a vertex position in the in-memory array.
-     * Synchronizes the CPU-side position array with GPU buffer changes.
-     *
-     * @param edgePositions the edge position array to update
-     * @param posIndex the position index in the array (must point to x coordinate)
-     * @param newPosition the new position for the vertex (x, y, z)
-     */
-    private void updateVertexInArray(float[] edgePositions, int posIndex, Vector3f newPosition) {
-        edgePositions[posIndex] = newPosition.x;
-        edgePositions[posIndex + 1] = newPosition.y;
-        edgePositions[posIndex + 2] = newPosition.z;
-    }
 }

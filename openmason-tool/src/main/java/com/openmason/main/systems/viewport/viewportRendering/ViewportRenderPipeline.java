@@ -16,13 +16,8 @@ import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
-import com.stonebreak.model.ModelDefinition;
-import org.joml.Matrix4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.Collection;
-import java.util.Collections;
 
 import static org.lwjgl.opengl.GL11.*;
 
@@ -351,14 +346,11 @@ public class ViewportRenderPipeline {
             // Render vertices based on current rendering mode
             switch (renderingState.getMode()) {
                 case BLOCK_MODEL:
-                    // Editable .OMO block model rendering (simple cube)
-                    Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
-
+                    // Editable .OMO block model rendering
                     // Only extract vertex data ONCE (in MODEL SPACE, no transform)
                     // Vertices will be transformed by model matrix in shader (like BlockModelRenderer)
                     if (vertexDataNeedsUpdate) {
-                        Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
-                        vertexRenderer.updateVertexData(cubeParts, identityTransform);
+                        vertexRenderer.updateVertexDataFromGMR();
 
                         // CRITICAL FIX: Sync MeshManager with GenericModelRenderer's actual vertices
                         // This ensures coordinate consistency between all systems (VertexRenderer,
@@ -437,7 +429,7 @@ public class ViewportRenderPipeline {
                         // (set up by setModelRenderer -> rebuildFromModel)
                         if (edgeRenderer.getModelRenderer() == null) {
                             // Standard cube - use cube parts (topology handles edge mapping)
-                            edgeRenderer.updateEdgeData();
+                            edgeRenderer.updateEdgeDataFromGMR();
                             logger.trace("Edge data extracted from cube parts in model space");
                         } else {
                             // Already has data from GenericModelRenderer - don't overwrite
@@ -515,26 +507,6 @@ public class ViewportRenderPipeline {
         }
     }
 
-
-    /**
-     * Create a simple 1x1x1 cube model part.
-     * Returns as collection for generic API.
-     */
-    private Collection<ModelDefinition.ModelPart> createCubeParts() {
-        ModelDefinition.Position position = new ModelDefinition.Position(0.0f, 0.0f, 0.0f);
-        ModelDefinition.Size size = new ModelDefinition.Size(1.0f, 1.0f, 1.0f);
-
-        ModelDefinition.ModelPart cube = new ModelDefinition.ModelPart(
-            "cube",
-            position,
-            size,
-            null  // No texture needed for vertex display
-        );
-
-        cube.postLoadInitialization();
-
-        return Collections.singletonList(cube);
-    }
 
     /**
      * Check if diagnostic logging should occur (throttled).

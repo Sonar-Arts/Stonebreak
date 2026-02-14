@@ -7,7 +7,6 @@ import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.rendering.model.gmr.mesh.vertexOperations.MeshVertexMerger;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
-import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
@@ -142,17 +141,6 @@ public class VertexRenderer implements MeshChangeListener {
             cleanup();
             throw new RuntimeException("VertexRenderer initialization failed", e);
         }
-    }
-
-    /**
-     * Update vertex data from a collection of model parts with transformation.
-     * Generic method that works with ANY model type - cow, cube, sheep, future models.
-     * Extracts UNIQUE vertices only to prevent duplication bug.
-     */
-    @Deprecated
-    public void updateVertexData(Collection<ModelDefinition.ModelPart> parts, Matrix4f transformMatrix) {
-        logger.warn("updateVertexData(parts, transformMatrix) is deprecated. Use updateVertexDataFromGMR() instead.");
-        updateVertexDataFromGMR();
     }
 
     /**

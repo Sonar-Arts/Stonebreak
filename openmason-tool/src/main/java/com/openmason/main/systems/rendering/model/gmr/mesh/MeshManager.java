@@ -288,26 +288,6 @@ public class MeshManager {
         return updater.updateBuffer(vbo, edgePositions, verticesPerEdge, edgeColor);
     }
 
-    /**
-     * Update edge positions by matching old vertex position.
-     * Uses position-based matching strategy via MeshEdgePositionUpdater.
-     *
-     * @param vbo OpenGL VBO handle
-     * @param edgePositions Edge position array
-     * @param edgeCount Total number of edges
-     * @param verticesPerEdge Number of vertices per edge (derived from GMR topology)
-     * @param oldPosition Original position of vertex before dragging
-     * @param newPosition New position of vertex after dragging
-     * @return UpdateResult with statistics, or null if failed
-     */
-    public MeshEdgePositionUpdater.UpdateResult updateEdgesByPosition(int vbo, float[] edgePositions,
-                                                                      int edgeCount, int verticesPerEdge,
-                                                                      Vector3f oldPosition,
-                                                                      Vector3f newPosition) {
-        MeshEdgePositionUpdater updater = new MeshEdgePositionUpdater();
-        return updater.updateByPosition(vbo, edgePositions, verticesPerEdge, oldPosition, newPosition);
-    }
-
     // ========================================
     // NOTE: Topology and extraction live elsewhere
     // ========================================
