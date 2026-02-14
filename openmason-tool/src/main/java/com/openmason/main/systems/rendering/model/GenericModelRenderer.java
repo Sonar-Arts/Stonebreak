@@ -294,6 +294,7 @@ public class GenericModelRenderer extends BaseRenderer {
                 vertexManager.getVertices(), vertexManager.getIndices(),
                 faceMapper, uniqueMapper);
             changeNotifier.notifyTopologyRebuilt(topology);
+            changeNotifier.notifyGeometryRebuilt();
 
             logger.trace("Updated {} of {} vertex positions", updateLength / 3, currentVertices.length / 3);
         } catch (Exception e) {
