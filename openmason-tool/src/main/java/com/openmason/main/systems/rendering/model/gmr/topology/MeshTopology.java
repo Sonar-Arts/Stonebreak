@@ -5,6 +5,7 @@ import org.joml.Vector3f;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Thin coordinator composing focused topology services into a unified index.
@@ -16,6 +17,7 @@ import java.util.Map;
  *   <li>{@link #vertexClassifier()} — valence, boundary, interior, pole queries</li>
  *   <li>{@link #faceEdgeTraversal()} — winding-aware directed edge traversal within faces</li>
  *   <li>{@link #edgeLoopTracer()} — edge loop and edge ring tracing across quad faces</li>
+ *   <li>{@link #faceIslandDetector()} — connected component (island) detection for faces</li>
  *   <li>{@link MeshGeometry} — stateless geometry math (static utility)</li>
  * </ul>
  *
@@ -63,6 +65,7 @@ public class MeshTopology {
     private final VertexClassifier vertexClassifier;
     private final FaceEdgeTraversal faceEdgeTraversal;
     private final EdgeLoopTracer edgeLoopTracer;
+    private final FaceIslandDetector faceIslandDetector;
 
     /**
      * Package-private constructor used by MeshTopologyBuilder.
@@ -113,6 +116,7 @@ public class MeshTopology {
         this.vertexClassifier = new VertexClassifier(edges, vertexToEdges, uniformTopology, uniformVerticesPerFace);
         this.faceEdgeTraversal = new FaceEdgeTraversal(faces);
         this.edgeLoopTracer = new EdgeLoopTracer(edges, faces);
+        this.faceIslandDetector = new FaceIslandDetector(faces.length, faceToAdjacentFaces);
     }
 
     // =========================================================================
@@ -157,6 +161,16 @@ public class MeshTopology {
      */
     public EdgeLoopTracer edgeLoopTracer() {
         return edgeLoopTracer;
+    }
+
+    /**
+     * Get the face island detector for connected component queries
+     * over the face adjacency graph.
+     *
+     * @return The face island detector (never null)
+     */
+    public FaceIslandDetector faceIslandDetector() {
+        return faceIslandDetector;
     }
 
     // =========================================================================
@@ -559,6 +573,25 @@ public class MeshTopology {
     /** @see EdgeLoopTracer#traceEdgeRing(int) */
     public List<Integer> traceEdgeRing(int startEdgeId) {
         return edgeLoopTracer.traceEdgeRing(startEdgeId);
+    }
+
+    // =========================================================================
+    // FACE ISLAND DETECTION (delegation to FaceIslandDetector)
+    // =========================================================================
+
+    /** @see FaceIslandDetector#getIslands() */
+    public List<Set<Integer>> getFaceIslands() {
+        return faceIslandDetector.getIslands();
+    }
+
+    /** @see FaceIslandDetector#getIslandCount() */
+    public int getFaceIslandCount() {
+        return faceIslandDetector.getIslandCount();
+    }
+
+    /** @see FaceIslandDetector#getIslandForFace(int) */
+    public Set<Integer> getFaceIslandForFace(int faceId) {
+        return faceIslandDetector.getIslandForFace(faceId);
     }
 
     // =========================================================================
