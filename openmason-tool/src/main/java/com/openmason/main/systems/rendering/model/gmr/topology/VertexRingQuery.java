@@ -130,6 +130,7 @@ public final class VertexRingQuery {
         while (currentFace >= 0 && currentFace < faces.length && !visited.contains(currentFace)) {
             visited.add(currentFace);
             MeshFace face = faces[currentFace];
+            if (face == null) break;
             int[] verts = face.vertexIndices();
             int pos = indexOf(uniqueVertexIdx, verts);
             if (pos < 0) break;
@@ -143,7 +144,7 @@ public final class VertexRingQuery {
 
         // For boundary vertices, the vertex before center in the start face
         // was not collected during the walk — append it now
-        if (isBoundary && startFace >= 0 && startFace < faces.length) {
+        if (isBoundary && startFace >= 0 && startFace < faces.length && faces[startFace] != null) {
             MeshFace face = faces[startFace];
             int[] verts = face.vertexIndices();
             int pos = indexOf(uniqueVertexIdx, verts);
@@ -170,7 +171,7 @@ public final class VertexRingQuery {
         int startFace = edge.adjacentFaceIds()[0];
 
         int otherVertex = edge.vertexA() == centerVertex ? edge.vertexB() : edge.vertexA();
-        if (startFace < 0 || startFace >= faces.length) {
+        if (startFace < 0 || startFace >= faces.length || faces[startFace] == null) {
             return startFace;
         }
         MeshFace face = faces[startFace];

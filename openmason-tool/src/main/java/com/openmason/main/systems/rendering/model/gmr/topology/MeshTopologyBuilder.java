@@ -179,8 +179,10 @@ public final class MeshTopologyBuilder {
         }
 
         // Step 5b: Build face-to-face adjacency from edge adjacency
-        List<Set<Integer>> faceAdjSets = new ArrayList<>(faces.length);
-        for (int i = 0; i < faces.length; i++) {
+        // Sized by faceIdUpperBound (not faces.length) to handle non-contiguous face IDs
+        // after face deletion. Gap entries remain as empty sets.
+        List<Set<Integer>> faceAdjSets = new ArrayList<>(faceIdUpperBound);
+        for (int i = 0; i < faceIdUpperBound; i++) {
             faceAdjSets.add(new HashSet<>());
         }
         Map<Long, Integer> facePairToEdgeId = new HashMap<>();
@@ -191,7 +193,7 @@ public final class MeshTopologyBuilder {
                 for (int j = i + 1; j < adjFaces.length; j++) {
                     int fA = adjFaces[i];
                     int fB = adjFaces[j];
-                    if (fA >= 0 && fA < faces.length && fB >= 0 && fB < faces.length) {
+                    if (fA >= 0 && fA < faceIdUpperBound && fB >= 0 && fB < faceIdUpperBound) {
                         faceAdjSets.get(fA).add(fB);
                         faceAdjSets.get(fB).add(fA);
                         long pairKey = MeshGeometry.canonicalFacePairKey(fA, fB);
@@ -201,8 +203,8 @@ public final class MeshTopologyBuilder {
             }
         }
 
-        List<List<Integer>> faceToAdjacentFaces = new ArrayList<>(faces.length);
-        for (int i = 0; i < faces.length; i++) {
+        List<List<Integer>> faceToAdjacentFaces = new ArrayList<>(faceIdUpperBound);
+        for (int i = 0; i < faceIdUpperBound; i++) {
             faceToAdjacentFaces.add(Collections.unmodifiableList(new ArrayList<>(faceAdjSets.get(i))));
         }
 
@@ -236,14 +238,17 @@ public final class MeshTopologyBuilder {
         int[] triangleToFaceId = faceMapper.getMappingCopy();
 
         // Step 8: Compute per-face normals, centroids, and areas
-        Vector3f[] faceNormals = new Vector3f[faces.length];
-        Vector3f[] faceCentroids = new Vector3f[faces.length];
-        float[] faceAreas = new float[faces.length];
-        for (int i = 0; i < faces.length; i++) {
-            int[] verts = faces[i].vertexIndices();
-            faceNormals[i] = MeshGeometry.computeNormal(verts, uniqueToMeshIndices, vertices);
-            faceCentroids[i] = MeshGeometry.computeCentroid(verts, uniqueToMeshIndices, vertices);
-            faceAreas[i] = MeshGeometry.computeArea(verts, uniqueToMeshIndices, vertices);
+        // Sized by faceIdUpperBound and indexed by face ID to handle gaps from deletion.
+        // Gap entries remain null/0.0 (consumers must handle nulls).
+        Vector3f[] faceNormals = new Vector3f[faceIdUpperBound];
+        Vector3f[] faceCentroids = new Vector3f[faceIdUpperBound];
+        float[] faceAreas = new float[faceIdUpperBound];
+        for (MeshFace face : faces) {
+            int fid = face.faceId();
+            int[] verts = face.vertexIndices();
+            faceNormals[fid] = MeshGeometry.computeNormal(verts, uniqueToMeshIndices, vertices);
+            faceCentroids[fid] = MeshGeometry.computeCentroid(verts, uniqueToMeshIndices, vertices);
+            faceAreas[fid] = MeshGeometry.computeArea(verts, uniqueToMeshIndices, vertices);
         }
 
         // Step 9: Compute per-vertex smooth normals (area-weighted average of adjacent face normals)
@@ -268,13 +273,21 @@ public final class MeshTopologyBuilder {
         TopologyMetadataQuery topologyMetadataQuery = new TopologyMetadataQuery(
                 uniform, firstCount, faces);
 
+        // Build sparse face array indexed by face ID for all sub-services that
+        // use face IDs as array indices. Gap entries (deleted faces) are null.
+        // Sub-services must null-check when accessing by face ID.
+        MeshFace[] facesById = new MeshFace[faceIdUpperBound];
+        for (MeshFace face : faces) {
+            facesById[face.faceId()] = face;
+        }
+
         ElementAdjacencyQuery elementAdjacencyQuery = new ElementAdjacencyQuery(
-                edges, faces, immutableVertexToEdges, immutableVertexToFaces,
+                edges, facesById, immutableVertexToEdges, immutableVertexToFaces,
                 immutableFaceToAdjacentFaces, immutableFacePairToEdgeId);
 
         // Face geometry cache (root of dirty-tracking chain)
         FaceGeometryCache faceGeometryCache = new FaceGeometryCache(
-                faces, uniqueToMeshIndices, faceNormals, faceCentroids,
+                facesById, uniqueToMeshIndices, faceNormals, faceCentroids,
                 faceAreas, vertices);
 
         // Edge classifier (needs face normals from FaceGeometryCache)
@@ -285,7 +298,11 @@ public final class MeshTopologyBuilder {
         float[] dihedralAngles = new float[edges.length];
         for (int i = 0; i < edges.length; i++) {
             int[] adjFaces = edges[i].adjacentFaceIds();
-            if (adjFaces.length == 2) {
+            if (adjFaces.length == 2
+                    && adjFaces[0] >= 0 && adjFaces[0] < faceIdUpperBound
+                    && adjFaces[1] >= 0 && adjFaces[1] < faceIdUpperBound
+                    && faceNormals[adjFaces[0]] != null
+                    && faceNormals[adjFaces[1]] != null) {
                 dihedralAngles[i] = MeshGeometry.computeDihedralAngle(
                         faceNormals[adjFaces[0]], faceNormals[adjFaces[1]]);
             } else {
@@ -305,17 +322,19 @@ public final class MeshTopologyBuilder {
         VertexClassifier vertexClassifier = new VertexClassifier(
                 edges, immutableVertexToEdges, uniform, firstCount);
 
-        FaceEdgeTraversal faceEdgeTraversal = new FaceEdgeTraversal(faces);
+        // All face-ID-indexed sub-services receive facesById (sparse) so that
+        // face IDs from edges/adjacency correctly index into the array.
+        FaceEdgeTraversal faceEdgeTraversal = new FaceEdgeTraversal(facesById);
 
-        EdgeLoopTracer edgeLoopTracer = new EdgeLoopTracer(edges, faces);
+        EdgeLoopTracer edgeLoopTracer = new EdgeLoopTracer(edges, facesById);
 
-        FaceLoopTracer faceLoopTracer = new FaceLoopTracer(edges, faces);
+        FaceLoopTracer faceLoopTracer = new FaceLoopTracer(edges, facesById);
 
         FaceIslandDetector faceIslandDetector = new FaceIslandDetector(
-                faces.length, immutableFaceToAdjacentFaces);
+                faceIdUpperBound, immutableFaceToAdjacentFaces);
 
         VertexRingQuery vertexRingQuery = new VertexRingQuery(
-                edges, faces, immutableVertexToEdges, immutableVertexToFaces,
+                edges, facesById, immutableVertexToEdges, immutableVertexToFaces,
                 immutableEdgeKeyToId);
 
         VertexAdjacencyQuery vertexAdjacencyQuery = new VertexAdjacencyQuery(
@@ -325,8 +344,9 @@ public final class MeshTopologyBuilder {
                 edges, immutableVertexToEdges);
 
         // Construct MeshTopology with all 15 sub-services
+        // Pass facesById (sparse, indexed by face ID) so getFace(faceId) works with non-contiguous IDs
         MeshTopology topology = new MeshTopology(
-                edges, faces, immutableEdgeKeyToId,
+                edges, facesById, immutableEdgeKeyToId,
                 indexMappingQuery, topologyMetadataQuery, elementAdjacencyQuery,
                 faceGeometryCache, dihedralAngleCache, vertexNormalCache,
                 edgeClassifier, vertexClassifier, faceEdgeTraversal,

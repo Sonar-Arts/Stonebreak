@@ -132,6 +132,24 @@ public class VertexInputController {
             }
         }
 
+        // Handle F key to create face from 3+ selected vertices
+        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_F) && !ImGui.getIO().getKeyCtrl()) {
+            if (vertexSelectionState.getSelectionCount() >= 3 && modelRenderer != null) {
+                Set<Integer> selected = vertexSelectionState.getSelectedVertexIndices();
+                int[] vertices = selected.stream().mapToInt(Integer::intValue).toArray();
+
+                boolean success = modelRenderer.createFaceFromVertices(vertices);
+                if (success) {
+                    vertexSelectionState.clearSelection();
+                    vertexRenderer.clearSelection();
+                    logger.info("Face created from {} vertices (F key)", vertices.length);
+                } else {
+                    logger.warn("Face creation failed from {} selected vertices", vertices.length);
+                }
+                return true;
+            }
+        }
+
         // Handle vertex translation (dragging)
         if (translationCoordinator != null && translationCoordinator.isDragging()) {
             // Continue dragging via coordinator

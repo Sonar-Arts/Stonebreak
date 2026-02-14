@@ -1,5 +1,6 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.face.operations;
 
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.viewport.input.InputContext;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
@@ -41,6 +42,7 @@ public class FaceInputController {
     private com.openmason.main.systems.viewport.state.TransformState transformState = null;
     private VertexRenderer vertexRenderer = null; // For priority check!
     private EdgeRenderer edgeRenderer = null; // For priority check!
+    private GenericModelRenderer modelRenderer = null;
 
     /**
      * Set the face renderer for hover detection.
@@ -94,6 +96,14 @@ public class FaceInputController {
     }
 
     /**
+     * Set the generic model renderer for face deletion operations.
+     */
+    public void setModelRenderer(GenericModelRenderer modelRenderer) {
+        this.modelRenderer = modelRenderer;
+        logger.debug("Model renderer set in FaceInputController");
+    }
+
+    /**
      * Handle face input.
      *
      * Priority: LOWEST (lower than vertex and edge, higher than gizmo and camera)
@@ -125,6 +135,23 @@ public class FaceInputController {
                 faceSelectionState.clearSelection();
                 faceRenderer.clearSelection();
                 logger.debug("Face selection cleared (ESC key pressed)");
+                return true;
+            }
+        }
+
+        // Handle X key to delete selected face
+        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_X) && !ImGui.getIO().getKeyCtrl()) {
+            if (faceSelectionState.getSelectionCount() == 1 && modelRenderer != null) {
+                int faceId = faceSelectionState.getSelectedFaceIndices().iterator().next();
+
+                boolean success = modelRenderer.deleteFace(faceId);
+                if (success) {
+                    faceSelectionState.clearSelection();
+                    faceRenderer.clearSelection();
+                    logger.info("Face {} deleted (X key)", faceId);
+                } else {
+                    logger.warn("Face deletion failed for face {}", faceId);
+                }
                 return true;
             }
         }

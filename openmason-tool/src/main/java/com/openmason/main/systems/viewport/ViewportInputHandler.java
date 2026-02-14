@@ -148,10 +148,11 @@ public class ViewportInputHandler {
     }
 
     /**
-     * Set the generic model renderer for edge insertion operations (J key).
+     * Set the generic model renderer for mesh operations (J key edge insert, F key face create, X key face delete).
      */
     public void setModelRenderer(GenericModelRenderer modelRenderer) {
         vertexController.setModelRenderer(modelRenderer);
+        faceController.setModelRenderer(modelRenderer);
     }
 
     /**

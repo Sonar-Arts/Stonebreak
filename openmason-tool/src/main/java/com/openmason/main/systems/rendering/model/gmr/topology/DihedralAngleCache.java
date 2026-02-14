@@ -95,6 +95,12 @@ public final class DihedralAngleCache {
             return Float.NaN;
         }
         Vector3f[] normals = faceGeometryCache.normals();
-        return MeshGeometry.computeDihedralAngle(normals[adjFaces[0]], normals[adjFaces[1]]);
+        int fA = adjFaces[0];
+        int fB = adjFaces[1];
+        if (fA < 0 || fA >= normals.length || fB < 0 || fB >= normals.length
+                || normals[fA] == null || normals[fB] == null) {
+            return Float.NaN;
+        }
+        return MeshGeometry.computeDihedralAngle(normals[fA], normals[fB]);
     }
 }

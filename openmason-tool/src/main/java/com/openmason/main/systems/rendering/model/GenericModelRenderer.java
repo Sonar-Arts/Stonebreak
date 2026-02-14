@@ -564,6 +564,120 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     // =========================================================================
+    // FACE DELETION (remove selected face)
+    // =========================================================================
+
+    /**
+     * Delete a face from the mesh by removing all its triangles.
+     * No vertices are removed — boundary vertices remain for face creation.
+     *
+     * @param faceId Face ID to delete
+     * @return true if the face was deleted successfully
+     */
+    public boolean deleteFace(int faceId) {
+        if (!initialized) {
+            logger.warn("Cannot delete face: renderer not initialized");
+            return false;
+        }
+        if (topology == null) {
+            logger.warn("Cannot delete face: topology not available");
+            return false;
+        }
+
+        FaceDeletionProcessor processor = new FaceDeletionProcessor();
+        FaceDeletionProcessor.FaceDeletionResult result = processor.deleteFace(
+            faceId, topology, vertexManager, faceMapper);
+
+        if (!result.success()) {
+            logger.warn("Face deletion failed: {}", result.errorMessage());
+            return false;
+        }
+
+        // Update index array and face mapping
+        vertexManager.setIndices(result.newIndices());
+        indexCount = result.newIndices().length;
+        faceMapper.setMapping(result.newTriangleToFaceId());
+
+        // Rebuild GPU buffers (VBO unchanged — no vertices removed; EBO updated)
+        updateEBO(result.newIndices());
+
+        // Rebuild unique vertex mapping (vertex array unchanged, but rebuild for consistency)
+        uniqueMapper.buildMapping(vertexManager.getVertices());
+
+        // Rebuild topology
+        this.topology = MeshTopologyBuilder.build(
+            vertexManager.getVertices(), vertexManager.getIndices(),
+            faceMapper, uniqueMapper);
+
+        // Notify listeners
+        changeNotifier.notifyTopologyRebuilt(topology);
+        changeNotifier.notifyGeometryRebuilt();
+
+        logger.debug("Deleted face {}: {} triangles, {} faces remaining",
+            faceId, result.newIndices().length / 3, result.newFaceCount());
+
+        return true;
+    }
+
+    // =========================================================================
+    // FACE CREATION (from selected vertices)
+    // =========================================================================
+
+    /**
+     * Create a new face from selected unique vertices.
+     * Vertices must be in the desired winding order (selection order controls normals).
+     * No new vertices are created — only the index array and face mapping grow.
+     *
+     * @param selectedUniqueVertices Unique vertex indices forming the polygon, in winding order
+     * @return true if the face was created successfully
+     */
+    public boolean createFaceFromVertices(int[] selectedUniqueVertices) {
+        if (!initialized) {
+            logger.warn("Cannot create face: renderer not initialized");
+            return false;
+        }
+        if (topology == null) {
+            logger.warn("Cannot create face: topology not available");
+            return false;
+        }
+
+        FaceCreationProcessor processor = new FaceCreationProcessor();
+        FaceCreationProcessor.FaceCreationResult result = processor.createFace(
+            selectedUniqueVertices, topology, vertexManager, faceMapper);
+
+        if (!result.success()) {
+            logger.warn("Face creation failed: {}", result.errorMessage());
+            return false;
+        }
+
+        // Update index array and face mapping
+        vertexManager.setIndices(result.newIndices());
+        indexCount = result.newIndices().length;
+        faceMapper.setMapping(result.newTriangleToFaceId());
+
+        // Rebuild GPU buffers (VBO unchanged — no new vertices; EBO updated)
+        updateEBO(result.newIndices());
+
+        // Rebuild unique vertex mapping (vertex array unchanged, but rebuild for consistency)
+        uniqueMapper.buildMapping(vertexManager.getVertices());
+
+        // Rebuild topology
+        this.topology = MeshTopologyBuilder.build(
+            vertexManager.getVertices(), vertexManager.getIndices(),
+            faceMapper, uniqueMapper);
+
+        // Notify listeners
+        changeNotifier.notifyTopologyRebuilt(topology);
+        changeNotifier.notifyGeometryRebuilt();
+
+        logger.debug("Created face {} from {} vertices: {} triangles, {} faces",
+            result.newFaceId(), selectedUniqueVertices.length,
+            result.newIndices().length / 3, result.newFaceCount());
+
+        return true;
+    }
+
+    // =========================================================================
     // TEXTURE MANAGEMENT
     // =========================================================================
 

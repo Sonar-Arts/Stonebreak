@@ -91,6 +91,9 @@ public final class FaceGeometryCache {
             return false;
         }
         MeshFace face = faces[faceId];
+        if (face == null) {
+            return false;
+        }
         if (face.vertexCount() <= 3) {
             return true;
         }
@@ -116,7 +119,8 @@ public final class FaceGeometryCache {
      * Package-private — called by sibling caches before reading face data.
      */
     void ensureFaceClean(int faceId) {
-        if (faceId >= 0 && faceId < faceDirty.length && faceDirty[faceId] && verticesRef != null) {
+        if (faceId >= 0 && faceId < faceDirty.length && faceDirty[faceId] && verticesRef != null
+                && faces[faceId] != null) {
             int[] verts = faces[faceId].vertexIndices();
             faceNormals[faceId] = MeshGeometry.computeNormal(verts, uniqueToMeshIndices, verticesRef);
             faceCentroids[faceId] = MeshGeometry.computeCentroid(verts, uniqueToMeshIndices, verticesRef);

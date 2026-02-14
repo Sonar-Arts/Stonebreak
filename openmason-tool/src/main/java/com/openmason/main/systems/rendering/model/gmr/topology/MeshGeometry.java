@@ -114,7 +114,7 @@ public final class MeshGeometry {
         float nx = 0, ny = 0, nz = 0;
 
         for (int faceId : adjacentFaceIds) {
-            if (faceId < 0 || faceId >= faceNormals.length) {
+            if (faceId < 0 || faceId >= faceNormals.length || faceNormals[faceId] == null) {
                 continue;
             }
             Vector3f fn = faceNormals[faceId];

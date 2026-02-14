@@ -303,6 +303,12 @@ public final class EdgeClassifier {
         if (adjFaces.length != 2) {
             return Float.NaN;
         }
-        return MeshGeometry.computeDihedralAngle(faceNormals[adjFaces[0]], faceNormals[adjFaces[1]]);
+        int fA = adjFaces[0];
+        int fB = adjFaces[1];
+        if (fA < 0 || fA >= faceNormals.length || fB < 0 || fB >= faceNormals.length
+                || faceNormals[fA] == null || faceNormals[fB] == null) {
+            return Float.NaN;
+        }
+        return MeshGeometry.computeDihedralAngle(faceNormals[fA], faceNormals[fB]);
     }
 }

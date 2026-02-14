@@ -137,7 +137,7 @@ public final class ElementAdjacencyQuery {
             return -1;
         }
         MeshFace face = faces[faceId];
-        if (face.vertexCount() != 4) {
+        if (face == null || face.vertexCount() != 4) {
             return -1;
         }
         int[] faceEdges = face.edgeIds();

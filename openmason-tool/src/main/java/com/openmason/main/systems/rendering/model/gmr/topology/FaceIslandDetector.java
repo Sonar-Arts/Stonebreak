@@ -115,6 +115,19 @@ public final class FaceIslandDetector {
                 continue;
             }
 
+            // Skip gap entries (deleted faces with no adjacency data)
+            if (faceId >= faceToAdjacentFaces.size()) {
+                continue;
+            }
+            List<Integer> initialNeighbors = faceToAdjacentFaces.get(faceId);
+            if (initialNeighbors.isEmpty()) {
+                // Mark as visited to avoid revisiting, but don't create an island
+                // for a deleted face gap. Real isolated faces (single-face meshes)
+                // are handled correctly because they still have triangle data.
+                visited[faceId] = true;
+                continue;
+            }
+
             // BFS from this unvisited face
             Set<Integer> island = new LinkedHashSet<>();
             queue.addLast(faceId);
@@ -126,7 +139,7 @@ public final class FaceIslandDetector {
 
                 List<Integer> neighbors = faceToAdjacentFaces.get(current);
                 for (int neighbor : neighbors) {
-                    if (!visited[neighbor]) {
+                    if (neighbor >= 0 && neighbor < faceCount && !visited[neighbor]) {
                         visited[neighbor] = true;
                         queue.addLast(neighbor);
                     }

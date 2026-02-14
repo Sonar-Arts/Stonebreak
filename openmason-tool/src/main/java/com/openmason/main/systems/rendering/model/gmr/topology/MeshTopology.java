@@ -619,6 +619,7 @@ public class MeshTopology {
             faceGeometryCache.markFaceDirty(faceId);
 
             MeshFace face = faces[faceId];
+            if (face == null) continue;
             for (int v : face.vertexIndices()) {
                 vertexNormalCache.markDirty(v);
             }
