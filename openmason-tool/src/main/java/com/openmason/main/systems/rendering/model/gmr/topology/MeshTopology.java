@@ -27,6 +27,8 @@ public class MeshTopology {
     private final MeshEdge[] edges;
     private final MeshFace[] faces;
     private final Vector3f[] faceNormals;
+    private final Vector3f[] faceCentroids;
+    private final float[] faceAreas;
     private final Map<Long, Integer> edgeKeyToId;
     private final List<List<Integer>> vertexToEdges;
     private final List<List<Integer>> vertexToFaces;
@@ -40,10 +42,15 @@ public class MeshTopology {
     private final int[] triangleToFaceId;         // triIdx → faceId
     private final int triangleCount;
 
+    // Lazy recomputation on vertex move
+    private final boolean[] faceDirty;
+    private float[] verticesRef;
+
     /**
      * Package-private constructor used by MeshTopologyBuilder.
      */
-    MeshTopology(MeshEdge[] edges, MeshFace[] faces, Vector3f[] faceNormals,
+    MeshTopology(MeshEdge[] edges, MeshFace[] faces,
+                 Vector3f[] faceNormals, Vector3f[] faceCentroids, float[] faceAreas,
                  Map<Long, Integer> edgeKeyToId,
                  List<List<Integer>> vertexToEdges,
                  List<List<Integer>> vertexToFaces,
@@ -54,6 +61,8 @@ public class MeshTopology {
         this.edges = edges;
         this.faces = faces;
         this.faceNormals = faceNormals;
+        this.faceCentroids = faceCentroids;
+        this.faceAreas = faceAreas;
         this.edgeKeyToId = edgeKeyToId;
         this.vertexToEdges = vertexToEdges;
         this.vertexToFaces = vertexToFaces;
@@ -64,6 +73,7 @@ public class MeshTopology {
         this.uniqueVertexCount = uniqueVertexCount;
         this.triangleToFaceId = triangleToFaceId;
         this.triangleCount = triangleCount;
+        this.faceDirty = new boolean[faces.length];
     }
 
     // =========================================================================
@@ -137,6 +147,7 @@ public class MeshTopology {
 
     /**
      * Get the cached normal for a face.
+     * Lazily recomputes if the face was dirtied by a vertex move.
      *
      * @param faceId Face identifier
      * @return The face normal (unit vector), or null if out of range
@@ -145,7 +156,38 @@ public class MeshTopology {
         if (faceId < 0 || faceId >= faceNormals.length) {
             return null;
         }
+        ensureFaceClean(faceId);
         return faceNormals[faceId];
+    }
+
+    /**
+     * Get the cached centroid for a face.
+     * Lazily recomputes if the face was dirtied by a vertex move.
+     *
+     * @param faceId Face identifier
+     * @return The face centroid (average of vertex positions), or null if out of range
+     */
+    public Vector3f getFaceCentroid(int faceId) {
+        if (faceId < 0 || faceId >= faceCentroids.length) {
+            return null;
+        }
+        ensureFaceClean(faceId);
+        return faceCentroids[faceId];
+    }
+
+    /**
+     * Get the cached area for a face.
+     * Lazily recomputes if the face was dirtied by a vertex move.
+     *
+     * @param faceId Face identifier
+     * @return The face area, or {@code Float.NaN} if out of range
+     */
+    public float getFaceArea(int faceId) {
+        if (faceId < 0 || faceId >= faceAreas.length) {
+            return Float.NaN;
+        }
+        ensureFaceClean(faceId);
+        return faceAreas[faceId];
     }
 
     // =========================================================================
@@ -296,25 +338,54 @@ public class MeshTopology {
     }
 
     // =========================================================================
-    // FACE NORMAL UPDATES
+    // VERTEX MOVE — DIRTY MARKING
     // =========================================================================
 
     /**
-     * Recompute normals for all faces adjacent to a moved vertex.
-     * Call this from {@code onVertexPositionChanged} to keep normals in sync.
+     * Mark all faces adjacent to a moved vertex as dirty.
+     * Normals, centroids, and areas will be lazily recomputed on the next query.
      *
      * @param uniqueVertexIndex The unique vertex that moved
      * @param vertices          Current vertex positions (x,y,z interleaved)
      */
-    public void recomputeAffectedFaceNormals(int uniqueVertexIndex, float[] vertices) {
+    public void onVertexPositionChanged(int uniqueVertexIndex, float[] vertices) {
+        this.verticesRef = vertices;
         List<Integer> affectedFaceIds = getFacesForVertex(uniqueVertexIndex);
         for (int faceId : affectedFaceIds) {
-            if (faceId >= 0 && faceId < faces.length) {
-                faceNormals[faceId] = computeNormal(faces[faceId].vertexIndices(),
-                        uniqueToMeshIndices, vertices);
+            if (faceId >= 0 && faceId < faceDirty.length) {
+                faceDirty[faceId] = true;
             }
         }
     }
+
+    // =========================================================================
+    // LAZY RECOMPUTATION
+    // =========================================================================
+
+    /**
+     * Ensure a face's cached normal, centroid, and area are up-to-date.
+     * No-op if the face is already clean.
+     */
+    private void ensureFaceClean(int faceId) {
+        if (faceDirty[faceId] && verticesRef != null) {
+            recomputeFace(faceId);
+            faceDirty[faceId] = false;
+        }
+    }
+
+    /**
+     * Recompute normal, centroid, and area for a single face.
+     */
+    private void recomputeFace(int faceId) {
+        int[] verts = faces[faceId].vertexIndices();
+        faceNormals[faceId] = computeNormal(verts, uniqueToMeshIndices, verticesRef);
+        faceCentroids[faceId] = computeCentroid(verts, uniqueToMeshIndices, verticesRef);
+        faceAreas[faceId] = computeArea(verts, uniqueToMeshIndices, verticesRef);
+    }
+
+    // =========================================================================
+    // STATIC GEOMETRY COMPUTATIONS
+    // =========================================================================
 
     /**
      * Compute a face normal using Newell's method.
@@ -322,7 +393,7 @@ public class MeshTopology {
      *
      * @param uniqueVertexIndices Ordered unique vertex indices of the face
      * @param uniqueToMesh       Mapping from unique vertex index to mesh indices
-     * @param vertices            Vertex positions (x,y,z interleaved, indexed by mesh index)
+     * @param vertices           Vertex positions (x,y,z interleaved, indexed by mesh index)
      * @return Normalized face normal, or zero vector for degenerate faces
      */
     static Vector3f computeNormal(int[] uniqueVertexIndices, int[][] uniqueToMesh, float[] vertices) {
@@ -347,5 +418,55 @@ public class MeshTopology {
             result.div(len);
         }
         return result;
+    }
+
+    /**
+     * Compute a face centroid (average of vertex positions).
+     *
+     * @param uniqueVertexIndices Ordered unique vertex indices of the face
+     * @param uniqueToMesh       Mapping from unique vertex index to mesh indices
+     * @param vertices           Vertex positions (x,y,z interleaved, indexed by mesh index)
+     * @return Face centroid
+     */
+    static Vector3f computeCentroid(int[] uniqueVertexIndices, int[][] uniqueToMesh, float[] vertices) {
+        float cx = 0, cy = 0, cz = 0;
+        int count = uniqueVertexIndices.length;
+
+        for (int i = 0; i < count; i++) {
+            int meshIdx = uniqueToMesh[uniqueVertexIndices[i]][0];
+            cx += vertices[meshIdx * 3];
+            cy += vertices[meshIdx * 3 + 1];
+            cz += vertices[meshIdx * 3 + 2];
+        }
+
+        return new Vector3f(cx / count, cy / count, cz / count);
+    }
+
+    /**
+     * Compute a face area using the magnitude of Newell's cross product sum.
+     * Works for triangles, quads, and arbitrary planar polygons.
+     *
+     * @param uniqueVertexIndices Ordered unique vertex indices of the face
+     * @param uniqueToMesh       Mapping from unique vertex index to mesh indices
+     * @param vertices           Vertex positions (x,y,z interleaved, indexed by mesh index)
+     * @return Face area (half the magnitude of the Newell normal), or 0 for degenerate faces
+     */
+    static float computeArea(int[] uniqueVertexIndices, int[][] uniqueToMesh, float[] vertices) {
+        float normalX = 0, normalY = 0, normalZ = 0;
+        int count = uniqueVertexIndices.length;
+
+        for (int i = 0; i < count; i++) {
+            int currMesh = uniqueToMesh[uniqueVertexIndices[i]][0];
+            int nextMesh = uniqueToMesh[uniqueVertexIndices[(i + 1) % count]][0];
+
+            float cx = vertices[currMesh * 3],     cy = vertices[currMesh * 3 + 1],     cz = vertices[currMesh * 3 + 2];
+            float nx = vertices[nextMesh * 3],     ny = vertices[nextMesh * 3 + 1],     nz = vertices[nextMesh * 3 + 2];
+
+            normalX += (cy - ny) * (cz + nz);
+            normalY += (cz - nz) * (cx + nx);
+            normalZ += (cx - nx) * (cy + ny);
+        }
+
+        return 0.5f * (float) Math.sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ);
     }
 }

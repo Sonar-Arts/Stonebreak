@@ -206,15 +206,19 @@ public final class MeshTopologyBuilder {
         // Copy triangle-to-face mapping
         int[] triangleToFaceId = faceMapper.getMappingCopy();
 
-        // Step 8: Compute per-face normals
+        // Step 8: Compute per-face normals, centroids, and areas
         Vector3f[] faceNormals = new Vector3f[faces.length];
+        Vector3f[] faceCentroids = new Vector3f[faces.length];
+        float[] faceAreas = new float[faces.length];
         for (int i = 0; i < faces.length; i++) {
-            faceNormals[i] = MeshTopology.computeNormal(
-                    faces[i].vertexIndices(), uniqueToMeshIndices, vertices);
+            int[] verts = faces[i].vertexIndices();
+            faceNormals[i] = MeshTopology.computeNormal(verts, uniqueToMeshIndices, vertices);
+            faceCentroids[i] = MeshTopology.computeCentroid(verts, uniqueToMeshIndices, vertices);
+            faceAreas[i] = MeshTopology.computeArea(verts, uniqueToMeshIndices, vertices);
         }
 
         MeshTopology topology = new MeshTopology(
-            edges, faces, faceNormals,
+            edges, faces, faceNormals, faceCentroids, faceAreas,
             Collections.unmodifiableMap(edgeKeyToId),
             immutableVertexToEdges,
             immutableVertexToFaces,
