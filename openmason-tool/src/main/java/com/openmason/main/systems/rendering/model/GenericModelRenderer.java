@@ -595,6 +595,37 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     /**
+     * Create a MeshData snapshot from current internal state for saving to .OMO file.
+     * Arrays are cloned for safety — the returned MeshData is fully independent.
+     *
+     * @return MeshData with current vertex/index/face data, or null if no vertex data available
+     */
+    public OMOFormat.MeshData toMeshData() {
+        float[] vertices = vertexManager.getVertices();
+        if (vertices == null || vertices.length == 0) {
+            logger.warn("No vertex data available to snapshot");
+            return null;
+        }
+
+        float[] texCoords = vertexManager.getTexCoords();
+        int[] indices = vertexManager.getIndices();
+        int[] triangleToFaceId = faceMapper.getMappingCopy();
+        String uvModeStr = stateManager.getUVMode() != null ? stateManager.getUVMode().name() : "FLAT";
+
+        logger.debug("Created mesh data snapshot: {} vertices, {} indices, uvMode={}",
+                vertices.length / 3,
+                indices != null ? indices.length : 0,
+                uvModeStr);
+
+        return new OMOFormat.MeshData(
+                vertices.clone(),
+                texCoords != null ? texCoords.clone() : null,
+                indices != null ? indices.clone() : null,
+                triangleToFaceId,
+                uvModeStr);
+    }
+
+    /**
      * Get current texture coordinates array.
      * Useful for debugging and mesh data extraction.
      *

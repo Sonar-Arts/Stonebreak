@@ -2,7 +2,6 @@ package com.openmason.main.systems;
 
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.block.BlockManager;
-import com.openmason.main.systems.rendering.model.io.omo.MeshDataExtractor;
 import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.main.omConfig;
@@ -71,7 +70,6 @@ public class ViewportController {
     // ========== Input & UI ==========
     private final ViewportInputHandler inputHandler;
 
-    private final MeshDataExtractor meshDataExtractor;
     private final com.openmason.main.systems.viewport.content.ContentTypeManager contentTypeManager;
 
     // ========== Services ==========
@@ -107,7 +105,6 @@ public class ViewportController {
         // Content loading (SOLID refactored)
         // ========== Content Loading (SOLID refactored) ==========
         OMTTextureLoader omtTextureLoader = new OMTTextureLoader();
-        this.meshDataExtractor = new MeshDataExtractor();
         com.openmason.main.systems.viewport.content.BlockModelLoader blockModelLoader = new com.openmason.main.systems.viewport.content.BlockModelLoader(
                 omtTextureLoader, modelRenderer
         );
@@ -365,7 +362,7 @@ public class ViewportController {
      * @return MeshData with current vertex/index data, or null for standard cube
      */
     public OMOFormat.MeshData extractMeshData() {
-        return meshDataExtractor.extract(modelRenderer);
+        return modelRenderer.toMeshData();
     }
 
     /**
@@ -376,7 +373,7 @@ public class ViewportController {
      * @param meshData the mesh data to load
      */
     public void loadMeshData(OMOFormat.MeshData meshData) {
-        meshDataExtractor.load(modelRenderer, meshData);
+        modelRenderer.loadMeshData(meshData);
 
         // Invalidate render pipeline caches to force edge/face rebuild
         if (viewportRenderPipeline != null) {
