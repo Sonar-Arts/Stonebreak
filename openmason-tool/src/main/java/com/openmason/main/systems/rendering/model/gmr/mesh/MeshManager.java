@@ -12,25 +12,28 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
- * Manages mesh operations for the viewport rendering system.
- * This class coordinates mesh operations on data provided by GenericModelRenderer.
+ * Thin coordinator for mesh GPU operations.
+ * Delegates vertex, face, and edge buffer updates to specialized operation classes.
+ * Does NOT own topology queries or adjacency data — those live in {@code MeshTopology}.
  *
- * Architecture:
- * - GenericModelRenderer (GMR) is the single source of truth for mesh data
- * - MeshManager provides operations on GMR's data (buffer updates, mapping building)
- * - Overlay renderers get data from GMR and use MeshManager for operations
+ * <p>Architecture:
+ * <ul>
+ *   <li>GenericModelRenderer (GMR) is the single source of truth for mesh data</li>
+ *   <li>MeshTopology owns adjacency queries, uniform/mixed detection, face offsets</li>
+ *   <li>MeshManager coordinates GPU buffer updates via operation delegates</li>
+ * </ul>
  *
- * Responsibilities:
- * - Managing mesh vertex data storage (temporary working data)
- * - Coordinating mesh operations (vertex updates, face operations, edge operations)
- * - Building mappings (face-to-vertex, edge-to-vertex)
- * - Updating GPU buffers (VBO updates for overlays)
+ * <p>Responsibilities:
+ * <ul>
+ *   <li>Temporary mesh vertex data storage (working copy)</li>
+ *   <li>Vertex position updates (MeshVertexPositionUpdater)</li>
+ *   <li>Face VBO bulk creation — uniform and mixed topology (MeshFaceUpdateOperation)</li>
+ *   <li>Edge buffer updates and position-based matching (MeshEdgeBufferUpdater, MeshEdgePositionUpdater)</li>
+ *   <li>Vertex merging and expansion (MeshVertexMerger, MeshVertexDataTransformer)</li>
+ * </ul>
  *
- * Data Flow:
+ * <p>Data Flow:
  * 1. GMR extracts mesh data → 2. Overlay renderers → 3. MeshManager operations → 4. GPU
- *
- * Note: For mesh data extraction, use GenericModelRenderer methods:
- * - extractFacePositions(), extractEdgePositions(), getAllMeshVertexPositions(), etc.
  */
 public class MeshManager {
 
@@ -168,23 +171,6 @@ public class MeshManager {
     }
 
     /**
-     * Expand vertex positions to cube format (8 vertices).
-     * Convenience method for backwards compatibility with cube-based code.
-     *
-     * @param vertexPositions Current vertex positions
-     * @param vertexCount Current vertex count
-     * @param indexRemapping Mapping from old indices to new indices
-     * @return Expanded vertex positions (24 floats for 8 vertices)
-     * @deprecated Use {@link #expandPositions(float[], int, Map, int)} with explicit target count from GMR
-     */
-    @Deprecated
-    public float[] expandToCubeFormat(float[] vertexPositions, int vertexCount,
-                                     Map<Integer, Integer> indexRemapping) {
-        // Backwards compatibility: assume 8 vertices for legacy cube-based code
-        return expandPositions(vertexPositions, vertexCount, indexRemapping, 8);
-    }
-
-    /**
      * Merge overlapping vertices by removing duplicates.
      * Coordinates the complete merge process using MeshVertexMerger.
      *
@@ -240,83 +226,45 @@ public class MeshManager {
     }
 
     /**
-     * Bulk update all faces with VBO data creation.
+     * Bulk update all faces with VBO data creation (uniform topology).
      * Coordinates the bulk update process using MeshFaceUpdateOperation.
-     * Shape-blind: Uses topology determined by GMR's data model.
      *
      * @param vbo OpenGL VBO handle
      * @param facePositions Array of face positions
      * @param faceCount Number of faces
+     * @param verticesPerFace Vertex count per face (uniform across all faces)
      * @param defaultColor Default color for all faces (with alpha)
      * @return true if update succeeded, false otherwise
      */
     public boolean updateAllFaces(int vbo, float[] facePositions, int faceCount,
-                                 org.joml.Vector4f defaultColor) {
+                                 int verticesPerFace, org.joml.Vector4f defaultColor) {
         MeshFaceUpdateOperation updater = new MeshFaceUpdateOperation();
-        // Legacy: assumes uniform quad topology (4 vertices per face)
-        int verticesPerFace = 4;
 
         com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern pattern =
-            com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.QUAD;
+            com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.forNGon(verticesPerFace);
 
         return updater.updateAllFaces(vbo, facePositions, faceCount,
                                       verticesPerFace, pattern, defaultColor);
     }
 
     /**
-     * Bulk update all faces with topology-aware VBO data creation.
-     * Supports mixed-topology meshes where faces have different vertex counts.
+     * Bulk update all faces with pre-computed topology (mixed topology).
+     * Caller provides per-face vertex counts and float offsets, avoiding re-derivation.
      *
      * @param vbo OpenGL VBO handle
      * @param facePositions Array of face positions (packed sequentially, variable vertices per face)
      * @param faceCount Number of faces
      * @param verticesPerFace Array of vertex counts per face
+     * @param faceOffsets Pre-computed float offsets into facePositions per face
      * @param defaultColor Default color for all faces (with alpha)
      * @return true if update succeeded, false otherwise
      */
-    public boolean updateAllFaces(int vbo, float[] facePositions, int faceCount,
-                                 int[] verticesPerFace, org.joml.Vector4f defaultColor) {
+    public boolean updateAllFacesMixed(int vbo, float[] facePositions, int faceCount,
+                                       int[] verticesPerFace, int[] faceOffsets,
+                                       org.joml.Vector4f defaultColor) {
         MeshFaceUpdateOperation updater = new MeshFaceUpdateOperation();
-
-        // Check if all faces have the same vertex count (fast path)
-        boolean uniform = true;
-        int firstCount = verticesPerFace.length > 0 ? verticesPerFace[0] : 4;
-        for (int i = 1; i < verticesPerFace.length; i++) {
-            if (verticesPerFace[i] != firstCount) {
-                uniform = false;
-                break;
-            }
-        }
-
-        if (uniform) {
-            // Fast path: single pattern for all faces
-            com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern pattern =
-                com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.forNGon(firstCount);
-            return updater.updateAllFaces(vbo, facePositions, faceCount,
-                                          firstCount, pattern, defaultColor);
-        }
-
-        // Mixed topology: delegate to per-face pattern method
-        int[] faceOffsets = computeFaceOffsets(verticesPerFace);
         return updater.updateAllFacesMixed(vbo, facePositions, faceCount,
                                             verticesPerFace, faceOffsets, defaultColor);
-    }
-
-    /**
-     * Compute float offsets into a packed face positions array from per-face vertex counts.
-     * Each face's positions occupy verticesPerFace[i] * 3 floats.
-     *
-     * @param verticesPerFace Per-face vertex counts
-     * @return Array of float offsets (one per face)
-     */
-    private int[] computeFaceOffsets(int[] verticesPerFace) {
-        int[] offsets = new int[verticesPerFace.length];
-        int cumulative = 0;
-        for (int i = 0; i < verticesPerFace.length; i++) {
-            offsets[i] = cumulative;
-            cumulative += verticesPerFace[i] * 3; // 3 floats per vertex position
-        }
-        return offsets;
     }
 
     // ========================================
@@ -360,37 +308,15 @@ public class MeshManager {
         return updater.updateByPosition(vbo, edgePositions, verticesPerEdge, oldPosition, newPosition);
     }
 
-    /**
-     * Get edge vertex positions.
-     * Convenience method using MeshEdgeGeometryQuery.
-     *
-     * @param edgeIndex Edge index
-     * @param edgePositions Array of edge positions
-     * @param verticesPerEdge Number of vertices per edge (derived from GMR topology)
-     * @return Array of vertices, or null if invalid
-     */
-    public Vector3f[] getEdgeVertices(int edgeIndex, float[] edgePositions, int verticesPerEdge) {
-        MeshEdgeGeometryQuery query = new MeshEdgeGeometryQuery();
-        return query.getEdgeVertices(edgeIndex, edgePositions, verticesPerEdge);
-    }
-
     // ========================================
-    // NOTE: Geometry extraction has been moved to GenericModelRenderer
+    // NOTE: Topology and extraction live elsewhere
     // ========================================
     //
-    // MeshManager now operates on data extracted from GenericModelRenderer (GMR).
-    // The data flow is:
-    //   1. GMR extracts mesh data from its internal structures (vertices, indices, face mapping)
-    //   2. Overlay renderers call GMR.extractFacePositions(), GMR.extractEdgePositions(), etc.
-    //   3. MeshManager provides operations on that data (building mappings, updating buffers)
+    // - MeshTopology: adjacency queries, uniform/mixed detection, face offsets
+    // - GMRFaceExtractor / GMREdgeExtractor: geometry extraction (topology-aware)
+    // - GenericModelRenderer: single source of truth, delegates to extractors
     //
-    // This ensures GMR is the single source of truth for mesh topology.
-    //
-    // For extraction operations, use:
-    //   - GenericModelRenderer.extractFacePositions()
-    //   - GenericModelRenderer.extractEdgePositions()
-    //   - GenericModelRenderer.getAllMeshVertexPositions()
-    //   - GenericModelRenderer.getAllUniqueVertexPositions()
+    // MeshManager is a thin coordinator for GPU buffer operations only.
     // ========================================
 
     /**

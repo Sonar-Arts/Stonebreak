@@ -197,6 +197,22 @@ public class MeshTopology {
         return result;
     }
 
+    /**
+     * Compute float offsets into a packed face positions array.
+     * Each face's positions occupy {@code vertexCount * 3} floats.
+     *
+     * @return Array of float offsets (one per face)
+     */
+    public int[] computeFacePositionOffsets() {
+        int[] offsets = new int[faces.length];
+        int cumulative = 0;
+        for (int i = 0; i < faces.length; i++) {
+            offsets[i] = cumulative;
+            cumulative += faces[i].vertexCount() * 3;
+        }
+        return offsets;
+    }
+
     // =========================================================================
     // VERTEX MAPPING QUERIES (consolidated from UniqueVertexMapper)
     // =========================================================================

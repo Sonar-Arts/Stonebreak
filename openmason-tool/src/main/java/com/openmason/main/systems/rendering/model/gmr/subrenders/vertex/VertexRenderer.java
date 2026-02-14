@@ -761,19 +761,6 @@ public class VertexRenderer implements MeshChangeListener {
     }
 
     /**
-     * Get expanded vertex positions for ModelRenderer compatibility.
-     * After merging, we may have fewer than 8 vertices, but ModelRenderer expects 8.
-     * This method expands the merged vertices back to 8 using the index remapping.
-     *
-     * @param indexRemapping Mapping from old indices to new indices
-     * @return 8 vertex positions (24 floats) for ModelRenderer
-     */
-    public float[] getExpandedVertexPositions(Map<Integer, Integer> indexRemapping) {
-        // Delegate to MeshManager to coordinate vertex data transformation
-        return meshManager.expandToCubeFormat(vertexPositions, vertexCount, indexRemapping);
-    }
-
-    /**
      * Merge overlapping vertices by removing duplicates and updating all references.
      * This is a TRUE merge operation that:
      * 1. Identifies groups of vertices at the same position

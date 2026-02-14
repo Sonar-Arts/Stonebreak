@@ -1,6 +1,8 @@
 package com.openmason.main.systems.rendering.model.gmr.extraction;
 
 import com.openmason.main.systems.rendering.model.gmr.mapping.ITriangleFaceMapper;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshFace;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,9 +26,6 @@ public class GMREdgeExtractor {
 
     private static final Logger logger = LoggerFactory.getLogger(GMREdgeExtractor.class);
     private static final int FLOATS_PER_EDGE = 6; // 2 endpoints × 3 coords
-
-    @Deprecated
-    public static final int EDGES_PER_FACE = 4; // Quad has 4 edges
 
     /**
      * Extract edge positions from GMR mesh data.
@@ -72,6 +71,63 @@ public class GMREdgeExtractor {
     }
 
     /**
+     * Extract edge positions using pre-computed MeshTopology.
+     * O(1) per face via topology vertex indices, replacing O(T) triangle scanning.
+     * Emits per-face polygon-outline edges (preserving duplicates for shared edges).
+     *
+     * @param vertices Vertex position buffer from GMR
+     * @param topology Pre-computed mesh topology
+     * @return Array of edge positions, or empty array if extraction fails
+     */
+    public float[] extractEdgePositions(float[] vertices, MeshTopology topology) {
+        if (vertices == null || topology == null) {
+            logger.debug("Cannot extract edges: invalid input data");
+            return new float[0];
+        }
+
+        int faceCount = topology.getFaceCount();
+        if (faceCount == 0) {
+            return new float[0];
+        }
+
+        // Count total edges (one edge per face vertex, forming polygon outlines)
+        int totalEdgeCount = 0;
+        for (int i = 0; i < faceCount; i++) {
+            MeshFace face = topology.getFace(i);
+            totalEdgeCount += face != null ? face.vertexCount() : 0;
+        }
+
+        float[] edgePositions = new float[totalEdgeCount * FLOATS_PER_EDGE];
+        int offset = 0;
+
+        for (int i = 0; i < faceCount; i++) {
+            MeshFace face = topology.getFace(i);
+            if (face == null || face.vertexCount() == 0) {
+                continue;
+            }
+
+            int[] uniqueIndices = face.vertexIndices();
+            int n = uniqueIndices.length;
+
+            for (int e = 0; e < n; e++) {
+                int uIdx1 = uniqueIndices[e];
+                int uIdx2 = uniqueIndices[(e + 1) % n];
+
+                int[] meshIndices1 = topology.getMeshIndicesForUniqueVertex(uIdx1);
+                int[] meshIndices2 = topology.getMeshIndicesForUniqueVertex(uIdx2);
+                int meshIdx1 = meshIndices1.length > 0 ? meshIndices1[0] : 0;
+                int meshIdx2 = meshIndices2.length > 0 ? meshIndices2[0] : 0;
+
+                offset = writeEdgeEndpoint(meshIdx1, vertices, edgePositions, offset);
+                offset = writeEdgeEndpoint(meshIdx2, vertices, edgePositions, offset);
+            }
+        }
+
+        logger.debug("Extracted {} edges ({} floats) via topology", totalEdgeCount, edgePositions.length);
+        return edgePositions;
+    }
+
+    /**
      * Extract the edges of a single face based on its actual vertex count.
      *
      * @param faceId Face ID to extract edges from
@@ -87,7 +143,7 @@ public class GMREdgeExtractor {
         int expectedVertexCount = faceMapper.getVertexCountForFace(faceId);
 
         // Find all triangles belonging to this face
-        List<Integer> trianglesForFace = findTrianglesForFace(faceId, indices, faceMapper);
+        List<Integer> trianglesForFace = FaceTriangleQuery.findTrianglesForFace(faceId, indices, faceMapper);
 
         if (trianglesForFace.isEmpty()) {
             // No triangles - write zeros for the expected number of edges
@@ -95,18 +151,10 @@ public class GMREdgeExtractor {
         }
 
         // Extract unique vertices forming the face polygon
-        Integer[] vertexIndices = extractFaceVertexIndices(trianglesForFace, indices);
+        Integer[] vertexIndices = FaceTriangleQuery.extractFaceVertexIndices(trianglesForFace, indices);
 
         // Generate edges: v0→v1, v1→v2, ..., vN-1→v0
         return writePolygonEdges(vertexIndices, vertices, output, offset);
-    }
-
-    private List<Integer> findTrianglesForFace(int faceId, int[] indices, ITriangleFaceMapper faceMapper) {
-        return FaceTriangleQuery.findTrianglesForFace(faceId, indices, faceMapper);
-    }
-
-    private Integer[] extractFaceVertexIndices(List<Integer> triangles, int[] indices) {
-        return FaceTriangleQuery.extractFaceVertexIndices(triangles, indices);
     }
 
     /**

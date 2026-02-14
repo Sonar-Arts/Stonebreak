@@ -698,33 +698,18 @@ public class GenericModelRenderer extends BaseRenderer {
     // =========================================================================
 
     /**
-     * Extract face positions from current mesh data.
-     * Each face is represented as 4 vertices (quad) with 12 floats per face.
-     * This data is used by FaceRenderer for overlay rendering.
-     *
-     * SOLID: Delegates to GMRFaceExtractor for extraction logic (Single Responsibility).
-     *
-     * @return Array of face vertex positions [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...]
-     *         or empty array if no face data available
-     * @deprecated Use {@link #extractFaceData()} for topology-aware extraction
-     */
-    @Deprecated
-    public float[] extractFacePositions() {
-        return faceExtractor.extractFacePositions(
-            vertexManager.getVertices(),
-            vertexManager.getIndices(),
-            faceMapper
-        );
-    }
-
-    /**
      * Extract face data with full topology information.
      * Returns structured result with per-face vertex counts and offsets,
      * supporting any face topology (triangles, quads, n-gons).
+     * Uses pre-computed topology when available (O(1) per face), falls back to
+     * triangle scanning (O(T) per face) otherwise.
      *
      * @return FaceExtractionResult with positions and topology info, or null if no data
      */
     public GMRFaceExtractor.FaceExtractionResult extractFaceData() {
+        if (topology != null) {
+            return faceExtractor.extractFaceData(vertexManager.getVertices(), topology);
+        }
         return faceExtractor.extractFaceData(
             vertexManager.getVertices(),
             vertexManager.getIndices(),
@@ -737,6 +722,8 @@ public class GenericModelRenderer extends BaseRenderer {
      * Each edge is represented as 2 endpoints with 6 floats per edge.
      * This data is used by EdgeRenderer for overlay rendering.
      * Topology-aware: faces with N vertices contribute N edges.
+     * Uses pre-computed topology when available (O(1) per face), falls back to
+     * triangle scanning (O(T) per face) otherwise.
      *
      * SOLID: Delegates to GMREdgeExtractor for extraction logic (Single Responsibility).
      *
@@ -744,6 +731,9 @@ public class GenericModelRenderer extends BaseRenderer {
      *         or empty array if no edge data available
      */
     public float[] extractEdgePositions() {
+        if (topology != null) {
+            return edgeExtractor.extractEdgePositions(vertexManager.getVertices(), topology);
+        }
         return edgeExtractor.extractEdgePositions(
             vertexManager.getVertices(),
             vertexManager.getIndices(),

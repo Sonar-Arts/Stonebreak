@@ -1,6 +1,7 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.face;
 
 import com.openmason.main.systems.rendering.model.MeshChangeListener;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
@@ -185,9 +186,20 @@ public class FaceRenderer implements MeshChangeListener {
             // Face count from topology (not derived from array division)
             faceCount = faceData.faceCount();
 
-            // Delegate bulk VBO creation to MeshManager with topology info
-            MeshManager.getInstance().updateAllFaces(vbo, topologyFacePositions, faceCount,
-                storedVerticesPerFace, overlayRenderer.getDefaultFaceColor());
+            // Delegate bulk VBO creation to MeshManager, using topology for uniform/mixed decision
+            MeshTopology topology = genericModelRenderer.getTopology();
+            if (topology != null && topology.isUniformTopology()) {
+                meshManager.updateAllFaces(vbo, topologyFacePositions, faceCount,
+                    topology.getUniformVerticesPerFace(), overlayRenderer.getDefaultFaceColor());
+            } else if (topology != null) {
+                int[] offsets = topology.computeFacePositionOffsets();
+                meshManager.updateAllFacesMixed(vbo, topologyFacePositions, faceCount,
+                    storedVerticesPerFace, offsets, overlayRenderer.getDefaultFaceColor());
+            } else {
+                // Fallback: assume uniform quad topology
+                meshManager.updateAllFaces(vbo, topologyFacePositions, faceCount,
+                    4, overlayRenderer.getDefaultFaceColor());
+            }
 
             // Compute shape-blind VBO layout from topology for overlay rendering
             computeAndSetFaceVBOLayout(storedVerticesPerFace);

@@ -1,6 +1,8 @@
 package com.openmason.main.systems.rendering.model.gmr.extraction;
 
 import com.openmason.main.systems.rendering.model.gmr.mapping.ITriangleFaceMapper;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshFace;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,9 +23,6 @@ import java.util.List;
 public class GMRFaceExtractor {
 
     private static final Logger logger = LoggerFactory.getLogger(GMRFaceExtractor.class);
-
-    @Deprecated
-    private static final int FLOATS_PER_FACE = 12; // 4 vertices × 3 coords (legacy quad format)
 
     /**
      * Structured result from face extraction, containing per-face topology info.
@@ -93,46 +92,65 @@ public class GMRFaceExtractor {
     }
 
     /**
-     * Extract face positions from GMR mesh data.
-     * Legacy method: pads/truncates all faces to 4 vertices (quad format).
+     * Extract face data using pre-computed MeshTopology.
+     * O(1) per face via topology vertex indices, replacing O(T) triangle scanning.
      *
      * @param vertices Vertex position buffer from GMR
-     * @param indices Index buffer from GMR
-     * @param faceMapper Triangle-to-face mapper from GMR
-     * @return Array of face positions (12 floats per face), or empty array if extraction fails
-     * @deprecated Use {@link #extractFaceData(float[], int[], ITriangleFaceMapper)} for topology-aware extraction
+     * @param topology Pre-computed mesh topology
+     * @return FaceExtractionResult with positions and topology, or null if extraction fails
      */
-    @Deprecated
-    public float[] extractFacePositions(float[] vertices, int[] indices, ITriangleFaceMapper faceMapper) {
-        // Validate inputs
-        if (vertices == null || indices == null || faceMapper == null || !faceMapper.hasMapping()) {
+    public FaceExtractionResult extractFaceData(float[] vertices, MeshTopology topology) {
+        if (vertices == null || topology == null) {
             logger.debug("Cannot extract faces: invalid input data");
-            return new float[0];
+            return null;
         }
 
-        // Use upper bound for safe iteration over potentially non-contiguous face IDs
-        int faceIdUpperBound = faceMapper.getFaceIdUpperBound();
-        if (faceIdUpperBound == 0) {
-            return new float[0];
+        int faceCount = topology.getFaceCount();
+        if (faceCount == 0) {
+            return null;
         }
 
-        // Count actual faces (with triangles) for allocation
-        int actualFaceCount = faceMapper.getOriginalFaceCount();
+        // Compute per-face vertex counts and total
+        int[] verticesPerFace = new int[faceCount];
+        int totalVertexCount = 0;
+        for (int i = 0; i < faceCount; i++) {
+            MeshFace face = topology.getFace(i);
+            verticesPerFace[i] = face != null ? face.vertexCount() : 0;
+            totalVertexCount += verticesPerFace[i];
+        }
 
-        // Legacy: allocate fixed 12 floats per face (4 vertices × 3 coords)
-        float[] facePositions = new float[actualFaceCount * FLOATS_PER_FACE];
+        float[] positions = new float[totalVertexCount * 3];
+        int[] faceOffsets = new int[faceCount + 1];
         int offset = 0;
 
-        // Extract each face, padding/truncating to 4 vertices
-        for (int faceId = 0; faceId < faceIdUpperBound; faceId++) {
-            if (faceMapper.getTriangleCountForFace(faceId) == 0) {
-                continue; // Skip gap face IDs
+        for (int i = 0; i < faceCount; i++) {
+            faceOffsets[i] = offset;
+            MeshFace face = topology.getFace(i);
+            if (face == null || face.vertexCount() == 0) {
+                continue;
             }
-            offset = extractSingleFaceLegacy(faceId, vertices, indices, faceMapper, facePositions, offset);
-        }
 
-        logger.debug("Extracted {} faces ({} floats) [legacy quad format]", actualFaceCount, facePositions.length);
-        return facePositions;
+            for (int uniqueIdx : face.vertexIndices()) {
+                int[] meshIndices = topology.getMeshIndicesForUniqueVertex(uniqueIdx);
+                int meshIdx = meshIndices.length > 0 ? meshIndices[0] : 0;
+                int vOffset = meshIdx * 3;
+
+                if (vOffset + 2 < vertices.length) {
+                    positions[offset++] = vertices[vOffset];
+                    positions[offset++] = vertices[vOffset + 1];
+                    positions[offset++] = vertices[vOffset + 2];
+                } else {
+                    positions[offset++] = 0.0f;
+                    positions[offset++] = 0.0f;
+                    positions[offset++] = 0.0f;
+                }
+            }
+        }
+        faceOffsets[faceCount] = offset;
+
+        logger.debug("Extracted {} faces ({} total vertices) via topology",
+            faceCount, totalVertexCount);
+        return new FaceExtractionResult(positions, faceOffsets, verticesPerFace, faceCount);
     }
 
     /**
@@ -140,7 +158,7 @@ public class GMRFaceExtractor {
      */
     private int extractSingleFace(int faceId, int expectedVertexCount, float[] vertices, int[] indices,
                                    ITriangleFaceMapper faceMapper, float[] output, int offset) {
-        List<Integer> trianglesForFace = findTrianglesForFace(faceId, indices, faceMapper);
+        List<Integer> trianglesForFace = FaceTriangleQuery.findTrianglesForFace(faceId, indices, faceMapper);
 
         if (trianglesForFace.isEmpty()) {
             // Write zeros for expected vertex count
@@ -150,7 +168,7 @@ public class GMRFaceExtractor {
             return offset;
         }
 
-        Integer[] vertexIndices = extractFaceVertexIndices(trianglesForFace, indices);
+        Integer[] vertexIndices = FaceTriangleQuery.extractFaceVertexIndices(trianglesForFace, indices);
 
         // Write actual vertex positions
         for (int i = 0; i < expectedVertexCount; i++) {
@@ -171,58 +189,4 @@ public class GMRFaceExtractor {
         return offset;
     }
 
-    /**
-     * Extract a single face's vertex positions in legacy quad format (4 vertices).
-     */
-    private int extractSingleFaceLegacy(int faceId, float[] vertices, int[] indices,
-                                         ITriangleFaceMapper faceMapper, float[] output, int offset) {
-        List<Integer> trianglesForFace = findTrianglesForFace(faceId, indices, faceMapper);
-
-        if (trianglesForFace.isEmpty()) {
-            return writeZeroFace(output, offset);
-        }
-
-        Integer[] vertexIndices = extractFaceVertexIndices(trianglesForFace, indices);
-        return writeFacePositionsLegacy(vertexIndices, vertices, output, offset);
-    }
-
-    private List<Integer> findTrianglesForFace(int faceId, int[] indices, ITriangleFaceMapper faceMapper) {
-        return FaceTriangleQuery.findTrianglesForFace(faceId, indices, faceMapper);
-    }
-
-    private Integer[] extractFaceVertexIndices(List<Integer> triangles, int[] indices) {
-        return FaceTriangleQuery.extractFaceVertexIndices(triangles, indices);
-    }
-
-    /**
-     * Write face vertex positions in legacy quad format (4 vertices, padding if fewer).
-     */
-    private int writeFacePositionsLegacy(Integer[] vertexIndices, float[] vertices, float[] output, int offset) {
-        for (int i = 0; i < 4; i++) {
-            int vIdx = i < vertexIndices.length ? vertexIndices[i] : vertexIndices[vertexIndices.length - 1];
-            int vOffset = vIdx * 3;
-
-            if (vOffset + 2 < vertices.length) {
-                output[offset++] = vertices[vOffset];
-                output[offset++] = vertices[vOffset + 1];
-                output[offset++] = vertices[vOffset + 2];
-            } else {
-                output[offset++] = 0.0f;
-                output[offset++] = 0.0f;
-                output[offset++] = 0.0f;
-            }
-        }
-
-        return offset;
-    }
-
-    /**
-     * Write a zero-filled face (12 floats for legacy quad format).
-     */
-    private int writeZeroFace(float[] output, int offset) {
-        for (int i = 0; i < FLOATS_PER_FACE; i++) {
-            output[offset++] = 0.0f;
-        }
-        return offset;
-    }
 }

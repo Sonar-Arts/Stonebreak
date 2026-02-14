@@ -10,6 +10,7 @@ import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.operations.EdgeSelectionManager;
 import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.rendering.model.gmr.mesh.edgeOperations.MeshEdgeBufferUpdater;
+import com.openmason.main.systems.rendering.model.gmr.mesh.edgeOperations.MeshEdgeGeometryQuery;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
@@ -728,7 +729,8 @@ public class EdgeRenderer implements MeshChangeListener {
      * @return array containing [endpoint1, endpoint2], or null if index is invalid
      */
     public Vector3f[] getEdgeEndpoints(int edgeIndex) {
-        return meshManager.getEdgeVertices(edgeIndex, edgePositions, VERTICES_PER_EDGE);
+        MeshEdgeGeometryQuery query = new MeshEdgeGeometryQuery();
+        return query.getEdgeVertices(edgeIndex, edgePositions, VERTICES_PER_EDGE);
     }
 
     /**
