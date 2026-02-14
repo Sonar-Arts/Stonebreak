@@ -44,9 +44,13 @@ public class MeshTopology {
     private final int[] triangleToFaceId;         // triIdx → faceId
     private final int triangleCount;
 
+    // Dihedral angles (per-edge, radians)
+    private final float[] dihedralAngles;
+
     // Lazy recomputation on vertex move
     private final boolean[] faceDirty;
     private final boolean[] vertexNormalDirty;
+    private final boolean[] edgeDirty;
     private float[] verticesRef;
 
     /**
@@ -80,6 +84,13 @@ public class MeshTopology {
         this.triangleCount = triangleCount;
         this.faceDirty = new boolean[faces.length];
         this.vertexNormalDirty = new boolean[uniqueVertexCount];
+        this.edgeDirty = new boolean[edges.length];
+
+        // Compute initial dihedral angles from precomputed face normals
+        this.dihedralAngles = new float[edges.length];
+        for (int i = 0; i < edges.length; i++) {
+            dihedralAngles[i] = computeDihedralAngleForEdge(edges[i]);
+        }
     }
 
     // =========================================================================
@@ -123,6 +134,30 @@ public class MeshTopology {
      */
     public int getEdgeCount() {
         return edges.length;
+    }
+
+    /**
+     * Get the dihedral angle at an edge — the angle between the normals of
+     * its two adjacent faces, in radians.
+     *
+     * <ul>
+     *   <li>{@code 0} = coplanar (normals point in the same direction)</li>
+     *   <li>{@code π} = faces fold 180° apart (normals point in opposite directions)</li>
+     *   <li>{@code Float.NaN} = open edge (single face) or non-manifold edge (3+ faces)</li>
+     * </ul>
+     *
+     * <p>Lazily recomputes when adjacent face normals have been invalidated
+     * by a vertex position change.
+     *
+     * @param edgeId Edge identifier (0..edgeCount-1)
+     * @return Dihedral angle in radians, or {@code Float.NaN} if undefined or out of range
+     */
+    public float getDihedralAngle(int edgeId) {
+        if (edgeId < 0 || edgeId >= edges.length) {
+            return Float.NaN;
+        }
+        ensureEdgeClean(edgeId);
+        return dihedralAngles[edgeId];
     }
 
     // =========================================================================
@@ -385,11 +420,19 @@ public class MeshTopology {
             if (faceId >= 0 && faceId < faceDirty.length) {
                 faceDirty[faceId] = true;
 
-                // Dirty vertex normals for every vertex on this face
                 MeshFace face = faces[faceId];
+
+                // Dirty vertex normals for every vertex on this face
                 for (int v : face.vertexIndices()) {
                     if (v >= 0 && v < vertexNormalDirty.length) {
                         vertexNormalDirty[v] = true;
+                    }
+                }
+
+                // Dirty dihedral angles for every edge on this face
+                for (int eid : face.edgeIds()) {
+                    if (eid >= 0 && eid < edgeDirty.length) {
+                        edgeDirty[eid] = true;
                     }
                 }
             }
@@ -419,6 +462,23 @@ public class MeshTopology {
         faceNormals[faceId] = computeNormal(verts, uniqueToMeshIndices, verticesRef);
         faceCentroids[faceId] = computeCentroid(verts, uniqueToMeshIndices, verticesRef);
         faceAreas[faceId] = computeArea(verts, uniqueToMeshIndices, verticesRef);
+    }
+
+    /**
+     * Ensure an edge's cached dihedral angle is up-to-date.
+     * Forces adjacent faces clean first (dihedral angle depends on face normals).
+     * No-op if the edge is already clean.
+     */
+    private void ensureEdgeClean(int edgeId) {
+        if (!edgeDirty[edgeId]) {
+            return;
+        }
+        MeshEdge edge = edges[edgeId];
+        for (int faceId : edge.adjacentFaceIds()) {
+            ensureFaceClean(faceId);
+        }
+        dihedralAngles[edgeId] = computeDihedralAngleForEdge(edge);
+        edgeDirty[edgeId] = false;
     }
 
     /**
@@ -564,5 +624,23 @@ public class MeshTopology {
         }
 
         return 0.5f * (float) Math.sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ);
+    }
+
+    /**
+     * Compute the dihedral angle for a single edge from the current face normals.
+     * Only defined for manifold edges (exactly 2 adjacent faces).
+     *
+     * @param edge The edge to compute for
+     * @return Angle in radians (0..π), or {@code Float.NaN} for non-manifold/open edges
+     */
+    private float computeDihedralAngleForEdge(MeshEdge edge) {
+        int[] adjFaces = edge.adjacentFaceIds();
+        if (adjFaces.length != 2) {
+            return Float.NaN;
+        }
+        Vector3f n0 = faceNormals[adjFaces[0]];
+        Vector3f n1 = faceNormals[adjFaces[1]];
+        float dot = Math.clamp(n0.dot(n1), -1.0f, 1.0f);
+        return (float) Math.acos(dot);
     }
 }
