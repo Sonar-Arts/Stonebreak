@@ -15,6 +15,7 @@ import java.util.Map;
  *   <li>{@link #edgeClassifier()} — edge classification, auto-sharp, crease weights</li>
  *   <li>{@link #vertexClassifier()} — valence, boundary, interior, pole queries</li>
  *   <li>{@link #faceEdgeTraversal()} — winding-aware directed edge traversal within faces</li>
+ *   <li>{@link #edgeLoopTracer()} — edge loop and edge ring tracing across quad faces</li>
  *   <li>{@link MeshGeometry} — stateless geometry math (static utility)</li>
  * </ul>
  *
@@ -61,6 +62,7 @@ public class MeshTopology {
     private final EdgeClassifier edgeClassifier;
     private final VertexClassifier vertexClassifier;
     private final FaceEdgeTraversal faceEdgeTraversal;
+    private final EdgeLoopTracer edgeLoopTracer;
 
     /**
      * Package-private constructor used by MeshTopologyBuilder.
@@ -110,6 +112,7 @@ public class MeshTopology {
         this.edgeClassifier = new EdgeClassifier(edges, autoSharpThresholdRadians, faceNormals);
         this.vertexClassifier = new VertexClassifier(edges, vertexToEdges, uniformTopology, uniformVerticesPerFace);
         this.faceEdgeTraversal = new FaceEdgeTraversal(faces);
+        this.edgeLoopTracer = new EdgeLoopTracer(edges, faces);
     }
 
     // =========================================================================
@@ -144,6 +147,16 @@ public class MeshTopology {
      */
     public FaceEdgeTraversal faceEdgeTraversal() {
         return faceEdgeTraversal;
+    }
+
+    /**
+     * Get the edge loop tracer for edge loop and edge ring
+     * traversal across quad faces.
+     *
+     * @return The edge loop tracer (never null)
+     */
+    public EdgeLoopTracer edgeLoopTracer() {
+        return edgeLoopTracer;
     }
 
     // =========================================================================
@@ -460,6 +473,20 @@ public class MeshTopology {
     /** @see FaceEdgeTraversal#getDirectedVertices(int, int) */
     public int[] getDirectedVertices(int faceId, int edgeId) {
         return faceEdgeTraversal.getDirectedVertices(faceId, edgeId);
+    }
+
+    // =========================================================================
+    // EDGE LOOP / RING TRACING (delegation to EdgeLoopTracer)
+    // =========================================================================
+
+    /** @see EdgeLoopTracer#traceEdgeLoop(int) */
+    public List<Integer> traceEdgeLoop(int startEdgeId) {
+        return edgeLoopTracer.traceEdgeLoop(startEdgeId);
+    }
+
+    /** @see EdgeLoopTracer#traceEdgeRing(int) */
+    public List<Integer> traceEdgeRing(int startEdgeId) {
+        return edgeLoopTracer.traceEdgeRing(startEdgeId);
     }
 
     // =========================================================================
