@@ -21,6 +21,7 @@ import java.util.Set;
  *   <li>{@link #edgeLoopTracer()} — edge loop and edge ring tracing across quad faces</li>
  *   <li>{@link #faceLoopTracer()} — face loop tracing across quad faces</li>
  *   <li>{@link #faceIslandDetector()} — connected component (island) detection for faces</li>
+ *   <li>{@link #vertexBoundaryWalker()} — boundary edge chain walking from boundary vertices</li>
  *   <li>{@link MeshGeometry} — stateless geometry math (static utility)</li>
  * </ul>
  *
@@ -72,6 +73,7 @@ public class MeshTopology {
     private final FaceIslandDetector faceIslandDetector;
     private final VertexRingQuery vertexRingQuery;
     private final VertexAdjacencyQuery vertexAdjacencyQuery;
+    private final VertexBoundaryWalker vertexBoundaryWalker;
 
     /**
      * Package-private constructor used by MeshTopologyBuilder.
@@ -128,6 +130,7 @@ public class MeshTopology {
         this.faceIslandDetector = new FaceIslandDetector(faces.length, faceToAdjacentFaces);
         this.vertexRingQuery = new VertexRingQuery(edges, faces, vertexToEdges, vertexToFaces, edgeKeyToId);
         this.vertexAdjacencyQuery = new VertexAdjacencyQuery(edgeKeyToId, edges, vertexToEdges);
+        this.vertexBoundaryWalker = new VertexBoundaryWalker(edges, vertexToEdges);
     }
 
     // =========================================================================
@@ -212,6 +215,16 @@ public class MeshTopology {
      */
     public VertexAdjacencyQuery vertexAdjacencyQuery() {
         return vertexAdjacencyQuery;
+    }
+
+    /**
+     * Get the vertex boundary walker for tracing boundary edge chains
+     * from boundary vertices along the mesh outline.
+     *
+     * @return The vertex boundary walker (never null)
+     */
+    public VertexBoundaryWalker vertexBoundaryWalker() {
+        return vertexBoundaryWalker;
     }
 
     // =========================================================================
@@ -758,6 +771,15 @@ public class MeshTopology {
     /** @see VertexAdjacencyQuery#getNeighborCount(int) */
     public int getVertexNeighborCount(int uniqueVertexIdx) {
         return vertexAdjacencyQuery.getNeighborCount(uniqueVertexIdx);
+    }
+
+    // =========================================================================
+    // VERTEX BOUNDARY WALK (delegation to VertexBoundaryWalker)
+    // =========================================================================
+
+    /** @see VertexBoundaryWalker#traceBoundaryFromVertex(int) */
+    public List<Integer> traceBoundaryFromVertex(int uniqueVertexIdx) {
+        return vertexBoundaryWalker.traceBoundaryFromVertex(uniqueVertexIdx);
     }
 
     // =========================================================================
