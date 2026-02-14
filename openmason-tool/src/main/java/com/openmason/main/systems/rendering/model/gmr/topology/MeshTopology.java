@@ -16,6 +16,7 @@ import java.util.Set;
  *   <li>{@link #edgeClassifier()} — edge classification, auto-sharp, crease weights</li>
  *   <li>{@link #vertexClassifier()} — valence, boundary, interior, pole queries</li>
  *   <li>{@link #vertexRingQuery()} — connected vertices and ordered vertex ring traversal</li>
+ *   <li>{@link #vertexAdjacencyQuery()} — vertex-to-vertex connectivity and neighbor counts</li>
  *   <li>{@link #faceEdgeTraversal()} — winding-aware directed edge traversal within faces</li>
  *   <li>{@link #edgeLoopTracer()} — edge loop and edge ring tracing across quad faces</li>
  *   <li>{@link #faceLoopTracer()} — face loop tracing across quad faces</li>
@@ -70,6 +71,7 @@ public class MeshTopology {
     private final FaceLoopTracer faceLoopTracer;
     private final FaceIslandDetector faceIslandDetector;
     private final VertexRingQuery vertexRingQuery;
+    private final VertexAdjacencyQuery vertexAdjacencyQuery;
 
     /**
      * Package-private constructor used by MeshTopologyBuilder.
@@ -125,6 +127,7 @@ public class MeshTopology {
         this.faceLoopTracer = new FaceLoopTracer(edges, faces);
         this.faceIslandDetector = new FaceIslandDetector(faces.length, faceToAdjacentFaces);
         this.vertexRingQuery = new VertexRingQuery(edges, faces, vertexToEdges, vertexToFaces, edgeKeyToId);
+        this.vertexAdjacencyQuery = new VertexAdjacencyQuery(edgeKeyToId, edges, vertexToEdges);
     }
 
     // =========================================================================
@@ -199,6 +202,16 @@ public class MeshTopology {
      */
     public VertexRingQuery vertexRingQuery() {
         return vertexRingQuery;
+    }
+
+    /**
+     * Get the vertex adjacency query service for vertex-to-vertex
+     * connectivity checks and neighbor counts.
+     *
+     * @return The vertex adjacency query service (never null)
+     */
+    public VertexAdjacencyQuery vertexAdjacencyQuery() {
+        return vertexAdjacencyQuery;
     }
 
     // =========================================================================
@@ -731,6 +744,20 @@ public class MeshTopology {
     /** @see VertexRingQuery#getOrderedVertexRing(int) */
     public List<Integer> getOrderedVertexRing(int uniqueVertexIdx) {
         return vertexRingQuery.getOrderedVertexRing(uniqueVertexIdx);
+    }
+
+    // =========================================================================
+    // VERTEX ADJACENCY QUERIES (delegation to VertexAdjacencyQuery)
+    // =========================================================================
+
+    /** @see VertexAdjacencyQuery#areVerticesConnected(int, int) */
+    public boolean areVerticesConnected(int v0, int v1) {
+        return vertexAdjacencyQuery.areVerticesConnected(v0, v1);
+    }
+
+    /** @see VertexAdjacencyQuery#getNeighborCount(int) */
+    public int getVertexNeighborCount(int uniqueVertexIdx) {
+        return vertexAdjacencyQuery.getNeighborCount(uniqueVertexIdx);
     }
 
     // =========================================================================
