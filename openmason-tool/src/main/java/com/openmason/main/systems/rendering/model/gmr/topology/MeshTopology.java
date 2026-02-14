@@ -372,6 +372,90 @@ public class MeshTopology {
     }
 
     // =========================================================================
+    // VERTEX CLASSIFICATION
+    // =========================================================================
+
+    /**
+     * Get the valence (edge count) of a unique vertex.
+     * Valence is the number of edges connected to the vertex.
+     *
+     * @param uniqueVertexIdx Unique vertex index
+     * @return Edge count, or 0 if out of range
+     */
+    public int getVertexValence(int uniqueVertexIdx) {
+        return getEdgesForVertex(uniqueVertexIdx).size();
+    }
+
+    /**
+     * Check if a vertex lies on the mesh boundary.
+     * A boundary vertex has at least one connected edge with only 1 adjacent face
+     * (an open edge).
+     *
+     * @param uniqueVertexIdx Unique vertex index
+     * @return true if any connected edge is open (single adjacent face)
+     */
+    public boolean isBoundaryVertex(int uniqueVertexIdx) {
+        List<Integer> edgeIds = getEdgesForVertex(uniqueVertexIdx);
+        for (int edgeId : edgeIds) {
+            if (edges[edgeId].adjacentFaceCount() == 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check if a vertex is fully interior (not on the mesh boundary).
+     * An interior vertex has all connected edges shared by exactly 2 faces.
+     *
+     * @param uniqueVertexIdx Unique vertex index
+     * @return true if all connected edges are shared by 2 faces
+     */
+    public boolean isInteriorVertex(int uniqueVertexIdx) {
+        List<Integer> edgeIds = getEdgesForVertex(uniqueVertexIdx);
+        if (edgeIds.isEmpty()) {
+            return false;
+        }
+        for (int edgeId : edgeIds) {
+            if (edges[edgeId].adjacentFaceCount() != 2) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Check if a vertex is a topology pole — a vertex whose valence differs
+     * from the expected regular valence for the mesh type.
+     *
+     * <p>Expected valence by mesh type:
+     * <ul>
+     *   <li>Quad mesh (4 vertices/face): expected valence = 4</li>
+     *   <li>Triangle mesh (3 vertices/face): expected valence = 6</li>
+     * </ul>
+     *
+     * <p>Only meaningful for uniform-topology meshes. Returns false for
+     * mixed-topology meshes or unrecognized face types.
+     *
+     * @param uniqueVertexIdx Unique vertex index
+     * @return true if valence differs from the expected regular valence
+     */
+    public boolean isPoleVertex(int uniqueVertexIdx) {
+        if (!uniformTopology) {
+            return false;
+        }
+        int expectedValence = switch (uniformVerticesPerFace) {
+            case 4 -> 4;  // Quad mesh: regular vertex has 4 edges
+            case 3 -> 6;  // Triangle mesh: regular vertex has 6 edges
+            default -> -1;
+        };
+        if (expectedValence == -1) {
+            return false;
+        }
+        return getVertexValence(uniqueVertexIdx) != expectedValence;
+    }
+
+    // =========================================================================
     // VERTEX MAPPING QUERIES (consolidated from UniqueVertexMapper)
     // =========================================================================
 
