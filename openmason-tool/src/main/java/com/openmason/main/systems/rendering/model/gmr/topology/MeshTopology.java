@@ -18,6 +18,8 @@ import java.util.Map;
  *   <li>Vertex smooth normals (area-weighted average of adjacent face normals)</li>
  *   <li>Edges connected to a vertex</li>
  *   <li>Faces adjacent to a vertex</li>
+ *   <li>Faces adjacent to a face (sharing an edge)</li>
+ *   <li>Shared edge between two adjacent faces</li>
  *   <li>Uniform vs mixed topology detection</li>
  * </ul>
  *
@@ -34,6 +36,8 @@ public class MeshTopology {
     private final Map<Long, Integer> edgeKeyToId;
     private final List<List<Integer>> vertexToEdges;
     private final List<List<Integer>> vertexToFaces;
+    private final List<List<Integer>> faceToAdjacentFaces;
+    private final Map<Long, Integer> facePairToEdgeId;
     private final boolean uniformTopology;
     private final int uniformVerticesPerFace;
 
@@ -62,6 +66,8 @@ public class MeshTopology {
                  Map<Long, Integer> edgeKeyToId,
                  List<List<Integer>> vertexToEdges,
                  List<List<Integer>> vertexToFaces,
+                 List<List<Integer>> faceToAdjacentFaces,
+                 Map<Long, Integer> facePairToEdgeId,
                  boolean uniformTopology, int uniformVerticesPerFace,
                  int[] meshToUniqueMapping, int[][] uniqueToMeshIndices,
                  int uniqueVertexCount,
@@ -75,6 +81,8 @@ public class MeshTopology {
         this.edgeKeyToId = edgeKeyToId;
         this.vertexToEdges = vertexToEdges;
         this.vertexToFaces = vertexToFaces;
+        this.faceToAdjacentFaces = faceToAdjacentFaces;
+        this.facePairToEdgeId = facePairToEdgeId;
         this.uniformTopology = uniformTopology;
         this.uniformVerticesPerFace = uniformVerticesPerFace;
         this.meshToUniqueMapping = meshToUniqueMapping;
@@ -280,6 +288,35 @@ public class MeshTopology {
             return Collections.emptyList();
         }
         return vertexToFaces.get(uniqueVertexIdx);
+    }
+
+    /**
+     * Get all face IDs adjacent to a given face (sharing an edge).
+     *
+     * @param faceId Face identifier
+     * @return Unmodifiable list of neighbor face IDs, or empty list if out of range
+     */
+    public List<Integer> getAdjacentFaces(int faceId) {
+        if (faceId < 0 || faceId >= faceToAdjacentFaces.size()) {
+            return Collections.emptyList();
+        }
+        return faceToAdjacentFaces.get(faceId);
+    }
+
+    /**
+     * Get the edge shared by two adjacent faces.
+     *
+     * @param faceIdA First face identifier
+     * @param faceIdB Second face identifier
+     * @return The shared edge, or null if the faces are not adjacent
+     */
+    public MeshEdge getSharedEdge(int faceIdA, int faceIdB) {
+        long key = canonicalFacePairKey(faceIdA, faceIdB);
+        Integer edgeId = facePairToEdgeId.get(key);
+        if (edgeId == null) {
+            return null;
+        }
+        return edges[edgeId];
     }
 
     // =========================================================================
@@ -510,6 +547,20 @@ public class MeshTopology {
     // =========================================================================
     // STATIC GEOMETRY COMPUTATIONS
     // =========================================================================
+
+    /**
+     * Compute a canonical key for a pair of face IDs.
+     * Packs the smaller ID into the high bits, the larger into the low bits.
+     *
+     * @param faceA First face ID
+     * @param faceB Second face ID
+     * @return Packed long suitable for use as a map key
+     */
+    static long canonicalFacePairKey(int faceA, int faceB) {
+        int min = Math.min(faceA, faceB);
+        int max = Math.max(faceA, faceB);
+        return ((long) min << 32) | (max & 0xFFFFFFFFL);
+    }
 
     /**
      * Compute a smooth vertex normal as the area-weighted average of adjacent face normals.

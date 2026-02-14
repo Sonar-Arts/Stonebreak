@@ -177,6 +177,34 @@ public final class MeshTopologyBuilder {
             immutableVertexToFaces.add(Collections.unmodifiableList(vertexToFaces.get(i)));
         }
 
+        // Step 5b: Build face-to-face adjacency from edge adjacency
+        List<Set<Integer>> faceAdjSets = new ArrayList<>(faces.length);
+        for (int i = 0; i < faces.length; i++) {
+            faceAdjSets.add(new HashSet<>());
+        }
+        Map<Long, Integer> facePairToEdgeId = new HashMap<>();
+
+        for (MeshEdge edge : edges) {
+            int[] adjFaces = edge.adjacentFaceIds();
+            for (int i = 0; i < adjFaces.length; i++) {
+                for (int j = i + 1; j < adjFaces.length; j++) {
+                    int fA = adjFaces[i];
+                    int fB = adjFaces[j];
+                    if (fA >= 0 && fA < faces.length && fB >= 0 && fB < faces.length) {
+                        faceAdjSets.get(fA).add(fB);
+                        faceAdjSets.get(fB).add(fA);
+                        long pairKey = MeshTopology.canonicalFacePairKey(fA, fB);
+                        facePairToEdgeId.put(pairKey, edge.edgeId());
+                    }
+                }
+            }
+        }
+
+        List<List<Integer>> faceToAdjacentFaces = new ArrayList<>(faces.length);
+        for (int i = 0; i < faces.length; i++) {
+            faceToAdjacentFaces.add(Collections.unmodifiableList(new ArrayList<>(faceAdjSets.get(i))));
+        }
+
         // Step 6: Detect uniform topology
         boolean uniform = true;
         int firstCount = faces.length > 0 ? faces[0].vertexCount() : 0;
@@ -230,6 +258,8 @@ public final class MeshTopologyBuilder {
             Collections.unmodifiableMap(edgeKeyToId),
             immutableVertexToEdges,
             immutableVertexToFaces,
+            Collections.unmodifiableList(faceToAdjacentFaces),
+            Collections.unmodifiableMap(facePairToEdgeId),
             uniform, firstCount,
             meshToUniqueMapping, uniqueToMeshIndices, uniqueVertexCount,
             triangleToFaceId, triangleCount
