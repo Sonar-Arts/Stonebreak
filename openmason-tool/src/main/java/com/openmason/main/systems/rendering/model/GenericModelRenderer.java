@@ -61,6 +61,9 @@ public class GenericModelRenderer extends BaseRenderer {
     private final IUVCoordinateGenerator uvGenerator;
     private final IModelStateManager stateManager;
 
+    // Per-face texture system (replaces legacy UVMode switching)
+    private final FaceTextureManager faceTextureManager;
+
     // Extractors (SOLID: extraction logic separated from renderer)
     private final GMRFaceExtractor faceExtractor;
     private final GMREdgeExtractor edgeExtractor;
@@ -79,6 +82,14 @@ public class GenericModelRenderer extends BaseRenderer {
      * Create a GenericModelRenderer with default subsystems.
      */
     public GenericModelRenderer() {
+        this(new FaceTextureManager());
+    }
+
+    /**
+     * Create a GenericModelRenderer with a specific FaceTextureManager.
+     * Convenience constructor for dependency injection of the texture manager.
+     */
+    private GenericModelRenderer(FaceTextureManager faceTextureManager) {
         this(
             new VertexDataManager(),
             new UniqueVertexMapper(),
@@ -86,10 +97,11 @@ public class GenericModelRenderer extends BaseRenderer {
             new TriangleFaceMapper(),
             new SubdivisionProcessor(),
             new GeometryDataBuilder(),
-            new UVCoordinateGenerator(),
+            new PerFaceUVCoordinateGenerator(faceTextureManager),
             new ModelStateManager(),
             new GMRFaceExtractor(),
-            new GMREdgeExtractor()
+            new GMREdgeExtractor(),
+            faceTextureManager
         );
     }
 
@@ -106,7 +118,8 @@ public class GenericModelRenderer extends BaseRenderer {
             IUVCoordinateGenerator uvGenerator,
             IModelStateManager stateManager,
             GMRFaceExtractor faceExtractor,
-            GMREdgeExtractor edgeExtractor) {
+            GMREdgeExtractor edgeExtractor,
+            FaceTextureManager faceTextureManager) {
         this.vertexManager = vertexManager;
         this.uniqueMapper = uniqueMapper;
         this.changeNotifier = changeNotifier;
@@ -117,6 +130,7 @@ public class GenericModelRenderer extends BaseRenderer {
         this.stateManager = stateManager;
         this.faceExtractor = faceExtractor;
         this.edgeExtractor = edgeExtractor;
+        this.faceTextureManager = faceTextureManager != null ? faceTextureManager : new FaceTextureManager();
         logger.debug("GenericModelRenderer created with subsystems");
     }
 
@@ -139,54 +153,26 @@ public class GenericModelRenderer extends BaseRenderer {
     // Provide explicit mesh data via loadMeshData().
 
     /**
-     * Set UV mapping mode and update texture coordinates for existing geometry.
-     * This preserves geometry modifications (vertex positions) while updating texture coordinates.
-     * Works best with unsubdivided 24-vertex cubes; subdivided meshes use approximation.
+     * Set UV mapping mode.
      *
-     * Note: This only works if geometry is already loaded. For new models, provide
-     * mesh data with the correct UV mode via loadMeshData().
-     *
-     * @param uvMode The new UV mode
+     * @param uvMode The UV mode (ignored — per-face UV is the only mode going forward)
+     * @deprecated Per-face UV is the only mode. Use {@link #getFaceTextureManager()} for
+     *             per-face texture assignment. This method is a no-op retained for API compatibility.
      */
+    @Deprecated
     public void setUVMode(UVMode uvMode) {
-        if (uvMode == null || uvMode == stateManager.getUVMode()) {
-            return;
+        logger.debug("setUVMode({}) called — ignored, per-face UV is the only mode", uvMode);
+        if (uvMode != null) {
+            stateManager.setUVMode(uvMode);
         }
-
-        logger.info("Updating UV mode from {} to {} (preserving geometry)", stateManager.getUVMode(), uvMode);
-        stateManager.setUVMode(uvMode);
-
-        float[] vertices = vertexManager.getVertices();
-        float[] texCoords = vertexManager.getTexCoords();
-
-        if (vertices == null || texCoords == null) {
-            logger.warn("Cannot update UVs: no vertex data");
-            return;
-        }
-
-        int currentVertexCount = vertices.length / 3;
-
-        // Generate new UV coordinates based on the UV mode
-        float[] newTexCoords = uvGenerator.generateUVs(uvMode, currentVertexCount);
-
-        // Update texture coordinates in vertex manager
-        for (int i = 0; i < currentVertexCount && i * 2 + 1 < newTexCoords.length; i++) {
-            vertexManager.setTexCoordDirect(i, newTexCoords[i * 2], newTexCoords[i * 2 + 1]);
-        }
-
-        // Update GPU buffers
-        if (initialized) {
-            float[] updatedTexCoords = vertexManager.getTexCoords();
-            float[] interleavedData = geometryBuilder.buildInterleavedData(vertices, updatedTexCoords);
-            updateVBO(interleavedData);
-        }
-
-        logger.info("UV mode updated to {} for {} vertices", uvMode, currentVertexCount);
     }
 
     /**
      * Get the current UV mode.
+     *
+     * @deprecated Per-face UV is the only mode. Use {@link #getFaceTextureManager()} instead.
      */
+    @Deprecated
     public UVMode getUVMode() {
         return stateManager.getUVMode();
     }
@@ -586,7 +572,7 @@ public class GenericModelRenderer extends BaseRenderer {
 
         EdgeInsertionProcessor processor = new EdgeInsertionProcessor();
         EdgeInsertionProcessor.InsertionResult result = processor.insertEdge(
-            uniqueVertexA, uniqueVertexB, topology, vertexManager, faceMapper);
+            uniqueVertexA, uniqueVertexB, topology, vertexManager, faceMapper, faceTextureManager);
 
         if (!result.success()) {
             logger.warn("Edge insertion failed: {}", result.errorMessage());
@@ -643,7 +629,7 @@ public class GenericModelRenderer extends BaseRenderer {
 
         FaceDeletionProcessor processor = new FaceDeletionProcessor();
         FaceDeletionProcessor.FaceDeletionResult result = processor.deleteFace(
-            faceId, topology, vertexManager, faceMapper);
+            faceId, topology, vertexManager, faceMapper, faceTextureManager);
 
         if (!result.success()) {
             logger.warn("Face deletion failed: {}", result.errorMessage());
@@ -681,7 +667,7 @@ public class GenericModelRenderer extends BaseRenderer {
     // =========================================================================
 
     /**
-     * Create a new face from selected unique vertices.
+     * Create a new face from selected unique vertices using the default material.
      * Vertices must be in the desired winding order (selection order controls normals).
      * No new vertices are created — only the index array and face mapping grow.
      *
@@ -689,6 +675,19 @@ public class GenericModelRenderer extends BaseRenderer {
      * @return true if the face was created successfully
      */
     public boolean createFaceFromVertices(int[] selectedUniqueVertices) {
+        return createFaceFromVertices(selectedUniqueVertices, MaterialDefinition.DEFAULT.materialId());
+    }
+
+    /**
+     * Create a new face from selected unique vertices with a specific material.
+     * Vertices must be in the desired winding order (selection order controls normals).
+     * No new vertices are created — only the index array and face mapping grow.
+     *
+     * @param selectedUniqueVertices Unique vertex indices forming the polygon, in winding order
+     * @param activeMaterialId       Material ID to assign to the new face
+     * @return true if the face was created successfully
+     */
+    public boolean createFaceFromVertices(int[] selectedUniqueVertices, int activeMaterialId) {
         if (!initialized) {
             logger.warn("Cannot create face: renderer not initialized");
             return false;
@@ -700,7 +699,8 @@ public class GenericModelRenderer extends BaseRenderer {
 
         FaceCreationProcessor processor = new FaceCreationProcessor();
         FaceCreationProcessor.FaceCreationResult result = processor.createFace(
-            selectedUniqueVertices, topology, vertexManager, faceMapper);
+            selectedUniqueVertices, topology, vertexManager, faceMapper,
+            faceTextureManager, activeMaterialId);
 
         if (!result.success()) {
             logger.warn("Face creation failed: {}", result.errorMessage());
@@ -744,6 +744,28 @@ public class GenericModelRenderer extends BaseRenderer {
     public void setTexture(int textureId) {
         this.textureId = textureId;
         this.useTexture = textureId > 0;
+    }
+
+    /**
+     * Assign a material to a specific face.
+     * Updates the face's texture mapping to use the full region of the specified material.
+     *
+     * @param faceId     Face identifier
+     * @param materialId Material to assign (must be registered with the FaceTextureManager)
+     */
+    public void setFaceMaterial(int faceId, int materialId) {
+        faceTextureManager.assignDefaultMapping(faceId, materialId);
+    }
+
+    /**
+     * Get the face texture manager for direct per-face UV control.
+     * Provides access to material registration, face mapping queries, and
+     * programmatic UV assignment.
+     *
+     * @return The face texture manager owned by this renderer
+     */
+    public FaceTextureManager getFaceTextureManager() {
+        return faceTextureManager;
     }
 
     // =========================================================================

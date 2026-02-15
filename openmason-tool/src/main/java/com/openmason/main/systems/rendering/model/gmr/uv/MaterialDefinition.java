@@ -108,7 +108,7 @@ public record MaterialDefinition(
         /**
          * Convenience factory for an emissive material with no tint.
          */
-        public static MaterialProperties emissive() {
+        public static MaterialProperties withEmissive() {
             return new MaterialProperties(true, 0xFFFFFFFF);
         }
 

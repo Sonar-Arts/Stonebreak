@@ -56,17 +56,19 @@ public final class FaceDeletionProcessor {
     /**
      * Delete a face from the mesh by removing all its triangles from the index array.
      *
-     * @param targetFaceId   Face ID to delete
-     * @param topology       Current mesh topology for validation and adjacency queries
-     * @param vertexManager  Vertex data manager for index array access
-     * @param faceMapper     Face mapper for triangle-to-face ID lookups
+     * @param targetFaceId      Face ID to delete
+     * @param topology          Current mesh topology for validation and adjacency queries
+     * @param vertexManager     Vertex data manager for index array access
+     * @param faceMapper        Face mapper for triangle-to-face ID lookups
+     * @param faceTextureManager Face texture manager for UV cleanup (nullable)
      * @return FaceDeletionResult with updated indices and face mapping
      */
     public FaceDeletionResult deleteFace(
             int targetFaceId,
             MeshTopology topology,
             IVertexDataManager vertexManager,
-            ITriangleFaceMapper faceMapper) {
+            ITriangleFaceMapper faceMapper,
+            IFaceTextureManager faceTextureManager) {
 
         if (topology == null) {
             return FaceDeletionResult.failure("Topology not available");
@@ -118,6 +120,11 @@ public final class FaceDeletionProcessor {
 
         int[] newIndicesArray = newIndices.stream().mapToInt(Integer::intValue).toArray();
         int[] newFaceIdArray = newFaceIds.stream().mapToInt(Integer::intValue).toArray();
+
+        // Remove the deleted face's UV mapping
+        if (faceTextureManager != null) {
+            faceTextureManager.removeFaceMapping(targetFaceId);
+        }
 
         logger.info("Face deletion complete: face {} removed, {} -> {} triangles, face ID upper bound {}",
             targetFaceId, oldTriangleCount, newIndicesArray.length / 3, newFaceCount);

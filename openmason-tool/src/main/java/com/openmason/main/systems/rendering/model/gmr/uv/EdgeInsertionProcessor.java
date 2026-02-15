@@ -52,18 +52,20 @@ public final class EdgeInsertionProcessor {
      * Insert an edge between two unique vertices, splitting all shared faces
      * where the vertices are non-adjacent.
      *
-     * @param uniqueVertexA  First unique vertex index
-     * @param uniqueVertexB  Second unique vertex index
-     * @param topology       Current mesh topology for adjacency queries
-     * @param vertexManager  Vertex data manager for index array access
-     * @param faceMapper     Face mapper for triangle-to-face ID lookups
+     * @param uniqueVertexA     First unique vertex index
+     * @param uniqueVertexB     Second unique vertex index
+     * @param topology          Current mesh topology for adjacency queries
+     * @param vertexManager     Vertex data manager for index array access
+     * @param faceMapper        Face mapper for triangle-to-face ID lookups
+     * @param faceTextureManager Face texture manager for UV propagation (nullable)
      * @return InsertionResult with updated indices and face mapping
      */
     public InsertionResult insertEdge(
             int uniqueVertexA, int uniqueVertexB,
             MeshTopology topology,
             IVertexDataManager vertexManager,
-            ITriangleFaceMapper faceMapper) {
+            ITriangleFaceMapper faceMapper,
+            IFaceTextureManager faceTextureManager) {
 
         if (topology == null) {
             return InsertionResult.failure("Topology not available");
@@ -217,6 +219,15 @@ public final class EdgeInsertionProcessor {
             int newFaceIdForB = nextFaceId++;
             fanTriangulate(subPolyB, uniqueToMeshForFace, newFaceIdForB, newIndices, newFaceIds);
 
+            // Propagate UV data from parent face to both children
+            if (faceTextureManager != null) {
+                SplitUVParams splitParams = computeSplitUVParams(
+                    uniqueVertexA, uniqueVertexB, polyUniqueVerts, topology, vertexManager);
+                faceTextureManager.propagateSplitUV(
+                    faceId, faceId, newFaceIdForB,
+                    splitParams.t(), splitParams.horizontal());
+            }
+
             logger.debug("Split face {} ({}-gon) into face {} ({}-gon) and face {} ({}-gon)",
                 faceId, polyLen, faceId, subPolyA.size(), newFaceIdForB, subPolyB.size());
         }
@@ -265,6 +276,98 @@ public final class EdgeInsertionProcessor {
             }
         }
         return meshIndices.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    /**
+     * Parameters for UV propagation during a face split.
+     *
+     * @param t          Parametric split position (0..1) along the perpendicular axis
+     * @param horizontal true if the split edge runs along V (dividing the U range)
+     */
+    private record SplitUVParams(float t, boolean horizontal) {}
+
+    /**
+     * Compute the parametric split position and axis orientation for UV propagation.
+     *
+     * <p>Projects the split edge onto the face's dominant 2D plane (using the same
+     * axis selection as {@link PerFaceUVCoordinateGenerator}) and determines:
+     * <ul>
+     *   <li>{@code t}: where the edge midpoint falls along the perpendicular axis (0..1)</li>
+     *   <li>{@code horizontal}: whether the edge runs along V (splitting U) or along U (splitting V)</li>
+     * </ul>
+     */
+    private SplitUVParams computeSplitUVParams(
+            int uniqueVertexA, int uniqueVertexB,
+            int[] polyUniqueVerts,
+            MeshTopology topology,
+            IVertexDataManager vertexManager) {
+
+        float[] vertices = vertexManager.getVertices();
+
+        // Get positions of the split edge vertices
+        int meshA = topology.getMeshIndicesForUniqueVertex(uniqueVertexA)[0];
+        int meshB = topology.getMeshIndicesForUniqueVertex(uniqueVertexB)[0];
+        float ax = vertices[meshA * 3], ay = vertices[meshA * 3 + 1], az = vertices[meshA * 3 + 2];
+        float bx = vertices[meshB * 3], by = vertices[meshB * 3 + 1], bz = vertices[meshB * 3 + 2];
+
+        // Compute face normal from first 3 polygon vertices
+        int m0 = topology.getMeshIndicesForUniqueVertex(polyUniqueVerts[0])[0];
+        int m1 = topology.getMeshIndicesForUniqueVertex(polyUniqueVerts[1])[0];
+        int m2 = topology.getMeshIndicesForUniqueVertex(polyUniqueVerts[2])[0];
+
+        float e1x = vertices[m1 * 3]     - vertices[m0 * 3];
+        float e1y = vertices[m1 * 3 + 1] - vertices[m0 * 3 + 1];
+        float e1z = vertices[m1 * 3 + 2] - vertices[m0 * 3 + 2];
+        float e2x = vertices[m2 * 3]     - vertices[m0 * 3];
+        float e2y = vertices[m2 * 3 + 1] - vertices[m0 * 3 + 1];
+        float e2z = vertices[m2 * 3 + 2] - vertices[m0 * 3 + 2];
+
+        float nx = e1y * e2z - e1z * e2y;
+        float ny = e1z * e2x - e1x * e2z;
+        float nz = e1x * e2y - e1y * e2x;
+
+        float absNx = Math.abs(nx), absNy = Math.abs(ny), absNz = Math.abs(nz);
+
+        // Determine U and V projection axes (mirrors PerFaceUVCoordinateGenerator logic)
+        int uAxis = (absNx >= absNy && absNx >= absNz) ? 1 : 0;
+        int vAxis = (absNz >= absNx && absNz >= absNy) ? 1 : 2;
+
+        // Compute face bounds along projection axes
+        float minU = Float.MAX_VALUE, maxU = -Float.MAX_VALUE;
+        float minV = Float.MAX_VALUE, maxV = -Float.MAX_VALUE;
+        for (int uv : polyUniqueVerts) {
+            int mi = topology.getMeshIndicesForUniqueVertex(uv)[0];
+            float u = vertices[mi * 3 + uAxis];
+            float v = vertices[mi * 3 + vAxis];
+            minU = Math.min(minU, u);
+            maxU = Math.max(maxU, u);
+            minV = Math.min(minV, v);
+            maxV = Math.max(maxV, v);
+        }
+
+        // Project split edge onto UV axes to determine dominant direction
+        float[] posA = {ax, ay, az};
+        float[] posB = {bx, by, bz};
+        float edgeU = Math.abs(posB[uAxis] - posA[uAxis]);
+        float edgeV = Math.abs(posB[vAxis] - posA[vAxis]);
+
+        // Edge runs along V → horizontal split (divides U range); else vertical
+        boolean horizontal = (edgeV >= edgeU);
+
+        // Compute t: edge midpoint's parametric position along the perpendicular axis
+        float rangeU = maxU - minU;
+        float rangeV = maxV - minV;
+
+        float t;
+        if (horizontal) {
+            float edgeMidU = (posA[uAxis] + posB[uAxis]) / 2.0f;
+            t = (rangeU > 0.0001f) ? (edgeMidU - minU) / rangeU : 0.5f;
+        } else {
+            float edgeMidV = (posA[vAxis] + posB[vAxis]) / 2.0f;
+            t = (rangeV > 0.0001f) ? (edgeMidV - minV) / rangeV : 0.5f;
+        }
+
+        return new SplitUVParams(Math.clamp(t, 0.0f, 1.0f), horizontal);
     }
 
     /**

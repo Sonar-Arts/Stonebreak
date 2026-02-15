@@ -68,13 +68,17 @@ public final class FaceCreationProcessor {
      * @param topology               Current mesh topology for vertex resolution
      * @param vertexManager          Vertex data manager for index array access
      * @param faceMapper             Face mapper for triangle-to-face ID lookups
+     * @param faceTextureManager     Face texture manager for default UV assignment (nullable)
+     * @param activeMaterialId       Material ID to assign to the new face (from UI selection)
      * @return FaceCreationResult with updated indices and face mapping
      */
     public FaceCreationResult createFace(
             int[] selectedUniqueVertices,
             MeshTopology topology,
             IVertexDataManager vertexManager,
-            ITriangleFaceMapper faceMapper) {
+            ITriangleFaceMapper faceMapper,
+            IFaceTextureManager faceTextureManager,
+            int activeMaterialId) {
 
         // --- Validate inputs ---
         if (topology == null) {
@@ -151,6 +155,11 @@ public final class FaceCreationProcessor {
         }
 
         int newFaceCount = newFaceId + 1;
+
+        // Assign default UV mapping to the newly created face
+        if (faceTextureManager != null) {
+            faceTextureManager.assignDefaultMapping(newFaceId, activeMaterialId);
+        }
 
         logger.info("Face creation complete: face {} created from {} vertices, "
                 + "{} -> {} triangles, face ID upper bound {}",

@@ -145,9 +145,10 @@ public final class FaceTextureManager implements IFaceTextureManager {
         FaceTextureMapping childB = FaceTextureMapping.fromParentSplit(
             childFaceIdB, parentMapping, clampedT, 1.0f, horizontal);
 
+        // Remove parent first to handle childFaceIdA == parentFaceId (edge insertion reuses parent ID)
+        faceMappings.remove(parentFaceId);
         faceMappings.put(childFaceIdA, childA);
         faceMappings.put(childFaceIdB, childB);
-        faceMappings.remove(parentFaceId);
 
         logger.debug("Split UV: parent face {} → child A {} [0..{}], child B {} [{}..1] ({})",
             parentFaceId, childFaceIdA, clampedT, childFaceIdB, clampedT,
