@@ -22,10 +22,7 @@ import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import org.joml.Vector3f;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL13.*;
@@ -788,6 +785,11 @@ public class GenericModelRenderer extends BaseRenderer {
      * Regenerate UV coordinates for faces with non-default materials and upload to GPU.
      * Preserves existing UVs for default-material faces so the global texture continues
      * to render correctly on faces that were not explicitly assigned a material.
+     *
+     * <p>Before generating UVs, duplicates any mesh vertices shared between faces
+     * with different materials. This prevents UV coordinate conflicts where the
+     * per-face UV generator would overwrite a shared vertex's UV with values
+     * appropriate for only one of the faces.
      */
     private void regenerateUVsAndUpload() {
         float[] vertices = vertexManager.getVertices();
@@ -797,11 +799,24 @@ public class GenericModelRenderer extends BaseRenderer {
             return;
         }
 
-        // Generate per-face UVs (correct UVs for faces with explicit material mappings)
+        // Duplicate shared vertices at material boundaries to avoid UV conflicts
+        boolean verticesDuplicated = duplicateSharedUVSeamVertices();
+        if (verticesDuplicated) {
+            vertices = vertexManager.getVertices();
+            indices = vertexManager.getIndices();
+            existingTexCoords = vertexManager.getTexCoords();
+            vertexCount = vertices.length / 3;
+
+            // Rebuild topology so subsequent operations see the duplicated vertices
+            uniqueMapper.buildMapping(vertices);
+            this.topology = MeshTopologyBuilder.build(vertices, indices, faceMapper, uniqueMapper);
+        }
+
+        // Generate per-face UVs (conflict-free after vertex duplication)
         float[] generatedTexCoords = uvGenerator.generatePerFaceUVs(vertices, indices, faceMapper);
 
-        // Merge: only apply generated UVs to faces with non-default materials;
-        // preserve existing UVs for default-material faces
+        // Merge: apply generated UVs to faces with non-default materials or
+        // split sub-regions; preserve existing UVs for unsplit default-material faces
         float[] finalTexCoords;
         if (existingTexCoords != null && existingTexCoords.length == generatedTexCoords.length) {
             finalTexCoords = existingTexCoords.clone();
@@ -810,7 +825,9 @@ public class GenericModelRenderer extends BaseRenderer {
                 int faceId = faceMapper.getOriginalFaceIdForTriangle(t);
                 if (faceId < 0) continue;
                 FaceTextureMapping mapping = faceTextureManager.getFaceMapping(faceId);
-                if (mapping != null && mapping.materialId() != MaterialDefinition.DEFAULT.materialId()) {
+                if (mapping != null
+                    && (mapping.materialId() != MaterialDefinition.DEFAULT.materialId()
+                        || !mapping.uvRegion().equals(FaceTextureMapping.FULL_REGION))) {
                     for (int v = 0; v < 3; v++) {
                         int idx = indices[t * 3 + v];
                         finalTexCoords[idx * 2] = generatedTexCoords[idx * 2];
@@ -828,6 +845,103 @@ public class GenericModelRenderer extends BaseRenderer {
             float[] interleavedData = geometryBuilder.buildInterleavedData(vertices, finalTexCoords);
             updateVBO(interleavedData);
         }
+    }
+
+    /**
+     * Duplicate mesh vertices shared between faces with different materials.
+     *
+     * <p>When an edge splits a face, both sub-faces reuse the same mesh vertices
+     * at the split edge. If the sub-faces are later assigned different materials,
+     * the per-face UV generator computes conflicting UV values for the shared
+     * vertices (each face normalizes within its own bounding box). Since UVs are
+     * stored per-vertex, only one face's UVs can win — the other face renders
+     * with incorrect UVs.
+     *
+     * <p>This method detects such conflicts and creates duplicate vertices so each
+     * face has independent UV coordinates. The duplication is idempotent: calling
+     * it again after vertices have already been split finds no conflicts.
+     *
+     * @return true if any vertices were duplicated (vertex/index data changed)
+     */
+    private boolean duplicateSharedUVSeamVertices() {
+        int[] indices = vertexManager.getIndices();
+        float[] vertices = vertexManager.getVertices();
+        if (indices == null || vertices == null) {
+            return false;
+        }
+
+        int triangleCount = indices.length / 3;
+
+        // Map: mesh vertex index → { materialId → list of (triangle, localVertex) references }
+        Map<Integer, Map<Integer, List<int[]>>> vertexMaterialRefs = new HashMap<>();
+
+        for (int t = 0; t < triangleCount; t++) {
+            int faceId = faceMapper.getOriginalFaceIdForTriangle(t);
+            if (faceId < 0) continue;
+
+            FaceTextureMapping mapping = faceTextureManager.getFaceMapping(faceId);
+            int materialId = (mapping != null) ? mapping.materialId() : MaterialDefinition.DEFAULT.materialId();
+
+            for (int v = 0; v < 3; v++) {
+                int meshIdx = indices[t * 3 + v];
+                vertexMaterialRefs
+                    .computeIfAbsent(meshIdx, k -> new HashMap<>())
+                    .computeIfAbsent(materialId, k -> new ArrayList<>())
+                    .add(new int[]{t, v});
+            }
+        }
+
+        // Find vertices used by 2+ different materials (need duplication)
+        List<Map.Entry<Integer, Map<Integer, List<int[]>>>> conflicts = new ArrayList<>();
+        int additionalVertices = 0;
+        for (Map.Entry<Integer, Map<Integer, List<int[]>>> entry : vertexMaterialRefs.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                conflicts.add(entry);
+                additionalVertices += entry.getValue().size() - 1;
+            }
+        }
+
+        if (conflicts.isEmpty()) {
+            return false;
+        }
+
+        // Expand vertex arrays to accommodate duplicates
+        int currentVertexCount = vertices.length / 3;
+        vertexManager.expandVertexArrays(additionalVertices);
+        vertices = vertexManager.getVertices();
+
+        // Clone indices for modification
+        int[] newIndices = indices.clone();
+        int nextNewVertex = currentVertexCount;
+
+        for (Map.Entry<Integer, Map<Integer, List<int[]>>> conflict : conflicts) {
+            int originalIdx = conflict.getKey();
+            boolean first = true;
+
+            for (Map.Entry<Integer, List<int[]>> materialEntry : conflict.getValue().entrySet()) {
+                if (first) {
+                    first = false;
+                    continue; // First material keeps the original vertex
+                }
+
+                // Create duplicate vertex at the same position
+                int newIdx = nextNewVertex++;
+                vertices[newIdx * 3] = vertices[originalIdx * 3];
+                vertices[newIdx * 3 + 1] = vertices[originalIdx * 3 + 1];
+                vertices[newIdx * 3 + 2] = vertices[originalIdx * 3 + 2];
+
+                // Remap this material's triangle references to the new vertex
+                for (int[] triRef : materialEntry.getValue()) {
+                    newIndices[triRef[0] * 3 + triRef[1]] = newIdx;
+                }
+            }
+        }
+
+        vertexManager.setIndices(newIndices);
+
+        logger.debug("Duplicated {} vertices at {} material boundary seams",
+            additionalVertices, conflicts.size());
+        return true;
     }
 
     /**
