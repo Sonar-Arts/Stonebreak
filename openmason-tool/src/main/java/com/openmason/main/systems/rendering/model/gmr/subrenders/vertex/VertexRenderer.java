@@ -198,7 +198,7 @@ public class VertexRenderer implements MeshChangeListener {
 
                 // Determine color based on state (selected > modified > default)
                 Vector3f color;
-                if (i == selectedVertexIndex) {
+                if (selectedVertexIndices.contains(i)) {
                     color = selectedVertexColor; // White for selected
                 } else if (modifiedVertices.contains(i)) {
                     color = modifiedVertexColor; // Yellow for modified
@@ -513,6 +513,36 @@ public class VertexRenderer implements MeshChangeListener {
     }
 
     /**
+     * Update the color portion of the VBO for a specific vertex.
+     * Determines correct color based on current selection and modification state.
+     * Used to keep VBO colors in sync when selection state changes.
+     *
+     * @param index The unique vertex index to update
+     */
+    private void updateVertexColorInBuffer(int index) {
+        if (!initialized || index < 0 || index >= vertexCount) {
+            return;
+        }
+
+        Vector3f color;
+        if (selectedVertexIndices.contains(index)) {
+            color = selectedVertexColor;
+        } else if (modifiedVertices.contains(index)) {
+            color = modifiedVertexColor;
+        } else {
+            color = defaultVertexColor;
+        }
+
+        // Color starts at offset 3 within each vertex's 6-float block
+        int bufferOffset = (index * 6 + 3) * Float.BYTES;
+        float[] colorData = new float[] { color.x, color.y, color.z };
+
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferSubData(GL_ARRAY_BUFFER, bufferOffset, colorData);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    /**
      * Set the selected vertex index (single selection - replaces any existing selection).
      * @param index Vertex index to select, or -1 to clear selection
      */
@@ -522,12 +552,27 @@ public class VertexRenderer implements MeshChangeListener {
             return;
         }
 
+        // Capture previously selected indices before clearing
+        Set<Integer> previouslySelected = new HashSet<>(selectedVertexIndices);
+
         // Clear existing and set new single selection
         selectedVertexIndices.clear();
         if (index >= 0) {
             selectedVertexIndices.add(index);
         }
         selectedVertexIndex = index;
+
+        // Update VBO colors for deselected vertices (revert to default/modified)
+        for (int prev : previouslySelected) {
+            if (!selectedVertexIndices.contains(prev)) {
+                updateVertexColorInBuffer(prev);
+            }
+        }
+        // Update VBO color for newly selected vertex
+        if (index >= 0 && !previouslySelected.contains(index)) {
+            updateVertexColorInBuffer(index);
+        }
+
         logger.debug("Selected vertex set to: {}", index);
     }
 
@@ -536,6 +581,9 @@ public class VertexRenderer implements MeshChangeListener {
      * @param indices Set of vertex indices to select
      */
     public void updateSelectionSet(Set<Integer> indices) {
+        // Capture previously selected indices before clearing
+        Set<Integer> previouslySelected = new HashSet<>(selectedVertexIndices);
+
         selectedVertexIndices.clear();
         if (indices != null) {
             for (Integer index : indices) {
@@ -546,6 +594,14 @@ public class VertexRenderer implements MeshChangeListener {
         }
         // Update backward compat field
         selectedVertexIndex = selectedVertexIndices.isEmpty() ? -1 : selectedVertexIndices.iterator().next();
+
+        // Update VBO colors for all affected vertices
+        Set<Integer> allAffected = new HashSet<>(previouslySelected);
+        allAffected.addAll(selectedVertexIndices);
+        for (int idx : allAffected) {
+            updateVertexColorInBuffer(idx);
+        }
+
         logger.debug("Updated vertex selection set: {} vertices", selectedVertexIndices.size());
     }
 
@@ -578,8 +634,17 @@ public class VertexRenderer implements MeshChangeListener {
      * Clear the current selection.
      */
     public void clearSelection() {
+        // Capture previously selected indices before clearing
+        Set<Integer> previouslySelected = new HashSet<>(selectedVertexIndices);
+
         selectedVertexIndices.clear();
         selectedVertexIndex = -1;
+
+        // Update VBO colors for previously selected vertices back to default
+        for (int index : previouslySelected) {
+            updateVertexColorInBuffer(index);
+        }
+
         logger.debug("Vertex selection cleared");
     }
 
@@ -827,9 +892,9 @@ public class VertexRenderer implements MeshChangeListener {
             vertexData[dataIndex + 1] = vertexPositions[posIndex + 1];
             vertexData[dataIndex + 2] = vertexPositions[posIndex + 2];
 
-            // Determine color based on state
+            // Determine color based on state (use Set for multi-select consistency)
             Vector3f color;
-            if (i == selectedVertexIndex) {
+            if (selectedVertexIndices.contains(i)) {
                 color = selectedVertexColor;
             } else if (modifiedVertices.contains(i)) {
                 color = modifiedVertexColor;
