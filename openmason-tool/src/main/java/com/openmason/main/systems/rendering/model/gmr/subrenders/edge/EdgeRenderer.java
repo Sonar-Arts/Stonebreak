@@ -68,6 +68,13 @@ public class EdgeRenderer implements MeshChangeListener {
     /** Default line width for edge rendering in pixels. */
     private static final float DEFAULT_LINE_WIDTH = 1.5f;
 
+    /**
+     * Depth range far value for edge rendering.
+     * Slightly less than 1.0 to bias edges toward the camera, preventing z-fighting
+     * when edges are coplanar with face geometry (e.g., knife cut edges on a flat surface).
+     */
+    private static final double EDGE_DEPTH_RANGE_FAR = 0.999;
+
     /** Normal intensity for edge rendering. */
     private static final float NORMAL_INTENSITY = 1.0f;
 
@@ -336,10 +343,11 @@ public class EdgeRenderer implements MeshChangeListener {
             shader.setMat4("uMVPMatrix", mvpMatrix);
             shader.setFloat("uIntensity", NORMAL_INTENSITY);
 
-            // Configure OpenGL state
+            // Configure OpenGL state — depth range bias prevents z-fighting on coplanar cut edges
             glLineWidth(lineWidth);
             int prevDepthFunc = glGetInteger(GL_DEPTH_FUNC);
             glDepthFunc(GL_LEQUAL);
+            glDepthRange(0.0, EDGE_DEPTH_RANGE_FAR);
             glBindVertexArray(vao);
 
             // Build index lists for batched rendering
@@ -380,6 +388,7 @@ public class EdgeRenderer implements MeshChangeListener {
 
             // Cleanup state
             glBindVertexArray(0);
+            glDepthRange(0.0, 1.0);
             glDepthFunc(prevDepthFunc);
 
         } catch (Exception e) {
