@@ -557,6 +557,8 @@ public class ViewportController {
 
     public ViewportCamera getCamera() { return viewportCamera; }
     public ViewportInputHandler getInputHandler() { return inputHandler; }
+    public FaceSelectionState getFaceSelectionState() { return faceSelectionState; }
+    public GenericModelRenderer getModelRenderer() { return modelRenderer; }
 
     /**
      * Toggle the knife tool from keybind (K key).

@@ -1,7 +1,10 @@
 package com.openmason.main.systems.menus.panes.propertyPane.adapters;
 
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
+import com.openmason.main.systems.viewport.state.EditModeManager;
+import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.ViewportController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,5 +137,34 @@ public class ViewportAdapter implements IViewportConnector {
         if (viewport != null) {
             viewport.resetModelTransform();
         }
+    }
+
+    @Override
+    public FaceSelectionState getFaceSelectionState() {
+        return viewport != null ? viewport.getFaceSelectionState() : null;
+    }
+
+    @Override
+    public FaceTextureManager getFaceTextureManager() {
+        if (viewport != null) {
+            var renderer = viewport.getModelRenderer();
+            return renderer != null ? renderer.getFaceTextureManager() : null;
+        }
+        return null;
+    }
+
+    @Override
+    public void setFaceTexture(int faceId, int materialId) {
+        if (viewport != null) {
+            var renderer = viewport.getModelRenderer();
+            if (renderer != null) {
+                renderer.setFaceMaterial(faceId, materialId);
+            }
+        }
+    }
+
+    @Override
+    public boolean isInFaceEditMode() {
+        return EditModeManager.getInstance().isFaceEditingAllowed();
     }
 }

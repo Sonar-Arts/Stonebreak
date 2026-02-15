@@ -6,6 +6,7 @@ import com.openmason.main.systems.menus.panes.propertyPane.adapters.ViewportAdap
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IThemeContext;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.ITransformState;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
+import com.openmason.main.systems.menus.panes.propertyPane.sections.FaceMaterialSection;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.TextureChooserSection;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.TextureVariantSection;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.TransformSection;
@@ -35,6 +36,7 @@ public class PropertyPanelImGui {
     // Section components (composition)
     private final TextureVariantSection textureVariantSection;  // For BROWSER models
     private final TextureChooserSection textureChooserSection;  // For NEW and OMO_FILE models
+    private final FaceMaterialSection faceMaterialSection;      // For per-face material assignment
     private final TransformSection transformSection;
 
     // State
@@ -55,6 +57,7 @@ public class PropertyPanelImGui {
         // Initialize sections (composition)
         this.textureVariantSection = new TextureVariantSection();  // For BROWSER models
         this.textureChooserSection = new TextureChooserSection(fileDialogService, modelState);  // For editable models
+        this.faceMaterialSection = new FaceMaterialSection(fileDialogService);  // Per-face material assignment
         this.transformSection = new TransformSection(transformState);
 
         // Configure section callbacks
@@ -133,6 +136,7 @@ public class PropertyPanelImGui {
             } else {
                 textureChooserSection.render();
             }
+            faceMaterialSection.render();
             ImGui.separator();
             transformSection.render();
 
@@ -158,6 +162,7 @@ public class PropertyPanelImGui {
 
         // Update sections with viewport connector
         transformSection.setViewportConnector(viewportConnector);
+        faceMaterialSection.setViewportConnector(viewportConnector);
     }
 
     /**

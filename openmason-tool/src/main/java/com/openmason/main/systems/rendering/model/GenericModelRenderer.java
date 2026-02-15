@@ -22,9 +22,13 @@ import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL13.*;
 import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.opengl.GL20.*;
 
@@ -74,6 +78,11 @@ public class GenericModelRenderer extends BaseRenderer {
 
     // Topology index for O(1) adjacency queries
     private MeshTopology topology;
+
+    // Per-face material draw batches for multi-texture rendering
+    private record MaterialDrawBatch(int textureId, int indexOffset, int indexCount) {}
+    private List<MaterialDrawBatch> drawBatches = List.of();
+    private boolean drawBatchesDirty = true;
 
     // Cached identity matrix to avoid per-frame allocation in setUniforms
     private static final org.joml.Matrix4f IDENTITY_MATRIX = new org.joml.Matrix4f();
@@ -471,6 +480,7 @@ public class GenericModelRenderer extends BaseRenderer {
             vertexManager.getVertices(), vertexManager.getTexCoords());
         updateVBO(interleavedData);
         updateEBO(result.newIndices());
+        drawBatchesDirty = true;
 
         // Rebuild unique vertex mapping
         uniqueMapper.buildMapping(vertexManager.getVertices());
@@ -526,6 +536,7 @@ public class GenericModelRenderer extends BaseRenderer {
             vertexManager.getVertices(), vertexManager.getTexCoords());
         updateVBO(interleavedData);
         updateEBO(result.newIndices());
+        drawBatchesDirty = true;
 
         // Rebuild unique vertex mapping
         uniqueMapper.buildMapping(vertexManager.getVertices());
@@ -586,6 +597,7 @@ public class GenericModelRenderer extends BaseRenderer {
 
         // Rebuild GPU buffers (VBO unchanged — no new vertices; EBO updated)
         updateEBO(result.newIndices());
+        drawBatchesDirty = true;
 
         // Rebuild unique vertex mapping (vertex array unchanged, but rebuild for consistency)
         uniqueMapper.buildMapping(vertexManager.getVertices());
@@ -643,6 +655,7 @@ public class GenericModelRenderer extends BaseRenderer {
 
         // Rebuild GPU buffers (VBO unchanged — no vertices removed; EBO updated)
         updateEBO(result.newIndices());
+        drawBatchesDirty = true;
 
         // Rebuild unique vertex mapping (vertex array unchanged, but rebuild for consistency)
         uniqueMapper.buildMapping(vertexManager.getVertices());
@@ -714,6 +727,7 @@ public class GenericModelRenderer extends BaseRenderer {
 
         // Rebuild GPU buffers (VBO unchanged — no new vertices; EBO updated)
         updateEBO(result.newIndices());
+        drawBatchesDirty = true;
 
         // Rebuild unique vertex mapping (vertex array unchanged, but rebuild for consistency)
         uniqueMapper.buildMapping(vertexManager.getVertices());
@@ -755,6 +769,8 @@ public class GenericModelRenderer extends BaseRenderer {
      */
     public void setFaceMaterial(int faceId, int materialId) {
         faceTextureManager.assignDefaultMapping(faceId, materialId);
+        regenerateUVsAndUpload();
+        drawBatchesDirty = true;
     }
 
     /**
@@ -766,6 +782,142 @@ public class GenericModelRenderer extends BaseRenderer {
      */
     public FaceTextureManager getFaceTextureManager() {
         return faceTextureManager;
+    }
+
+    /**
+     * Regenerate UV coordinates for faces with non-default materials and upload to GPU.
+     * Preserves existing UVs for default-material faces so the global texture continues
+     * to render correctly on faces that were not explicitly assigned a material.
+     */
+    private void regenerateUVsAndUpload() {
+        float[] vertices = vertexManager.getVertices();
+        int[] indices = vertexManager.getIndices();
+        float[] existingTexCoords = vertexManager.getTexCoords();
+        if (vertices == null || indices == null) {
+            return;
+        }
+
+        // Generate per-face UVs (correct UVs for faces with explicit material mappings)
+        float[] generatedTexCoords = uvGenerator.generatePerFaceUVs(vertices, indices, faceMapper);
+
+        // Merge: only apply generated UVs to faces with non-default materials;
+        // preserve existing UVs for default-material faces
+        float[] finalTexCoords;
+        if (existingTexCoords != null && existingTexCoords.length == generatedTexCoords.length) {
+            finalTexCoords = existingTexCoords.clone();
+            int triangleCount = indices.length / 3;
+            for (int t = 0; t < triangleCount; t++) {
+                int faceId = faceMapper.getOriginalFaceIdForTriangle(t);
+                if (faceId < 0) continue;
+                FaceTextureMapping mapping = faceTextureManager.getFaceMapping(faceId);
+                if (mapping != null && mapping.materialId() != MaterialDefinition.DEFAULT.materialId()) {
+                    for (int v = 0; v < 3; v++) {
+                        int idx = indices[t * 3 + v];
+                        finalTexCoords[idx * 2] = generatedTexCoords[idx * 2];
+                        finalTexCoords[idx * 2 + 1] = generatedTexCoords[idx * 2 + 1];
+                    }
+                }
+            }
+        } else {
+            finalTexCoords = generatedTexCoords;
+        }
+
+        vertexManager.setData(vertices, finalTexCoords, indices);
+
+        if (initialized) {
+            float[] interleavedData = geometryBuilder.buildInterleavedData(vertices, finalTexCoords);
+            updateVBO(interleavedData);
+        }
+    }
+
+    /**
+     * Check if any face has a non-default material assigned.
+     * Used by {@link #doRender} to choose between fast single-texture path
+     * and multi-material batched rendering.
+     *
+     * @return true if at least one face has a custom material
+     */
+    private boolean hasCustomMaterials() {
+        for (FaceTextureMapping mapping : faceTextureManager.getAllMappings()) {
+            if (mapping.materialId() != MaterialDefinition.DEFAULT.materialId()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Rebuild draw batches by grouping triangles by their material's texture ID.
+     * Uploads a sorted index array to the EBO and creates batch descriptors
+     * for multi-texture rendering.
+     *
+     * <p>Triangles with no mapping or the default material use textureId 0,
+     * which is resolved to the global texture at draw time.
+     */
+    private void rebuildDrawBatches() {
+        int[] indices = vertexManager.getIndices();
+        if (indices == null || indices.length == 0) {
+            drawBatches = List.of();
+            drawBatchesDirty = false;
+            return;
+        }
+
+        int triangleCount = indices.length / 3;
+
+        // Group triangle indices by material texture ID
+        Map<Integer, List<int[]>> textureTriangles = new LinkedHashMap<>();
+
+        for (int t = 0; t < triangleCount; t++) {
+            int faceId = faceMapper.getOriginalFaceIdForTriangle(t);
+            int texId = 0;
+
+            if (faceId >= 0) {
+                FaceTextureMapping mapping = faceTextureManager.getFaceMapping(faceId);
+                if (mapping != null) {
+                    MaterialDefinition material = faceTextureManager.getMaterial(mapping.materialId());
+                    if (material != null && material.textureId() > 0) {
+                        texId = material.textureId();
+                    }
+                }
+            }
+
+            int base = t * 3;
+            textureTriangles.computeIfAbsent(texId, k -> new ArrayList<>())
+                    .add(new int[]{indices[base], indices[base + 1], indices[base + 2]});
+        }
+
+        // Build sorted index array and batch descriptors
+        int[] sortedIndices = new int[indices.length];
+        List<MaterialDrawBatch> batches = new ArrayList<>();
+        int offset = 0;
+
+        for (Map.Entry<Integer, List<int[]>> entry : textureTriangles.entrySet()) {
+            int texId = entry.getKey();
+            List<int[]> triangles = entry.getValue();
+            int batchIndexCount = triangles.size() * 3;
+
+            for (int[] tri : triangles) {
+                sortedIndices[offset] = tri[0];
+                sortedIndices[offset + 1] = tri[1];
+                sortedIndices[offset + 2] = tri[2];
+                offset += 3;
+            }
+
+            batches.add(new MaterialDrawBatch(texId, offset - batchIndexCount, batchIndexCount));
+        }
+
+        // Upload sorted indices directly to the EBO. This method is called from doRender()
+        // while the VAO is bound — must NOT call updateEBO() which unbinds the EBO
+        // (glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)) and would detach it from the active VAO.
+        // Topology queries must always use vertexManager, not the EBO.
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sortedIndices, GL_DYNAMIC_DRAW);
+
+        drawBatches = batches;
+        drawBatchesDirty = false;
+
+        logger.debug("Rebuilt draw batches: {} batch(es) from {} triangles",
+                batches.size(), triangleCount);
     }
 
     // =========================================================================
@@ -836,6 +988,7 @@ public class GenericModelRenderer extends BaseRenderer {
                 updateEBO(vertexManager.getIndices());
             }
         }
+        drawBatchesDirty = true;
 
         // Notify listeners
         changeNotifier.notifyTopologyRebuilt(topology);
@@ -948,21 +1101,45 @@ public class GenericModelRenderer extends BaseRenderer {
             return;
         }
 
-        // Bind texture if available
-        if (useTexture && textureId > 0) {
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, textureId);
-            shader.setBool("uUseTexture", true);
-            shader.setInt("uTexture", 0);
-        } else {
-            shader.setBool("uUseTexture", false);
+        // Fast path: no custom materials — single texture, one draw call
+        if (!hasCustomMaterials()) {
+            if (useTexture && textureId > 0) {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, textureId);
+                shader.setBool("uUseTexture", true);
+                shader.setInt("uTexture", 0);
+            } else {
+                shader.setBool("uUseTexture", false);
+            }
+
+            if (indexCount > 0 && ebo != 0) {
+                glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+            } else {
+                glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+            }
+            return;
         }
 
-        // Draw
-        if (indexCount > 0 && ebo != 0) {
-            glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
-        } else {
-            glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+        // Multi-material path: rebuild batches if dirty, then draw per batch
+        if (drawBatchesDirty) {
+            rebuildDrawBatches();
+        }
+
+        shader.setInt("uTexture", 0);
+
+        for (MaterialDrawBatch batch : drawBatches) {
+            int batchTextureId = batch.textureId() > 0 ? batch.textureId() : textureId;
+
+            if (batchTextureId > 0) {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, batchTextureId);
+                shader.setBool("uUseTexture", true);
+            } else {
+                shader.setBool("uUseTexture", false);
+            }
+
+            glDrawElements(GL_TRIANGLES, batch.indexCount(), GL_UNSIGNED_INT,
+                    (long) batch.indexOffset() * 4L);
         }
     }
 

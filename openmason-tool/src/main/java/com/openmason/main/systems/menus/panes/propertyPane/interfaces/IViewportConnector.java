@@ -1,6 +1,8 @@
 package com.openmason.main.systems.menus.panes.propertyPane.interfaces;
 
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
+import com.openmason.main.systems.viewport.state.FaceSelectionState;
 
 /**
  * Interface for viewport connection abstraction following SOLID principles.
@@ -130,4 +132,33 @@ public interface IViewportConnector {
      * Reset model transform to defaults.
      */
     void resetModelTransform();
+
+    /**
+     * Get the face selection state from the viewport.
+     *
+     * @return FaceSelectionState, or null if not connected
+     */
+    FaceSelectionState getFaceSelectionState();
+
+    /**
+     * Get the face texture manager from the viewport's model renderer.
+     *
+     * @return FaceTextureManager, or null if not connected
+     */
+    FaceTextureManager getFaceTextureManager();
+
+    /**
+     * Assign a material to a specific face via the model renderer.
+     *
+     * @param faceId     Face identifier
+     * @param materialId Material to assign
+     */
+    void setFaceTexture(int faceId, int materialId);
+
+    /**
+     * Check if the viewport is currently in face edit mode.
+     *
+     * @return true if face editing is allowed
+     */
+    boolean isInFaceEditMode();
 }
