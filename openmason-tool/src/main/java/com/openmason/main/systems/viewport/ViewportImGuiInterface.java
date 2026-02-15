@@ -82,7 +82,8 @@ public class ViewportImGuiInterface {
         com.openmason.main.systems.viewport.ViewportKeybindActions.registerAll(registry, actions, state);
 
         // Initialize view components
-        this.mainView = new ViewportMainView(state, actions, viewport3D, themeManager, preferencesManager);
+        this.mainView = new ViewportMainView(state, actions, viewport3D, themeManager, preferencesManager,
+                viewport3D.getKnifeSnapSettings());
         this.cameraControlsView = new CameraControlsView(state, actions);
         this.renderingOptionsView = new RenderingOptionsView(state, actions);
         this.transformControlsView = new TransformControlsView(state, actions, viewport3D);

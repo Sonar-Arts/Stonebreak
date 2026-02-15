@@ -23,6 +23,7 @@ import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.ViewportUIState;
+import com.openmason.main.systems.viewport.input.KnifeSnapSettings;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexTranslationHandler;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeTranslationHandler;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceTranslationHandler;
@@ -63,6 +64,9 @@ public class ViewportController {
     private final ItemRenderer itemRenderer;
     private final GenericModelRenderer modelRenderer;
 
+    // ========== Knife Snap ==========
+    private final KnifeSnapSettings knifeSnapSettings;
+
     // ========== Gizmo ==========
     private final GizmoState gizmoState;
     private final GizmoRenderer gizmoRenderer;
@@ -86,6 +90,8 @@ public class ViewportController {
         this.vertexSelectionState = new VertexSelectionState();
         this.edgeSelectionState = new com.openmason.main.systems.viewport.state.EdgeSelectionState();
         this.faceSelectionState = new FaceSelectionState();
+
+        this.knifeSnapSettings = new KnifeSnapSettings();
 
         this.gizmoState = new GizmoState();
         this.gizmoRenderer = new GizmoRenderer(gizmoState, transformState, viewportState);
@@ -207,6 +213,9 @@ public class ViewportController {
                 inputHandler.setKnifePreviewRenderer(viewportRenderPipeline.getKnifePreviewRenderer());
                 logger.debug("Knife preview renderer connected to input handler");
             }
+
+            // Connect knife snap settings for independent knife tool grid snapping
+            inputHandler.setKnifeSnapSettings(knifeSnapSettings);
 
             // Create translation handlers and coordinator
             if (viewportRenderPipeline.getVertexRenderer() != null && viewportRenderPipeline.getEdgeRenderer() != null &&
@@ -559,6 +568,7 @@ public class ViewportController {
     public ViewportInputHandler getInputHandler() { return inputHandler; }
     public FaceSelectionState getFaceSelectionState() { return faceSelectionState; }
     public GenericModelRenderer getModelRenderer() { return modelRenderer; }
+    public KnifeSnapSettings getKnifeSnapSettings() { return knifeSnapSettings; }
 
     /**
      * Toggle the knife tool from keybind (K key).

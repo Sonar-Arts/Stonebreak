@@ -6,11 +6,13 @@ import com.openmason.main.systems.themes.application.DensityManager;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.viewport.ViewportActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
+import com.openmason.main.systems.viewport.input.KnifeSnapSettings;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
+import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiTabBarFlags;
 import imgui.flag.ImGuiWindowFlags;
@@ -30,6 +32,7 @@ public class ViewportMainView {
     private final ViewportController viewport;
     private final ThemeManager themeManager;
     private final PreferencesManager preferencesManager;
+    private final KnifeSnapSettingsDialog knifeSnapSettingsDialog;
 
     private final ImVec2 viewportSize = new ImVec2();
     private final ImVec2 viewportPos = new ImVec2();
@@ -39,12 +42,14 @@ public class ViewportMainView {
 
     public ViewportMainView(ViewportUIState state, ViewportActions actions,
                            ViewportController viewport, ThemeManager themeManager,
-                           PreferencesManager preferencesManager) {
+                           PreferencesManager preferencesManager,
+                           KnifeSnapSettings knifeSnapSettings) {
         this.state = state;
         this.actions = actions;
         this.viewport = viewport;
         this.themeManager = themeManager;
         this.preferencesManager = preferencesManager;
+        this.knifeSnapSettingsDialog = new KnifeSnapSettingsDialog(knifeSnapSettings);
     }
 
     /**
@@ -61,6 +66,10 @@ public class ViewportMainView {
         } else {
             state.setViewportFocused(false);
         }
+
+        // Render modal dialogs before ImGui.end() so they draw within the frame
+        knifeSnapSettingsDialog.render();
+
         ImGui.end();
     }
 
@@ -255,6 +264,26 @@ public class ViewportMainView {
         boolean transformOpen = state.getShowTransformationControls().get();
         if (ImGui.button("Transform", 120, 0)) {
             state.getShowTransformationControls().set(!transformOpen);
+        }
+
+        ImGui.sameLine();
+        ImGui.spacing();
+        ImGui.sameLine();
+
+        // Knife Snap button - green tint when enabled
+        boolean knifeSnapEnabled = knifeSnapSettingsDialog != null
+                && viewport.getKnifeSnapSettings() != null
+                && viewport.getKnifeSnapSettings().isEnabled();
+        if (knifeSnapEnabled) {
+            ImGui.pushStyleColor(ImGuiCol.Button, 0.2f, 0.5f, 0.2f, 1.0f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.25f, 0.6f, 0.25f, 1.0f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.15f, 0.45f, 0.15f, 1.0f);
+        }
+        if (ImGui.button("Knife Snap", 120, 0)) {
+            knifeSnapSettingsDialog.open();
+        }
+        if (knifeSnapEnabled) {
+            ImGui.popStyleColor(3);
         }
 
         popDensityScaling();
