@@ -1035,6 +1035,100 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     // =========================================================================
+    // SNAPSHOT RESTORE (for undo/redo)
+    // =========================================================================
+
+    /**
+     * Restore full mesh state from a snapshot.
+     * Replaces vertex data, indices, face mapping, and face texture state.
+     * Rebuilds topology, uploads GPU buffers, and fires change notifications.
+     *
+     * <p>Used by the undo/redo system ({@link com.openmason.main.systems.services.commands.MeshSnapshot}).
+     *
+     * @param vertices          Vertex positions (x,y,z interleaved)
+     * @param texCoords         Texture coordinates (u,v interleaved), may be null
+     * @param indices           Triangle indices
+     * @param triangleToFaceId  Triangle-to-face mapping
+     * @param faceMappings      Per-face texture mappings (faceId → mapping)
+     * @param materials         Registered materials (materialId → definition)
+     */
+    public void restoreFromSnapshot(float[] vertices, float[] texCoords, int[] indices,
+                                     int[] triangleToFaceId,
+                                     Map<Integer, FaceTextureMapping> faceMappings,
+                                     Map<Integer, MaterialDefinition> materials) {
+        // Set vertex data
+        vertexManager.setData(
+            vertices != null ? vertices.clone() : null,
+            texCoords != null ? texCoords.clone() : null,
+            indices != null ? indices.clone() : null
+        );
+
+        // Update counts
+        vertexCount = vertices != null ? vertices.length / 3 : 0;
+        indexCount = indices != null ? indices.length : 0;
+
+        // Restore face mapping
+        if (triangleToFaceId != null && triangleToFaceId.length > 0) {
+            faceMapper.setMapping(triangleToFaceId.clone());
+        } else {
+            faceMapper.clear();
+        }
+
+        // Restore face texture state
+        faceTextureManager.clear();
+        if (materials != null) {
+            for (MaterialDefinition mat : materials.values()) {
+                if (mat.materialId() != MaterialDefinition.DEFAULT.materialId()) {
+                    faceTextureManager.registerMaterial(mat);
+                }
+            }
+        }
+        if (faceMappings != null) {
+            for (FaceTextureMapping mapping : faceMappings.values()) {
+                faceTextureManager.setFaceMapping(mapping);
+            }
+        }
+
+        // Rebuild unique vertex mapping
+        if (vertices != null) {
+            uniqueMapper.buildMapping(vertices);
+        }
+
+        // Rebuild topology index
+        this.topology = MeshTopologyBuilder.build(
+            vertexManager.getVertices(), vertexManager.getIndices(),
+            faceMapper, uniqueMapper);
+
+        // Update GPU buffers if initialized
+        if (initialized) {
+            float[] interleavedData = geometryBuilder.buildInterleavedData(
+                vertexManager.getVertices(), vertexManager.getTexCoords());
+            updateVBO(interleavedData);
+            if (vertexManager.getIndices() != null) {
+                updateEBO(vertexManager.getIndices());
+            }
+        }
+        drawBatchesDirty = true;
+
+        // Notify listeners
+        changeNotifier.notifyTopologyRebuilt(topology);
+        changeNotifier.notifyGeometryRebuilt();
+
+        logger.debug("Restored from snapshot: {} vertices, {} triangles",
+            vertexCount, indexCount / 3);
+    }
+
+    /**
+     * Regenerate UV coordinates and upload to GPU.
+     * Public entry point for the undo/redo system to refresh UVs after
+     * a face texture assignment change.
+     */
+    public void refreshUVs() {
+        regenerateUVsAndUpload();
+        drawBatchesDirty = true;
+    }
+
+    // =========================================================================
     // MESH DATA LOADING (for .OMO format)
     // =========================================================================
 

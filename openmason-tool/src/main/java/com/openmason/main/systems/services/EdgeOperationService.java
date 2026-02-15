@@ -1,5 +1,9 @@
 package com.openmason.main.systems.services;
 
+import com.openmason.main.systems.services.commands.MeshSnapshot;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
+import com.openmason.main.systems.services.commands.RendererSynchronizer;
+import com.openmason.main.systems.services.commands.SnapshotCommand;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
@@ -27,9 +31,21 @@ public class EdgeOperationService {
     private final ViewportRenderPipeline viewportRenderPipeline;
     private final EdgeSelectionState edgeSelectionState;
 
+    // Undo/redo support
+    private ModelCommandHistory commandHistory;
+    private RendererSynchronizer synchronizer;
+
     public EdgeOperationService(ViewportRenderPipeline viewportRenderPipeline, EdgeSelectionState edgeSelectionState) {
         this.viewportRenderPipeline = viewportRenderPipeline;
         this.edgeSelectionState = edgeSelectionState;
+    }
+
+    /**
+     * Set the command history for undo/redo recording.
+     */
+    public void setCommandHistory(ModelCommandHistory commandHistory, RendererSynchronizer synchronizer) {
+        this.commandHistory = commandHistory;
+        this.synchronizer = synchronizer;
     }
 
     /**
@@ -82,6 +98,10 @@ public class EdgeOperationService {
             endpoint2.x, endpoint2.y, endpoint2.z,
             midpoint.x, midpoint.y, midpoint.z);
 
+        // Capture snapshot before subdivision for undo
+        MeshSnapshot before = (commandHistory != null && synchronizer != null)
+            ? MeshSnapshot.capture(modelRenderer) : null;
+
         // Delegate subdivision to GenericModelRenderer (which uses SubdivisionProcessor)
         int meshVertexIndex = modelRenderer.applyEdgeSubdivisionByPosition(
             midpoint, endpoint1, endpoint2
@@ -90,6 +110,13 @@ public class EdgeOperationService {
         if (meshVertexIndex >= 0) {
             // Synchronize MeshManager and FaceRenderer with updated geometry
             synchronizeRenderersAfterSubdivision(modelRenderer);
+
+            // Record undo command
+            if (before != null) {
+                MeshSnapshot after = MeshSnapshot.capture(modelRenderer);
+                commandHistory.pushCompleted(
+                    SnapshotCommand.subdivision(before, after, modelRenderer, synchronizer));
+            }
 
             logger.info("Subdivided edge {}, created mesh vertex {}", hoveredEdgeIndex, meshVertexIndex);
             return meshVertexIndex;
@@ -153,6 +180,10 @@ public class EdgeOperationService {
             ));
         }
 
+        // Capture snapshot before batch subdivision for undo
+        MeshSnapshot before = (commandHistory != null && synchronizer != null)
+            ? MeshSnapshot.capture(modelRenderer) : null;
+
         // Apply subdivisions sequentially
         int successCount = 0;
         for (EdgeEndpoints endpoints : edgeEndpointsList) {
@@ -171,6 +202,13 @@ public class EdgeOperationService {
         // Synchronize renderers after all subdivisions
         if (successCount > 0) {
             synchronizeRenderersAfterSubdivision(modelRenderer);
+
+            // Record undo command for the entire batch
+            if (before != null) {
+                MeshSnapshot after = MeshSnapshot.capture(modelRenderer);
+                commandHistory.pushCompleted(
+                    SnapshotCommand.subdivision(before, after, modelRenderer, synchronizer));
+            }
 
             // Clear edge selection (indices are invalid after subdivision)
             edgeSelectionState.clearSelection();

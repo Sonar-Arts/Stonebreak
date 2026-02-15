@@ -7,6 +7,8 @@ import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.main.omConfig;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
+import com.openmason.main.systems.services.commands.RendererSynchronizer;
 import com.openmason.main.systems.viewport.ViewportCamera;
 import com.openmason.main.systems.viewport.ViewportInputHandler;
 import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
@@ -76,6 +78,9 @@ public class ViewportController {
 
     private final com.openmason.main.systems.viewport.content.ContentTypeManager contentTypeManager;
 
+    // ========== Undo/Redo ==========
+    private final ModelCommandHistory commandHistory;
+
     // ========== Services ==========
     private com.openmason.main.systems.services.EdgeOperationService edgeOperationService;
 
@@ -103,6 +108,8 @@ public class ViewportController {
         this.renderContext = new RenderContext(viewportCamera);
 
         this.inputHandler = new ViewportInputHandler(viewportCamera);
+
+        this.commandHistory = new ModelCommandHistory();
 
         this.blockRenderer = new BlockRenderer("Viewport");
         this.itemRenderer = new ItemRenderer("Viewport");
@@ -272,6 +279,24 @@ public class ViewportController {
                 inputHandler.setTranslationCoordinator(translationCoordinator);
                 logger.debug("Translation coordinator connected to input handler");
 
+                // Wire undo/redo command history to all handlers and services
+                RendererSynchronizer synchronizer = new RendererSynchronizer(
+                    modelRenderer,
+                    viewportRenderPipeline.getFaceRenderer(),
+                    vertexSelectionState,
+                    edgeSelectionState,
+                    faceSelectionState
+                );
+                vertexTranslationHandler.setCommandHistory(commandHistory, synchronizer);
+                edgeTranslationHandler.setCommandHistory(commandHistory, synchronizer);
+                faceTranslationHandler.setCommandHistory(commandHistory, synchronizer);
+                if (edgeOperationService != null) {
+                    edgeOperationService.setCommandHistory(commandHistory, synchronizer);
+                }
+                inputHandler.setCommandHistory(commandHistory, synchronizer);
+                gizmoRenderer.setCommandHistory(commandHistory);
+                logger.debug("Undo/redo command history wired to all handlers");
+
                 // Connect selection components to EditModeManager for clearing on mode switch
                 EditModeManager.getInstance().setSelectionComponents(
                     vertexSelectionState,
@@ -370,6 +395,7 @@ public class ViewportController {
      */
     public void loadBlockModel(BlockModel blockModel) {
         contentTypeManager.switchToBlockModel(blockModel);
+        commandHistory.clear();
     }
 
     // ========== Mesh Data (OMO v1.1+ support) ==========
@@ -392,6 +418,7 @@ public class ViewportController {
      * @param meshData the mesh data to load
      */
     public void loadMeshData(OMOFormat.MeshData meshData) {
+        commandHistory.clear();
         modelRenderer.loadMeshData(meshData);
 
         // Invalidate render pipeline caches to force edge/face rebuild
@@ -569,6 +596,7 @@ public class ViewportController {
     public FaceSelectionState getFaceSelectionState() { return faceSelectionState; }
     public GenericModelRenderer getModelRenderer() { return modelRenderer; }
     public KnifeSnapSettings getKnifeSnapSettings() { return knifeSnapSettings; }
+    public ModelCommandHistory getCommandHistory() { return commandHistory; }
 
     /**
      * Toggle the knife tool from keybind (K key).

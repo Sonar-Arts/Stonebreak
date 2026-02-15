@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering;
 
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoInteractionHandler;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoPart;
@@ -217,6 +218,13 @@ public class GizmoRenderer {
 
     public boolean isDragging() {
         return gizmoState.isDragging();
+    }
+
+    /**
+     * Set the command history for undo/redo recording of gizmo transforms.
+     */
+    public void setCommandHistory(ModelCommandHistory commandHistory) {
+        interactionHandler.setCommandHistory(commandHistory);
     }
 
     /**

@@ -2,6 +2,8 @@ package com.openmason.main.systems.viewport;
 
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.KnifePreviewRenderer;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
+import com.openmason.main.systems.services.commands.RendererSynchronizer;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.input.*;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
@@ -173,6 +175,16 @@ public class ViewportInputHandler {
      */
     public void setKnifeSnapSettings(com.openmason.main.systems.viewport.input.KnifeSnapSettings knifeSnapSettings) {
         knifeController.setKnifeSnapSettings(knifeSnapSettings);
+    }
+
+    /**
+     * Distribute the command history to sub-controllers that record undo/redo commands.
+     */
+    public void setCommandHistory(ModelCommandHistory commandHistory, RendererSynchronizer synchronizer) {
+        vertexController.setCommandHistory(commandHistory, synchronizer);
+        faceController.setCommandHistory(commandHistory, synchronizer);
+        knifeController.setCommandHistory(commandHistory, synchronizer);
+        logger.debug("Command history distributed to vertex, face, and knife controllers");
     }
 
     /**

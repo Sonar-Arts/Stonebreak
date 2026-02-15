@@ -1,6 +1,9 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.face;
 
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
+import com.openmason.main.systems.services.commands.RendererSynchronizer;
+import com.openmason.main.systems.services.commands.VertexMoveCommand;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
@@ -31,6 +34,10 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
     private final EdgeRenderer edgeRenderer;
     private final GenericModelRenderer modelRenderer;
     private final ViewportRenderPipeline viewportRenderPipeline;
+
+    // Undo/redo support
+    private ModelCommandHistory commandHistory;
+    private RendererSynchronizer synchronizer;
 
     // Face-specific drag state - now supports multi-selection
     private Vector3f dragStartDelta = new Vector3f(); // Track accumulated translation
@@ -88,6 +95,14 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
         this.edgeRenderer = edgeRenderer;
         this.modelRenderer = modelRenderer;
         this.viewportRenderPipeline = viewportRenderPipeline;
+    }
+
+    /**
+     * Set the command history for undo/redo recording.
+     */
+    public void setCommandHistory(ModelCommandHistory commandHistory, RendererSynchronizer synchronizer) {
+        this.commandHistory = commandHistory;
+        this.synchronizer = synchronizer;
     }
 
     @Override
@@ -270,6 +285,26 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
         // GenericModelRenderer already has updated positions — rebuild face overlay to sync
         faceRenderer.rebuildFromGenericModelRenderer();
         logger.debug("Committed face drag");
+
+        // Record undo command before clearing state (need original positions)
+        if (hasMovedDuringDrag && commandHistory != null && synchronizer != null
+                && currentVertexIndices != null) {
+            java.util.Map<Integer, VertexMoveCommand.VertexDelta> deltas = new java.util.HashMap<>();
+            for (int vertIdx : currentVertexIndices) {
+                Vector3f originalPos = vertexOriginalPositions.get(vertIdx);
+                if (originalPos != null) {
+                    Vector3f currentPos = modelRenderer.getVertexPosition(vertIdx);
+                    if (currentPos != null) {
+                        deltas.put(vertIdx, new VertexMoveCommand.VertexDelta(
+                            vertIdx, new Vector3f(originalPos), new Vector3f(currentPos)));
+                    }
+                }
+            }
+            if (!deltas.isEmpty()) {
+                commandHistory.pushCompleted(new VertexMoveCommand(
+                    deltas, "Move Face", modelRenderer, synchronizer));
+            }
+        }
 
         selectionState.endDrag();
         isDragging = false;

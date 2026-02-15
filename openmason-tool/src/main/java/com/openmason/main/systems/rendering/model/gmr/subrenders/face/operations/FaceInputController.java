@@ -1,6 +1,10 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.face.operations;
 
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.main.systems.services.commands.MeshSnapshot;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
+import com.openmason.main.systems.services.commands.RendererSynchronizer;
+import com.openmason.main.systems.services.commands.SnapshotCommand;
 import com.openmason.main.systems.viewport.input.InputContext;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
@@ -43,6 +47,10 @@ public class FaceInputController {
     private VertexRenderer vertexRenderer = null; // For priority check!
     private EdgeRenderer edgeRenderer = null; // For priority check!
     private GenericModelRenderer modelRenderer = null;
+
+    // Undo/redo support
+    private ModelCommandHistory commandHistory;
+    private RendererSynchronizer synchronizer;
 
     /**
      * Set the face renderer for hover detection.
@@ -104,6 +112,14 @@ public class FaceInputController {
     }
 
     /**
+     * Set the command history for undo/redo recording.
+     */
+    public void setCommandHistory(ModelCommandHistory commandHistory, RendererSynchronizer synchronizer) {
+        this.commandHistory = commandHistory;
+        this.synchronizer = synchronizer;
+    }
+
+    /**
      * Handle face input.
      *
      * Priority: LOWEST (lower than vertex and edge, higher than gizmo and camera)
@@ -144,8 +160,16 @@ public class FaceInputController {
             if (faceSelectionState.getSelectionCount() == 1 && modelRenderer != null) {
                 int faceId = faceSelectionState.getSelectedFaceIndices().iterator().next();
 
+                MeshSnapshot before = (commandHistory != null && synchronizer != null)
+                    ? MeshSnapshot.capture(modelRenderer) : null;
+
                 boolean success = modelRenderer.deleteFace(faceId);
                 if (success) {
+                    if (before != null) {
+                        MeshSnapshot after = MeshSnapshot.capture(modelRenderer);
+                        commandHistory.pushCompleted(
+                            SnapshotCommand.faceDeletion(before, after, modelRenderer, synchronizer));
+                    }
                     faceSelectionState.clearSelection();
                     faceRenderer.clearSelection();
                     logger.info("Face {} deleted (X key)", faceId);

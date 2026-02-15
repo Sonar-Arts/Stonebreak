@@ -6,6 +6,10 @@ import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRender
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.KnifePreviewRenderer;
 import com.openmason.main.systems.rendering.model.gmr.topology.MeshEdge;
 import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
+import com.openmason.main.systems.services.commands.MeshSnapshot;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
+import com.openmason.main.systems.services.commands.RendererSynchronizer;
+import com.openmason.main.systems.services.commands.SnapshotCommand;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.util.SnappingUtil;
@@ -43,6 +47,10 @@ public class KnifeToolController {
     private TransformState transformState;
     private KnifePreviewRenderer previewRenderer;
     private KnifeSnapSettings knifeSnapSettings;
+
+    // Undo/redo support
+    private ModelCommandHistory commandHistory;
+    private RendererSynchronizer synchronizer;
 
     // Tool state
     private KnifeToolState state = KnifeToolState.inactive();
@@ -115,6 +123,11 @@ public class KnifeToolController {
 
     public void setKnifeSnapSettings(KnifeSnapSettings knifeSnapSettings) {
         this.knifeSnapSettings = knifeSnapSettings;
+    }
+
+    public void setCommandHistory(ModelCommandHistory commandHistory, RendererSynchronizer synchronizer) {
+        this.commandHistory = commandHistory;
+        this.synchronizer = synchronizer;
     }
 
     // =========================================================================
@@ -324,6 +337,10 @@ public class KnifeToolController {
         logger.info("Executing knife cut: edge ({},{}) t={} -> edge ({},{}) t={}",
             firstVertA, firstVertB, firstT, secondVertA, secondVertB, secondT);
 
+        // Capture snapshot before knife cut for undo
+        MeshSnapshot before = (commandHistory != null && synchronizer != null)
+            ? MeshSnapshot.capture(modelRenderer) : null;
+
         // Step 1: Subdivide first edge
         int newVertexA = modelRenderer.subdivideEdgeAtParameter(firstVertA, firstVertB, firstT);
         if (newVertexA < 0) {
@@ -349,6 +366,13 @@ public class KnifeToolController {
             logger.warn("Knife cut: edge insertion between {} and {} failed (vertices may not share a face)",
                 newVertexA, newVertexB);
             return;
+        }
+
+        // Record undo command for the entire knife cut
+        if (before != null) {
+            MeshSnapshot after = MeshSnapshot.capture(modelRenderer);
+            commandHistory.pushCompleted(
+                SnapshotCommand.knifeCut(before, after, modelRenderer, synchronizer));
         }
 
         logger.info("Knife cut complete: new vertices {} and {}, face split", newVertexA, newVertexB);

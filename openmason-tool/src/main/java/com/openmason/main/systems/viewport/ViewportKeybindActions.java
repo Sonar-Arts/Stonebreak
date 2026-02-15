@@ -155,6 +155,24 @@ public class ViewportKeybindActions {
                 actions::toggleKnifeTool
         ));
 
-        logger.info("Registered {} viewport keybind actions", 11);
+        // Ctrl+Z: Undo
+        registry.registerAction(new KeybindAction(
+                "viewport.undo",
+                "Undo",
+                CATEGORY,
+                ShortcutKey.ctrl(GLFW.GLFW_KEY_Z),
+                actions::undo
+        ));
+
+        // Ctrl+Y: Redo
+        registry.registerAction(new KeybindAction(
+                "viewport.redo",
+                "Redo",
+                CATEGORY,
+                ShortcutKey.ctrl(GLFW.GLFW_KEY_Y),
+                actions::redo
+        ));
+
+        logger.info("Registered {} viewport keybind actions", 13);
     }
 }

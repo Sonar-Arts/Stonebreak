@@ -2,6 +2,7 @@ package com.openmason.main.systems.viewport;
 
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import org.slf4j.Logger;
@@ -25,6 +26,28 @@ public class ViewportActions {
         this.viewport = viewport;
         this.state = state;
         this.preferencesManager = preferencesManager;
+    }
+
+    // ========== Undo/Redo ==========
+
+    /**
+     * Undo the last model editing operation (Ctrl+Z).
+     */
+    public void undo() {
+        ModelCommandHistory history = viewport.getCommandHistory();
+        if (history != null && history.canUndo()) {
+            history.undo();
+        }
+    }
+
+    /**
+     * Redo the last undone model editing operation (Ctrl+Y).
+     */
+    public void redo() {
+        ModelCommandHistory history = viewport.getCommandHistory();
+        if (history != null && history.canRedo()) {
+            history.redo();
+        }
     }
 
     // ========== View Mode Operations ==========

@@ -1,6 +1,10 @@
 package com.openmason.main.systems.viewport.input;
 
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.main.systems.services.commands.MeshSnapshot;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
+import com.openmason.main.systems.services.commands.RendererSynchronizer;
+import com.openmason.main.systems.services.commands.SnapshotCommand;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
@@ -39,6 +43,10 @@ public class VertexInputController {
     private TranslationCoordinator translationCoordinator = null;
     private com.openmason.main.systems.viewport.state.TransformState transformState = null;
     private GenericModelRenderer modelRenderer = null;
+
+    // Undo/redo support
+    private ModelCommandHistory commandHistory;
+    private RendererSynchronizer synchronizer;
 
     /**
      * Set the vertex renderer for hover detection.
@@ -82,6 +90,14 @@ public class VertexInputController {
     }
 
     /**
+     * Set the command history for undo/redo recording.
+     */
+    public void setCommandHistory(ModelCommandHistory commandHistory, RendererSynchronizer synchronizer) {
+        this.commandHistory = commandHistory;
+        this.synchronizer = synchronizer;
+    }
+
+    /**
      * Handle vertex input.
      *
      * @param context Input context with mouse state
@@ -120,8 +136,16 @@ public class VertexInputController {
                 int vertA = it.next();
                 int vertB = it.next();
 
+                MeshSnapshot before = (commandHistory != null && synchronizer != null)
+                    ? MeshSnapshot.capture(modelRenderer) : null;
+
                 boolean success = modelRenderer.insertEdgeBetweenVertices(vertA, vertB);
                 if (success) {
+                    if (before != null) {
+                        MeshSnapshot after = MeshSnapshot.capture(modelRenderer);
+                        commandHistory.pushCompleted(
+                            SnapshotCommand.edgeInsertion(before, after, modelRenderer, synchronizer));
+                    }
                     vertexSelectionState.clearSelection();
                     vertexRenderer.clearSelection();
                     logger.info("Edge inserted between vertices {} and {} (J key)", vertA, vertB);
@@ -138,8 +162,16 @@ public class VertexInputController {
                 Set<Integer> selected = vertexSelectionState.getSelectedVertexIndices();
                 int[] vertices = selected.stream().mapToInt(Integer::intValue).toArray();
 
+                MeshSnapshot before = (commandHistory != null && synchronizer != null)
+                    ? MeshSnapshot.capture(modelRenderer) : null;
+
                 boolean success = modelRenderer.createFaceFromVertices(vertices);
                 if (success) {
+                    if (before != null) {
+                        MeshSnapshot after = MeshSnapshot.capture(modelRenderer);
+                        commandHistory.pushCompleted(
+                            SnapshotCommand.faceCreation(before, after, modelRenderer, synchronizer));
+                    }
                     vertexSelectionState.clearSelection();
                     vertexRenderer.clearSelection();
                     logger.info("Face created from {} vertices (F key)", vertices.length);

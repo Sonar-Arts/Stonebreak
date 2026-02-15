@@ -1,8 +1,12 @@
 package com.openmason.main.systems.menus.panes.propertyPane.adapters;
 
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
+import com.openmason.main.systems.services.commands.FaceTextureCommand;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.ViewportController;
@@ -155,10 +159,28 @@ public class ViewportAdapter implements IViewportConnector {
 
     @Override
     public void setFaceTexture(int faceId, int materialId) {
-        if (viewport != null) {
-            var renderer = viewport.getModelRenderer();
-            if (renderer != null) {
-                renderer.setFaceMaterial(faceId, materialId);
+        if (viewport == null) {
+            return;
+        }
+        GenericModelRenderer renderer = viewport.getModelRenderer();
+        if (renderer == null) {
+            return;
+        }
+
+        // Capture old mapping before mutation
+        FaceTextureManager ftm = renderer.getFaceTextureManager();
+        FaceTextureMapping oldMapping = (ftm != null) ? ftm.getFaceMapping(faceId) : null;
+
+        // Apply mutation
+        renderer.setFaceMaterial(faceId, materialId);
+
+        // Capture new mapping and record undo command
+        ModelCommandHistory history = viewport.getCommandHistory();
+        if (ftm != null && history != null) {
+            FaceTextureMapping newMapping = ftm.getFaceMapping(faceId);
+            if (newMapping != null) {
+                history.pushCompleted(new FaceTextureCommand(
+                    faceId, oldMapping, newMapping, ftm, renderer));
             }
         }
     }

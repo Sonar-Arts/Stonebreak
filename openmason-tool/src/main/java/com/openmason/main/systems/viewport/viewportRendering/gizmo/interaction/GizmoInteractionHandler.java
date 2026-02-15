@@ -1,5 +1,7 @@
 package com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction;
 
+import com.openmason.main.systems.services.commands.GizmoTransformCommand;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.util.RaycastUtil;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
@@ -21,6 +23,9 @@ public class GizmoInteractionHandler {
     private final TransformState transformState;
     private ViewportUIState viewportState;
 
+    // Undo/redo support
+    private ModelCommandHistory commandHistory;
+
     // Cached camera matrices
     private Matrix4f viewMatrix = new Matrix4f();
     private Matrix4f projectionMatrix = new Matrix4f();
@@ -41,6 +46,13 @@ public class GizmoInteractionHandler {
         this.gizmoState = gizmoState;
         this.transformState = transformState;
         this.viewportState = viewportState;
+    }
+
+    /**
+     * Set the command history for undo/redo recording.
+     */
+    public void setCommandHistory(ModelCommandHistory commandHistory) {
+        this.commandHistory = commandHistory;
     }
 
     /**
@@ -151,6 +163,45 @@ public class GizmoInteractionHandler {
         }
 
         if (gizmoState.isDragging()) {
+            // Capture start values before endDrag clears them
+            if (commandHistory != null) {
+                Vector3f oldPos = gizmoState.getDragStartObjectPos();
+                Vector3f oldRot = gizmoState.getDragStartObjectRotation();
+                Vector3f oldScale = gizmoState.getDragStartObjectScale();
+
+                Vector3f newPos = new Vector3f(
+                    transformState.getPositionX(),
+                    transformState.getPositionY(),
+                    transformState.getPositionZ()
+                );
+                Vector3f newRot = new Vector3f(
+                    transformState.getRotationX(),
+                    transformState.getRotationY(),
+                    transformState.getRotationZ()
+                );
+                Vector3f newScale = new Vector3f(
+                    transformState.getScaleX(),
+                    transformState.getScaleY(),
+                    transformState.getScaleZ()
+                );
+
+                // Only record if something actually changed
+                if (!oldPos.equals(newPos, 0.0001f)
+                        || !oldRot.equals(newRot, 0.0001f)
+                        || !oldScale.equals(newScale, 0.0001f)) {
+
+                    GizmoTransformCommand command = switch (gizmoState.getCurrentMode()) {
+                        case TRANSLATE -> GizmoTransformCommand.translate(
+                                oldPos, oldRot, oldScale, newPos, newRot, newScale, transformState);
+                        case ROTATE -> GizmoTransformCommand.rotate(
+                                oldPos, oldRot, oldScale, newPos, newRot, newScale, transformState);
+                        case SCALE -> GizmoTransformCommand.scale(
+                                oldPos, oldRot, oldScale, newPos, newRot, newScale, transformState);
+                    };
+                    commandHistory.pushCompleted(command);
+                }
+            }
+
             gizmoState.endDrag();
         }
     }

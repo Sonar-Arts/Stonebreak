@@ -1,6 +1,11 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.vertex;
 
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.main.systems.services.commands.MeshSnapshot;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
+import com.openmason.main.systems.services.commands.RendererSynchronizer;
+import com.openmason.main.systems.services.commands.SnapshotCommand;
+import com.openmason.main.systems.services.commands.VertexMoveCommand;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
@@ -14,6 +19,8 @@ import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -31,6 +38,11 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
     private final FaceRenderer faceRenderer;
     private final GenericModelRenderer modelRenderer;
     private final ViewportRenderPipeline viewportRenderPipeline;
+
+    // Undo/redo support
+    private ModelCommandHistory commandHistory;
+    private RendererSynchronizer synchronizer;
+    private MeshSnapshot preDragSnapshot;
 
     /**
      * Creates a new VertexTranslationHandler.
@@ -81,6 +93,14 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         this.viewportRenderPipeline = viewportRenderPipeline;
     }
 
+    /**
+     * Set the command history for undo/redo recording.
+     */
+    public void setCommandHistory(ModelCommandHistory commandHistory, RendererSynchronizer synchronizer) {
+        this.commandHistory = commandHistory;
+        this.synchronizer = synchronizer;
+    }
+
     @Override
     public boolean handleMousePress(float mouseX, float mouseY) {
         if (!selectionState.hasSelection()) {
@@ -115,6 +135,11 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
 
         isDragging = true;
         hasMovedDuringDrag = false;
+
+        // Capture mesh state before drag for snapshot-based undo (needed if merge occurs)
+        if (commandHistory != null && synchronizer != null) {
+            preDragSnapshot = MeshSnapshot.capture(modelRenderer);
+        }
 
         logger.debug("Started dragging vertex {} on plane with normal ({}, {}, {})",
                 selectionState.getSelectedVertexIndex(),
@@ -214,6 +239,38 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             logger.debug("Committed vertex drag to ModelRenderer{}", !indexRemapping.isEmpty() ? " (with merge)" : "");
         }
 
+        // Record undo command after commit
+        if (hasMovedDuringDrag && commandHistory != null && synchronizer != null) {
+            if (!indexRemapping.isEmpty() && preDragSnapshot != null) {
+                // Merge changed topology — use snapshot-based undo
+                MeshSnapshot postDragSnapshot = MeshSnapshot.capture(modelRenderer);
+                commandHistory.pushCompleted(SnapshotCommand.vertexMerge(
+                    preDragSnapshot, postDragSnapshot, modelRenderer, synchronizer));
+            } else {
+                // No merge — use delta-based undo (lighter weight)
+                Set<Integer> uniqueIndices = selectionState.getSelectedVertexIndices();
+                Map<Integer, VertexMoveCommand.VertexDelta> deltas = new HashMap<>();
+                for (int uniqueIndex : uniqueIndices) {
+                    int[] meshIndices = modelRenderer.getMeshIndicesForUniqueVertex(uniqueIndex);
+                    if (meshIndices == null || meshIndices.length == 0) continue;
+                    int meshIndex = meshIndices[0];
+
+                    Vector3f originalPos = selectionState.getOriginalPosition(uniqueIndex);
+                    Vector3f currentPos = modelRenderer.getVertexPosition(meshIndex);
+
+                    if (originalPos != null && currentPos != null) {
+                        deltas.put(meshIndex, new VertexMoveCommand.VertexDelta(
+                            meshIndex, new Vector3f(originalPos), new Vector3f(currentPos)));
+                    }
+                }
+                if (!deltas.isEmpty()) {
+                    commandHistory.pushCompleted(new VertexMoveCommand(
+                        deltas, "Move Vertex", modelRenderer, synchronizer));
+                }
+            }
+        }
+        preDragSnapshot = null;
+
         selectionState.endDrag();
         isDragging = false;
         clearInitialDragHitPoint();
@@ -258,6 +315,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         }
 
         isDragging = false;
+        preDragSnapshot = null;
         logger.debug("Cancelled vertex drag for {} vertices, reverted to original positions",
                 selectedIndices.size());
     }
