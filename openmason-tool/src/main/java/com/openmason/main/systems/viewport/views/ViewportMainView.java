@@ -13,6 +13,7 @@ import imgui.ImVec2;
 import imgui.ImVec4;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiTabBarFlags;
+import imgui.flag.ImGuiWindowFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,12 +49,17 @@ public class ViewportMainView {
 
     /**
      * Render the main viewport window.
+     * Uses NoNavInputs to prevent ImGui's keyboard navigation (Tab, arrows) from
+     * interfering with viewport shortcuts like Tab for edit mode cycling.
      */
     public void render() {
-        if (ImGui.begin("3D Viewport")) {
+        if (ImGui.begin("3D Viewport", ImGuiWindowFlags.NoNavInputs)) {
+            state.setViewportFocused(ImGui.isWindowFocused());
             renderToolbar();
             ImGui.separator();
             renderViewport3D();
+        } else {
+            state.setViewportFocused(false);
         }
         ImGui.end();
     }

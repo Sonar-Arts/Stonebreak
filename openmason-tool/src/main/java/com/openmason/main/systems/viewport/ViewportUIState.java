@@ -52,6 +52,9 @@ public class ViewportUIState {
     // Initialization state
     private boolean viewportInitialized = false;
 
+    // Focus tracking for input isolation (e.g., Tab key should only cycle edit modes when viewport is focused)
+    private boolean viewportFocused = false;
+
     // Resize threshold to prevent excessive resizing from small ImGui layout fluctuations
     private static final int RESIZE_THRESHOLD = 5;
 
@@ -168,6 +171,10 @@ public class ViewportUIState {
     public boolean isInitialized() {
         return viewportInitialized;
     }
+
+    // Focus state accessors
+    public boolean isViewportFocused() { return viewportFocused; }
+    public void setViewportFocused(boolean focused) { this.viewportFocused = focused; }
 
     @Override
     public String toString() {

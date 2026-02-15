@@ -103,8 +103,10 @@ public class ViewportImGuiInterface {
                 return;
             }
 
-            // Handle keyboard shortcuts before rendering (global shortcuts)
-            if (ViewportKeyboardShortcuts.shouldProcessShortcuts()) {
+            // Handle keyboard shortcuts only when viewport is focused (uses previous frame's focus state).
+            // This prevents viewport shortcuts (especially Tab for edit mode cycling) from firing
+            // when the user is interacting with other parts of the UI.
+            if (state.isViewportFocused() && ViewportKeyboardShortcuts.shouldProcessShortcuts()) {
                 keyboardShortcuts.handleKeyboardShortcuts();
             }
 
