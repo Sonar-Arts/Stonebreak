@@ -1,23 +1,46 @@
 package com.openmason.main.systems.rendering.model.gmr.uv;
 
 import com.openmason.main.systems.rendering.model.UVMode;
+import com.openmason.main.systems.rendering.model.gmr.mapping.ITriangleFaceMapper;
 
 /**
  * Interface for generating UV texture coordinates.
  *
- * <p><strong>DEPRECATION NOTICE:</strong> This interface contains cube-specific assumptions
- * that should not be hardcoded. Future texture assignment systems should:
- * <ul>
- *   <li>Support arbitrary geometry (not just cubes)</li>
- *   <li>Allow per-face texture specification</li>
- *   <li>Use atlas coordinates instead of hardcoded layouts</li>
- *   <li>Support texture wrapping and tiling modes</li>
- * </ul>
+ * <p>Implementations handle the mapping between 3D geometry and 2D texture space.
+ * The primary method is {@link #generatePerFaceUVs}, which computes UVs from
+ * per-face texture mappings for arbitrary geometry. The legacy mode-based methods
+ * are deprecated and exist only for backwards compatibility with cube-specific code.
  *
- * <p>Implementations handle the mapping between 3D geometry and 2D texture space,
- * currently supporting flat (per-face) and cube net (unwrapped) layouts for cube-based models.
+ * @see PerFaceUVCoordinateGenerator
+ * @see FaceTextureMapping
  */
 public interface IUVCoordinateGenerator {
+
+    // ── Per-face UV generation (primary API) ─────────────────────────────────
+
+    /**
+     * Generate UV coordinates using per-face texture mappings.
+     *
+     * <p>For each face, looks up its {@link FaceTextureMapping} and interpolates
+     * vertex positions within the face's UV region. Supports arbitrary geometry
+     * with any face count and layout.
+     *
+     * <p>The default implementation throws {@link UnsupportedOperationException}.
+     * Implementations that support per-face UVs (e.g. {@link PerFaceUVCoordinateGenerator})
+     * must override this method.
+     *
+     * @param vertices   Vertex positions (x,y,z interleaved)
+     * @param indices    Triangle indices
+     * @param faceMapper Triangle-to-face mapping
+     * @return UV coordinates array (u,v interleaved), length = (vertices.length / 3) * 2
+     * @throws UnsupportedOperationException if this implementation does not support per-face UVs
+     */
+    default float[] generatePerFaceUVs(float[] vertices, int[] indices, ITriangleFaceMapper faceMapper) {
+        throw new UnsupportedOperationException(
+            "Per-face UV generation not supported by " + getClass().getSimpleName());
+    }
+
+    // ── Legacy mode-based methods (deprecated) ───────────────────────────────
 
     /**
      * Generate UV coordinates for the given mode and vertex count.
@@ -28,7 +51,7 @@ public interface IUVCoordinateGenerator {
      * @param mode UV mapping mode (FLAT or CUBE_NET)
      * @param vertexCount Number of vertices to generate UVs for
      * @return UV coordinates array (u,v interleaved), length = vertexCount * 2
-     * @deprecated Will be replaced with per-face texture coordinate specification in future versions
+     * @deprecated Use {@link #generatePerFaceUVs} instead
      */
     @Deprecated
     float[] generateUVs(UVMode mode, int vertexCount);
@@ -42,7 +65,7 @@ public interface IUVCoordinateGenerator {
      *
      * @param vertexCount Number of vertices (typically 24 for a cube)
      * @return UV coordinates for cube net layout
-     * @deprecated Cube-specific method. Will be replaced with flexible texture assignment system.
+     * @deprecated Use {@link #generatePerFaceUVs} instead
      */
     @Deprecated
     float[] generateCubeNetUVs(int vertexCount);
@@ -56,7 +79,7 @@ public interface IUVCoordinateGenerator {
      *
      * @param vertexCount Number of vertices (typically 24 for a cube)
      * @return UV coordinates for flat layout
-     * @deprecated Cube-specific method. Will be replaced with flexible texture assignment system.
+     * @deprecated Use {@link #generatePerFaceUVs} instead
      */
     @Deprecated
     float[] generateFlatUVs(int vertexCount);
@@ -70,7 +93,7 @@ public interface IUVCoordinateGenerator {
      *
      * @param faceIndex Face index (0-5)
      * @return UV bounds as {u1, v1, u2, v2}, or null if invalid
-     * @deprecated Cube-specific method. Will be replaced with flexible texture assignment system.
+     * @deprecated Use {@link #generatePerFaceUVs} instead
      */
     @Deprecated
     float[] getCubeNetFaceBounds(int faceIndex);
