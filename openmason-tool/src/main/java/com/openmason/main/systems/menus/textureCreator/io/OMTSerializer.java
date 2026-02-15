@@ -2,6 +2,7 @@ package com.openmason.main.systems.menus.textureCreator.io;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.menus.textureCreator.layers.Layer;
 import com.openmason.main.systems.menus.textureCreator.layers.LayerManager;
 import org.lwjgl.BufferUtils;
@@ -14,6 +15,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -44,13 +46,31 @@ public class OMTSerializer {
     }
 
     /**
-     * Save LayerManager state to .OMT file.
+     * Save LayerManager state to .OMT file (no face mapping or material data).
      *
      * @param layerManager layer manager to save
      * @param filePath output file path
      * @return true if save succeeded
      */
     public boolean save(LayerManager layerManager, String filePath) {
+        return save(layerManager, List.of(), List.of(), Map.of(), filePath);
+    }
+
+    /**
+     * Save LayerManager state with face UV mappings and materials to .OMT file.
+     *
+     * @param layerManager      layer manager to save
+     * @param faceMappings      per-face UV mapping entries
+     * @param materials         material definition entries
+     * @param materialTextures  material textures keyed by materialId
+     * @param filePath          output file path
+     * @return true if save succeeded
+     */
+    public boolean save(LayerManager layerManager,
+                        List<OMTFormat.FaceMappingInfo> faceMappings,
+                        List<OMTFormat.MaterialInfo> materials,
+                        Map<Integer, PixelCanvas> materialTextures,
+                        String filePath) {
         if (layerManager == null) {
             logger.error("Cannot save null layer manager");
             return false;
@@ -66,7 +86,7 @@ public class OMTSerializer {
 
         try {
             // Build OMT document structure
-            OMTFormat.Document document = buildDocument(layerManager);
+            OMTFormat.Document document = buildDocument(layerManager, faceMappings, materials);
 
             // Write to ZIP archive
             try (FileOutputStream fos = new FileOutputStream(filePath);
@@ -82,9 +102,21 @@ public class OMTSerializer {
                     String layerFilename = OMTFormat.generateLayerFilename(i);
                     writeLayerPNG(zos, layer, layerFilename);
                 }
+
+                // Write material texture PNGs
+                for (OMTFormat.MaterialInfo materialInfo : document.materials()) {
+                    PixelCanvas texture = materialTextures.get(materialInfo.materialId());
+                    if (texture != null) {
+                        writeMaterialPNG(zos, texture, materialInfo.textureFile());
+                    } else {
+                        logger.warn("No texture data for material {} ({}), skipping PNG",
+                                materialInfo.materialId(), materialInfo.name());
+                    }
+                }
             }
 
-            logger.info("Saved .OMT file: {}", filePath);
+            logger.info("Saved .OMT file: {} ({} face mappings, {} materials)",
+                    filePath, faceMappings.size(), materials.size());
             return true;
 
         } catch (IOException e) {
@@ -94,12 +126,16 @@ public class OMTSerializer {
     }
 
     /**
-     * Build OMT document structure from LayerManager.
+     * Build OMT document structure from LayerManager and face mapping data.
      *
      * @param layerManager source layer manager
+     * @param faceMappings per-face UV mapping entries
+     * @param materials    material definition entries
      * @return OMT document
      */
-    private OMTFormat.Document buildDocument(LayerManager layerManager) {
+    private OMTFormat.Document buildDocument(LayerManager layerManager,
+                                             List<OMTFormat.FaceMappingInfo> faceMappings,
+                                             List<OMTFormat.MaterialInfo> materials) {
         // Get canvas dimensions from first layer
         Layer firstLayer = layerManager.getLayer(0);
         int width = firstLayer.getCanvas().getWidth();
@@ -129,7 +165,9 @@ public class OMTSerializer {
                 OMTFormat.FORMAT_VERSION,
                 canvasSize,
                 layerInfos,
-                activeLayerIndex
+                activeLayerIndex,
+                faceMappings,
+                materials
         );
     }
 
@@ -185,6 +223,30 @@ public class OMTSerializer {
     }
 
     /**
+     * Write material texture PNG to ZIP archive.
+     *
+     * @param zos      ZIP output stream
+     * @param texture  material texture pixel data
+     * @param filename filename in ZIP
+     * @throws IOException if write fails
+     */
+    private void writeMaterialPNG(ZipOutputStream zos, PixelCanvas texture, String filename) throws IOException {
+        ZipEntry entry = new ZipEntry(filename);
+        zos.putNextEntry(entry);
+
+        byte[] pngData = encodeCanvasPNG(texture);
+        if (pngData == null) {
+            throw new IOException("Failed to encode PNG for material texture: " + filename);
+        }
+
+        zos.write(pngData);
+        zos.flush();
+        zos.closeEntry();
+
+        logger.trace("Wrote material texture {} ({} bytes)", filename, pngData.length);
+    }
+
+    /**
      * Encode layer pixels to PNG format.
      *
      * @param layer layer to encode
@@ -230,6 +292,44 @@ public class OMTSerializer {
 
         } catch (Exception e) {
             logger.error("Error encoding PNG", e);
+            return null;
+        }
+    }
+
+    /**
+     * Encode a PixelCanvas to PNG format.
+     *
+     * @param canvas pixel canvas to encode
+     * @return PNG data as byte array, or null if failed
+     */
+    private byte[] encodeCanvasPNG(PixelCanvas canvas) {
+        try {
+            int width = canvas.getWidth();
+            int height = canvas.getHeight();
+            byte[] pixelBytes = canvas.getPixelsAsRGBABytes();
+
+            ByteBuffer buffer = BufferUtils.createByteBuffer(pixelBytes.length);
+            buffer.put(pixelBytes);
+            buffer.flip();
+
+            File tempFile = File.createTempFile("omt_material_", ".png");
+            tempFile.deleteOnExit();
+
+            int stride = width * 4;
+            boolean success = STBImageWrite.stbi_write_png(
+                    tempFile.getAbsolutePath(), width, height, 4, buffer, stride);
+
+            if (!success) {
+                logger.error("STB PNG encoding failed for canvas {}x{}", width, height);
+                return null;
+            }
+
+            byte[] pngData = readFileToByteArray(tempFile);
+            tempFile.delete();
+            return pngData;
+
+        } catch (Exception e) {
+            logger.error("Error encoding canvas PNG", e);
             return null;
         }
     }
@@ -291,6 +391,8 @@ public class OMTSerializer {
         public CanvasSizeDTO canvasSize;
         public List<LayerInfoDTO> layers;
         public int activeLayerIndex;
+        public List<FaceMappingInfoDTO> faceMappings;
+        public List<MaterialInfoDTO> materials;
 
         public ManifestDTO(OMTFormat.Document document) {
             this.version = document.version();
@@ -300,6 +402,16 @@ public class OMTSerializer {
                 this.layers.add(new LayerInfoDTO(layerInfo));
             }
             this.activeLayerIndex = document.activeLayerIndex();
+
+            this.faceMappings = new ArrayList<>();
+            for (OMTFormat.FaceMappingInfo mapping : document.faceMappings()) {
+                this.faceMappings.add(new FaceMappingInfoDTO(mapping));
+            }
+
+            this.materials = new ArrayList<>();
+            for (OMTFormat.MaterialInfo material : document.materials()) {
+                this.materials.add(new MaterialInfoDTO(material));
+            }
         }
     }
 
@@ -324,6 +436,40 @@ public class OMTSerializer {
             this.visible = layerInfo.visible();
             this.opacity = layerInfo.opacity();
             this.dataFile = layerInfo.dataFile();
+        }
+    }
+
+    private static class FaceMappingInfoDTO {
+        public int faceId;
+        public int materialId;
+        public float u0;
+        public float v0;
+        public float u1;
+        public float v1;
+        public int uvRotation;
+
+        public FaceMappingInfoDTO(OMTFormat.FaceMappingInfo mapping) {
+            this.faceId = mapping.faceId();
+            this.materialId = mapping.materialId();
+            this.u0 = mapping.u0();
+            this.v0 = mapping.v0();
+            this.u1 = mapping.u1();
+            this.v1 = mapping.v1();
+            this.uvRotation = mapping.uvRotation();
+        }
+    }
+
+    private static class MaterialInfoDTO {
+        public int materialId;
+        public String name;
+        public String renderLayer;
+        public String textureFile;
+
+        public MaterialInfoDTO(OMTFormat.MaterialInfo material) {
+            this.materialId = material.materialId();
+            this.name = material.name();
+            this.renderLayer = material.renderLayer();
+            this.textureFile = material.textureFile();
         }
     }
 }
