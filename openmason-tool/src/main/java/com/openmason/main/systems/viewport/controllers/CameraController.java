@@ -65,4 +65,15 @@ public interface CameraController {
     default Vector3f getUpVector() {
         return new Vector3f(0, 1, 0);
     }
+
+    /**
+     * Pans the camera by translating along the local right and up axes.
+     * Default implementation is a no-op (not all camera modes support panning).
+     *
+     * @param deltaX Horizontal pan amount (screen-space)
+     * @param deltaY Vertical pan amount (screen-space)
+     */
+    default void pan(float deltaX, float deltaY) {
+        // No-op by default
+    }
 }
