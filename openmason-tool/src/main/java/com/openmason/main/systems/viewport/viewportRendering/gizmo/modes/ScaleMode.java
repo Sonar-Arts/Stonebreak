@@ -219,12 +219,15 @@ public class ScaleMode implements IGizmoMode {
     }
 
     @Override
-    public List<GizmoPart> getInteractiveParts(Vector3f gizmoPosition) {
+    public List<GizmoPart> getInteractiveParts(Vector3f gizmoPosition, float scaleFactor) {
         if (gizmoPosition == null) {
             throw new IllegalArgumentException("Gizmo position cannot be null");
         }
 
         List<GizmoPart> parts = new ArrayList<>();
+        float scaledGizmoSize = GIZMO_SIZE * scaleFactor;
+        float scaledHandleBoxSize = HANDLE_BOX_SIZE * scaleFactor;
+        float scaledCenterBoxSize = CENTER_BOX_SIZE * scaleFactor;
 
         // Add axis handle parts
         Vector3f[] directions = {
@@ -245,9 +248,9 @@ public class ScaleMode implements IGizmoMode {
             Vector3f center = BoxGeometry.getHandleCenter(
                 gizmoPosition,
                 directions[i],
-                GIZMO_SIZE
+                scaledGizmoSize
             );
-            float radius = BoxGeometry.getInteractionRadius(HANDLE_BOX_SIZE);
+            float radius = BoxGeometry.getInteractionRadius(scaledHandleBoxSize);
 
             parts.add(new GizmoPart(
                 constraints[i],
@@ -259,7 +262,7 @@ public class ScaleMode implements IGizmoMode {
         }
 
         // Add center box part (uniform scale)
-        float centerRadius = BoxGeometry.getInteractionRadius(CENTER_BOX_SIZE);
+        float centerRadius = BoxGeometry.getInteractionRadius(scaledCenterBoxSize);
         parts.add(new GizmoPart(
             AxisConstraint.NONE, // NONE constraint = uniform scale
             new Vector3f(0.9f, 0.9f, 0.9f),

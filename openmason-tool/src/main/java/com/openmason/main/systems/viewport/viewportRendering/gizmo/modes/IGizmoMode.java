@@ -39,10 +39,11 @@ public interface IGizmoMode {
      * Gets all interactive parts of this gizmo mode for hit testing.
      *
      * @param gizmoPosition The world-space position of the gizmo center
+     * @param scaleFactor   Uniform scale applied to gizmo geometry (affects offsets and radii)
      * @return List of gizmo parts (never null, may be empty)
      * @throws IllegalArgumentException if gizmoPosition is null
      */
-    List<GizmoPart> getInteractiveParts(Vector3f gizmoPosition);
+    List<GizmoPart> getInteractiveParts(Vector3f gizmoPosition, float scaleFactor);
 
     /**
      * Handles a drag operation by computing the new transform values.

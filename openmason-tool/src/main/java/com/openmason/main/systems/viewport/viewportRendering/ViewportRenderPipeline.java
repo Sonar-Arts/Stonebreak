@@ -326,9 +326,11 @@ public class ViewportRenderPipeline {
 
     /**
      * Render gizmo pass.
+     * Updates model bounds for auto-scaling before rendering.
      */
     private void renderGizmo() {
         try {
+            gizmoRenderer.updateModelBounds(modelRenderer.getModelBounds());
             gizmoRenderer.render(
                 context.getCamera().getViewMatrix(),
                 context.getCamera().getProjectionMatrix()

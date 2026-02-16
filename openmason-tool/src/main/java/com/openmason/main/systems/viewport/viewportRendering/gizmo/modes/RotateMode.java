@@ -151,12 +151,13 @@ public class RotateMode implements IGizmoMode {
     }
 
     @Override
-    public List<GizmoPart> getInteractiveParts(Vector3f gizmoPosition) {
+    public List<GizmoPart> getInteractiveParts(Vector3f gizmoPosition, float scaleFactor) {
         if (gizmoPosition == null) {
             throw new IllegalArgumentException("Gizmo position cannot be null");
         }
 
         List<GizmoPart> parts = new ArrayList<>();
+        float scaledRadius = GIZMO_RADIUS * scaleFactor;
 
         // Add rotation circle parts
         AxisConstraint[] constraints = {AxisConstraint.X, AxisConstraint.Y, AxisConstraint.Z};
@@ -173,7 +174,7 @@ public class RotateMode implements IGizmoMode {
                 colors[i],
                 GizmoPart.PartType.CIRCLE,
                 gizmoPosition,
-                GIZMO_RADIUS // Circle radius for intersection testing
+                scaledRadius // Circle radius for intersection testing
             ));
         }
 

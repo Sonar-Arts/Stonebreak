@@ -226,12 +226,15 @@ public class TranslateMode implements IGizmoMode {
     }
 
     @Override
-    public List<GizmoPart> getInteractiveParts(Vector3f gizmoPosition) {
+    public List<GizmoPart> getInteractiveParts(Vector3f gizmoPosition, float scaleFactor) {
         if (gizmoPosition == null) {
             throw new IllegalArgumentException("Gizmo position cannot be null");
         }
 
         List<GizmoPart> parts = new ArrayList<>();
+        float scaledGizmoSize = GIZMO_SIZE * scaleFactor;
+        float scaledPlaneSize = PLANE_SIZE * scaleFactor;
+        float scaledPlaneOffset = PLANE_OFFSET * scaleFactor;
 
         // Add arrow parts
         Vector3f[] arrowDirections = {
@@ -252,9 +255,9 @@ public class TranslateMode implements IGizmoMode {
             Vector3f center = ArrowGeometry.getArrowCenter(
                 gizmoPosition,
                 arrowDirections[i],
-                GIZMO_SIZE
+                scaledGizmoSize
             );
-            float radius = ArrowGeometry.getInteractionRadius(GIZMO_SIZE);
+            float radius = ArrowGeometry.getInteractionRadius(scaledGizmoSize);
 
             parts.add(new GizmoPart(
                 arrowConstraints[i],
@@ -285,8 +288,8 @@ public class TranslateMode implements IGizmoMode {
                 gizmoPosition,
                 planeAxes[i][0],
                 planeAxes[i][1],
-                PLANE_SIZE,
-                PLANE_OFFSET
+                scaledPlaneSize,
+                scaledPlaneOffset
             );
 
             parts.add(new GizmoPart(
@@ -294,7 +297,7 @@ public class TranslateMode implements IGizmoMode {
                 planeColors[i],
                 GizmoPart.PartType.PLANE,
                 center,
-                PLANE_SIZE * 0.7f // Interaction radius
+                scaledPlaneSize * 0.7f // Interaction radius
             ));
         }
 

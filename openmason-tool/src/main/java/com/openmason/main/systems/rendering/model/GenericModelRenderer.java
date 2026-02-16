@@ -81,6 +81,9 @@ public class GenericModelRenderer extends BaseRenderer {
     private List<MaterialDrawBatch> drawBatches = List.of();
     private boolean drawBatchesDirty = true;
 
+    // Cached model bounds (AABB) — nulled on geometry changes, recomputed lazily
+    private ModelBounds cachedBounds;
+
     // Cached identity matrix to avoid per-frame allocation in setUniforms
     private static final org.joml.Matrix4f IDENTITY_MATRIX = new org.joml.Matrix4f();
 
@@ -217,6 +220,7 @@ public class GenericModelRenderer extends BaseRenderer {
 
         // Update ALL vertices at this position
         vertexManager.updateVertexPositions(affectedMeshIndices, position);
+        cachedBounds = null;
 
         // Rebuild and upload to GPU
         float[] interleavedData = geometryBuilder.buildInterleavedData(
@@ -273,6 +277,8 @@ public class GenericModelRenderer extends BaseRenderer {
                 System.arraycopy(positions, 0, vertices, 0, updateLength);
             }
 
+            cachedBounds = null;
+
             // Upload to GPU
             float[] interleavedData = geometryBuilder.buildInterleavedData(
                 vertexManager.getVertices(), vertexManager.getTexCoords());
@@ -320,6 +326,19 @@ public class GenericModelRenderer extends BaseRenderer {
      */
     public List<Integer> findMeshVerticesAtPosition(Vector3f position, float epsilon) {
         return vertexManager.findMeshVerticesAtPosition(position, epsilon);
+    }
+
+    /**
+     * Get the axis-aligned bounding box (AABB) for the current mesh.
+     * Lazily computed and cached — invalidated automatically on geometry changes.
+     *
+     * @return Model bounds, or {@link ModelBounds#EMPTY} if no vertex data
+     */
+    public ModelBounds getModelBounds() {
+        if (cachedBounds == null) {
+            cachedBounds = ModelBoundsCalculator.compute(vertexManager.getVertices());
+        }
+        return cachedBounds;
     }
 
     // =========================================================================
@@ -471,6 +490,7 @@ public class GenericModelRenderer extends BaseRenderer {
         vertexManager.setIndices(result.newIndices());
         indexCount = result.newIndices().length;
         faceMapper.setMapping(result.newTriangleToFaceId());
+        cachedBounds = null;
 
         // Rebuild GPU buffers
         float[] interleavedData = geometryBuilder.buildInterleavedData(
@@ -527,6 +547,7 @@ public class GenericModelRenderer extends BaseRenderer {
         vertexManager.setIndices(result.newIndices());
         indexCount = result.newIndices().length;
         faceMapper.setMapping(result.newTriangleToFaceId());
+        cachedBounds = null;
 
         // Rebuild GPU buffers
         float[] interleavedData = geometryBuilder.buildInterleavedData(
@@ -1062,6 +1083,7 @@ public class GenericModelRenderer extends BaseRenderer {
             texCoords != null ? texCoords.clone() : null,
             indices != null ? indices.clone() : null
         );
+        cachedBounds = null;
 
         // Update counts
         vertexCount = vertices != null ? vertices.length / 3 : 0;
@@ -1165,6 +1187,7 @@ public class GenericModelRenderer extends BaseRenderer {
 
         // Set vertex data
         vertexManager.setData(vertices.clone(), texCoords != null ? texCoords.clone() : null, indices != null ? indices.clone() : null);
+        cachedBounds = null;
 
         // Update counts
         vertexCount = vertices.length / 3;

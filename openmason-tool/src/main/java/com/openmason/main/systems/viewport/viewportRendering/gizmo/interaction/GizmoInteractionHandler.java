@@ -26,6 +26,9 @@ public class GizmoInteractionHandler {
     // Undo/redo support
     private ModelCommandHistory commandHistory;
 
+    // Gizmo world center (set by GizmoRenderer based on model bounds)
+    private final Vector3f gizmoWorldCenter = new Vector3f();
+
     // Cached camera matrices
     private Matrix4f viewMatrix = new Matrix4f();
     private Matrix4f projectionMatrix = new Matrix4f();
@@ -61,6 +64,18 @@ public class GizmoInteractionHandler {
      */
     public void updateViewportState(ViewportUIState viewportState) {
         this.viewportState = viewportState;
+    }
+
+    /**
+     * Sets the gizmo's computed world-space center position.
+     * Used for rotation drag calculations so the rotation pivot matches the visual gizmo center.
+     *
+     * @param center The world-space center of the gizmo
+     */
+    public void setGizmoWorldCenter(Vector3f center) {
+        if (center != null) {
+            this.gizmoWorldCenter.set(center);
+        }
     }
 
     /**
@@ -392,13 +407,9 @@ public class GizmoInteractionHandler {
             mouseX, mouseY, viewportWidth, viewportHeight, viewMatrix, projectionMatrix
         );
 
-        // Get rotation axis and circle center
+        // Get rotation axis and circle center (use gizmo world center for model-bounds-aware pivot)
         Vector3f axis = getAxisVector(constraint);
-        Vector3f center = new Vector3f(
-            transformState.getPositionX(),
-            transformState.getPositionY(),
-            transformState.getPositionZ()
-        );
+        Vector3f center = new Vector3f(gizmoWorldCenter);
 
         // Intersect with rotation plane
         float t = RaycastUtil.intersectRayPlane(currentRay, center, axis);

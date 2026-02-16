@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering;
 
+import com.openmason.main.systems.rendering.model.ModelBounds;
 import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoInteractionHandler;
@@ -28,6 +29,10 @@ import java.util.Map;
  */
 public class GizmoRenderer {
 
+    private static final float GIZMO_SCALE_FACTOR = 0.3f;
+    private static final float MIN_GIZMO_SCALE = 0.5f;
+    private static final float MAX_GIZMO_SCALE = 5.0f;
+
     private final GizmoState gizmoState;
     private final TransformState transformState;
     private final GizmoInteractionHandler interactionHandler;
@@ -38,6 +43,8 @@ public class GizmoRenderer {
 
     private int shaderProgram = -1;
     private boolean initialized = false;
+
+    private ModelBounds modelBounds = ModelBounds.EMPTY;
 
     /**
      * Creates a new GizmoRenderer.
@@ -134,12 +141,40 @@ public class GizmoRenderer {
     }
 
     private Matrix4f createGizmoTransform() {
-        Vector3f position = new Vector3f(
-            transformState.getPositionX(),
-            transformState.getPositionY(),
-            transformState.getPositionZ()
-        );
-        return new Matrix4f().identity().translate(position);
+        Vector3f worldCenter = computeGizmoWorldCenter();
+        float gizmoScale = computeGizmoScale();
+        return new Matrix4f().identity().translate(worldCenter).scale(gizmoScale);
+    }
+
+    /**
+     * Computes the gizmo's world-space center by transforming the model bounds center
+     * through the model's transform matrix.
+     */
+    private Vector3f computeGizmoWorldCenter() {
+        Vector3f boundsCenter = modelBounds.center();
+        if (boundsCenter.lengthSquared() < 0.0001f) {
+            return new Vector3f(
+                transformState.getPositionX(),
+                transformState.getPositionY(),
+                transformState.getPositionZ()
+            );
+        }
+        return transformState.getTransformMatrix()
+            .transformPosition(new Vector3f(boundsCenter));
+    }
+
+    /**
+     * Computes a uniform scale factor for the gizmo based on the model's largest dimension.
+     * Clamped to [{@value MIN_GIZMO_SCALE}, {@value MAX_GIZMO_SCALE}] so the gizmo
+     * remains usable on very small or very large models.
+     */
+    private float computeGizmoScale() {
+        float maxExtent = modelBounds.maxExtent();
+        if (maxExtent < 0.001f) {
+            return 1.0f;
+        }
+        float scale = maxExtent * GIZMO_SCALE_FACTOR;
+        return Math.max(MIN_GIZMO_SCALE, Math.min(MAX_GIZMO_SCALE, scale));
     }
 
     private void configureRenderState() {
@@ -168,12 +203,11 @@ public class GizmoRenderer {
 
         interactionHandler.updateCamera(viewMatrix, projectionMatrix, viewportWidth, viewportHeight);
 
-        Vector3f gizmoPosition = new Vector3f(
-            transformState.getPositionX(),
-            transformState.getPositionY(),
-            transformState.getPositionZ()
-        );
-        List<GizmoPart> parts = currentMode.getInteractiveParts(gizmoPosition);
+        Vector3f gizmoWorldCenter = computeGizmoWorldCenter();
+        float gizmoScale = computeGizmoScale();
+        interactionHandler.setGizmoWorldCenter(gizmoWorldCenter);
+
+        List<GizmoPart> parts = currentMode.getInteractiveParts(gizmoWorldCenter, gizmoScale);
 
         interactionHandler.handleMouseMove(mouseX, mouseY, parts);
     }
@@ -262,6 +296,19 @@ public class GizmoRenderer {
 
     public GizmoState getGizmoState() {
         return gizmoState;
+    }
+
+    /**
+     * Updates the model bounds used for gizmo auto-scaling and centering.
+     * Should be called whenever the loaded model changes.
+     *
+     * @param bounds The new model bounds (must not be null)
+     */
+    public void updateModelBounds(ModelBounds bounds) {
+        if (bounds == null) {
+            throw new IllegalArgumentException("ModelBounds cannot be null");
+        }
+        this.modelBounds = bounds;
     }
 
     /**
