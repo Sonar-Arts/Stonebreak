@@ -32,6 +32,7 @@ public class ArcballCameraController implements CameraController {
 
     // Settings
     private float mouseSensitivity;
+    private float panSensitivity;
 
     /**
      * Creates an arc-ball camera controller with default settings.
@@ -47,6 +48,7 @@ public class ArcballCameraController implements CameraController {
         this.targetPitch = DEFAULT_PITCH;
 
         this.mouseSensitivity = 3.0f;
+        this.panSensitivity = CameraMath.DEFAULT_PAN_SENSITIVITY;
     }
 
     @Override
@@ -83,7 +85,7 @@ public class ArcballCameraController implements CameraController {
         Vector3f up = new Vector3f(right).cross(direction).normalize();
 
         // Scale pan speed with distance so panning feels consistent at any zoom level
-        float panSpeed = distance * 0.002f;
+        float panSpeed = distance * 0.002f * panSensitivity;
 
         target.add(
                 right.x * -deltaX * panSpeed + up.x * deltaY * panSpeed,
@@ -204,5 +206,10 @@ public class ArcballCameraController implements CameraController {
     public void setMouseSensitivity(float sensitivity) {
         this.mouseSensitivity = CameraMath.clamp(sensitivity,
             CameraMath.MIN_SENSITIVITY, CameraMath.MAX_SENSITIVITY);
+    }
+
+    public void setPanSensitivity(float sensitivity) {
+        this.panSensitivity = CameraMath.clamp(sensitivity,
+            CameraMath.MIN_PAN_SENSITIVITY, CameraMath.MAX_PAN_SENSITIVITY);
     }
 }

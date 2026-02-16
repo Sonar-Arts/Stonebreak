@@ -28,7 +28,6 @@ import imgui.ImGuiViewport;
 import imgui.flag.ImGuiDockNodeFlags;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
-import imgui.type.ImFloat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,8 +71,9 @@ public class MainImGuiInterface implements ModelBrowserListener {
     // Window Configurations
     private final WindowConfig propertiesConfig = WindowConfig.forProperties();
 
-    // Camera settings (shared with PreferencesDialog)
-    private final ImFloat cameraMouseSensitivity = new ImFloat(3.0f);
+    // Camera settings loaded from preferences on startup
+    private float initialCameraOrbitSpeed;
+    private float initialCameraPanSpeed;
 
     /**
      * Create MainImGuiInterface with dependency injection.
@@ -97,9 +97,9 @@ public class MainImGuiInterface implements ModelBrowserListener {
         this.preferencesManager = new PreferencesManager();
         LogoManager logoManager = LogoManager.getInstance();
 
-        // Initialize camera sensitivity from preferences
-        float savedSensitivity = preferencesManager.getCameraMouseSensitivity();
-        cameraMouseSensitivity.set(savedSensitivity);
+        // Load camera settings from preferences for initial viewport setup
+        initialCameraOrbitSpeed = preferencesManager.getCameraMouseSensitivity();
+        initialCameraPanSpeed = preferencesManager.getCameraPanSensitivity();
 
         // Initialize file dialog service first (needed by model operations)
         this.fileDialogService = new FileDialogService(statusService);
@@ -196,7 +196,8 @@ public class MainImGuiInterface implements ModelBrowserListener {
             viewport3D = new ViewportController();
 
             if (viewport3D.getCamera() != null) {
-                viewport3D.getCamera().setMouseSensitivity(cameraMouseSensitivity.get());
+                viewport3D.getCamera().setMouseSensitivity(initialCameraOrbitSpeed);
+                viewport3D.getCamera().setPanSensitivity(initialCameraPanSpeed);
             }
 
             // Connect viewport to model operations for .OMO model support

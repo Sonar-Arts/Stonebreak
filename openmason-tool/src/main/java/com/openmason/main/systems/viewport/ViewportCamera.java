@@ -229,6 +229,10 @@ public class ViewportCamera {
         firstPersonController.setMouseSensitivity(sensitivity);
     }
 
+    public void setPanSensitivity(float sensitivity) {
+        arcballController.setPanSensitivity(sensitivity);
+    }
+
     // ========== Arc-ball Specific Methods ==========
 
     /**

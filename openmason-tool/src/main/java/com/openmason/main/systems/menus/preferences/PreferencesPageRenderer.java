@@ -20,15 +20,16 @@ import org.slf4j.LoggerFactory;
 /**
  * Unified preferences page renderer for all Open Mason tools.
  * <p>
- * Consolidates Model Editor, Texture Editor, and Common preference pages into a single
- * KISS-compliant class following DRY principles.
+ * Uses a deferred-apply model: slider and combo changes only update local ImGui state.
+ * Changes are persisted and applied to live systems only when {@link #applyAllSettings()} is called
+ * (triggered by the OK or Apply buttons in {@link PreferencesWindow}).
  * </p>
  * <p>
  * Architecture:
  * - Single class with page-specific render methods
- * - Shared state synchronization logic
- * - Consistent reset button pattern
- * - Real-time updates for all settings
+ * - Deferred persistence via OK/Apply buttons
+ * - State synced from persistence on window open
+ * - Per-page Reset to Defaults updates local state only (applied on OK/Apply)
  * </p>
  */
 public class PreferencesPageRenderer {
@@ -38,29 +39,30 @@ public class PreferencesPageRenderer {
     // Model Editor constants
     private static final float MIN_CAMERA_SENSITIVITY = 0.1f;
     private static final float MAX_CAMERA_SENSITIVITY = 10.0f;
+    private static final float MIN_PAN_SENSITIVITY = 0.1f;
+    private static final float MAX_PAN_SENSITIVITY = 5.0f;
     private static final float MIN_VERTEX_POINT_SIZE = 1.0f;
     private static final float MAX_VERTEX_POINT_SIZE = 15.0f;
 
     // Grid snapping increment options (based on STANDARD_BLOCK_SIZE = 1.0)
-    // Ordered from coarse to fine, with recommended default (1/2 Block) providing
-    // good visual alignment with the 1.0 unit grid (2 snaps per grid square)
     private static final String[] GRID_SNAPPING_INCREMENT_NAMES = {
-        "1 Block (1.0)",        // Coarsest - 1 snap per grid square
-        "1/2 Block (0.5)",      // Recommended default - 2 snaps per grid square
-        "1/4 Block (0.25)",     // Fine - 4 snaps per grid square
-        "1/8 Block (0.125)",    // Very fine - 8 snaps per grid square
-        "1/16 Block (0.0625)"   // Ultra fine - 16 snaps per grid square
+        "1 Block (1.0)",
+        "1/2 Block (0.5)",
+        "1/4 Block (0.25)",
+        "1/8 Block (0.125)",
+        "1/16 Block (0.0625)"
     };
     private static final float[] GRID_SNAPPING_INCREMENT_VALUES = {
-        SnappingUtil.SNAP_FULL_BLOCK,      // 1.0
-        SnappingUtil.SNAP_HALF_BLOCK,      // 0.5 (default)
-        SnappingUtil.SNAP_QUARTER_BLOCK,   // 0.25
-        0.125f,                             // 1/8 block
-        0.0625f                             // 1/16 block
+        SnappingUtil.SNAP_FULL_BLOCK,
+        SnappingUtil.SNAP_HALF_BLOCK,
+        SnappingUtil.SNAP_QUARTER_BLOCK,
+        0.125f,
+        0.0625f
     };
 
     // Model Editor ImGui state holders
     private final ImFloat cameraMouseSensitivity = new ImFloat();
+    private final ImFloat cameraPanSensitivity = new ImFloat();
     private final ImInt gridSnappingIncrementIndex = new ImInt();
     private final ImFloat vertexPointSize = new ImFloat();
 
@@ -77,9 +79,9 @@ public class PreferencesPageRenderer {
     // Dependencies
     private final PreferencesManager preferencesManager;
     private final ThemeManager themeManager;
-    private TextureCreatorImGui textureCreatorImGui; // Mutable - can be set after construction
+    private TextureCreatorImGui textureCreatorImGui;
 
-    // Component references for real-time updates
+    // Component references for applying settings
     private final ViewportController viewport;
     private final PropertyPanelImGui propertyPanel;
 
@@ -108,7 +110,6 @@ public class PreferencesPageRenderer {
         this.viewport = viewport;
         this.propertyPanel = propertyPanel;
 
-        // Initialize keybind management components
         this.keybindRegistry = com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
         this.keyCaptureDialog = new com.openmason.main.systems.menus.preferences.keybinds.KeyCaptureDialog();
         this.conflictDialog = new com.openmason.main.systems.menus.preferences.keybinds.ConflictWarningDialog();
@@ -116,10 +117,51 @@ public class PreferencesPageRenderer {
         logger.debug("Unified preferences page renderer created");
     }
 
+    // ========================================
+    // Lifecycle — Sync & Apply
+    // ========================================
+
+    /**
+     * Called when the preferences window opens.
+     * Loads all ImGui state holders from persisted values so sliders/combos
+     * reflect the current saved settings.
+     */
+    public void onWindowOpened() {
+        syncModelEditorState();
+
+        TextureCreatorPreferences texPrefs = getTexturePreferences();
+        if (texPrefs != null) {
+            syncTextureEditorState(texPrefs);
+        }
+
+        syncCommonState();
+
+        logger.debug("All preference pages synced from persistence");
+    }
+
+    /**
+     * Persists all current ImGui state to disk and applies to live systems.
+     * Called by the Apply and OK buttons.
+     */
+    public void applyAllSettings() {
+        applyModelEditorSettings();
+        applyTextureEditorSettings();
+        applyCommonSettings();
+
+        // Migrate the file so it contains every known key.
+        // Adds defaults for any missing keys without overwriting existing values.
+        preferencesManager.migrateFile();
+
+        logger.info("All preferences applied and saved");
+    }
+
+    // ========================================
+    // Page Rendering
+    // ========================================
+
     /**
      * Renders the selected preference page.
-     *
-     * @param page the page to render
+     * State is NOT synced per-frame — only on window open via {@link #onWindowOpened()}.
      */
     public void render(PreferencesState.PreferencePage page) {
         switch (page) {
@@ -146,9 +188,6 @@ public class PreferencesPageRenderer {
     // ========================================
 
     private void renderModelEditorPage() {
-        // Sync state from preferences
-        syncModelEditorState();
-
         // Camera Settings Section
         ImGuiComponents.renderSectionHeader("Camera Settings");
         renderCameraSettings();
@@ -161,10 +200,8 @@ public class PreferencesPageRenderer {
 
         ImGuiComponents.addSectionSeparator();
 
-        // Add extra spacing for visual consistency
         ImGui.spacing();
 
-        // Reset button
         ImGuiComponents.renderButton(
                 "Reset to Defaults",
                 150.0f,
@@ -174,16 +211,36 @@ public class PreferencesPageRenderer {
     }
 
     private void renderCameraSettings() {
+        ImGuiComponents.renderSubHeader("Orbit");
+        ImGuiComponents.renderSettingSeparator();
+
         ImGuiComponents.renderSliderSetting(
-                "Camera Drag Speed",
-                "Controls how fast the camera rotates when dragging with the mouse.\n" +
-                        "Higher values = faster camera movement.\n" +
+                "Orbit Speed",
+                "Controls how fast the camera orbits when dragging with the left mouse button.\n" +
+                        "Higher values = faster rotation.\n" +
                         "Default: 3.0",
                 cameraMouseSensitivity,
                 MIN_CAMERA_SENSITIVITY,
                 MAX_CAMERA_SENSITIVITY,
                 "%.1f",
-                this::onCameraSensitivityChanged
+                v -> {} // Deferred — applied on OK/Apply
+        );
+
+        ImGuiComponents.addSpacing();
+
+        ImGuiComponents.renderSubHeader("Pan");
+        ImGuiComponents.renderSettingSeparator();
+
+        ImGuiComponents.renderSliderSetting(
+                "Pan Speed",
+                "Controls how fast the camera pans when dragging with the middle mouse button.\n" +
+                        "Pan speed also scales with zoom distance for consistent feel.\n" +
+                        "Default: 1.0",
+                cameraPanSensitivity,
+                MIN_PAN_SENSITIVITY,
+                MAX_PAN_SENSITIVITY,
+                "%.1f",
+                v -> {} // Deferred — applied on OK/Apply
         );
     }
 
@@ -197,7 +254,7 @@ public class PreferencesPageRenderer {
                 GRID_SNAPPING_INCREMENT_NAMES,
                 gridSnappingIncrementIndex,
                 200.0f,
-                this::onGridSnappingIncrementChanged
+                v -> {} // Deferred — applied on OK/Apply
         );
 
         ImGuiComponents.renderSliderSetting(
@@ -210,124 +267,83 @@ public class PreferencesPageRenderer {
                 MIN_VERTEX_POINT_SIZE,
                 MAX_VERTEX_POINT_SIZE,
                 "%.1f",
-                this::onVertexPointSizeChanged
+                v -> {} // Deferred — applied on OK/Apply
         );
     }
 
-    private void onCameraSensitivityChanged(Float newValue) {
-        // Clamp value to valid range
-        float clampedValue = Math.max(MIN_CAMERA_SENSITIVITY,
-                Math.min(MAX_CAMERA_SENSITIVITY, newValue));
-
-        // Save to preferences
-        preferencesManager.setCameraMouseSensitivity(clampedValue);
-
-        // Apply to viewport in real-time
+    private void applyModelEditorSettings() {
+        // Camera orbit speed
+        float orbitSpeed = Math.max(MIN_CAMERA_SENSITIVITY,
+                Math.min(MAX_CAMERA_SENSITIVITY, cameraMouseSensitivity.get()));
+        preferencesManager.setCameraMouseSensitivity(orbitSpeed);
         if (viewport != null && viewport.getCamera() != null) {
-            viewport.getCamera().setMouseSensitivity(clampedValue);
-            logger.debug("Camera mouse sensitivity updated in real-time: {}", clampedValue);
-        } else {
-            logger.debug("Camera mouse sensitivity saved (viewport will apply on next load): {}", clampedValue);
-        }
-    }
-
-    private void onGridSnappingIncrementChanged(Integer newIndex) {
-        // Validate index
-        if (newIndex < 0 || newIndex >= GRID_SNAPPING_INCREMENT_VALUES.length) {
-            logger.warn("Invalid grid snapping increment index: {}", newIndex);
-            return;
+            viewport.getCamera().setMouseSensitivity(orbitSpeed);
         }
 
-        // Get the selected increment value
-        float newIncrement = GRID_SNAPPING_INCREMENT_VALUES[newIndex];
-
-        // Save to preferences (persists to disk)
-        preferencesManager.setGridSnappingIncrement(newIncrement);
-
-        // Apply immediately to viewport (real-time update)
-        if (viewport != null) {
-            viewport.setGridSnappingIncrement(newIncrement);
-            logger.debug("Grid snapping increment applied to viewport: {} ({})",
-                        GRID_SNAPPING_INCREMENT_NAMES[newIndex], newIncrement);
-        } else {
-            logger.debug("Grid snapping increment saved to preferences: {} ({}) - will apply on next viewport creation",
-                        GRID_SNAPPING_INCREMENT_NAMES[newIndex], newIncrement);
-        }
-    }
-
-    private void onVertexPointSizeChanged(Float newValue) {
-        // Clamp value to valid range
-        float clampedValue = Math.max(MIN_VERTEX_POINT_SIZE,
-                Math.min(MAX_VERTEX_POINT_SIZE, newValue));
-
-        // Save to AppConfig (persists to disk)
-        try {
-            omConfig omConfig = new omConfig();
-            omConfig.setVertexPointSize(clampedValue);
-            omConfig.saveConfiguration();
-        } catch (Exception e) {
-            logger.error("Failed to save vertex point size to AppConfig", e);
-        }
-
-        // Apply to viewport in real-time
-        if (viewport != null) {
-            viewport.setVertexPointSize(clampedValue);
-            logger.debug("Vertex point size updated in real-time: {}", clampedValue);
-        } else {
-            logger.debug("Vertex point size saved (viewport will apply on next load): {}", clampedValue);
-        }
-    }
-
-    private void resetModelEditorToDefaults() {
-        // Reset camera sensitivity
-        preferencesManager.setCameraMouseSensitivity(3.0f);
+        // Camera pan speed
+        float panSpeed = Math.max(MIN_PAN_SENSITIVITY,
+                Math.min(MAX_PAN_SENSITIVITY, cameraPanSensitivity.get()));
+        preferencesManager.setCameraPanSensitivity(panSpeed);
         if (viewport != null && viewport.getCamera() != null) {
-            viewport.getCamera().setMouseSensitivity(3.0f);
+            viewport.getCamera().setPanSensitivity(panSpeed);
         }
 
-        // Reset grid snapping increment (default: 1/16 block = 0.0625)
-        preferencesManager.setGridSnappingIncrement(0.0625f);
-
-        // Reset vertex point size (default: 5.0)
-        try {
-            omConfig omConfig = new omConfig();
-            omConfig.setVertexPointSize(5.0f);
-            omConfig.saveConfiguration();
+        // Grid snapping increment
+        int snapIndex = gridSnappingIncrementIndex.get();
+        if (snapIndex >= 0 && snapIndex < GRID_SNAPPING_INCREMENT_VALUES.length) {
+            float increment = GRID_SNAPPING_INCREMENT_VALUES[snapIndex];
+            preferencesManager.setGridSnappingIncrement(increment);
             if (viewport != null) {
-                viewport.setVertexPointSize(5.0f);
+                viewport.setGridSnappingIncrement(increment);
             }
-        } catch (Exception e) {
-            logger.error("Failed to reset vertex point size", e);
         }
 
-        logger.info("Model Editor preferences reset to defaults");
+        // Vertex point size
+        float pointSize = Math.max(MIN_VERTEX_POINT_SIZE,
+                Math.min(MAX_VERTEX_POINT_SIZE, vertexPointSize.get()));
+        try {
+            omConfig config = new omConfig();
+            config.setVertexPointSize(pointSize);
+            config.saveConfiguration();
+        } catch (Exception e) {
+            logger.error("Failed to save vertex point size", e);
+        }
+        if (viewport != null) {
+            viewport.setVertexPointSize(pointSize);
+        }
+
+        logger.debug("Model Editor settings applied");
+    }
+
+    /**
+     * Resets Model Editor ImGui state to defaults.
+     * Does NOT persist — changes take effect on OK/Apply.
+     */
+    private void resetModelEditorToDefaults() {
+        cameraMouseSensitivity.set(3.0f);
+        cameraPanSensitivity.set(1.0f);
+        gridSnappingIncrementIndex.set(findGridSnappingIncrementIndex(0.0625f));
+        vertexPointSize.set(5.0f);
+        logger.debug("Model Editor preferences reset to defaults (pending Apply)");
     }
 
     private void syncModelEditorState() {
         cameraMouseSensitivity.set(preferencesManager.getCameraMouseSensitivity());
+        cameraPanSensitivity.set(preferencesManager.getCameraPanSensitivity());
 
-        // Sync grid snapping increment
         float currentIncrement = preferencesManager.getGridSnappingIncrement();
-        int index = findGridSnappingIncrementIndex(currentIncrement);
-        gridSnappingIncrementIndex.set(index);
+        gridSnappingIncrementIndex.set(findGridSnappingIncrementIndex(currentIncrement));
 
-        // Sync vertex point size from AppConfig
-        // Note: Using AppConfig directly since PreferencesManager doesn't handle vertex point size yet
         try {
-            omConfig omConfig = new omConfig();
-            vertexPointSize.set(omConfig.getVertexPointSize());
+            omConfig config = new omConfig();
+            vertexPointSize.set(config.getVertexPointSize());
         } catch (Exception e) {
             logger.warn("Failed to sync vertex point size, using default: 5.0", e);
             vertexPointSize.set(5.0f);
         }
     }
 
-    /**
-     * Find the index of a grid snapping increment value.
-     * Returns the closest match if exact value not found.
-     */
     private int findGridSnappingIncrementIndex(float value) {
-        // Find exact match or closest match
         int closestIndex = 0;
         float closestDiff = Math.abs(GRID_SNAPPING_INCREMENT_VALUES[0] - value);
 
@@ -353,46 +369,9 @@ public class PreferencesPageRenderer {
             return;
         }
 
-        // Sync state from preferences
-        syncTextureEditorState(preferences);
-
         // Grid Overlay Section
         ImGuiComponents.renderSectionHeader("Grid Overlay");
         ImGui.indent();
-        renderGridSettings(preferences);
-        ImGui.unindent();
-
-        ImGuiComponents.addSectionSeparator();
-
-        // Cube Net Reference Section
-        ImGuiComponents.renderSectionHeader("Cube Net Reference (64x48)");
-        ImGui.indent();
-        renderCubeNetSettings(preferences);
-        ImGui.unindent();
-
-        ImGuiComponents.addSectionSeparator();
-
-        // Tool Behavior Section
-        ImGuiComponents.renderSectionHeader("Tool Behavior");
-        ImGui.indent();
-        renderToolBehaviorSettings(preferences);
-        ImGui.unindent();
-
-        ImGuiComponents.addSectionSeparator();
-
-        // Add extra spacing for visual consistency
-        ImGui.spacing();
-
-        // Reset button
-        ImGuiComponents.renderButton(
-                "Reset to Defaults",
-                150.0f,
-                0.0f,
-                () -> resetTextureEditorToDefaults(preferences)
-        );
-    }
-
-    private void renderGridSettings(TextureCreatorPreferences preferences) {
         ImGuiComponents.renderSliderSetting(
                 "Grid Opacity",
                 "Controls the opacity of the pixel grid overlay (toggleable with 'G' key).\n" +
@@ -402,11 +381,15 @@ public class PreferencesPageRenderer {
                 TextureCreatorPreferences.MIN_OPACITY,
                 TextureCreatorPreferences.MAX_OPACITY,
                 "%.2f",
-                preferences::setGridOpacity
+                v -> {} // Deferred
         );
-    }
+        ImGui.unindent();
 
-    private void renderCubeNetSettings(TextureCreatorPreferences preferences) {
+        ImGuiComponents.addSectionSeparator();
+
+        // Cube Net Reference Section
+        ImGuiComponents.renderSectionHeader("Cube Net Reference (64x48)");
+        ImGui.indent();
         ImGuiComponents.renderSliderSetting(
                 "Reference Opacity",
                 "Controls opacity of the cube-net reference overlay (independent of grid).\n" +
@@ -417,12 +400,16 @@ public class PreferencesPageRenderer {
                 TextureCreatorPreferences.MIN_OPACITY,
                 TextureCreatorPreferences.MAX_OPACITY,
                 "%.2f",
-                preferences::setCubeNetOverlayOpacity
+                v -> {} // Deferred
         );
-    }
+        ImGui.unindent();
 
-    private void renderToolBehaviorSettings(TextureCreatorPreferences preferences) {
-        // Move Tool Settings
+        ImGuiComponents.addSectionSeparator();
+
+        // Tool Behavior Section
+        ImGuiComponents.renderSectionHeader("Tool Behavior");
+        ImGui.indent();
+
         ImGuiComponents.renderSubHeader("Move Tool");
         ImGuiComponents.renderSettingSeparator();
 
@@ -435,12 +422,11 @@ public class PreferencesPageRenderer {
                 TextureCreatorPreferences.MIN_ROTATION_SPEED,
                 TextureCreatorPreferences.MAX_ROTATION_SPEED,
                 "%.2f deg/px",
-                preferences::setRotationSpeed
+                v -> {} // Deferred
         );
 
         ImGuiComponents.addSpacing();
 
-        // Paste/Move Operations Settings
         ImGuiComponents.renderSubHeader("Paste/Move Operations");
         ImGuiComponents.renderSettingSeparator();
 
@@ -450,13 +436,43 @@ public class PreferencesPageRenderer {
                         "during paste or move operations. When disabled, transparent pixels will clear\n" +
                         "the destination, allowing you to erase with transparent selections.",
                 skipTransparentPixelsCheckbox,
-                preferences::setSkipTransparentPixelsOnPaste
+                v -> {} // Deferred
+        );
+
+        ImGui.unindent();
+
+        ImGuiComponents.addSectionSeparator();
+
+        ImGui.spacing();
+
+        ImGuiComponents.renderButton(
+                "Reset to Defaults",
+                150.0f,
+                0.0f,
+                this::resetTextureEditorToDefaults
         );
     }
 
-    private void resetTextureEditorToDefaults(TextureCreatorPreferences preferences) {
-        preferences.resetToDefaults();
-        logger.info("Texture Editor preferences reset to defaults");
+    private void applyTextureEditorSettings() {
+        TextureCreatorPreferences prefs = getTexturePreferences();
+        if (prefs == null) {
+            return;
+        }
+
+        prefs.setGridOpacity(gridOpacitySlider.get());
+        prefs.setCubeNetOverlayOpacity(cubeNetOverlayOpacitySlider.get());
+        prefs.setRotationSpeed(rotationSpeedSlider.get());
+        prefs.setSkipTransparentPixelsOnPaste(skipTransparentPixelsCheckbox.get());
+
+        logger.debug("Texture Editor settings applied");
+    }
+
+    private void resetTextureEditorToDefaults() {
+        gridOpacitySlider.set(0.5f);
+        cubeNetOverlayOpacitySlider.set(0.5f);
+        rotationSpeedSlider.set(0.5f);
+        skipTransparentPixelsCheckbox.set(true);
+        logger.debug("Texture Editor preferences reset to defaults (pending Apply)");
     }
 
     private void syncTextureEditorState(TextureCreatorPreferences preferences) {
@@ -478,19 +494,14 @@ public class PreferencesPageRenderer {
     // ========================================
 
     private void renderCommonPage() {
-        // Sync state from current theme/density
-        syncCommonState();
-
         // Appearance Settings Section
         ImGuiComponents.renderSectionHeader("Appearance");
         renderAppearanceSettings();
 
         ImGuiComponents.addSectionSeparator();
 
-        // Add extra spacing for visual consistency
         ImGui.spacing();
 
-        // Reset button
         ImGuiComponents.renderButton(
                 "Reset to Defaults",
                 150.0f,
@@ -500,7 +511,6 @@ public class PreferencesPageRenderer {
     }
 
     private void renderAppearanceSettings() {
-        // Theme selection
         String[] themeNames = themeManager.getAvailableThemes().stream()
                 .map(ThemeDefinition::getName)
                 .toArray(String[]::new);
@@ -509,14 +519,13 @@ public class PreferencesPageRenderer {
                 "Theme",
                 "Select the color theme for Open Mason.\n" +
                         "Themes define the overall look and color scheme of the interface.\n" +
-                        "Changes apply immediately.",
+                        "Applied when OK or Apply is clicked.",
                 themeNames,
                 themeIndex,
                 200.0f,
-                this::onThemeChanged
+                v -> {} // Deferred
         );
 
-        // UI Density selection
         String[] densityNames = new String[DensityManager.UIDensity.values().length];
         int idx = 0;
         for (DensityManager.UIDensity density : DensityManager.UIDensity.values()) {
@@ -530,53 +539,39 @@ public class PreferencesPageRenderer {
                         "Normal: Balanced spacing\n" +
                         "Comfortable: Generous spacing\n" +
                         "Spacious: Maximum spacing for accessibility\n" +
-                        "Changes apply immediately.",
+                        "Applied when OK or Apply is clicked.",
                 densityNames,
                 densityIndex,
                 200.0f,
-                this::onDensityChanged
+                v -> {} // Deferred
         );
     }
 
-    private void onThemeChanged(Integer newIndex) {
-        if (newIndex < 0 || newIndex >= themeManager.getAvailableThemes().size()) {
-            logger.warn("Invalid theme index: {}", newIndex);
-            return;
+    private void applyCommonSettings() {
+        // Theme
+        int tIdx = themeIndex.get();
+        if (tIdx >= 0 && tIdx < themeManager.getAvailableThemes().size()) {
+            ThemeDefinition selectedTheme = themeManager.getAvailableThemes().get(tIdx);
+            themeManager.applyTheme(selectedTheme);
         }
 
-        ThemeDefinition selectedTheme = themeManager.getAvailableThemes().get(newIndex);
-        themeManager.applyTheme(selectedTheme);
-
-        logger.info("Theme changed to: {}", selectedTheme.getName());
-    }
-
-    private void onDensityChanged(Integer newIndex) {
-        if (newIndex < 0 || newIndex >= DensityManager.UIDensity.values().length) {
-            logger.warn("Invalid density index: {}", newIndex);
-            return;
+        // Density
+        int dIdx = densityIndex.get();
+        if (dIdx >= 0 && dIdx < DensityManager.UIDensity.values().length) {
+            DensityManager.UIDensity selectedDensity = DensityManager.UIDensity.values()[dIdx];
+            themeManager.setUIDensity(selectedDensity);
         }
 
-        DensityManager.UIDensity selectedDensity = DensityManager.UIDensity.values()[newIndex];
-        themeManager.setUIDensity(selectedDensity);
-
-        logger.info("UI Density changed to: {}", selectedDensity.getDisplayName());
+        logger.debug("Common settings applied");
     }
 
     private void resetCommonToDefaults() {
-        // Reset to default theme (first available theme, typically "Dark Professional")
-        if (!themeManager.getAvailableThemes().isEmpty()) {
-            ThemeDefinition defaultTheme = themeManager.getAvailableThemes().get(0);
-            themeManager.applyTheme(defaultTheme);
-        }
-
-        // Reset to default density (NORMAL)
-        themeManager.setUIDensity(DensityManager.UIDensity.NORMAL);
-
-        logger.info("Common preferences reset to defaults");
+        themeIndex.set(0);
+        densityIndex.set(DensityManager.UIDensity.NORMAL.ordinal());
+        logger.debug("Common preferences reset to defaults (pending Apply)");
     }
 
     private void syncCommonState() {
-        // Find current theme index
         ThemeDefinition currentTheme = themeManager.getCurrentTheme();
         if (currentTheme != null) {
             for (int i = 0; i < themeManager.getAvailableThemes().size(); i++) {
@@ -587,33 +582,27 @@ public class PreferencesPageRenderer {
             }
         }
 
-        // Get current density index
         DensityManager.UIDensity currentDensity = themeManager.getCurrentDensity();
         densityIndex.set(currentDensity.ordinal());
     }
 
     // ========================================
-    // Keybinds Page
+    // Keybinds Page (immediate — dialog-based)
     // ========================================
 
     private void renderKeybindsPage() {
-        // Render dialogs (they handle their own visibility)
         keyCaptureDialog.render();
         conflictDialog.render();
 
-        // Get all categories
         java.util.Set<String> categories = keybindRegistry.getAllCategories();
 
-        // Render each category
         for (String category : categories) {
             ImGuiComponents.renderSectionHeader(category);
             ImGui.indent();
 
-            // Get actions in this category
             java.util.List<com.openmason.main.systems.keybinds.KeybindAction> actions =
                     keybindRegistry.getActionsByCategory(category);
 
-            // Render each action as a row
             for (com.openmason.main.systems.keybinds.KeybindAction action : actions) {
                 renderKeybindRow(action);
             }
@@ -622,7 +611,6 @@ public class PreferencesPageRenderer {
             ImGuiComponents.addSectionSeparator();
         }
 
-        // Reset All button at bottom
         ImGui.spacing();
         ImGuiComponents.renderButton(
                 "Reset All to Defaults",
@@ -632,32 +620,25 @@ public class PreferencesPageRenderer {
         );
     }
 
-    /**
-     * Render a single keybind row.
-     */
     private void renderKeybindRow(com.openmason.main.systems.keybinds.KeybindAction action) {
         float labelWidth = 250.0f;
         float keyWidth = 150.0f;
         float buttonWidth = 80.0f;
 
-        // Action name (left-aligned)
         ImGui.text(action.getDisplayName());
         ImGui.sameLine(labelWidth);
 
-        // Current key (button-like display)
         com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey currentKey =
                 keybindRegistry.getKeybind(action.getId());
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.2f, 0.2f, 0.25f, 1.0f);
         ImGui.button(currentKey.getDisplayName() + "##key_" + action.getId(), keyWidth, 0);
         ImGui.popStyleColor();
 
-        // Rebind button
         ImGui.sameLine();
         if (ImGui.button("Rebind##rebind_" + action.getId(), buttonWidth, 0)) {
             startKeybindCapture(action);
         }
 
-        // Reset button (only show if customized)
         ImGui.sameLine();
         boolean isCustomized = keybindRegistry.isCustomized(action.getId());
         if (isCustomized) {
@@ -665,13 +646,10 @@ public class PreferencesPageRenderer {
                 resetKeybind(action.getId());
             }
         } else {
-            ImGui.dummy(60, 0); // Maintain layout
+            ImGui.dummy(60, 0);
         }
     }
 
-    /**
-     * Start capturing a new keybind for an action.
-     */
     private void startKeybindCapture(com.openmason.main.systems.keybinds.KeybindAction action) {
         keyCaptureDialog.startCapture(
                 action.getId(),
@@ -681,9 +659,6 @@ public class PreferencesPageRenderer {
         );
     }
 
-    /**
-     * Handle key capture completion.
-     */
     private void onKeyCaptured(com.openmason.main.systems.keybinds.KeybindAction action) {
         com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey newKey =
                 keyCaptureDialog.getCapturedKey();
@@ -693,12 +668,10 @@ public class PreferencesPageRenderer {
             return;
         }
 
-        // Check for conflicts
         com.openmason.main.systems.keybinds.ConflictResult conflict =
                 keybindRegistry.checkConflict(action.getId(), newKey);
 
         if (conflict.hasConflict()) {
-            // Show conflict warning
             com.openmason.main.systems.keybinds.KeybindAction conflictingAction =
                     conflict.getConflictingAction();
             conflictDialog.show(
@@ -706,7 +679,6 @@ public class PreferencesPageRenderer {
                     conflictingAction.getDisplayName(),
                     newKey.getDisplayName(),
                     () -> {
-                        // Reassign: clear old binding and assign new
                         keybindRegistry.setKeybind(conflictingAction.getId(), null);
                         keybindRegistry.setKeybind(action.getId(), newKey);
                         preferencesManager.setKeybind(action.getId(), newKey);
@@ -716,29 +688,21 @@ public class PreferencesPageRenderer {
                     () -> logger.debug("Conflict reassignment cancelled")
             );
         } else {
-            // No conflict, assign directly
             keybindRegistry.setKeybind(action.getId(), newKey);
             preferencesManager.setKeybind(action.getId(), newKey);
             logger.info("Keybind set: {} -> {}", action.getId(), newKey.getDisplayName());
         }
     }
 
-    /**
-     * Reset a single keybind to its default.
-     */
     private void resetKeybind(String actionId) {
         keybindRegistry.resetToDefault(actionId);
         preferencesManager.clearKeybind(actionId);
         logger.info("Keybind reset to default: {}", actionId);
     }
 
-    /**
-     * Reset all keybinds to their defaults.
-     */
     private void resetAllKeybinds() {
         keybindRegistry.resetAllToDefaults();
 
-        // Clear all custom keybinds from preferences
         for (com.openmason.main.systems.keybinds.KeybindAction action : keybindRegistry.getAllActions()) {
             preferencesManager.clearKeybind(action.getId());
         }
@@ -752,15 +716,9 @@ public class PreferencesPageRenderer {
 
     /**
      * Sets the TextureCreatorImGui instance for texture editor preferences.
-     * <p>
-     * This allows the texture creator interface to be wired up after construction,
-     * which is necessary because MainImGuiInterface is created before TextureCreatorImGui.
-     * </p>
-     *
-     * @param textureCreatorImGui the texture creator instance (can be null)
      */
     public void setTextureCreatorImGui(TextureCreatorImGui textureCreatorImGui) {
         this.textureCreatorImGui = textureCreatorImGui;
-        logger.debug("TextureCreatorImGui reference updated for real-time preference updates");
+        logger.debug("TextureCreatorImGui reference updated");
     }
 }

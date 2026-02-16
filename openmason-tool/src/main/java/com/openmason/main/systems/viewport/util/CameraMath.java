@@ -21,6 +21,11 @@ public final class CameraMath {
     public static final float MIN_SENSITIVITY = 0.1f;
     public static final float MAX_SENSITIVITY = 5.0f;
 
+    // Pan sensitivity constraints
+    public static final float MIN_PAN_SENSITIVITY = 0.1f;
+    public static final float MAX_PAN_SENSITIVITY = 5.0f;
+    public static final float DEFAULT_PAN_SENSITIVITY = 1.0f;
+
     private CameraMath() {
         throw new AssertionError("Utility class should not be instantiated");
     }

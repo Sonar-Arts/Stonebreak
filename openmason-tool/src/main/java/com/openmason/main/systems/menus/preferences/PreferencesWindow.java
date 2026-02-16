@@ -15,6 +15,11 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Unified preferences window for Open Mason.
+ * <p>
+ * Uses a deferred-apply model with OK and Apply buttons.
+ * Settings are synced from persistence when the window opens,
+ * and only saved/applied when the user clicks OK or Apply.
+ * </p>
  */
 public class PreferencesWindow {
 
@@ -24,6 +29,7 @@ public class PreferencesWindow {
     private static final float SIDEBAR_WIDTH = 150.0f;
     private static final float MIN_WINDOW_WIDTH = 800.0f;
     private static final float MIN_WINDOW_HEIGHT = 600.0f;
+    private static final float FOOTER_HEIGHT = 45.0f;
 
     // Window visibility state
     private final ImBoolean visible;
@@ -38,6 +44,7 @@ public class PreferencesWindow {
     private boolean iniFileSet = false;
     private boolean isDraggingWindow = false;
     private float cachedWindowWidth = 0.0f;
+    private boolean wasVisible = false;
 
     /**
      * Creates a new unified preferences window.
@@ -55,7 +62,6 @@ public class PreferencesWindow {
         this.visible = visible;
         this.state = new PreferencesState();
 
-        // Initialize unified page renderer with all dependencies
         this.pageRenderer = new PreferencesPageRenderer(
                 preferencesManager,
                 themeManager,
@@ -95,7 +101,14 @@ public class PreferencesWindow {
      */
     public void render() {
         if (!visible.get()) {
+            wasVisible = false;
             return;
+        }
+
+        // Detect window open transition and sync state from persistence
+        if (!wasVisible) {
+            pageRenderer.onWindowOpened();
+            wasVisible = true;
         }
 
         // Set initial size and position (first time only)
@@ -124,12 +137,8 @@ public class PreferencesWindow {
         // Begin window
         if (ImGui.begin(WINDOW_TITLE, visible, windowFlags)) {
             try {
-                // Render custom title bar
                 renderCustomTitleBar();
-
-                // Render sidebar and content area
                 renderContent();
-
             } catch (Exception e) {
                 logger.error("Error rendering preferences window", e);
                 ImGui.textColored(1.0f, 0.0f, 0.0f, 1.0f, "Error rendering preferences");
@@ -138,7 +147,6 @@ public class PreferencesWindow {
         }
         ImGui.end();
 
-        // Pop window padding style
         ImGui.popStyleVar();
     }
 
@@ -174,12 +182,10 @@ public class PreferencesWindow {
         ImGui.invisibleButton("##TitleBarDrag",
                 windowWidth - (buttonSize + buttonSpacing) * 2, titleBarHeight);
 
-        // Show move cursor when hovering
         if (ImGui.isItemHovered()) {
             ImGui.setMouseCursor(ImGuiMouseCursor.ResizeAll);
         }
 
-        // Track drag state and handle window movement
         boolean currentlyDragging = ImGui.isItemActive() && ImGui.isMouseDragging(0);
 
         if (currentlyDragging) {
@@ -200,16 +206,15 @@ public class PreferencesWindow {
             isDraggingWindow = false;
         }
 
-        // Render window title text
+        // Window title text
         ImGui.setCursorPos(titlePadding, (titleBarHeight - ImGui.getFrameHeight()) * 0.5f);
         ImGui.text(WINDOW_TITLE);
 
-        // Calculate button positions (right-aligned, only minimize and close)
+        // Title bar buttons (right-aligned)
         float buttonStartX = windowWidth - (buttonSize + buttonSpacing) * 2 - buttonSpacing;
         float buttonStartY = (titleBarHeight - buttonSize) * 0.5f;
         ImGui.setCursorPos(buttonStartX, buttonStartY);
 
-        // Push button text alignment for centering
         ImGui.pushStyleVar(ImGuiStyleVar.ButtonTextAlign, 0.5f, 0.5f);
 
         // Minimize button
@@ -231,26 +236,25 @@ public class PreferencesWindow {
         }
         ImGui.popStyleColor(3);
 
-        // Pop button text alignment style
         ImGui.popStyleVar();
 
-        // Add separator line below title bar
+        // Separator below title bar
         ImGui.setCursorPosY(titleBarHeight);
         ImGui.separator();
 
-        // Reset cursor for content below
         ImGui.setCursorPosY(titleBarHeight + 2);
     }
 
     /**
-     * Renders the sidebar navigation and content area.
+     * Renders the sidebar navigation, content area, and footer buttons.
      */
     private void renderContent() {
         float windowWidth = ImGui.getContentRegionAvailX();
         float windowHeight = ImGui.getContentRegionAvailY();
+        float contentHeight = windowHeight - FOOTER_HEIGHT;
 
         // Left sidebar (navigation)
-        ImGui.beginChild("##Sidebar", SIDEBAR_WIDTH, windowHeight, false);
+        ImGui.beginChild("##Sidebar", SIDEBAR_WIDTH, contentHeight, false);
         renderSidebar();
         ImGui.endChild();
 
@@ -260,24 +264,59 @@ public class PreferencesWindow {
                 ImGui.getCursorScreenPosX(),
                 ImGui.getCursorScreenPosY(),
                 ImGui.getCursorScreenPosX(),
-                ImGui.getCursorScreenPosY() + windowHeight,
+                ImGui.getCursorScreenPosY() + contentHeight,
                 ImGui.getColorU32(0.5f, 0.5f, 0.5f, 0.5f),
                 1.0f
         );
 
         // Right content area (selected page)
         ImGui.sameLine();
-        float contentWidth = windowWidth - SIDEBAR_WIDTH - 10; // Account for separator
+        float contentWidth = windowWidth - SIDEBAR_WIDTH - 10;
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 10.0f, 10.0f);
-        ImGui.beginChild("##Content", contentWidth, windowHeight, false);
+        ImGui.beginChild("##Content", contentWidth, contentHeight, false);
 
-        // Add horizontal indentation to push content away from separator
         ImGui.indent(15.0f);
         renderSelectedPage();
         ImGui.unindent(15.0f);
 
         ImGui.endChild();
         ImGui.popStyleVar();
+
+        // Footer with OK and Apply buttons
+        renderFooter(windowWidth);
+    }
+
+    /**
+     * Renders the footer bar with Apply and OK buttons.
+     */
+    private void renderFooter(float windowWidth) {
+        // Separator line above footer
+        ImGui.separator();
+        ImGui.spacing();
+
+        float buttonWidth = 100.0f;
+        float buttonHeight = 28.0f;
+        float buttonSpacing = 8.0f;
+        float totalButtonsWidth = buttonWidth * 2 + buttonSpacing;
+
+        // Right-align buttons
+        float startX = windowWidth - totalButtonsWidth - 15.0f;
+        ImGui.setCursorPosX(startX);
+
+        // Apply button
+        if (ImGui.button("Apply", buttonWidth, buttonHeight)) {
+            pageRenderer.applyAllSettings();
+            logger.info("Preferences applied");
+        }
+
+        ImGui.sameLine(0, buttonSpacing);
+
+        // OK button (Apply + close)
+        if (ImGui.button("OK", buttonWidth, buttonHeight)) {
+            pageRenderer.applyAllSettings();
+            visible.set(false);
+            logger.info("Preferences applied and window closed");
+        }
     }
 
     /**
@@ -287,20 +326,17 @@ public class PreferencesWindow {
         ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 8.0f, 10.0f);
         ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 0.0f, 2.0f);
 
-        // Get current theme colors for selection highlighting
         int selectedColor = ImGui.getColorU32(ImGuiCol.Header);
 
         for (PreferencesState.PreferencePage page : PreferencesState.PreferencePage.values()) {
             boolean isSelected = state.getCurrentPage() == page;
 
-            // Highlight selected page
             if (isSelected) {
                 ImGui.pushStyleColor(ImGuiCol.Button, selectedColor);
                 ImGui.pushStyleColor(ImGuiCol.ButtonHovered, selectedColor);
                 ImGui.pushStyleColor(ImGuiCol.ButtonActive, selectedColor);
             }
 
-            // Render navigation button (full width)
             if (ImGui.button(page.getDisplayName() + "##nav_" + page.name(),
                     SIDEBAR_WIDTH - 10, 40)) {
                 state.setCurrentPage(page);

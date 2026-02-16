@@ -24,6 +24,7 @@ public class PreferencesManager {
 
     // 3D Model Editor preferences
     private static final String CAMERA_MOUSE_SENSITIVITY_KEY = "camera.mouse.sensitivity";
+    private static final String CAMERA_PAN_SENSITIVITY_KEY = "camera.pan.sensitivity";
     private static final String GRID_SNAPPING_ENABLED_KEY = "viewport.grid.snapping.enabled";
     private static final String GRID_SNAPPING_INCREMENT_KEY = "viewport.grid.snapping.increment";
 
@@ -37,6 +38,7 @@ public class PreferencesManager {
 
     // Default values - 3D Model Editor
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
+    private static final float DEFAULT_CAMERA_PAN_SENSITIVITY = 1.0f;
     private static final boolean DEFAULT_GRID_SNAPPING_ENABLED = false;
     // Default grid snapping: Half block (0.5 units) = 2 snap positions per visual grid square
     // This provides good balance between precision and visual alignment with the 1.0 unit grid
@@ -50,35 +52,102 @@ public class PreferencesManager {
     private static final boolean DEFAULT_SKIP_TRANSPARENT_PASTE = true; // Skip transparent pixels by default
     private static final boolean DEFAULT_SHAPE_FILL_MODE = true; // Filled shapes by default
     
+    private static PreferencesManager instance;
+
     private final Properties properties;
     private final Path preferencesPath;
-    
+
+    /**
+     * Returns the shared PreferencesManager instance.
+     * All components must use this to avoid stale in-memory state
+     * causing file overwrites.
+     */
+    public static synchronized PreferencesManager getInstance() {
+        if (instance == null) {
+            instance = new PreferencesManager();
+        }
+        return instance;
+    }
+
+    /**
+     * @deprecated Use {@link #getInstance()} instead. Kept only so existing
+     *             {@code new PreferencesManager()} call-sites still compile
+     *             while they are migrated.
+     */
+    @Deprecated
     public PreferencesManager() {
+        // Redirect to singleton — if the singleton already exists, reuse it.
+        if (instance != null) {
+            this.properties = instance.properties;
+            this.preferencesPath = instance.preferencesPath;
+            return;
+        }
         this.properties = new Properties();
         this.preferencesPath = Paths.get(PREFERENCES_FILE);
         loadPreferences();
+        instance = this;
     }
     
     /**
      * Load preferences from file. Creates default preferences if file doesn't exist.
+     * Migrates legacy keys and populates missing keys with defaults.
      */
     private void loadPreferences() {
         try {
             if (Files.exists(preferencesPath)) {
                 try (InputStream input = Files.newInputStream(preferencesPath)) {
                     properties.load(input);
-                    // logger.info("Loaded preferences from: {}", preferencesPath);
                 }
+                migrateAndPopulateDefaults();
             } else {
-                // Create default preferences
                 setDefaults();
                 savePreferences();
-                // logger.info("Created default preferences file: {}", preferencesPath);
             }
         } catch (IOException e) {
             logger.error("Failed to load preferences from: {}", preferencesPath, e);
             setDefaults();
         }
+    }
+
+    /**
+     * Migrates legacy keys and ensures all expected keys exist with defaults.
+     * Called after loading an existing file so new preferences added in later
+     * versions are populated automatically.
+     */
+    private void migrateAndPopulateDefaults() {
+        boolean dirty = false;
+
+        // Migrate legacy orbit speed key
+        String legacyOrbitKey = "viewportCamera.mouse.sensitivity";
+        if (properties.containsKey(legacyOrbitKey) && !properties.containsKey(CAMERA_MOUSE_SENSITIVITY_KEY)) {
+            properties.setProperty(CAMERA_MOUSE_SENSITIVITY_KEY, properties.getProperty(legacyOrbitKey));
+            properties.remove(legacyOrbitKey);
+            dirty = true;
+        }
+
+        // Populate missing keys with defaults
+        dirty |= populateIfMissing(CAMERA_MOUSE_SENSITIVITY_KEY, DEFAULT_CAMERA_MOUSE_SENSITIVITY);
+        dirty |= populateIfMissing(CAMERA_PAN_SENSITIVITY_KEY, DEFAULT_CAMERA_PAN_SENSITIVITY);
+        dirty |= populateIfMissing(GRID_SNAPPING_ENABLED_KEY, DEFAULT_GRID_SNAPPING_ENABLED);
+        dirty |= populateIfMissing(GRID_SNAPPING_INCREMENT_KEY, DEFAULT_GRID_SNAPPING_INCREMENT);
+        dirty |= populateIfMissing(TEXTURE_EDITOR_GRID_OPACITY_KEY, DEFAULT_TEXTURE_GRID_OPACITY);
+        dirty |= populateIfMissing(TEXTURE_EDITOR_CUBE_NET_OVERLAY_OPACITY_KEY, DEFAULT_CUBE_NET_OVERLAY_OPACITY);
+        dirty |= populateIfMissing(TEXTURE_EDITOR_COLOR_HISTORY_KEY, DEFAULT_COLOR_HISTORY);
+        dirty |= populateIfMissing(TEXTURE_EDITOR_ROTATION_SPEED_KEY, DEFAULT_ROTATION_SPEED);
+        dirty |= populateIfMissing(TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY, DEFAULT_SKIP_TRANSPARENT_PASTE);
+        dirty |= populateIfMissing(TEXTURE_EDITOR_SHAPE_FILL_MODE_KEY, DEFAULT_SHAPE_FILL_MODE);
+
+        if (dirty) {
+            savePreferences();
+        }
+    }
+
+    private boolean populateIfMissing(String key, Object defaultValue) {
+        if (!properties.containsKey(key)) {
+            properties.setProperty(key, String.valueOf(defaultValue));
+            return true;
+        }
+        return false;
     }
     
     /**
@@ -86,16 +155,22 @@ public class PreferencesManager {
      */
     public void savePreferences() {
         try {
-            // Ensure directory exists
             Files.createDirectories(preferencesPath.getParent());
-            
+
             try (OutputStream output = Files.newOutputStream(preferencesPath)) {
                 properties.store(output, "OpenMason Preferences - Generated automatically");
-                // logger.info("Saved preferences to: {}", preferencesPath);
             }
         } catch (IOException e) {
             logger.error("Failed to save preferences to: {}", preferencesPath, e);
         }
+    }
+
+    /**
+     * Migrates the preferences file by adding defaults for any missing keys
+     * and removing legacy keys. Existing user values are never overwritten.
+     */
+    public void migrateFile() {
+        migrateAndPopulateDefaults();
     }
     
     /**
@@ -104,6 +179,7 @@ public class PreferencesManager {
     private void setDefaults() {
         // 3D Model Editor defaults
         properties.setProperty(CAMERA_MOUSE_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_MOUSE_SENSITIVITY));
+        properties.setProperty(CAMERA_PAN_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_PAN_SENSITIVITY));
         properties.setProperty(GRID_SNAPPING_ENABLED_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_ENABLED));
         properties.setProperty(GRID_SNAPPING_INCREMENT_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_INCREMENT));
 
@@ -140,12 +216,36 @@ public class PreferencesManager {
         properties.setProperty(CAMERA_MOUSE_SENSITIVITY_KEY, String.valueOf(sensitivity));
         savePreferences();
     }
-    
+
+    /**
+     * Get camera pan sensitivity setting.
+     */
+    public float getCameraPanSensitivity() {
+        String value = properties.getProperty(CAMERA_PAN_SENSITIVITY_KEY);
+        if (value != null) {
+            try {
+                return Float.parseFloat(value);
+            } catch (NumberFormatException e) {
+                logger.warn("Invalid camera pan sensitivity value: {}, using default", value);
+            }
+        }
+        return DEFAULT_CAMERA_PAN_SENSITIVITY;
+    }
+
+    /**
+     * Set camera pan sensitivity setting.
+     */
+    public void setCameraPanSensitivity(float sensitivity) {
+        properties.setProperty(CAMERA_PAN_SENSITIVITY_KEY, String.valueOf(sensitivity));
+        savePreferences();
+    }
+
     /**
      * Reset camera settings to defaults.
      */
     public void resetCameraToDefaults() {
         properties.setProperty(CAMERA_MOUSE_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_MOUSE_SENSITIVITY));
+        properties.setProperty(CAMERA_PAN_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_PAN_SENSITIVITY));
         properties.setProperty(GRID_SNAPPING_ENABLED_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_ENABLED));
         properties.setProperty(GRID_SNAPPING_INCREMENT_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_INCREMENT));
         savePreferences();
