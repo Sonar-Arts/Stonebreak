@@ -155,6 +155,20 @@ public class ViewportKeybindActions {
                 actions::toggleKnifeTool
         ));
 
+        // Numpad 5: Toggle Camera Mode (Arcball ↔ First-Person)
+        registry.registerAction(new KeybindAction(
+                "viewport.toggle_camera_mode",
+                "Toggle Camera Mode",
+                CATEGORY,
+                ShortcutKey.simple(GLFW.GLFW_KEY_KP_5),
+                () -> {
+                    int current = state.getCurrentCameraModeIndex().get();
+                    int next = (current + 1) % state.getCameraModes().length;
+                    state.getCurrentCameraModeIndex().set(next);
+                    actions.updateCameraMode();
+                }
+        ));
+
         // Ctrl+Z: Undo
         registry.registerAction(new KeybindAction(
                 "viewport.undo",
@@ -173,6 +187,6 @@ public class ViewportKeybindActions {
                 actions::redo
         ));
 
-        logger.info("Registered {} viewport keybind actions", 13);
+        logger.info("Registered {} viewport keybind actions", 14);
     }
 }
