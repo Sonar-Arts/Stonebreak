@@ -4,6 +4,8 @@ import com.openmason.main.systems.menus.textureCreator.SymmetryState;
 import com.openmason.main.systems.menus.textureCreator.canvas.CanvasRenderer;
 import com.openmason.main.systems.menus.textureCreator.canvas.CanvasState;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping.UVRegion;
+import com.openmason.main.systems.rendering.model.gmr.uv.IFaceTextureManager;
 import com.openmason.main.systems.menus.textureCreator.commands.CommandHistory;
 import com.openmason.main.systems.menus.textureCreator.commands.DrawCommand;
 import com.openmason.main.systems.menus.textureCreator.selection.MaskSelectionRegion;
@@ -31,6 +33,11 @@ public class CanvasPanel {
 
     private final CanvasRenderer renderer;
     private boolean wasMouseDown = false;
+
+    // Face-region editing mode state
+    private boolean faceEditingMode = false;
+    private int editingFaceId = -1;
+    private UVRegion editingUVRegion;
 
     // Callback for when drawing occurs
     private Runnable onDrawCallback = null;
@@ -349,6 +356,105 @@ public class CanvasPanel {
 
         // Update mouse state
         wasMouseDown = leftMouseDown;
+    }
+
+    /**
+     * Enter face-region editing mode.
+     *
+     * <p>When active, the canvas view is scoped to a single face's UV region.
+     * The zoom level is automatically adjusted so the face fills the viewport.
+     *
+     * @param faceId       the face being edited
+     * @param uvRegion     the face's UV region within the material texture
+     * @param canvasState  canvas state to adjust zoom/pan
+     * @param canvasWidth  full canvas width in pixels
+     * @param canvasHeight full canvas height in pixels
+     * @param viewportWidth  available viewport width in screen pixels
+     * @param viewportHeight available viewport height in screen pixels
+     */
+    public void enterFaceEditingMode(int faceId, UVRegion uvRegion,
+                                      CanvasState canvasState,
+                                      int canvasWidth, int canvasHeight,
+                                      float viewportWidth, float viewportHeight) {
+        this.faceEditingMode = true;
+        this.editingFaceId = faceId;
+        this.editingUVRegion = uvRegion;
+
+        // Calculate the face region size in canvas pixels
+        int regionPixelWidth = Math.max(1, Math.round(uvRegion.width() * canvasWidth));
+        int regionPixelHeight = Math.max(1, Math.round(uvRegion.height() * canvasHeight));
+
+        // Adjust zoom so the face region fills the viewport
+        canvasState.resetViewToFit(regionPixelWidth, regionPixelHeight,
+                                    viewportWidth, viewportHeight);
+
+        logger.debug("Entered face editing mode: faceId={}, region=({},{})→({},{}), regionPixels={}x{}",
+            faceId, uvRegion.u0(), uvRegion.v0(), uvRegion.u1(), uvRegion.v1(),
+            regionPixelWidth, regionPixelHeight);
+    }
+
+    /**
+     * Exit face-region editing mode, returning to full canvas view.
+     *
+     * @param canvasState canvas state to reset
+     */
+    public void exitFaceEditingMode(CanvasState canvasState) {
+        this.faceEditingMode = false;
+        this.editingFaceId = -1;
+        this.editingUVRegion = null;
+
+        canvasState.resetView();
+        logger.debug("Exited face editing mode");
+    }
+
+    /**
+     * Check if currently in face-region editing mode.
+     *
+     * @return true if editing a specific face region
+     */
+    public boolean isFaceEditingMode() {
+        return faceEditingMode;
+    }
+
+    /**
+     * Get the face ID currently being edited.
+     *
+     * @return face ID, or -1 if not in face editing mode
+     */
+    public int getEditingFaceId() {
+        return editingFaceId;
+    }
+
+    /**
+     * Get the UV region of the face currently being edited.
+     *
+     * @return UV region, or null if not in face editing mode
+     */
+    public UVRegion getEditingUVRegion() {
+        return editingUVRegion;
+    }
+
+    /**
+     * Set face overlay context on the renderer for full-texture view.
+     *
+     * <p>Call this to provide face texture data so the renderer uses
+     * {@link com.openmason.main.systems.menus.textureCreator.canvas.FaceUVOverlayRenderer}
+     * instead of the legacy cube net overlay.
+     *
+     * @param faceTextureManager face texture data source (null to revert to cube net)
+     * @param activeMaterialId   currently active material ID
+     * @param selectedFaceId     currently selected face ID (-1 for none)
+     */
+    public void setFaceOverlayContext(IFaceTextureManager faceTextureManager,
+                                       int activeMaterialId, int selectedFaceId) {
+        renderer.setFaceOverlayContext(faceTextureManager, activeMaterialId, selectedFaceId);
+    }
+
+    /**
+     * Clear face overlay context, reverting to legacy cube net overlay.
+     */
+    public void clearFaceOverlayContext() {
+        renderer.clearFaceOverlayContext();
     }
 
     /**

@@ -3,6 +3,7 @@ package com.openmason.main.systems.menus.textureCreator.canvas;
 import com.openmason.main.systems.menus.textureCreator.SymmetryState;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionRegion;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionRenderer;
+import com.openmason.main.systems.rendering.model.gmr.uv.IFaceTextureManager;
 import imgui.ImColor;
 import imgui.ImDrawList;
 import imgui.ImGui;
@@ -41,8 +42,11 @@ public class CanvasRenderer {
     private static final int CANVAS_BORDER_COLOR = ImColor.rgba(0, 0, 0, 255);  // Solid black border
     private static final float CANVAS_BORDER_THICKNESS = 1.0f;
 
-    // Cube net overlay renderer (for 64x48 textures)
+    // Cube net overlay renderer (legacy, for 64x48 textures without face data)
     private final CubeNetOverlayRenderer cubeNetOverlayRenderer;
+
+    // Face UV overlay renderer (replaces cube net when face data is available)
+    private final FaceUVOverlayRenderer faceUVOverlayRenderer;
 
     // Face boundary renderer (for face-editing mode)
     private final FaceBoundaryRenderer faceBoundaryRenderer;
@@ -50,11 +54,17 @@ public class CanvasRenderer {
     // Selection renderer
     private final SelectionRenderer selectionRenderer;
 
+    // Face overlay context (null when no face data is available, falls back to cube net)
+    private IFaceTextureManager faceTextureManager;
+    private int activeMaterialId = -1;
+    private int selectedFaceId = -1;
+
     /**
      * Create canvas renderer.
      */
     public CanvasRenderer() {
         this.cubeNetOverlayRenderer = new CubeNetOverlayRenderer();
+        this.faceUVOverlayRenderer = new FaceUVOverlayRenderer();
         this.faceBoundaryRenderer = new FaceBoundaryRenderer();
         this.selectionRenderer = new SelectionRenderer();
         logger.debug("Canvas renderer created");
@@ -196,9 +206,16 @@ public class CanvasRenderer {
             renderGrid(canvas, canvasState, canvasX, canvasY, gridOpacity);
         }
 
-        // Render cube net overlay (for 64x48 textures) after grid but before pixels
-        cubeNetOverlayRenderer.render(canvas.getWidth(), canvas.getHeight(),
-                                      canvasX, canvasY, zoom, cubeNetOverlayOpacity);
+        // Render face overlays: use FaceUVOverlayRenderer when face data is available,
+        // fall back to CubeNetOverlayRenderer for legacy 64x48 canvases without face data
+        if (faceTextureManager != null) {
+            faceUVOverlayRenderer.render(faceTextureManager, activeMaterialId, selectedFaceId,
+                                          canvas.getWidth(), canvas.getHeight(),
+                                          canvasX, canvasY, zoom, cubeNetOverlayOpacity);
+        } else {
+            cubeNetOverlayRenderer.render(canvas.getWidth(), canvas.getHeight(),
+                                          canvasX, canvasY, zoom, cubeNetOverlayOpacity);
+        }
 
         // Render texture as image on top of everything rendered so far
         // Note: cursor is already at correct position from setCursorPos above
@@ -406,6 +423,33 @@ public class CanvasRenderer {
                 // No axes to render
                 break;
         }
+    }
+
+    /**
+     * Set face overlay context for rendering face UV regions.
+     *
+     * <p>When set, the {@link FaceUVOverlayRenderer} is used instead of the
+     * legacy {@link CubeNetOverlayRenderer}, enabling support for arbitrary
+     * canvas dimensions and per-face UV regions.
+     *
+     * @param faceTextureManager face texture data source (null to clear)
+     * @param activeMaterialId   currently active material ID
+     * @param selectedFaceId     currently selected face ID (-1 for none)
+     */
+    public void setFaceOverlayContext(IFaceTextureManager faceTextureManager,
+                                       int activeMaterialId, int selectedFaceId) {
+        this.faceTextureManager = faceTextureManager;
+        this.activeMaterialId = activeMaterialId;
+        this.selectedFaceId = selectedFaceId;
+    }
+
+    /**
+     * Clear face overlay context, reverting to legacy cube net overlay.
+     */
+    public void clearFaceOverlayContext() {
+        this.faceTextureManager = null;
+        this.activeMaterialId = -1;
+        this.selectedFaceId = -1;
     }
 
     /**

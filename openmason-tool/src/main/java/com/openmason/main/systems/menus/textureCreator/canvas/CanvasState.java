@@ -153,6 +153,52 @@ public class CanvasState {
     }
 
     /**
+     * Calculate the zoom level that makes a canvas region fill the viewport.
+     *
+     * <p>Fits the region within the viewport with a small margin, choosing
+     * the axis that constrains first so the entire region is visible.
+     *
+     * @param canvasWidth   region width in canvas pixels
+     * @param canvasHeight  region height in canvas pixels
+     * @param viewportWidth available viewport width in screen pixels
+     * @param viewportHeight available viewport height in screen pixels
+     * @return zoom level that fits the region
+     */
+    public static float calculateZoomToFit(int canvasWidth, int canvasHeight,
+                                            float viewportWidth, float viewportHeight) {
+        if (canvasWidth <= 0 || canvasHeight <= 0
+                || viewportWidth <= 0 || viewportHeight <= 0) {
+            return DEFAULT_ZOOM;
+        }
+
+        // 90% of viewport to leave a comfortable margin
+        float margin = 0.9f;
+        float zoomX = (viewportWidth * margin) / canvasWidth;
+        float zoomY = (viewportHeight * margin) / canvasHeight;
+
+        // Use the smaller zoom so the entire region fits
+        float zoom = Math.min(zoomX, zoomY);
+        return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+    }
+
+    /**
+     * Reset view to fit a canvas region within the viewport.
+     *
+     * <p>Sets zoom so the region fills the viewport and centers the pan offset.
+     *
+     * @param canvasWidth    region width in canvas pixels
+     * @param canvasHeight   region height in canvas pixels
+     * @param viewportWidth  available viewport width in screen pixels
+     * @param viewportHeight available viewport height in screen pixels
+     */
+    public void resetViewToFit(int canvasWidth, int canvasHeight,
+                                float viewportWidth, float viewportHeight) {
+        setZoomLevel(calculateZoomToFit(canvasWidth, canvasHeight,
+                                         viewportWidth, viewportHeight));
+        resetPan();
+    }
+
+    /**
      * Convert screen coordinates to canvas pixel coordinates.
      *
      * @param screenX screen X coordinate
