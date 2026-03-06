@@ -44,6 +44,9 @@ public class CanvasRenderer {
     // Cube net overlay renderer (for 64x48 textures)
     private final CubeNetOverlayRenderer cubeNetOverlayRenderer;
 
+    // Face boundary renderer (for face-editing mode)
+    private final FaceBoundaryRenderer faceBoundaryRenderer;
+
     // Selection renderer
     private final SelectionRenderer selectionRenderer;
 
@@ -52,6 +55,7 @@ public class CanvasRenderer {
      */
     public CanvasRenderer() {
         this.cubeNetOverlayRenderer = new CubeNetOverlayRenderer();
+        this.faceBoundaryRenderer = new FaceBoundaryRenderer();
         this.selectionRenderer = new SelectionRenderer();
         logger.debug("Canvas renderer created");
     }
@@ -202,6 +206,12 @@ public class CanvasRenderer {
                    0, 0, 1, 1, // UV coordinates (normal)
                    1, 1, 1, 1, // Tint color (white = no tint)
                    0, 0, 0, 0);// Border color (none)
+
+        // Render face boundary mask overlay (hatch + polygon outline)
+        FaceBoundaryMask faceMask = canvas.getFaceBoundaryMask();
+        if (faceMask != null) {
+            faceBoundaryRenderer.render(faceMask, canvasX, canvasY, zoom, cubeNetOverlayOpacity);
+        }
 
         // Render symmetry axes if enabled
         if (symmetryState != null && symmetryState.isActive() && symmetryState.isShowAxisLines()) {

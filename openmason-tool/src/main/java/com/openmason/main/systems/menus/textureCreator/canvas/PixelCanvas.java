@@ -17,6 +17,7 @@ public class PixelCanvas {
     private SelectionRegion activeSelection; // Active selection region (null if no selection) - legacy
     private SelectionManager selectionManager; // Optional centralized selection manager
     private boolean bypassSelectionConstraint = false; // Temporarily bypass selection constraint for special operations
+    private FaceBoundaryMask faceBoundaryMask; // Active face boundary mask (null if editing full canvas)
 
     /**
      * Create new pixel canvas with specified dimensions.
@@ -100,6 +101,11 @@ public class PixelCanvas {
     public void setPixel(int x, int y, int color) {
         if (!isValidCoordinate(x, y)) {
             return; // Silently ignore out-of-bounds
+        }
+
+        // Face boundary mask constraint: if a mask is active, reject pixels outside it
+        if (faceBoundaryMask != null && !faceBoundaryMask.contains(x, y)) {
+            return; // Pixel is outside face boundary - ignore modification
         }
 
         // Selection constraint: if selection is active, only allow modifications within selection
@@ -303,6 +309,25 @@ public class PixelCanvas {
      */
     public void setBypassSelectionConstraint(boolean bypass) {
         this.bypassSelectionConstraint = bypass;
+    }
+
+    /**
+     * Set the active face boundary mask.
+     * When set, only pixels inside the mask can be modified via {@link #setPixel}.
+     *
+     * @param mask the face boundary mask, or null to allow editing the full canvas
+     */
+    public void setFaceBoundaryMask(FaceBoundaryMask mask) {
+        this.faceBoundaryMask = mask;
+    }
+
+    /**
+     * Get the active face boundary mask.
+     *
+     * @return the current mask, or null if no mask is active
+     */
+    public FaceBoundaryMask getFaceBoundaryMask() {
+        return faceBoundaryMask;
     }
 
 }
