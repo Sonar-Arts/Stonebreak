@@ -1,7 +1,9 @@
 package com.openmason.main.systems.menus.textureCreator;
 
 import com.openmason.main.systems.menus.textureCreator.canvas.CanvasState;
+import com.openmason.main.systems.menus.textureCreator.canvas.FaceBoundaryMask;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping.UVRegion;
 import com.openmason.main.systems.menus.textureCreator.clipboard.ClipboardManager;
 import com.openmason.main.systems.menus.textureCreator.commands.CommandHistory;
 import com.openmason.main.systems.menus.textureCreator.commands.DrawCommand;
@@ -27,6 +29,12 @@ public class TextureCreatorController {
     private final TextureExporter exporter;
     private final TextureImporter importer;
     private final ClipboardManager clipboard;
+
+    // Face-region editing state
+    private boolean faceRegionActive = false;
+    private int faceRegionMaterialId = -1;
+    private UVRegion faceRegionUV;
+    private FaceBoundaryMask faceRegionMask;
 
     /**
      * Create texture creator controller.
@@ -406,5 +414,92 @@ public class TextureCreatorController {
         } else {
             logger.debug("No pixels to delete in selection (all already transparent)");
         }
+    }
+
+    // ── Face-region editing ──────────────────────────────────────────────
+
+    /**
+     * Open the texture editor focused on a specific face's UV region.
+     *
+     * <p>Sets up face-region editing mode: applies the boundary mask to the
+     * active layer's canvas, frames the view on the UV region, and records
+     * the material context for real-time preview integration.
+     *
+     * @param materialId     material ID the face belongs to
+     * @param uvRegion       the face's UV region within the material texture
+     * @param mask           face boundary mask defining the paintable area (nullable for full-rect faces)
+     * @param viewportWidth  available viewport width in screen pixels
+     * @param viewportHeight available viewport height in screen pixels
+     */
+    public void openFaceRegion(int materialId, UVRegion uvRegion, FaceBoundaryMask mask,
+                                float viewportWidth, float viewportHeight) {
+        this.faceRegionActive = true;
+        this.faceRegionMaterialId = materialId;
+        this.faceRegionUV = uvRegion;
+        this.faceRegionMask = mask;
+
+        // Apply the boundary mask to the active layer canvas
+        PixelCanvas activeCanvas = getActiveLayerCanvas();
+        if (activeCanvas != null) {
+            activeCanvas.setFaceBoundaryMask(mask);
+        }
+
+        // Frame the view on the face's UV region
+        int canvasWidth = layerManager.getCanvasWidth();
+        int canvasHeight = layerManager.getCanvasHeight();
+        canvasState.frameTo(uvRegion.u0(), uvRegion.v0(), uvRegion.u1(), uvRegion.v1(),
+                            canvasWidth, canvasHeight, viewportWidth, viewportHeight);
+
+        logger.info("Opened face region: materialId={}, uv=({},{})→({},{}), mask={}",
+            materialId, uvRegion.u0(), uvRegion.v0(), uvRegion.u1(), uvRegion.v1(),
+            mask != null ? "active" : "none");
+    }
+
+    /**
+     * Close face-region editing mode, returning to full canvas editing.
+     */
+    public void closeFaceRegion() {
+        // Remove mask from active canvas
+        PixelCanvas activeCanvas = getActiveLayerCanvas();
+        if (activeCanvas != null) {
+            activeCanvas.setFaceBoundaryMask(null);
+        }
+
+        this.faceRegionActive = false;
+        this.faceRegionMaterialId = -1;
+        this.faceRegionUV = null;
+        this.faceRegionMask = null;
+
+        // Reset view to show full canvas
+        canvasState.resetView();
+
+        logger.info("Closed face region editing");
+    }
+
+    /**
+     * Check if face-region editing mode is active.
+     *
+     * @return true if editing a specific face region
+     */
+    public boolean isFaceRegionActive() {
+        return faceRegionActive;
+    }
+
+    /**
+     * Get the material ID of the face being edited.
+     *
+     * @return material ID, or -1 if not in face-region mode
+     */
+    public int getFaceRegionMaterialId() {
+        return faceRegionMaterialId;
+    }
+
+    /**
+     * Get the UV region of the face being edited.
+     *
+     * @return UV region, or null if not in face-region mode
+     */
+    public UVRegion getFaceRegionUV() {
+        return faceRegionUV;
     }
 }
