@@ -10,7 +10,9 @@ import com.openmason.main.systems.MainImGuiInterface;
 import com.openmason.main.systems.viewport.ViewportImGuiInterface;
 import com.openmason.main.systems.menus.mainHub.ProjectHubScreen;
 import com.openmason.main.systems.themes.core.ThemeManager;
+import com.openmason.main.systems.menus.textureCreator.FaceEditorBridge;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
+import com.openmason.main.systems.menus.textureCreator.TexturePreviewPipeline;
 import com.openmason.main.systems.services.drop.ViewportDropCallbackManager;
 import com.openmason.main.systems.menus.windows.TextureEditorWindow;
 import org.lwjgl.glfw.*;
@@ -59,6 +61,7 @@ public class mainOpenMason {
     private ViewportImGuiInterface viewportInterface;
     private TextureCreatorImGui textureCreatorInterface;
     private TextureEditorWindow textureEditorWindow;
+    private TexturePreviewPipeline texturePreviewPipeline;
 
     // State flags
     private boolean showHomeScreen = true;
@@ -296,6 +299,20 @@ public class mainOpenMason {
             wireCallbacks();
             setWindowHandles();
 
+            // Real-time texture preview: canvas edits → 3D viewport
+            texturePreviewPipeline = new TexturePreviewPipeline(
+                textureCreatorInterface.getController(),
+                mainInterface.getViewport3D().getModelRenderer()
+            );
+
+            // Wire face editor bridge: property panel "Edit Texture" → texture editor
+            FaceEditorBridge faceEditorBridge = new FaceEditorBridge(textureCreatorInterface.getController());
+            mainInterface.getPropertyPanel().setFaceEditorBridge(faceEditorBridge);
+            mainInterface.getPropertyPanel().setOnEditTextureRequested(() -> {
+                showTextureEditor = true;
+                textureEditorWindow.show();
+            });
+
         } catch (Exception e) {
             logger.error("Failed to initialize UI interfaces", e);
             throw new RuntimeException("UI initialization failed", e);
@@ -374,12 +391,22 @@ public class mainOpenMason {
         if (showTextureEditor) {
             safeRender(() -> {
                 textureEditorWindow.render();
-                showTextureEditor = textureEditorWindow.isVisible();
+                boolean stillVisible = textureEditorWindow.isVisible();
+                if (!stillVisible) {
+                    // Texture editor closed — clear the outline highlight on the editing face
+                    mainInterface.getPropertyPanel().clearEditingFace();
+                }
+                showTextureEditor = stillVisible;
             }, "Texture Editor");
         }
 
         if (mainInterface != null && mainInterface.getUnifiedPreferencesWindow() != null) {
             safeRender(() -> mainInterface.getUnifiedPreferencesWindow().render(), "Preferences Window");
+        }
+
+        // Flush pending texture preview updates to the 3D viewport
+        if (texturePreviewPipeline != null) {
+            texturePreviewPipeline.flush();
         }
     }
 
@@ -462,6 +489,9 @@ public class mainOpenMason {
             logger.error("Error cleaning up CBRResourceManager", e);
         }
 
+        if (texturePreviewPipeline != null) {
+            texturePreviewPipeline.dispose();
+        }
         safeDispose(viewportInterface);
         safeDispose(textureCreatorInterface);
         safeDispose(themeManager);

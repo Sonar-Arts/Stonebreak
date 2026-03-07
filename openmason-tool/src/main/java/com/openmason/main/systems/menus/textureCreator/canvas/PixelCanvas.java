@@ -3,7 +3,9 @@ package com.openmason.main.systems.menus.textureCreator.canvas;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionManager;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionRegion;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Core pixel canvas data structure.
@@ -18,6 +20,7 @@ public class PixelCanvas {
     private SelectionManager selectionManager; // Optional centralized selection manager
     private boolean bypassSelectionConstraint = false; // Temporarily bypass selection constraint for special operations
     private FaceBoundaryMask faceBoundaryMask; // Active face boundary mask (null if editing full canvas)
+    private final List<CanvasChangeListener> changeListeners = new ArrayList<>();
 
     /**
      * Create new pixel canvas with specified dimensions.
@@ -122,6 +125,7 @@ public class PixelCanvas {
         int index = y * width + x;
         pixels[index] = color;
         modificationVersion++;
+        notifyChangeListeners(x, y, 1, 1);
     }
 
     /**
@@ -132,6 +136,7 @@ public class PixelCanvas {
     public void fill(int color) {
         Arrays.fill(pixels, color);
         modificationVersion++;
+        notifyChangeListeners(0, 0, width, height);
     }
 
     /**
@@ -154,6 +159,7 @@ public class PixelCanvas {
 
         System.arraycopy(source.pixels, 0, this.pixels, 0, pixels.length);
         modificationVersion++;
+        notifyChangeListeners(0, 0, width, height);
     }
 
     /**
@@ -328,6 +334,98 @@ public class PixelCanvas {
      */
     public FaceBoundaryMask getFaceBoundaryMask() {
         return faceBoundaryMask;
+    }
+
+    // =========================================================================
+    // CHANGE LISTENERS
+    // =========================================================================
+
+    /**
+     * Register a listener to be notified when canvas pixels change.
+     *
+     * @param listener the listener to add
+     */
+    public void addChangeListener(CanvasChangeListener listener) {
+        if (listener != null && !changeListeners.contains(listener)) {
+            changeListeners.add(listener);
+        }
+    }
+
+    /**
+     * Remove a previously registered change listener.
+     *
+     * @param listener the listener to remove
+     */
+    public void removeChangeListener(CanvasChangeListener listener) {
+        changeListeners.remove(listener);
+    }
+
+    /**
+     * Notify all registered change listeners about a modified region.
+     *
+     * @param dirtyX      left edge of the dirty region
+     * @param dirtyY      top edge of the dirty region
+     * @param dirtyWidth  width of the dirty region
+     * @param dirtyHeight height of the dirty region
+     */
+    private void notifyChangeListeners(int dirtyX, int dirtyY, int dirtyWidth, int dirtyHeight) {
+        if (changeListeners.isEmpty()) {
+            return;
+        }
+        List<CanvasChangeListener> copy = new ArrayList<>(changeListeners);
+        for (CanvasChangeListener listener : copy) {
+            listener.onCanvasChanged(this, dirtyX, dirtyY, dirtyWidth, dirtyHeight);
+        }
+    }
+
+    /**
+     * Notify all change listeners that the entire canvas is dirty.
+     * Used when entering face-region mode to force a full GPU upload
+     * of the canvas contents to the new target texture.
+     */
+    public void notifyFullCanvasDirty() {
+        notifyChangeListeners(0, 0, width, height);
+    }
+
+    /**
+     * Extract a sub-region of the canvas as RGBA bytes for partial GPU upload.
+     * Converts from ABGR int to RGBA byte format, matching the layout expected
+     * by {@code glTexSubImage2D}.
+     *
+     * @param regionX left edge of the region
+     * @param regionY top edge of the region
+     * @param regionW width of the region
+     * @param regionH height of the region
+     * @return byte array in RGBA format for the requested sub-region
+     */
+    public byte[] getPixelsAsRGBABytes(int regionX, int regionY, int regionW, int regionH) {
+        // Clamp to canvas bounds
+        int x0 = Math.max(0, regionX);
+        int y0 = Math.max(0, regionY);
+        int x1 = Math.min(width, regionX + regionW);
+        int y1 = Math.min(height, regionY + regionH);
+        int clampedW = x1 - x0;
+        int clampedH = y1 - y0;
+
+        if (clampedW <= 0 || clampedH <= 0) {
+            return new byte[0];
+        }
+
+        byte[] bytes = new byte[clampedW * clampedH * 4];
+        int byteIndex = 0;
+
+        for (int row = y0; row < y1; row++) {
+            for (int col = x0; col < x1; col++) {
+                int pixel = pixels[row * width + col];
+                int[] rgba = unpackRGBA(pixel);
+                bytes[byteIndex++] = (byte) rgba[0]; // R
+                bytes[byteIndex++] = (byte) rgba[1]; // G
+                bytes[byteIndex++] = (byte) rgba[2]; // B
+                bytes[byteIndex++] = (byte) rgba[3]; // A
+            }
+        }
+
+        return bytes;
     }
 
 }

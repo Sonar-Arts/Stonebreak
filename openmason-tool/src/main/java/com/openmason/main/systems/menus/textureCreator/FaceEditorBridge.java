@@ -130,6 +130,19 @@ public class FaceEditorBridge {
     }
 
     /**
+     * Prepare a blank canvas in the texture editor matching the given dimensions and fill color.
+     * Must be called before opening a face that has no existing texture (e.g. a freshly created
+     * blank material) so the canvas dimensions match the GPU texture.
+     *
+     * @param width     canvas width in pixels
+     * @param height    canvas height in pixels
+     * @param fillColor RGBA fill color (use {@link com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas#packRGBA})
+     */
+    public void prepareBlankCanvas(int width, int height, int fillColor) {
+        controller.prepareBlankCanvas(width, height, fillColor);
+    }
+
+    /**
      * Close face editing and return to full canvas mode.
      */
     public void closeFaceEditing() {

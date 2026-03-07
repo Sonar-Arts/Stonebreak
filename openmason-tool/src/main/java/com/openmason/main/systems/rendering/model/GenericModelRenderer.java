@@ -22,7 +22,10 @@ import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import org.joml.Vector3f;
 
+import java.nio.ByteBuffer;
 import java.util.*;
+
+import org.lwjgl.BufferUtils;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL13.*;
@@ -779,6 +782,43 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     /**
+     * Update a sub-region of an existing GPU texture with new RGBA pixel data.
+     * Uses {@code glTexSubImage2D} for efficient partial uploads without
+     * re-uploading the entire texture.
+     *
+     * @param targetTextureId OpenGL texture ID to update
+     * @param x               left edge of the region (pixels)
+     * @param y               top edge of the region (pixels)
+     * @param width           width of the region (pixels)
+     * @param height          height of the region (pixels)
+     * @param rgbaBytes       pixel data in RGBA byte format
+     */
+    public void updateTextureRegion(int targetTextureId, int x, int y,
+                                    int width, int height, byte[] rgbaBytes) {
+        if (targetTextureId <= 0 || rgbaBytes == null || rgbaBytes.length == 0) {
+            return;
+        }
+
+        ByteBuffer buffer = BufferUtils.createByteBuffer(rgbaBytes.length);
+        buffer.put(rgbaBytes);
+        buffer.flip();
+
+        glBindTexture(GL_TEXTURE_2D, targetTextureId);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, width, height,
+                        GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    /**
+     * Get the current global texture ID used by this renderer.
+     *
+     * @return OpenGL texture ID, or 0 if no texture is set
+     */
+    public int getTextureId() {
+        return textureId;
+    }
+
+    /**
      * Assign a material to a specific face.
      * Updates the face's texture mapping to use the full region of the specified material.
      *
@@ -800,6 +840,67 @@ public class GenericModelRenderer extends BaseRenderer {
      */
     public FaceTextureManager getFaceTextureManager() {
         return faceTextureManager;
+    }
+
+    /**
+     * Read RGBA pixel data from a GPU texture via {@code glGetTexImage}.
+     *
+     * @param gpuTextureId OpenGL texture ID to read from
+     * @return RGBA byte array, or null if the texture could not be read
+     */
+    public byte[] readTexturePixels(int gpuTextureId) {
+        if (gpuTextureId <= 0) {
+            return null;
+        }
+
+        // Bind once for the entire readback sequence (getTextureDimensions unbinds,
+        // so we inline the dimension query here to avoid the double-bind issue)
+        glBindTexture(GL_TEXTURE_2D, gpuTextureId);
+        int width = glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH);
+        int height = glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT);
+
+        if (width <= 0 || height <= 0) {
+            glBindTexture(GL_TEXTURE_2D, 0);
+            return null;
+        }
+
+        ByteBuffer buffer = BufferUtils.createByteBuffer(width * height * 4);
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        byte[] pixels = new byte[width * height * 4];
+        buffer.get(pixels);
+        return pixels;
+    }
+
+    /**
+     * Get the width and height of a GPU texture.
+     *
+     * @param gpuTextureId OpenGL texture ID
+     * @return int array {@code [width, height]}, or null if invalid
+     */
+    public int[] getTextureDimensions(int gpuTextureId) {
+        if (gpuTextureId <= 0) {
+            return null;
+        }
+
+        glBindTexture(GL_TEXTURE_2D, gpuTextureId);
+        int width = glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH);
+        int height = glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        if (width <= 0 || height <= 0) {
+            return null;
+        }
+        return new int[]{width, height};
+    }
+
+    /**
+     * Mark the draw batches as dirty so they are rebuilt on the next render.
+     * Used externally after restoring face texture state (e.g. from an OMO load).
+     */
+    public void markDrawBatchesDirty() {
+        drawBatchesDirty = true;
     }
 
     /**

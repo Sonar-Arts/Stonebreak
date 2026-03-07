@@ -1,10 +1,16 @@
 package com.openmason.main.systems.services;
 
+import com.openmason.main.systems.menus.textureCreator.io.OMTSerializer;
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.factory.BlankModelFactory;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping;
+import com.openmason.main.systems.rendering.model.gmr.uv.MaterialDefinition;
 import com.openmason.main.systems.rendering.model.io.omo.OMODeserializer;
 import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.io.omo.OMOSerializer;
+import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.stateHandling.ModelState;
@@ -13,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.*;
 
 /**
  * Model operation service.
@@ -182,6 +189,21 @@ public class ModelOperationService {
                 }
             }
 
+            // Extract and set face texture data (v1.2+)
+            if (viewport != null) {
+                GenericModelRenderer renderer = viewport.getModelRenderer();
+                if (renderer != null) {
+                    FaceTextureManager ftm = renderer.getFaceTextureManager();
+                    OMOFormat.FaceTextureData faceTextureData = extractFaceTextureData(ftm);
+                    Map<Integer, byte[]> materialPNGs = extractMaterialTexturePNGs(ftm, renderer);
+                    if (faceTextureData != null && !faceTextureData.mappings().isEmpty()) {
+                        omoSerializer.setFaceTextureData(faceTextureData, materialPNGs);
+                        logger.info("Saving face texture data: {} mappings, {} materials",
+                                faceTextureData.mappings().size(), faceTextureData.materials().size());
+                    }
+                }
+            }
+
             // Save with mesh data (required for self-contained .omo files)
             boolean success = omoSerializer.save(currentEditableModel, filePath, meshData);
 
@@ -279,6 +301,13 @@ public class ModelOperationService {
                         logger.info("Loaded self-contained .omo with mesh data: {} vertices, {} triangles",
                                 meshData.getVertexCount(), meshData.getTriangleCount());
 
+                        // Restore per-face texture data (v1.2+)
+                        OMOFormat.FaceTextureData faceTextureData = omoDeserializer.getLastLoadedFaceTextureData();
+                        Map<String, byte[]> materialTextures = omoDeserializer.getLastLoadedMaterialTextures();
+                        if (faceTextureData != null && !faceTextureData.mappings().isEmpty()) {
+                            restoreFaceTextureData(faceTextureData, materialTextures);
+                        }
+
                         // Update statistics with actual counts
                         modelState.updateStatistics(1, meshData.getVertexCount(), meshData.getTriangleCount());
                         statusService.updateStatus("Loaded .OMO model: " + loadedModel.getName());
@@ -315,4 +344,176 @@ public class ModelOperationService {
         }
     }
 
+    // =========================================================================
+    // FACE TEXTURE DATA EXTRACTION (save path)
+    // =========================================================================
+
+    /**
+     * Extract face texture data from FaceTextureManager for serialization.
+     *
+     * @param ftm the face texture manager
+     * @return face texture data, or null if no non-default mappings exist
+     */
+    private OMOFormat.FaceTextureData extractFaceTextureData(FaceTextureManager ftm) {
+        Collection<FaceTextureMapping> allMappings = ftm.getAllMappings();
+        Collection<MaterialDefinition> allMaterials = ftm.getAllMaterials();
+
+        // Build mapping entries (skip default-material full-region mappings that are implicit)
+        List<OMOFormat.FaceMappingEntry> mappingEntries = new ArrayList<>();
+        for (FaceTextureMapping mapping : allMappings) {
+            if (mapping.materialId() == MaterialDefinition.DEFAULT.materialId()
+                    && mapping.uvRegion().equals(FaceTextureMapping.FULL_REGION)) {
+                continue; // Skip implicit default mappings
+            }
+            mappingEntries.add(new OMOFormat.FaceMappingEntry(
+                    mapping.faceId(),
+                    mapping.materialId(),
+                    mapping.uvRegion().u0(), mapping.uvRegion().v0(),
+                    mapping.uvRegion().u1(), mapping.uvRegion().v1(),
+                    mapping.uvRotation().degrees()
+            ));
+        }
+
+        if (mappingEntries.isEmpty()) {
+            return null; // No non-default mappings to save
+        }
+
+        // Build material entries (exclude default material)
+        List<OMOFormat.MaterialEntry> materialEntries = new ArrayList<>();
+        for (MaterialDefinition mat : allMaterials) {
+            if (mat.materialId() == MaterialDefinition.DEFAULT.materialId()) {
+                continue;
+            }
+            String textureFile = "material_" + mat.materialId() + ".png";
+            materialEntries.add(new OMOFormat.MaterialEntry(
+                    mat.materialId(),
+                    mat.name(),
+                    textureFile,
+                    mat.renderLayer().name(),
+                    mat.properties().emissive(),
+                    mat.properties().tintColor()
+            ));
+        }
+
+        return new OMOFormat.FaceTextureData(mappingEntries, materialEntries);
+    }
+
+    /**
+     * Read GPU textures for each non-default material and encode as PNGs.
+     *
+     * @param ftm      the face texture manager
+     * @param renderer the model renderer (for GPU texture readback)
+     * @return map of materialId → PNG bytes
+     */
+    private Map<Integer, byte[]> extractMaterialTexturePNGs(FaceTextureManager ftm,
+                                                             GenericModelRenderer renderer) {
+        Map<Integer, byte[]> result = new HashMap<>();
+
+        for (MaterialDefinition mat : ftm.getAllMaterials()) {
+            if (mat.materialId() == MaterialDefinition.DEFAULT.materialId()) {
+                continue;
+            }
+            if (mat.textureId() <= 0) {
+                continue;
+            }
+
+            int[] dims = renderer.getTextureDimensions(mat.textureId());
+            if (dims == null) {
+                logger.warn("Could not read dimensions for material {} texture {}", mat.materialId(), mat.textureId());
+                continue;
+            }
+
+            byte[] pixels = renderer.readTexturePixels(mat.textureId());
+            if (pixels == null) {
+                logger.warn("Could not read pixels for material {} texture {}", mat.materialId(), mat.textureId());
+                continue;
+            }
+
+            byte[] png = OMTSerializer.encodeRGBAToPNG(pixels, dims[0], dims[1]);
+            if (png != null) {
+                result.put(mat.materialId(), png);
+            }
+        }
+
+        return result;
+    }
+
+    // =========================================================================
+    // FACE TEXTURE DATA RESTORATION (load path)
+    // =========================================================================
+
+    /**
+     * Restore per-face texture data from a loaded OMO file.
+     * Uploads material textures to GPU, registers materials, and restores face mappings.
+     *
+     * @param faceTextureData  the loaded face texture metadata
+     * @param materialTextures map of ZIP entry names to PNG bytes
+     */
+    private void restoreFaceTextureData(OMOFormat.FaceTextureData faceTextureData,
+                                         Map<String, byte[]> materialTextures) {
+        if (viewport == null) {
+            return;
+        }
+
+        GenericModelRenderer renderer = viewport.getModelRenderer();
+        if (renderer == null) {
+            return;
+        }
+
+        FaceTextureManager ftm = renderer.getFaceTextureManager();
+        OMTTextureLoader textureLoader = new OMTTextureLoader();
+
+        // Upload material textures and register materials
+        for (OMOFormat.MaterialEntry matEntry : faceTextureData.materials()) {
+            int gpuTextureId = 0;
+
+            // Load the material's PNG from the ZIP entries
+            if (materialTextures != null) {
+                byte[] pngBytes = materialTextures.get(matEntry.textureFile());
+                if (pngBytes != null) {
+                    gpuTextureId = textureLoader.loadPNGAsTexture(pngBytes);
+                }
+            }
+
+            if (gpuTextureId <= 0) {
+                logger.warn("Failed to load texture for material {} ({})", matEntry.materialId(), matEntry.textureFile());
+                continue;
+            }
+
+            MaterialDefinition.RenderLayer renderLayer;
+            try {
+                renderLayer = MaterialDefinition.RenderLayer.valueOf(matEntry.renderLayer());
+            } catch (IllegalArgumentException e) {
+                renderLayer = MaterialDefinition.RenderLayer.OPAQUE;
+            }
+
+            MaterialDefinition material = new MaterialDefinition(
+                    matEntry.materialId(),
+                    matEntry.name(),
+                    gpuTextureId,
+                    renderLayer,
+                    new MaterialDefinition.MaterialProperties(matEntry.emissive(), matEntry.tintColor())
+            );
+            ftm.registerMaterial(material);
+            logger.debug("Restored material {} '{}' (textureId={})", matEntry.materialId(), matEntry.name(), gpuTextureId);
+        }
+
+        // Restore face mappings
+        for (OMOFormat.FaceMappingEntry mapEntry : faceTextureData.mappings()) {
+            FaceTextureMapping.UVRegion uvRegion = new FaceTextureMapping.UVRegion(
+                    mapEntry.u0(), mapEntry.v0(), mapEntry.u1(), mapEntry.v1());
+            FaceTextureMapping.UVRotation uvRotation = FaceTextureMapping.UVRotation.fromDegrees(
+                    mapEntry.uvRotationDegrees());
+            FaceTextureMapping mapping = new FaceTextureMapping(
+                    mapEntry.faceId(), mapEntry.materialId(), uvRegion, uvRotation);
+            ftm.setFaceMapping(mapping);
+        }
+
+        // Refresh rendering state
+        renderer.markDrawBatchesDirty();
+        renderer.refreshUVs();
+
+        logger.info("Restored face texture data: {} mappings, {} materials",
+                faceTextureData.mappings().size(), faceTextureData.materials().size());
+    }
 }

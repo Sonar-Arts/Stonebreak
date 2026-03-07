@@ -161,4 +161,12 @@ public interface IViewportConnector {
      * @return true if face editing is allowed
      */
     boolean isInFaceEditMode();
+
+    /**
+     * Set the face index currently being edited in the texture editor.
+     * The overlay renderer will use an outline instead of a filled highlight for this face.
+     *
+     * @param faceIndex face being edited, or -1 to clear
+     */
+    void setEditingFaceIndex(int faceIndex);
 }

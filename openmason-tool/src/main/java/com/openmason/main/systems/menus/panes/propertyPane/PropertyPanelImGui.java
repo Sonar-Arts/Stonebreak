@@ -8,6 +8,7 @@ import com.openmason.main.systems.menus.panes.propertyPane.interfaces.ITransform
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.FaceMaterialSection;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.TextureChooserSection;
+import com.openmason.main.systems.menus.textureCreator.FaceEditorBridge;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.TextureVariantSection;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.TransformSection;
 import com.openmason.main.systems.menus.panes.propertyPane.state.TransformState;
@@ -203,6 +204,34 @@ public class PropertyPanelImGui {
     @Deprecated
     private void switchTextureVariant(String variantName) {
         logger.debug("switchTextureVariant called but legacy model variants are no longer supported");
+    }
+
+    /**
+     * Set the face editor bridge on the face material section.
+     *
+     * @param bridge the bridge coordinating viewport-to-texture-editor handoff
+     */
+    public void setFaceEditorBridge(FaceEditorBridge bridge) {
+        faceMaterialSection.setFaceEditorBridge(bridge);
+    }
+
+    /**
+     * Set a callback on the face material section for when the user requests to edit a texture.
+     *
+     * @param callback action to run when the texture editor should be shown
+     */
+    public void setOnEditTextureRequested(Runnable callback) {
+        faceMaterialSection.setOnEditTextureRequested(callback);
+    }
+
+    /**
+     * Clear the editing face highlight in the viewport overlay.
+     * Should be called when the texture editor window closes.
+     */
+    public void clearEditingFace() {
+        if (viewportConnector != null) {
+            viewportConnector.setEditingFaceIndex(-1);
+        }
     }
 
     /**

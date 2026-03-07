@@ -189,4 +189,11 @@ public class ViewportAdapter implements IViewportConnector {
     public boolean isInFaceEditMode() {
         return EditModeManager.getInstance().isFaceEditingAllowed();
     }
+
+    @Override
+    public void setEditingFaceIndex(int faceIndex) {
+        if (viewport != null) {
+            viewport.setEditingFaceIndex(faceIndex);
+        }
+    }
 }

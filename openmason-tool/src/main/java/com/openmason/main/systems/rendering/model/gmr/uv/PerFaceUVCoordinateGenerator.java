@@ -208,6 +208,20 @@ public class PerFaceUVCoordinateGenerator implements IUVCoordinateGenerator {
             float s = (rangeU > EPSILON) ? (projU - minU) / rangeU : 0.5f;
             float t = (rangeV > EPSILON) ? (projV - minV) / rangeV : 0.5f;
 
+            // Flip U so the texture's left edge maps to the viewer's left when
+            // looking at the face from outside the mesh.
+            // For Y/Z-dominant normals (U axis = X): flip when dominant component < 0
+            // For X-dominant normals   (U axis = Z): flip when dominant component > 0
+            // Combined: flip when (isXDominant) XOR (dominantNegative)
+            boolean isXDominant = (uAxis == 2);
+            boolean isNegativeDominant = (getDominantComponent(normal) < 0);
+            if (isXDominant != isNegativeDominant) {
+                s = 1.0f - s;
+            }
+
+            // Flip V so texture top maps to face top (OpenGL UV origin is bottom-left)
+            t = 1.0f - t;
+
             // Apply rotation in parametric space (inlined to avoid per-vertex allocation)
             if (rotation != FaceTextureMapping.UVRotation.NONE) {
                 float rs, rt;
@@ -259,6 +273,13 @@ public class PerFaceUVCoordinateGenerator implements IUVCoordinateGenerator {
     /**
      * Select the U projection axis index (0=X, 1=Y, 2=Z) based on the face normal.
      * Picks one of the two axes most perpendicular to the dominant normal component.
+     *
+     * <p>Axis mapping:
+     * <ul>
+     *   <li>X-dominant (left/right faces): U = Z (2)</li>
+     *   <li>Y-dominant (top/bottom faces): U = X (0)</li>
+     *   <li>Z-dominant (front/back faces): U = X (0)</li>
+     * </ul>
      */
     private int selectUAxis(Vector3f normal) {
         float absX = Math.abs(normal.x);
@@ -266,7 +287,7 @@ public class PerFaceUVCoordinateGenerator implements IUVCoordinateGenerator {
         float absZ = Math.abs(normal.z);
 
         if (absX >= absY && absX >= absZ) {
-            return 1; // Normal along X → U = Y
+            return 2; // Normal along X → U = Z
         } else {
             return 0; // Normal along Y or Z → U = X
         }
@@ -275,16 +296,43 @@ public class PerFaceUVCoordinateGenerator implements IUVCoordinateGenerator {
     /**
      * Select the V projection axis index (0=X, 1=Y, 2=Z) based on the face normal.
      * Picks one of the two axes most perpendicular to the dominant normal component.
+     *
+     * <p>Axis mapping:
+     * <ul>
+     *   <li>X-dominant (left/right faces): V = Y (1)</li>
+     *   <li>Y-dominant (top/bottom faces): V = Z (2)</li>
+     *   <li>Z-dominant (front/back faces): V = Y (1)</li>
+     * </ul>
      */
     private int selectVAxis(Vector3f normal) {
         float absX = Math.abs(normal.x);
         float absY = Math.abs(normal.y);
         float absZ = Math.abs(normal.z);
 
-        if (absZ >= absX && absZ >= absY) {
-            return 1; // Normal along Z → V = Y
+        if (absY >= absX && absY >= absZ) {
+            return 2; // Normal along Y → V = Z
         } else {
-            return 2; // Normal along X or Y → V = Z
+            return 1; // Normal along X or Z → V = Y
+        }
+    }
+
+    /**
+     * Get the signed value of the dominant normal component (axis with largest absolute value).
+     *
+     * @param normal the face normal
+     * @return the signed value of the dominant axis component
+     */
+    private float getDominantComponent(Vector3f normal) {
+        float absX = Math.abs(normal.x);
+        float absY = Math.abs(normal.y);
+        float absZ = Math.abs(normal.z);
+
+        if (absX >= absY && absX >= absZ) {
+            return normal.x;
+        } else if (absY >= absX && absY >= absZ) {
+            return normal.y;
+        } else {
+            return normal.z;
         }
     }
 

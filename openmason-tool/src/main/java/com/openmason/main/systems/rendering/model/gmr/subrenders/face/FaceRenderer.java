@@ -613,6 +613,16 @@ public class FaceRenderer implements MeshChangeListener {
         selectedFaceIndices.clear();
     }
 
+    /**
+     * Set the face index currently being edited in the texture editor.
+     * Delegates to the overlay renderer to switch from filled to outline rendering.
+     *
+     * @param faceIndex face being edited, or -1 to clear
+     */
+    public void setEditingFaceIndex(int faceIndex) {
+        overlayRenderer.setEditingFaceIndex(faceIndex);
+    }
+
     public int getFaceCount() {
         return faceCount;
     }

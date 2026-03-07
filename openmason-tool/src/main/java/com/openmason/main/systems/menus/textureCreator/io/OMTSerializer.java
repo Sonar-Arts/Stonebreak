@@ -297,22 +297,25 @@ public class OMTSerializer {
     }
 
     /**
-     * Encode a PixelCanvas to PNG format.
+     * Encode raw RGBA byte data to PNG format.
+     * Usable from both the OMT serializer and the OMO serializer for material textures.
      *
-     * @param canvas pixel canvas to encode
+     * @param rgbaBytes raw RGBA pixel data
+     * @param width     image width in pixels
+     * @param height    image height in pixels
      * @return PNG data as byte array, or null if failed
      */
-    private byte[] encodeCanvasPNG(PixelCanvas canvas) {
-        try {
-            int width = canvas.getWidth();
-            int height = canvas.getHeight();
-            byte[] pixelBytes = canvas.getPixelsAsRGBABytes();
+    public static byte[] encodeRGBAToPNG(byte[] rgbaBytes, int width, int height) {
+        if (rgbaBytes == null || rgbaBytes.length == 0 || width <= 0 || height <= 0) {
+            return null;
+        }
 
-            ByteBuffer buffer = BufferUtils.createByteBuffer(pixelBytes.length);
-            buffer.put(pixelBytes);
+        try {
+            ByteBuffer buffer = BufferUtils.createByteBuffer(rgbaBytes.length);
+            buffer.put(rgbaBytes);
             buffer.flip();
 
-            File tempFile = File.createTempFile("omt_material_", ".png");
+            File tempFile = File.createTempFile("omt_rgba_", ".png");
             tempFile.deleteOnExit();
 
             int stride = width * 4;
@@ -320,18 +323,44 @@ public class OMTSerializer {
                     tempFile.getAbsolutePath(), width, height, 4, buffer, stride);
 
             if (!success) {
-                logger.error("STB PNG encoding failed for canvas {}x{}", width, height);
+                logger.error("STB PNG encoding failed for {}x{}", width, height);
                 return null;
             }
 
-            byte[] pngData = readFileToByteArray(tempFile);
+            byte[] pngData = readFileBytes(tempFile);
             tempFile.delete();
             return pngData;
 
         } catch (Exception e) {
-            logger.error("Error encoding canvas PNG", e);
+            logger.error("Error encoding RGBA to PNG", e);
             return null;
         }
+    }
+
+    /**
+     * Read a file into a byte array (static utility for encodeRGBAToPNG).
+     */
+    private static byte[] readFileBytes(File file) throws IOException {
+        try (FileInputStream fis = new FileInputStream(file);
+             ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = fis.read(buf)) != -1) {
+                baos.write(buf, 0, n);
+            }
+            return baos.toByteArray();
+        }
+    }
+
+    /**
+     * Encode a PixelCanvas to PNG format.
+     *
+     * @param canvas pixel canvas to encode
+     * @return PNG data as byte array, or null if failed
+     */
+    private byte[] encodeCanvasPNG(PixelCanvas canvas) {
+        return encodeRGBAToPNG(canvas.getPixelsAsRGBABytes(),
+                               canvas.getWidth(), canvas.getHeight());
     }
 
     /**

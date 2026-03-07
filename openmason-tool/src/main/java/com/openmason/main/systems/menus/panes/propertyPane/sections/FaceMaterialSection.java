@@ -3,6 +3,8 @@ package com.openmason.main.systems.menus.panes.propertyPane.sections;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IPanelSection;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
+import com.openmason.main.systems.menus.textureCreator.FaceEditorBridge;
+import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping;
 import com.openmason.main.systems.rendering.model.gmr.uv.MaterialDefinition;
@@ -11,6 +13,7 @@ import com.openmason.main.systems.rendering.model.miscComponents.TextureLoadResu
 import com.openmason.main.systems.themes.utils.ImGuiComponents;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import imgui.ImGui;
+import imgui.flag.ImGuiHoveredFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +46,8 @@ public class FaceMaterialSection implements IPanelSection {
     private final FileDialogService fileDialogService;
     private final OMTTextureLoader omtTextureLoader;
     private IViewportConnector viewportConnector;
+    private FaceEditorBridge faceEditorBridge;
+    private Runnable onEditTextureRequested;
 
     /**
      * Creates a new FaceMaterialSection.
@@ -61,6 +66,25 @@ public class FaceMaterialSection implements IPanelSection {
      */
     public void setViewportConnector(IViewportConnector connector) {
         this.viewportConnector = connector;
+    }
+
+    /**
+     * Set the face editor bridge for opening faces in the texture editor.
+     *
+     * @param bridge the bridge coordinating viewport-to-texture-editor handoff
+     */
+    public void setFaceEditorBridge(FaceEditorBridge bridge) {
+        this.faceEditorBridge = bridge;
+    }
+
+    /**
+     * Set a callback to be invoked when the user requests to edit a texture.
+     * Typically used to show the texture editor window.
+     *
+     * @param callback action to run after the bridge opens the face region
+     */
+    public void setOnEditTextureRequested(Runnable callback) {
+        this.onEditTextureRequested = callback;
     }
 
     @Override
@@ -118,6 +142,9 @@ public class FaceMaterialSection implements IPanelSection {
             }
         }
 
+        // Edit Texture button — opens the face in the texture editor
+        renderEditTextureButton(selectionCount, firstFaceId, materialName);
+
         ImGui.spacing();
     }
 
@@ -131,6 +158,97 @@ public class FaceMaterialSection implements IPanelSection {
     @Override
     public String getSectionName() {
         return "Face Material";
+    }
+
+    /**
+     * Render the "Edit Texture" button with appropriate enabled/disabled state.
+     *
+     * @param selectionCount number of selected faces
+     * @param faceId         first selected face ID
+     * @param materialName   display name of the face's current material
+     */
+    private void renderEditTextureButton(int selectionCount, int faceId, String materialName) {
+        boolean canEdit = selectionCount == 1 && faceEditorBridge != null;
+
+        if (!canEdit) {
+            ImGui.beginDisabled();
+        }
+
+        if (ImGui.button("Edit Texture")) {
+            handleEditTexture(faceId, materialName);
+        }
+
+        if (!canEdit) {
+            ImGui.endDisabled();
+        }
+
+        if (ImGui.isItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) {
+            if (faceEditorBridge == null) {
+                ImGui.setTooltip("Texture editor bridge not configured");
+            } else if (selectionCount != 1) {
+                ImGui.setTooltip("Select exactly one face to edit its texture");
+            } else {
+                ImGui.setTooltip("Open this face in the texture editor");
+            }
+        }
+    }
+
+    /**
+     * Open the selected face in the texture editor.
+     * For faces with an assigned material, opens zoomed to the face's UV region.
+     * For faces with the default material, opens with the full canvas.
+     *
+     * @param faceId       the face to edit
+     * @param materialName display name of the face's current material
+     */
+    private static final int BLANK_FACE_TEXTURE_SIZE = 16;
+    private static final int BLANK_FACE_FILL_COLOR = PixelCanvas.packRGBA(0xCC, 0xCC, 0xCC, 0xFF);
+
+    private void handleEditTexture(int faceId, String materialName) {
+        boolean opened;
+
+        FaceTextureManager ftm = viewportConnector.getFaceTextureManager();
+        if (ftm == null) {
+            logger.error("FaceTextureManager not available");
+            return;
+        }
+
+        if (materialName.equals("Default")) {
+            // Create a GPU texture for this face (gray, matches default appearance)
+            int size = BLANK_FACE_TEXTURE_SIZE;
+            int gpuTextureId = omtTextureLoader.createBlankTexture(size, size);
+            if (gpuTextureId <= 0) {
+                logger.error("Failed to create blank GPU texture for face {}", faceId);
+                return;
+            }
+
+            // Register as a new material and assign to the face
+            int materialId = nextMaterialId.getAndIncrement();
+            MaterialDefinition material = new MaterialDefinition(
+                    materialId, "Face " + faceId, gpuTextureId,
+                    MaterialDefinition.RenderLayer.OPAQUE,
+                    MaterialDefinition.MaterialProperties.NONE);
+            ftm.registerMaterial(material);
+            viewportConnector.setFaceTexture(faceId, materialId);
+
+            // Create a matching canvas in the texture editor so the preview pipeline
+            // uploads correct data (canvas dimensions must match the GPU texture)
+            faceEditorBridge.prepareBlankCanvas(size, size, BLANK_FACE_FILL_COLOR);
+
+            // Open as normal rect face (now has a valid textureId)
+            opened = faceEditorBridge.openRectFaceForEditing(ftm, faceId, 800, 600);
+        } else {
+            opened = faceEditorBridge.openRectFaceForEditing(ftm, faceId, 800, 600);
+        }
+
+        if (opened) {
+            // Switch from filled overlay to outline so the real-time texture preview is visible
+            viewportConnector.setEditingFaceIndex(faceId);
+
+            if (onEditTextureRequested != null) {
+                onEditTextureRequested.run();
+            }
+        }
     }
 
     /**

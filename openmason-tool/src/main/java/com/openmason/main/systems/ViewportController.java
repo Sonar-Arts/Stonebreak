@@ -596,6 +596,18 @@ public class ViewportController {
     public FaceSelectionState getFaceSelectionState() { return faceSelectionState; }
     public GenericModelRenderer getModelRenderer() { return modelRenderer; }
     public KnifeSnapSettings getKnifeSnapSettings() { return knifeSnapSettings; }
+
+    /**
+     * Set the face being edited in the texture editor.
+     * Switches the overlay from a filled highlight to an outline for that face.
+     *
+     * @param faceIndex face being edited, or -1 to clear
+     */
+    public void setEditingFaceIndex(int faceIndex) {
+        if (viewportRenderPipeline != null && viewportRenderPipeline.getFaceRenderer() != null) {
+            viewportRenderPipeline.getFaceRenderer().setEditingFaceIndex(faceIndex);
+        }
+    }
     public ModelCommandHistory getCommandHistory() { return commandHistory; }
 
     /**

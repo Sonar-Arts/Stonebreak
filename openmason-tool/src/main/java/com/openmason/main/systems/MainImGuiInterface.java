@@ -400,6 +400,10 @@ public class MainImGuiInterface implements ModelBrowserListener {
         return viewport3D;
     }
 
+    public PropertyPanelImGui getPropertyPanel() {
+        return propertyPanelImGui;
+    }
+
     public ThemeManager getThemeManager() {
         return themeManager;
     }

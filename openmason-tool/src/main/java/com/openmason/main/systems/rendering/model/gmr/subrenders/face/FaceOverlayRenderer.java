@@ -78,6 +78,10 @@ public class FaceOverlayRenderer {
     private final Vector4f defaultPrimitiveColor = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f); // Transparent (invisible)
     private final Vector4f hoverPrimitiveColor = new Vector4f(1.0f, 0.6f, 0.0f, 0.3f); // Orange with 30% alpha
     private final Vector4f selectedPrimitiveColor = new Vector4f(1.0f, 1.0f, 1.0f, 0.3f); // White with 30% alpha
+    private final Vector4f editingOutlineColor = new Vector4f(0.0f, 0.8f, 1.0f, 0.9f); // Cyan outline for editing face
+
+    // Face currently being edited in the texture editor (-1 = none)
+    private int editingFaceIndex = -1;
 
     // Triangle mode flag (true after subdivision, false for pre-tessellated polygon mode)
     private boolean triangleMode = false;
@@ -225,7 +229,7 @@ public class FaceOverlayRenderer {
      */
     private void renderVisibleFaces(int vbo, int hoveredFaceIndex, Set<Integer> selectedFaceIndices) {
         // Render hovered primitive first (on top)
-        if (hoveredFaceIndex >= 0) {
+        if (hoveredFaceIndex >= 0 && hoveredFaceIndex != editingFaceIndex) {
             renderFaceWithColor(vbo, hoveredFaceIndex, hoverPrimitiveColor);
         }
 
@@ -233,7 +237,12 @@ public class FaceOverlayRenderer {
         if (selectedFaceIndices != null) {
             for (int selectedFaceIndex : selectedFaceIndices) {
                 if (selectedFaceIndex >= 0 && selectedFaceIndex != hoveredFaceIndex) {
-                    renderFaceWithColor(vbo, selectedFaceIndex, selectedPrimitiveColor);
+                    if (selectedFaceIndex == editingFaceIndex) {
+                        // Editing face: render outline instead of fill so texture preview is visible
+                        renderFaceOutline(vbo, selectedFaceIndex, editingOutlineColor);
+                    } else {
+                        renderFaceWithColor(vbo, selectedFaceIndex, selectedPrimitiveColor);
+                    }
                 }
             }
         }
@@ -294,6 +303,23 @@ public class FaceOverlayRenderer {
     }
 
     /**
+     * Render a face as a wireframe outline using GL_LINE polygon mode.
+     * The face interior remains clear so the underlying texture is visible.
+     *
+     * @param vbo       The vertex buffer object for color updates
+     * @param faceIndex The primitive index to render
+     * @param color     The outline color
+     */
+    private void renderFaceOutline(int vbo, int faceIndex, Vector4f color) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glLineWidth(2.0f);
+
+        renderFaceWithColor(vbo, faceIndex, color);
+
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    }
+
+    /**
      * Update color data for all vertices of a primitive in the VBO.
      * Generic method that works with any primitive type and vertex layout.
      *
@@ -342,6 +368,17 @@ public class FaceOverlayRenderer {
         this.faceVBOVertexOffsets = vertexOffsets;
         this.faceVBOVertexCounts = vertexCounts;
         logger.debug("Set shape-blind face VBO layout for {} faces", vertexOffsets != null ? vertexOffsets.length : 0);
+    }
+
+    /**
+     * Set the face index currently being edited in the texture editor.
+     * An editing face is rendered with a colored outline instead of a filled overlay,
+     * so the real-time texture preview remains visible.
+     *
+     * @param faceIndex face being edited, or -1 to clear
+     */
+    public void setEditingFaceIndex(int faceIndex) {
+        this.editingFaceIndex = faceIndex;
     }
 
     /**

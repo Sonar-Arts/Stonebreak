@@ -84,6 +84,32 @@ public class TextureCreatorController {
     }
 
     /**
+     * Create a new blank canvas with arbitrary dimensions and an opaque fill color.
+     * Used when opening a face for editing that has no existing texture —
+     * the canvas must match the GPU texture so the preview pipeline uploads correct data.
+     *
+     * @param width     canvas width in pixels
+     * @param height    canvas height in pixels
+     * @param fillColor RGBA fill color (use {@link PixelCanvas#packRGBA})
+     */
+    public void prepareBlankCanvas(int width, int height, int fillColor) {
+        state.setCurrentFilePath(null);
+        state.setUnsavedChanges(false);
+
+        this.layerManager = new LayerManager(width, height);
+        commandHistory.clear();
+
+        // Fill the background layer to match the blank GPU texture
+        PixelCanvas canvas = getActiveLayerCanvas();
+        if (canvas != null) {
+            canvas.fill(fillColor);
+        }
+
+        canvasState.resetView();
+        logger.info("Prepared blank canvas: {}x{}", width, height);
+    }
+
+    /**
      * Save project to .OMT file (preserves all layers and project state).
      *
      * @param filePath output file path
@@ -449,6 +475,12 @@ public class TextureCreatorController {
         int canvasHeight = layerManager.getCanvasHeight();
         canvasState.frameTo(uvRegion.u0(), uvRegion.v0(), uvRegion.u1(), uvRegion.v1(),
                             canvasWidth, canvasHeight, viewportWidth, viewportHeight);
+
+        // Force a full GPU upload so the preview pipeline pushes the canvas
+        // contents to the new target texture on the next flush
+        if (activeCanvas != null) {
+            activeCanvas.notifyFullCanvasDirty();
+        }
 
         logger.info("Opened face region: materialId={}, uv=({},{})→({},{}), mask={}",
             materialId, uvRegion.u0(), uvRegion.v0(), uvRegion.u1(), uvRegion.v1(),
