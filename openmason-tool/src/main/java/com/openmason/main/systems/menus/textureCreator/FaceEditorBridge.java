@@ -143,6 +143,19 @@ public class FaceEditorBridge {
     }
 
     /**
+     * Prepare the canvas with existing pixel data read back from a GPU texture.
+     * Must be called before opening a face whose material already has texture data
+     * (e.g. loaded from .OMO) so the editor shows the current pixels.
+     *
+     * @param width      texture width in pixels
+     * @param height     texture height in pixels
+     * @param rgbaPixels RGBA byte array (4 bytes per pixel, row-major)
+     */
+    public void prepareCanvasFromPixels(int width, int height, byte[] rgbaPixels) {
+        controller.prepareCanvasFromPixels(width, height, rgbaPixels);
+    }
+
+    /**
      * Close face editing and return to full canvas mode.
      */
     public void closeFaceEditing() {

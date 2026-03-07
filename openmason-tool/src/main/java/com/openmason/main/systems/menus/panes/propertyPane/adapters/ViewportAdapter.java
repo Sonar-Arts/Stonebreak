@@ -196,4 +196,26 @@ public class ViewportAdapter implements IViewportConnector {
             viewport.setEditingFaceIndex(faceIndex);
         }
     }
+
+    @Override
+    public byte[] readTexturePixels(int gpuTextureId) {
+        if (viewport != null) {
+            var renderer = viewport.getModelRenderer();
+            if (renderer != null) {
+                return renderer.readTexturePixels(gpuTextureId);
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public int[] getTextureDimensions(int gpuTextureId) {
+        if (viewport != null) {
+            var renderer = viewport.getModelRenderer();
+            if (renderer != null) {
+                return renderer.getTextureDimensions(gpuTextureId);
+            }
+        }
+        return null;
+    }
 }

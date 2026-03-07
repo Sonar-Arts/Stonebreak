@@ -170,6 +170,11 @@ public class OMOSerializer {
                 writeMaterialTextures(zos);
             }
 
+            // Clear pending data after all ZIP entries are written
+            pendingMeshData = null;
+            pendingFaceTextureData = null;
+            pendingMaterialTexturePNGs = null;
+
             // Move temp file to final location (atomic on most filesystems)
             Path finalPath = Path.of(filePath);
             Files.move(tempFile, finalPath,
@@ -211,11 +216,6 @@ public class OMOSerializer {
         zos.write(jsonBytes);
         zos.flush();
         zos.closeEntry();
-
-        // Clear pending data after save (all fields cleared together for consistency)
-        pendingMeshData = null;
-        pendingFaceTextureData = null;
-        pendingMaterialTexturePNGs = null;
 
         logger.debug("Wrote manifest.json ({} bytes, hasMesh={}, hasFaceTextures={})",
             jsonBytes.length, document.hasCustomMesh(), document.hasFaceTextures());

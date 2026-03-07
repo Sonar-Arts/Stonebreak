@@ -238,6 +238,18 @@ public class FaceMaterialSection implements IPanelSection {
             // Open as normal rect face (now has a valid textureId)
             opened = faceEditorBridge.openRectFaceForEditing(ftm, faceId, 800, 600);
         } else {
+            // Existing material: read GPU texture into canvas so the editor shows current pixels
+            FaceTextureMapping mapping = ftm.getFaceMapping(faceId);
+            if (mapping != null) {
+                MaterialDefinition material = ftm.getMaterial(mapping.materialId());
+                if (material != null && material.textureId() > 0) {
+                    int[] dims = viewportConnector.getTextureDimensions(material.textureId());
+                    byte[] pixels = viewportConnector.readTexturePixels(material.textureId());
+                    if (dims != null && pixels != null) {
+                        faceEditorBridge.prepareCanvasFromPixels(dims[0], dims[1], pixels);
+                    }
+                }
+            }
             opened = faceEditorBridge.openRectFaceForEditing(ftm, faceId, 800, 600);
         }
 
@@ -317,6 +329,17 @@ public class FaceMaterialSection implements IPanelSection {
             logger.info("Assigned OMT material '{}' (ID {}) to {} face(s)",
                     fileName, materialId, selectedFaces.size());
         });
+    }
+
+    /**
+     * Synchronize the material ID counter after loading a file with existing materials.
+     * Bumps the counter to at least {@code loadedMaxId + 1} so that new materials
+     * created by the user will not collide with loaded material IDs.
+     *
+     * @param loadedMaxId the highest material ID found in the loaded data
+     */
+    public static void syncNextMaterialId(int loadedMaxId) {
+        nextMaterialId.updateAndGet(current -> Math.max(current, loadedMaxId + 1));
     }
 
     /**

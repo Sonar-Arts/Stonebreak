@@ -1267,6 +1267,9 @@ public class GenericModelRenderer extends BaseRenderer {
             return;
         }
 
+        // Clear stale face texture data from any previously loaded model
+        faceTextureManager.clear();
+
         float[] vertices = meshData.vertices();
         float[] texCoords = meshData.texCoords();
         int[] indices = meshData.indices();

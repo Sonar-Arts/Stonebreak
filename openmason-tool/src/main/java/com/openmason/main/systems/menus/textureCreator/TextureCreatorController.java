@@ -110,6 +110,40 @@ public class TextureCreatorController {
     }
 
     /**
+     * Prepare the canvas with existing pixel data read back from a GPU texture.
+     * Used when opening a face whose material already has texture data (e.g. loaded from .OMO)
+     * so the texture editor shows the current pixels instead of a blank canvas.
+     *
+     * @param width      texture width in pixels
+     * @param height     texture height in pixels
+     * @param rgbaPixels RGBA byte array (4 bytes per pixel, row-major)
+     */
+    public void prepareCanvasFromPixels(int width, int height, byte[] rgbaPixels) {
+        state.setCurrentFilePath(null);
+        state.setUnsavedChanges(false);
+
+        this.layerManager = new LayerManager(width, height);
+        commandHistory.clear();
+
+        PixelCanvas canvas = getActiveLayerCanvas();
+        if (canvas != null && rgbaPixels != null) {
+            int[] pixels = canvas.getPixels();
+            int pixelCount = Math.min(pixels.length, rgbaPixels.length / 4);
+            for (int i = 0; i < pixelCount; i++) {
+                int offset = i * 4;
+                int r = rgbaPixels[offset] & 0xFF;
+                int g = rgbaPixels[offset + 1] & 0xFF;
+                int b = rgbaPixels[offset + 2] & 0xFF;
+                int a = rgbaPixels[offset + 3] & 0xFF;
+                pixels[i] = PixelCanvas.packRGBA(r, g, b, a);
+            }
+        }
+
+        canvasState.resetView();
+        logger.info("Prepared canvas from existing texture: {}x{}", width, height);
+    }
+
+    /**
      * Save project to .OMT file (preserves all layers and project state).
      *
      * @param filePath output file path

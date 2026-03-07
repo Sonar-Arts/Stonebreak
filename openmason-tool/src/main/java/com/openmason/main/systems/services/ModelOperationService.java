@@ -12,6 +12,7 @@ import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.io.omo.OMOSerializer;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
+import com.openmason.main.systems.menus.panes.propertyPane.sections.FaceMaterialSection;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.ViewportController;
@@ -508,6 +509,13 @@ public class ModelOperationService {
                     mapEntry.faceId(), mapEntry.materialId(), uvRegion, uvRotation);
             ftm.setFaceMapping(mapping);
         }
+
+        // Synchronize the material ID counter so new user-created materials don't collide
+        int maxLoadedId = faceTextureData.materials().stream()
+                .mapToInt(OMOFormat.MaterialEntry::materialId)
+                .max()
+                .orElse(0);
+        FaceMaterialSection.syncNextMaterialId(maxLoadedId);
 
         // Refresh rendering state
         renderer.markDrawBatchesDirty();

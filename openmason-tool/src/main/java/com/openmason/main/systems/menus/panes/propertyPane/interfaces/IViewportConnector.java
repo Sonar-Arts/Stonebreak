@@ -169,4 +169,20 @@ public interface IViewportConnector {
      * @param faceIndex face being edited, or -1 to clear
      */
     void setEditingFaceIndex(int faceIndex);
+
+    /**
+     * Read RGBA pixel data from a GPU texture.
+     *
+     * @param gpuTextureId OpenGL texture ID to read from
+     * @return RGBA byte array, or null if the texture could not be read
+     */
+    byte[] readTexturePixels(int gpuTextureId);
+
+    /**
+     * Get the width and height of a GPU texture.
+     *
+     * @param gpuTextureId OpenGL texture ID
+     * @return int array {@code [width, height]}, or null if invalid
+     */
+    int[] getTextureDimensions(int gpuTextureId);
 }
