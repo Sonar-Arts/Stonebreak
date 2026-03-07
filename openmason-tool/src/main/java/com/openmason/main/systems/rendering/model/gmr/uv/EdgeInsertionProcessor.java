@@ -4,6 +4,7 @@ import com.openmason.main.systems.rendering.model.gmr.mapping.ITriangleFaceMappe
 import com.openmason.main.systems.rendering.model.gmr.topology.MeshEdge;
 import com.openmason.main.systems.rendering.model.gmr.topology.MeshFace;
 import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
+import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -289,11 +290,12 @@ public final class EdgeInsertionProcessor {
     /**
      * Compute the parametric split position and axis orientation for UV propagation.
      *
-     * <p>Projects the split edge onto the face's dominant 2D plane (using the same
-     * axis selection as {@link PerFaceUVCoordinateGenerator}) and determines:
+     * <p>Projects the split edge into tangent space (using
+     * {@link FaceProjectionUtil#computeTangentFrame}) and determines:
      * <ul>
      *   <li>{@code t}: where the edge midpoint falls along the perpendicular axis (0..1)</li>
-     *   <li>{@code horizontal}: whether the edge runs along V (splitting U) or along U (splitting V)</li>
+     *   <li>{@code horizontal}: whether the edge runs along the bitangent (splitting the
+     *       tangent range) or along the tangent (splitting the bitangent range)</li>
      * </ul>
      */
     private SplitUVParams computeSplitUVParams(
@@ -307,64 +309,75 @@ public final class EdgeInsertionProcessor {
         // Get positions of the split edge vertices
         int meshA = topology.getMeshIndicesForUniqueVertex(uniqueVertexA)[0];
         int meshB = topology.getMeshIndicesForUniqueVertex(uniqueVertexB)[0];
-        float ax = vertices[meshA * 3], ay = vertices[meshA * 3 + 1], az = vertices[meshA * 3 + 2];
-        float bx = vertices[meshB * 3], by = vertices[meshB * 3 + 1], bz = vertices[meshB * 3 + 2];
 
         // Compute face normal from first 3 polygon vertices
         int m0 = topology.getMeshIndicesForUniqueVertex(polyUniqueVerts[0])[0];
         int m1 = topology.getMeshIndicesForUniqueVertex(polyUniqueVerts[1])[0];
         int m2 = topology.getMeshIndicesForUniqueVertex(polyUniqueVerts[2])[0];
 
-        float e1x = vertices[m1 * 3]     - vertices[m0 * 3];
-        float e1y = vertices[m1 * 3 + 1] - vertices[m0 * 3 + 1];
-        float e1z = vertices[m1 * 3 + 2] - vertices[m0 * 3 + 2];
-        float e2x = vertices[m2 * 3]     - vertices[m0 * 3];
-        float e2y = vertices[m2 * 3 + 1] - vertices[m0 * 3 + 1];
-        float e2z = vertices[m2 * 3 + 2] - vertices[m0 * 3 + 2];
-
-        float nx = e1y * e2z - e1z * e2y;
-        float ny = e1z * e2x - e1x * e2z;
-        float nz = e1x * e2y - e1y * e2x;
-
-        float absNx = Math.abs(nx), absNy = Math.abs(ny), absNz = Math.abs(nz);
-
-        // Determine U and V projection axes (mirrors PerFaceUVCoordinateGenerator logic)
-        int uAxis = (absNx >= absNy && absNx >= absNz) ? 1 : 0;
-        int vAxis = (absNz >= absNx && absNz >= absNy) ? 1 : 2;
-
-        // Compute face bounds along projection axes
-        float minU = Float.MAX_VALUE, maxU = -Float.MAX_VALUE;
-        float minV = Float.MAX_VALUE, maxV = -Float.MAX_VALUE;
-        for (int uv : polyUniqueVerts) {
-            int mi = topology.getMeshIndicesForUniqueVertex(uv)[0];
-            float u = vertices[mi * 3 + uAxis];
-            float v = vertices[mi * 3 + vAxis];
-            minU = Math.min(minU, u);
-            maxU = Math.max(maxU, u);
-            minV = Math.min(minV, v);
-            maxV = Math.max(maxV, v);
+        Vector3f normal = FaceProjectionUtil.computeFaceNormal(vertices, m0, m1, m2);
+        Vector3f[] frame = FaceProjectionUtil.computeTangentFrame(normal);
+        if (frame == null) {
+            return new SplitUVParams(0.5f, true);
         }
 
-        // Project split edge onto UV axes to determine dominant direction
-        float[] posA = {ax, ay, az};
-        float[] posB = {bx, by, bz};
-        float edgeU = Math.abs(posB[uAxis] - posA[uAxis]);
-        float edgeV = Math.abs(posB[vAxis] - posA[vAxis]);
+        Vector3f tangent = frame[0];
+        Vector3f bitangent = frame[1];
 
-        // Edge runs along V → horizontal split (divides U range); else vertical
-        boolean horizontal = (edgeV >= edgeU);
+        // Use first polygon vertex as reference point
+        float refX = vertices[m0 * 3];
+        float refY = vertices[m0 * 3 + 1];
+        float refZ = vertices[m0 * 3 + 2];
+
+        // Compute face bounds in tangent space
+        float minS = Float.MAX_VALUE, maxS = -Float.MAX_VALUE;
+        float minT = Float.MAX_VALUE, maxT = -Float.MAX_VALUE;
+        for (int uv : polyUniqueVerts) {
+            int mi = topology.getMeshIndicesForUniqueVertex(uv)[0];
+            float dx = vertices[mi * 3]     - refX;
+            float dy = vertices[mi * 3 + 1] - refY;
+            float dz = vertices[mi * 3 + 2] - refZ;
+
+            float s = dx * tangent.x + dy * tangent.y + dz * tangent.z;
+            float tVal = dx * bitangent.x + dy * bitangent.y + dz * bitangent.z;
+
+            minS = Math.min(minS, s);
+            maxS = Math.max(maxS, s);
+            minT = Math.min(minT, tVal);
+            maxT = Math.max(maxT, tVal);
+        }
+
+        // Project split edge endpoints into tangent space
+        float dxA = vertices[meshA * 3]     - refX;
+        float dyA = vertices[meshA * 3 + 1] - refY;
+        float dzA = vertices[meshA * 3 + 2] - refZ;
+        float sA = dxA * tangent.x + dyA * tangent.y + dzA * tangent.z;
+        float tA = dxA * bitangent.x + dyA * bitangent.y + dzA * bitangent.z;
+
+        float dxB = vertices[meshB * 3]     - refX;
+        float dyB = vertices[meshB * 3 + 1] - refY;
+        float dzB = vertices[meshB * 3 + 2] - refZ;
+        float sB = dxB * tangent.x + dyB * tangent.y + dzB * tangent.z;
+        float tB = dxB * bitangent.x + dyB * bitangent.y + dzB * bitangent.z;
+
+        // Determine dominant edge direction in tangent space
+        float edgeS = Math.abs(sB - sA);
+        float edgeT = Math.abs(tB - tA);
+
+        // Edge runs along bitangent (T) → horizontal split (divides S range); else vertical
+        boolean horizontal = (edgeT >= edgeS);
 
         // Compute t: edge midpoint's parametric position along the perpendicular axis
-        float rangeU = maxU - minU;
-        float rangeV = maxV - minV;
+        float rangeS = maxS - minS;
+        float rangeT = maxT - minT;
 
         float t;
         if (horizontal) {
-            float edgeMidU = (posA[uAxis] + posB[uAxis]) / 2.0f;
-            t = (rangeU > 0.0001f) ? (edgeMidU - minU) / rangeU : 0.5f;
+            float edgeMidS = (sA + sB) / 2.0f;
+            t = (rangeS > FaceProjectionUtil.EPSILON) ? (edgeMidS - minS) / rangeS : 0.5f;
         } else {
-            float edgeMidV = (posA[vAxis] + posB[vAxis]) / 2.0f;
-            t = (rangeV > 0.0001f) ? (edgeMidV - minV) / rangeV : 0.5f;
+            float edgeMidT = (tA + tB) / 2.0f;
+            t = (rangeT > FaceProjectionUtil.EPSILON) ? (edgeMidT - minT) / rangeT : 0.5f;
         }
 
         return new SplitUVParams(Math.clamp(t, 0.0f, 1.0f), horizontal);

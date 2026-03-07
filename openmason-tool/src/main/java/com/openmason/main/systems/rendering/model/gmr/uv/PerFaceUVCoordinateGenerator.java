@@ -161,8 +161,9 @@ public class PerFaceUVCoordinateGenerator implements IUVCoordinateGenerator {
     /**
      * Compute and assign UV coordinates for all vertices of a single face.
      *
-     * <p>Projects vertex positions onto the face's dominant 2D plane, normalizes
-     * to parametric (0..1) space, applies rotation, and maps into the UV region.
+     * <p>Projects vertex positions into a tangent-space frame derived from the
+     * face normal, normalizes to parametric (0..1) space, applies rotation,
+     * and maps into the UV region. Works correctly for any face orientation.
      */
     private void assignFaceUVs(float[] vertices, float[] texCoords, List<Integer> vertexIndices,
                                 FaceTextureMapping.UVRegion uvRegion,
@@ -179,45 +180,58 @@ public class PerFaceUVCoordinateGenerator implements IUVCoordinateGenerator {
 
         Vector3f normal = computeFaceNormal(vertices, i0, i1, i2);
 
-        // Determine projection axes from dominant normal component
-        int uAxis = selectUAxis(normal);
-        int vAxis = selectVAxis(normal);
-
-        // Compute face bounds along projection axes
-        float minU = Float.MAX_VALUE, maxU = -Float.MAX_VALUE;
-        float minV = Float.MAX_VALUE, maxV = -Float.MAX_VALUE;
-
-        for (int idx : vertexIndices) {
-            float u = vertices[idx * 3 + uAxis];
-            float v = vertices[idx * 3 + vAxis];
-            minU = Math.min(minU, u);
-            maxU = Math.max(maxU, u);
-            minV = Math.min(minV, v);
-            maxV = Math.max(maxV, v);
+        // Compute tangent frame for projection
+        Vector3f[] frame = FaceProjectionUtil.computeTangentFrame(normal);
+        if (frame == null) {
+            // Degenerate face — assign center UVs
+            for (int idx : vertexIndices) {
+                texCoords[idx * 2]     = uvRegion.u0() + 0.5f * uvRegion.width();
+                texCoords[idx * 2 + 1] = uvRegion.v0() + 0.5f * uvRegion.height();
+                assigned[idx] = true;
+            }
+            return;
         }
 
-        float rangeU = maxU - minU;
-        float rangeV = maxV - minV;
+        Vector3f tangent = frame[0];
+        Vector3f bitangent = frame[1];
+
+        // Use first vertex as reference point
+        float refX = vertices[i0 * 3];
+        float refY = vertices[i0 * 3 + 1];
+        float refZ = vertices[i0 * 3 + 2];
+
+        // Project all vertices onto tangent frame and compute bounds
+        int count = vertexIndices.size();
+        float[] projS = new float[count];
+        float[] projT = new float[count];
+        float minS = Float.MAX_VALUE, maxS = -Float.MAX_VALUE;
+        float minT = Float.MAX_VALUE, maxT = -Float.MAX_VALUE;
+
+        for (int i = 0; i < count; i++) {
+            int idx = vertexIndices.get(i);
+            float dx = vertices[idx * 3]     - refX;
+            float dy = vertices[idx * 3 + 1] - refY;
+            float dz = vertices[idx * 3 + 2] - refZ;
+
+            projS[i] = dx * tangent.x + dy * tangent.y + dz * tangent.z;
+            projT[i] = dx * bitangent.x + dy * bitangent.y + dz * bitangent.z;
+
+            minS = Math.min(minS, projS[i]);
+            maxS = Math.max(maxS, projS[i]);
+            minT = Math.min(minT, projT[i]);
+            maxT = Math.max(maxT, projT[i]);
+        }
+
+        float rangeS = maxS - minS;
+        float rangeT = maxT - minT;
 
         // Map each vertex to UV space
-        for (int idx : vertexIndices) {
-            float projU = vertices[idx * 3 + uAxis];
-            float projV = vertices[idx * 3 + vAxis];
+        for (int i = 0; i < count; i++) {
+            int idx = vertexIndices.get(i);
 
             // Normalize to parametric 0..1 (degenerate edges collapse to 0.5)
-            float s = (rangeU > EPSILON) ? (projU - minU) / rangeU : 0.5f;
-            float t = (rangeV > EPSILON) ? (projV - minV) / rangeV : 0.5f;
-
-            // Flip U so the texture's left edge maps to the viewer's left when
-            // looking at the face from outside the mesh.
-            // For Y/Z-dominant normals (U axis = X): flip when dominant component < 0
-            // For X-dominant normals   (U axis = Z): flip when dominant component > 0
-            // Combined: flip when (isXDominant) XOR (dominantNegative)
-            boolean isXDominant = (uAxis == 2);
-            boolean isNegativeDominant = (getDominantComponent(normal) < 0);
-            if (isXDominant != isNegativeDominant) {
-                s = 1.0f - s;
-            }
+            float s = (rangeS > EPSILON) ? (projS[i] - minS) / rangeS : 0.5f;
+            float t = (rangeT > EPSILON) ? (projT[i] - minT) / rangeT : 0.5f;
 
             // Flip V so texture top maps to face top (OpenGL UV origin is bottom-left)
             t = 1.0f - t;
@@ -236,7 +250,7 @@ public class PerFaceUVCoordinateGenerator implements IUVCoordinateGenerator {
             }
 
             // Map parametric position into UV region
-            texCoords[idx * 2] = uvRegion.u0() + s * uvRegion.width();
+            texCoords[idx * 2]     = uvRegion.u0() + s * uvRegion.width();
             texCoords[idx * 2 + 1] = uvRegion.v0() + t * uvRegion.height();
             assigned[idx] = true;
         }
@@ -246,94 +260,15 @@ public class PerFaceUVCoordinateGenerator implements IUVCoordinateGenerator {
 
     /**
      * Compute the face normal from three vertex positions using the cross product.
-     * Logs a debug message if the resulting normal is degenerate (collinear or coincident vertices).
+     * Delegates to {@link FaceProjectionUtil#computeFaceNormal} and logs a debug
+     * message if the resulting normal is degenerate.
      */
     private Vector3f computeFaceNormal(float[] vertices, int i0, int i1, int i2) {
-        float e1x = vertices[i1 * 3]     - vertices[i0 * 3];
-        float e1y = vertices[i1 * 3 + 1] - vertices[i0 * 3 + 1];
-        float e1z = vertices[i1 * 3 + 2] - vertices[i0 * 3 + 2];
-
-        float e2x = vertices[i2 * 3]     - vertices[i0 * 3];
-        float e2y = vertices[i2 * 3 + 1] - vertices[i0 * 3 + 1];
-        float e2z = vertices[i2 * 3 + 2] - vertices[i0 * 3 + 2];
-
-        Vector3f normal = new Vector3f(
-            e1y * e2z - e1z * e2y,
-            e1z * e2x - e1x * e2z,
-            e1x * e2y - e1y * e2x
-        );
-
+        Vector3f normal = FaceProjectionUtil.computeFaceNormal(vertices, i0, i1, i2);
         if (normal.lengthSquared() < EPSILON * EPSILON) {
             logger.debug("Degenerate face normal (collinear or coincident vertices: {}, {}, {})", i0, i1, i2);
         }
-
         return normal;
-    }
-
-    /**
-     * Select the U projection axis index (0=X, 1=Y, 2=Z) based on the face normal.
-     * Picks one of the two axes most perpendicular to the dominant normal component.
-     *
-     * <p>Axis mapping:
-     * <ul>
-     *   <li>X-dominant (left/right faces): U = Z (2)</li>
-     *   <li>Y-dominant (top/bottom faces): U = X (0)</li>
-     *   <li>Z-dominant (front/back faces): U = X (0)</li>
-     * </ul>
-     */
-    private int selectUAxis(Vector3f normal) {
-        float absX = Math.abs(normal.x);
-        float absY = Math.abs(normal.y);
-        float absZ = Math.abs(normal.z);
-
-        if (absX >= absY && absX >= absZ) {
-            return 2; // Normal along X → U = Z
-        } else {
-            return 0; // Normal along Y or Z → U = X
-        }
-    }
-
-    /**
-     * Select the V projection axis index (0=X, 1=Y, 2=Z) based on the face normal.
-     * Picks one of the two axes most perpendicular to the dominant normal component.
-     *
-     * <p>Axis mapping:
-     * <ul>
-     *   <li>X-dominant (left/right faces): V = Y (1)</li>
-     *   <li>Y-dominant (top/bottom faces): V = Z (2)</li>
-     *   <li>Z-dominant (front/back faces): V = Y (1)</li>
-     * </ul>
-     */
-    private int selectVAxis(Vector3f normal) {
-        float absX = Math.abs(normal.x);
-        float absY = Math.abs(normal.y);
-        float absZ = Math.abs(normal.z);
-
-        if (absY >= absX && absY >= absZ) {
-            return 2; // Normal along Y → V = Z
-        } else {
-            return 1; // Normal along X or Z → V = Y
-        }
-    }
-
-    /**
-     * Get the signed value of the dominant normal component (axis with largest absolute value).
-     *
-     * @param normal the face normal
-     * @return the signed value of the dominant axis component
-     */
-    private float getDominantComponent(Vector3f normal) {
-        float absX = Math.abs(normal.x);
-        float absY = Math.abs(normal.y);
-        float absZ = Math.abs(normal.z);
-
-        if (absX >= absY && absX >= absZ) {
-            return normal.x;
-        } else if (absY >= absX && absY >= absZ) {
-            return normal.y;
-        } else {
-            return normal.z;
-        }
     }
 
     // ── Vertex grouping ─────────────────────────────────────────────────────

@@ -170,17 +170,26 @@ public final class UVAutoPacker {
     }
 
     /**
-     * Project a face's vertices onto its dominant 2D plane and compute bounding dimensions.
+     * Project a face's vertices into tangent space and compute bounding dimensions.
      *
-     * @return float[2] containing {width, height}, or {@code null} if fewer than 3 valid vertices
+     * @return float[2] containing {width, height}, or {@code null} if degenerate or fewer than 3 valid vertices
      */
     private float[] computeProjectedBounds(MeshFace face, Vector3f normal,
                                             MeshTopology topology, float[] vertices) {
-        int uAxis = selectUAxis(normal);
-        int vAxis = selectVAxis(normal);
+        Vector3f[] frame = FaceProjectionUtil.computeTangentFrame(normal);
+        if (frame == null) {
+            return null;
+        }
 
-        float minU = Float.MAX_VALUE, maxU = -Float.MAX_VALUE;
-        float minV = Float.MAX_VALUE, maxV = -Float.MAX_VALUE;
+        Vector3f tangent = frame[0];
+        Vector3f bitangent = frame[1];
+
+        // Use first valid vertex as reference point
+        float refX = 0, refY = 0, refZ = 0;
+        boolean refSet = false;
+
+        float minS = Float.MAX_VALUE, maxS = -Float.MAX_VALUE;
+        float minT = Float.MAX_VALUE, maxT = -Float.MAX_VALUE;
         int validCount = 0;
 
         for (int uniqueIdx : face.vertexIndices()) {
@@ -190,13 +199,28 @@ public final class UVAutoPacker {
             }
 
             int meshIdx = meshIndices[0];
-            float u = vertices[meshIdx * 3 + uAxis];
-            float v = vertices[meshIdx * 3 + vAxis];
+            float vx = vertices[meshIdx * 3];
+            float vy = vertices[meshIdx * 3 + 1];
+            float vz = vertices[meshIdx * 3 + 2];
 
-            minU = Math.min(minU, u);
-            maxU = Math.max(maxU, u);
-            minV = Math.min(minV, v);
-            maxV = Math.max(maxV, v);
+            if (!refSet) {
+                refX = vx;
+                refY = vy;
+                refZ = vz;
+                refSet = true;
+            }
+
+            float dx = vx - refX;
+            float dy = vy - refY;
+            float dz = vz - refZ;
+
+            float s = dx * tangent.x + dy * tangent.y + dz * tangent.z;
+            float t = dx * bitangent.x + dy * bitangent.y + dz * bitangent.z;
+
+            minS = Math.min(minS, s);
+            maxS = Math.max(maxS, s);
+            minT = Math.min(minT, t);
+            maxT = Math.max(maxT, t);
             validCount++;
         }
 
@@ -204,33 +228,7 @@ public final class UVAutoPacker {
             return null;
         }
 
-        return new float[]{maxU - minU, maxV - minV};
-    }
-
-    // ── Axis selection ──────────────────────────────────────────────────────
-
-    /**
-     * Select the U projection axis based on the face normal's dominant component.
-     *
-     * @return World axis index (0=X, 1=Y, 2=Z) for the U direction
-     */
-    private static int selectUAxis(Vector3f normal) {
-        float absX = Math.abs(normal.x);
-        float absY = Math.abs(normal.y);
-        float absZ = Math.abs(normal.z);
-        return (absX >= absY && absX >= absZ) ? 1 : 0;
-    }
-
-    /**
-     * Select the V projection axis based on the face normal's dominant component.
-     *
-     * @return World axis index (0=X, 1=Y, 2=Z) for the V direction
-     */
-    private static int selectVAxis(Vector3f normal) {
-        float absX = Math.abs(normal.x);
-        float absY = Math.abs(normal.y);
-        float absZ = Math.abs(normal.z);
-        return (absZ >= absX && absZ >= absY) ? 1 : 2;
+        return new float[]{maxS - minS, maxT - minT};
     }
 
     // ── Shelf packing ───────────────────────────────────────────────────────
