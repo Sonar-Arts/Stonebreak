@@ -259,7 +259,7 @@ public class TerrainGenerationSystem {
         // Fill water bodies using basin detection (keeps caves dry)
         // Pass cached data to avoid recalculating heights/biomes/parameters
         updateLoadingProgress("Filling Water Bodies");
-        basinWaterFiller.fillWaterBodies(chunk, terrainHeights, biomeCache, paramsCache);
+        basinWaterFiller.fillWaterBodies(chunk, terrainHeights, paramsCache);
 
         // Features will be populated after chunk registration to avoid recursion
         chunk.setFeaturesPopulated(false);

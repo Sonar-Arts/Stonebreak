@@ -221,8 +221,7 @@ public class WorldRenderer {
      * Update animated textures.
      */
     private void updateAnimatedTextures(float totalTime, Player player) {
-        WaterEffects waterEffects = Game.getWaterEffects();
-        textureAtlas.updateAnimatedWater(totalTime, waterEffects, player.getPosition().x, player.getPosition().z);
+        textureAtlas.updateAnimatedWater(totalTime);
     }
     
     /**
