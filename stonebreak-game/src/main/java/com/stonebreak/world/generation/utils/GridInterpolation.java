@@ -9,7 +9,7 @@ package com.stonebreak.world.generation.utils;
  * <p><b>Features:</b></p>
  * <ul>
  *   <li>Handles mixed water/no-water boundaries using nearest-neighbor</li>
- *   <li>Uses smooth bilinear interpolation for all-water regions</li>
+ *   <li>Uses minimum value for all-water regions (ensures flat lake surfaces)</li>
  *   <li>Preserves sharp edges at basin boundaries</li>
  * </ul>
  *
@@ -28,7 +28,7 @@ public final class GridInterpolation {
      * <ol>
      *   <li><b>No water:</b> All corners are -1 → return -1</li>
      *   <li><b>Mixed boundaries:</b> Some corners are -1 → use nearest-neighbor (preserves sharp edges)</li>
-     *   <li><b>All water:</b> All corners valid → smooth bilinear interpolation</li>
+     *   <li><b>All water:</b> All corners valid → minimum value for flat surfaces</li>
      * </ol>
      *
      * <p><b>Grid layout:</b></p>
@@ -40,12 +40,12 @@ public final class GridInterpolation {
      *   v00 ---- v10
      * </pre>
      *
-     * <p><b>Bilinear formula (all-water case):</b></p>
+     * <p><b>Minimum value formula (all-water case):</b></p>
      * <pre>
-     * v0 = v00 * (1 - tx) + v10 * tx  (interpolate bottom edge)
-     * v1 = v01 * (1 - tx) + v11 * tx  (interpolate top edge)
-     * result = v0 * (1 - tz) + v1 * tz  (interpolate between edges)
+     * result = min(v00, v10, v01, v11)  (use minimum rim height for flat surfaces)
      * </pre>
+     * <p>This ensures lakes have flat water surfaces at a single Y level,
+     * preventing interpolation artifacts that create stepped/wavy surfaces.</p>
      *
      * <p><b>Used by:</b> WaterLevelGrid, BasinWaterLevelGrid</p>
      *
@@ -67,15 +67,16 @@ public final class GridInterpolation {
         // Case 2: If mixed water/no-water, use nearest neighbor (preserves sharp edges at basin boundaries)
         if (v00 == -1 || v10 == -1 || v01 == -1 || v11 == -1) {
             // Use nearest corner based on position
-            if (tx < 0.5f && tz < 0.5f) return v00;  // Closest to bottom-left
-            if (tx >= 0.5f && tz < 0.5f) return v10; // Closest to bottom-right
-            if (tx < 0.5f && tz >= 0.5f) return v01; // Closest to top-left
-            return v11;                               // Closest to top-right
+            // IMPORTANT: Use <= for bottom-left to handle boundary cases (prefer v00 at grid points)
+            if (tx <= 0.5f && tz <= 0.5f) return v00;  // Closest to bottom-left
+            if (tx > 0.5f && tz <= 0.5f) return v10;   // Closest to bottom-right
+            if (tx <= 0.5f && tz > 0.5f) return v01;   // Closest to top-left
+            return v11;                                 // Closest to top-right
         }
 
-        // Case 3: Standard bilinear interpolation for all-water regions (smooth transitions)
-        float v0 = v00 * (1 - tx) + v10 * tx;  // Interpolate along bottom edge
-        float v1 = v01 * (1 - tx) + v11 * tx;  // Interpolate along top edge
-        return (int)(v0 * (1 - tz) + v1 * tz); // Interpolate between edges
+        // Case 3: Use minimum water level for all-water regions (ensures flat lake surfaces)
+        // The minimum rim height is the correct water level (lowest spillover point)
+        // This prevents interpolation artifacts that create stepped/wavy surfaces
+        return Math.min(Math.min(v00, v10), Math.min(v01, v11));
     }
 }

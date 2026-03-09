@@ -130,17 +130,25 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- JUnit Platform Launcher - required for test discovery in JUnit 6.x -->
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Mockito for mocking in tests -->
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- Byte Buddy - override Mockito's version for Java 24 compatibility -->
+        <!-- Byte Buddy - override Mockito's version (1.14.6) for Java 25 compatibility -->
+        <!-- Both artifacts MUST use same version (1.18.4 supports Java 25) -->
         <dependency>
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy</artifactId>
-            <version>1.15.11</version>
+            <version>1.18.4</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -173,7 +181,12 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+                    <argLine>
+                        -Dnet.bytebuddy.experimental=true
+                        --enable-native-access=ALL-UNNAMED
+                        --add-opens java.base/java.lang=ALL-UNNAMED
+                        --add-opens java.base/java.util=ALL-UNNAMED
+                    </argLine>
                 </configuration>
             </plugin>
             <plugin>
@@ -200,43 +213,31 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>com.stonebreak.core.Main</mainClass>
-                    <options>
-                        <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
-                        <option>--enable-native-access=ALL-UNNAMED</option>
-                        <!-- Alternative: specific modules if needed -->
-                        <!-- <option>enable-native-access=org.lwjgl,org.lwjgl.opengl,org.lwjgl.glfw,org.lwjgl.stb,org.lwjgl.nanovg,org.lwjgl.openal</option> -->
-                        
-                        <!-- Java 24+ compatibility flags -->
-                        <option>--add-exports=java.base/sun.nio.ch=ALL-UNNAMED</option>
-                        <option>--add-exports=java.base/sun.security.util=ALL-UNNAMED</option>
-                        
-                        <!-- Use ZGC for ultra-low latency gaming performance -->
-                        <option>-XX:+UseZGC</option>
-                        <option>-XX:+UnlockExperimentalVMOptions</option>
-                        <!-- Enable generational ZGC for better allocation patterns -->
-                        <option>-XX:+UseZGenerationalGC</option>
-                        <!-- Increase heap size for better performance -->
-                        <option>-Xms2g</option>
-                        <option>-Xmx4g</option>
-                        <!-- Optimize for consistent low-latency performance -->
-                        <option>-XX:+UseLargePages</option>
-                        <option>-XX:+UseTransparentHugePages</option>
-                        <!-- Reduce allocation overhead -->
-                        <option>-XX:+UseStringDeduplication</option>
-                        <!-- Enable advanced JIT optimizations -->
-                        <option>-XX:+UseCompressedOops</option>
-                        <option>-XX:+UseCompressedClassPointers</option>
-                        <!-- Optimize thread local allocation -->
-                        <option>-XX:+UseTLAB</option>
-                        <option>-XX:+ResizeTLAB</option>
-                        <!-- Enable biased locking for better synchronization -->
-                        <option>-XX:+UseBiasedLocking</option>
-                        
-                        <!-- Additional stability flags for native library interaction -->
-                        <option>-Djava.library.path=.</option>
-                        <option>-Dorg.lwjgl.util.Debug=true</option>
-                        <option>-Dorg.lwjgl.util.NoChecks=false</option>
-                    </options>
+                    <!--
+                        NOTE: JVM flags (like -XX:+UseZGC, -Xms2g, -Xmx4g, enable-native-access, etc.)
+                        cannot be configured here for exec:java goal (runs in Maven's JVM). Instead:
+
+                        1. Set MAVEN_OPTS environment variable before running Maven
+                        2. OR create .mvn/jvm.config file in project root (recommended)
+                        3. OR use exec:exec goal instead (spawns new JVM, see documentation)
+
+                        For tests, JVM flags are correctly configured in maven-surefire-plugin above.
+                    -->
+                    <!-- System properties (works with exec:java) -->
+                    <systemProperties>
+                        <systemProperty>
+                            <key>java.library.path</key>
+                            <value>.</value>
+                        </systemProperty>
+                        <systemProperty>
+                            <key>org.lwjgl.util.Debug</key>
+                            <value>true</value>
+                        </systemProperty>
+                        <systemProperty>
+                            <key>org.lwjgl.util.NoChecks</key>
+                            <value>false</value>
+                        </systemProperty>
+                    </systemProperties>
                 </configuration>
             </plugin>
         </plugins>

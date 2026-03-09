@@ -50,14 +50,8 @@ public class BasinWaterFiller {
     private final SeaLevelCalculator seaLevelCalculator;
     private final BasinWaterLevelGrid basinWaterGrid;
 
-    // Legacy calculator (deprecated, kept for A/B testing)
-    @Deprecated(since = "Two-Tiered System", forRemoval = false)
-    private final WaterLevelGrid legacyWaterGrid;
-
     private final WaterGenerationConfig config;
-
-    // Feature flag for legacy mode (for testing/comparison)
-    private final boolean useLegacyMode;
+    private final TerrainGenerator terrainGenerator; // For edge detection height lookups
 
     /**
      * Creates a new basin water filler with two-tiered system.
@@ -69,29 +63,12 @@ public class BasinWaterFiller {
      */
     public BasinWaterFiller(NoiseRouter noiseRouter, TerrainGenerator terrainGenerator,
                            WaterGenerationConfig config, long seed) {
-        this(noiseRouter, terrainGenerator, config, seed, false);
-    }
-
-    /**
-     * Creates a new basin water filler with optional legacy mode.
-     *
-     * @param noiseRouter Noise router for parameter sampling
-     * @param terrainGenerator Terrain generator for height calculation
-     * @param config Water generation configuration
-     * @param seed World seed for deterministic random
-     * @param useLegacyMode If true, use legacy WaterLevelGrid (for A/B testing)
-     */
-    public BasinWaterFiller(NoiseRouter noiseRouter, TerrainGenerator terrainGenerator,
-                           WaterGenerationConfig config, long seed, boolean useLegacyMode) {
         this.config = config;
-        this.useLegacyMode = useLegacyMode;
+        this.terrainGenerator = terrainGenerator;
 
         // Initialize two-tiered calculators
         this.seaLevelCalculator = new SeaLevelCalculator(config.seaLevel);
         this.basinWaterGrid = new BasinWaterLevelGrid(noiseRouter, terrainGenerator, config, seed);
-
-        // Initialize legacy calculator (for comparison)
-        this.legacyWaterGrid = new WaterLevelGrid(noiseRouter, terrainGenerator, config);
     }
 
     /**
@@ -102,15 +79,19 @@ public class BasinWaterFiller {
      *
      * @param chunk The chunk to fill with water
      * @param terrainHeights Cached terrain heights [16][16]
-     * @param biomeCache Cached biomes [16][16] (unused but kept for future use)
      * @param paramsCache Cached multi-noise parameters [16][16]
      */
     public void fillWaterBodies(Chunk chunk, int[][] terrainHeights,
-                                BiomeType[][] biomeCache,
                                 MultiNoiseParameters[][] paramsCache) {
         int chunkSize = WorldConfiguration.CHUNK_SIZE;
         int chunkWorldX = chunk.getChunkX() * chunkSize;
         int chunkWorldZ = chunk.getChunkZ() * chunkSize;
+
+        // Diagnostic counters for this chunk
+        int waterBlocksPlaced = 0;
+        int iceBlocksPlaced = 0;
+        int seaLevelColumns = 0;
+        int basinColumns = 0;
 
         // Process each column in chunk
         for (int x = 0; x < chunkSize; x++) {
@@ -123,17 +104,15 @@ public class BasinWaterFiller {
                 int terrainHeight = terrainHeights[x][z];
                 MultiNoiseParameters params = paramsCache[x][z];
 
-                // Get water level using two-tiered system (or legacy mode)
+                // Get water level using two-tiered system: sea level (O(1)) + basin detection (grid-based)
                 int waterLevel;
-                if (useLegacyMode) {
-                    // Legacy mode - use old WaterLevelGrid
-                    waterLevel = legacyWaterGrid.getWaterLevel(
-                        worldX, worldZ, terrainHeight,
-                        params.temperature, params.humidity
-                    );
+                boolean isSeaLevel = false;
+                int seaLevelResult = seaLevelCalculator.calculateSeaLevel(terrainHeight);
+                if (seaLevelResult != -1) {
+                    waterLevel = seaLevelResult;
+                    isSeaLevel = true;
                 } else {
-                    // Two-tiered mode - try sea level first, then basin
-                    waterLevel = calculateWaterLevelTwoTiered(
+                    waterLevel = basinWaterGrid.getWaterLevel(
                         worldX, worldZ, terrainHeight,
                         params.temperature, params.humidity
                     );
@@ -144,6 +123,20 @@ public class BasinWaterFiller {
                     continue;
                 }
 
+                // NEW: Edge detection - check if this column should have water
+                // Prevents water walls on cliff edges by validating neighboring terrain
+                if (!shouldPlaceWaterColumn(worldX, worldZ, terrainHeight, waterLevel,
+                                           terrainHeights, x, z)) {
+                    continue; // Skip this column - it's on a cliff edge
+                }
+
+                // Track water source type
+                if (isSeaLevel) {
+                    seaLevelColumns++;
+                } else {
+                    basinColumns++;
+                }
+
                 // Fill water column from terrain height to water level
                 // terrainHeight represents first air Y-coordinate, so start there (no +1 needed)
                 for (int y = terrainHeight; y <= waterLevel; y++) {
@@ -152,64 +145,140 @@ public class BasinWaterFiller {
                         // Ice formation: freeze surface in cold biomes
                         if (y == waterLevel && params.temperature < config.freezeTemperature) {
                             chunk.setBlock(x, y, z, BlockType.ICE);
+                            iceBlocksPlaced++;
                         } else {
                             chunk.setBlock(x, y, z, BlockType.WATER);
+                            waterBlocksPlaced++;
                         }
                     }
                 }
             }
         }
+
+        // Log chunk summary if any water was placed
+        if (waterBlocksPlaced > 0 || iceBlocksPlaced > 0) {
+            System.out.printf("[LAKE-CHUNK] Chunk(%d,%d): %d water + %d ice blocks | %d sea-level + %d basin columns%n",
+                chunk.getChunkX(), chunk.getChunkZ(),
+                waterBlocksPlaced, iceBlocksPlaced,
+                seaLevelColumns, basinColumns);
+        }
     }
 
     /**
-     * Calculates water level using two-tiered system.
+     * Checks if water should be placed at this column by validating neighboring terrain.
+     * Prevents water walls on cliff edges by detecting steep terrain drops.
      *
-     * <p><strong>Fast path:</strong> Try sea level first (O(1))</p>
-     * <p><strong>Slow path:</strong> Try basin detection if no sea-level water</p>
+     * <p><strong>Edge Detection Algorithm:</strong></p>
+     * <ol>
+     *     <li>Get terrain heights of 4 neighboring columns (N, S, E, W)</li>
+     *     <li>Calculate maximum height difference to any neighbor</li>
+     *     <li>Reject water if drop exceeds {@code config.maxTerrainDropForWater}</li>
+     * </ol>
+     *
+     * <p><strong>Performance:</strong> 4 terrain height lookups per column.
+     * Most lookups hit chunk-local array (fast). Chunk boundary lookups require terrain generator (slower).</p>
      *
      * @param worldX World X coordinate
      * @param worldZ World Z coordinate
-     * @param terrainHeight Terrain height at this column
-     * @param temperature Temperature [0.0-1.0]
-     * @param humidity Humidity [0.0-1.0]
-     * @return Water level, or -1 if no water
+     * @param terrainHeight Terrain height at this position
+     * @param waterLevel Interpolated water level for this position
+     * @param terrainHeights 2D array of terrain heights for chunk
+     * @param localX Local X in chunk [0-15]
+     * @param localZ Local Z in chunk [0-15]
+     * @return true if water should be placed, false if it would create a water wall
      */
-    private int calculateWaterLevelTwoTiered(int worldX, int worldZ, int terrainHeight,
-                                             float temperature, float humidity) {
-        // TIER 1: Sea level (fast path, O(1))
-        int seaLevel = seaLevelCalculator.calculateSeaLevel(terrainHeight);
-        if (seaLevel != -1) {
-            return seaLevel; // Found sea-level water
+    private boolean shouldPlaceWaterColumn(int worldX, int worldZ, int terrainHeight,
+                                          int waterLevel, int[][] terrainHeights,
+                                          int localX, int localZ) {
+        // Early exit if edge detection disabled
+        if (!config.enableEdgeDetection) {
+            return true;
         }
 
-        // TIER 2: Basin detection (slower path, grid-based)
-        int basinLevel = basinWaterGrid.getWaterLevel(
-            worldX, worldZ, terrainHeight, temperature, humidity
-        );
-        return basinLevel; // May be -1 if no basin water
+        // Sanity check - water level must be above terrain
+        if (waterLevel < terrainHeight) {
+            return false;
+        }
+
+        // Get 4 neighboring terrain heights (N, S, E, W)
+        int[] neighborHeights = getNeighborTerrainHeights(worldX, worldZ, terrainHeights, localX, localZ);
+
+        // Calculate maximum height drop to any neighbor
+        int maxDrop = 0;
+        for (int neighborHeight : neighborHeights) {
+            int drop = terrainHeight - neighborHeight; // Positive if we're higher than neighbor
+            maxDrop = Math.max(maxDrop, drop);
+        }
+
+        // Reject if terrain drops too steeply (cliff edge)
+        return maxDrop <= config.maxTerrainDropForWater; // Water would create a "wall" on cliff face
     }
 
     /**
-     * Clears all water level caches.
+     * Gets terrain heights of 4 neighboring columns (N, S, E, W).
+     * Handles chunk boundaries by sampling from terrain generator if needed.
      *
-     * <p>Should be called when switching worlds or when memory pressure is high.</p>
+     * <p><strong>Optimization:</strong> Prioritizes chunk-local lookups (fast array access).
+     * Only falls back to terrain generator for chunk boundaries (rare).</p>
+     *
+     * @param worldX World X coordinate
+     * @param worldZ World Z coordinate
+     * @param terrainHeights 2D array of terrain heights for current chunk [x][z]
+     * @param localX Local X in chunk [0-15]
+     * @param localZ Local Z in chunk [0-15]
+     * @return Array of 4 neighbor heights [north, south, east, west]
      */
-    public void clearCaches() {
-        basinWaterGrid.clearCache();
-        legacyWaterGrid.clearCache();
+    private int[] getNeighborTerrainHeights(int worldX, int worldZ, int[][] terrainHeights,
+                                           int localX, int localZ) {
+        int[] neighbors = new int[4];
+
+        // North (z-1)
+        if (localZ > 0) {
+            neighbors[0] = terrainHeights[localX][localZ - 1]; // Chunk-local
+        } else {
+            neighbors[0] = calculateTerrainHeight(worldX, worldZ - 1); // Chunk boundary
+        }
+
+        // South (z+1)
+        if (localZ < 15) {
+            neighbors[1] = terrainHeights[localX][localZ + 1]; // Chunk-local
+        } else {
+            neighbors[1] = calculateTerrainHeight(worldX, worldZ + 1); // Chunk boundary
+        }
+
+        // West (x-1)
+        if (localX > 0) {
+            neighbors[2] = terrainHeights[localX - 1][localZ]; // Chunk-local
+        } else {
+            neighbors[2] = calculateTerrainHeight(worldX - 1, worldZ); // Chunk boundary
+        }
+
+        // East (x+1)
+        if (localX < 15) {
+            neighbors[3] = terrainHeights[localX + 1][localZ]; // Chunk-local
+        } else {
+            neighbors[3] = calculateTerrainHeight(worldX + 1, worldZ); // Chunk boundary
+        }
+
+        return neighbors;
     }
 
     /**
-     * Gets cache statistics for debugging.
+     * Calculates terrain height at a world position using the terrain generator.
      *
-     * @return Cache statistics string
+     * <p>Used for chunk boundary lookups during edge detection. Assumes standard
+     * noise parameters (0.5 continentalness, temperature, humidity).</p>
+     *
+     * @param worldX World X coordinate
+     * @param worldZ World Z coordinate
+     * @return Terrain height (Y coordinate)
      */
-    public String getCacheStats() {
-        return String.format(
-            "BasinWaterFiller Caches - Basin: %d points, Legacy: %d points",
-            basinWaterGrid.getCacheSize(),
-            legacyWaterGrid.getCacheSize()
-        );
+    private int calculateTerrainHeight(int worldX, int worldZ) {
+        com.stonebreak.world.generation.noise.MultiNoiseParameters params =
+            new com.stonebreak.world.generation.noise.MultiNoiseParameters(
+                0.5f, 0.0f, 0.0f, 0.0f, 0.5f, 0.5f // Default parameters
+            );
+        return terrainGenerator.generateHeight(worldX, worldZ, params);
     }
 
     /**

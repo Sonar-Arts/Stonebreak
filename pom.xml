@@ -25,6 +25,7 @@
         <jackson.version.annotations>2.21</jackson.version.annotations>
         <fastutil.version>8.5.15</fastutil.version>
         <junit.version>6.0.2</junit.version>
+        <junit.platform.version>6.0.2</junit.platform.version>
         <mockito.version>5.5.0</mockito.version>
     </properties>
 
@@ -175,13 +176,21 @@
             <dependency>
                 <groupId>org.junit.platform</groupId>
                 <artifactId>junit-platform-suite-api</artifactId>
-                <version>1.10.0</version>
+                <version>${junit.platform.version}</version>
                 <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>org.junit.platform</groupId>
                 <artifactId>junit-platform-suite-engine</artifactId>
-                <version>1.10.0</version>
+                <version>${junit.platform.version}</version>
+                <scope>test</scope>
+            </dependency>
+
+            <!-- JUnit Platform Launcher - required for test discovery in JUnit 6.x -->
+            <dependency>
+                <groupId>org.junit.platform</groupId>
+                <artifactId>junit-platform-launcher</artifactId>
+                <version>${junit.platform.version}</version>
                 <scope>test</scope>
             </dependency>
         </dependencies>
@@ -221,7 +230,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.0.0-M9</version>
+                    <version>3.5.4</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

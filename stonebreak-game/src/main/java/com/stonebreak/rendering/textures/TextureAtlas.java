@@ -1,8 +1,8 @@
 package com.stonebreak.rendering.textures;
 
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 
-import com.stonebreak.rendering.WaterEffects;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -37,7 +37,7 @@ public class TextureAtlas {
     
     // Atlas metadata system
     private AtlasMetadata atlasMetadata;
-    private AtlasMetadataCache metadataCache;
+    private final AtlasMetadataCache metadataCache;
     private int actualAtlasWidth;
     private int actualAtlasHeight;
     private boolean metadataLoaded = false;
@@ -46,11 +46,11 @@ public class TextureAtlas {
     private int waterAtlasX = 9; // legacy single-tile fallback (grid-based atlas)
     private int waterAtlasY = 0;
     // List of all water face tiles present in the atlas metadata. Each entry is [atlasX, atlasY].
-    private java.util.List<int[]> waterFaceTiles = new java.util.ArrayList<>();
+    private final java.util.List<int[]> waterFaceTiles = new java.util.ArrayList<>();
     
-    // Paths
-    private static final Path ATLAS_METADATA_PATH = Paths.get("stonebreak-game", "src", "main", "resources", "texture atlas", "atlas_metadata.json");
-    private static final Path ATLAS_IMAGE_PATH = Paths.get("stonebreak-game", "src", "main", "resources", "texture atlas", "TextureAtlas.png");
+    // Classpath resource paths (primary load strategy - works in tests and packaged JARs)
+    private static final String CP_METADATA = "/texture atlas/atlas_metadata.json";
+    private static final String CP_IMAGE    = "/texture atlas/TextureAtlas.png";
     
     /**
      * Creates a texture atlas with the specified texture size.
@@ -155,98 +155,143 @@ public class TextureAtlas {
      */
     private int loadGeneratedAtlasTexture() {
         try {
-            // Check if files exist
-            Path metadataFile = ATLAS_METADATA_PATH;
-            Path imageFile = ATLAS_IMAGE_PATH;
-
-            boolean metadataExists = Files.exists(metadataFile);
-            boolean imageExists = Files.exists(imageFile);
-            if (!metadataExists || !imageExists) {
-                System.out.println("Atlas files not found: metadata=" + metadataExists + ", image=" + imageExists);
-                return 0;
-            }
-
-            // Load metadata
-            ObjectMapper objectMapper = new ObjectMapper();
-            atlasMetadata = objectMapper.readValue(metadataFile.toFile(), AtlasMetadata.class);
-            atlasMetadata.initializeLookupMaps();
-            System.out.println("[TextureAtlas] Loaded atlas metadata with " + atlasMetadata.getTextures().size() + " textures");
-            
-            // Load image
-            BufferedImage atlasImage = ImageIO.read(imageFile.toFile());
-            if (atlasImage == null) {
-                System.err.println("Failed to load atlas image");
-                return 0;
-            }
-            
-            // Store actual dimensions
-            actualAtlasWidth = atlasImage.getWidth();
-            actualAtlasHeight = atlasImage.getHeight();
-            
-            // Create OpenGL texture
-            int textureId = createTextureFromImage(atlasImage);
-            if (textureId == 0) {
-                System.err.println("Failed to create OpenGL texture from atlas image");
-                return 0;
-            }
-            
-            // Update water coordinates from metadata
-            // Support both legacy names ("water", "water_still") and the current "water_temp_*" faces.
-            waterFaceTiles.clear();
-            AtlasMetadata.TextureEntry waterTexture = atlasMetadata.findTexture("water");
-            if (waterTexture == null) {
-                waterTexture = atlasMetadata.findTexture("water_still");
-            }
-            if (waterTexture != null) {
-                waterAtlasX = waterTexture.getX() / texturePixelSize;
-                waterAtlasY = waterTexture.getY() / texturePixelSize;
-                waterFaceTiles.add(new int[]{waterAtlasX, waterAtlasY});
-            }
-
-            // Scan all textures for water face entries (e.g., water_temp_top, water_temp_north, etc.)
-            for (java.util.Map.Entry<String, AtlasMetadata.TextureEntry> e : atlasMetadata.getTextures().entrySet()) {
-                String name = e.getKey();
-                if (name.startsWith("water_") || name.startsWith("waterTemp_") || name.startsWith("watertemp_") || name.startsWith("watertemp") || name.startsWith("water_temp")) {
-                    AtlasMetadata.TextureEntry tex = e.getValue();
-                    int ax = tex.getX() / texturePixelSize;
-                    int ay = tex.getY() / texturePixelSize;
-                    int[] pair = new int[]{ax, ay};
-                    // Avoid duplicates (some names may point to same tile)
-                    boolean exists = false;
-                    for (int[] p : waterFaceTiles) {
-                        if (p[0] == ax && p[1] == ay) { exists = true; break; }
-                    }
-                    if (!exists) {
-                        waterFaceTiles.add(pair);
-                    }
+            // Strategy 1: Classpath loading (primary - works in tests, packaged JARs, and dev)
+            // Maven copies src/main/resources/** -> target/classes/** so these paths are
+            // always available on the classpath regardless of JVM working directory.
+            try (InputStream metaStream = TextureAtlas.class.getResourceAsStream(CP_METADATA);
+                 InputStream imgStream  = TextureAtlas.class.getResourceAsStream(CP_IMAGE)) {
+                if (metaStream != null && imgStream != null) {
+                    System.out.println("[TextureAtlas] Loading atlas from classpath");
+                    return loadFromStreams(metaStream, imgStream);
                 }
+                System.out.println("[TextureAtlas] Classpath resources not found, trying filesystem fallbacks");
             }
 
-            // If we didn’t find any, keep legacy fallback tile
-            
-            // Cache the pixel buffer for NanoVG
-            cachePixelBuffer(atlasImage);
-            
-            System.out.println("[TextureAtlas] Generated atlas loaded successfully: " + actualAtlasWidth + "x" + actualAtlasHeight);
-            System.out.println("[TextureAtlas] Atlas contains " + atlasMetadata.getTextures().size() + " textures");
-            
-            // Debug: Print first few texture names to verify mapping
-            System.out.println("[TextureAtlas] Sample textures in atlas:");
-            int count = 0;
-            for (String textureName : atlasMetadata.getTextures().keySet()) {
-                if (count++ < 10) {
-                    System.out.println("  - " + textureName);
-                }
+            // Strategy 2: Filesystem - module-root relative (cwd = stonebreak-game/)
+            Path moduleMeta = Paths.get("src", "main", "resources", "texture atlas", "atlas_metadata.json");
+            Path moduleImg  = Paths.get("src", "main", "resources", "texture atlas", "TextureAtlas.png");
+            if (Files.exists(moduleMeta) && Files.exists(moduleImg)) {
+                System.out.println("[TextureAtlas] Loading atlas from module-relative path");
+                return loadFromPaths(moduleMeta, moduleImg);
             }
-            
-            metadataLoaded = true;
-            return textureId;
-            
+
+            // Strategy 3: Filesystem - project-root relative (legacy mvn exec:java from root)
+            Path projectMeta = Paths.get("stonebreak-game", "src", "main", "resources", "texture atlas", "atlas_metadata.json");
+            Path projectImg  = Paths.get("stonebreak-game", "src", "main", "resources", "texture atlas", "TextureAtlas.png");
+            if (Files.exists(projectMeta) && Files.exists(projectImg)) {
+                System.out.println("[TextureAtlas] Loading atlas from project-relative path");
+                return loadFromPaths(projectMeta, projectImg);
+            }
+
+            System.out.println("[TextureAtlas] Atlas files not found in classpath or any filesystem location");
+            return 0;
+
         } catch (Exception e) {
             System.err.println("Failed to load generated atlas: " + e.getMessage());
-            e.printStackTrace();
+            System.err.println(e.getMessage());
             return 0;
         }
+    }
+
+    /**
+     * Loads atlas metadata and image from pre-opened InputStreams (classpath strategy).
+     */
+    private int loadFromStreams(InputStream metaStream, InputStream imgStream) throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        atlasMetadata = objectMapper.readValue(metaStream, AtlasMetadata.class);
+        atlasMetadata.initializeLookupMaps();
+        System.out.println("[TextureAtlas] Loaded atlas metadata with " + atlasMetadata.getTextures().size() + " textures");
+
+        BufferedImage atlasImage = ImageIO.read(imgStream);
+        if (atlasImage == null) {
+            System.err.println("[TextureAtlas] Failed to decode atlas image from classpath stream");
+            return 0;
+        }
+        return finalizeAtlasLoad(atlasImage);
+    }
+
+    /**
+     * Loads atlas metadata and image from filesystem Paths (filesystem fallback strategies).
+     */
+    private int loadFromPaths(Path metaFile, Path imgFile) throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        atlasMetadata = objectMapper.readValue(metaFile.toFile(), AtlasMetadata.class);
+        atlasMetadata.initializeLookupMaps();
+        System.out.println("[TextureAtlas] Loaded atlas metadata with " + atlasMetadata.getTextures().size() + " textures");
+
+        BufferedImage atlasImage = ImageIO.read(imgFile.toFile());
+        if (atlasImage == null) {
+            System.err.println("[TextureAtlas] Failed to load atlas image from: " + imgFile);
+            return 0;
+        }
+        return finalizeAtlasLoad(atlasImage);
+    }
+
+    /**
+     * Completes atlas initialization after image and metadata are loaded.
+     * Handles water tile discovery, OpenGL texture creation, and pixel buffer caching.
+     */
+    private int finalizeAtlasLoad(BufferedImage atlasImage) {
+        // Store actual dimensions
+        actualAtlasWidth = atlasImage.getWidth();
+        actualAtlasHeight = atlasImage.getHeight();
+
+        // Create OpenGL texture
+        int texId = createTextureFromImage(atlasImage);
+        if (texId == 0) {
+            System.err.println("[TextureAtlas] Failed to create OpenGL texture from atlas image");
+            return 0;
+        }
+
+        // Update water coordinates from metadata
+        // Support both legacy names ("water", "water_still") and the current "water_temp_*" faces.
+        waterFaceTiles.clear();
+        AtlasMetadata.TextureEntry waterTexture = atlasMetadata.findTexture("water");
+        if (waterTexture == null) {
+            waterTexture = atlasMetadata.findTexture("water_still");
+        }
+        if (waterTexture != null) {
+            waterAtlasX = waterTexture.getX() / texturePixelSize;
+            waterAtlasY = waterTexture.getY() / texturePixelSize;
+            waterFaceTiles.add(new int[]{waterAtlasX, waterAtlasY});
+        }
+
+        // Scan all textures for water face entries (e.g., water_temp_top, water_temp_north, etc.)
+        for (java.util.Map.Entry<String, AtlasMetadata.TextureEntry> e : atlasMetadata.getTextures().entrySet()) {
+            String name = e.getKey();
+            if (name.startsWith("water_") || name.startsWith("waterTemp_") || name.startsWith("watertemp_") || name.startsWith("watertemp") || name.startsWith("water_temp")) {
+                AtlasMetadata.TextureEntry tex = e.getValue();
+                int ax = tex.getX() / texturePixelSize;
+                int ay = tex.getY() / texturePixelSize;
+                int[] pair = new int[]{ax, ay};
+                // Avoid duplicates (some names may point to same tile)
+                boolean exists = false;
+                for (int[] p : waterFaceTiles) {
+                    if (p[0] == ax && p[1] == ay) { exists = true; break; }
+                }
+                if (!exists) {
+                    waterFaceTiles.add(pair);
+                }
+            }
+        }
+
+        // Cache the pixel buffer for NanoVG
+        cachePixelBuffer(atlasImage);
+
+        System.out.println("[TextureAtlas] Generated atlas loaded successfully: " + actualAtlasWidth + "x" + actualAtlasHeight);
+        System.out.println("[TextureAtlas] Atlas contains " + atlasMetadata.getTextures().size() + " textures");
+
+        // Debug: Print first few texture names to verify mapping
+        System.out.println("[TextureAtlas] Sample textures in atlas:");
+        int count = 0;
+        for (String textureName : atlasMetadata.getTextures().keySet()) {
+            if (count++ < 10) {
+                System.out.println("  - " + textureName);
+            }
+        }
+
+        metadataLoaded = true;
+        return texId;
     }
     
     /**
@@ -392,17 +437,6 @@ public class TextureAtlas {
      * @param time Current animation time.
      */
     public void updateAnimatedWater(float time) {
-        updateAnimatedWater(time, null, 0.0f, 0.0f);
-    }
-    
-    /**
-     * Updates the animated water texture tile on the GPU with wave parameters.
-     * @param time Current animation time.
-     * @param waterEffects Optional WaterEffects instance for advanced wave data
-     * @param playerX Player X position for location-based effects
-     * @param playerZ Player Z position for location-based effects
-     */
-    public void updateAnimatedWater(float time, WaterEffects waterEffects, float playerX, float playerZ) {
         if (textureId == 0) return; // Atlas not initialized
 
         try {
@@ -425,8 +459,7 @@ public class TextureAtlas {
 
             // If metadata provided multiple water face tiles, update all of them; else update legacy single tile.
             if (!waterFaceTiles.isEmpty()) {
-                for (int i = 0; i < waterFaceTiles.size(); i++) {
-                    int[] tile = waterFaceTiles.get(i);
+                for (int[] tile : waterFaceTiles) {
                     int offsetX = tile[0] * texturePixelSize;
                     int offsetY = tile[1] * texturePixelSize;
                     // Reset buffer position for each upload
@@ -543,43 +576,43 @@ public class TextureAtlas {
      */
     private String getBlockTextureName(BlockType blockType) {
         if (blockType == null) return null;
-        
-        switch (blockType) {
-            case GRASS: return "grass_block";
-            case DIRT: return "dirt_block"; // Fixed: atlas has dirt_block_* textures
-            case STONE: return "stone";
-            case COBBLESTONE: return "cobblestone";
-            case WOOD: return "wood";
-            case SAND: return "sand";
-            case WATER: return "water_temp"; // Fixed: atlas has water_temp_* textures
-            case COAL_ORE: return "coal_ore";
-            case IRON_ORE: return "iron_ore";
-            case LEAVES: return "leaves";
-            case BEDROCK: return "bedrock";
-            case ICE: return "ice";
-            case SNOW: return "snow";
-            case DANDELION: return "dandelion";
-            case ROSE: return "rose"; // Fixed: atlas has rose_* textures
-            case ELM_WOOD_LOG: return "elm_wood_log";
-            case MAGMA: return "magma";
-            case WORKBENCH: return "workbench_custom"; // Fixed: atlas has workbench_custom_* textures
-            case PINE: return "pine_wood";
-            case WOOD_PLANKS: return "wood_planks_custom"; // Added missing mapping
-            case PINE_WOOD_PLANKS: return "pine_wood_planks_custom"; // Added missing mapping
-            case ELM_WOOD_PLANKS: return "elm_wood_planks_custom"; // Added missing mapping
-            case SNOWY_DIRT: return "snowy_dirt";
-            case PINE_LEAVES: return "pine_leaves";
-            case RED_SAND: return "red_sand";
-            case CRYSTAL: return "crystal";
-            case SANDSTONE: return "sandstone";
-            case RED_SANDSTONE: return "red_sandstone";
-            case ELM_LEAVES: return "elm_leaves";
-            case GRAVEL: return "gravel";
-            case CLAY: return "clay";
-            case RED_SAND_COBBLESTONE: return "red_sand_cobblestone";
-            case SAND_COBBLESTONE: return "sand_cobblestone";
-            default: return blockType.name().toLowerCase();
-        }
+
+        return switch (blockType) {
+            case GRASS -> "grass_block";
+            case DIRT -> "dirt_block";
+            case STONE -> "stone";
+            case COBBLESTONE -> "cobblestone";
+            case WOOD -> "wood";
+            case SAND -> "sand";
+            case WATER -> "water_temp";
+            case COAL_ORE -> "coal_ore";
+            case IRON_ORE -> "iron_ore";
+            case LEAVES -> "leaves";
+            case BEDROCK -> "bedrock";
+            case ICE -> "ice";
+            case SNOW -> "snow";
+            case DANDELION -> "dandelion";
+            case ROSE -> "rose";
+            case ELM_WOOD_LOG -> "elm_wood_log";
+            case MAGMA -> "magma";
+            case WORKBENCH -> "workbench_custom";
+            case PINE -> "pine_wood";
+            case WOOD_PLANKS -> "wood_planks_custom";
+            case PINE_WOOD_PLANKS -> "pine_wood_planks_custom";
+            case ELM_WOOD_PLANKS -> "elm_wood_planks_custom";
+            case SNOWY_DIRT -> "snowy_dirt";
+            case PINE_LEAVES -> "pine_leaves";
+            case RED_SAND -> "red_sand";
+            case CRYSTAL -> "crystal";
+            case SANDSTONE -> "sandstone";
+            case RED_SANDSTONE -> "red_sandstone";
+            case ELM_LEAVES -> "elm_leaves";
+            case GRAVEL -> "gravel";
+            case CLAY -> "clay";
+            case RED_SAND_COBBLESTONE -> "red_sand_cobblestone";
+            case SAND_COBBLESTONE -> "sand_cobblestone";
+            default -> blockType.name().toLowerCase();
+        };
     }
     
     /**
@@ -593,8 +626,7 @@ public class TextureAtlas {
                 errorTexture = atlasMetadata.getErrorTexture();
             }
             if (errorTexture != null) {
-                float[] coords = errorTexture.getUVCoordinates(actualAtlasWidth, actualAtlasHeight);
-                return coords;
+                return errorTexture.getUVCoordinates(actualAtlasWidth, actualAtlasHeight);
             }
         }
         // Fallback to default coordinates
@@ -698,44 +730,14 @@ public class TextureAtlas {
     private String getItemTextureName(ItemType itemType) {
         if (itemType == null) return null;
 
-        switch (itemType) {
-            case STICK: return "stick";
-            case WOODEN_PICKAXE: return "wooden_pickaxe";
-            case WOODEN_AXE: return "wooden_axe";
-            case WOODEN_BUCKET: return "wooden_bucket_base";
-            case WOODEN_BUCKET_WATER: return "wooden_bucket_water";
-            default: return itemType.name().toLowerCase();
-        }
-    }
-    
-    /**
-     * Gets UV coordinates for atlas position (legacy compatibility method).
-     * Calculates coordinates based on atlas tile positions.
-     * @param atlasX Atlas X coordinate (tile position)
-     * @param atlasY Atlas Y coordinate (tile position)
-     * @return Array of UV coordinates [u1, v1, u2, v2]
-     */
-    public float[] getUVCoordinates(int atlasX, int atlasY) {
-        if (metadataLoaded && actualAtlasWidth > 0 && actualAtlasHeight > 0) {
-            // Use actual atlas dimensions for precise calculation
-            float pixelX = atlasX * texturePixelSize;
-            float pixelY = atlasY * texturePixelSize;
-            float u1 = pixelX / actualAtlasWidth;
-            float v1 = pixelY / actualAtlasHeight;
-            float u2 = (pixelX + texturePixelSize) / actualAtlasWidth;
-            float v2 = (pixelY + texturePixelSize) / actualAtlasHeight;
-            
-            return new float[]{u1, v1, u2, v2};
-        } else {
-            // Fallback to grid-based calculation
-            float tileSize = 1.0f / textureSize;
-            float u1 = atlasX * tileSize;
-            float v1 = atlasY * tileSize;
-            float u2 = u1 + tileSize;
-            float v2 = v1 + tileSize;
-            
-            return new float[]{u1, v1, u2, v2};
-        }
+        return switch (itemType) {
+            case STICK -> "stick";
+            case WOODEN_PICKAXE -> "wooden_pickaxe";
+            case WOODEN_AXE -> "wooden_axe";
+            case WOODEN_BUCKET -> "wooden_bucket_base";
+            case WOODEN_BUCKET_WATER -> "wooden_bucket_water";
+            default -> itemType.name().toLowerCase();
+        };
     }
     
     /**
@@ -758,15 +760,14 @@ public class TextureAtlas {
      * Map BlockType.Face enum to string representation.
      */
     private String mapFaceToString(BlockType.Face face) {
-        switch (face) {
-            case TOP: return "top";
-            case BOTTOM: return "bottom";
-            case SIDE_NORTH: return "north";
-            case SIDE_SOUTH: return "south";
-            case SIDE_EAST: return "east";
-            case SIDE_WEST: return "west";
-            default: return "top"; // fallback
-        }
+        return switch (face) {
+            case TOP -> "top";
+            case BOTTOM -> "bottom";
+            case SIDE_NORTH -> "north";
+            case SIDE_SOUTH -> "south";
+            case SIDE_EAST -> "east";
+            case SIDE_WEST -> "west";
+        };
     }
     
     // =================================================================
@@ -811,12 +812,4 @@ public class TextureAtlas {
         return this.atlasPixelBuffer_cached;
     }
 
-    /**
-     * Gets the atlas metadata cache for dynamic texture coordinate lookups.
-     * Used by BlockType for atlas-based texture rendering.
-     * @return The atlas metadata cache instance
-     */
-    public AtlasMetadataCache getMetadataCache() {
-        return metadataCache;
-    }
 }

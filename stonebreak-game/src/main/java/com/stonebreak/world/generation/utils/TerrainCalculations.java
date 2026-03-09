@@ -126,7 +126,7 @@ public final class TerrainCalculations {
      * <p>Consolidated helper pattern used by water systems to query terrain height
      * for basin detection and rim calculations.</p>
      *
-     * <p><b>Used by:</b> WaterLevelGrid, RimDetector</p>
+     * <p><b>Used by:</b> WaterLevelGrid, FloodFillBasinDetector</p>
      *
      * @param worldX World X coordinate
      * @param worldZ World Z coordinate
