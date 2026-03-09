@@ -185,4 +185,15 @@ public interface IViewportConnector {
      * @return int array {@code [width, height]}, or null if invalid
      */
     int[] getTextureDimensions(int gpuTextureId);
+
+    /**
+     * Compute texture pixel dimensions for a face based on its 3D geometry.
+     * Projects the face vertices into tangent space to determine proportional
+     * width and height at the given resolution.
+     *
+     * @param faceId        Face identifier
+     * @param pixelsPerUnit Resolution in pixels per world unit
+     * @return int array {@code [width, height]}, or {@code null} if geometry data is unavailable
+     */
+    int[] computeFaceTextureDimensions(int faceId, int pixelsPerUnit);
 }

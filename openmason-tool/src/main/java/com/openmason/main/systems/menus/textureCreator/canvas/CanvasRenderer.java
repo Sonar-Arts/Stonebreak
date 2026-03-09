@@ -198,10 +198,11 @@ public class CanvasRenderer {
         float canvasX = imagePos.x;
         float canvasY = imagePos.y;
 
-        // Render transparency checkerboard background first
-        renderCheckerboard(canvasX, canvasY, displayWidth, displayHeight);
+        // Render transparency checkerboard background (shape-aware)
+        CanvasShapeMask shapeMask = canvas.getShapeMask();
+        renderCheckerboard(canvasX, canvasY, displayWidth, displayHeight, shapeMask, zoom);
 
-        // Render grid if enabled (after checkerboard, before cube net overlay and pixels)
+        // Render grid if enabled (after checkerboard, before overlays and pixels)
         if (showGrid) {
             renderGrid(canvas, canvasState, canvasX, canvasY, gridOpacity);
         }
@@ -224,10 +225,9 @@ public class CanvasRenderer {
                    1, 1, 1, 1, // Tint color (white = no tint)
                    0, 0, 0, 0);// Border color (none)
 
-        // Render face boundary mask overlay (hatch + polygon outline)
-        FaceBoundaryMask faceMask = canvas.getFaceBoundaryMask();
-        if (faceMask != null) {
-            faceBoundaryRenderer.render(faceMask, canvasX, canvasY, zoom, cubeNetOverlayOpacity);
+        // Render polygon outline for polygon-based shape masks
+        if (shapeMask instanceof PolygonShapeMask polygonMask) {
+            faceBoundaryRenderer.render(polygonMask, canvasX, canvasY, zoom, cubeNetOverlayOpacity);
         }
 
         // Render symmetry axes if enabled
@@ -281,30 +281,105 @@ public class CanvasRenderer {
 
     /**
      * Render transparency checkerboard background (like image editors).
+     *
+     * <p>When a shape mask is active, only draws checkerboard under editable pixels,
+     * making non-editable areas truly transparent. Falls back to full rectangular
+     * checkerboard when no mask is set (common case).
+     *
+     * @param canvasX       canvas display X position
+     * @param canvasY       canvas display Y position
+     * @param displayWidth  display width in screen pixels
+     * @param displayHeight display height in screen pixels
+     * @param shapeMask     active shape mask (nullable — null = full rectangle)
+     * @param zoom          current zoom level
      */
     private void renderCheckerboard(float canvasX, float canvasY,
-                                    float displayWidth, float displayHeight) {
+                                    float displayWidth, float displayHeight,
+                                    CanvasShapeMask shapeMask, float zoom) {
+        if (shapeMask == null) {
+            renderFullCheckerboard(canvasX, canvasY, displayWidth, displayHeight);
+        } else {
+            renderShapedCheckerboard(canvasX, canvasY, shapeMask, zoom);
+        }
+    }
+
+    /**
+     * Render full rectangular checkerboard (fast path, no mask).
+     */
+    private void renderFullCheckerboard(float canvasX, float canvasY,
+                                         float displayWidth, float displayHeight) {
         ImDrawList drawList = ImGui.getWindowDrawList();
 
-        // Calculate number of checker squares needed
         int numSquaresX = (int) Math.ceil(displayWidth / CHECKER_SIZE);
         int numSquaresY = (int) Math.ceil(displayHeight / CHECKER_SIZE);
 
-        // Draw checkerboard pattern
         for (int y = 0; y < numSquaresY; y++) {
             for (int x = 0; x < numSquaresX; x++) {
-                // Alternate colors in checkerboard pattern
                 boolean isLight = (x + y) % 2 == 0;
                 int color = isLight ? CHECKER_COLOR_LIGHT : CHECKER_COLOR_DARK;
 
-                // Calculate square position and size
                 float squareX = canvasX + x * CHECKER_SIZE;
                 float squareY = canvasY + y * CHECKER_SIZE;
                 float squareEndX = Math.min(squareX + CHECKER_SIZE, canvasX + displayWidth);
                 float squareEndY = Math.min(squareY + CHECKER_SIZE, canvasY + displayHeight);
 
-                // Draw filled rectangle
                 drawList.addRectFilled(squareX, squareY, squareEndX, squareEndY, color);
+            }
+        }
+    }
+
+    /**
+     * Render checkerboard only under editable pixels defined by the shape mask.
+     *
+     * <p>At high zoom (>= 2.0), draws per-pixel checker squares for precision.
+     * At low zoom, renders the full rectangle with a dim overlay on non-editable
+     * regions for performance.
+     */
+    private void renderShapedCheckerboard(float canvasX, float canvasY,
+                                           CanvasShapeMask shapeMask, float zoom) {
+        ImDrawList drawList = ImGui.getWindowDrawList();
+        int maskW = shapeMask.getWidth();
+        int maskH = shapeMask.getHeight();
+
+        if (zoom >= 2.0f) {
+            // Per-pixel checkerboard for editable pixels
+            for (int py = 0; py < maskH; py++) {
+                for (int px = 0; px < maskW; px++) {
+                    if (!shapeMask.isEditable(px, py)) {
+                        continue;
+                    }
+
+                    // Determine checker color from pixel-level checker grid
+                    float screenX = canvasX + px * zoom;
+                    float screenY = canvasY + py * zoom;
+                    int checkerX = (int) (screenX / CHECKER_SIZE);
+                    int checkerY = (int) (screenY / CHECKER_SIZE);
+                    boolean isLight = (checkerX + checkerY) % 2 == 0;
+                    int color = isLight ? CHECKER_COLOR_LIGHT : CHECKER_COLOR_DARK;
+
+                    drawList.addRectFilled(screenX, screenY, screenX + zoom, screenY + zoom, color);
+                }
+            }
+        } else {
+            // Low zoom fallback: full checkerboard + dim non-editable areas
+            float displayWidth = maskW * zoom;
+            float displayHeight = maskH * zoom;
+            renderFullCheckerboard(canvasX, canvasY, displayWidth, displayHeight);
+
+            // Dim non-editable regions with a dark overlay
+            int dimColor = ImColor.rgba(40, 40, 40, 100);
+            // Use a coarse block approach for performance
+            int blockSize = Math.max(1, (int) (4.0f / zoom));
+            for (int py = 0; py < maskH; py += blockSize) {
+                for (int px = 0; px < maskW; px += blockSize) {
+                    if (!shapeMask.isEditable(px, py)) {
+                        float sx = canvasX + px * zoom;
+                        float sy = canvasY + py * zoom;
+                        float ex = sx + blockSize * zoom;
+                        float ey = sy + blockSize * zoom;
+                        drawList.addRectFilled(sx, sy, ex, ey, dimColor);
+                    }
+                }
             }
         }
     }

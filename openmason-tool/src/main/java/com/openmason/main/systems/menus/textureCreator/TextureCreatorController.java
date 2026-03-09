@@ -1,7 +1,9 @@
 package com.openmason.main.systems.menus.textureCreator;
 
+import com.openmason.main.systems.menus.textureCreator.canvas.CanvasShapeMask;
 import com.openmason.main.systems.menus.textureCreator.canvas.CanvasState;
-import com.openmason.main.systems.menus.textureCreator.canvas.FaceBoundaryMask;
+import com.openmason.main.systems.menus.textureCreator.canvas.CompositeShapeMask;
+import com.openmason.main.systems.menus.textureCreator.canvas.CubeNetShapeMask;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping.UVRegion;
 import com.openmason.main.systems.menus.textureCreator.clipboard.ClipboardManager;
@@ -34,7 +36,8 @@ public class TextureCreatorController {
     private boolean faceRegionActive = false;
     private int faceRegionMaterialId = -1;
     private UVRegion faceRegionUV;
-    private FaceBoundaryMask faceRegionMask;
+    private CanvasShapeMask faceRegionMask;
+    private CanvasShapeMask canvasBaseMask; // Base mask before face-region editing (restored on close)
 
     /**
      * Create texture creator controller.
@@ -74,6 +77,9 @@ public class TextureCreatorController {
         // This automatically creates a default "Background" layer
         this.layerManager = new LayerManager(canvasSize.getWidth(), canvasSize.getHeight());
 
+        // Auto-assign shape mask for known layouts (e.g., 64x48 cube net)
+        applyAutoShapeMask(canvasSize.getWidth(), canvasSize.getHeight());
+
         // Clear command history
         commandHistory.clear();
 
@@ -98,6 +104,9 @@ public class TextureCreatorController {
 
         this.layerManager = new LayerManager(width, height);
         commandHistory.clear();
+
+        // Auto-assign shape mask for known layouts
+        applyAutoShapeMask(width, height);
 
         // Fill the background layer to match the blank GPU texture
         PixelCanvas canvas = getActiveLayerCanvas();
@@ -124,6 +133,9 @@ public class TextureCreatorController {
 
         this.layerManager = new LayerManager(width, height);
         commandHistory.clear();
+
+        // Auto-assign shape mask for known layouts
+        applyAutoShapeMask(width, height);
 
         PixelCanvas canvas = getActiveLayerCanvas();
         if (canvas != null && rgbaPixels != null) {
@@ -239,6 +251,9 @@ public class TextureCreatorController {
         // Create new layer manager with target canvas size
         // This replaces the entire canvas (similar to newTexture)
         this.layerManager = new LayerManager(targetSize.getWidth(), targetSize.getHeight());
+
+        // Auto-assign shape mask for known layouts
+        applyAutoShapeMask(targetSize.getWidth(), targetSize.getHeight());
 
         // Replace the default "Background" layer with imported content
         layerManager.renameLayer(0, "Imported");
@@ -481,27 +496,35 @@ public class TextureCreatorController {
     /**
      * Open the texture editor focused on a specific face's UV region.
      *
-     * <p>Sets up face-region editing mode: applies the boundary mask to the
-     * active layer's canvas, frames the view on the UV region, and records
-     * the material context for real-time preview integration.
+     * <p>Sets up face-region editing mode: applies the shape mask to the
+     * active layer's canvas (composing with any existing base mask),
+     * frames the view on the UV region, and records the material context
+     * for real-time preview integration.
      *
      * @param materialId     material ID the face belongs to
      * @param uvRegion       the face's UV region within the material texture
-     * @param mask           face boundary mask defining the paintable area (nullable for full-rect faces)
+     * @param mask           shape mask defining the paintable area (nullable for full-rect faces)
      * @param viewportWidth  available viewport width in screen pixels
      * @param viewportHeight available viewport height in screen pixels
      */
-    public void openFaceRegion(int materialId, UVRegion uvRegion, FaceBoundaryMask mask,
+    public void openFaceRegion(int materialId, UVRegion uvRegion, CanvasShapeMask mask,
                                 float viewportWidth, float viewportHeight) {
         this.faceRegionActive = true;
         this.faceRegionMaterialId = materialId;
         this.faceRegionUV = uvRegion;
         this.faceRegionMask = mask;
 
-        // Apply the boundary mask to the active layer canvas
+        // Apply the face mask to the active layer canvas, composing with
+        // any existing base mask (e.g., cube net mask)
         PixelCanvas activeCanvas = getActiveLayerCanvas();
         if (activeCanvas != null) {
-            activeCanvas.setFaceBoundaryMask(mask);
+            this.canvasBaseMask = activeCanvas.getShapeMask();
+
+            if (canvasBaseMask != null && mask != null) {
+                activeCanvas.setShapeMask(new CompositeShapeMask(canvasBaseMask, mask));
+            } else {
+                activeCanvas.setShapeMask(mask != null ? mask : canvasBaseMask);
+            }
         }
 
         // Frame the view on the face's UV region
@@ -522,19 +545,20 @@ public class TextureCreatorController {
     }
 
     /**
-     * Close face-region editing mode, returning to full canvas editing.
+     * Close face-region editing mode, restoring the base canvas mask.
      */
     public void closeFaceRegion() {
-        // Remove mask from active canvas
+        // Restore the base mask (e.g., cube net mask) that was active before face-region mode
         PixelCanvas activeCanvas = getActiveLayerCanvas();
         if (activeCanvas != null) {
-            activeCanvas.setFaceBoundaryMask(null);
+            activeCanvas.setShapeMask(canvasBaseMask);
         }
 
         this.faceRegionActive = false;
         this.faceRegionMaterialId = -1;
         this.faceRegionUV = null;
         this.faceRegionMask = null;
+        this.canvasBaseMask = null;
 
         // Reset view to show full canvas
         canvasState.resetView();
@@ -567,5 +591,28 @@ public class TextureCreatorController {
      */
     public UVRegion getFaceRegionUV() {
         return faceRegionUV;
+    }
+
+    // ── Shape mask auto-assignment ──────────────────────────────────────
+
+    /**
+     * Apply an automatic shape mask based on canvas dimensions.
+     *
+     * <p>Currently recognizes:
+     * <ul>
+     *   <li>64x48 — standard cube net layout ({@link CubeNetShapeMask})</li>
+     * </ul>
+     *
+     * <p>For unrecognized dimensions, no mask is applied (all pixels editable).
+     *
+     * @param width  canvas width in pixels
+     * @param height canvas height in pixels
+     */
+    private void applyAutoShapeMask(int width, int height) {
+        CanvasShapeMask autoMask = CubeNetShapeMask.createIfApplicable(width, height);
+        PixelCanvas canvas = getActiveLayerCanvas();
+        if (canvas != null) {
+            canvas.setShapeMask(autoMask);
+        }
     }
 }

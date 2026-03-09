@@ -1,6 +1,6 @@
 package com.openmason.main.systems.menus.textureCreator;
 
-import com.openmason.main.systems.menus.textureCreator.canvas.FaceBoundaryMask;
+import com.openmason.main.systems.menus.textureCreator.canvas.PolygonShapeMask;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping.UVRegion;
 import com.openmason.main.systems.rendering.model.gmr.uv.IFaceTextureManager;
@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
  * <ol>
  *   <li>Reads the face's {@link FaceTextureMapping} from the {@link IFaceTextureManager}</li>
  *   <li>Resolves the material's texture ID via {@link MaterialDefinition}</li>
- *   <li>Creates a {@link FaceBoundaryMask} defining the paintable area</li>
+ *   <li>Creates a {@link PolygonShapeMask} defining the paintable area</li>
  *   <li>Opens the texture editor zoomed/panned to the face's UV region via
  *       {@link TextureCreatorController#openFaceRegion}</li>
  * </ol>
@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
  * viewport and the texture editor. The controller holds the ongoing editing state.
  *
  * @see TextureCreatorController
- * @see FaceBoundaryMask
+ * @see PolygonShapeMask
  * @see IFaceTextureManager
  */
 public class FaceEditorBridge {
@@ -62,6 +62,11 @@ public class FaceEditorBridge {
                                        int faceId,
                                        float[] polygonXCoords, float[] polygonYCoords,
                                        float viewportWidth, float viewportHeight) {
+        // Close any stale face region from a previous model/face
+        if (controller.isFaceRegionActive()) {
+            controller.closeFaceRegion();
+        }
+
         // 1. Read face mapping
         FaceTextureMapping mapping = faceTextureManager.getFaceMapping(faceId);
         if (mapping == null) {
@@ -87,7 +92,7 @@ public class FaceEditorBridge {
         int canvasWidth = controller.getLayerManager().getCanvasWidth();
         int canvasHeight = controller.getLayerManager().getCanvasHeight();
 
-        FaceBoundaryMask mask = FaceBoundaryMask.fromUVRegion(
+        PolygonShapeMask mask = PolygonShapeMask.fromUVRegion(
             canvasWidth, canvasHeight,
             uvRegion.u0(), uvRegion.v0(), uvRegion.u1(), uvRegion.v1(),
             polygonXCoords, polygonYCoords
@@ -115,6 +120,11 @@ public class FaceEditorBridge {
     public boolean openRectFaceForEditing(IFaceTextureManager faceTextureManager,
                                            int faceId,
                                            float viewportWidth, float viewportHeight) {
+        // Close any stale face region from a previous model/face
+        if (controller.isFaceRegionActive()) {
+            controller.closeFaceRegion();
+        }
+
         FaceTextureMapping mapping = faceTextureManager.getFaceMapping(faceId);
         if (mapping == null) {
             logger.warn("No texture mapping found for face {}", faceId);

@@ -394,8 +394,16 @@ public class ViewportController {
      * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → BlockModelLoader.
      */
     public void loadBlockModel(BlockModel blockModel) {
+        // Clear stale editing state from the previous model
+        setEditingFaceIndex(-1);
+
         contentTypeManager.switchToBlockModel(blockModel);
         commandHistory.clear();
+
+        // Invalidate cached mesh data so face/edge/vertex renderers rebuild from the new model
+        if (viewportRenderPipeline != null) {
+            viewportRenderPipeline.invalidateMeshData();
+        }
     }
 
     // ========== Mesh Data (OMO v1.1+ support) ==========

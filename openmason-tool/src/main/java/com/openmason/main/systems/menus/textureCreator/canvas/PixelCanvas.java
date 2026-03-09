@@ -19,7 +19,7 @@ public class PixelCanvas {
     private SelectionRegion activeSelection; // Active selection region (null if no selection) - legacy
     private SelectionManager selectionManager; // Optional centralized selection manager
     private boolean bypassSelectionConstraint = false; // Temporarily bypass selection constraint for special operations
-    private FaceBoundaryMask faceBoundaryMask; // Active face boundary mask (null if editing full canvas)
+    private CanvasShapeMask shapeMask; // Active shape mask (null = all pixels editable)
     private final List<CanvasChangeListener> changeListeners = new ArrayList<>();
 
     /**
@@ -106,9 +106,9 @@ public class PixelCanvas {
             return; // Silently ignore out-of-bounds
         }
 
-        // Face boundary mask constraint: if a mask is active, reject pixels outside it
-        if (faceBoundaryMask != null && !faceBoundaryMask.contains(x, y)) {
-            return; // Pixel is outside face boundary - ignore modification
+        // Shape mask constraint: if a mask is active, reject pixels outside it
+        if (shapeMask != null && !shapeMask.isEditable(x, y)) {
+            return; // Pixel is outside editable region - ignore modification
         }
 
         // Selection constraint: if selection is active, only allow modifications within selection
@@ -318,22 +318,44 @@ public class PixelCanvas {
     }
 
     /**
-     * Set the active face boundary mask.
-     * When set, only pixels inside the mask can be modified via {@link #setPixel}.
+     * Set the active shape mask defining which pixels are editable.
+     * When set, only pixels where {@link CanvasShapeMask#isEditable} returns true
+     * can be modified via {@link #setPixel}.
      *
-     * @param mask the face boundary mask, or null to allow editing the full canvas
+     * @param mask the shape mask, or null to allow editing all pixels
      */
-    public void setFaceBoundaryMask(FaceBoundaryMask mask) {
-        this.faceBoundaryMask = mask;
+    public void setShapeMask(CanvasShapeMask mask) {
+        this.shapeMask = mask;
     }
 
     /**
-     * Get the active face boundary mask.
+     * Get the active shape mask.
      *
      * @return the current mask, or null if no mask is active
      */
-    public FaceBoundaryMask getFaceBoundaryMask() {
-        return faceBoundaryMask;
+    public CanvasShapeMask getShapeMask() {
+        return shapeMask;
+    }
+
+    /**
+     * Check if a pixel coordinate is currently editable, considering
+     * shape mask and bounds constraints.
+     *
+     * <p>Tools can use this to query editability before attempting writes
+     * (e.g., flood-fill boundary detection, preview rendering).
+     *
+     * @param x pixel X coordinate
+     * @param y pixel Y coordinate
+     * @return true if the pixel can be modified
+     */
+    public boolean isEditablePixel(int x, int y) {
+        if (!isValidCoordinate(x, y)) {
+            return false;
+        }
+        if (shapeMask != null && !shapeMask.isEditable(x, y)) {
+            return false;
+        }
+        return true;
     }
 
     // =========================================================================

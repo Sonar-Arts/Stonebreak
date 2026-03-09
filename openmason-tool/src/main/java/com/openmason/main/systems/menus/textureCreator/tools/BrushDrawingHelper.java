@@ -1,7 +1,6 @@
 package com.openmason.main.systems.menus.textureCreator.tools;
 
 import com.openmason.main.systems.menus.textureCreator.SymmetryState;
-import com.openmason.main.systems.menus.textureCreator.canvas.CubeNetValidator;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.menus.textureCreator.commands.DrawCommand;
 import com.openmason.main.systems.menus.textureCreator.utils.SymmetryHelper;
@@ -124,18 +123,10 @@ public class BrushDrawingHelper {
      * @param command command to record changes (for undo/redo)
      */
     private static void setPixelWithUndo(int x, int y, int color, PixelCanvas canvas, DrawCommand command) {
-        // Check canvas bounds
-        if (!canvas.isValidCoordinate(x, y)) {
+        // Check canvas bounds and shape mask editability
+        if (!canvas.isEditablePixel(x, y)) {
             return;
         }
-
-        // Check cube net validation (for 64x48 canvases)
-        if (!CubeNetValidator.isEditablePixel(x, y, canvas.getWidth(), canvas.getHeight())) {
-            return; // Don't draw in non-editable regions
-        }
-
-        // Note: Selection constraint is automatically enforced by PixelCanvas.setPixel()
-        // when SelectionManager is wired up
 
         // Record old color for undo
         int oldColor = canvas.getPixel(x, y);

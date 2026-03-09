@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.textureCreator.tools.move;
 
+import com.openmason.main.systems.menus.textureCreator.canvas.CanvasShapeMask;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionRegion;
 
@@ -18,19 +19,22 @@ public final class SelectionSnapshot {
     private final int canvasHeight;
     private final int[] pixels;
     private final boolean[] mask;
+    private final CanvasShapeMask shapeMask;
 
     private SelectionSnapshot(SelectionRegion originalSelection,
                               Rectangle bounds,
                               int canvasWidth,
                               int canvasHeight,
                               int[] pixels,
-                              boolean[] mask) {
+                              boolean[] mask,
+                              CanvasShapeMask shapeMask) {
         this.originalSelection = originalSelection;
         this.bounds = new Rectangle(bounds);
         this.canvasWidth = canvasWidth;
         this.canvasHeight = canvasHeight;
         this.pixels = pixels;
         this.mask = mask;
+        this.shapeMask = shapeMask;
     }
 
     public static SelectionSnapshot capture(PixelCanvas canvas, SelectionRegion selection) {
@@ -54,7 +58,8 @@ public final class SelectionSnapshot {
             }
         }
 
-        return new SelectionSnapshot(selection, bounds, canvas.getWidth(), canvas.getHeight(), pixels, mask);
+        return new SelectionSnapshot(selection, bounds, canvas.getWidth(), canvas.getHeight(),
+            pixels, mask, canvas.getShapeMask());
     }
 
     public SelectionRegion originalSelection() {
@@ -91,6 +96,21 @@ public final class SelectionSnapshot {
 
     public int indexFor(int localX, int localY) {
         return localY * width() + localX;
+    }
+
+    /**
+     * Check if a pixel coordinate is editable according to the canvas shape mask
+     * that was active at snapshot time.
+     *
+     * @param x pixel X coordinate
+     * @param y pixel Y coordinate
+     * @return true if the pixel is editable (or no mask was active)
+     */
+    public boolean isEditablePixel(int x, int y) {
+        if (shapeMask == null) {
+            return x >= 0 && x < canvasWidth && y >= 0 && y < canvasHeight;
+        }
+        return shapeMask.isEditable(x, y);
     }
 
 }

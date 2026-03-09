@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Stateless renderer — all data is passed via the {@link #render} method.
  *
- * @see FaceBoundaryMask
+ * @see PolygonShapeMask
  * @see CanvasRenderer
  */
 public class FaceBoundaryRenderer {
@@ -51,7 +51,7 @@ public class FaceBoundaryRenderer {
      * @param zoom     current zoom level
      * @param opacity  overlay opacity (0.0 to 1.0)
      */
-    public void render(FaceBoundaryMask mask, float canvasX, float canvasY,
+    public void render(PolygonShapeMask mask, float canvasX, float canvasY,
                        float zoom, float opacity) {
         if (mask == null || opacity <= 0.0f) {
             return;
@@ -70,7 +70,7 @@ public class FaceBoundaryRenderer {
      * a small filled rect is drawn at low opacity. When zoomed out,
      * diagonal lines are drawn across the bounding region instead for performance.
      */
-    private void renderHatchOverlay(ImDrawList drawList, FaceBoundaryMask mask,
+    private void renderHatchOverlay(ImDrawList drawList, PolygonShapeMask mask,
                                      float canvasX, float canvasY,
                                      float zoom, float opacity) {
 
@@ -122,7 +122,7 @@ public class FaceBoundaryRenderer {
             // At high zoom, draw per-pixel rects for precision
             for (int y = startY; y <= endY; y++) {
                 for (int x = startX; x <= endX; x++) {
-                    if (!mask.contains(x, y)) {
+                    if (!mask.isEditable(x, y)) {
                         float sx = canvasX + x * zoom;
                         float sy = canvasY + y * zoom;
                         drawList.addRectFilled(sx, sy, sx + zoom, sy + zoom, fillColor);
@@ -177,7 +177,7 @@ public class FaceBoundaryRenderer {
      * @param zoom     current zoom level
      * @param opacity  overlay opacity
      */
-    private void renderPolygonOutline(ImDrawList drawList, FaceBoundaryMask mask,
+    private void renderPolygonOutline(ImDrawList drawList, PolygonShapeMask mask,
                                        float canvasX, float canvasY,
                                        float zoom, float opacity) {
 

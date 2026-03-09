@@ -7,6 +7,7 @@ import com.openmason.main.systems.menus.textureCreator.FaceEditorBridge;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureSizer;
 import com.openmason.main.systems.rendering.model.gmr.uv.MaterialDefinition;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.rendering.model.miscComponents.TextureLoadResult;
@@ -214,9 +215,18 @@ public class FaceMaterialSection implements IPanelSection {
         }
 
         if (materialName.equals("Default")) {
+            // Compute texture dimensions from face geometry (falls back to default if unavailable)
+            int[] faceDims = viewportConnector.computeFaceTextureDimensions(
+                    faceId, FaceTextureSizer.DEFAULT_PIXELS_PER_UNIT);
+            if (faceDims == null) {
+                logger.debug("No face geometry data for face {} — using default {}x{} canvas",
+                        faceId, BLANK_FACE_TEXTURE_SIZE, BLANK_FACE_TEXTURE_SIZE);
+            }
+            int texW = (faceDims != null) ? faceDims[0] : BLANK_FACE_TEXTURE_SIZE;
+            int texH = (faceDims != null) ? faceDims[1] : BLANK_FACE_TEXTURE_SIZE;
+
             // Create a GPU texture for this face (gray, matches default appearance)
-            int size = BLANK_FACE_TEXTURE_SIZE;
-            int gpuTextureId = omtTextureLoader.createBlankTexture(size, size);
+            int gpuTextureId = omtTextureLoader.createBlankTexture(texW, texH);
             if (gpuTextureId <= 0) {
                 logger.error("Failed to create blank GPU texture for face {}", faceId);
                 return;
@@ -233,7 +243,7 @@ public class FaceMaterialSection implements IPanelSection {
 
             // Create a matching canvas in the texture editor so the preview pipeline
             // uploads correct data (canvas dimensions must match the GPU texture)
-            faceEditorBridge.prepareBlankCanvas(size, size, BLANK_FACE_FILL_COLOR);
+            faceEditorBridge.prepareBlankCanvas(texW, texH, BLANK_FACE_FILL_COLOR);
 
             // Open as normal rect face (now has a valid textureId)
             opened = faceEditorBridge.openRectFaceForEditing(ftm, faceId, 800, 600);

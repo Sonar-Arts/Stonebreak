@@ -1,7 +1,6 @@
 package com.openmason.main.systems.menus.textureCreator.tools;
 
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorPreferences;
-import com.openmason.main.systems.menus.textureCreator.canvas.CubeNetValidator;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.menus.textureCreator.commands.DrawCommand;
 
@@ -383,10 +382,7 @@ public class ShapeTool implements DrawingTool {
     }
 
     private void setPixelPreview(int x, int y, int color, PixelCanvas canvas) {
-        if (!canvas.isValidCoordinate(x, y)) {
-            return;
-        }
-        if (!CubeNetValidator.isEditablePixel(x, y, canvas.getWidth(), canvas.getHeight())) {
+        if (!canvas.isEditablePixel(x, y)) {
             return;
         }
         saveOriginalPixel(x, y, canvas);
@@ -394,10 +390,7 @@ public class ShapeTool implements DrawingTool {
     }
 
     private void setPixelWithUndo(int x, int y, int color, PixelCanvas canvas, DrawCommand command) {
-        if (!canvas.isValidCoordinate(x, y)) {
-            return;
-        }
-        if (!CubeNetValidator.isEditablePixel(x, y, canvas.getWidth(), canvas.getHeight())) {
+        if (!canvas.isEditablePixel(x, y)) {
             return;
         }
         int oldColor = canvas.getPixel(x, y);
