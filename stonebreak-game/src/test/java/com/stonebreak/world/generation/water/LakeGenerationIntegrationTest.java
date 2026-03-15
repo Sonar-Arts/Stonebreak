@@ -30,7 +30,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class LakeGenerationIntegrationTest {
 
     private static final long TEST_SEED = 12345L;
-    private static final int REGION_SIZE_CHUNKS = 5; // 5x5 chunks = 80x80 blocks
     private static final int CHUNK_SIZE = 16;
 
     private WaterGenerationConfig config;
@@ -48,6 +47,10 @@ class LakeGenerationIntegrationTest {
             32,   // singleRingRadius
             16,   // ringSampleCount
             2,    // minimumRimDepth
+            32,   // initialRingRadius
+            16,   // ringRadiusIncrement (UPDATED from 8 to 16 for 128-block range)
+            128,  // maxRingRadius (UPDATED from 64 to 128 for larger basins)
+            7,    // maxDetectionAttempts (UPDATED from 5 to 7 for 128-block range)
             0.20f, // minimumMoisture
             0.2f,  // freezeTemperature
             0.03f, // elevationDecayRate
@@ -55,7 +58,13 @@ class LakeGenerationIntegrationTest {
             10_000, // maxGridCacheSize
             30,    // maxWaterDepth
             3,     // maxTerrainDropForWater
-            true   // enableEdgeDetection
+            true,  // enableEdgeDetection
+            2.0f,  // maxBasinDepthVariance
+            8,     // basinValidationRadius
+            8,     // basinValidationSampleCount
+            true,  // enableBasinValidation
+            true,  // enableValleyRejection
+            true   // enableWaterConnectivityCheck (NEW parameter)
         );
 
         // Create mock noise router
@@ -82,7 +91,6 @@ class LakeGenerationIntegrationTest {
         // Generate region of chunks around basin
         Chunk[][] chunks = generateChunkRegion(6, 6); // 96x96 blocks centered around (128, 128)
         int[][][][] terrainHeights = generateTerrainHeights(chunks, terrainGen);
-        BiomeType[][][][] biomes = generateBiomes(chunks);
         MultiNoiseParameters[][][][] climate = generateClimate(chunks, 0.5f, 0.5f);
 
         // Fill water in all chunks
@@ -144,7 +152,6 @@ class LakeGenerationIntegrationTest {
         // Generate region with cold climate
         Chunk[][] chunks = generateChunkRegion(6, 6);
         int[][][][] terrainHeights = generateTerrainHeights(chunks, terrainGen);
-        BiomeType[][][][] biomes = generateBiomes(chunks);
         MultiNoiseParameters[][][][] climate = generateClimate(chunks, 0.15f, 0.5f); // Cold!
 
         // Fill water
@@ -181,7 +188,6 @@ class LakeGenerationIntegrationTest {
         // Generate chunks
         Chunk[][] chunks = generateChunkRegion(6, 6);
         int[][][][] terrainHeights = generateTerrainHeights(chunks, terrainGen);
-        BiomeType[][][][] biomes = generateBiomes(chunks);
         MultiNoiseParameters[][][][] climate = generateClimate(chunks, 0.5f, 0.5f);
 
         // Fill water
@@ -218,7 +224,6 @@ class LakeGenerationIntegrationTest {
         // Generate chunks
         Chunk[][] chunks = generateChunkRegion(6, 6);
         int[][][][] terrainHeights = generateTerrainHeights(chunks, terrainGen);
-        BiomeType[][][][] biomes = generateBiomes(chunks);
         MultiNoiseParameters[][][][] climate = generateClimate(chunks, 0.5f, 0.5f);
 
         // Fill water
@@ -254,7 +259,6 @@ class LakeGenerationIntegrationTest {
         // Generate chunks
         Chunk[][] chunks = generateChunkRegion(6, 6);
         int[][][][] terrainHeights = generateTerrainHeights(chunks, terrainGen);
-        BiomeType[][][][] biomes = generateBiomes(chunks);
         MultiNoiseParameters[][][][] climate = generateClimate(chunks, 0.5f, 0.5f);
 
         // Fill water

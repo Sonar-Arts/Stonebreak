@@ -57,6 +57,9 @@ public class SimpleBasinDetector {
     // Diagnostic info for last failed detection (thread-local for thread safety)
     private volatile String lastFailureReason;
 
+    // Debug tracking for filtering diagnostics
+    private final java.util.concurrent.atomic.AtomicInteger totalDetections = new java.util.concurrent.atomic.AtomicInteger(0);
+
     /**
      * Creates a simple basin detector.
      *
@@ -78,7 +81,7 @@ public class SimpleBasinDetector {
      * <p><strong>Algorithm Steps:</strong></p>
      * <ol>
      *     <li>Find lowest point in search area (±basinSearchRadius)</li>
-     *     <li>Sample terrain heights in single ring at singleRingRadius</li>
+     *     <li>Sample terrain heights in single ring at specified radius</li>
      *     <li>Filter outliers using IQR method (removes 1-2 anomalous low samples)</li>
      *     <li>Validate regularity: require &gt;= 75% of samples to pass filter</li>
      *     <li>Calculate water level (minimum filtered rim height = spillover point)</li>
@@ -100,9 +103,13 @@ public class SimpleBasinDetector {
      *
      * @param centerX Center X world coordinate
      * @param centerZ Center Z world coordinate
-     * @return Water level (Y coordinate) if valid basin detected, -1 otherwise
+     * @param ringRadius Ring radius in blocks for rim sampling
+     * @return BasinDetectionResult containing water level and metadata, or noBasin() if no valid basin
      */
-    public int detectBasinWaterLevel(int centerX, int centerZ) {
+    private BasinDetectionResult detectBasinWaterLevelAtRadius(int centerX, int centerZ, int ringRadius) {
+        // Track total detections for debug logging
+        totalDetections.incrementAndGet();
+
         // Create local terrain height cache for this call (thread-safe)
         // Initial capacity 50 to reduce rehashing (typical usage: 16 ring samples + 33 lowest point samples)
         Map<BlockPosition2D, Integer> terrainCache = new HashMap<>(50);
@@ -111,18 +118,19 @@ public class SimpleBasinDetector {
         LowestPoint lowest = findLowestPoint(centerX, centerZ, config.basinSearchRadius, terrainCache);
 
         // Step 2: Sample rim heights in single ring around lowest point
-        int[] rimHeights = sampleRing(lowest.x, lowest.z, config.singleRingRadius, config.ringSampleCount, terrainCache);
+        int[] rimHeights = sampleRing(lowest.x, lowest.z, ringRadius, config.ringSampleCount, terrainCache);
 
         // Step 3: Filter outliers (removes 1-2 anomalous low samples caused by noise or narrow gaps)
         int[] filteredRimHeights = filterOutliers(rimHeights);
 
-        // Step 4: Validate regularity - require at least 75% of samples to pass filter (12/16)
-        // This rejects irregular terrain like canyons, mesas, or cliffs
-        if (filteredRimHeights.length < 12) {
+        // Step 4: Validate regularity - require at least 62.5% of samples to pass filter (10/16)
+        // Relaxed from 75% to allow slightly irregular terrain while still rejecting canyons/cliffs
+        int minRequiredSamples = (int) Math.ceil(rimHeights.length * 0.625); // 10 for 16 samples
+        if (filteredRimHeights.length < minRequiredSamples) {
             lastFailureReason = String.format(
-                "Basin too irregular: only %d/%d rim samples passed outlier filter (need >= 12)",
-                filteredRimHeights.length, rimHeights.length);
-            return -1; // Too many outliers = irregular terrain
+                "Basin too irregular: only %d/%d rim samples passed outlier filter (need >= %d)",
+                filteredRimHeights.length, rimHeights.length, minRequiredSamples);
+            return BasinDetectionResult.noBasin(); // Too many outliers = irregular terrain
         }
 
         // Step 5: Calculate rim statistics from filtered samples
@@ -141,38 +149,130 @@ public class SimpleBasinDetector {
         if (depth < config.minimumRimDepth) {
             lastFailureReason = String.format("Basin too shallow: depth=%d < %d required (lowest=%s, avgRim=%d)",
                 depth, config.minimumRimDepth, lowest, avgRimHeight);
-            return -1; // Basin too shallow
+            return BasinDetectionResult.noBasin(); // Basin too shallow
         }
 
-        // Step 7: CONTAINMENT CHECK - Ensure ALL filtered rim samples are above the water level
+        // Step 7: CONTAINMENT CHECK - Ensure MOST filtered rim samples are at/above water level
         // This prevents lakes from "spilling out" to the ocean or other low areas
         // Water level is the minimum filtered rim height (lowest spillover point after outlier removal)
         int waterLevel = minRimHeight;
 
-        // Count how many filtered rim samples are at or above water level (should contain the water)
+        // Allow samples AT water level (rim samples) and require 75% containment
+        // This handles edge cases where minRimHeight appears multiple times in the sample set
         int containedSamples = 0;
+        int samplesAtWaterLevel = 0;
         for (int height : filteredRimHeights) {
-            if (height >= waterLevel) {
+            if (height > waterLevel) {
                 containedSamples++;
+            } else if (height == waterLevel) {
+                samplesAtWaterLevel++;
             }
         }
 
-        // ALL filtered rim samples must be at or above water level to properly contain it
-        // This ensures the lake is a true "hole" that holds water
-        if (containedSamples < filteredRimHeights.length) {
-            int leakingSamples = filteredRimHeights.length - containedSamples;
-            lastFailureReason = String.format("Basin not contained: %d/%d filtered rim samples below water level %d (leaking!)",
-                leakingSamples, filteredRimHeights.length, waterLevel);
-            return -1; // Basin cannot contain water - it would spill out
+        // Require at least 75% of samples to be at or above water level
+        int totalValidSamples = containedSamples + samplesAtWaterLevel;
+        int requiredValid = (int) Math.ceil(filteredRimHeights.length * 0.75);
+
+        if (totalValidSamples < requiredValid) {
+            lastFailureReason = String.format(
+                "Basin not contained: only %d/%d samples at/above water level %d (need >= %d)",
+                totalValidSamples, filteredRimHeights.length, waterLevel, requiredValid);
+            return BasinDetectionResult.noBasin(); // Basin cannot contain water - it would spill out
         }
 
         // Clear failure info on success
         lastFailureReason = null;
 
+        // SUCCESS: Return complete metadata
         // Water level is minimum rim height (spillover point)
         // All rim samples are at or above this level, so water is fully contained
         // Terrain cache is garbage collected after this method returns
-        return waterLevel;
+        return new BasinDetectionResult(
+            waterLevel,                // waterLevel (minimum filtered rim height)
+            ringRadius,                // detectionRadius (32-128)
+            lowest.y,                  // lowestPointY (basin floor)
+            avgRimHeight,              // avgRimHeight (average of filtered samples)
+            filteredRimHeights.length  // filteredSampleCount (how many samples passed filter)
+        );
+    }
+
+    /**
+     * Detects a lake basin using adaptive ring radius widening with timeout.
+     *
+     * <p><strong>Adaptive Algorithm:</strong></p>
+     * <ol>
+     *     <li>Start with initialRingRadius (32 blocks)</li>
+     *     <li>Attempt basin detection using detectBasinWaterLevelAtRadius()</li>
+     *     <li>If detection fails, widen radius by ringRadiusIncrement (8 blocks)</li>
+     *     <li>Retry up to maxDetectionAttempts times (5 attempts: 32→40→48→56→64)</li>
+     *     <li>Return water level from first successful attempt, or -1 if timeout</li>
+     * </ol>
+     *
+     * <p><strong>Why Adaptive?</strong> Larger basins or basins with sloped edges
+     * need wider sampling rings to capture true rim. Starting small saves
+     * computation on small basins, widening handles edge cases.</p>
+     *
+     * <p><strong>Timeout:</strong> Gives up after maxDetectionAttempts to prevent
+     * infinite loops on problematic terrain. Returns -1 = no lake.</p>
+     *
+     * @param centerX Center X world coordinate
+     * @param centerZ Center Z world coordinate
+     * @return BasinDetectionResult containing metadata if valid basin detected, noBasin() if timeout/no basin
+     */
+    public BasinDetectionResult detectBasinWaterLevelWithAdaptiveRadius(int centerX, int centerZ) {
+        int currentRadius = config.initialRingRadius;
+        int attempt = 0;
+
+        while (attempt < config.maxDetectionAttempts && currentRadius <= config.maxRingRadius) {
+            attempt++;
+
+            // Try detection at current radius
+            BasinDetectionResult result = detectBasinWaterLevelAtRadius(centerX, centerZ, currentRadius);
+
+            // Success! Return full metadata
+            if (result.hasBasin()) {
+                // DEBUG: Log successful attempt
+                if (totalDetections.get() < 20) {
+                    System.out.printf("  [ADAPTIVE] SUCCESS on attempt %d/%d with radius=%d blocks, waterLevel=%d%n",
+                        attempt, config.maxDetectionAttempts, currentRadius, result.waterLevel());
+                }
+                return result; // Return full metadata
+            }
+
+            // Failed - try wider radius on next iteration
+            if (totalDetections.get() < 20) {
+                System.out.printf("  [ADAPTIVE] Attempt %d/%d FAILED with radius=%d: %s%n",
+                    attempt, config.maxDetectionAttempts, currentRadius,
+                    lastFailureReason != null ? lastFailureReason : "Unknown reason");
+            }
+
+            currentRadius += config.ringRadiusIncrement;
+        }
+
+        // Timeout - all attempts failed
+        lastFailureReason = String.format(
+            "Adaptive timeout: all %d attempts failed (radii: %d to %d blocks)",
+            config.maxDetectionAttempts, config.initialRingRadius, currentRadius - config.ringRadiusIncrement);
+
+        if (totalDetections.get() < 20) {
+            System.out.printf("  [ADAPTIVE] TIMEOUT after %d attempts%n", attempt);
+        }
+
+        return BasinDetectionResult.noBasin(); // All attempts failed
+    }
+
+    /**
+     * Detects a lake basin using fixed ring radius from config.
+     *
+     * @deprecated Use detectBasinWaterLevelWithAdaptiveRadius() for better results.
+     *             This method exists for backward compatibility only.
+     * @param centerX Center X world coordinate
+     * @param centerZ Center Z world coordinate
+     * @return BasinDetectionResult containing metadata if valid basin detected, noBasin() otherwise
+     */
+    @Deprecated
+    public BasinDetectionResult detectBasinWaterLevel(int centerX, int centerZ) {
+        return detectBasinWaterLevelAtRadius(centerX, centerZ, config.singleRingRadius);
     }
 
     /**
@@ -325,13 +425,25 @@ public class SimpleBasinDetector {
         double q3 = calculateQuartile(sorted, 0.75);
         double iqr = q3 - q1;
 
-        // Calculate lower bound (only filter low outliers)
-        double lowerBound = q1 - 1.5 * iqr;
+        // ADAPTIVE FILTERING: Use relaxed multiplier if IQR is very small
+        // Small IQR (< 3 blocks) suggests uniform terrain - don't aggressively filter
+        // Large IQR (>= 3 blocks) suggests varied terrain - use standard filtering
+        double multiplier = (iqr < 3.0) ? 0.5 : 1.5;
+        double lowerBound = q1 - multiplier * iqr;
 
         // Filter out low outliers
-        return java.util.Arrays.stream(rimHeights)
+        int[] filtered = java.util.Arrays.stream(rimHeights)
             .filter(height -> height >= lowerBound)
             .toArray();
+
+        // DEBUG: Log filtering details for first 20 detections
+        boolean shouldLog = (totalDetections.get() < 20);
+        if (shouldLog) {
+            System.out.printf("  [FILTER] Q1=%.1f, Q3=%.1f, IQR=%.1f, multiplier=%.1f, lowerBound=%.1f, kept %d/%d samples%n",
+                q1, q3, iqr, multiplier, lowerBound, filtered.length, rimHeights.length);
+        }
+
+        return filtered;
     }
 
     /**

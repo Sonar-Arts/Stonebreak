@@ -74,6 +74,34 @@ public class WaterGenerationConfig {
      */
     public final int minimumRimDepth;
 
+    /**
+     * Initial ring radius for basin detection (blocks from basin center).
+     * First attempt starts at this radius.
+     * Default: 32 blocks
+     */
+    public final int initialRingRadius;
+
+    /**
+     * Ring radius increment per retry attempt.
+     * Each failed attempt increases ring radius by this amount.
+     * Default: 8 blocks (32 → 40 → 48 → 56 → 64)
+     */
+    public final int ringRadiusIncrement;
+
+    /**
+     * Maximum ring radius for basin detection (blocks from basin center).
+     * Detection gives up after reaching this radius.
+     * Default: 64 blocks
+     */
+    public final int maxRingRadius;
+
+    /**
+     * Maximum number of detection attempts before timeout.
+     * Each attempt tries a larger ring radius.
+     * Default: 5 attempts (32, 40, 48, 56, 64)
+     */
+    public final int maxDetectionAttempts;
+
     // ========================================
     // CLIMATE FILTERS
     // ========================================
@@ -170,6 +198,56 @@ public class WaterGenerationConfig {
     public final boolean enableEdgeDetection;
 
     // ========================================
+    // BASIN VALIDATION (Water Wall Prevention)
+    // ========================================
+
+    /**
+     * Maximum basin depth variance multiplier for depth-based rejection.
+     * Formula: maxAllowedDepth = maxWaterDepth + (terrainVariation * maxBasinDepthVariance)
+     * Higher values allow deeper water in varied terrain (true basins).
+     * Lower values more aggressively reject deep water (prevents artifacts).
+     * Default: 2.0f (allows 2x terrain variation as bonus depth)
+     */
+    public final float maxBasinDepthVariance;
+
+    /**
+     * Radius for basin membership validation (blocks from column center).
+     * Samples terrain at this distance to verify column is inside basin rim.
+     * Default: 8 blocks (smaller than detection ring for performance)
+     */
+    public final int basinValidationRadius;
+
+    /**
+     * Number of sample points for basin membership validation.
+     * Default: 8 samples (45° apart, good balance of accuracy/performance)
+     */
+    public final int basinValidationSampleCount;
+
+    /**
+     * Whether to enable basin membership validation.
+     * If true, validates each column is inside the basin before filling.
+     * If false, fills all columns with interpolated water level (old behavior).
+     * Default: true (enable validation)
+     */
+    public final boolean enableBasinValidation;
+
+    /**
+     * Whether to enable valley rejection based on aspect ratio.
+     * If true, rejects basins where depth > (width / 3) to prevent canyons from becoming lakes.
+     * Uses aspect-ratio formula: reject if basinDepth > (detectionRadius * 2) / 3.
+     * Default: true (enable valley rejection)
+     */
+    public final boolean enableValleyRejection;
+
+    /**
+     * Whether to enable horizontal connectivity check during water placement.
+     * If true, water blocks must touch land or adjacent water to be placed.
+     * Prevents floating water walls on cliff edges.
+     * Default: true (enable connectivity check)
+     */
+    public final boolean enableWaterConnectivityCheck;
+
+    // ========================================
     // DEPRECATED LEGACY FIELDS (for backwards compatibility with legacy water system)
     // ========================================
 
@@ -182,11 +260,17 @@ public class WaterGenerationConfig {
 
         // Basin detection system (simplified)
         this.basinMinimumElevation = 65;
-        this.basinSearchRadius = 64; // Reduced from 128
+        this.basinSearchRadius = 80; // Increased from 48 to ensure full grid coverage (128-block grid spacing)
         this.lowestPointSampleStep = 4;
-        this.singleRingRadius = 32;
+        this.singleRingRadius = 32; // Restored from 24 for adaptive starting point
         this.ringSampleCount = 16;
         this.minimumRimDepth = 2;
+
+        // Adaptive basin detection (UPDATED for 128-block range)
+        this.initialRingRadius = 32;
+        this.ringRadiusIncrement = 16;    // CHANGED from 8 to 16 (fewer attempts for performance)
+        this.maxRingRadius = 128;         // CHANGED from 64 to 128 (support massive crater lakes)
+        this.maxDetectionAttempts = 7;    // CHANGED from 5 to 7 (32→48→64→80→96→112→128)
 
         // Climate filters
         this.minimumMoisture = 0.20f;
@@ -196,15 +280,23 @@ public class WaterGenerationConfig {
         this.elevationDecayRate = 0.03f;
 
         // Grid system
-        this.waterGridResolution = 256;
+        this.waterGridResolution = 128; // Changed from 256 (8 chunks instead of 16)
         this.maxGridCacheSize = 10_000;
 
         // Safety limits
         this.maxWaterDepth = 30;
 
         // Edge detection (water wall prevention)
-        this.maxTerrainDropForWater = 3;
+        this.maxTerrainDropForWater = 5; // Increased from 3 to allow steeper basin slopes
         this.enableEdgeDetection = true;
+        this.enableWaterConnectivityCheck = true; // NEW: Enable horizontal connectivity check
+
+        // Basin validation (water wall prevention)
+        this.maxBasinDepthVariance = 2.0f;
+        this.basinValidationRadius = 8;
+        this.basinValidationSampleCount = 8;
+        this.enableBasinValidation = true;
+        this.enableValleyRejection = true; // NEW: Enable aspect-ratio based valley rejection
 
         // DEBUG: Log configuration
         System.out.println("=== Simplified WaterGenerationConfig Created ===");
@@ -222,6 +314,10 @@ public class WaterGenerationConfig {
      * @param singleRingRadius Radius for single ring sampling
      * @param ringSampleCount Number of samples around the ring
      * @param minimumRimDepth Minimum basin depth required
+     * @param initialRingRadius Initial ring radius for adaptive detection
+     * @param ringRadiusIncrement Ring radius increment per retry
+     * @param maxRingRadius Maximum ring radius before timeout
+     * @param maxDetectionAttempts Maximum detection attempts before timeout
      * @param minimumMoisture Minimum moisture level [0.0-1.0]
      * @param freezeTemperature Ice formation temperature threshold [0.0-1.0]
      * @param elevationDecayRate Exponential decay rate for elevation probability
@@ -230,6 +326,12 @@ public class WaterGenerationConfig {
      * @param maxWaterDepth Maximum water depth cap
      * @param maxTerrainDropForWater Maximum terrain height difference for water placement
      * @param enableEdgeDetection Whether to enable edge detection
+     * @param maxBasinDepthVariance Maximum basin depth variance multiplier
+     * @param basinValidationRadius Radius for basin membership validation
+     * @param basinValidationSampleCount Number of samples for basin validation
+     * @param enableBasinValidation Whether to enable basin validation
+     * @param enableValleyRejection Whether to enable valley rejection (aspect ratio based)
+     * @param enableWaterConnectivityCheck Whether to enable horizontal connectivity check
      */
     public WaterGenerationConfig(
             int seaLevel,
@@ -239,6 +341,10 @@ public class WaterGenerationConfig {
             int singleRingRadius,
             int ringSampleCount,
             int minimumRimDepth,
+            int initialRingRadius,
+            int ringRadiusIncrement,
+            int maxRingRadius,
+            int maxDetectionAttempts,
             float minimumMoisture,
             float freezeTemperature,
             float elevationDecayRate,
@@ -246,7 +352,13 @@ public class WaterGenerationConfig {
             int maxGridCacheSize,
             int maxWaterDepth,
             int maxTerrainDropForWater,
-            boolean enableEdgeDetection
+            boolean enableEdgeDetection,
+            float maxBasinDepthVariance,
+            int basinValidationRadius,
+            int basinValidationSampleCount,
+            boolean enableBasinValidation,
+            boolean enableValleyRejection,
+            boolean enableWaterConnectivityCheck
     ) {
         this.seaLevel = seaLevel;
         this.basinMinimumElevation = basinMinimumElevation;
@@ -255,6 +367,10 @@ public class WaterGenerationConfig {
         this.singleRingRadius = singleRingRadius;
         this.ringSampleCount = ringSampleCount;
         this.minimumRimDepth = minimumRimDepth;
+        this.initialRingRadius = initialRingRadius;
+        this.ringRadiusIncrement = ringRadiusIncrement;
+        this.maxRingRadius = maxRingRadius;
+        this.maxDetectionAttempts = maxDetectionAttempts;
         this.minimumMoisture = minimumMoisture;
         this.freezeTemperature = freezeTemperature;
         this.elevationDecayRate = elevationDecayRate;
@@ -263,6 +379,12 @@ public class WaterGenerationConfig {
         this.maxWaterDepth = maxWaterDepth;
         this.maxTerrainDropForWater = maxTerrainDropForWater;
         this.enableEdgeDetection = enableEdgeDetection;
+        this.maxBasinDepthVariance = maxBasinDepthVariance;
+        this.basinValidationRadius = basinValidationRadius;
+        this.basinValidationSampleCount = basinValidationSampleCount;
+        this.enableBasinValidation = enableBasinValidation;
+        this.enableValleyRejection = enableValleyRejection;
+        this.enableWaterConnectivityCheck = enableWaterConnectivityCheck;
     }
 
     @Override
@@ -270,12 +392,16 @@ public class WaterGenerationConfig {
         return String.format(
                 "WaterGenerationConfig{seaLevel=%d, basinMinElev=%d, searchRadius=%d, " +
                 "sampleStep=%d, ringRadius=%d, ringSamples=%d, minRimDepth=%d, " +
+                "adaptiveRing=[initial=%d, inc=%d, max=%d, attempts=%d], " +
                 "minMoisture=%.2f, freezeTemp=%.2f, elevDecay=%.3f, gridRes=%d, " +
-                "maxCache=%d, maxDepth=%d, maxTerrainDrop=%d, edgeDetection=%b}",
+                "maxCache=%d, maxDepth=%d, maxTerrainDrop=%d, edgeDetection=%b, connectivityCheck=%b, " +
+                "basinValidation=[depthVariance=%.1f, radius=%d, samples=%d, enabled=%b, valleyRejection=%b]}",
                 seaLevel, basinMinimumElevation, basinSearchRadius,
                 lowestPointSampleStep, singleRingRadius, ringSampleCount, minimumRimDepth,
+                initialRingRadius, ringRadiusIncrement, maxRingRadius, maxDetectionAttempts,
                 minimumMoisture, freezeTemperature, elevationDecayRate, waterGridResolution,
-                maxGridCacheSize, maxWaterDepth, maxTerrainDropForWater, enableEdgeDetection
+                maxGridCacheSize, maxWaterDepth, maxTerrainDropForWater, enableEdgeDetection, enableWaterConnectivityCheck,
+                maxBasinDepthVariance, basinValidationRadius, basinValidationSampleCount, enableBasinValidation, enableValleyRejection
         );
     }
 }

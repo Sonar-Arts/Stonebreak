@@ -50,6 +50,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class BasinWaterLevelGrid {
 
     private final Map<GridPosition, Integer> gridCache;
+    private final Map<GridPosition, BasinDetectionResult> metadataCache; // NEW: Cache for basin detection metadata
     private final SimpleBasinDetector basinDetector;
     private final ElevationProbabilityCalculator probabilityCalculator;
     private final NoiseRouter noiseRouter;
@@ -85,6 +86,15 @@ public class BasinWaterLevelGrid {
                 return size() > config.maxGridCacheSize;
             }
         };
+
+        // Initialize metadata cache (NEW: for adaptive validation)
+        this.metadataCache = new LinkedHashMap<>(16, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<GridPosition, BasinDetectionResult> eldest) {
+                return size() > config.maxGridCacheSize;
+            }
+        };
+
         this.noiseRouter = noiseRouter;
         this.terrainGenerator = terrainGenerator;
         this.config = config;
@@ -239,17 +249,17 @@ public class BasinWaterLevelGrid {
             return -1; // Filtered by elevation probability
         }
 
-        // Detect basin using simple single-ring sampling
-        int waterLevel = basinDetector.detectBasinWaterLevel(centerX, centerZ);
+        // Detect basin using adaptive ring radius widening (now returns metadata)
+        BasinDetectionResult result = basinDetector.detectBasinWaterLevelWithAdaptiveRadius(centerX, centerZ);
 
         if (shouldLog) {
-            System.out.printf("  Basin detection: %s%n", waterLevel > 0 ?
-                String.format("waterLevel=%d", waterLevel) :
+            System.out.printf("  Basin detection: %s%n", result.hasBasin() ?
+                String.format("waterLevel=%d", result.waterLevel()) :
                 "NO BASIN");
         }
 
         // No basin found (too shallow depth check failed)
-        if (waterLevel <= 0) {
+        if (!result.hasBasin()) {
             failedRim.incrementAndGet();
             if (shouldLog) {
                 String failureReason = basinDetector.getLastFailureReason();
@@ -258,9 +268,24 @@ public class BasinWaterLevelGrid {
             return -1;
         }
 
+        // NEW: Check for valley rejection (aspect ratio based)
+        if (result.isValley()) {
+            failedRim.incrementAndGet(); // Count as failed (valley rejected)
+            if (shouldLog) {
+                System.out.printf("  REJECTED: Valley detected (depth=%d > width/3=%d)%n",
+                    result.getBasinDepth(), (result.detectionRadius() * 2) / 3);
+            }
+            return -1;
+        }
+
+        // Cache metadata for later use in validation
+        GridPosition key = new GridPosition(gridX, gridZ);
+        metadataCache.put(key, result);
+
         succeeded.incrementAndGet();
-        if (shouldLog) System.out.printf("  SUCCESS: Water level = %d%n", waterLevel);
-        return waterLevel;
+        if (shouldLog) System.out.printf("  SUCCESS: Water level = %d (radius=%d, depth=%d)%n",
+            result.waterLevel(), result.detectionRadius(), result.getBasinDepth());
+        return result.waterLevel();
     }
 
     /**
@@ -289,12 +314,28 @@ public class BasinWaterLevelGrid {
     }
 
     /**
-     * Clears the grid cache.
+     * Gets cached basin detection metadata for a grid cell.
+     *
+     * <p>Used for adaptive validation radius calculation in BasinWaterFiller.
+     * Returns metadata including detection radius, depth, and basin regularity.</p>
+     *
+     * @param gridX Grid X coordinate
+     * @param gridZ Grid Z coordinate
+     * @return BasinDetectionResult with metadata if cached, noBasin() if not found
+     */
+    public BasinDetectionResult getBasinMetadata(int gridX, int gridZ) {
+        GridPosition key = new GridPosition(gridX, gridZ);
+        return metadataCache.getOrDefault(key, BasinDetectionResult.noBasin());
+    }
+
+    /**
+     * Clears both the grid cache and metadata cache.
      *
      * <p>Should be called when switching worlds or when memory pressure is high.</p>
      */
     public void clearCache() {
         gridCache.clear();
+        metadataCache.clear(); // NEW: Clear metadata cache too
     }
 
     /**
