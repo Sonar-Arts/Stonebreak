@@ -25,6 +25,7 @@ public class PolygonShapeMask implements CanvasShapeMask {
     private final int width;
     private final int height;
     private final boolean[] mask;
+    private final float[] coverageMap;
     private final float[] polygonXCoords;
     private final float[] polygonYCoords;
     private final int vertexCount;
@@ -52,6 +53,7 @@ public class PolygonShapeMask implements CanvasShapeMask {
         this.polygonYCoords = polygonYCoords.clone();
         this.vertexCount = polygonXCoords.length;
         this.mask = new boolean[width * height];
+        this.coverageMap = new float[width * height];
 
         rasterize();
         logger.debug("Polygon shape mask created: {}x{}, {} vertices, {} pixels inside",
@@ -103,6 +105,14 @@ public class PolygonShapeMask implements CanvasShapeMask {
     }
 
     @Override
+    public float getCoverage(int x, int y) {
+        if (x < 0 || x >= width || y < 0 || y >= height) {
+            return 0.0f;
+        }
+        return coverageMap[y * width + x];
+    }
+
+    @Override
     public int getWidth() {
         return width;
     }
@@ -140,10 +150,13 @@ public class PolygonShapeMask implements CanvasShapeMask {
     }
 
     /**
-     * Rasterize the polygon into the boolean mask using ray-casting.
+     * Rasterize the polygon into the boolean mask and coverage map.
      *
-     * <p>Uses the even-odd rule: for each pixel center, cast a horizontal
-     * ray and count edge crossings. An odd count means the point is inside.
+     * <p>Uses ray-casting (even-odd rule) for interior detection, then
+     * computes signed distance to polygon edges for boundary pixels.
+     * Pixels fully inside get coverage 1.0, pixels near edges get
+     * fractional coverage via smoothstep, and pixels outside get 0.0.
+     * The boolean mask is true for any pixel with coverage &gt; 0.
      */
     private void rasterize() {
         float minY = Float.MAX_VALUE;
@@ -158,20 +171,54 @@ public class PolygonShapeMask implements CanvasShapeMask {
             maxX = Math.max(maxX, polygonXCoords[i]);
         }
 
-        int startY = Math.max(0, (int) Math.floor(minY));
-        int endY = Math.min(height - 1, (int) Math.ceil(maxY));
-        int startX = Math.max(0, (int) Math.floor(minX));
-        int endX = Math.min(width - 1, (int) Math.ceil(maxX));
+        // Expand bounds by 1 pixel to catch partial-coverage edge pixels
+        int startY = Math.max(0, (int) Math.floor(minY) - 1);
+        int endY = Math.min(height - 1, (int) Math.ceil(maxY) + 1);
+        int startX = Math.max(0, (int) Math.floor(minX) - 1);
+        int endX = Math.min(width - 1, (int) Math.ceil(maxX) + 1);
 
         for (int y = startY; y <= endY; y++) {
             float testY = y + 0.5f;
             for (int x = startX; x <= endX; x++) {
                 float testX = x + 0.5f;
-                if (isPointInPolygon(testX, testY)) {
-                    mask[y * width + x] = true;
+
+                boolean inside = isPointInPolygon(testX, testY);
+
+                // Compute minimum distance to any polygon edge
+                float minDist = computeMinEdgeDistance(testX, testY);
+
+                float coverage;
+                if (inside) {
+                    // Inside: full coverage unless near an edge
+                    coverage = CoverageBlender.smoothstep(0.0f, 1.0f, minDist + 0.5f);
+                } else {
+                    // Outside: partial coverage only if very close to edge
+                    coverage = CoverageBlender.smoothstep(1.0f, 0.0f, minDist + 0.5f);
                 }
+
+                int index = y * width + x;
+                coverageMap[index] = coverage;
+                mask[index] = coverage > 0.0f;
             }
         }
+    }
+
+    /**
+     * Compute the minimum distance from a point to any polygon edge.
+     */
+    private float computeMinEdgeDistance(float px, float py) {
+        float minDist = Float.MAX_VALUE;
+        for (int i = 0, j = vertexCount - 1; i < vertexCount; j = i++) {
+            float dist = CoverageBlender.pointToSegmentDistance(
+                px, py,
+                polygonXCoords[j], polygonYCoords[j],
+                polygonXCoords[i], polygonYCoords[i]
+            );
+            if (dist < minDist) {
+                minDist = dist;
+            }
+        }
+        return minDist;
     }
 
     private boolean isPointInPolygon(float testX, float testY) {

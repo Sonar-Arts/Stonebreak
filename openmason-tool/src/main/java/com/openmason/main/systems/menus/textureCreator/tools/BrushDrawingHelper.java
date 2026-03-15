@@ -1,6 +1,7 @@
 package com.openmason.main.systems.menus.textureCreator.tools;
 
 import com.openmason.main.systems.menus.textureCreator.SymmetryState;
+import com.openmason.main.systems.menus.textureCreator.canvas.CoverageBlender;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.menus.textureCreator.commands.DrawCommand;
 import com.openmason.main.systems.menus.textureCreator.utils.SymmetryHelper;
@@ -38,32 +39,31 @@ public class BrushDrawingHelper {
         }
 
         if (brushSize == 1) {
-            // Optimize single pixel case
-            setPixelWithUndo(centerX, centerY, color, canvas, command);
+            // Single pixel: use coverage blending for mask edges only
+            setPixelWithCoverage(centerX, centerY, color, 1.0f, canvas, command);
             return;
         }
 
-        // Draw circular brush using midpoint circle algorithm
-        // For each point on the circle perimeter, fill the horizontal line across the circle
+        // Draw circular brush with smooth edge falloff
         float radius = (brushSize - 1) / 2.0f;
 
-        // Draw filled circle by scanning through all pixels in bounding box
-        int minX = (int) Math.floor(centerX - radius);
-        int maxX = (int) Math.ceil(centerX + radius);
-        int minY = (int) Math.floor(centerY - radius);
-        int maxY = (int) Math.ceil(centerY + radius);
-
-        float radiusSquared = radius * radius;
+        // Expand bounding box by 1 pixel to catch partial-coverage edge pixels
+        int minX = (int) Math.floor(centerX - radius) - 1;
+        int maxX = (int) Math.ceil(centerX + radius) + 1;
+        int minY = (int) Math.floor(centerY - radius) - 1;
+        int maxY = (int) Math.ceil(centerY + radius) + 1;
 
         for (int y = minY; y <= maxY; y++) {
             for (int x = minX; x <= maxX; x++) {
-                // Check if point is within circle
                 float dx = x - centerX;
                 float dy = y - centerY;
-                float distanceSquared = dx * dx + dy * dy;
+                float distance = (float) Math.sqrt(dx * dx + dy * dy);
 
-                if (distanceSquared <= radiusSquared) {
-                    setPixelWithUndo(x, y, color, canvas, command);
+                // Smooth falloff at brush edge: full inside, fade over 1px at boundary
+                float brushCoverage = CoverageBlender.smoothstep(radius + 0.5f, radius - 0.5f, distance);
+
+                if (brushCoverage > 0.0f) {
+                    setPixelWithCoverage(x, y, color, brushCoverage, canvas, command);
                 }
             }
         }
@@ -113,29 +113,51 @@ public class BrushDrawingHelper {
     }
 
     /**
-     * Set a single pixel with undo tracking and constraint checking.
-     * Internal helper method used by brush drawing algorithms.
+     * Set a single pixel with coverage-based blending, undo tracking, and constraint checking.
      *
-     * @param x pixel X coordinate
-     * @param y pixel Y coordinate
-     * @param color color to set (RGBA packed)
-     * @param canvas canvas to draw on
-     * @param command command to record changes (for undo/redo)
+     * <p>Combines the tool's coverage (brush edge falloff) with the shape mask's
+     * coverage (polygon boundary) to produce smooth edges on both the brush
+     * and the editable region boundary.
+     *
+     * @param x        pixel X coordinate
+     * @param y        pixel Y coordinate
+     * @param color    color to set (RGBA packed)
+     * @param coverage tool coverage fraction (0.0 to 1.0)
+     * @param canvas   canvas to draw on
+     * @param command  command to record changes (for undo/redo)
      */
-    private static void setPixelWithUndo(int x, int y, int color, PixelCanvas canvas, DrawCommand command) {
-        // Check canvas bounds and shape mask editability
-        if (!canvas.isEditablePixel(x, y)) {
+    private static void setPixelWithCoverage(int x, int y, int color, float coverage,
+                                              PixelCanvas canvas, DrawCommand command) {
+        if (!canvas.isValidCoordinate(x, y)) {
             return;
         }
 
-        // Record old color for undo
-        int oldColor = canvas.getPixel(x, y);
-        if (command != null) {
-            command.recordPixelChange(x, y, oldColor, color);
+        // Combine tool coverage with shape mask coverage
+        float maskCoverage = canvas.getMaskCoverage(x, y);
+        float finalCoverage = coverage * maskCoverage;
+
+        if (finalCoverage <= 0.0f) {
+            return;
         }
 
-        // Set new color
-        canvas.setPixel(x, y, color);
+        int oldColor = canvas.getPixel(x, y);
+        int blended;
+        if (finalCoverage >= 1.0f) {
+            blended = color;
+        } else {
+            blended = CoverageBlender.blendWithCoverage(color, oldColor, finalCoverage);
+        }
+
+        if (blended == oldColor) {
+            return; // No visible change
+        }
+
+        if (command != null) {
+            command.recordPixelChange(x, y, oldColor, blended);
+        }
+
+        // Bypass the mask check in setPixel since we already handled coverage
+        canvas.setPixel(x, y, blended);
     }
 
     // ========================================

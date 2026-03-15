@@ -358,6 +358,27 @@ public class PixelCanvas {
         return true;
     }
 
+    /**
+     * Get the shape mask coverage for a pixel coordinate.
+     *
+     * <p>Returns a value between 0.0 and 1.0 indicating how much of the
+     * pixel is inside the active shape mask. Tools combine this with their
+     * own coverage (brush edge, line distance, etc.) for smooth blending.
+     *
+     * @param x pixel X coordinate
+     * @param y pixel Y coordinate
+     * @return mask coverage in [0.0, 1.0], or 1.0 if no mask is active
+     */
+    public float getMaskCoverage(int x, int y) {
+        if (!isValidCoordinate(x, y)) {
+            return 0.0f;
+        }
+        if (shapeMask == null) {
+            return 1.0f;
+        }
+        return shapeMask.getCoverage(x, y);
+    }
+
     // =========================================================================
     // CHANGE LISTENERS
     // =========================================================================

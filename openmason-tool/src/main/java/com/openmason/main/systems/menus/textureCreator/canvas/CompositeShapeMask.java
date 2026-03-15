@@ -52,6 +52,21 @@ public class CompositeShapeMask implements CanvasShapeMask {
     }
 
     @Override
+    public float getCoverage(int x, int y) {
+        float minCoverage = 1.0f;
+        for (CanvasShapeMask mask : masks) {
+            float c = mask.getCoverage(x, y);
+            if (c <= 0.0f) {
+                return 0.0f;
+            }
+            if (c < minCoverage) {
+                minCoverage = c;
+            }
+        }
+        return minCoverage;
+    }
+
+    @Override
     public int getWidth() {
         return width;
     }
