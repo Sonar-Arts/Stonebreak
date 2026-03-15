@@ -3,6 +3,7 @@ package com.openmason.main.systems.menus.panes.propertyPane.adapters;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.gmr.extraction.GMRFaceExtractor;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceProjectionUtil;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureSizer;
@@ -243,5 +244,35 @@ public class ViewportAdapter implements IViewportConnector {
         }
 
         return new int[]{dims.width(), dims.height()};
+    }
+
+    @Override
+    public float[][] computeFacePolygon2D(int faceId) {
+        if (viewport == null) {
+            return null;
+        }
+        GenericModelRenderer renderer = viewport.getModelRenderer();
+        if (renderer == null) {
+            return null;
+        }
+
+        GMRFaceExtractor.FaceExtractionResult faceData = renderer.extractFaceData();
+        if (faceData == null || faceId < 0 || faceId >= faceData.faceCount()) {
+            return null;
+        }
+
+        int startFloat = faceData.faceOffsets()[faceId];
+        int endFloat = faceData.faceOffsets()[faceId + 1];
+        int vertexCount = faceData.verticesPerFace()[faceId];
+
+        if (vertexCount < 3 || endFloat - startFloat < vertexCount * 3) {
+            return null;
+        }
+
+        int floatCount = vertexCount * 3;
+        float[] facePositions = new float[floatCount];
+        System.arraycopy(faceData.positions(), startFloat, facePositions, 0, floatCount);
+
+        return FaceProjectionUtil.projectFaceToLocalSpace(facePositions, vertexCount);
     }
 }

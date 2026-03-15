@@ -214,6 +214,9 @@ public class FaceMaterialSection implements IPanelSection {
             return;
         }
 
+        // Project face 3D geometry to 2D polygon for shape masking
+        float[][] polygon2D = viewportConnector.computeFacePolygon2D(faceId);
+
         if (materialName.equals("Default")) {
             // Compute texture dimensions from face geometry (falls back to default if unavailable)
             int[] faceDims = viewportConnector.computeFaceTextureDimensions(
@@ -245,8 +248,8 @@ public class FaceMaterialSection implements IPanelSection {
             // uploads correct data (canvas dimensions must match the GPU texture)
             faceEditorBridge.prepareBlankCanvas(texW, texH, BLANK_FACE_FILL_COLOR);
 
-            // Open as normal rect face (now has a valid textureId)
-            opened = faceEditorBridge.openRectFaceForEditing(ftm, faceId, 800, 600);
+            // Open with polygon mask if geometry is available, otherwise fall back to rect
+            opened = openWithPolygonMask(ftm, faceId, polygon2D);
         } else {
             // Existing material: read GPU texture into canvas so the editor shows current pixels
             FaceTextureMapping mapping = ftm.getFaceMapping(faceId);
@@ -260,7 +263,7 @@ public class FaceMaterialSection implements IPanelSection {
                     }
                 }
             }
-            opened = faceEditorBridge.openRectFaceForEditing(ftm, faceId, 800, 600);
+            opened = openWithPolygonMask(ftm, faceId, polygon2D);
         }
 
         if (opened) {
@@ -271,6 +274,23 @@ public class FaceMaterialSection implements IPanelSection {
                 onEditTextureRequested.run();
             }
         }
+    }
+
+    /**
+     * Open a face for editing using polygon mask when 2D geometry is available,
+     * falling back to rectangular mode when it is not.
+     *
+     * @param ftm       face texture manager
+     * @param faceId    face to open
+     * @param polygon2D projected 2D polygon (nullable)
+     * @return true if the face was opened successfully
+     */
+    private boolean openWithPolygonMask(FaceTextureManager ftm, int faceId, float[][] polygon2D) {
+        if (polygon2D != null) {
+            return faceEditorBridge.openFaceForEditing(
+                    ftm, faceId, polygon2D[0], polygon2D[1], 800, 600);
+        }
+        return faceEditorBridge.openRectFaceForEditing(ftm, faceId, 800, 600);
     }
 
     /**

@@ -226,7 +226,8 @@ public class CanvasRenderer {
                    0, 0, 0, 0);// Border color (none)
 
         // Render polygon outline for polygon-based shape masks
-        if (shapeMask instanceof PolygonShapeMask polygonMask) {
+        PolygonShapeMask polygonMask = extractPolygonMask(shapeMask);
+        if (polygonMask != null) {
             faceBoundaryRenderer.render(polygonMask, canvasX, canvasY, zoom, cubeNetOverlayOpacity);
         }
 
@@ -240,6 +241,23 @@ public class CanvasRenderer {
 
         // Render canvas border on top of everything
         renderCanvasBorder(canvasX, canvasY, displayWidth, displayHeight);
+    }
+
+    /**
+     * Extract a {@link PolygonShapeMask} from the given mask, checking both
+     * direct instances and masks nested inside a {@link CompositeShapeMask}.
+     *
+     * @param mask the canvas shape mask (may be null)
+     * @return the polygon mask, or {@code null} if not found
+     */
+    private static PolygonShapeMask extractPolygonMask(CanvasShapeMask mask) {
+        if (mask instanceof PolygonShapeMask polygon) {
+            return polygon;
+        }
+        if (mask instanceof CompositeShapeMask composite) {
+            return composite.findMask(PolygonShapeMask.class);
+        }
+        return null;
     }
 
     /**

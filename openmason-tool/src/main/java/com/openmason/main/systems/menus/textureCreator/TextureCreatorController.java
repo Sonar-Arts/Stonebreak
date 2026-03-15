@@ -533,6 +533,24 @@ public class TextureCreatorController {
         canvasState.frameTo(uvRegion.u0(), uvRegion.v0(), uvRegion.u1(), uvRegion.v1(),
                             canvasWidth, canvasHeight, viewportWidth, viewportHeight);
 
+        // Clear non-editable pixels to transparent so the base texture
+        // doesn't bleed into non-paintable areas on the canvas
+        if (activeCanvas != null) {
+            CanvasShapeMask effectiveMask = activeCanvas.getShapeMask();
+            if (effectiveMask != null) {
+                int[] pixels = activeCanvas.getPixels();
+                int w = activeCanvas.getWidth();
+                int h = activeCanvas.getHeight();
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) {
+                        if (!effectiveMask.isEditable(x, y)) {
+                            pixels[y * w + x] = 0x00000000;
+                        }
+                    }
+                }
+            }
+        }
+
         // Force a full GPU upload so the preview pipeline pushes the canvas
         // contents to the new target texture on the next flush
         if (activeCanvas != null) {

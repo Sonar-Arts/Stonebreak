@@ -196,4 +196,18 @@ public interface IViewportConnector {
      * @return int array {@code [width, height]}, or {@code null} if geometry data is unavailable
      */
     int[] computeFaceTextureDimensions(int faceId, int pixelsPerUnit);
+
+    /**
+     * Compute the 2D polygon outline for a face, projected into normalized local space.
+     *
+     * <p>Projects the face's 3D vertices onto its tangent frame and normalizes
+     * the result to [0, 1] in both axes. Used to create a
+     * {@link com.openmason.main.systems.menus.textureCreator.canvas.PolygonShapeMask}
+     * for per-face texture editing.
+     *
+     * @param faceId Face identifier
+     * @return {@code float[2][]} where [0] is X coords and [1] is Y coords (both 0–1),
+     *         or {@code null} if geometry data is unavailable
+     */
+    float[][] computeFacePolygon2D(int faceId);
 }

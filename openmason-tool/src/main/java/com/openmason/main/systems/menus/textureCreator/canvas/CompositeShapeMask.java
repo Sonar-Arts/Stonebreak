@@ -60,4 +60,21 @@ public class CompositeShapeMask implements CanvasShapeMask {
     public int getHeight() {
         return height;
     }
+
+    /**
+     * Find the first constituent mask that is an instance of the given type.
+     *
+     * @param type the mask type to search for
+     * @param <T>  the mask type
+     * @return the first matching mask, or {@code null} if none found
+     */
+    @SuppressWarnings("unchecked")
+    public <T extends CanvasShapeMask> T findMask(Class<T> type) {
+        for (CanvasShapeMask mask : masks) {
+            if (type.isInstance(mask)) {
+                return (T) mask;
+            }
+        }
+        return null;
+    }
 }

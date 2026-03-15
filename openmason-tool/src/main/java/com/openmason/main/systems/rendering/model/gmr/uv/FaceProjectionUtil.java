@@ -69,6 +69,74 @@ public final class FaceProjectionUtil {
     }
 
     /**
+     * Project face vertex positions into 2D local space normalized to [0, 1].
+     *
+     * <p>Projects all vertices onto the face's tangent frame, then normalizes
+     * the resulting 2D coordinates so that the bounding box maps to the unit
+     * square. This gives the polygon shape in the same coordinate space that
+     * {@link com.openmason.main.systems.menus.textureCreator.canvas.PolygonShapeMask#fromUVRegion}
+     * expects.
+     *
+     * @param positions   Vertex positions (x,y,z interleaved) for this face only
+     * @param vertexCount Number of vertices in the face
+     * @return {@code float[2][]} where [0] is X coords and [1] is Y coords (both 0–1),
+     *         or {@code null} if the face is degenerate
+     */
+    public static float[][] projectFaceToLocalSpace(float[] positions, int vertexCount) {
+        if (positions == null || vertexCount < 3 || positions.length < vertexCount * 3) {
+            return null;
+        }
+
+        Vector3f normal = computeFaceNormal(positions, 0, 1, 2);
+        Vector3f[] frame = computeTangentFrame(normal);
+        if (frame == null) {
+            return null;
+        }
+
+        Vector3f tangent = frame[0];
+        Vector3f bitangent = frame[1];
+
+        float refX = positions[0];
+        float refY = positions[1];
+        float refZ = positions[2];
+
+        float[] sCoords = new float[vertexCount];
+        float[] tCoords = new float[vertexCount];
+        float minS = Float.MAX_VALUE, maxS = -Float.MAX_VALUE;
+        float minT = Float.MAX_VALUE, maxT = -Float.MAX_VALUE;
+
+        for (int i = 0; i < vertexCount; i++) {
+            float dx = positions[i * 3]     - refX;
+            float dy = positions[i * 3 + 1] - refY;
+            float dz = positions[i * 3 + 2] - refZ;
+
+            sCoords[i] = dx * tangent.x + dy * tangent.y + dz * tangent.z;
+            tCoords[i] = dx * bitangent.x + dy * bitangent.y + dz * bitangent.z;
+
+            minS = Math.min(minS, sCoords[i]);
+            maxS = Math.max(maxS, sCoords[i]);
+            minT = Math.min(minT, tCoords[i]);
+            maxT = Math.max(maxT, tCoords[i]);
+        }
+
+        float rangeS = maxS - minS;
+        float rangeT = maxT - minT;
+
+        if (rangeS < EPSILON || rangeT < EPSILON) {
+            return null; // Degenerate (line or point)
+        }
+
+        float[] localX = new float[vertexCount];
+        float[] localY = new float[vertexCount];
+        for (int i = 0; i < vertexCount; i++) {
+            localX[i] = (sCoords[i] - minS) / rangeS;
+            localY[i] = 1.0f - ((tCoords[i] - minT) / rangeT);
+        }
+
+        return new float[][]{localX, localY};
+    }
+
+    /**
      * Compute the (unnormalized) face normal from three vertex positions
      * using the cross product of two edges.
      *
