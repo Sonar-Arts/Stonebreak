@@ -152,11 +152,17 @@ public class PolygonShapeMask implements CanvasShapeMask {
     /**
      * Rasterize the polygon into the boolean mask and coverage map.
      *
-     * <p>Uses ray-casting (even-odd rule) for interior detection, then
-     * computes signed distance to polygon edges for boundary pixels.
-     * Pixels fully inside get coverage 1.0, pixels near edges get
-     * fractional coverage via smoothstep, and pixels outside get 0.0.
-     * The boolean mask is true for any pixel with coverage &gt; 0.
+     * <p>Uses a two-phase approach for gap-free rasterization:
+     * <ol>
+     *   <li><b>Edge Walk</b>: Walks all polygon edges using DDA (Digital
+     *       Differential Analyzer) with half-pixel step resolution, marking
+     *       every pixel each edge passes through. This guarantees no gaps
+     *       along any diagonal edge.</li>
+     *   <li><b>Interior Fill</b>: Uses ray-casting (even-odd rule) to fill
+     *       interior pixels, skipping those already marked by the edge walk.</li>
+     * </ol>
+     * All mask pixels receive binary coverage (1.0), which is correct for
+     * a pixel art tool.
      */
     private void rasterize() {
         float minY = Float.MAX_VALUE;
@@ -171,54 +177,75 @@ public class PolygonShapeMask implements CanvasShapeMask {
             maxX = Math.max(maxX, polygonXCoords[i]);
         }
 
-        // Expand bounds by 1 pixel to catch partial-coverage edge pixels
-        int startY = Math.max(0, (int) Math.floor(minY) - 1);
-        int endY = Math.min(height - 1, (int) Math.ceil(maxY) + 1);
-        int startX = Math.max(0, (int) Math.floor(minX) - 1);
-        int endX = Math.min(width - 1, (int) Math.ceil(maxX) + 1);
+        int startY = Math.max(0, (int) Math.floor(minY));
+        int endY = Math.min(height - 1, (int) Math.ceil(maxY));
+        int startX = Math.max(0, (int) Math.floor(minX));
+        int endX = Math.min(width - 1, (int) Math.ceil(maxX));
 
+        // Phase 1: Walk all polygon edges, marking every pixel each edge touches
+        for (int i = 0; i < vertexCount; i++) {
+            int j = (i + 1) % vertexCount;
+            walkEdgePixels(polygonXCoords[i], polygonYCoords[i],
+                           polygonXCoords[j], polygonYCoords[j]);
+        }
+
+        // Phase 2: Fill interior pixels using ray-casting, skip edge-walked pixels
         for (int y = startY; y <= endY; y++) {
             float testY = y + 0.5f;
             for (int x = startX; x <= endX; x++) {
-                float testX = x + 0.5f;
-
-                boolean inside = isPointInPolygon(testX, testY);
-
-                // Compute minimum distance to any polygon edge
-                float minDist = computeMinEdgeDistance(testX, testY);
-
-                float coverage;
-                if (inside) {
-                    // Inside: full coverage unless near an edge
-                    coverage = CoverageBlender.smoothstep(0.0f, 1.0f, minDist + 0.5f);
-                } else {
-                    // Outside: partial coverage only if very close to edge
-                    coverage = CoverageBlender.smoothstep(1.0f, 0.0f, minDist + 0.5f);
-                }
-
                 int index = y * width + x;
-                coverageMap[index] = coverage;
-                mask[index] = coverage > 0.0f;
+                if (mask[index]) {
+                    continue;
+                }
+                if (isPointInPolygon(x + 0.5f, testY)) {
+                    mask[index] = true;
+                    coverageMap[index] = 1.0f;
+                }
             }
         }
     }
 
     /**
-     * Compute the minimum distance from a point to any polygon edge.
+     * Walk a polygon edge using DDA with half-pixel step resolution,
+     * marking every pixel the edge passes through.
+     *
+     * <p>Half-pixel steps ensure that for diagonal edges, every pixel cell
+     * the line crosses is visited — eliminating the staircase gaps that
+     * occur when only testing pixel centers.
      */
-    private float computeMinEdgeDistance(float px, float py) {
-        float minDist = Float.MAX_VALUE;
-        for (int i = 0, j = vertexCount - 1; i < vertexCount; j = i++) {
-            float dist = CoverageBlender.pointToSegmentDistance(
-                px, py,
-                polygonXCoords[j], polygonYCoords[j],
-                polygonXCoords[i], polygonYCoords[i]
-            );
-            if (dist < minDist) {
-                minDist = dist;
-            }
+    private void walkEdgePixels(float x0, float y0, float x1, float y1) {
+        float dx = x1 - x0;
+        float dy = y1 - y0;
+        float length = Math.max(Math.abs(dx), Math.abs(dy));
+
+        if (length < 1e-6f) {
+            markPixel((int) Math.floor(x0), (int) Math.floor(y0));
+            return;
         }
-        return minDist;
+
+        // Use twice the pixel-length number of steps (half-pixel resolution)
+        int steps = (int) Math.ceil(length * 2.0f);
+        float stepX = dx / steps;
+        float stepY = dy / steps;
+
+        float x = x0;
+        float y = y0;
+        for (int s = 0; s <= steps; s++) {
+            markPixel((int) Math.floor(x), (int) Math.floor(y));
+            x += stepX;
+            y += stepY;
+        }
+    }
+
+    /**
+     * Mark a pixel in the mask and coverage map with bounds checking.
+     */
+    private void markPixel(int x, int y) {
+        if (x >= 0 && x < width && y >= 0 && y < height) {
+            int index = y * width + x;
+            mask[index] = true;
+            coverageMap[index] = 1.0f;
+        }
     }
 
     private boolean isPointInPolygon(float testX, float testY) {
