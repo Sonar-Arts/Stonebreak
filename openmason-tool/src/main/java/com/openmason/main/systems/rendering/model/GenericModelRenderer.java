@@ -5,6 +5,7 @@ import com.openmason.main.systems.rendering.api.GeometryData;
 import com.openmason.main.systems.rendering.api.RenderPass;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
 import com.openmason.main.systems.rendering.model.gmr.core.VertexDataManager;
+import com.openmason.main.systems.rendering.model.gmr.extraction.FaceTriangleQuery;
 import com.openmason.main.systems.rendering.model.gmr.extraction.GMREdgeExtractor;
 import com.openmason.main.systems.rendering.model.gmr.extraction.GMRFaceExtractor;
 import com.openmason.main.systems.rendering.model.gmr.geometry.GeometryDataBuilder;
@@ -294,6 +295,11 @@ public class GenericModelRenderer extends BaseRenderer {
             this.topology = MeshTopologyBuilder.build(
                 vertexManager.getVertices(), vertexManager.getIndices(),
                 faceMapper, uniqueMapper);
+
+            // Regenerate per-face UVs so texture mapping stays consistent
+            // with the updated geometry (prevents stale UVs after vertex moves)
+            regenerateUVsAndUpload();
+
             changeNotifier.notifyTopologyRebuilt(topology);
             changeNotifier.notifyGeometryRebuilt();
 
@@ -510,6 +516,9 @@ public class GenericModelRenderer extends BaseRenderer {
             vertexManager.getVertices(), vertexManager.getIndices(),
             faceMapper, uniqueMapper);
 
+        // Regenerate per-face UVs for the updated topology
+        regenerateUVsAndUpload();
+
         // Notify listeners
         changeNotifier.notifyTopologyRebuilt(topology);
         changeNotifier.notifyGeometryRebuilt();
@@ -566,6 +575,9 @@ public class GenericModelRenderer extends BaseRenderer {
         this.topology = MeshTopologyBuilder.build(
             vertexManager.getVertices(), vertexManager.getIndices(),
             faceMapper, uniqueMapper);
+
+        // Regenerate per-face UVs for the updated topology
+        regenerateUVsAndUpload();
 
         // Find unique index of the new vertex
         int newUniqueIndex = uniqueMapper.getUniqueIndexForMeshVertex(result.firstNewVertexIndex());
@@ -932,17 +944,29 @@ public class GenericModelRenderer extends BaseRenderer {
             // Rebuild topology so subsequent operations see the duplicated vertices
             uniqueMapper.buildMapping(vertices);
             this.topology = MeshTopologyBuilder.build(vertices, indices, faceMapper, uniqueMapper);
+
+            // Indices changed — update EBO immediately and mark batches for rebuild
+            // so the 3D face renders with correct indices on the same frame.
+            updateEBO(indices);
+            drawBatchesDirty = true;
         }
 
         // Generate per-face UVs (conflict-free after vertex duplication)
         float[] generatedTexCoords = uvGenerator.generatePerFaceUVs(vertices, indices, faceMapper);
 
-        // Merge: apply generated UVs to faces with non-default materials or
-        // split sub-regions; preserve existing UVs for unsplit default-material faces
+        // Merge: always use generated UVs for ALL vertices belonging to
+        // non-default-material faces. This ensures that after subdivision or
+        // vertex moves the UVs are fully recomputed from current geometry
+        // rather than inheriting stale values from a previous topology.
         float[] finalTexCoords;
         if (existingTexCoords != null && existingTexCoords.length == generatedTexCoords.length) {
             finalTexCoords = existingTexCoords.clone();
+
+            // Collect all vertex indices that belong to non-default-material faces
+            // so every such vertex gets the freshly generated UV, not just the ones
+            // visited through triangle iteration (which could miss duplicated vertices).
             int triangleCount = indices.length / 3;
+            Set<Integer> nonDefaultVertices = new HashSet<>();
             for (int t = 0; t < triangleCount; t++) {
                 int faceId = faceMapper.getOriginalFaceIdForTriangle(t);
                 if (faceId < 0) continue;
@@ -951,11 +975,15 @@ public class GenericModelRenderer extends BaseRenderer {
                     && (mapping.materialId() != MaterialDefinition.DEFAULT.materialId()
                         || !mapping.uvRegion().equals(FaceTextureMapping.FULL_REGION))) {
                     for (int v = 0; v < 3; v++) {
-                        int idx = indices[t * 3 + v];
-                        finalTexCoords[idx * 2] = generatedTexCoords[idx * 2];
-                        finalTexCoords[idx * 2 + 1] = generatedTexCoords[idx * 2 + 1];
+                        nonDefaultVertices.add(indices[t * 3 + v]);
                     }
                 }
+            }
+
+            // Overwrite UVs for every vertex used by a non-default face
+            for (int idx : nonDefaultVertices) {
+                finalTexCoords[idx * 2] = generatedTexCoords[idx * 2];
+                finalTexCoords[idx * 2 + 1] = generatedTexCoords[idx * 2 + 1];
             }
         } else {
             finalTexCoords = generatedTexCoords;
@@ -966,6 +994,113 @@ public class GenericModelRenderer extends BaseRenderer {
         if (initialized) {
             float[] interleavedData = geometryBuilder.buildInterleavedData(vertices, finalTexCoords);
             updateVBO(interleavedData);
+        }
+
+        // Flood-fill GPU textures for custom-material faces so painted content
+        // extends to cover any new face regions after geometry changes.
+        floodFillCustomMaterialTextures();
+    }
+
+    /**
+     * For each face with a custom (non-default) material, read the GPU texture,
+     * flood-fill any transparent pixels by propagating the nearest opaque pixel
+     * color, and re-upload. This ensures the 3D face always shows the painted
+     * content filling the full texture after geometry changes (subdivision,
+     * vertex moves) without requiring the texture editor to be opened.
+     */
+    private void floodFillCustomMaterialTextures() {
+        Set<Integer> processedTextures = new HashSet<>();
+
+        for (FaceTextureMapping mapping : faceTextureManager.getAllMappings()) {
+            if (mapping.materialId() == MaterialDefinition.DEFAULT.materialId()) {
+                continue;
+            }
+            MaterialDefinition material = faceTextureManager.getMaterial(mapping.materialId());
+            if (material == null || material.textureId() <= 0) {
+                continue;
+            }
+            int texId = material.textureId();
+            if (!processedTextures.add(texId)) {
+                continue; // Already processed this texture
+            }
+
+            byte[] pixels = readTexturePixels(texId);
+            int[] dims = getTextureDimensions(texId);
+            if (pixels == null || dims == null || dims[0] <= 0 || dims[1] <= 0) {
+                continue;
+            }
+
+            // Check if any transparent pixels exist before doing work
+            boolean hasTransparent = false;
+            for (int i = 3; i < pixels.length; i += 4) {
+                if ((pixels[i] & 0xFF) == 0) {
+                    hasTransparent = true;
+                    break;
+                }
+            }
+            if (!hasTransparent) {
+                continue;
+            }
+
+            // Convert to packed int array for BFS flood fill
+            int w = dims[0];
+            int h = dims[1];
+            int[] packed = new int[w * h];
+            for (int i = 0; i < packed.length; i++) {
+                int off = i * 4;
+                int r = pixels[off] & 0xFF;
+                int g = pixels[off + 1] & 0xFF;
+                int b = pixels[off + 2] & 0xFF;
+                int a = pixels[off + 3] & 0xFF;
+                packed[i] = (a << 24) | (b << 16) | (g << 8) | r;
+            }
+
+            // BFS flood fill from opaque edges into transparent pixels
+            Deque<int[]> queue = new ArrayDeque<>();
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    if ((packed[y * w + x] >>> 24) == 0) continue;
+                    if ((x > 0     && (packed[y * w + (x - 1)] >>> 24) == 0)
+                     || (x < w - 1 && (packed[y * w + (x + 1)] >>> 24) == 0)
+                     || (y > 0     && (packed[(y - 1) * w + x] >>> 24) == 0)
+                     || (y < h - 1 && (packed[(y + 1) * w + x] >>> 24) == 0)) {
+                        queue.add(new int[]{x, y});
+                    }
+                }
+            }
+            while (!queue.isEmpty()) {
+                int[] pos = queue.poll();
+                int px = pos[0], py = pos[1];
+                int color = packed[py * w + px];
+                int[][] neighbors = {{px-1,py},{px+1,py},{px,py-1},{px,py+1}};
+                for (int[] n : neighbors) {
+                    int nx = n[0], ny = n[1];
+                    if (nx >= 0 && nx < w && ny >= 0 && ny < h
+                            && (packed[ny * w + nx] >>> 24) == 0) {
+                        packed[ny * w + nx] = color;
+                        queue.add(new int[]{nx, ny});
+                    }
+                }
+            }
+
+            // Convert back to RGBA bytes and re-upload
+            byte[] filled = new byte[w * h * 4];
+            for (int i = 0; i < packed.length; i++) {
+                int c = packed[i];
+                int off = i * 4;
+                filled[off]     = (byte) (c & 0xFF);
+                filled[off + 1] = (byte) ((c >> 8) & 0xFF);
+                filled[off + 2] = (byte) ((c >> 16) & 0xFF);
+                filled[off + 3] = (byte) ((c >> 24) & 0xFF);
+            }
+
+            ByteBuffer buffer = BufferUtils.createByteBuffer(filled.length);
+            buffer.put(filled);
+            buffer.flip();
+            glBindTexture(GL_TEXTURE_2D, texId);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h,
+                           GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+            glBindTexture(GL_TEXTURE_2D, 0);
         }
     }
 
@@ -995,7 +1130,9 @@ public class GenericModelRenderer extends BaseRenderer {
         int triangleCount = indices.length / 3;
 
         // Map: mesh vertex index → { materialId → list of (triangle, localVertex) references }
-        Map<Integer, Map<Integer, List<int[]>>> vertexMaterialRefs = new HashMap<>();
+        // LinkedHashMap ensures deterministic iteration order so the choice of which
+        // material keeps original vertices vs gets duplicates is stable across calls.
+        Map<Integer, Map<Integer, List<int[]>>> vertexMaterialRefs = new LinkedHashMap<>();
 
         for (int t = 0; t < triangleCount; t++) {
             int faceId = faceMapper.getOriginalFaceIdForTriangle(t);
@@ -1007,7 +1144,7 @@ public class GenericModelRenderer extends BaseRenderer {
             for (int v = 0; v < 3; v++) {
                 int meshIdx = indices[t * 3 + v];
                 vertexMaterialRefs
-                    .computeIfAbsent(meshIdx, k -> new HashMap<>())
+                    .computeIfAbsent(meshIdx, k -> new LinkedHashMap<>())
                     .computeIfAbsent(materialId, k -> new ArrayList<>())
                     .add(new int[]{t, v});
             }
@@ -1509,6 +1646,62 @@ public class GenericModelRenderer extends BaseRenderer {
             vertexManager.getIndices(),
             faceMapper
         );
+    }
+
+    /**
+     * Extract polygon coordinates for a face directly from the mesh UV coordinates.
+     *
+     * <p>Instead of re-projecting 3D positions (which can diverge from the UV generator's
+     * projection due to different vertex orderings), this reads the actual UV values that
+     * the per-face UV generator wrote. The UVs are normalized to [0,1] within the face's
+     * UV region so they can be passed directly to
+     * {@link com.openmason.main.systems.menus.textureCreator.canvas.PolygonShapeMask#fromUVRegion}.
+     *
+     * @param faceId Face to extract polygon for
+     * @return {@code float[2][]} where [0] is X coords and [1] is Y coords (both 0–1),
+     *         or {@code null} if the face has no mapping or insufficient data
+     */
+    public float[][] extractFacePolygonFromUVs(int faceId) {
+        float[] texCoords = vertexManager.getTexCoords();
+        int[] indices = vertexManager.getIndices();
+        if (texCoords == null || indices == null) {
+            return null;
+        }
+
+        FaceTextureMapping mapping = faceTextureManager.getFaceMapping(faceId);
+        if (mapping == null) {
+            return null;
+        }
+        FaceTextureMapping.UVRegion uvRegion = mapping.uvRegion();
+
+        // Get ordered boundary vertices for this face
+        List<Integer> triangles = FaceTriangleQuery.findTrianglesForFace(faceId, indices, faceMapper);
+        if (triangles.isEmpty()) {
+            return null;
+        }
+        Integer[] boundaryIndices = FaceTriangleQuery.extractFaceVertexIndices(triangles, indices);
+        if (boundaryIndices.length < 3) {
+            return null;
+        }
+
+        float regionW = uvRegion.width();
+        float regionH = uvRegion.height();
+        if (regionW < 1e-6f || regionH < 1e-6f) {
+            return null;
+        }
+
+        float[] localX = new float[boundaryIndices.length];
+        float[] localY = new float[boundaryIndices.length];
+        for (int i = 0; i < boundaryIndices.length; i++) {
+            int idx = boundaryIndices[i];
+            float u = texCoords[idx * 2];
+            float v = texCoords[idx * 2 + 1];
+            // Normalize UV to [0,1] within the face's UV region
+            localX[i] = Math.clamp((u - uvRegion.u0()) / regionW, 0.0f, 1.0f);
+            localY[i] = Math.clamp((v - uvRegion.v0()) / regionH, 0.0f, 1.0f);
+        }
+
+        return new float[][]{localX, localY};
     }
 
     /**

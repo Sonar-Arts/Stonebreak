@@ -20,6 +20,8 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -214,9 +216,6 @@ public class FaceMaterialSection implements IPanelSection {
             return;
         }
 
-        // Project face 3D geometry to 2D polygon for shape masking
-        float[][] polygon2D = viewportConnector.computeFacePolygon2D(faceId);
-
         if (materialName.equals("Default")) {
             // Compute texture dimensions from face geometry (falls back to default if unavailable)
             int[] faceDims = viewportConnector.computeFaceTextureDimensions(
@@ -248,21 +247,105 @@ public class FaceMaterialSection implements IPanelSection {
             // uploads correct data (canvas dimensions must match the GPU texture)
             faceEditorBridge.prepareBlankCanvas(texW, texH, BLANK_FACE_FILL_COLOR);
 
-            // Open with polygon mask if geometry is available, otherwise fall back to rect
+            // Compute polygon AFTER setFaceTexture, which triggers UV regeneration.
+            // Before material assignment the face has no mapping, so this falls back
+            // to 3D projection — but computing after ensures consistency.
+            float[][] polygon2D = viewportConnector.computeFacePolygon2D(faceId);
             opened = openWithPolygonMask(ftm, faceId, polygon2D);
         } else {
-            // Existing material: read GPU texture into canvas so the editor shows current pixels
+            // Existing material: check if the face geometry has changed since the
+            // texture was created (e.g. subdivision + vertex moves). If so, create a
+            // new GPU texture with the correct dimensions and re-register the material.
             FaceTextureMapping mapping = ftm.getFaceMapping(faceId);
             if (mapping != null) {
                 MaterialDefinition material = ftm.getMaterial(mapping.materialId());
                 if (material != null && material.textureId() > 0) {
-                    int[] dims = viewportConnector.getTextureDimensions(material.textureId());
-                    byte[] pixels = viewportConnector.readTexturePixels(material.textureId());
-                    if (dims != null && pixels != null) {
-                        faceEditorBridge.prepareCanvasFromPixels(dims[0], dims[1], pixels);
+                    int[] existingDims = viewportConnector.getTextureDimensions(material.textureId());
+                    int[] currentDims = viewportConnector.computeFaceTextureDimensions(
+                            faceId, FaceTextureSizer.DEFAULT_PIXELS_PER_UNIT);
+
+                    boolean dimensionsChanged = existingDims != null && currentDims != null
+                            && (existingDims[0] != currentDims[0] || existingDims[1] != currentDims[1]);
+
+                    if (dimensionsChanged) {
+                        // Face geometry changed — rescale existing painted pixels
+                        // into the new dimensions using PixelCanvas.resized() so the
+                        // rescaling is consistent with the texture editor's own resize.
+                        byte[] oldPixels = viewportConnector.readTexturePixels(material.textureId());
+                        PixelCanvas oldCanvas = new PixelCanvas(existingDims[0], existingDims[1]);
+                        if (oldPixels != null) {
+                            int[] px = oldCanvas.getPixels();
+                            int count = Math.min(px.length, oldPixels.length / 4);
+                            for (int i = 0; i < count; i++) {
+                                int off = i * 4;
+                                px[i] = PixelCanvas.packRGBA(
+                                        oldPixels[off] & 0xFF, oldPixels[off + 1] & 0xFF,
+                                        oldPixels[off + 2] & 0xFF, oldPixels[off + 3] & 0xFF);
+                            }
+                        }
+                        PixelCanvas resizedCanvas = oldCanvas.resized(currentDims[0], currentDims[1]);
+
+                        // Extend painted content into any transparent pixels so new
+                        // regions (from geometry changes) are filled with the actual
+                        // texture rather than a flat gray. Uses BFS flood fill from
+                        // opaque pixel edges outward.
+                        floodFillTransparent(resizedCanvas);
+
+                        int newGpuTexId = omtTextureLoader.uploadPixelCanvasToGPU(resizedCanvas);
+                        if (newGpuTexId > 0) {
+                            MaterialDefinition updatedMaterial = new MaterialDefinition(
+                                    material.materialId(), material.name(), newGpuTexId,
+                                    material.renderLayer(), material.properties());
+                            ftm.registerMaterial(updatedMaterial);
+                            // Re-assign to trigger UV regeneration with new dimensions
+                            viewportConnector.setFaceTexture(faceId, material.materialId());
+
+                            byte[] resizedBytes = resizedCanvas.getPixelsAsRGBABytes();
+                            faceEditorBridge.prepareCanvasFromPixels(
+                                    currentDims[0], currentDims[1], resizedBytes);
+                            logger.info("Resized face {} texture from {}x{} to {}x{} after geometry change",
+                                    faceId, existingDims[0], existingDims[1],
+                                    currentDims[0], currentDims[1]);
+                        }
+                    } else {
+                        // Same dimensions — flood-fill the GPU texture so painted
+                        // content extends into any new face regions, then re-upload
+                        // and trigger UV regeneration.
+                        int[] dims = (existingDims != null) ? existingDims : currentDims;
+                        byte[] pixels = viewportConnector.readTexturePixels(material.textureId());
+                        if (dims != null && pixels != null) {
+                            PixelCanvas canvas = new PixelCanvas(dims[0], dims[1]);
+                            int[] px = canvas.getPixels();
+                            int count = Math.min(px.length, pixels.length / 4);
+                            for (int i = 0; i < count; i++) {
+                                int off = i * 4;
+                                px[i] = PixelCanvas.packRGBA(
+                                        pixels[off] & 0xFF, pixels[off + 1] & 0xFF,
+                                        pixels[off + 2] & 0xFF, pixels[off + 3] & 0xFF);
+                            }
+                            floodFillTransparent(canvas);
+
+                            // Re-upload filled texture to GPU and update material
+                            int filledTexId = omtTextureLoader.uploadPixelCanvasToGPU(canvas);
+                            if (filledTexId > 0) {
+                                MaterialDefinition updatedMaterial = new MaterialDefinition(
+                                        material.materialId(), material.name(), filledTexId,
+                                        material.renderLayer(), material.properties());
+                                ftm.registerMaterial(updatedMaterial);
+                            }
+
+                            byte[] filledBytes = canvas.getPixelsAsRGBABytes();
+                            faceEditorBridge.prepareCanvasFromPixels(dims[0], dims[1], filledBytes);
+                        }
+
+                        // Re-assign to trigger UV regeneration
+                        viewportConnector.setFaceTexture(faceId, material.materialId());
                     }
                 }
             }
+            // Compute polygon AFTER any UV regeneration so the mask reflects
+            // the current geometry (vertex moves change UVs on next regen).
+            float[][] polygon2D = viewportConnector.computeFacePolygon2D(faceId);
             opened = openWithPolygonMask(ftm, faceId, polygon2D);
         }
 
@@ -382,5 +465,57 @@ public class FaceMaterialSection implements IPanelSection {
             viewportConnector.setFaceTexture(faceId, DEFAULT_MATERIAL_ID);
         }
         logger.info("Cleared material on {} face(s)", selectedFaces.size());
+    }
+
+    /**
+     * Flood-fill transparent pixels by propagating the nearest opaque pixel color
+     * outward via BFS. This extends painted content into any new regions created
+     * by geometry changes, preserving the actual texture rather than filling
+     * with a flat color.
+     *
+     * @param canvas the canvas to fill (modified in place)
+     */
+    private static void floodFillTransparent(PixelCanvas canvas) {
+        int w = canvas.getWidth();
+        int h = canvas.getHeight();
+        int[] pixels = canvas.getPixels();
+
+        // Seed the BFS queue with opaque pixels that border at least one transparent pixel
+        Deque<int[]> queue = new ArrayDeque<>();
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                if ((pixels[y * w + x] >>> 24) == 0) {
+                    continue; // transparent — skip
+                }
+                // Check 4-connected neighbors for transparency
+                if ((x > 0     && (pixels[y * w + (x - 1)] >>> 24) == 0)
+                 || (x < w - 1 && (pixels[y * w + (x + 1)] >>> 24) == 0)
+                 || (y > 0     && (pixels[(y - 1) * w + x] >>> 24) == 0)
+                 || (y < h - 1 && (pixels[(y + 1) * w + x] >>> 24) == 0)) {
+                    queue.add(new int[]{x, y});
+                }
+            }
+        }
+
+        // BFS: propagate opaque colors into adjacent transparent pixels
+        while (!queue.isEmpty()) {
+            int[] pos = queue.poll();
+            int px = pos[0];
+            int py = pos[1];
+            int color = pixels[py * w + px];
+
+            int[][] neighbors = {{px - 1, py}, {px + 1, py}, {px, py - 1}, {px, py + 1}};
+            for (int[] n : neighbors) {
+                int nx = n[0];
+                int ny = n[1];
+                if (nx < 0 || nx >= w || ny < 0 || ny >= h) {
+                    continue;
+                }
+                if ((pixels[ny * w + nx] >>> 24) == 0) {
+                    pixels[ny * w + nx] = color;
+                    queue.add(new int[]{nx, ny});
+                }
+            }
+        }
     }
 }

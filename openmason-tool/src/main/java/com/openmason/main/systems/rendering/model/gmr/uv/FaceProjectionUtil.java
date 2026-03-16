@@ -87,7 +87,7 @@ public final class FaceProjectionUtil {
             return null;
         }
 
-        Vector3f normal = computeFaceNormal(positions, 0, 1, 2);
+        Vector3f normal = computeRobustFaceNormal(positions, vertexCount);
         Vector3f[] frame = computeTangentFrame(normal);
         if (frame == null) {
             return null;
@@ -134,6 +134,71 @@ public final class FaceProjectionUtil {
         }
 
         return new float[][]{localX, localY};
+    }
+
+    /**
+     * Compute a robust face normal by finding three non-collinear vertices.
+     *
+     * <p>After edge subdivision, the polygon boundary walk can produce vertex
+     * orderings where the first three vertices are collinear (e.g.,
+     * {@code [A, midpoint(A,B), B, ...]}). Using those for the cross product
+     * yields a near-zero normal and a garbage tangent frame. This method
+     * tries all vertex triples anchored at vertex 0, selecting the one that
+     * produces the largest cross-product magnitude.
+     *
+     * @param positions   Vertex positions (x,y,z interleaved)
+     * @param vertexCount Number of vertices in the face
+     * @return The best normal found, or a zero-length vector if all triples are degenerate
+     */
+    public static Vector3f computeRobustFaceNormal(float[] positions, int vertexCount) {
+        Vector3f bestNormal = new Vector3f();
+        float bestLenSq = 0.0f;
+
+        // Try all (0, i, j) triples to find the one with the largest cross product
+        for (int i = 1; i < vertexCount - 1; i++) {
+            for (int j = i + 1; j < vertexCount; j++) {
+                Vector3f candidate = computeFaceNormal(positions, 0, i, j);
+                float lenSq = candidate.lengthSquared();
+                if (lenSq > bestLenSq) {
+                    bestNormal = candidate;
+                    bestLenSq = lenSq;
+                }
+            }
+        }
+
+        return bestNormal;
+    }
+
+    /**
+     * Compute a robust face normal from an indexed vertex list.
+     *
+     * <p>Same algorithm as {@link #computeRobustFaceNormal(float[], int)} but
+     * operates on mesh vertex indices (e.g., from {@code groupVerticesByFace})
+     * rather than sequential packed positions.
+     *
+     * @param vertices      Full vertex position buffer (x,y,z interleaved)
+     * @param vertexIndices Mesh vertex indices for this face
+     * @return The best normal found, or a zero-length vector if all triples are degenerate
+     */
+    public static Vector3f computeRobustFaceNormal(float[] vertices, java.util.List<Integer> vertexIndices) {
+        Vector3f bestNormal = new Vector3f();
+        float bestLenSq = 0.0f;
+        int count = vertexIndices.size();
+        int anchor = vertexIndices.get(0);
+
+        for (int i = 1; i < count - 1; i++) {
+            for (int j = i + 1; j < count; j++) {
+                Vector3f candidate = computeFaceNormal(vertices,
+                    anchor, vertexIndices.get(i), vertexIndices.get(j));
+                float lenSq = candidate.lengthSquared();
+                if (lenSq > bestLenSq) {
+                    bestNormal = candidate;
+                    bestLenSq = lenSq;
+                }
+            }
+        }
+
+        return bestNormal;
     }
 
     /**

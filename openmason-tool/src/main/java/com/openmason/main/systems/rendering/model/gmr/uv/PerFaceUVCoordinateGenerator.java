@@ -173,12 +173,11 @@ public class PerFaceUVCoordinateGenerator implements IUVCoordinateGenerator {
             return;
         }
 
-        // Compute face normal from the first three vertices
-        int i0 = vertexIndices.get(0);
-        int i1 = vertexIndices.get(1);
-        int i2 = vertexIndices.get(2);
+        // Compute face normal robustly — after subdivision, the first three
+        // vertices may be collinear (e.g., [A, midpoint(A,B), B, ...])
+        Vector3f normal = FaceProjectionUtil.computeRobustFaceNormal(vertices, vertexIndices);
 
-        Vector3f normal = computeFaceNormal(vertices, i0, i1, i2);
+        int i0 = vertexIndices.get(0);
 
         // Compute tangent frame for projection
         Vector3f[] frame = FaceProjectionUtil.computeTangentFrame(normal);

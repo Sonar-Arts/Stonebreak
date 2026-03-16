@@ -163,6 +163,33 @@ public class PixelCanvas {
     }
 
     /**
+     * Create a resized copy of this canvas using nearest-neighbor sampling.
+     * Returns this canvas unchanged if the dimensions already match.
+     *
+     * @param targetWidth  desired width in pixels
+     * @param targetHeight desired height in pixels
+     * @return new canvas with rescaled pixel data, or this canvas if dimensions match
+     */
+    public PixelCanvas resized(int targetWidth, int targetHeight) {
+        if (targetWidth == width && targetHeight == height) {
+            return this;
+        }
+
+        PixelCanvas result = new PixelCanvas(targetWidth, targetHeight);
+        float xRatio = (float) width / targetWidth;
+        float yRatio = (float) height / targetHeight;
+
+        for (int y = 0; y < targetHeight; y++) {
+            int srcY = Math.min((int) (y * yRatio), height - 1);
+            for (int x = 0; x < targetWidth; x++) {
+                int srcX = Math.min((int) (x * xRatio), width - 1);
+                result.pixels[y * targetWidth + x] = pixels[srcY * width + srcX];
+            }
+        }
+        return result;
+    }
+
+    /**
      * Create a copy of this canvas.
      *
      * @return new canvas with copied pixel data

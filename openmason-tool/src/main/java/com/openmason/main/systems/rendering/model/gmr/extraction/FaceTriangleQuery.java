@@ -68,7 +68,7 @@ public final class FaceTriangleQuery {
         // Collect all directed edges from all triangles of this face.
         // A directed edge (src→dst) is internal if its reverse (dst→src) also appears;
         // otherwise it is a boundary edge of the polygon.
-        Map<Long, Integer> directedEdgeCounts = new HashMap<>();
+        Map<Long, Integer> directedEdgeCounts = new LinkedHashMap<>();
 
         for (int triIdx : triangles) {
             int i0 = indices[triIdx * 3];

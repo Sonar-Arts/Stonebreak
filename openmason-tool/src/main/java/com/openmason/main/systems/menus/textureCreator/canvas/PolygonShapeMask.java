@@ -91,6 +91,11 @@ public class PolygonShapeMask implements CanvasShapeMask {
         for (int i = 0; i < localXCoords.length; i++) {
             canvasXCoords[i] = regionPixelX + localXCoords[i] * regionPixelW;
             canvasYCoords[i] = regionPixelY + localYCoords[i] * regionPixelH;
+            // Clamp to valid pixel bounds — vertices at the canvas edge (e.g. x=16
+            // on a 16px canvas) would be rejected by markPixel(), clipping the
+            // right/bottom edges while leaving left/top intact.
+            canvasXCoords[i] = Math.clamp(canvasXCoords[i], 0.0f, canvasWidth - 0.001f);
+            canvasYCoords[i] = Math.clamp(canvasYCoords[i], 0.0f, canvasHeight - 0.001f);
         }
 
         return new PolygonShapeMask(canvasWidth, canvasHeight, canvasXCoords, canvasYCoords);

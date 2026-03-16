@@ -256,6 +256,15 @@ public class ViewportAdapter implements IViewportConnector {
             return null;
         }
 
+        // Prefer UV-based extraction: reads actual UV coordinates written by the
+        // per-face UV generator, guaranteeing the polygon mask exactly matches the
+        // texture mapping. Falls back to 3D projection for faces without a mapping.
+        float[][] uvPolygon = renderer.extractFacePolygonFromUVs(faceId);
+        if (uvPolygon != null) {
+            return uvPolygon;
+        }
+
+        // Fallback: project 3D positions to 2D (for faces without UV mappings)
         GMRFaceExtractor.FaceExtractionResult faceData = renderer.extractFaceData();
         if (faceData == null || faceId < 0 || faceId >= faceData.faceCount()) {
             return null;

@@ -310,12 +310,10 @@ public final class EdgeInsertionProcessor {
         int meshA = topology.getMeshIndicesForUniqueVertex(uniqueVertexA)[0];
         int meshB = topology.getMeshIndicesForUniqueVertex(uniqueVertexB)[0];
 
-        // Compute face normal from first 3 polygon vertices
+        // Compute face normal robustly — after subdivision, the first three
+        // polygon vertices may be collinear (e.g., [A, midpoint(A,B), B, ...])
         int m0 = topology.getMeshIndicesForUniqueVertex(polyUniqueVerts[0])[0];
-        int m1 = topology.getMeshIndicesForUniqueVertex(polyUniqueVerts[1])[0];
-        int m2 = topology.getMeshIndicesForUniqueVertex(polyUniqueVerts[2])[0];
-
-        Vector3f normal = FaceProjectionUtil.computeFaceNormal(vertices, m0, m1, m2);
+        Vector3f normal = computeRobustNormalFromUniqueVerts(vertices, polyUniqueVerts, topology);
         Vector3f[] frame = FaceProjectionUtil.computeTangentFrame(normal);
         if (frame == null) {
             return new SplitUVParams(0.5f, true);
@@ -427,5 +425,32 @@ public final class EdgeInsertionProcessor {
             outIndices.add(vjMesh);
             outFaceIds.add(faceId);
         }
+    }
+
+    /**
+     * Compute a robust face normal from unique vertex indices via topology.
+     * Tries all vertex triples anchored at index 0, selecting the one with
+     * the largest cross-product magnitude to avoid collinear vertices.
+     */
+    private static Vector3f computeRobustNormalFromUniqueVerts(
+            float[] vertices, int[] polyUniqueVerts, MeshTopology topology) {
+        Vector3f bestNormal = new Vector3f();
+        float bestLenSq = 0.0f;
+        int anchor = topology.getMeshIndicesForUniqueVertex(polyUniqueVerts[0])[0];
+
+        for (int i = 1; i < polyUniqueVerts.length - 1; i++) {
+            for (int j = i + 1; j < polyUniqueVerts.length; j++) {
+                int mi = topology.getMeshIndicesForUniqueVertex(polyUniqueVerts[i])[0];
+                int mj = topology.getMeshIndicesForUniqueVertex(polyUniqueVerts[j])[0];
+                Vector3f candidate = FaceProjectionUtil.computeFaceNormal(vertices, anchor, mi, mj);
+                float lenSq = candidate.lengthSquared();
+                if (lenSq > bestLenSq) {
+                    bestNormal = candidate;
+                    bestLenSq = lenSq;
+                }
+            }
+        }
+
+        return bestNormal;
     }
 }

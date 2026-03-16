@@ -61,8 +61,9 @@ public final class FaceTextureSizer {
             return null;
         }
 
-        // Compute face normal from first 3 vertices (indices 0, 1, 2 in local array)
-        Vector3f normal = FaceProjectionUtil.computeFaceNormal(positions, 0, 1, 2);
+        // Compute face normal robustly — after subdivision, the first three
+        // vertices may be collinear (e.g., [A, midpoint(A,B), B, ...])
+        Vector3f normal = FaceProjectionUtil.computeRobustFaceNormal(positions, vertexCount);
 
         Vector3f[] frame = FaceProjectionUtil.computeTangentFrame(normal);
         if (frame == null) {
