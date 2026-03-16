@@ -1622,6 +1622,12 @@ public class GenericModelRenderer extends BaseRenderer {
         // To avoid double-transformation, pass identity for uModelMatrix.
         // This ensures the model transforms at the same rate as the wireframe overlay.
         shader.setMat4("uModelMatrix", IDENTITY_MATRIX);
+
+        // Pass model-view matrix (V*M) for camera-relative flat shading.
+        // Since uModelMatrix is identity, the shader computes fragPosView = uViewMatrix * aPos.
+        // We bake in the model transform so that gizmo rotations affect shading correctly.
+        org.joml.Matrix4f modelViewMatrix = new org.joml.Matrix4f(context.getCamera().getViewMatrix()).mul(modelMatrix);
+        shader.setMat4("uViewMatrix", modelViewMatrix);
     }
 
     // =========================================================================

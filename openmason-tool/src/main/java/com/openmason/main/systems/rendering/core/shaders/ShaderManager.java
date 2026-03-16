@@ -117,17 +117,20 @@ public class ShaderManager {
 
             uniform mat4 uMVPMatrix;     // View-Projection matrix (viewportCamera)
             uniform mat4 uModelMatrix;   // Model transformation matrix (per-part positioning)
+            uniform mat4 uViewMatrix;    // View matrix for camera-relative shading
             uniform vec3 uColor;
             uniform bool uUseTexture;    // Whether to use texture or solid color
 
             out vec3 vertexColor;
             out vec2 TexCoord;
+            out vec3 fragPosView;        // View-space position for flat shading
 
             void main() {
-                // Apply model transformation first, then MVP
-                gl_Position = uMVPMatrix * uModelMatrix * vec4(aPos, 1.0);
+                vec4 worldPos = uModelMatrix * vec4(aPos, 1.0);
+                gl_Position = uMVPMatrix * worldPos;
                 vertexColor = uColor;
                 TexCoord = aTexCoord;
+                fragPosView = (uViewMatrix * worldPos).xyz;
             }
             """;
 
@@ -135,19 +138,28 @@ public class ShaderManager {
             #version 330 core
             in vec3 vertexColor;
             in vec2 TexCoord;
+            in vec3 fragPosView;
             out vec4 FragColor;
 
             uniform sampler2D uTexture;
             uniform bool uUseTexture;
 
             void main() {
+                // Compute flat face normal from view-space position derivatives
+                vec3 normal = normalize(cross(dFdx(fragPosView), dFdy(fragPosView)));
+
+                // Camera-relative directional light (slightly above-right in view space)
+                vec3 lightDir = normalize(vec3(0.3, 0.5, 0.8));
+                float diffuse = max(dot(normal, lightDir), 0.0);
+
+                // Ambient + diffuse shading (Blender-style solid mode feel)
+                float lighting = 0.45 + 0.55 * diffuse;
+
                 if (uUseTexture) {
-                    // Sample texture color
                     vec4 texColor = texture(uTexture, TexCoord);
-                    FragColor = texColor;
+                    FragColor = vec4(texColor.rgb * lighting, texColor.a);
                 } else {
-                    // Use solid color only
-                    FragColor = vec4(vertexColor, 1.0);
+                    FragColor = vec4(vertexColor * lighting, 1.0);
                 }
             }
             """;

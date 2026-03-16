@@ -242,6 +242,12 @@ public class ViewportRenderPipeline {
             ShaderProgram matrixShader = shaderManager.getShaderProgram(ShaderType.MATRIX);
             float[] vpArray = context.getViewProjectionArray();
 
+            // Set model-view matrix for flat shading before block renderer binds the shader
+            matrixShader.use();
+            org.joml.Matrix4f modelViewMatrix = new org.joml.Matrix4f(context.getCamera().getViewMatrix())
+                    .mul(transformState.getTransformMatrix());
+            matrixShader.setMat4("uViewMatrix", modelViewMatrix);
+
             blockRenderer.renderBlock(
                 renderingState.getSelectedBlock(),
                 matrixShader.getProgramId(),
@@ -267,6 +273,12 @@ public class ViewportRenderPipeline {
         try {
             ShaderProgram matrixShader = shaderManager.getShaderProgram(ShaderType.MATRIX);
             float[] vpArray = context.getViewProjectionArray();
+
+            // Set model-view matrix for flat shading before item renderer binds the shader
+            matrixShader.use();
+            org.joml.Matrix4f modelViewMatrix = new org.joml.Matrix4f(context.getCamera().getViewMatrix())
+                    .mul(transformState.getTransformMatrix());
+            matrixShader.setMat4("uViewMatrix", modelViewMatrix);
 
             itemRenderer.renderItem(
                 renderingState.getSelectedItem(),
