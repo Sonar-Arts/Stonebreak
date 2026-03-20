@@ -89,20 +89,12 @@ public class ThemeManager {
     private void initializeBuiltInThemes() {
         try {
             // Create built-in themes directly as ThemeDefinitions
-            ThemeDefinition darkTheme = ColorPalette.createDarkTheme();
-            ThemeDefinition lightTheme = ColorPalette.createLightTheme();
-            ThemeDefinition highContrastTheme = ColorPalette.createHighContrastTheme();
-            ThemeDefinition blueTheme = ColorPalette.createBlueTheme();
-            ThemeDefinition adobeSpectrumLightTheme = ColorPalette.createAdobeSpectrumLightTheme();
-            ThemeDefinition adobeSpectrumDarkTheme = ColorPalette.createAdobeSpectrumDarkTheme();
+            ThemeDefinition darkTheme = ColorPalette.createMasonSpectrumDarkTheme();
+            ThemeDefinition lightTheme = ColorPalette.createMasonSpectrumLightTheme();
 
             // Register with registry
             registry.registerTheme(darkTheme.getId(), darkTheme, ThemeRegistry.ThemeCategory.BUILT_IN, "ThemeManager");
             registry.registerTheme(lightTheme.getId(), lightTheme, ThemeRegistry.ThemeCategory.BUILT_IN, "ThemeManager");
-            registry.registerTheme(highContrastTheme.getId(), highContrastTheme, ThemeRegistry.ThemeCategory.BUILT_IN, "ThemeManager");
-            registry.registerTheme(blueTheme.getId(), blueTheme, ThemeRegistry.ThemeCategory.BUILT_IN, "ThemeManager");
-            registry.registerTheme(adobeSpectrumLightTheme.getId(), adobeSpectrumLightTheme, ThemeRegistry.ThemeCategory.BUILT_IN, "ThemeManager");
-            registry.registerTheme(adobeSpectrumDarkTheme.getId(), adobeSpectrumDarkTheme, ThemeRegistry.ThemeCategory.BUILT_IN, "ThemeManager");
 
             // Set default theme
             currentTheme = darkTheme;
@@ -286,7 +278,7 @@ public class ThemeManager {
             
             // Switch to default theme if deleting current theme
             if (currentTheme != null && themeId.equals(currentTheme.getId())) {
-                applyTheme("dark");
+                applyTheme("mason-spectrum-dark");
             }
             
             // Remove from registry
@@ -450,14 +442,14 @@ public class ThemeManager {
                 }
             } else {
                 // Create default configuration
-                config.setProperty("current.theme", "dark");
+                config.setProperty("current.theme", "mason-spectrum-dark");
                 config.setProperty("current.density", "NORMAL");
                 saveConfiguration();
                 logger.info("Created default Theme.ini file");
             }
 
             // Load theme ID from config
-            String themeId = config.getProperty("current.theme", "dark");
+            String themeId = config.getProperty("current.theme", "mason-spectrum-dark");
             ThemeDefinition loadedTheme = registry.getTheme(themeId);
 
             if (loadedTheme != null) {
@@ -465,8 +457,8 @@ public class ThemeManager {
                 logger.info("Loaded theme from Theme.ini: {}", themeId);
             } else {
                 // Fallback to dark theme if configured theme not found
-                logger.warn("Theme '{}' not found in registry, falling back to 'dark'", themeId);
-                currentTheme = registry.getTheme("dark");
+                logger.warn("Theme '{}' not found in registry, falling back to 'mason-spectrum-dark'", themeId);
+                currentTheme = registry.getTheme("mason-spectrum-dark");
             }
 
             // Load density from config
@@ -489,7 +481,7 @@ public class ThemeManager {
         } catch (Exception e) {
             logger.error("Failed to load configuration from Theme.ini", e);
             // Fallback to safe defaults
-            currentTheme = registry.getTheme("dark");
+            currentTheme = registry.getTheme("mason-spectrum-dark");
             currentDensity = DensityManager.UIDensity.NORMAL;
             densityManager.setDensity(DensityManager.UIDensity.NORMAL);
         }
@@ -504,10 +496,8 @@ public class ThemeManager {
     }
     
     // Convenience methods for built-in themes
-    public ThemeDefinition getDarkTheme() { return registry.getTheme("dark"); }
-    public ThemeDefinition getLightTheme() { return registry.getTheme("light"); }
-    public ThemeDefinition getHighContrastTheme() { return registry.getTheme("high-contrast"); }
-    public ThemeDefinition getBlueTheme() { return registry.getTheme("blue"); }
+    public ThemeDefinition getDarkTheme() { return registry.getTheme("mason-spectrum-dark"); }
+    public ThemeDefinition getLightTheme() { return registry.getTheme("mason-spectrum-light"); }
     
     // Simplified callback system
     public void addThemeChangeCallback(Consumer<ThemeDefinition> callback) {

@@ -11,6 +11,8 @@ import imgui.ImColor;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
+import imgui.ImVec4;
+import imgui.flag.ImGuiCol;
 import imgui.type.ImString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -182,15 +184,20 @@ public class NoiseFilterPanel {
             boolean isSelected = (selectedAlgorithm == i);
 
             if (isSelected) {
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.26f, 0.59f, 0.98f, 1.0f);
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.31f, 0.55f, 0.91f, 1.0f);
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.20f, 0.44f, 0.80f, 1.0f);
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 1.0f, 1.0f, 1.0f, 1.0f); // White text
+                ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+                ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 1.0f);
+                ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.85f);
+                ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.70f);
+                ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 1.0f, 1.0f, 1.0f);
             } else {
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.95f, 0.95f, 0.96f, 1.0f);
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.90f, 0.91f, 0.92f, 1.0f);
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.82f, 0.84f, 0.86f, 1.0f);
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 0.0f, 0.0f, 0.0f, 1.0f); // Black text
+                ImVec4 btn = ImGui.getStyle().getColor(ImGuiCol.Button);
+                ImVec4 btnHov = ImGui.getStyle().getColor(ImGuiCol.ButtonHovered);
+                ImVec4 btnAct = ImGui.getStyle().getColor(ImGuiCol.ButtonActive);
+                ImVec4 txt = ImGui.getStyle().getColor(ImGuiCol.Text);
+                ImGui.pushStyleColor(ImGuiCol.Button, btn.x, btn.y, btn.z, btn.w);
+                ImGui.pushStyleColor(ImGuiCol.ButtonHovered, btnHov.x, btnHov.y, btnHov.z, btnHov.w);
+                ImGui.pushStyleColor(ImGuiCol.ButtonActive, btnAct.x, btnAct.y, btnAct.z, btnAct.w);
+                ImGui.pushStyleColor(ImGuiCol.Text, txt.x, txt.y, txt.z, txt.w);
             }
 
             if (ImGui.button(algorithmNames[i], buttonWidth, 0)) {
@@ -234,15 +241,20 @@ public class NoiseFilterPanel {
         // Uniform button
         boolean isUniform = !gradient;
         if (isUniform) {
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.26f, 0.59f, 0.98f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.31f, 0.55f, 0.91f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.20f, 0.44f, 0.80f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 1.0f, 1.0f, 1.0f, 1.0f); // White text
+            ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+            ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 1.0f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.85f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.70f);
+            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 1.0f, 1.0f, 1.0f);
         } else {
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.95f, 0.95f, 0.96f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.90f, 0.91f, 0.92f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.82f, 0.84f, 0.86f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 0.0f, 0.0f, 0.0f, 1.0f); // Black text
+            ImVec4 btn = ImGui.getStyle().getColor(ImGuiCol.Button);
+            ImVec4 btnHov = ImGui.getStyle().getColor(ImGuiCol.ButtonHovered);
+            ImVec4 btnAct = ImGui.getStyle().getColor(ImGuiCol.ButtonActive);
+            ImVec4 txt = ImGui.getStyle().getColor(ImGuiCol.Text);
+            ImGui.pushStyleColor(ImGuiCol.Button, btn.x, btn.y, btn.z, btn.w);
+            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, btnHov.x, btnHov.y, btnHov.z, btnHov.w);
+            ImGui.pushStyleColor(ImGuiCol.ButtonActive, btnAct.x, btnAct.y, btnAct.z, btnAct.w);
+            ImGui.pushStyleColor(ImGuiCol.Text, txt.x, txt.y, txt.z, txt.w);
         }
 
         if (ImGui.button("Uniform", buttonWidth, 0)) {
@@ -259,15 +271,20 @@ public class NoiseFilterPanel {
         // Gradient button
         boolean isGradient = gradient;
         if (isGradient) {
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.26f, 0.59f, 0.98f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.31f, 0.55f, 0.91f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.20f, 0.44f, 0.80f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 1.0f, 1.0f, 1.0f, 1.0f); // White text
+            ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+            ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 1.0f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.85f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.70f);
+            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 1.0f, 1.0f, 1.0f);
         } else {
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.95f, 0.95f, 0.96f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.90f, 0.91f, 0.92f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.82f, 0.84f, 0.86f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 0.0f, 0.0f, 0.0f, 1.0f); // Black text
+            ImVec4 btn = ImGui.getStyle().getColor(ImGuiCol.Button);
+            ImVec4 btnHov = ImGui.getStyle().getColor(ImGuiCol.ButtonHovered);
+            ImVec4 btnAct = ImGui.getStyle().getColor(ImGuiCol.ButtonActive);
+            ImVec4 txt = ImGui.getStyle().getColor(ImGuiCol.Text);
+            ImGui.pushStyleColor(ImGuiCol.Button, btn.x, btn.y, btn.z, btn.w);
+            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, btnHov.x, btnHov.y, btnHov.z, btnHov.w);
+            ImGui.pushStyleColor(ImGuiCol.ButtonActive, btnAct.x, btnAct.y, btnAct.z, btnAct.w);
+            ImGui.pushStyleColor(ImGuiCol.Text, txt.x, txt.y, txt.z, txt.w);
         }
 
         if (ImGui.button("Gradient", buttonWidth, 0)) {

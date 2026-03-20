@@ -1,6 +1,7 @@
 package com.openmason.main.systems.menus.textureCreator.panels;
 
 import com.openmason.main.systems.menus.textureCreator.SymmetryState;
+import com.openmason.main.systems.themes.utils.ImGuiComponents;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
 import imgui.type.ImInt;
@@ -226,74 +227,17 @@ public class SymmetryPanel {
     // ========================================
 
     /**
-     * Render a section header.
+     * Render a section header — delegates to theme-aware ImGuiComponents.
      */
     private void renderSectionHeader(String title) {
-        imgui.ImVec2 cursorPos = ImGui.getCursorScreenPos();
-        imgui.ImVec2 textSize = ImGui.calcTextSize(title);
-
-        int borderColor = ImGui.colorConvertFloat4ToU32(0.26f, 0.59f, 0.98f, 1.0f); // Bright blue
-
-        float borderWidth = 4.0f;
-        float padding = 8.0f;
-        float height = textSize.y + padding * 2;
-        float boxWidth = textSize.x + padding * 2;
-
-        imgui.ImDrawList drawList = ImGui.getWindowDrawList();
-
-        // Left accent bar
-        drawList.addRectFilled(
-            cursorPos.x,
-            cursorPos.y,
-            cursorPos.x + borderWidth,
-            cursorPos.y + height,
-            borderColor,
-            2.0f
-        );
-
-        // Compact background box
-        int bgColor = ImGui.colorConvertFloat4ToU32(0.25f, 0.28f, 0.35f, 1.0f);
-        drawList.addRectFilled(
-            cursorPos.x + borderWidth,
-            cursorPos.y,
-            cursorPos.x + borderWidth + boxWidth,
-            cursorPos.y + height,
-            bgColor,
-            2.0f
-        );
-
-        // Render text
-        ImGui.setCursorScreenPos(cursorPos.x + borderWidth + padding, cursorPos.y + padding);
-        ImGui.text(title);
-
-        // Reset cursor
-        ImGui.setCursorScreenPos(cursorPos.x, cursorPos.y + height);
-        ImGui.spacing();
-        ImGui.spacing();
-
-        // Separator
-        renderBigSeparator();
+        ImGuiComponents.renderSectionHeader(title);
     }
 
     /**
-     * Render a prominent separator line.
+     * Render a prominent separator line — delegates to theme-aware ImGuiComponents.
      */
     private void renderBigSeparator() {
-        imgui.ImVec2 cursorPos = ImGui.getCursorScreenPos();
-        float availWidth = ImGui.getContentRegionAvailX();
-        imgui.ImDrawList drawList = ImGui.getWindowDrawList();
-
-        int separatorColor = ImGui.colorConvertFloat4ToU32(0.5f, 0.5f, 0.55f, 0.6f);
-        drawList.addLine(
-            cursorPos.x,
-            cursorPos.y,
-            cursorPos.x + availWidth,
-            cursorPos.y,
-            separatorColor,
-            2.0f
-        );
-
-        ImGui.dummy(0, 8.0f);
+        ImGuiComponents.renderBigSeparator();
     }
 
     /**

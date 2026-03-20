@@ -2,6 +2,7 @@ package com.openmason.main.systems.menus;
 
 import com.openmason.main.systems.LogoManager;
 import imgui.ImGui;
+import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiStyleVar;
 
@@ -52,9 +53,10 @@ public abstract class BaseMenuBarRenderer {
      * Apply transparent button styling with hover effects.
      */
     protected void pushTransparentButtonStyle() {
+        ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
         ImGui.pushStyleColor(ImGuiCol.Button, 0.0f, 0.0f, 0.0f, 0.0f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.26f, 0.59f, 0.98f, 0.40f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.26f, 0.59f, 0.98f, 1.0f);
+        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.40f);
+        ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 1.0f);
     }
 
     /**

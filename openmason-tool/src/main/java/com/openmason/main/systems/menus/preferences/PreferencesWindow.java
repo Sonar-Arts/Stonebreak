@@ -168,13 +168,14 @@ public class PreferencesWindow {
             windowWidth = cachedWindowWidth;
         }
 
-        // Title bar background
+        // Title bar background — derived from theme TitleBgActive
+        imgui.ImVec4 titleBg = ImGui.getStyle().getColor(ImGuiCol.TitleBgActive);
         ImGui.getWindowDrawList().addRectFilled(
                 ImGui.getWindowPosX(),
                 ImGui.getWindowPosY(),
                 ImGui.getWindowPosX() + windowWidth,
                 ImGui.getWindowPosY() + titleBarHeight,
-                ImGui.getColorU32(0.15f, 0.15f, 0.15f, 1.0f)
+                ImGui.getColorU32(titleBg.x, titleBg.y, titleBg.z, titleBg.w)
         );
 
         // Make title bar draggable
@@ -217,10 +218,13 @@ public class PreferencesWindow {
 
         ImGui.pushStyleVar(ImGuiStyleVar.ButtonTextAlign, 0.5f, 0.5f);
 
-        // Minimize button
-        ImGui.pushStyleColor(ImGuiCol.Button, 0.2f, 0.2f, 0.2f, 1.0f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.3f, 0.3f, 0.3f, 1.0f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.4f, 0.4f, 0.4f, 1.0f);
+        // Minimize button — theme-aware
+        imgui.ImVec4 frameBg = ImGui.getStyle().getColor(ImGuiCol.FrameBg);
+        imgui.ImVec4 frameHov = ImGui.getStyle().getColor(ImGuiCol.FrameBgHovered);
+        imgui.ImVec4 frameAct = ImGui.getStyle().getColor(ImGuiCol.FrameBgActive);
+        ImGui.pushStyleColor(ImGuiCol.Button, frameBg.x, frameBg.y, frameBg.z, frameBg.w);
+        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, frameHov.x, frameHov.y, frameHov.z, frameHov.w);
+        ImGui.pushStyleColor(ImGuiCol.ButtonActive, frameAct.x, frameAct.y, frameAct.z, frameAct.w);
         if (ImGui.button("-##Minimize", buttonSize, buttonSize)) {
             visible.set(false);
         }
@@ -228,7 +232,7 @@ public class PreferencesWindow {
 
         // Close button (red hover)
         ImGui.sameLine(0, buttonSpacing);
-        ImGui.pushStyleColor(ImGuiCol.Button, 0.2f, 0.2f, 0.2f, 1.0f);
+        ImGui.pushStyleColor(ImGuiCol.Button, frameBg.x, frameBg.y, frameBg.z, frameBg.w);
         ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.8f, 0.2f, 0.2f, 1.0f);
         ImGui.pushStyleColor(ImGuiCol.ButtonActive, 1.0f, 0.3f, 0.3f, 1.0f);
         if (ImGui.button("×##Close", buttonSize, buttonSize)) {

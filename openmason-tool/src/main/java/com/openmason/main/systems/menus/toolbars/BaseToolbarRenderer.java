@@ -1,6 +1,7 @@
 package com.openmason.main.systems.menus.toolbars;
 
 import imgui.ImGui;
+import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiStyleVar;
 
@@ -11,19 +12,14 @@ import imgui.flag.ImGuiStyleVar;
  */
 public abstract class BaseToolbarRenderer {
 
-    // Highlight color for selected/active items (blue)
-    protected static final float HIGHLIGHT_R = 0.3f;
-    protected static final float HIGHLIGHT_G = 0.5f;
-    protected static final float HIGHLIGHT_B = 0.7f;
-    protected static final float HIGHLIGHT_A = 1.0f;
-
     /**
-     * Apply highlighted button style (blue background for selected state).
-     * Use this for buttons representing the currently selected tool/option.
+     * Apply highlighted button style (accent background for selected state).
+     * Colour is derived from the active theme's HeaderActive.
      * Call {@link #popHighlightedButtonStyle()} after rendering the button.
      */
     protected void pushHighlightedButtonStyle() {
-        ImGui.pushStyleColor(ImGuiCol.Button, HIGHLIGHT_R, HIGHLIGHT_G, HIGHLIGHT_B, HIGHLIGHT_A);
+        ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+        ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, accent.w);
     }
 
     /**

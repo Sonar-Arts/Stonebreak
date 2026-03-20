@@ -35,7 +35,10 @@ public class ThemeDefinition {
     
     @JsonProperty("style_vars")
     private final Map<Integer, Float> styleVars = new ConcurrentHashMap<>();
-    
+
+    @JsonProperty("style_vars_vec2")
+    private final Map<Integer, float[]> styleVarsVec2 = new ConcurrentHashMap<>();
+
     @JsonProperty("read_only")
     private boolean readOnly;
     
@@ -74,6 +77,7 @@ public class ThemeDefinition {
     public ThemeType getType() { return type; }
     public Map<Integer, ImVec4> getColors() { return colors; }
     public Map<Integer, Float> getStyleVars() { return styleVars; }
+    public Map<Integer, float[]> getStyleVarsVec2() { return styleVarsVec2; }
 
     // Setters
     public void setId(String id) { this.id = id; }
@@ -106,6 +110,19 @@ public class ThemeDefinition {
     public Float getStyleVar(int styleVar) {
         return styleVars.get(styleVar);
     }
+
+    // Vec2 style variable management
+    public void setStyleVarVec2(int styleVar, float x, float y) {
+        if (!readOnly) {
+            styleVarsVec2.put(styleVar, new float[]{x, y});
+        } else {
+            logger.warn("Cannot set style var on read-only theme: {}", name);
+        }
+    }
+
+    public float[] getStyleVarVec2(int styleVar) {
+        return styleVarsVec2.get(styleVar);
+    }
     
     // Create a deep copy of this theme
     public ThemeDefinition copy() {
@@ -116,6 +133,10 @@ public class ThemeDefinition {
         }
         for (Map.Entry<Integer, Float> entry : this.styleVars.entrySet()) {
             copy.setStyleVar(entry.getKey(), entry.getValue());
+        }
+        for (Map.Entry<Integer, float[]> entry : this.styleVarsVec2.entrySet()) {
+            float[] val = entry.getValue();
+            copy.setStyleVarVec2(entry.getKey(), val[0], val[1]);
         }
         logger.trace("Created copy of theme: {} -> {}", this.name, copy.name);
         return copy;
