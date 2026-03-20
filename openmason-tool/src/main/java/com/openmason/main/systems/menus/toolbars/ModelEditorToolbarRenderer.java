@@ -7,10 +7,14 @@ import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.stateHandling.UIVisibilityState;
 import com.openmason.main.systems.ViewportController;
 import imgui.ImGui;
+import imgui.ImVec4;
+import imgui.flag.ImGuiCol;
+import imgui.flag.ImGuiStyleVar;
 
 /**
- * Model editor toolbar renderer.
- * Extends BaseToolbarRenderer for consistent styling and DRY principles.
+ * Blender-style model editor toolbar.
+ * Flat transparent buttons with thin vertical separators between logical groups.
+ * Extends BaseToolbarRenderer for consistent Blender-like aesthetics.
  */
 public class ModelEditorToolbarRenderer extends BaseToolbarRenderer {
 
@@ -40,75 +44,125 @@ public class ModelEditorToolbarRenderer extends BaseToolbarRenderer {
     }
 
     /**
-     * Render the toolbar inline (not as a separate window).
+     * Render the Blender-style toolbar inline.
      */
     public void render() {
         if (!uiState.getShowToolbar().get()) {
             return;
         }
 
-        // Apply toolbar styling (inherited from BaseToolbarRenderer)
-        pushItemSpacing(4.0f, 0.0f);
+        // Toolbar layout: compact spacing, flat buttons
+        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 2.0f, 0.0f);
+        ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 8.0f, 4.0f);
 
-        // Render toolbar content inline
+        pushFlatButtonStyle();
+
+        // --- File operations group ---
         renderFileOperations();
-        renderSeparator();
 
+        // --- Thin separator ---
+        renderThinSeparator();
+
+        // --- View operations group ---
         renderViewOperations();
-        renderSeparator();
 
-        renderStatusDisplay();
+        // --- Thin separator ---
+        renderThinSeparator();
 
-        popItemSpacing();
+        // --- Zoom controls group ---
+        renderZoomControls();
+
+        // --- Model path on right side ---
+        renderModelInfo();
+
+        popFlatButtonStyle();
+
+        ImGui.popStyleVar(2);
+
+        // Clean bottom border line
+        renderBottomBorder();
     }
 
     /**
-     * Render file operation buttons.
+     * Render file operation buttons (Open, Save).
      */
     private void renderFileOperations() {
-        if (renderButton("Open", "Open model file")) {
+        if (renderFlatButton("Open", "Open model file (Ctrl+O)")) {
             modelOperations.openModel();
         }
-        ImGui.sameLine();
+        ImGui.sameLine(0.0f, 2.0f);
 
         boolean canSave = modelState.isModelLoaded() && modelState.hasUnsavedChanges();
-        if (renderButton("Save", canSave ? "Save current model" : "No changes to save") && canSave) {
+        String saveTooltip = canSave ? "Save current model (Ctrl+S)" : "No unsaved changes";
+
+        // Dim the save button text when nothing to save
+        if (!canSave) {
+            ImGui.pushStyleColor(ImGuiCol.Text, 0.5f, 0.5f, 0.5f, 0.6f);
+        }
+        if (renderFlatButton("Save", saveTooltip) && canSave) {
             modelOperations.saveModel();
+        }
+        if (!canSave) {
+            ImGui.popStyleColor(1);
         }
     }
 
     /**
-     * Render view operation buttons.
+     * Render view operation buttons (Reset, Fit).
      */
     private void renderViewOperations() {
-        if (renderButton("Reset", "Reset camera view")) {
+        if (renderFlatButton("Reset", "Reset camera to default (Numpad 0)")) {
             viewportOperations.resetView(viewport);
         }
-        ImGui.sameLine();
+        ImGui.sameLine(0.0f, 2.0f);
 
-        if (renderButton("Fit", "Fit model to view") && viewport != null) {
+        if (renderFlatButton("Fit", "Fit model in view (Numpad .)") && viewport != null) {
             viewportOperations.fitToView();
         }
-        ImGui.sameLine();
+    }
 
-        if (renderButton("+", "Zoom in") && viewport != null) {
+    /**
+     * Render zoom control buttons (+, -).
+     */
+    private void renderZoomControls() {
+        if (renderCompactFlatButton("+", "Zoom in") && viewport != null) {
             viewport.getCamera().zoom(1.0f);
         }
-        ImGui.sameLine();
+        ImGui.sameLine(0.0f, 2.0f);
 
-        if (renderButton("-", "Zoom out") && viewport != null) {
+        if (renderCompactFlatButton("-", "Zoom out") && viewport != null) {
             viewport.getCamera().zoom(-1.0f);
         }
     }
 
     /**
-     * Render status display on right side of toolbar.
+     * Render model path info on the right side of the toolbar.
+     * Displayed as subtle dimmed text, Blender-style.
      */
-    private void renderStatusDisplay() {
-        // Current model (only if loaded)
-        if (modelState.isModelLoaded()) {
-            renderSeparator();
-            ImGui.text(modelState.getCurrentModelPath());
+    private void renderModelInfo() {
+        if (!modelState.isModelLoaded()) {
+            return;
+        }
+
+        String modelPath = modelState.getCurrentModelPath();
+        if (modelPath == null || modelPath.isEmpty()) {
+            return;
+        }
+
+        // Calculate right-aligned position
+        float textWidth = ImGui.calcTextSize(modelPath).x;
+        float availableWidth = ImGui.getContentRegionAvailX();
+        float rightPadding = 8.0f;
+
+        if (availableWidth > textWidth + rightPadding) {
+            ImGui.sameLine(0.0f, 0.0f);
+            ImGui.setCursorPosX(ImGui.getCursorPosX() + availableWidth - textWidth - rightPadding);
+
+            // Subtle dimmed text for the path
+            ImVec4 textColor = ImGui.getStyle().getColor(ImGuiCol.TextDisabled);
+            ImGui.pushStyleColor(ImGuiCol.Text, textColor.x, textColor.y, textColor.z, 0.7f);
+            ImGui.text(modelPath);
+            ImGui.popStyleColor(1);
         }
     }
 }

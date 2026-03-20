@@ -296,13 +296,8 @@ public class MainImGuiInterface implements ModelBrowserListener {
         ImGui.popStyleVar(4);
 
         // Render toolbar inline (pushes content down naturally)
+        // Bottom border is drawn by the toolbar itself
         toolbarRenderer.render();
-
-        // Add separator and spacing between toolbar and dockspace
-        if (uiVisibilityState.getShowToolbar().get()) {
-            ImGui.separator();
-            ImGui.spacing();
-        }
 
         // Reset padding for dockspace area
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
