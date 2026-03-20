@@ -25,9 +25,11 @@ import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.menus.toolbars.ModelEditorToolbarRenderer;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
+import imgui.flag.ImGuiDir;
 import imgui.flag.ImGuiDockNodeFlags;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
+import imgui.type.ImInt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,6 +72,9 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
     // Window Configurations
     private final WindowConfig propertiesConfig = WindowConfig.forProperties();
+
+    // Layout initialization tracking
+    private boolean defaultLayoutBuilt = false;
 
     // Camera settings loaded from preferences on startup
     private float initialCameraOrbitSpeed;
@@ -305,9 +310,55 @@ public class MainImGuiInterface implements ModelBrowserListener {
         int dockspaceId = ImGui.getID("OpenMasonDockSpace");
         ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.PassthruCentralNode);
 
+        // Build default layout on first frame if no saved layout exists
+        if (!defaultLayoutBuilt) {
+            defaultLayoutBuilt = true;
+            buildDefaultLayout(dockspaceId);
+        }
+
         ImGui.popStyleVar(1);
 
         ImGui.end();
+    }
+
+    /**
+     * Build the default docking layout programmatically using DockBuilder.
+     * This creates the standard layout: Properties (left), 3D Viewport (center), Model Browser (bottom).
+     * Only applies when no saved imgui.ini layout exists for this dockspace.
+     */
+    private void buildDefaultLayout(int dockspaceId) {
+        var node = imgui.internal.ImGui.dockBuilderGetNode(dockspaceId);
+        if (node != null && node.isSplitNode()) {
+            // Dockspace already has a saved layout from imgui.ini — don't override
+            return;
+        }
+
+        logger.info("No saved layout found — building default docking layout");
+
+        imgui.internal.ImGui.dockBuilderRemoveNode(dockspaceId);
+        imgui.internal.ImGui.dockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags.PassthruCentralNode);
+
+        ImGuiViewport viewport = ImGui.getMainViewport();
+        imgui.internal.ImGui.dockBuilderSetNodeSize(dockspaceId, viewport.getWorkSizeX(), viewport.getWorkSizeY());
+
+        // Split bottom for Model Browser (~37% of height)
+        ImInt dockTop = new ImInt();
+        ImInt dockBottom = new ImInt();
+        imgui.internal.ImGui.dockBuilderSplitNode(dockspaceId, ImGuiDir.Down, 0.37f, dockBottom, dockTop);
+
+        // Split left for Properties panel (~20% of remaining width)
+        ImInt dockLeft = new ImInt();
+        ImInt dockCenter = new ImInt();
+        imgui.internal.ImGui.dockBuilderSplitNode(dockTop.get(), ImGuiDir.Left, 0.20f, dockLeft, dockCenter);
+
+        // Dock windows into their respective nodes
+        imgui.internal.ImGui.dockBuilderDockWindow("Properties", dockLeft.get());
+        imgui.internal.ImGui.dockBuilderDockWindow("3D Viewport", dockCenter.get());
+        imgui.internal.ImGui.dockBuilderDockWindow("Model Browser", dockBottom.get());
+
+        imgui.internal.ImGui.dockBuilderFinish(dockspaceId);
+
+        logger.info("Default docking layout built successfully");
     }
 
     /**
