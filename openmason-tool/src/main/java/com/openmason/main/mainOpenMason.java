@@ -9,6 +9,7 @@ import imgui.glfw.ImGuiImplGlfw;
 import com.openmason.main.systems.MainImGuiInterface;
 import com.openmason.main.systems.viewport.ViewportImGuiInterface;
 import com.openmason.main.systems.menus.mainHub.ProjectHubScreen;
+import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.menus.textureCreator.FaceEditorBridge;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
@@ -281,8 +282,11 @@ public class mainOpenMason {
             projectHubScreen = new ProjectHubScreen(themeManager);
             mainInterface = new MainImGuiInterface(themeManager);
 
-            projectHubScreen.setTransitionCallbacks(this::transitionToMainInterface, this::transitionToMainInterface);
+            projectHubScreen.setTransitionCallbacks(this::transitionToMainInterface, this::openRecentProject);
             projectHubScreen.setOnPreferencesClicked(mainInterface.getShowPreferencesCallback());
+
+            // Wire recent projects service from hub into main interface for project tracking
+            mainInterface.setRecentProjectsService(projectHubScreen.getRecentProjectsService());
 
             // Initialize keybind system BEFORE creating viewport and texture editor
             initializeKeybindSystem();
@@ -441,6 +445,20 @@ public class mainOpenMason {
     private void transitionToMainInterface() {
         showHomeScreen = false;
         showModelEditor = true;
+    }
+
+    /**
+     * Open a recent project from the Project Hub.
+     * Transitions to the main interface and loads the .OMP project file.
+     */
+    private void openRecentProject(RecentProject project) {
+        transitionToMainInterface();
+
+        if (project != null && project.getPath() != null && !project.getPath().isBlank()) {
+            // Delegate to MainImGuiInterface to load the project via ProjectService
+            mainInterface.openProjectFromHub(project.getPath());
+            logger.info("Opening project from hub: {}", project.getPath());
+        }
     }
 
     /**

@@ -109,6 +109,9 @@ public class omConfig {
         properties.setProperty("performance.max.texture.cache", "512"); // MB
         properties.setProperty("performance.max.model.cache", "128");   // MB
         properties.setProperty("performance.vsync.enabled", "true");
+
+        // Project settings
+        properties.setProperty("project.last.opened.path", "");
     }
     
     /**
@@ -158,5 +161,13 @@ public class omConfig {
 
     public void setVertexPointSize(float size) {
         properties.setProperty("viewport.vertex.point.size", String.valueOf(size));
+    }
+
+    public String getLastOpenedProjectPath() {
+        return properties.getProperty("project.last.opened.path", "");
+    }
+
+    public void setLastOpenedProjectPath(String path) {
+        properties.setProperty("project.last.opened.path", path != null ? path : "");
     }
 }

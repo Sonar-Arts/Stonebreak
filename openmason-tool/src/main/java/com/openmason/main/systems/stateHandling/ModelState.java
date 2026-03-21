@@ -18,6 +18,7 @@ public class ModelState {
 
     private boolean modelLoaded = false;
     private String currentModelPath = "";
+    private String currentOMOFilePath = "";
     private boolean unsavedChanges = false;
     private ModelSource modelSource = ModelSource.NONE;
 
@@ -46,6 +47,18 @@ public class ModelState {
 
     public void setCurrentModelPath(String currentModelPath) {
         this.currentModelPath = currentModelPath;
+    }
+
+    /**
+     * Get the file system path to the current .OMO file.
+     * Empty string if no .OMO file is loaded (e.g. new model or browser model).
+     */
+    public String getCurrentOMOFilePath() {
+        return currentOMOFilePath;
+    }
+
+    public void setCurrentOMOFilePath(String path) {
+        this.currentOMOFilePath = path != null ? path : "";
     }
 
     public boolean hasUnsavedChanges() {
@@ -87,6 +100,7 @@ public class ModelState {
     public void reset() {
         modelLoaded = false;
         currentModelPath = "";
+        currentOMOFilePath = "";
         unsavedChanges = false;
         modelSource = ModelSource.NONE;
         partCount = 0;

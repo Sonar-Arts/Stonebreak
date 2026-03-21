@@ -604,6 +604,9 @@ public class ViewportController {
     public FaceSelectionState getFaceSelectionState() { return faceSelectionState; }
     public GenericModelRenderer getModelRenderer() { return modelRenderer; }
     public KnifeSnapSettings getKnifeSnapSettings() { return knifeSnapSettings; }
+    public ViewportUIState getViewportUIState() { return viewportState; }
+    public RenderingState getRenderingState() { return renderingState; }
+    public TransformState getTransformState() { return transformState; }
 
     /**
      * Set the face being edited in the texture editor.

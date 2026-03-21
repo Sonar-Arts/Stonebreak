@@ -2,9 +2,12 @@ package com.openmason.main.systems.menus;
 
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.menus.dialogs.SaveWarningDialog;
+import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
+import com.openmason.main.systems.project.ProjectService;
 import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.services.StatusService;
 import com.openmason.main.systems.stateHandling.ModelState;
+import com.openmason.main.systems.stateHandling.UIVisibilityState;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.LogoManager;
 import com.openmason.main.systems.themes.core.ThemeManager;
@@ -32,6 +35,10 @@ public class FileMenuHandler {
     private LogoManager logoManager;
     private ThemeManager themeManager;
     private Runnable backToHomeCallback;
+
+    private ProjectService projectService;
+    private UIVisibilityState uiVisibilityState;
+    private RecentProjectsService recentProjectsService;
 
     public FileMenuHandler(ModelState modelState, ModelOperationService modelOperations,
                            FileDialogService fileDialogService, StatusService statusService) {
@@ -71,6 +78,27 @@ public class FileMenuHandler {
     }
 
     /**
+     * Set project service for project-level save/load operations.
+     */
+    public void setProjectService(ProjectService projectService) {
+        this.projectService = projectService;
+    }
+
+    /**
+     * Set UI visibility state for project state extraction.
+     */
+    public void setUIVisibilityState(UIVisibilityState uiVisibilityState) {
+        this.uiVisibilityState = uiVisibilityState;
+    }
+
+    /**
+     * Set recent projects service for tracking saved/opened projects.
+     */
+    public void setRecentProjectsService(RecentProjectsService recentProjectsService) {
+        this.recentProjectsService = recentProjectsService;
+    }
+
+    /**
      * Get the save warning dialog for rendering in main UI.
      * @return the save warning dialog instance
      */
@@ -96,6 +124,18 @@ public class FileMenuHandler {
 
         if (ImGui.menuItem("Open Project", "Ctrl+Shift+O")) {
             openProject();
+        }
+
+        ImGui.separator();
+
+        // Project save operations
+        boolean hasProject = projectService != null && projectService.hasCurrentProject();
+        if (ImGui.menuItem("Save Project", "", false, hasProject)) {
+            saveProject();
+        }
+
+        if (ImGui.menuItem("Save Project As")) {
+            saveProjectAs();
         }
 
         ImGui.separator();
@@ -153,10 +193,73 @@ public class FileMenuHandler {
     }
 
     /**
-     * Open project directory.
+     * Open project from .OMP file.
      */
     private void openProject() {
-        statusService.updateStatus("Opening Stonebreak project...");
+        if (projectService == null || viewport == null) {
+            statusService.updateStatus("Project service not initialized");
+            return;
+        }
+
+        fileDialogService.showOpenOMPDialog(filePath -> {
+            boolean success = projectService.openProject(filePath, viewport, modelState,
+                    uiVisibilityState, modelOperations);
+            if (success) {
+                statusService.updateStatus("Project opened: " + projectService.getCurrentProjectName());
+                addToRecentProjects(projectService.getCurrentProjectName(), filePath);
+            } else {
+                statusService.updateStatus("Failed to open project");
+            }
+        });
+    }
+
+    /**
+     * Save project to current path.
+     */
+    private void saveProject() {
+        if (projectService == null || viewport == null) {
+            statusService.updateStatus("Project service not initialized");
+            return;
+        }
+
+        boolean success = projectService.saveProject(viewport, modelState, uiVisibilityState);
+        if (success) {
+            statusService.updateStatus("Project saved: " + projectService.getCurrentProjectName());
+            addToRecentProjects(projectService.getCurrentProjectName(), projectService.getCurrentProjectPath());
+        } else {
+            statusService.updateStatus("Failed to save project");
+        }
+    }
+
+    /**
+     * Save project to a new path (Save As).
+     */
+    private void saveProjectAs() {
+        if (projectService == null || viewport == null) {
+            statusService.updateStatus("Project service not initialized");
+            return;
+        }
+
+        fileDialogService.showSaveOMPDialog(filePath -> {
+            boolean success = projectService.saveProjectAs(filePath, viewport, modelState,
+                    uiVisibilityState, null);
+            if (success) {
+                statusService.updateStatus("Project saved as: " + projectService.getCurrentProjectName());
+                addToRecentProjects(projectService.getCurrentProjectName(), projectService.getCurrentProjectPath());
+            } else {
+                statusService.updateStatus("Failed to save project");
+            }
+        });
+    }
+
+    /**
+     * Add a project to the recent projects list.
+     */
+    private void addToRecentProjects(String name, String path) {
+        if (recentProjectsService != null && path != null && !path.isBlank()) {
+            recentProjectsService.addProject(name, path);
+            logger.debug("Added to recent projects: {}", path);
+        }
     }
 
     /**

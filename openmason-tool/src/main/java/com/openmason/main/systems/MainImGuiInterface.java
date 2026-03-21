@@ -7,6 +7,8 @@ import com.openmason.main.systems.menus.preferences.config.WindowConfig;
 import com.openmason.main.systems.menus.panes.modelBrowser.events.BlockSelectedEvent;
 import com.openmason.main.systems.menus.panes.modelBrowser.events.ItemSelectedEvent;
 import com.openmason.main.systems.menus.panes.modelBrowser.events.ModelBrowserListener;
+import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
+import com.openmason.main.systems.project.ProjectService;
 import com.openmason.main.systems.services.LayoutService;
 import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.services.StatusService;
@@ -67,6 +69,9 @@ public class MainImGuiInterface implements ModelBrowserListener {
     // Toolbar
     private final ModelEditorToolbarRenderer toolbarRenderer;
 
+    // Project
+    private ProjectService projectService;
+
     // Viewport
     private ViewportController viewport3D;
 
@@ -114,9 +119,10 @@ public class MainImGuiInterface implements ModelBrowserListener {
         this.viewportOperations = new ViewportOperationService(viewportState, statusService);
         LayoutService layoutService = new LayoutService(uiVisibilityState, viewportState, statusService);
 
-        // Initialize dialogs
-        // Dialogs
+        // Initialize project service
+        this.projectService = new ProjectService();
 
+        // Initialize dialogs
         this.aboutDialog = new AboutDialog(uiVisibilityState, logoManager, "Model Editor");
 
         // Note: UnifiedPreferencesWindow will be initialized after components (needs viewport and property panel)
@@ -145,6 +151,8 @@ public class MainImGuiInterface implements ModelBrowserListener {
         fileMenuHandler.setViewport(viewport3D);
         fileMenuHandler.setLogoManager(logoManager);
         fileMenuHandler.setThemeManager(themeManager);
+        fileMenuHandler.setProjectService(projectService);
+        fileMenuHandler.setUIVisibilityState(uiVisibilityState);
         viewMenu.setViewport(viewport3D);
         toolbarRenderer.setViewport(viewport3D);
         modelOperations.setPropertiesPanel(propertyPanelImGui);
@@ -525,6 +533,37 @@ public class MainImGuiInterface implements ModelBrowserListener {
             logger.debug("TextureCreatorImGui wired up to unified preferences window");
         } else {
             logger.warn("Cannot set TextureCreatorImGui - unified preferences window not initialized");
+        }
+    }
+
+    /**
+     * Set the recent projects service for tracking project open/save in the hub.
+     */
+    public void setRecentProjectsService(RecentProjectsService recentProjectsService) {
+        if (fileMenuHandler != null) {
+            fileMenuHandler.setRecentProjectsService(recentProjectsService);
+        }
+    }
+
+    /**
+     * Open a project from the Project Hub by loading an .OMP file.
+     * Called when the user selects a recent project from the hub.
+     *
+     * @param ompFilePath the path to the .OMP project file
+     */
+    public void openProjectFromHub(String ompFilePath) {
+        if (projectService == null || viewport3D == null) {
+            logger.warn("Cannot open project: service or viewport not initialized");
+            return;
+        }
+
+        boolean success = projectService.openProject(ompFilePath, viewport3D, modelState,
+                uiVisibilityState, modelOperations);
+        if (success) {
+            statusService.updateStatus("Project opened: " + projectService.getCurrentProjectName());
+            logger.info("Project loaded from hub: {}", ompFilePath);
+        } else {
+            statusService.updateStatus("Failed to open project: " + ompFilePath);
         }
     }
 }

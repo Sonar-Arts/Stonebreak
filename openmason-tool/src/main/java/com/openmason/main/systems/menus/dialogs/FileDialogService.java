@@ -340,4 +340,29 @@ public class FileDialogService {
     public interface SaveOMOCallback {
         void onSave(String filePath);
     }
+
+    /**
+     * Show open OMP (Open Mason Project) dialog using native file dialog.
+     * @param callback callback to receive selected file path
+     */
+    public void showOpenOMPDialog(OpenCallback callback) {
+        showNFDOpenDialog("Opening OMP project...", "Open Mason Project", "omp",
+                "Selected OMP file", callback);
+    }
+
+    /**
+     * Show save OMP (Open Mason Project) dialog using native file dialog.
+     * @param callback callback to receive selected file path
+     */
+    public void showSaveOMPDialog(SaveOMPCallback callback) {
+        showNFDSaveDialog("Saving OMP project...", "Open Mason Project", "omp",
+                "project.omp", "Save OMP to file", callback::onSave);
+    }
+
+    /**
+     * Callback interface for OMP save operations.
+     */
+    public interface SaveOMPCallback {
+        void onSave(String filePath);
+    }
 }

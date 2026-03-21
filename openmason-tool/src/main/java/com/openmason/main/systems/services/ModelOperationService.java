@@ -211,6 +211,8 @@ public class ModelOperationService {
             if (success) {
                 modelState.setUnsavedChanges(false);
                 modelState.setCurrentModelPath(currentEditableModel.getName());
+                modelState.setCurrentOMOFilePath(filePath);
+                modelState.setModelSource(ModelState.ModelSource.OMO_FILE);
                 String statusMsg = meshData != null
                         ? "Model saved with mesh data: " + filePath
                         : "Model saved (WARNING: no mesh data): " + filePath;
@@ -290,6 +292,7 @@ public class ModelOperationService {
                 // Update state
                 modelState.setModelLoaded(true);
                 modelState.setCurrentModelPath(loadedModel.getName());
+                modelState.setCurrentOMOFilePath(filePath);
                 modelState.setUnsavedChanges(false);
                 modelState.setModelSource(ModelState.ModelSource.OMO_FILE); // Mark as .OMO file
 

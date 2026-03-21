@@ -2,6 +2,7 @@ package com.openmason.main.systems.menus.mainHub;
 
 import com.openmason.main.systems.LogoManager;
 import com.openmason.main.systems.menus.mainHub.components.*;
+import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import com.openmason.main.systems.menus.mainHub.services.HubActionService;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.menus.mainHub.services.TemplateService;
@@ -17,6 +18,8 @@ import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.function.Consumer;
 
 /**
  * Main coordinator for Unity Hub-style project hub interface.
@@ -37,6 +40,7 @@ public class ProjectHubScreen {
     private final HubVisibilityState visibilityState;
 
     private final HubActionService actionService;
+    private final RecentProjectsService recentProjectsService;
 
     // UI Components
     private final HubTopToolbar topToolbar;
@@ -65,7 +69,7 @@ public class ProjectHubScreen {
 
         // Initialize services
         TemplateService templateService = new TemplateService();
-        RecentProjectsService recentProjectsService = new RecentProjectsService();
+        this.recentProjectsService = new RecentProjectsService();
         this.actionService = new HubActionService();
 
         // Initialize UI components with dependency injection
@@ -233,10 +237,18 @@ public class ProjectHubScreen {
 
     /**
      * Set transition callbacks for project creation and opening.
+     * The open callback receives the RecentProject so the .OMP file can be loaded.
      */
-    public void setTransitionCallbacks(Runnable onCreateProject, Runnable onOpenProject) {
+    public void setTransitionCallbacks(Runnable onCreateProject, Consumer<RecentProject> onOpenProject) {
         actionService.setCreateProjectCallback(onCreateProject);
         actionService.setOpenProjectCallback(onOpenProject);
+    }
+
+    /**
+     * Get the recent projects service for adding new entries on project save/open.
+     */
+    public RecentProjectsService getRecentProjectsService() {
+        return recentProjectsService;
     }
 
     /**
