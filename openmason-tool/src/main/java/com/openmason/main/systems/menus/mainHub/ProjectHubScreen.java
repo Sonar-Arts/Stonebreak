@@ -203,9 +203,9 @@ public class ProjectHubScreen {
         ImGui.spacing();
 
         ThemeDefinition theme = themeManager.getCurrentTheme();
-        ImVec4 textDisabled = theme.getColor(ImGuiCol.TextDisabled);
-        if (textDisabled != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, 0.8f);
+        ImVec4 textCol = theme.getColor(ImGuiCol.Text);
+        if (textCol != null) {
+            ImGui.pushStyleColor(ImGuiCol.Text, textCol.x, textCol.y, textCol.z, 0.6f);
         }
 
         String message = "Documentation and tutorials coming soon!";
@@ -214,7 +214,7 @@ public class ProjectHubScreen {
         ImGui.setCursorPosX(messageX);
         ImGui.text(message);
 
-        if (textDisabled != null) {
+        if (textCol != null) {
             ImGui.popStyleColor();
         }
     }

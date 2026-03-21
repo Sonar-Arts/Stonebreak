@@ -11,6 +11,8 @@ import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.menus.mainHub.state.HubState;
 import com.openmason.main.systems.themes.core.ThemeDefinition;
 import com.openmason.main.systems.themes.core.ThemeManager;
+import imgui.ImColor;
+import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
@@ -18,6 +20,11 @@ import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiStyleVar;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 
 /**
  * Right panel showing selected template/project details.
@@ -27,8 +34,8 @@ public class PreviewPanel {
 
     private static final Logger logger = LoggerFactory.getLogger(PreviewPanel.class);
 
-    private static final float PREVIEW_IMAGE_HEIGHT = 200.0f;
-    private static final float BUTTON_HEIGHT = 35.0f;
+    private static final float PREVIEW_IMAGE_HEIGHT = 160.0f;
+    private static final float BUTTON_HEIGHT = 32.0f;
 
     private final ThemeManager themeManager;
     private final HubState hubState;
@@ -36,7 +43,6 @@ public class PreviewPanel {
     private final HubActionService actionService;
     private final RecentProjectsService recentProjectsService;
 
-    // Shared dialogs (owned by RecentProjectsPanel, wired via setter)
     private RenameProjectDialog renameDialog;
     private DeleteProjectDialog deleteDialog;
 
@@ -49,17 +55,11 @@ public class PreviewPanel {
         this.recentProjectsService = recentProjectsService;
     }
 
-    /**
-     * Set shared dialog instances (owned by RecentProjectsPanel to avoid duplicates).
-     */
     public void setDialogs(RenameProjectDialog renameDialog, DeleteProjectDialog deleteDialog) {
         this.renameDialog = renameDialog;
         this.deleteDialog = deleteDialog;
     }
 
-    /**
-     * Render the preview panel.
-     */
     public void render() {
         NavigationItem.ViewType currentView = hubState.getCurrentView();
 
@@ -68,16 +68,14 @@ public class PreviewPanel {
         } else if (currentView == NavigationItem.ViewType.RECENT_PROJECTS) {
             renderProjectPreview();
         } else {
-            renderEmptyState();
+            renderNoSelectionState("No preview available");
         }
     }
 
-    /**
-     * Render template preview.
-     */
+    // ========== Template Preview ==========
+
     private void renderTemplatePreview() {
         ProjectTemplate template = hubState.getSelectedTemplate();
-
         if (template == null) {
             renderNoSelectionState("Select a template to view details");
             return;
@@ -85,98 +83,42 @@ public class PreviewPanel {
 
         ThemeDefinition theme = themeManager.getCurrentTheme();
 
-        // Preview image placeholder
         renderPreviewImagePlaceholder();
-
         ImGui.spacing();
         ImGui.spacing();
 
-        // Template name
-        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 0, 8.0f);
         ImGui.text(template.getName());
-        ImGui.popStyleVar();
-
-        // Category badge
-        ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 4.0f, 2.0f);
-        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 3.0f);
-        ImVec4 badgeColor = theme.getColor(ImGuiCol.Button);
-        if (badgeColor != null) {
-            ImGui.pushStyleColor(ImGuiCol.Button, badgeColor.x, badgeColor.y, badgeColor.z, badgeColor.w);
-        }
-        ImGui.button(template.getCategory());
-        if (badgeColor != null) {
-            ImGui.popStyleColor();
-        }
-        ImGui.popStyleVar(2);
+        ImGui.sameLine();
+        renderBadge(template.getCategory(), theme);
 
         ImGui.spacing();
         ImGui.separator();
         ImGui.spacing();
 
-        // Description
-        ImVec4 textColor = theme.getColor(ImGuiCol.Text);
-        if (textColor != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textColor.x, textColor.y, textColor.z, 0.9f);
-        }
-        ImGui.pushTextWrapPos(ImGui.getWindowWidth() - 20);
-        ImGui.textWrapped(template.getDescription());
-        ImGui.popTextWrapPos();
-        if (textColor != null) {
-            ImGui.popStyleColor();
-        }
+        renderDimText(template.getDescription(), theme, 0.85f, true);
 
         ImGui.spacing();
         ImGui.separator();
         ImGui.spacing();
 
-        // Metadata
         if (!template.getMetadata().isEmpty()) {
-            ImVec4 textDisabled = theme.getColor(ImGuiCol.TextDisabled);
-            if (textDisabled != null) {
-                ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, 0.8f);
-            }
-
             for (String key : template.getMetadata().keySet()) {
-                String value = template.getMetadataValue(key);
-                ImGui.text(key + ": " + value);
+                renderDimText(key + ": " + template.getMetadataValue(key), theme, 0.6f, false);
             }
-
-            if (textDisabled != null) {
-                ImGui.popStyleColor();
-            }
-
             ImGui.spacing();
         }
 
-        // Push buttons to bottom
-        float windowHeight = ImGui.getWindowHeight();
-        float cursorY = ImGui.getCursorPosY();
-        float remainingSpace = windowHeight - cursorY - BUTTON_HEIGHT - 20;
-        if (remainingSpace > 0) {
-            ImGui.setCursorPosY(cursorY + remainingSpace);
-        }
-
-        // Create Project button
-        ImVec4 buttonColor = theme.getColor(ImGuiCol.Button);
-        if (buttonColor != null) {
-            ImGui.pushStyleColor(ImGuiCol.Button, buttonColor.x, buttonColor.y, buttonColor.z, buttonColor.w);
-        }
-        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5.0f);
-        if (ImGui.button("Create Project", -1, BUTTON_HEIGHT)) {
+        pushToBottom(BUTTON_HEIGHT + 20);
+        renderAccentButton("Create Project", theme);
+        if (ImGui.isItemClicked()) {
             actionService.createProjectFromTemplate(template);
-        }
-        ImGui.popStyleVar();
-        if (buttonColor != null) {
-            ImGui.popStyleColor();
         }
     }
 
-    /**
-     * Render project preview.
-     */
+    // ========== Project Preview ==========
+
     private void renderProjectPreview() {
         RecentProject project = hubState.getSelectedRecentProject();
-
         if (project == null) {
             renderNoSelectionState("Select a project to view details");
             return;
@@ -184,79 +126,57 @@ public class PreviewPanel {
 
         ThemeDefinition theme = themeManager.getCurrentTheme();
 
-        // Preview image placeholder
+        // --- Header: Logo + Name ---
         renderPreviewImagePlaceholder();
-
-        ImGui.spacing();
         ImGui.spacing();
 
         // Project name
-        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 0, 8.0f);
         ImGui.text(project.getName());
-        ImGui.popStyleVar();
-
-        // Template badge
         if (project.getSourceTemplate() != null) {
-            ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 4.0f, 2.0f);
-            ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 3.0f);
-            ImVec4 badgeColor = theme.getColor(ImGuiCol.Button);
-            if (badgeColor != null) {
-                ImGui.pushStyleColor(ImGuiCol.Button, badgeColor.x, badgeColor.y, badgeColor.z, 0.5f);
-            }
-            ImGui.button(project.getSourceTemplate().getName());
-            if (badgeColor != null) {
-                ImGui.popStyleColor();
-            }
-            ImGui.popStyleVar(2);
+            ImGui.sameLine();
+            renderBadge(project.getSourceTemplate().getName(), theme);
+        }
+
+        ImGui.spacing();
+
+        // Open Project — primary action right below the name
+        renderAccentButton("Open Project", theme);
+        if (ImGui.isItemClicked()) {
+            actionService.openRecentProject(project);
         }
 
         ImGui.spacing();
         ImGui.separator();
         ImGui.spacing();
+
+        // --- Info rows ---
+        renderLabelValue("Last Opened", formatLastOpened(project.getLastOpened()), theme);
+        ImGui.spacing();
+        renderLocationRow(project.getPath(), theme);
 
         // Description
-        ImVec4 textColor = theme.getColor(ImGuiCol.Text);
-        if (textColor != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textColor.x, textColor.y, textColor.z, 0.9f);
-        }
-        ImGui.pushTextWrapPos(ImGui.getWindowWidth() - 20);
-        ImGui.textWrapped(project.getDescription());
-        ImGui.popTextWrapPos();
-        if (textColor != null) {
-            ImGui.popStyleColor();
+        if (!project.getDescription().isEmpty()) {
+            ImGui.spacing();
+            ImGui.separator();
+            ImGui.spacing();
+            renderDimText(project.getDescription(), theme, 0.7f, true);
         }
 
         ImGui.spacing();
         ImGui.separator();
         ImGui.spacing();
 
-        // Metadata
-        ImVec4 textDisabled = theme.getColor(ImGuiCol.TextDisabled);
-        if (textDisabled != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, 0.8f);
+        // --- Actions ---
+        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 4.0f);
+
+        float availW = ImGui.getContentRegionAvailX();
+        float halfW = (availW - 8.0f) / 2.0f;
+
+        if (ImGui.button("Open Folder", halfW, BUTTON_HEIGHT)) {
+            openContainingFolder(project.getPath());
         }
-        ImGui.text("Path: " + project.getPath());
-        ImGui.text("Last Opened: " + project.getLastOpened().toString());
-        if (textDisabled != null) {
-            ImGui.popStyleColor();
-        }
-
-        ImGui.spacing();
-
-        // Push action buttons to bottom
-        float windowHeight = ImGui.getWindowHeight();
-        float cursorY = ImGui.getCursorPosY();
-        // Space for: Rename + spacing + Remove + spacing + Open = 3 buttons + 2 spacings
-        float buttonsHeight = BUTTON_HEIGHT * 3 + 16;
-        float remainingSpace = windowHeight - cursorY - buttonsHeight - 20;
-        if (remainingSpace > 0) {
-            ImGui.setCursorPosY(cursorY + remainingSpace);
-        }
-
-        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5.0f);
-
-        // Rename button
-        if (ImGui.button("Rename", -1, BUTTON_HEIGHT)) {
+        ImGui.sameLine(0, 8.0f);
+        if (ImGui.button("Rename", halfW, BUTTON_HEIGHT)) {
             if (renameDialog != null) {
                 renameDialog.show(project.getId(), project.getName(), this::handleRename);
             }
@@ -264,105 +184,195 @@ public class PreviewPanel {
 
         ImGui.spacing();
 
-        // Remove button (red-styled)
-        ImGui.pushStyleColor(ImGuiCol.Button, 0.6f, 0.15f, 0.15f, 1.0f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.7f, 0.2f, 0.2f, 1.0f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.8f, 0.25f, 0.25f, 1.0f);
-        if (ImGui.button("Remove", -1, BUTTON_HEIGHT)) {
+        ImGui.pushStyleColor(ImGuiCol.Button, 0.45f, 0.12f, 0.12f, 0.5f);
+        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.6f, 0.15f, 0.15f, 0.8f);
+        ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.7f, 0.2f, 0.2f, 1.0f);
+        if (ImGui.button("Remove Project", -1, BUTTON_HEIGHT)) {
             if (deleteDialog != null) {
                 deleteDialog.show(project, this::handleDelete);
             }
         }
         ImGui.popStyleColor(3);
 
-        ImGui.spacing();
-
-        // Open Project button
-        ImVec4 buttonColor = theme.getColor(ImGuiCol.Button);
-        if (buttonColor != null) {
-            ImGui.pushStyleColor(ImGuiCol.Button, buttonColor.x, buttonColor.y, buttonColor.z, buttonColor.w);
-        }
-        if (ImGui.button("Open Project", -1, BUTTON_HEIGHT)) {
-            actionService.openRecentProject(project);
-        }
-        if (buttonColor != null) {
-            ImGui.popStyleColor();
-        }
-
         ImGui.popStyleVar();
     }
 
+    // ========== Info Row Helpers ==========
+
     /**
-     * Handle rename confirmation from the dialog.
+     * Render a label: value pair on one line.
+     * Label is dimmed, value is normal brightness.
      */
+    private void renderLabelValue(String label, String value, ThemeDefinition theme) {
+        ImVec4 textCol = theme.getColor(ImGuiCol.Text);
+        if (textCol != null) {
+            ImGui.pushStyleColor(ImGuiCol.Text, textCol.x, textCol.y, textCol.z, 0.6f);
+        }
+        ImGui.text(label + ":");
+        if (textCol != null) {
+            ImGui.popStyleColor();
+        }
+        ImGui.sameLine();
+        ImGui.text(value);
+    }
+
+    /**
+     * Render the location path on two lines: label then full path below it.
+     * Path is wrapped so it never overlaps.
+     */
+    private void renderLocationRow(String path, ThemeDefinition theme) {
+        ImVec4 textCol = theme.getColor(ImGuiCol.Text);
+
+        // Label
+        if (textCol != null) {
+            ImGui.pushStyleColor(ImGuiCol.Text, textCol.x, textCol.y, textCol.z, 0.6f);
+        }
+        ImGui.text("Location:");
+        if (textCol != null) {
+            ImGui.popStyleColor();
+        }
+
+        // Full path on next line, wrapped
+        if (textCol != null) {
+            ImGui.pushStyleColor(ImGuiCol.Text, textCol.x, textCol.y, textCol.z, 0.8f);
+        }
+        ImGui.pushTextWrapPos(ImGui.getContentRegionAvailX() + ImGui.getCursorPosX());
+        ImGui.textWrapped(path != null ? path : "");
+        ImGui.popTextWrapPos();
+        if (textCol != null) {
+            ImGui.popStyleColor();
+        }
+    }
+
+    // ========== Shared Rendering ==========
+
+    private void renderAccentButton(String label, ThemeDefinition theme) {
+        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5.0f);
+        ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 0, 8.0f);
+
+        ImVec4 accent = theme.getColor(ImGuiCol.ButtonHovered);
+        if (accent != null) {
+            ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 0.8f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 1.0f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x * 0.8f, accent.y * 0.8f, accent.z * 0.8f, 1.0f);
+        }
+
+        ImGui.button(label, -1, BUTTON_HEIGHT + 4);
+
+        if (accent != null) {
+            ImGui.popStyleColor(3);
+        }
+        ImGui.popStyleVar(2);
+    }
+
+    private void renderBadge(String text, ThemeDefinition theme) {
+        ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 6.0f, 1.0f);
+        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 4.0f);
+        ImVec4 c = theme.getColor(ImGuiCol.Button);
+        if (c != null) {
+            ImGui.pushStyleColor(ImGuiCol.Button, c.x, c.y, c.z, 0.35f);
+        }
+        ImGui.button(text);
+        if (c != null) {
+            ImGui.popStyleColor();
+        }
+        ImGui.popStyleVar(2);
+    }
+
+    private void renderDimText(String text, ThemeDefinition theme, float alpha, boolean wrap) {
+        ImVec4 c = theme.getColor(ImGuiCol.Text);
+        if (c != null) {
+            ImGui.pushStyleColor(ImGuiCol.Text, c.x, c.y, c.z, alpha);
+        }
+        if (wrap) {
+            ImGui.pushTextWrapPos(ImGui.getWindowWidth() - 20);
+            ImGui.textWrapped(text);
+            ImGui.popTextWrapPos();
+        } else {
+            ImGui.text(text);
+        }
+        if (c != null) {
+            ImGui.popStyleColor();
+        }
+    }
+
+    private void pushToBottom(float reservedHeight) {
+        float remaining = ImGui.getWindowHeight() - ImGui.getCursorPosY() - reservedHeight;
+        if (remaining > 0) {
+            ImGui.setCursorPosY(ImGui.getCursorPosY() + remaining);
+        }
+    }
+
+    // ========== Utility ==========
+
+    private String formatLastOpened(LocalDateTime lastOpened) {
+        LocalDateTime now = LocalDateTime.now();
+        long min = ChronoUnit.MINUTES.between(lastOpened, now);
+        if (min < 1) return "Just now";
+        if (min < 60) return min + " min ago";
+        long hrs = ChronoUnit.HOURS.between(lastOpened, now);
+        if (hrs < 24) return hrs + "h ago";
+        long days = ChronoUnit.DAYS.between(lastOpened, now);
+        if (days < 7) return days + "d ago";
+        if (days < 28) return (days / 7) + "w ago";
+        return lastOpened.format(DateTimeFormatter.ofPattern("MMM d, yyyy"));
+    }
+
+    private void openContainingFolder(String filePath) {
+        if (filePath == null || filePath.isBlank()) return;
+        try {
+            File file = new File(filePath);
+            File folder = file.isDirectory() ? file : file.getParentFile();
+            if (folder != null && folder.exists()) {
+                java.awt.Desktop.getDesktop().open(folder);
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to open folder for: {}", filePath, e);
+        }
+    }
+
+    // ========== Callbacks ==========
+
     private void handleRename(String projectId, String newName) {
         recentProjectsService.renameProject(projectId, newName);
-
         RecentProject selected = hubState.getSelectedRecentProject();
         if (selected != null && selected.getId().equals(projectId)) {
             hubState.setSelectedRecentProject(null);
         }
-        logger.info("Project renamed via preview: {} -> '{}'", projectId, newName);
     }
 
-    /**
-     * Handle delete confirmation from the dialog.
-     */
     private void handleDelete(RecentProject project, boolean deleteFile) {
-        if (deleteFile) {
-            recentProjectsService.deleteProjectFile(project);
-        }
+        if (deleteFile) recentProjectsService.deleteProjectFile(project);
         recentProjectsService.removeProject(project.getId());
-
         if (project.equals(hubState.getSelectedRecentProject())) {
             hubState.setSelectedRecentProject(null);
         }
-        logger.info("Project removed via preview: '{}' (file deleted: {})", project.getName(), deleteFile);
     }
 
-    /**
-     * Render empty state for views without selection.
-     */
-    private void renderEmptyState() {
-        renderNoSelectionState("No preview available");
-    }
+    // ========== Empty States ==========
 
-    /**
-     * Render no selection state.
-     */
     private void renderNoSelectionState(String message) {
         ImGui.spacing();
         ImGui.spacing();
-
-        // Centered message
-        ImVec2 textSize = ImGui.calcTextSize(message);
-        float windowWidth = ImGui.getWindowWidth();
-        float textX = (windowWidth - textSize.x) * 0.5f;
-        ImGui.setCursorPosX(textX);
+        ImVec2 sz = ImGui.calcTextSize(message);
+        ImGui.setCursorPosX((ImGui.getWindowWidth() - sz.x) * 0.5f);
 
         ThemeDefinition theme = themeManager.getCurrentTheme();
-        ImVec4 textDisabled = theme.getColor(ImGuiCol.TextDisabled);
-        if (textDisabled != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, textDisabled.w);
+        ImVec4 textCol = theme.getColor(ImGuiCol.Text);
+        if (textCol != null) {
+            ImGui.pushStyleColor(ImGuiCol.Text, textCol.x, textCol.y, textCol.z, 0.6f);
         }
         ImGui.text(message);
-        if (textDisabled != null) {
+        if (textCol != null) {
             ImGui.popStyleColor();
         }
     }
 
-    /**
-     * Render preview image placeholder.
-     */
     private void renderPreviewImagePlaceholder() {
-        float windowWidth = ImGui.getWindowWidth();
-        float logoSize = Math.min(windowWidth * 0.6f, PREVIEW_IMAGE_HEIGHT);
-
-        // Center logo
-        ImVec2 scaledSize = logoManager.getScaledLogoSize(logoSize, logoSize);
-        float logoX = (windowWidth - scaledSize.x) * 0.5f;
-        ImGui.setCursorPosX(logoX);
-
-        logoManager.renderLogo(scaledSize.x, scaledSize.y);
+        float ww = ImGui.getWindowWidth();
+        float logoSize = Math.min(ww * 0.5f, PREVIEW_IMAGE_HEIGHT);
+        ImVec2 scaled = logoManager.getScaledLogoSize(logoSize, logoSize);
+        ImGui.setCursorPosX((ww - scaled.x) * 0.5f);
+        logoManager.renderLogo(scaled.x, scaled.y);
     }
 }

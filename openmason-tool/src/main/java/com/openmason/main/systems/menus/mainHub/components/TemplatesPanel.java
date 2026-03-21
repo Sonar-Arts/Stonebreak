@@ -93,12 +93,12 @@ public class TemplatesPanel {
         ImGui.setCursorPosX(textX);
 
         ThemeDefinition theme = themeManager.getCurrentTheme();
-        ImVec4 textDisabled = theme.getColor(ImGuiCol.TextDisabled);
-        if (textDisabled != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, textDisabled.w);
+        ImVec4 textCol = theme.getColor(ImGuiCol.Text);
+        if (textCol != null) {
+            ImGui.pushStyleColor(ImGuiCol.Text, textCol.x, textCol.y, textCol.z, 0.6f);
         }
         ImGui.text(message);
-        if (textDisabled != null) {
+        if (textCol != null) {
             ImGui.popStyleColor();
         }
     }
@@ -199,15 +199,14 @@ public class TemplatesPanel {
         float descY = badgeY + 25;
         ImGui.setCursorScreenPos(x1 + CARD_PADDING, descY);
         ImGui.beginChild("##desc_" + index, CARD_WIDTH - 2 * CARD_PADDING, y2 - descY - CARD_PADDING, false, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoBackground);
-        ImVec4 textDisabled = theme.getColor(ImGuiCol.TextDisabled);
-        if (textDisabled != null) {
-            // Consistent text color - always readable
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, textDisabled.w);
+        ImVec4 descTextCol = theme.getColor(ImGuiCol.Text);
+        if (descTextCol != null) {
+            ImGui.pushStyleColor(ImGuiCol.Text, descTextCol.x, descTextCol.y, descTextCol.z, 0.7f);
         }
         ImGui.pushTextWrapPos(CARD_WIDTH - 2 * CARD_PADDING);
         ImGui.textWrapped(template.getDescription());
         ImGui.popTextWrapPos();
-        if (textDisabled != null) {
+        if (descTextCol != null) {
             ImGui.popStyleColor();
         }
         ImGui.endChild();
