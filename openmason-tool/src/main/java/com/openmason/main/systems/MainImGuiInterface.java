@@ -546,6 +546,26 @@ public class MainImGuiInterface implements ModelBrowserListener {
     }
 
     /**
+     * Reset all editor state to defaults for a fresh session.
+     * Called when creating a new blank project from the hub.
+     */
+    public void resetEditorState() {
+        if (viewport3D != null) {
+            viewport3D.resetCamera();
+            viewport3D.resetModelTransform();
+        }
+
+        uiVisibilityState.resetToDefault();
+        createDefaultModel();
+
+        if (projectService != null) {
+            projectService.clearCurrentProject();
+        }
+
+        logger.info("Editor state reset to defaults for new project");
+    }
+
+    /**
      * Open a project from the Project Hub by loading an .OMP file.
      * Called when the user selects a recent project from the hub.
      *

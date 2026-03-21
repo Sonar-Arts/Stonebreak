@@ -76,8 +76,11 @@ public class ProjectHubScreen {
         this.topToolbar = new HubTopToolbar(hubState);
         this.sidebarNav = new HubSidebarNav(themeManager, hubState, logoManager);
         this.templatesPanel = new TemplatesPanel(themeManager, hubState, templateService);
-        this.recentProjectsPanel = new RecentProjectsPanel(themeManager, hubState, recentProjectsService);
-        this.previewPanel = new PreviewPanel(themeManager, hubState, logoManager, actionService);
+        this.recentProjectsPanel = new RecentProjectsPanel(themeManager, hubState, recentProjectsService, actionService);
+        this.previewPanel = new PreviewPanel(themeManager, hubState, logoManager, actionService, recentProjectsService);
+
+        // Share dialog instances between panels to avoid duplicate popups
+        this.previewPanel.setDialogs(recentProjectsPanel.getRenameDialog(), recentProjectsPanel.getDeleteDialog());
 
         logger.info("Project Hub Screen initialized");
     }
@@ -109,6 +112,10 @@ public class ProjectHubScreen {
 
         if (ImGui.begin(WINDOW_TITLE, windowFlags)) {
             renderLayout();
+
+            // Render modal dialogs at top-level window scope (not inside child windows)
+            recentProjectsPanel.getRenameDialog().render();
+            recentProjectsPanel.getDeleteDialog().render();
         }
         ImGui.end();
 

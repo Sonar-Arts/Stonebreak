@@ -1,10 +1,13 @@
 package com.openmason.main.systems.menus.mainHub.components;
 
 import com.openmason.main.systems.LogoManager;
+import com.openmason.main.systems.menus.mainHub.dialogs.DeleteProjectDialog;
+import com.openmason.main.systems.menus.mainHub.dialogs.RenameProjectDialog;
 import com.openmason.main.systems.menus.mainHub.model.NavigationItem;
 import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate;
 import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import com.openmason.main.systems.menus.mainHub.services.HubActionService;
+import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.menus.mainHub.state.HubState;
 import com.openmason.main.systems.themes.core.ThemeDefinition;
 import com.openmason.main.systems.themes.core.ThemeManager;
@@ -13,12 +16,16 @@ import imgui.ImVec2;
 import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiStyleVar;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Right panel showing selected template/project details.
  * Single Responsibility: Display preview and metadata for selection.
  */
 public class PreviewPanel {
+
+    private static final Logger logger = LoggerFactory.getLogger(PreviewPanel.class);
 
     private static final float PREVIEW_IMAGE_HEIGHT = 200.0f;
     private static final float BUTTON_HEIGHT = 35.0f;
@@ -27,12 +34,27 @@ public class PreviewPanel {
     private final HubState hubState;
     private final LogoManager logoManager;
     private final HubActionService actionService;
+    private final RecentProjectsService recentProjectsService;
 
-    public PreviewPanel(ThemeManager themeManager, HubState hubState, LogoManager logoManager, HubActionService actionService) {
+    // Shared dialogs (owned by RecentProjectsPanel, wired via setter)
+    private RenameProjectDialog renameDialog;
+    private DeleteProjectDialog deleteDialog;
+
+    public PreviewPanel(ThemeManager themeManager, HubState hubState, LogoManager logoManager,
+                        HubActionService actionService, RecentProjectsService recentProjectsService) {
         this.themeManager = themeManager;
         this.hubState = hubState;
         this.logoManager = logoManager;
         this.actionService = actionService;
+        this.recentProjectsService = recentProjectsService;
+    }
+
+    /**
+     * Set shared dialog instances (owned by RecentProjectsPanel to avoid duplicates).
+     */
+    public void setDialogs(RenameProjectDialog renameDialog, DeleteProjectDialog deleteDialog) {
+        this.renameDialog = renameDialog;
+        this.deleteDialog = deleteDialog;
     }
 
     /**
@@ -221,27 +243,81 @@ public class PreviewPanel {
 
         ImGui.spacing();
 
-        // Push buttons to bottom
+        // Push action buttons to bottom
         float windowHeight = ImGui.getWindowHeight();
         float cursorY = ImGui.getCursorPosY();
-        float remainingSpace = windowHeight - cursorY - BUTTON_HEIGHT - 20;
+        // Space for: Rename + spacing + Remove + spacing + Open = 3 buttons + 2 spacings
+        float buttonsHeight = BUTTON_HEIGHT * 3 + 16;
+        float remainingSpace = windowHeight - cursorY - buttonsHeight - 20;
         if (remainingSpace > 0) {
             ImGui.setCursorPosY(cursorY + remainingSpace);
         }
+
+        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5.0f);
+
+        // Rename button
+        if (ImGui.button("Rename", -1, BUTTON_HEIGHT)) {
+            if (renameDialog != null) {
+                renameDialog.show(project.getId(), project.getName(), this::handleRename);
+            }
+        }
+
+        ImGui.spacing();
+
+        // Remove button (red-styled)
+        ImGui.pushStyleColor(ImGuiCol.Button, 0.6f, 0.15f, 0.15f, 1.0f);
+        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.7f, 0.2f, 0.2f, 1.0f);
+        ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.8f, 0.25f, 0.25f, 1.0f);
+        if (ImGui.button("Remove", -1, BUTTON_HEIGHT)) {
+            if (deleteDialog != null) {
+                deleteDialog.show(project, this::handleDelete);
+            }
+        }
+        ImGui.popStyleColor(3);
+
+        ImGui.spacing();
 
         // Open Project button
         ImVec4 buttonColor = theme.getColor(ImGuiCol.Button);
         if (buttonColor != null) {
             ImGui.pushStyleColor(ImGuiCol.Button, buttonColor.x, buttonColor.y, buttonColor.z, buttonColor.w);
         }
-        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5.0f);
         if (ImGui.button("Open Project", -1, BUTTON_HEIGHT)) {
             actionService.openRecentProject(project);
         }
-        ImGui.popStyleVar();
         if (buttonColor != null) {
             ImGui.popStyleColor();
         }
+
+        ImGui.popStyleVar();
+    }
+
+    /**
+     * Handle rename confirmation from the dialog.
+     */
+    private void handleRename(String projectId, String newName) {
+        recentProjectsService.renameProject(projectId, newName);
+
+        RecentProject selected = hubState.getSelectedRecentProject();
+        if (selected != null && selected.getId().equals(projectId)) {
+            hubState.setSelectedRecentProject(null);
+        }
+        logger.info("Project renamed via preview: {} -> '{}'", projectId, newName);
+    }
+
+    /**
+     * Handle delete confirmation from the dialog.
+     */
+    private void handleDelete(RecentProject project, boolean deleteFile) {
+        if (deleteFile) {
+            recentProjectsService.deleteProjectFile(project);
+        }
+        recentProjectsService.removeProject(project.getId());
+
+        if (project.equals(hubState.getSelectedRecentProject())) {
+            hubState.setSelectedRecentProject(null);
+        }
+        logger.info("Project removed via preview: '{}' (file deleted: {})", project.getName(), deleteFile);
     }
 
     /**

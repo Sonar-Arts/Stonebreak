@@ -118,6 +118,121 @@ public class RecentProjectsService {
     }
 
     /**
+     * Rename a project by ID.
+     * Updates the recent projects list AND the projectName inside the .OMP file on disk.
+     *
+     * @param id      the project ID
+     * @param newName the new project name
+     * @return true if project was found and renamed
+     */
+    public boolean renameProject(String id, String newName) {
+        if (id == null || newName == null || newName.isBlank()) {
+            return false;
+        }
+
+        for (int i = 0; i < recentProjects.size(); i++) {
+            RecentProject project = recentProjects.get(i);
+            if (project.getId().equals(id)) {
+                // Rename the .OMP file on disk (updates contents and file name)
+                String newPath = renameOMPFile(project.getPath(), newName);
+                recentProjects.set(i, project.withNameAndPath(newName, newPath));
+                saveRecentProjects();
+                logger.info("Renamed project {} to '{}'", id, newName);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Update the projectName inside the .OMP file and rename the file itself.
+     * Returns the new file path, or the original path if renaming failed.
+     */
+    private String renameOMPFile(String ompPath, String newName) {
+        if (ompPath == null || ompPath.isBlank()) {
+            return ompPath;
+        }
+
+        Path filePath = Path.of(ompPath);
+        if (!Files.exists(filePath)) {
+            logger.debug("OMP file not found for rename, skipping: {}", ompPath);
+            return ompPath;
+        }
+
+        // Update projectName inside the JSON
+        try {
+            JsonNode root = objectMapper.readTree(filePath.toFile());
+            if (root != null && root.isObject()) {
+                ((com.fasterxml.jackson.databind.node.ObjectNode) root).put("projectName", newName);
+                objectMapper.writeValue(filePath.toFile(), root);
+                logger.debug("Updated projectName in OMP file: {}", ompPath);
+            }
+        } catch (IOException e) {
+            logger.warn("Failed to update projectName in OMP file: {}", ompPath, e);
+        }
+
+        // Rename the file on disk
+        try {
+            String sanitizedName = sanitizeFileName(newName);
+            Path newFilePath = filePath.resolveSibling(sanitizedName + ".omp");
+
+            // Don't rename if the target is the same file
+            if (newFilePath.equals(filePath)) {
+                return ompPath;
+            }
+
+            // Don't overwrite an existing file
+            if (Files.exists(newFilePath)) {
+                logger.warn("Cannot rename OMP file: target already exists: {}", newFilePath);
+                return ompPath;
+            }
+
+            Files.move(filePath, newFilePath);
+            logger.info("Renamed OMP file: {} -> {}", filePath, newFilePath);
+            return newFilePath.toString();
+        } catch (IOException e) {
+            logger.warn("Failed to rename OMP file on disk: {}", ompPath, e);
+            return ompPath;
+        }
+    }
+
+    /**
+     * Sanitize a string for use as a file name.
+     * Removes characters illegal on Windows/Linux and trims whitespace.
+     */
+    private static String sanitizeFileName(String name) {
+        return name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+    }
+
+    /**
+     * Delete a project's .OMP file from disk.
+     * Does NOT remove the entry from the recent list — call removeProject() separately.
+     *
+     * @param project the project whose file to delete
+     * @return true if file was deleted successfully
+     */
+    public boolean deleteProjectFile(RecentProject project) {
+        if (project == null || project.getPath() == null || project.getPath().isBlank()) {
+            return false;
+        }
+
+        try {
+            Path filePath = Path.of(project.getPath());
+            if (Files.exists(filePath)) {
+                Files.delete(filePath);
+                logger.info("Deleted project file: {}", filePath);
+                return true;
+            } else {
+                logger.warn("Project file not found for deletion: {}", filePath);
+                return false;
+            }
+        } catch (IOException e) {
+            logger.error("Failed to delete project file: {}", project.getPath(), e);
+            return false;
+        }
+    }
+
+    /**
      * Remove a project by ID.
      */
     public void removeProject(String id) {

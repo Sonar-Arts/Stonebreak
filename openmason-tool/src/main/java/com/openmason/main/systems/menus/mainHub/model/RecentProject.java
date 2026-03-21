@@ -65,6 +65,39 @@ public class RecentProject {
         return Objects.hash(id);
     }
 
+    /**
+     * Create a copy of this project with a new name.
+     * Used for rename operations on immutable project entries.
+     *
+     * @param newName the new project name
+     * @return a new RecentProject with the updated name
+     */
+    public RecentProject withName(String newName) {
+        return new Builder(this.lastOpened, this.sourceTemplate)
+                .id(this.id)
+                .name(newName)
+                .path(this.path)
+                .description(this.description)
+                .build();
+    }
+
+    /**
+     * Create a copy of this project with a new name and path.
+     * Used when renaming also changes the file location on disk.
+     *
+     * @param newName the new project name
+     * @param newPath the new file path
+     * @return a new RecentProject with the updated name and path
+     */
+    public RecentProject withNameAndPath(String newName, String newPath) {
+        return new Builder(this.lastOpened, this.sourceTemplate)
+                .id(this.id)
+                .name(newName)
+                .path(newPath)
+                .description(this.description)
+                .build();
+    }
+
     @Override
     public String toString() {
         return "RecentProject{" +

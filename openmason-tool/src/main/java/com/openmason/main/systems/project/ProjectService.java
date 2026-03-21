@@ -397,4 +397,16 @@ public class ProjectService {
     public boolean hasCurrentProject() {
         return currentProjectPath != null && !currentProjectPath.isBlank();
     }
+
+    /**
+     * Clear all project state (no active project).
+     * Called when transitioning to a blank/new editor session.
+     */
+    public void clearCurrentProject() {
+        this.currentProjectPath = null;
+        this.currentProjectName = null;
+        this.createdAt = null;
+        this.dirty = false;
+        logger.debug("Project state cleared");
+    }
 }

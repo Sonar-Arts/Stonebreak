@@ -445,6 +445,14 @@ public class mainOpenMason {
     private void transitionToMainInterface() {
         showHomeScreen = false;
         showModelEditor = true;
+
+        // Reset all editor state for a clean session.
+        // For blank template: this gives a fresh workspace.
+        // For openRecentProject(): the subsequent openProjectFromHub() call
+        // overwrites this reset with the saved project state.
+        if (mainInterface != null) {
+            mainInterface.resetEditorState();
+        }
     }
 
     /**

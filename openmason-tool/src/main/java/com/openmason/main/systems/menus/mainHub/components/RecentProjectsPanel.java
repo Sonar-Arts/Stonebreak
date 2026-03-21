@@ -1,6 +1,9 @@
 package com.openmason.main.systems.menus.mainHub.components;
 
+import com.openmason.main.systems.menus.mainHub.dialogs.DeleteProjectDialog;
+import com.openmason.main.systems.menus.mainHub.dialogs.RenameProjectDialog;
 import com.openmason.main.systems.menus.mainHub.model.RecentProject;
+import com.openmason.main.systems.menus.mainHub.services.HubActionService;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.menus.mainHub.state.HubState;
 import com.openmason.main.systems.themes.core.ThemeDefinition;
@@ -13,6 +16,8 @@ import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiMouseCursor;
 import imgui.flag.ImGuiStyleVar;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -25,6 +30,8 @@ import java.util.List;
  */
 public class RecentProjectsPanel {
 
+    private static final Logger logger = LoggerFactory.getLogger(RecentProjectsPanel.class);
+
     private static final float ITEM_HEIGHT = 80.0f;
     private static final float ITEM_PADDING = 12.0f;
     private static final float ITEM_SPACING = 10.0f;
@@ -33,11 +40,18 @@ public class RecentProjectsPanel {
     private final ThemeManager themeManager;
     private final HubState hubState;
     private final RecentProjectsService recentProjectsService;
+    private final HubActionService actionService;
 
-    public RecentProjectsPanel(ThemeManager themeManager, HubState hubState, RecentProjectsService recentProjectsService) {
+    private final RenameProjectDialog renameDialog = new RenameProjectDialog();
+    private final DeleteProjectDialog deleteDialog = new DeleteProjectDialog();
+
+    public RecentProjectsPanel(ThemeManager themeManager, HubState hubState,
+                               RecentProjectsService recentProjectsService,
+                               HubActionService actionService) {
         this.themeManager = themeManager;
         this.hubState = hubState;
         this.recentProjectsService = recentProjectsService;
+        this.actionService = actionService;
     }
 
     /**
@@ -52,14 +66,13 @@ public class RecentProjectsPanel {
 
         if (projects.isEmpty()) {
             renderEmptyState();
-            return;
-        }
-
-        // Render projects in list format
-        for (int i = 0; i < projects.size(); i++) {
-            RecentProject project = projects.get(i);
-            renderProjectItem(project, i);
-            ImGui.spacing();
+        } else {
+            // Render projects in list format
+            for (int i = 0; i < projects.size(); i++) {
+                RecentProject project = projects.get(i);
+                renderProjectItem(project, i);
+                ImGui.spacing();
+            }
         }
     }
 
@@ -195,7 +208,7 @@ public class RecentProjectsPanel {
             ImGui.popStyleColor();
         }
 
-        // Invisible button for click detection
+        // Invisible button for click detection and context menu anchor
         ImGui.setCursorScreenPos(x1, y1);
         ImGui.pushStyleColor(ImGuiCol.Button, 0);
         ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0);
@@ -205,8 +218,68 @@ public class RecentProjectsPanel {
         }
         ImGui.popStyleColor(3);
 
+        // Right-click context menu (binds to the invisible button above)
+        if (ImGui.beginPopupContextItem("ctx_project_" + index)) {
+            if (ImGui.menuItem("Open")) {
+                hubState.setSelectedRecentProject(project);
+                actionService.openRecentProject(project);
+            }
+            ImGui.separator();
+            if (ImGui.menuItem("Rename...")) {
+                renameDialog.show(project.getId(), project.getName(), this::handleRename);
+            }
+            if (ImGui.menuItem("Remove from Recent")) {
+                deleteDialog.show(project, this::handleDelete);
+            }
+            ImGui.endPopup();
+        }
+
         // Restore cursor for next item
         ImGui.setCursorScreenPos(x1, y2 + ITEM_SPACING);
+    }
+
+    /**
+     * Handle rename confirmation from the dialog.
+     */
+    private void handleRename(String projectId, String newName) {
+        recentProjectsService.renameProject(projectId, newName);
+
+        // Clear selection if the renamed project was selected (stale immutable ref)
+        RecentProject selected = hubState.getSelectedRecentProject();
+        if (selected != null && selected.getId().equals(projectId)) {
+            hubState.setSelectedRecentProject(null);
+        }
+        logger.info("Project renamed: {} -> '{}'", projectId, newName);
+    }
+
+    /**
+     * Handle delete confirmation from the dialog.
+     */
+    private void handleDelete(RecentProject project, boolean deleteFile) {
+        if (deleteFile) {
+            recentProjectsService.deleteProjectFile(project);
+        }
+        recentProjectsService.removeProject(project.getId());
+
+        // Clear selection if deleted project was selected
+        if (project.equals(hubState.getSelectedRecentProject())) {
+            hubState.setSelectedRecentProject(null);
+        }
+        logger.info("Project removed: '{}' (file deleted: {})", project.getName(), deleteFile);
+    }
+
+    /**
+     * Get the rename dialog (for shared access from PreviewPanel).
+     */
+    public RenameProjectDialog getRenameDialog() {
+        return renameDialog;
+    }
+
+    /**
+     * Get the delete dialog (for shared access from PreviewPanel).
+     */
+    public DeleteProjectDialog getDeleteDialog() {
+        return deleteDialog;
     }
 
     /**
