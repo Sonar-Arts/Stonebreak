@@ -112,8 +112,8 @@ public class TextureEditorWindow {
      */
     private void renderCustomTitleBar() {
         final float titleBarHeight = 30.0f;
-        final float buttonSize = 25.0f;
-        final float buttonSpacing = 2.0f;
+        final float buttonWidth = 46.0f;
+        final float buttonHeight = titleBarHeight;
         final float titlePadding = 10.0f;
 
         // Use cached width during drag to prevent flickering
@@ -124,19 +124,22 @@ public class TextureEditorWindow {
         } else {
             windowWidth = cachedWindowWidth;
         }
+
+        float winX = ImGui.getWindowPosX();
+        float winY = ImGui.getWindowPosY();
+
         // Title bar background — derived from theme TitleBgActive
         imgui.ImVec4 titleBg = ImGui.getStyle().getColor(imgui.flag.ImGuiCol.TitleBgActive);
         ImGui.getWindowDrawList().addRectFilled(
-            ImGui.getWindowPosX(),
-            ImGui.getWindowPosY(),
-            ImGui.getWindowPosX() + windowWidth,
-            ImGui.getWindowPosY() + titleBarHeight,
+            winX, winY,
+            winX + windowWidth, winY + titleBarHeight,
             ImGui.getColorU32(titleBg.x, titleBg.y, titleBg.z, titleBg.w)
         );
 
-        // Draggable title bar area
+        // Draggable title bar area (everything except the buttons)
+        float controlsWidth = buttonWidth * 3;
         ImGui.setCursorPos(0, 0);
-        ImGui.invisibleButton("##TitleBarDrag", windowWidth - (buttonSize + buttonSpacing) * 3, titleBarHeight);
+        ImGui.invisibleButton("##TitleBarDrag", windowWidth - controlsWidth, titleBarHeight);
 
         if (ImGui.isItemHovered()) {
             ImGui.setMouseCursor(ImGuiMouseCursor.ResizeAll);
@@ -161,52 +164,132 @@ public class TextureEditorWindow {
             isDraggingWindow = false;
         }
 
+        // Title text
         ImGui.setCursorPos(titlePadding, (titleBarHeight - ImGui.getFrameHeight()) * 0.5f);
         ImGui.text(WINDOW_TITLE);
 
-        float buttonStartX = windowWidth - (buttonSize + buttonSpacing) * 3 - buttonSpacing;
-        float buttonStartY = (titleBarHeight - buttonSize) * 0.5f;
-        ImGui.setCursorPos(buttonStartX, buttonStartY);
+        // Window control buttons — flush right, full title bar height
+        float buttonStartX = windowWidth - controlsWidth;
+        ImGui.setCursorPos(buttonStartX, 0);
 
-        ImGui.pushStyleVar(ImGuiStyleVar.ButtonTextAlign, 0.5f, 0.5f);
+        imgui.ImVec4 textCol = ImGui.getStyle().getColor(imgui.flag.ImGuiCol.Text);
+        int iconColor = ImGui.getColorU32(textCol.x, textCol.y, textCol.z, 0.85f);
 
-        // Window control buttons — theme-aware
-        imgui.ImVec4 frameBg = ImGui.getStyle().getColor(imgui.flag.ImGuiCol.FrameBg);
-        imgui.ImVec4 frameHov = ImGui.getStyle().getColor(imgui.flag.ImGuiCol.FrameBgHovered);
-        imgui.ImVec4 frameAct = ImGui.getStyle().getColor(imgui.flag.ImGuiCol.FrameBgActive);
-
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, frameBg.x, frameBg.y, frameBg.z, frameBg.w);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, frameHov.x, frameHov.y, frameHov.z, frameHov.w);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, frameAct.x, frameAct.y, frameAct.z, frameAct.w);
-        if (ImGui.button("-##Minimize", buttonSize, buttonSize)) {
+        // --- Minimize button ---
+        renderTitleBarButton("##Minimize", buttonWidth, buttonHeight, false);
+        boolean minClicked = ImGui.isItemClicked();
+        drawMinimizeIcon(winX + buttonStartX, winY, buttonWidth, buttonHeight, iconColor);
+        if (minClicked) {
             handleMinimize();
         }
-        ImGui.popStyleColor(3);
 
-        ImGui.sameLine(0, buttonSpacing);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, frameBg.x, frameBg.y, frameBg.z, frameBg.w);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, frameHov.x, frameHov.y, frameHov.z, frameHov.w);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, frameAct.x, frameAct.y, frameAct.z, frameAct.w);
-        if (ImGui.button("[]##Maximize", buttonSize, buttonSize)) {
+        // --- Maximize/Restore button ---
+        ImGui.sameLine(0, 0);
+        renderTitleBarButton("##Maximize", buttonWidth, buttonHeight, false);
+        boolean maxClicked = ImGui.isItemClicked();
+        if (isMaximized) {
+            drawRestoreIcon(winX + buttonStartX + buttonWidth, winY, buttonWidth, buttonHeight, iconColor);
+        } else {
+            drawMaximizeIcon(winX + buttonStartX + buttonWidth, winY, buttonWidth, buttonHeight, iconColor);
+        }
+        if (maxClicked) {
             handleMaximize();
         }
-        ImGui.popStyleColor(3);
 
-        // Close button — red hover retained as semantic color
-        ImGui.sameLine(0, buttonSpacing);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, frameBg.x, frameBg.y, frameBg.z, frameBg.w);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.8f, 0.2f, 0.2f, 1.0f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 1.0f, 0.3f, 0.3f, 1.0f);
-        if (ImGui.button("×##Close", buttonSize, buttonSize)) {
+        // --- Close button (red hover) ---
+        ImGui.sameLine(0, 0);
+        renderTitleBarButton("##Close", buttonWidth, buttonHeight, true);
+        boolean closeClicked = ImGui.isItemClicked();
+        drawCloseIcon(winX + buttonStartX + buttonWidth * 2, winY, buttonWidth, buttonHeight,
+                ImGui.isItemHovered() ? ImGui.getColorU32(1.0f, 1.0f, 1.0f, 1.0f) : iconColor);
+        if (closeClicked) {
             visible.set(false);
         }
-        ImGui.popStyleColor(3);
-
-        ImGui.popStyleVar();
 
         ImGui.setCursorPosY(titleBarHeight);
         ImGui.separator();
         ImGui.setCursorPosY(titleBarHeight + 2);
+    }
+
+    /**
+     * Render an invisible button with hover/active highlights for title bar controls.
+     */
+    private void renderTitleBarButton(String id, float width, float height, boolean isClose) {
+        if (isClose) {
+            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.0f, 0.0f, 0.0f, 0.0f);
+            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.90f, 0.18f, 0.18f, 1.0f);
+            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.75f, 0.12f, 0.12f, 1.0f);
+        } else {
+            imgui.ImVec4 textCol = ImGui.getStyle().getColor(imgui.flag.ImGuiCol.Text);
+            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.0f, 0.0f, 0.0f, 0.0f);
+            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, textCol.x, textCol.y, textCol.z, 0.12f);
+            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, textCol.x, textCol.y, textCol.z, 0.20f);
+        }
+        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 0.0f);
+
+        ImGui.button(id, width, height);
+
+        ImGui.popStyleVar();
+        ImGui.popStyleColor(3);
+    }
+
+    /**
+     * Draw minimize icon: horizontal line centered in button area.
+     */
+    private void drawMinimizeIcon(float btnX, float btnY, float btnW, float btnH, int color) {
+        float cx = btnX + btnW * 0.5f;
+        float cy = btnY + btnH * 0.5f;
+        float halfW = 5.0f;
+        ImGui.getWindowDrawList().addLine(cx - halfW, cy, cx + halfW, cy, color, 1.2f);
+    }
+
+    /**
+     * Draw maximize icon: square outline centered in button area.
+     */
+    private void drawMaximizeIcon(float btnX, float btnY, float btnW, float btnH, int color) {
+        float cx = btnX + btnW * 0.5f;
+        float cy = btnY + btnH * 0.5f;
+        float half = 5.0f;
+        ImGui.getWindowDrawList().addRect(cx - half, cy - half, cx + half, cy + half, color, 0.0f, 0, 1.2f);
+    }
+
+    /**
+     * Draw restore icon: two overlapping rectangles centered in button area.
+     */
+    private void drawRestoreIcon(float btnX, float btnY, float btnW, float btnH, int color) {
+        float cx = btnX + btnW * 0.5f;
+        float cy = btnY + btnH * 0.5f;
+        float size = 4.5f;
+        float offset = 2.5f;
+
+        // Back rectangle (top-right, partially occluded)
+        ImGui.getWindowDrawList().addRect(
+                cx - size + offset, cy - size - offset,
+                cx + size + offset, cy + size - offset,
+                color, 0.0f, 0, 1.2f);
+
+        // Front rectangle (bottom-left, filled background to occlude back rect)
+        imgui.ImVec4 titleBg = ImGui.getStyle().getColor(imgui.flag.ImGuiCol.TitleBgActive);
+        int bgColor = ImGui.getColorU32(titleBg.x, titleBg.y, titleBg.z, titleBg.w);
+        ImGui.getWindowDrawList().addRectFilled(
+                cx - size, cy - size,
+                cx + size, cy + size,
+                bgColor);
+        ImGui.getWindowDrawList().addRect(
+                cx - size, cy - size,
+                cx + size, cy + size,
+                color, 0.0f, 0, 1.2f);
+    }
+
+    /**
+     * Draw close icon: X shape centered in button area.
+     */
+    private void drawCloseIcon(float btnX, float btnY, float btnW, float btnH, int color) {
+        float cx = btnX + btnW * 0.5f;
+        float cy = btnY + btnH * 0.5f;
+        float half = 5.0f;
+        ImGui.getWindowDrawList().addLine(cx - half, cy - half, cx + half, cy + half, color, 1.2f);
+        ImGui.getWindowDrawList().addLine(cx + half, cy - half, cx - half, cy + half, color, 1.2f);
     }
 
     /**
