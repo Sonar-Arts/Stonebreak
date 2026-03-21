@@ -4,7 +4,6 @@ import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.services.drop.PendingFileDrops;
 import imgui.ImGui;
 import imgui.flag.ImGuiDockNodeFlags;
-import imgui.flag.ImGuiMouseCursor;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
@@ -25,17 +24,14 @@ public class TextureEditorWindow {
 
     private final TextureCreatorImGui textureCreator;
     private final ImBoolean visible;
+    private final WindowTitleBar titleBar;
 
     private boolean iniFileSet = false;
 
-    // Title bar state
+    // Maximize/restore state
     private boolean isMaximized = false;
     private final float[] savedSize = new float[]{1200, 800};
     private final float[] savedPos = new float[]{100, 100};
-
-    // Drag state for smooth window movement
-    private boolean isDraggingWindow = false;
-    private float cachedWindowWidth = 0.0f;
 
     /**
      * Create a new TextureEditorWindow.
@@ -47,6 +43,7 @@ public class TextureEditorWindow {
 
         this.textureCreator = textureCreator;
         this.visible = new ImBoolean(false);
+        this.titleBar = new WindowTitleBar(WINDOW_TITLE, true, true);
 
         textureCreator.setWindowedMode(true);
         logger.debug("TextureEditorWindow created with windowed mode enabled");
@@ -87,7 +84,19 @@ public class TextureEditorWindow {
                     textureCreator.handleKeyboardShortcuts();
                 }
 
-                renderCustomTitleBar();
+                titleBar.setMaximized(isMaximized);
+                WindowTitleBar.Result result = titleBar.render();
+
+                if (result.minimizeClicked()) {
+                    handleMinimize();
+                }
+                if (result.maximizeClicked()) {
+                    handleMaximize();
+                }
+                if (result.closeClicked()) {
+                    visible.set(false);
+                }
+
                 textureCreator.renderWindowedMenuBar();
                 textureCreator.renderWindowedToolbar();
 
@@ -105,191 +114,6 @@ public class TextureEditorWindow {
         }
         ImGui.end();
         ImGui.popStyleVar();
-    }
-
-    /**
-     * Render custom title bar with window controls.
-     */
-    private void renderCustomTitleBar() {
-        final float titleBarHeight = 30.0f;
-        final float buttonWidth = 46.0f;
-        final float buttonHeight = titleBarHeight;
-        final float titlePadding = 10.0f;
-
-        // Use cached width during drag to prevent flickering
-        float windowWidth;
-        if (!isDraggingWindow) {
-            windowWidth = ImGui.getWindowWidth();
-            cachedWindowWidth = windowWidth;
-        } else {
-            windowWidth = cachedWindowWidth;
-        }
-
-        float winX = ImGui.getWindowPosX();
-        float winY = ImGui.getWindowPosY();
-
-        // Title bar background — derived from theme TitleBgActive
-        imgui.ImVec4 titleBg = ImGui.getStyle().getColor(imgui.flag.ImGuiCol.TitleBgActive);
-        ImGui.getWindowDrawList().addRectFilled(
-            winX, winY,
-            winX + windowWidth, winY + titleBarHeight,
-            ImGui.getColorU32(titleBg.x, titleBg.y, titleBg.z, titleBg.w)
-        );
-
-        // Draggable title bar area (everything except the buttons)
-        float controlsWidth = buttonWidth * 3;
-        ImGui.setCursorPos(0, 0);
-        ImGui.invisibleButton("##TitleBarDrag", windowWidth - controlsWidth, titleBarHeight);
-
-        if (ImGui.isItemHovered()) {
-            ImGui.setMouseCursor(ImGuiMouseCursor.ResizeAll);
-        }
-        boolean currentlyDragging = ImGui.isItemActive() && ImGui.isMouseDragging(0);
-
-        if (currentlyDragging) {
-            if (!isDraggingWindow) {
-                isDraggingWindow = true;
-                cachedWindowWidth = ImGui.getWindowWidth();
-            }
-
-            float deltaX = ImGui.getMouseDragDeltaX(0);
-            float deltaY = ImGui.getMouseDragDeltaY(0);
-            ImGui.setWindowPos(
-                WINDOW_TITLE,
-                ImGui.getWindowPosX() + deltaX,
-                ImGui.getWindowPosY() + deltaY
-            );
-            ImGui.resetMouseDragDelta(0);
-        } else if (isDraggingWindow) {
-            isDraggingWindow = false;
-        }
-
-        // Title text
-        ImGui.setCursorPos(titlePadding, (titleBarHeight - ImGui.getFrameHeight()) * 0.5f);
-        ImGui.text(WINDOW_TITLE);
-
-        // Window control buttons — flush right, full title bar height
-        float buttonStartX = windowWidth - controlsWidth;
-        ImGui.setCursorPos(buttonStartX, 0);
-
-        imgui.ImVec4 textCol = ImGui.getStyle().getColor(imgui.flag.ImGuiCol.Text);
-        int iconColor = ImGui.getColorU32(textCol.x, textCol.y, textCol.z, 0.85f);
-
-        // --- Minimize button ---
-        renderTitleBarButton("##Minimize", buttonWidth, buttonHeight, false);
-        boolean minClicked = ImGui.isItemClicked();
-        drawMinimizeIcon(winX + buttonStartX, winY, buttonWidth, buttonHeight, iconColor);
-        if (minClicked) {
-            handleMinimize();
-        }
-
-        // --- Maximize/Restore button ---
-        ImGui.sameLine(0, 0);
-        renderTitleBarButton("##Maximize", buttonWidth, buttonHeight, false);
-        boolean maxClicked = ImGui.isItemClicked();
-        if (isMaximized) {
-            drawRestoreIcon(winX + buttonStartX + buttonWidth, winY, buttonWidth, buttonHeight, iconColor);
-        } else {
-            drawMaximizeIcon(winX + buttonStartX + buttonWidth, winY, buttonWidth, buttonHeight, iconColor);
-        }
-        if (maxClicked) {
-            handleMaximize();
-        }
-
-        // --- Close button (red hover) ---
-        ImGui.sameLine(0, 0);
-        renderTitleBarButton("##Close", buttonWidth, buttonHeight, true);
-        boolean closeClicked = ImGui.isItemClicked();
-        drawCloseIcon(winX + buttonStartX + buttonWidth * 2, winY, buttonWidth, buttonHeight,
-                ImGui.isItemHovered() ? ImGui.getColorU32(1.0f, 1.0f, 1.0f, 1.0f) : iconColor);
-        if (closeClicked) {
-            visible.set(false);
-        }
-
-        ImGui.setCursorPosY(titleBarHeight);
-        ImGui.separator();
-        ImGui.setCursorPosY(titleBarHeight + 2);
-    }
-
-    /**
-     * Render an invisible button with hover/active highlights for title bar controls.
-     */
-    private void renderTitleBarButton(String id, float width, float height, boolean isClose) {
-        if (isClose) {
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.0f, 0.0f, 0.0f, 0.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.90f, 0.18f, 0.18f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.75f, 0.12f, 0.12f, 1.0f);
-        } else {
-            imgui.ImVec4 textCol = ImGui.getStyle().getColor(imgui.flag.ImGuiCol.Text);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.0f, 0.0f, 0.0f, 0.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, textCol.x, textCol.y, textCol.z, 0.12f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, textCol.x, textCol.y, textCol.z, 0.20f);
-        }
-        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 0.0f);
-
-        ImGui.button(id, width, height);
-
-        ImGui.popStyleVar();
-        ImGui.popStyleColor(3);
-    }
-
-    /**
-     * Draw minimize icon: horizontal line centered in button area.
-     */
-    private void drawMinimizeIcon(float btnX, float btnY, float btnW, float btnH, int color) {
-        float cx = btnX + btnW * 0.5f;
-        float cy = btnY + btnH * 0.5f;
-        float halfW = 5.0f;
-        ImGui.getWindowDrawList().addLine(cx - halfW, cy, cx + halfW, cy, color, 1.2f);
-    }
-
-    /**
-     * Draw maximize icon: square outline centered in button area.
-     */
-    private void drawMaximizeIcon(float btnX, float btnY, float btnW, float btnH, int color) {
-        float cx = btnX + btnW * 0.5f;
-        float cy = btnY + btnH * 0.5f;
-        float half = 5.0f;
-        ImGui.getWindowDrawList().addRect(cx - half, cy - half, cx + half, cy + half, color, 0.0f, 0, 1.2f);
-    }
-
-    /**
-     * Draw restore icon: two overlapping rectangles centered in button area.
-     */
-    private void drawRestoreIcon(float btnX, float btnY, float btnW, float btnH, int color) {
-        float cx = btnX + btnW * 0.5f;
-        float cy = btnY + btnH * 0.5f;
-        float size = 4.5f;
-        float offset = 2.5f;
-
-        // Back rectangle (top-right, partially occluded)
-        ImGui.getWindowDrawList().addRect(
-                cx - size + offset, cy - size - offset,
-                cx + size + offset, cy + size - offset,
-                color, 0.0f, 0, 1.2f);
-
-        // Front rectangle (bottom-left, filled background to occlude back rect)
-        imgui.ImVec4 titleBg = ImGui.getStyle().getColor(imgui.flag.ImGuiCol.TitleBgActive);
-        int bgColor = ImGui.getColorU32(titleBg.x, titleBg.y, titleBg.z, titleBg.w);
-        ImGui.getWindowDrawList().addRectFilled(
-                cx - size, cy - size,
-                cx + size, cy + size,
-                bgColor);
-        ImGui.getWindowDrawList().addRect(
-                cx - size, cy - size,
-                cx + size, cy + size,
-                color, 0.0f, 0, 1.2f);
-    }
-
-    /**
-     * Draw close icon: X shape centered in button area.
-     */
-    private void drawCloseIcon(float btnX, float btnY, float btnW, float btnH, int color) {
-        float cx = btnX + btnW * 0.5f;
-        float cy = btnY + btnH * 0.5f;
-        float half = 5.0f;
-        ImGui.getWindowDrawList().addLine(cx - half, cy - half, cx + half, cy + half, color, 1.2f);
-        ImGui.getWindowDrawList().addLine(cx + half, cy - half, cx - half, cy + half, color, 1.2f);
     }
 
     /**

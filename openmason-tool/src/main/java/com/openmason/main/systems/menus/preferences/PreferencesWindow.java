@@ -2,11 +2,11 @@ package com.openmason.main.systems.menus.preferences;
 
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
+import com.openmason.main.systems.menus.windows.WindowTitleBar;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.ViewportController;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
-import imgui.flag.ImGuiMouseCursor;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
@@ -41,9 +41,8 @@ public class PreferencesWindow {
     private final PreferencesPageRenderer pageRenderer;
 
     // Window state
+    private final WindowTitleBar titleBar;
     private boolean iniFileSet = false;
-    private boolean isDraggingWindow = false;
-    private float cachedWindowWidth = 0.0f;
     private boolean wasVisible = false;
 
     /**
@@ -70,6 +69,7 @@ public class PreferencesWindow {
                 propertyPanel
         );
 
+        this.titleBar = new WindowTitleBar(WINDOW_TITLE, true, false);
         logger.debug("Unified preferences window created");
     }
 
@@ -137,7 +137,10 @@ public class PreferencesWindow {
         // Begin window
         if (ImGui.begin(WINDOW_TITLE, visible, windowFlags)) {
             try {
-                renderCustomTitleBar();
+                WindowTitleBar.Result result = titleBar.render();
+                if (result.minimizeClicked() || result.closeClicked()) {
+                    visible.set(false);
+                }
                 renderContent();
             } catch (Exception e) {
                 logger.error("Error rendering preferences window", e);
@@ -148,105 +151,6 @@ public class PreferencesWindow {
         ImGui.end();
 
         ImGui.popStyleVar();
-    }
-
-    /**
-     * Renders custom title bar with minimize and close buttons.
-     */
-    private void renderCustomTitleBar() {
-        final float titleBarHeight = 30.0f;
-        final float buttonSize = 25.0f;
-        final float buttonSpacing = 2.0f;
-        final float titlePadding = 10.0f;
-
-        // Get window width - use cached value during drag to prevent flickering
-        float windowWidth;
-        if (!isDraggingWindow) {
-            windowWidth = ImGui.getWindowWidth();
-            cachedWindowWidth = windowWidth;
-        } else {
-            windowWidth = cachedWindowWidth;
-        }
-
-        // Title bar background — derived from theme TitleBgActive
-        imgui.ImVec4 titleBg = ImGui.getStyle().getColor(ImGuiCol.TitleBgActive);
-        ImGui.getWindowDrawList().addRectFilled(
-                ImGui.getWindowPosX(),
-                ImGui.getWindowPosY(),
-                ImGui.getWindowPosX() + windowWidth,
-                ImGui.getWindowPosY() + titleBarHeight,
-                ImGui.getColorU32(titleBg.x, titleBg.y, titleBg.z, titleBg.w)
-        );
-
-        // Make title bar draggable
-        ImGui.setCursorPos(0, 0);
-        ImGui.invisibleButton("##TitleBarDrag",
-                windowWidth - (buttonSize + buttonSpacing) * 2, titleBarHeight);
-
-        if (ImGui.isItemHovered()) {
-            ImGui.setMouseCursor(ImGuiMouseCursor.ResizeAll);
-        }
-
-        boolean currentlyDragging = ImGui.isItemActive() && ImGui.isMouseDragging(0);
-
-        if (currentlyDragging) {
-            if (!isDraggingWindow) {
-                isDraggingWindow = true;
-                cachedWindowWidth = ImGui.getWindowWidth();
-            }
-
-            float deltaX = ImGui.getMouseDragDeltaX(0);
-            float deltaY = ImGui.getMouseDragDeltaY(0);
-            ImGui.setWindowPos(
-                    WINDOW_TITLE,
-                    ImGui.getWindowPosX() + deltaX,
-                    ImGui.getWindowPosY() + deltaY
-            );
-            ImGui.resetMouseDragDelta(0);
-        } else if (isDraggingWindow) {
-            isDraggingWindow = false;
-        }
-
-        // Window title text
-        ImGui.setCursorPos(titlePadding, (titleBarHeight - ImGui.getFrameHeight()) * 0.5f);
-        ImGui.text(WINDOW_TITLE);
-
-        // Title bar buttons (right-aligned)
-        float buttonStartX = windowWidth - (buttonSize + buttonSpacing) * 2 - buttonSpacing;
-        float buttonStartY = (titleBarHeight - buttonSize) * 0.5f;
-        ImGui.setCursorPos(buttonStartX, buttonStartY);
-
-        ImGui.pushStyleVar(ImGuiStyleVar.ButtonTextAlign, 0.5f, 0.5f);
-
-        // Minimize button — theme-aware
-        imgui.ImVec4 frameBg = ImGui.getStyle().getColor(ImGuiCol.FrameBg);
-        imgui.ImVec4 frameHov = ImGui.getStyle().getColor(ImGuiCol.FrameBgHovered);
-        imgui.ImVec4 frameAct = ImGui.getStyle().getColor(ImGuiCol.FrameBgActive);
-        ImGui.pushStyleColor(ImGuiCol.Button, frameBg.x, frameBg.y, frameBg.z, frameBg.w);
-        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, frameHov.x, frameHov.y, frameHov.z, frameHov.w);
-        ImGui.pushStyleColor(ImGuiCol.ButtonActive, frameAct.x, frameAct.y, frameAct.z, frameAct.w);
-        if (ImGui.button("-##Minimize", buttonSize, buttonSize)) {
-            visible.set(false);
-        }
-        ImGui.popStyleColor(3);
-
-        // Close button (red hover)
-        ImGui.sameLine(0, buttonSpacing);
-        ImGui.pushStyleColor(ImGuiCol.Button, frameBg.x, frameBg.y, frameBg.z, frameBg.w);
-        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.8f, 0.2f, 0.2f, 1.0f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonActive, 1.0f, 0.3f, 0.3f, 1.0f);
-        if (ImGui.button("×##Close", buttonSize, buttonSize)) {
-            visible.set(false);
-        }
-        ImGui.popStyleColor(3);
-
-        ImGui.popStyleVar();
-
-        // Separator below title bar
-        ImGui.setCursorPosY(titleBarHeight);
-        ImGui.separator();
-
-        ImGui.setCursorPosY(titleBarHeight + 2);
     }
 
     /**
