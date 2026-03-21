@@ -1,6 +1,7 @@
 package com.openmason.main.systems.menus;
 
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
+import com.openmason.main.systems.menus.dialogs.HomeScreenDialog;
 import com.openmason.main.systems.menus.dialogs.SaveWarningDialog;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.project.ProjectService;
@@ -28,6 +29,7 @@ public class FileMenuHandler {
     private final FileDialogService fileDialogService;
     private final StatusService statusService;
     private final SaveWarningDialog saveWarningDialog;
+    private final HomeScreenDialog homeScreenDialog;
 
     private final String[] recentFiles = {"standard_cow.json", "example_model.json"};
 
@@ -47,6 +49,7 @@ public class FileMenuHandler {
         this.fileDialogService = fileDialogService;
         this.statusService = statusService;
         this.saveWarningDialog = new SaveWarningDialog();
+        this.homeScreenDialog = new HomeScreenDialog();
     }
 
     /**
@@ -72,9 +75,14 @@ public class FileMenuHandler {
 
     /**
      * Set callback for returning to Home screen.
+     * Wires the HomeScreenDialog with save and navigate actions.
      */
     public void setBackToHomeCallback(Runnable callback) {
         this.backToHomeCallback = callback;
+        homeScreenDialog.setCallbacks(
+                this::saveProject,
+                callback
+        );
     }
 
     /**
@@ -107,13 +115,14 @@ public class FileMenuHandler {
     }
 
     /**
-     * Render the file menu.
+     * Render the file menu with grouped sections.
      */
     public void render() {
         if (!ImGui.beginMenu("File")) {
             return;
         }
 
+        // --- New / Open ---
         if (ImGui.menuItem("New Model", "Ctrl+N")) {
             modelOperations.newModel();
         }
@@ -128,7 +137,7 @@ public class FileMenuHandler {
 
         ImGui.separator();
 
-        // Project save operations
+        // --- Save (Project) ---
         boolean hasProject = projectService != null && projectService.hasCurrentProject();
         if (ImGui.menuItem("Save Project", "", false, hasProject)) {
             saveProject();
@@ -140,7 +149,7 @@ public class FileMenuHandler {
 
         ImGui.separator();
 
-        // Enable save only if model can be saved (NEW or OMO_FILE sources)
+        // --- Save / Export (Model) ---
         boolean canSave = modelState.canSaveModel() && modelState.hasUnsavedChanges();
         if (ImGui.menuItem("Save Model", "Ctrl+S", false, canSave)) {
             if (modelState.canSaveModel()) {
@@ -150,7 +159,6 @@ public class FileMenuHandler {
             }
         }
 
-        // Enable save as only if model can be saved
         boolean canSaveAs = modelState.canSaveModel();
         if (ImGui.menuItem("Save Model As", "Ctrl+Shift+S", false, canSaveAs)) {
             if (modelState.canSaveModel()) {
@@ -166,6 +174,7 @@ public class FileMenuHandler {
 
         ImGui.separator();
 
+        // --- Recent ---
         if (ImGui.beginMenu("Recent Files")) {
             for (String recentFile : recentFiles) {
                 if (ImGui.menuItem(recentFile)) {
@@ -177,19 +186,28 @@ public class FileMenuHandler {
 
         ImGui.separator();
 
-        if (ImGui.menuItem("Home Screen")) {
-            if (backToHomeCallback != null) {
-                backToHomeCallback.run();
-            }
-        }
-
-        ImGui.separator();
-
+        // --- Exit ---
         if (ImGui.menuItem("Exit", "Alt+F4")) {
             exitApplication();
         }
 
         ImGui.endMenu();
+    }
+
+    /**
+     * Request navigation to the Home Screen.
+     * Shows the HomeScreenDialog if there are unsaved changes, otherwise navigates directly.
+     */
+    public void requestHomeScreen() {
+        boolean unsaved = projectService != null && projectService.hasUnsavedChanges();
+        homeScreenDialog.show(unsaved);
+    }
+
+    /**
+     * Get the home screen dialog for rendering in the main UI.
+     */
+    public HomeScreenDialog getHomeScreenDialog() {
+        return homeScreenDialog;
     }
 
     /**

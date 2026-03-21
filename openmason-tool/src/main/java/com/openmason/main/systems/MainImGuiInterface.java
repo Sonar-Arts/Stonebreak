@@ -281,6 +281,11 @@ public class MainImGuiInterface implements ModelBrowserListener {
         if (fileMenuHandler != null && fileMenuHandler.getSaveWarningDialog() != null) {
             fileMenuHandler.getSaveWarningDialog().render();
         }
+
+        // Render home screen dialog if open
+        if (fileMenuHandler != null && fileMenuHandler.getHomeScreenDialog() != null) {
+            fileMenuHandler.getHomeScreenDialog().render();
+        }
     }
 
     /**

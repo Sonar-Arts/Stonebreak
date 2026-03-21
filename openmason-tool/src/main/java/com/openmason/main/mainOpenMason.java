@@ -521,6 +521,12 @@ public class mainOpenMason {
         safeDispose(viewportInterface);
         safeDispose(textureCreatorInterface);
         safeDispose(themeManager);
+
+        try {
+            com.openmason.main.systems.menus.icons.MenuBarIconManager.getInstance().dispose();
+        } catch (Exception e) {
+            logger.error("Error cleaning up MenuBarIconManager", e);
+        }
     }
 
     private void cleanupImGui() {
