@@ -590,21 +590,40 @@ public class PreferencesPageRenderer {
     // Keybinds Page (immediate — dialog-based)
     // ========================================
 
+    /** Maps internal context IDs to user-friendly section names. */
+    private static final java.util.Map<String, String> CONTEXT_DISPLAY_NAMES = java.util.Map.of(
+            "viewport", "Model Editor",
+            "texture", "Texture Editor"
+    );
+
     private void renderKeybindsPage() {
         keyCaptureDialog.render();
         conflictDialog.render();
 
-        java.util.Set<String> categories = keybindRegistry.getAllCategories();
+        java.util.Set<String> contexts = keybindRegistry.getAllContexts();
 
-        for (String category : categories) {
-            ImGuiComponents.renderSectionHeader(category);
+        for (String context : contexts) {
+            // Section header for the program area
+            String sectionName = CONTEXT_DISPLAY_NAMES.getOrDefault(context,
+                    context.substring(0, 1).toUpperCase() + context.substring(1));
+            ImGuiComponents.renderSectionHeader(sectionName);
             ImGui.indent();
 
-            java.util.List<com.openmason.main.systems.keybinds.KeybindAction> actions =
-                    keybindRegistry.getActionsByCategory(category);
+            // Sub-group by category within this context
+            java.util.Set<String> categories = keybindRegistry.getCategoriesForContext(context);
 
-            for (com.openmason.main.systems.keybinds.KeybindAction action : actions) {
-                renderKeybindRow(action);
+            for (String category : categories) {
+                ImGuiComponents.renderSubHeader(category);
+                ImGuiComponents.renderSettingSeparator();
+
+                java.util.List<com.openmason.main.systems.keybinds.KeybindAction> actions =
+                        keybindRegistry.getActionsByContextAndCategory(context, category);
+
+                for (com.openmason.main.systems.keybinds.KeybindAction action : actions) {
+                    renderKeybindRow(action);
+                }
+
+                ImGuiComponents.addSpacing();
             }
 
             ImGui.unindent();

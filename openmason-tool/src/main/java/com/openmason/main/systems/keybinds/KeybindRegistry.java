@@ -278,6 +278,64 @@ public class KeybindRegistry {
     }
 
     /**
+     * Gets all unique contexts in registration order.
+     * <p>
+     * Contexts represent logical sections of the application (e.g., "viewport", "texture").
+     * </p>
+     *
+     * @return set of context names, in the order they were first registered
+     */
+    public Set<String> getAllContexts() {
+        Set<String> contexts = new LinkedHashSet<>();
+        for (KeybindAction action : actions.values()) {
+            contexts.add(action.getContext());
+        }
+        return contexts;
+    }
+
+    /**
+     * Gets all actions belonging to a specific context.
+     *
+     * @param context the context name (e.g., "viewport", "texture")
+     * @return list of actions in the context, in registration order
+     */
+    public List<KeybindAction> getActionsByContext(String context) {
+        return actions.values().stream()
+                .filter(action -> action.getContext().equals(context))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Gets all unique categories within a specific context, in registration order.
+     *
+     * @param context the context name
+     * @return set of category names within the context
+     */
+    public Set<String> getCategoriesForContext(String context) {
+        Set<String> categories = new LinkedHashSet<>();
+        for (KeybindAction action : actions.values()) {
+            if (action.getContext().equals(context)) {
+                categories.add(action.getCategory());
+            }
+        }
+        return categories;
+    }
+
+    /**
+     * Gets all actions matching a specific context and category.
+     *
+     * @param context  the context name
+     * @param category the category name
+     * @return list of matching actions, in registration order
+     */
+    public List<KeybindAction> getActionsByContextAndCategory(String context, String category) {
+        return actions.values().stream()
+                .filter(action -> action.getContext().equals(context)
+                        && action.getCategory().equals(category))
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Gets all registered actions.
      *
      * @return unmodifiable collection of all actions

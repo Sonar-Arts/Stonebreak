@@ -262,7 +262,7 @@ public class ProjectHubScreen {
      * Set callback for preferences button.
      */
     public void setOnPreferencesClicked(Runnable callback) {
-        topToolbar.setOnPreferencesClicked(callback);
+        sidebarNav.setOnPreferencesClicked(callback);
     }
 
 }

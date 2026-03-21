@@ -48,6 +48,7 @@ public class HubSidebarNav {
     private final HubState hubState;
     private final LogoManager logoManager;
     private final List<NavigationItem> navItems;
+    private Runnable onPreferencesClicked;
 
     public HubSidebarNav(ThemeManager themeManager, HubState hubState, LogoManager logoManager) {
         this.themeManager = themeManager;
@@ -60,6 +61,13 @@ public class HubSidebarNav {
             hubState.setSelectedNavItem(firstItem);
             hubState.setCurrentView(firstItem.getViewType());
         }
+    }
+
+    /**
+     * Set callback for preferences button.
+     */
+    public void setOnPreferencesClicked(Runnable callback) {
+        this.onPreferencesClicked = callback;
     }
 
     /**
@@ -79,6 +87,10 @@ public class HubSidebarNav {
                 ImGui.dummy(0, NAV_ITEM_SPACING);
             }
         }
+
+        // Preferences button (action button, not a navigation item)
+        ImGui.dummy(0, NAV_ITEM_SPACING);
+        renderPreferencesButton();
 
         renderBottomAccent();
     }
@@ -348,6 +360,95 @@ public class HubSidebarNav {
             textColor = ImColor.rgba(tr, tg, tb, isHovered ? 1.0f : 0.9f);
             drawList.addText(textX, textY, textColor, item.getLabel());
         }
+    }
+
+    /**
+     * Render the Preferences button using the same style as navigation items,
+     * but without selection state (it opens a window instead of switching views).
+     */
+    private void renderPreferencesButton() {
+        ThemeDefinition theme = themeManager.getCurrentTheme();
+
+        float availWidth = ImGui.getContentRegionAvailX();
+        float itemWidth = availWidth - (SIDEBAR_PADDING * 2);
+        ImGui.setCursorPosX(ImGui.getCursorPosX() + SIDEBAR_PADDING);
+
+        ImVec2 screenPos = ImGui.getCursorScreenPos();
+
+        ImGui.invisibleButton("##nav_preferences", itemWidth, NAV_ITEM_HEIGHT);
+        boolean isHovered = ImGui.isItemHovered();
+        boolean isClicked = ImGui.isItemClicked();
+
+        if (isClicked && onPreferencesClicked != null) {
+            onPreferencesClicked.run();
+        }
+
+        ImDrawList drawList = ImGui.getWindowDrawList();
+        float x1 = screenPos.x;
+        float y1 = screenPos.y;
+        float x2 = x1 + itemWidth;
+        float y2 = y1 + NAV_ITEM_HEIGHT;
+
+        ImVec4 accentBase = getAccentColor(theme);
+
+        if (isHovered) {
+            // Hover: slightly brighter background
+            ImVec4 hoverBase = theme.getColor(ImGuiCol.HeaderHovered);
+            int hoverColor;
+            if (hoverBase != null) {
+                hoverColor = ImColor.rgba(hoverBase.x, hoverBase.y, hoverBase.z, 0.15f);
+            } else {
+                hoverColor = ImColor.rgba(1.0f, 1.0f, 1.0f, 0.08f);
+            }
+            drawList.addRectFilled(x1, y1, x2, y2, hoverColor, NAV_ITEM_ROUNDING);
+
+            // Brighter border on hover
+            int hoverBorder = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.5f);
+            drawList.addRect(x1, y1, x2, y2, hoverBorder, NAV_ITEM_ROUNDING, 0, 1.0f);
+
+            // Hint of accent bar on hover
+            int hintAccent = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.45f);
+            drawList.addRectFilled(
+                    x1, y1 + ACCENT_INSET_Y + 2.0f,
+                    x1 + ACCENT_WIDTH * 0.6f, y2 - ACCENT_INSET_Y - 2.0f,
+                    hintAccent, ACCENT_ROUNDING
+            );
+        } else {
+            // Normal state: subtle background fill + border
+            ImVec4 frameBg = theme.getColor(ImGuiCol.FrameBg);
+            int normalBg;
+            if (frameBg != null) {
+                normalBg = ImColor.rgba(frameBg.x, frameBg.y, frameBg.z, 0.25f);
+            } else {
+                normalBg = ImColor.rgba(1.0f, 1.0f, 1.0f, 0.03f);
+            }
+            drawList.addRectFilled(x1, y1, x2, y2, normalBg, NAV_ITEM_ROUNDING);
+
+            // Visible border
+            ImVec4 borderBase = theme.getColor(ImGuiCol.Border);
+            int normalBorder;
+            if (borderBase != null) {
+                normalBorder = ImColor.rgba(borderBase.x, borderBase.y, borderBase.z, 0.6f);
+            } else {
+                normalBorder = ImColor.rgba(0.5f, 0.5f, 0.5f, 0.3f);
+            }
+            drawList.addRect(x1, y1, x2, y2, normalBorder, NAV_ITEM_ROUNDING, 0, 1.0f);
+        }
+
+        // Label text
+        String label = "Preferences";
+        float textX = x1 + NAV_TEXT_LEFT_PADDING;
+        ImGui.setWindowFontScale(1.0f);
+        float textHeight = ImGui.calcTextSize(label).y;
+        float textY = y1 + (NAV_ITEM_HEIGHT - textHeight) * 0.5f;
+
+        ImVec4 textBase = theme.getColor(ImGuiCol.Text);
+        float tr = textBase != null ? textBase.x : 0.88f;
+        float tg = textBase != null ? textBase.y : 0.89f;
+        float tb = textBase != null ? textBase.z : 0.91f;
+
+        int textColor = ImColor.rgba(tr, tg, tb, isHovered ? 1.0f : 0.9f);
+        drawList.addText(textX, textY, textColor, label);
     }
 
     /**

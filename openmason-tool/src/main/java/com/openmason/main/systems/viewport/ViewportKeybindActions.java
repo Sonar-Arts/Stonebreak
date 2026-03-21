@@ -21,7 +21,11 @@ import org.slf4j.LoggerFactory;
 public class ViewportKeybindActions {
 
     private static final Logger logger = LoggerFactory.getLogger(ViewportKeybindActions.class);
-    private static final String CATEGORY = "Viewport";
+    // Categories for organizing keybinds in the preferences UI
+    private static final String DISPLAY = "Display";
+    private static final String NAVIGATION = "Navigation";
+    private static final String EDITING = "Editing";
+    private static final String MESH_TOOLS = "Mesh Tools";
 
     /**
      * Private constructor to prevent instantiation.
@@ -40,11 +44,13 @@ public class ViewportKeybindActions {
     public static void registerAll(KeybindRegistry registry, ViewportActions actions, ViewportUIState state) {
         logger.debug("Registering viewport keybind actions");
 
+        // ========== Display ==========
+
         // Ctrl+T: Toggle Transform Gizmo
         registry.registerAction(new KeybindAction(
                 "viewport.toggle_gizmo",
                 "Toggle Transform Gizmo",
-                CATEGORY,
+                DISPLAY,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_T),
                 actions::toggleGizmo
         ));
@@ -53,7 +59,7 @@ public class ViewportKeybindActions {
         registry.registerAction(new KeybindAction(
                 "viewport.toggle_grid",
                 "Toggle Grid",
-                CATEGORY,
+                DISPLAY,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_G),
                 () -> {
                     state.getGridVisible().set(!state.getGridVisible().get());
@@ -65,7 +71,7 @@ public class ViewportKeybindActions {
         registry.registerAction(new KeybindAction(
                 "viewport.toggle_axes",
                 "Toggle Axes",
-                CATEGORY,
+                DISPLAY,
                 ShortcutKey.ctrlShift(GLFW.GLFW_KEY_A),
                 () -> {
                     state.getAxesVisible().set(!state.getAxesVisible().get());
@@ -77,16 +83,18 @@ public class ViewportKeybindActions {
         registry.registerAction(new KeybindAction(
                 "viewport.toggle_wireframe",
                 "Toggle Wireframe",
-                CATEGORY,
+                DISPLAY,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_W),
                 actions::toggleWireframe
         ));
+
+        // ========== Navigation ==========
 
         // Ctrl+R: Reset View
         registry.registerAction(new KeybindAction(
                 "viewport.reset_view",
                 "Reset View",
-                CATEGORY,
+                NAVIGATION,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_R),
                 actions::resetView
         ));
@@ -95,7 +103,7 @@ public class ViewportKeybindActions {
         registry.registerAction(new KeybindAction(
                 "viewport.fit_to_view",
                 "Fit to View",
-                CATEGORY,
+                NAVIGATION,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_F),
                 actions::fitToView
         ));
@@ -105,7 +113,7 @@ public class ViewportKeybindActions {
         registry.registerAction(new KeybindAction(
                 "viewport.cycle_edit_mode",
                 "Cycle Edit Mode",
-                CATEGORY,
+                NAVIGATION,
                 new ShortcutKey(GLFW.GLFW_KEY_TAB, false, false, false),
                 () -> {
                     EditModeManager.getInstance().cycleMode();
@@ -116,50 +124,11 @@ public class ViewportKeybindActions {
                 }
         ));
 
-        // Ctrl+Shift+S: Toggle Grid Snapping
-        registry.registerAction(new KeybindAction(
-                "viewport.toggle_grid_snapping",
-                "Toggle Grid Snapping",
-                CATEGORY,
-                ShortcutKey.ctrlShift(GLFW.GLFW_KEY_S),
-                () -> {
-                    state.toggleGridSnapping();
-                    actions.toggleGridSnapping();
-                }
-        ));
-
-        // Ctrl+E: Subdivide Edge (Edge mode only) - subdivides all selected edges, or hovered if none selected
-        registry.registerAction(new KeybindAction(
-                "viewport.subdivide_edge",
-                "Subdivide Edge",
-                CATEGORY,
-                ShortcutKey.ctrl(GLFW.GLFW_KEY_E),
-                actions::subdivideSelectedEdges
-        ));
-
-        // G: Grab Selection (Blender-style) - start dragging all selected items
-        registry.registerAction(new KeybindAction(
-                "viewport.grab_selection",
-                "Grab Selection",
-                CATEGORY,
-                ShortcutKey.simple(GLFW.GLFW_KEY_G),
-                actions::startGrabMode
-        ));
-
-        // K: Knife Tool (Edge mode only) - two-click face splitting
-        registry.registerAction(new KeybindAction(
-                "viewport.knife_tool",
-                "Knife Tool",
-                CATEGORY,
-                ShortcutKey.simple(GLFW.GLFW_KEY_K),
-                actions::toggleKnifeTool
-        ));
-
         // Numpad 5: Toggle Camera Mode (Arcball ↔ First-Person)
         registry.registerAction(new KeybindAction(
                 "viewport.toggle_camera_mode",
                 "Toggle Camera Mode",
-                CATEGORY,
+                NAVIGATION,
                 ShortcutKey.simple(GLFW.GLFW_KEY_KP_5),
                 () -> {
                     int current = state.getCurrentCameraModeIndex().get();
@@ -169,11 +138,13 @@ public class ViewportKeybindActions {
                 }
         ));
 
+        // ========== Editing ==========
+
         // Ctrl+Z: Undo
         registry.registerAction(new KeybindAction(
                 "viewport.undo",
                 "Undo",
-                CATEGORY,
+                EDITING,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_Z),
                 actions::undo
         ));
@@ -182,9 +153,50 @@ public class ViewportKeybindActions {
         registry.registerAction(new KeybindAction(
                 "viewport.redo",
                 "Redo",
-                CATEGORY,
+                EDITING,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_Y),
                 actions::redo
+        ));
+
+        // G: Grab Selection (Blender-style) - start dragging all selected items
+        registry.registerAction(new KeybindAction(
+                "viewport.grab_selection",
+                "Grab Selection",
+                EDITING,
+                ShortcutKey.simple(GLFW.GLFW_KEY_G),
+                actions::startGrabMode
+        ));
+
+        // Ctrl+Shift+S: Toggle Grid Snapping
+        registry.registerAction(new KeybindAction(
+                "viewport.toggle_grid_snapping",
+                "Toggle Grid Snapping",
+                EDITING,
+                ShortcutKey.ctrlShift(GLFW.GLFW_KEY_S),
+                () -> {
+                    state.toggleGridSnapping();
+                    actions.toggleGridSnapping();
+                }
+        ));
+
+        // ========== Mesh Tools ==========
+
+        // Ctrl+E: Subdivide Edge (Edge mode only) - subdivides all selected edges, or hovered if none selected
+        registry.registerAction(new KeybindAction(
+                "viewport.subdivide_edge",
+                "Subdivide Edge",
+                MESH_TOOLS,
+                ShortcutKey.ctrl(GLFW.GLFW_KEY_E),
+                actions::subdivideSelectedEdges
+        ));
+
+        // K: Knife Tool (Edge mode only) - two-click face splitting
+        registry.registerAction(new KeybindAction(
+                "viewport.knife_tool",
+                "Knife Tool",
+                MESH_TOOLS,
+                ShortcutKey.simple(GLFW.GLFW_KEY_K),
+                actions::toggleKnifeTool
         ));
 
         logger.info("Registered {} viewport keybind actions", 14);
