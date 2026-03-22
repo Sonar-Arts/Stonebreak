@@ -119,6 +119,15 @@ public class ViewportUIState {
     }
 
     /**
+     * Reset render mode to Solid (index 0) and wireframe off.
+     * Called when loading a new model so display state doesn't carry over.
+     */
+    public void resetRenderMode() {
+        currentRenderModeIndex.set(0); // "Solid"
+        wireframeMode.set(false);
+    }
+
+    /**
      * Update camera state from viewport camera.
      */
     public void updateCameraState(float distance, float pitch, float yaw, float fov) {

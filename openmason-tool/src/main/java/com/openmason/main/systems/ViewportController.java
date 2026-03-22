@@ -23,6 +23,7 @@ import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
+import com.openmason.main.systems.viewport.state.EditMode;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.input.KnifeSnapSettings;
@@ -402,22 +403,13 @@ public class ViewportController {
      * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → ModelContentLoader.
      */
     public void loadModel(BlockModel blockModel) {
-        // Clear ALL stale state from the previous model
+        // Reset edit mode to NONE — this also cancels active drags and
+        // clears all vertex/edge/face selections + renderer highlights
+        EditModeManager.getInstance().setMode(EditMode.NONE);
+        setShowVertices(false);
         setEditingFaceIndex(-1);
-        vertexSelectionState.clearSelection();
-        edgeSelectionState.clearSelection();
-        faceSelectionState.clearSelection();
         transformState.reset();
-
-        // Clear sub-renderer selection/hover so stale indices don't reference new geometry
-        if (viewportRenderPipeline != null) {
-            VertexRenderer vr = viewportRenderPipeline.getVertexRenderer();
-            EdgeRenderer er = viewportRenderPipeline.getEdgeRenderer();
-            FaceRenderer fr = viewportRenderPipeline.getFaceRenderer();
-            if (vr != null) vr.clearSelection();
-            if (er != null) er.clearSelection();
-            if (fr != null) { fr.clearSelection(); fr.clearHover(); }
-        }
+        viewportState.resetRenderMode();
 
         contentTypeManager.switchToModel(blockModel);
         commandHistory.clear();
