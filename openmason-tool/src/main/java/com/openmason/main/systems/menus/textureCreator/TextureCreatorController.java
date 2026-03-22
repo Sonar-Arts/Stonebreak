@@ -90,6 +90,33 @@ public class TextureCreatorController {
     }
 
     /**
+     * Fully reset all editor state. Called when opening a new or different project
+     * so that stale canvas, layers, history, clipboard, and face-region state from
+     * the previous session do not carry over.
+     */
+    public void resetAll() {
+        // Close face-region editing if active
+        if (faceRegionActive) {
+            closeFaceRegion();
+        }
+
+        // Reset to default canvas
+        TextureCreatorState.CanvasSize size = TextureCreatorState.CanvasSize.SIZE_16x16;
+        state.setCurrentCanvasSize(size);
+        state.setCurrentFilePath(null);
+        state.setUnsavedChanges(false);
+        state.setIsProjectFile(false);
+        state.getSelectionManager().clearSelection();
+
+        this.layerManager = new LayerManager(size.getWidth(), size.getHeight());
+        commandHistory.clear();
+        clipboard.clear();
+        canvasState.resetView();
+
+        logger.info("Texture editor state fully reset");
+    }
+
+    /**
      * Create a new blank canvas with arbitrary dimensions and an opaque fill color.
      * Used when opening a face for editing that has no existing texture —
      * the canvas must match the GPU texture so the preview pipeline uploads correct data.

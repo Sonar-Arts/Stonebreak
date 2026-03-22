@@ -576,6 +576,12 @@ public class GenericModelRenderer extends BaseRenderer {
             return;
         }
 
+        // Clear stale face texture data from any previously loaded model.
+        // This is the "load a fresh model" entry point — old per-face materials
+        // must not carry over. (updateMeshGeometry intentionally preserves them
+        // for part-level changes, so the clear must happen here.)
+        faceTextureManager.clear();
+
         // Update UV mode before importing (so the rebuild callback uses the right mode)
         if (meshData.uvMode() != null) {
             try {

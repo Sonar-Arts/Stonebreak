@@ -402,8 +402,22 @@ public class ViewportController {
      * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → ModelContentLoader.
      */
     public void loadModel(BlockModel blockModel) {
-        // Clear stale editing state from the previous model
+        // Clear ALL stale state from the previous model
         setEditingFaceIndex(-1);
+        vertexSelectionState.clearSelection();
+        edgeSelectionState.clearSelection();
+        faceSelectionState.clearSelection();
+        transformState.reset();
+
+        // Clear sub-renderer selection/hover so stale indices don't reference new geometry
+        if (viewportRenderPipeline != null) {
+            VertexRenderer vr = viewportRenderPipeline.getVertexRenderer();
+            EdgeRenderer er = viewportRenderPipeline.getEdgeRenderer();
+            FaceRenderer fr = viewportRenderPipeline.getFaceRenderer();
+            if (vr != null) vr.clearSelection();
+            if (er != null) er.clearSelection();
+            if (fr != null) { fr.clearSelection(); fr.clearHover(); }
+        }
 
         contentTypeManager.switchToModel(blockModel);
         commandHistory.clear();

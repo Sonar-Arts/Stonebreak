@@ -467,6 +467,10 @@ public class MainImGuiInterface implements ModelBrowserListener {
         return themeManager;
     }
 
+    public ModelOperationService getModelOperations() {
+        return modelOperations;
+    }
+
     // Convenience methods for backward compatibility
 
     public void createNewModel() {

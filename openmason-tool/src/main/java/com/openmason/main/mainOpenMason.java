@@ -365,6 +365,10 @@ public class mainOpenMason {
         });
         mainInterface.setTextureCreatorInterface(textureCreatorInterface);
 
+        // Reset texture editor when a new/different model is loaded
+        mainInterface.getModelOperations().setOnModelChangedCallback(() ->
+                textureCreatorInterface.getController().resetAll());
+
         textureCreatorInterface.setBackToHomeCallback(this::transitionToHomeScreen);
         textureCreatorInterface.setPreferencesCallback(mainInterface.getShowPreferencesCallback());
     }

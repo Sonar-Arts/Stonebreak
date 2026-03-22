@@ -47,6 +47,9 @@ public class ModelOperationService {
     private ViewportController viewport;
     private PropertyPanelImGui propertiesPanel;
 
+    // Called when a new/different model is loaded to reset dependent editor state
+    private Runnable onModelChangedCallback;
+
     public ModelOperationService(ModelState modelState, StatusService statusService,
                                  FileDialogService fileDialogService) {
         this.modelState = modelState;
@@ -84,6 +87,14 @@ public class ModelOperationService {
     }
 
     /**
+     * Sets a callback invoked whenever the active model changes (new model or
+     * open model). Used to reset dependent editor state such as the texture editor.
+     */
+    public void setOnModelChangedCallback(Runnable callback) {
+        this.onModelChangedCallback = callback;
+    }
+
+    /**
      * Create new blank cube model.
      * Creates a BlockModel with gray 64x48 cube net texture and displays it in viewport.
      */
@@ -115,6 +126,11 @@ public class ModelOperationService {
             // Update properties panel with new model
             if (propertiesPanel != null) {
                 propertiesPanel.setEditableModel(currentEditableModel);
+            }
+
+            // Reset dependent editors (texture editor, etc.)
+            if (onModelChangedCallback != null) {
+                onModelChangedCallback.run();
             }
 
             logger.info("Created new blank cube model: {}", currentEditableModel.getName());
@@ -359,6 +375,11 @@ public class ModelOperationService {
                 // Update properties panel with loaded model
                 if (propertiesPanel != null) {
                     propertiesPanel.setEditableModel(currentEditableModel);
+                }
+
+                // Reset dependent editors (texture editor, etc.)
+                if (onModelChangedCallback != null) {
+                    onModelChangedCallback.run();
                 }
 
                 logger.info("Loaded .OMO model from: {} (hasMesh={})", filePath, meshData != null);
