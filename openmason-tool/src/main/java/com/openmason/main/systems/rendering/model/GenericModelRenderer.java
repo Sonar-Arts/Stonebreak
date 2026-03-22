@@ -10,6 +10,9 @@ import com.openmason.main.systems.rendering.model.gmr.core.MeshMutationCoordinat
 import com.openmason.main.systems.rendering.model.gmr.core.MeshRebuildPipeline;
 import com.openmason.main.systems.rendering.model.gmr.core.MeshSerializationAdapter;
 import com.openmason.main.systems.rendering.model.gmr.core.VertexDataManager;
+import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartManager;
+import com.openmason.main.systems.rendering.model.gmr.parts.PartMeshRebuilder;
+import com.openmason.main.systems.rendering.model.UVMode;
 import com.openmason.main.systems.rendering.model.gmr.extraction.FaceTriangleQuery;
 import com.openmason.main.systems.rendering.model.gmr.extraction.GMREdgeExtractor;
 import com.openmason.main.systems.rendering.model.gmr.extraction.GMRFaceExtractor;
@@ -69,6 +72,9 @@ public class GenericModelRenderer extends BaseRenderer {
     private final TextureGPUOperations textureOps;
     private final DrawBatchManager drawBatchManager;
     private final MeshSerializationAdapter serializationAdapter;
+
+    // Part management
+    private final ModelPartManager partManager;
 
     // Cached model bounds (AABB) — nulled on geometry changes, recomputed lazily
     private ModelBounds cachedBounds;
@@ -173,6 +179,10 @@ public class GenericModelRenderer extends BaseRenderer {
         this.serializationAdapter = new MeshSerializationAdapter(
             vertexManager, faceMapper, this.faceTextureManager, stateManager,
             rebuildPipeline, textureOps, rendererState);
+
+        // Wire part manager with mesh consumer that pushes data through the serialization pipeline
+        this.partManager = new ModelPartManager();
+        this.partManager.setMeshConsumer(this::onPartMeshRebuilt);
 
         logger.debug("GenericModelRenderer created with subsystems");
     }
@@ -467,6 +477,134 @@ public class GenericModelRenderer extends BaseRenderer {
 
     public void markDrawBatchesDirty() {
         rebuildPipeline.markDrawBatchesDirty();
+    }
+
+    // =========================================================================
+    // PART MANAGEMENT
+    // =========================================================================
+
+    /**
+     * Get the model part manager for multi-part model operations.
+     *
+     * @return The ModelPartManager instance
+     */
+    public ModelPartManager getPartManager() {
+        return partManager;
+    }
+
+    /**
+     * Assign a default solid-fill material to all faces of a model part.
+     * Creates a 16x16 solid gray GPU texture, registers it as a material,
+     * and assigns it to every face in the part's mesh range.
+     *
+     * @param part The part descriptor (must have a valid meshRange)
+     */
+    public void assignDefaultMaterialToPartFaces(
+            com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor part) {
+        if (part == null || part.meshRange() == null) {
+            logger.warn("Cannot assign default material: part or meshRange is null");
+            return;
+        }
+
+        // Create a solid gray texture
+        com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader loader =
+                new com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader();
+        int gpuTextureId = loader.createBlankTexture(16, 16);
+        if (gpuTextureId <= 0) {
+            logger.warn("Failed to create default texture for part '{}'", part.name());
+            return;
+        }
+
+        // Register as a material
+        int materialId = com.openmason.main.systems.menus.panes.propertyPane.sections.FaceMaterialSection
+                .allocateNextMaterialId();
+        MaterialDefinition material = new MaterialDefinition(
+                materialId, "Part: " + part.name(), gpuTextureId,
+                MaterialDefinition.RenderLayer.OPAQUE,
+                MaterialDefinition.MaterialProperties.NONE
+        );
+        faceTextureManager.registerMaterial(material);
+
+        // Assign to all faces in the part's range
+        com.openmason.main.systems.rendering.model.gmr.parts.MeshRange range = part.meshRange();
+        for (int faceId = range.faceStart(); faceId < range.faceStart() + range.faceCount(); faceId++) {
+            faceTextureManager.assignDefaultMapping(faceId, materialId);
+        }
+
+        // Trigger UV refresh and draw batch rebuild
+        rebuildPipeline.markDrawBatchesDirty();
+        textureOps.regenerateUVsAndUpload();
+
+        logger.info("Assigned default material (id={}, textureId={}) to part '{}' faces [{}-{})",
+                materialId, gpuTextureId, part.name(),
+                range.faceStart(), range.faceStart() + range.faceCount());
+    }
+
+    /**
+     * Callback from ModelPartManager when the combined mesh buffer is rebuilt.
+     * Bridges part-level changes into the existing serialization/render pipeline.
+     */
+    private void onPartMeshRebuilt(PartMeshRebuilder.RebuildResult result) {
+        if (result.totalVertexCount() == 0) {
+            logger.debug("Part mesh rebuild produced empty result");
+            return;
+        }
+
+        // Wrap the rebuilt data as MeshData and feed through the geometry-only path.
+        // Uses updateMeshGeometry() instead of loadMeshData() to preserve existing
+        // face texture mappings — critical when parts are added/moved/removed.
+        OMOFormat.MeshData meshData = new OMOFormat.MeshData(
+                result.combinedVertices(),
+                result.combinedTexCoords(),
+                result.combinedIndices(),
+                result.triangleToFaceId(),
+                stateManager.getUVMode() != null ? stateManager.getUVMode().name() : "FLAT"
+        );
+
+        serializationAdapter.updateMeshGeometry(meshData);
+        logger.debug("Part mesh rebuild pushed to pipeline: {} vertices, {} indices",
+                result.totalVertexCount(), result.totalIndexCount());
+    }
+
+    /**
+     * Load mesh data as a single root part via the ModelPartManager.
+     * This is the preferred entry point for loading model geometry — it ensures
+     * the part manager is the single source of truth for all mesh data.
+     *
+     * @param meshData  The mesh data to load
+     * @param partName  Display name for the root part
+     */
+    public void loadMeshDataAsPart(OMOFormat.MeshData meshData, String partName) {
+        if (meshData == null || !meshData.hasCustomGeometry()) {
+            logger.debug("No custom mesh data to load as part");
+            return;
+        }
+
+        // Update UV mode before importing (so the rebuild callback uses the right mode)
+        if (meshData.uvMode() != null) {
+            try {
+                stateManager.setUVMode(UVMode.valueOf(meshData.uvMode()));
+            } catch (IllegalArgumentException e) {
+                stateManager.setUVMode(UVMode.FLAT);
+            }
+        }
+
+        // Build PartGeometry directly from MeshData — preserves the exact
+        // triangle-to-face mapping from the .OMO file instead of regenerating it.
+        PartMeshRebuilder.PartGeometry geo = PartMeshRebuilder.PartGeometry.of(
+                meshData.vertices(),
+                meshData.texCoords(),
+                meshData.indices(),
+                meshData.triangleToFaceId()
+        );
+
+        // Import as single part — clears existing parts, adds the root,
+        // rebuilds the combined mesh, and pushes through the pipeline via onPartMeshRebuilt
+        String name = partName != null ? partName : "Root";
+        partManager.importAsSinglePartFromGeometry(name, geo);
+
+        logger.info("Loaded mesh data as part '{}': {} vertices, {} triangles",
+                name, meshData.getVertexCount(), meshData.getTriangleCount());
     }
 
     // =========================================================================

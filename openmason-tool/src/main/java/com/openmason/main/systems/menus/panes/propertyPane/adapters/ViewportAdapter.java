@@ -48,18 +48,18 @@ public class ViewportAdapter implements IViewportConnector {
     }
 
     @Override
-    public void reloadBlockModel(BlockModel blockModel) {
+    public void reloadModel(BlockModel blockModel) {
         if (viewport != null && blockModel != null) {
-            viewport.loadBlockModel(blockModel);
-            logger.debug("Reloaded BlockModel in viewport: {}", blockModel.getName());
+            viewport.loadModel(blockModel);
+            logger.debug("Reloaded model in viewport: {}", blockModel.getName());
         }
     }
 
     @Override
-    public void updateBlockModelTexture(BlockModel blockModel) {
+    public void updateModelTexture(BlockModel blockModel) {
         if (viewport != null && blockModel != null) {
-            viewport.updateBlockModelTexture(blockModel);
-            logger.debug("Updated BlockModel texture in viewport: {}", blockModel.getName());
+            viewport.updateModelTexture(blockModel);
+            logger.debug("Updated model texture in viewport: {}", blockModel.getName());
         }
     }
 

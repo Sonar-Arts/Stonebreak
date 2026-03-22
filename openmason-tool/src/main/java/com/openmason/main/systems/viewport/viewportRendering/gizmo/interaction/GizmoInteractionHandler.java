@@ -23,6 +23,10 @@ public class GizmoInteractionHandler {
     private final TransformState transformState;
     private ViewportUIState viewportState;
 
+    // Transform target abstraction — defaults to model-level transform,
+    // switches to part-level when a part is selected
+    private ITransformTarget transformTarget;
+
     // Undo/redo support
     private ModelCommandHistory commandHistory;
 
@@ -56,6 +60,38 @@ public class GizmoInteractionHandler {
      */
     public void setCommandHistory(ModelCommandHistory commandHistory) {
         this.commandHistory = commandHistory;
+    }
+
+    /**
+     * Set the transform target for gizmo operations.
+     * When set, the gizmo reads position/rotation/scale from the target
+     * and writes transforms to it instead of the default TransformState.
+     *
+     * @param target The transform target, or null to use default model transform
+     */
+    public void setTransformTarget(ITransformTarget target) {
+        this.transformTarget = target;
+    }
+
+    /**
+     * Get the currently active transform target.
+     * Returns the custom target if set and active, otherwise returns null
+     * (signals to use transformState directly).
+     *
+     * @return Active transform target, or null for default model transform
+     */
+    public ITransformTarget getActiveTransformTarget() {
+        if (transformTarget != null && transformTarget.isActive()) {
+            return transformTarget;
+        }
+        return null;
+    }
+
+    /**
+     * Internal alias for getActiveTransformTarget (used by drag handlers).
+     */
+    private ITransformTarget getActiveTarget() {
+        return getActiveTransformTarget();
     }
 
     /**
@@ -135,22 +171,33 @@ public class GizmoInteractionHandler {
 
         GizmoPart hoveredPart = gizmoState.getHoveredPart();
         if (hoveredPart != null) {
-            // Start drag operation
-            Vector3f position = new Vector3f(
-                transformState.getPositionX(),
-                transformState.getPositionY(),
-                transformState.getPositionZ()
-            );
-            Vector3f rotation = new Vector3f(
-                transformState.getRotationX(),
-                transformState.getRotationY(),
-                transformState.getRotationZ()
-            );
-            Vector3f scale = new Vector3f(
-                transformState.getScaleX(),
-                transformState.getScaleY(),
-                transformState.getScaleZ()
-            );
+            // Read initial transform from active target (part or model)
+            ITransformTarget target = getActiveTarget();
+            Vector3f position;
+            Vector3f rotation;
+            Vector3f scale;
+
+            if (target != null) {
+                position = target.getPosition();
+                rotation = target.getRotation();
+                scale = target.getScale();
+            } else {
+                position = new Vector3f(
+                    transformState.getPositionX(),
+                    transformState.getPositionY(),
+                    transformState.getPositionZ()
+                );
+                rotation = new Vector3f(
+                    transformState.getRotationX(),
+                    transformState.getRotationY(),
+                    transformState.getRotationZ()
+                );
+                scale = new Vector3f(
+                    transformState.getScaleX(),
+                    transformState.getScaleY(),
+                    transformState.getScaleZ()
+                );
+            }
 
             gizmoState.startDrag(
                 hoveredPart,
@@ -184,26 +231,39 @@ public class GizmoInteractionHandler {
                 Vector3f oldRot = gizmoState.getDragStartObjectRotation();
                 Vector3f oldScale = gizmoState.getDragStartObjectScale();
 
-                Vector3f newPos = new Vector3f(
-                    transformState.getPositionX(),
-                    transformState.getPositionY(),
-                    transformState.getPositionZ()
-                );
-                Vector3f newRot = new Vector3f(
-                    transformState.getRotationX(),
-                    transformState.getRotationY(),
-                    transformState.getRotationZ()
-                );
-                Vector3f newScale = new Vector3f(
-                    transformState.getScaleX(),
-                    transformState.getScaleY(),
-                    transformState.getScaleZ()
-                );
+                // Read current values from active target (part or model)
+                ITransformTarget target = getActiveTarget();
+                Vector3f newPos;
+                Vector3f newRot;
+                Vector3f newScale;
 
-                // Only record if something actually changed
-                if (!oldPos.equals(newPos, 0.0001f)
+                if (target != null) {
+                    newPos = target.getPosition();
+                    newRot = target.getRotation();
+                    newScale = target.getScale();
+                } else {
+                    newPos = new Vector3f(
+                        transformState.getPositionX(),
+                        transformState.getPositionY(),
+                        transformState.getPositionZ()
+                    );
+                    newRot = new Vector3f(
+                        transformState.getRotationX(),
+                        transformState.getRotationY(),
+                        transformState.getRotationZ()
+                    );
+                    newScale = new Vector3f(
+                        transformState.getScaleX(),
+                        transformState.getScaleY(),
+                        transformState.getScaleZ()
+                    );
+                }
+
+                // Only record undo for model-level transforms (part undo is separate)
+                if (target == null &&
+                        (!oldPos.equals(newPos, 0.0001f)
                         || !oldRot.equals(newRot, 0.0001f)
-                        || !oldScale.equals(newScale, 0.0001f)) {
+                        || !oldScale.equals(newScale, 0.0001f))) {
 
                     GizmoTransformCommand command = switch (gizmoState.getCurrentMode()) {
                         case TRANSLATE -> GizmoTransformCommand.translate(
@@ -385,12 +445,22 @@ public class GizmoInteractionHandler {
             newPos.add(axis2.x * move2, axis2.y * move2, axis2.z * move2);
         }
 
-        // Apply grid snapping from viewport state if available
-        if (viewportState != null && viewportState.getGridSnappingEnabled().get()) {
-            transformState.setPosition(newPos.x, newPos.y, newPos.z,
-                                     true, viewportState.getGridSnappingIncrement().get());
+        // Apply to active target (part or model)
+        ITransformTarget target = getActiveTarget();
+        if (target != null) {
+            if (viewportState != null && viewportState.getGridSnappingEnabled().get()) {
+                target.setPosition(newPos.x, newPos.y, newPos.z,
+                        true, viewportState.getGridSnappingIncrement().get());
+            } else {
+                target.setPosition(newPos.x, newPos.y, newPos.z);
+            }
         } else {
-            transformState.setPosition(newPos.x, newPos.y, newPos.z);
+            if (viewportState != null && viewportState.getGridSnappingEnabled().get()) {
+                transformState.setPosition(newPos.x, newPos.y, newPos.z,
+                        true, viewportState.getGridSnappingIncrement().get());
+            } else {
+                transformState.setPosition(newPos.x, newPos.y, newPos.z);
+            }
         }
     }
 
@@ -465,7 +535,12 @@ public class GizmoInteractionHandler {
             newRot.z += angleDegrees;
         }
 
-        transformState.setRotation(newRot.x, newRot.y, newRot.z);
+        ITransformTarget rotTarget = getActiveTarget();
+        if (rotTarget != null) {
+            rotTarget.setRotation(newRot.x, newRot.y, newRot.z);
+        } else {
+            transformState.setRotation(newRot.x, newRot.y, newRot.z);
+        }
     }
 
     /**
@@ -502,7 +577,12 @@ public class GizmoInteractionHandler {
             float newScaleX = startScale.x * scaleFactor;
             float newScaleY = startScale.y * scaleFactor;
             float newScaleZ = startScale.z * scaleFactor;
-            transformState.setScale(newScaleX, newScaleY, newScaleZ);
+            ITransformTarget uniTarget = getActiveTarget();
+            if (uniTarget != null) {
+                uniTarget.setScale(newScaleX, newScaleY, newScaleZ);
+            } else {
+                transformState.setScale(newScaleX, newScaleY, newScaleZ);
+            }
         } else {
             // Per-axis scaling: project mouse movement onto the specific axis direction
             Vector3f axis = getAxisVector(constraint);
@@ -534,7 +614,12 @@ public class GizmoInteractionHandler {
                 case Z -> newScaleZ = startScale.z * scaleFactor;
             }
 
-            transformState.setScale(newScaleX, newScaleY, newScaleZ);
+            ITransformTarget axisTarget = getActiveTarget();
+            if (axisTarget != null) {
+                axisTarget.setScale(newScaleX, newScaleY, newScaleZ);
+            } else {
+                transformState.setScale(newScaleX, newScaleY, newScaleZ);
+            }
         }
     }
 

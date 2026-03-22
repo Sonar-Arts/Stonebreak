@@ -11,12 +11,13 @@ import java.util.Objects;
  *   <li>1.0 - Initial format with basic geometry dimensions</li>
  *   <li>1.1 - Added custom mesh data support for subdivision (vertices, indices, UVs, face mapping)</li>
  *   <li>1.2 - Added per-face texture persistence (face mappings, material entries, material PNGs)</li>
+ *   <li>1.3 - Added model part entries for multi-part models (part transforms, mesh ranges)</li>
  * </ul>
  */
 public final class OMOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.2";
+    public static final String FORMAT_VERSION = "1.3";
 
     /** Minimum supported format version for reading */
     public static final String MIN_SUPPORTED_VERSION = "1.0";
@@ -178,6 +179,49 @@ public final class OMOFormat {
      */
     public record FaceTextureData(List<FaceMappingEntry> mappings,
                                   List<MaterialEntry> materials) {}
+
+    /**
+     * Model part entry for multi-part models (v1.3+).
+     *
+     * <p>Describes a single named part within a model, including its local transform,
+     * mesh range in the combined buffer, and visibility/lock state. When the parts
+     * list is null or empty, the entire mesh is treated as one implicit "Root" part
+     * (backward compatible with pre-1.3 files).
+     *
+     * @param id          Unique part identifier (UUID string)
+     * @param name        User-facing display name
+     * @param originX     Transform pivot X
+     * @param originY     Transform pivot Y
+     * @param originZ     Transform pivot Z
+     * @param posX        Translation offset X
+     * @param posY        Translation offset Y
+     * @param posZ        Translation offset Z
+     * @param rotX        Euler rotation X (degrees)
+     * @param rotY        Euler rotation Y (degrees)
+     * @param rotZ        Euler rotation Z (degrees)
+     * @param scaleX      Scale factor X
+     * @param scaleY      Scale factor Y
+     * @param scaleZ      Scale factor Z
+     * @param vertexStart First vertex index in combined buffer
+     * @param vertexCount Number of vertices this part owns
+     * @param indexStart  First index position in combined index buffer
+     * @param indexCount  Number of indices this part owns
+     * @param faceStart   First face ID this part owns
+     * @param faceCount   Number of faces this part owns
+     * @param visible     Whether this part is rendered
+     * @param locked      Whether this part is protected from editing
+     */
+    public record PartEntry(
+            String id, String name,
+            float originX, float originY, float originZ,
+            float posX, float posY, float posZ,
+            float rotX, float rotY, float rotZ,
+            float scaleX, float scaleY, float scaleZ,
+            int vertexStart, int vertexCount,
+            int indexStart, int indexCount,
+            int faceStart, int faceCount,
+            boolean visible, boolean locked
+    ) {}
 
     /**
      * Custom mesh data for subdivided/edited models (v2.0+).

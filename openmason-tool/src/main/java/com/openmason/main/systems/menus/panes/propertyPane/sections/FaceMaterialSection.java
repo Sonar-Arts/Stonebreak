@@ -456,6 +456,16 @@ public class FaceMaterialSection implements IPanelSection {
     }
 
     /**
+     * Allocate and return the next unique material ID.
+     * Thread-safe — uses the shared atomic counter.
+     *
+     * @return A new unique material ID
+     */
+    public static int allocateNextMaterialId() {
+        return nextMaterialId.getAndIncrement();
+    }
+
+    /**
      * Clear material assignment on selected faces (revert to default).
      *
      * @param selectedFaces set of selected face IDs

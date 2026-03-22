@@ -20,6 +20,16 @@ public interface IMeshSerializationAdapter {
     void loadMeshData(OMOFormat.MeshData meshData);
 
     /**
+     * Update mesh geometry without clearing face texture state.
+     * Used by the ModelPartManager when parts are added/removed/transformed —
+     * the vertex/index/face data changes but existing face texture mappings
+     * should be preserved.
+     *
+     * @param meshData the mesh data to load (vertices, indices, face mapping)
+     */
+    void updateMeshGeometry(OMOFormat.MeshData meshData);
+
+    /**
      * Create a MeshData snapshot from current internal state for saving to .OMO file.
      *
      * @return MeshData with current vertex/index/face data, or null if no vertex data

@@ -102,6 +102,61 @@ public class MeshSerializationAdapter implements IMeshSerializationAdapter {
     }
 
     @Override
+    public void updateMeshGeometry(OMOFormat.MeshData meshData) {
+        if (meshData == null || !meshData.hasCustomGeometry()) {
+            logger.debug("No custom mesh data for geometry update");
+            return;
+        }
+
+        float[] vertices = meshData.vertices();
+        float[] texCoords = meshData.texCoords();
+        int[] indices = meshData.indices();
+        int[] triangleToFaceId = meshData.triangleToFaceId();
+        String uvModeStr = meshData.uvMode();
+
+        // Update UV mode
+        if (uvModeStr != null) {
+            try {
+                stateManager.setUVMode(UVMode.valueOf(uvModeStr));
+            } catch (IllegalArgumentException e) {
+                logger.warn("Unknown UV mode '{}', defaulting to FLAT", uvModeStr);
+                stateManager.setUVMode(UVMode.FLAT);
+            }
+        }
+
+        // Clear parts (we're loading direct mesh data)
+        stateManager.clearParts();
+
+        // Set vertex data
+        vertexManager.setData(vertices.clone(), texCoords != null ? texCoords.clone() : null,
+            indices != null ? indices.clone() : null);
+
+        // Update counts
+        int newVertexCount = vertices.length / 3;
+        int newIndexCount = indices != null ? indices.length : 0;
+        rendererState.setVertexCount(newVertexCount);
+        rendererState.setIndexCount(newIndexCount);
+
+        // Restore face mapping
+        if (triangleToFaceId != null && triangleToFaceId.length > 0) {
+            faceMapper.setMapping(triangleToFaceId.clone());
+        } else if (indices != null) {
+            faceMapper.initializeStandardMapping(indices.length / 3);
+        } else {
+            faceMapper.clear();
+        }
+
+        // NOTE: faceTextureManager is NOT cleared — existing mappings are preserved
+        // This is the key difference from loadMeshData()
+
+        // Trigger full rebuild
+        rebuildPipeline.rebuildFull(newVertexCount, newIndexCount);
+
+        logger.debug("Updated mesh geometry (face textures preserved): {} vertices, {} triangles",
+                newVertexCount, newIndexCount / 3);
+    }
+
+    @Override
     public OMOFormat.MeshData toMeshData() {
         float[] vertices = vertexManager.getVertices();
         if (vertices == null || vertices.length == 0) {

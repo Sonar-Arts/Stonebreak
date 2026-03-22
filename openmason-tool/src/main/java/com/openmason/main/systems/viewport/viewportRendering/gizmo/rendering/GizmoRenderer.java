@@ -5,6 +5,7 @@ import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoInteractionHandler;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoPart;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.ITransformTarget;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.modes.IGizmoMode;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.modes.RotateMode;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.modes.ScaleMode;
@@ -147,10 +148,18 @@ public class GizmoRenderer {
     }
 
     /**
-     * Computes the gizmo's world-space center by transforming the model bounds center
-     * through the model's transform matrix.
+     * Computes the gizmo's world-space center.
+     * If a part is selected (via the transform target on the interaction handler),
+     * positions at the selected part's center. Otherwise uses model bounds center.
      */
     private Vector3f computeGizmoWorldCenter() {
+        // Check if the interaction handler has an active part target
+        ITransformTarget target = interactionHandler.getActiveTransformTarget();
+        if (target != null) {
+            return target.getWorldCenter();
+        }
+
+        // Default: model bounds center
         Vector3f boundsCenter = modelBounds.center();
         if (boundsCenter.lengthSquared() < 0.0001f) {
             return new Vector3f(
@@ -296,6 +305,17 @@ public class GizmoRenderer {
 
     public GizmoState getGizmoState() {
         return gizmoState;
+    }
+
+    /**
+     * Set the transform target for gizmo operations.
+     * When a part is selected, pass a PartTransformTarget so the gizmo
+     * positions at and transforms the selected part instead of the whole model.
+     *
+     * @param target Transform target, or null for default model transform
+     */
+    public void setTransformTarget(ITransformTarget target) {
+        interactionHandler.setTransformTarget(target);
     }
 
     /**

@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Manages content type switching in the viewport (blocks, items, BlockModels).
+ * Manages content type switching in the viewport (blocks, items, models).
  *
  * <p>This class follows the Single Responsibility Principle by focusing solely on
  * coordinating content type transitions and state updates. It acts as a facade
@@ -17,22 +17,14 @@ import org.slf4j.LoggerFactory;
  *
  * <h2>Responsibilities</h2>
  * <ul>
- *   <li>Switch to BlockModel mode</li>
+ *   <li>Switch to Model mode</li>
  *   <li>Switch to Block mode</li>
  *   <li>Switch to Item mode</li>
  *   <li>Coordinate state updates across transitions</li>
- *   <li>Manage BlockModel lifecycle via BlockModelLoader</li>
+ *   <li>Manage model lifecycle via ModelContentLoader</li>
  * </ul>
  *
- * <h2>SOLID Principles</h2>
- * <ul>
- *   <li><b>Single Responsibility</b>: Only manages content type switching</li>
- *   <li><b>Open/Closed</b>: Extensible through new content types</li>
- *   <li><b>Liskov Substitution</b>: Content types are interchangeable</li>
- *   <li><b>Dependency Inversion</b>: Depends on abstractions (state interfaces)</li>
- * </ul>
- *
- * @see BlockModelLoader
+ * @see ModelContentLoader
  * @see RenderingState
  * @see TransformState
  */
@@ -41,7 +33,7 @@ public class ContentTypeManager {
     private static final Logger logger = LoggerFactory.getLogger(ContentTypeManager.class);
 
     // Dependencies (injected)
-    private final BlockModelLoader blockModelLoader;
+    private final ModelContentLoader modelContentLoader;
     private final RenderingState renderingState;
     private final TransformState transformState;
 
@@ -61,46 +53,46 @@ public class ContentTypeManager {
     /**
      * Create a new ContentTypeManager.
      *
-     * @param blockModelLoader The loader for BlockModel content
+     * @param modelContentLoader The loader for model content
      * @param renderingState The rendering state to update
      * @param transformState The transform state to reset
      */
-    public ContentTypeManager(BlockModelLoader blockModelLoader,
+    public ContentTypeManager(ModelContentLoader modelContentLoader,
                               RenderingState renderingState,
                               TransformState transformState) {
-        if (blockModelLoader == null || renderingState == null || transformState == null) {
+        if (modelContentLoader == null || renderingState == null || transformState == null) {
             throw new IllegalArgumentException("Dependencies cannot be null");
         }
-        this.blockModelLoader = blockModelLoader;
+        this.modelContentLoader = modelContentLoader;
         this.renderingState = renderingState;
         this.transformState = transformState;
     }
 
     /**
-     * Switch to BlockModel mode and load the specified model.
+     * Switch to Model mode and load the specified model.
      *
      * <p>This performs:
      * <ol>
-     *   <li>Load BlockModel via BlockModelLoader</li>
-     *   <li>Update rendering state to BlockModel mode</li>
+     *   <li>Load model via ModelContentLoader</li>
+     *   <li>Update rendering state to model mode</li>
      *   <li>Reset transform to default position</li>
      * </ol>
      *
-     * @param blockModel The BlockModel to load and display
-     * @return LoadResult from BlockModelLoader
+     * @param blockModel The model to load and display
+     * @return LoadResult from ModelContentLoader
      */
-    public BlockModelLoader.LoadResult switchToBlockModel(BlockModel blockModel) {
+    public ModelContentLoader.LoadResult switchToModel(BlockModel blockModel) {
         if (blockModel == null) {
-            logger.error("Cannot switch to null BlockModel");
-            return BlockModelLoader.LoadResult.failure("BlockModel is null");
+            logger.error("Cannot switch to null model");
+            return ModelContentLoader.LoadResult.failure("Model is null");
         }
 
-        logger.info("Switching to BlockModel mode: {}", blockModel.getName());
+        logger.info("Switching to Model mode: {}", blockModel.getName());
 
-        // Load BlockModel
-        BlockModelLoader.LoadResult result = blockModelLoader.load(blockModel);
+        // Load model
+        ModelContentLoader.LoadResult result = modelContentLoader.load(blockModel);
         if (!result.isSuccess()) {
-            logger.error("Failed to load BlockModel: {}", result.getMessage());
+            logger.error("Failed to load model: {}", result.getMessage());
             return result;
         }
 
@@ -109,31 +101,31 @@ public class ContentTypeManager {
         transformState.resetPosition();
         currentType = ContentType.BLOCK_MODEL;
 
-        logger.info("Switched to BlockModel mode successfully: {}", blockModel.getName());
+        logger.info("Switched to Model mode successfully: {}", blockModel.getName());
         return result;
     }
 
     /**
-     * Update texture for current BlockModel without rebuilding geometry.
+     * Update texture for current model without rebuilding geometry.
      *
      * <p>Use this to preserve vertex/geometry modifications while changing textures.
      *
-     * @param blockModel The BlockModel with updated texture path
-     * @return LoadResult from BlockModelLoader
+     * @param blockModel The model with updated texture path
+     * @return LoadResult from ModelContentLoader
      */
-    public BlockModelLoader.LoadResult updateBlockModelTexture(BlockModel blockModel) {
+    public ModelContentLoader.LoadResult updateModelTexture(BlockModel blockModel) {
         if (blockModel == null) {
-            logger.warn("Cannot update texture for null BlockModel");
-            return BlockModelLoader.LoadResult.failure("BlockModel is null");
+            logger.warn("Cannot update texture for null model");
+            return ModelContentLoader.LoadResult.failure("Model is null");
         }
 
         if (currentType != ContentType.BLOCK_MODEL) {
-            logger.warn("Not in BlockModel mode, cannot update texture");
-            return BlockModelLoader.LoadResult.failure("Not in BlockModel mode");
+            logger.warn("Not in Model mode, cannot update texture");
+            return ModelContentLoader.LoadResult.failure("Not in Model mode");
         }
 
-        logger.info("Updating BlockModel texture: {}", blockModel.getName());
-        return blockModelLoader.updateTexture(blockModel);
+        logger.info("Updating model texture: {}", blockModel.getName());
+        return modelContentLoader.updateTexture(blockModel);
     }
 
     /**
@@ -141,7 +133,7 @@ public class ContentTypeManager {
      *
      * <p>This performs:
      * <ol>
-     *   <li>Unload any BlockModel content</li>
+     *   <li>Unload any model content</li>
      *   <li>Update rendering state to Block mode</li>
      *   <li>Reset transform to default position</li>
      * </ol>
@@ -156,9 +148,9 @@ public class ContentTypeManager {
 
         logger.info("Switching to Block mode: {}", blockType);
 
-        // Unload BlockModel if active
+        // Unload model if active
         if (currentType == ContentType.BLOCK_MODEL) {
-            blockModelLoader.unload();
+            modelContentLoader.unload();
         }
 
         // Update state
@@ -174,7 +166,7 @@ public class ContentTypeManager {
      *
      * <p>This performs:
      * <ol>
-     *   <li>Unload any BlockModel content</li>
+     *   <li>Unload any model content</li>
      *   <li>Update rendering state to Item mode</li>
      *   <li>Reset transform to default position</li>
      * </ol>
@@ -189,9 +181,9 @@ public class ContentTypeManager {
 
         logger.info("Switching to Item mode: {}", itemType);
 
-        // Unload BlockModel if active
+        // Unload model if active
         if (currentType == ContentType.BLOCK_MODEL) {
-            blockModelLoader.unload();
+            modelContentLoader.unload();
         }
 
         // Update state
@@ -221,7 +213,7 @@ public class ContentTypeManager {
         logger.info("Unloading all content");
 
         if (currentType == ContentType.BLOCK_MODEL) {
-            blockModelLoader.unload();
+            modelContentLoader.unload();
         }
 
         currentType = ContentType.NONE;
@@ -238,11 +230,11 @@ public class ContentTypeManager {
     }
 
     /**
-     * Get the BlockModelLoader for direct access if needed.
+     * Get the ModelContentLoader for direct access if needed.
      *
-     * @return BlockModelLoader instance
+     * @return ModelContentLoader instance
      */
-    public BlockModelLoader getBlockModelLoader() {
-        return blockModelLoader;
+    public ModelContentLoader getModelContentLoader() {
+        return modelContentLoader;
     }
 }

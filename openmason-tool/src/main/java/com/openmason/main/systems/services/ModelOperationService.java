@@ -100,7 +100,7 @@ public class ModelOperationService {
 
             // Load into viewport if available
             if (viewport != null) {
-                viewport.loadBlockModel(currentEditableModel);
+                viewport.loadModel(currentEditableModel);
                 statusService.updateStatus("Blank model created and loaded: " + currentEditableModel.getName());
             } else {
                 statusService.updateStatus("Blank model created: " + currentEditableModel.getName() +
@@ -300,8 +300,10 @@ public class ModelOperationService {
                 if (viewport != null) {
                     if (meshData != null && meshData.hasCustomGeometry()) {
                         // MODERN: Load self-contained .omo file with mesh data
-                        viewport.loadBlockModel(currentEditableModel);
-                        viewport.loadMeshData(meshData);
+                        // loadModel() handles texture loading, then loadMeshDataAsPart() registers
+                        // the mesh as a named part in the ModelPartManager
+                        viewport.loadModel(currentEditableModel);
+                        viewport.loadMeshDataAsPart(meshData, loadedModel.getName());
                         logger.info("Loaded self-contained .omo with mesh data: {} vertices, {} triangles",
                                 meshData.getVertexCount(), meshData.getTriangleCount());
 
@@ -318,7 +320,7 @@ public class ModelOperationService {
                     } else {
                         // LEGACY: Old .omo file without mesh data - generate from dimensions
                         logger.warn("Loading legacy .omo file without mesh data - using generation fallback");
-                        viewport.loadBlockModel(currentEditableModel);
+                        viewport.loadModel(currentEditableModel);
 
                         // Legacy cube: 1 part, 24 vertices, 12 triangles
                         modelState.updateStatistics(1, 24, 12);

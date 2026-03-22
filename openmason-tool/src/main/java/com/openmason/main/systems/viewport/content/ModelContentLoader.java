@@ -14,35 +14,28 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Handles loading and unloading of BlockModel content for the viewport.
+ * Handles loading and unloading of model content for the viewport.
  *
  * <p>This class follows the Single Responsibility Principle by focusing solely on
- * BlockModel content management, including texture loading, UV mode detection, and
+ * model content management, including texture loading, UV mode detection, and
  * legacy geometry generation.
  *
  * <h2>Responsibilities</h2>
  * <ul>
- *   <li>Load BlockModel with texture and geometry</li>
- *   <li>Unload BlockModel and cleanup resources</li>
- *   <li>Update BlockModel texture while preserving geometry</li>
+ *   <li>Load model with texture and geometry</li>
+ *   <li>Unload model and cleanup resources</li>
+ *   <li>Update model texture while preserving geometry</li>
  *   <li>Auto-detect UV mode from texture dimensions</li>
  *   <li>Handle legacy geometry generation for old .OMO formats</li>
- * </ul>
- *
- * <h2>SOLID Principles</h2>
- * <ul>
- *   <li><b>Single Responsibility</b>: Only manages BlockModel content loading</li>
- *   <li><b>Open/Closed</b>: Extensible through composition, closed for modification</li>
- *   <li><b>Dependency Inversion</b>: Depends on abstractions (renderer interface)</li>
  * </ul>
  *
  * @see BlockModel
  * @see GenericModelRenderer
  * @see OMTTextureLoader
  */
-public class BlockModelLoader {
+public class ModelContentLoader {
 
-    private static final Logger logger = LoggerFactory.getLogger(BlockModelLoader.class);
+    private static final Logger logger = LoggerFactory.getLogger(ModelContentLoader.class);
 
     // Dependencies (injected)
     private final OMTTextureLoader textureLoader;
@@ -53,12 +46,12 @@ public class BlockModelLoader {
     private int currentTextureId = 0;
 
     /**
-     * Create a new BlockModelLoader.
+     * Create a new ModelContentLoader.
      *
      * @param textureLoader The texture loader for handling .omt files
      * @param modelRenderer The renderer to load geometry into
      */
-    public BlockModelLoader(OMTTextureLoader textureLoader, GenericModelRenderer modelRenderer) {
+    public ModelContentLoader(OMTTextureLoader textureLoader, GenericModelRenderer modelRenderer) {
         if (textureLoader == null || modelRenderer == null) {
             throw new IllegalArgumentException("Dependencies cannot be null");
         }
@@ -67,7 +60,7 @@ public class BlockModelLoader {
     }
 
     /**
-     * Load a BlockModel with texture and geometry.
+     * Load a model with texture and geometry.
      *
      * <p>This performs a complete load:
      * <ol>
@@ -77,16 +70,16 @@ public class BlockModelLoader {
      *   <li>Update renderer state</li>
      * </ol>
      *
-     * @param blockModel The BlockModel to load
+     * @param blockModel The model to load
      * @return LoadResult containing success status and details
      */
     public LoadResult load(BlockModel blockModel) {
         if (blockModel == null) {
-            logger.error("Cannot load null BlockModel");
-            return LoadResult.failure("BlockModel is null");
+            logger.error("Cannot load null model");
+            return LoadResult.failure("Model is null");
         }
 
-        logger.info("Loading BlockModel: {}", blockModel.getName());
+        logger.info("Loading model: {}", blockModel.getName());
 
         // Unload existing model first
         unload();
@@ -106,16 +99,16 @@ public class BlockModelLoader {
             return LoadResult.failure(geometryStatus.message);
         }
 
-        logger.info("BlockModel loaded successfully: {}", blockModel.getName());
+        logger.info("Model loaded successfully: {}", blockModel.getName());
         return LoadResult.success(blockModel.getName(), textureStatus.uvMode);
     }
 
     /**
-     * Unload current BlockModel and free resources.
+     * Unload current model and free resources.
      */
     public void unload() {
         if (currentModel != null) {
-            logger.info("Unloading BlockModel: {}", currentModel.getName());
+            logger.info("Unloading model: {}", currentModel.getName());
 
             if (currentTextureId > 0) {
                 textureLoader.deleteTexture(currentTextureId);
@@ -127,22 +120,22 @@ public class BlockModelLoader {
     }
 
     /**
-     * Update texture for current BlockModel without rebuilding geometry.
+     * Update texture for current model without rebuilding geometry.
      *
      * <p>Use this when changing textures to preserve vertex/geometry modifications.
      * UV coordinates are updated to match the new texture type while preserving
      * vertex positions.
      *
-     * @param blockModel The BlockModel with updated texture path
+     * @param blockModel The model with updated texture path
      * @return LoadResult containing success status
      */
     public LoadResult updateTexture(BlockModel blockModel) {
         if (blockModel == null) {
-            logger.warn("Cannot update texture for null BlockModel");
-            return LoadResult.failure("BlockModel is null");
+            logger.warn("Cannot update texture for null model");
+            return LoadResult.failure("Model is null");
         }
 
-        logger.info("Updating BlockModel texture (preserving geometry): {}", blockModel.getName());
+        logger.info("Updating model texture (preserving geometry): {}", blockModel.getName());
 
         // Delete old texture
         if (currentTextureId > 0) {
@@ -167,7 +160,7 @@ public class BlockModelLoader {
 
                 currentTextureId = result.getTextureId();
                 modelRenderer.setTexture(result.getTextureId());
-                logger.info("Updated BlockModel texture: {}", texturePath.getFileName());
+                logger.info("Updated model texture: {}", texturePath.getFileName());
 
                 return LoadResult.success(blockModel.getName(), detectedMode);
             } else {
@@ -176,16 +169,16 @@ public class BlockModelLoader {
                 return LoadResult.failure("Texture load failed: " + texturePath);
             }
         } else {
-            logger.info("BlockModel texture cleared or path invalid: {}", texturePath);
+            logger.info("Model texture cleared or path invalid: {}", texturePath);
             modelRenderer.setTexture(0);
             return LoadResult.success(blockModel.getName(), null);
         }
     }
 
     /**
-     * Get the currently loaded BlockModel.
+     * Get the currently loaded model.
      *
-     * @return Current BlockModel, or null if none loaded
+     * @return Current model, or null if none loaded
      */
     public BlockModel getCurrentModel() {
         return currentModel;
@@ -203,13 +196,13 @@ public class BlockModelLoader {
     // ========== Private Helper Methods ==========
 
     /**
-     * Load texture from BlockModel path.
+     * Load texture from model path.
      */
     private TextureLoadStatus loadTexture(BlockModel blockModel) {
         Path texturePath = blockModel.getTexturePath();
 
         if (texturePath == null || !Files.exists(texturePath)) {
-            logger.warn("BlockModel has no valid texture path: {}", texturePath);
+            logger.warn("Model has no valid texture path: {}", texturePath);
             return new TextureLoadStatus(false, null, "No valid texture path");
         }
 
@@ -227,28 +220,30 @@ public class BlockModelLoader {
 
         currentTextureId = result.getTextureId();
         modelRenderer.setTexture(result.getTextureId());
-        logger.info("Loaded BlockModel texture: {}", result);
+        logger.info("Loaded model texture: {}", result);
 
         return new TextureLoadStatus(true, detectedMode, "Success");
     }
 
     /**
-     * Load geometry from BlockModel.
+     * Load geometry from model.
      */
     private GeometryLoadStatus loadGeometry(BlockModel blockModel) {
         ModelGeometry geometry = blockModel.getGeometry();
 
         if (geometry == null) {
-            logger.warn("BlockModel has no geometry - model will be invisible");
+            logger.warn("Model has no geometry - model will be invisible");
             return new GeometryLoadStatus(false, "No geometry provided");
         }
 
         try {
-            // Generate mesh from dimensions for legacy BlockModel format
+            // Generate mesh from dimensions for legacy format
             OMOFormat.MeshData meshData = generateBoxMesh(geometry);
 
-            modelRenderer.loadMeshData(meshData);
-            logger.info("Loaded legacy BlockModel geometry: {}x{}x{} at ({}, {}, {})",
+            // Route through ModelPartManager to register as a named part
+            modelRenderer.loadMeshDataAsPart(meshData, blockModel.getName());
+            logger.info("Loaded model geometry as part '{}': {}x{}x{} at ({}, {}, {})",
+                blockModel.getName(),
                 geometry.getWidth(), geometry.getHeight(), geometry.getDepth(),
                 geometry.getX(), geometry.getY(), geometry.getZ());
 
@@ -301,7 +296,7 @@ public class BlockModelLoader {
     // ========== Result Classes ==========
 
     /**
-     * Result of a BlockModel load operation.
+     * Result of a model load operation.
      */
     public static class LoadResult {
         private final boolean success;

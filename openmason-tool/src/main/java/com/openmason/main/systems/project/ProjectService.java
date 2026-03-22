@@ -164,7 +164,7 @@ public class ProjectService {
         }
 
         // Restore model reference BEFORE transform, because model loading
-        // resets the transform position (ContentTypeManager.switchToBlockModel
+        // resets the transform position (ContentTypeManager.switchToModel
         // calls transformState.resetPosition())
         if (document.model() != null) {
             restoreModel(document.model(), viewport, modelState, modelOperations);

@@ -118,12 +118,20 @@ public class ViewportController {
         // Content loading (SOLID refactored)
         // ========== Content Loading (SOLID refactored) ==========
         OMTTextureLoader omtTextureLoader = new OMTTextureLoader();
-        com.openmason.main.systems.viewport.content.BlockModelLoader blockModelLoader = new com.openmason.main.systems.viewport.content.BlockModelLoader(
+        com.openmason.main.systems.viewport.content.ModelContentLoader modelContentLoader = new com.openmason.main.systems.viewport.content.ModelContentLoader(
                 omtTextureLoader, modelRenderer
         );
         this.contentTypeManager = new com.openmason.main.systems.viewport.content.ContentTypeManager(
-                blockModelLoader, renderingState, transformState
+                modelContentLoader, renderingState, transformState
         );
+
+        // Wire part transform target to gizmo — when parts are selected in the
+        // ModelPartManager, the gizmo automatically positions at and transforms the part
+        com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.PartTransformTarget partTarget =
+                new com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.PartTransformTarget(
+                        modelRenderer.getPartManager()
+                );
+        gizmoRenderer.setTransformTarget(partTarget);
 
         logger.info("Viewport created successfully with SOLID content management");
     }
@@ -388,16 +396,16 @@ public class ViewportController {
     // ========== Content Loading (Delegating to SOLID classes) ==========
 
     /**
-     * Load BlockModel (.OMO file) for editing.
+     * Load model (.OMO file) for editing.
      * Loads embedded texture, sets up rendering, and resets camera.
      *
-     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → BlockModelLoader.
+     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → ModelContentLoader.
      */
-    public void loadBlockModel(BlockModel blockModel) {
+    public void loadModel(BlockModel blockModel) {
         // Clear stale editing state from the previous model
         setEditingFaceIndex(-1);
 
-        contentTypeManager.switchToBlockModel(blockModel);
+        contentTypeManager.switchToModel(blockModel);
         commandHistory.clear();
 
         // Invalidate cached mesh data so face/edge/vertex renderers rebuild from the new model
@@ -420,16 +428,37 @@ public class ViewportController {
 
     /**
      * Load mesh state from MeshData (restored from .OMO file).
-     * This replaces the current geometry with the loaded data.
-     * Call this AFTER loadBlockModel() to apply custom mesh data.
+     * Routes through the ModelPartManager to register the mesh as a named part,
+     * ensuring the part manager is the single source of truth for all geometry.
+     * Call this AFTER loadModel() to apply custom mesh data.
      *
      * @param meshData the mesh data to load
      */
     public void loadMeshData(OMOFormat.MeshData meshData) {
+        loadMeshDataAsPart(meshData, null);
+    }
+
+    /**
+     * Load mesh state as a named model part.
+     * Routes through GenericModelRenderer.loadMeshDataAsPart() which imports
+     * the geometry into the ModelPartManager as a single root part.
+     *
+     * @param meshData the mesh data to load
+     * @param partName display name for the part (null defaults to "Root")
+     */
+    public void loadMeshDataAsPart(OMOFormat.MeshData meshData, String partName) {
         commandHistory.clear();
-        modelRenderer.loadMeshData(meshData);
+        modelRenderer.loadMeshDataAsPart(meshData, partName);
 
         // Invalidate render pipeline caches to force edge/face rebuild
+        invalidateSubRenderers();
+    }
+
+    /**
+     * Invalidate sub-renderer caches and force rebuild from model.
+     * Called after any mesh data change to ensure vertex/edge/face renderers are current.
+     */
+    private void invalidateSubRenderers() {
         if (viewportRenderPipeline != null) {
             viewportRenderPipeline.invalidateMeshData();
 
@@ -490,16 +519,16 @@ public class ViewportController {
     }
 
     /**
-     * Update only the texture for the current BlockModel without rebuilding geometry.
+     * Update only the texture for the current model without rebuilding geometry.
      * Use this when changing textures to preserve any vertex/geometry modifications.
      * UV coordinates are updated to match the new texture type while preserving vertex positions.
      *
-     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → BlockModelLoader.
+     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → ModelContentLoader.
      *
-     * @param blockModel The BlockModel with updated texture path
+     * @param blockModel The model with updated texture path
      */
-    public void updateBlockModelTexture(BlockModel blockModel) {
-        contentTypeManager.updateBlockModelTexture(blockModel);
+    public void updateModelTexture(BlockModel blockModel) {
+        contentTypeManager.updateModelTexture(blockModel);
     }
 
     // ========== Transform ==========
@@ -603,6 +632,20 @@ public class ViewportController {
     public ViewportInputHandler getInputHandler() { return inputHandler; }
     public FaceSelectionState getFaceSelectionState() { return faceSelectionState; }
     public GenericModelRenderer getModelRenderer() { return modelRenderer; }
+    public com.openmason.main.systems.rendering.model.gmr.parts.ModelPartManager getPartManager() {
+        return modelRenderer.getPartManager();
+    }
+
+    /**
+     * Assign a default solid-fill texture to all faces of a part.
+     * Creates a 16x16 gray texture, registers as a material, and maps to all part faces.
+     *
+     * @param part The part descriptor with a valid meshRange
+     */
+    public void assignDefaultMaterialToPartFaces(
+            com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor part) {
+        modelRenderer.assignDefaultMaterialToPartFaces(part);
+    }
     public KnifeSnapSettings getKnifeSnapSettings() { return knifeSnapSettings; }
     public ViewportUIState getViewportUIState() { return viewportState; }
     public RenderingState getRenderingState() { return renderingState; }

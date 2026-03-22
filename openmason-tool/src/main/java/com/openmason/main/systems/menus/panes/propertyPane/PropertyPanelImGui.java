@@ -7,6 +7,7 @@ import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IThemeCont
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.ITransformState;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.FaceMaterialSection;
+import com.openmason.main.systems.menus.panes.propertyPane.sections.ModelPartsSection;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.TextureChooserSection;
 import com.openmason.main.systems.menus.textureCreator.FaceEditorBridge;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.TextureVariantSection;
@@ -38,6 +39,7 @@ public class PropertyPanelImGui {
     private final TextureVariantSection textureVariantSection;  // For BROWSER models
     private final TextureChooserSection textureChooserSection;  // For NEW and OMO_FILE models
     private final FaceMaterialSection faceMaterialSection;      // For per-face material assignment
+    private final ModelPartsSection modelPartsSection;          // Model parts list and management
     private final TransformSection transformSection;
 
     // State
@@ -59,6 +61,7 @@ public class PropertyPanelImGui {
         this.textureVariantSection = new TextureVariantSection();  // For BROWSER models
         this.textureChooserSection = new TextureChooserSection(fileDialogService, modelState);  // For editable models
         this.faceMaterialSection = new FaceMaterialSection(fileDialogService);  // Per-face material assignment
+        this.modelPartsSection = new ModelPartsSection();  // Model parts management
         this.transformSection = new TransformSection(transformState);
 
         // Configure section callbacks
@@ -98,8 +101,8 @@ public class PropertyPanelImGui {
             // Texture change is handled by BlockModel.setTexturePath() (marks model dirty)
             // Update texture only (not geometry) to preserve any vertex/geometry modifications
             if (currentEditableModel != null && viewportConnector != null && viewportConnector.isConnected()) {
-                viewportConnector.updateBlockModelTexture(currentEditableModel);
-                logger.info("Updated BlockModel texture (geometry preserved): {}", texturePath);
+                viewportConnector.updateModelTexture(currentEditableModel);
+                logger.info("Updated model texture (geometry preserved): {}", texturePath);
             }
         });
 
@@ -139,6 +142,8 @@ public class PropertyPanelImGui {
             }
             faceMaterialSection.render();
             ImGui.separator();
+            modelPartsSection.render();
+            ImGui.separator();
             transformSection.render();
 
             // End bounded child region
@@ -164,6 +169,12 @@ public class PropertyPanelImGui {
         // Update sections with viewport connector
         transformSection.setViewportConnector(viewportConnector);
         faceMaterialSection.setViewportConnector(viewportConnector);
+
+        // Connect part manager and default material assignment to parts section
+        if (viewport != null) {
+            modelPartsSection.setPartManager(viewport.getPartManager());
+            modelPartsSection.setOnPartCreated(viewport::assignDefaultMaterialToPartFaces);
+        }
     }
 
     /**
