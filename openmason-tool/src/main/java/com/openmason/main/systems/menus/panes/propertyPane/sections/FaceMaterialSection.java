@@ -253,13 +253,16 @@ public class FaceMaterialSection implements IPanelSection {
             float[][] polygon2D = viewportConnector.computeFacePolygon2D(faceId);
             opened = openWithPolygonMask(ftm, faceId, polygon2D);
         } else {
-            // Existing material: check if the face geometry has changed since the
-            // texture was created (e.g. subdivision + vertex moves). If so, create a
-            // new GPU texture with the correct dimensions and re-register the material.
+            // Existing material: if shared with other faces, clone into a per-face
+            // copy so edits are isolated. Then check if geometry changed and resize.
             FaceTextureMapping mapping = ftm.getFaceMapping(faceId);
             if (mapping != null) {
                 MaterialDefinition material = ftm.getMaterial(mapping.materialId());
                 if (material != null && material.textureId() > 0) {
+
+                    // Safety: clone if this material is used by more than one face
+                    material = ensurePerFaceMaterial(ftm, faceId, material);
+
                     int[] existingDims = viewportConnector.getTextureDimensions(material.textureId());
                     int[] currentDims = viewportConnector.computeFaceTextureDimensions(
                             faceId, FaceTextureSizer.DEFAULT_PIXELS_PER_UNIT);
@@ -399,6 +402,59 @@ public class FaceMaterialSection implements IPanelSection {
         }
 
         return material.name();
+    }
+
+    /**
+     * If the material is shared by multiple faces, clone its GPU texture into a
+     * new per-face material assigned only to {@code faceId}. Returns the
+     * (possibly new) material that is exclusive to this face.
+     */
+    private MaterialDefinition ensurePerFaceMaterial(FaceTextureManager ftm, int faceId,
+                                                      MaterialDefinition material) {
+        // Count faces that share this material
+        int usageCount = 0;
+        for (FaceTextureMapping m : ftm.getAllMappings()) {
+            if (m.materialId() == material.materialId()) {
+                usageCount++;
+                if (usageCount > 1) break;
+            }
+        }
+        if (usageCount <= 1) {
+            return material; // Already exclusive
+        }
+
+        // Clone GPU texture
+        int[] dims = viewportConnector.getTextureDimensions(material.textureId());
+        byte[] pixels = viewportConnector.readTexturePixels(material.textureId());
+        if (dims == null || pixels == null) {
+            logger.warn("Cannot clone shared material {} — texture read failed", material.materialId());
+            return material;
+        }
+
+        PixelCanvas canvas = new PixelCanvas(dims[0], dims[1]);
+        int[] px = canvas.getPixels();
+        int count = Math.min(px.length, pixels.length / 4);
+        for (int i = 0; i < count; i++) {
+            int off = i * 4;
+            px[i] = PixelCanvas.packRGBA(
+                    pixels[off] & 0xFF, pixels[off + 1] & 0xFF,
+                    pixels[off + 2] & 0xFF, pixels[off + 3] & 0xFF);
+        }
+        int clonedTexId = omtTextureLoader.uploadPixelCanvasToGPU(canvas);
+        if (clonedTexId <= 0) {
+            logger.warn("Cannot clone shared material {} — GPU upload failed", material.materialId());
+            return material;
+        }
+
+        int newMaterialId = nextMaterialId.getAndIncrement();
+        MaterialDefinition cloned = new MaterialDefinition(
+                newMaterialId, "Face " + faceId, clonedTexId,
+                material.renderLayer(), material.properties());
+        ftm.registerMaterial(cloned);
+        viewportConnector.setFaceTexture(faceId, newMaterialId);
+
+        logger.info("Cloned shared material {} → {} for face {}", material.materialId(), newMaterialId, faceId);
+        return cloned;
     }
 
     /**

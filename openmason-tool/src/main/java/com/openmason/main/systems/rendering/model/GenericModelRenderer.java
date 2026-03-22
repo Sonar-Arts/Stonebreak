@@ -493,9 +493,9 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     /**
-     * Assign a default solid-fill material to all faces of a model part.
-     * Creates a 16x16 solid gray GPU texture, registers it as a material,
-     * and assigns it to every face in the part's mesh range.
+     * Assign a distinct default material to each face of a model part.
+     * Each face gets its own 16x16 solid gray GPU texture and material,
+     * ensuring per-face texture edits are fully isolated.
      *
      * @param part The part descriptor (must have a valid meshRange)
      */
@@ -506,28 +506,25 @@ public class GenericModelRenderer extends BaseRenderer {
             return;
         }
 
-        // Create a solid gray texture
         com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader loader =
                 new com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader();
-        int gpuTextureId = loader.createBlankTexture(16, 16);
-        if (gpuTextureId <= 0) {
-            logger.warn("Failed to create default texture for part '{}'", part.name());
-            return;
-        }
-
-        // Register as a material
-        int materialId = com.openmason.main.systems.menus.panes.propertyPane.sections.FaceMaterialSection
-                .allocateNextMaterialId();
-        MaterialDefinition material = new MaterialDefinition(
-                materialId, "Part: " + part.name(), gpuTextureId,
-                MaterialDefinition.RenderLayer.OPAQUE,
-                MaterialDefinition.MaterialProperties.NONE
-        );
-        faceTextureManager.registerMaterial(material);
-
-        // Assign to all faces in the part's range
         com.openmason.main.systems.rendering.model.gmr.parts.MeshRange range = part.meshRange();
+
         for (int faceId = range.faceStart(); faceId < range.faceStart() + range.faceCount(); faceId++) {
+            int gpuTextureId = loader.createBlankTexture(16, 16);
+            if (gpuTextureId <= 0) {
+                logger.warn("Failed to create default texture for part '{}' face {}", part.name(), faceId);
+                continue;
+            }
+
+            int materialId = com.openmason.main.systems.menus.panes.propertyPane.sections.FaceMaterialSection
+                    .allocateNextMaterialId();
+            MaterialDefinition material = new MaterialDefinition(
+                    materialId, "Face " + faceId, gpuTextureId,
+                    MaterialDefinition.RenderLayer.OPAQUE,
+                    MaterialDefinition.MaterialProperties.NONE
+            );
+            faceTextureManager.registerMaterial(material);
             faceTextureManager.assignDefaultMapping(faceId, materialId);
         }
 
@@ -535,9 +532,8 @@ public class GenericModelRenderer extends BaseRenderer {
         rebuildPipeline.markDrawBatchesDirty();
         textureOps.regenerateUVsAndUpload();
 
-        logger.info("Assigned default material (id={}, textureId={}) to part '{}' faces [{}-{})",
-                materialId, gpuTextureId, part.name(),
-                range.faceStart(), range.faceStart() + range.faceCount());
+        logger.info("Assigned per-face materials to part '{}' faces [{}-{})",
+                part.name(), range.faceStart(), range.faceStart() + range.faceCount());
     }
 
     /**
