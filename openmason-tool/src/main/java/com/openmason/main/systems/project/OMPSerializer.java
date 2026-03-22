@@ -2,6 +2,7 @@ package com.openmason.main.systems.project;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -140,6 +141,31 @@ public class OMPSerializer {
             ui.put("showPropertyPanel", doc.ui().showPropertyPanel());
             ui.put("showToolbar", doc.ui().showToolbar());
             root.set("ui", ui);
+        }
+
+        if (doc.parts() != null && !doc.parts().isEmpty()) {
+            ArrayNode partsArray = objectMapper.createArrayNode();
+            for (OMPFormat.PartData part : doc.parts()) {
+                ObjectNode partNode = objectMapper.createObjectNode();
+                partNode.put("id", part.id());
+                partNode.put("name", part.name());
+                partNode.put("originX", part.originX());
+                partNode.put("originY", part.originY());
+                partNode.put("originZ", part.originZ());
+                partNode.put("posX", part.posX());
+                partNode.put("posY", part.posY());
+                partNode.put("posZ", part.posZ());
+                partNode.put("rotX", part.rotX());
+                partNode.put("rotY", part.rotY());
+                partNode.put("rotZ", part.rotZ());
+                partNode.put("scaleX", part.scaleX());
+                partNode.put("scaleY", part.scaleY());
+                partNode.put("scaleZ", part.scaleZ());
+                partNode.put("visible", part.visible());
+                partNode.put("locked", part.locked());
+                partsArray.add(partNode);
+            }
+            root.set("parts", partsArray);
         }
 
         return root;

@@ -1,5 +1,7 @@
 package com.openmason.main.systems.project;
 
+import java.util.List;
+
 /**
  * Open Mason Project (.OMP) file format specification.
  * Plain JSON format (not ZIP) storing session state and model references.
@@ -7,12 +9,13 @@ package com.openmason.main.systems.project;
  * <p>Version History:
  * <ul>
  *   <li>1.0 - Initial format with camera, viewport, transform, model reference, and UI state</li>
+ *   <li>1.1 - Added model parts list for multi-part models (part transforms, visibility, lock)</li>
  * </ul>
  */
 public final class OMPFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.0";
+    public static final String FORMAT_VERSION = "1.1";
 
     /** File extension for OMP files */
     public static final String FILE_EXTENSION = ".omp";
@@ -62,7 +65,8 @@ public final class OMPFormat {
             ViewportState viewport,
             TransformData transform,
             ModelReference model,
-            UIState ui
+            UIState ui,
+            List<PartData> parts
     ) {
         public Document {
             if (version == null || version.isBlank()) {
@@ -71,6 +75,15 @@ public final class OMPFormat {
             if (projectName == null) {
                 projectName = "Untitled Project";
             }
+        }
+
+        /**
+         * Backward-compatible constructor for pre-1.1 code paths (no parts).
+         */
+        public Document(String version, String projectName, String createdAt, String lastSavedAt,
+                         CameraState camera, ViewportState viewport, TransformData transform,
+                         ModelReference model, UIState ui) {
+            this(version, projectName, createdAt, lastSavedAt, camera, viewport, transform, model, ui, null);
         }
     }
 
@@ -153,4 +166,47 @@ public final class OMPFormat {
             boolean showPropertyPanel,
             boolean showToolbar
     ) {}
+
+    /**
+     * Model part data for multi-part models (v1.1+).
+     * Stores the part's identity, local transform, and state.
+     * Geometry is NOT stored here — it lives in the .OMO file.
+     * The OMP file only tracks which parts exist and their transforms.
+     *
+     * @param id       Unique part identifier (UUID string)
+     * @param name     User-facing display name
+     * @param originX  Transform pivot X
+     * @param originY  Transform pivot Y
+     * @param originZ  Transform pivot Z
+     * @param posX     Translation offset X
+     * @param posY     Translation offset Y
+     * @param posZ     Translation offset Z
+     * @param rotX     Euler rotation X (degrees)
+     * @param rotY     Euler rotation Y (degrees)
+     * @param rotZ     Euler rotation Z (degrees)
+     * @param scaleX   Scale factor X
+     * @param scaleY   Scale factor Y
+     * @param scaleZ   Scale factor Z
+     * @param visible  Whether this part is rendered
+     * @param locked   Whether this part is protected from editing
+     */
+    public record PartData(
+            String id,
+            String name,
+            float originX, float originY, float originZ,
+            float posX, float posY, float posZ,
+            float rotX, float rotY, float rotZ,
+            float scaleX, float scaleY, float scaleZ,
+            boolean visible,
+            boolean locked
+    ) {
+        public PartData {
+            if (id == null || id.isBlank()) {
+                throw new IllegalArgumentException("Part ID cannot be null or blank");
+            }
+            if (name == null || name.isBlank()) {
+                name = "Unnamed Part";
+            }
+        }
+    }
 }

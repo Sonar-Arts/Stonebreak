@@ -6,10 +6,12 @@ import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor;
 import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartManager;
 import com.openmason.main.systems.rendering.model.gmr.parts.PartShapeFactory;
 import com.openmason.main.systems.rendering.model.gmr.parts.PartMeshRebuilder;
+import com.openmason.main.systems.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.themes.utils.ImGuiComponents;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiSelectableFlags;
+import imgui.type.ImFloat;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,11 +34,22 @@ public class ModelPartsSection implements IPanelSection {
     private final AddPartDialog addPartDialog;
     private boolean visible = true;
 
+    // Per-part transform editing (ImFloat for ImGui drag widgets)
+    private final ImFloat posX = new ImFloat(), posY = new ImFloat(), posZ = new ImFloat();
+    private final ImFloat rotX = new ImFloat(), rotY = new ImFloat(), rotZ = new ImFloat();
+    private final ImFloat sclX = new ImFloat(1), sclY = new ImFloat(1), sclZ = new ImFloat(1);
+
     /**
      * Callback invoked after a part is added, receiving the part descriptor.
      * Used by the property panel to assign default materials to the new part's faces.
      */
     private java.util.function.Consumer<ModelPartDescriptor> onPartCreated;
+
+    /**
+     * Callback invoked after any part change that affects the viewport.
+     * Used to invalidate sub-renderer caches so changes appear immediately.
+     */
+    private Runnable onViewportInvalidationNeeded;
 
     public ModelPartsSection() {
         this.addPartDialog = new AddPartDialog();
@@ -69,6 +82,9 @@ public class ModelPartsSection implements IPanelSection {
         } else {
             renderPartList(parts);
         }
+
+        // Selected part transform editor
+        renderSelectedPartTransform();
 
         ImGui.spacing();
 
@@ -110,6 +126,15 @@ public class ModelPartsSection implements IPanelSection {
         this.onPartCreated = callback;
     }
 
+    /**
+     * Set callback to invalidate viewport sub-renderers after part changes.
+     *
+     * @param callback Viewport invalidation callback
+     */
+    public void setOnViewportInvalidationNeeded(Runnable callback) {
+        this.onViewportInvalidationNeeded = callback;
+    }
+
     // ========== Private Rendering ==========
 
     /**
@@ -126,11 +151,13 @@ public class ModelPartsSection implements IPanelSection {
             if (part.visible()) {
                 if (ImGui.smallButton("V")) {
                     partManager.setPartVisible(part.id(), false);
+                    invalidateViewport();
                 }
             } else {
                 ImGui.pushStyleColor(ImGuiCol.Text, 0.5f, 0.5f, 0.5f, 0.5f);
                 if (ImGui.smallButton("H")) {
                     partManager.setPartVisible(part.id(), true);
+                    invalidateViewport();
                 }
                 ImGui.popStyleColor();
             }
@@ -181,9 +208,11 @@ public class ModelPartsSection implements IPanelSection {
             if (ImGui.beginPopupContextItem()) {
                 if (ImGui.menuItem("Duplicate")) {
                     partManager.duplicatePart(part.id());
+                    invalidateViewport();
                 }
                 if (ImGui.menuItem("Delete") && parts.size() > 1) {
                     partManager.removePart(part.id());
+                    invalidateViewport();
                 }
                 if (parts.size() <= 1) {
                     ImGui.textDisabled("Cannot delete last part");
@@ -198,6 +227,97 @@ public class ModelPartsSection implements IPanelSection {
             }
 
             ImGui.popID();
+        }
+    }
+
+    /**
+     * Fire viewport invalidation callback if set.
+     */
+    private void invalidateViewport() {
+        if (onViewportInvalidationNeeded != null) {
+            onViewportInvalidationNeeded.run();
+        }
+    }
+
+    // ========== Selected Part Transform ==========
+
+    /**
+     * Render position/rotation/scale controls for the selected part.
+     * Reads from the part's PartTransform, writes back on change.
+     */
+    private void renderSelectedPartTransform() {
+        java.util.Set<String> selectedIds = partManager.getSelectedPartIds();
+        if (selectedIds.isEmpty()) {
+            return;
+        }
+
+        String selectedId = selectedIds.iterator().next();
+        ModelPartDescriptor part = partManager.getPartById(selectedId).orElse(null);
+        if (part == null) {
+            return;
+        }
+
+        ImGui.spacing();
+        ImGui.separator();
+        ImGui.spacing();
+        ImGuiComponents.renderCompactSectionHeader("Part Transform: " + part.name());
+        ImGui.spacing();
+
+        PartTransform t = part.transform();
+
+        // Sync ImFloat values from current part transform
+        posX.set(t.position().x); posY.set(t.position().y); posZ.set(t.position().z);
+        rotX.set(t.rotation().x); rotY.set(t.rotation().y); rotZ.set(t.rotation().z);
+        sclX.set(t.scale().x);   sclY.set(t.scale().y);   sclZ.set(t.scale().z);
+
+        boolean changed = false;
+
+        // Position
+        ImGui.text("Position");
+        ImGui.columns(3, "##part_pos_cols", false);
+        ImGui.pushItemWidth(-1);
+        if (ImGui.dragFloat("##ppx", posX.getData(), 0.01f)) changed = true;
+        ImGui.nextColumn();
+        if (ImGui.dragFloat("##ppy", posY.getData(), 0.01f)) changed = true;
+        ImGui.nextColumn();
+        if (ImGui.dragFloat("##ppz", posZ.getData(), 0.01f)) changed = true;
+        ImGui.popItemWidth();
+        ImGui.columns(1);
+
+        // Rotation
+        ImGui.text("Rotation");
+        ImGui.columns(3, "##part_rot_cols", false);
+        ImGui.pushItemWidth(-1);
+        if (ImGui.dragFloat("##prx", rotX.getData(), 0.5f)) changed = true;
+        ImGui.nextColumn();
+        if (ImGui.dragFloat("##pry", rotY.getData(), 0.5f)) changed = true;
+        ImGui.nextColumn();
+        if (ImGui.dragFloat("##prz", rotZ.getData(), 0.5f)) changed = true;
+        ImGui.popItemWidth();
+        ImGui.columns(1);
+
+        // Scale
+        ImGui.text("Scale");
+        ImGui.columns(3, "##part_scl_cols", false);
+        ImGui.pushItemWidth(-1);
+        if (ImGui.dragFloat("##psx", sclX.getData(), 0.01f)) changed = true;
+        ImGui.nextColumn();
+        if (ImGui.dragFloat("##psy", sclY.getData(), 0.01f)) changed = true;
+        ImGui.nextColumn();
+        if (ImGui.dragFloat("##psz", sclZ.getData(), 0.01f)) changed = true;
+        ImGui.popItemWidth();
+        ImGui.columns(1);
+
+        // Apply changes back to part transform
+        if (changed && !part.locked()) {
+            PartTransform updated = new PartTransform(
+                    new Vector3f(t.origin()),
+                    new Vector3f(posX.get(), posY.get(), posZ.get()),
+                    new Vector3f(rotX.get(), rotY.get(), rotZ.get()),
+                    new Vector3f(sclX.get(), sclY.get(), sclZ.get())
+            );
+            partManager.setPartTransform(selectedId, updated);
+            invalidateViewport();
         }
     }
 
@@ -220,10 +340,27 @@ public class ModelPartsSection implements IPanelSection {
         // Add via the geometry path to preserve face mapping
         ModelPartDescriptor newPart = partManager.addPartFromGeometry(name, geometry, new Vector3f(0, 0, 0));
 
+        // Offset new part so it doesn't overlap existing geometry at origin
+        if (newPart != null && partManager.getPartCount() > 1) {
+            float offset = partManager.getPartCount() * 1.5f;
+            PartTransform offsetTransform = new PartTransform(
+                    new Vector3f(0, 0, 0),
+                    new Vector3f(offset, 0, 0),
+                    new Vector3f(0, 0, 0),
+                    new Vector3f(1, 1, 1)
+            );
+            partManager.setPartTransform(newPart.id(), offsetTransform);
+            // Re-fetch after transform update
+            newPart = partManager.getPartById(newPart.id()).orElse(newPart);
+        }
+
         // Notify callback to set up default material for the new part's faces
         if (onPartCreated != null && newPart != null) {
             onPartCreated.accept(newPart);
         }
+
+        // Invalidate viewport so the new part renders immediately
+        invalidateViewport();
 
         logger.info("Added {} part '{}'", shape.getDisplayName(), name);
     }

@@ -170,10 +170,11 @@ public class PropertyPanelImGui {
         transformSection.setViewportConnector(viewportConnector);
         faceMaterialSection.setViewportConnector(viewportConnector);
 
-        // Connect part manager and default material assignment to parts section
+        // Connect part manager, material assignment, and viewport invalidation to parts section
         if (viewport != null) {
             modelPartsSection.setPartManager(viewport.getPartManager());
             modelPartsSection.setOnPartCreated(viewport::assignDefaultMaterialToPartFaces);
+            modelPartsSection.setOnViewportInvalidationNeeded(viewport::invalidateSubRenderers);
         }
     }
 

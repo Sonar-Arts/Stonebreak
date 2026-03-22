@@ -458,7 +458,7 @@ public class ViewportController {
      * Invalidate sub-renderer caches and force rebuild from model.
      * Called after any mesh data change to ensure vertex/edge/face renderers are current.
      */
-    private void invalidateSubRenderers() {
+    public void invalidateSubRenderers() {
         if (viewportRenderPipeline != null) {
             viewportRenderPipeline.invalidateMeshData();
 

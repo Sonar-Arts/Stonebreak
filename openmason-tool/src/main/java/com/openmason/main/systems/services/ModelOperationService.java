@@ -7,6 +7,10 @@ import com.openmason.main.systems.rendering.model.factory.BlankModelFactory;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
 import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping;
 import com.openmason.main.systems.rendering.model.gmr.uv.MaterialDefinition;
+import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor;
+import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartManager;
+import com.openmason.main.systems.rendering.model.gmr.parts.PartMeshRebuilder;
+import com.openmason.main.systems.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.rendering.model.io.omo.OMODeserializer;
 import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.io.omo.OMOSerializer;
@@ -205,6 +209,15 @@ public class ModelOperationService {
                 }
             }
 
+            // Extract and set part entries (v1.3+)
+            if (viewport != null) {
+                List<OMOFormat.PartEntry> partEntries = extractPartEntries(viewport);
+                if (partEntries != null && !partEntries.isEmpty()) {
+                    omoSerializer.setPartEntries(partEntries);
+                    logger.info("Saving {} model parts", partEntries.size());
+                }
+            }
+
             // Save with mesh data (required for self-contained .omo files)
             boolean success = omoSerializer.save(currentEditableModel, filePath, meshData);
 
@@ -299,13 +312,22 @@ public class ModelOperationService {
                 // Load into viewport if available
                 if (viewport != null) {
                     if (meshData != null && meshData.hasCustomGeometry()) {
-                        // MODERN: Load self-contained .omo file with mesh data
-                        // loadModel() handles texture loading, then loadMeshDataAsPart() registers
-                        // the mesh as a named part in the ModelPartManager
+                        // Load texture via the content loader
                         viewport.loadModel(currentEditableModel);
-                        viewport.loadMeshDataAsPart(meshData, loadedModel.getName());
-                        logger.info("Loaded self-contained .omo with mesh data: {} vertices, {} triangles",
-                                meshData.getVertexCount(), meshData.getTriangleCount());
+
+                        // Check for multi-part model (v1.3+)
+                        List<OMOFormat.PartEntry> partEntries = omoDeserializer.getLastLoadedPartEntries();
+                        if (partEntries != null && !partEntries.isEmpty()) {
+                            // MULTI-PART: Reconstruct individual parts from combined mesh + part entries
+                            restorePartsFromEntries(meshData, partEntries);
+                            logger.info("Loaded multi-part .omo: {} parts, {} vertices",
+                                    partEntries.size(), meshData.getVertexCount());
+                        } else {
+                            // SINGLE-PART: Load entire mesh as one root part
+                            viewport.loadMeshDataAsPart(meshData, loadedModel.getName());
+                            logger.info("Loaded single-part .omo: {} vertices, {} triangles",
+                                    meshData.getVertexCount(), meshData.getTriangleCount());
+                        }
 
                         // Restore per-face texture data (v1.2+)
                         OMOFormat.FaceTextureData faceTextureData = omoDeserializer.getLastLoadedFaceTextureData();
@@ -315,7 +337,8 @@ public class ModelOperationService {
                         }
 
                         // Update statistics with actual counts
-                        modelState.updateStatistics(1, meshData.getVertexCount(), meshData.getTriangleCount());
+                        int partCount = partEntries != null ? partEntries.size() : 1;
+                        modelState.updateStatistics(partCount, meshData.getVertexCount(), meshData.getTriangleCount());
                         statusService.updateStatus("Loaded .OMO model: " + loadedModel.getName());
                     } else {
                         // LEGACY: Old .omo file without mesh data - generate from dimensions
@@ -442,6 +465,127 @@ public class ModelOperationService {
         }
 
         return result;
+    }
+
+    // =========================================================================
+    // PART RESTORATION (load path)
+    // =========================================================================
+
+    /**
+     * Reconstruct individual parts from combined mesh data and part entries.
+     * Slices the combined vertex/index/face arrays by each part's mesh range
+     * and registers them in the ModelPartManager.
+     */
+    private void restorePartsFromEntries(OMOFormat.MeshData meshData, List<OMOFormat.PartEntry> entries) {
+        if (viewport == null) {
+            return;
+        }
+
+        ModelPartManager partManager = viewport.getPartManager();
+        partManager.clear();
+
+        float[] allVertices = meshData.vertices();
+        float[] allTexCoords = meshData.texCoords();
+        int[] allIndices = meshData.indices();
+        int[] allTriToFace = meshData.triangleToFaceId();
+
+        for (OMOFormat.PartEntry entry : entries) {
+            // Slice vertices for this part
+            int vStart = entry.vertexStart() * 3;
+            int vLen = entry.vertexCount() * 3;
+            float[] partVertices = new float[vLen];
+            System.arraycopy(allVertices, vStart, partVertices, 0, vLen);
+
+            // Slice tex coords
+            float[] partTexCoords = null;
+            if (allTexCoords != null) {
+                int tStart = entry.vertexStart() * 2;
+                int tLen = entry.vertexCount() * 2;
+                partTexCoords = new float[tLen];
+                System.arraycopy(allTexCoords, tStart, partTexCoords, 0, tLen);
+            }
+
+            // Slice indices and rebase to local vertex indices
+            int iLen = entry.indexCount();
+            int[] partIndices = new int[iLen];
+            System.arraycopy(allIndices, entry.indexStart(), partIndices, 0, iLen);
+            for (int i = 0; i < iLen; i++) {
+                partIndices[i] -= entry.vertexStart(); // Rebase to part-local
+            }
+
+            // Slice triangle-to-face mapping and rebase face IDs
+            int triCount = iLen / 3;
+            int[] partTriToFace = null;
+            if (allTriToFace != null) {
+                int triStart = entry.indexStart() / 3;
+                partTriToFace = new int[triCount];
+                for (int i = 0; i < triCount; i++) {
+                    partTriToFace[i] = allTriToFace[triStart + i] - entry.faceStart();
+                }
+            }
+
+            // Build part geometry
+            PartMeshRebuilder.PartGeometry geo = PartMeshRebuilder.PartGeometry.of(
+                    partVertices, partTexCoords, partIndices, partTriToFace
+            );
+
+            // Restore transform
+            org.joml.Vector3f origin = new org.joml.Vector3f(entry.originX(), entry.originY(), entry.originZ());
+            ModelPartDescriptor part = partManager.addPartFromGeometry(entry.name(), geo, origin);
+
+            // Restore transform (position, rotation, scale)
+            if (part != null) {
+                PartTransform transform = new PartTransform(
+                        origin,
+                        new org.joml.Vector3f(entry.posX(), entry.posY(), entry.posZ()),
+                        new org.joml.Vector3f(entry.rotX(), entry.rotY(), entry.rotZ()),
+                        new org.joml.Vector3f(entry.scaleX(), entry.scaleY(), entry.scaleZ())
+                );
+                partManager.setPartTransform(part.id(), transform);
+                partManager.setPartVisible(part.id(), entry.visible());
+                partManager.setPartLocked(part.id(), entry.locked());
+            }
+        }
+
+        logger.info("Restored {} parts from .OMO file", entries.size());
+    }
+
+    // =========================================================================
+    // PART ENTRY EXTRACTION (save path)
+    // =========================================================================
+
+    /**
+     * Extract part entries from the ModelPartManager for serialization.
+     * Each entry includes the part's transform, mesh range, and per-part geometry.
+     */
+    private List<OMOFormat.PartEntry> extractPartEntries(ViewportController viewport) {
+        ModelPartManager partManager = viewport.getPartManager();
+        if (partManager == null || partManager.getPartCount() <= 1) {
+            return null; // Single-part models don't need explicit part entries
+        }
+
+        List<OMOFormat.PartEntry> entries = new ArrayList<>();
+        for (ModelPartDescriptor part : partManager.getAllParts()) {
+            PartTransform t = part.transform();
+            com.openmason.main.systems.rendering.model.gmr.parts.MeshRange range = part.meshRange();
+
+            entries.add(new OMOFormat.PartEntry(
+                    part.id(), part.name(),
+                    t.origin().x, t.origin().y, t.origin().z,
+                    t.position().x, t.position().y, t.position().z,
+                    t.rotation().x, t.rotation().y, t.rotation().z,
+                    t.scale().x, t.scale().y, t.scale().z,
+                    range != null ? range.vertexStart() : 0,
+                    range != null ? range.vertexCount() : 0,
+                    range != null ? range.indexStart() : 0,
+                    range != null ? range.indexCount() : 0,
+                    range != null ? range.faceStart() : 0,
+                    range != null ? range.faceCount() : 0,
+                    part.visible(), part.locked()
+            ));
+        }
+
+        return entries;
     }
 
     // =========================================================================

@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Deserializer for .OMP (Open Mason Project) files.
@@ -75,7 +77,8 @@ public class OMPDeserializer {
                 parseViewportState(root.get("viewport")),
                 parseTransformData(root.get("transform")),
                 parseModelReference(root.get("model")),
-                parseUIState(root.get("ui"))
+                parseUIState(root.get("ui")),
+                parsePartsList(root.get("parts"))
         );
     }
 
@@ -151,6 +154,43 @@ public class OMPDeserializer {
                 boolVal(node, "showPropertyPanel", true),
                 boolVal(node, "showToolbar", true)
         );
+    }
+
+    private List<OMPFormat.PartData> parsePartsList(JsonNode node) {
+        if (node == null || !node.isArray() || node.isEmpty()) {
+            return null; // No parts data (pre-1.1 file)
+        }
+
+        List<OMPFormat.PartData> parts = new ArrayList<>();
+        for (JsonNode partNode : node) {
+            String id = text(partNode, "id", null);
+            if (id == null || id.isBlank()) {
+                logger.warn("Skipping part with missing ID");
+                continue;
+            }
+
+            parts.add(new OMPFormat.PartData(
+                    id,
+                    text(partNode, "name", "Unnamed Part"),
+                    floatVal(partNode, "originX", 0.0f),
+                    floatVal(partNode, "originY", 0.0f),
+                    floatVal(partNode, "originZ", 0.0f),
+                    floatVal(partNode, "posX", 0.0f),
+                    floatVal(partNode, "posY", 0.0f),
+                    floatVal(partNode, "posZ", 0.0f),
+                    floatVal(partNode, "rotX", 0.0f),
+                    floatVal(partNode, "rotY", 0.0f),
+                    floatVal(partNode, "rotZ", 0.0f),
+                    floatVal(partNode, "scaleX", 1.0f),
+                    floatVal(partNode, "scaleY", 1.0f),
+                    floatVal(partNode, "scaleZ", 1.0f),
+                    boolVal(partNode, "visible", true),
+                    boolVal(partNode, "locked", false)
+            ));
+        }
+
+        logger.debug("Parsed {} model parts from OMP file", parts.size());
+        return parts.isEmpty() ? null : parts;
     }
 
     // Helper methods for safe JsonNode field access
