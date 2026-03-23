@@ -23,7 +23,7 @@ public class ViewportUIState {
     private final ImBoolean showVertices = new ImBoolean(false);
     private final ImBoolean showGizmo = new ImBoolean(true);
 
-    // Window visibility state
+    // Window visibility state (legacy — kept for backward compat, superseded by ActiveToolPane)
     private final ImBoolean showCameraControls = new ImBoolean(false);
     private final ImBoolean showRenderingOptions = new ImBoolean(false);
     private final ImBoolean showTransformationControls = new ImBoolean(false);
@@ -58,7 +58,40 @@ public class ViewportUIState {
     // Resize threshold to prevent excessive resizing from small ImGui layout fluctuations
     private static final int RESIZE_THRESHOLD = 5;
 
-    // Getters for viewport dimensions
+    // ========== Sliding Tool Pane ==========
+
+    /**
+     * Which tool pane is currently open (or animating closed).
+     */
+    public enum ActiveToolPane {
+        NONE,
+        CAMERA,
+        RENDERING,
+        TRANSFORM,
+        KNIFE_SNAP
+    }
+
+    private ActiveToolPane activeToolPane = ActiveToolPane.NONE;
+
+    public ActiveToolPane getActiveToolPane() { return activeToolPane; }
+
+    /**
+     * Toggle a tool pane open/closed. Clicking the same pane closes it;
+     * clicking a different pane switches to the new one.
+     */
+    public void toggleToolPane(ActiveToolPane pane) {
+        activeToolPane = (activeToolPane == pane) ? ActiveToolPane.NONE : pane;
+    }
+
+    /**
+     * Close any open tool pane.
+     */
+    public void closeToolPane() {
+        activeToolPane = ActiveToolPane.NONE;
+    }
+
+    // ========== Dimension Getters ==========
+
     public int getWidth() { return width; }
     public int getHeight() { return height; }
     public void setWidth(int width) { this.width = width; }
@@ -76,7 +109,7 @@ public class ViewportUIState {
     public ImBoolean getShowVertices() { return showVertices; }
     public ImBoolean getShowGizmo() { return showGizmo; }
 
-    // Getters for window visibility
+    // Getters for window visibility (legacy)
     public ImBoolean getShowCameraControls() { return showCameraControls; }
     public ImBoolean getShowRenderingOptions() { return showRenderingOptions; }
     public ImBoolean getShowTransformationControls() { return showTransformationControls; }
@@ -120,11 +153,13 @@ public class ViewportUIState {
 
     /**
      * Reset render mode to Solid (index 0) and wireframe off.
+     * Also closes any open tool pane.
      * Called when loading a new model so display state doesn't carry over.
      */
     public void resetRenderMode() {
         currentRenderModeIndex.set(0); // "Solid"
         wireframeMode.set(false);
+        closeToolPane();
     }
 
     /**
@@ -139,7 +174,6 @@ public class ViewportUIState {
 
     /**
      * Check if dimensions have changed significantly.
-     * Uses a threshold to prevent constant resizing from small pixel fluctuations.
      */
     public boolean dimensionsChanged(int newWidth, int newHeight) {
         int widthDiff = Math.abs(newWidth - width);

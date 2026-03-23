@@ -6,7 +6,6 @@ import com.openmason.main.systems.themes.application.DensityManager;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.viewport.ViewportActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
-import com.openmason.main.systems.viewport.input.KnifeSnapSettings;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import imgui.ImDrawList;
 import imgui.ImGui;
@@ -32,7 +31,7 @@ public class ViewportMainView {
     private final ViewportController viewport;
     private final ThemeManager themeManager;
     private final PreferencesManager preferencesManager;
-    private final KnifeSnapSettingsDialog knifeSnapSettingsDialog;
+    private final ToolPaneRenderer toolPaneRenderer;
 
     private final ImVec2 viewportSize = new ImVec2();
     private final ImVec2 viewportPos = new ImVec2();
@@ -42,14 +41,13 @@ public class ViewportMainView {
 
     public ViewportMainView(ViewportUIState state, ViewportActions actions,
                            ViewportController viewport, ThemeManager themeManager,
-                           PreferencesManager preferencesManager,
-                           KnifeSnapSettings knifeSnapSettings) {
+                           PreferencesManager preferencesManager) {
         this.state = state;
         this.actions = actions;
         this.viewport = viewport;
         this.themeManager = themeManager;
         this.preferencesManager = preferencesManager;
-        this.knifeSnapSettingsDialog = new KnifeSnapSettingsDialog(knifeSnapSettings);
+        this.toolPaneRenderer = new ToolPaneRenderer(state, actions, viewport);
     }
 
     /**
@@ -66,9 +64,6 @@ public class ViewportMainView {
         } else {
             state.setViewportFocused(false);
         }
-
-        // Render modal dialogs before ImGui.end() so they draw within the frame
-        knifeSnapSettingsDialog.render();
 
         ImGui.end();
     }
@@ -106,6 +101,7 @@ public class ViewportMainView {
 
     /**
      * Render actual 3D viewport content.
+     * The tool pane slides over the left edge of the viewport image as an overlay.
      */
     private void renderViewport3D() {
         // Get available content region
@@ -134,6 +130,9 @@ public class ViewportMainView {
 
         // Display the rendered texture directly without any widgets
         ImGui.image(colorTexture, viewportSize.x, viewportSize.y, 0, 1, 1, 0);
+
+        // Render sliding tool pane overlay on the left edge of the viewport image
+        toolPaneRenderer.render(imagePos.x, imagePos.y, viewportSize.x, viewportSize.y);
 
         // Render edit mode overlay in top-left corner
         renderEditModeOverlay(imagePos);
@@ -237,56 +236,47 @@ public class ViewportMainView {
     }
 
     /**
-     * Render the Tools tab with advanced panel toggles.
+     * Render the Tools tab with sliding pane toggle buttons.
+     * Clicking a button opens its pane on the right side of the viewport;
+     * clicking the same button again closes it.
      */
     private void renderToolsTab() {
         applyDensityScaling();
 
-        // Panel toggle buttons (horizontal layout for space efficiency)
-        boolean cameraOpen = state.getShowCameraControls().get();
-        if (ImGui.button("Camera", 120, 0)) {
-            state.getShowCameraControls().set(!cameraOpen);
-        }
+        ViewportUIState.ActiveToolPane activePane = state.getActiveToolPane();
 
-        ImGui.sameLine();
-        ImGui.spacing();
-        ImGui.sameLine();
+        renderToolToggleButton("Camera", ViewportUIState.ActiveToolPane.CAMERA, activePane);
+        ImGui.sameLine(); ImGui.spacing(); ImGui.sameLine();
 
-        boolean renderingOpen = state.getShowRenderingOptions().get();
-        if (ImGui.button("Rendering", 120, 0)) {
-            state.getShowRenderingOptions().set(!renderingOpen);
-        }
+        renderToolToggleButton("Rendering", ViewportUIState.ActiveToolPane.RENDERING, activePane);
+        ImGui.sameLine(); ImGui.spacing(); ImGui.sameLine();
 
-        ImGui.sameLine();
-        ImGui.spacing();
-        ImGui.sameLine();
+        renderToolToggleButton("Transform", ViewportUIState.ActiveToolPane.TRANSFORM, activePane);
+        ImGui.sameLine(); ImGui.spacing(); ImGui.sameLine();
 
-        boolean transformOpen = state.getShowTransformationControls().get();
-        if (ImGui.button("Transform", 120, 0)) {
-            state.getShowTransformationControls().set(!transformOpen);
-        }
-
-        ImGui.sameLine();
-        ImGui.spacing();
-        ImGui.sameLine();
-
-        // Knife Snap button - green tint when enabled
-        boolean knifeSnapEnabled = knifeSnapSettingsDialog != null
-                && viewport.getKnifeSnapSettings() != null
-                && viewport.getKnifeSnapSettings().isEnabled();
-        if (knifeSnapEnabled) {
-            ImGui.pushStyleColor(ImGuiCol.Button, 0.2f, 0.5f, 0.2f, 1.0f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.25f, 0.6f, 0.25f, 1.0f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.15f, 0.45f, 0.15f, 1.0f);
-        }
-        if (ImGui.button("Knife Snap", 120, 0)) {
-            knifeSnapSettingsDialog.open();
-        }
-        if (knifeSnapEnabled) {
-            ImGui.popStyleColor(3);
-        }
+        renderToolToggleButton("Knife Snap", ViewportUIState.ActiveToolPane.KNIFE_SNAP, activePane);
 
         popDensityScaling();
+    }
+
+    /**
+     * Render a tool toggle button with active-state highlighting.
+     * Active pane button is blue; inactive buttons use default style.
+     */
+    private void renderToolToggleButton(String label, ViewportUIState.ActiveToolPane pane,
+                                         ViewportUIState.ActiveToolPane activePane) {
+        boolean isActive = (activePane == pane);
+        if (isActive) {
+            ImGui.pushStyleColor(ImGuiCol.Button, 0.26f, 0.59f, 0.98f, 0.80f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.26f, 0.59f, 0.98f, 1.0f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.20f, 0.50f, 0.90f, 1.0f);
+        }
+        if (ImGui.button(label, 120, 0)) {
+            state.toggleToolPane(pane);
+        }
+        if (isActive) {
+            ImGui.popStyleColor(3);
+        }
     }
 
     /**

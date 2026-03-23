@@ -3,9 +3,6 @@ package com.openmason.main.systems.viewport;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.themes.core.ThemeManager;
-import com.openmason.main.systems.viewport.views.CameraControlsView;
-import com.openmason.main.systems.viewport.views.RenderingOptionsView;
-import com.openmason.main.systems.viewport.views.TransformControlsView;
 import com.openmason.main.systems.viewport.views.ViewportMainView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,9 +21,6 @@ public class ViewportImGuiInterface {
 
     // View Components
     private ViewportMainView mainView;
-    private CameraControlsView cameraControlsView;
-    private RenderingOptionsView renderingOptionsView;
-    private TransformControlsView transformControlsView;
 
     // 3D Viewport reference
     private ViewportController viewport3D;
@@ -56,9 +50,6 @@ public class ViewportImGuiInterface {
         this.actions = null;
         this.keyboardShortcuts = null;
         this.mainView = null;
-        this.cameraControlsView = null;
-        this.renderingOptionsView = null;
-        this.transformControlsView = null;
     }
 
     /**
@@ -82,11 +73,7 @@ public class ViewportImGuiInterface {
         com.openmason.main.systems.viewport.ViewportKeybindActions.registerAll(registry, actions, state);
 
         // Initialize view components
-        this.mainView = new ViewportMainView(state, actions, viewport3D, themeManager, preferencesManager,
-                viewport3D.getKnifeSnapSettings());
-        this.cameraControlsView = new CameraControlsView(state, actions);
-        this.renderingOptionsView = new RenderingOptionsView(state, actions);
-        this.transformControlsView = new TransformControlsView(state, actions, viewport3D);
+        this.mainView = new ViewportMainView(state, actions, viewport3D, themeManager, preferencesManager);
 
         state.setViewportInitialized(true);
         logger.info("ViewportImGuiInterface components initialized");
@@ -113,18 +100,6 @@ public class ViewportImGuiInterface {
 
             // Delegate rendering to view components
             mainView.render();
-
-            if (state.getShowCameraControls().get()) {
-                cameraControlsView.render();
-            }
-
-            if (state.getShowRenderingOptions().get()) {
-                renderingOptionsView.render();
-            }
-
-            if (state.getShowTransformationControls().get()) {
-                transformControlsView.render();
-            }
 
         } catch (Exception e) {
             logger.error("Critical error during viewport interface rendering", e);
