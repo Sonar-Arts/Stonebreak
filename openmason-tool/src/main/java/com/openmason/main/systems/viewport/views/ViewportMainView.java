@@ -252,9 +252,6 @@ public class ViewportMainView {
         ImGui.sameLine(); ImGui.spacing(); ImGui.sameLine();
 
         renderToolToggleButton("Transform", ViewportUIState.ActiveToolPane.TRANSFORM, activePane);
-        ImGui.sameLine(); ImGui.spacing(); ImGui.sameLine();
-
-        renderToolToggleButton("Knife Snap", ViewportUIState.ActiveToolPane.KNIFE_SNAP, activePane);
 
         popDensityScaling();
     }

@@ -3,7 +3,6 @@ package com.openmason.main.systems.viewport.views;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.viewport.ViewportActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
-import com.openmason.main.systems.viewport.input.KnifeSnapSettings;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import imgui.ImGui;
 import imgui.ImVec4;
@@ -28,14 +27,9 @@ public class ToolPaneRenderer {
     private static final float ICON_HALF = 4.5f;
     private static final float ICON_STROKE = 1.4f;
 
-    private static final float[] KNIFE_INCREMENT_PRESETS = {1.0f, 0.5f, 0.25f, 0.125f, 0.0625f};
-    private static final String[] KNIFE_INCREMENT_LABELS = {"1.0", "0.5", "0.25", "0.125", "0.0625"};
-
     private final ViewportUIState state;
     private final ViewportActions actions;
     private final ViewportController viewport;
-
-    private final ImBoolean knifeSnapEnabled = new ImBoolean();
 
     public ToolPaneRenderer(ViewportUIState state, ViewportActions actions,
                             ViewportController viewport) {
@@ -79,7 +73,6 @@ public class ToolPaneRenderer {
                 case CAMERA -> renderCameraPane();
                 case RENDERING -> renderRenderingPane();
                 case TRANSFORM -> renderTransformPane();
-                case KNIFE_SNAP -> renderKnifeSnapPane();
                 default -> {}
             }
         }
@@ -96,7 +89,6 @@ public class ToolPaneRenderer {
             case CAMERA -> "Camera";
             case RENDERING -> "Rendering";
             case TRANSFORM -> "Transform";
-            case KNIFE_SNAP -> "Knife Snap";
             case NONE -> "";
         };
 
@@ -221,41 +213,6 @@ public class ToolPaneRenderer {
         ImGui.popStyleColor();
     }
 
-    // ========== Knife Snap ==========
-
-    private void renderKnifeSnapPane() {
-        KnifeSnapSettings settings = viewport.getKnifeSnapSettings();
-        if (settings == null) {
-            ImGui.textDisabled("Not available");
-            return;
-        }
-
-        knifeSnapEnabled.set(settings.isEnabled());
-        if (ImGui.checkbox("Enable Snap", knifeSnapEnabled)) {
-            settings.setEnabled(knifeSnapEnabled.get());
-        }
-
-        ImGui.spacing();
-        label("Snap Increment");
-
-        ImGui.setNextItemWidth(-1);
-        float currentIncrement = settings.getIncrement();
-        String preview = formatKnifeIncrement(currentIncrement);
-
-        if (ImGui.beginCombo("##knifeIncrement", preview)) {
-            for (int i = 0; i < KNIFE_INCREMENT_PRESETS.length; i++) {
-                boolean isSelected = Math.abs(currentIncrement - KNIFE_INCREMENT_PRESETS[i]) < 0.0001f;
-                if (ImGui.selectable(KNIFE_INCREMENT_LABELS[i], isSelected)) {
-                    settings.setIncrement(KNIFE_INCREMENT_PRESETS[i]);
-                }
-                if (isSelected) {
-                    ImGui.setItemDefaultFocus();
-                }
-            }
-            ImGui.endCombo();
-        }
-    }
-
     // ========== Helpers ==========
 
     /** Dimmed section label using theme TextDisabled color. */
@@ -299,12 +256,4 @@ public class ToolPaneRenderer {
         }
     }
 
-    private String formatKnifeIncrement(float increment) {
-        for (int i = 0; i < KNIFE_INCREMENT_PRESETS.length; i++) {
-            if (Math.abs(increment - KNIFE_INCREMENT_PRESETS[i]) < 0.0001f) {
-                return KNIFE_INCREMENT_LABELS[i];
-            }
-        }
-        return String.valueOf(increment);
-    }
 }

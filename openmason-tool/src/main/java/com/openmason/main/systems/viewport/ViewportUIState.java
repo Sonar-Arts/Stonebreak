@@ -67,8 +67,7 @@ public class ViewportUIState {
         NONE,
         CAMERA,
         RENDERING,
-        TRANSFORM,
-        KNIFE_SNAP
+        TRANSFORM
     }
 
     private ActiveToolPane activeToolPane = ActiveToolPane.NONE;

@@ -26,7 +26,6 @@ import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.viewport.state.EditMode;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.ViewportUIState;
-import com.openmason.main.systems.viewport.input.KnifeSnapSettings;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexTranslationHandler;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeTranslationHandler;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceTranslationHandler;
@@ -67,9 +66,6 @@ public class ViewportController {
     private final ItemRenderer itemRenderer;
     private final GenericModelRenderer modelRenderer;
 
-    // ========== Knife Snap ==========
-    private final KnifeSnapSettings knifeSnapSettings;
-
     // ========== Gizmo ==========
     private final GizmoState gizmoState;
     private final GizmoRenderer gizmoRenderer;
@@ -96,8 +92,6 @@ public class ViewportController {
         this.vertexSelectionState = new VertexSelectionState();
         this.edgeSelectionState = new com.openmason.main.systems.viewport.state.EdgeSelectionState();
         this.faceSelectionState = new FaceSelectionState();
-
-        this.knifeSnapSettings = new KnifeSnapSettings();
 
         this.gizmoState = new GizmoState();
         this.gizmoRenderer = new GizmoRenderer(gizmoState, transformState, viewportState);
@@ -230,8 +224,8 @@ public class ViewportController {
                 logger.debug("Knife preview renderer connected to input handler");
             }
 
-            // Connect knife snap settings for independent knife tool grid snapping
-            inputHandler.setKnifeSnapSettings(knifeSnapSettings);
+            // Connect viewport state so knife tool uses global grid snapping
+            inputHandler.setKnifeViewportState(viewportState);
 
             // Create translation handlers and coordinator
             if (viewportRenderPipeline.getVertexRenderer() != null && viewportRenderPipeline.getEdgeRenderer() != null &&
@@ -652,7 +646,6 @@ public class ViewportController {
             com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor part) {
         modelRenderer.assignDefaultMaterialToPartFaces(part);
     }
-    public KnifeSnapSettings getKnifeSnapSettings() { return knifeSnapSettings; }
     public ViewportUIState getViewportUIState() { return viewportState; }
     public RenderingState getRenderingState() { return renderingState; }
     public TransformState getTransformState() { return transformState; }

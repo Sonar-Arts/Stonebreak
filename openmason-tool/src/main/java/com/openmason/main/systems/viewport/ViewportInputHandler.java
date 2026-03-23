@@ -171,10 +171,10 @@ public class ViewportInputHandler {
     }
 
     /**
-     * Set the knife snap settings for independent knife tool grid snapping.
+     * Set the viewport UI state so the knife tool uses the global grid snapping settings.
      */
-    public void setKnifeSnapSettings(com.openmason.main.systems.viewport.input.KnifeSnapSettings knifeSnapSettings) {
-        knifeController.setKnifeSnapSettings(knifeSnapSettings);
+    public void setKnifeViewportState(com.openmason.main.systems.viewport.ViewportUIState viewportState) {
+        knifeController.setViewportState(viewportState);
     }
 
     /**

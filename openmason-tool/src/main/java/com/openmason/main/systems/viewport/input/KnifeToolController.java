@@ -46,7 +46,7 @@ public class KnifeToolController {
     private GenericModelRenderer modelRenderer;
     private TransformState transformState;
     private KnifePreviewRenderer previewRenderer;
-    private KnifeSnapSettings knifeSnapSettings;
+    private com.openmason.main.systems.viewport.ViewportUIState viewportState;
 
     // Undo/redo support
     private ModelCommandHistory commandHistory;
@@ -121,8 +121,8 @@ public class KnifeToolController {
         this.previewRenderer = previewRenderer;
     }
 
-    public void setKnifeSnapSettings(KnifeSnapSettings knifeSnapSettings) {
-        this.knifeSnapSettings = knifeSnapSettings;
+    public void setViewportState(com.openmason.main.systems.viewport.ViewportUIState viewportState) {
+        this.viewportState = viewportState;
     }
 
     public void setCommandHistory(ModelCommandHistory commandHistory, RendererSynchronizer synchronizer) {
@@ -445,12 +445,12 @@ public class KnifeToolController {
      * @return true if grid snapping is currently enabled in the viewport
      */
     private boolean isGridSnappingEnabled() {
-        return knifeSnapSettings != null && knifeSnapSettings.isEnabled();
+        return viewportState != null && viewportState.getGridSnappingEnabled().get();
     }
 
     /**
      * Snap a position to the grid if grid snapping is enabled.
-     * Each component (x, y, z) is snapped independently.
+     * Uses the viewport's global snapping increment.
      *
      * @param pos Position to snap
      * @return Snapped position (or original if snapping is disabled)
@@ -459,7 +459,7 @@ public class KnifeToolController {
         if (pos == null || !isGridSnappingEnabled()) {
             return pos;
         }
-        float increment = knifeSnapSettings.getIncrement();
+        float increment = viewportState.getGridSnappingIncrement().get();
         return new Vector3f(
             SnappingUtil.snapToGrid(pos.x, increment),
             SnappingUtil.snapToGrid(pos.y, increment),
