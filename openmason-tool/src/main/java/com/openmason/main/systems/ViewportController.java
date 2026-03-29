@@ -121,10 +121,11 @@ public class ViewportController {
         );
 
         // Wire part transform target to gizmo — when parts are selected in the
-        // ModelPartManager, the gizmo automatically positions at and transforms the part
+        // ModelPartManager, the gizmo automatically positions at and transforms the part.
+        // TransformState is passed so the gizmo accounts for model-level transforms.
         com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.PartTransformTarget partTarget =
                 new com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.PartTransformTarget(
-                        modelRenderer.getPartManager()
+                        modelRenderer.getPartManager(), transformState
                 );
         gizmoRenderer.setTransformTarget(partTarget);
 

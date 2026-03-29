@@ -178,6 +178,10 @@ public class GizmoInteractionHandler {
             Vector3f scale;
 
             if (target != null) {
+                // Snapshot drag start for multi-part support
+                if (target instanceof PartTransformTarget partTarget) {
+                    partTarget.snapshotDragStart();
+                }
                 position = target.getPosition();
                 rotation = target.getRotation();
                 scale = target.getScale();
@@ -275,6 +279,12 @@ public class GizmoInteractionHandler {
                     };
                     commandHistory.pushCompleted(command);
                 }
+            }
+
+            // Clear multi-part drag snapshots
+            ITransformTarget dragTarget = getActiveTarget();
+            if (dragTarget instanceof PartTransformTarget partTarget) {
+                partTarget.clearDragSnapshots();
             }
 
             gizmoState.endDrag();
