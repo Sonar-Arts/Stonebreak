@@ -27,6 +27,7 @@ public class ChatCommandExecutor {
         registerCommand(new CheatsCommand());
         registerCommand(new FindCommand());
         registerCommand(new FlyCommand());
+        registerCommand(new SpectatorCommand());
         registerCommand(new GenerateLakeCommand());
         registerCommand(new HelpCommand());
         registerCommand(new LakeStatsCommand());

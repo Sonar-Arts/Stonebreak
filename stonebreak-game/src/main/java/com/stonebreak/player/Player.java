@@ -88,6 +88,11 @@ public class Player {      // Player settings
     private static final float FLY_SPEED = MOVE_SPEED * 2.5f; // Flight movement speed (250% of walking speed)
     private static final float FLY_VERTICAL_SPEED = 15.0f; // Vertical flight speed (ascent/descent)
 
+    // Spectator mode system
+    private boolean isSpectator = false; // Whether spectator mode is enabled
+    private boolean preSpectatorFlightEnabled = false; // Remember flight state before spectator
+    private boolean preSpectatorFlying = false; // Remember flying state before spectator
+
     // Save/load state tracking
     private boolean isLoadedFromSave = false; // Track if player data was loaded from save
 
@@ -221,18 +226,29 @@ public class Player {      // Player settings
             }
         }
         
-        // Update position
-        position.x += velocity.x * Game.getDeltaTime();
-        handleCollisionX();
-        
-        position.y += velocity.y * Game.getDeltaTime();
-        handleCollisionY();
-        
-        position.z += velocity.z * Game.getDeltaTime();
-        handleCollisionZ();
-        
-        // Check if player is standing on solid ground
-        checkGroundBeneath();
+        // Update position (with collision bypass for spectator mode)
+        if (isSpectator) {
+            // Spectator mode: no collision, just update position directly
+            position.x += velocity.x * Game.getDeltaTime();
+            position.y += velocity.y * Game.getDeltaTime();
+            position.z += velocity.z * Game.getDeltaTime();
+
+            // Force onGround to false in spectator (we're always flying)
+            onGround = false;
+        } else {
+            // Normal mode: check collisions on each axis
+            position.x += velocity.x * Game.getDeltaTime();
+            handleCollisionX();
+
+            position.y += velocity.y * Game.getDeltaTime();
+            handleCollisionY();
+
+            position.z += velocity.z * Game.getDeltaTime();
+            handleCollisionZ();
+
+            // Check if player is standing on solid ground
+            checkGroundBeneath();
+        }
         
         // Apply frame-rate independent dampening
         float deltaTime = Game.getDeltaTime();
@@ -596,9 +612,9 @@ public class Player {      // Player settings
      * Player takes 1 heart (2 health) of damage for every 3 blocks fallen.
      */
     private void calculateFallDamage() {
-        // Don't calculate fall damage during spawn protection
-        if (spawnProtection) {
-            // Reset fall tracking during spawn protection to prevent damage after protection ends
+        // Don't calculate fall damage during spawn protection OR spectator mode
+        if (spawnProtection || isSpectator) {
+            // Reset fall tracking to prevent damage after protection/spectator ends
             previousY = position.y;
             wasFalling = false;
             return;
@@ -871,8 +887,8 @@ public class Player {      // Player settings
         boolean jumpPressed = jump && !wasJumpPressed; // True only on the frame jump is first pressed
         
         if (jumpPressed) {
-            if (flightEnabled) {
-                // Check for double-tap to toggle flight
+            if (flightEnabled && !isSpectator) {
+                // Check for double-tap to toggle flight (disabled in spectator mode)
                 float currentTime = Game.getInstance().getTotalTimeElapsed();
                 if (currentTime - lastSpaceKeyTime <= DOUBLE_TAP_WINDOW) {
                     // Double-tap detected, toggle flight
@@ -1891,6 +1907,79 @@ public class Player {      // Player settings
      */
     public void setHealth(float health) {
         this.health = health;
+    }
+
+    /**
+     * Sets whether the player is in spectator mode.
+     * Automatically manages flight state.
+     */
+    public void setSpectator(boolean spectator) {
+        if (spectator == this.isSpectator) {
+            return; // No change
+        }
+
+        if (spectator) {
+            // Entering spectator mode
+            preSpectatorFlightEnabled = this.flightEnabled;
+            preSpectatorFlying = this.isFlying;
+
+            // Force flight enabled and flying
+            this.flightEnabled = true;
+            this.isFlying = true;
+            this.isSpectator = true;
+
+            // Reset fall tracking
+            this.wasFalling = false;
+            this.previousY = this.position.y;
+        } else {
+            // Exiting spectator mode
+            this.isSpectator = false;
+
+            // Restore previous flight state
+            this.flightEnabled = preSpectatorFlightEnabled;
+            this.isFlying = preSpectatorFlying;
+
+            // Enable spawn protection to prevent fall damage for 2 seconds
+            this.spawnProtection = true;
+            this.spawnProtectionTimer = SPAWN_PROTECTION_DURATION;
+
+            // Reset fall tracking
+            this.wasFalling = false;
+            this.previousY = this.position.y;
+        }
+    }
+
+    /**
+     * Returns whether the player is in spectator mode.
+     */
+    public boolean isSpectator() {
+        return isSpectator;
+    }
+
+    /**
+     * Returns whether player is inside a solid block.
+     * Used for safety warnings when exiting spectator.
+     */
+    public boolean isPlayerInsideSolidBlock() {
+        float halfWidth = PLAYER_WIDTH / 2;
+        int minX = (int) Math.floor(position.x - halfWidth);
+        int maxX = (int) Math.ceil(position.x + halfWidth);
+        int minY = (int) Math.floor(position.y);
+        int maxY = (int) Math.ceil(position.y + PLAYER_HEIGHT);
+        int minZ = (int) Math.floor(position.z - halfWidth);
+        int maxZ = (int) Math.ceil(position.z + halfWidth);
+
+        for (int x = minX; x < maxX; x++) {
+            for (int y = minY; y < maxY; y++) {
+                for (int z = minZ; z < maxZ; z++) {
+                    BlockType block = world.getBlockAt(x, y, z);
+                    if (block.isSolid()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**
