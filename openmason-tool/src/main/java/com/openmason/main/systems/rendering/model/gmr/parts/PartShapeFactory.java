@@ -25,7 +25,8 @@ public final class PartShapeFactory {
      */
     public enum Shape {
         CUBE("Cube", "Standard 6-face cube with quad topology"),
-        PYRAMID("Pyramid", "4-sided pyramid with triangular faces and a quad base");
+        PYRAMID("Pyramid", "4-sided pyramid with triangular faces and a quad base"),
+        PANE("Pane", "Flat single-face quad for thin surfaces like leaves or signs");
 
         private final String displayName;
         private final String description;
@@ -51,6 +52,7 @@ public final class PartShapeFactory {
         return switch (shape) {
             case CUBE -> createCube(name, size);
             case PYRAMID -> createPyramid(name, size);
+            case PANE -> createPane(name, size);
         };
     }
 
@@ -74,6 +76,67 @@ public final class PartShapeFactory {
     @SuppressWarnings("deprecation")
     private static ModelPart createCube(String name, Vector3f size) {
         return ModelPart.createCube(name, new Vector3f(0, 0, 0), size, UVMode.CUBE_NET);
+    }
+
+    // ========== Pane ==========
+
+    /**
+     * Create a dual-faced flat pane oriented on the XY plane.
+     * <p>
+     * Geometry: 8 vertices (4 front + 4 back) with a thin offset to prevent
+     * z-fighting. Uses the same vertex layout pattern as the cube (4 verts per face,
+     * CCW winding via index pattern). The same texture appears on both sides.
+     * <ul>
+     *   <li>Face 0: Front (+Z side)</li>
+     *   <li>Face 1: Back (-Z side)</li>
+     *   <li>Total: 8 vertices, 12 indices, 2 logical faces</li>
+     * </ul>
+     */
+    private static ModelPart createPane(String name, Vector3f size) {
+        float hw = size.x / 2.0f;
+        float hh = size.y / 2.0f;
+        float hd = 0.005f; // thin offset to prevent z-fighting
+
+        // 8 vertices: same layout as first 2 faces of a cube
+        float[] vertices = {
+            // Face 0: Front (facing +Z) — vertices 0-3
+            -hw, -hh,  hd,  // 0: bottom-left
+             hw, -hh,  hd,  // 1: bottom-right
+             hw,  hh,  hd,  // 2: top-right
+            -hw,  hh,  hd,  // 3: top-left
+
+            // Face 1: Back (facing -Z) — vertices 4-7
+             hw, -hh, -hd,  // 4: bottom-left (mirrored)
+            -hw, -hh, -hd,  // 5: bottom-right (mirrored)
+            -hw,  hh, -hd,  // 6: top-right (mirrored)
+             hw,  hh, -hd,  // 7: top-left (mirrored)
+        };
+
+        // Same texture on both sides
+        float[] texCoords = {
+            // Front
+            0.0f, 1.0f,
+            1.0f, 1.0f,
+            1.0f, 0.0f,
+            0.0f, 0.0f,
+            // Back (mirrored X so texture reads correctly from behind)
+            0.0f, 1.0f,
+            1.0f, 1.0f,
+            1.0f, 0.0f,
+            0.0f, 0.0f,
+        };
+
+        // Same CCW index pattern as cube faces: base, base+1, base+2, base+2, base+3, base
+        int[] indices = {
+            // Face 0: Front
+            0, 1, 2,
+            2, 3, 0,
+            // Face 1: Back
+            4, 5, 6,
+            6, 7, 4,
+        };
+
+        return new ModelPart(name, new Vector3f(0, 0, 0), vertices, texCoords, indices, null);
     }
 
     // ========== Pyramid ==========
@@ -195,6 +258,10 @@ public final class PartShapeFactory {
             case PYRAMID -> {
                 // 6 triangles: faces 0-3 get 1 triangle each, face 4 gets 2 triangles
                 yield new int[]{0, 1, 2, 3, 4, 4};
+            }
+            case PANE -> {
+                // 4 triangles, 2 faces (front and back)
+                yield new int[]{0, 0, 1, 1};
             }
         };
 
