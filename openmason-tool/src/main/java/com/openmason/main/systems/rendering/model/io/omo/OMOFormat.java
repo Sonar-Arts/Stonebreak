@@ -12,12 +12,13 @@ import java.util.Objects;
  *   <li>1.1 - Added custom mesh data support for subdivision (vertices, indices, UVs, face mapping)</li>
  *   <li>1.2 - Added per-face texture persistence (face mappings, material entries, material PNGs)</li>
  *   <li>1.3 - Added model part entries for multi-part models (part transforms, mesh ranges)</li>
+ *   <li>1.4 - Added model-level transform (position, rotation, scale)</li>
  * </ul>
  */
 public final class OMOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.3";
+    public static final String FORMAT_VERSION = "1.4";
 
     /** Minimum supported format version for reading */
     public static final String MIN_SUPPORTED_VERSION = "1.0";
@@ -222,6 +223,36 @@ public final class OMOFormat {
             int faceStart, int faceCount,
             boolean visible, boolean locked
     ) {}
+
+    /**
+     * Model-level transform data (v1.4+).
+     * Represents the overall model position, rotation, and scale in the editor viewport.
+     *
+     * @param posX     Translation X
+     * @param posY     Translation Y
+     * @param posZ     Translation Z
+     * @param rotX     Euler rotation X (degrees)
+     * @param rotY     Euler rotation Y (degrees)
+     * @param rotZ     Euler rotation Z (degrees)
+     * @param scaleX   Scale factor X
+     * @param scaleY   Scale factor Y
+     * @param scaleZ   Scale factor Z
+     */
+    public record ModelTransform(
+            float posX, float posY, float posZ,
+            float rotX, float rotY, float rotZ,
+            float scaleX, float scaleY, float scaleZ
+    ) {
+        public static ModelTransform identity() {
+            return new ModelTransform(0, 0, 0, 0, 0, 0, 1, 1, 1);
+        }
+
+        public boolean isIdentity() {
+            return posX == 0 && posY == 0 && posZ == 0
+                    && rotX == 0 && rotY == 0 && rotZ == 0
+                    && scaleX == 1 && scaleY == 1 && scaleZ == 1;
+        }
+    }
 
     /**
      * Custom mesh data for subdivided/edited models (v2.0+).

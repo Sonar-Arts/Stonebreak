@@ -234,6 +234,17 @@ public class ModelOperationService {
                 }
             }
 
+            // Extract and set model-level transform (v1.4+)
+            if (viewport != null) {
+                com.openmason.main.systems.viewport.state.TransformState ts = viewport.getTransformState();
+                OMOFormat.ModelTransform modelTransform = new OMOFormat.ModelTransform(
+                        ts.getPositionX(), ts.getPositionY(), ts.getPositionZ(),
+                        ts.getRotationX(), ts.getRotationY(), ts.getRotationZ(),
+                        ts.getScaleX(), ts.getScaleY(), ts.getScaleZ()
+                );
+                omoSerializer.setModelTransform(modelTransform);
+            }
+
             // Save with mesh data (required for self-contained .omo files)
             boolean success = omoSerializer.save(currentEditableModel, filePath, meshData);
 
@@ -370,6 +381,16 @@ public class ModelOperationService {
                     statusService.updateStatus("Loaded .OMO model: " + loadedModel.getName() +
                                               " (viewport not available)");
                     logger.warn("Viewport not set - model loaded but not displayed");
+                }
+
+                // Restore model-level transform (v1.4+)
+                OMOFormat.ModelTransform modelTransform = omoDeserializer.getLastLoadedModelTransform();
+                if (modelTransform != null && viewport != null) {
+                    com.openmason.main.systems.viewport.state.TransformState ts = viewport.getTransformState();
+                    ts.setPosition(modelTransform.posX(), modelTransform.posY(), modelTransform.posZ());
+                    ts.setRotation(modelTransform.rotX(), modelTransform.rotY(), modelTransform.rotZ());
+                    ts.setScale(modelTransform.scaleX(), modelTransform.scaleY(), modelTransform.scaleZ());
+                    logger.debug("Restored model-level transform from .OMO");
                 }
 
                 // Update properties panel with loaded model
@@ -545,24 +566,43 @@ public class ModelOperationService {
                 }
             }
 
-            // Build part geometry
+            // The combined mesh bakes part transforms into vertex positions
+            // (see PartMeshRebuilder.rebuild). Un-transform sliced vertices back
+            // to local space so that addPartFromGeometry + setPartTransform doesn't
+            // double-apply the transform during rebuildCombinedMesh.
+            PartTransform savedTransform = new PartTransform(
+                    new org.joml.Vector3f(entry.originX(), entry.originY(), entry.originZ()),
+                    new org.joml.Vector3f(entry.posX(), entry.posY(), entry.posZ()),
+                    new org.joml.Vector3f(entry.rotX(), entry.rotY(), entry.rotZ()),
+                    new org.joml.Vector3f(entry.scaleX(), entry.scaleY(), entry.scaleZ())
+            );
+
+            if (!savedTransform.isIdentity()) {
+                org.joml.Matrix4f inverseTransform = savedTransform.toMatrix().invert();
+                org.joml.Vector4f v = new org.joml.Vector4f();
+                for (int i = 0; i < partVertices.length / 3; i++) {
+                    int idx = i * 3;
+                    v.set(partVertices[idx], partVertices[idx + 1], partVertices[idx + 2], 1.0f);
+                    inverseTransform.transform(v);
+                    partVertices[idx] = v.x;
+                    partVertices[idx + 1] = v.y;
+                    partVertices[idx + 2] = v.z;
+                }
+            }
+
+            // Build part geometry (now in local space)
             PartMeshRebuilder.PartGeometry geo = PartMeshRebuilder.PartGeometry.of(
                     partVertices, partTexCoords, partIndices, partTriToFace
             );
 
-            // Restore transform
+            // Add part with local-space geometry
             org.joml.Vector3f origin = new org.joml.Vector3f(entry.originX(), entry.originY(), entry.originZ());
             ModelPartDescriptor part = partManager.addPartFromGeometry(entry.name(), geo, origin);
 
-            // Restore transform (position, rotation, scale)
+            // Restore transform (position, rotation, scale) — rebuildCombinedMesh
+            // will re-apply this to the local-space vertices
             if (part != null) {
-                PartTransform transform = new PartTransform(
-                        origin,
-                        new org.joml.Vector3f(entry.posX(), entry.posY(), entry.posZ()),
-                        new org.joml.Vector3f(entry.rotX(), entry.rotY(), entry.rotZ()),
-                        new org.joml.Vector3f(entry.scaleX(), entry.scaleY(), entry.scaleZ())
-                );
-                partManager.setPartTransform(part.id(), transform);
+                partManager.setPartTransform(part.id(), savedTransform);
                 partManager.setPartVisible(part.id(), entry.visible());
                 partManager.setPartLocked(part.id(), entry.locked());
             }

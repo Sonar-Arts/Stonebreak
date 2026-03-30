@@ -121,6 +121,11 @@ public final class OMPFormat {
 
     /**
      * Transform state for the model.
+     *
+     * <p>Position, rotation, and scale are part of the .OMO model data, not the
+     * project session. Only editor-specific transform settings (gizmo toggle)
+     * are persisted here. Legacy fields are kept for backward-compatible
+     * deserialization but are ignored on restore.
      */
     public record TransformData(
             float positionX,
@@ -133,7 +138,14 @@ public final class OMPFormat {
             float scaleY,
             float scaleZ,
             boolean gizmoEnabled
-    ) {}
+    ) {
+        /**
+         * Create a TransformData that only stores editor settings (no model positioning).
+         */
+        public static TransformData editorOnly(boolean gizmoEnabled) {
+            return new TransformData(0, 0, 0, 0, 0, 0, 1, 1, 1, gizmoEnabled);
+        }
+    }
 
     /**
      * Reference to the model loaded in the project.

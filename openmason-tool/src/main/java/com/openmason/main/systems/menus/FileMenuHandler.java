@@ -3,6 +3,7 @@ package com.openmason.main.systems.menus;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.menus.dialogs.HomeScreenDialog;
 import com.openmason.main.systems.menus.dialogs.SaveWarningDialog;
+import com.openmason.main.systems.menus.dialogs.UnsavedChangesDialog;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.project.ProjectService;
 import com.openmason.main.systems.services.ModelOperationService;
@@ -30,6 +31,7 @@ public class FileMenuHandler {
     private final StatusService statusService;
     private final SaveWarningDialog saveWarningDialog;
     private final HomeScreenDialog homeScreenDialog;
+    private final UnsavedChangesDialog unsavedChangesDialog;
 
     private final String[] recentFiles = {"standard_cow.json", "example_model.json"};
 
@@ -37,6 +39,7 @@ public class FileMenuHandler {
     private LogoManager logoManager;
     private ThemeManager themeManager;
     private Runnable backToHomeCallback;
+    private Runnable exitCallback;
 
     private ProjectService projectService;
     private UIVisibilityState uiVisibilityState;
@@ -50,6 +53,7 @@ public class FileMenuHandler {
         this.statusService = statusService;
         this.saveWarningDialog = new SaveWarningDialog();
         this.homeScreenDialog = new HomeScreenDialog();
+        this.unsavedChangesDialog = new UnsavedChangesDialog();
     }
 
     /**
@@ -86,6 +90,21 @@ public class FileMenuHandler {
     }
 
     /**
+     * Set callback for exiting the application.
+     * Wires the UnsavedChangesDialog with save-then-exit, discard-and-exit, and cancel actions.
+     *
+     * @param exitCallback called to perform the actual application exit
+     */
+    public void setExitCallback(Runnable exitCallback) {
+        this.exitCallback = exitCallback;
+        unsavedChangesDialog.setCallbacks(
+                () -> { saveProject(); exitCallback.run(); },
+                exitCallback,
+                () -> logger.debug("Exit cancelled by user")
+        );
+    }
+
+    /**
      * Set project service for project-level save/load operations.
      */
     public void setProjectService(ProjectService projectService) {
@@ -112,6 +131,14 @@ public class FileMenuHandler {
      */
     public SaveWarningDialog getSaveWarningDialog() {
         return saveWarningDialog;
+    }
+
+    /**
+     * Get the unsaved changes dialog for rendering in the main UI.
+     * @return the unsaved changes dialog instance
+     */
+    public UnsavedChangesDialog getUnsavedChangesDialog() {
+        return unsavedChangesDialog;
     }
 
     /**
@@ -199,8 +226,9 @@ public class FileMenuHandler {
      * Shows the HomeScreenDialog if there are unsaved changes, otherwise navigates directly.
      */
     public void requestHomeScreen() {
-        boolean unsaved = projectService != null && projectService.hasUnsavedChanges();
-        homeScreenDialog.show(unsaved);
+        boolean projectUnsaved = projectService != null && projectService.hasUnsavedChanges();
+        boolean modelUnsaved = modelState.isModelLoaded() && modelState.hasUnsavedChanges();
+        homeScreenDialog.show(projectUnsaved || modelUnsaved);
     }
 
     /**
@@ -233,12 +261,16 @@ public class FileMenuHandler {
 
     /**
      * Save project to current path.
+     * Also saves the active .OMO model file if one is loaded.
      */
     private void saveProject() {
         if (projectService == null || viewport == null) {
             statusService.updateStatus("Project service not initialized");
             return;
         }
+
+        // Save the active .OMO model alongside the project
+        saveActiveModel();
 
         boolean success = projectService.saveProject(viewport, modelState, uiVisibilityState);
         if (success) {
@@ -251,6 +283,7 @@ public class FileMenuHandler {
 
     /**
      * Save project to a new path (Save As).
+     * Also saves the active .OMO model file if one is loaded.
      */
     private void saveProjectAs() {
         if (projectService == null || viewport == null) {
@@ -259,6 +292,9 @@ public class FileMenuHandler {
         }
 
         fileDialogService.showSaveOMPDialog(filePath -> {
+            // Save the active .OMO model alongside the project
+            saveActiveModel();
+
             boolean success = projectService.saveProjectAs(filePath, viewport, modelState,
                     uiVisibilityState, null);
             if (success) {
@@ -268,6 +304,17 @@ public class FileMenuHandler {
                 statusService.updateStatus("Failed to save project");
             }
         });
+    }
+
+    /**
+     * Save the active .OMO model if one is loaded and has a file path.
+     * Called automatically when saving a project so model changes are not lost.
+     */
+    private void saveActiveModel() {
+        if (modelOperations != null && modelState.canSaveModel()) {
+            modelOperations.saveModel();
+            logger.debug("Active model saved alongside project");
+        }
     }
 
     /**
@@ -302,18 +349,47 @@ public class FileMenuHandler {
     }
 
     /**
+     * Request application exit.
+     * Shows the unsaved changes dialog if there are unsaved changes (project or model level),
+     * otherwise exits directly.
+     */
+    public void requestExit() {
+        boolean projectUnsaved = projectService != null
+                && projectService.hasCurrentProject()
+                && projectService.hasUnsavedChanges();
+        boolean modelUnsaved = modelState.isModelLoaded() && modelState.hasUnsavedChanges();
+
+        if (projectUnsaved || modelUnsaved) {
+            unsavedChangesDialog.show();
+        } else {
+            performExit();
+        }
+    }
+
+    /**
      * Exit application with cleanup.
      */
     private void exitApplication() {
-        if (viewport != null) {
-            viewport.cleanup();
+        requestExit();
+    }
+
+    /**
+     * Perform the actual application exit with resource cleanup.
+     */
+    private void performExit() {
+        if (exitCallback != null) {
+            exitCallback.run();
+        } else {
+            if (viewport != null) {
+                viewport.cleanup();
+            }
+            if (logoManager != null) {
+                logoManager.dispose();
+            }
+            if (themeManager != null) {
+                themeManager.dispose();
+            }
+            System.exit(0);
         }
-        if (logoManager != null) {
-            logoManager.dispose();
-        }
-        if (themeManager != null) {
-            themeManager.dispose();
-        }
-        System.exit(0);
     }
 }

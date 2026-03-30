@@ -163,7 +163,10 @@ public class mainOpenMason {
      * Setup window event callbacks.
      */
     private void setupWindowCallbacks() {
-        glfwSetWindowCloseCallback(window, w -> shouldClose = true);
+        glfwSetWindowCloseCallback(window, w -> {
+            glfwSetWindowShouldClose(w, false);
+            requestApplicationExit();
+        });
 
         glfwSetWindowSizeCallback(window, (w, width, height) -> {
             boolean maximized = glfwGetWindowAttrib(w, GLFW_MAXIMIZED) == GLFW_TRUE;
@@ -359,6 +362,7 @@ public class mainOpenMason {
 
     private void wireCallbacks() {
         mainInterface.setBackToHomeCallback(this::transitionToHomeScreen);
+        mainInterface.setExitCallback(() -> shouldClose = true);
         mainInterface.setOpenTextureEditorCallback(() -> {
             showTextureEditor = true;
             textureEditorWindow.show();
@@ -412,6 +416,12 @@ public class mainOpenMason {
             safeRender(() -> mainInterface.getUnifiedPreferencesWindow().render(), "Preferences Window");
         }
 
+        // Render unsaved changes dialog (must be rendered outside other windows for modal to work)
+        if (mainInterface != null && mainInterface.getFileMenuHandler() != null) {
+            safeRender(() -> mainInterface.getFileMenuHandler().getUnsavedChangesDialog().render(),
+                    "Unsaved Changes Dialog");
+        }
+
         // Flush pending texture preview updates to the 3D viewport
         if (texturePreviewPipeline != null) {
             texturePreviewPipeline.flush();
@@ -443,6 +453,18 @@ public class mainOpenMason {
         }
     }
     
+    /**
+     * Request application exit. Shows the unsaved changes dialog if the model editor
+     * is active and has unsaved changes, otherwise exits immediately.
+     */
+    private void requestApplicationExit() {
+        if (showModelEditor && mainInterface != null) {
+            mainInterface.requestExit();
+        } else {
+            shouldClose = true;
+        }
+    }
+
     /**
      * Transition to main interface from home screen.
      */

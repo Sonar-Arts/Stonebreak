@@ -68,6 +68,9 @@ public class OMOSerializer {
     // Optional part entries for multi-part models (v1.3+)
     private List<OMOFormat.PartEntry> pendingParts;
 
+    // Optional model-level transform (v1.4+)
+    private OMOFormat.ModelTransform pendingModelTransform;
+
     /**
      * Creates a new .OMO serializer with JSON support.
      */
@@ -116,6 +119,15 @@ public class OMOSerializer {
      */
     public void setPartEntries(List<OMOFormat.PartEntry> parts) {
         this.pendingParts = parts;
+    }
+
+    /**
+     * Set model-level transform to be saved with the next model (v1.4+).
+     *
+     * @param transform the model-level position, rotation, and scale
+     */
+    public void setModelTransform(OMOFormat.ModelTransform transform) {
+        this.pendingModelTransform = transform;
     }
 
     /**
@@ -188,6 +200,7 @@ public class OMOSerializer {
             pendingFaceTextureData = null;
             pendingMaterialTexturePNGs = null;
             pendingParts = null;
+            pendingModelTransform = null;
 
             // Move temp file to final location (atomic on most filesystems)
             Path finalPath = Path.of(filePath);
@@ -222,8 +235,9 @@ public class OMOSerializer {
         ZipEntry manifestEntry = new ZipEntry(OMOFormat.MANIFEST_FILENAME);
         zos.putNextEntry(manifestEntry);
 
-        // Serialize to JSON (pass pendingParts explicitly since DTO is static)
-        String json = objectMapper.writeValueAsString(new ExtendedManifestDTO(document, pendingParts));
+        // Serialize to JSON (pass pending data explicitly since DTO is static)
+        String json = objectMapper.writeValueAsString(
+                new ExtendedManifestDTO(document, pendingParts, pendingModelTransform));
         byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8);
 
         // Write JSON to ZIP
@@ -323,8 +337,11 @@ public class OMOSerializer {
         public MeshDataDTO mesh;  // Optional, null for standard cube
         public FaceTextureDataDTO faceTextures; // Optional, null for pre-1.2 files
         public List<PartEntryDTO> parts; // Optional, null for single-part models
+        public ModelTransformDTO modelTransform; // Optional, null for identity (v1.4+)
 
-        public ExtendedManifestDTO(OMOFormat.ExtendedDocument document, List<OMOFormat.PartEntry> partEntries) {
+        public ExtendedManifestDTO(OMOFormat.ExtendedDocument document,
+                                   List<OMOFormat.PartEntry> partEntries,
+                                   OMOFormat.ModelTransform modelTransform) {
             this.version = document.version();
             this.objectName = document.objectName();
             this.modelType = document.modelType();
@@ -335,6 +352,8 @@ public class OMOSerializer {
                     ? new FaceTextureDataDTO(document.faceTextures()) : null;
             this.parts = partEntries != null && !partEntries.isEmpty()
                     ? partEntries.stream().map(PartEntryDTO::new).toList() : null;
+            this.modelTransform = modelTransform != null && !modelTransform.isIdentity()
+                    ? new ModelTransformDTO(modelTransform) : null;
         }
     }
 
@@ -440,8 +459,26 @@ public class OMOSerializer {
     }
 
     /**
-     * DTO for model part entries (v1.3+).
+     * DTO for model-level transform (v1.4+).
      */
+    private static class ModelTransformDTO {
+        public float posX, posY, posZ;
+        public float rotX, rotY, rotZ;
+        public float scaleX, scaleY, scaleZ;
+
+        public ModelTransformDTO(OMOFormat.ModelTransform t) {
+            this.posX = t.posX();
+            this.posY = t.posY();
+            this.posZ = t.posZ();
+            this.rotX = t.rotX();
+            this.rotY = t.rotY();
+            this.rotZ = t.rotZ();
+            this.scaleX = t.scaleX();
+            this.scaleY = t.scaleY();
+            this.scaleZ = t.scaleZ();
+        }
+    }
+
     /**
      * DTO for model part entries (v1.3+).
      * Geometry is sliced from the combined mesh using vertex/index/face ranges.

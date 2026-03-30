@@ -217,6 +217,9 @@ public class MainImGuiInterface implements ModelBrowserListener {
             modelOperations.setViewport(viewport3D);
             logger.debug("Viewport connected to ModelOperationService");
 
+            // Mark model as having unsaved changes whenever the command history changes
+            viewport3D.getCommandHistory().setOnHistoryChange(() -> modelState.setUnsavedChanges(true));
+
         } catch (Exception e) {
             logger.error("Failed to setup 3D viewport", e);
         }
@@ -552,6 +555,34 @@ public class MainImGuiInterface implements ModelBrowserListener {
         if (fileMenuHandler != null) {
             fileMenuHandler.setRecentProjectsService(recentProjectsService);
         }
+    }
+
+    /**
+     * Set callback for application exit. Wires the unsaved changes dialog.
+     *
+     * @param exitCallback called to perform the actual application exit
+     */
+    public void setExitCallback(Runnable exitCallback) {
+        if (fileMenuHandler != null) {
+            fileMenuHandler.setExitCallback(exitCallback);
+        }
+    }
+
+    /**
+     * Request application exit through the file menu handler.
+     * Shows the unsaved changes dialog if there are unsaved changes.
+     */
+    public void requestExit() {
+        if (fileMenuHandler != null) {
+            fileMenuHandler.requestExit();
+        }
+    }
+
+    /**
+     * Get the file menu handler for dialog rendering access.
+     */
+    public FileMenuHandler getFileMenuHandler() {
+        return fileMenuHandler;
     }
 
     /**

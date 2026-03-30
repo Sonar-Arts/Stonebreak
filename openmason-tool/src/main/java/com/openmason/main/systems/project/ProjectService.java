@@ -1,9 +1,6 @@
 package com.openmason.main.systems.project;
 
 import com.openmason.main.systems.ViewportController;
-import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor;
-import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartManager;
-import com.openmason.main.systems.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.stateHandling.UIVisibilityState;
@@ -21,8 +18,6 @@ import java.io.File;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Orchestrates project-level save/load operations.
@@ -79,17 +74,8 @@ public class ProjectService {
                 viewportUIState.getGridSnappingIncrement().get()
         );
 
-        // Transform state
-        OMPFormat.TransformData transformData = new OMPFormat.TransformData(
-                transformState.getPositionX(),
-                transformState.getPositionY(),
-                transformState.getPositionZ(),
-                transformState.getRotationX(),
-                transformState.getRotationY(),
-                transformState.getRotationZ(),
-                transformState.getScaleX(),
-                transformState.getScaleY(),
-                transformState.getScaleZ(),
+        // Transform state — only editor settings; model positioning lives in .OMO
+        OMPFormat.TransformData transformData = OMPFormat.TransformData.editorOnly(
                 transformState.isGizmoEnabled()
         );
 
@@ -112,9 +98,7 @@ public class ProjectService {
                 uiState.getShowToolbar().get()
         );
 
-        // Model parts (v1.1+)
-        List<OMPFormat.PartData> partsData = extractPartsData(viewport);
-
+        // Part transforms are owned by the .OMO file, not the project
         String now = LocalDateTime.now().format(TIMESTAMP_FORMAT);
         return new OMPFormat.Document(
                 OMPFormat.FORMAT_VERSION,
@@ -126,35 +110,8 @@ public class ProjectService {
                 transformData,
                 modelRef,
                 ui,
-                partsData
+                null
         );
-    }
-
-    /**
-     * Extract model part descriptors from the ModelPartManager.
-     */
-    private List<OMPFormat.PartData> extractPartsData(ViewportController viewport) {
-        ModelPartManager partManager = viewport.getPartManager();
-        if (partManager == null || partManager.getPartCount() == 0) {
-            return null;
-        }
-
-        List<OMPFormat.PartData> partsData = new ArrayList<>();
-        for (ModelPartDescriptor part : partManager.getAllParts()) {
-            PartTransform t = part.transform();
-            partsData.add(new OMPFormat.PartData(
-                    part.id(),
-                    part.name(),
-                    t.origin().x, t.origin().y, t.origin().z,
-                    t.position().x, t.position().y, t.position().z,
-                    t.rotation().x, t.rotation().y, t.rotation().z,
-                    t.scale().x, t.scale().y, t.scale().z,
-                    part.visible(),
-                    part.locked()
-            ));
-        }
-
-        return partsData.isEmpty() ? null : partsData;
     }
 
     /**
@@ -206,76 +163,14 @@ public class ProjectService {
             restoreModel(document.model(), viewport, modelState, modelOperations);
         }
 
-        // Restore part transforms AFTER model loading so parts exist
-        if (document.parts() != null && !document.parts().isEmpty()) {
-            restorePartsData(document.parts(), viewport);
-        }
-
-        // Restore transform AFTER model loading so it isn't overwritten
+        // Part transforms are restored by the .OMO loader, not the .OMP project.
+        // Only restore editor-specific transform settings.
         if (document.transform() != null) {
             TransformState transformState = viewport.getTransformState();
-            transformState.setPosition(
-                    document.transform().positionX(),
-                    document.transform().positionY(),
-                    document.transform().positionZ()
-            );
-            transformState.setRotation(
-                    document.transform().rotationX(),
-                    document.transform().rotationY(),
-                    document.transform().rotationZ()
-            );
-            transformState.setScale(
-                    document.transform().scaleX(),
-                    document.transform().scaleY(),
-                    document.transform().scaleZ()
-            );
             transformState.setGizmoEnabled(document.transform().gizmoEnabled());
         }
 
         logger.info("Project state restored: {}", document.projectName());
-    }
-
-    /**
-     * Restore part transforms from saved OMP data.
-     * Matches parts by name (since part IDs may differ between sessions)
-     * and applies saved transforms, visibility, and lock state.
-     */
-    private void restorePartsData(List<OMPFormat.PartData> partsData, ViewportController viewport) {
-        ModelPartManager partManager = viewport.getPartManager();
-        if (partManager == null) {
-            logger.warn("Cannot restore parts: no part manager available");
-            return;
-        }
-
-        int restored = 0;
-        for (OMPFormat.PartData savedPart : partsData) {
-            // Match by name since IDs are regenerated on load
-            var match = partManager.getPartByName(savedPart.name());
-            if (match.isEmpty()) {
-                logger.debug("No matching part found for '{}' — skipping transform restore", savedPart.name());
-                continue;
-            }
-
-            ModelPartDescriptor existing = match.get();
-            String id = existing.id();
-
-            // Restore transform
-            PartTransform transform = new PartTransform(
-                    new org.joml.Vector3f(savedPart.originX(), savedPart.originY(), savedPart.originZ()),
-                    new org.joml.Vector3f(savedPart.posX(), savedPart.posY(), savedPart.posZ()),
-                    new org.joml.Vector3f(savedPart.rotX(), savedPart.rotY(), savedPart.rotZ()),
-                    new org.joml.Vector3f(savedPart.scaleX(), savedPart.scaleY(), savedPart.scaleZ())
-            );
-            partManager.setPartTransform(id, transform);
-
-            // Restore visibility and lock
-            partManager.setPartVisible(id, savedPart.visible());
-            partManager.setPartLocked(id, savedPart.locked());
-
-            restored++;
-        }
-
-        logger.info("Restored {} of {} part transforms from project", restored, partsData.size());
     }
 
     /**
