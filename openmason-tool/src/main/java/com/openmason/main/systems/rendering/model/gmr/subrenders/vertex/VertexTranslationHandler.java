@@ -6,7 +6,6 @@ import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.services.commands.RendererSynchronizer;
 import com.openmason.main.systems.services.commands.SnapshotCommand;
 import com.openmason.main.systems.services.commands.VertexMoveCommand;
-import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
@@ -27,6 +26,9 @@ import java.util.Set;
  * Handles vertex translation through plane-constrained dragging.
  * Extends TranslationHandlerBase for shared functionality (DRY, SOLID).
  * Uses Blender-style plane-constrained movement for intuitive 3D editing.
+ *
+ * <p>Vertex positions are computed as: original (from selection state) + model-space delta.
+ * The VertexRenderer is the single source of truth for current positions during a drag.</p>
  */
 public class VertexTranslationHandler extends TranslationHandlerBase {
 
@@ -117,7 +119,7 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
 
         // Calculate working plane based on camera orientation (from base class)
         Vector3f cameraDirection = getCameraDirection();
-        Vector3f vertexPosition = selectionState.getCurrentPosition();
+        Vector3f vertexPosition = selectionState.getOriginalPosition();
 
         if (cameraDirection == null || vertexPosition == null) {
             logger.warn("Cannot start drag: camera direction or vertex position is null");
@@ -173,29 +175,28 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
                 delta = applyGridSnappingToDelta(delta);
             }
 
-            // Convert delta to model space (vertex positions are stored in model space)
+            // Convert delta to model space (vertex positions are in model space)
             Vector3f modelSpaceDelta = worldToModelSpaceDelta(delta);
 
             // Mark that actual movement occurred during this drag
             hasMovedDuringDrag = true;
 
-            // Update selection state with model-space delta (applies to all selected vertices)
-            selectionState.updatePositionsByDelta(modelSpaceDelta);
-
             // Get all selected vertex indices
             Set<Integer> selectedIndices = selectionState.getSelectedVertexIndices();
 
-            // Update each selected vertex
+            // Compute new position for each vertex from original + delta,
+            // then push directly to the renderer (single source of truth)
             for (int vertexIndex : selectedIndices) {
-                // Get the current position for this vertex (already in model space)
-                Vector3f currentPos = selectionState.getCurrentPosition(vertexIndex);
-                if (currentPos == null) continue;
+                Vector3f original = selectionState.getOriginalPosition(vertexIndex);
+                if (original == null) continue;
+
+                Vector3f newPos = new Vector3f(original).add(modelSpaceDelta);
 
                 // Update visual preview (model space for VBO)
-                vertexRenderer.updateVertexPosition(vertexIndex, currentPos);
+                vertexRenderer.updateVertexPosition(vertexIndex, newPos);
 
                 // Update connected edge endpoints using INDEX-BASED matching (model space for VBO)
-                edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, currentPos);
+                edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, newPos);
             }
 
             // REALTIME VISUAL UPDATE: Update ModelRenderer during drag (no merging)
@@ -271,14 +272,27 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         }
         preDragSnapshot = null;
 
-        selectionState.endDrag();
+        // Commit final positions from the renderer (single source of truth) back to selection state
+        Set<Integer> selectedIndices = selectionState.getSelectedVertexIndices();
+        Map<Integer, Vector3f> committedPositions = new HashMap<>();
+        for (int vertexIndex : selectedIndices) {
+            Vector3f pos = vertexRenderer.getVertexPosition(vertexIndex);
+            if (pos != null) {
+                committedPositions.put(vertexIndex, pos);
+            }
+        }
+        selectionState.endDrag(committedPositions);
+
         isDragging = false;
         clearInitialDragHitPoint();
 
-        logger.debug("Ended vertex drag at position ({}, {}, {})",
-                String.format("%.2f", selectionState.getCurrentPosition().x),
-                String.format("%.2f", selectionState.getCurrentPosition().y),
-                String.format("%.2f", selectionState.getCurrentPosition().z));
+        Vector3f finalPos = selectionState.getOriginalPosition();
+        if (finalPos != null) {
+            logger.debug("Ended vertex drag at position ({}, {}, {})",
+                    String.format("%.2f", finalPos.x),
+                    String.format("%.2f", finalPos.y),
+                    String.format("%.2f", finalPos.z));
+        }
     }
 
     @Override
@@ -288,13 +302,10 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         }
         clearInitialDragHitPoint();
 
-        // Get all selected indices before cancelling (cancelDrag reverts positions internally)
+        // Get all selected indices before cancelling
         Set<Integer> selectedIndices = selectionState.getSelectedVertexIndices();
 
-        // Revert all vertices to original positions in state
-        selectionState.cancelDrag();
-
-        // Revert each selected vertex's visual representation
+        // Revert each selected vertex to original position from selection state
         for (int vertexIndex : selectedIndices) {
             Vector3f originalPosition = selectionState.getOriginalPosition(vertexIndex);
 
@@ -305,6 +316,9 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
                 edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, originalPosition);
             }
         }
+
+        // Clear drag state in selection
+        selectionState.cancelDrag();
 
         // REVERT: Update ModelRenderer with original mesh vertices
         float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
@@ -318,24 +332,5 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         preDragSnapshot = null;
         logger.debug("Cancelled vertex drag for {} vertices, reverted to original positions",
                 selectedIndices.size());
-    }
-
-    /**
-     * Calculates the new vertex position by intersecting mouse ray with working plane.
-     */
-    private Vector3f calculateVertexPosition(float mouseX, float mouseY) {
-        Vector3f planeNormal = selectionState.getPlaneNormal();
-        Vector3f planePoint = selectionState.getPlanePoint();
-
-        if (planeNormal == null || planePoint == null) {
-            logger.warn("Cannot calculate vertex position: plane not defined");
-            return null;
-        }
-
-        // Create ray using base class utility
-        CoordinateSystem.Ray ray = createMouseRay(mouseX, mouseY);
-
-        // Intersect ray with plane using base class utility
-        return intersectRayPlane(ray, planePoint, planeNormal, selectionState.getCurrentPosition());
     }
 }
