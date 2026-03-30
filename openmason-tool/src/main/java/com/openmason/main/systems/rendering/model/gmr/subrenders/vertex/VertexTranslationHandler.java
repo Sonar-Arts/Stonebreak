@@ -165,37 +165,37 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         }
 
         // Calculate delta from initial hit point to current mouse position (no jump)
-        Vector3f worldDelta = calculateDragDelta(mouseX, mouseY, planePoint, planeNormal);
+        Vector3f delta = calculateDragDelta(mouseX, mouseY, planePoint, planeNormal);
 
-        if (worldDelta != null) {
+        if (delta != null) {
             // Apply grid snapping to delta if enabled
             if (viewportState != null && viewportState.getGridSnappingEnabled().get()) {
-                worldDelta = applyGridSnappingToDelta(worldDelta);
+                delta = applyGridSnappingToDelta(delta);
             }
+
+            // Convert delta to model space (vertex positions are stored in model space)
+            Vector3f modelSpaceDelta = worldToModelSpaceDelta(delta);
 
             // Mark that actual movement occurred during this drag
             hasMovedDuringDrag = true;
 
-            // Update selection state with delta (applies to all selected vertices)
-            selectionState.updatePositionsByDelta(worldDelta);
+            // Update selection state with model-space delta (applies to all selected vertices)
+            selectionState.updatePositionsByDelta(modelSpaceDelta);
 
             // Get all selected vertex indices
             Set<Integer> selectedIndices = selectionState.getSelectedVertexIndices();
 
             // Update each selected vertex
             for (int vertexIndex : selectedIndices) {
-                // Get the new current position for this vertex
-                Vector3f currentWorldPos = selectionState.getCurrentPosition(vertexIndex);
-                if (currentWorldPos == null) continue;
-
-                // Convert from world space to model space (from base class)
-                Vector3f modelSpacePosition = worldToModelSpace(currentWorldPos);
+                // Get the current position for this vertex (already in model space)
+                Vector3f currentPos = selectionState.getCurrentPosition(vertexIndex);
+                if (currentPos == null) continue;
 
                 // Update visual preview (model space for VBO)
-                vertexRenderer.updateVertexPosition(vertexIndex, modelSpacePosition);
+                vertexRenderer.updateVertexPosition(vertexIndex, currentPos);
 
                 // Update connected edge endpoints using INDEX-BASED matching (model space for VBO)
-                edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, modelSpacePosition);
+                edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, currentPos);
             }
 
             // REALTIME VISUAL UPDATE: Update ModelRenderer during drag (no merging)
@@ -209,9 +209,9 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
 
             logger.trace("Dragging {} vertices by delta ({}, {}, {})",
                     selectedIndices.size(),
-                    String.format("%.2f", worldDelta.x),
-                    String.format("%.2f", worldDelta.y),
-                    String.format("%.2f", worldDelta.z));
+                    String.format("%.2f", modelSpaceDelta.x),
+                    String.format("%.2f", modelSpaceDelta.y),
+                    String.format("%.2f", modelSpaceDelta.z));
         }
     }
 
