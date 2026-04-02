@@ -24,7 +24,7 @@ import static org.lwjgl.opengl.GL15.*;
  * - Texture state (global texture ID, per-face materials)
  * - GPU texture read/write (glTexSubImage2D, glGetTexImage)
  * - UV regeneration with vertex duplication at material seams
- * - Flood fill for custom material textures after geometry changes
+ * - Preserving user-painted transparency across UV regeneration
  */
 public class TextureGPUOperations implements ITextureGPUOperations {
 
@@ -231,108 +231,9 @@ public class TextureGPUOperations implements ITextureGPUOperations {
             gpuUploader.uploadVBO(interleavedData);
         }
 
-        // Flood-fill GPU textures for custom-material faces
-        floodFillCustomMaterialTextures();
-    }
-
-    /**
-     * For each face with a custom material, flood-fill transparent pixels
-     * by propagating the nearest opaque pixel color, then re-upload.
-     */
-    private void floodFillCustomMaterialTextures() {
-        Set<Integer> processedTextures = new HashSet<>();
-
-        for (FaceTextureMapping mapping : faceTextureManager.getAllMappings()) {
-            if (mapping.materialId() == MaterialDefinition.DEFAULT.materialId()) {
-                continue;
-            }
-            MaterialDefinition material = faceTextureManager.getMaterial(mapping.materialId());
-            if (material == null || material.textureId() <= 0) {
-                continue;
-            }
-            int texId = material.textureId();
-            if (!processedTextures.add(texId)) {
-                continue;
-            }
-
-            byte[] pixels = readTexturePixels(texId);
-            int[] dims = getTextureDimensions(texId);
-            if (pixels == null || dims == null || dims[0] <= 0 || dims[1] <= 0) {
-                continue;
-            }
-
-            // Check if any transparent pixels exist before doing work
-            boolean hasTransparent = false;
-            for (int i = 3; i < pixels.length; i += 4) {
-                if ((pixels[i] & 0xFF) == 0) {
-                    hasTransparent = true;
-                    break;
-                }
-            }
-            if (!hasTransparent) {
-                continue;
-            }
-
-            // Convert to packed int array for BFS flood fill
-            int w = dims[0];
-            int h = dims[1];
-            int[] packed = new int[w * h];
-            for (int i = 0; i < packed.length; i++) {
-                int off = i * 4;
-                int r = pixels[off] & 0xFF;
-                int g = pixels[off + 1] & 0xFF;
-                int b = pixels[off + 2] & 0xFF;
-                int a = pixels[off + 3] & 0xFF;
-                packed[i] = (a << 24) | (b << 16) | (g << 8) | r;
-            }
-
-            // BFS flood fill from opaque edges into transparent pixels
-            Deque<int[]> queue = new ArrayDeque<>();
-            for (int y = 0; y < h; y++) {
-                for (int x = 0; x < w; x++) {
-                    if ((packed[y * w + x] >>> 24) == 0) continue;
-                    if ((x > 0     && (packed[y * w + (x - 1)] >>> 24) == 0)
-                     || (x < w - 1 && (packed[y * w + (x + 1)] >>> 24) == 0)
-                     || (y > 0     && (packed[(y - 1) * w + x] >>> 24) == 0)
-                     || (y < h - 1 && (packed[(y + 1) * w + x] >>> 24) == 0)) {
-                        queue.add(new int[]{x, y});
-                    }
-                }
-            }
-            while (!queue.isEmpty()) {
-                int[] pos = queue.poll();
-                int px = pos[0], py = pos[1];
-                int color = packed[py * w + px];
-                int[][] neighbors = {{px-1,py},{px+1,py},{px,py-1},{px,py+1}};
-                for (int[] n : neighbors) {
-                    int nx = n[0], ny = n[1];
-                    if (nx >= 0 && nx < w && ny >= 0 && ny < h
-                            && (packed[ny * w + nx] >>> 24) == 0) {
-                        packed[ny * w + nx] = color;
-                        queue.add(new int[]{nx, ny});
-                    }
-                }
-            }
-
-            // Convert back to RGBA bytes and re-upload
-            byte[] filled = new byte[w * h * 4];
-            for (int i = 0; i < packed.length; i++) {
-                int c = packed[i];
-                int off = i * 4;
-                filled[off]     = (byte) (c & 0xFF);
-                filled[off + 1] = (byte) ((c >> 8) & 0xFF);
-                filled[off + 2] = (byte) ((c >> 16) & 0xFF);
-                filled[off + 3] = (byte) ((c >> 24) & 0xFF);
-            }
-
-            ByteBuffer buffer = BufferUtils.createByteBuffer(filled.length);
-            buffer.put(filled);
-            buffer.flip();
-            glBindTexture(GL_TEXTURE_2D, texId);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h,
-                           GL_RGBA, GL_UNSIGNED_BYTE, buffer);
-            glBindTexture(GL_TEXTURE_2D, 0);
-        }
+        // NOTE: flood-fill of GPU textures removed — it was destroying
+        // intentional transparency (erased/transparent pixels) on every
+        // UV regeneration. Transparent regions in textures are now preserved.
     }
 
     /**

@@ -405,7 +405,13 @@ public class mainOpenMason {
                 textureEditorWindow.render();
                 boolean stillVisible = textureEditorWindow.isVisible();
                 if (!stillVisible) {
-                    // Texture editor closed — clear the outline highlight on the editing face
+                    // Flush pending canvas edits to the face's GPU texture BEFORE
+                    // closing the region — closeFaceRegion clears the material ID,
+                    // so a later flush would target the wrong texture.
+                    if (texturePreviewPipeline != null) {
+                        texturePreviewPipeline.flush();
+                    }
+                    textureCreatorInterface.getController().closeFaceRegion();
                     mainInterface.getPropertyPanel().clearEditingFace();
                 }
                 showTextureEditor = stillVisible;

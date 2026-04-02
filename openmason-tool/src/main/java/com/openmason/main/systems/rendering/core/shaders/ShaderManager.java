@@ -157,6 +157,11 @@ public class ShaderManager {
 
                 if (uUseTexture) {
                     vec4 texColor = texture(uTexture, TexCoord);
+                    // Discard fully transparent pixels so the back face
+                    // (or background) shows through erased regions.
+                    if (texColor.a < 0.01) {
+                        discard;
+                    }
                     FragColor = vec4(texColor.rgb * lighting, texColor.a);
                 } else {
                     FragColor = vec4(vertexColor * lighting, 1.0);
