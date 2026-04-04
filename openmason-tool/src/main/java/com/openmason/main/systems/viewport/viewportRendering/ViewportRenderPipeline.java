@@ -505,8 +505,8 @@ public class ViewportRenderPipeline {
                         faceDataNeedsUpdate = false;
                     }
 
-                    ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);
-                    faceRenderer.render(basicShaderBlockModel, context, transformState.getTransformMatrix());
+                    ShaderProgram basicShader = shaderManager.getShaderProgram(ShaderType.BASIC);
+                    faceRenderer.render(basicShader, context, transformState.getTransformMatrix());
                     break;
 
                 case BLOCK:

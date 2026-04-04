@@ -3,12 +3,10 @@ package com.openmason.main.systems.rendering.model.gmr.subrenders.face;
 import com.openmason.main.systems.rendering.model.MeshChangeListener;
 import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,665 +24,92 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 /**
- * Renders semi-transparent face overlays for interactive highlighting.
+ * Renders face selection highlights as edge outlines in the 3D viewport.
+ * Follows the same pattern as {@link com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer}:
+ * dedicated line VBO with interleaved pos+color, VBO color updates for hover/select,
+ * GL_LINES draw calls with the BASIC shader.
  *
- * <p>This renderer provides visual feedback for face selection and hover states
- * by drawing colored overlays on model faces. The renderer follows SOLID principles
- * with clear separation of concerns and delegates data operations to
- * {@link MeshManager}.
+ * <p>Face boundary edges are extracted from mesh topology. When a face is hovered
+ * or selected, its boundary edges are drawn as orange GL_LINES on top of the model,
+ * keeping the underlying texture fully visible.
  *
- * <h2>Rendering Strategy</h2>
- * <p>Uses two-pass rendering for clean visual separation:
- * <ol>
- *   <li>Model renders first (solid, textured)</li>
- *   <li>Face overlays render second (semi-transparent, colored)</li>
- * </ol>
- *
- * <h2>Features</h2>
- * <ul>
- *   <li>Hover detection with ray-triangle intersection</li>
- *   <li>Selection highlighting with distinct colors</li>
- *   <li>Transparent default state (KISS principle)</li>
- *   <li>Face-to-vertex mapping for precise updates</li>
- * </ul>
- *
- * <h2>Architecture</h2>
- * <p>Follows the same pattern as EdgeRenderer and VertexRenderer for consistency.
- * Uses OpenGL VBO with interleaved vertex data (position + color RGBA).
- *
- * @see MeshManager
  * @see FaceHoverDetector
  */
 public class FaceRenderer implements MeshChangeListener {
 
     private static final Logger logger = LoggerFactory.getLogger(FaceRenderer.class);
 
-    // Layout constants
-    private static final int COMPONENTS_PER_POSITION = 3; // x, y, z
-    private static final float VERTEX_MATCH_EPSILON = 0.0001f;
+    private static final int COMPONENTS_PER_POSITION = 3;
 
-    // OpenGL resources
-    private int vao = 0;
-    private int vbo = 0;
-    private int faceCount = 0;
+    // ── Edge highlight constants (matches EdgeRenderer pattern) ──
+    /** Floats per line vertex: position(3) + color(3). */
+    private static final int LINE_FLOATS_PER_VERTEX = 6;
+    private static final int LINE_STRIDE_BYTES = LINE_FLOATS_PER_VERTEX * Float.BYTES;
+    private static final int LINE_COLOR_OFFSET_BYTES = 3 * Float.BYTES;
+    private static final int VERTICES_PER_LINE_SEGMENT = 2;
+
+    /** Line widths. */
+    private static final float HOVER_LINE_WIDTH = 2.5f;
+    private static final float SELECTED_LINE_WIDTH = 3.0f;
+
+    /** Colors. */
+    private static final Vector3f DEFAULT_EDGE_COLOR = new Vector3f(0.0f, 0.0f, 0.0f); // invisible (won't be drawn)
+    private static final Vector3f HOVER_EDGE_COLOR = new Vector3f(1.0f, 0.6f, 0.0f);   // orange
+    private static final Vector3f SELECTED_EDGE_COLOR = new Vector3f(1.0f, 0.5f, 0.0f); // bright orange
+
+    // ── Edge highlight OpenGL resources ──
+    private int lineVao = 0;
+    private int lineVbo = 0;
+    private boolean lineResourcesInitialized = false;
+
+    /** Per-face: [startLineVertex, lineVertexCount] in the line VBO. */
+    private int[] faceLineOffsets = null;
+    private int[] faceLineCounts = null;
+    private int totalLineVertices = 0;
+
+    // ── State ──
     private boolean initialized = false;
-
-    // Rendering state
     private boolean enabled = false;
+    private int faceCount = 0;
 
-    // Overlay renderer (Single Responsibility)
-    private final FaceOverlayRenderer overlayRenderer = new FaceOverlayRenderer();
-
-    // Hover state
-    private int hoveredFaceIndex = -1; // -1 means no face is hovered
-
-    // Selection state - multi-selection only
+    // Hover / selection
+    private int hoveredFaceIndex = -1;
     private Set<Integer> selectedFaceIndices = new HashSet<>();
+    private int editingFaceIndex = -1;
 
-    // Topology info from structured face extraction
-    private int[] storedVerticesPerFace = null; // vertex count per face, or null for legacy quad format
-    private int[] storedFaceOffsets = null; // float offset into topologyFacePositions per face, or null for legacy
-    private float[] topologyFacePositions = null; // topology-aware positions from extractFaceData()
+    // Topology info for hover detection
+    private int[] storedVerticesPerFace = null;
+    private int[] storedFaceOffsets = null;
+    private float[] topologyFacePositions = null;
 
-    // GenericModelRenderer integration (for subdivision support)
+    // GenericModelRenderer integration
     private GenericModelRenderer genericModelRenderer = null;
-
-    // Maps original face ID (0-5 for cube) to list of triangle indices in GenericModelRenderer
     private Map<Integer, List<Integer>> originalFaceToTriangles = new HashMap<>();
-
-    // Triangle positions for hover detection (9 floats per triangle: 3 vertices x 3 coords)
     private float[] trianglePositions = null;
     private int triangleCount = 0;
 
-    // Mesh management - delegate to MeshManager
-    private final MeshManager meshManager = MeshManager.getInstance();
+    // =========================================================================
+    // Initialization
+    // =========================================================================
 
-
-    /**
-     * Initialize the face renderer with OpenGL resources.
-     * Creates VAO and VBO, configures vertex attributes for interleaved data.
-     *
-     * <p>Vertex layout: [position(x,y,z), color(r,g,b,a)] = 7 floats per vertex
-     *
-     * @throws RuntimeException if initialization fails
-     */
     public void initialize() {
         if (initialized) {
             return;
         }
-
-        try {
-            // Generate VAO and VBO
-            vao = glGenVertexArrays();
-            vbo = glGenBuffers();
-
-            // Bind VAO
-            glBindVertexArray(vao);
-
-            // Create empty VBO (will be populated when model is set)
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, 0, GL_DYNAMIC_DRAW);
-
-            // Configure vertex attributes (interleaved: position + color with alpha)
-            // Stride = FLOATS_PER_VERTEX (3 for position, 4 for color RGBA)
-            int stride = FaceOverlayRenderer.FLOATS_PER_VERTEX * Float.BYTES;
-
-            // Position attribute (location = 0)
-            glVertexAttribPointer(0, COMPONENTS_PER_POSITION, GL_FLOAT, false, stride, 0);
-            glEnableVertexAttribArray(0);
-
-            // Color attribute (location = 1) - 4 components for RGBA
-            glVertexAttribPointer(1, 4, GL_FLOAT, false, stride, COMPONENTS_PER_POSITION * Float.BYTES);
-            glEnableVertexAttribArray(1);
-
-            // Unbind
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-            glBindVertexArray(0);
-
-            initialized = true;
-            logger.debug("FaceRenderer initialized");
-
-        } catch (Exception e) {
-            logger.error("Failed to initialize FaceRenderer", e);
-            cleanup();
-            throw new RuntimeException("FaceRenderer initialization failed", e);
-        }
-    }
-
-    /**
-     * Update face data from GenericModelRenderer (GMR is single source of truth).
-     * This method gets face data directly from GMR instead of extracting from ModelDefinition.
-     * GMR provides the authoritative mesh topology after any subdivisions or modifications.
-     *
-     * Topology-aware: uses structured face extraction to support any face vertex count.
-     */
-    public void updateFaceDataFromGMR() {
-        if (!initialized) {
-            logger.warn("FaceRenderer not initialized, cannot update face data");
-            return;
-        }
-
-        if (genericModelRenderer == null) {
-            logger.warn("GenericModelRenderer not set");
-            faceCount = 0;
-            topologyFacePositions = null;
-            return;
-        }
-
-        try {
-            // Extract topology-aware face data for rendering
-            var faceData = genericModelRenderer.extractFaceData();
-            if (faceData == null) {
-                logger.warn("GenericModelRenderer returned null face data");
-                return;
-            }
-
-            storedVerticesPerFace = faceData.verticesPerFace();
-            storedFaceOffsets = faceData.faceOffsets();
-            topologyFacePositions = faceData.positions();
-
-            // Face count from topology (not derived from array division)
-            faceCount = faceData.faceCount();
-
-            // Delegate bulk VBO creation to MeshManager, using topology for uniform/mixed decision
-            MeshTopology topology = genericModelRenderer.getTopology();
-            if (topology != null && topology.isUniformTopology()) {
-                meshManager.updateAllFaces(vbo, topologyFacePositions, faceCount,
-                    topology.getUniformVerticesPerFace(), overlayRenderer.getDefaultFaceColor());
-            } else if (topology != null) {
-                int[] offsets = topology.computeFacePositionOffsets();
-                meshManager.updateAllFacesMixed(vbo, topologyFacePositions, faceCount,
-                    storedVerticesPerFace, offsets, overlayRenderer.getDefaultFaceColor());
-            } else {
-                // Fallback: assume uniform quad topology
-                meshManager.updateAllFaces(vbo, topologyFacePositions, faceCount,
-                    4, overlayRenderer.getDefaultFaceColor());
-            }
-
-            // Compute shape-blind VBO layout from topology for overlay rendering
-            computeAndSetFaceVBOLayout(storedVerticesPerFace);
-
-            logger.debug("Updated face data from GMR: {} faces", faceCount);
-
-        } catch (Exception e) {
-            logger.error("Error updating face data from GMR", e);
-        }
-    }
-
-    /**
-     * Compute per-face VBO layout from per-face vertex count array (topology-aware path).
-     * Uses TriangulationPattern to determine VBO vertex count for each face.
-     *
-     * @param verticesPerFace array of corner counts per face from GMR topology
-     */
-    private void computeAndSetFaceVBOLayout(int[] verticesPerFace) {
-        int[] offsets = new int[verticesPerFace.length];
-        int[] counts = new int[verticesPerFace.length];
-        int cumulativeOffset = 0;
-
-        for (int i = 0; i < verticesPerFace.length; i++) {
-            var pattern = com.openmason.main.systems.rendering.model.gmr.mesh.faceOperations.TriangulationPattern.forNGon(verticesPerFace[i]);
-            int vboVertexCount = pattern.getVBOVertexCount();
-            offsets[i] = cumulativeOffset;
-            counts[i] = vboVertexCount;
-            cumulativeOffset += vboVertexCount;
-        }
-
-        overlayRenderer.setFaceVBOLayout(offsets, counts);
-    }
-
-    /**
-     * Get all unique vertex indices for all triangles belonging to an original face.
-     * Returns the mesh vertex indices from GenericModelRenderer that make up
-     * all triangles of the specified original face. The returned indices can be
-     * used to update vertex positions during face translation.
-     *
-     * @param originalFaceId the original face ID (0-5 for cube)
-     * @return array of unique vertex indices, or null if invalid
-     */
-    public int[] getTriangleVertexIndicesForFace(int originalFaceId) {
-        if (genericModelRenderer == null) {
-            logger.warn("Cannot get triangle vertex indices: GenericModelRenderer not set");
-            return null;
-        }
-
-        List<Integer> triangleList = originalFaceToTriangles.get(originalFaceId);
-        if (triangleList == null || triangleList.isEmpty()) {
-            logger.warn("No triangles found for original face {}", originalFaceId);
-            return null;
-        }
-
-        int[] triangleIndices = genericModelRenderer.getTriangleIndices();
-        if (triangleIndices == null) {
-            logger.warn("Cannot get triangle vertex indices: no triangle indices available");
-            return null;
-        }
-
-        // Collect all unique vertex indices from all triangles of this face
-        Set<Integer> uniqueVertexIndices = new LinkedHashSet<>();
-        for (int triIndex : triangleList) {
-            int baseIndex = triIndex * 3;
-            if (baseIndex + 2 < triangleIndices.length) {
-                uniqueVertexIndices.add(triangleIndices[baseIndex]);
-                uniqueVertexIndices.add(triangleIndices[baseIndex + 1]);
-                uniqueVertexIndices.add(triangleIndices[baseIndex + 2]);
-            }
-        }
-
-        int[] result = uniqueVertexIndices.stream().mapToInt(Integer::intValue).toArray();
-        logger.debug("Face {} has {} triangles with {} unique vertices",
-            originalFaceId, triangleList.size(), result.length);
-        return result;
-    }
-
-    /**
-     * Get the vertex positions for all triangles belonging to an original face.
-     * Used in triangle mode for face selection and translation.
-     *
-     * @param originalFaceId the original face ID (0-5 for cube)
-     * @return array of vertex positions, or null if invalid
-     */
-    public Vector3f[] getTriangleVertexPositionsForFace(int originalFaceId) {
-        int[] indices = getTriangleVertexIndicesForFace(originalFaceId);
-        if (indices == null || genericModelRenderer == null) {
-            return null;
-        }
-
-        Vector3f[] positions = new Vector3f[indices.length];
-        for (int i = 0; i < indices.length; i++) {
-            positions[i] = genericModelRenderer.getVertexPosition(indices[i]);
-            if (positions[i] == null) {
-                logger.warn("Could not get position for vertex {}", indices[i]);
-                return null;
-            }
-        }
-        return positions;
-    }
-
-    /**
-     * Get the vertices of a face using topology-aware data.
-     * Returns N vertices using stored per-face offsets.
-     *
-     * @param faceIndex the face index
-     * @return array of vertices, or null if invalid
-     */
-    public Vector3f[] getFaceVertices(int faceIndex) {
-        if (faceIndex < 0 || faceIndex >= faceCount) {
-            return null;
-        }
-
-        if (storedVerticesPerFace != null && storedFaceOffsets != null
-                   && topologyFacePositions != null && faceIndex < storedVerticesPerFace.length) {
-            int vertCount = storedVerticesPerFace[faceIndex];
-            int floatOffset = storedFaceOffsets[faceIndex];
-            Vector3f[] vertices = new Vector3f[vertCount];
-            for (int i = 0; i < vertCount; i++) {
-                int base = floatOffset + i * COMPONENTS_PER_POSITION;
-                vertices[i] = new Vector3f(
-                    topologyFacePositions[base],
-                    topologyFacePositions[base + 1],
-                    topologyFacePositions[base + 2]
-                );
-            }
-            return vertices;
-        }
-        return null;
-    }
-
-    /**
-     * Handle mouse movement for face hover detection.
-     *
-     * @param mouseX Mouse X coordinate in viewport space
-     * @param mouseY Mouse Y coordinate in viewport space
-     * @param viewMatrix Camera view matrix
-     * @param projectionMatrix Camera projection matrix
-     * @param modelMatrix Model transformation matrix
-     * @param viewportWidth Viewport width in pixels
-     * @param viewportHeight Viewport height in pixels
-     */
-    public void handleMouseMove(float mouseX, float mouseY,
-                               Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                               Matrix4f modelMatrix,
-                               int viewportWidth, int viewportHeight) {
-        if (!initialized || !enabled) {
-            return;
-        }
-
-        if (faceCount == 0) {
-            return;
-        }
-
-        int newHoveredFace;
-
-        if (trianglePositions != null && triangleCount > 0) {
-            // Hit test all triangles, return original face ID
-            int hitTriangle = FaceHoverDetector.detectHoveredTriangle(
-                mouseX, mouseY,
-                viewportWidth, viewportHeight,
-                viewMatrix, projectionMatrix, modelMatrix,
-                trianglePositions,
-                triangleCount
-            );
-
-            if (hitTriangle >= 0 && genericModelRenderer != null) {
-                // Map triangle to original face
-                newHoveredFace = genericModelRenderer.getOriginalFaceIdForTriangle(hitTriangle);
-            } else {
-                newHoveredFace = -1;
-            }
-        } else {
-            newHoveredFace = -1;
-        }
-
-        // Update hover state if changed
-        if (newHoveredFace != hoveredFaceIndex) {
-            int previousHover = hoveredFaceIndex;
-            hoveredFaceIndex = newHoveredFace;
-
-            logger.debug("Face hover changed: {} -> {} (total faces: {})",
-                        previousHover, hoveredFaceIndex, faceCount);
-        }
-    }
-
-    /**
-     * Clear face hover state.
-     */
-    public void clearHover() {
-        if (hoveredFaceIndex != -1) {
-            logger.debug("Clearing face hover (was face {})", hoveredFaceIndex);
-            hoveredFaceIndex = -1;
-        }
-    }
-
-    /**
-     * Render face overlays with semi-transparent highlighting.
-     * KISS: Only render hovered/selected faces, skip default (transparent) faces.
-     * Delegates to FaceOverlayRenderer for clean separation of concerns.
-     *
-     * @param shader The shader program to use
-     * @param context The render context
-     * @param modelMatrix The model transformation matrix
-     */
-    public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
-        if (!initialized) {
-            logger.warn("FaceRenderer not initialized");
-            return;
-        }
-
-        if (!enabled) {
-            return;
-        }
-
-        // Delegate to overlay renderer (Single Responsibility Principle)
-        // Pass the full selection set for multi-selection support
-        overlayRenderer.render(vao, vbo, shader, context, modelMatrix,
-                             hoveredFaceIndex, selectedFaceIndices, faceCount);
-    }
-
-    /**
-     * Clean up OpenGL resources (RAII pattern).
-     * Deletes VAO and VBO, clears all state data.
-     *
-     * <p>Should be called when the renderer is no longer needed
-     * to prevent resource leaks.
-     */
-    public void cleanup() {
-        // Unregister from model renderer
-        if (genericModelRenderer != null) {
-            genericModelRenderer.removeMeshChangeListener(this);
-            genericModelRenderer = null;
-        }
-
-        if (vao != 0) {
-            glDeleteVertexArrays(vao);
-            vao = 0;
-        }
-        if (vbo != 0) {
-            glDeleteBuffers(vbo);
-            vbo = 0;
-        }
-        faceCount = 0;
-        topologyFacePositions = null;
-        storedVerticesPerFace = null;
-        storedFaceOffsets = null;
-        initialized = false;
-        logger.debug("FaceRenderer cleaned up");
+        // Nothing heavyweight here — line resources are created lazily in rebuildLineVBO
+        initialized = true;
+        logger.debug("FaceRenderer initialized");
     }
 
     // =========================================================================
-    // MESH CHANGE LISTENER IMPLEMENTATION - Index-based updates from GenericModelRenderer
+    // Face data loading
     // =========================================================================
 
     /**
-     * Called when a vertex position has been updated in GenericModelRenderer.
-     * Updates face overlays that include the changed vertex.
-     *
-     * @param uniqueIndex The unique vertex index that changed
-     * @param newPosition The new position of the vertex
-     * @param affectedMeshIndices All mesh vertex indices that were updated
-     */
-    @Override
-    public void onVertexPositionChanged(int uniqueIndex, Vector3f newPosition, int[] affectedMeshIndices) {
-        if (!initialized) {
-            return;
-        }
-
-        // Update trianglePositions for affected mesh vertices
-        if (genericModelRenderer != null) {
-            updateTrianglePositionsForMeshVertices(affectedMeshIndices, newPosition);
-        }
-
-        logger.trace("FaceRenderer received vertex update: unique {} -> ({}, {}, {})",
-            uniqueIndex, newPosition.x, newPosition.y, newPosition.z);
-    }
-
-    /**
-     * Called when the entire geometry has been rebuilt in GenericModelRenderer.
-     * Triggers a full rebuild of face overlay data from the model.
-     */
-    @Override
-    public void onGeometryRebuilt() {
-        logger.debug("FaceRenderer received geometry rebuild notification");
-        rebuildFromGenericModelRenderer();
-    }
-
-    /**
-     * Update triangle positions for affected mesh vertices.
-     * Used during incremental vertex position updates.
-     */
-    private void updateTrianglePositionsForMeshVertices(int[] affectedMeshIndices, Vector3f newPosition) {
-        if (trianglePositions == null || genericModelRenderer == null) {
-            return;
-        }
-
-        int[] triangleIndices = genericModelRenderer.getTriangleIndices();
-        if (triangleIndices == null) {
-            return;
-        }
-
-        // For each affected mesh vertex, update any triangle vertices that reference it
-        for (int meshIdx : affectedMeshIndices) {
-            for (int t = 0; t < triangleCount; t++) {
-                int i0 = triangleIndices[t * 3];
-                int i1 = triangleIndices[t * 3 + 1];
-                int i2 = triangleIndices[t * 3 + 2];
-
-                int offset = t * 9;
-
-                if (i0 == meshIdx) {
-                    trianglePositions[offset] = newPosition.x;
-                    trianglePositions[offset + 1] = newPosition.y;
-                    trianglePositions[offset + 2] = newPosition.z;
-                }
-                if (i1 == meshIdx) {
-                    trianglePositions[offset + 3] = newPosition.x;
-                    trianglePositions[offset + 4] = newPosition.y;
-                    trianglePositions[offset + 5] = newPosition.z;
-                }
-                if (i2 == meshIdx) {
-                    trianglePositions[offset + 6] = newPosition.x;
-                    trianglePositions[offset + 7] = newPosition.y;
-                    trianglePositions[offset + 8] = newPosition.z;
-                }
-            }
-        }
-    }
-
-    // Getters and setters
-
-    public boolean isEnabled() {
-        return enabled;
-    }
-
-    public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
-    }
-
-    public boolean isInitialized() {
-        return initialized;
-    }
-
-    public int getHoveredFaceIndex() {
-        return hoveredFaceIndex;
-    }
-
-    /**
-     * Get the first selected face index, or -1 if none selected.
-     * For multi-selection, use {@link #getSelectedFaceIndices()}.
-     *
-     * @return first selected face index, or -1
-     */
-    public int getSelectedFaceIndex() {
-        return selectedFaceIndices.isEmpty() ? -1 : selectedFaceIndices.iterator().next();
-    }
-
-    public void setSelectedFace(int faceIndex) {
-        if (faceIndex < -1 || faceIndex >= faceCount) {
-            logger.warn("Invalid face index: {}, valid range is -1 to {}", faceIndex, faceCount - 1);
-            return;
-        }
-
-        selectedFaceIndices.clear();
-        if (faceIndex >= 0) {
-            selectedFaceIndices.add(faceIndex);
-        }
-
-        if (faceIndex >= 0) {
-            logger.debug("Selected face {}", faceIndex);
-        } else {
-            logger.debug("Cleared face selection");
-        }
-    }
-
-    /**
-     * Update the selection with a set of face indices (multi-selection).
-     * @param indices Set of face indices to select
-     */
-    public void updateSelectionSet(Set<Integer> indices) {
-        selectedFaceIndices.clear();
-        if (indices != null) {
-            for (Integer index : indices) {
-                if (index >= 0 && index < faceCount) {
-                    selectedFaceIndices.add(index);
-                }
-            }
-        }
-        logger.debug("Updated face selection set: {} faces", selectedFaceIndices.size());
-    }
-
-    /**
-     * Get the set of selected face indices.
-     * @return Copy of the selected face indices set
-     */
-    public Set<Integer> getSelectedFaceIndices() {
-        return new HashSet<>(selectedFaceIndices);
-    }
-
-    /**
-     * Check if a specific face is selected.
-     * @param index Face index to check
-     * @return true if the face is selected
-     */
-    public boolean isFaceSelected(int index) {
-        return selectedFaceIndices.contains(index);
-    }
-
-    public void clearSelection() {
-        selectedFaceIndices.clear();
-    }
-
-    /**
-     * Set the face index currently being edited in the texture editor.
-     * Delegates to the overlay renderer to switch from filled to outline rendering.
-     *
-     * @param faceIndex face being edited, or -1 to clear
-     */
-    public void setEditingFaceIndex(int faceIndex) {
-        overlayRenderer.setEditingFaceIndex(faceIndex);
-    }
-
-    public int getFaceCount() {
-        return faceCount;
-    }
-
-    // ========================================
-    // GenericModelRenderer Integration (for subdivision support)
-    // ========================================
-
-    /**
-     * Set the GenericModelRenderer reference for face overlay vertex position access.
-     * This enables correct face overlay rendering after edge subdivision operations
-     * by allowing the FaceOverlayRenderer to use the same position-matching methods
-     * as GenericModelRenderer.
-     *
-     * <p>This mirrors the approach used in EdgeRenderer for index-based updates
-     * after subdivision. Also registers as a MeshChangeListener to receive
-     * notifications when vertex positions change or geometry is rebuilt.
-     *
-     * @param renderer The GenericModelRenderer instance, or null to disconnect
-     */
-    public void setGenericModelRenderer(GenericModelRenderer renderer) {
-        // Unregister from previous renderer
-        if (this.genericModelRenderer != null) {
-            this.genericModelRenderer.removeMeshChangeListener(this);
-        }
-
-        this.genericModelRenderer = renderer;
-
-        // Register with new renderer and rebuild face data
-        if (renderer != null) {
-            renderer.addMeshChangeListener(this);
-            // Rebuild face data from model (like VertexRenderer and EdgeRenderer do)
-            rebuildFromGenericModelRenderer();
-        }
-
-        logger.debug("FaceRenderer {} GenericModelRenderer",
-            renderer != null ? "connected to" : "disconnected from");
-    }
-
-    /**
-     * Rebuild face overlay data from GenericModelRenderer's current triangles.
-     * Call this after subdivision to sync face overlay geometry with the actual mesh.
-     *
-     * <p>This method preserves original face grouping (6 faces for cube) while
-     * storing all triangles for each face. Face indices still refer to original
-     * faces (0-5), not individual triangles.
-     *
-     * <p>Key behavior:
-     * <ul>
-     *   <li>Face count stays at original face count (6 for cube)</li>
-     *   <li>Hovering any triangle of a face highlights the whole face</li>
-     *   <li>All triangles of a face are rendered together when highlighted</li>
-     * </ul>
+     * Rebuild face data from GenericModelRenderer (primary path).
      */
     public void rebuildFromGenericModelRenderer() {
-        if (!initialized) {
-            logger.warn("FaceRenderer not initialized, cannot rebuild face data");
-            return;
-        }
-
-        if (genericModelRenderer == null) {
-            logger.warn("GenericModelRenderer not set, cannot rebuild face data");
+        if (!initialized || genericModelRenderer == null) {
             return;
         }
 
@@ -695,7 +120,6 @@ public class FaceRenderer implements MeshChangeListener {
 
         triangleCount = genericModelRenderer.getTriangleCount();
         if (triangleCount == 0) {
-            logger.warn("GenericModelRenderer has no triangles");
             faceCount = 0;
             trianglePositions = null;
             originalFaceToTriangles.clear();
@@ -703,7 +127,6 @@ public class FaceRenderer implements MeshChangeListener {
         }
 
         try {
-            // Get mesh data from GenericModelRenderer
             float[] meshVertices = genericModelRenderer.getAllMeshVertexPositions();
             int[] triangleIndices = genericModelRenderer.getTriangleIndices();
             int originalFaceCount = genericModelRenderer.getOriginalFaceCount();
@@ -722,7 +145,7 @@ public class FaceRenderer implements MeshChangeListener {
                     .add(t);
             }
 
-            // Build triangle positions array for hover detection (9 floats per triangle)
+            // Build triangle positions for hover detection (9 floats per triangle)
             trianglePositions = new float[triangleCount * 9];
             for (int t = 0; t < triangleCount; t++) {
                 int i0 = triangleIndices[t * 3];
@@ -730,7 +153,7 @@ public class FaceRenderer implements MeshChangeListener {
                 int i2 = triangleIndices[t * 3 + 2];
 
                 int offset = t * 9;
-                trianglePositions[offset] = meshVertices[i0 * 3];
+                trianglePositions[offset]     = meshVertices[i0 * 3];
                 trianglePositions[offset + 1] = meshVertices[i0 * 3 + 1];
                 trianglePositions[offset + 2] = meshVertices[i0 * 3 + 2];
                 trianglePositions[offset + 3] = meshVertices[i1 * 3];
@@ -741,90 +164,556 @@ public class FaceRenderer implements MeshChangeListener {
                 trianglePositions[offset + 8] = meshVertices[i2 * 3 + 2];
             }
 
-            // Keep original face count (6 for cube), not triangle count
             faceCount = originalFaceCount;
 
-            // Rebuild VBO with all triangles
-            rebuildGroupedTriangleVBO(meshVertices, triangleIndices);
+            // Build line VBO for edge highlighting
+            rebuildLineVBO();
 
-            // Pass data to overlay renderer
-            overlayRenderer.setTriangleMode(true);
-            overlayRenderer.setOriginalFaceToTriangles(originalFaceToTriangles);
-
-            logger.debug("Rebuilt face data from GenericModelRenderer: {} original faces, {} triangles",
-                faceCount, triangleCount);
-
-            // Log face-to-triangle mapping for debugging
-            for (Map.Entry<Integer, List<Integer>> entry : originalFaceToTriangles.entrySet()) {
-                logger.debug("  Face {} has {} triangles: {}", entry.getKey(),
-                    entry.getValue().size(), entry.getValue());
-            }
+            logger.debug("Rebuilt face data: {} faces, {} triangles", faceCount, triangleCount);
 
         } catch (Exception e) {
             logger.error("Error rebuilding face data from GenericModelRenderer", e);
         }
     }
 
+    // =========================================================================
+    // Line VBO — boundary edges for every face
+    // =========================================================================
+
     /**
-     * Rebuild VBO with all triangles for grouped face rendering.
-     * VBO stores all triangles contiguously, overlay renderer uses face-to-triangle
-     * mapping to render the correct triangles for each face.
+     * Build a GL_LINES VBO containing the boundary edges of every face.
+     * Format: interleaved pos(3) + color(3) per vertex, same as EdgeRenderer.
+     * Default color is black (edges won't actually be drawn unless hovered/selected).
      */
-    private void rebuildGroupedTriangleVBO(float[] meshVertices, int[] triangleIndices) {
-        if (triangleCount == 0) {
+    private void rebuildLineVBO() {
+        if (genericModelRenderer == null) {
             return;
         }
 
-        // VBO format: position (3 floats) + color (4 floats) = 7 floats per vertex
-        // 3 vertices per triangle = 21 floats per triangle
-        int floatsPerVertex = FaceOverlayRenderer.FLOATS_PER_VERTEX;
-        int verticesPerTriangle = 3;
-        int floatsPerTriangle = floatsPerVertex * verticesPerTriangle;
+        MeshTopology topology = genericModelRenderer.getTopology();
+        if (topology == null || faceCount == 0) {
+            totalLineVertices = 0;
+            return;
+        }
 
-        float[] vboData = new float[triangleCount * floatsPerTriangle];
-        Vector4f defaultColor = overlayRenderer.getDefaultFaceColor();
+        // First pass: count total line vertices
+        faceLineOffsets = new int[faceCount];
+        faceLineCounts = new int[faceCount];
+        totalLineVertices = 0;
 
-        for (int t = 0; t < triangleCount; t++) {
-            int[] vertexMeshIndices = {
-                triangleIndices[t * 3],
-                triangleIndices[t * 3 + 1],
-                triangleIndices[t * 3 + 2]
-            };
+        for (int f = 0; f < faceCount; f++) {
+            var face = topology.getFace(f);
+            int edgeCount = (face != null) ? face.vertexIndices().length : 0;
+            int lineVertCount = edgeCount * VERTICES_PER_LINE_SEGMENT;
+            faceLineOffsets[f] = totalLineVertices;
+            faceLineCounts[f] = lineVertCount;
+            totalLineVertices += lineVertCount;
+        }
 
-            int vboOffset = t * floatsPerTriangle;
+        if (totalLineVertices == 0) {
+            return;
+        }
 
-            for (int v = 0; v < verticesPerTriangle; v++) {
-                int meshIdx = vertexMeshIndices[v];
-                int vertOffset = vboOffset + v * floatsPerVertex;
+        // Second pass: fill vertex data
+        float[] data = new float[totalLineVertices * LINE_FLOATS_PER_VERTEX];
 
-                // Position
-                vboData[vertOffset] = meshVertices[meshIdx * 3];
-                vboData[vertOffset + 1] = meshVertices[meshIdx * 3 + 1];
-                vboData[vertOffset + 2] = meshVertices[meshIdx * 3 + 2];
+        for (int f = 0; f < faceCount; f++) {
+            var face = topology.getFace(f);
+            if (face == null) continue;
 
-                // Color RGBA
-                vboData[vertOffset + 3] = defaultColor.x;
-                vboData[vertOffset + 4] = defaultColor.y;
-                vboData[vertOffset + 5] = defaultColor.z;
-                vboData[vertOffset + 6] = defaultColor.w;
+            int[] vertIndices = face.vertexIndices();
+            int baseVertex = faceLineOffsets[f];
+
+            for (int i = 0; i < vertIndices.length; i++) {
+                int next = (i + 1) % vertIndices.length;
+
+                Vector3f posA = genericModelRenderer.getUniqueVertexPosition(vertIndices[i]);
+                Vector3f posB = genericModelRenderer.getUniqueVertexPosition(vertIndices[next]);
+                if (posA == null || posB == null) continue;
+
+                int vIdx = baseVertex + i * VERTICES_PER_LINE_SEGMENT;
+                int off0 = vIdx * LINE_FLOATS_PER_VERTEX;
+                int off1 = (vIdx + 1) * LINE_FLOATS_PER_VERTEX;
+
+                // Vertex A
+                data[off0]     = posA.x;
+                data[off0 + 1] = posA.y;
+                data[off0 + 2] = posA.z;
+                data[off0 + 3] = DEFAULT_EDGE_COLOR.x;
+                data[off0 + 4] = DEFAULT_EDGE_COLOR.y;
+                data[off0 + 5] = DEFAULT_EDGE_COLOR.z;
+
+                // Vertex B
+                data[off1]     = posB.x;
+                data[off1 + 1] = posB.y;
+                data[off1 + 2] = posB.z;
+                data[off1 + 3] = DEFAULT_EDGE_COLOR.x;
+                data[off1 + 4] = DEFAULT_EDGE_COLOR.y;
+                data[off1 + 5] = DEFAULT_EDGE_COLOR.z;
             }
         }
 
-        // Upload to VBO
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, vboData, GL_DYNAMIC_DRAW);
+        // Create / update GL resources
+        ensureLineResources();
+
+        glBindBuffer(GL_ARRAY_BUFFER, lineVbo);
+        glBufferData(GL_ARRAY_BUFFER, data, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-        logger.debug("Rebuilt grouped triangle VBO: {} triangles, {} floats", triangleCount, vboData.length);
+        logger.debug("Built face line VBO: {} faces, {} line vertices", faceCount, totalLineVertices);
+    }
+
+    private void ensureLineResources() {
+        if (lineResourcesInitialized) {
+            return;
+        }
+
+        lineVao = glGenVertexArrays();
+        lineVbo = glGenBuffers();
+
+        glBindVertexArray(lineVao);
+        glBindBuffer(GL_ARRAY_BUFFER, lineVbo);
+        glBufferData(GL_ARRAY_BUFFER, 0, GL_DYNAMIC_DRAW);
+
+        // Position (location 0)
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, LINE_STRIDE_BYTES, 0);
+        glEnableVertexAttribArray(0);
+
+        // Color (location 1)
+        glVertexAttribPointer(1, 3, GL_FLOAT, false, LINE_STRIDE_BYTES, LINE_COLOR_OFFSET_BYTES);
+        glEnableVertexAttribArray(1);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+
+        lineResourcesInitialized = true;
+    }
+
+    // =========================================================================
+    // Rendering — follows EdgeRenderer pattern exactly
+    // =========================================================================
+
+    /**
+     * Render face boundary edges for hovered/selected faces.
+     * Uses BASIC shader with VBO color updates, identical to EdgeRenderer.
+     */
+    public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
+        if (!initialized || !enabled || totalLineVertices == 0) {
+            return;
+        }
+
+        boolean hasHover = hoveredFaceIndex >= 0 && hoveredFaceIndex < faceCount;
+        boolean hasSelection = !selectedFaceIndices.isEmpty();
+        if (!hasHover && !hasSelection) {
+            return;
+        }
+
+        try {
+            shader.use();
+            Matrix4f viewMatrix = context.getCamera().getViewMatrix();
+            Matrix4f projectionMatrix = context.getCamera().getProjectionMatrix();
+            Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix).mul(modelMatrix);
+            shader.setMat4("uMVPMatrix", mvpMatrix);
+            shader.setFloat("uIntensity", 1.0f);
+
+            int prevDepthFunc = glGetInteger(GL_DEPTH_FUNC);
+            glDepthFunc(GL_LEQUAL);
+            glDepthRange(0.0, 0.999); // bias toward camera like EdgeRenderer
+            glBindVertexArray(lineVao);
+
+            // Selected faces
+            if (hasSelection) {
+                glLineWidth(SELECTED_LINE_WIDTH);
+                for (int faceIdx : selectedFaceIndices) {
+                    if (faceIdx >= 0 && faceIdx < faceCount && faceIdx != hoveredFaceIndex) {
+                        updateFaceEdgeColors(faceIdx, SELECTED_EDGE_COLOR);
+                        drawFaceEdges(faceIdx);
+                        updateFaceEdgeColors(faceIdx, DEFAULT_EDGE_COLOR);
+                    }
+                }
+            }
+
+            // Hovered face on top
+            if (hasHover) {
+                glLineWidth(HOVER_LINE_WIDTH);
+                updateFaceEdgeColors(hoveredFaceIndex, HOVER_EDGE_COLOR);
+                drawFaceEdges(hoveredFaceIndex);
+                updateFaceEdgeColors(hoveredFaceIndex, DEFAULT_EDGE_COLOR);
+            }
+
+            glBindVertexArray(0);
+            glDepthRange(0.0, 1.0);
+            glDepthFunc(prevDepthFunc);
+
+        } catch (Exception e) {
+            logger.error("Error rendering face highlights", e);
+        } finally {
+            glUseProgram(0);
+        }
     }
 
     /**
-     * Get the FaceOverlayRenderer instance.
-     * Used for direct access to overlay rendering configuration.
-     *
-     * @return The FaceOverlayRenderer instance
+     * Update VBO colors for all line vertices of a face.
+     * Same approach as EdgeRenderer.updateEdgeColors.
      */
-    public FaceOverlayRenderer getOverlayRenderer() {
-        return overlayRenderer;
+    private void updateFaceEdgeColors(int faceIndex, Vector3f color) {
+        if (faceLineOffsets == null || faceIndex >= faceLineOffsets.length) {
+            return;
+        }
+
+        int startVertex = faceLineOffsets[faceIndex];
+        int vertexCount = faceLineCounts[faceIndex];
+
+        glBindBuffer(GL_ARRAY_BUFFER, lineVbo);
+        float[] colorData = { color.x, color.y, color.z };
+
+        for (int i = 0; i < vertexCount; i++) {
+            long offset = (long)(startVertex + i) * LINE_STRIDE_BYTES + LINE_COLOR_OFFSET_BYTES;
+            glBufferSubData(GL_ARRAY_BUFFER, offset, colorData);
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    private void drawFaceEdges(int faceIndex) {
+        if (faceLineOffsets == null || faceIndex >= faceLineOffsets.length) {
+            return;
+        }
+        int startVertex = faceLineOffsets[faceIndex];
+        int vertexCount = faceLineCounts[faceIndex];
+        if (vertexCount > 0) {
+            glDrawArrays(GL_LINES, startVertex, vertexCount);
+        }
+    }
+
+    // =========================================================================
+    // Hover detection
+    // =========================================================================
+
+    public void handleMouseMove(float mouseX, float mouseY,
+                               Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                               Matrix4f modelMatrix,
+                               int viewportWidth, int viewportHeight) {
+        if (!initialized || !enabled || faceCount == 0) {
+            return;
+        }
+
+        int newHoveredFace = -1;
+
+        if (trianglePositions != null && triangleCount > 0) {
+            int hitTriangle = FaceHoverDetector.detectHoveredTriangle(
+                mouseX, mouseY,
+                viewportWidth, viewportHeight,
+                viewMatrix, projectionMatrix, modelMatrix,
+                trianglePositions, triangleCount
+            );
+
+            if (hitTriangle >= 0 && genericModelRenderer != null) {
+                newHoveredFace = genericModelRenderer.getOriginalFaceIdForTriangle(hitTriangle);
+            }
+        }
+
+        if (newHoveredFace != hoveredFaceIndex) {
+            hoveredFaceIndex = newHoveredFace;
+            logger.debug("Face hover changed to {} (total faces: {})", hoveredFaceIndex, faceCount);
+        }
+    }
+
+    public void clearHover() {
+        if (hoveredFaceIndex != -1) {
+            logger.debug("Clearing face hover (was face {})", hoveredFaceIndex);
+            hoveredFaceIndex = -1;
+        }
+    }
+
+    // =========================================================================
+    // Face vertex access (used by face translation, texture editor, etc.)
+    // =========================================================================
+
+    /**
+     * Get ordered boundary vertices for a face from topology.
+     */
+    public Vector3f[] getFaceVertices(int faceIndex) {
+        if (faceIndex < 0 || faceIndex >= faceCount) {
+            return null;
+        }
+
+        // Path 1: stored topology positions
+        if (storedVerticesPerFace != null && storedFaceOffsets != null
+                && topologyFacePositions != null && faceIndex < storedVerticesPerFace.length) {
+            int vertCount = storedVerticesPerFace[faceIndex];
+            int floatOffset = storedFaceOffsets[faceIndex];
+            Vector3f[] vertices = new Vector3f[vertCount];
+            for (int i = 0; i < vertCount; i++) {
+                int base = floatOffset + i * COMPONENTS_PER_POSITION;
+                vertices[i] = new Vector3f(
+                    topologyFacePositions[base],
+                    topologyFacePositions[base + 1],
+                    topologyFacePositions[base + 2]
+                );
+            }
+            return vertices;
+        }
+
+        // Path 2: query topology directly
+        if (genericModelRenderer != null) {
+            var topology = genericModelRenderer.getTopology();
+            if (topology != null && faceIndex < topology.getFaceCount()) {
+                var face = topology.getFace(faceIndex);
+                if (face != null) {
+                    int[] vertexIndices = face.vertexIndices();
+                    Vector3f[] vertices = new Vector3f[vertexIndices.length];
+                    for (int i = 0; i < vertexIndices.length; i++) {
+                        Vector3f pos = genericModelRenderer.getUniqueVertexPosition(vertexIndices[i]);
+                        if (pos == null) return null;
+                        vertices[i] = new Vector3f(pos);
+                    }
+                    return vertices;
+                }
+            }
+        }
+        return null;
+    }
+
+    public int[] getTriangleVertexIndicesForFace(int originalFaceId) {
+        if (genericModelRenderer == null) {
+            return null;
+        }
+
+        List<Integer> triangleList = originalFaceToTriangles.get(originalFaceId);
+        if (triangleList == null || triangleList.isEmpty()) {
+            return null;
+        }
+
+        int[] triangleIndices = genericModelRenderer.getTriangleIndices();
+        if (triangleIndices == null) {
+            return null;
+        }
+
+        Set<Integer> uniqueVertexIndices = new LinkedHashSet<>();
+        for (int triIndex : triangleList) {
+            int baseIndex = triIndex * 3;
+            if (baseIndex + 2 < triangleIndices.length) {
+                uniqueVertexIndices.add(triangleIndices[baseIndex]);
+                uniqueVertexIndices.add(triangleIndices[baseIndex + 1]);
+                uniqueVertexIndices.add(triangleIndices[baseIndex + 2]);
+            }
+        }
+
+        return uniqueVertexIndices.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    public Vector3f[] getTriangleVertexPositionsForFace(int originalFaceId) {
+        int[] indices = getTriangleVertexIndicesForFace(originalFaceId);
+        if (indices == null || genericModelRenderer == null) {
+            return null;
+        }
+
+        Vector3f[] positions = new Vector3f[indices.length];
+        for (int i = 0; i < indices.length; i++) {
+            positions[i] = genericModelRenderer.getVertexPosition(indices[i]);
+            if (positions[i] == null) return null;
+        }
+        return positions;
+    }
+
+    // =========================================================================
+    // Cleanup
+    // =========================================================================
+
+    public void cleanup() {
+        if (genericModelRenderer != null) {
+            genericModelRenderer.removeMeshChangeListener(this);
+            genericModelRenderer = null;
+        }
+
+        if (lineVao != 0) {
+            glDeleteVertexArrays(lineVao);
+            lineVao = 0;
+        }
+        if (lineVbo != 0) {
+            glDeleteBuffers(lineVbo);
+            lineVbo = 0;
+        }
+
+        lineResourcesInitialized = false;
+        faceCount = 0;
+        totalLineVertices = 0;
+        topologyFacePositions = null;
+        storedVerticesPerFace = null;
+        storedFaceOffsets = null;
+        initialized = false;
+        logger.debug("FaceRenderer cleaned up");
+    }
+
+    // =========================================================================
+    // MeshChangeListener
+    // =========================================================================
+
+    @Override
+    public void onVertexPositionChanged(int uniqueIndex, Vector3f newPosition, int[] affectedMeshIndices) {
+        if (!initialized) return;
+
+        // Update triangle positions for hover detection
+        if (genericModelRenderer != null) {
+            updateTrianglePositionsForMeshVertices(affectedMeshIndices, newPosition);
+        }
+
+        // Update line VBO positions for affected face boundary edges
+        updateLinePositionsForVertex(uniqueIndex, newPosition);
+    }
+
+    @Override
+    public void onGeometryRebuilt() {
+        logger.debug("FaceRenderer received geometry rebuild notification");
+        rebuildFromGenericModelRenderer();
+    }
+
+    /**
+     * Update line VBO positions when a vertex moves.
+     * Finds all faces containing this vertex and updates their boundary edge positions.
+     */
+    private void updateLinePositionsForVertex(int uniqueIndex, Vector3f newPosition) {
+        if (!lineResourcesInitialized || genericModelRenderer == null || faceLineOffsets == null) {
+            return;
+        }
+
+        MeshTopology topology = genericModelRenderer.getTopology();
+        if (topology == null) return;
+
+        // Find faces containing this vertex and update their line positions
+        List<Integer> affectedFaces = topology.elementAdjacencyQuery().getFacesForVertex(uniqueIndex);
+        if (affectedFaces == null || affectedFaces.isEmpty()) return;
+
+        glBindBuffer(GL_ARRAY_BUFFER, lineVbo);
+        float[] posData = { newPosition.x, newPosition.y, newPosition.z };
+
+        for (int faceId : affectedFaces) {
+            if (faceId < 0 || faceId >= faceCount) continue;
+
+            var face = topology.getFace(faceId);
+            if (face == null) continue;
+
+            int[] vertIndices = face.vertexIndices();
+            int baseVertex = faceLineOffsets[faceId];
+
+            // Check each edge of this face for the affected vertex
+            for (int i = 0; i < vertIndices.length; i++) {
+                int next = (i + 1) % vertIndices.length;
+                int vIdx = baseVertex + i * VERTICES_PER_LINE_SEGMENT;
+
+                if (vertIndices[i] == uniqueIndex) {
+                    // This is vertex A of the line segment
+                    long offset = (long) vIdx * LINE_STRIDE_BYTES;
+                    glBufferSubData(GL_ARRAY_BUFFER, offset, posData);
+                }
+                if (vertIndices[next] == uniqueIndex) {
+                    // This is vertex B of the line segment
+                    long offset = (long)(vIdx + 1) * LINE_STRIDE_BYTES;
+                    glBufferSubData(GL_ARRAY_BUFFER, offset, posData);
+                }
+            }
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    private void updateTrianglePositionsForMeshVertices(int[] affectedMeshIndices, Vector3f newPosition) {
+        if (trianglePositions == null || genericModelRenderer == null) {
+            return;
+        }
+
+        int[] triangleIndices = genericModelRenderer.getTriangleIndices();
+        if (triangleIndices == null) return;
+
+        for (int meshIdx : affectedMeshIndices) {
+            for (int t = 0; t < triangleCount; t++) {
+                int i0 = triangleIndices[t * 3];
+                int i1 = triangleIndices[t * 3 + 1];
+                int i2 = triangleIndices[t * 3 + 2];
+
+                int offset = t * 9;
+
+                if (i0 == meshIdx) {
+                    trianglePositions[offset]     = newPosition.x;
+                    trianglePositions[offset + 1] = newPosition.y;
+                    trianglePositions[offset + 2] = newPosition.z;
+                }
+                if (i1 == meshIdx) {
+                    trianglePositions[offset + 3] = newPosition.x;
+                    trianglePositions[offset + 4] = newPosition.y;
+                    trianglePositions[offset + 5] = newPosition.z;
+                }
+                if (i2 == meshIdx) {
+                    trianglePositions[offset + 6] = newPosition.x;
+                    trianglePositions[offset + 7] = newPosition.y;
+                    trianglePositions[offset + 8] = newPosition.z;
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Getters / setters
+    // =========================================================================
+
+    public boolean isEnabled() { return enabled; }
+    public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    public boolean isInitialized() { return initialized; }
+    public int getHoveredFaceIndex() { return hoveredFaceIndex; }
+    public int getFaceCount() { return faceCount; }
+
+    public int getSelectedFaceIndex() {
+        return selectedFaceIndices.isEmpty() ? -1 : selectedFaceIndices.iterator().next();
+    }
+
+    public void setSelectedFace(int faceIndex) {
+        selectedFaceIndices.clear();
+        if (faceIndex >= 0 && faceIndex < faceCount) {
+            selectedFaceIndices.add(faceIndex);
+        }
+    }
+
+    public void updateSelectionSet(Set<Integer> indices) {
+        selectedFaceIndices.clear();
+        if (indices != null) {
+            for (Integer index : indices) {
+                if (index >= 0 && index < faceCount) {
+                    selectedFaceIndices.add(index);
+                }
+            }
+        }
+    }
+
+    public Set<Integer> getSelectedFaceIndices() {
+        return new HashSet<>(selectedFaceIndices);
+    }
+
+    public boolean isFaceSelected(int index) {
+        return selectedFaceIndices.contains(index);
+    }
+
+    public void clearSelection() {
+        selectedFaceIndices.clear();
+    }
+
+    public void setEditingFaceIndex(int faceIndex) {
+        this.editingFaceIndex = faceIndex;
+    }
+
+    public void setGenericModelRenderer(GenericModelRenderer renderer) {
+        if (this.genericModelRenderer != null) {
+            this.genericModelRenderer.removeMeshChangeListener(this);
+        }
+
+        this.genericModelRenderer = renderer;
+
+        if (renderer != null) {
+            renderer.addMeshChangeListener(this);
+            rebuildFromGenericModelRenderer();
+        }
+
+        logger.debug("FaceRenderer {} GenericModelRenderer",
+            renderer != null ? "connected to" : "disconnected from");
     }
 }
