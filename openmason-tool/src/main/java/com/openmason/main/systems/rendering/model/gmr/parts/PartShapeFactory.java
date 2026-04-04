@@ -26,7 +26,8 @@ public final class PartShapeFactory {
     public enum Shape {
         CUBE("Cube", "Standard 6-face cube with quad topology"),
         PYRAMID("Pyramid", "4-sided pyramid with triangular faces and a quad base"),
-        PANE("Pane", "Flat single-face quad for thin surfaces like leaves or signs");
+        PANE("Pane", "Flat single-face quad for thin surfaces like leaves or signs"),
+        SPRITE("Sprite", "Single-sided flat quad with one universal texture face");
 
         private final String displayName;
         private final String description;
@@ -53,6 +54,7 @@ public final class PartShapeFactory {
             case CUBE -> createCube(name, size);
             case PYRAMID -> createPyramid(name, size);
             case PANE -> createPane(name, size);
+            case SPRITE -> createSprite(name, size);
         };
     }
 
@@ -134,6 +136,45 @@ public final class PartShapeFactory {
             // Face 1: Back
             4, 5, 6,
             6, 7, 4,
+        };
+
+        return new ModelPart(name, new Vector3f(0, 0, 0), vertices, texCoords, indices, null);
+    }
+
+    // ========== Sprite ==========
+
+    /**
+     * Create a single-sided flat quad oriented on the XY plane.
+     * <p>
+     * Unlike the pane which has front and back faces, the sprite is a single face
+     * with one universal texture. Ideal for flat decals, labels, or sprite-style elements.
+     * <ul>
+     *   <li>Face 0: Front (+Z side)</li>
+     *   <li>Total: 4 vertices, 6 indices, 1 logical face</li>
+     * </ul>
+     */
+    private static ModelPart createSprite(String name, Vector3f size) {
+        float hw = size.x / 2.0f;
+        float hh = size.y / 2.0f;
+
+        float[] vertices = {
+            // Face 0: Front (facing +Z) — vertices 0-3
+            -hw, -hh, 0.0f,  // 0: bottom-left
+             hw, -hh, 0.0f,  // 1: bottom-right
+             hw,  hh, 0.0f,  // 2: top-right
+            -hw,  hh, 0.0f,  // 3: top-left
+        };
+
+        float[] texCoords = {
+            0.0f, 1.0f,
+            1.0f, 1.0f,
+            1.0f, 0.0f,
+            0.0f, 0.0f,
+        };
+
+        int[] indices = {
+            0, 1, 2,
+            2, 3, 0,
         };
 
         return new ModelPart(name, new Vector3f(0, 0, 0), vertices, texCoords, indices, null);
@@ -262,6 +303,10 @@ public final class PartShapeFactory {
             case PANE -> {
                 // 4 triangles, 2 faces (front and back)
                 yield new int[]{0, 0, 1, 1};
+            }
+            case SPRITE -> {
+                // 2 triangles, 1 face
+                yield new int[]{0, 0};
             }
         };
 
