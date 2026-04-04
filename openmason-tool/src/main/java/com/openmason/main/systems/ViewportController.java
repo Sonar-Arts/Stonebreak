@@ -129,6 +129,27 @@ public class ViewportController {
                 );
         gizmoRenderer.setTransformTarget(partTarget);
 
+        // Wire auto-show gizmo on part selection change
+        modelRenderer.getPartManager().addPartChangeListener(
+                new com.openmason.main.systems.rendering.model.gmr.parts.IPartChangeListener() {
+                    @Override public void onPartAdded(com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor part) {}
+                    @Override public void onPartRemoved(String partId) {}
+                    @Override public void onPartTransformChanged(String partId, com.openmason.main.systems.rendering.model.gmr.parts.PartTransform t) {}
+                    @Override public void onPartsMerged(java.util.List<String> sourceIds, com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor merged) {}
+                    @Override public void onPartsRebuilt() {}
+
+                    @Override
+                    public void onPartSelectionChanged(java.util.Set<String> selectedIds) {
+                        updateGizmoVisibilityForSelection(!selectedIds.isEmpty());
+                    }
+                }
+        );
+
+        // Load display mode from preferences
+        com.openmason.main.systems.menus.preferences.PreferencesManager prefs =
+                com.openmason.main.systems.menus.preferences.PreferencesManager.getInstance();
+        gizmoState.setDisplayMode(prefs.getGizmoDisplayMode());
+
         logger.info("Viewport created successfully with SOLID content management");
     }
 
@@ -161,8 +182,12 @@ public class ViewportController {
             inputHandler.setGizmoRenderer(gizmoRenderer);
             gizmoRenderer.updateViewportState(viewportState);
 
-            gizmoState.setEnabled(true);
-            transformState.setGizmoEnabled(true);
+            // In auto-show mode, start with gizmo hidden (nothing selected yet)
+            // In manual mode, start with gizmo enabled (user controls visibility)
+            boolean initiallyEnabled = gizmoState.getDisplayMode() !=
+                    com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT;
+            gizmoState.setEnabled(initiallyEnabled);
+            transformState.setGizmoEnabled(initiallyEnabled);
 
             this.viewportRenderPipeline = new ViewportRenderPipeline(
                 renderContext, resourceManager, shaderManager,
@@ -725,6 +750,28 @@ public class ViewportController {
 
     public boolean isGizmoEnabled() {
         return gizmoState.isEnabled();
+    }
+
+    /**
+     * Updates gizmo visibility based on part selection state.
+     * In AUTO_SHOW_ON_SELECT mode, the gizmo appears when parts are selected
+     * and hides when no parts are selected. Manual overrides are cleared.
+     *
+     * @param hasSelectedParts whether any model parts are currently selected
+     */
+    public void updateGizmoVisibilityForSelection(boolean hasSelectedParts) {
+        if (gizmoState.getDisplayMode() == com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT
+                && !gizmoState.isManualOverrideActive()) {
+            setGizmoEnabled(hasSelectedParts);
+        }
+        gizmoState.clearManualOverride();
+    }
+
+    /**
+     * Returns the gizmo state for direct access by actions and preferences.
+     */
+    public com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState getGizmoState() {
+        return gizmoState;
     }
 
     public void setGizmoMode(GizmoState.Mode mode) {

@@ -4,6 +4,7 @@ import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.geometry.CircleGeometry;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.AxisConstraint;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoPart;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoColors;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -115,6 +116,7 @@ public class RotateMode implements IGizmoMode {
         int uModelLoc = GL30.glGetUniformLocation(shaderProgram, "uModelMatrix");
         int uViewProjLoc = GL30.glGetUniformLocation(shaderProgram, "uViewProjection");
         int uIntensityLoc = GL30.glGetUniformLocation(shaderProgram, "uIntensity");
+        int uAlphaLoc = GL30.glGetUniformLocation(shaderProgram, "uAlpha");
 
         // Set view-projection matrix
         FloatBuffer vpBuffer = BufferUtils.createFloatBuffer(16);
@@ -125,6 +127,9 @@ public class RotateMode implements IGizmoMode {
         FloatBuffer modelBuffer = BufferUtils.createFloatBuffer(16);
         gizmoTransform.get(modelBuffer);
         GL30.glUniformMatrix4fv(uModelLoc, false, modelBuffer);
+
+        // Rotation circles are fully opaque
+        GL30.glUniform1f(uAlphaLoc, 1.0f);
 
         // Render circles (no glLineWidth needed - we're using thick triangles)
         renderCircles(gizmoState, uIntensityLoc);
@@ -162,16 +167,10 @@ public class RotateMode implements IGizmoMode {
         // Add rotation circle parts
         AxisConstraint[] constraints = {AxisConstraint.X, AxisConstraint.Y, AxisConstraint.Z};
 
-        Vector3f[] colors = {
-            new Vector3f(1, 0, 0), // Red for X
-            new Vector3f(0, 1, 0), // Green for Y
-            new Vector3f(0, 0, 1)  // Blue for Z
-        };
-
         for (int i = 0; i < 3; i++) {
             parts.add(new GizmoPart(
                 constraints[i],
-                colors[i],
+                GizmoColors.axisColor(i),
                 GizmoPart.PartType.CIRCLE,
                 gizmoPosition,
                 scaledRadius // Circle radius for intersection testing

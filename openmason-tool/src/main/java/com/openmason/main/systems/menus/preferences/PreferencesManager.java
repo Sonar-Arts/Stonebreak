@@ -27,6 +27,7 @@ public class PreferencesManager {
     private static final String CAMERA_PAN_SENSITIVITY_KEY = "camera.pan.sensitivity";
     private static final String GRID_SNAPPING_ENABLED_KEY = "viewport.grid.snapping.enabled";
     private static final String GRID_SNAPPING_INCREMENT_KEY = "viewport.grid.snapping.increment";
+    private static final String GIZMO_DISPLAY_MODE_KEY = "viewport.gizmo.display.mode";
 
     // Texture Creator preferences
     private static final String TEXTURE_EDITOR_GRID_OPACITY_KEY = "texture.editor.grid.opacity";
@@ -40,6 +41,7 @@ public class PreferencesManager {
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
     private static final float DEFAULT_CAMERA_PAN_SENSITIVITY = 1.0f;
     private static final boolean DEFAULT_GRID_SNAPPING_ENABLED = false;
+    private static final String DEFAULT_GIZMO_DISPLAY_MODE = "AUTO_SHOW_ON_SELECT";
     // Default grid snapping: Half block (0.5 units) = 2 snap positions per visual grid square
     // This provides good balance between precision and visual alignment with the 1.0 unit grid
     private static final float DEFAULT_GRID_SNAPPING_INCREMENT = SnappingUtil.SNAP_HALF_BLOCK;
@@ -136,6 +138,7 @@ public class PreferencesManager {
         dirty |= populateIfMissing(TEXTURE_EDITOR_ROTATION_SPEED_KEY, DEFAULT_ROTATION_SPEED);
         dirty |= populateIfMissing(TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY, DEFAULT_SKIP_TRANSPARENT_PASTE);
         dirty |= populateIfMissing(TEXTURE_EDITOR_SHAPE_FILL_MODE_KEY, DEFAULT_SHAPE_FILL_MODE);
+        dirty |= populateIfMissing(GIZMO_DISPLAY_MODE_KEY, DEFAULT_GIZMO_DISPLAY_MODE);
 
         if (dirty) {
             savePreferences();
@@ -190,6 +193,7 @@ public class PreferencesManager {
         properties.setProperty(TEXTURE_EDITOR_ROTATION_SPEED_KEY, String.valueOf(DEFAULT_ROTATION_SPEED));
         properties.setProperty(TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY, String.valueOf(DEFAULT_SKIP_TRANSPARENT_PASTE));
         properties.setProperty(TEXTURE_EDITOR_SHAPE_FILL_MODE_KEY, String.valueOf(DEFAULT_SHAPE_FILL_MODE));
+        properties.setProperty(GIZMO_DISPLAY_MODE_KEY, DEFAULT_GIZMO_DISPLAY_MODE);
     }
     
     // Camera Settings
@@ -248,6 +252,25 @@ public class PreferencesManager {
         properties.setProperty(CAMERA_PAN_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_PAN_SENSITIVITY));
         properties.setProperty(GRID_SNAPPING_ENABLED_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_ENABLED));
         properties.setProperty(GRID_SNAPPING_INCREMENT_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_INCREMENT));
+        properties.setProperty(GIZMO_DISPLAY_MODE_KEY, DEFAULT_GIZMO_DISPLAY_MODE);
+        savePreferences();
+    }
+
+    // Gizmo Display Mode Settings
+
+    /**
+     * Get gizmo display mode (MANUAL_TOGGLE or AUTO_SHOW_ON_SELECT).
+     */
+    public com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode getGizmoDisplayMode() {
+        String value = properties.getProperty(GIZMO_DISPLAY_MODE_KEY);
+        return com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.fromString(value);
+    }
+
+    /**
+     * Set gizmo display mode.
+     */
+    public void setGizmoDisplayMode(com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode mode) {
+        properties.setProperty(GIZMO_DISPLAY_MODE_KEY, mode.name());
         savePreferences();
     }
 

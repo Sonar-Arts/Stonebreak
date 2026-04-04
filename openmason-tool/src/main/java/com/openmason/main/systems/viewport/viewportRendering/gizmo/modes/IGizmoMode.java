@@ -73,4 +73,12 @@ public interface IGizmoMode {
      * @return true if initialized, false otherwise
      */
     boolean isInitialized();
+
+    /**
+     * Sets the shader program used for rendering this mode.
+     * Must be called after initialize() and before render().
+     *
+     * @param program OpenGL shader program ID
+     */
+    void setShaderProgram(int program);
 }

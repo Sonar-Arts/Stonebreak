@@ -176,7 +176,7 @@ public class ModelPartsSection implements IPanelSection {
             ImDrawList drawList = ImGui.getWindowDrawList();
             ImVec2 rowStart = ImGui.getCursorScreenPos();
             float rowWidth = ImGui.getContentRegionAvailX();
-            float rowHeight = ImGui.getFrameHeightWithSpacing();
+            float rowHeight = ImGui.getFrameHeight();
 
             if (isSelected) {
                 ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);

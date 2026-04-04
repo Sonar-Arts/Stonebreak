@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.gizmo.geometry;
 
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoColors;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -87,15 +88,9 @@ public final class BoxGeometry {
             new Vector3f(0, 0, 1)  // Z axis
         };
 
-        Vector3f[] colors = {
-            new Vector3f(1, 0, 0), // Red for X
-            new Vector3f(0, 1, 0), // Green for Y
-            new Vector3f(0, 0, 1)  // Blue for Z
-        };
-
         float[][] handles = new float[3][];
         for (int i = 0; i < 3; i++) {
-            handles[i] = createScaleHandle(origin, directions[i], length, boxSize, colors[i]);
+            handles[i] = createScaleHandle(origin, directions[i], length, boxSize, GizmoColors.axisColor(i));
         }
 
         return handles;
@@ -117,8 +112,8 @@ public final class BoxGeometry {
             throw new IllegalArgumentException("Box size must be positive");
         }
 
-        // Center box is white/gray to distinguish from axis boxes
-        Vector3f color = new Vector3f(0.9f, 0.9f, 0.9f);
+        // Center box uses standard center color
+        Vector3f color = new Vector3f(GizmoColors.CENTER);
 
         Vector3f halfSize = new Vector3f(boxSize * 0.5f);
         List<Float> box = GizmoGeometry.createBox(origin, halfSize, color);

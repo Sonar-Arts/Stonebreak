@@ -256,8 +256,16 @@ public class ViewportActions {
 
     public void toggleGizmo() {
         boolean currentState = viewport.isGizmoEnabled();
-        viewport.setGizmoEnabled(!currentState);
-        logger.info("Transform gizmo toggled: {}", !currentState);
+        boolean newState = !currentState;
+
+        // In auto-show mode, Ctrl+T acts as a temporary override
+        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState gizmoState = viewport.getGizmoState();
+        if (gizmoState.getDisplayMode() == com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT) {
+            gizmoState.setManualOverrideActive(true);
+        }
+
+        viewport.setGizmoEnabled(newState);
+        logger.info("Transform gizmo toggled: {}", newState);
     }
 
     public void setGizmoMode(GizmoState.Mode mode) {

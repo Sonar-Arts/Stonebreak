@@ -65,6 +65,16 @@ public class PreferencesPageRenderer {
     private final ImFloat cameraPanSensitivity = new ImFloat();
     private final ImInt gridSnappingIncrementIndex = new ImInt();
     private final ImFloat vertexPointSize = new ImFloat();
+    private final ImInt gizmoDisplayModeIndex = new ImInt();
+
+    private static final String[] GIZMO_DISPLAY_MODE_NAMES = {
+        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.MANUAL_TOGGLE.getDisplayName(),
+        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT.getDisplayName()
+    };
+    private static final com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode[] GIZMO_DISPLAY_MODE_VALUES = {
+        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.MANUAL_TOGGLE,
+        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT
+    };
 
     // Texture Editor ImGui state holders
     private final ImFloat gridOpacitySlider = new ImFloat();
@@ -200,6 +210,12 @@ public class PreferencesPageRenderer {
 
         ImGuiComponents.addSectionSeparator();
 
+        // Gizmo Settings Section
+        ImGuiComponents.renderSectionHeader("Gizmo Settings");
+        renderGizmoSettings();
+
+        ImGuiComponents.addSectionSeparator();
+
         ImGui.spacing();
 
         ImGuiComponents.renderButton(
@@ -240,6 +256,21 @@ public class PreferencesPageRenderer {
                 MIN_PAN_SENSITIVITY,
                 MAX_PAN_SENSITIVITY,
                 "%.1f",
+                v -> {} // Deferred — applied on OK/Apply
+        );
+    }
+
+    private void renderGizmoSettings() {
+        ImGuiComponents.renderComboBoxSetting(
+                "Display Mode",
+                "Controls how the transform gizmo is shown/hidden.\n" +
+                        "Manual Toggle: Show/hide with Ctrl+T or checkbox.\n" +
+                        "Auto-Show on Selection: Gizmo appears when parts are selected,\n" +
+                        "hides when no parts are selected. Ctrl+T temporarily overrides.\n" +
+                        "Default: Auto-Show on Selection",
+                GIZMO_DISPLAY_MODE_NAMES,
+                gizmoDisplayModeIndex,
+                200.0f,
                 v -> {} // Deferred — applied on OK/Apply
         );
     }
@@ -312,6 +343,17 @@ public class PreferencesPageRenderer {
             viewport.setVertexPointSize(pointSize);
         }
 
+        // Gizmo display mode
+        int modeIndex = gizmoDisplayModeIndex.get();
+        if (modeIndex >= 0 && modeIndex < GIZMO_DISPLAY_MODE_VALUES.length) {
+            com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode mode =
+                    GIZMO_DISPLAY_MODE_VALUES[modeIndex];
+            preferencesManager.setGizmoDisplayMode(mode);
+            if (viewport != null) {
+                viewport.getGizmoState().setDisplayMode(mode);
+            }
+        }
+
         logger.debug("Model Editor settings applied");
     }
 
@@ -324,6 +366,8 @@ public class PreferencesPageRenderer {
         cameraPanSensitivity.set(1.0f);
         gridSnappingIncrementIndex.set(findGridSnappingIncrementIndex(0.0625f));
         vertexPointSize.set(5.0f);
+        gizmoDisplayModeIndex.set(findGizmoDisplayModeIndex(
+                com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT));
         logger.debug("Model Editor preferences reset to defaults (pending Apply)");
     }
 
@@ -341,6 +385,21 @@ public class PreferencesPageRenderer {
             logger.warn("Failed to sync vertex point size, using default: 5.0", e);
             vertexPointSize.set(5.0f);
         }
+
+        // Sync gizmo display mode
+        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode currentMode =
+                preferencesManager.getGizmoDisplayMode();
+        gizmoDisplayModeIndex.set(findGizmoDisplayModeIndex(currentMode));
+    }
+
+    private int findGizmoDisplayModeIndex(
+            com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode mode) {
+        for (int i = 0; i < GIZMO_DISPLAY_MODE_VALUES.length; i++) {
+            if (GIZMO_DISPLAY_MODE_VALUES[i] == mode) {
+                return i;
+            }
+        }
+        return 1; // Default to AUTO_SHOW_ON_SELECT
     }
 
     private int findGridSnappingIncrementIndex(float value) {

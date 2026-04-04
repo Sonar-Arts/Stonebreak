@@ -214,8 +214,19 @@ public class ToolPaneRenderer {
 
     private void renderTransformPane() {
         boolean gizmoEnabled = viewport.isGizmoEnabled();
-        if (ImGui.checkbox("Show Gizmo", new ImBoolean(gizmoEnabled))) {
-            viewport.setGizmoEnabled(!gizmoEnabled);
+        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode displayMode =
+                viewport.getGizmoState().getDisplayMode();
+        boolean isAutoMode = displayMode == com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT;
+
+        if (isAutoMode) {
+            // In auto mode, show disabled checkbox with "(Auto)" label
+            ImGui.beginDisabled();
+            ImGui.checkbox("Show Gizmo (Auto)", new ImBoolean(gizmoEnabled));
+            ImGui.endDisabled();
+        } else {
+            if (ImGui.checkbox("Show Gizmo", new ImBoolean(gizmoEnabled))) {
+                viewport.setGizmoEnabled(!gizmoEnabled);
+            }
         }
 
         ImGui.spacing();
