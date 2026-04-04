@@ -77,9 +77,6 @@ public class TextureCreatorController {
         // This automatically creates a default "Background" layer
         this.layerManager = new LayerManager(canvasSize.getWidth(), canvasSize.getHeight());
 
-        // Auto-assign shape mask for known layouts (e.g., 64x48 cube net)
-        applyAutoShapeMask(canvasSize.getWidth(), canvasSize.getHeight());
-
         // Clear command history
         commandHistory.clear();
 
@@ -101,7 +98,7 @@ public class TextureCreatorController {
         }
 
         // Reset to default canvas
-        TextureCreatorState.CanvasSize size = TextureCreatorState.CanvasSize.SIZE_16x16;
+        TextureCreatorState.CanvasSize size = new TextureCreatorState.CanvasSize(16, 16);
         state.setCurrentCanvasSize(size);
         state.setCurrentFilePath(null);
         state.setUnsavedChanges(false);

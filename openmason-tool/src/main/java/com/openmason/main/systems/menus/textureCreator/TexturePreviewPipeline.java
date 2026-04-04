@@ -191,23 +191,28 @@ public class TexturePreviewPipeline implements CanvasChangeListener {
     /**
      * Resolve the GPU texture ID to upload to.
      *
-     * <p>If face-region editing is active, uses the material's texture ID for that face.
-     * Otherwise falls back to the renderer's global texture ID.
+     * <p>Only uploads when face-region editing is active, targeting that face's
+     * material texture. Standalone (non-per-face) editing does NOT push changes
+     * to the 3D viewport to maintain context separation.
+     *
+     * @return the target GPU texture ID, or -1 if no upload should occur
      */
     private int resolveTargetTextureId() {
-        if (controller.isFaceRegionActive()) {
-            int materialId = controller.getFaceRegionMaterialId();
-            if (materialId >= 0) {
-                FaceTextureManager ftm = modelRenderer.getFaceTextureManager();
-                MaterialDefinition material = ftm.getMaterial(materialId);
-                if (material != null && material.textureId() > 0) {
-                    return material.textureId();
-                }
+        if (!controller.isFaceRegionActive()) {
+            // Standalone editing — do not push to the 3D model
+            return -1;
+        }
+
+        int materialId = controller.getFaceRegionMaterialId();
+        if (materialId >= 0) {
+            FaceTextureManager ftm = modelRenderer.getFaceTextureManager();
+            MaterialDefinition material = ftm.getMaterial(materialId);
+            if (material != null && material.textureId() > 0) {
+                return material.textureId();
             }
         }
 
-        // Fallback to the renderer's global texture
-        return modelRenderer.getTextureId();
+        return -1;
     }
 
     // =========================================================================

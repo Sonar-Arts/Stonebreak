@@ -19,7 +19,7 @@ public class ImportPNGDialog {
     private boolean isOpen = false;
     private int sourceWidth = 0;
     private int sourceHeight = 0;
-    private TextureCreatorState.CanvasSize selectedSize = TextureCreatorState.CanvasSize.SIZE_16x16;
+    private TextureCreatorState.CanvasSize selectedSize = new TextureCreatorState.CanvasSize(16, 16);
     private TextureCreatorState.CanvasSize confirmedSelection = null;
     private boolean needsPositioning = false;
 
@@ -69,15 +69,8 @@ public class ImportPNGDialog {
         confirmedSelection = null;
         needsPositioning = true;
 
-        // Pre-select matching size if applicable
-        if (sourceWidth == 16 && sourceHeight == 16) {
-            selectedSize = TextureCreatorState.CanvasSize.SIZE_16x16;
-        } else if (sourceWidth == 64 && sourceHeight == 48) {
-            selectedSize = TextureCreatorState.CanvasSize.SIZE_64x48;
-        } else {
-            // Default to 16x16 for non-matching sizes
-            selectedSize = TextureCreatorState.CanvasSize.SIZE_16x16;
-        }
+        // Pre-select source dimensions
+        selectedSize = new TextureCreatorState.CanvasSize(sourceWidth, sourceHeight);
 
         logger.debug("Import PNG dialog opened: source {}x{}", sourceWidth, sourceHeight);
     }
@@ -218,8 +211,8 @@ public class ImportPNGDialog {
 
         ImGui.setCursorPosX(startX);
 
-        boolean is16Selected = selectedSize == TextureCreatorState.CanvasSize.SIZE_16x16;
-        boolean is64Selected = selectedSize == TextureCreatorState.CanvasSize.SIZE_64x48;
+        boolean is16Selected = selectedSize.equals(new TextureCreatorState.CanvasSize(16, 16));
+        boolean is64Selected = selectedSize.equals(new TextureCreatorState.CanvasSize(64, 48));
 
         // Check if resize will occur
         boolean resize16 = !(sourceWidth == 16 && sourceHeight == 16);
@@ -276,7 +269,7 @@ public class ImportPNGDialog {
             ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.ItemInnerSpacing, increasedSpacing, ImGui.getStyle().getItemInnerSpacingY());
 
             if (ImGui.radioButton(radioLabel16, is16Selected)) {
-                selectedSize = TextureCreatorState.CanvasSize.SIZE_16x16;
+                selectedSize = new TextureCreatorState.CanvasSize(16, 16);
             }
 
             ImGui.popStyleVar();
@@ -341,7 +334,7 @@ public class ImportPNGDialog {
             ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.ItemInnerSpacing, increasedSpacing, ImGui.getStyle().getItemInnerSpacingY());
 
             if (ImGui.radioButton(radioLabel64, is64Selected)) {
-                selectedSize = TextureCreatorState.CanvasSize.SIZE_64x48;
+                selectedSize = new TextureCreatorState.CanvasSize(64, 48);
             }
 
             ImGui.popStyleVar();

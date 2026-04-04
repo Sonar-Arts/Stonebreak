@@ -370,6 +370,9 @@ public class mainOpenMason {
         mainInterface.setBackToHomeCallback(this::transitionToHomeScreen);
         mainInterface.setExitCallback(() -> shouldClose = true);
         mainInterface.setOpenTextureEditorCallback(() -> {
+            // Standalone open: reset to a fresh blank canvas so previous
+            // per-face edits don't leak into the standalone session
+            textureCreatorInterface.getController().resetAll();
             showTextureEditor = true;
             textureEditorWindow.show();
         });
@@ -411,6 +414,8 @@ public class mainOpenMason {
                 textureEditorWindow.render();
                 boolean stillVisible = textureEditorWindow.isVisible();
                 if (!stillVisible) {
+                    boolean wasFaceEdit = textureCreatorInterface.getController().isFaceRegionActive();
+
                     // Flush pending canvas edits to the face's GPU texture BEFORE
                     // closing the region — closeFaceRegion clears the material ID,
                     // so a later flush would target the wrong texture.
@@ -419,6 +424,11 @@ public class mainOpenMason {
                     }
                     textureCreatorInterface.getController().closeFaceRegion();
                     mainInterface.getPropertyPanel().clearEditingFace();
+
+                    // Auto-save the .OMO so per-face texture edits are persisted
+                    if (wasFaceEdit && mainInterface.getModelOperations() != null) {
+                        mainInterface.getModelOperations().saveModel();
+                    }
                 }
                 showTextureEditor = stillVisible;
             }, "Texture Editor");

@@ -42,10 +42,7 @@ public class CanvasRenderer {
     private static final int CANVAS_BORDER_COLOR = ImColor.rgba(0, 0, 0, 255);  // Solid black border
     private static final float CANVAS_BORDER_THICKNESS = 1.0f;
 
-    // Cube net overlay renderer (legacy, for 64x48 textures without face data)
-    private final CubeNetOverlayRenderer cubeNetOverlayRenderer;
-
-    // Face UV overlay renderer (replaces cube net when face data is available)
+    // Face UV overlay renderer (for face data overlays)
     private final FaceUVOverlayRenderer faceUVOverlayRenderer;
 
     // Face boundary renderer (for face-editing mode)
@@ -54,7 +51,7 @@ public class CanvasRenderer {
     // Selection renderer
     private final SelectionRenderer selectionRenderer;
 
-    // Face overlay context (null when no face data is available, falls back to cube net)
+    // Face overlay context (null when no face data is available)
     private IFaceTextureManager faceTextureManager;
     private int activeMaterialId = -1;
     private int selectedFaceId = -1;
@@ -63,7 +60,6 @@ public class CanvasRenderer {
      * Create canvas renderer.
      */
     public CanvasRenderer() {
-        this.cubeNetOverlayRenderer = new CubeNetOverlayRenderer();
         this.faceUVOverlayRenderer = new FaceUVOverlayRenderer();
         this.faceBoundaryRenderer = new FaceBoundaryRenderer();
         this.selectionRenderer = new SelectionRenderer();
@@ -207,14 +203,10 @@ public class CanvasRenderer {
             renderGrid(canvas, canvasState, canvasX, canvasY, gridOpacity);
         }
 
-        // Render face overlays: use FaceUVOverlayRenderer when face data is available,
-        // fall back to CubeNetOverlayRenderer for legacy 64x48 canvases without face data
+        // Render face overlays when face data is available
         if (faceTextureManager != null) {
             faceUVOverlayRenderer.render(faceTextureManager, activeMaterialId, selectedFaceId,
                                           canvas.getWidth(), canvas.getHeight(),
-                                          canvasX, canvasY, zoom, cubeNetOverlayOpacity);
-        } else {
-            cubeNetOverlayRenderer.render(canvas.getWidth(), canvas.getHeight(),
                                           canvasX, canvasY, zoom, cubeNetOverlayOpacity);
         }
 

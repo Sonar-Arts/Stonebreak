@@ -10,24 +10,22 @@ import imgui.type.ImBoolean;
  */
 public class TextureCreatorState {
 
-    // Canvas dimensions
-    public enum CanvasSize {
-        SIZE_16x16(16, 16, "16x16 (Block/Item)"),
-        SIZE_64x48(64, 48, "Block Texture");
-
-        private final int width;
-        private final int height;
-        private final String displayName;
-
-        CanvasSize(int width, int height, String displayName) {
-            this.width = width;
-            this.height = height;
-            this.displayName = displayName;
+    /**
+     * Canvas dimensions specified by the user.
+     *
+     * @param width  canvas width in pixels
+     * @param height canvas height in pixels
+     */
+    public record CanvasSize(int width, int height) {
+        public CanvasSize {
+            if (width <= 0 || height <= 0) {
+                throw new IllegalArgumentException("Canvas dimensions must be positive: " + width + "x" + height);
+            }
         }
 
         public int getWidth() { return width; }
         public int getHeight() { return height; }
-        public String getDisplayName() { return displayName; }
+        public String getDisplayName() { return width + "x" + height; }
     }
 
     // State fields
@@ -45,7 +43,7 @@ public class TextureCreatorState {
      * Create new texture creator state with defaults.
      */
     public TextureCreatorState() {
-        this.currentCanvasSize = CanvasSize.SIZE_16x16;
+        this.currentCanvasSize = new CanvasSize(16, 16);
         this.currentTool = null; // Will be set when tools are initialized
         this.currentColor = 0xFF000000; // Black, full alpha
         this.currentFilePath = null;
