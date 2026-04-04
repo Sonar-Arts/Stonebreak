@@ -1,6 +1,6 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.edge;
 
-import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;

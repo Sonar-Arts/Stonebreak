@@ -2,10 +2,10 @@ package com.openmason.main.systems;
 
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.block.BlockManager;
-import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
+import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.main.omConfig;
-import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.services.commands.RendererSynchronizer;
@@ -18,7 +18,7 @@ import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
-import com.openmason.main.systems.rendering.core.shaders.ShaderManager;
+import com.openmason.engine.rendering.shaders.ShaderManager;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
@@ -131,11 +131,11 @@ public class ViewportController {
 
         // Wire auto-show gizmo on part selection change
         modelRenderer.getPartManager().addPartChangeListener(
-                new com.openmason.main.systems.rendering.model.gmr.parts.IPartChangeListener() {
-                    @Override public void onPartAdded(com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor part) {}
+                new com.openmason.engine.rendering.model.gmr.parts.IPartChangeListener() {
+                    @Override public void onPartAdded(com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor part) {}
                     @Override public void onPartRemoved(String partId) {}
-                    @Override public void onPartTransformChanged(String partId, com.openmason.main.systems.rendering.model.gmr.parts.PartTransform t) {}
-                    @Override public void onPartsMerged(java.util.List<String> sourceIds, com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor merged) {}
+                    @Override public void onPartTransformChanged(String partId, com.openmason.engine.rendering.model.gmr.parts.PartTransform t) {}
+                    @Override public void onPartsMerged(java.util.List<String> sourceIds, com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor merged) {}
                     @Override public void onPartsRebuilt() {}
 
                     @Override
@@ -658,7 +658,7 @@ public class ViewportController {
     public ViewportInputHandler getInputHandler() { return inputHandler; }
     public FaceSelectionState getFaceSelectionState() { return faceSelectionState; }
     public GenericModelRenderer getModelRenderer() { return modelRenderer; }
-    public com.openmason.main.systems.rendering.model.gmr.parts.ModelPartManager getPartManager() {
+    public com.openmason.engine.rendering.model.gmr.parts.ModelPartManager getPartManager() {
         return modelRenderer.getPartManager();
     }
 
@@ -669,7 +669,7 @@ public class ViewportController {
      * @param part The part descriptor with a valid meshRange
      */
     public void assignDefaultMaterialToPartFaces(
-            com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor part) {
+            com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor part) {
         modelRenderer.assignDefaultMaterialToPartFaces(part);
     }
     public ViewportUIState getViewportUIState() { return viewportState; }

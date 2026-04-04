@@ -1,11 +1,11 @@
 package com.openmason.main.systems.menus.panes.propertyPane.sections;
 
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IPanelSection;
-import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor;
-import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartManager;
-import com.openmason.main.systems.rendering.model.gmr.parts.PartShapeFactory;
-import com.openmason.main.systems.rendering.model.gmr.parts.PartMeshRebuilder;
-import com.openmason.main.systems.rendering.model.gmr.parts.PartTransform;
+import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
+import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
+import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory;
+import com.openmason.engine.rendering.model.gmr.parts.PartMeshRebuilder;
+import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.themes.utils.ImGuiComponents;
 import imgui.ImDrawList;
 import imgui.ImGui;

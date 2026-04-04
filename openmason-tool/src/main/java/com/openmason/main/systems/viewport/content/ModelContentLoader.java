@@ -1,10 +1,10 @@
 package com.openmason.main.systems.viewport.content;
 
-import com.openmason.main.systems.rendering.model.GenericModelRenderer;
-import com.openmason.main.systems.rendering.model.UVMode;
+import com.openmason.engine.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.UVMode;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.editable.ModelGeometry;
-import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
+import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.rendering.model.miscComponents.TextureLoadResult;
 import org.slf4j.Logger;
@@ -274,8 +274,8 @@ public class ModelContentLoader {
         );
 
         @SuppressWarnings("deprecation")
-        com.openmason.main.systems.rendering.model.ModelPart part =
-            com.openmason.main.systems.rendering.model.ModelPart.createCube("legacy_box", origin, size, UVMode.CUBE_NET);
+        com.openmason.engine.rendering.model.ModelPart part =
+            com.openmason.engine.rendering.model.ModelPart.createCube("legacy_box", origin, size, UVMode.CUBE_NET);
 
         // Generate quad topology mapping (every 2 triangles = 1 face)
         int triangleCount = part.indices().length / 3;

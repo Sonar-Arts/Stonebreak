@@ -5,7 +5,7 @@ import com.openmason.main.systems.menus.textureCreator.canvas.CanvasState;
 import com.openmason.main.systems.menus.textureCreator.canvas.CompositeShapeMask;
 import com.openmason.main.systems.menus.textureCreator.canvas.CubeNetShapeMask;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping.UVRegion;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping.UVRegion;
 import com.openmason.main.systems.menus.textureCreator.clipboard.ClipboardManager;
 import com.openmason.main.systems.menus.textureCreator.commands.CommandHistory;
 import com.openmason.main.systems.menus.textureCreator.commands.DrawCommand;

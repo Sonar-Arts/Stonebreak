@@ -2,6 +2,7 @@ package com.openmason.main.systems.rendering.model.io.omo;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.editable.CubeGeometry;
 import com.openmason.main.systems.rendering.model.editable.ModelGeometry;

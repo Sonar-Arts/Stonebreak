@@ -1,18 +1,18 @@
 package com.openmason.main.systems.services;
 
 import com.openmason.main.systems.menus.textureCreator.io.OMTSerializer;
-import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.factory.BlankModelFactory;
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping;
-import com.openmason.main.systems.rendering.model.gmr.uv.MaterialDefinition;
-import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor;
-import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartManager;
-import com.openmason.main.systems.rendering.model.gmr.parts.PartMeshRebuilder;
-import com.openmason.main.systems.rendering.model.gmr.parts.PartTransform;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureManager;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping;
+import com.openmason.engine.rendering.model.gmr.uv.MaterialDefinition;
+import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
+import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
+import com.openmason.engine.rendering.model.gmr.parts.PartMeshRebuilder;
+import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.rendering.model.io.omo.OMODeserializer;
-import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
+import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.io.omo.OMOSerializer;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
@@ -628,7 +628,7 @@ public class ModelOperationService {
         List<OMOFormat.PartEntry> entries = new ArrayList<>();
         for (ModelPartDescriptor part : partManager.getAllParts()) {
             PartTransform t = part.transform();
-            com.openmason.main.systems.rendering.model.gmr.parts.MeshRange range = part.meshRange();
+            com.openmason.engine.rendering.model.gmr.parts.MeshRange range = part.meshRange();
 
             entries.add(new OMOFormat.PartEntry(
                     part.id(), part.name(),

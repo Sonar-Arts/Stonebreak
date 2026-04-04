@@ -1,8 +1,8 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.main.systems.menus.windows.WindowTitleBar;
-import com.openmason.main.systems.rendering.model.io.sbe.SBEFormat;
-import com.openmason.main.systems.rendering.model.io.sbe.SBESerializer;
+import com.openmason.engine.format.sbe.SBEFormat;
+import com.openmason.engine.format.sbe.SBESerializer;
 import com.openmason.main.systems.services.StatusService;
 import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.themes.core.ThemeDefinition;

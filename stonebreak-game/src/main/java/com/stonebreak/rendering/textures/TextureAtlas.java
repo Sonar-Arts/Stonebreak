@@ -456,6 +456,14 @@ public class TextureAtlas {
     }
 
     /**
+     * Gets the atlas metadata for texture coordinate lookups.
+     * @return atlas metadata, or null if not loaded
+     */
+    public AtlasMetadata getAtlasMetadata() {
+        return atlasMetadata;
+    }
+
+    /**
      * Gets the width of the entire texture atlas in pixels.
      */
     public int getTextureWidth() {

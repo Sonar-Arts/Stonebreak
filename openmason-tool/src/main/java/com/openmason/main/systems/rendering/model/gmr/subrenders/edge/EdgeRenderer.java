@@ -1,16 +1,16 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.edge;
 
-import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
-import com.openmason.main.systems.rendering.model.GenericModelRenderer;
-import com.openmason.main.systems.rendering.model.MeshChangeListener;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.MeshChangeListener;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
-import com.openmason.main.systems.rendering.model.gmr.topology.MeshEdge;
-import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
+import com.openmason.engine.rendering.model.gmr.topology.MeshEdge;
+import com.openmason.engine.rendering.model.gmr.topology.MeshTopology;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.operations.EdgeSelectionManager;
-import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
-import com.openmason.main.systems.rendering.model.gmr.mesh.edgeOperations.MeshEdgeBufferUpdater;
-import com.openmason.main.systems.rendering.model.gmr.mesh.edgeOperations.MeshEdgeGeometryQuery;
+import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
+import com.openmason.engine.rendering.model.gmr.mesh.edgeOperations.MeshEdgeBufferUpdater;
+import com.openmason.engine.rendering.model.gmr.mesh.edgeOperations.MeshEdgeGeometryQuery;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;

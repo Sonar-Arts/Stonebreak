@@ -1,14 +1,14 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
-import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
-import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
+import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
-import com.openmason.main.systems.rendering.core.shaders.ShaderManager;
-import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
-import com.openmason.main.systems.rendering.core.shaders.ShaderType;
+import com.openmason.engine.rendering.shaders.ShaderManager;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderType;
 import com.openmason.main.systems.viewport.state.RenderingMode;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
@@ -48,7 +48,7 @@ import static org.lwjgl.opengl.GL11.*;
  * or extend {@link com.openmason.main.systems.rendering.api.BaseRenderer}.
  *
  * @see com.openmason.main.systems.rendering.api.RenderingController
- * @see com.openmason.main.systems.rendering.model.GenericModelRenderer
+ * @see com.openmason.engine.rendering.model.GenericModelRenderer
  */
 public class ViewportRenderPipeline {
 

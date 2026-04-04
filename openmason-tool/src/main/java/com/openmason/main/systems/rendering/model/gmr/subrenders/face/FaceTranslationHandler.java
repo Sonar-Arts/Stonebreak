@@ -1,6 +1,6 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.face;
 
-import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.services.commands.RendererSynchronizer;
 import com.openmason.main.systems.services.commands.VertexMoveCommand;

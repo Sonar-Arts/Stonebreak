@@ -1,10 +1,10 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.face;
 
-import com.openmason.main.systems.rendering.model.MeshChangeListener;
-import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
+import com.openmason.engine.rendering.model.MeshChangeListener;
+import com.openmason.engine.rendering.model.gmr.topology.MeshTopology;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
-import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.model.GenericModelRenderer;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;

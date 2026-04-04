@@ -34,7 +34,10 @@ module com.openmason {
     requires java.prefs;
     requires java.xml;
     
-    // Stonebreak Game Module for model system access
+    // OpenMason Engine for shared rendering and format support
+    requires openmason.engine;
+
+    // Stonebreak Game Module for model system access (temporary - Milestone 2 removes this)
     requires stonebreak.game;
     
     // Open packages for Jackson JSON processing
@@ -43,8 +46,6 @@ module com.openmason {
     opens com.openmason.main.systems.themes.persistence to com.fasterxml.jackson.databind;
     opens com.openmason.main.systems.menus.textureCreator.io to com.fasterxml.jackson.databind;
     opens com.openmason.main.systems.rendering.model.io.omo to com.fasterxml.jackson.databind;
-    opens com.openmason.main.systems.rendering.model.io.sbo to com.fasterxml.jackson.databind;
-    opens com.openmason.main.systems.rendering.model.io.sbe to com.fasterxml.jackson.databind;
 
     // Export packages for potential future extensions
     exports com.openmason.main;

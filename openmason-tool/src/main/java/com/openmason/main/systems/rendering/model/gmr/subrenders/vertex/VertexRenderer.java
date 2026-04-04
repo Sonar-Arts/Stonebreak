@@ -1,12 +1,12 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.vertex;
 
-import com.openmason.main.systems.rendering.model.GenericModelRenderer;
-import com.openmason.main.systems.rendering.model.MeshChangeListener;
+import com.openmason.engine.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.MeshChangeListener;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.rendering.model.gmr.mesh.MeshManager;
-import com.openmason.main.systems.rendering.model.gmr.mesh.vertexOperations.MeshVertexMerger;
-import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
+import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
+import com.openmason.engine.rendering.model.gmr.mesh.vertexOperations.MeshVertexMerger;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;

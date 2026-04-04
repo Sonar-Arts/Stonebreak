@@ -17,6 +17,14 @@
     <description>A 3D voxel-based sandbox game inspired by Minecraft</description>
 
     <dependencies>
+        <!-- OpenMason Engine for shared rendering and format support -->
+        <dependency>
+            <groupId>com.stonebreak</groupId>
+            <artifactId>openmason-engine</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>compile</scope>
+        </dependency>
+
         <!-- LWJGL core -->
         <dependency>
             <groupId>org.lwjgl</groupId>

@@ -1,7 +1,7 @@
 package com.openmason.main.systems.menus.panes.propertyPane.interfaces;
 
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureManager;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
 
 /**

@@ -15,12 +15,18 @@ module stonebreak.game {
     // Math library
     requires org.joml;
     
+    // OpenMason Engine for shared rendering and format support
+    requires openmason.engine;
+
     // JSON processing
     requires com.fasterxml.jackson.databind;
     requires com.fasterxml.jackson.core;
     requires com.fasterxml.jackson.annotation;
     requires com.fasterxml.jackson.datatype.jsr310;
-    
+
+    // Logging
+    requires org.slf4j;
+
     // Java base modules
     requires java.desktop;
     requires java.management;

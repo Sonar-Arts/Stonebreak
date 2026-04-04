@@ -14,7 +14,7 @@ import com.openmason.main.systems.menus.panes.propertyPane.sections.TextureVaria
 import com.openmason.main.systems.menus.panes.propertyPane.sections.TransformSection;
 import com.openmason.main.systems.menus.panes.propertyPane.state.TransformState;
 import com.openmason.main.systems.menus.panes.propertyPane.theming.PanelThemeContext;
-import com.openmason.main.systems.rendering.model.gmr.parts.PartShapeFactory;
+import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory;
 import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.viewport.ViewportUIState;

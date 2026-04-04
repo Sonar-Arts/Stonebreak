@@ -2,6 +2,7 @@ package com.openmason.main.systems.rendering.model.io.omo;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.editable.ModelGeometry;
 import org.slf4j.Logger;

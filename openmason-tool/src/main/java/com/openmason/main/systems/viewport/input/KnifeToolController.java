@@ -1,11 +1,11 @@
 package com.openmason.main.systems.viewport.input;
 
-import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeHoverDetector;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.KnifePreviewRenderer;
-import com.openmason.main.systems.rendering.model.gmr.topology.MeshEdge;
-import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
+import com.openmason.engine.rendering.model.gmr.topology.MeshEdge;
+import com.openmason.engine.rendering.model.gmr.topology.MeshTopology;
 import com.openmason.main.systems.services.commands.MeshSnapshot;
 import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.services.commands.RendererSynchronizer;

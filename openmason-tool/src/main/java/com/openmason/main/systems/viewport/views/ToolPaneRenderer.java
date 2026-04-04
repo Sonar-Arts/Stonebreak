@@ -1,9 +1,9 @@
 package com.openmason.main.systems.viewport.views;
 
 import com.openmason.main.systems.ViewportController;
-import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor;
-import com.openmason.main.systems.rendering.model.gmr.parts.PartShapeFactory;
-import com.openmason.main.systems.rendering.model.gmr.parts.PartTransform;
+import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
+import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory;
+import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.viewport.ViewportActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;

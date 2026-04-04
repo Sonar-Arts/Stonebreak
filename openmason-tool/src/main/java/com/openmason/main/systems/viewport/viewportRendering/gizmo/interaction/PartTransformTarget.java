@@ -1,9 +1,9 @@
 package com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction;
 
-import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor;
-import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartManager;
-import com.openmason.main.systems.rendering.model.gmr.parts.PartMeshRebuilder;
-import com.openmason.main.systems.rendering.model.gmr.parts.PartTransform;
+import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
+import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
+import com.openmason.engine.rendering.model.gmr.parts.PartMeshRebuilder;
+import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.viewport.state.TransformState;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;

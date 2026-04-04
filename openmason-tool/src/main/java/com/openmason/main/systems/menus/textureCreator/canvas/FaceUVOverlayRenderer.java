@@ -1,8 +1,8 @@
 package com.openmason.main.systems.menus.textureCreator.canvas;
 
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping;
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping.UVRegion;
-import com.openmason.main.systems.rendering.model.gmr.uv.IFaceTextureManager;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping.UVRegion;
+import com.openmason.engine.rendering.model.gmr.uv.IFaceTextureManager;
 import imgui.ImColor;
 import imgui.ImDrawList;
 import imgui.ImGui;

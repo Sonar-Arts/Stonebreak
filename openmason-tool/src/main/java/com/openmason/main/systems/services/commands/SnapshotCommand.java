@@ -1,6 +1,6 @@
 package com.openmason.main.systems.services.commands;
 
-import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.GenericModelRenderer;
 
 /**
  * Snapshot-based command for topology-changing operations.

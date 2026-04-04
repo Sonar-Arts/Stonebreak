@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
  * <p>
  * Uses the Strategy pattern to delegate camera behavior to specialized controllers.
  */
-public class ViewportCamera {
+public class ViewportCamera implements com.openmason.engine.rendering.api.IRenderCamera {
 
     private static final Logger logger = LoggerFactory.getLogger(ViewportCamera.class);
 

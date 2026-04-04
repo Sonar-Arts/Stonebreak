@@ -1,6 +1,6 @@
 package com.openmason.main.systems.menus.dialogs;
 
-import com.openmason.main.systems.rendering.model.gmr.parts.PartShapeFactory;
+import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImInt;

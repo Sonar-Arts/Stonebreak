@@ -5,10 +5,10 @@ import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IPanelSect
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
 import com.openmason.main.systems.menus.textureCreator.FaceEditorBridge;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping;
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureSizer;
-import com.openmason.main.systems.rendering.model.gmr.uv.MaterialDefinition;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureManager;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureSizer;
+import com.openmason.engine.rendering.model.gmr.uv.MaterialDefinition;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.rendering.model.miscComponents.TextureLoadResult;
 import com.openmason.main.systems.themes.utils.ImGuiComponents;

@@ -2,7 +2,7 @@ package com.openmason.main.systems.menus.panes.modelBrowser.views;
 
 import com.openmason.main.systems.rendering.model.block.BlockManager;
 import com.openmason.main.systems.rendering.model.item.ItemManager;
-import com.openmason.main.systems.rendering.model.io.omo.OMOFileManager;
+import com.openmason.engine.format.omo.OMOFileManager;
 import com.openmason.main.systems.menus.panes.modelBrowser.ModelBrowserController;
 import com.openmason.main.systems.menus.panes.modelBrowser.ModelBrowserState;
 import com.openmason.main.systems.menus.panes.modelBrowser.categorizers.BlockCategorizer;

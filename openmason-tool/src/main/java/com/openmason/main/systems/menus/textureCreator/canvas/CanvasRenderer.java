@@ -3,7 +3,7 @@ package com.openmason.main.systems.menus.textureCreator.canvas;
 import com.openmason.main.systems.menus.textureCreator.SymmetryState;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionRegion;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionRenderer;
-import com.openmason.main.systems.rendering.model.gmr.uv.IFaceTextureManager;
+import com.openmason.engine.rendering.model.gmr.uv.IFaceTextureManager;
 import imgui.ImColor;
 import imgui.ImDrawList;
 import imgui.ImGui;

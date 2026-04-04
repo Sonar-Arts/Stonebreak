@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering;
 
-import com.openmason.main.systems.rendering.model.ModelBounds;
+import com.openmason.engine.rendering.model.ModelBounds;
 import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoInteractionHandler;

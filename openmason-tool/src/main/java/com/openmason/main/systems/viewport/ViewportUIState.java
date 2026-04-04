@@ -1,7 +1,7 @@
 package com.openmason.main.systems.viewport;
 
-import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor;
-import com.openmason.main.systems.rendering.model.gmr.parts.PartTransform;
+import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
+import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
 import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
 import imgui.type.ImInt;

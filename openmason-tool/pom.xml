@@ -130,7 +130,15 @@
             <artifactId>batik-codec</artifactId>
             <version>1.17</version>
         </dependency>
-        <!-- Stonebreak Game Module for shared resources -->
+        <!-- OpenMason Engine for shared rendering and format support -->
+        <dependency>
+            <groupId>com.stonebreak</groupId>
+            <artifactId>openmason-engine</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Stonebreak Game Module for shared resources (temporary - will be removed in Milestone 2) -->
         <dependency>
             <groupId>com.stonebreak</groupId>
             <artifactId>stonebreak-game</artifactId>

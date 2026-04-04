@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction;
 
-import com.openmason.main.systems.rendering.model.ModelBounds;
+import com.openmason.engine.rendering.model.ModelBounds;
 import com.openmason.main.systems.viewport.state.TransformState;
 import org.joml.Vector3f;
 

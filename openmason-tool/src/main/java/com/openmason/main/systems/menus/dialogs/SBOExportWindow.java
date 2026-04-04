@@ -1,8 +1,8 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.main.systems.menus.windows.WindowTitleBar;
-import com.openmason.main.systems.rendering.model.io.sbo.SBOFormat;
-import com.openmason.main.systems.rendering.model.io.sbo.SBOSerializer;
+import com.openmason.engine.format.sbo.SBOFormat;
+import com.openmason.engine.format.sbo.SBOSerializer;
 import com.openmason.main.systems.services.StatusService;
 import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.themes.core.ThemeDefinition;

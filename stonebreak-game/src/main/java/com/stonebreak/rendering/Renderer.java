@@ -16,6 +16,9 @@ import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.components.OverlayRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.sbo.SBOBlockBridge;
+import com.stonebreak.rendering.sbo.SBOBlockRegistry;
+import com.stonebreak.rendering.sbo.SBOTextureIntegrator;
 import com.stonebreak.ui.Font;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.chat.ChatSystem;
@@ -57,9 +60,12 @@ public class Renderer {
         resourceManager = new ResourceManager();
         resourceManager.initialize(16); // 16x16 texture atlas
         resourceManager.initializeShaderProgram();
-        
+
+        // Initialize SBO block system — scan, parse, and overlay textures onto atlas
+        initializeSBOBlocks(resourceManager.getTextureAtlas());
+
         configManager = new RenderingConfigurationManager(width, height);
-        
+
         // Initialize block definition registry for CBR support
         blockRegistry = new GameBlockDefinitionRegistry();
         
@@ -101,6 +107,31 @@ public class Renderer {
                                              uiRenderer.getItemIconRenderer());
     }
     
+    /**
+     * Initializes the SBO block system.
+     * Scans for .sbo files, parses them, and overlays their textures onto the atlas.
+     */
+    private void initializeSBOBlocks(TextureAtlas textureAtlas) {
+        try {
+            SBOBlockRegistry registry = new SBOBlockRegistry();
+            int loaded = registry.scanAndLoad();
+
+            if (loaded > 0) {
+                SBOBlockBridge bridge = new SBOBlockBridge();
+                bridge.initialize(registry);
+
+                if (bridge.size() > 0) {
+                    SBOTextureIntegrator integrator = new SBOTextureIntegrator(textureAtlas, bridge);
+                    int integrated = integrator.integrateAll();
+                    System.out.println("[Renderer] SBO integration: " + integrated + " block textures updated");
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[Renderer] SBO initialization failed (non-fatal): " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
     /**
      * Updates the projection matrix when the window is resized.
      */

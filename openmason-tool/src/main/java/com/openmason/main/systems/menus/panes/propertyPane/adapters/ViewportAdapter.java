@@ -1,12 +1,12 @@
 package com.openmason.main.systems.menus.panes.propertyPane.adapters;
 
-import com.openmason.main.systems.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
-import com.openmason.main.systems.rendering.model.gmr.extraction.GMRFaceExtractor;
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceProjectionUtil;
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping;
-import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureSizer;
+import com.openmason.engine.rendering.model.gmr.extraction.GMRFaceExtractor;
+import com.openmason.engine.rendering.model.gmr.uv.FaceProjectionUtil;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureManager;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureSizer;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
 import com.openmason.main.systems.services.commands.FaceTextureCommand;
 import com.openmason.main.systems.services.commands.ModelCommandHistory;

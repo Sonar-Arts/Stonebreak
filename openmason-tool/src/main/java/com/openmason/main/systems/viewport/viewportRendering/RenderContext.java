@@ -1,58 +1,30 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
 import com.openmason.main.systems.viewport.ViewportCamera;
-import org.joml.Matrix4f;
 
 /**
- * Shared rendering context containing common data needed by renderers.
- * Provides camera matrices, viewport dimensions, and utility methods.
+ * Open Mason viewport rendering context.
+ * Extends the engine RenderContext to provide direct ViewportCamera access
+ * for editor-specific features while remaining compatible with the engine API.
  */
-public class RenderContext {
+public class RenderContext extends com.openmason.engine.rendering.api.RenderContext {
 
     private final ViewportCamera viewportCamera;
-    private final Matrix4f viewProjectionMatrix = new Matrix4f();
-
-    private int viewportWidth;
-    private int viewportHeight;
-    private boolean unrenderedMode;
 
     /**
-     * Create render context with camera.
+     * Create render context with viewport camera.
+     * ViewportCamera implements IRenderCamera, so it bridges to the engine API.
      */
     public RenderContext(ViewportCamera viewportCamera) {
+        super(viewportCamera); // ViewportCamera implements IRenderCamera
         this.viewportCamera = viewportCamera;
     }
 
     /**
-     * Update context with current viewport state.
-     * Should be called before each frame.
+     * Get the viewport camera (editor-specific, provides arcball/first-person modes).
+     *
+     * @return the viewport camera
      */
-    public void update(int width, int height, boolean unrenderedMode) {
-        this.viewportWidth = width;
-        this.viewportHeight = height;
-        this.unrenderedMode = unrenderedMode;
-
-        // Update view-projection matrix
-        viewportCamera.getProjectionMatrix().mul(viewportCamera.getViewMatrix(), viewProjectionMatrix);
-    }
-
-    /**
-     * Get view-projection matrix as float array.
-     */
-    public float[] getViewProjectionArray() {
-        float[] array = new float[16];
-        viewProjectionMatrix.get(array);
-        return array;
-    }
-
-    // Getters
-    public ViewportCamera getCamera() { return viewportCamera; }
-    public int getViewportWidth() { return viewportWidth; }
-    public int getViewportHeight() { return viewportHeight; }
-
     @Override
-    public String toString() {
-        return String.format("RenderContext{%dx%d, unrendered=%s}",
-                           viewportWidth, viewportHeight, unrenderedMode);
-    }
+    public ViewportCamera getCamera() { return viewportCamera; }
 }
