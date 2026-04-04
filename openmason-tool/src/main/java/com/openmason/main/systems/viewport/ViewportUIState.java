@@ -1,8 +1,14 @@
 package com.openmason.main.systems.viewport;
 
+import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor;
+import com.openmason.main.systems.rendering.model.gmr.parts.PartTransform;
 import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
 import imgui.type.ImInt;
+
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Centralized viewport state management.
@@ -67,12 +73,34 @@ public class ViewportUIState {
         NONE,
         CAMERA,
         RENDERING,
-        TRANSFORM
+        TRANSFORM,
+        ADD_PART,
+        PART_TRANSFORM
     }
 
     private ActiveToolPane activeToolPane = ActiveToolPane.NONE;
 
+    /** Callback invoked when user confirms adding a part from the slideout. Args: (shapeName, partName) */
+    private BiConsumer<String, String> addPartCallback;
+
     public ActiveToolPane getActiveToolPane() { return activeToolPane; }
+
+    public void setAddPartCallback(BiConsumer<String, String> callback) { this.addPartCallback = callback; }
+    public BiConsumer<String, String> getAddPartCallback() { return addPartCallback; }
+
+    /** Supplier for the currently selected part (for the Part Transform slideout). */
+    private Supplier<ModelPartDescriptor> selectedPartSupplier;
+    /** Consumer to apply a transform change to the selected part. Args: (partId, newTransform) */
+    private BiConsumer<String, PartTransform> applyPartTransform;
+    /** Callback after a part transform change to invalidate viewport. */
+    private Runnable partTransformInvalidator;
+
+    public void setSelectedPartSupplier(Supplier<ModelPartDescriptor> supplier) { this.selectedPartSupplier = supplier; }
+    public Supplier<ModelPartDescriptor> getSelectedPartSupplier() { return selectedPartSupplier; }
+    public void setApplyPartTransform(BiConsumer<String, PartTransform> consumer) { this.applyPartTransform = consumer; }
+    public BiConsumer<String, PartTransform> getApplyPartTransform() { return applyPartTransform; }
+    public void setPartTransformInvalidator(Runnable invalidator) { this.partTransformInvalidator = invalidator; }
+    public Runnable getPartTransformInvalidator() { return partTransformInvalidator; }
 
     /**
      * Toggle a tool pane open/closed. Clicking the same pane closes it;

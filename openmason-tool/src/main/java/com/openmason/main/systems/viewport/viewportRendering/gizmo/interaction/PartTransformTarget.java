@@ -217,6 +217,84 @@ public class PartTransformTarget implements ITransformTarget {
         return !partManager.getSelectedPartIds().isEmpty();
     }
 
+    /**
+     * Check if all currently selected parts are locked.
+     * Used to prevent gizmo drags on fully-locked selections.
+     */
+    public boolean areAllSelectedPartsLocked() {
+        List<ModelPartDescriptor> selected = getSelectedParts();
+        if (selected.isEmpty()) return false;
+        return selected.stream().allMatch(ModelPartDescriptor::locked);
+    }
+
+    // Snapshots of all parts' transforms at model-level drag start (for delta-based application)
+    private final java.util.Map<String, PartTransform> modelDragSnapshots = new java.util.HashMap<>();
+
+    /**
+     * Snapshot all parts' transforms at the start of a model-level drag.
+     * Called when no part is selected and the user starts dragging the gizmo.
+     */
+    public void snapshotAllPartsForModelDrag() {
+        modelDragSnapshots.clear();
+        for (ModelPartDescriptor part : partManager.getAllParts()) {
+            modelDragSnapshots.put(part.id(), part.transform());
+        }
+    }
+
+    /**
+     * Apply a translation delta to all unlocked parts relative to their drag-start positions.
+     */
+    public void applyTranslationDeltaToUnlocked(Vector3f delta) {
+        for (ModelPartDescriptor part : partManager.getAllParts()) {
+            if (part.locked()) continue;
+            PartTransform snap = modelDragSnapshots.get(part.id());
+            if (snap == null) snap = part.transform();
+            PartTransform updated = new PartTransform(
+                    snap.origin(),
+                    new Vector3f(snap.position()).add(delta),
+                    new Vector3f(snap.rotation()),
+                    new Vector3f(snap.scale())
+            );
+            partManager.setPartTransform(part.id(), updated);
+        }
+    }
+
+    /**
+     * Apply a rotation to all unlocked parts.
+     */
+    public void applyRotationToUnlocked(Vector3f rotation) {
+        for (ModelPartDescriptor part : partManager.getAllParts()) {
+            if (part.locked()) continue;
+            PartTransform snap = modelDragSnapshots.get(part.id());
+            if (snap == null) snap = part.transform();
+            PartTransform updated = new PartTransform(
+                    snap.origin(),
+                    new Vector3f(snap.position()),
+                    new Vector3f(rotation),
+                    new Vector3f(snap.scale())
+            );
+            partManager.setPartTransform(part.id(), updated);
+        }
+    }
+
+    /**
+     * Apply a scale to all unlocked parts.
+     */
+    public void applyScaleToUnlocked(float sx, float sy, float sz) {
+        for (ModelPartDescriptor part : partManager.getAllParts()) {
+            if (part.locked()) continue;
+            PartTransform snap = modelDragSnapshots.get(part.id());
+            if (snap == null) snap = part.transform();
+            PartTransform updated = new PartTransform(
+                    snap.origin(),
+                    new Vector3f(snap.position()),
+                    new Vector3f(snap.rotation()),
+                    new Vector3f(sx, sy, sz)
+            );
+            partManager.setPartTransform(part.id(), updated);
+        }
+    }
+
     @Override
     public String getTargetName() {
         List<ModelPartDescriptor> selected = getSelectedParts();

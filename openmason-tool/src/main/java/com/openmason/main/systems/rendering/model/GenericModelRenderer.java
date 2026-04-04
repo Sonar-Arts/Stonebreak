@@ -541,9 +541,21 @@ public class GenericModelRenderer extends BaseRenderer {
      * Bridges part-level changes into the existing serialization/render pipeline.
      */
     private void onPartMeshRebuilt(PartMeshRebuilder.RebuildResult result) {
+        // When all parts are hidden, clear the rendered mesh instead of keeping stale geometry
         if (result.totalVertexCount() == 0) {
-            logger.debug("Part mesh rebuild produced empty result");
+            logger.debug("Part mesh rebuild produced empty result — clearing mesh");
+            vertexManager.setData(new float[0], new float[0], new int[0]);
+            vertexCount = 0;
+            indexCount = 0;
+            faceMapper.clear();
+            rebuildPipeline.rebuildFull(0, 0);
             return;
+        }
+
+        // Remap face texture mappings if face IDs shifted (e.g. after part deletion)
+        if (result.faceIdRemap() != null && !result.faceIdRemap().isEmpty()) {
+            faceTextureManager.remapFaceIds(result.faceIdRemap());
+            logger.debug("Remapped {} face texture IDs after part change", result.faceIdRemap().size());
         }
 
         // Wrap the rebuilt data as MeshData and feed through the geometry-only path.

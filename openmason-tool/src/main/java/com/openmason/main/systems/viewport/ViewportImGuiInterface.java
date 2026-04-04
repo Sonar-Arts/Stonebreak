@@ -140,6 +140,11 @@ public class ViewportImGuiInterface {
         }
     }
 
+    /**
+     * Get the viewport UI state used by the tool pane and viewport views.
+     */
+    public ViewportUIState getViewportUIState() { return state; }
+
     // ========== Lifecycle methods ==========
 
     public void update(float deltaTime) {

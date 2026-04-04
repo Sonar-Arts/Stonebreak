@@ -362,13 +362,13 @@ public class MainImGuiInterface implements ModelBrowserListener {
         ImInt dockBottom = new ImInt();
         imgui.internal.ImGui.dockBuilderSplitNode(dockspaceId, ImGuiDir.Down, 0.37f, dockBottom, dockTop);
 
-        // Split left for Properties panel (~20% of remaining width)
+        // Split left for Model Properties panel (~20% of remaining width)
         ImInt dockLeft = new ImInt();
         ImInt dockCenter = new ImInt();
         imgui.internal.ImGui.dockBuilderSplitNode(dockTop.get(), ImGuiDir.Left, 0.20f, dockLeft, dockCenter);
 
         // Dock windows into their respective nodes
-        imgui.internal.ImGui.dockBuilderDockWindow("Properties", dockLeft.get());
+        imgui.internal.ImGui.dockBuilderDockWindow("Model Properties", dockLeft.get());
         imgui.internal.ImGui.dockBuilderDockWindow("3D Viewport", dockCenter.get());
         imgui.internal.ImGui.dockBuilderDockWindow("Model Browser", dockBottom.get());
 
@@ -440,7 +440,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private void renderPropertyPanelFallback() {
         ImGuiHelpers.configureWindowConstraints(propertiesConfig);
 
-        if (ImGui.begin("Properties", uiVisibilityState.getShowPropertyPanel())) {
+        if (ImGui.begin("Model Properties", uiVisibilityState.getShowPropertyPanel())) {
             ImGuiHelpers.configureWindowSize(propertiesConfig);
             ImGuiHelpers.configureWindowPosition(propertiesConfig);
             ImGui.textDisabled("Property panel not initialized");

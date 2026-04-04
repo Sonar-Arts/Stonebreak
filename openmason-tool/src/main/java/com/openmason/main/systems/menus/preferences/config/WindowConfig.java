@@ -34,7 +34,7 @@ public class WindowConfig {
     }
     
     public static WindowConfig forProperties() {
-        return new WindowConfig("Properties")
+        return new WindowConfig("Model Properties")
             .setSize(300, 500)
             .setMinSize(250, 400)
             .setMaxSize(600, 1000);

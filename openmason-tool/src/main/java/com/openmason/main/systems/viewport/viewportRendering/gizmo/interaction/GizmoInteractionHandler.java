@@ -178,14 +178,21 @@ public class GizmoInteractionHandler {
             Vector3f scale;
 
             if (target != null) {
-                // Snapshot drag start for multi-part support
+                // Block drag if all selected parts are locked
                 if (target instanceof PartTransformTarget partTarget) {
+                    if (partTarget.areAllSelectedPartsLocked()) {
+                        return false;
+                    }
                     partTarget.snapshotDragStart();
                 }
                 position = target.getPosition();
                 rotation = target.getRotation();
                 scale = target.getScale();
             } else {
+                // Snapshot all parts for model-level transforms (so locked parts can be excluded)
+                if (transformTarget instanceof PartTransformTarget partTarget) {
+                    partTarget.snapshotAllPartsForModelDrag();
+                }
                 position = new Vector3f(
                     transformState.getPositionX(),
                     transformState.getPositionY(),
@@ -464,6 +471,11 @@ public class GizmoInteractionHandler {
             } else {
                 target.setPosition(newPos.x, newPos.y, newPos.z);
             }
+        } else if (transformTarget instanceof PartTransformTarget partTarget) {
+            // Model-level move: apply as delta to each unlocked part
+            Vector3f dragOrigin = gizmoState.getDragStartObjectPos();
+            Vector3f delta = new Vector3f(newPos).sub(dragOrigin);
+            partTarget.applyTranslationDeltaToUnlocked(delta);
         } else {
             if (viewportState != null && viewportState.getGridSnappingEnabled().get()) {
                 transformState.setPosition(newPos.x, newPos.y, newPos.z,
@@ -548,6 +560,8 @@ public class GizmoInteractionHandler {
         ITransformTarget rotTarget = getActiveTarget();
         if (rotTarget != null) {
             rotTarget.setRotation(newRot.x, newRot.y, newRot.z);
+        } else if (transformTarget instanceof PartTransformTarget partTarget) {
+            partTarget.applyRotationToUnlocked(newRot);
         } else {
             transformState.setRotation(newRot.x, newRot.y, newRot.z);
         }
@@ -590,6 +604,8 @@ public class GizmoInteractionHandler {
             ITransformTarget uniTarget = getActiveTarget();
             if (uniTarget != null) {
                 uniTarget.setScale(newScaleX, newScaleY, newScaleZ);
+            } else if (transformTarget instanceof PartTransformTarget partTarget) {
+                partTarget.applyScaleToUnlocked(newScaleX, newScaleY, newScaleZ);
             } else {
                 transformState.setScale(newScaleX, newScaleY, newScaleZ);
             }
@@ -627,6 +643,8 @@ public class GizmoInteractionHandler {
             ITransformTarget axisTarget = getActiveTarget();
             if (axisTarget != null) {
                 axisTarget.setScale(newScaleX, newScaleY, newScaleZ);
+            } else if (transformTarget instanceof PartTransformTarget partTarget) {
+                partTarget.applyScaleToUnlocked(newScaleX, newScaleY, newScaleZ);
             } else {
                 transformState.setScale(newScaleX, newScaleY, newScaleZ);
             }

@@ -194,6 +194,32 @@ public final class FaceTextureManager implements IFaceTextureManager {
         return materials.size();
     }
 
+    // ── Bulk operations ───────────────────────────────────────────────────
+
+    @Override
+    public void remapFaceIds(Map<Integer, Integer> oldToNew) {
+        if (oldToNew == null || oldToNew.isEmpty()) {
+            return;
+        }
+
+        // Collect all mappings that need remapping
+        Map<Integer, FaceTextureMapping> remapped = new HashMap<>();
+        for (var entry : oldToNew.entrySet()) {
+            int oldId = entry.getKey();
+            int newId = entry.getValue();
+            FaceTextureMapping existing = faceMappings.remove(oldId);
+            if (existing != null) {
+                remapped.put(newId, new FaceTextureMapping(
+                        newId, existing.materialId(), existing.uvRegion(), existing.uvRotation()));
+            }
+        }
+
+        // Apply remapped entries
+        faceMappings.putAll(remapped);
+
+        logger.debug("Remapped {} face IDs", remapped.size());
+    }
+
     // ── Lifecycle ────────────────────────────────────────────────────────
 
     @Override

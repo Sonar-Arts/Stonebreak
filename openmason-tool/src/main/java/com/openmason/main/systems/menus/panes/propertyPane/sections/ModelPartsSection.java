@@ -1,6 +1,5 @@
 package com.openmason.main.systems.menus.panes.propertyPane.sections;
 
-import com.openmason.main.systems.menus.dialogs.AddPartDialog;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IPanelSection;
 import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor;
 import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartManager;
@@ -8,10 +7,12 @@ import com.openmason.main.systems.rendering.model.gmr.parts.PartShapeFactory;
 import com.openmason.main.systems.rendering.model.gmr.parts.PartMeshRebuilder;
 import com.openmason.main.systems.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.themes.utils.ImGuiComponents;
+import imgui.ImDrawList;
 import imgui.ImGui;
+import imgui.ImVec2;
+import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
-import imgui.flag.ImGuiSelectableFlags;
-import imgui.type.ImFloat;
+import imgui.flag.ImGuiStyleVar;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +22,7 @@ import java.util.List;
 /**
  * Properties panel section for managing model parts.
  * Displays the part list with selection, visibility, lock controls,
- * and an "Add Part" button that opens the {@link AddPartDialog}.
+ * and an "Add Part" button that opens the viewport slideout.
  *
  * <p>Follows SRP — solely responsible for the model parts UI.
  * Delegates all part operations to {@link ModelPartManager}.
@@ -31,13 +32,7 @@ public class ModelPartsSection implements IPanelSection {
     private static final Logger logger = LoggerFactory.getLogger(ModelPartsSection.class);
 
     private ModelPartManager partManager;
-    private final AddPartDialog addPartDialog;
     private boolean visible = true;
-
-    // Per-part transform editing (ImFloat for ImGui drag widgets)
-    private final ImFloat posX = new ImFloat(), posY = new ImFloat(), posZ = new ImFloat();
-    private final ImFloat rotX = new ImFloat(), rotY = new ImFloat(), rotZ = new ImFloat();
-    private final ImFloat sclX = new ImFloat(1), sclY = new ImFloat(1), sclZ = new ImFloat(1);
 
     /**
      * Callback invoked after a part is added, receiving the part descriptor.
@@ -51,8 +46,13 @@ public class ModelPartsSection implements IPanelSection {
      */
     private Runnable onViewportInvalidationNeeded;
 
+    /** Callback to open the Add Part slideout in the viewport. */
+    private Runnable onOpenAddPartSlideout;
+
+    /** Callback to open the Part Transform slideout when a part is selected. */
+    private Runnable onOpenPartTransformSlideout;
+
     public ModelPartsSection() {
-        this.addPartDialog = new AddPartDialog();
     }
 
     /**
@@ -71,30 +71,35 @@ public class ModelPartsSection implements IPanelSection {
             return;
         }
 
-        ImGuiComponents.renderCompactSectionHeader("Model Parts");
+        // Section header with part count
+        List<ModelPartDescriptor> parts = partManager.getAllParts();
+        String headerText = parts.isEmpty() ? "Model Parts" : "Model Parts (" + parts.size() + ")";
+        ImGuiComponents.renderCompactSectionHeader(headerText);
         ImGui.spacing();
 
         // Part list
-        List<ModelPartDescriptor> parts = partManager.getAllParts();
-
         if (parts.isEmpty()) {
             ImGui.textDisabled("No parts");
         } else {
             renderPartList(parts);
         }
 
-        // Selected part transform editor
-        renderSelectedPartTransform();
-
         ImGui.spacing();
 
-        // Add Part button
-        if (ImGui.button("Add Part", -1, 0)) {
-            addPartDialog.show(this::onPartAdded);
+        // Add Part button — opens the slideout panel in the viewport
+        ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+        ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 0.20f);
+        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.40f);
+        ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.55f);
+        ImGui.pushStyleColor(ImGuiCol.Text, accent.x, accent.y, accent.z, 1.0f);
+
+        if (ImGui.button("+ Add Part", -1, 0)) {
+            if (onOpenAddPartSlideout != null) {
+                onOpenAddPartSlideout.run();
+            }
         }
 
-        // Render the modal dialog (must be called every frame)
-        addPartDialog.render();
+        ImGui.popStyleColor(4);
     }
 
     @Override
@@ -135,72 +140,105 @@ public class ModelPartsSection implements IPanelSection {
         this.onViewportInvalidationNeeded = callback;
     }
 
+    /**
+     * Set callback to open the Add Part slideout in the viewport.
+     *
+     * @param callback Slideout open callback
+     */
+    public void setOnOpenAddPartSlideout(Runnable callback) {
+        this.onOpenAddPartSlideout = callback;
+    }
+
+    /**
+     * Set callback to open the Part Transform slideout when a part is selected.
+     *
+     * @param callback Slideout open callback
+     */
+    public void setOnOpenPartTransformSlideout(Runnable callback) {
+        this.onOpenPartTransformSlideout = callback;
+    }
+
     // ========== Private Rendering ==========
 
     /**
-     * Render the list of parts with selection, visibility toggle, and lock toggle.
+     * Render the list of parts with functional buttons and selection.
+     * Uses standard ImGui smallButton widgets so all controls receive clicks.
      */
     private void renderPartList(List<ModelPartDescriptor> parts) {
         for (int i = 0; i < parts.size(); i++) {
             ModelPartDescriptor part = parts.get(i);
             boolean isSelected = partManager.isPartSelected(part.id());
+            boolean isHidden = !part.visible();
 
             ImGui.pushID(i);
 
-            // Visibility toggle (eye icon)
-            if (part.visible()) {
-                if (ImGui.smallButton("V")) {
-                    partManager.setPartVisible(part.id(), false);
-                    invalidateViewport();
-                }
-            } else {
-                ImGui.pushStyleColor(ImGuiCol.Text, 0.5f, 0.5f, 0.5f, 0.5f);
-                if (ImGui.smallButton("H")) {
-                    partManager.setPartVisible(part.id(), true);
-                    invalidateViewport();
-                }
+            // --- Row background ---
+            ImDrawList drawList = ImGui.getWindowDrawList();
+            ImVec2 rowStart = ImGui.getCursorScreenPos();
+            float rowWidth = ImGui.getContentRegionAvailX();
+            float rowHeight = ImGui.getFrameHeightWithSpacing();
+
+            if (isSelected) {
+                ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+                drawList.addRectFilled(rowStart.x, rowStart.y,
+                        rowStart.x + rowWidth, rowStart.y + rowHeight,
+                        ImGui.colorConvertFloat4ToU32(accent.x, accent.y, accent.z, 0.15f), 3.0f);
+                drawList.addRectFilled(rowStart.x, rowStart.y + 3,
+                        rowStart.x + 3, rowStart.y + rowHeight - 3,
+                        ImGui.colorConvertFloat4ToU32(accent.x, accent.y, accent.z, 0.6f), 1.0f);
+            }
+
+            // --- Visibility toggle ---
+            if (isHidden) {
+                ImGui.pushStyleColor(ImGuiCol.Text, 0.5f, 0.5f, 0.5f, 0.35f);
+            }
+            if (ImGui.smallButton(isHidden ? " - " : " o ")) {
+                partManager.setPartVisible(part.id(), isHidden);
+                invalidateViewport();
+            }
+            if (isHidden) {
                 ImGui.popStyleColor();
             }
             if (ImGui.isItemHovered()) {
-                ImGui.setTooltip(part.visible() ? "Hide part" : "Show part");
+                ImGui.setTooltip(isHidden ? "Show part" : "Hide part");
             }
 
             ImGui.sameLine();
 
-            // Lock toggle
+            // --- Lock toggle ---
             if (part.locked()) {
                 ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 1.0f);
-                if (ImGui.smallButton("L")) {
-                    partManager.setPartLocked(part.id(), false);
-                }
-                ImGui.popStyleColor();
             } else {
-                if (ImGui.smallButton("U")) {
-                    partManager.setPartLocked(part.id(), true);
-                }
+                ImVec4 dim = ImGui.getStyle().getColor(ImGuiCol.TextDisabled);
+                ImGui.pushStyleColor(ImGuiCol.Text, dim.x, dim.y, dim.z, 0.4f);
             }
+            if (ImGui.smallButton(part.locked() ? " L " : " U ")) {
+                partManager.setPartLocked(part.id(), !part.locked());
+                invalidateViewport();
+            }
+            ImGui.popStyleColor();
             if (ImGui.isItemHovered()) {
                 ImGui.setTooltip(part.locked() ? "Unlock part" : "Lock part");
             }
 
             ImGui.sameLine();
 
-            // Part name (selectable)
-            String label = part.name();
-            if (!part.visible()) {
-                ImGui.pushStyleColor(ImGuiCol.Text, 0.5f, 0.5f, 0.5f, 0.5f);
+            // --- Part name (selectable for selection) ---
+            if (isHidden) {
+                ImGui.pushStyleColor(ImGuiCol.Text, 0.5f, 0.5f, 0.5f, 0.35f);
             }
-
-            if (ImGui.selectable(label, isSelected, ImGuiSelectableFlags.None)) {
+            if (ImGui.selectable(part.name(), isSelected)) {
                 if (ImGui.getIO().getKeyCtrl()) {
                     partManager.togglePartSelection(part.id());
                 } else {
                     partManager.deselectAllParts();
                     partManager.selectPart(part.id());
                 }
+                if (onOpenPartTransformSlideout != null) {
+                    onOpenPartTransformSlideout.run();
+                }
             }
-
-            if (!part.visible()) {
+            if (isHidden) {
                 ImGui.popStyleColor();
             }
 
@@ -210,20 +248,15 @@ public class ModelPartsSection implements IPanelSection {
                     partManager.duplicatePart(part.id());
                     invalidateViewport();
                 }
-                if (ImGui.menuItem("Delete") && parts.size() > 1) {
-                    partManager.removePart(part.id());
-                    invalidateViewport();
-                }
-                if (parts.size() <= 1) {
+                if (parts.size() > 1) {
+                    if (ImGui.menuItem("Delete")) {
+                        partManager.removePart(part.id());
+                        invalidateViewport();
+                    }
+                } else {
                     ImGui.textDisabled("Cannot delete last part");
                 }
                 ImGui.endPopup();
-            }
-
-            // Tooltip with part info
-            if (ImGui.isItemHovered() && part.meshRange() != null) {
-                ImGui.setTooltip(String.format("Vertices: %d  Faces: %d",
-                        part.meshRange().vertexCount(), part.meshRange().faceCount()));
             }
 
             ImGui.popID();
@@ -239,94 +272,12 @@ public class ModelPartsSection implements IPanelSection {
         }
     }
 
-    // ========== Selected Part Transform ==========
-
-    /**
-     * Render position/rotation/scale controls for the selected part.
-     * Reads from the part's PartTransform, writes back on change.
-     */
-    private void renderSelectedPartTransform() {
-        java.util.Set<String> selectedIds = partManager.getSelectedPartIds();
-        if (selectedIds.isEmpty()) {
-            return;
-        }
-
-        String selectedId = selectedIds.iterator().next();
-        ModelPartDescriptor part = partManager.getPartById(selectedId).orElse(null);
-        if (part == null) {
-            return;
-        }
-
-        ImGui.spacing();
-        ImGui.separator();
-        ImGui.spacing();
-        ImGuiComponents.renderCompactSectionHeader("Part Transform: " + part.name());
-        ImGui.spacing();
-
-        PartTransform t = part.transform();
-
-        // Sync ImFloat values from current part transform
-        posX.set(t.position().x); posY.set(t.position().y); posZ.set(t.position().z);
-        rotX.set(t.rotation().x); rotY.set(t.rotation().y); rotZ.set(t.rotation().z);
-        sclX.set(t.scale().x);   sclY.set(t.scale().y);   sclZ.set(t.scale().z);
-
-        boolean changed = false;
-
-        // Position
-        ImGui.text("Position");
-        ImGui.columns(3, "##part_pos_cols", false);
-        ImGui.pushItemWidth(-1);
-        if (ImGui.dragFloat("##ppx", posX.getData(), 0.01f)) changed = true;
-        ImGui.nextColumn();
-        if (ImGui.dragFloat("##ppy", posY.getData(), 0.01f)) changed = true;
-        ImGui.nextColumn();
-        if (ImGui.dragFloat("##ppz", posZ.getData(), 0.01f)) changed = true;
-        ImGui.popItemWidth();
-        ImGui.columns(1);
-
-        // Rotation
-        ImGui.text("Rotation");
-        ImGui.columns(3, "##part_rot_cols", false);
-        ImGui.pushItemWidth(-1);
-        if (ImGui.dragFloat("##prx", rotX.getData(), 0.5f)) changed = true;
-        ImGui.nextColumn();
-        if (ImGui.dragFloat("##pry", rotY.getData(), 0.5f)) changed = true;
-        ImGui.nextColumn();
-        if (ImGui.dragFloat("##prz", rotZ.getData(), 0.5f)) changed = true;
-        ImGui.popItemWidth();
-        ImGui.columns(1);
-
-        // Scale
-        ImGui.text("Scale");
-        ImGui.columns(3, "##part_scl_cols", false);
-        ImGui.pushItemWidth(-1);
-        if (ImGui.dragFloat("##psx", sclX.getData(), 0.01f)) changed = true;
-        ImGui.nextColumn();
-        if (ImGui.dragFloat("##psy", sclY.getData(), 0.01f)) changed = true;
-        ImGui.nextColumn();
-        if (ImGui.dragFloat("##psz", sclZ.getData(), 0.01f)) changed = true;
-        ImGui.popItemWidth();
-        ImGui.columns(1);
-
-        // Apply changes back to part transform
-        if (changed && !part.locked()) {
-            PartTransform updated = new PartTransform(
-                    new Vector3f(t.origin()),
-                    new Vector3f(posX.get(), posY.get(), posZ.get()),
-                    new Vector3f(rotX.get(), rotY.get(), rotZ.get()),
-                    new Vector3f(sclX.get(), sclY.get(), sclZ.get())
-            );
-            partManager.setPartTransform(selectedId, updated);
-            invalidateViewport();
-        }
-    }
-
     // ========== Callbacks ==========
 
     /**
-     * Callback from AddPartDialog when user confirms a new part.
+     * Callback invoked when user confirms adding a new part (from slideout or other trigger).
      */
-    private void onPartAdded(PartShapeFactory.Shape shape, String name) {
+    public void onPartAdded(PartShapeFactory.Shape shape, String name) {
         if (partManager == null) {
             logger.warn("Cannot add part: no part manager connected");
             return;

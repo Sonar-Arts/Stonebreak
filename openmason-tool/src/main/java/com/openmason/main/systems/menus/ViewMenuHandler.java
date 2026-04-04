@@ -72,7 +72,7 @@ public class ViewMenuHandler {
             uiState.toggleModelBrowser();
         }
 
-        if (ImGui.menuItem("Show Property Panel", "Ctrl+3", uiState.getShowPropertyPanel().get())) {
+        if (ImGui.menuItem("Show Model Properties", "Ctrl+3", uiState.getShowPropertyPanel().get())) {
             uiState.togglePropertyPanel();
         }
 

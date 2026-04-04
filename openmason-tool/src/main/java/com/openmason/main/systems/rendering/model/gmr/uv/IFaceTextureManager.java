@@ -150,6 +150,18 @@ public interface IFaceTextureManager {
      */
     int getMaterialCount();
 
+    // ── Bulk operations ───────────────────────────────────────────────────
+
+    /**
+     * Remap face IDs in bulk. For each entry in the map, the mapping currently
+     * stored under the old face ID is moved to the new face ID.
+     *
+     * <p>Used when parts are removed and remaining face IDs shift down.
+     *
+     * @param oldToNew Map of old face ID → new face ID
+     */
+    void remapFaceIds(Map<Integer, Integer> oldToNew);
+
     // ── Lifecycle ────────────────────────────────────────────────────────
 
     /**

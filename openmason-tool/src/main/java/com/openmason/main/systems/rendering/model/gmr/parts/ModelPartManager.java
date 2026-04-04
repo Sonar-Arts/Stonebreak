@@ -489,12 +489,35 @@ public class ModelPartManager implements IModelPartManager {
      * Rebuild the combined mesh from all visible parts and push to consumer.
      */
     private void rebuildCombinedMesh() {
-        // Filter to visible parts only
-        List<ModelPartDescriptor> visibleParts = parts.values().stream()
+        // Use ALL parts (visible and hidden) for stable face ID assignment.
+        // Hidden parts reserve their face ID range but contribute no geometry.
+        // This ensures face IDs never shift on hide/show, only on add/remove.
+        List<ModelPartDescriptor> allParts = new ArrayList<>(parts.values());
+        List<ModelPartDescriptor> visibleParts = allParts.stream()
                 .filter(ModelPartDescriptor::visible)
                 .toList();
 
-        // Build geometry map for visible parts
+        // Capture old face ranges from all parts (for remap on part deletion)
+        Map<String, MeshRange> oldRanges = new HashMap<>();
+        for (ModelPartDescriptor part : allParts) {
+            if (part.meshRange() != null) {
+                oldRanges.put(part.id(), part.meshRange());
+            }
+        }
+
+        // Compute stable face offsets for ALL parts (visible and hidden).
+        // Each part gets a contiguous face ID range regardless of visibility.
+        Map<String, Integer> stableFaceOffsets = new LinkedHashMap<>();
+        int faceOffset = 0;
+        for (ModelPartDescriptor part : allParts) {
+            stableFaceOffsets.put(part.id(), faceOffset);
+            PartMeshRebuilder.PartGeometry geo = partGeometry.get(part.id());
+            if (geo != null) {
+                faceOffset += geo.faceCount();
+            }
+        }
+
+        // Build geometry map for visible parts only
         Map<String, PartMeshRebuilder.PartGeometry> geoMap = new HashMap<>();
         for (ModelPartDescriptor part : visibleParts) {
             PartMeshRebuilder.PartGeometry geo = partGeometry.get(part.id());
@@ -503,10 +526,34 @@ public class ModelPartManager implements IModelPartManager {
             }
         }
 
-        // Rebuild
-        PartMeshRebuilder.RebuildResult result = rebuilder.rebuild(visibleParts, geoMap);
+        // Rebuild with stable face offsets so face IDs don't shift on hide/show
+        PartMeshRebuilder.RebuildResult result = rebuilder.rebuildWithFaceOffsets(
+                visibleParts, geoMap, stableFaceOffsets);
 
-        // Update mesh ranges on descriptors
+        // Build face ID remap only for part deletion (when a part's stable offset changes)
+        Map<Integer, Integer> faceIdRemap = new HashMap<>();
+        for (var entry : result.partRanges().entrySet()) {
+            String partId = entry.getKey();
+            MeshRange newRange = entry.getValue();
+            MeshRange oldRange = oldRanges.get(partId);
+
+            if (oldRange != null && oldRange.faceStart() != newRange.faceStart()) {
+                int count = Math.min(oldRange.faceCount(), newRange.faceCount());
+                for (int local = 0; local < count; local++) {
+                    faceIdRemap.put(oldRange.faceStart() + local, newRange.faceStart() + local);
+                }
+            }
+        }
+
+        if (!faceIdRemap.isEmpty()) {
+            result = new PartMeshRebuilder.RebuildResult(
+                    result.combinedVertices(), result.combinedTexCoords(),
+                    result.combinedIndices(), result.triangleToFaceId(),
+                    result.partRanges(), faceIdRemap
+            );
+        }
+
+        // Update mesh ranges on descriptors (visible parts get real ranges)
         for (var entry : result.partRanges().entrySet()) {
             ModelPartDescriptor existing = parts.get(entry.getKey());
             if (existing != null) {
@@ -514,10 +561,14 @@ public class ModelPartManager implements IModelPartManager {
             }
         }
 
-        // Clear ranges for hidden parts
-        for (ModelPartDescriptor part : parts.values()) {
-            if (!part.visible() && part.meshRange() != null) {
-                parts.put(part.id(), part.withMeshRange(null));
+        // Hidden parts get a range with their stable face offset but zero vertex/index counts
+        for (ModelPartDescriptor part : allParts) {
+            if (!part.visible()) {
+                Integer stableOffset = stableFaceOffsets.get(part.id());
+                PartMeshRebuilder.PartGeometry geo = partGeometry.get(part.id());
+                int fc = geo != null ? geo.faceCount() : 0;
+                parts.put(part.id(), parts.get(part.id()).withMeshRange(
+                        new MeshRange(0, 0, 0, 0, stableOffset != null ? stableOffset : 0, fc)));
             }
         }
 

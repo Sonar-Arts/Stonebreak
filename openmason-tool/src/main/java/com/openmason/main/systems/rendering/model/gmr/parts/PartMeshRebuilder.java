@@ -139,7 +139,112 @@ public class PartMeshRebuilder {
         return new RebuildResult(
                 combinedVertices, combinedTexCoords,
                 combinedIndices, triangleToFaceId,
-                partRanges
+                partRanges, Map.of()
+        );
+    }
+
+    /**
+     * Rebuild with explicit per-part face offsets for stable face IDs.
+     * Face IDs for each part are assigned from the provided offset map rather than
+     * auto-incrementing, ensuring face IDs remain stable across hide/show toggles.
+     *
+     * @param parts            Ordered list of visible part descriptors
+     * @param partData         Map of partId → raw geometry data
+     * @param stableFaceOffsets Map of partId → stable face offset for that part
+     * @return RebuildResult with combined buffers using stable face IDs
+     */
+    public RebuildResult rebuildWithFaceOffsets(List<ModelPartDescriptor> parts,
+                                                Map<String, PartGeometry> partData,
+                                                Map<String, Integer> stableFaceOffsets) {
+        if (parts.isEmpty()) {
+            return RebuildResult.empty();
+        }
+
+        int totalVertices = 0;
+        int totalIndices = 0;
+
+        for (ModelPartDescriptor part : parts) {
+            PartGeometry geo = partData.get(part.id());
+            if (geo == null) continue;
+            totalVertices += geo.vertexCount();
+            totalIndices += geo.indexCount();
+        }
+
+        float[] combinedVertices = new float[totalVertices * 3];
+        float[] combinedTexCoords = new float[totalVertices * 2];
+        int[] combinedIndices = new int[totalIndices];
+        int[] triangleToFaceId = new int[totalIndices / 3];
+
+        Map<String, MeshRange> partRanges = new LinkedHashMap<>();
+
+        int vertexOffset = 0;
+        int indexOffset = 0;
+
+        for (ModelPartDescriptor part : parts) {
+            PartGeometry geo = partData.get(part.id());
+            if (geo == null) continue;
+
+            int partVertexStart = vertexOffset;
+            int partIndexStart = indexOffset;
+            // Use stable face offset instead of auto-incrementing
+            int partFaceStart = stableFaceOffsets.getOrDefault(part.id(), 0);
+
+            Matrix4f transform = part.transform().toMatrix();
+            boolean hasTransform = !part.transform().isIdentity();
+
+            for (int i = 0; i < geo.vertexCount(); i++) {
+                int srcPos = i * 3;
+                int dstPos = (vertexOffset + i) * 3;
+
+                if (hasTransform) {
+                    Vector4f v = new Vector4f(
+                            geo.vertices()[srcPos], geo.vertices()[srcPos + 1],
+                            geo.vertices()[srcPos + 2], 1.0f);
+                    transform.transform(v);
+                    combinedVertices[dstPos] = v.x;
+                    combinedVertices[dstPos + 1] = v.y;
+                    combinedVertices[dstPos + 2] = v.z;
+                } else {
+                    System.arraycopy(geo.vertices(), srcPos, combinedVertices, dstPos, 3);
+                }
+            }
+
+            if (geo.texCoords() != null) {
+                System.arraycopy(geo.texCoords(), 0, combinedTexCoords, vertexOffset * 2,
+                        geo.vertexCount() * 2);
+            }
+
+            if (geo.indices() != null) {
+                for (int i = 0; i < geo.indices().length; i++) {
+                    combinedIndices[indexOffset + i] = geo.indices()[i] + vertexOffset;
+                }
+            }
+
+            if (geo.triangleToFaceId() != null) {
+                int triangleStart = indexOffset / 3;
+                for (int i = 0; i < geo.triangleToFaceId().length; i++) {
+                    triangleToFaceId[triangleStart + i] = geo.triangleToFaceId()[i] + partFaceStart;
+                }
+            }
+
+            MeshRange range = new MeshRange(
+                    partVertexStart, geo.vertexCount(),
+                    partIndexStart, geo.indexCount(),
+                    partFaceStart, geo.faceCount()
+            );
+            partRanges.put(part.id(), range);
+
+            vertexOffset += geo.vertexCount();
+            indexOffset += geo.indexCount();
+        }
+
+        logger.debug("Rebuilt {} visible parts with stable face offsets: {} vertices, {} indices",
+                parts.size(), totalVertices, totalIndices);
+
+        return new RebuildResult(
+                combinedVertices, combinedTexCoords,
+                combinedIndices, triangleToFaceId,
+                partRanges, Map.of()
         );
     }
 
@@ -194,13 +299,15 @@ public class PartMeshRebuilder {
      * @param combinedIndices    All indices concatenated (offset per part)
      * @param triangleToFaceId   Triangle-to-face mapping (offset per part)
      * @param partRanges         Map of partId → MeshRange in the combined buffer
+     * @param faceIdRemap        Map of old face ID → new face ID (empty if no shift occurred)
      */
     public record RebuildResult(
             float[] combinedVertices,
             float[] combinedTexCoords,
             int[] combinedIndices,
             int[] triangleToFaceId,
-            Map<String, MeshRange> partRanges
+            Map<String, MeshRange> partRanges,
+            Map<Integer, Integer> faceIdRemap
     ) {
         /**
          * Create an empty result (no parts).
@@ -209,7 +316,7 @@ public class PartMeshRebuilder {
             return new RebuildResult(
                     new float[0], new float[0],
                     new int[0], new int[0],
-                    Map.of()
+                    Map.of(), Map.of()
             );
         }
 
