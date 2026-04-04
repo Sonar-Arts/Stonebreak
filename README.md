@@ -6,6 +6,9 @@ An open source work-in-progress 3D voxel-based sandbox RPG game created with Jav
 
 Open mason is the formal name for the engine & toolset being developed in tandem with Stonebreak. Our intention is to make it close to what the Aurora engine toolset does for Neverwinter Nights, so that players and developers alike can have access to modding and asset creation tools specifically for Stonebreak.
 
+<img width="2336" height="1025" alt="image" src="https://github.com/user-attachments/assets/fdffe8a4-2bd1-4169-8108-247ccbf17b33" />
+
+
 ## Running Stonebreak & Open Mason
 
 Currently, no builds of either Stonebreak or Open Mason are available due to how early on the project we are. However, the easiest and currently recommended way to play the game is by following the below instructions:
