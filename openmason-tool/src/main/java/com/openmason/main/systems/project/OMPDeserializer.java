@@ -104,7 +104,7 @@ public class OMPDeserializer {
                 intVal(node, "renderModeIndex", 0),
                 boolVal(node, "gridVisible", true),
                 boolVal(node, "axesVisible", true),
-                boolVal(node, "wireframeMode", false),
+                boolVal(node, "unrenderedMode", false),
                 boolVal(node, "showVertices", false),
                 boolVal(node, "showGizmo", true),
                 boolVal(node, "gridSnappingEnabled", false),

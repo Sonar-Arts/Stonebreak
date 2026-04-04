@@ -14,7 +14,7 @@ public class RenderContext {
 
     private int viewportWidth;
     private int viewportHeight;
-    private boolean wireframeMode;
+    private boolean unrenderedMode;
 
     /**
      * Create render context with camera.
@@ -27,10 +27,10 @@ public class RenderContext {
      * Update context with current viewport state.
      * Should be called before each frame.
      */
-    public void update(int width, int height, boolean wireframeMode) {
+    public void update(int width, int height, boolean unrenderedMode) {
         this.viewportWidth = width;
         this.viewportHeight = height;
-        this.wireframeMode = wireframeMode;
+        this.unrenderedMode = unrenderedMode;
 
         // Update view-projection matrix
         viewportCamera.getProjectionMatrix().mul(viewportCamera.getViewMatrix(), viewProjectionMatrix);
@@ -52,7 +52,7 @@ public class RenderContext {
 
     @Override
     public String toString() {
-        return String.format("RenderContext{%dx%d, wireframe=%s}",
-                           viewportWidth, viewportHeight, wireframeMode);
+        return String.format("RenderContext{%dx%d, unrendered=%s}",
+                           viewportWidth, viewportHeight, unrenderedMode);
     }
 }

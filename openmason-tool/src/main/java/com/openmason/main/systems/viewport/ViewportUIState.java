@@ -25,7 +25,7 @@ public class ViewportUIState {
     private final ImBoolean gridVisible = new ImBoolean(true);
     private final ImBoolean axesVisible = new ImBoolean(true);
     private final ImBoolean gridSnappingEnabled = new ImBoolean(false);
-    private final ImBoolean wireframeMode = new ImBoolean(false);
+    private final ImBoolean unrenderedMode = new ImBoolean(false);
     private final ImBoolean showVertices = new ImBoolean(false);
     private final ImBoolean showGizmo = new ImBoolean(true);
 
@@ -43,7 +43,7 @@ public class ViewportUIState {
     private final ImInt currentCameraModeIndex = new ImInt(0);
 
     // Render mode state
-    private final String[] renderModes = {"Solid", "Wireframe", "Points", "Textured"};
+    private final String[] renderModes = {"Textured", "Unrendered"};
     private final ImInt currentRenderModeIndex = new ImInt(0);
 
     // Camera state
@@ -132,7 +132,7 @@ public class ViewportUIState {
     public ImBoolean getGridVisible() { return gridVisible; }
     public ImBoolean getAxesVisible() { return axesVisible; }
     public ImBoolean getGridSnappingEnabled() { return gridSnappingEnabled; }
-    public ImBoolean getWireframeMode() { return wireframeMode; }
+    public ImBoolean getUnrenderedMode() { return unrenderedMode; }
     public ImBoolean getShowVertices() { return showVertices; }
     public ImBoolean getShowGizmo() { return showGizmo; }
 
@@ -179,13 +179,13 @@ public class ViewportUIState {
     }
 
     /**
-     * Reset render mode to Solid (index 0) and wireframe off.
+     * Reset render mode to Textured (index 0) and unrendered off.
      * Also closes any open tool pane.
      * Called when loading a new model so display state doesn't carry over.
      */
     public void resetRenderMode() {
-        currentRenderModeIndex.set(0); // "Solid"
-        wireframeMode.set(false);
+        currentRenderModeIndex.set(0); // "Textured"
+        unrenderedMode.set(false);
         closeToolPane();
     }
 
@@ -226,8 +226,8 @@ public class ViewportUIState {
         axesVisible.set(!axesVisible.get());
     }
 
-    public void toggleWireframe() {
-        wireframeMode.set(!wireframeMode.get());
+    public void toggleUnrendered() {
+        unrenderedMode.set(!unrenderedMode.get());
     }
 
     public void toggleGizmo() {
@@ -249,7 +249,7 @@ public class ViewportUIState {
     @Override
     public String toString() {
         return String.format("ViewportUIState{%dx%d, grid=%s, axes=%s, wireframe=%s, gizmo=%s, vertices=%s, initialized=%s, snapping=%s (%.4f)}",
-                width, height, gridVisible.get(), axesVisible.get(), wireframeMode.get(), showGizmo.get(),
+                width, height, gridVisible.get(), axesVisible.get(), unrenderedMode.get(), showGizmo.get(),
                 showVertices.get(), viewportInitialized, gridSnappingEnabled.get(), gridSnappingIncrement.get());
     }
 }

@@ -79,13 +79,13 @@ public class ViewportKeybindActions {
                 }
         ));
 
-        // Ctrl+W: Toggle Wireframe
+        // Ctrl+W: Toggle Unrendered Mode
         registry.registerAction(new KeybindAction(
-                "viewport.toggle_wireframe",
-                "Toggle Wireframe",
+                "viewport.toggle_unrendered",
+                "Toggle Unrendered",
                 DISPLAY,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_W),
-                actions::toggleWireframe
+                actions::toggleUnrendered
         ));
 
         // ========== Navigation ==========

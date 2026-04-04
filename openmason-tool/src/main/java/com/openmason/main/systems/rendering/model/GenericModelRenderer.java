@@ -79,6 +79,9 @@ public class GenericModelRenderer extends BaseRenderer {
     // Cached model bounds (AABB) — nulled on geometry changes, recomputed lazily
     private ModelBounds cachedBounds;
 
+    // When true, doRender skips texture binding and forces solid gray color
+    private boolean forceUnrendered = false;
+
     // Cached identity matrix to avoid per-frame allocation in setUniforms
     private static final org.joml.Matrix4f IDENTITY_MATRIX = new org.joml.Matrix4f();
 
@@ -236,6 +239,29 @@ public class GenericModelRenderer extends BaseRenderer {
             return;
         }
 
+        // Unrendered mode: skip all texture binding, use solid gray
+        if (forceUnrendered) {
+            shader.setBool("uUseTexture", false);
+
+            if (!textureOps.hasCustomMaterials()) {
+                if (indexCount > 0 && ebo != 0) {
+                    glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+                } else {
+                    glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+                }
+            } else {
+                if (rebuildPipeline.isDrawBatchesDirty()) {
+                    drawBatchManager.rebuildDrawBatches(ebo);
+                    rebuildPipeline.clearDrawBatchesDirty();
+                }
+                for (DrawBatchManager.MaterialDrawBatch batch : drawBatchManager.getDrawBatches()) {
+                    glDrawElements(GL_TRIANGLES, batch.indexCount(), GL_UNSIGNED_INT,
+                            (long) batch.indexOffset() * 4L);
+                }
+            }
+            return;
+        }
+
         // Fast path: no custom materials — single texture, one draw call
         if (!textureOps.hasCustomMaterials()) {
             if (textureOps.isTextureActive()) {
@@ -331,6 +357,14 @@ public class GenericModelRenderer extends BaseRenderer {
 
     public List<Integer> findMeshVerticesAtPosition(Vector3f position, float epsilon) {
         return vertexManager.findMeshVerticesAtPosition(position, epsilon);
+    }
+
+    /**
+     * Set unrendered mode — when true, the model renders with flat gray
+     * instead of textures (Blender solid-view style).
+     */
+    public void setForceUnrendered(boolean forceUnrendered) {
+        this.forceUnrendered = forceUnrendered;
     }
 
     public ModelBounds getModelBounds() {

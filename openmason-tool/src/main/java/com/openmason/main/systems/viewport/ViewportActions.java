@@ -101,31 +101,23 @@ public class ViewportActions {
 
     public void updateRenderMode() {
         String renderMode = state.getCurrentRenderMode();
+        boolean unrendered = "unrendered".equals(renderMode.toLowerCase());
 
-        switch (renderMode.toLowerCase()) {
-            case "wireframe" -> {
-                state.getWireframeMode().set(true);
-                viewport.setWireframeMode(true);
-            }
-            default -> {
-                state.getWireframeMode().set(false);
-                viewport.setWireframeMode(false);
-            }
-        }
+        state.getUnrenderedMode().set(unrendered);
+        viewport.setUnrenderedMode(unrendered);
     }
 
-    public void toggleWireframe() {
-        boolean newMode = !state.getWireframeMode().get();
-        state.getWireframeMode().set(newMode);
-        logger.info("Wireframe mode: {}", newMode);
-
-        viewport.setWireframeMode(newMode);
+    public void toggleUnrendered() {
+        boolean newMode = !state.getUnrenderedMode().get();
+        state.getUnrenderedMode().set(newMode);
+        viewport.setUnrenderedMode(newMode);
+        logger.info("Unrendered mode: {}", newMode);
 
         // Update render mode combo to match
         if (newMode) {
-            state.getCurrentRenderModeIndex().set(1); // Wireframe
+            state.getCurrentRenderModeIndex().set(1); // Unrendered
         } else {
-            state.getCurrentRenderModeIndex().set(0); // Solid
+            state.getCurrentRenderModeIndex().set(0); // Textured
         }
     }
 

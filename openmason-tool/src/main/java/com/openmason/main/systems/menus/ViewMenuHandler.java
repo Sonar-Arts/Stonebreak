@@ -60,8 +60,8 @@ public class ViewMenuHandler {
             viewportOperations.toggleAxes(viewport);
         }
 
-        if (ImGui.menuItem("Wireframe Mode", "Ctrl+W", viewportState.getWireframeMode().get())) {
-            viewportOperations.toggleWireframe(viewport);
+        if (ImGui.menuItem("Unrendered Mode", "Ctrl+W", viewportState.getUnrenderedMode().get())) {
+            viewportOperations.toggleUnrendered(viewport);
         }
 
         ImGui.separator();

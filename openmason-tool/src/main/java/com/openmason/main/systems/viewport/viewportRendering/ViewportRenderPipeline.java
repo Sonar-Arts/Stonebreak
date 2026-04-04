@@ -133,7 +133,7 @@ public class ViewportRenderPipeline {
             context.getCamera().updateMatrices(); // Force matrix update
 
             // Update render context
-            context.update(viewportState.getWidth(), viewportState.getHeight(), viewportState.getWireframeMode().get());
+            context.update(viewportState.getWidth(), viewportState.getHeight(), viewportState.getUnrenderedMode().get());
 
             // Bind framebuffer
             resources.getFramebuffer().bind();
@@ -150,12 +150,8 @@ public class ViewportRenderPipeline {
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            // Apply wireframe mode
-            if (viewportState.getWireframeMode().get()) {
-                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-            } else {
-                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            }
+            // Always render filled polygons (wireframe mode removed)
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
             // PASS 1: Render grid (if enabled)
             if (viewportState.getGridVisible().get()) {
@@ -163,12 +159,9 @@ public class ViewportRenderPipeline {
             }
 
             // PASS 2: Render content (model/block/item)
-            renderContent(renderingState, transformState);
+            renderContent(viewportState, renderingState, transformState);
 
-            // Restore polygon mode after content rendering
-            if (viewportState.getWireframeMode().get()) {
-                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            }
+            // (polygon mode is always GL_FILL)
 
             // PASS 3: Render mesh (vertices + edges + faces, debug overlay, Blender-style)
             if (viewportState.getShowVertices().get()) {
@@ -212,7 +205,7 @@ public class ViewportRenderPipeline {
     /**
      * Render content pass (block, item, or block model).
      */
-    private void renderContent(RenderingState renderingState, TransformState transformState) {
+    private void renderContent(ViewportUIState viewportState, RenderingState renderingState, TransformState transformState) {
         // Diagnostic logging (throttled)
         boolean shouldLog = shouldLogDiagnostics();
 
@@ -223,7 +216,7 @@ public class ViewportRenderPipeline {
         // Render based on mode
         if (renderingState.getMode() == RenderingMode.BLOCK_MODEL) {
             // Render editable block model (.OMO)
-            renderBlockModel(transformState);
+            renderBlockModel(viewportState, transformState);
         } else if (renderingState.isBlockReady()) {
             renderBlock(renderingState, transformState);
         } else if (renderingState.isItemReady()) {
@@ -302,7 +295,7 @@ public class ViewportRenderPipeline {
      * Minimal implementation - pipeline state is configured once per frame.
      * Shader handles transparency via discard statement.
      */
-    private void renderBlockModel(TransformState transformState) {
+    private void renderBlockModel(ViewportUIState viewportState, TransformState transformState) {
         try {
             if (!modelRenderer.isInitialized()) {
                 logger.warn("BlockModelRenderer not initialized");
@@ -324,9 +317,16 @@ public class ViewportRenderPipeline {
             org.joml.Matrix4f modelMatrix = transformState.getTransformMatrix();
             matrixShader.setMat4("uModelMatrix", modelMatrix);
 
-            // Enable texturing
+            // Unrendered mode: flat gray like Blender solid view
+            boolean unrendered = viewportState.getUnrenderedMode().get();
+            modelRenderer.setForceUnrendered(unrendered);
+            if (unrendered) {
+                matrixShader.setVec3("uColor", new org.joml.Vector3f(0.53f, 0.53f, 0.53f));
+            }
+
+            // Enable texturing (renderer may override based on forceUnrendered)
             matrixShader.setInt("uTexture", 0);
-            matrixShader.setBool("uUseTexture", true);
+            matrixShader.setBool("uUseTexture", !unrendered);
 
             // Render (no state management needed - pipeline handles it)
             modelRenderer.render(matrixShader, context, modelMatrix);

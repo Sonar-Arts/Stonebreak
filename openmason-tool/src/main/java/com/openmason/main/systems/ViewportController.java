@@ -579,8 +579,8 @@ public class ViewportController {
         viewportState.getGridVisible().set(showGrid);
     }
 
-    public void setWireframeMode(boolean wireframe) {
-        viewportState.getWireframeMode().set(wireframe);
+    public void setUnrenderedMode(boolean unrendered) {
+        viewportState.getUnrenderedMode().set(unrendered);
     }
 
     public void setAxesVisible(boolean visible) {

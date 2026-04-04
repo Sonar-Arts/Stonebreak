@@ -100,7 +100,7 @@ public class OMPSerializer {
             viewport.put("renderModeIndex", doc.viewport().renderModeIndex());
             viewport.put("gridVisible", doc.viewport().gridVisible());
             viewport.put("axesVisible", doc.viewport().axesVisible());
-            viewport.put("wireframeMode", doc.viewport().wireframeMode());
+            viewport.put("unrenderedMode", doc.viewport().unrenderedMode());
             viewport.put("showVertices", doc.viewport().showVertices());
             viewport.put("showGizmo", doc.viewport().showGizmo());
             viewport.put("gridSnappingEnabled", doc.viewport().gridSnappingEnabled());

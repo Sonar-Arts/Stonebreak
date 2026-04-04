@@ -112,7 +112,7 @@ public final class OMPFormat {
             int renderModeIndex,
             boolean gridVisible,
             boolean axesVisible,
-            boolean wireframeMode,
+            boolean unrenderedMode,
             boolean showVertices,
             boolean showGizmo,
             boolean gridSnappingEnabled,

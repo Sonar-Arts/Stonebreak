@@ -67,7 +67,7 @@ public class ProjectService {
                 viewportUIState.getCurrentRenderModeIndex().get(),
                 viewportUIState.getGridVisible().get(),
                 viewportUIState.getAxesVisible().get(),
-                viewportUIState.getWireframeMode().get(),
+                viewportUIState.getUnrenderedMode().get(),
                 viewportUIState.getShowVertices().get(),
                 viewportUIState.getShowGizmo().get(),
                 viewportUIState.getGridSnappingEnabled().get(),
@@ -142,7 +142,7 @@ public class ProjectService {
             viewportUIState.getCurrentRenderModeIndex().set(document.viewport().renderModeIndex());
             viewportUIState.getGridVisible().set(document.viewport().gridVisible());
             viewportUIState.getAxesVisible().set(document.viewport().axesVisible());
-            viewportUIState.getWireframeMode().set(document.viewport().wireframeMode());
+            viewportUIState.getUnrenderedMode().set(document.viewport().unrenderedMode());
             viewportUIState.getShowVertices().set(document.viewport().showVertices());
             viewportUIState.getShowGizmo().set(document.viewport().showGizmo());
             viewportUIState.getGridSnappingEnabled().set(document.viewport().gridSnappingEnabled());
