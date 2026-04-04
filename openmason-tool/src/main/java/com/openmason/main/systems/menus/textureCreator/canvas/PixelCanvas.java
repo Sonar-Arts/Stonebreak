@@ -3,7 +3,9 @@ package com.openmason.main.systems.menus.textureCreator.canvas;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionManager;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionRegion;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Core pixel canvas data structure.
@@ -17,6 +19,8 @@ public class PixelCanvas {
     private SelectionRegion activeSelection; // Active selection region (null if no selection) - legacy
     private SelectionManager selectionManager; // Optional centralized selection manager
     private boolean bypassSelectionConstraint = false; // Temporarily bypass selection constraint for special operations
+    private CanvasShapeMask shapeMask; // Active shape mask (null = all pixels editable)
+    private final List<CanvasChangeListener> changeListeners = new ArrayList<>();
 
     /**
      * Create new pixel canvas with specified dimensions.
@@ -102,6 +106,11 @@ public class PixelCanvas {
             return; // Silently ignore out-of-bounds
         }
 
+        // Shape mask constraint: if a mask is active, reject pixels outside it
+        if (shapeMask != null && !shapeMask.isEditable(x, y)) {
+            return; // Pixel is outside editable region - ignore modification
+        }
+
         // Selection constraint: if selection is active, only allow modifications within selection
         // (unless bypass is enabled for special operations like move tool)
         if (!bypassSelectionConstraint) {
@@ -116,6 +125,7 @@ public class PixelCanvas {
         int index = y * width + x;
         pixels[index] = color;
         modificationVersion++;
+        notifyChangeListeners(x, y, 1, 1);
     }
 
     /**
@@ -126,6 +136,7 @@ public class PixelCanvas {
     public void fill(int color) {
         Arrays.fill(pixels, color);
         modificationVersion++;
+        notifyChangeListeners(0, 0, width, height);
     }
 
     /**
@@ -148,6 +159,34 @@ public class PixelCanvas {
 
         System.arraycopy(source.pixels, 0, this.pixels, 0, pixels.length);
         modificationVersion++;
+        notifyChangeListeners(0, 0, width, height);
+    }
+
+    /**
+     * Create a resized copy of this canvas using nearest-neighbor sampling.
+     * Returns this canvas unchanged if the dimensions already match.
+     *
+     * @param targetWidth  desired width in pixels
+     * @param targetHeight desired height in pixels
+     * @return new canvas with rescaled pixel data, or this canvas if dimensions match
+     */
+    public PixelCanvas resized(int targetWidth, int targetHeight) {
+        if (targetWidth == width && targetHeight == height) {
+            return this;
+        }
+
+        PixelCanvas result = new PixelCanvas(targetWidth, targetHeight);
+        float xRatio = (float) width / targetWidth;
+        float yRatio = (float) height / targetHeight;
+
+        for (int y = 0; y < targetHeight; y++) {
+            int srcY = Math.min((int) (y * yRatio), height - 1);
+            for (int x = 0; x < targetWidth; x++) {
+                int srcX = Math.min((int) (x * xRatio), width - 1);
+                result.pixels[y * targetWidth + x] = pixels[srcY * width + srcX];
+            }
+        }
+        return result;
     }
 
     /**
@@ -303,6 +342,160 @@ public class PixelCanvas {
      */
     public void setBypassSelectionConstraint(boolean bypass) {
         this.bypassSelectionConstraint = bypass;
+    }
+
+    /**
+     * Set the active shape mask defining which pixels are editable.
+     * When set, only pixels where {@link CanvasShapeMask#isEditable} returns true
+     * can be modified via {@link #setPixel}.
+     *
+     * @param mask the shape mask, or null to allow editing all pixels
+     */
+    public void setShapeMask(CanvasShapeMask mask) {
+        this.shapeMask = mask;
+    }
+
+    /**
+     * Get the active shape mask.
+     *
+     * @return the current mask, or null if no mask is active
+     */
+    public CanvasShapeMask getShapeMask() {
+        return shapeMask;
+    }
+
+    /**
+     * Check if a pixel coordinate is currently editable, considering
+     * shape mask and bounds constraints.
+     *
+     * <p>Tools can use this to query editability before attempting writes
+     * (e.g., flood-fill boundary detection, preview rendering).
+     *
+     * @param x pixel X coordinate
+     * @param y pixel Y coordinate
+     * @return true if the pixel can be modified
+     */
+    public boolean isEditablePixel(int x, int y) {
+        if (!isValidCoordinate(x, y)) {
+            return false;
+        }
+        if (shapeMask != null && !shapeMask.isEditable(x, y)) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Get the shape mask coverage for a pixel coordinate.
+     *
+     * <p>Returns a value between 0.0 and 1.0 indicating how much of the
+     * pixel is inside the active shape mask. Tools combine this with their
+     * own coverage (brush edge, line distance, etc.) for smooth blending.
+     *
+     * @param x pixel X coordinate
+     * @param y pixel Y coordinate
+     * @return mask coverage in [0.0, 1.0], or 1.0 if no mask is active
+     */
+    public float getMaskCoverage(int x, int y) {
+        if (!isValidCoordinate(x, y)) {
+            return 0.0f;
+        }
+        if (shapeMask == null) {
+            return 1.0f;
+        }
+        return shapeMask.getCoverage(x, y);
+    }
+
+    // =========================================================================
+    // CHANGE LISTENERS
+    // =========================================================================
+
+    /**
+     * Register a listener to be notified when canvas pixels change.
+     *
+     * @param listener the listener to add
+     */
+    public void addChangeListener(CanvasChangeListener listener) {
+        if (listener != null && !changeListeners.contains(listener)) {
+            changeListeners.add(listener);
+        }
+    }
+
+    /**
+     * Remove a previously registered change listener.
+     *
+     * @param listener the listener to remove
+     */
+    public void removeChangeListener(CanvasChangeListener listener) {
+        changeListeners.remove(listener);
+    }
+
+    /**
+     * Notify all registered change listeners about a modified region.
+     *
+     * @param dirtyX      left edge of the dirty region
+     * @param dirtyY      top edge of the dirty region
+     * @param dirtyWidth  width of the dirty region
+     * @param dirtyHeight height of the dirty region
+     */
+    private void notifyChangeListeners(int dirtyX, int dirtyY, int dirtyWidth, int dirtyHeight) {
+        if (changeListeners.isEmpty()) {
+            return;
+        }
+        List<CanvasChangeListener> copy = new ArrayList<>(changeListeners);
+        for (CanvasChangeListener listener : copy) {
+            listener.onCanvasChanged(this, dirtyX, dirtyY, dirtyWidth, dirtyHeight);
+        }
+    }
+
+    /**
+     * Notify all change listeners that the entire canvas is dirty.
+     * Used when entering face-region mode to force a full GPU upload
+     * of the canvas contents to the new target texture.
+     */
+    public void notifyFullCanvasDirty() {
+        notifyChangeListeners(0, 0, width, height);
+    }
+
+    /**
+     * Extract a sub-region of the canvas as RGBA bytes for partial GPU upload.
+     * Converts from ABGR int to RGBA byte format, matching the layout expected
+     * by {@code glTexSubImage2D}.
+     *
+     * @param regionX left edge of the region
+     * @param regionY top edge of the region
+     * @param regionW width of the region
+     * @param regionH height of the region
+     * @return byte array in RGBA format for the requested sub-region
+     */
+    public byte[] getPixelsAsRGBABytes(int regionX, int regionY, int regionW, int regionH) {
+        // Clamp to canvas bounds
+        int x0 = Math.max(0, regionX);
+        int y0 = Math.max(0, regionY);
+        int x1 = Math.min(width, regionX + regionW);
+        int y1 = Math.min(height, regionY + regionH);
+        int clampedW = x1 - x0;
+        int clampedH = y1 - y0;
+
+        if (clampedW <= 0 || clampedH <= 0) {
+            return new byte[0];
+        }
+
+        byte[] bytes = new byte[clampedW * clampedH * 4];
+        int byteIndex = 0;
+
+        for (int row = y0; row < y1; row++) {
+            for (int col = x0; col < x1; col++) {
+                int pixel = pixels[row * width + col];
+                int[] rgba = unpackRGBA(pixel);
+                bytes[byteIndex++] = (byte) rgba[0]; // R
+                bytes[byteIndex++] = (byte) rgba[1]; // G
+                bytes[byteIndex++] = (byte) rgba[2]; // B
+                bytes[byteIndex++] = (byte) rgba[3]; // A
+            }
+        }
+
+        return bytes;
     }
 
 }

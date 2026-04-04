@@ -7,6 +7,8 @@ import com.openmason.main.systems.menus.preferences.config.WindowConfig;
 import com.openmason.main.systems.menus.panes.modelBrowser.events.BlockSelectedEvent;
 import com.openmason.main.systems.menus.panes.modelBrowser.events.ItemSelectedEvent;
 import com.openmason.main.systems.menus.panes.modelBrowser.events.ModelBrowserListener;
+import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
+import com.openmason.main.systems.project.ProjectService;
 import com.openmason.main.systems.services.LayoutService;
 import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.services.StatusService;
@@ -16,6 +18,8 @@ import com.openmason.main.systems.stateHandling.UIVisibilityState;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.dialogs.AboutDialog;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
+import com.openmason.main.systems.menus.dialogs.SBEExportWindow;
+import com.openmason.main.systems.menus.dialogs.SBOExportWindow;
 import com.openmason.main.systems.menus.preferences.PreferencesWindow;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
@@ -25,10 +29,11 @@ import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.menus.toolbars.ModelEditorToolbarRenderer;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
+import imgui.flag.ImGuiDir;
 import imgui.flag.ImGuiDockNodeFlags;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
-import imgui.type.ImFloat;
+import imgui.type.ImInt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,6 +61,8 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private ModelBrowserImGui modelBrowserImGui;
 
     private PreferencesWindow preferencesWindow; // Initialized after components
+    private SBOExportWindow sboExportWindow; // Initialized after components
+    private SBEExportWindow sbeExportWindow; // Initialized after components
     private final AboutDialog aboutDialog;
 
     // Menu System
@@ -66,14 +73,21 @@ public class MainImGuiInterface implements ModelBrowserListener {
     // Toolbar
     private final ModelEditorToolbarRenderer toolbarRenderer;
 
+    // Project
+    private ProjectService projectService;
+
     // Viewport
     private ViewportController viewport3D;
 
     // Window Configurations
     private final WindowConfig propertiesConfig = WindowConfig.forProperties();
 
-    // Camera settings (shared with PreferencesDialog)
-    private final ImFloat cameraMouseSensitivity = new ImFloat(3.0f);
+    // Layout initialization tracking
+    private boolean defaultLayoutBuilt = false;
+
+    // Camera settings loaded from preferences on startup
+    private float initialCameraOrbitSpeed;
+    private float initialCameraPanSpeed;
 
     /**
      * Create MainImGuiInterface with dependency injection.
@@ -97,9 +111,9 @@ public class MainImGuiInterface implements ModelBrowserListener {
         this.preferencesManager = new PreferencesManager();
         LogoManager logoManager = LogoManager.getInstance();
 
-        // Initialize camera sensitivity from preferences
-        float savedSensitivity = preferencesManager.getCameraMouseSensitivity();
-        cameraMouseSensitivity.set(savedSensitivity);
+        // Load camera settings from preferences for initial viewport setup
+        initialCameraOrbitSpeed = preferencesManager.getCameraMouseSensitivity();
+        initialCameraPanSpeed = preferencesManager.getCameraPanSensitivity();
 
         // Initialize file dialog service first (needed by model operations)
         this.fileDialogService = new FileDialogService(statusService);
@@ -109,9 +123,10 @@ public class MainImGuiInterface implements ModelBrowserListener {
         this.viewportOperations = new ViewportOperationService(viewportState, statusService);
         LayoutService layoutService = new LayoutService(uiVisibilityState, viewportState, statusService);
 
-        // Initialize dialogs
-        // Dialogs
+        // Initialize project service
+        this.projectService = new ProjectService();
 
+        // Initialize dialogs
         this.aboutDialog = new AboutDialog(uiVisibilityState, logoManager, "Model Editor");
 
         // Note: UnifiedPreferencesWindow will be initialized after components (needs viewport and property panel)
@@ -140,6 +155,8 @@ public class MainImGuiInterface implements ModelBrowserListener {
         fileMenuHandler.setViewport(viewport3D);
         fileMenuHandler.setLogoManager(logoManager);
         fileMenuHandler.setThemeManager(themeManager);
+        fileMenuHandler.setProjectService(projectService);
+        fileMenuHandler.setUIVisibilityState(uiVisibilityState);
         viewMenu.setViewport(viewport3D);
         toolbarRenderer.setViewport(viewport3D);
         modelOperations.setPropertiesPanel(propertyPanelImGui);
@@ -183,6 +200,30 @@ public class MainImGuiInterface implements ModelBrowserListener {
                     propertyPanelImGui
             );
             logger.debug("Unified preferences window initialized (TextureCreatorImGui will be set later)");
+
+            // Initialize SBO export window
+            this.sboExportWindow = new SBOExportWindow(
+                    uiVisibilityState.getShowSBOExportWindow(),
+                    themeManager,
+                    modelState,
+                    statusService,
+                    fileDialogService
+            );
+            toolsMenuHandler.setSBOExportWindow(sboExportWindow);
+
+            // Initialize SBE export window
+            this.sbeExportWindow = new SBEExportWindow(
+                    uiVisibilityState.getShowSBEExportWindow(),
+                    themeManager,
+                    modelState,
+                    statusService,
+                    fileDialogService
+            );
+            toolsMenuHandler.setSBEExportWindow(sbeExportWindow);
+
+            toolsMenuHandler.setModelState(modelState);
+            toolsMenuHandler.setStatusService(statusService);
+            logger.debug("SBO and SBE export windows initialized");
         } catch (Exception e) {
             logger.error("Failed to initialize components", e);
         }
@@ -196,12 +237,16 @@ public class MainImGuiInterface implements ModelBrowserListener {
             viewport3D = new ViewportController();
 
             if (viewport3D.getCamera() != null) {
-                viewport3D.getCamera().setMouseSensitivity(cameraMouseSensitivity.get());
+                viewport3D.getCamera().setMouseSensitivity(initialCameraOrbitSpeed);
+                viewport3D.getCamera().setPanSensitivity(initialCameraPanSpeed);
             }
 
             // Connect viewport to model operations for .OMO model support
             modelOperations.setViewport(viewport3D);
             logger.debug("Viewport connected to ModelOperationService");
+
+            // Mark model as having unsaved changes whenever the command history changes
+            viewport3D.getCommandHistory().setOnHistoryChange(() -> modelState.setUnsavedChanges(true));
 
         } catch (Exception e) {
             logger.error("Failed to setup 3D viewport", e);
@@ -267,6 +312,11 @@ public class MainImGuiInterface implements ModelBrowserListener {
         if (fileMenuHandler != null && fileMenuHandler.getSaveWarningDialog() != null) {
             fileMenuHandler.getSaveWarningDialog().render();
         }
+
+        // Render home screen dialog if open
+        if (fileMenuHandler != null && fileMenuHandler.getHomeScreenDialog() != null) {
+            fileMenuHandler.getHomeScreenDialog().render();
+        }
     }
 
     /**
@@ -295,13 +345,8 @@ public class MainImGuiInterface implements ModelBrowserListener {
         ImGui.popStyleVar(4);
 
         // Render toolbar inline (pushes content down naturally)
+        // Bottom border is drawn by the toolbar itself
         toolbarRenderer.render();
-
-        // Add separator and spacing between toolbar and dockspace
-        if (uiVisibilityState.getShowToolbar().get()) {
-            ImGui.separator();
-            ImGui.spacing();
-        }
 
         // Reset padding for dockspace area
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
@@ -309,9 +354,55 @@ public class MainImGuiInterface implements ModelBrowserListener {
         int dockspaceId = ImGui.getID("OpenMasonDockSpace");
         ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.PassthruCentralNode);
 
+        // Build default layout on first frame if no saved layout exists
+        if (!defaultLayoutBuilt) {
+            defaultLayoutBuilt = true;
+            buildDefaultLayout(dockspaceId);
+        }
+
         ImGui.popStyleVar(1);
 
         ImGui.end();
+    }
+
+    /**
+     * Build the default docking layout programmatically using DockBuilder.
+     * This creates the standard layout: Properties (left), 3D Viewport (center), Model Browser (bottom).
+     * Only applies when no saved imgui.ini layout exists for this dockspace.
+     */
+    private void buildDefaultLayout(int dockspaceId) {
+        var node = imgui.internal.ImGui.dockBuilderGetNode(dockspaceId);
+        if (node != null && node.isSplitNode()) {
+            // Dockspace already has a saved layout from imgui.ini — don't override
+            return;
+        }
+
+        logger.info("No saved layout found — building default docking layout");
+
+        imgui.internal.ImGui.dockBuilderRemoveNode(dockspaceId);
+        imgui.internal.ImGui.dockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags.PassthruCentralNode);
+
+        ImGuiViewport viewport = ImGui.getMainViewport();
+        imgui.internal.ImGui.dockBuilderSetNodeSize(dockspaceId, viewport.getWorkSizeX(), viewport.getWorkSizeY());
+
+        // Split bottom for Model Browser (~37% of height)
+        ImInt dockTop = new ImInt();
+        ImInt dockBottom = new ImInt();
+        imgui.internal.ImGui.dockBuilderSplitNode(dockspaceId, ImGuiDir.Down, 0.37f, dockBottom, dockTop);
+
+        // Split left for Model Properties panel (~20% of remaining width)
+        ImInt dockLeft = new ImInt();
+        ImInt dockCenter = new ImInt();
+        imgui.internal.ImGui.dockBuilderSplitNode(dockTop.get(), ImGuiDir.Left, 0.20f, dockLeft, dockCenter);
+
+        // Dock windows into their respective nodes
+        imgui.internal.ImGui.dockBuilderDockWindow("Model Properties", dockLeft.get());
+        imgui.internal.ImGui.dockBuilderDockWindow("3D Viewport", dockCenter.get());
+        imgui.internal.ImGui.dockBuilderDockWindow("Model Browser", dockBottom.get());
+
+        imgui.internal.ImGui.dockBuilderFinish(dockspaceId);
+
+        logger.info("Default docking layout built successfully");
     }
 
     /**
@@ -377,7 +468,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private void renderPropertyPanelFallback() {
         ImGuiHelpers.configureWindowConstraints(propertiesConfig);
 
-        if (ImGui.begin("Properties", uiVisibilityState.getShowPropertyPanel())) {
+        if (ImGui.begin("Model Properties", uiVisibilityState.getShowPropertyPanel())) {
             ImGuiHelpers.configureWindowSize(propertiesConfig);
             ImGuiHelpers.configureWindowPosition(propertiesConfig);
             ImGui.textDisabled("Property panel not initialized");
@@ -399,8 +490,16 @@ public class MainImGuiInterface implements ModelBrowserListener {
         return viewport3D;
     }
 
+    public PropertyPanelImGui getPropertyPanel() {
+        return propertyPanelImGui;
+    }
+
     public ThemeManager getThemeManager() {
         return themeManager;
+    }
+
+    public ModelOperationService getModelOperations() {
+        return modelOperations;
     }
 
     // Convenience methods for backward compatibility
@@ -466,6 +565,20 @@ public class MainImGuiInterface implements ModelBrowserListener {
     }
 
     /**
+     * Gets the SBO export window for external rendering.
+     */
+    public SBOExportWindow getSBOExportWindow() {
+        return sboExportWindow;
+    }
+
+    /**
+     * Gets the SBE export window for external rendering.
+     */
+    public SBEExportWindow getSBEExportWindow() {
+        return sbeExportWindow;
+    }
+
+    /**
      * Sets the TextureCreatorImGui instance for unified preferences.
      */
     public void setTextureCreatorInterface(TextureCreatorImGui textureCreatorImGui) {
@@ -474,6 +587,85 @@ public class MainImGuiInterface implements ModelBrowserListener {
             logger.debug("TextureCreatorImGui wired up to unified preferences window");
         } else {
             logger.warn("Cannot set TextureCreatorImGui - unified preferences window not initialized");
+        }
+    }
+
+    /**
+     * Set the recent projects service for tracking project open/save in the hub.
+     */
+    public void setRecentProjectsService(RecentProjectsService recentProjectsService) {
+        if (fileMenuHandler != null) {
+            fileMenuHandler.setRecentProjectsService(recentProjectsService);
+        }
+    }
+
+    /**
+     * Set callback for application exit. Wires the unsaved changes dialog.
+     *
+     * @param exitCallback called to perform the actual application exit
+     */
+    public void setExitCallback(Runnable exitCallback) {
+        if (fileMenuHandler != null) {
+            fileMenuHandler.setExitCallback(exitCallback);
+        }
+    }
+
+    /**
+     * Request application exit through the file menu handler.
+     * Shows the unsaved changes dialog if there are unsaved changes.
+     */
+    public void requestExit() {
+        if (fileMenuHandler != null) {
+            fileMenuHandler.requestExit();
+        }
+    }
+
+    /**
+     * Get the file menu handler for dialog rendering access.
+     */
+    public FileMenuHandler getFileMenuHandler() {
+        return fileMenuHandler;
+    }
+
+    /**
+     * Reset all editor state to defaults for a fresh session.
+     * Called when creating a new blank project from the hub.
+     */
+    public void resetEditorState() {
+        if (viewport3D != null) {
+            viewport3D.resetCamera();
+            viewport3D.resetModelTransform();
+        }
+
+        uiVisibilityState.resetToDefault();
+        createDefaultModel();
+
+        if (projectService != null) {
+            projectService.clearCurrentProject();
+        }
+
+        logger.info("Editor state reset to defaults for new project");
+    }
+
+    /**
+     * Open a project from the Project Hub by loading an .OMP file.
+     * Called when the user selects a recent project from the hub.
+     *
+     * @param ompFilePath the path to the .OMP project file
+     */
+    public void openProjectFromHub(String ompFilePath) {
+        if (projectService == null || viewport3D == null) {
+            logger.warn("Cannot open project: service or viewport not initialized");
+            return;
+        }
+
+        boolean success = projectService.openProject(ompFilePath, viewport3D, modelState,
+                uiVisibilityState, modelOperations);
+        if (success) {
+            statusService.updateStatus("Project opened: " + projectService.getCurrentProjectName());
+            logger.info("Project loaded from hub: {}", ompFilePath);
+        } else {
+            statusService.updateStatus("Failed to open project: " + ompFilePath);
         }
     }
 }

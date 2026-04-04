@@ -4,7 +4,16 @@ import com.openmason.main.systems.rendering.api.BaseRenderer;
 import com.openmason.main.systems.rendering.api.GeometryData;
 import com.openmason.main.systems.rendering.api.RenderPass;
 import com.openmason.main.systems.rendering.core.shaders.ShaderProgram;
+import com.openmason.main.systems.rendering.model.gmr.core.DrawBatchManager;
+import com.openmason.main.systems.rendering.model.gmr.core.IGPUBufferUploader;
+import com.openmason.main.systems.rendering.model.gmr.core.MeshMutationCoordinator;
+import com.openmason.main.systems.rendering.model.gmr.core.MeshRebuildPipeline;
+import com.openmason.main.systems.rendering.model.gmr.core.MeshSerializationAdapter;
 import com.openmason.main.systems.rendering.model.gmr.core.VertexDataManager;
+import com.openmason.main.systems.rendering.model.gmr.parts.ModelPartManager;
+import com.openmason.main.systems.rendering.model.gmr.parts.PartMeshRebuilder;
+import com.openmason.main.systems.rendering.model.UVMode;
+import com.openmason.main.systems.rendering.model.gmr.extraction.FaceTriangleQuery;
 import com.openmason.main.systems.rendering.model.gmr.extraction.GMREdgeExtractor;
 import com.openmason.main.systems.rendering.model.gmr.extraction.GMRFaceExtractor;
 import com.openmason.main.systems.rendering.model.gmr.geometry.GeometryDataBuilder;
@@ -15,62 +24,78 @@ import com.openmason.main.systems.rendering.model.gmr.mapping.TriangleFaceMapper
 import com.openmason.main.systems.rendering.model.gmr.mapping.UniqueVertexMapper;
 import com.openmason.main.systems.rendering.model.gmr.notification.IMeshChangeNotifier;
 import com.openmason.main.systems.rendering.model.gmr.notification.MeshChangeNotifier;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
 import com.openmason.main.systems.rendering.model.gmr.uv.*;
 import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import org.joml.Vector3f;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL15.*;
+import static org.lwjgl.opengl.GL13.*;
 import static org.lwjgl.opengl.GL20.*;
 
 /**
  * Generic model renderer supporting arbitrary geometry.
- * supports any vertex count.
- * Extends BaseRenderer for consistent initialization and rendering.
+ * Coordinator class that wires and delegates to focused subsystems:
  *
- * Features:
- * - Multi-part model support
- * - Dynamic vertex updates for editing
- * - Arbitrary vertex counts
- * - OMO format loading support
+ * <ul>
+ *   <li>{@link MeshMutationCoordinator} — vertex updates, subdivision, edge/face operations</li>
+ *   <li>{@link TextureGPUOperations} — texture I/O, UV regeneration, material management</li>
+ *   <li>{@link DrawBatchManager} — per-material draw batch grouping</li>
+ *   <li>{@link MeshSerializationAdapter} — OMO load/save, snapshot restore</li>
+ *   <li>{@link MeshRebuildPipeline} — shared post-mutation rebuild sequence</li>
+ * </ul>
  *
- * Architecture (SOLID principles):
- * - IVertexDataManager: Vertex position management
- * - IUniqueVertexMapper: Index-based unique vertex lookup
- * - IMeshChangeNotifier: Observer pattern for mesh changes
- * - ITriangleFaceMapper: Triangle-to-face mapping
- * - ISubdivisionProcessor: Edge subdivision operations
- * - IGeometryDataBuilder: Interleaved data construction
- * - IUVCoordinateGenerator: UV texture coordinate generation
- * - IModelStateManager: Model parts, dimensions, UV mode state
+ * Extends BaseRenderer for consistent OpenGL initialization and rendering.
  */
 public class GenericModelRenderer extends BaseRenderer {
 
-    // Subsystems (dependency injection via interfaces)
+    // Core subsystems (dependency injection via interfaces)
     private final IVertexDataManager vertexManager;
     private final IUniqueVertexMapper uniqueMapper;
     private final IMeshChangeNotifier changeNotifier;
     private final ITriangleFaceMapper faceMapper;
-    private final ISubdivisionProcessor subdivisionProcessor;
     private final IGeometryDataBuilder geometryBuilder;
-    private final IUVCoordinateGenerator uvGenerator;
     private final IModelStateManager stateManager;
+    private final FaceTextureManager faceTextureManager;
 
-    // Extractors (SOLID: extraction logic separated from renderer)
+    // Extractors
     private final GMRFaceExtractor faceExtractor;
     private final GMREdgeExtractor edgeExtractor;
 
-    // Texture state (kept inline per KISS - only 3 lines)
-    private int textureId = 0;
-    private boolean useTexture = false;
+    // Coordinated subsystems
+    private final MeshRebuildPipeline rebuildPipeline;
+    private final MeshMutationCoordinator mutationCoordinator;
+    private final TextureGPUOperations textureOps;
+    private final DrawBatchManager drawBatchManager;
+    private final MeshSerializationAdapter serializationAdapter;
+
+    // Part management
+    private final ModelPartManager partManager;
+
+    // Cached model bounds (AABB) — nulled on geometry changes, recomputed lazily
+    private ModelBounds cachedBounds;
+
+    // When true, doRender skips texture binding and forces solid gray color
+    private boolean forceUnrendered = false;
+
+    // Cached identity matrix to avoid per-frame allocation in setUniforms
+    private static final org.joml.Matrix4f IDENTITY_MATRIX = new org.joml.Matrix4f();
 
     /**
      * Create a GenericModelRenderer with default subsystems.
      */
     public GenericModelRenderer() {
+        this(new FaceTextureManager());
+    }
+
+    /**
+     * Create a GenericModelRenderer with a specific FaceTextureManager.
+     */
+    private GenericModelRenderer(FaceTextureManager faceTextureManager) {
         this(
             new VertexDataManager(),
             new UniqueVertexMapper(),
@@ -78,10 +103,11 @@ public class GenericModelRenderer extends BaseRenderer {
             new TriangleFaceMapper(),
             new SubdivisionProcessor(),
             new GeometryDataBuilder(),
-            new UVCoordinateGenerator(),
+            new PerFaceUVCoordinateGenerator(faceTextureManager),
             new ModelStateManager(),
             new GMRFaceExtractor(),
-            new GMREdgeExtractor()
+            new GMREdgeExtractor(),
+            faceTextureManager
         );
     }
 
@@ -98,19 +124,75 @@ public class GenericModelRenderer extends BaseRenderer {
             IUVCoordinateGenerator uvGenerator,
             IModelStateManager stateManager,
             GMRFaceExtractor faceExtractor,
-            GMREdgeExtractor edgeExtractor) {
+            GMREdgeExtractor edgeExtractor,
+            FaceTextureManager faceTextureManager) {
         this.vertexManager = vertexManager;
         this.uniqueMapper = uniqueMapper;
         this.changeNotifier = changeNotifier;
         this.faceMapper = faceMapper;
-        this.subdivisionProcessor = subdivisionProcessor;
         this.geometryBuilder = geometryBuilder;
-        this.uvGenerator = uvGenerator;
         this.stateManager = stateManager;
         this.faceExtractor = faceExtractor;
         this.edgeExtractor = edgeExtractor;
+        this.faceTextureManager = faceTextureManager != null ? faceTextureManager : new FaceTextureManager();
+
+        // GPU buffer uploader — bridges BaseRenderer protected methods to subsystems
+        IGPUBufferUploader gpuUploader = new IGPUBufferUploader() {
+            @Override public void uploadVBO(float[] data) { updateVBO(data); }
+            @Override public void uploadEBO(int[] data) { updateEBO(data); }
+            @Override public boolean isGPUReady() { return initialized; }
+        };
+
+        // Renderer state access — bridges BaseRenderer protected fields to subsystems
+        MeshMutationCoordinator.RendererStateAccess rendererState = new MeshMutationCoordinator.RendererStateAccess() {
+            @Override public int getVertexCount() { return vertexCount; }
+            @Override public void setVertexCount(int count) { vertexCount = count; }
+            @Override public int getIndexCount() { return indexCount; }
+            @Override public void setIndexCount(int count) { indexCount = count; }
+            @Override public boolean isInitialized() { return initialized; }
+        };
+
+        // Wire rebuild pipeline
+        this.rebuildPipeline = new MeshRebuildPipeline(
+            vertexManager, uniqueMapper, faceMapper, changeNotifier, geometryBuilder, gpuUploader);
+        this.rebuildPipeline.setBoundsInvalidator(() -> cachedBounds = null);
+
+        // Wire texture operations
+        this.textureOps = new TextureGPUOperations(
+            vertexManager, faceMapper, uniqueMapper, uvGenerator, geometryBuilder,
+            this.faceTextureManager, gpuUploader, rebuildPipeline,
+            new TextureGPUOperations.VertexCountAccess() {
+                @Override public int getVertexCount() { return vertexCount; }
+                @Override public void setVertexCount(int count) { vertexCount = count; }
+            });
+
+        // Connect UV regeneration to pipeline
+        this.rebuildPipeline.setUVRegenerator(textureOps::regenerateUVsAndUpload);
+
+        // Wire draw batch manager
+        this.drawBatchManager = new DrawBatchManager(vertexManager, faceMapper, this.faceTextureManager);
+
+        // Wire mutation coordinator
+        this.mutationCoordinator = new MeshMutationCoordinator(
+            vertexManager, uniqueMapper, faceMapper, subdivisionProcessor,
+            changeNotifier, geometryBuilder, this.faceTextureManager,
+            rebuildPipeline, gpuUploader, rendererState);
+
+        // Wire serialization adapter
+        this.serializationAdapter = new MeshSerializationAdapter(
+            vertexManager, faceMapper, this.faceTextureManager, stateManager,
+            rebuildPipeline, textureOps, rendererState);
+
+        // Wire part manager with mesh consumer that pushes data through the serialization pipeline
+        this.partManager = new ModelPartManager();
+        this.partManager.setMeshConsumer(this::onPartMeshRebuilt);
+
         logger.debug("GenericModelRenderer created with subsystems");
     }
+
+    // =========================================================================
+    // BaseRenderer OVERRIDES
+    // =========================================================================
 
     @Override
     public String getDebugName() {
@@ -121,522 +203,6 @@ public class GenericModelRenderer extends BaseRenderer {
     public RenderPass getRenderPass() {
         return RenderPass.SCENE;
     }
-
-    // =========================================================================
-    // MODEL LOADING & GEOMETRY MANAGEMENT
-    // =========================================================================
-
-    // REMOVED: loadFromDimensions() and rebuildFromCachedDimensions()
-    // GenericModelRenderer should NOT generate geometry - it only loads and renders topology.
-    // Use LegacyGeometryGenerator for legacy BlockModel support, or provide explicit mesh data via loadMeshData().
-
-    /**
-     * Set UV mapping mode and update texture coordinates for existing geometry.
-     * Note: This only works if geometry is already loaded. For new models, provide
-     * mesh data with the correct UV mode via loadMeshData().
-     */
-    public void setUVMode(UVMode uvMode) {
-        // Delegate to updateUVModeOnly which handles the full logic
-        updateUVModeOnly(uvMode);
-    }
-
-    /**
-     * Update UV mode without rebuilding vertex positions.
-     * This preserves geometry modifications while updating texture coordinates.
-     * Works best with unsubdivided 24-vertex cubes; subdivided meshes use approximation.
-     *
-     * @param uvMode The new UV mode
-     */
-    public void updateUVModeOnly(UVMode uvMode) {
-        if (uvMode == null || uvMode == stateManager.getUVMode()) {
-            return;
-        }
-
-        logger.info("Updating UV mode from {} to {} (preserving geometry)", stateManager.getUVMode(), uvMode);
-        stateManager.setUVMode(uvMode);
-
-        float[] vertices = vertexManager.getVertices();
-        float[] texCoords = vertexManager.getTexCoords();
-
-        if (vertices == null || texCoords == null) {
-            logger.warn("Cannot update UVs: no vertex data");
-            return;
-        }
-
-        int currentVertexCount = vertices.length / 3;
-
-        // Generate new UV coordinates based on the UV mode
-        float[] newTexCoords = uvGenerator.generateUVs(uvMode, currentVertexCount);
-
-        // Update texture coordinates in vertex manager
-        for (int i = 0; i < currentVertexCount && i * 2 + 1 < newTexCoords.length; i++) {
-            vertexManager.setTexCoordDirect(i, newTexCoords[i * 2], newTexCoords[i * 2 + 1]);
-        }
-
-        // Update GPU buffers
-        if (initialized) {
-            float[] updatedTexCoords = vertexManager.getTexCoords();
-            float[] interleavedData = geometryBuilder.buildInterleavedData(vertices, updatedTexCoords);
-            updateVBO(interleavedData);
-        }
-
-        logger.info("UV mode updated to {} for {} vertices", uvMode, currentVertexCount);
-    }
-
-    /**
-     * Get the current UV mode.
-     */
-    public UVMode getUVMode() {
-        return stateManager.getUVMode();
-    }
-
-    /**
-     * Rebuild geometry from current parts.
-     */
-    private void rebuildGeometry() {
-        if (!stateManager.hasParts()) {
-            vertexManager.setData(null, null, null);
-            faceMapper.clear();
-            uniqueMapper.clear();
-            vertexCount = 0;
-            indexCount = 0;
-            return;
-        }
-
-        // Aggregate all parts via state manager
-        IModelStateManager.AggregatedGeometry geometry = stateManager.aggregateParts();
-
-        // Update subsystems
-        vertexManager.setData(geometry.vertices(), geometry.texCoords(), geometry.indices());
-        vertexCount = geometry.vertexCount();
-        indexCount = geometry.indexCount();
-
-        // Initialize face mapping using topology metadata from parts
-        if (geometry.indices() != null) {
-            int triangleCount = geometry.indices().length / 3;
-
-            if (geometry.trianglesPerFace() != null && geometry.trianglesPerFace() > 0) {
-                // Use explicit topology from parts (e.g., quads = 2 tris/face, triangles = 1 tri/face)
-                faceMapper.initializeWithTopology(triangleCount, geometry.trianglesPerFace());
-            } else {
-                // Default to 1:1 mapping for arbitrary geometry
-                faceMapper.initializeStandardMapping(triangleCount);
-            }
-        } else {
-            faceMapper.clear();
-        }
-
-        // Update GPU buffers if initialized
-        if (initialized) {
-            float[] interleavedData = geometryBuilder.buildInterleavedData(geometry.vertices(), geometry.texCoords());
-            updateVBO(interleavedData);
-            if (geometry.indices() != null) {
-                updateEBO(geometry.indices());
-            }
-        }
-
-        // Build unique vertex mapping
-        uniqueMapper.buildMapping(geometry.vertices());
-
-        // Notify listeners
-        changeNotifier.notifyGeometryRebuilt();
-
-        logger.debug("Rebuilt geometry: {} vertices, {} indices, {} unique positions",
-            vertexCount, indexCount, uniqueMapper.getUniqueVertexCount());
-    }
-
-    // =========================================================================
-    // VERTEX POSITION MANAGEMENT (delegated to IVertexDataManager)
-    // =========================================================================
-
-    /**
-     * Update a vertex position by its global index.
-     * Also updates ALL other mesh vertices at the same geometric position.
-     */
-    public void updateVertexPosition(int globalIndex, Vector3f position) {
-        float[] vertices = vertexManager.getVertices();
-        if (vertices == null || globalIndex < 0) {
-            return;
-        }
-
-        int offset = globalIndex * 3;
-        if (offset + 2 >= vertices.length) {
-            logger.warn("Vertex index {} out of bounds", globalIndex);
-            return;
-        }
-
-        // Get unique index and affected mesh indices
-        int uniqueIndex = uniqueMapper.getUniqueIndexForMeshVertex(globalIndex);
-        int[] affectedMeshIndices;
-
-        if (uniqueIndex >= 0) {
-            affectedMeshIndices = uniqueMapper.getMeshIndicesForUniqueVertex(uniqueIndex);
-        } else {
-            Vector3f oldPosition = new Vector3f(vertices[offset], vertices[offset + 1], vertices[offset + 2]);
-            List<Integer> verticesList = vertexManager.findMeshVerticesAtPosition(oldPosition, 0.001f);
-            affectedMeshIndices = verticesList.stream().mapToInt(Integer::intValue).toArray();
-        }
-
-        // Update ALL vertices at this position
-        vertexManager.updateVertexPositions(affectedMeshIndices, position);
-
-        // Rebuild and upload to GPU
-        float[] interleavedData = geometryBuilder.buildInterleavedData(
-            vertexManager.getVertices(), vertexManager.getTexCoords());
-        updateVBO(interleavedData);
-
-        // Notify listeners
-        if (uniqueIndex >= 0 && changeNotifier.getListenerCount() > 0) {
-            changeNotifier.notifyVertexPositionChanged(uniqueIndex, position, affectedMeshIndices);
-        }
-
-        logger.trace("Updated {} mesh vertices for unique vertex {} to ({}, {}, {})",
-            affectedMeshIndices.length, uniqueIndex, position.x, position.y, position.z);
-    }
-
-    /**
-     * Update all vertex positions at once.
-     */
-    public void updateVertexPositions(float[] positions) {
-        if (!initialized) {
-            logger.warn("Cannot update vertex positions: renderer not initialized");
-            return;
-        }
-
-        float[] currentVertices = vertexManager.getVertices();
-        if (positions == null || currentVertices == null) {
-            return;
-        }
-
-        int expectedLength = currentVertices.length;
-        int updateLength = Math.min(positions.length, expectedLength);
-        int inputVertexCount = positions.length / 3;
-        int meshVertexCount = currentVertices.length / 3;
-
-        try {
-            if (inputVertexCount < meshVertexCount) {
-                // Post-subdivision: update by position matching
-                for (int i = 0; i < inputVertexCount; i++) {
-                    int offset = i * 3;
-                    Vector3f oldPos = new Vector3f(currentVertices[offset], currentVertices[offset + 1], currentVertices[offset + 2]);
-                    Vector3f newPos = new Vector3f(positions[offset], positions[offset + 1], positions[offset + 2]);
-
-                    if (oldPos.equals(newPos, 0.0001f)) {
-                        continue;
-                    }
-
-                    List<Integer> verticesAtPos = vertexManager.findMeshVerticesAtPosition(oldPos, 0.001f);
-                    vertexManager.updateVertexPositions(
-                        verticesAtPos.stream().mapToInt(Integer::intValue).toArray(), newPos);
-                }
-            } else {
-                // Direct copy
-                float[] vertices = vertexManager.getVertices();
-                System.arraycopy(positions, 0, vertices, 0, updateLength);
-            }
-
-            // Upload to GPU
-            float[] interleavedData = geometryBuilder.buildInterleavedData(
-                vertexManager.getVertices(), vertexManager.getTexCoords());
-            updateVBO(interleavedData);
-
-            logger.trace("Updated {} of {} vertex positions", updateLength / 3, currentVertices.length / 3);
-        } catch (Exception e) {
-            logger.error("Error updating vertex positions", e);
-        }
-    }
-
-    /**
-     * Get vertex position by global index.
-     */
-    public Vector3f getVertexPosition(int globalIndex) {
-        return vertexManager.getVertexPosition(globalIndex);
-    }
-
-    /**
-     * Get total vertex count across all parts.
-     */
-    public int getTotalVertexCount() {
-        return vertexManager.getTotalVertexCount();
-    }
-
-    /**
-     * Get all current mesh vertex positions.
-     */
-    public float[] getAllMeshVertexPositions() {
-        return vertexManager.getAllMeshVertexPositions();
-    }
-
-    /**
-     * Find all mesh vertex indices at a given position.
-     */
-    public List<Integer> findMeshVerticesAtPosition(Vector3f position, float epsilon) {
-        return vertexManager.findMeshVerticesAtPosition(position, epsilon);
-    }
-
-    // =========================================================================
-    // TRIANGLE & FACE QUERIES (delegated to ITriangleFaceMapper)
-    // =========================================================================
-
-    /**
-     * Get the current triangle count.
-     */
-    public int getTriangleCount() {
-        int[] indices = vertexManager.getIndices();
-        return indices != null ? indices.length / 3 : 0;
-    }
-
-    /**
-     * Get the current triangle indices.
-     */
-    public int[] getTriangleIndices() {
-        int[] indices = vertexManager.getIndices();
-        return indices != null ? indices.clone() : null;
-    }
-
-    /**
-     * Get the original face ID for a given triangle index.
-     */
-    public int getOriginalFaceIdForTriangle(int triangleIndex) {
-        return faceMapper.getOriginalFaceIdForTriangle(triangleIndex);
-    }
-
-    /**
-     * Get the number of original faces.
-     */
-    public int getOriginalFaceCount() {
-        return faceMapper.getOriginalFaceCount();
-    }
-
-    /**
-     * Check if triangle-to-face mapping is available.
-     */
-    public boolean hasTriangleToFaceMapping() {
-        return faceMapper.hasMapping();
-    }
-
-    // =========================================================================
-    // UNIQUE VERTEX MAPPING (delegated to IUniqueVertexMapper)
-    // =========================================================================
-
-    /**
-     * Get the position of a unique vertex by index.
-     */
-    public Vector3f getUniqueVertexPosition(int uniqueIndex) {
-        return uniqueMapper.getUniqueVertexPosition(uniqueIndex, vertexManager.getVertices());
-    }
-
-    /**
-     * Get all mesh vertex indices that share a unique geometric position.
-     */
-    public int[] getMeshIndicesForUniqueVertex(int uniqueIndex) {
-        return uniqueMapper.getMeshIndicesForUniqueVertex(uniqueIndex);
-    }
-
-    /**
-     * Get the unique vertex index for a given mesh vertex.
-     */
-    public int getUniqueIndexForMeshVertex(int meshIndex) {
-        return uniqueMapper.getUniqueIndexForMeshVertex(meshIndex);
-    }
-
-    /**
-     * Get all unique vertex positions as an array.
-     */
-    public float[] getAllUniqueVertexPositions() {
-        return uniqueMapper.getAllUniqueVertexPositions(vertexManager.getVertices());
-    }
-
-    // =========================================================================
-    // CHANGE NOTIFICATION (delegated to IMeshChangeNotifier)
-    // =========================================================================
-
-    /**
-     * Add a listener to receive mesh change notifications.
-     */
-    public void addMeshChangeListener(MeshChangeListener listener) {
-        changeNotifier.addListener(listener);
-    }
-
-    /**
-     * Remove a listener from mesh change notifications.
-     */
-    public void removeMeshChangeListener(MeshChangeListener listener) {
-        changeNotifier.removeListener(listener);
-    }
-
-    // =========================================================================
-    // SUBDIVISION (delegated to ISubdivisionProcessor)
-    // =========================================================================
-
-    /**
-     * Apply edge subdivision using endpoint positions.
-     */
-    public int applyEdgeSubdivisionByPosition(Vector3f midpointPosition, Vector3f endpoint1, Vector3f endpoint2) {
-        if (!initialized || midpointPosition == null || endpoint1 == null || endpoint2 == null) {
-            logger.warn("Cannot apply subdivision: invalid parameters");
-            return -1;
-        }
-
-        // Log first 8 mesh vertex positions for debugging
-        float[] vertices = vertexManager.getVertices();
-        if (vertices != null && vertices.length >= 24) {
-            logger.info("GenericModelRenderer first 8 vertices:");
-            for (int i = 0; i < 8 && i * 3 + 2 < vertices.length; i++) {
-                logger.info("  v{}: ({}, {}, {})", i, vertices[i * 3], vertices[i * 3 + 1], vertices[i * 3 + 2]);
-            }
-        }
-
-        // Apply subdivision via processor
-        ISubdivisionProcessor.SubdivisionResult result = subdivisionProcessor.applyEdgeSubdivision(
-            midpointPosition, endpoint1, endpoint2, vertexManager, faceMapper, vertexCount);
-
-        if (!result.success()) {
-            logger.warn("Subdivision failed: {}", result.errorMessage());
-            return -1;
-        }
-
-        // Update state
-        vertexCount += result.newVertexCount();
-        vertexManager.setIndices(result.newIndices());
-        indexCount = result.newIndices().length;
-        faceMapper.setMapping(result.newTriangleToFaceId());
-
-        // Rebuild GPU buffers
-        float[] interleavedData = geometryBuilder.buildInterleavedData(
-            vertexManager.getVertices(), vertexManager.getTexCoords());
-        updateVBO(interleavedData);
-        updateEBO(result.newIndices());
-
-        // Rebuild unique vertex mapping
-        uniqueMapper.buildMapping(vertexManager.getVertices());
-
-        // Notify listeners
-        changeNotifier.notifyGeometryRebuilt();
-
-        logger.debug("Applied subdivision: added {} vertices (first: {}), indices {} -> {}, unique: {}",
-            result.newVertexCount(), result.firstNewVertexIndex(),
-            (result.newIndices().length - result.newVertexCount() * 6) / 3,
-            indexCount, uniqueMapper.getUniqueVertexCount());
-
-        return result.firstNewVertexIndex();
-    }
-
-    // =========================================================================
-    // TEXTURE MANAGEMENT
-    // =========================================================================
-
-    /**
-     * Set the texture for rendering.
-     */
-    public void setTexture(int textureId) {
-        this.textureId = textureId;
-        this.useTexture = textureId > 0;
-    }
-
-    // =========================================================================
-    // MESH DATA LOADING (for .OMO format)
-    // =========================================================================
-
-    /**
-     * Load mesh state from MeshData (restored from .OMO file).
-     * This replaces the current geometry with the loaded data.
-     *
-     * @param meshData the mesh data to load
-     */
-    public void loadMeshData(OMOFormat.MeshData meshData) {
-        if (meshData == null || !meshData.hasCustomGeometry()) {
-            logger.debug("No custom mesh data to load");
-            return;
-        }
-
-        float[] vertices = meshData.vertices();
-        float[] texCoords = meshData.texCoords();
-        int[] indices = meshData.indices();
-        int[] triangleToFaceId = meshData.triangleToFaceId();
-        String uvModeStr = meshData.uvMode();
-
-        // Update UV mode
-        if (uvModeStr != null) {
-            try {
-                stateManager.setUVMode(UVMode.valueOf(uvModeStr));
-            } catch (IllegalArgumentException e) {
-                logger.warn("Unknown UV mode '{}', defaulting to FLAT", uvModeStr);
-                stateManager.setUVMode(UVMode.FLAT);
-            }
-        }
-
-        // Clear parts (we're loading direct mesh data, not part-based)
-        stateManager.clearParts();
-
-        // Set vertex data
-        vertexManager.setData(vertices.clone(), texCoords != null ? texCoords.clone() : null, indices != null ? indices.clone() : null);
-
-        // Update counts
-        vertexCount = vertices.length / 3;
-        indexCount = indices != null ? indices.length : 0;
-
-        // Restore face mapping (1:1 triangle-to-face for all geometry)
-        if (triangleToFaceId != null && triangleToFaceId.length > 0) {
-            faceMapper.setMapping(triangleToFaceId.clone());
-        } else if (indices != null) {
-            faceMapper.initializeStandardMapping(indices.length / 3);
-        } else {
-            faceMapper.clear();
-        }
-
-        // Rebuild unique vertex mapping
-        uniqueMapper.buildMapping(vertices);
-
-        // Update GPU buffers if initialized
-        if (initialized) {
-            float[] interleavedData = geometryBuilder.buildInterleavedData(vertices, texCoords);
-            updateVBO(interleavedData);
-            if (indices != null) {
-                updateEBO(indices);
-            }
-        }
-
-        // Notify listeners
-        changeNotifier.notifyGeometryRebuilt();
-
-        logger.info("Loaded custom mesh data: {} vertices, {} triangles, {} unique positions, uvMode={}",
-                vertexCount, indexCount / 3, uniqueMapper.getUniqueVertexCount(), stateManager.getUVMode());
-    }
-
-    /**
-     * Get current texture coordinates array.
-     * Useful for debugging and mesh data extraction.
-     *
-     * @return copy of texture coordinates array, or null if none
-     */
-    public float[] getTexCoords() {
-        float[] texCoords = vertexManager.getTexCoords();
-        return texCoords != null ? texCoords.clone() : null;
-    }
-
-    /**
-     * Get current triangle indices array.
-     * Useful for debugging and mesh data extraction.
-     *
-     * @return copy of indices array, or null if none
-     */
-    public int[] getIndices() {
-        return vertexManager.getIndices() != null ? vertexManager.getIndices().clone() : null;
-    }
-
-    /**
-     * Get current face mapping array.
-     *
-     * @return copy of face mapping, or null if none
-     */
-    public int[] getTriangleToFaceMapping() {
-        return faceMapper.getMappingCopy();
-    }
-
-    // =========================================================================
-    // OPENGL RENDERING (BaseRenderer implementation)
-    // =========================================================================
 
     @Override
     protected GeometryData createGeometry() {
@@ -658,12 +224,10 @@ public class GenericModelRenderer extends BaseRenderer {
 
     @Override
     protected void configureVertexAttributes() {
-        // Position attribute (location = 0): 3 floats
         glVertexAttribPointer(0, geometryBuilder.getPositionComponents(), GL_FLOAT, false,
             geometryBuilder.getStride(), geometryBuilder.getPositionOffset());
         glEnableVertexAttribArray(0);
 
-        // TexCoord attribute (location = 1): 2 floats
         glVertexAttribPointer(1, geometryBuilder.getTexCoordComponents(), GL_FLOAT, false,
             geometryBuilder.getStride(), geometryBuilder.getTexCoordOffset());
         glEnableVertexAttribArray(1);
@@ -675,97 +239,536 @@ public class GenericModelRenderer extends BaseRenderer {
             return;
         }
 
-        // Bind texture if available
-        if (useTexture && textureId > 0) {
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, textureId);
-            shader.setBool("uUseTexture", true);
-            shader.setInt("uTexture", 0);
-        } else {
+        // Unrendered mode: skip all texture binding, use solid gray
+        if (forceUnrendered) {
             shader.setBool("uUseTexture", false);
+
+            if (!textureOps.hasCustomMaterials()) {
+                if (indexCount > 0 && ebo != 0) {
+                    glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+                } else {
+                    glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+                }
+            } else {
+                if (rebuildPipeline.isDrawBatchesDirty()) {
+                    drawBatchManager.rebuildDrawBatches(ebo);
+                    rebuildPipeline.clearDrawBatchesDirty();
+                }
+                for (DrawBatchManager.MaterialDrawBatch batch : drawBatchManager.getDrawBatches()) {
+                    glDrawElements(GL_TRIANGLES, batch.indexCount(), GL_UNSIGNED_INT,
+                            (long) batch.indexOffset() * 4L);
+                }
+            }
+            return;
         }
 
-        // Draw
-        if (indexCount > 0 && ebo != 0) {
-            glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
-        } else {
-            glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+        // Fast path: no custom materials — single texture, one draw call
+        if (!textureOps.hasCustomMaterials()) {
+            if (textureOps.isTextureActive()) {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, textureOps.getTextureId());
+                shader.setBool("uUseTexture", true);
+                shader.setInt("uTexture", 0);
+            } else {
+                shader.setBool("uUseTexture", false);
+            }
+
+            if (indexCount > 0 && ebo != 0) {
+                glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+            } else {
+                glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+            }
+            return;
+        }
+
+        // Multi-material path: rebuild batches if dirty, then draw per batch
+        if (rebuildPipeline.isDrawBatchesDirty()) {
+            drawBatchManager.rebuildDrawBatches(ebo);
+            rebuildPipeline.clearDrawBatchesDirty();
+        }
+
+        shader.setInt("uTexture", 0);
+
+        for (DrawBatchManager.MaterialDrawBatch batch : drawBatchManager.getDrawBatches()) {
+            int batchTextureId = batch.textureId() > 0 ? batch.textureId() : textureOps.getTextureId();
+
+            if (batchTextureId > 0) {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, batchTextureId);
+                shader.setBool("uUseTexture", true);
+            } else {
+                shader.setBool("uUseTexture", false);
+            }
+
+            glDrawElements(GL_TRIANGLES, batch.indexCount(), GL_UNSIGNED_INT,
+                    (long) batch.indexOffset() * 4L);
         }
     }
 
     @Override
     protected void setUniforms(ShaderProgram shader, RenderContext context, org.joml.Matrix4f modelMatrix) {
-        // BaseRenderer.render() already incorporates modelMatrix into uMVPMatrix (MVP = P*V*M).
-        // The MATRIX shader multiplies: gl_Position = uMVPMatrix * uModelMatrix * pos
-        // To avoid double-transformation, pass identity for uModelMatrix.
-        // This ensures the model transforms at the same rate as the wireframe overlay.
-        shader.setMat4("uModelMatrix", new org.joml.Matrix4f()); // Identity matrix
+        shader.setMat4("uModelMatrix", IDENTITY_MATRIX);
+        org.joml.Matrix4f modelViewMatrix = new org.joml.Matrix4f(context.getCamera().getViewMatrix()).mul(modelMatrix);
+        shader.setMat4("uViewMatrix", modelViewMatrix);
     }
 
     // =========================================================================
-    // MESH DATA EXTRACTION (for MeshManager and overlay renderers)
+    // UV MODE (legacy — delegates to stateManager)
+    // =========================================================================
+
+    /** @deprecated Per-face UV is the only mode. Use {@link #getFaceTextureManager()} instead. */
+    @Deprecated
+    public void setUVMode(UVMode uvMode) {
+        logger.debug("setUVMode({}) called — ignored, per-face UV is the only mode", uvMode);
+        if (uvMode != null) {
+            stateManager.setUVMode(uvMode);
+        }
+    }
+
+    /** @deprecated Per-face UV is the only mode. Use {@link #getFaceTextureManager()} instead. */
+    @Deprecated
+    public UVMode getUVMode() {
+        return stateManager.getUVMode();
+    }
+
+    // =========================================================================
+    // VERTEX POSITION MANAGEMENT (delegates to MeshMutationCoordinator)
+    // =========================================================================
+
+    public void updateVertexPosition(int globalIndex, Vector3f position) {
+        mutationCoordinator.updateVertexPosition(globalIndex, position);
+    }
+
+    public void updateVertexPositions(float[] positions) {
+        mutationCoordinator.updateVertexPositions(positions);
+    }
+
+    public Vector3f getVertexPosition(int globalIndex) {
+        return vertexManager.getVertexPosition(globalIndex);
+    }
+
+    public int getTotalVertexCount() {
+        return vertexManager.getTotalVertexCount();
+    }
+
+    public float[] getAllMeshVertexPositions() {
+        return vertexManager.getAllMeshVertexPositions();
+    }
+
+    public List<Integer> findMeshVerticesAtPosition(Vector3f position, float epsilon) {
+        return vertexManager.findMeshVerticesAtPosition(position, epsilon);
+    }
+
+    /**
+     * Set unrendered mode — when true, the model renders with flat gray
+     * instead of textures (Blender solid-view style).
+     */
+    public void setForceUnrendered(boolean forceUnrendered) {
+        this.forceUnrendered = forceUnrendered;
+    }
+
+    public ModelBounds getModelBounds() {
+        if (cachedBounds == null) {
+            cachedBounds = ModelBoundsCalculator.compute(vertexManager.getVertices());
+        }
+        return cachedBounds;
+    }
+
+    // =========================================================================
+    // TRIANGLE & FACE QUERIES (delegates to faceMapper / topology)
+    // =========================================================================
+
+    public int getTriangleCount() {
+        int[] indices = vertexManager.getIndices();
+        return indices != null ? indices.length / 3 : 0;
+    }
+
+    public int[] getTriangleIndices() {
+        int[] indices = vertexManager.getIndices();
+        return indices != null ? indices.clone() : null;
+    }
+
+    public int getOriginalFaceIdForTriangle(int triangleIndex) {
+        MeshTopology topology = rebuildPipeline.getTopology();
+        if (topology != null) {
+            return topology.getOriginalFaceIdForTriangle(triangleIndex);
+        }
+        return faceMapper.getOriginalFaceIdForTriangle(triangleIndex);
+    }
+
+    public int getOriginalFaceCount() {
+        return faceMapper.getOriginalFaceCount();
+    }
+
+    public boolean hasTriangleToFaceMapping() {
+        return faceMapper.hasMapping();
+    }
+
+    // =========================================================================
+    // UNIQUE VERTEX MAPPING (delegates to uniqueMapper / topology)
+    // =========================================================================
+
+    public Vector3f getUniqueVertexPosition(int uniqueIndex) {
+        return uniqueMapper.getUniqueVertexPosition(uniqueIndex, vertexManager.getVertices());
+    }
+
+    public int[] getMeshIndicesForUniqueVertex(int uniqueIndex) {
+        MeshTopology topology = rebuildPipeline.getTopology();
+        if (topology != null) {
+            return topology.getMeshIndicesForUniqueVertex(uniqueIndex);
+        }
+        return uniqueMapper.getMeshIndicesForUniqueVertex(uniqueIndex);
+    }
+
+    public int getUniqueIndexForMeshVertex(int meshIndex) {
+        MeshTopology topology = rebuildPipeline.getTopology();
+        if (topology != null) {
+            return topology.getUniqueIndexForMeshVertex(meshIndex);
+        }
+        return uniqueMapper.getUniqueIndexForMeshVertex(meshIndex);
+    }
+
+    public float[] getAllUniqueVertexPositions() {
+        return uniqueMapper.getAllUniqueVertexPositions(vertexManager.getVertices());
+    }
+
+    public MeshTopology getTopology() {
+        return rebuildPipeline.getTopology();
+    }
+
+    // =========================================================================
+    // CHANGE NOTIFICATION (delegates to changeNotifier)
+    // =========================================================================
+
+    public void addMeshChangeListener(MeshChangeListener listener) {
+        changeNotifier.addListener(listener);
+    }
+
+    public void removeMeshChangeListener(MeshChangeListener listener) {
+        changeNotifier.removeListener(listener);
+    }
+
+    // =========================================================================
+    // MESH MUTATIONS (delegates to MeshMutationCoordinator)
+    // =========================================================================
+
+    public int applyEdgeSubdivisionByPosition(Vector3f midpointPosition, Vector3f endpoint1, Vector3f endpoint2) {
+        return mutationCoordinator.applyEdgeSubdivisionByPosition(midpointPosition, endpoint1, endpoint2);
+    }
+
+    public int subdivideEdgeAtParameter(int uniqueVertexA, int uniqueVertexB, float t) {
+        return mutationCoordinator.subdivideEdgeAtParameter(uniqueVertexA, uniqueVertexB, t);
+    }
+
+    public boolean insertEdgeBetweenVertices(int uniqueVertexA, int uniqueVertexB) {
+        return mutationCoordinator.insertEdgeBetweenVertices(uniqueVertexA, uniqueVertexB);
+    }
+
+    public boolean deleteFace(int faceId) {
+        return mutationCoordinator.deleteFace(faceId);
+    }
+
+    public boolean createFaceFromVertices(int[] selectedUniqueVertices) {
+        return mutationCoordinator.createFaceFromVertices(selectedUniqueVertices);
+    }
+
+    public boolean createFaceFromVertices(int[] selectedUniqueVertices, int activeMaterialId) {
+        return mutationCoordinator.createFaceFromVertices(selectedUniqueVertices, activeMaterialId);
+    }
+
+    // =========================================================================
+    // TEXTURE MANAGEMENT (delegates to TextureGPUOperations)
+    // =========================================================================
+
+    public void setTexture(int textureId) {
+        textureOps.setTexture(textureId);
+    }
+
+    public int getTextureId() {
+        return textureOps.getTextureId();
+    }
+
+    public void updateTextureRegion(int targetTextureId, int x, int y,
+                                    int width, int height, byte[] rgbaBytes) {
+        textureOps.updateTextureRegion(targetTextureId, x, y, width, height, rgbaBytes);
+    }
+
+    public byte[] readTexturePixels(int gpuTextureId) {
+        return textureOps.readTexturePixels(gpuTextureId);
+    }
+
+    public int[] getTextureDimensions(int gpuTextureId) {
+        return textureOps.getTextureDimensions(gpuTextureId);
+    }
+
+    public void setFaceMaterial(int faceId, int materialId) {
+        textureOps.setFaceMaterial(faceId, materialId);
+    }
+
+    public FaceTextureManager getFaceTextureManager() {
+        return faceTextureManager;
+    }
+
+    public void markDrawBatchesDirty() {
+        rebuildPipeline.markDrawBatchesDirty();
+    }
+
+    // =========================================================================
+    // PART MANAGEMENT
     // =========================================================================
 
     /**
-     * Extract face positions from current mesh data.
-     * Each face is represented as 4 vertices (quad) with 12 floats per face.
-     * This data is used by FaceRenderer for overlay rendering.
+     * Get the model part manager for multi-part model operations.
      *
-     * SOLID: Delegates to GMRFaceExtractor for extraction logic (Single Responsibility).
-     *
-     * @return Array of face vertex positions [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...]
-     *         or empty array if no face data available
+     * @return The ModelPartManager instance
      */
-    public float[] extractFacePositions() {
-        return faceExtractor.extractFacePositions(
-            vertexManager.getVertices(),
-            vertexManager.getIndices(),
-            faceMapper
+    public ModelPartManager getPartManager() {
+        return partManager;
+    }
+
+    /**
+     * Assign a distinct default material to each face of a model part.
+     * Each face gets its own 16x16 solid gray GPU texture and material,
+     * ensuring per-face texture edits are fully isolated.
+     *
+     * @param part The part descriptor (must have a valid meshRange)
+     */
+    public void assignDefaultMaterialToPartFaces(
+            com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor part) {
+        if (part == null || part.meshRange() == null) {
+            logger.warn("Cannot assign default material: part or meshRange is null");
+            return;
+        }
+
+        com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader loader =
+                new com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader();
+        com.openmason.main.systems.rendering.model.gmr.parts.MeshRange range = part.meshRange();
+
+        for (int faceId = range.faceStart(); faceId < range.faceStart() + range.faceCount(); faceId++) {
+            int gpuTextureId = loader.createBlankTexture(16, 16);
+            if (gpuTextureId <= 0) {
+                logger.warn("Failed to create default texture for part '{}' face {}", part.name(), faceId);
+                continue;
+            }
+
+            int materialId = com.openmason.main.systems.menus.panes.propertyPane.sections.FaceMaterialSection
+                    .allocateNextMaterialId();
+            MaterialDefinition material = new MaterialDefinition(
+                    materialId, "Face " + faceId, gpuTextureId,
+                    MaterialDefinition.RenderLayer.OPAQUE,
+                    MaterialDefinition.MaterialProperties.NONE
+            );
+            faceTextureManager.registerMaterial(material);
+            faceTextureManager.assignDefaultMapping(faceId, materialId);
+        }
+
+        // Trigger UV refresh and draw batch rebuild
+        rebuildPipeline.markDrawBatchesDirty();
+        textureOps.regenerateUVsAndUpload();
+
+        logger.info("Assigned per-face materials to part '{}' faces [{}-{})",
+                part.name(), range.faceStart(), range.faceStart() + range.faceCount());
+    }
+
+    /**
+     * Callback from ModelPartManager when the combined mesh buffer is rebuilt.
+     * Bridges part-level changes into the existing serialization/render pipeline.
+     */
+    private void onPartMeshRebuilt(PartMeshRebuilder.RebuildResult result) {
+        // When all parts are hidden, clear the rendered mesh instead of keeping stale geometry
+        if (result.totalVertexCount() == 0) {
+            logger.debug("Part mesh rebuild produced empty result — clearing mesh");
+            vertexManager.setData(new float[0], new float[0], new int[0]);
+            vertexCount = 0;
+            indexCount = 0;
+            faceMapper.clear();
+            rebuildPipeline.rebuildFull(0, 0);
+            return;
+        }
+
+        // Remap face texture mappings if face IDs shifted (e.g. after part deletion)
+        if (result.faceIdRemap() != null && !result.faceIdRemap().isEmpty()) {
+            faceTextureManager.remapFaceIds(result.faceIdRemap());
+            logger.debug("Remapped {} face texture IDs after part change", result.faceIdRemap().size());
+        }
+
+        // Wrap the rebuilt data as MeshData and feed through the geometry-only path.
+        // Uses updateMeshGeometry() instead of loadMeshData() to preserve existing
+        // face texture mappings — critical when parts are added/moved/removed.
+        OMOFormat.MeshData meshData = new OMOFormat.MeshData(
+                result.combinedVertices(),
+                result.combinedTexCoords(),
+                result.combinedIndices(),
+                result.triangleToFaceId(),
+                stateManager.getUVMode() != null ? stateManager.getUVMode().name() : "FLAT"
         );
+
+        serializationAdapter.updateMeshGeometry(meshData);
+        logger.debug("Part mesh rebuild pushed to pipeline: {} vertices, {} indices",
+                result.totalVertexCount(), result.totalIndexCount());
     }
 
     /**
-     * Extract edge positions from current mesh data.
-     * Each edge is represented as 2 endpoints with 6 floats per edge.
-     * This data is used by EdgeRenderer for overlay rendering.
+     * Load mesh data as a single root part via the ModelPartManager.
+     * This is the preferred entry point for loading model geometry — it ensures
+     * the part manager is the single source of truth for all mesh data.
      *
-     * SOLID: Delegates to GMREdgeExtractor for extraction logic (Single Responsibility).
-     *
-     * @return Array of edge endpoint positions [x1,y1,z1, x2,y2,z2, ...]
-     *         or empty array if no edge data available
+     * @param meshData  The mesh data to load
+     * @param partName  Display name for the root part
      */
+    public void loadMeshDataAsPart(OMOFormat.MeshData meshData, String partName) {
+        if (meshData == null || !meshData.hasCustomGeometry()) {
+            logger.debug("No custom mesh data to load as part");
+            return;
+        }
+
+        // Clear stale face texture data from any previously loaded model.
+        // This is the "load a fresh model" entry point — old per-face materials
+        // must not carry over. (updateMeshGeometry intentionally preserves them
+        // for part-level changes, so the clear must happen here.)
+        faceTextureManager.clear();
+
+        // Update UV mode before importing (so the rebuild callback uses the right mode)
+        if (meshData.uvMode() != null) {
+            try {
+                stateManager.setUVMode(UVMode.valueOf(meshData.uvMode()));
+            } catch (IllegalArgumentException e) {
+                stateManager.setUVMode(UVMode.FLAT);
+            }
+        }
+
+        // Build PartGeometry directly from MeshData — preserves the exact
+        // triangle-to-face mapping from the .OMO file instead of regenerating it.
+        PartMeshRebuilder.PartGeometry geo = PartMeshRebuilder.PartGeometry.of(
+                meshData.vertices(),
+                meshData.texCoords(),
+                meshData.indices(),
+                meshData.triangleToFaceId()
+        );
+
+        // Import as single part — clears existing parts, adds the root,
+        // rebuilds the combined mesh, and pushes through the pipeline via onPartMeshRebuilt
+        String name = partName != null ? partName : "Root";
+        partManager.importAsSinglePartFromGeometry(name, geo);
+
+        logger.info("Loaded mesh data as part '{}': {} vertices, {} triangles",
+                name, meshData.getVertexCount(), meshData.getTriangleCount());
+    }
+
+    // =========================================================================
+    // SERIALIZATION (delegates to MeshSerializationAdapter)
+    // =========================================================================
+
+    public void loadMeshData(OMOFormat.MeshData meshData) {
+        serializationAdapter.loadMeshData(meshData);
+    }
+
+    public OMOFormat.MeshData toMeshData() {
+        return serializationAdapter.toMeshData();
+    }
+
+    public void restoreFromSnapshot(float[] vertices, float[] texCoords, int[] indices,
+                                     int[] triangleToFaceId,
+                                     Map<Integer, FaceTextureMapping> faceMappings,
+                                     Map<Integer, MaterialDefinition> materials) {
+        serializationAdapter.restoreFromSnapshot(vertices, texCoords, indices,
+            triangleToFaceId, faceMappings, materials);
+    }
+
+    public void refreshUVs() {
+        serializationAdapter.refreshUVs();
+    }
+
+    // =========================================================================
+    // DATA ACCESS & EXTRACTION
+    // =========================================================================
+
+    public float[] getTexCoords() {
+        float[] texCoords = vertexManager.getTexCoords();
+        return texCoords != null ? texCoords.clone() : null;
+    }
+
+    public int[] getIndices() {
+        int[] indices = vertexManager.getIndices();
+        return indices != null ? indices.clone() : null;
+    }
+
+    public int[] getTriangleToFaceMapping() {
+        return faceMapper.getMappingCopy();
+    }
+
+    public GMRFaceExtractor.FaceExtractionResult extractFaceData() {
+        MeshTopology topology = rebuildPipeline.getTopology();
+        if (topology != null) {
+            return faceExtractor.extractFaceData(vertexManager.getVertices(), topology);
+        }
+        return faceExtractor.extractFaceData(
+            vertexManager.getVertices(), vertexManager.getIndices(), faceMapper);
+    }
+
+    public float[][] extractFacePolygonFromUVs(int faceId) {
+        float[] texCoords = vertexManager.getTexCoords();
+        int[] indices = vertexManager.getIndices();
+        if (texCoords == null || indices == null) {
+            return null;
+        }
+
+        FaceTextureMapping mapping = faceTextureManager.getFaceMapping(faceId);
+        if (mapping == null) {
+            return null;
+        }
+        FaceTextureMapping.UVRegion uvRegion = mapping.uvRegion();
+
+        List<Integer> triangles = FaceTriangleQuery.findTrianglesForFace(faceId, indices, faceMapper);
+        if (triangles.isEmpty()) {
+            return null;
+        }
+        Integer[] boundaryIndices = FaceTriangleQuery.extractFaceVertexIndices(triangles, indices);
+        if (boundaryIndices.length < 3) {
+            return null;
+        }
+
+        float regionW = uvRegion.width();
+        float regionH = uvRegion.height();
+        if (regionW < 1e-6f || regionH < 1e-6f) {
+            return null;
+        }
+
+        float[] localX = new float[boundaryIndices.length];
+        float[] localY = new float[boundaryIndices.length];
+        for (int i = 0; i < boundaryIndices.length; i++) {
+            int idx = boundaryIndices[i];
+            float u = texCoords[idx * 2];
+            float v = texCoords[idx * 2 + 1];
+            localX[i] = Math.clamp((u - uvRegion.u0()) / regionW, 0.0f, 1.0f);
+            localY[i] = Math.clamp((v - uvRegion.v0()) / regionH, 0.0f, 1.0f);
+        }
+
+        return new float[][]{localX, localY};
+    }
+
     public float[] extractEdgePositions() {
+        MeshTopology topology = rebuildPipeline.getTopology();
+        if (topology != null) {
+            return edgeExtractor.extractEdgePositions(vertexManager.getVertices(), topology);
+        }
         return edgeExtractor.extractEdgePositions(
-            vertexManager.getVertices(),
-            vertexManager.getIndices(),
-            faceMapper
-        );
+            vertexManager.getVertices(), vertexManager.getIndices(), faceMapper);
     }
 
-    /**
-     * Get face count from current mesh data.
-     *
-     * @return Number of faces in the mesh
-     */
     public int getFaceCount() {
         return faceMapper.getOriginalFaceCount();
     }
 
-    /**
-     * Get edge count from current mesh data.
-     * Each face contributes 4 edges.
-     *
-     * @return Number of edges in the mesh
-     */
     public int getEdgeCount() {
-        return faceMapper.getOriginalFaceCount() * 4;
+        int upperBound = faceMapper.getFaceIdUpperBound();
+        int totalEdges = 0;
+        for (int i = 0; i < upperBound; i++) {
+            totalEdges += faceMapper.getEdgeCountForFace(i);
+        }
+        return totalEdges;
     }
 
-    /**
-     * Get unique vertex count.
-     *
-     * @return Number of unique geometric vertices
-     */
     public int getUniqueVertexCount() {
         return uniqueMapper.getUniqueVertexCount();
     }

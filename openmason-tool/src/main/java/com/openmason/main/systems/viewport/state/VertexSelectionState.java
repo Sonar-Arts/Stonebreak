@@ -8,8 +8,13 @@ import java.util.*;
 
 /**
  * Manages vertex selection state for the viewport system.
- * Supports multi-selection: tracks multiple selected vertices with their original and current positions.
- * Thread-safe state management with dirty tracking.
+ * Supports multi-selection: tracks selected vertex indices and their original positions
+ * (at the time of selection or last drag commit) for undo/delta calculations.
+ *
+ * <p>Current positions during a drag live in the VertexRenderer (single source of truth).
+ * This class only stores originals so that deltas can be computed relative to the drag start.</p>
+ *
+ * Thread-safe state management.
  */
 public class VertexSelectionState {
 
@@ -18,10 +23,8 @@ public class VertexSelectionState {
     // Multi-selection state (LinkedHashSet preserves insertion order)
     private final Set<Integer> selectedVertexIndices = new LinkedHashSet<>();
     private final Map<Integer, Vector3f> originalPositions = new HashMap<>();
-    private final Map<Integer, Vector3f> currentPositions = new HashMap<>();
 
     private boolean isDragging = false;
-    private boolean isModified = false;
 
     // Working plane for plane-constrained translation
     private Vector3f planeNormal = null;
@@ -39,7 +42,7 @@ public class VertexSelectionState {
      * Use this for normal click (no Shift).
      *
      * @param vertexIndex the index of the vertex to select
-     * @param position    the world-space position of the vertex
+     * @param position    the model-space position of the vertex
      * @throws IllegalArgumentException if vertexIndex is negative or position is null
      */
     public synchronized void selectVertex(int vertexIndex, Vector3f position) {
@@ -50,11 +53,9 @@ public class VertexSelectionState {
             throw new IllegalArgumentException("Position cannot be null");
         }
 
-        // Clear existing selection and select only this vertex
         clearSelection();
         selectedVertexIndices.add(vertexIndex);
         originalPositions.put(vertexIndex, new Vector3f(position));
-        currentPositions.put(vertexIndex, new Vector3f(position));
 
         logger.debug("Vertex {} selected at position ({}, {}, {})",
                 vertexIndex,
@@ -65,10 +66,10 @@ public class VertexSelectionState {
 
     /**
      * Toggle a vertex in the selection (add if not selected, remove if selected).
-     * Use this for Shift+click multi-selection.
+     * Use this for multi-selection.
      *
      * @param vertexIndex the index of the vertex to toggle
-     * @param position    the world-space position of the vertex (only used if adding)
+     * @param position    the model-space position of the vertex (only used if adding)
      * @throws IllegalArgumentException if vertexIndex is negative or position is null
      */
     public synchronized void toggleVertex(int vertexIndex, Vector3f position) {
@@ -80,17 +81,13 @@ public class VertexSelectionState {
         }
 
         if (selectedVertexIndices.contains(vertexIndex)) {
-            // Remove from selection
             selectedVertexIndices.remove(vertexIndex);
             originalPositions.remove(vertexIndex);
-            currentPositions.remove(vertexIndex);
             logger.debug("Vertex {} removed from selection (now {} selected)",
                     vertexIndex, selectedVertexIndices.size());
         } else {
-            // Add to selection
             selectedVertexIndices.add(vertexIndex);
             originalPositions.put(vertexIndex, new Vector3f(position));
-            currentPositions.put(vertexIndex, new Vector3f(position));
             logger.debug("Vertex {} added to selection at ({}, {}, {}) (now {} selected)",
                     vertexIndex,
                     String.format("%.2f", position.x),
@@ -120,9 +117,7 @@ public class VertexSelectionState {
 
         selectedVertexIndices.clear();
         originalPositions.clear();
-        currentPositions.clear();
         isDragging = false;
-        isModified = false;
         planeNormal = null;
         planePoint = null;
     }
@@ -154,129 +149,34 @@ public class VertexSelectionState {
     }
 
     /**
-     * Update all selected vertex positions during drag by applying a delta.
+     * End the drag operation, committing new positions as originals.
+     * The committed positions come from the vertex renderer (single source of truth).
      *
-     * @param delta the translation delta to apply to all selected vertices
-     * @throws IllegalStateException if not currently dragging
+     * @param committedPositions map of vertex index to new model-space position
      */
-    public synchronized void updatePositionsByDelta(Vector3f delta) {
-        if (!isDragging) {
-            throw new IllegalStateException("Cannot update positions: not currently dragging");
-        }
-        if (delta == null) {
-            throw new IllegalArgumentException("Delta cannot be null");
-        }
-
-        // Apply delta to all selected vertices
-        for (Integer vertexIndex : selectedVertexIndices) {
-            Vector3f original = originalPositions.get(vertexIndex);
-            if (original != null) {
-                Vector3f newPosition = new Vector3f(original).add(delta);
-                currentPositions.put(vertexIndex, newPosition);
-            }
-        }
-
-        // Check if any position has changed from original
-        float threshold = 0.001f;
-        isModified = (delta.lengthSquared() > threshold * threshold);
-
-        logger.trace("Updated {} vertex positions by delta ({}, {}, {}), modified={}",
-                selectedVertexIndices.size(),
-                String.format("%.2f", delta.x),
-                String.format("%.2f", delta.y),
-                String.format("%.2f", delta.z),
-                isModified);
-    }
-
-    /**
-     * Update the position of a specific vertex during drag.
-     * Used for single-vertex backward compatibility.
-     *
-     * @param newPosition the new world-space position
-     * @throws IllegalStateException if not currently dragging
-     */
-    public synchronized void updatePosition(Vector3f newPosition) {
-        if (!isDragging) {
-            throw new IllegalStateException("Cannot update position: not currently dragging");
-        }
-        if (newPosition == null) {
-            throw new IllegalArgumentException("New position cannot be null");
-        }
-
-        // For backward compatibility: update first selected vertex
-        if (!selectedVertexIndices.isEmpty()) {
-            Integer firstIndex = selectedVertexIndices.iterator().next();
-            currentPositions.put(firstIndex, new Vector3f(newPosition));
-
-            // Check if position has changed from original
-            Vector3f original = originalPositions.get(firstIndex);
-            if (original != null) {
-                float threshold = 0.001f;
-                float distanceSquared = original.distanceSquared(newPosition);
-                isModified = (distanceSquared > threshold * threshold);
-            }
-
-            logger.trace("Updated vertex {} position to ({}, {}, {}), modified={}",
-                    firstIndex,
-                    String.format("%.2f", newPosition.x),
-                    String.format("%.2f", newPosition.y),
-                    String.format("%.2f", newPosition.z),
-                    isModified);
-        }
-    }
-
-    /**
-     * End the drag operation, committing the position changes.
-     * Updates original positions to current positions so subsequent drags start from here.
-     */
-    public synchronized void endDrag() {
+    public synchronized void endDrag(Map<Integer, Vector3f> committedPositions) {
         if (isDragging) {
-            // Commit current positions as new original positions
-            for (Integer vertexIndex : selectedVertexIndices) {
-                Vector3f currentPos = currentPositions.get(vertexIndex);
-                if (currentPos != null) {
-                    originalPositions.put(vertexIndex, new Vector3f(currentPos));
+            for (Map.Entry<Integer, Vector3f> entry : committedPositions.entrySet()) {
+                if (selectedVertexIndices.contains(entry.getKey()) && entry.getValue() != null) {
+                    originalPositions.put(entry.getKey(), new Vector3f(entry.getValue()));
                 }
             }
 
             isDragging = false;
-            logger.debug("Ended drag for {} vertices, modified={}, positions committed",
-                    selectedVertexIndices.size(), isModified);
-        }
-    }
-
-    /**
-     * Cancel the drag operation, reverting all vertices to original positions.
-     */
-    public synchronized void cancelDrag() {
-        if (isDragging) {
-            // Revert all vertices to original positions
-            for (Integer vertexIndex : selectedVertexIndices) {
-                Vector3f original = originalPositions.get(vertexIndex);
-                if (original != null) {
-                    currentPositions.put(vertexIndex, new Vector3f(original));
-                }
-            }
-            isDragging = false;
-            isModified = false;
-            logger.debug("Cancelled drag for {} vertices, reverted to original positions",
+            logger.debug("Ended drag for {} vertices, positions committed",
                     selectedVertexIndices.size());
         }
     }
 
     /**
-     * Revert all current positions to original positions.
+     * Cancel the drag operation.
+     * The translation handler is responsible for reverting vertex positions in the renderer
+     * using the original positions from this state.
      */
-    public synchronized void revertToOriginal() {
-        if (!selectedVertexIndices.isEmpty()) {
-            for (Integer vertexIndex : selectedVertexIndices) {
-                Vector3f original = originalPositions.get(vertexIndex);
-                if (original != null) {
-                    currentPositions.put(vertexIndex, new Vector3f(original));
-                }
-            }
-            isModified = false;
-            logger.debug("Reverted {} vertices to original positions", selectedVertexIndices.size());
+    public synchronized void cancelDrag() {
+        if (isDragging) {
+            isDragging = false;
+            logger.debug("Cancelled drag for {} vertices", selectedVertexIndices.size());
         }
     }
 
@@ -330,7 +230,7 @@ public class VertexSelectionState {
     }
 
     /**
-     * Get the original position of the first selected vertex (for backward compatibility).
+     * Get the original position of the first selected vertex.
      *
      * @return copy of original position, or null if no selection
      */
@@ -344,46 +244,12 @@ public class VertexSelectionState {
     }
 
     /**
-     * Get the current position of a specific vertex.
-     *
-     * @param vertexIndex the vertex index
-     * @return copy of current position, or null if not in selection
-     */
-    public synchronized Vector3f getCurrentPosition(int vertexIndex) {
-        Vector3f pos = currentPositions.get(vertexIndex);
-        return pos != null ? new Vector3f(pos) : null;
-    }
-
-    /**
-     * Get the current position of the first selected vertex (for backward compatibility).
-     *
-     * @return copy of current position, or null if no selection
-     */
-    public synchronized Vector3f getCurrentPosition() {
-        if (selectedVertexIndices.isEmpty()) {
-            return null;
-        }
-        Integer firstIndex = selectedVertexIndices.iterator().next();
-        Vector3f pos = currentPositions.get(firstIndex);
-        return pos != null ? new Vector3f(pos) : null;
-    }
-
-    /**
      * Check if currently dragging vertices.
      *
      * @return true if dragging, false otherwise
      */
     public synchronized boolean isDragging() {
         return isDragging;
-    }
-
-    /**
-     * Check if any selected vertex has been modified (position changed from original).
-     *
-     * @return true if modified, false otherwise
-     */
-    public synchronized boolean isModified() {
-        return isModified;
     }
 
     /**
@@ -409,9 +275,9 @@ public class VertexSelectionState {
         if (selectedVertexIndices.isEmpty()) {
             return "VertexSelectionState{no selection}";
         }
-        return String.format("VertexSelectionState{count=%d, indices=%s, dragging=%s, modified=%s}",
+        return String.format("VertexSelectionState{count=%d, indices=%s, dragging=%s}",
                 selectedVertexIndices.size(),
                 selectedVertexIndices,
-                isDragging, isModified);
+                isDragging);
     }
 }

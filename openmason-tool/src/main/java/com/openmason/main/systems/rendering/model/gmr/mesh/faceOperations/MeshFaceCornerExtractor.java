@@ -45,37 +45,18 @@ public class MeshFaceCornerExtractor {
             return null;
         }
 
-        // Extract vertices dynamically
+        // Extract vertices inline (previously delegated to FaceCornerPositionExtractor)
         Vector3f[] vertices = new Vector3f[verticesPerFace];
         for (int i = 0; i < verticesPerFace; i++) {
-            vertices[i] = FaceCornerPositionExtractor.extractFaceCornerPosition(facePositions, posIndex, i, verticesPerFace);
+            int cornerPosIdx = posIndex + (i * COMPONENTS_PER_POSITION);
+            vertices[i] = new Vector3f(
+                facePositions[cornerPosIdx],
+                facePositions[cornerPosIdx + 1],
+                facePositions[cornerPosIdx + 2]
+            );
         }
 
         return vertices;
-    }
-
-    /**
-     * Get face vertex indices for a face from the mapping.
-     * Array length depends on face topology (e.g., 3 for triangles, 4 for quads).
-     *
-     * @param faceIndex Face index
-     * @param faceCount Total number of faces
-     * @param faceToVertexMapping Map from face index to vertex indices
-     * @return Array of vertex indices [v0, v1, v2, ..., vN], or null if invalid
-     */
-    public int[] getFaceVertexIndices(int faceIndex, int faceCount,
-                                     java.util.Map<Integer, int[]> faceToVertexMapping) {
-        if (faceIndex < 0 || faceIndex >= faceCount) {
-            logger.warn("Invalid face index: {} (valid range: 0-{})", faceIndex, faceCount - 1);
-            return null;
-        }
-
-        if (faceToVertexMapping == null) {
-            logger.warn("Face-to-vertex mapping is null");
-            return null;
-        }
-
-        return faceToVertexMapping.get(faceIndex);
     }
 
     /**

@@ -153,6 +153,101 @@ public class CanvasState {
     }
 
     /**
+     * Calculate the zoom level that makes a canvas region fill the viewport.
+     *
+     * <p>Fits the region within the viewport with a small margin, choosing
+     * the axis that constrains first so the entire region is visible.
+     *
+     * @param canvasWidth   region width in canvas pixels
+     * @param canvasHeight  region height in canvas pixels
+     * @param viewportWidth available viewport width in screen pixels
+     * @param viewportHeight available viewport height in screen pixels
+     * @return zoom level that fits the region
+     */
+    public static float calculateZoomToFit(int canvasWidth, int canvasHeight,
+                                            float viewportWidth, float viewportHeight) {
+        if (canvasWidth <= 0 || canvasHeight <= 0
+                || viewportWidth <= 0 || viewportHeight <= 0) {
+            return DEFAULT_ZOOM;
+        }
+
+        // 90% of viewport to leave a comfortable margin
+        float margin = 0.9f;
+        float zoomX = (viewportWidth * margin) / canvasWidth;
+        float zoomY = (viewportHeight * margin) / canvasHeight;
+
+        // Use the smaller zoom so the entire region fits
+        float zoom = Math.min(zoomX, zoomY);
+        return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+    }
+
+    /**
+     * Reset view to fit a canvas region within the viewport.
+     *
+     * <p>Sets zoom so the region fills the viewport and centers the pan offset.
+     *
+     * @param canvasWidth    region width in canvas pixels
+     * @param canvasHeight   region height in canvas pixels
+     * @param viewportWidth  available viewport width in screen pixels
+     * @param viewportHeight available viewport height in screen pixels
+     */
+    public void resetViewToFit(int canvasWidth, int canvasHeight,
+                                float viewportWidth, float viewportHeight) {
+        setZoomLevel(calculateZoomToFit(canvasWidth, canvasHeight,
+                                         viewportWidth, viewportHeight));
+        resetPan();
+    }
+
+    /**
+     * Frame the view on a UV sub-region of the canvas.
+     *
+     * <p>Sets zoom so the region fills the viewport and pans so the region
+     * is centered. This is the primary entry point for "Edit Texture" on a
+     * face — the viewport jumps directly to the face's UV area.
+     *
+     * @param u0             UV region left   (0.0–1.0)
+     * @param v0             UV region top    (0.0–1.0)
+     * @param u1             UV region right  (0.0–1.0)
+     * @param v1             UV region bottom (0.0–1.0)
+     * @param canvasWidth    full canvas width in pixels
+     * @param canvasHeight   full canvas height in pixels
+     * @param viewportWidth  available viewport width in screen pixels
+     * @param viewportHeight available viewport height in screen pixels
+     */
+    public void frameTo(float u0, float v0, float u1, float v1,
+                         int canvasWidth, int canvasHeight,
+                         float viewportWidth, float viewportHeight) {
+
+        // Region size in canvas pixels
+        float regionW = (u1 - u0) * canvasWidth;
+        float regionH = (v1 - v0) * canvasHeight;
+
+        if (regionW <= 0 || regionH <= 0 || viewportWidth <= 0 || viewportHeight <= 0) {
+            resetView();
+            return;
+        }
+
+        // Zoom to fit the region
+        int regionPixelW = Math.max(1, Math.round(regionW));
+        int regionPixelH = Math.max(1, Math.round(regionH));
+        setZoomLevel(calculateZoomToFit(regionPixelW, regionPixelH, viewportWidth, viewportHeight));
+
+        // Region center in canvas pixels
+        float regionCenterX = (u0 + u1) * 0.5f * canvasWidth;
+        float regionCenterY = (v0 + v1) * 0.5f * canvasHeight;
+
+        // Canvas center in canvas pixels
+        float canvasCenterX = canvasWidth * 0.5f;
+        float canvasCenterY = canvasHeight * 0.5f;
+
+        // Pan offset shifts the canvas so the region center aligns with the viewport center.
+        // The renderer already centers the full canvas in the viewport, so we only need to
+        // compensate for the difference between the canvas center and the region center.
+        this.panOffsetX = (canvasCenterX - regionCenterX) * zoomLevel;
+        this.panOffsetY = (canvasCenterY - regionCenterY) * zoomLevel;
+    }
+
+    /**
      * Convert screen coordinates to canvas pixel coordinates.
      *
      * @param screenX screen X coordinate

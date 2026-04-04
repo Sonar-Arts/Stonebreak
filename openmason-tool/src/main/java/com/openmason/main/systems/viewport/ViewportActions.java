@@ -2,6 +2,7 @@ package com.openmason.main.systems.viewport;
 
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import org.slf4j.Logger;
@@ -25,6 +26,28 @@ public class ViewportActions {
         this.viewport = viewport;
         this.state = state;
         this.preferencesManager = preferencesManager;
+    }
+
+    // ========== Undo/Redo ==========
+
+    /**
+     * Undo the last model editing operation (Ctrl+Z).
+     */
+    public void undo() {
+        ModelCommandHistory history = viewport.getCommandHistory();
+        if (history != null && history.canUndo()) {
+            history.undo();
+        }
+    }
+
+    /**
+     * Redo the last undone model editing operation (Ctrl+Y).
+     */
+    public void redo() {
+        ModelCommandHistory history = viewport.getCommandHistory();
+        if (history != null && history.canRedo()) {
+            history.redo();
+        }
     }
 
     // ========== View Mode Operations ==========
@@ -78,31 +101,23 @@ public class ViewportActions {
 
     public void updateRenderMode() {
         String renderMode = state.getCurrentRenderMode();
+        boolean unrendered = "unrendered".equals(renderMode.toLowerCase());
 
-        switch (renderMode.toLowerCase()) {
-            case "wireframe" -> {
-                state.getWireframeMode().set(true);
-                viewport.setWireframeMode(true);
-            }
-            default -> {
-                state.getWireframeMode().set(false);
-                viewport.setWireframeMode(false);
-            }
-        }
+        state.getUnrenderedMode().set(unrendered);
+        viewport.setUnrenderedMode(unrendered);
     }
 
-    public void toggleWireframe() {
-        boolean newMode = !state.getWireframeMode().get();
-        state.getWireframeMode().set(newMode);
-        logger.info("Wireframe mode: {}", newMode);
-
-        viewport.setWireframeMode(newMode);
+    public void toggleUnrendered() {
+        boolean newMode = !state.getUnrenderedMode().get();
+        state.getUnrenderedMode().set(newMode);
+        viewport.setUnrenderedMode(newMode);
+        logger.info("Unrendered mode: {}", newMode);
 
         // Update render mode combo to match
         if (newMode) {
-            state.getCurrentRenderModeIndex().set(1); // Wireframe
+            state.getCurrentRenderModeIndex().set(1); // Unrendered
         } else {
-            state.getCurrentRenderModeIndex().set(0); // Solid
+            state.getCurrentRenderModeIndex().set(0); // Textured
         }
     }
 
@@ -233,8 +248,16 @@ public class ViewportActions {
 
     public void toggleGizmo() {
         boolean currentState = viewport.isGizmoEnabled();
-        viewport.setGizmoEnabled(!currentState);
-        logger.info("Transform gizmo toggled: {}", !currentState);
+        boolean newState = !currentState;
+
+        // In auto-show mode, Ctrl+T acts as a temporary override
+        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState gizmoState = viewport.getGizmoState();
+        if (gizmoState.getDisplayMode() == com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT) {
+            gizmoState.setManualOverrideActive(true);
+        }
+
+        viewport.setGizmoEnabled(newState);
+        logger.info("Transform gizmo toggled: {}", newState);
     }
 
     public void setGizmoMode(GizmoState.Mode mode) {
@@ -253,6 +276,20 @@ public class ViewportActions {
     public void applyRenderingSettings() {
         logger.info("Applying rendering settings");
         // Future implementation for applying rendering quality settings
+    }
+
+    // ========== Knife Tool (K Key) ==========
+
+    /**
+     * Toggle the knife tool from keybind (K key).
+     * Only works in Edge edit mode. Two-click workflow for face splitting.
+     */
+    public void toggleKnifeTool() {
+        if (!EditModeManager.getInstance().isEdgeEditingAllowed()) {
+            logger.debug("Knife tool requires Edge edit mode");
+            return;
+        }
+        viewport.toggleKnifeTool();
     }
 
     // ========== Grab Mode (G Key) ==========

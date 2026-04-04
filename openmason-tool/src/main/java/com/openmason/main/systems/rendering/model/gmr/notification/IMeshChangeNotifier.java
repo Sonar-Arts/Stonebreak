@@ -1,6 +1,7 @@
 package com.openmason.main.systems.rendering.model.gmr.notification;
 
 import com.openmason.main.systems.rendering.model.MeshChangeListener;
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
 import org.joml.Vector3f;
 
 /**
@@ -52,4 +53,12 @@ public interface IMeshChangeNotifier {
      * @return true if registered
      */
     boolean hasListener(MeshChangeListener listener);
+
+    /**
+     * Notify all listeners that the mesh topology has been rebuilt.
+     * Called after subdivision, model loading, or any structural change.
+     *
+     * @param topology The new topology index, or null if unavailable
+     */
+    void notifyTopologyRebuilt(MeshTopology topology);
 }

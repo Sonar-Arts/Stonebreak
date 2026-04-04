@@ -1,8 +1,11 @@
 package com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering;
 
+import com.openmason.main.systems.rendering.model.ModelBounds;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoInteractionHandler;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoPart;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.ITransformTarget;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.modes.IGizmoMode;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.modes.RotateMode;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.modes.ScaleMode;
@@ -13,10 +16,6 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL30;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +25,10 @@ import java.util.Map;
  * Extends SOLID principles with extensible mode system and proper resource management.
  */
 public class GizmoRenderer {
+
+    private static final float GIZMO_SCALE_FACTOR = 0.3f;
+    private static final float MIN_GIZMO_SCALE = 0.5f;
+    private static final float MAX_GIZMO_SCALE = 5.0f;
 
     private final GizmoState gizmoState;
     private final TransformState transformState;
@@ -37,6 +40,8 @@ public class GizmoRenderer {
 
     private int shaderProgram = -1;
     private boolean initialized = false;
+
+    private ModelBounds modelBounds = ModelBounds.EMPTY;
 
     /**
      * Creates a new GizmoRenderer.
@@ -74,25 +79,18 @@ public class GizmoRenderer {
      */
     public void initialize() {
         if (initialized) {
-            return; // Already initialized
+            return;
         }
 
         try {
-            shaderProgram = loadGizmoShaders();
+            shaderProgram = GizmoShaderLoader.loadGizmoShaders();
             if (shaderProgram < 0) {
                 throw new IllegalStateException("Failed to load gizmo shaders");
             }
 
             for (IGizmoMode mode : modes.values()) {
                 mode.initialize();
-
-                if (mode instanceof TranslateMode) {
-                    ((TranslateMode) mode).setShaderProgram(shaderProgram);
-                } else if (mode instanceof RotateMode) {
-                    ((RotateMode) mode).setShaderProgram(shaderProgram);
-                } else if (mode instanceof ScaleMode) {
-                    ((ScaleMode) mode).setShaderProgram(shaderProgram);
-                }
+                mode.setShaderProgram(shaderProgram);
             }
 
             initialized = true;
@@ -133,18 +131,50 @@ public class GizmoRenderer {
     }
 
     private Matrix4f createGizmoTransform() {
-        Vector3f position = new Vector3f(
-            transformState.getPositionX(),
-            transformState.getPositionY(),
-            transformState.getPositionZ()
-        );
-        return new Matrix4f().identity().translate(position);
+        Vector3f worldCenter = computeGizmoWorldCenter();
+        float gizmoScale = computeGizmoScale();
+        return new Matrix4f().identity().translate(worldCenter).scale(gizmoScale);
+    }
+
+    /**
+     * Computes the gizmo's world-space center.
+     * If a part is selected (via the transform target on the interaction handler),
+     * positions at the selected part's center. Otherwise uses model bounds center.
+     */
+    private Vector3f computeGizmoWorldCenter() {
+        ITransformTarget target = interactionHandler.getActiveTransformTarget();
+        if (target != null) {
+            return target.getWorldCenter();
+        }
+
+        Vector3f boundsCenter = modelBounds.center();
+        if (boundsCenter.lengthSquared() < 0.0001f) {
+            return new Vector3f(
+                transformState.getPositionX(),
+                transformState.getPositionY(),
+                transformState.getPositionZ()
+            );
+        }
+        return transformState.getTransformMatrix()
+            .transformPosition(new Vector3f(boundsCenter));
+    }
+
+    /**
+     * Computes a uniform scale factor for the gizmo based on the model's largest dimension.
+     */
+    private float computeGizmoScale() {
+        float maxExtent = modelBounds.maxExtent();
+        if (maxExtent < 0.001f) {
+            return 1.0f;
+        }
+        float scale = maxExtent * GIZMO_SCALE_FACTOR;
+        return Math.max(MIN_GIZMO_SCALE, Math.min(MAX_GIZMO_SCALE, scale));
     }
 
     private void configureRenderState() {
         GL30.glEnable(GL30.GL_DEPTH_TEST);
-        GL30.glDepthFunc(GL30.GL_ALWAYS);  // Always on top, never occluded
-        GL30.glDisable(GL30.GL_CULL_FACE); // Show all rotation grabber sides
+        GL30.glDepthFunc(GL30.GL_ALWAYS);
+        GL30.glDisable(GL30.GL_CULL_FACE);
     }
 
     private void restoreRenderState(boolean cullFaceEnabled) {
@@ -167,12 +197,11 @@ public class GizmoRenderer {
 
         interactionHandler.updateCamera(viewMatrix, projectionMatrix, viewportWidth, viewportHeight);
 
-        Vector3f gizmoPosition = new Vector3f(
-            transformState.getPositionX(),
-            transformState.getPositionY(),
-            transformState.getPositionZ()
-        );
-        List<GizmoPart> parts = currentMode.getInteractiveParts(gizmoPosition);
+        Vector3f gizmoWorldCenter = computeGizmoWorldCenter();
+        float gizmoScale = computeGizmoScale();
+        interactionHandler.setGizmoWorldCenter(gizmoWorldCenter);
+
+        List<GizmoPart> parts = currentMode.getInteractiveParts(gizmoWorldCenter, gizmoScale);
 
         interactionHandler.handleMouseMove(mouseX, mouseY, parts);
     }
@@ -202,7 +231,6 @@ public class GizmoRenderer {
 
     /**
      * Sets the gizmo mode directly.
-     * @throws IllegalArgumentException if mode is null
      */
     public void setMode(GizmoState.Mode mode) {
         if (mode == null) {
@@ -220,8 +248,14 @@ public class GizmoRenderer {
     }
 
     /**
+     * Set the command history for undo/redo recording of gizmo transforms.
+     */
+    public void setCommandHistory(ModelCommandHistory commandHistory) {
+        interactionHandler.setCommandHistory(commandHistory);
+    }
+
+    /**
      * Updates viewport state for grid snapping configuration.
-     * @throws IllegalArgumentException if viewportState is null
      */
     public void updateViewportState(ViewportUIState viewportState) {
         if (viewportState == null) {
@@ -257,91 +291,19 @@ public class GizmoRenderer {
     }
 
     /**
-     * Loads and compiles gizmo shaders. Attaches individual shaders to program,
-     * validates link, and cleans up shader objects.
-     * @return Shader program ID, or -1 on failure
+     * Set the transform target for gizmo operations.
      */
-    private int loadGizmoShaders() {
-        try {
-            String vertexSource = loadShaderSource("/shaders/gizmo.vert");
-            int vertexShader = compileShader(vertexSource, GL30.GL_VERTEX_SHADER);
-            if (vertexShader < 0) {
-                return -1;
-            }
-
-            String fragmentSource = loadShaderSource("/shaders/gizmo.frag");
-            int fragmentShader = compileShader(fragmentSource, GL30.GL_FRAGMENT_SHADER);
-            if (fragmentShader < 0) {
-                GL30.glDeleteShader(vertexShader);
-                return -1;
-            }
-
-            int program = GL30.glCreateProgram();
-            GL30.glAttachShader(program, vertexShader);
-            GL30.glAttachShader(program, fragmentShader);
-            GL30.glLinkProgram(program);
-
-            int linkStatus = GL30.glGetProgrami(program, GL30.GL_LINK_STATUS);
-            if (linkStatus == GL30.GL_FALSE) {
-                String log = GL30.glGetProgramInfoLog(program);
-                System.err.println("Gizmo shader link failed: " + log);
-                GL30.glDeleteShader(vertexShader);
-                GL30.glDeleteShader(fragmentShader);
-                GL30.glDeleteProgram(program);
-                return -1;
-            }
-
-            GL30.glDeleteShader(vertexShader);
-            GL30.glDeleteShader(fragmentShader);
-
-            return program;
-
-        } catch (Exception e) {
-            System.err.println("Failed to load gizmo shaders: " + e.getMessage());
-            return -1;
-        }
+    public void setTransformTarget(ITransformTarget target) {
+        interactionHandler.setTransformTarget(target);
     }
 
     /**
-     * Loads shader source code from resources.
-     * @throws Exception if loading fails
+     * Updates the model bounds used for gizmo auto-scaling and centering.
      */
-    private String loadShaderSource(String path) throws Exception {
-        InputStream stream = getClass().getResourceAsStream(path);
-        if (stream == null) {
-            throw new Exception("Shader file not found: " + path);
+    public void updateModelBounds(ModelBounds bounds) {
+        if (bounds == null) {
+            throw new IllegalArgumentException("ModelBounds cannot be null");
         }
-
-        StringBuilder source = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                source.append(line).append("\n");
-            }
-        }
-
-        return source.toString();
-    }
-
-    /**
-     * Compiles a shader and validates compilation.
-     * @param type GL_VERTEX_SHADER or GL_FRAGMENT_SHADER
-     * @return Shader ID, or -1 on failure
-     */
-    private int compileShader(String source, int type) {
-        int shader = GL30.glCreateShader(type);
-        GL30.glShaderSource(shader, source);
-        GL30.glCompileShader(shader);
-
-        int compileStatus = GL30.glGetShaderi(shader, GL30.GL_COMPILE_STATUS);
-        if (compileStatus == GL30.GL_FALSE) {
-            String log = GL30.glGetShaderInfoLog(shader);
-            String typeName = (type == GL30.GL_VERTEX_SHADER) ? "vertex" : "fragment";
-            System.err.println("Gizmo " + typeName + " shader compile failed: " + log);
-            GL30.glDeleteShader(shader);
-            return -1;
-        }
-
-        return shader;
+        this.modelBounds = bounds;
     }
 }

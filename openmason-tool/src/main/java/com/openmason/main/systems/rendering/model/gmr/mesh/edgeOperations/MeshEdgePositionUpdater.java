@@ -23,9 +23,6 @@ public class MeshEdgePositionUpdater {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshEdgePositionUpdater.class);
 
-    /** Position matching tolerance for floating-point comparison. */
-    private static final float POSITION_EPSILON = 0.0001f;
-
     /** Number of float values per vertex position (x, y, z). */
     private static final int FLOATS_PER_POSITION = 3;
 
@@ -64,96 +61,10 @@ public class MeshEdgePositionUpdater {
      */
     public enum UpdateStrategy {
         /**
-         * Match by old position using epsilon comparison.
-         * May affect multiple edges if vertices share the same position.
-         */
-        POSITION_BASED,
-
-        /**
          * Match by vertex indices using edge-to-vertex mapping.
-         * More precise and prevents unintended vertex unification.
-         * Recommended for most use cases.
+         * Precise and prevents unintended vertex unification.
          */
         INDEX_BASED
-    }
-
-    /**
-     * Updates all edge vertices that match a dragged vertex position.
-     * Searches through ALL edge vertices and updates any that were at the old vertex position
-     * using epsilon-based floating-point comparison.
-     *
-     * Operates on edge data from GMR without assuming specific topology.
-     * The number of vertices per edge is derived from the actual data.
-     *
-     * Warning: This method may update unintended edges if vertices share
-     * the same position. For precise updates, use updateByIndices instead.
-     *
-     * @param vbo the OpenGL VBO handle for the edge buffer
-     * @param edgePositions edge position array from GMR in format [x1,y1,z1, x2,y2,z2, ...]
-     * @param verticesPerEdge number of vertices per edge (derived from GMR data model)
-     * @param oldPosition the original position of the vertex before dragging
-     * @param newPosition the new position of the vertex after dragging
-     * @return UpdateResult containing update statistics, or null if input is invalid
-     */
-    public UpdateResult updateByPosition(int vbo, float[] edgePositions, int verticesPerEdge,
-                                         Vector3f oldPosition, Vector3f newPosition) {
-        // Validate inputs
-        if (!validateBasicInputs(edgePositions, verticesPerEdge, newPosition)) {
-            return null;
-        }
-
-        if (oldPosition == null) {
-            logger.warn("Cannot update edge vertices: old position is null");
-            return null;
-        }
-
-        try {
-            int updatedCount = 0;
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-            // Derive edge count from data
-            int floatsPerEdge = verticesPerEdge * FLOATS_PER_POSITION;
-            int edgeCount = edgePositions.length / floatsPerEdge;
-            int totalVertices = edgeCount * verticesPerEdge;
-
-            // Search through ALL edge vertices
-            for (int vertexIdx = 0; vertexIdx < totalVertices; vertexIdx++) {
-                int posIndex = vertexIdx * FLOATS_PER_POSITION;
-
-                // Check if this vertex matches the old vertex position
-                if (posIndex + 2 < edgePositions.length) {
-                    Vector3f vertexPos = new Vector3f(
-                        edgePositions[posIndex],
-                        edgePositions[posIndex + 1],
-                        edgePositions[posIndex + 2]
-                    );
-
-                    if (vertexPos.distance(oldPosition) < POSITION_EPSILON) {
-                        // Found a matching vertex - update it!
-                        updateVertexInBuffer(vbo, vertexIdx, newPosition);
-                        updateVertexInArray(edgePositions, posIndex, newPosition);
-                        updatedCount++;
-                    }
-                }
-            }
-
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-            logger.trace("Updated {} edge vertices from ({}, {}, {}) to ({}, {}, {})",
-                updatedCount,
-                String.format("%.2f", oldPosition.x),
-                String.format("%.2f", oldPosition.y),
-                String.format("%.2f", oldPosition.z),
-                String.format("%.2f", newPosition.x),
-                String.format("%.2f", newPosition.y),
-                String.format("%.2f", newPosition.z));
-
-            return new UpdateResult(updatedCount, UpdateStrategy.POSITION_BASED);
-
-        } catch (Exception e) {
-            logger.error("Error updating edge vertices by position", e);
-            return null;
-        }
     }
 
     /**
@@ -228,58 +139,60 @@ public class MeshEdgePositionUpdater {
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
             int updatedCount = 0;
 
-            // Derive edge count from data
-            int floatsPerEdge = verticesPerEdge * FLOATS_PER_POSITION;
-            int edgeCount = edgePositions.length / floatsPerEdge;
+            try {
+                // Derive edge count from data
+                int floatsPerEdge = verticesPerEdge * FLOATS_PER_POSITION;
+                int edgeCount = edgePositions.length / floatsPerEdge;
 
-            // Scan all edges and update those connected to either vertex
-            for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
-                int[] edgeVertexIndices = edgeToVertexMapping[edgeIdx];
-                if (edgeVertexIndices == null) {
-                    continue;
-                }
-
-                boolean edgeUpdated = false;
-                int edgePosIdx = edgeIdx * floatsPerEdge;
-
-                // Check all vertices in this edge
-                for (int vertexInEdge = 0; vertexInEdge < edgeVertexIndices.length; vertexInEdge++) {
-                    int vertexIndex = edgeVertexIndices[vertexInEdge];
-                    Vector3f newPosition = null;
-
-                    // Determine if this vertex needs updating
-                    if (vertexIndex == vertexIndex1) {
-                        newPosition = newPosition1;
-                    } else if (vertexIndex == vertexIndex2) {
-                        newPosition = newPosition2;
+                // Scan all edges and update those connected to either vertex
+                for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
+                    int[] edgeVertexIndices = edgeToVertexMapping[edgeIdx];
+                    if (edgeVertexIndices == null) {
+                        continue;
                     }
 
-                    // Update this vertex if it matches one of the moved vertices
-                    if (newPosition != null) {
-                        // Calculate position in edge position array
-                        int posOffset = edgePosIdx + (vertexInEdge * FLOATS_PER_POSITION);
+                    boolean edgeUpdated = false;
+                    int edgePosIdx = edgeIdx * floatsPerEdge;
 
-                        // Calculate vertex index in VBO
-                        int vertexIdxInBuffer = edgeIdx * verticesPerEdge + vertexInEdge;
+                    // Check all vertices in this edge
+                    for (int vertexInEdge = 0; vertexInEdge < edgeVertexIndices.length; vertexInEdge++) {
+                        int vertexIndex = edgeVertexIndices[vertexInEdge];
+                        Vector3f newPosition = null;
 
-                        // Update in GPU buffer
-                        updateVertexInBuffer(vbo, vertexIdxInBuffer, newPosition);
+                        // Determine if this vertex needs updating
+                        if (vertexIndex == vertexIndex1) {
+                            newPosition = newPosition1;
+                        } else if (vertexIndex == vertexIndex2) {
+                            newPosition = newPosition2;
+                        }
 
-                        // Update in CPU array
-                        edgePositions[posOffset] = newPosition.x;
-                        edgePositions[posOffset + 1] = newPosition.y;
-                        edgePositions[posOffset + 2] = newPosition.z;
+                        // Update this vertex if it matches one of the moved vertices
+                        if (newPosition != null) {
+                            // Calculate position in edge position array
+                            int posOffset = edgePosIdx + (vertexInEdge * FLOATS_PER_POSITION);
 
-                        edgeUpdated = true;
+                            // Calculate vertex index in VBO
+                            int vertexIdxInBuffer = edgeIdx * verticesPerEdge + vertexInEdge;
+
+                            // Update in GPU buffer
+                            updateVertexInBuffer(vbo, vertexIdxInBuffer, newPosition);
+
+                            // Update in CPU array
+                            edgePositions[posOffset] = newPosition.x;
+                            edgePositions[posOffset + 1] = newPosition.y;
+                            edgePositions[posOffset + 2] = newPosition.z;
+
+                            edgeUpdated = true;
+                        }
+                    }
+
+                    if (edgeUpdated) {
+                        updatedCount++;
                     }
                 }
-
-                if (edgeUpdated) {
-                    updatedCount++;
-                }
+            } finally {
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
             }
-
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
 
             logger.trace("Updated {} edges connected to vertices {} and {} (index-based)",
                 updatedCount, vertexIndex1, vertexIndex2);
@@ -338,17 +251,4 @@ public class MeshEdgePositionUpdater {
         glBufferSubData(GL_ARRAY_BUFFER, offset, positionData);
     }
 
-    /**
-     * Updates a vertex position in the in-memory array.
-     * Synchronizes the CPU-side position array with GPU buffer changes.
-     *
-     * @param edgePositions the edge position array to update
-     * @param posIndex the position index in the array (must point to x coordinate)
-     * @param newPosition the new position for the vertex (x, y, z)
-     */
-    private void updateVertexInArray(float[] edgePositions, int posIndex, Vector3f newPosition) {
-        edgePositions[posIndex] = newPosition.x;
-        edgePositions[posIndex + 1] = newPosition.y;
-        edgePositions[posIndex + 2] = newPosition.z;
-    }
 }

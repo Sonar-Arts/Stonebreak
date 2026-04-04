@@ -2,35 +2,37 @@ package com.openmason.main.systems;
 
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.block.BlockManager;
-import com.openmason.main.systems.rendering.model.io.omo.MeshDataExtractor;
 import com.openmason.main.systems.rendering.model.io.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.main.omConfig;
 import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
+import com.openmason.main.systems.services.commands.RendererSynchronizer;
 import com.openmason.main.systems.viewport.ViewportCamera;
 import com.openmason.main.systems.viewport.ViewportInputHandler;
+import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
 import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
 import com.openmason.main.systems.rendering.core.shaders.ShaderManager;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
+import com.openmason.main.systems.viewport.state.EditMode;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.ViewportUIState;
-import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTranslationHandler;
-import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler;
-import com.openmason.main.systems.viewport.viewportRendering.face.FaceTranslationHandler;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexTranslationHandler;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeTranslationHandler;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceTranslationHandler;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
-import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
@@ -49,7 +51,7 @@ public class ViewportController {
     private final ViewportResourceManager resourceManager;
     private final ViewportCamera viewportCamera;
     private final RenderContext renderContext;
-    private RenderPipeline renderPipeline;
+    private ViewportRenderPipeline viewportRenderPipeline;
 
     // ========== State ==========
     private final ViewportUIState viewportState;
@@ -71,8 +73,10 @@ public class ViewportController {
     // ========== Input & UI ==========
     private final ViewportInputHandler inputHandler;
 
-    private final MeshDataExtractor meshDataExtractor;
     private final com.openmason.main.systems.viewport.content.ContentTypeManager contentTypeManager;
+
+    // ========== Undo/Redo ==========
+    private final ModelCommandHistory commandHistory;
 
     // ========== Services ==========
     private com.openmason.main.systems.services.EdgeOperationService edgeOperationService;
@@ -100,6 +104,8 @@ public class ViewportController {
 
         this.inputHandler = new ViewportInputHandler(viewportCamera);
 
+        this.commandHistory = new ModelCommandHistory();
+
         this.blockRenderer = new BlockRenderer("Viewport");
         this.itemRenderer = new ItemRenderer("Viewport");
         this.modelRenderer = new GenericModelRenderer();
@@ -107,13 +113,42 @@ public class ViewportController {
         // Content loading (SOLID refactored)
         // ========== Content Loading (SOLID refactored) ==========
         OMTTextureLoader omtTextureLoader = new OMTTextureLoader();
-        this.meshDataExtractor = new MeshDataExtractor();
-        com.openmason.main.systems.viewport.content.BlockModelLoader blockModelLoader = new com.openmason.main.systems.viewport.content.BlockModelLoader(
+        com.openmason.main.systems.viewport.content.ModelContentLoader modelContentLoader = new com.openmason.main.systems.viewport.content.ModelContentLoader(
                 omtTextureLoader, modelRenderer
         );
         this.contentTypeManager = new com.openmason.main.systems.viewport.content.ContentTypeManager(
-                blockModelLoader, renderingState, transformState
+                modelContentLoader, renderingState, transformState
         );
+
+        // Wire part transform target to gizmo — when parts are selected in the
+        // ModelPartManager, the gizmo automatically positions at and transforms the part.
+        // TransformState is passed so the gizmo accounts for model-level transforms.
+        com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.PartTransformTarget partTarget =
+                new com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.PartTransformTarget(
+                        modelRenderer.getPartManager(), transformState
+                );
+        gizmoRenderer.setTransformTarget(partTarget);
+
+        // Wire auto-show gizmo on part selection change
+        modelRenderer.getPartManager().addPartChangeListener(
+                new com.openmason.main.systems.rendering.model.gmr.parts.IPartChangeListener() {
+                    @Override public void onPartAdded(com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor part) {}
+                    @Override public void onPartRemoved(String partId) {}
+                    @Override public void onPartTransformChanged(String partId, com.openmason.main.systems.rendering.model.gmr.parts.PartTransform t) {}
+                    @Override public void onPartsMerged(java.util.List<String> sourceIds, com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor merged) {}
+                    @Override public void onPartsRebuilt() {}
+
+                    @Override
+                    public void onPartSelectionChanged(java.util.Set<String> selectedIds) {
+                        updateGizmoVisibilityForSelection(!selectedIds.isEmpty());
+                    }
+                }
+        );
+
+        // Load display mode from preferences
+        com.openmason.main.systems.menus.preferences.PreferencesManager prefs =
+                com.openmason.main.systems.menus.preferences.PreferencesManager.getInstance();
+        gizmoState.setDisplayMode(prefs.getGizmoDisplayMode());
 
         logger.info("Viewport created successfully with SOLID content management");
     }
@@ -147,18 +182,22 @@ public class ViewportController {
             inputHandler.setGizmoRenderer(gizmoRenderer);
             gizmoRenderer.updateViewportState(viewportState);
 
-            gizmoState.setEnabled(true);
-            transformState.setGizmoEnabled(true);
+            // In auto-show mode, start with gizmo hidden (nothing selected yet)
+            // In manual mode, start with gizmo enabled (user controls visibility)
+            boolean initiallyEnabled = gizmoState.getDisplayMode() !=
+                    com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT;
+            gizmoState.setEnabled(initiallyEnabled);
+            transformState.setGizmoEnabled(initiallyEnabled);
 
-            this.renderPipeline = new RenderPipeline(
+            this.viewportRenderPipeline = new ViewportRenderPipeline(
                 renderContext, resourceManager, shaderManager,
                 blockRenderer, itemRenderer,
                     modelRenderer, gizmoRenderer
             );
 
-            // Initialize EdgeOperationService after RenderPipeline is ready
+            // Initialize EdgeOperationService after ViewportRenderPipeline is ready
             this.edgeOperationService = new com.openmason.main.systems.services.EdgeOperationService(
-                renderPipeline, edgeSelectionState
+                    viewportRenderPipeline, edgeSelectionState
             );
             logger.debug("EdgeOperationService initialized");
 
@@ -166,8 +205,8 @@ public class ViewportController {
             try {
                 omConfig omConfig = new omConfig();
                 float vertexPointSize = omConfig.getVertexPointSize();
-                if (renderPipeline.getVertexRenderer() != null) {
-                    renderPipeline.getVertexRenderer().setPointSize(vertexPointSize);
+                if (viewportRenderPipeline.getVertexRenderer() != null) {
+                    viewportRenderPipeline.getVertexRenderer().setPointSize(vertexPointSize);
                     logger.debug("Loaded vertex point size: {}", vertexPointSize);
                 }
             } catch (Exception e) {
@@ -175,14 +214,14 @@ public class ViewportController {
             }
 
             // Connect renderers to input handler for hover detection
-            if (renderPipeline.getVertexRenderer() != null) {
-                inputHandler.setVertexRenderer(renderPipeline.getVertexRenderer());
+            if (viewportRenderPipeline.getVertexRenderer() != null) {
+                inputHandler.setVertexRenderer(viewportRenderPipeline.getVertexRenderer());
             }
-            if (renderPipeline.getEdgeRenderer() != null) {
-                inputHandler.setEdgeRenderer(renderPipeline.getEdgeRenderer());
+            if (viewportRenderPipeline.getEdgeRenderer() != null) {
+                inputHandler.setEdgeRenderer(viewportRenderPipeline.getEdgeRenderer());
             }
-            if (renderPipeline.getFaceRenderer() != null) {
-                inputHandler.setFaceRenderer(renderPipeline.getFaceRenderer());
+            if (viewportRenderPipeline.getFaceRenderer() != null) {
+                inputHandler.setFaceRenderer(viewportRenderPipeline.getFaceRenderer());
             }
 
             // Connect vertex selection state for vertex manipulation
@@ -201,19 +240,32 @@ public class ViewportController {
             inputHandler.setTransformState(transformState);
             logger.debug("Transform state connected to input handler");
 
+            // Connect model renderer for edge insertion (J key) and knife tool (K key)
+            inputHandler.setModelRenderer(modelRenderer);
+            logger.debug("Model renderer connected to input handler for edge insertion");
+
+            // Connect knife preview renderer for visual feedback
+            if (viewportRenderPipeline.getKnifePreviewRenderer() != null) {
+                inputHandler.setKnifePreviewRenderer(viewportRenderPipeline.getKnifePreviewRenderer());
+                logger.debug("Knife preview renderer connected to input handler");
+            }
+
+            // Connect viewport state so knife tool uses global grid snapping
+            inputHandler.setKnifeViewportState(viewportState);
+
             // Create translation handlers and coordinator
-            if (renderPipeline.getVertexRenderer() != null && renderPipeline.getEdgeRenderer() != null &&
-                renderPipeline.getFaceRenderer() != null && renderPipeline.getBlockModelRenderer() != null) {
+            if (viewportRenderPipeline.getVertexRenderer() != null && viewportRenderPipeline.getEdgeRenderer() != null &&
+                viewportRenderPipeline.getFaceRenderer() != null && viewportRenderPipeline.getBlockModelRenderer() != null) {
 
                 // Create vertex translation handler
                 VertexTranslationHandler vertexTranslationHandler = new VertexTranslationHandler(
                     vertexSelectionState,
-                    renderPipeline.getVertexRenderer(),
-                    renderPipeline.getEdgeRenderer(),
-                    renderPipeline.getFaceRenderer(),
-                    renderPipeline.getBlockModelRenderer(),
+                    viewportRenderPipeline.getVertexRenderer(),
+                    viewportRenderPipeline.getEdgeRenderer(),
+                    viewportRenderPipeline.getFaceRenderer(),
+                    viewportRenderPipeline.getBlockModelRenderer(),
                     viewportState,
-                    renderPipeline,
+                        viewportRenderPipeline,
                     transformState
                 );
                 logger.debug("Vertex translation handler created");
@@ -221,12 +273,12 @@ public class ViewportController {
                 // Create edge translation handler
                 EdgeTranslationHandler edgeTranslationHandler = new EdgeTranslationHandler(
                     edgeSelectionState,
-                    renderPipeline.getEdgeRenderer(),
-                    renderPipeline.getVertexRenderer(),
-                    renderPipeline.getFaceRenderer(),
-                    renderPipeline.getBlockModelRenderer(),
+                    viewportRenderPipeline.getEdgeRenderer(),
+                    viewportRenderPipeline.getVertexRenderer(),
+                    viewportRenderPipeline.getFaceRenderer(),
+                    viewportRenderPipeline.getBlockModelRenderer(),
                     viewportState,
-                    renderPipeline,
+                        viewportRenderPipeline,
                     transformState
                 );
                 logger.debug("Edge translation handler created");
@@ -234,12 +286,12 @@ public class ViewportController {
                 // Create face translation handler
                 FaceTranslationHandler faceTranslationHandler = new FaceTranslationHandler(
                     faceSelectionState,
-                    renderPipeline.getFaceRenderer(),
-                    renderPipeline.getVertexRenderer(),
-                    renderPipeline.getEdgeRenderer(),
-                    renderPipeline.getBlockModelRenderer(),
+                    viewportRenderPipeline.getFaceRenderer(),
+                    viewportRenderPipeline.getVertexRenderer(),
+                    viewportRenderPipeline.getEdgeRenderer(),
+                    viewportRenderPipeline.getBlockModelRenderer(),
                     viewportState,
-                    renderPipeline,
+                        viewportRenderPipeline,
                     transformState
                 );
                 logger.debug("Face translation handler created");
@@ -256,14 +308,32 @@ public class ViewportController {
                 inputHandler.setTranslationCoordinator(translationCoordinator);
                 logger.debug("Translation coordinator connected to input handler");
 
+                // Wire undo/redo command history to all handlers and services
+                RendererSynchronizer synchronizer = new RendererSynchronizer(
+                    modelRenderer,
+                    viewportRenderPipeline.getFaceRenderer(),
+                    vertexSelectionState,
+                    edgeSelectionState,
+                    faceSelectionState
+                );
+                vertexTranslationHandler.setCommandHistory(commandHistory, synchronizer);
+                edgeTranslationHandler.setCommandHistory(commandHistory, synchronizer);
+                faceTranslationHandler.setCommandHistory(commandHistory, synchronizer);
+                if (edgeOperationService != null) {
+                    edgeOperationService.setCommandHistory(commandHistory, synchronizer);
+                }
+                inputHandler.setCommandHistory(commandHistory, synchronizer);
+                gizmoRenderer.setCommandHistory(commandHistory);
+                logger.debug("Undo/redo command history wired to all handlers");
+
                 // Connect selection components to EditModeManager for clearing on mode switch
                 EditModeManager.getInstance().setSelectionComponents(
                     vertexSelectionState,
                     edgeSelectionState,
                     faceSelectionState,
-                    renderPipeline.getVertexRenderer(),
-                    renderPipeline.getEdgeRenderer(),
-                    renderPipeline.getFaceRenderer()
+                    viewportRenderPipeline.getVertexRenderer(),
+                    viewportRenderPipeline.getEdgeRenderer(),
+                    viewportRenderPipeline.getFaceRenderer()
                 );
                 logger.debug("Selection components connected to EditModeManager");
             }
@@ -291,8 +361,8 @@ public class ViewportController {
             catch (Exception e) { logger.error("Error cleaning up gizmo renderer", e); }
         }
 
-        if (renderPipeline != null) {
-            try { renderPipeline.cleanup(); }
+        if (viewportRenderPipeline != null) {
+            try { viewportRenderPipeline.cleanup(); }
             catch (Exception e) { logger.error("Error cleaning up render pipeline", e); }
         }
 
@@ -323,7 +393,7 @@ public class ViewportController {
             initialize();
         }
 
-        renderPipeline.render(viewportState, renderingState, transformState);
+        viewportRenderPipeline.render(viewportState, renderingState, transformState);
     }
 
     /**
@@ -347,13 +417,27 @@ public class ViewportController {
     // ========== Content Loading (Delegating to SOLID classes) ==========
 
     /**
-     * Load BlockModel (.OMO file) for editing.
+     * Load model (.OMO file) for editing.
      * Loads embedded texture, sets up rendering, and resets camera.
      *
-     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → BlockModelLoader.
+     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → ModelContentLoader.
      */
-    public void loadBlockModel(BlockModel blockModel) {
-        contentTypeManager.switchToBlockModel(blockModel);
+    public void loadModel(BlockModel blockModel) {
+        // Reset edit mode to NONE — this also cancels active drags and
+        // clears all vertex/edge/face selections + renderer highlights
+        EditModeManager.getInstance().setMode(EditMode.NONE);
+        setShowVertices(false);
+        setEditingFaceIndex(-1);
+        transformState.reset();
+        viewportState.resetRenderMode();
+
+        contentTypeManager.switchToModel(blockModel);
+        commandHistory.clear();
+
+        // Invalidate cached mesh data so face/edge/vertex renderers rebuild from the new model
+        if (viewportRenderPipeline != null) {
+            viewportRenderPipeline.invalidateMeshData();
+        }
     }
 
     // ========== Mesh Data (OMO v1.1+ support) ==========
@@ -365,27 +449,49 @@ public class ViewportController {
      * @return MeshData with current vertex/index data, or null for standard cube
      */
     public OMOFormat.MeshData extractMeshData() {
-        return meshDataExtractor.extract(modelRenderer);
+        return modelRenderer.toMeshData();
     }
 
     /**
      * Load mesh state from MeshData (restored from .OMO file).
-     * This replaces the current geometry with the loaded data.
-     * Call this AFTER loadBlockModel() to apply custom mesh data.
+     * Routes through the ModelPartManager to register the mesh as a named part,
+     * ensuring the part manager is the single source of truth for all geometry.
+     * Call this AFTER loadModel() to apply custom mesh data.
      *
      * @param meshData the mesh data to load
      */
     public void loadMeshData(OMOFormat.MeshData meshData) {
-        meshDataExtractor.load(modelRenderer, meshData);
+        loadMeshDataAsPart(meshData, null);
+    }
+
+    /**
+     * Load mesh state as a named model part.
+     * Routes through GenericModelRenderer.loadMeshDataAsPart() which imports
+     * the geometry into the ModelPartManager as a single root part.
+     *
+     * @param meshData the mesh data to load
+     * @param partName display name for the part (null defaults to "Root")
+     */
+    public void loadMeshDataAsPart(OMOFormat.MeshData meshData, String partName) {
+        commandHistory.clear();
+        modelRenderer.loadMeshDataAsPart(meshData, partName);
 
         // Invalidate render pipeline caches to force edge/face rebuild
-        if (renderPipeline != null) {
-            renderPipeline.invalidateMeshData();
+        invalidateSubRenderers();
+    }
+
+    /**
+     * Invalidate sub-renderer caches and force rebuild from model.
+     * Called after any mesh data change to ensure vertex/edge/face renderers are current.
+     */
+    public void invalidateSubRenderers() {
+        if (viewportRenderPipeline != null) {
+            viewportRenderPipeline.invalidateMeshData();
 
             // Initialize renderers if needed (they check !initialized in rebuildFromModel)
-            VertexRenderer vertexRenderer = renderPipeline.getVertexRenderer();
-            EdgeRenderer edgeRenderer = renderPipeline.getEdgeRenderer();
-            FaceRenderer faceRenderer = renderPipeline.getFaceRenderer();
+            VertexRenderer vertexRenderer = viewportRenderPipeline.getVertexRenderer();
+            EdgeRenderer edgeRenderer = viewportRenderPipeline.getEdgeRenderer();
+            FaceRenderer faceRenderer = viewportRenderPipeline.getFaceRenderer();
 
             if (vertexRenderer != null && !vertexRenderer.isInitialized()) {
                 vertexRenderer.initialize();
@@ -439,16 +545,16 @@ public class ViewportController {
     }
 
     /**
-     * Update only the texture for the current BlockModel without rebuilding geometry.
+     * Update only the texture for the current model without rebuilding geometry.
      * Use this when changing textures to preserve any vertex/geometry modifications.
      * UV coordinates are updated to match the new texture type while preserving vertex positions.
      *
-     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → BlockModelLoader.
+     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager → ModelContentLoader.
      *
-     * @param blockModel The BlockModel with updated texture path
+     * @param blockModel The model with updated texture path
      */
-    public void updateBlockModelTexture(BlockModel blockModel) {
-        contentTypeManager.updateBlockModelTexture(blockModel);
+    public void updateModelTexture(BlockModel blockModel) {
+        contentTypeManager.updateModelTexture(blockModel);
     }
 
     // ========== Transform ==========
@@ -473,8 +579,8 @@ public class ViewportController {
         viewportState.getGridVisible().set(showGrid);
     }
 
-    public void setWireframeMode(boolean wireframe) {
-        viewportState.getWireframeMode().set(wireframe);
+    public void setUnrenderedMode(boolean unrendered) {
+        viewportState.getUnrenderedMode().set(unrendered);
     }
 
     public void setAxesVisible(boolean visible) {
@@ -498,20 +604,20 @@ public class ViewportController {
 
     public void setShowVertices(boolean showVertices) {
         viewportState.getShowVertices().set(showVertices);
-        if (renderPipeline != null && renderPipeline.getVertexRenderer() != null) {
-            renderPipeline.getVertexRenderer().setEnabled(showVertices);
+        if (viewportRenderPipeline != null && viewportRenderPipeline.getVertexRenderer() != null) {
+            viewportRenderPipeline.getVertexRenderer().setEnabled(showVertices);
         }
-        if (renderPipeline != null && renderPipeline.getEdgeRenderer() != null) {
-            renderPipeline.getEdgeRenderer().setEnabled(showVertices);
+        if (viewportRenderPipeline != null && viewportRenderPipeline.getEdgeRenderer() != null) {
+            viewportRenderPipeline.getEdgeRenderer().setEnabled(showVertices);
         }
-        if (renderPipeline != null && renderPipeline.getFaceRenderer() != null) {
-            renderPipeline.getFaceRenderer().setEnabled(showVertices);
+        if (viewportRenderPipeline != null && viewportRenderPipeline.getFaceRenderer() != null) {
+            viewportRenderPipeline.getFaceRenderer().setEnabled(showVertices);
         }
     }
 
     public void setVertexPointSize(float size) {
-        if (renderPipeline != null && renderPipeline.getVertexRenderer() != null) {
-            renderPipeline.getVertexRenderer().setPointSize(size);
+        if (viewportRenderPipeline != null && viewportRenderPipeline.getVertexRenderer() != null) {
+            viewportRenderPipeline.getVertexRenderer().setPointSize(size);
         }
     }
 
@@ -550,6 +656,55 @@ public class ViewportController {
 
     public ViewportCamera getCamera() { return viewportCamera; }
     public ViewportInputHandler getInputHandler() { return inputHandler; }
+    public FaceSelectionState getFaceSelectionState() { return faceSelectionState; }
+    public GenericModelRenderer getModelRenderer() { return modelRenderer; }
+    public com.openmason.main.systems.rendering.model.gmr.parts.ModelPartManager getPartManager() {
+        return modelRenderer.getPartManager();
+    }
+
+    /**
+     * Assign a default solid-fill texture to all faces of a part.
+     * Creates a 16x16 gray texture, registers as a material, and maps to all part faces.
+     *
+     * @param part The part descriptor with a valid meshRange
+     */
+    public void assignDefaultMaterialToPartFaces(
+            com.openmason.main.systems.rendering.model.gmr.parts.ModelPartDescriptor part) {
+        modelRenderer.assignDefaultMaterialToPartFaces(part);
+    }
+    public ViewportUIState getViewportUIState() { return viewportState; }
+    public RenderingState getRenderingState() { return renderingState; }
+    public TransformState getTransformState() { return transformState; }
+
+    /**
+     * Set the face being edited in the texture editor.
+     * Switches the overlay from a filled highlight to an outline for that face.
+     *
+     * @param faceIndex face being edited, or -1 to clear
+     */
+    public void setEditingFaceIndex(int faceIndex) {
+        if (viewportRenderPipeline != null && viewportRenderPipeline.getFaceRenderer() != null) {
+            viewportRenderPipeline.getFaceRenderer().setEditingFaceIndex(faceIndex);
+        }
+    }
+    public ModelCommandHistory getCommandHistory() { return commandHistory; }
+
+    /**
+     * Toggle the knife tool from keybind (K key).
+     * Delegates to ViewportInputHandler → KnifeToolController.
+     */
+    public void toggleKnifeTool() {
+        if (inputHandler != null) {
+            inputHandler.toggleKnifeTool();
+        }
+    }
+
+    /**
+     * @return true if the knife tool is currently active
+     */
+    public boolean isKnifeToolActive() {
+        return inputHandler != null && inputHandler.isKnifeToolActive();
+    }
 
     /**
      * Start grab mode from keybind (G key).
@@ -595,6 +750,28 @@ public class ViewportController {
 
     public boolean isGizmoEnabled() {
         return gizmoState.isEnabled();
+    }
+
+    /**
+     * Updates gizmo visibility based on part selection state.
+     * In AUTO_SHOW_ON_SELECT mode, the gizmo appears when parts are selected
+     * and hides when no parts are selected. Manual overrides are cleared.
+     *
+     * @param hasSelectedParts whether any model parts are currently selected
+     */
+    public void updateGizmoVisibilityForSelection(boolean hasSelectedParts) {
+        if (gizmoState.getDisplayMode() == com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT
+                && !gizmoState.isManualOverrideActive()) {
+            setGizmoEnabled(hasSelectedParts);
+        }
+        gizmoState.clearManualOverride();
+    }
+
+    /**
+     * Returns the gizmo state for direct access by actions and preferences.
+     */
+    public com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState getGizmoState() {
+        return gizmoState;
     }
 
     public void setGizmoMode(GizmoState.Mode mode) {

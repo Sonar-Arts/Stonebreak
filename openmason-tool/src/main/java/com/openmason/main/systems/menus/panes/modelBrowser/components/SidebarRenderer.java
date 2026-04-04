@@ -5,6 +5,7 @@ import com.openmason.main.systems.menus.panes.modelBrowser.ModelBrowserState;
 import com.openmason.main.systems.menus.panes.modelBrowser.categorizers.BlockCategorizer;
 import com.openmason.main.systems.menus.panes.modelBrowser.categorizers.ItemCategorizer;
 import imgui.ImGui;
+import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiTreeNodeFlags;
 
@@ -126,9 +127,10 @@ public record SidebarRenderer(ModelBrowserController controller) {
 
         // Highlight selected item
         if (isSelected) {
-            ImGui.pushStyleColor(ImGuiCol.Header, 0.26f, 0.59f, 0.98f, 0.4f);
-            ImGui.pushStyleColor(ImGuiCol.HeaderHovered, 0.26f, 0.59f, 0.98f, 0.6f);
-            ImGui.pushStyleColor(ImGuiCol.HeaderActive, 0.26f, 0.59f, 0.98f, 0.8f);
+            ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+            ImGui.pushStyleColor(ImGuiCol.Header, accent.x, accent.y, accent.z, 0.4f);
+            ImGui.pushStyleColor(ImGuiCol.HeaderHovered, accent.x, accent.y, accent.z, 0.6f);
+            ImGui.pushStyleColor(ImGuiCol.HeaderActive, accent.x, accent.y, accent.z, 0.8f);
         }
 
         // Use selectable for clickable items

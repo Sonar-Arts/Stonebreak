@@ -136,30 +136,13 @@ public class TextureImporter {
             return null;
         }
 
-        // If already correct size, return as-is
-        if (loaded.getWidth() == targetWidth && loaded.getHeight() == targetHeight) {
-            return loaded;
+        // Delegate to PixelCanvas.resized() for consistent rescaling
+        PixelCanvas resized = loaded.resized(targetWidth, targetHeight);
+
+        if (resized != loaded) {
+            logger.info("Resized texture from {}x{} to {}x{}",
+                       loaded.getWidth(), loaded.getHeight(), targetWidth, targetHeight);
         }
-
-        // Create resized canvas
-        PixelCanvas resized = new PixelCanvas(targetWidth, targetHeight);
-
-        // Simple nearest-neighbor scaling
-        float xRatio = (float) loaded.getWidth() / targetWidth;
-        float yRatio = (float) loaded.getHeight() / targetHeight;
-
-        for (int y = 0; y < targetHeight; y++) {
-            for (int x = 0; x < targetWidth; x++) {
-                int srcX = (int) (x * xRatio);
-                int srcY = (int) (y * yRatio);
-
-                int color = loaded.getPixel(srcX, srcY);
-                resized.setPixel(x, y, color);
-            }
-        }
-
-        logger.info("Resized texture from {}x{} to {}x{}",
-                   loaded.getWidth(), loaded.getHeight(), targetWidth, targetHeight);
 
         return resized;
     }

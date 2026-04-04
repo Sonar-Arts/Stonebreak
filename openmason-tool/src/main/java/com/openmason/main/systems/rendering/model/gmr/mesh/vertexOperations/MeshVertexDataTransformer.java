@@ -86,7 +86,7 @@ public class MeshVertexDataTransformer {
                 // This vertex was merged or kept - use its position
                 copyVertexPosition(oldIdx, newIdx, expandedPositions);
 
-                logger.debug("  Vertex {} -> {} at ({}, {}, {})",
+                logger.trace("  Vertex {} -> {} at ({}, {}, {})",
                         oldIdx, newIdx,
                         String.format("%.3f", expandedPositions[oldIdx * 3]),
                         String.format("%.3f", expandedPositions[oldIdx * 3 + 1]),

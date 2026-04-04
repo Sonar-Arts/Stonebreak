@@ -2,6 +2,7 @@ package com.openmason.main.systems.menus.mainHub;
 
 import com.openmason.main.systems.LogoManager;
 import com.openmason.main.systems.menus.mainHub.components.*;
+import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import com.openmason.main.systems.menus.mainHub.services.HubActionService;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.menus.mainHub.services.TemplateService;
@@ -17,6 +18,8 @@ import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.function.Consumer;
 
 /**
  * Main coordinator for Unity Hub-style project hub interface.
@@ -37,6 +40,7 @@ public class ProjectHubScreen {
     private final HubVisibilityState visibilityState;
 
     private final HubActionService actionService;
+    private final RecentProjectsService recentProjectsService;
 
     // UI Components
     private final HubTopToolbar topToolbar;
@@ -65,15 +69,18 @@ public class ProjectHubScreen {
 
         // Initialize services
         TemplateService templateService = new TemplateService();
-        RecentProjectsService recentProjectsService = new RecentProjectsService();
+        this.recentProjectsService = new RecentProjectsService();
         this.actionService = new HubActionService();
 
         // Initialize UI components with dependency injection
         this.topToolbar = new HubTopToolbar(hubState);
         this.sidebarNav = new HubSidebarNav(themeManager, hubState, logoManager);
         this.templatesPanel = new TemplatesPanel(themeManager, hubState, templateService);
-        this.recentProjectsPanel = new RecentProjectsPanel(themeManager, hubState, recentProjectsService);
-        this.previewPanel = new PreviewPanel(themeManager, hubState, logoManager, actionService);
+        this.recentProjectsPanel = new RecentProjectsPanel(themeManager, hubState, recentProjectsService, actionService);
+        this.previewPanel = new PreviewPanel(themeManager, hubState, logoManager, actionService, recentProjectsService);
+
+        // Share dialog instances between panels to avoid duplicate popups
+        this.previewPanel.setDialogs(recentProjectsPanel.getRenameDialog(), recentProjectsPanel.getDeleteDialog());
 
         logger.info("Project Hub Screen initialized");
     }
@@ -105,6 +112,10 @@ public class ProjectHubScreen {
 
         if (ImGui.begin(WINDOW_TITLE, windowFlags)) {
             renderLayout();
+
+            // Render modal dialogs at top-level window scope (not inside child windows)
+            recentProjectsPanel.getRenameDialog().render();
+            recentProjectsPanel.getDeleteDialog().render();
         }
         ImGui.end();
 
@@ -192,9 +203,9 @@ public class ProjectHubScreen {
         ImGui.spacing();
 
         ThemeDefinition theme = themeManager.getCurrentTheme();
-        ImVec4 textDisabled = theme.getColor(ImGuiCol.TextDisabled);
-        if (textDisabled != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, 0.8f);
+        ImVec4 textCol = theme.getColor(ImGuiCol.Text);
+        if (textCol != null) {
+            ImGui.pushStyleColor(ImGuiCol.Text, textCol.x, textCol.y, textCol.z, 0.6f);
         }
 
         String message = "Documentation and tutorials coming soon!";
@@ -203,7 +214,7 @@ public class ProjectHubScreen {
         ImGui.setCursorPosX(messageX);
         ImGui.text(message);
 
-        if (textDisabled != null) {
+        if (textCol != null) {
             ImGui.popStyleColor();
         }
     }
@@ -233,17 +244,25 @@ public class ProjectHubScreen {
 
     /**
      * Set transition callbacks for project creation and opening.
+     * The open callback receives the RecentProject so the .OMP file can be loaded.
      */
-    public void setTransitionCallbacks(Runnable onCreateProject, Runnable onOpenProject) {
+    public void setTransitionCallbacks(Runnable onCreateProject, Consumer<RecentProject> onOpenProject) {
         actionService.setCreateProjectCallback(onCreateProject);
         actionService.setOpenProjectCallback(onOpenProject);
+    }
+
+    /**
+     * Get the recent projects service for adding new entries on project save/open.
+     */
+    public RecentProjectsService getRecentProjectsService() {
+        return recentProjectsService;
     }
 
     /**
      * Set callback for preferences button.
      */
     public void setOnPreferencesClicked(Runnable callback) {
-        topToolbar.setOnPreferencesClicked(callback);
+        sidebarNav.setOnPreferencesClicked(callback);
     }
 
 }

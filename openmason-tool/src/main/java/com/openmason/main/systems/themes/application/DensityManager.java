@@ -151,7 +151,19 @@ public class DensityManager {
             scaleThemeStyleVarWithMin(scaledTheme, ImGuiStyleVar.ChildBorderSize, scale, 0.5f);
             scaleThemeStyleVarWithMin(scaledTheme, ImGuiStyleVar.PopupBorderSize, scale, 0.5f);
             scaleThemeStyleVarWithMin(scaledTheme, ImGuiStyleVar.FrameBorderSize, scale, 0.0f);
-            
+
+            // Scale additional float style vars
+            scaleThemeStyleVar(scaledTheme, ImGuiStyleVar.ScrollbarSize, scale);
+            scaleThemeStyleVar(scaledTheme, ImGuiStyleVar.GrabMinSize, scale);
+            scaleThemeStyleVar(scaledTheme, ImGuiStyleVar.IndentSpacing, scale);
+
+            // Scale Vec2 style vars (padding, spacing)
+            scaleThemeStyleVarVec2(scaledTheme, ImGuiStyleVar.WindowPadding, scale);
+            scaleThemeStyleVarVec2(scaledTheme, ImGuiStyleVar.FramePadding, scale);
+            scaleThemeStyleVarVec2(scaledTheme, ImGuiStyleVar.ItemSpacing, scale);
+            scaleThemeStyleVarVec2(scaledTheme, ImGuiStyleVar.ItemInnerSpacing, scale);
+            scaleThemeStyleVarVec2(scaledTheme, ImGuiStyleVar.CellPadding, scale);
+
             logger.trace("Applied density scaling {}x to theme: {}", scale, theme.getName());
             return scaledTheme;
             
@@ -227,6 +239,16 @@ public class DensityManager {
         }
     }
     
+    /**
+     * Scale a theme's Vec2 style variable
+     */
+    private void scaleThemeStyleVarVec2(ThemeDefinition theme, int styleVar, float scale) {
+        float[] currentValue = theme.getStyleVarVec2(styleVar);
+        if (currentValue != null && currentValue.length == 2) {
+            theme.setStyleVarVec2(styleVar, currentValue[0] * scale, currentValue[1] * scale);
+        }
+    }
+
     /**
      * Scale a theme's style variable with minimum value
      */

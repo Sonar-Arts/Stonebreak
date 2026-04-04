@@ -4,6 +4,7 @@ import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.geometry.ArrowGeometry;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.AxisConstraint;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoPart;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoColors;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -159,6 +160,7 @@ public class TranslateMode implements IGizmoMode {
         int uModelLoc = GL30.glGetUniformLocation(shaderProgram, "uModelMatrix");
         int uViewProjLoc = GL30.glGetUniformLocation(shaderProgram, "uViewProjection");
         int uIntensityLoc = GL30.glGetUniformLocation(shaderProgram, "uIntensity");
+        int uAlphaLoc = GL30.glGetUniformLocation(shaderProgram, "uAlpha");
 
         // Set view-projection matrix (same for all parts)
         FloatBuffer vpBuffer = BufferUtils.createFloatBuffer(16);
@@ -174,11 +176,12 @@ public class TranslateMode implements IGizmoMode {
         GL30.glEnable(GL30.GL_BLEND);
         GL30.glBlendFunc(GL30.GL_SRC_ALPHA, GL30.GL_ONE_MINUS_SRC_ALPHA);
 
-        // Render arrows
+        // Render arrows (fully opaque)
+        GL30.glUniform1f(uAlphaLoc, 1.0f);
         renderArrows(gizmoState, uIntensityLoc);
 
-        // Render plane handles with transparency
-        renderPlanes(gizmoState, uIntensityLoc);
+        // Render plane handles with proper alpha blending
+        renderPlanes(gizmoState, uIntensityLoc, uAlphaLoc);
 
         GL30.glDisable(GL30.GL_BLEND);
         GL30.glUseProgram(0);
@@ -208,17 +211,27 @@ public class TranslateMode implements IGizmoMode {
     }
 
     /**
-     * Renders the three plane handles.
+     * Renders the three plane handles with proper alpha blending.
+     * Default alpha 0.3, hover 0.6, active 0.9.
      */
-    private void renderPlanes(GizmoState gizmoState, int intensityUniformLoc) {
+    private void renderPlanes(GizmoState gizmoState, int intensityUniformLoc, int alphaUniformLoc) {
         AxisConstraint[] constraints = {AxisConstraint.XY, AxisConstraint.XZ, AxisConstraint.YZ};
 
         for (int i = 0; i < 3; i++) {
-            // Get intensity based on hover/active state
             float intensity = gizmoState.getIntensityForConstraint(constraints[i]);
-            GL30.glUniform1f(intensityUniformLoc, intensity * 0.5f); // Make planes semi-transparent
+            GL30.glUniform1f(intensityUniformLoc, intensity);
 
-            // Render plane (2 triangles = 6 vertices)
+            // Determine alpha based on interaction state
+            float alpha;
+            if (intensity > 1.5f) {
+                alpha = 0.9f; // Active (dragging)
+            } else if (intensity > 1.0f) {
+                alpha = 0.6f; // Hovered
+            } else {
+                alpha = 0.3f; // Default
+            }
+            GL30.glUniform1f(alphaUniformLoc, alpha);
+
             GL30.glBindVertexArray(planeVAOs[i]);
             GL30.glDrawArrays(GL30.GL_TRIANGLES, 0, planeVertexCounts[i]);
             GL30.glBindVertexArray(0);
@@ -226,12 +239,15 @@ public class TranslateMode implements IGizmoMode {
     }
 
     @Override
-    public List<GizmoPart> getInteractiveParts(Vector3f gizmoPosition) {
+    public List<GizmoPart> getInteractiveParts(Vector3f gizmoPosition, float scaleFactor) {
         if (gizmoPosition == null) {
             throw new IllegalArgumentException("Gizmo position cannot be null");
         }
 
         List<GizmoPart> parts = new ArrayList<>();
+        float scaledGizmoSize = GIZMO_SIZE * scaleFactor;
+        float scaledPlaneSize = PLANE_SIZE * scaleFactor;
+        float scaledPlaneOffset = PLANE_OFFSET * scaleFactor;
 
         // Add arrow parts
         Vector3f[] arrowDirections = {
@@ -242,23 +258,17 @@ public class TranslateMode implements IGizmoMode {
 
         AxisConstraint[] arrowConstraints = {AxisConstraint.X, AxisConstraint.Y, AxisConstraint.Z};
 
-        Vector3f[] arrowColors = {
-            new Vector3f(1, 0, 0), // Red
-            new Vector3f(0, 1, 0), // Green
-            new Vector3f(0, 0, 1)  // Blue
-        };
-
         for (int i = 0; i < 3; i++) {
             Vector3f center = ArrowGeometry.getArrowCenter(
                 gizmoPosition,
                 arrowDirections[i],
-                GIZMO_SIZE
+                scaledGizmoSize
             );
-            float radius = ArrowGeometry.getInteractionRadius(GIZMO_SIZE);
+            float radius = ArrowGeometry.getInteractionRadius(scaledGizmoSize);
 
             parts.add(new GizmoPart(
                 arrowConstraints[i],
-                arrowColors[i],
+                GizmoColors.axisColor(i),
                 GizmoPart.PartType.ARROW,
                 center,
                 radius
@@ -274,27 +284,21 @@ public class TranslateMode implements IGizmoMode {
 
         AxisConstraint[] planeConstraints = {AxisConstraint.XY, AxisConstraint.XZ, AxisConstraint.YZ};
 
-        Vector3f[] planeColors = {
-            new Vector3f(1, 1, 0), // Yellow
-            new Vector3f(1, 0, 1), // Magenta
-            new Vector3f(0, 1, 1)  // Cyan
-        };
-
         for (int i = 0; i < 3; i++) {
             Vector3f center = ArrowGeometry.getPlaneHandleCenter(
                 gizmoPosition,
                 planeAxes[i][0],
                 planeAxes[i][1],
-                PLANE_SIZE,
-                PLANE_OFFSET
+                scaledPlaneSize,
+                scaledPlaneOffset
             );
 
             parts.add(new GizmoPart(
                 planeConstraints[i],
-                planeColors[i],
+                GizmoColors.planeColor(i),
                 GizmoPart.PartType.PLANE,
                 center,
-                PLANE_SIZE * 0.7f // Interaction radius
+                scaledPlaneSize * 0.7f // Interaction radius
             ));
         }
 

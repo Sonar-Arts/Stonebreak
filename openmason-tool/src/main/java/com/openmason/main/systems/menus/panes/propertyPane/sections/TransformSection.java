@@ -5,8 +5,13 @@ import com.openmason.main.systems.menus.panes.propertyPane.components.Vec3Slider
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IPanelSection;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.ITransformState;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
+import imgui.ImDrawList;
 import imgui.ImGui;
+import imgui.ImVec2;
+import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
+import imgui.flag.ImGuiStyleVar;
+import imgui.type.ImFloat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,7 +19,7 @@ import java.util.function.Consumer;
 
 /**
  * Transform controls section component.
- * Handles position, rotation, and scale sliders with uniform scaling support.
+ * Handles position, rotation, and scale with colored axis labels.
  * Follows SRP - single responsibility of transform UI.
  */
 public class TransformSection implements IPanelSection {
@@ -47,28 +52,39 @@ public class TransformSection implements IPanelSection {
             return;
         }
 
-        // Use compact blue header box with JetBrains Mono Bold
         ImGuiComponents.renderCompactSectionHeader("Transform");
+        ImGui.spacing();
 
         // Sync from viewport if connected and not interacting
         syncFromViewportIfNeeded();
 
-        // Position controls
-        positionSliders.render();
+        // Position
+        renderTransformGroup("Position", "ts_pos",
+                transformState.getPositionX(), transformState.getPositionY(), transformState.getPositionZ(),
+                0.01f, "%.3f");
         ImGui.spacing();
 
-        // Rotation controls
-        rotationSliders.render();
+        // Rotation
+        renderTransformGroup("Rotation", "ts_rot",
+                transformState.getRotationX(), transformState.getRotationY(), transformState.getRotationZ(),
+                0.5f, "%.1f");
         ImGui.spacing();
 
-        // Scale controls
+        // Scale
         renderScaleControls();
         ImGui.spacing();
 
         // Reset button
-        if (ImGui.button("Reset Transform")) {
+        ImVec4 dimCol = ImGui.getStyle().getColor(ImGuiCol.TextDisabled);
+        ImGui.pushStyleColor(ImGuiCol.Button, dimCol.x, dimCol.y, dimCol.z, 0.15f);
+        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, dimCol.x, dimCol.y, dimCol.z, 0.30f);
+        ImGui.pushStyleColor(ImGuiCol.ButtonActive, dimCol.x, dimCol.y, dimCol.z, 0.45f);
+        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 3.0f);
+        if (ImGui.button("Reset", -1, 0)) {
             resetTransform();
         }
+        ImGui.popStyleVar();
+        ImGui.popStyleColor(3);
     }
 
     @Override
@@ -176,64 +192,125 @@ public class TransformSection implements IPanelSection {
      * Render scale controls with uniform scaling support.
      */
     private void renderScaleControls() {
-        // Use compact blue header box for scale section
-        ImGuiComponents.renderCompactSectionHeader("Scale");
+        ImVec4 dimCol = ImGui.getStyle().getColor(ImGuiCol.TextDisabled);
+        ImGui.pushStyleColor(ImGuiCol.Text, dimCol.x, dimCol.y, dimCol.z, dimCol.w);
+        ImGui.textUnformatted("Scale");
+        ImGui.popStyleColor();
 
-        // Uniform mode checkbox with renamed label
-        if (ImGui.checkbox("Uniform Scale Toggle", transformState.getUniformScaleMode())) {
+        // Uniform mode checkbox
+        if (ImGui.checkbox("Uniform", transformState.getUniformScaleMode())) {
             transformState.setUniformScaleMode(transformState.getUniformScaleMode().get());
-
-            // Sync to viewport if connected
             if (viewportConnector != null && viewportConnector.isConnected()) {
                 viewportConnector.setGizmoUniformScaling(transformState.getUniformScaleMode().get());
             }
         }
 
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Toggle between uniform (all axes) and non-uniform (per-axis) scaling");
-        }
-
-        ImGui.spacing();
-
-        // Get scale constraints
         float minScale = viewportConnector != null ? viewportConnector.getMinScale() : 0.1f;
         float maxScale = viewportConnector != null ? viewportConnector.getMaxScale() : 3.0f;
 
-        // Render scale boundary warnings
-        renderScaleBoundaryWarnings(minScale, maxScale);
-
-        // Render scale sliders with uniform scaling support
         if (transformState.getUniformScaleMode().get()) {
-            scaleSliders.renderWithUniformScale(true, (axis, newValue) -> {
+            // Uniform: single drag float for all axes
+            boolean scaleChanged = renderAxisField("X", "ts_sclx", transformState.getScaleX(), 0.01f, "%.3f",
+                    0.85f, 0.25f, 0.25f);
+            scaleChanged |= renderAxisField("Y", "ts_scly", transformState.getScaleY(), 0.01f, "%.3f",
+                    0.25f, 0.72f, 0.25f);
+            scaleChanged |= renderAxisField("Z", "ts_sclz", transformState.getScaleZ(), 0.01f, "%.3f",
+                    0.25f, 0.45f, 0.90f);
+
+            if (scaleChanged) {
                 transformState.markUserInteraction();
-                transformState.applyUniformScale(axis, newValue, minScale, maxScale);
+                // Apply uniform: find which changed and sync all to it
+                float sx = transformState.getScaleX().get();
+                float sy = transformState.getScaleY().get();
+                float sz = transformState.getScaleZ().get();
+                // Determine which axis changed by checking what differs
+                float uniform = Math.max(sx, Math.max(sy, sz));
+                uniform = Math.min(Math.max(uniform, minScale), maxScale);
+                transformState.getScaleX().set(uniform);
+                transformState.getScaleY().set(uniform);
+                transformState.getScaleZ().set(uniform);
                 notifyTransformChanged();
-            });
+            }
         } else {
-            scaleSliders.render();
+            boolean scaleChanged = renderAxisField("X", "ts_sclx", transformState.getScaleX(), 0.01f, "%.3f",
+                    0.85f, 0.25f, 0.25f);
+            scaleChanged |= renderAxisField("Y", "ts_scly", transformState.getScaleY(), 0.01f, "%.3f",
+                    0.25f, 0.72f, 0.25f);
+            scaleChanged |= renderAxisField("Z", "ts_sclz", transformState.getScaleZ(), 0.01f, "%.3f",
+                    0.25f, 0.45f, 0.90f);
+            if (scaleChanged) {
+                transformState.markUserInteraction();
+                notifyTransformChanged();
+            }
         }
     }
 
     /**
-     * Render scale boundary warnings.
+     * Render a labeled transform group with colored axis pill fields.
      */
-    private void renderScaleBoundaryWarnings(float minScale, float maxScale) {
-        boolean atMinScale = Math.abs(transformState.getScaleX().get() - minScale) < 0.01f ||
-                             Math.abs(transformState.getScaleY().get() - minScale) < 0.01f ||
-                             Math.abs(transformState.getScaleZ().get() - minScale) < 0.01f;
-        boolean atMaxScale = Math.abs(transformState.getScaleX().get() - maxScale) < 0.01f ||
-                             Math.abs(transformState.getScaleY().get() - maxScale) < 0.01f ||
-                             Math.abs(transformState.getScaleZ().get() - maxScale) < 0.01f;
+    private boolean renderTransformGroup(String groupLabel, String id,
+                                          ImFloat x, ImFloat y, ImFloat z,
+                                          float speed, String format) {
+        boolean changed = false;
 
-        if (atMinScale || atMaxScale) {
-            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 1.0f); // Orange
-            if (atMinScale) {
-                ImGui.text("Minimum scale reached");
-            } else {
-                ImGui.text("Maximum scale reached");
-            }
-            ImGui.popStyleColor();
+        ImVec4 dimCol = ImGui.getStyle().getColor(ImGuiCol.TextDisabled);
+        ImGui.pushStyleColor(ImGuiCol.Text, dimCol.x, dimCol.y, dimCol.z, dimCol.w);
+        ImGui.textUnformatted(groupLabel);
+        ImGui.popStyleColor();
+
+        boolean xChanged = renderAxisField("X", id + "x", x, speed, format, 0.85f, 0.25f, 0.25f);
+        boolean yChanged = renderAxisField("Y", id + "y", y, speed, format, 0.25f, 0.72f, 0.25f);
+        boolean zChanged = renderAxisField("Z", id + "z", z, speed, format, 0.25f, 0.45f, 0.90f);
+
+        if (xChanged || yChanged || zChanged) {
+            transformState.markUserInteraction();
+            notifyTransformChanged();
+            changed = true;
         }
+
+        return changed;
+    }
+
+    /**
+     * Render a single axis field: colored label pill + drag float filling remaining width.
+     */
+    private boolean renderAxisField(String axisLabel, String id, ImFloat value,
+                                     float speed, String format,
+                                     float colorR, float colorG, float colorB) {
+        boolean changed = false;
+        float pillWidth = 18.0f;
+        float pillHeight = ImGui.getFrameHeight();
+        float spacing = 4.0f;
+        float fieldWidth = ImGui.getContentRegionAvailX() - pillWidth - spacing;
+
+        ImDrawList drawList = ImGui.getWindowDrawList();
+        ImVec2 cursor = ImGui.getCursorScreenPos();
+
+        // Draw colored pill background
+        int pillColor = ImGui.colorConvertFloat4ToU32(colorR, colorG, colorB, 0.25f);
+        int textColor = ImGui.colorConvertFloat4ToU32(colorR, colorG, colorB, 1.0f);
+        drawList.addRectFilled(cursor.x, cursor.y,
+                cursor.x + pillWidth, cursor.y + pillHeight, pillColor, 3.0f);
+
+        // Center axis letter in pill
+        ImVec2 textSize = new ImVec2();
+        ImGui.calcTextSize(textSize, axisLabel);
+        float textX = cursor.x + (pillWidth - textSize.x) * 0.5f;
+        float textY = cursor.y + (pillHeight - textSize.y) * 0.5f;
+        drawList.addText(textX, textY, textColor, axisLabel);
+
+        // Advance past pill
+        ImGui.dummy(pillWidth, pillHeight);
+        ImGui.sameLine(0, spacing);
+
+        // Drag float
+        ImGui.pushItemWidth(fieldWidth);
+        if (ImGui.dragFloat("##" + id, value.getData(), speed, 0, 0, format)) {
+            changed = true;
+        }
+        ImGui.popItemWidth();
+
+        return changed;
     }
 
     /**

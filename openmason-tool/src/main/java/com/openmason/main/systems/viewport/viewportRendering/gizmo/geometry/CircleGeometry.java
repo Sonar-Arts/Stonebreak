@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.gizmo.geometry;
 
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoColors;
 import org.joml.Vector3f;
 
 /**
@@ -121,12 +122,6 @@ public final class CircleGeometry {
             new Vector3f(0, 0, 1)  // Z axis rotation
         };
 
-        Vector3f[] colors = {
-            new Vector3f(1, 0, 0), // Red for X
-            new Vector3f(0, 1, 0), // Green for Y
-            new Vector3f(0, 0, 1)  // Blue for Z
-        };
-
         float[][] circles = new float[3][];
         for (int i = 0; i < 3; i++) {
             circles[i] = createThickCircle(
@@ -134,7 +129,7 @@ public final class CircleGeometry {
                 normals[i],
                 radius,
                 THICK_LINE_WIDTH,
-                colors[i],
+                GizmoColors.axisColor(i),
                 DEFAULT_ARC_COVERAGE
             );
         }

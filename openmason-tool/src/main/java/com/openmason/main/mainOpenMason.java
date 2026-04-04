@@ -9,8 +9,11 @@ import imgui.glfw.ImGuiImplGlfw;
 import com.openmason.main.systems.MainImGuiInterface;
 import com.openmason.main.systems.viewport.ViewportImGuiInterface;
 import com.openmason.main.systems.menus.mainHub.ProjectHubScreen;
+import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import com.openmason.main.systems.themes.core.ThemeManager;
+import com.openmason.main.systems.menus.textureCreator.FaceEditorBridge;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
+import com.openmason.main.systems.menus.textureCreator.TexturePreviewPipeline;
 import com.openmason.main.systems.services.drop.ViewportDropCallbackManager;
 import com.openmason.main.systems.menus.windows.TextureEditorWindow;
 import org.lwjgl.glfw.*;
@@ -59,6 +62,7 @@ public class mainOpenMason {
     private ViewportImGuiInterface viewportInterface;
     private TextureCreatorImGui textureCreatorInterface;
     private TextureEditorWindow textureEditorWindow;
+    private TexturePreviewPipeline texturePreviewPipeline;
 
     // State flags
     private boolean showHomeScreen = true;
@@ -159,7 +163,10 @@ public class mainOpenMason {
      * Setup window event callbacks.
      */
     private void setupWindowCallbacks() {
-        glfwSetWindowCloseCallback(window, w -> shouldClose = true);
+        glfwSetWindowCloseCallback(window, w -> {
+            glfwSetWindowShouldClose(w, false);
+            requestApplicationExit();
+        });
 
         glfwSetWindowSizeCallback(window, (w, width, height) -> {
             boolean maximized = glfwGetWindowAttrib(w, GLFW_MAXIMIZED) == GLFW_TRUE;
@@ -278,14 +285,23 @@ public class mainOpenMason {
             projectHubScreen = new ProjectHubScreen(themeManager);
             mainInterface = new MainImGuiInterface(themeManager);
 
-            projectHubScreen.setTransitionCallbacks(this::transitionToMainInterface, this::transitionToMainInterface);
+            projectHubScreen.setTransitionCallbacks(this::transitionToMainInterface, this::openRecentProject);
             projectHubScreen.setOnPreferencesClicked(mainInterface.getShowPreferencesCallback());
+
+            // Wire recent projects service from hub into main interface for project tracking
+            mainInterface.setRecentProjectsService(projectHubScreen.getRecentProjectsService());
 
             // Initialize keybind system BEFORE creating viewport and texture editor
             initializeKeybindSystem();
 
             viewportInterface = new ViewportImGuiInterface(themeManager, new PreferencesManager());
             viewportInterface.setViewport3D(mainInterface.getViewport3D());
+
+            // Wire slideouts: property panel ↔ viewport tool pane (Add Part, Part Transform)
+            if (mainInterface.getPropertyPanel() != null) {
+                mainInterface.getPropertyPanel().wireSlideouts(
+                        viewportInterface.getViewportUIState(), mainInterface.getViewport3D());
+            }
 
             textureCreatorInterface = TextureCreatorImGui.createDefault();
             textureEditorWindow = new TextureEditorWindow(textureCreatorInterface);
@@ -295,6 +311,20 @@ public class mainOpenMason {
 
             wireCallbacks();
             setWindowHandles();
+
+            // Real-time texture preview: canvas edits → 3D viewport
+            texturePreviewPipeline = new TexturePreviewPipeline(
+                textureCreatorInterface.getController(),
+                mainInterface.getViewport3D().getModelRenderer()
+            );
+
+            // Wire face editor bridge: property panel "Edit Texture" → texture editor
+            FaceEditorBridge faceEditorBridge = new FaceEditorBridge(textureCreatorInterface.getController());
+            mainInterface.getPropertyPanel().setFaceEditorBridge(faceEditorBridge);
+            mainInterface.getPropertyPanel().setOnEditTextureRequested(() -> {
+                showTextureEditor = true;
+                textureEditorWindow.show();
+            });
 
         } catch (Exception e) {
             logger.error("Failed to initialize UI interfaces", e);
@@ -338,11 +368,19 @@ public class mainOpenMason {
 
     private void wireCallbacks() {
         mainInterface.setBackToHomeCallback(this::transitionToHomeScreen);
+        mainInterface.setExitCallback(() -> shouldClose = true);
         mainInterface.setOpenTextureEditorCallback(() -> {
+            // Standalone open: reset to a fresh blank canvas so previous
+            // per-face edits don't leak into the standalone session
+            textureCreatorInterface.getController().resetAll();
             showTextureEditor = true;
             textureEditorWindow.show();
         });
         mainInterface.setTextureCreatorInterface(textureCreatorInterface);
+
+        // Reset texture editor when a new/different model is loaded
+        mainInterface.getModelOperations().setOnModelChangedCallback(() ->
+                textureCreatorInterface.getController().resetAll());
 
         textureCreatorInterface.setBackToHomeCallback(this::transitionToHomeScreen);
         textureCreatorInterface.setPreferencesCallback(mainInterface.getShowPreferencesCallback());
@@ -374,12 +412,49 @@ public class mainOpenMason {
         if (showTextureEditor) {
             safeRender(() -> {
                 textureEditorWindow.render();
-                showTextureEditor = textureEditorWindow.isVisible();
+                boolean stillVisible = textureEditorWindow.isVisible();
+                if (!stillVisible) {
+                    boolean wasFaceEdit = textureCreatorInterface.getController().isFaceRegionActive();
+
+                    // Flush pending canvas edits to the face's GPU texture BEFORE
+                    // closing the region — closeFaceRegion clears the material ID,
+                    // so a later flush would target the wrong texture.
+                    if (texturePreviewPipeline != null) {
+                        texturePreviewPipeline.flush();
+                    }
+                    textureCreatorInterface.getController().closeFaceRegion();
+                    mainInterface.getPropertyPanel().clearEditingFace();
+
+                    // Auto-save the .OMO so per-face texture edits are persisted
+                    if (wasFaceEdit && mainInterface.getModelOperations() != null) {
+                        mainInterface.getModelOperations().saveModel();
+                    }
+                }
+                showTextureEditor = stillVisible;
             }, "Texture Editor");
         }
 
         if (mainInterface != null && mainInterface.getUnifiedPreferencesWindow() != null) {
             safeRender(() -> mainInterface.getUnifiedPreferencesWindow().render(), "Preferences Window");
+        }
+
+        if (mainInterface != null && mainInterface.getSBOExportWindow() != null) {
+            safeRender(() -> mainInterface.getSBOExportWindow().render(), "SBO Export Window");
+        }
+
+        if (mainInterface != null && mainInterface.getSBEExportWindow() != null) {
+            safeRender(() -> mainInterface.getSBEExportWindow().render(), "SBE Export Window");
+        }
+
+        // Render unsaved changes dialog (must be rendered outside other windows for modal to work)
+        if (mainInterface != null && mainInterface.getFileMenuHandler() != null) {
+            safeRender(() -> mainInterface.getFileMenuHandler().getUnsavedChangesDialog().render(),
+                    "Unsaved Changes Dialog");
+        }
+
+        // Flush pending texture preview updates to the 3D viewport
+        if (texturePreviewPipeline != null) {
+            texturePreviewPipeline.flush();
         }
     }
 
@@ -409,11 +484,45 @@ public class mainOpenMason {
     }
     
     /**
+     * Request application exit. Shows the unsaved changes dialog if the model editor
+     * is active and has unsaved changes, otherwise exits immediately.
+     */
+    private void requestApplicationExit() {
+        if (showModelEditor && mainInterface != null) {
+            mainInterface.requestExit();
+        } else {
+            shouldClose = true;
+        }
+    }
+
+    /**
      * Transition to main interface from home screen.
      */
     private void transitionToMainInterface() {
         showHomeScreen = false;
         showModelEditor = true;
+
+        // Reset all editor state for a clean session.
+        // For blank template: this gives a fresh workspace.
+        // For openRecentProject(): the subsequent openProjectFromHub() call
+        // overwrites this reset with the saved project state.
+        if (mainInterface != null) {
+            mainInterface.resetEditorState();
+        }
+    }
+
+    /**
+     * Open a recent project from the Project Hub.
+     * Transitions to the main interface and loads the .OMP project file.
+     */
+    private void openRecentProject(RecentProject project) {
+        transitionToMainInterface();
+
+        if (project != null && project.getPath() != null && !project.getPath().isBlank()) {
+            // Delegate to MainImGuiInterface to load the project via ProjectService
+            mainInterface.openProjectFromHub(project.getPath());
+            logger.info("Opening project from hub: {}", project.getPath());
+        }
     }
 
     /**
@@ -462,9 +571,18 @@ public class mainOpenMason {
             logger.error("Error cleaning up CBRResourceManager", e);
         }
 
+        if (texturePreviewPipeline != null) {
+            texturePreviewPipeline.dispose();
+        }
         safeDispose(viewportInterface);
         safeDispose(textureCreatorInterface);
         safeDispose(themeManager);
+
+        try {
+            com.openmason.main.systems.menus.icons.MenuBarIconManager.getInstance().dispose();
+        } catch (Exception e) {
+            logger.error("Error cleaning up MenuBarIconManager", e);
+        }
     }
 
     private void cleanupImGui() {

@@ -1,5 +1,6 @@
 package com.openmason.main.systems.rendering.model;
 
+import com.openmason.main.systems.rendering.model.gmr.topology.MeshTopology;
 import org.joml.Vector3f;
 
 /**
@@ -42,4 +43,17 @@ public interface MeshChangeListener {
      * rather than incremental updates.
      */
     void onGeometryRebuilt();
+
+    /**
+     * Called when the mesh topology index has been rebuilt.
+     * This occurs after subdivision, model loading, or any operation that
+     * changes the edge/face structure.
+     *
+     * <p>Default implementation is a no-op for backward compatibility.
+     *
+     * @param topology The new topology index, or null if unavailable
+     */
+    default void onTopologyRebuilt(MeshTopology topology) {
+        // Default no-op for backward compatibility
+    }
 }

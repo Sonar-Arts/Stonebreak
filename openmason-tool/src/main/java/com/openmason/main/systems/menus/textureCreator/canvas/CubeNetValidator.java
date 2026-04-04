@@ -2,7 +2,13 @@ package com.openmason.main.systems.menus.textureCreator.canvas;
 
 /**
  * Validator for cube net editable regions.
+ *
+ * @deprecated Use {@link CubeNetShapeMask} instead, which integrates with
+ *             the unified {@link CanvasShapeMask} system enforced by
+ *             {@link PixelCanvas#setPixel}. This class is no longer
+ *             referenced by any tools.
  */
+@Deprecated
 public class CubeNetValidator {
 
     // Cube net dimensions

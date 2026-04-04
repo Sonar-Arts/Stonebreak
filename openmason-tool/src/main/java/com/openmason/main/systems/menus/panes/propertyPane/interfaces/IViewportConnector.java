@@ -1,6 +1,8 @@
 package com.openmason.main.systems.menus.panes.propertyPane.interfaces;
 
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
+import com.openmason.main.systems.viewport.state.FaceSelectionState;
 
 /**
  * Interface for viewport connection abstraction following SOLID principles.
@@ -24,19 +26,19 @@ public interface IViewportConnector {
     void setTextureVariant(String variantName);
 
     /**
-     * Reload a BlockModel in the viewport (full reload including geometry).
+     * Reload a model in the viewport (full reload including geometry).
      *
-     * @param blockModel The BlockModel to reload
+     * @param blockModel The model to reload
      */
-    void reloadBlockModel(BlockModel blockModel);
+    void reloadModel(BlockModel blockModel);
 
     /**
-     * Update only the texture for the current BlockModel without rebuilding geometry.
+     * Update only the texture for the current model without rebuilding geometry.
      * Use this when changing textures to preserve any vertex/geometry modifications.
      *
-     * @param blockModel The BlockModel with updated texture path
+     * @param blockModel The model with updated texture path
      */
-    void updateBlockModelTexture(BlockModel blockModel);
+    void updateModelTexture(BlockModel blockModel);
 
     /**
      * Get the minimum allowed scale value.
@@ -130,4 +132,82 @@ public interface IViewportConnector {
      * Reset model transform to defaults.
      */
     void resetModelTransform();
+
+    /**
+     * Get the face selection state from the viewport.
+     *
+     * @return FaceSelectionState, or null if not connected
+     */
+    FaceSelectionState getFaceSelectionState();
+
+    /**
+     * Get the face texture manager from the viewport's model renderer.
+     *
+     * @return FaceTextureManager, or null if not connected
+     */
+    FaceTextureManager getFaceTextureManager();
+
+    /**
+     * Assign a material to a specific face via the model renderer.
+     *
+     * @param faceId     Face identifier
+     * @param materialId Material to assign
+     */
+    void setFaceTexture(int faceId, int materialId);
+
+    /**
+     * Check if the viewport is currently in face edit mode.
+     *
+     * @return true if face editing is allowed
+     */
+    boolean isInFaceEditMode();
+
+    /**
+     * Set the face index currently being edited in the texture editor.
+     * The overlay renderer will use an outline instead of a filled highlight for this face.
+     *
+     * @param faceIndex face being edited, or -1 to clear
+     */
+    void setEditingFaceIndex(int faceIndex);
+
+    /**
+     * Read RGBA pixel data from a GPU texture.
+     *
+     * @param gpuTextureId OpenGL texture ID to read from
+     * @return RGBA byte array, or null if the texture could not be read
+     */
+    byte[] readTexturePixels(int gpuTextureId);
+
+    /**
+     * Get the width and height of a GPU texture.
+     *
+     * @param gpuTextureId OpenGL texture ID
+     * @return int array {@code [width, height]}, or null if invalid
+     */
+    int[] getTextureDimensions(int gpuTextureId);
+
+    /**
+     * Compute texture pixel dimensions for a face based on its 3D geometry.
+     * Projects the face vertices into tangent space to determine proportional
+     * width and height at the given resolution.
+     *
+     * @param faceId        Face identifier
+     * @param pixelsPerUnit Resolution in pixels per world unit
+     * @return int array {@code [width, height]}, or {@code null} if geometry data is unavailable
+     */
+    int[] computeFaceTextureDimensions(int faceId, int pixelsPerUnit);
+
+    /**
+     * Compute the 2D polygon outline for a face, projected into normalized local space.
+     *
+     * <p>Projects the face's 3D vertices onto its tangent frame and normalizes
+     * the result to [0, 1] in both axes. Used to create a
+     * {@link com.openmason.main.systems.menus.textureCreator.canvas.PolygonShapeMask}
+     * for per-face texture editing.
+     *
+     * @param faceId Face identifier
+     * @return {@code float[2][]} where [0] is X coords and [1] is Y coords (both 0–1),
+     *         or {@code null} if geometry data is unavailable
+     */
+    float[][] computeFacePolygon2D(int faceId);
 }

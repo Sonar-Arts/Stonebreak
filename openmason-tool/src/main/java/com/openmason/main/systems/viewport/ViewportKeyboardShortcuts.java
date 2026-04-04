@@ -39,7 +39,7 @@ public class ViewportKeyboardShortcuts {
      */
     public void handleKeyboardShortcuts() {
         // Iterate through all viewport actions in the registry
-        for (com.openmason.main.systems.keybinds.KeybindAction action : registry.getActionsByCategory("Viewport")) {
+        for (com.openmason.main.systems.keybinds.KeybindAction action : registry.getActionsByContext("viewport")) {
             com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey key =
                     registry.getKeybind(action.getId());
             if (key.isPressed()) {

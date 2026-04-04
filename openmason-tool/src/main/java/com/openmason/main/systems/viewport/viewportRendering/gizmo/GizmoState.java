@@ -23,6 +23,11 @@ public class GizmoState {
     private Mode currentMode = Mode.TRANSLATE;
     private boolean enabled = true;
 
+    // Display mode: controls how the gizmo visibility is managed
+    private GizmoDisplayMode displayMode = GizmoDisplayMode.AUTO_SHOW_ON_SELECT;
+    // When true, a manual Ctrl+T toggle temporarily overrides auto-show behavior
+    private boolean manualOverrideActive = false;
+
     // Interaction state
     private AxisConstraint hoveredConstraint = AxisConstraint.NONE;
     private AxisConstraint activeConstraint = AxisConstraint.NONE;
@@ -44,8 +49,8 @@ public class GizmoState {
     private boolean uniformScaling = true; // Default to uniform scaling
 
     // Highlight intensity for visual feedback
-    private float hoverIntensity = 1.5f;  // Brightness multiplier on hover
-    private float activeIntensity = 2.0f; // Brightness multiplier when active
+    private static final float HOVER_INTENSITY = 1.5f;  // Brightness multiplier on hover
+    private static final float ACTIVE_INTENSITY = 2.0f; // Brightness multiplier when active
 
   public GizmoState() {
     }
@@ -157,9 +162,9 @@ public class GizmoState {
         }
 
         if (activeConstraint == constraint && isDragging) {
-            return activeIntensity;
+            return ACTIVE_INTENSITY;
         } else if (hoveredConstraint == constraint && !isDragging) {
-            return hoverIntensity;
+            return HOVER_INTENSITY;
         }
 
         return 1.0f;
@@ -173,4 +178,33 @@ public class GizmoState {
         isDragging = false;
     }
 
+    // Display mode management
+
+    public GizmoDisplayMode getDisplayMode() {
+        return displayMode;
+    }
+
+    public void setDisplayMode(GizmoDisplayMode mode) {
+        if (mode == null) {
+            throw new IllegalArgumentException("Display mode cannot be null");
+        }
+        this.displayMode = mode;
+        this.manualOverrideActive = false;
+    }
+
+    public boolean isManualOverrideActive() {
+        return manualOverrideActive;
+    }
+
+    public void setManualOverrideActive(boolean active) {
+        this.manualOverrideActive = active;
+    }
+
+    /**
+     * Clears the manual override flag. Called when selection changes
+     * to resume auto-show behavior.
+     */
+    public void clearManualOverride() {
+        this.manualOverrideActive = false;
+    }
 }

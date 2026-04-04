@@ -6,13 +6,18 @@ import com.openmason.main.systems.menus.panes.propertyPane.adapters.ViewportAdap
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IThemeContext;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.ITransformState;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
+import com.openmason.main.systems.menus.panes.propertyPane.sections.FaceMaterialSection;
+import com.openmason.main.systems.menus.panes.propertyPane.sections.ModelPartsSection;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.TextureChooserSection;
+import com.openmason.main.systems.menus.textureCreator.FaceEditorBridge;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.TextureVariantSection;
 import com.openmason.main.systems.menus.panes.propertyPane.sections.TransformSection;
 import com.openmason.main.systems.menus.panes.propertyPane.state.TransformState;
 import com.openmason.main.systems.menus.panes.propertyPane.theming.PanelThemeContext;
+import com.openmason.main.systems.rendering.model.gmr.parts.PartShapeFactory;
 import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.themes.core.ThemeManager;
+import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.ViewportController;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
@@ -35,6 +40,8 @@ public class PropertyPanelImGui {
     // Section components (composition)
     private final TextureVariantSection textureVariantSection;  // For BROWSER models
     private final TextureChooserSection textureChooserSection;  // For NEW and OMO_FILE models
+    private final FaceMaterialSection faceMaterialSection;      // For per-face material assignment
+    private final ModelPartsSection modelPartsSection;          // Model parts list and management
     private final TransformSection transformSection;
 
     // State
@@ -55,6 +62,8 @@ public class PropertyPanelImGui {
         // Initialize sections (composition)
         this.textureVariantSection = new TextureVariantSection();  // For BROWSER models
         this.textureChooserSection = new TextureChooserSection(fileDialogService, modelState);  // For editable models
+        this.faceMaterialSection = new FaceMaterialSection(fileDialogService);  // Per-face material assignment
+        this.modelPartsSection = new ModelPartsSection();  // Model parts management
         this.transformSection = new TransformSection(transformState);
 
         // Configure section callbacks
@@ -94,8 +103,8 @@ public class PropertyPanelImGui {
             // Texture change is handled by BlockModel.setTexturePath() (marks model dirty)
             // Update texture only (not geometry) to preserve any vertex/geometry modifications
             if (currentEditableModel != null && viewportConnector != null && viewportConnector.isConnected()) {
-                viewportConnector.updateBlockModelTexture(currentEditableModel);
-                logger.info("Updated BlockModel texture (geometry preserved): {}", texturePath);
+                viewportConnector.updateModelTexture(currentEditableModel);
+                logger.info("Updated model texture (geometry preserved): {}", texturePath);
             }
         });
 
@@ -121,7 +130,7 @@ public class PropertyPanelImGui {
         // The child region will handle scrolling instead (like TextureEditorWindow)
         int windowFlags = ImGuiWindowFlags.NoScrollbar;
 
-        if (ImGui.begin("Properties", windowFlags)) {
+        if (ImGui.begin("Model Properties", windowFlags)) {
             // Create bounded child region to prevent infinite scrolling headers
             // Matches the pattern used in ColorPanel (texture editor)
             ImGui.beginChild("##properties_content", 0, 0, false);
@@ -133,6 +142,9 @@ public class PropertyPanelImGui {
             } else {
                 textureChooserSection.render();
             }
+            faceMaterialSection.render();
+            ImGui.separator();
+            modelPartsSection.render();
             ImGui.separator();
             transformSection.render();
 
@@ -158,6 +170,48 @@ public class PropertyPanelImGui {
 
         // Update sections with viewport connector
         transformSection.setViewportConnector(viewportConnector);
+        faceMaterialSection.setViewportConnector(viewportConnector);
+
+        // Connect part manager, material assignment, and viewport invalidation to parts section
+        if (viewport != null) {
+            modelPartsSection.setPartManager(viewport.getPartManager());
+            modelPartsSection.setOnPartCreated(viewport::assignDefaultMaterialToPartFaces);
+            modelPartsSection.setOnViewportInvalidationNeeded(viewport::invalidateSubRenderers);
+        }
+    }
+
+    /**
+     * Wire viewport slideouts (Add Part, Part Transform) to the viewport UI state.
+     * Must be called with the ViewportImGuiInterface's state (not ViewportController's).
+     *
+     * @param uiState  The viewport UI state used by the tool pane renderer
+     * @param viewport The viewport controller (for part manager access)
+     */
+    public void wireSlideouts(ViewportUIState uiState, ViewportController viewport) {
+        // Add Part slideout
+        modelPartsSection.setOnOpenAddPartSlideout(
+                () -> uiState.toggleToolPane(ViewportUIState.ActiveToolPane.ADD_PART)
+        );
+        uiState.setAddPartCallback((shapeName, partName) -> {
+            PartShapeFactory.Shape shape = PartShapeFactory.Shape.valueOf(shapeName);
+            modelPartsSection.onPartAdded(shape, partName);
+        });
+
+        // Part Transform slideout
+        modelPartsSection.setOnOpenPartTransformSlideout(
+                () -> uiState.toggleToolPane(ViewportUIState.ActiveToolPane.PART_TRANSFORM)
+        );
+
+        var partManager = viewport.getPartManager();
+        uiState.setSelectedPartSupplier(() -> {
+            var selectedIds = partManager.getSelectedPartIds();
+            if (selectedIds.isEmpty()) return null;
+            return partManager.getPartById(selectedIds.iterator().next()).orElse(null);
+        });
+        uiState.setApplyPartTransform(partManager::setPartTransform);
+        uiState.setPartTransformInvalidator(viewport::invalidateSubRenderers);
+
+        logger.debug("Viewport slideouts wired to UI state");
     }
 
     /**
@@ -198,6 +252,34 @@ public class PropertyPanelImGui {
     @Deprecated
     private void switchTextureVariant(String variantName) {
         logger.debug("switchTextureVariant called but legacy model variants are no longer supported");
+    }
+
+    /**
+     * Set the face editor bridge on the face material section.
+     *
+     * @param bridge the bridge coordinating viewport-to-texture-editor handoff
+     */
+    public void setFaceEditorBridge(FaceEditorBridge bridge) {
+        faceMaterialSection.setFaceEditorBridge(bridge);
+    }
+
+    /**
+     * Set a callback on the face material section for when the user requests to edit a texture.
+     *
+     * @param callback action to run when the texture editor should be shown
+     */
+    public void setOnEditTextureRequested(Runnable callback) {
+        faceMaterialSection.setOnEditTextureRequested(callback);
+    }
+
+    /**
+     * Clear the editing face highlight in the viewport overlay.
+     * Should be called when the texture editor window closes.
+     */
+    public void clearEditingFace() {
+        if (viewportConnector != null) {
+            viewportConnector.setEditingFaceIndex(-1);
+        }
     }
 
     /**

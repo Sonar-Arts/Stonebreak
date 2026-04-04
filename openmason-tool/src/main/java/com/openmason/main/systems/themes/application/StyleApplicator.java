@@ -42,6 +42,9 @@ public class StyleApplicator {
             
             // Apply style variables
             applyStyleVariables(theme);
+
+            // Apply Vec2 style variables (padding, spacing, alignment)
+            applyStyleVariablesVec2(theme);
             
             logger.info("Successfully applied theme: {}", theme.getName());
             
@@ -115,6 +118,71 @@ public class StyleApplicator {
     }
     
     /**
+     * Apply Vec2 theme style variables (padding, spacing, alignment) to ImGui
+     */
+    private static void applyStyleVariablesVec2(ThemeDefinition theme) {
+        Map<Integer, float[]> styleVarsVec2 = theme.getStyleVarsVec2();
+        if (styleVarsVec2.isEmpty()) {
+            logger.trace("No Vec2 style variables to apply for theme: {}", theme.getName());
+            return;
+        }
+
+        int applied = 0;
+        for (Map.Entry<Integer, float[]> entry : styleVarsVec2.entrySet()) {
+            try {
+                int styleVar = entry.getKey();
+                float[] value = entry.getValue();
+                if (value != null && value.length == 2) {
+                    applyStyleVarVec2(styleVar, value[0], value[1]);
+                    applied++;
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to apply Vec2 style var {}: {}", entry.getKey(), e.getMessage());
+            }
+        }
+        logger.trace("Applied {} out of {} Vec2 style variables", applied, styleVarsVec2.size());
+    }
+
+    /**
+     * Safely apply a Vec2 style variable directly to ImGui style.
+     */
+    private static void applyStyleVarVec2(int styleVar, float x, float y) {
+        try {
+            switch (styleVar) {
+                case ImGuiStyleVar.WindowPadding:
+                    ImGui.getStyle().setWindowPadding(x, y);
+                    break;
+                case ImGuiStyleVar.FramePadding:
+                    ImGui.getStyle().setFramePadding(x, y);
+                    break;
+                case ImGuiStyleVar.ItemSpacing:
+                    ImGui.getStyle().setItemSpacing(x, y);
+                    break;
+                case ImGuiStyleVar.ItemInnerSpacing:
+                    ImGui.getStyle().setItemInnerSpacing(x, y);
+                    break;
+                case ImGuiStyleVar.CellPadding:
+                    ImGui.getStyle().setCellPadding(x, y);
+                    break;
+                case ImGuiStyleVar.ButtonTextAlign:
+                    ImGui.getStyle().setButtonTextAlign(x, y);
+                    break;
+                case ImGuiStyleVar.SelectableTextAlign:
+                    ImGui.getStyle().setSelectableTextAlign(x, y);
+                    break;
+                case ImGuiStyleVar.WindowTitleAlign:
+                    ImGui.getStyle().setWindowTitleAlign(x, y);
+                    break;
+                default:
+                    logger.warn("Unknown Vec2 style variable: {}", styleVar);
+                    break;
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to set Vec2 style variable {} to ({}, {}): {}", styleVar, x, y, e.getMessage());
+        }
+    }
+
+    /**
      * Safely apply style variable with validation
      * NOTE: We directly modify ImGui.getStyle() instead of using pushStyleVar
      * because themes are permanent settings, not temporary scoped changes.
@@ -156,6 +224,21 @@ public class StyleApplicator {
                     break;
                 case ImGuiStyleVar.FrameBorderSize:
                     ImGui.getStyle().setFrameBorderSize(value);
+                    break;
+                case ImGuiStyleVar.IndentSpacing:
+                    ImGui.getStyle().setIndentSpacing(value);
+                    break;
+                case ImGuiStyleVar.ScrollbarSize:
+                    ImGui.getStyle().setScrollbarSize(value);
+                    break;
+                case ImGuiStyleVar.GrabMinSize:
+                    ImGui.getStyle().setGrabMinSize(value);
+                    break;
+                case ImGuiStyleVar.Alpha:
+                    ImGui.getStyle().setAlpha(value);
+                    break;
+                case ImGuiStyleVar.DisabledAlpha:
+                    ImGui.getStyle().setDisabledAlpha(value);
                     break;
                 default:
                     logger.warn("Unknown style variable: {}", styleVar);

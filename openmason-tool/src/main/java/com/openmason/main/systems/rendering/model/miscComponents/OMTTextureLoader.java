@@ -203,7 +203,7 @@ public class OMTTextureLoader {
      * @param pngData PNG file data
      * @return OpenGL texture ID, or 0 if loading failed
      */
-    private int loadPNGAsTexture(byte[] pngData) {
+    public int loadPNGAsTexture(byte[] pngData) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             // Prepare data for STB
             ByteBuffer imageBuffer = BufferUtils.createByteBuffer(pngData.length);
@@ -270,7 +270,7 @@ public class OMTTextureLoader {
      * @param canvas the pixel canvas to upload
      * @return OpenGL texture ID, or 0 if upload failed
      */
-    private int uploadPixelCanvasToGPU(PixelCanvas canvas) {
+    public int uploadPixelCanvasToGPU(PixelCanvas canvas) {
         try {
             int width = canvas.getWidth();
             int height = canvas.getHeight();
@@ -314,6 +314,22 @@ public class OMTTextureLoader {
             logger.error("Error uploading PixelCanvas to GPU", e);
             return 0;
         }
+    }
+
+    /**
+     * Create a blank GPU texture filled with a uniform gray color.
+     * Used when editing a face that has no material assigned yet, so the
+     * 3D viewport can display real-time painting results.
+     *
+     * @param width  texture width in pixels
+     * @param height texture height in pixels
+     * @return OpenGL texture ID, or 0 if creation failed
+     */
+    public int createBlankTexture(int width, int height) {
+        PixelCanvas canvas = new PixelCanvas(width, height);
+        // Fill with gray matching the default face appearance (RGBA: 0xCC, 0xCC, 0xCC, 0xFF)
+        canvas.fill(PixelCanvas.packRGBA(0xCC, 0xCC, 0xCC, 0xFF));
+        return uploadPixelCanvasToGPU(canvas);
     }
 
     /**

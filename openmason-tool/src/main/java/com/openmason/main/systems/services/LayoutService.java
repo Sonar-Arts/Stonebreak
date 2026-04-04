@@ -71,12 +71,12 @@ public class LayoutService {
         if (viewport != null) {
             viewport.setShowGrid(true);
             viewport.setAxesVisible(true);
-            viewport.setWireframeMode(false);
+            viewport.setUnrenderedMode(false);
         }
 
         viewportState.getGridVisible().set(true);
         viewportState.getAxesVisible().set(true);
-        viewportState.getWireframeMode().set(false);
+        viewportState.getUnrenderedMode().set(false);
 
         statusService.updateStatus("Modeling layout applied");
     }
@@ -94,12 +94,12 @@ public class LayoutService {
         if (viewport != null) {
             viewport.setShowGrid(false);
             viewport.setAxesVisible(false);
-            viewport.setWireframeMode(false);
+            viewport.setUnrenderedMode(false);
         }
 
         viewportState.getGridVisible().set(false);
         viewportState.getAxesVisible().set(false);
-        viewportState.getWireframeMode().set(false);
+        viewportState.getUnrenderedMode().set(false);
 
         statusService.updateStatus("Texturing layout applied");
     }

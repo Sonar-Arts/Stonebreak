@@ -60,8 +60,8 @@ public class ViewMenuHandler {
             viewportOperations.toggleAxes(viewport);
         }
 
-        if (ImGui.menuItem("Wireframe Mode", "Ctrl+W", viewportState.getWireframeMode().get())) {
-            viewportOperations.toggleWireframe(viewport);
+        if (ImGui.menuItem("Unrendered Mode", "Ctrl+W", viewportState.getUnrenderedMode().get())) {
+            viewportOperations.toggleUnrendered(viewport);
         }
 
         ImGui.separator();
@@ -72,7 +72,7 @@ public class ViewMenuHandler {
             uiState.toggleModelBrowser();
         }
 
-        if (ImGui.menuItem("Show Property Panel", "Ctrl+3", uiState.getShowPropertyPanel().get())) {
+        if (ImGui.menuItem("Show Model Properties", "Ctrl+3", uiState.getShowPropertyPanel().get())) {
             uiState.togglePropertyPanel();
         }
 

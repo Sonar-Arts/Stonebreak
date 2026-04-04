@@ -1,7 +1,17 @@
 package com.openmason.main.systems.menus.panes.propertyPane.adapters;
 
+import com.openmason.main.systems.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
+import com.openmason.main.systems.rendering.model.gmr.extraction.GMRFaceExtractor;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceProjectionUtil;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureManager;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureMapping;
+import com.openmason.main.systems.rendering.model.gmr.uv.FaceTextureSizer;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
+import com.openmason.main.systems.services.commands.FaceTextureCommand;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
+import com.openmason.main.systems.viewport.state.EditModeManager;
+import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.ViewportController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,18 +48,18 @@ public class ViewportAdapter implements IViewportConnector {
     }
 
     @Override
-    public void reloadBlockModel(BlockModel blockModel) {
+    public void reloadModel(BlockModel blockModel) {
         if (viewport != null && blockModel != null) {
-            viewport.loadBlockModel(blockModel);
-            logger.debug("Reloaded BlockModel in viewport: {}", blockModel.getName());
+            viewport.loadModel(blockModel);
+            logger.debug("Reloaded model in viewport: {}", blockModel.getName());
         }
     }
 
     @Override
-    public void updateBlockModelTexture(BlockModel blockModel) {
+    public void updateModelTexture(BlockModel blockModel) {
         if (viewport != null && blockModel != null) {
-            viewport.updateBlockModelTexture(blockModel);
-            logger.debug("Updated BlockModel texture in viewport: {}", blockModel.getName());
+            viewport.updateModelTexture(blockModel);
+            logger.debug("Updated model texture in viewport: {}", blockModel.getName());
         }
     }
 
@@ -134,5 +144,144 @@ public class ViewportAdapter implements IViewportConnector {
         if (viewport != null) {
             viewport.resetModelTransform();
         }
+    }
+
+    @Override
+    public FaceSelectionState getFaceSelectionState() {
+        return viewport != null ? viewport.getFaceSelectionState() : null;
+    }
+
+    @Override
+    public FaceTextureManager getFaceTextureManager() {
+        if (viewport != null) {
+            var renderer = viewport.getModelRenderer();
+            return renderer != null ? renderer.getFaceTextureManager() : null;
+        }
+        return null;
+    }
+
+    @Override
+    public void setFaceTexture(int faceId, int materialId) {
+        if (viewport == null) {
+            return;
+        }
+        GenericModelRenderer renderer = viewport.getModelRenderer();
+        if (renderer == null) {
+            return;
+        }
+
+        // Capture old mapping before mutation
+        FaceTextureManager ftm = renderer.getFaceTextureManager();
+        FaceTextureMapping oldMapping = (ftm != null) ? ftm.getFaceMapping(faceId) : null;
+
+        // Apply mutation
+        renderer.setFaceMaterial(faceId, materialId);
+
+        // Capture new mapping and record undo command
+        ModelCommandHistory history = viewport.getCommandHistory();
+        if (ftm != null && history != null) {
+            FaceTextureMapping newMapping = ftm.getFaceMapping(faceId);
+            if (newMapping != null) {
+                history.pushCompleted(new FaceTextureCommand(
+                    faceId, oldMapping, newMapping, ftm, renderer));
+            }
+        }
+    }
+
+    @Override
+    public boolean isInFaceEditMode() {
+        return EditModeManager.getInstance().isFaceEditingAllowed();
+    }
+
+    @Override
+    public void setEditingFaceIndex(int faceIndex) {
+        if (viewport != null) {
+            viewport.setEditingFaceIndex(faceIndex);
+        }
+    }
+
+    @Override
+    public byte[] readTexturePixels(int gpuTextureId) {
+        if (viewport != null) {
+            var renderer = viewport.getModelRenderer();
+            if (renderer != null) {
+                return renderer.readTexturePixels(gpuTextureId);
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public int[] getTextureDimensions(int gpuTextureId) {
+        if (viewport != null) {
+            var renderer = viewport.getModelRenderer();
+            if (renderer != null) {
+                return renderer.getTextureDimensions(gpuTextureId);
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public int[] computeFaceTextureDimensions(int faceId, int pixelsPerUnit) {
+        if (viewport == null) {
+            return null;
+        }
+        GenericModelRenderer renderer = viewport.getModelRenderer();
+        if (renderer == null) {
+            return null;
+        }
+
+        GMRFaceExtractor.FaceExtractionResult faceData = renderer.extractFaceData();
+        if (faceData == null) {
+            return null;
+        }
+
+        FaceTextureSizer.FaceTextureDimensions dims =
+            FaceTextureSizer.computeForFace(faceData, faceId, pixelsPerUnit);
+        if (dims == null) {
+            return null;
+        }
+
+        return new int[]{dims.width(), dims.height()};
+    }
+
+    @Override
+    public float[][] computeFacePolygon2D(int faceId) {
+        if (viewport == null) {
+            return null;
+        }
+        GenericModelRenderer renderer = viewport.getModelRenderer();
+        if (renderer == null) {
+            return null;
+        }
+
+        // Prefer UV-based extraction: reads actual UV coordinates written by the
+        // per-face UV generator, guaranteeing the polygon mask exactly matches the
+        // texture mapping. Falls back to 3D projection for faces without a mapping.
+        float[][] uvPolygon = renderer.extractFacePolygonFromUVs(faceId);
+        if (uvPolygon != null) {
+            return uvPolygon;
+        }
+
+        // Fallback: project 3D positions to 2D (for faces without UV mappings)
+        GMRFaceExtractor.FaceExtractionResult faceData = renderer.extractFaceData();
+        if (faceData == null || faceId < 0 || faceId >= faceData.faceCount()) {
+            return null;
+        }
+
+        int startFloat = faceData.faceOffsets()[faceId];
+        int endFloat = faceData.faceOffsets()[faceId + 1];
+        int vertexCount = faceData.verticesPerFace()[faceId];
+
+        if (vertexCount < 3 || endFloat - startFloat < vertexCount * 3) {
+            return null;
+        }
+
+        int floatCount = vertexCount * 3;
+        float[] facePositions = new float[floatCount];
+        System.arraycopy(faceData.positions(), startFloat, facePositions, 0, floatCount);
+
+        return FaceProjectionUtil.projectFaceToLocalSpace(facePositions, vertexCount);
     }
 }

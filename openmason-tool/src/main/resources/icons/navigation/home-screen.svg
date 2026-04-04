@@ -1,0 +1,9 @@
+<!-- Home Screen Icon - House symbol -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- House roof -->
+  <path d="M3 12l9-8 9 8" fill="none" stroke="#CCCCCC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- House body -->
+  <path d="M5 10v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8" fill="none" stroke="#CCCCCC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Door -->
+  <path d="M10 19v-5h4v5" fill="none" stroke="#CCCCCC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

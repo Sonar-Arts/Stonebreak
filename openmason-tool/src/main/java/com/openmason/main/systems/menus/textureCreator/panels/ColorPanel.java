@@ -5,6 +5,7 @@ import com.openmason.main.systems.menus.textureCreator.color.ColorUtils;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
+import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
 import imgui.type.ImFloat;
 import imgui.type.ImString;
@@ -172,9 +173,10 @@ public class ColorPanel {
         // HSV button
         boolean isHSV = (colorMode == ColorMode.HSV);
         if (isHSV) {
-            ImGui.pushStyleColor(ImGuiCol.Button, 0.26f, 0.59f, 0.98f, 1.0f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.26f, 0.59f, 0.98f, 1.0f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.06f, 0.53f, 0.98f, 1.0f);
+            ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+            ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 1.0f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.85f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.70f);
         }
 
         if (ImGui.button("HSV", buttonWidth, 0)) {
@@ -191,9 +193,10 @@ public class ColorPanel {
         // RGB button
         boolean isRGB = (colorMode == ColorMode.RGB);
         if (isRGB) {
-            ImGui.pushStyleColor(ImGuiCol.Button, 0.26f, 0.59f, 0.98f, 1.0f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.26f, 0.59f, 0.98f, 1.0f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.06f, 0.53f, 0.98f, 1.0f);
+            ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+            ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 1.0f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.85f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.70f);
         }
 
         if (ImGui.button("RGB", buttonWidth, 0)) {

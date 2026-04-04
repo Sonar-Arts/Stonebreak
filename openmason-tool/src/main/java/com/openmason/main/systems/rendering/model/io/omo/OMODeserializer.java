@@ -12,6 +12,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -66,6 +67,16 @@ public class OMODeserializer {
     // Last loaded mesh data (accessible after load())
     private OMOFormat.MeshData lastLoadedMeshData;
 
+    // Last loaded part entries (v1.3+)
+    private List<OMOFormat.PartEntry> lastLoadedPartEntries;
+
+    // Last loaded model transform (v1.4+)
+    private OMOFormat.ModelTransform lastLoadedModelTransform;
+
+    // Last loaded face texture data (v1.2+, accessible after load())
+    private OMOFormat.FaceTextureData lastLoadedFaceTextureData;
+    private Map<String, byte[]> lastLoadedMaterialTextures;
+
     /**
      * Creates a new .OMO deserializer with JSON support.
      */
@@ -84,6 +95,46 @@ public class OMODeserializer {
     }
 
     /**
+     * Get face texture data from the last successful load() call.
+     * Returns null if no face texture data was present (pre-1.2 file).
+     *
+     * @return the loaded face texture data, or null
+     */
+    public OMOFormat.FaceTextureData getLastLoadedFaceTextureData() {
+        return lastLoadedFaceTextureData;
+    }
+
+    /**
+     * Get material texture PNGs from the last successful load() call.
+     * Keys are ZIP entry names (e.g. "material_1.png"), values are PNG bytes.
+     *
+     * @return map of material textures, or null if none were present
+     */
+    public Map<String, byte[]> getLastLoadedMaterialTextures() {
+        return lastLoadedMaterialTextures;
+    }
+
+    /**
+     * Get model part entries from the last successful load() call (v1.3+).
+     * Returns null if no part entries were present (single-part model).
+     *
+     * @return list of part entries, or null
+     */
+    public List<OMOFormat.PartEntry> getLastLoadedPartEntries() {
+        return lastLoadedPartEntries;
+    }
+
+    /**
+     * Get model-level transform from the last successful load() call (v1.4+).
+     * Returns null if no model transform was present (pre-1.4 file or identity transform).
+     *
+     * @return the model transform, or null
+     */
+    public OMOFormat.ModelTransform getLastLoadedModelTransform() {
+        return lastLoadedModelTransform;
+    }
+
+    /**
      * Loads a BlockModel from a .OMO file.
      * After loading, call getLastLoadedMeshData() to retrieve any custom mesh data.
      *
@@ -91,8 +142,12 @@ public class OMODeserializer {
      * @return the loaded BlockModel, or null if loading failed
      */
     public BlockModel load(String filePath) {
-        // Clear previous mesh data
+        // Clear previous data
         lastLoadedMeshData = null;
+        lastLoadedFaceTextureData = null;
+        lastLoadedMaterialTextures = null;
+        lastLoadedPartEntries = null;
+        lastLoadedModelTransform = null;
 
         if (filePath == null || filePath.trim().isEmpty()) {
             logger.error("Invalid file path");
@@ -113,8 +168,12 @@ public class OMODeserializer {
             // Load document from ZIP
             LoadedData loadedData = loadFromZip(path);
 
-            // Store mesh data for external access
+            // Store mesh data, face texture data, part entries, and model transform for external access
             lastLoadedMeshData = loadedData.meshData();
+            lastLoadedFaceTextureData = loadedData.faceTextureData();
+            lastLoadedMaterialTextures = loadedData.materialTextures();
+            lastLoadedPartEntries = loadedData.partEntries();
+            lastLoadedModelTransform = loadedData.modelTransform();
 
             // Build BlockModel from loaded data
             BlockModel model = buildModel(loadedData);
@@ -143,7 +202,11 @@ public class OMODeserializer {
     private LoadedData loadFromZip(Path path) throws IOException {
         OMOFormat.Document document = null;
         OMOFormat.MeshData meshData = null;
+        OMOFormat.FaceTextureData faceTextureData = null;
+        List<OMOFormat.PartEntry> partEntries = null;
+        OMOFormat.ModelTransform modelTransform = null;
         Path texturePath = null;
+        Map<String, byte[]> materialTextures = new HashMap<>();
 
         try (FileInputStream fis = new FileInputStream(path.toFile());
              ZipInputStream zis = new ZipInputStream(fis)) {
@@ -153,16 +216,25 @@ public class OMODeserializer {
                 String entryName = entry.getName();
 
                 if (OMOFormat.MANIFEST_FILENAME.equals(entryName)) {
-                    // Read manifest.json (may contain mesh data in v2.0+)
+                    // Read manifest.json (may contain mesh data, face textures, and parts)
                     ManifestParseResult result = readManifestV2(zis);
                     document = result.document;
                     meshData = result.meshData;
+                    faceTextureData = result.faceTextureData;
+                    partEntries = result.partEntries;
+                    modelTransform = result.modelTransform;
                     logger.debug("Loaded manifest.json (version={})", document.version());
 
                 } else if (OMOFormat.DEFAULT_TEXTURE_FILENAME.equals(entryName)) {
                     // Extract texture.omt to temporary file
                     texturePath = extractTexture(zis);
                     logger.debug("Extracted texture.omt to: {}", texturePath);
+
+                } else if (entryName.startsWith("material_") && entryName.endsWith(".png")) {
+                    // Store material texture PNG bytes (v1.2+)
+                    byte[] pngBytes = readStreamToByteArray(zis);
+                    materialTextures.put(entryName, pngBytes);
+                    logger.debug("Loaded material texture: {} ({} bytes)", entryName, pngBytes.length);
                 }
 
                 zis.closeEntry();
@@ -177,13 +249,18 @@ public class OMODeserializer {
             throw new IOException("Missing texture.omt in .OMO file");
         }
 
-        return new LoadedData(document, texturePath, meshData);
+        return new LoadedData(document, texturePath, meshData, faceTextureData,
+                              materialTextures.isEmpty() ? null : materialTextures,
+                              partEntries, modelTransform);
     }
 
     /**
      * Result of parsing manifest.json.
      */
-    private record ManifestParseResult(OMOFormat.Document document, OMOFormat.MeshData meshData) {}
+    private record ManifestParseResult(OMOFormat.Document document, OMOFormat.MeshData meshData,
+                                       OMOFormat.FaceTextureData faceTextureData,
+                                       List<OMOFormat.PartEntry> partEntries,
+                                       OMOFormat.ModelTransform modelTransform) {}
 
     /**
      * Reads and parses manifest.json from ZIP stream.
@@ -242,7 +319,45 @@ public class OMODeserializer {
                     meshData.getVertexCount(), meshData.getTriangleCount());
         }
 
-        return new ManifestParseResult(document, meshData);
+        // Parse face texture data if present (v1.2+)
+        OMOFormat.FaceTextureData faceTextureData = null;
+        JsonNode faceTexturesNode = root.get("faceTextures");
+        if (faceTexturesNode != null && !faceTexturesNode.isNull()) {
+            faceTextureData = parseFaceTextureData(faceTexturesNode);
+            logger.debug("Loaded face texture data: {} mappings, {} materials",
+                    faceTextureData.mappings().size(), faceTextureData.materials().size());
+        }
+
+        // Parse part entries if present (v1.3+)
+        List<OMOFormat.PartEntry> partEntries = null;
+        JsonNode partsNode = root.get("parts");
+        if (partsNode != null && partsNode.isArray() && !partsNode.isEmpty()) {
+            partEntries = parsePartEntries(partsNode);
+            logger.debug("Loaded {} part entries", partEntries.size());
+        }
+
+        // Parse model-level transform if present (v1.4+)
+        OMOFormat.ModelTransform modelTransform = null;
+        JsonNode transformNode = root.get("modelTransform");
+        if (transformNode != null && !transformNode.isNull()) {
+            modelTransform = new OMOFormat.ModelTransform(
+                    (float) transformNode.path("posX").asDouble(0),
+                    (float) transformNode.path("posY").asDouble(0),
+                    (float) transformNode.path("posZ").asDouble(0),
+                    (float) transformNode.path("rotX").asDouble(0),
+                    (float) transformNode.path("rotY").asDouble(0),
+                    (float) transformNode.path("rotZ").asDouble(0),
+                    (float) transformNode.path("scaleX").asDouble(1),
+                    (float) transformNode.path("scaleY").asDouble(1),
+                    (float) transformNode.path("scaleZ").asDouble(1)
+            );
+            logger.debug("Loaded model transform: pos=({},{},{}), rot=({},{},{}), scale=({},{},{})",
+                    modelTransform.posX(), modelTransform.posY(), modelTransform.posZ(),
+                    modelTransform.rotX(), modelTransform.rotY(), modelTransform.rotZ(),
+                    modelTransform.scaleX(), modelTransform.scaleY(), modelTransform.scaleZ());
+        }
+
+        return new ManifestParseResult(document, meshData, faceTextureData, partEntries, modelTransform);
     }
 
     /**
@@ -321,6 +436,86 @@ public class OMODeserializer {
     }
 
     /**
+     * Parse face texture data from JSON node (v1.2+).
+     *
+     * @param node the faceTextures JSON node
+     * @return parsed FaceTextureData
+     */
+    private OMOFormat.FaceTextureData parseFaceTextureData(JsonNode node) {
+        List<OMOFormat.FaceMappingEntry> mappings = new ArrayList<>();
+        List<OMOFormat.MaterialEntry> materials = new ArrayList<>();
+
+        JsonNode mappingsNode = node.get("mappings");
+        if (mappingsNode != null && mappingsNode.isArray()) {
+            for (JsonNode m : mappingsNode) {
+                mappings.add(new OMOFormat.FaceMappingEntry(
+                        m.get("faceId").asInt(),
+                        m.get("materialId").asInt(),
+                        (float) m.get("u0").asDouble(),
+                        (float) m.get("v0").asDouble(),
+                        (float) m.get("u1").asDouble(),
+                        (float) m.get("v1").asDouble(),
+                        m.get("uvRotationDegrees").asInt()
+                ));
+            }
+        }
+
+        JsonNode materialsNode = node.get("materials");
+        if (materialsNode != null && materialsNode.isArray()) {
+            for (JsonNode m : materialsNode) {
+                materials.add(new OMOFormat.MaterialEntry(
+                        m.get("materialId").asInt(),
+                        m.get("name").asText(),
+                        m.get("textureFile").asText(),
+                        m.get("renderLayer").asText(),
+                        m.has("emissive") && m.get("emissive").asBoolean(),
+                        m.has("tintColor") ? m.get("tintColor").asInt() : 0xFFFFFFFF
+                ));
+            }
+        }
+
+        return new OMOFormat.FaceTextureData(mappings, materials);
+    }
+
+    /**
+     * Parse part entries from JSON array (v1.3+).
+     */
+    private List<OMOFormat.PartEntry> parsePartEntries(JsonNode partsNode) {
+        List<OMOFormat.PartEntry> entries = new ArrayList<>();
+        for (JsonNode p : partsNode) {
+            String id = p.has("id") ? p.get("id").asText() : null;
+            if (id == null || id.isBlank()) {
+                continue;
+            }
+            entries.add(new OMOFormat.PartEntry(
+                    id,
+                    p.has("name") ? p.get("name").asText() : "Unnamed Part",
+                    p.has("originX") ? (float) p.get("originX").asDouble() : 0,
+                    p.has("originY") ? (float) p.get("originY").asDouble() : 0,
+                    p.has("originZ") ? (float) p.get("originZ").asDouble() : 0,
+                    p.has("posX") ? (float) p.get("posX").asDouble() : 0,
+                    p.has("posY") ? (float) p.get("posY").asDouble() : 0,
+                    p.has("posZ") ? (float) p.get("posZ").asDouble() : 0,
+                    p.has("rotX") ? (float) p.get("rotX").asDouble() : 0,
+                    p.has("rotY") ? (float) p.get("rotY").asDouble() : 0,
+                    p.has("rotZ") ? (float) p.get("rotZ").asDouble() : 0,
+                    p.has("scaleX") ? (float) p.get("scaleX").asDouble() : 1,
+                    p.has("scaleY") ? (float) p.get("scaleY").asDouble() : 1,
+                    p.has("scaleZ") ? (float) p.get("scaleZ").asDouble() : 1,
+                    p.has("vertexStart") ? p.get("vertexStart").asInt() : 0,
+                    p.has("vertexCount") ? p.get("vertexCount").asInt() : 0,
+                    p.has("indexStart") ? p.get("indexStart").asInt() : 0,
+                    p.has("indexCount") ? p.get("indexCount").asInt() : 0,
+                    p.has("faceStart") ? p.get("faceStart").asInt() : 0,
+                    p.has("faceCount") ? p.get("faceCount").asInt() : 0,
+                    !p.has("visible") || p.get("visible").asBoolean(true),
+                    p.has("locked") && p.get("locked").asBoolean(false)
+            ));
+        }
+        return entries;
+    }
+
+    /**
      * Extracts texture .OMT file to a temporary location.
      *
      * @param zis ZIP input stream positioned at texture entry
@@ -393,12 +588,19 @@ public class OMODeserializer {
     }
 
     /**
-     * Container for loaded manifest, texture, and mesh data.
+     * Container for loaded manifest, texture, mesh, and face texture data.
      *
      * @param document The parsed manifest document
      * @param texturePath Path to extracted texture file
      * @param meshData Optional custom mesh data (null for standard cube)
+     * @param faceTextureData Optional per-face texture data (null for pre-1.2 files)
+     * @param materialTextures Optional material texture PNGs (null if none)
      */
-    private record LoadedData(OMOFormat.Document document, Path texturePath, OMOFormat.MeshData meshData) {
+    private record LoadedData(OMOFormat.Document document, Path texturePath,
+                              OMOFormat.MeshData meshData,
+                              OMOFormat.FaceTextureData faceTextureData,
+                              Map<String, byte[]> materialTextures,
+                              List<OMOFormat.PartEntry> partEntries,
+                              OMOFormat.ModelTransform modelTransform) {
     }
 }

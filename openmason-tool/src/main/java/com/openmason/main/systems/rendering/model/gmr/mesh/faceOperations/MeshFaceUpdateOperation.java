@@ -45,15 +45,6 @@ public class MeshFaceUpdateOperation {
     public static final int FLOATS_PER_VERTEX = 7;           // 3 position + 4 color RGBA
     public static final int COMPONENTS_PER_POSITION = 3;     // x, y, z
 
-    // Legacy constants for backward compatibility with existing callers
-    // TODO: Remove once all callers are updated to use parameterized methods
-    @Deprecated
-    public static final int FLOATS_PER_FACE_POSITION = 12;   // Legacy: 4 corners × 3 coords
-    @Deprecated
-    public static final int VERTICES_PER_FACE = 6;            // Legacy: 2 triangles × 3 vertices
-    @Deprecated
-    public static final int FLOATS_PER_FACE_VBO = VERTICES_PER_FACE * FLOATS_PER_VERTEX;
-
     /**
      * Updates a face's position in both CPU memory and GPU buffer.
      * Shape-blind: Accepts topology parameters and triangulation pattern for arbitrary face structure.
@@ -96,17 +87,6 @@ public class MeshFaceUpdateOperation {
             logger.error("Error updating face position for face {}", faceIndex, e);
             return false;
         }
-    }
-
-    /**
-     * Legacy method for backward compatibility.
-     * @deprecated Use {@link #updateFace(int, float[], int, int, int, int[], Vector3f[], TriangulationPattern)} instead
-     */
-    @Deprecated
-    public boolean updateFace(int vbo, float[] facePositions, int faceCount,
-                             int faceIndex, int[] vertexIndices, Vector3f[] newPositions) {
-        // Default to quad topology (4 vertices per face, quad triangulation pattern)
-        return updateFace(vbo, facePositions, faceCount, faceIndex, 4, vertexIndices, newPositions, TriangulationPattern.QUAD);
     }
 
     /**
@@ -298,13 +278,95 @@ public class MeshFaceUpdateOperation {
     }
 
     /**
-     * Legacy method for backward compatibility.
-     * @deprecated Use {@link #updateAllFaces(int, float[], int, int, TriangulationPattern, Vector4f)} instead
+     * Bulk update: Creates and uploads complete VBO data for faces with mixed topology.
+     * Each face can have a different vertex count (triangles, quads, n-gons mixed).
+     *
+     * @param vbo OpenGL VBO handle
+     * @param facePositions Packed face positions (variable vertices per face, sequential)
+     * @param faceCount Number of faces
+     * @param verticesPerFace Per-face vertex counts
+     * @param faceOffsets Per-face float offsets into facePositions
+     * @param defaultColor Default color for all faces (with alpha)
+     * @return true if update succeeded, false otherwise
      */
-    @Deprecated
-    public boolean updateAllFaces(int vbo, float[] facePositions, int faceCount, Vector4f defaultColor) {
-        // Default to quad topology (4 vertices per face, quad triangulation pattern)
-        return updateAllFaces(vbo, facePositions, faceCount, 4, TriangulationPattern.QUAD, defaultColor);
+    public boolean updateAllFacesMixed(int vbo, float[] facePositions, int faceCount,
+                                        int[] verticesPerFace, int[] faceOffsets,
+                                        Vector4f defaultColor) {
+        if (facePositions == null || faceCount == 0) {
+            logger.warn("Cannot update all faces (mixed): invalid data");
+            return false;
+        }
+
+        if (verticesPerFace == null || verticesPerFace.length != faceCount) {
+            logger.warn("Cannot update all faces (mixed): verticesPerFace length mismatch");
+            return false;
+        }
+
+        if (faceOffsets == null || faceOffsets.length != faceCount) {
+            logger.warn("Cannot update all faces (mixed): faceOffsets length mismatch");
+            return false;
+        }
+
+        try {
+            // Pre-compute triangulation patterns and total VBO vertex count
+            TriangulationPattern[] patterns = new TriangulationPattern[faceCount];
+            int totalVBOVertices = 0;
+
+            for (int i = 0; i < faceCount; i++) {
+                patterns[i] = TriangulationPattern.forNGon(verticesPerFace[i]);
+                totalVBOVertices += patterns[i].getVBOVertexCount();
+            }
+
+            // Build VBO data with variable stride per face
+            float[] vertexData = new float[totalVBOVertices * FLOATS_PER_VERTEX];
+            int vboOffset = 0;
+
+            for (int faceIdx = 0; faceIdx < faceCount; faceIdx++) {
+                int vpf = verticesPerFace[faceIdx];
+                int faceStart = faceOffsets[faceIdx];
+                TriangulationPattern pattern = patterns[faceIdx];
+                int vboVerticesForFace = pattern.getVBOVertexCount();
+
+                // Load corner positions
+                Vector3f[] corners = new Vector3f[vpf];
+                for (int cornerIdx = 0; cornerIdx < vpf; cornerIdx++) {
+                    int posIdx = faceStart + (cornerIdx * COMPONENTS_PER_POSITION);
+                    corners[cornerIdx] = new Vector3f(
+                        facePositions[posIdx],
+                        facePositions[posIdx + 1],
+                        facePositions[posIdx + 2]
+                    );
+                }
+
+                // Use triangulation pattern to create VBO vertices
+                for (int vboVertexIdx = 0; vboVertexIdx < vboVerticesForFace; vboVertexIdx++) {
+                    int cornerIdx = pattern.getCornerIndex(vboVertexIdx);
+
+                    if (cornerIdx < corners.length) {
+                        int dataIdx = vboOffset + (vboVertexIdx * FLOATS_PER_VERTEX);
+                        addVertexToData(vertexData, dataIdx, corners[cornerIdx], defaultColor);
+                    } else {
+                        logger.warn("Mixed triangulation references invalid corner index: {} (max: {})",
+                                cornerIdx, corners.length - 1);
+                    }
+                }
+
+                vboOffset += vboVerticesForFace * FLOATS_PER_VERTEX;
+            }
+
+            // Upload to GPU
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBufferData(GL_ARRAY_BUFFER, vertexData, GL_DYNAMIC_DRAW);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+            logger.debug("Bulk updated {} faces (mixed topology, {} VBO vertices) to VBO",
+                faceCount, totalVBOVertices);
+            return true;
+
+        } catch (Exception e) {
+            logger.error("Error during mixed-topology bulk face update", e);
+            return false;
+        }
     }
 
     /**

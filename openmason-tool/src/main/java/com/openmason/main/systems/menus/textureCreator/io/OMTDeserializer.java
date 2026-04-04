@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.textureCreator.io;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.menus.textureCreator.layers.Layer;
@@ -21,6 +22,11 @@ import java.util.zip.ZipInputStream;
 
 /**
  * Deserializer for Open Mason Texture (.OMT) file format.
+ *
+ * <p>Supports both legacy files (layers only) and extended files
+ * (layers + face UV mappings + material definitions with textures).
+ * Missing face mapping / material fields default gracefully for
+ * backward compatibility.
  */
 public class OMTDeserializer {
 
@@ -32,15 +38,41 @@ public class OMTDeserializer {
      */
     public OMTDeserializer() {
         this.objectMapper = new ObjectMapper();
+        // Ignore unknown JSON properties for forward compatibility
+        this.objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     /**
-     * Load .OMT file into LayerManager.
+     * Result of a full .OMT file load, including face mapping and material data.
+     *
+     * @param layerManager     Reconstructed layer manager
+     * @param document         Parsed document metadata (includes face mappings and materials)
+     * @param materialTextures Decoded material textures keyed by materialId
+     */
+    public record LoadResult(
+        LayerManager layerManager,
+        OMTFormat.Document document,
+        Map<Integer, PixelCanvas> materialTextures
+    ) {}
+
+    /**
+     * Load .OMT file into LayerManager (backward-compatible — discards face mapping data).
      *
      * @param filePath input file path
      * @return loaded layer manager, or null if failed
      */
     public LayerManager load(String filePath) {
+        LoadResult result = loadFull(filePath);
+        return result != null ? result.layerManager() : null;
+    }
+
+    /**
+     * Load .OMT file with full face mapping, material, and texture data.
+     *
+     * @param filePath input file path
+     * @return load result containing layer manager, document, and material textures; or null if failed
+     */
+    public LoadResult loadFull(String filePath) {
         if (filePath == null || filePath.trim().isEmpty()) {
             logger.error("Invalid file path");
             return null;
@@ -86,8 +118,13 @@ public class OMTDeserializer {
                 return null;
             }
 
-            logger.info("Loaded .OMT file: {}", filePath);
-            return layerManager;
+            // Decode material textures
+            Map<Integer, PixelCanvas> materialTextures = decodeMaterialTextures(document, archive);
+
+            logger.info("Loaded .OMT file: {} ({} face mappings, {} materials)",
+                    filePath, document.faceMappings().size(), document.materials().size());
+
+            return new LoadResult(layerManager, document, materialTextures);
 
         } catch (IOException e) {
             logger.error("Error loading .OMT file: {}", filePath, e);
@@ -123,6 +160,10 @@ public class OMTDeserializer {
                         && entryName.endsWith(OMTFormat.LAYER_FILENAME_SUFFIX)) {
                     archive.layerData.put(entryName, entryData);
                     logger.trace("Extracted {} ({} bytes)", entryName, entryData.length);
+                } else if (entryName.startsWith(OMTFormat.MATERIAL_FILENAME_PREFIX)
+                        && entryName.endsWith(OMTFormat.MATERIAL_FILENAME_SUFFIX)) {
+                    archive.materialData.put(entryName, entryData);
+                    logger.trace("Extracted material {} ({} bytes)", entryName, entryData.length);
                 } else {
                     logger.warn("Ignoring unknown entry in .OMT archive: {}", entryName);
                 }
@@ -160,6 +201,9 @@ public class OMTDeserializer {
     /**
      * Parse manifest.json data.
      *
+     * <p>Backward-compatible: missing {@code faceMappings} and {@code materials}
+     * fields default to empty lists.
+     *
      * @param manifestData JSON data as bytes
      * @return parsed document, or null if failed
      */
@@ -185,11 +229,42 @@ public class OMTDeserializer {
                 layers.add(layerInfo);
             }
 
+            // Parse face mappings (backward-compatible: may be null)
+            List<OMTFormat.FaceMappingInfo> faceMappings = new ArrayList<>();
+            if (dto.faceMappings != null) {
+                for (FaceMappingInfoDTO mappingDTO : dto.faceMappings) {
+                    faceMappings.add(new OMTFormat.FaceMappingInfo(
+                            mappingDTO.faceId,
+                            mappingDTO.materialId,
+                            mappingDTO.u0,
+                            mappingDTO.v0,
+                            mappingDTO.u1,
+                            mappingDTO.v1,
+                            mappingDTO.uvRotation
+                    ));
+                }
+            }
+
+            // Parse materials (backward-compatible: may be null)
+            List<OMTFormat.MaterialInfo> materials = new ArrayList<>();
+            if (dto.materials != null) {
+                for (MaterialInfoDTO materialDTO : dto.materials) {
+                    materials.add(new OMTFormat.MaterialInfo(
+                            materialDTO.materialId,
+                            materialDTO.name,
+                            materialDTO.renderLayer,
+                            materialDTO.textureFile
+                    ));
+                }
+            }
+
             return new OMTFormat.Document(
                     dto.version,
                     canvasSize,
                     layers,
-                    dto.activeLayerIndex
+                    dto.activeLayerIndex,
+                    faceMappings,
+                    materials
             );
 
         } catch (Exception e) {
@@ -254,7 +329,43 @@ public class OMTDeserializer {
     }
 
     /**
-     * Decode PNG data to PixelCanvas.
+     * Decode material textures from the archive.
+     *
+     * <p>Material textures are not dimension-constrained to the canvas size,
+     * so each is decoded independently using STB's reported dimensions.
+     *
+     * @param document parsed document containing material info
+     * @param archive  extracted archive data
+     * @return map of materialId to decoded PixelCanvas (empty if no materials)
+     */
+    private Map<Integer, PixelCanvas> decodeMaterialTextures(OMTFormat.Document document, OMTArchive archive) {
+        Map<Integer, PixelCanvas> textures = new HashMap<>();
+
+        for (OMTFormat.MaterialInfo materialInfo : document.materials()) {
+            byte[] pngData = archive.materialData.get(materialInfo.textureFile());
+            if (pngData == null) {
+                logger.warn("Missing material texture file: {} for material {} ({})",
+                        materialInfo.textureFile(), materialInfo.materialId(), materialInfo.name());
+                continue;
+            }
+
+            PixelCanvas canvas = decodePNGUnconstrained(pngData);
+            if (canvas == null) {
+                logger.warn("Failed to decode material texture: {} for material {} ({})",
+                        materialInfo.textureFile(), materialInfo.materialId(), materialInfo.name());
+                continue;
+            }
+
+            textures.put(materialInfo.materialId(), canvas);
+            logger.trace("Decoded material texture {} ({}x{})",
+                    materialInfo.textureFile(), canvas.getWidth(), canvas.getHeight());
+        }
+
+        return textures;
+    }
+
+    /**
+     * Decode PNG data to PixelCanvas with expected dimension validation.
      *
      * @param pngData PNG file data
      * @param expectedWidth expected canvas width
@@ -292,33 +403,75 @@ public class OMTDeserializer {
                 return null;
             }
 
-            // Create canvas and copy pixel data
-            PixelCanvas canvas = new PixelCanvas(imageWidth, imageHeight);
-            for (int y = 0; y < imageHeight; y++) {
-                for (int x = 0; x < imageWidth; x++) {
-                    int index = (y * imageWidth + x) * 4; // 4 bytes per pixel (RGBA)
-
-                    // Read RGBA values (unsigned bytes)
-                    int r = imageData.get(index) & 0xFF;
-                    int g = imageData.get(index + 1) & 0xFF;
-                    int b = imageData.get(index + 2) & 0xFF;
-                    int a = imageData.get(index + 3) & 0xFF;
-
-                    // Pack into color int
-                    int color = PixelCanvas.packRGBA(r, g, b, a);
-                    canvas.setPixel(x, y, color);
-                }
-            }
-
-            // Free image data
+            PixelCanvas canvas = readImageDataToCanvas(imageData, imageWidth, imageHeight);
             STBImage.stbi_image_free(imageData);
-
             return canvas;
 
         } catch (Exception e) {
             logger.error("Error decoding PNG", e);
             return null;
         }
+    }
+
+    /**
+     * Decode PNG data to PixelCanvas without dimension constraints.
+     * Used for material textures which may have arbitrary dimensions.
+     *
+     * @param pngData PNG file data
+     * @return decoded canvas, or null if failed
+     */
+    private PixelCanvas decodePNGUnconstrained(byte[] pngData) {
+        try {
+            ByteBuffer pngBuffer = BufferUtils.createByteBuffer(pngData.length);
+            pngBuffer.put(pngData);
+            pngBuffer.flip();
+
+            IntBuffer width = BufferUtils.createIntBuffer(1);
+            IntBuffer height = BufferUtils.createIntBuffer(1);
+            IntBuffer channels = BufferUtils.createIntBuffer(1);
+
+            ByteBuffer imageData = STBImage.stbi_load_from_memory(pngBuffer, width, height, channels, 4);
+
+            if (imageData == null) {
+                logger.error("STB failed to decode material PNG: {}", STBImage.stbi_failure_reason());
+                return null;
+            }
+
+            int imageWidth = width.get(0);
+            int imageHeight = height.get(0);
+
+            PixelCanvas canvas = readImageDataToCanvas(imageData, imageWidth, imageHeight);
+            STBImage.stbi_image_free(imageData);
+            return canvas;
+
+        } catch (Exception e) {
+            logger.error("Error decoding material PNG", e);
+            return null;
+        }
+    }
+
+    /**
+     * Copy decoded RGBA image data into a PixelCanvas.
+     *
+     * @param imageData RGBA byte buffer from STB
+     * @param width     image width
+     * @param height    image height
+     * @return populated canvas
+     */
+    private PixelCanvas readImageDataToCanvas(ByteBuffer imageData, int width, int height) {
+        PixelCanvas canvas = new PixelCanvas(width, height);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int index = (y * width + x) * 4;
+                int r = imageData.get(index) & 0xFF;
+                int g = imageData.get(index + 1) & 0xFF;
+                int b = imageData.get(index + 2) & 0xFF;
+                int a = imageData.get(index + 3) & 0xFF;
+                int color = PixelCanvas.packRGBA(r, g, b, a);
+                canvas.setPixel(x, y, color);
+            }
+        }
+        return canvas;
     }
 
     /**
@@ -346,6 +499,7 @@ public class OMTDeserializer {
     private static class OMTArchive {
         byte[] manifestData;
         Map<String, byte[]> layerData = new HashMap<>();
+        Map<String, byte[]> materialData = new HashMap<>();
     }
 
     /**
@@ -357,6 +511,8 @@ public class OMTDeserializer {
         public CanvasSizeDTO canvasSize;
         public List<LayerInfoDTO> layers;
         public int activeLayerIndex;
+        public List<FaceMappingInfoDTO> faceMappings;
+        public List<MaterialInfoDTO> materials;
     }
 
     private static class CanvasSizeDTO {
@@ -369,5 +525,22 @@ public class OMTDeserializer {
         public boolean visible;
         public float opacity;
         public String dataFile;
+    }
+
+    private static class FaceMappingInfoDTO {
+        public int faceId;
+        public int materialId;
+        public float u0;
+        public float v0;
+        public float u1;
+        public float v1;
+        public int uvRotation;
+    }
+
+    private static class MaterialInfoDTO {
+        public int materialId;
+        public String name;
+        public String renderLayer;
+        public String textureFile;
     }
 }

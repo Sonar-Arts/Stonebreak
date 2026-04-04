@@ -1,6 +1,9 @@
 package com.openmason.main.systems.menus.mainHub.components;
 
+import com.openmason.main.systems.menus.mainHub.dialogs.DeleteProjectDialog;
+import com.openmason.main.systems.menus.mainHub.dialogs.RenameProjectDialog;
 import com.openmason.main.systems.menus.mainHub.model.RecentProject;
+import com.openmason.main.systems.menus.mainHub.services.HubActionService;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.menus.mainHub.state.HubState;
 import com.openmason.main.systems.themes.core.ThemeDefinition;
@@ -12,266 +15,364 @@ import imgui.ImVec2;
 import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiMouseCursor;
-import imgui.flag.ImGuiStyleVar;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
- * Center panel showing recent projects.
- * Single Responsibility: Display and manage recent projects list/grid.
+ * Center panel showing recent projects in a card grid.
+ * Single Responsibility: Display and manage recent projects.
  */
 public class RecentProjectsPanel {
 
-    private static final float ITEM_HEIGHT = 80.0f;
-    private static final float ITEM_PADDING = 12.0f;
-    private static final float ITEM_SPACING = 10.0f;
-    private static final float ITEM_ROUNDING = 6.0f;
+    private static final Logger logger = LoggerFactory.getLogger(RecentProjectsPanel.class);
+
+    // Grid layout
+    private static final int COLUMNS = 2;
+    private static final float GAP = 8.0f;
+    private static final float CARD_ROUNDING = 6.0f;
+    private static final float CARD_PAD = 12.0f;
+    private static final float ACCENT_W = 3.0f;
+
+    // Internal card zones
+    private static final float HEADER_ZONE = 32.0f;   // Project name + time
+    private static final float DETAIL_ZONE = 42.0f;   // Folder + filename in sub-container
+    private static final float SEP_GAP = 1.0f;        // Separator line
+    private static final float CARD_HEIGHT = CARD_PAD + HEADER_ZONE + SEP_GAP + DETAIL_ZONE + CARD_PAD;
 
     private final ThemeManager themeManager;
     private final HubState hubState;
     private final RecentProjectsService recentProjectsService;
+    private final HubActionService actionService;
 
-    public RecentProjectsPanel(ThemeManager themeManager, HubState hubState, RecentProjectsService recentProjectsService) {
+    private final RenameProjectDialog renameDialog = new RenameProjectDialog();
+    private final DeleteProjectDialog deleteDialog = new DeleteProjectDialog();
+
+    public RecentProjectsPanel(ThemeManager themeManager, HubState hubState,
+                               RecentProjectsService recentProjectsService,
+                               HubActionService actionService) {
         this.themeManager = themeManager;
         this.hubState = hubState;
         this.recentProjectsService = recentProjectsService;
+        this.actionService = actionService;
     }
 
-    /**
-     * Render the recent projects panel.
-     */
     public void render() {
-        // Get filtered projects based on search query
-        String searchQuery = hubState.getSearchQuery();
-        List<RecentProject> projects = searchQuery.isEmpty()
+        String query = hubState.getSearchQuery();
+        List<RecentProject> projects = query.isEmpty()
                 ? recentProjectsService.getRecentProjects()
-                : recentProjectsService.search(searchQuery);
+                : recentProjectsService.search(query);
 
         if (projects.isEmpty()) {
             renderEmptyState();
             return;
         }
 
-        // Render projects in list format
+        ThemeDefinition theme = themeManager.getCurrentTheme();
+
+        // Section header — dimmed using theme colors
+        ImVec4 headerText = theme.getColor(ImGuiCol.Text);
+        ImVec4 headerBg = theme.getColor(ImGuiCol.WindowBg);
+        if (headerText == null) headerText = new ImVec4(1, 1, 1, 1);
+        if (headerBg == null) headerBg = new ImVec4(0, 0, 0, 1);
+        pushLerpedTextColor(headerText, headerBg, 0.5f);
+        ImGui.text("RECENT PROJECTS  (" + projects.size() + ")");
+        ImGui.popStyleColor();
+        ImGui.spacing();
+
+        // Grid layout
+        float availW = ImGui.getContentRegionAvailX();
+        float cardW = (availW - GAP * (COLUMNS - 1)) / COLUMNS;
+        ImVec2 gridOrigin = ImGui.getCursorScreenPos();
+
         for (int i = 0; i < projects.size(); i++) {
-            RecentProject project = projects.get(i);
-            renderProjectItem(project, i);
-            ImGui.spacing();
+            int col = i % COLUMNS;
+            int row = i / COLUMNS;
+
+            float x = gridOrigin.x + col * (cardW + GAP);
+            float y = gridOrigin.y + row * (CARD_HEIGHT + GAP);
+
+            renderCard(projects.get(i), i, x, y, cardW, theme);
         }
+
+        // Advance cursor past all rows
+        int totalRows = (projects.size() + COLUMNS - 1) / COLUMNS;
+        float totalHeight = totalRows * (CARD_HEIGHT + GAP);
+        ImGui.setCursorScreenPos(gridOrigin.x, gridOrigin.y + totalHeight);
+        ImGui.dummy(availW, 0);
     }
 
-    /**
-     * Render empty state when no projects exist.
-     */
-    private void renderEmptyState() {
-        ImGui.spacing();
-        ImGui.spacing();
+    // ========== Card Rendering ==========
 
-        String message = hubState.getSearchQuery().isEmpty()
-                ? "No recent projects"
-                : "No projects match your search";
+    private void renderCard(RecentProject project, int index, float x, float y,
+                            float cardW, ThemeDefinition theme) {
+        ImDrawList dl = ImGui.getWindowDrawList();
 
-        ImVec2 textSize = ImGui.calcTextSize(message);
-        float windowWidth = ImGui.getWindowWidth();
-        float textX = (windowWidth - textSize.x) * 0.5f;
-        ImGui.setCursorPosX(textX);
+        float x2 = x + cardW;
+        float y2 = y + CARD_HEIGHT;
 
-        ThemeDefinition theme = themeManager.getCurrentTheme();
-        ImVec4 textDisabled = theme.getColor(ImGuiCol.TextDisabled);
-        if (textDisabled != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, textDisabled.w);
-        }
-        ImGui.text(message);
-        if (textDisabled != null) {
-            ImGui.popStyleColor();
-        }
+        boolean selected = project.equals(hubState.getSelectedRecentProject());
+        boolean hovered = ImGui.isMouseHoveringRect(x, y, x2, y2);
+        if (hovered) ImGui.setMouseCursor(ImGuiMouseCursor.Hand);
 
-        ImGui.spacing();
-        ImVec2 hintSize = ImGui.calcTextSize("Saved projects will appear here");
-        float hintX = (windowWidth - hintSize.x) * 0.5f;
-        ImGui.setCursorPosX(hintX);
-        if (textDisabled != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, 0.6f);
-        }
-        ImGui.text("Saved projects will appear here");
-        if (textDisabled != null) {
-            ImGui.popStyleColor();
-        }
-    }
+        // --- Card background — darker than the panel to stand out ---
+        ImVec4 panelBg = theme.getColor(ImGuiCol.ChildBg);
+        if (panelBg == null) panelBg = new ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
+        // Darken for dark themes, lighten for light themes
+        float shift = (panelBg.x + panelBg.y + panelBg.z) / 3.0f < 0.5f ? -0.04f : 0.04f;
+        ImVec4 bgColor = new ImVec4(
+                Math.max(0, panelBg.x + shift),
+                Math.max(0, panelBg.y + shift),
+                Math.max(0, panelBg.z + shift),
+                1.0f);
 
-    /**
-     * Render a single project item.
-     */
-    private void renderProjectItem(RecentProject project, int index) {
-        ImVec2 cursorPos = ImGui.getCursorScreenPos();
-        ImDrawList drawList = ImGui.getWindowDrawList();
+        // --- Border + shadow states (matching template card style) ---
+        ImVec4 borderColor;
+        float borderThickness;
+        float shadowOffset;
+        float shadowAlpha;
 
-        float itemWidth = ImGui.getWindowWidth() - 20.0f; // Account for padding
-        float x1 = cursorPos.x;
-        float y1 = cursorPos.y;
-        float x2 = x1 + itemWidth;
-        float y2 = y1 + ITEM_HEIGHT;
-
-        boolean isSelected = hubState.getSelectedRecentProject() == project;
-        boolean isHovered = ImGui.isMouseHoveringRect(x1, y1, x2, y2);
-
-        if (isHovered) {
-            ImGui.setMouseCursor(ImGuiMouseCursor.Hand);
+        if (selected) {
+            borderColor = theme.getColor(ImGuiCol.Header);
+            if (borderColor == null) borderColor = new ImVec4(0.26f, 0.59f, 0.98f, 1.0f);
+            borderThickness = 3.0f;
+            shadowOffset = 6.0f;
+            shadowAlpha = 0.3f;
+        } else if (hovered) {
+            borderColor = theme.getColor(ImGuiCol.ButtonHovered);
+            if (borderColor == null) borderColor = new ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
+            borderThickness = 2.0f;
+            shadowOffset = 5.0f;
+            shadowAlpha = 0.25f;
+        } else {
+            borderColor = theme.getColor(ImGuiCol.Border);
+            if (borderColor == null) borderColor = new ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
+            borderThickness = 1.0f;
+            shadowOffset = 3.0f;
+            shadowAlpha = 0.15f;
         }
 
-        // Get theme colors
-        ThemeDefinition theme = themeManager.getCurrentTheme();
-        // Three-state background: selected > hovered > normal
-        ImVec4 bgColor = isSelected
-                ? theme.getColor(ImGuiCol.Header)
-                : (isHovered ? theme.getColor(ImGuiCol.FrameBgHovered) : theme.getColor(ImGuiCol.ChildBg));
-        if (bgColor == null) bgColor = new ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
+        // Drop shadow
+        dl.addRectFilled(x + shadowOffset, y + shadowOffset,
+                x2 + shadowOffset, y2 + shadowOffset,
+                ImColor.rgba(0, 0, 0, shadowAlpha), CARD_ROUNDING);
 
-        ImVec4 borderColor = isHovered || isSelected
-                ? theme.getColor(ImGuiCol.ButtonHovered)
-                : theme.getColor(ImGuiCol.Border);
-        if (borderColor == null) borderColor = new ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
+        // Card fill
+        dl.addRectFilled(x, y, x2, y2,
+                ImColor.rgba(bgColor.x, bgColor.y, bgColor.z, bgColor.w), CARD_ROUNDING);
 
-        // Draw background
-        int bg = ImColor.rgba(bgColor.x, bgColor.y, bgColor.z, bgColor.w);
-        drawList.addRectFilled(x1, y1, x2, y2, bg, ITEM_ROUNDING);
+        // Border
+        dl.addRect(x, y, x2, y2,
+                ImColor.rgba(borderColor.x, borderColor.y, borderColor.z, 1.0f),
+                CARD_ROUNDING, 0, borderThickness);
 
-        // Draw border
-        int border = ImColor.rgba(borderColor.x, borderColor.y, borderColor.z, 1.0f);
-        float borderThickness = (isHovered || isSelected) ? 2.5f : 1.5f;
-        drawList.addRect(x1, y1, x2, y2, border, ITEM_ROUNDING, 0, borderThickness);
+        // --- Left accent bar (selected only) ---
+        if (selected) {
+            ImVec4 accent = theme.getColor(ImGuiCol.ButtonHovered);
+            if (accent == null) accent = new ImVec4(0.4f, 0.5f, 0.9f, 1.0f);
+            dl.addRectFilled(x + 2, y + 8, x + 2 + ACCENT_W, y2 - 8,
+                    ImColor.rgba(accent.x, accent.y, accent.z, 1.0f), ACCENT_W / 2);
+        }
 
-        // Render project icon (left side)
-        float iconX = x1 + ITEM_PADDING;
-        float iconY = y1 + ITEM_PADDING;
-        ImGui.setCursorScreenPos(iconX, iconY);
-        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 0, 0);
-        String icon = getProjectIcon(project);
-        ImGui.text(icon);
-        ImGui.popStyleVar();
+        // --- Layout zones ---
+        ImVec4 tc = theme.getColor(ImGuiCol.Text);
+        if (tc == null) tc = new ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
 
-        // Render project name
-        float nameX = iconX + 50;
-        float nameY = y1 + ITEM_PADDING;
-        ImGui.setCursorScreenPos(nameX, nameY);
+        float contentL = x + CARD_PAD + (selected ? ACCENT_W + 2 : 0);
+        float contentR = x2 - CARD_PAD;
+        float headerY = y + CARD_PAD;
+        float sepY = headerY + HEADER_ZONE;
+        float detailY = sepY + SEP_GAP;
+
+        // ===== HEADER ZONE: Project name + time =====
+        // Project name — scaled up
+        ImGui.setCursorScreenPos(contentL, headerY);
+        ImGui.setWindowFontScale(1.15f);
+        ImGui.pushStyleColor(ImGuiCol.Text, tc.x, tc.y, tc.z, 1.0f);
         ImGui.text(project.getName());
+        ImGui.popStyleColor();
+        ImGui.setWindowFontScale(1.0f);
 
-        // Render template badge
-        ImGui.sameLine();
-        if (project.getSourceTemplate() != null) {
-            renderTemplateBadge(project.getSourceTemplate().getName(), theme);
-        }
+        // Time — right-aligned in header
+        String timeStr = formatTime(project.getLastOpened());
+        ImVec2 timeSz = ImGui.calcTextSize(timeStr);
+        ImGui.setCursorScreenPos(contentR - timeSz.x, headerY + 4);
+        ImGui.setWindowFontScale(0.9f);
+        ImGui.pushStyleColor(ImGuiCol.Text, tc.x, tc.y, tc.z, 1.0f);
+        ImGui.text(timeStr);
+        ImGui.popStyleColor();
+        ImGui.setWindowFontScale(1.0f);
 
-        // Render description
-        float descY = nameY + 22;
-        ImGui.setCursorScreenPos(nameX, descY);
-        ImVec4 textDisabled = theme.getColor(ImGuiCol.TextDisabled);
-        if (textDisabled != null) {
-            // Increase opacity on hover for better legibility: 0.8 (normal) -> 0.95 (hovered)
-            float descOpacity = isHovered ? 0.95f : 0.8f;
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, descOpacity);
-        }
-        ImGui.text(project.getDescription());
-        if (textDisabled != null) {
+        // ===== SEPARATOR LINE =====
+        ImVec4 sepColor = theme.getColor(ImGuiCol.Separator);
+        if (sepColor == null) sepColor = new ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
+        dl.addLine(contentL, sepY, contentR, sepY,
+                ImColor.rgba(sepColor.x, sepColor.y, sepColor.z, 0.4f), 1.0f);
+
+        // ===== DETAIL ZONE: Folder + file in a tinted sub-container =====
+        float detailPad = 8.0f;
+        float detailInnerL = x + detailPad;
+        float detailInnerR = x2 - detailPad;
+        float detailBoxTop = detailY + 4;
+        float detailBoxBot = y2 - CARD_PAD + 4;
+
+        // Sub-container background — slightly darker/lighter than card bg
+        ImVec4 detailBg = theme.getColor(ImGuiCol.FrameBg);
+        if (detailBg == null) detailBg = new ImVec4(bgColor.x - 0.02f, bgColor.y - 0.02f, bgColor.z - 0.02f, 1.0f);
+        dl.addRectFilled(detailInnerL, detailBoxTop, detailInnerR, detailBoxBot,
+                ImColor.rgba(detailBg.x, detailBg.y, detailBg.z, 0.5f), 4.0f);
+
+        // Folder name
+        String folder = extractFolderName(project.getPath());
+        ImGui.setCursorScreenPos(detailInnerL + 6, detailBoxTop + 4);
+        ImGui.pushStyleColor(ImGuiCol.Text, tc.x, tc.y, tc.z, 1.0f);
+        ImGui.text(folder);
+        ImGui.popStyleColor();
+
+        // File name — smaller, below folder
+        String fileName = extractFileName(project.getPath());
+        if (!fileName.isEmpty()) {
+            ImGui.setCursorScreenPos(detailInnerL + 6, detailBoxTop + 20);
+            ImGui.setWindowFontScale(0.88f);
+            ImGui.pushStyleColor(ImGuiCol.Text, tc.x, tc.y, tc.z, 1.0f);
+            ImGui.text(fileName);
             ImGui.popStyleColor();
+            ImGui.setWindowFontScale(1.0f);
         }
 
-        // Render last opened time (right aligned)
-        String timeText = formatLastOpened(project.getLastOpened());
-        ImVec2 timeSize = ImGui.calcTextSize(timeText);
-        float timeX = x2 - timeSize.x - ITEM_PADDING;
-        float timeY = y1 + ITEM_PADDING;
-        ImGui.setCursorScreenPos(timeX, timeY);
-        if (textDisabled != null) {
-            // Increase opacity on hover for better legibility: 0.7 (normal) -> 0.85 (hovered)
-            float timeOpacity = isHovered ? 0.85f : 0.7f;
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, timeOpacity);
-        }
-        ImGui.text(timeText);
-        if (textDisabled != null) {
-            ImGui.popStyleColor();
-        }
-
-        // Invisible button for click detection
-        ImGui.setCursorScreenPos(x1, y1);
+        // --- Invisible button for click + context menu ---
+        ImGui.setCursorScreenPos(x, y);
         ImGui.pushStyleColor(ImGuiCol.Button, 0);
         ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0);
         ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0);
-        if (ImGui.button("##project_" + index, itemWidth, ITEM_HEIGHT)) {
+        if (ImGui.button("##proj_" + index, cardW, CARD_HEIGHT)) {
             hubState.setSelectedRecentProject(project);
+        }
+        if (ImGui.isItemHovered() && ImGui.isMouseDoubleClicked(0)) {
+            hubState.setSelectedRecentProject(project);
+            actionService.openRecentProject(project);
         }
         ImGui.popStyleColor(3);
 
-        // Restore cursor for next item
-        ImGui.setCursorScreenPos(x1, y2 + ITEM_SPACING);
-    }
-
-    /**
-     * Render template badge.
-     */
-    private void renderTemplateBadge(String templateName, ThemeDefinition theme) {
-        ImVec4 badgeColor = theme.getColor(ImGuiCol.Button);
-        if (badgeColor != null) {
-            ImGui.pushStyleColor(ImGuiCol.Button, badgeColor.x, badgeColor.y, badgeColor.z, 0.5f);
-        }
-        ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 3.0f, 1.0f);
-        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 3.0f);
-        ImGui.button(templateName);
-        ImGui.popStyleVar(2);
-        if (badgeColor != null) {
-            ImGui.popStyleColor();
+        // Context menu
+        if (ImGui.beginPopupContextItem("ctx_" + index)) {
+            if (ImGui.menuItem("Open")) {
+                hubState.setSelectedRecentProject(project);
+                actionService.openRecentProject(project);
+            }
+            ImGui.separator();
+            if (ImGui.menuItem("Rename...")) {
+                renameDialog.show(project.getId(), project.getName(), this::handleRename);
+            }
+            if (ImGui.menuItem("Remove from Recent")) {
+                deleteDialog.show(project, this::handleDelete);
+            }
+            ImGui.endPopup();
         }
     }
 
-    /**
-     * Get icon for project based on source template.
-     */
-    private String getProjectIcon(RecentProject project) {
-        if (project.getSourceTemplate() == null) {
-            return "[P]";
-        }
+    // ========== Empty State ==========
 
-        return switch (project.getSourceTemplate().getType()) {
-            case BASIC_3D_MODEL -> "[M]";
-            case ADVANCED_3D_MODEL -> "[3D]";
-            case TEXTURE_PACK -> "[T]";
-            case BLOCK_SET -> "[B]";
-            case FULL_GAME_TEMPLATE -> "[G]";
-            case CUSTOM -> "[P]";
-        };
+    private void renderEmptyState() {
+        ThemeDefinition theme = themeManager.getCurrentTheme();
+        ImVec4 tc = theme.getColor(ImGuiCol.Text);
+        ImVec4 bg = theme.getColor(ImGuiCol.WindowBg);
+        if (tc == null) tc = new ImVec4(1, 1, 1, 1);
+        if (bg == null) bg = new ImVec4(0, 0, 0, 1);
+        float ww = ImGui.getWindowWidth();
+
+        ImGui.spacing();
+        ImGui.spacing();
+        ImGui.spacing();
+
+        String msg = hubState.getSearchQuery().isEmpty()
+                ? "No recent projects" : "No projects match your search";
+        centerText(msg, tc, bg, 0.4f, ww);
+
+        ImGui.spacing();
+        centerText("Saved projects will appear here", tc, bg, 0.6f, ww);
     }
 
+    private void centerText(String text, ImVec4 textColor, ImVec4 bgColor, float mix, float windowWidth) {
+        ImVec2 sz = ImGui.calcTextSize(text);
+        ImGui.setCursorPosX((windowWidth - sz.x) * 0.5f);
+        pushLerpedTextColor(textColor, bgColor, mix);
+        ImGui.text(text);
+        ImGui.popStyleColor();
+    }
+
+    // ========== Color Helpers ==========
+
     /**
-     * Format last opened time in human-readable format.
+     * Push a text color that lerps between the text color and a target (usually background).
+     * mix=0 → pure text color, mix=1 → pure target. Works for both light and dark themes.
      */
-    private String formatLastOpened(LocalDateTime lastOpened) {
+    private void pushLerpedTextColor(ImVec4 text, ImVec4 target, float mix) {
+        float r = text.x + (target.x - text.x) * mix;
+        float g = text.y + (target.y - text.y) * mix;
+        float b = text.z + (target.z - text.z) * mix;
+        ImGui.pushStyleColor(ImGuiCol.Text, r, g, b, 1.0f);
+    }
+
+    // ========== Utility ==========
+
+    private String extractFolderName(String filePath) {
+        if (filePath == null || filePath.isBlank()) return "";
+        try {
+            Path parent = Path.of(filePath).getParent();
+            if (parent != null) {
+                Path name = parent.getFileName();
+                return name != null ? name.toString() : parent.toString();
+            }
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    private String extractFileName(String filePath) {
+        if (filePath == null || filePath.isBlank()) return "";
+        try {
+            Path name = Path.of(filePath).getFileName();
+            return name != null ? name.toString() : "";
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    private String formatTime(LocalDateTime lastOpened) {
         LocalDateTime now = LocalDateTime.now();
-
-        long minutesAgo = ChronoUnit.MINUTES.between(lastOpened, now);
-        if (minutesAgo < 60) {
-            return minutesAgo + " min ago";
-        }
-
-        long hoursAgo = ChronoUnit.HOURS.between(lastOpened, now);
-        if (hoursAgo < 24) {
-            return hoursAgo + " hour" + (hoursAgo > 1 ? "s" : "") + " ago";
-        }
-
-        long daysAgo = ChronoUnit.DAYS.between(lastOpened, now);
-        if (daysAgo < 7) {
-            return daysAgo + " day" + (daysAgo > 1 ? "s" : "") + " ago";
-        }
-
-        long weeksAgo = daysAgo / 7;
-        if (weeksAgo < 4) {
-            return weeksAgo + " week" + (weeksAgo > 1 ? "s" : "") + " ago";
-        }
-
-        // For older projects, show actual date
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMM d, yyyy");
-        return lastOpened.format(formatter);
+        long min = ChronoUnit.MINUTES.between(lastOpened, now);
+        if (min < 1) return "Just now";
+        if (min < 60) return min + "m";
+        long hrs = ChronoUnit.HOURS.between(lastOpened, now);
+        if (hrs < 24) return hrs + "h";
+        long days = ChronoUnit.DAYS.between(lastOpened, now);
+        if (days < 7) return days + "d";
+        if (days < 28) return (days / 7) + "w";
+        return lastOpened.format(DateTimeFormatter.ofPattern("MMM d"));
     }
+
+    // ========== Callbacks ==========
+
+    private void handleRename(String projectId, String newName) {
+        recentProjectsService.renameProject(projectId, newName);
+        RecentProject sel = hubState.getSelectedRecentProject();
+        if (sel != null && sel.getId().equals(projectId)) {
+            hubState.setSelectedRecentProject(null);
+        }
+    }
+
+    private void handleDelete(RecentProject project, boolean deleteFile) {
+        if (deleteFile) recentProjectsService.deleteProjectFile(project);
+        recentProjectsService.removeProject(project.getId());
+        if (project.equals(hubState.getSelectedRecentProject())) {
+            hubState.setSelectedRecentProject(null);
+        }
+    }
+
+    public RenameProjectDialog getRenameDialog() { return renameDialog; }
+    public DeleteProjectDialog getDeleteDialog() { return deleteDialog; }
 }

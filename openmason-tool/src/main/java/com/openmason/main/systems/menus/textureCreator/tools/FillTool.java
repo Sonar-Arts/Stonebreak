@@ -1,6 +1,5 @@
 package com.openmason.main.systems.menus.textureCreator.tools;
 
-import com.openmason.main.systems.menus.textureCreator.canvas.CubeNetValidator;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.menus.textureCreator.commands.DrawCommand;
 
@@ -61,8 +60,8 @@ public class FillTool implements DrawingTool {
             }
             visited[x][y] = true;
 
-            // Skip if pixel is in non-editable region for cube net canvases
-            if (!CubeNetValidator.isEditablePixel(x, y, canvas.getWidth(), canvas.getHeight())) {
+            // Skip if pixel is in non-editable region (shape mask constraint)
+            if (!canvas.isEditablePixel(x, y)) {
                 continue; // Don't fill non-editable regions
             }
 

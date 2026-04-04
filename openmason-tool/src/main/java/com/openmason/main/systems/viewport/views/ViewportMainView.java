@@ -11,8 +11,10 @@ import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
+import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiTabBarFlags;
+import imgui.flag.ImGuiWindowFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +31,7 @@ public class ViewportMainView {
     private final ViewportController viewport;
     private final ThemeManager themeManager;
     private final PreferencesManager preferencesManager;
+    private final ToolPaneRenderer toolPaneRenderer;
 
     private final ImVec2 viewportSize = new ImVec2();
     private final ImVec2 viewportPos = new ImVec2();
@@ -44,17 +47,24 @@ public class ViewportMainView {
         this.viewport = viewport;
         this.themeManager = themeManager;
         this.preferencesManager = preferencesManager;
+        this.toolPaneRenderer = new ToolPaneRenderer(state, actions, viewport);
     }
 
     /**
      * Render the main viewport window.
+     * Uses NoNavInputs to prevent ImGui's keyboard navigation (Tab, arrows) from
+     * interfering with viewport shortcuts like Tab for edit mode cycling.
      */
     public void render() {
-        if (ImGui.begin("3D Viewport")) {
+        if (ImGui.begin("3D Viewport", ImGuiWindowFlags.NoNavInputs)) {
+            state.setViewportFocused(ImGui.isWindowFocused());
             renderToolbar();
             ImGui.separator();
             renderViewport3D();
+        } else {
+            state.setViewportFocused(false);
         }
+
         ImGui.end();
     }
 
@@ -91,6 +101,7 @@ public class ViewportMainView {
 
     /**
      * Render actual 3D viewport content.
+     * The tool pane slides over the left edge of the viewport image as an overlay.
      */
     private void renderViewport3D() {
         // Get available content region
@@ -119,6 +130,9 @@ public class ViewportMainView {
 
         // Display the rendered texture directly without any widgets
         ImGui.image(colorTexture, viewportSize.x, viewportSize.y, 0, 1, 1, 0);
+
+        // Render sliding tool pane overlay on the left edge of the viewport image
+        toolPaneRenderer.render(imagePos.x, imagePos.y, viewportSize.x, viewportSize.y);
 
         // Render edit mode overlay in top-left corner
         renderEditModeOverlay(imagePos);
@@ -222,36 +236,44 @@ public class ViewportMainView {
     }
 
     /**
-     * Render the Tools tab with advanced panel toggles.
+     * Render the Tools tab with sliding pane toggle buttons.
+     * Clicking a button opens its pane on the right side of the viewport;
+     * clicking the same button again closes it.
      */
     private void renderToolsTab() {
         applyDensityScaling();
 
-        // Panel toggle buttons (horizontal layout for space efficiency)
-        boolean cameraOpen = state.getShowCameraControls().get();
-        if (ImGui.button("Camera", 120, 0)) {
-            state.getShowCameraControls().set(!cameraOpen);
-        }
+        ViewportUIState.ActiveToolPane activePane = state.getActiveToolPane();
 
-        ImGui.sameLine();
-        ImGui.spacing();
-        ImGui.sameLine();
+        renderToolToggleButton("Camera", ViewportUIState.ActiveToolPane.CAMERA, activePane);
+        ImGui.sameLine(); ImGui.spacing(); ImGui.sameLine();
 
-        boolean renderingOpen = state.getShowRenderingOptions().get();
-        if (ImGui.button("Rendering", 120, 0)) {
-            state.getShowRenderingOptions().set(!renderingOpen);
-        }
+        renderToolToggleButton("Rendering", ViewportUIState.ActiveToolPane.RENDERING, activePane);
+        ImGui.sameLine(); ImGui.spacing(); ImGui.sameLine();
 
-        ImGui.sameLine();
-        ImGui.spacing();
-        ImGui.sameLine();
-
-        boolean transformOpen = state.getShowTransformationControls().get();
-        if (ImGui.button("Transform", 120, 0)) {
-            state.getShowTransformationControls().set(!transformOpen);
-        }
+        renderToolToggleButton("Transform", ViewportUIState.ActiveToolPane.TRANSFORM, activePane);
 
         popDensityScaling();
+    }
+
+    /**
+     * Render a tool toggle button with active-state highlighting.
+     * Active pane button is blue; inactive buttons use default style.
+     */
+    private void renderToolToggleButton(String label, ViewportUIState.ActiveToolPane pane,
+                                         ViewportUIState.ActiveToolPane activePane) {
+        boolean isActive = (activePane == pane);
+        if (isActive) {
+            ImGui.pushStyleColor(ImGuiCol.Button, 0.26f, 0.59f, 0.98f, 0.80f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.26f, 0.59f, 0.98f, 1.0f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.20f, 0.50f, 0.90f, 1.0f);
+        }
+        if (ImGui.button(label, 120, 0)) {
+            state.toggleToolPane(pane);
+        }
+        if (isActive) {
+            ImGui.popStyleColor(3);
+        }
     }
 
     /**
@@ -299,18 +321,22 @@ public class ViewportMainView {
         float textY = rectY + paddingY;
         drawList.addText(textX, textY, textColor, displayText);
 
-        // Render grid snapping indicator below the edit mode overlay
-        renderGridSnappingIndicator(drawList, imagePos, rectY + rectHeight);
+        // Render stacked indicators below the edit mode overlay
+        float indicatorBottom = rectY + rectHeight;
+        indicatorBottom = renderGridSnappingIndicator(drawList, imagePos, indicatorBottom);
+        renderKnifeToolIndicator(drawList, imagePos, indicatorBottom);
     }
 
     /**
      * Render grid snapping indicator below the edit mode overlay.
      * Only visible when grid snapping is enabled.
+     *
+     * @return Bottom Y of the rendered indicator, or {@code aboveBottom} if not rendered
      */
-    private void renderGridSnappingIndicator(ImDrawList drawList, ImVec2 imagePos, float editModeBottom) {
+    private float renderGridSnappingIndicator(ImDrawList drawList, ImVec2 imagePos, float aboveBottom) {
         boolean snappingEnabled = state.getGridSnappingEnabled().get();
         if (!snappingEnabled) {
-            return; // Don't show indicator when snapping is disabled
+            return aboveBottom;
         }
 
         String snappingText = "Grid Snap: ON";
@@ -324,9 +350,9 @@ public class ViewportMainView {
         float paddingY = 4.0f;
         float verticalGap = 4.0f;
 
-        // Position: below the edit mode overlay
+        // Position: below the previous indicator
         float rectX = imagePos.x + 10.0f;
-        float rectY = editModeBottom + verticalGap;
+        float rectY = aboveBottom + verticalGap;
         float rectWidth = textSize.x + (paddingX * 2);
         float rectHeight = textSize.y + (paddingY * 2);
 
@@ -348,6 +374,54 @@ public class ViewportMainView {
         float textX = rectX + paddingX;
         float textY = rectY + paddingY;
         drawList.addText(textX, textY, textColor, snappingText);
+
+        return rectY + rectHeight;
+    }
+
+    /**
+     * Render knife tool indicator below the previous indicator.
+     * Only visible when the knife tool is active. Shows "Knife Tool | Esc to cancel".
+     */
+    private void renderKnifeToolIndicator(ImDrawList drawList, ImVec2 imagePos, float aboveBottom) {
+        if (!viewport.isKnifeToolActive()) {
+            return;
+        }
+
+        String knifeText = "Knife Tool  |  Esc to cancel";
+
+        // Calculate text size
+        ImVec2 textSize = new ImVec2();
+        ImGui.calcTextSize(textSize, knifeText);
+
+        // Padding around text
+        float paddingX = 8.0f;
+        float paddingY = 4.0f;
+        float verticalGap = 4.0f;
+
+        // Position: below the previous indicator
+        float rectX = imagePos.x + 10.0f;
+        float rectY = aboveBottom + verticalGap;
+        float rectWidth = textSize.x + (paddingX * 2);
+        float rectHeight = textSize.y + (paddingY * 2);
+
+        // Colors - orange tint matching the knife tool preview color
+        int backgroundColor = ImGui.colorConvertFloat4ToU32(0.3f, 0.2f, 0.1f, 0.85f);   // Dark orange-brown
+        int borderColor = ImGui.colorConvertFloat4ToU32(0.0f, 0.0f, 0.0f, 0.85f);        // Black
+        int textColor = ImGui.colorConvertFloat4ToU32(1.0f, 0.6f, 0.0f, 0.95f);          // Orange
+
+        // Corner rounding
+        float rounding = 4.0f;
+
+        // Draw filled rounded rectangle (background)
+        drawList.addRectFilled(rectX, rectY, rectX + rectWidth, rectY + rectHeight, backgroundColor, rounding);
+
+        // Draw rounded rectangle border
+        drawList.addRect(rectX, rectY, rectX + rectWidth, rectY + rectHeight, borderColor, rounding);
+
+        // Draw text
+        float textX = rectX + paddingX;
+        float textY = rectY + paddingY;
+        drawList.addText(textX, textY, textColor, knifeText);
     }
 
     /**

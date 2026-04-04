@@ -32,6 +32,7 @@ public class ArcballCameraController implements CameraController {
 
     // Settings
     private float mouseSensitivity;
+    private float panSensitivity;
 
     /**
      * Creates an arc-ball camera controller with default settings.
@@ -47,6 +48,7 @@ public class ArcballCameraController implements CameraController {
         this.targetPitch = DEFAULT_PITCH;
 
         this.mouseSensitivity = 3.0f;
+        this.panSensitivity = CameraMath.DEFAULT_PAN_SENSITIVITY;
     }
 
     @Override
@@ -60,6 +62,38 @@ public class ArcballCameraController implements CameraController {
         pitch = targetPitch;
 
         logger.trace("ArcBall Rotate - Yaw: {}°, Pitch: {}°", yaw, pitch);
+    }
+
+    @Override
+    public void pan(float deltaX, float deltaY) {
+        // Compute camera-local right and up vectors from spherical coordinates
+        float azimuthRad = CameraMath.toRadians(yaw);
+        float elevationRad = CameraMath.toRadians(pitch);
+
+        // Direction from camera to target
+        float cosElev = (float) Math.cos(elevationRad);
+        float dirX = -cosElev * (float) Math.sin(azimuthRad);
+        float dirY = -(float) Math.sin(elevationRad);
+        float dirZ = -cosElev * (float) Math.cos(azimuthRad);
+
+        // Right vector = cross(direction, worldUp)
+        Vector3f worldUp = new Vector3f(0, 1, 0);
+        Vector3f direction = new Vector3f(dirX, dirY, dirZ).normalize();
+        Vector3f right = new Vector3f(direction).cross(worldUp).normalize();
+
+        // Screen-up vector = cross(right, direction)
+        Vector3f up = new Vector3f(right).cross(direction).normalize();
+
+        // Scale pan speed with distance so panning feels consistent at any zoom level
+        float panSpeed = distance * 0.002f * panSensitivity;
+
+        target.add(
+                right.x * -deltaX * panSpeed + up.x * deltaY * panSpeed,
+                right.y * -deltaX * panSpeed + up.y * deltaY * panSpeed,
+                right.z * -deltaX * panSpeed + up.z * deltaY * panSpeed
+        );
+
+        logger.trace("ArcBall Pan - Target: ({}, {}, {})", target.x, target.y, target.z);
     }
 
     @Override
@@ -172,5 +206,10 @@ public class ArcballCameraController implements CameraController {
     public void setMouseSensitivity(float sensitivity) {
         this.mouseSensitivity = CameraMath.clamp(sensitivity,
             CameraMath.MIN_SENSITIVITY, CameraMath.MAX_SENSITIVITY);
+    }
+
+    public void setPanSensitivity(float sensitivity) {
+        this.panSensitivity = CameraMath.clamp(sensitivity,
+            CameraMath.MIN_PAN_SENSITIVITY, CameraMath.MAX_PAN_SENSITIVITY);
     }
 }

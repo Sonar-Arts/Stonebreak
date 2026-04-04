@@ -56,14 +56,14 @@ public class ViewportOperationService {
     }
 
     /**
-     * Toggle wireframe mode.
+     * Toggle unrendered mode.
      */
-    public void toggleWireframe(ViewportController viewport) {
-        viewportState.toggleWireframe();
+    public void toggleUnrendered(ViewportController viewport) {
+        viewportState.toggleUnrendered();
         if (viewport != null) {
-            viewport.setWireframeMode(viewportState.getWireframeMode().get());
+            viewport.setUnrenderedMode(viewportState.getUnrenderedMode().get());
         }
-        statusService.updateStatus("Wireframe " + (viewportState.getWireframeMode().get() ? "enabled" : "disabled"));
+        statusService.updateStatus("Unrendered " + (viewportState.getUnrenderedMode().get() ? "enabled" : "disabled"));
     }
 
 }

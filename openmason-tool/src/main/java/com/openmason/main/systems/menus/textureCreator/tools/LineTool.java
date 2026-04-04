@@ -1,6 +1,6 @@
 package com.openmason.main.systems.menus.textureCreator.tools;
 
-import com.openmason.main.systems.menus.textureCreator.canvas.CubeNetValidator;
+import com.openmason.main.systems.menus.textureCreator.canvas.CoverageBlender;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.menus.textureCreator.commands.DrawCommand;
 
@@ -74,64 +74,125 @@ public class LineTool implements DrawingTool {
 
 
     /**
-     * Draw line preview (saves original pixels for restoration).
+     * Draw line preview using Wu's algorithm (saves original pixels for restoration).
      */
     private void drawLinePreview(int x0, int y0, int x1, int y1, int color, PixelCanvas canvas) {
-        int dx = Math.abs(x1 - x0);
-        int dy = Math.abs(y1 - y0);
-        int sx = x0 < x1 ? 1 : -1;
-        int sy = y0 < y1 ? 1 : -1;
-        int err = dx - dy;
+        drawWuLine(x0, y0, x1, y1, color, canvas, null, true);
+    }
 
-        int currentX = x0;
-        int currentY = y0;
+    /**
+     * Draw final line using Wu's anti-aliased line algorithm with undo support.
+     *
+     * <p>Wu's algorithm produces smooth lines by computing fractional coverage
+     * for the two pixels straddling the ideal line at each step along the
+     * major axis. This gives sub-pixel precision without traditional anti-aliasing.
+     */
+    private void drawLine(int x0, int y0, int x1, int y1, int color, PixelCanvas canvas, DrawCommand command) {
+        drawWuLine(x0, y0, x1, y1, color, canvas, command, false);
+    }
 
-        while (true) {
-            // Check if pixel is in editable region for cube net canvases
-            if (CubeNetValidator.isEditablePixel(currentX, currentY, canvas.getWidth(), canvas.getHeight())) {
-                // Save original pixel before drawing preview
-                saveOriginalPixel(currentX, currentY, canvas);
-                canvas.setPixel(currentX, currentY, color);
+    /**
+     * Wu's anti-aliased line algorithm.
+     * Draws a smooth line between two points using coverage-based pixel blending.
+     */
+    private void drawWuLine(int x0, int y0, int x1, int y1, int color,
+                            PixelCanvas canvas, DrawCommand command, boolean isPreview) {
+        // Handle single point
+        if (x0 == x1 && y0 == y1) {
+            if (isPreview) {
+                setPixelPreview(x0, y0, color, 1.0f, canvas);
+            } else {
+                setPixelWithCoverage(x0, y0, color, 1.0f, canvas, command);
+            }
+            return;
+        }
+
+        boolean steep = Math.abs(y1 - y0) > Math.abs(x1 - x0);
+
+        // If steep, transpose coordinates (work along Y axis instead)
+        int ax = steep ? y0 : x0;
+        int ay = steep ? x0 : y0;
+        int bx = steep ? y1 : x1;
+        int by = steep ? x1 : y1;
+
+        // Ensure we draw left to right
+        if (ax > bx) {
+            int tmp;
+            tmp = ax; ax = bx; bx = tmp;
+            tmp = ay; ay = by; by = tmp;
+        }
+
+        float dx = bx - ax;
+        float dy = by - ay;
+        float gradient = (dx == 0.0f) ? 1.0f : dy / dx;
+
+        // Draw start endpoint
+        float xEnd = ax;
+        float yEnd = ay;
+        if (isPreview) {
+            plotWuPixel(steep, (int) xEnd, (int) yEnd, 1.0f, color, canvas, null, true);
+        } else {
+            plotWuPixel(steep, (int) xEnd, (int) yEnd, 1.0f, color, canvas, command, false);
+        }
+
+        float yIntersect = yEnd + gradient;
+
+        // Draw end endpoint
+        xEnd = bx;
+        yEnd = by;
+        if (isPreview) {
+            plotWuPixel(steep, (int) xEnd, (int) yEnd, 1.0f, color, canvas, null, true);
+        } else {
+            plotWuPixel(steep, (int) xEnd, (int) yEnd, 1.0f, color, canvas, command, false);
+        }
+
+        // Draw intermediate points
+        int prevYBase = ay;
+        for (int x = ax + 1; x < bx; x++) {
+            float frac = yIntersect - (float) Math.floor(yIntersect);
+            int yBase = (int) Math.floor(yIntersect);
+
+            // Fill diagonal gap: when yBase shifts, the previous and current
+            // primary pixels share only a corner, not an edge. Plot the pixel
+            // at (x-1, yBase) to bridge the gap with full coverage.
+            if (yBase != prevYBase) {
+                if (isPreview) {
+                    plotWuPixel(steep, x - 1, yBase, 1.0f, color, canvas, null, true);
+                } else {
+                    plotWuPixel(steep, x - 1, yBase, 1.0f, color, canvas, command, false);
+                }
             }
 
-            if (currentX == x1 && currentY == y1) break;
+            // Two pixels straddle the ideal line, with complementary coverage
+            if (isPreview) {
+                plotWuPixel(steep, x, yBase, 1.0f - frac, color, canvas, null, true);
+                plotWuPixel(steep, x, yBase + 1, frac, color, canvas, null, true);
+            } else {
+                plotWuPixel(steep, x, yBase, 1.0f - frac, color, canvas, command, false);
+                plotWuPixel(steep, x, yBase + 1, frac, color, canvas, command, false);
+            }
 
-            int e2 = 2 * err;
-            if (e2 > -dy) {
-                err -= dy;
-                currentX += sx;
-            }
-            if (e2 < dx) {
-                err += dx;
-                currentY += sy;
-            }
+            prevYBase = yBase;
+            yIntersect += gradient;
         }
     }
 
     /**
-     * Draw final line using Bresenham's algorithm with undo support.
+     * Plot a single pixel for Wu's algorithm, handling coordinate transposition.
      */
-    private void drawLine(int x0, int y0, int x1, int y1, int color, PixelCanvas canvas, DrawCommand command) {
-        int dx = Math.abs(x1 - x0);
-        int dy = Math.abs(y1 - y0);
-        int sx = x0 < x1 ? 1 : -1;
-        int sy = y0 < y1 ? 1 : -1;
-        int err = dx - dy;
+    private void plotWuPixel(boolean steep, int x, int y, float coverage,
+                             int color, PixelCanvas canvas, DrawCommand command, boolean isPreview) {
+        int px = steep ? y : x;
+        int py = steep ? x : y;
 
-        while (true) {
-            setPixelWithUndo(x0, y0, color, canvas, command);
+        if (coverage <= 0.01f) {
+            return; // Skip nearly invisible pixels
+        }
 
-            if (x0 == x1 && y0 == y1) break;
-
-            int e2 = 2 * err;
-            if (e2 > -dy) {
-                err -= dy;
-                x0 += sx;
-            }
-            if (e2 < dx) {
-                err += dx;
-                y0 += sy;
-            }
+        if (isPreview) {
+            setPixelPreview(px, py, color, coverage, canvas);
+        } else {
+            setPixelWithCoverage(px, py, color, coverage, canvas, command);
         }
     }
 
@@ -163,23 +224,62 @@ public class LineTool implements DrawingTool {
     }
 
     /**
-     * Set pixel and record change for undo.
+     * Set pixel with coverage-based blending, combining mask and tool coverage.
      */
-    private void setPixelWithUndo(int x, int y, int color, PixelCanvas canvas, DrawCommand command) {
+    private void setPixelWithCoverage(int x, int y, int color, float coverage,
+                                       PixelCanvas canvas, DrawCommand command) {
         if (!canvas.isValidCoordinate(x, y)) {
             return;
         }
 
-        // Check if pixel is in editable region for cube net canvases
-        if (!CubeNetValidator.isEditablePixel(x, y, canvas.getWidth(), canvas.getHeight())) {
-            return; // Don't draw in non-editable regions
+        float maskCoverage = canvas.getMaskCoverage(x, y);
+        float finalCoverage = coverage * maskCoverage;
+        if (finalCoverage <= 0.0f) {
+            return;
         }
 
         int oldColor = canvas.getPixel(x, y);
-        if (command != null) {
-            command.recordPixelChange(x, y, oldColor, color);
+        int blended;
+        if (finalCoverage >= 1.0f) {
+            blended = color;
+        } else {
+            blended = CoverageBlender.blendWithCoverage(color, oldColor, finalCoverage);
         }
-        canvas.setPixel(x, y, color);
+
+        if (blended == oldColor) {
+            return;
+        }
+
+        if (command != null) {
+            command.recordPixelChange(x, y, oldColor, blended);
+        }
+        canvas.setPixel(x, y, blended);
+    }
+
+    /**
+     * Set pixel preview with coverage-based blending.
+     */
+    private void setPixelPreview(int x, int y, int color, float coverage, PixelCanvas canvas) {
+        if (!canvas.isValidCoordinate(x, y)) {
+            return;
+        }
+
+        float maskCoverage = canvas.getMaskCoverage(x, y);
+        float finalCoverage = coverage * maskCoverage;
+        if (finalCoverage <= 0.0f) {
+            return;
+        }
+
+        saveOriginalPixel(x, y, canvas);
+
+        int existingColor = canvas.getPixel(x, y);
+        int blended;
+        if (finalCoverage >= 1.0f) {
+            blended = color;
+        } else {
+            blended = CoverageBlender.blendWithCoverage(color, existingColor, finalCoverage);
+        }
+        canvas.setPixel(x, y, blended);
     }
 
     @Override

@@ -4,7 +4,6 @@ import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.services.drop.PendingFileDrops;
 import imgui.ImGui;
 import imgui.flag.ImGuiDockNodeFlags;
-import imgui.flag.ImGuiMouseCursor;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
@@ -25,17 +24,14 @@ public class TextureEditorWindow {
 
     private final TextureCreatorImGui textureCreator;
     private final ImBoolean visible;
+    private final WindowTitleBar titleBar;
 
     private boolean iniFileSet = false;
 
-    // Title bar state
+    // Maximize/restore state
     private boolean isMaximized = false;
     private final float[] savedSize = new float[]{1200, 800};
     private final float[] savedPos = new float[]{100, 100};
-
-    // Drag state for smooth window movement
-    private boolean isDraggingWindow = false;
-    private float cachedWindowWidth = 0.0f;
 
     /**
      * Create a new TextureEditorWindow.
@@ -47,6 +43,7 @@ public class TextureEditorWindow {
 
         this.textureCreator = textureCreator;
         this.visible = new ImBoolean(false);
+        this.titleBar = new WindowTitleBar(WINDOW_TITLE, true, true);
 
         textureCreator.setWindowedMode(true);
         logger.debug("TextureEditorWindow created with windowed mode enabled");
@@ -87,7 +84,19 @@ public class TextureEditorWindow {
                     textureCreator.handleKeyboardShortcuts();
                 }
 
-                renderCustomTitleBar();
+                titleBar.setMaximized(isMaximized);
+                WindowTitleBar.Result result = titleBar.render();
+
+                if (result.minimizeClicked()) {
+                    handleMinimize();
+                }
+                if (result.maximizeClicked()) {
+                    handleMaximize();
+                }
+                if (result.closeClicked()) {
+                    visible.set(false);
+                }
+
                 textureCreator.renderWindowedMenuBar();
                 textureCreator.renderWindowedToolbar();
 
@@ -105,100 +114,6 @@ public class TextureEditorWindow {
         }
         ImGui.end();
         ImGui.popStyleVar();
-    }
-
-    /**
-     * Render custom title bar with window controls.
-     */
-    private void renderCustomTitleBar() {
-        final float titleBarHeight = 30.0f;
-        final float buttonSize = 25.0f;
-        final float buttonSpacing = 2.0f;
-        final float titlePadding = 10.0f;
-
-        // Use cached width during drag to prevent flickering
-        float windowWidth;
-        if (!isDraggingWindow) {
-            windowWidth = ImGui.getWindowWidth();
-            cachedWindowWidth = windowWidth;
-        } else {
-            windowWidth = cachedWindowWidth;
-        }
-        ImGui.getWindowDrawList().addRectFilled(
-            ImGui.getWindowPosX(),
-            ImGui.getWindowPosY(),
-            ImGui.getWindowPosX() + windowWidth,
-            ImGui.getWindowPosY() + titleBarHeight,
-            ImGui.getColorU32(0.15f, 0.15f, 0.15f, 1.0f)
-        );
-
-        // Draggable title bar area
-        ImGui.setCursorPos(0, 0);
-        ImGui.invisibleButton("##TitleBarDrag", windowWidth - (buttonSize + buttonSpacing) * 3, titleBarHeight);
-
-        if (ImGui.isItemHovered()) {
-            ImGui.setMouseCursor(ImGuiMouseCursor.ResizeAll);
-        }
-        boolean currentlyDragging = ImGui.isItemActive() && ImGui.isMouseDragging(0);
-
-        if (currentlyDragging) {
-            if (!isDraggingWindow) {
-                isDraggingWindow = true;
-                cachedWindowWidth = ImGui.getWindowWidth();
-            }
-
-            float deltaX = ImGui.getMouseDragDeltaX(0);
-            float deltaY = ImGui.getMouseDragDeltaY(0);
-            ImGui.setWindowPos(
-                WINDOW_TITLE,
-                ImGui.getWindowPosX() + deltaX,
-                ImGui.getWindowPosY() + deltaY
-            );
-            ImGui.resetMouseDragDelta(0);
-        } else if (isDraggingWindow) {
-            isDraggingWindow = false;
-        }
-
-        ImGui.setCursorPos(titlePadding, (titleBarHeight - ImGui.getFrameHeight()) * 0.5f);
-        ImGui.text(WINDOW_TITLE);
-
-        float buttonStartX = windowWidth - (buttonSize + buttonSpacing) * 3 - buttonSpacing;
-        float buttonStartY = (titleBarHeight - buttonSize) * 0.5f;
-        ImGui.setCursorPos(buttonStartX, buttonStartY);
-
-        ImGui.pushStyleVar(ImGuiStyleVar.ButtonTextAlign, 0.5f, 0.5f);
-
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.2f, 0.2f, 0.2f, 1.0f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.3f, 0.3f, 0.3f, 1.0f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.4f, 0.4f, 0.4f, 1.0f);
-        if (ImGui.button("-##Minimize", buttonSize, buttonSize)) {
-            handleMinimize();
-        }
-        ImGui.popStyleColor(3);
-
-        ImGui.sameLine(0, buttonSpacing);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.2f, 0.2f, 0.2f, 1.0f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.3f, 0.3f, 0.3f, 1.0f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.4f, 0.4f, 0.4f, 1.0f);
-        if (ImGui.button("[]##Maximize", buttonSize, buttonSize)) {
-            handleMaximize();
-        }
-        ImGui.popStyleColor(3);
-
-        ImGui.sameLine(0, buttonSpacing);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.2f, 0.2f, 0.2f, 1.0f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.8f, 0.2f, 0.2f, 1.0f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 1.0f, 0.3f, 0.3f, 1.0f);
-        if (ImGui.button("×##Close", buttonSize, buttonSize)) {
-            visible.set(false);
-        }
-        ImGui.popStyleColor(3);
-
-        ImGui.popStyleVar();
-
-        ImGui.setCursorPosY(titleBarHeight);
-        ImGui.separator();
-        ImGui.setCursorPosY(titleBarHeight + 2);
     }
 
     /**

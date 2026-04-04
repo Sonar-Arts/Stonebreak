@@ -66,6 +66,37 @@ public record TriangulationPattern(int[][] indices) {
     }
 
     /**
+     * Create a fan triangulation pattern for an N-gon.
+     * Uses vertex 0 as the hub: triangles are (0,1,2), (0,2,3), ..., (0,N-2,N-1).
+     * Returns cached instances for triangles (N=3) and quads (N=4).
+     *
+     * @param vertexCount Number of vertices in the polygon (must be >= 3)
+     * @return TriangulationPattern for the N-gon
+     * @throws IllegalArgumentException if vertexCount < 3
+     */
+    public static TriangulationPattern forNGon(int vertexCount) {
+        if (vertexCount < 3) {
+            throw new IllegalArgumentException("Polygon must have at least 3 vertices, got " + vertexCount);
+        }
+        if (vertexCount == 3) {
+            return TRIANGLE;
+        }
+        if (vertexCount == 4) {
+            return QUAD;
+        }
+
+        // Fan triangulation: N-2 triangles for an N-gon
+        int triangleCount = vertexCount - 2;
+        int[][] fanIndices = new int[triangleCount][3];
+        for (int i = 0; i < triangleCount; i++) {
+            fanIndices[i][0] = 0;
+            fanIndices[i][1] = i + 1;
+            fanIndices[i][2] = i + 2;
+        }
+        return new TriangulationPattern(fanIndices);
+    }
+
+    /**
      * Validate the triangulation pattern.
      *
      * @return true if valid, false otherwise

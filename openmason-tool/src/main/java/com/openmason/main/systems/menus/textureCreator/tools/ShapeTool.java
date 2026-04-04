@@ -1,7 +1,7 @@
 package com.openmason.main.systems.menus.textureCreator.tools;
 
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorPreferences;
-import com.openmason.main.systems.menus.textureCreator.canvas.CubeNetValidator;
+import com.openmason.main.systems.menus.textureCreator.canvas.CoverageBlender;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.menus.textureCreator.commands.DrawCommand;
 
@@ -115,33 +115,36 @@ public class ShapeTool implements DrawingTool {
         int minY = Math.min(y0, y1);
         int maxY = Math.max(y0, y1);
 
+        // Rectangles have axis-aligned edges, so full coverage for all pixels
+        // (no sub-pixel benefit for straight horizontal/vertical edges).
+        // Mask coverage is still applied for smooth polygon boundaries.
         if (filled) {
             for (int y = minY; y <= maxY; y++) {
                 for (int x = minX; x <= maxX; x++) {
                     if (isPreview) {
-                        setPixelPreview(x, y, color, canvas);
+                        setPixelPreview(x, y, color, 1.0f, canvas);
                     } else {
-                        setPixelWithUndo(x, y, color, canvas, command);
+                        setPixelWithCoverage(x, y, color, 1.0f, canvas, command);
                     }
                 }
             }
         } else {
             for (int x = minX; x <= maxX; x++) {
                 if (isPreview) {
-                    setPixelPreview(x, minY, color, canvas);
-                    setPixelPreview(x, maxY, color, canvas);
+                    setPixelPreview(x, minY, color, 1.0f, canvas);
+                    setPixelPreview(x, maxY, color, 1.0f, canvas);
                 } else {
-                    setPixelWithUndo(x, minY, color, canvas, command);
-                    setPixelWithUndo(x, maxY, color, canvas, command);
+                    setPixelWithCoverage(x, minY, color, 1.0f, canvas, command);
+                    setPixelWithCoverage(x, maxY, color, 1.0f, canvas, command);
                 }
             }
             for (int y = minY + 1; y < maxY; y++) {
                 if (isPreview) {
-                    setPixelPreview(minX, y, color, canvas);
-                    setPixelPreview(maxX, y, color, canvas);
+                    setPixelPreview(minX, y, color, 1.0f, canvas);
+                    setPixelPreview(maxX, y, color, 1.0f, canvas);
                 } else {
-                    setPixelWithUndo(minX, y, color, canvas, command);
-                    setPixelWithUndo(maxX, y, color, canvas, command);
+                    setPixelWithCoverage(minX, y, color, 1.0f, canvas, command);
+                    setPixelWithCoverage(maxX, y, color, 1.0f, canvas, command);
                 }
             }
         }
@@ -154,171 +157,57 @@ public class ShapeTool implements DrawingTool {
         int minY = Math.min(y0, y1);
         int maxY = Math.max(y0, y1);
 
-        int centerX = (minX + maxX) / 2;
-        int centerY = (minY + maxY) / 2;
-        int radiusX = (maxX - minX) / 2;
-        int radiusY = (maxY - minY) / 2;
+        float centerX = (minX + maxX) / 2.0f;
+        float centerY = (minY + maxY) / 2.0f;
+        float radiusX = (maxX - minX) / 2.0f;
+        float radiusY = (maxY - minY) / 2.0f;
 
-        if (radiusX == 0 && radiusY == 0) {
+        if (radiusX < 0.5f && radiusY < 0.5f) {
             if (isPreview) {
-                setPixelPreview(centerX, centerY, color, canvas);
+                setPixelPreview((int) centerX, (int) centerY, color, 1.0f, canvas);
             } else {
-                setPixelWithUndo(centerX, centerY, color, canvas, command);
+                setPixelWithCoverage((int) centerX, (int) centerY, color, 1.0f, canvas, command);
             }
             return;
         }
 
-        if (radiusX == 0 || radiusY == 0) {
-            if (radiusX == 0 && radiusY > 0) {
-                for (int dy = -radiusY; dy <= radiusY; dy++) {
-                    if (filled) {
-                        if (isPreview) {
-                            setPixelPreview(centerX, centerY + dy, color, canvas);
-                        } else {
-                            setPixelWithUndo(centerX, centerY + dy, color, canvas, command);
-                        }
+        // Distance-based ellipse with smooth edges
+        // Scan bounding box + 1 pixel margin for partial coverage
+        int scanMinX = Math.max(0, minX - 1);
+        int scanMaxX = Math.min(canvas.getWidth() - 1, maxX + 1);
+        int scanMinY = Math.max(0, minY - 1);
+        int scanMaxY = Math.min(canvas.getHeight() - 1, maxY + 1);
+
+        // Avoid division by zero for degenerate ellipses
+        float rx = Math.max(radiusX, 0.5f);
+        float ry = Math.max(radiusY, 0.5f);
+
+        for (int y = scanMinY; y <= scanMaxY; y++) {
+            for (int x = scanMinX; x <= scanMaxX; x++) {
+                float dx = x - centerX;
+                float dy = y - centerY;
+                // Normalized distance from center (1.0 = on the ellipse boundary)
+                float dist = (float) Math.sqrt((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry));
+
+                float coverage;
+                if (filled) {
+                    // Filled: full inside, smooth falloff at boundary
+                    coverage = CoverageBlender.smoothstep(1.0f + 0.7f / Math.max(rx, ry),
+                                                          1.0f - 0.7f / Math.max(rx, ry), dist);
+                } else {
+                    // Outline: ring of ~1px width at the boundary
+                    float halfWidth = 0.7f / Math.max(rx, ry);
+                    coverage = 1.0f - Math.abs(dist - 1.0f) / halfWidth;
+                    coverage = Math.clamp(coverage, 0.0f, 1.0f);
+                }
+
+                if (coverage > 0.01f) {
+                    if (isPreview) {
+                        setPixelPreview(x, y, color, coverage, canvas);
                     } else {
-                        if (dy == -radiusY || dy == radiusY) {
-                            if (isPreview) {
-                                setPixelPreview(centerX, centerY + dy, color, canvas);
-                            } else {
-                                setPixelWithUndo(centerX, centerY + dy, color, canvas, command);
-                            }
-                        }
+                        setPixelWithCoverage(x, y, color, coverage, canvas, command);
                     }
                 }
-            } else if (radiusY == 0 && radiusX > 0) {
-                for (int dx = -radiusX; dx <= radiusX; dx++) {
-                    if (filled || dx == -radiusX || dx == radiusX) {
-                        if (isPreview) {
-                            setPixelPreview(centerX + dx, centerY, color, canvas);
-                        } else {
-                            setPixelWithUndo(centerX + dx, centerY, color, canvas, command);
-                        }
-                    }
-                }
-            }
-            return;
-        }
-
-        if (filled) {
-            drawFilledEllipse(centerX, centerY, radiusX, radiusY, color, canvas, command, isPreview);
-        } else {
-            drawEllipseOutline(centerX, centerY, radiusX, radiusY, color, canvas, command, isPreview);
-        }
-    }
-
-    private void drawEllipseOutline(int centerX, int centerY, int radiusX, int radiusY,
-                                   int color, PixelCanvas canvas, DrawCommand command, boolean isPreview) {
-        int x = 0;
-        int y = radiusY;
-        long rx2 = (long)radiusX * radiusX;
-        long ry2 = (long)radiusY * radiusY;
-        long twoRx2 = 2 * rx2;
-        long twoRy2 = 2 * ry2;
-        long p;
-        long px = 0;
-        long py = twoRx2 * y;
-
-        plotEllipsePoints(centerX, centerY, x, y, color, canvas, command, isPreview);
-
-        p = Math.round(ry2 - (rx2 * radiusY) + (0.25 * rx2));
-        while (px < py) {
-            x++;
-            px += twoRy2;
-            if (p < 0) {
-                p += ry2 + px;
-            } else {
-                y--;
-                py -= twoRx2;
-                p += ry2 + px - py;
-            }
-            plotEllipsePoints(centerX, centerY, x, y, color, canvas, command, isPreview);
-        }
-
-        p = Math.round(ry2 * (x + 0.5) * (x + 0.5) + rx2 * (y - 1) * (y - 1) - rx2 * ry2);
-        while (y > 0) {
-            y--;
-            py -= twoRx2;
-            if (p > 0) {
-                p += rx2 - py;
-            } else {
-                x++;
-                px += twoRy2;
-                p += rx2 - py + px;
-            }
-            plotEllipsePoints(centerX, centerY, x, y, color, canvas, command, isPreview);
-        }
-    }
-
-    private void drawFilledEllipse(int centerX, int centerY, int radiusX, int radiusY,
-                                  int color, PixelCanvas canvas, DrawCommand command, boolean isPreview) {
-        int x = 0;
-        int y = radiusY;
-        long rx2 = (long)radiusX * radiusX;
-        long ry2 = (long)radiusY * radiusY;
-        long twoRx2 = 2 * rx2;
-        long twoRy2 = 2 * ry2;
-        long p;
-        long px = 0;
-        long py = twoRx2 * y;
-
-        fillEllipseSpans(centerX, centerY, x, y, color, canvas, command, isPreview);
-
-        p = Math.round(ry2 - (rx2 * radiusY) + (0.25 * rx2));
-        while (px < py) {
-            x++;
-            px += twoRy2;
-            if (p < 0) {
-                p += ry2 + px;
-            } else {
-                y--;
-                py -= twoRx2;
-                p += ry2 + px - py;
-            }
-            fillEllipseSpans(centerX, centerY, x, y, color, canvas, command, isPreview);
-        }
-
-        p = Math.round(ry2 * (x + 0.5) * (x + 0.5) + rx2 * (y - 1) * (y - 1) - rx2 * ry2);
-        while (y > 0) {
-            y--;
-            py -= twoRx2;
-            if (p > 0) {
-                p += rx2 - py;
-            } else {
-                x++;
-                px += twoRy2;
-                p += rx2 - py + px;
-            }
-            fillEllipseSpans(centerX, centerY, x, y, color, canvas, command, isPreview);
-        }
-    }
-
-    private void plotEllipsePoints(int centerX, int centerY, int x, int y, int color,
-                                  PixelCanvas canvas, DrawCommand command, boolean isPreview) {
-        if (isPreview) {
-            setPixelPreview(centerX + x, centerY + y, color, canvas);
-            setPixelPreview(centerX - x, centerY + y, color, canvas);
-            setPixelPreview(centerX + x, centerY - y, color, canvas);
-            setPixelPreview(centerX - x, centerY - y, color, canvas);
-        } else {
-            setPixelWithUndo(centerX + x, centerY + y, color, canvas, command);
-            setPixelWithUndo(centerX - x, centerY + y, color, canvas, command);
-            setPixelWithUndo(centerX + x, centerY - y, color, canvas, command);
-            setPixelWithUndo(centerX - x, centerY - y, color, canvas, command);
-        }
-    }
-
-    private void fillEllipseSpans(int centerX, int centerY, int x, int y, int color,
-                                 PixelCanvas canvas, DrawCommand command, boolean isPreview) {
-        // Fill horizontal spans at +y and -y
-        for (int fillX = centerX - x; fillX <= centerX + x; fillX++) {
-            if (isPreview) {
-                setPixelPreview(fillX, centerY + y, color, canvas);
-                setPixelPreview(fillX, centerY - y, color, canvas);
-            } else {
-                setPixelWithUndo(fillX, centerY + y, color, canvas, command);
-                setPixelWithUndo(fillX, centerY - y, color, canvas, command);
             }
         }
     }
@@ -330,81 +219,128 @@ public class ShapeTool implements DrawingTool {
         int minY = Math.min(y0, y1);
         int maxY = Math.max(y0, y1);
 
-        int apexX = (minX + maxX) / 2;
+        float apexX = (minX + maxX) / 2.0f;
 
-        if (filled) {
-            for (int y = minY; y <= maxY; y++) {
-                float progress = (maxY == minY) ? 0 : (float)(y - minY) / (maxY - minY);
-                int leftX = Math.round(apexX + progress * (minX - apexX));
-                int rightX = Math.round(apexX + progress * (maxX - apexX));
+        // Triangle vertices
+        float[] triX = {apexX, (float) minX, (float) maxX};
+        float[] triY = {(float) minY, (float) maxY, (float) maxY};
 
-                for (int x = leftX; x <= rightX; x++) {
-                    if (isPreview) {
-                        setPixelPreview(x, y, color, canvas);
+        // Scan bounding box + 1 pixel margin
+        int scanMinX = Math.max(0, minX - 1);
+        int scanMaxX = Math.min(canvas.getWidth() - 1, maxX + 1);
+        int scanMinY = Math.max(0, minY - 1);
+        int scanMaxY = Math.min(canvas.getHeight() - 1, maxY + 1);
+
+        for (int y = scanMinY; y <= scanMaxY; y++) {
+            for (int x = scanMinX; x <= scanMaxX; x++) {
+                float px = x + 0.0f;
+                float py = y + 0.0f;
+
+                // Compute minimum distance to any triangle edge
+                float minDist = Float.MAX_VALUE;
+                for (int i = 0; i < 3; i++) {
+                    int j = (i + 1) % 3;
+                    float d = CoverageBlender.pointToSegmentDistance(px, py, triX[i], triY[i], triX[j], triY[j]);
+                    if (d < minDist) {
+                        minDist = d;
+                    }
+                }
+
+                // Check if point is inside the triangle using cross-product sign test
+                boolean inside = isPointInTriangle(px, py, triX, triY);
+
+                float coverage;
+                if (filled) {
+                    if (inside) {
+                        coverage = CoverageBlender.smoothstep(0.0f, 1.0f, minDist + 0.5f);
                     } else {
-                        setPixelWithUndo(x, y, color, canvas, command);
+                        coverage = CoverageBlender.smoothstep(1.0f, 0.0f, minDist + 0.5f);
+                    }
+                } else {
+                    // Outline: ~1px wide line at edges
+                    coverage = CoverageBlender.smoothstep(1.0f, 0.0f, minDist);
+                }
+
+                if (coverage > 0.01f) {
+                    if (isPreview) {
+                        setPixelPreview(x, y, color, coverage, canvas);
+                    } else {
+                        setPixelWithCoverage(x, y, color, coverage, canvas, command);
                     }
                 }
             }
-        } else {
-            drawLine(apexX, minY, minX, maxY, color, canvas, command, isPreview);
-            drawLine(apexX, minY, maxX, maxY, color, canvas, command, isPreview);
-            drawLine(minX, maxY, maxX, maxY, color, canvas, command, isPreview);
         }
     }
 
-    private void drawLine(int x0, int y0, int x1, int y1, int color, PixelCanvas canvas,
-                         DrawCommand command, boolean isPreview) {
-        int dx = Math.abs(x1 - x0);
-        int dy = Math.abs(y1 - y0);
-        int sx = x0 < x1 ? 1 : -1;
-        int sy = y0 < y1 ? 1 : -1;
-        int err = dx - dy;
+    /**
+     * Check if a point is inside a triangle using barycentric coordinates.
+     */
+    private boolean isPointInTriangle(float px, float py, float[] triX, float[] triY) {
+        float d1 = sign(px, py, triX[0], triY[0], triX[1], triY[1]);
+        float d2 = sign(px, py, triX[1], triY[1], triX[2], triY[2]);
+        float d3 = sign(px, py, triX[2], triY[2], triX[0], triY[0]);
 
-        while (true) {
-            if (isPreview) {
-                setPixelPreview(x0, y0, color, canvas);
-            } else {
-                setPixelWithUndo(x0, y0, color, canvas, command);
-            }
+        boolean hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+        boolean hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
 
-            if (x0 == x1 && y0 == y1) break;
-
-            int e2 = 2 * err;
-            if (e2 > -dy) {
-                err -= dy;
-                x0 += sx;
-            }
-            if (e2 < dx) {
-                err += dx;
-                y0 += sy;
-            }
-        }
+        return !(hasNeg && hasPos);
     }
 
-    private void setPixelPreview(int x, int y, int color, PixelCanvas canvas) {
+    private float sign(float px, float py, float x1, float y1, float x2, float y2) {
+        return (px - x2) * (y1 - y2) - (x1 - x2) * (py - y2);
+    }
+
+    private void setPixelPreview(int x, int y, int color, float coverage, PixelCanvas canvas) {
         if (!canvas.isValidCoordinate(x, y)) {
             return;
         }
-        if (!CubeNetValidator.isEditablePixel(x, y, canvas.getWidth(), canvas.getHeight())) {
+
+        float maskCoverage = canvas.getMaskCoverage(x, y);
+        float finalCoverage = coverage * maskCoverage;
+        if (finalCoverage <= 0.0f) {
             return;
         }
+
         saveOriginalPixel(x, y, canvas);
-        canvas.setPixel(x, y, color);
+
+        int existingColor = canvas.getPixel(x, y);
+        int blended;
+        if (finalCoverage >= 1.0f) {
+            blended = color;
+        } else {
+            blended = CoverageBlender.blendWithCoverage(color, existingColor, finalCoverage);
+        }
+        canvas.setPixel(x, y, blended);
     }
 
-    private void setPixelWithUndo(int x, int y, int color, PixelCanvas canvas, DrawCommand command) {
+    private void setPixelWithCoverage(int x, int y, int color, float coverage,
+                                       PixelCanvas canvas, DrawCommand command) {
         if (!canvas.isValidCoordinate(x, y)) {
             return;
         }
-        if (!CubeNetValidator.isEditablePixel(x, y, canvas.getWidth(), canvas.getHeight())) {
+
+        float maskCoverage = canvas.getMaskCoverage(x, y);
+        float finalCoverage = coverage * maskCoverage;
+        if (finalCoverage <= 0.0f) {
             return;
         }
+
         int oldColor = canvas.getPixel(x, y);
-        if (command != null) {
-            command.recordPixelChange(x, y, oldColor, color);
+        int blended;
+        if (finalCoverage >= 1.0f) {
+            blended = color;
+        } else {
+            blended = CoverageBlender.blendWithCoverage(color, oldColor, finalCoverage);
         }
-        canvas.setPixel(x, y, color);
+
+        if (blended == oldColor) {
+            return;
+        }
+
+        if (command != null) {
+            command.recordPixelChange(x, y, oldColor, blended);
+        }
+        canvas.setPixel(x, y, blended);
     }
 
     private void saveOriginalPixel(int x, int y, PixelCanvas canvas) {

@@ -5,6 +5,8 @@ import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.function.Consumer;
+
 /**
  * Handles user actions from hub (create project, open project, etc.).
  * Coordinates transitions and executes hub-level actions.
@@ -14,12 +16,10 @@ public class HubActionService {
     private static final Logger logger = LoggerFactory.getLogger(HubActionService.class);
 
     private Runnable createProjectCallback;
-    private Runnable openProjectCallback;
+    private Consumer<RecentProject> openProjectCallback;
 
     /**
      * Create a new project from the selected template.
-     * Phase 1: Direct transition to appropriate tool.
-     * Future: Create actual project files and open them.
      */
     public void createProjectFromTemplate(ProjectTemplate template) {
         if (template == null) {
@@ -38,8 +38,7 @@ public class HubActionService {
 
     /**
      * Open a recent project.
-     * Phase 1: Transition to appropriate tool based on project type.
-     * Future: Load actual project files.
+     * Passes the project to the callback so the .OMP file can be loaded.
      */
     public void openRecentProject(RecentProject project) {
         if (project == null) {
@@ -47,10 +46,10 @@ public class HubActionService {
             return;
         }
 
-        logger.info("Opening recent project: {}", project.getName());
+        logger.info("Opening recent project: {} ({})", project.getName(), project.getPath());
 
         if (openProjectCallback != null) {
-            openProjectCallback.run();
+            openProjectCallback.accept(project);
         } else {
             logger.warn("No open project callback registered");
         }
@@ -65,8 +64,9 @@ public class HubActionService {
 
     /**
      * Set callback for opening projects.
+     * Receives the RecentProject so the caller can load the .OMP file.
      */
-    public void setOpenProjectCallback(Runnable callback) {
+    public void setOpenProjectCallback(Consumer<RecentProject> callback) {
         this.openProjectCallback = callback;
     }
 

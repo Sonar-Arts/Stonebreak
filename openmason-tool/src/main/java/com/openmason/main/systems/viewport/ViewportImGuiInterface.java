@@ -3,9 +3,6 @@ package com.openmason.main.systems.viewport;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.themes.core.ThemeManager;
-import com.openmason.main.systems.viewport.views.CameraControlsView;
-import com.openmason.main.systems.viewport.views.RenderingOptionsView;
-import com.openmason.main.systems.viewport.views.TransformControlsView;
 import com.openmason.main.systems.viewport.views.ViewportMainView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,9 +21,6 @@ public class ViewportImGuiInterface {
 
     // View Components
     private ViewportMainView mainView;
-    private CameraControlsView cameraControlsView;
-    private RenderingOptionsView renderingOptionsView;
-    private TransformControlsView transformControlsView;
 
     // 3D Viewport reference
     private ViewportController viewport3D;
@@ -56,9 +50,6 @@ public class ViewportImGuiInterface {
         this.actions = null;
         this.keyboardShortcuts = null;
         this.mainView = null;
-        this.cameraControlsView = null;
-        this.renderingOptionsView = null;
-        this.transformControlsView = null;
     }
 
     /**
@@ -83,9 +74,6 @@ public class ViewportImGuiInterface {
 
         // Initialize view components
         this.mainView = new ViewportMainView(state, actions, viewport3D, themeManager, preferencesManager);
-        this.cameraControlsView = new CameraControlsView(state, actions);
-        this.renderingOptionsView = new RenderingOptionsView(state, actions);
-        this.transformControlsView = new TransformControlsView(state, actions, viewport3D);
 
         state.setViewportInitialized(true);
         logger.info("ViewportImGuiInterface components initialized");
@@ -103,25 +91,15 @@ public class ViewportImGuiInterface {
                 return;
             }
 
-            // Handle keyboard shortcuts before rendering (global shortcuts)
-            if (ViewportKeyboardShortcuts.shouldProcessShortcuts()) {
+            // Handle keyboard shortcuts only when viewport is focused (uses previous frame's focus state).
+            // This prevents viewport shortcuts (especially Tab for edit mode cycling) from firing
+            // when the user is interacting with other parts of the UI.
+            if (state.isViewportFocused() && ViewportKeyboardShortcuts.shouldProcessShortcuts()) {
                 keyboardShortcuts.handleKeyboardShortcuts();
             }
 
             // Delegate rendering to view components
             mainView.render();
-
-            if (state.getShowCameraControls().get()) {
-                cameraControlsView.render();
-            }
-
-            if (state.getShowRenderingOptions().get()) {
-                renderingOptionsView.render();
-            }
-
-            if (state.getShowTransformationControls().get()) {
-                transformControlsView.render();
-            }
 
         } catch (Exception e) {
             logger.error("Critical error during viewport interface rendering", e);
@@ -161,6 +139,11 @@ public class ViewportImGuiInterface {
             logger.warn("Cannot set window handle - viewport not initialized");
         }
     }
+
+    /**
+     * Get the viewport UI state used by the tool pane and viewport views.
+     */
+    public ViewportUIState getViewportUIState() { return state; }
 
     // ========== Lifecycle methods ==========
 

@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.gizmo.geometry;
 
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoColors;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -106,15 +107,9 @@ public final class ArrowGeometry {
             new Vector3f(0, 0, 1)  // Z axis
         };
 
-        Vector3f[] colors = {
-            new Vector3f(1, 0, 0), // Red for X
-            new Vector3f(0, 1, 0), // Green for Y
-            new Vector3f(0, 0, 1)  // Blue for Z
-        };
-
         float[][] arrows = new float[3][];
         for (int i = 0; i < 3; i++) {
-            arrows[i] = createArrow(origin, directions[i], length, colors[i]);
+            arrows[i] = createArrow(origin, directions[i], length, GizmoColors.axisColor(i));
         }
 
         return arrows;
@@ -182,12 +177,6 @@ public final class ArrowGeometry {
             {new Vector3f(0, 1, 0), new Vector3f(0, 0, 1)}  // YZ plane
         };
 
-        Vector3f[] planeColors = {
-            new Vector3f(1, 1, 0), // Yellow for XY
-            new Vector3f(1, 0, 1), // Magenta for XZ
-            new Vector3f(0, 1, 1)  // Cyan for YZ
-        };
-
         float[][] planes = new float[3][];
         for (int i = 0; i < 3; i++) {
             planes[i] = createPlaneHandle(
@@ -196,7 +185,7 @@ public final class ArrowGeometry {
                 planeAxes[i][1],
                 size,
                 offset,
-                planeColors[i]
+                GizmoColors.planeColor(i)
             );
         }
 

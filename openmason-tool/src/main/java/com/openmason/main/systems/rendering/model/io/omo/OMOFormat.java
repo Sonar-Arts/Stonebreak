@@ -1,5 +1,6 @@
 package com.openmason.main.systems.rendering.model.io.omo;
 
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -9,12 +10,15 @@ import java.util.Objects;
  * <ul>
  *   <li>1.0 - Initial format with basic geometry dimensions</li>
  *   <li>1.1 - Added custom mesh data support for subdivision (vertices, indices, UVs, face mapping)</li>
+ *   <li>1.2 - Added per-face texture persistence (face mappings, material entries, material PNGs)</li>
+ *   <li>1.3 - Added model part entries for multi-part models (part transforms, mesh ranges)</li>
+ *   <li>1.4 - Added model-level transform (position, rotation, scale)</li>
  * </ul>
  */
 public final class OMOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.1";
+    public static final String FORMAT_VERSION = "1.4";
 
     /** Minimum supported format version for reading */
     public static final String MIN_SUPPORTED_VERSION = "1.0";
@@ -141,6 +145,116 @@ public final class OMOFormat {
     }
 
     /**
+     * Per-face UV mapping entry for serialization (v1.2+).
+     *
+     * @param faceId           face identifier
+     * @param materialId       material this face uses
+     * @param u0               UV region left
+     * @param v0               UV region top
+     * @param u1               UV region right
+     * @param v1               UV region bottom
+     * @param uvRotationDegrees rotation in degrees (0, 90, 180, 270)
+     */
+    public record FaceMappingEntry(int faceId, int materialId,
+                                   float u0, float v0, float u1, float v1,
+                                   int uvRotationDegrees) {}
+
+    /**
+     * Material definition entry for serialization (v1.2+).
+     *
+     * @param materialId  unique material identifier
+     * @param name        display name
+     * @param textureFile filename of the material's PNG inside the ZIP (e.g. "material_1.png")
+     * @param renderLayer render layer name (OPAQUE, CUTOUT, TRANSLUCENT)
+     * @param emissive    whether the material is emissive
+     * @param tintColor   RGBA tint color
+     */
+    public record MaterialEntry(int materialId, String name, String textureFile,
+                                String renderLayer, boolean emissive, int tintColor) {}
+
+    /**
+     * Aggregated per-face texture data for serialization (v1.2+).
+     *
+     * @param mappings  face-to-material mappings
+     * @param materials material definitions (excluding the default material)
+     */
+    public record FaceTextureData(List<FaceMappingEntry> mappings,
+                                  List<MaterialEntry> materials) {}
+
+    /**
+     * Model part entry for multi-part models (v1.3+).
+     *
+     * <p>Describes a single named part within a model, including its local transform,
+     * mesh range in the combined buffer, and visibility/lock state. When the parts
+     * list is null or empty, the entire mesh is treated as one implicit "Root" part
+     * (backward compatible with pre-1.3 files).
+     *
+     * @param id          Unique part identifier (UUID string)
+     * @param name        User-facing display name
+     * @param originX     Transform pivot X
+     * @param originY     Transform pivot Y
+     * @param originZ     Transform pivot Z
+     * @param posX        Translation offset X
+     * @param posY        Translation offset Y
+     * @param posZ        Translation offset Z
+     * @param rotX        Euler rotation X (degrees)
+     * @param rotY        Euler rotation Y (degrees)
+     * @param rotZ        Euler rotation Z (degrees)
+     * @param scaleX      Scale factor X
+     * @param scaleY      Scale factor Y
+     * @param scaleZ      Scale factor Z
+     * @param vertexStart First vertex index in combined buffer
+     * @param vertexCount Number of vertices this part owns
+     * @param indexStart  First index position in combined index buffer
+     * @param indexCount  Number of indices this part owns
+     * @param faceStart   First face ID this part owns
+     * @param faceCount   Number of faces this part owns
+     * @param visible     Whether this part is rendered
+     * @param locked      Whether this part is protected from editing
+     */
+    public record PartEntry(
+            String id, String name,
+            float originX, float originY, float originZ,
+            float posX, float posY, float posZ,
+            float rotX, float rotY, float rotZ,
+            float scaleX, float scaleY, float scaleZ,
+            int vertexStart, int vertexCount,
+            int indexStart, int indexCount,
+            int faceStart, int faceCount,
+            boolean visible, boolean locked
+    ) {}
+
+    /**
+     * Model-level transform data (v1.4+).
+     * Represents the overall model position, rotation, and scale in the editor viewport.
+     *
+     * @param posX     Translation X
+     * @param posY     Translation Y
+     * @param posZ     Translation Z
+     * @param rotX     Euler rotation X (degrees)
+     * @param rotY     Euler rotation Y (degrees)
+     * @param rotZ     Euler rotation Z (degrees)
+     * @param scaleX   Scale factor X
+     * @param scaleY   Scale factor Y
+     * @param scaleZ   Scale factor Z
+     */
+    public record ModelTransform(
+            float posX, float posY, float posZ,
+            float rotX, float rotY, float rotZ,
+            float scaleX, float scaleY, float scaleZ
+    ) {
+        public static ModelTransform identity() {
+            return new ModelTransform(0, 0, 0, 0, 0, 0, 1, 1, 1);
+        }
+
+        public boolean isIdentity() {
+            return posX == 0 && posY == 0 && posZ == 0
+                    && rotX == 0 && rotY == 0 && rotZ == 0
+                    && scaleX == 1 && scaleY == 1 && scaleZ == 1;
+        }
+    }
+
+    /**
      * Custom mesh data for subdivided/edited models (v2.0+).
      *
      * <p><strong>TEXTURE SYSTEM LIMITATION:</strong> Current texture assignment uses raw
@@ -218,10 +332,10 @@ public final class OMOFormat {
     }
 
     /**
-     * Extended document structure (v1.1+) with optional mesh data.
+     * Extended document structure (v1.1+) with optional mesh data and face textures.
      *
      * <p>Extends the base Document to include custom mesh data for
-     * subdivided or edited models.
+     * subdivided or edited models, and per-face texture data (v1.2+).
      *
      * @param version Format version
      * @param objectName Model name
@@ -229,6 +343,7 @@ public final class OMOFormat {
      * @param geometry Base geometry dimensions (used for standard cubes or as reference)
      * @param textureFile Embedded texture filename
      * @param mesh Custom mesh data (null for standard cube, present for edited models)
+     * @param faceTextures Per-face texture data (null for pre-1.2 files)
      */
     public record ExtendedDocument(
             String version,
@@ -236,7 +351,8 @@ public final class OMOFormat {
             String modelType,
             GeometryData geometry,
             String textureFile,
-            MeshData mesh
+            MeshData mesh,
+            FaceTextureData faceTextures
     ) {
         public ExtendedDocument {
             Objects.requireNonNull(version, "version cannot be null");
@@ -245,6 +361,15 @@ public final class OMOFormat {
             Objects.requireNonNull(geometry, "geometry cannot be null");
             Objects.requireNonNull(textureFile, "textureFile cannot be null");
             // mesh can be null (standard cube)
+            // faceTextures can be null (pre-1.2 files)
+        }
+
+        /**
+         * Backward-compatible constructor for pre-1.2 code paths.
+         */
+        public ExtendedDocument(String version, String objectName, String modelType,
+                                GeometryData geometry, String textureFile, MeshData mesh) {
+            this(version, objectName, modelType, geometry, textureFile, mesh, null);
         }
 
         /**
@@ -254,6 +379,17 @@ public final class OMOFormat {
          */
         public boolean hasCustomMesh() {
             return mesh != null && mesh.hasCustomGeometry();
+        }
+
+        /**
+         * Check if this document has per-face texture data.
+         *
+         * @return true if face texture data is present
+         */
+        public boolean hasFaceTextures() {
+            return faceTextures != null
+                    && faceTextures.mappings() != null
+                    && !faceTextures.mappings().isEmpty();
         }
 
         /**
@@ -274,7 +410,8 @@ public final class OMOFormat {
                     Objects.equals(modelType, that.modelType) &&
                     Objects.equals(geometry, that.geometry) &&
                     Objects.equals(textureFile, that.textureFile) &&
-                    Objects.equals(mesh, that.mesh);
+                    Objects.equals(mesh, that.mesh) &&
+                    Objects.equals(faceTextures, that.faceTextures);
         }
     }
 }

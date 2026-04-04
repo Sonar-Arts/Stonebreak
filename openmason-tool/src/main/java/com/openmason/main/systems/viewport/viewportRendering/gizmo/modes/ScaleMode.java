@@ -4,6 +4,7 @@ import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.geometry.BoxGeometry;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.AxisConstraint;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.GizmoPart;
+import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoColors;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -160,6 +161,7 @@ public class ScaleMode implements IGizmoMode {
         int uModelLoc = GL30.glGetUniformLocation(shaderProgram, "uModelMatrix");
         int uViewProjLoc = GL30.glGetUniformLocation(shaderProgram, "uViewProjection");
         int uIntensityLoc = GL30.glGetUniformLocation(shaderProgram, "uIntensity");
+        int uAlphaLoc = GL30.glGetUniformLocation(shaderProgram, "uAlpha");
 
         // Set view-projection matrix
         FloatBuffer vpBuffer = BufferUtils.createFloatBuffer(16);
@@ -170,6 +172,9 @@ public class ScaleMode implements IGizmoMode {
         FloatBuffer modelBuffer = BufferUtils.createFloatBuffer(16);
         gizmoTransform.get(modelBuffer);
         GL30.glUniformMatrix4fv(uModelLoc, false, modelBuffer);
+
+        // Scale handles are fully opaque
+        GL30.glUniform1f(uAlphaLoc, 1.0f);
 
         // Render handles
         renderHandles(gizmoState, uIntensityLoc);
@@ -219,12 +224,15 @@ public class ScaleMode implements IGizmoMode {
     }
 
     @Override
-    public List<GizmoPart> getInteractiveParts(Vector3f gizmoPosition) {
+    public List<GizmoPart> getInteractiveParts(Vector3f gizmoPosition, float scaleFactor) {
         if (gizmoPosition == null) {
             throw new IllegalArgumentException("Gizmo position cannot be null");
         }
 
         List<GizmoPart> parts = new ArrayList<>();
+        float scaledGizmoSize = GIZMO_SIZE * scaleFactor;
+        float scaledHandleBoxSize = HANDLE_BOX_SIZE * scaleFactor;
+        float scaledCenterBoxSize = CENTER_BOX_SIZE * scaleFactor;
 
         // Add axis handle parts
         Vector3f[] directions = {
@@ -235,23 +243,17 @@ public class ScaleMode implements IGizmoMode {
 
         AxisConstraint[] constraints = {AxisConstraint.X, AxisConstraint.Y, AxisConstraint.Z};
 
-        Vector3f[] colors = {
-            new Vector3f(1, 0, 0), // Red
-            new Vector3f(0, 1, 0), // Green
-            new Vector3f(0, 0, 1)  // Blue
-        };
-
         for (int i = 0; i < 3; i++) {
             Vector3f center = BoxGeometry.getHandleCenter(
                 gizmoPosition,
                 directions[i],
-                GIZMO_SIZE
+                scaledGizmoSize
             );
-            float radius = BoxGeometry.getInteractionRadius(HANDLE_BOX_SIZE);
+            float radius = BoxGeometry.getInteractionRadius(scaledHandleBoxSize);
 
             parts.add(new GizmoPart(
                 constraints[i],
-                colors[i],
+                GizmoColors.axisColor(i),
                 GizmoPart.PartType.BOX,
                 center,
                 radius
@@ -259,10 +261,10 @@ public class ScaleMode implements IGizmoMode {
         }
 
         // Add center box part (uniform scale)
-        float centerRadius = BoxGeometry.getInteractionRadius(CENTER_BOX_SIZE);
+        float centerRadius = BoxGeometry.getInteractionRadius(scaledCenterBoxSize);
         parts.add(new GizmoPart(
             AxisConstraint.NONE, // NONE constraint = uniform scale
-            new Vector3f(0.9f, 0.9f, 0.9f),
+            new Vector3f(GizmoColors.CENTER),
             GizmoPart.PartType.CENTER,
             gizmoPosition,
             centerRadius

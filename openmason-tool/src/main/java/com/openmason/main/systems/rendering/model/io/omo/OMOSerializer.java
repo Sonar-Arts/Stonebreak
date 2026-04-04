@@ -11,6 +11,8 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -59,6 +61,16 @@ public class OMOSerializer {
     // Optional mesh data for saving subdivided models
     private OMOFormat.MeshData pendingMeshData;
 
+    // Optional face texture data for per-face material persistence (v1.2+)
+    private OMOFormat.FaceTextureData pendingFaceTextureData;
+    private Map<Integer, byte[]> pendingMaterialTexturePNGs;
+
+    // Optional part entries for multi-part models (v1.3+)
+    private List<OMOFormat.PartEntry> pendingParts;
+
+    // Optional model-level transform (v1.4+)
+    private OMOFormat.ModelTransform pendingModelTransform;
+
     /**
      * Creates a new .OMO serializer with JSON support.
      */
@@ -85,6 +97,37 @@ public class OMOSerializer {
      */
     public void clearMeshData() {
         this.pendingMeshData = null;
+    }
+
+    /**
+     * Set face texture data to be saved with the next model (v1.2+).
+     *
+     * @param faceTextureData face mapping and material metadata
+     * @param materialPNGs    material textures as PNG byte arrays, keyed by materialId
+     */
+    public void setFaceTextureData(OMOFormat.FaceTextureData faceTextureData,
+                                    Map<Integer, byte[]> materialPNGs) {
+        this.pendingFaceTextureData = faceTextureData;
+        this.pendingMaterialTexturePNGs = materialPNGs;
+    }
+
+    /**
+     * Set model part entries to be saved with the next model (v1.3+).
+     * Each entry contains the part's identity, transform, mesh range, and per-part geometry.
+     *
+     * @param parts List of part entries, or null for single-part models
+     */
+    public void setPartEntries(List<OMOFormat.PartEntry> parts) {
+        this.pendingParts = parts;
+    }
+
+    /**
+     * Set model-level transform to be saved with the next model (v1.4+).
+     *
+     * @param transform the model-level position, rotation, and scale
+     */
+    public void setModelTransform(OMOFormat.ModelTransform transform) {
+        this.pendingModelTransform = transform;
     }
 
     /**
@@ -147,7 +190,17 @@ public class OMOSerializer {
 
                 // Embed texture.omt file
                 embedTexture(zos, texturePath);
+
+                // Write per-face material texture PNGs (v1.2+)
+                writeMaterialTextures(zos);
             }
+
+            // Clear pending data after all ZIP entries are written
+            pendingMeshData = null;
+            pendingFaceTextureData = null;
+            pendingMaterialTexturePNGs = null;
+            pendingParts = null;
+            pendingModelTransform = null;
 
             // Move temp file to final location (atomic on most filesystems)
             Path finalPath = Path.of(filePath);
@@ -182,8 +235,9 @@ public class OMOSerializer {
         ZipEntry manifestEntry = new ZipEntry(OMOFormat.MANIFEST_FILENAME);
         zos.putNextEntry(manifestEntry);
 
-        // Serialize to JSON
-        String json = objectMapper.writeValueAsString(new ExtendedManifestDTO(document));
+        // Serialize to JSON (pass pending data explicitly since DTO is static)
+        String json = objectMapper.writeValueAsString(
+                new ExtendedManifestDTO(document, pendingParts, pendingModelTransform));
         byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8);
 
         // Write JSON to ZIP
@@ -191,10 +245,8 @@ public class OMOSerializer {
         zos.flush();
         zos.closeEntry();
 
-        // Clear pending mesh data after save
-        pendingMeshData = null;
-
-        logger.debug("Wrote manifest.json ({} bytes, hasMesh={})", jsonBytes.length, document.hasCustomMesh());
+        logger.debug("Wrote manifest.json ({} bytes, hasMesh={}, hasFaceTextures={})",
+            jsonBytes.length, document.hasCustomMesh(), document.hasFaceTextures());
     }
 
     /**
@@ -246,8 +298,28 @@ public class OMOSerializer {
             model.getModelType(),
             geometryData,
             OMOFormat.DEFAULT_TEXTURE_FILENAME,
-            pendingMeshData  // May be null for standard cube
+            pendingMeshData,      // May be null for standard cube
+            pendingFaceTextureData // May be null if no per-face textures
         );
+    }
+
+    /**
+     * Write per-face material texture PNGs to the ZIP archive (v1.2+).
+     */
+    private void writeMaterialTextures(ZipOutputStream zos) throws IOException {
+        if (pendingMaterialTexturePNGs == null || pendingMaterialTexturePNGs.isEmpty()) {
+            return;
+        }
+
+        for (Map.Entry<Integer, byte[]> entry : pendingMaterialTexturePNGs.entrySet()) {
+            String filename = "material_" + entry.getKey() + ".png";
+            ZipEntry zipEntry = new ZipEntry(filename);
+            zos.putNextEntry(zipEntry);
+            zos.write(entry.getValue());
+            zos.flush();
+            zos.closeEntry();
+            logger.debug("Wrote {} ({} bytes)", filename, entry.getValue().length);
+        }
     }
 
     /**
@@ -263,14 +335,25 @@ public class OMOSerializer {
         public GeometryDTO geometry;
         public String textureFile;
         public MeshDataDTO mesh;  // Optional, null for standard cube
+        public FaceTextureDataDTO faceTextures; // Optional, null for pre-1.2 files
+        public List<PartEntryDTO> parts; // Optional, null for single-part models
+        public ModelTransformDTO modelTransform; // Optional, null for identity (v1.4+)
 
-        public ExtendedManifestDTO(OMOFormat.ExtendedDocument document) {
+        public ExtendedManifestDTO(OMOFormat.ExtendedDocument document,
+                                   List<OMOFormat.PartEntry> partEntries,
+                                   OMOFormat.ModelTransform modelTransform) {
             this.version = document.version();
             this.objectName = document.objectName();
             this.modelType = document.modelType();
             this.geometry = new GeometryDTO(document.geometry());
             this.textureFile = document.textureFile();
             this.mesh = document.mesh() != null ? new MeshDataDTO(document.mesh()) : null;
+            this.faceTextures = document.faceTextures() != null
+                    ? new FaceTextureDataDTO(document.faceTextures()) : null;
+            this.parts = partEntries != null && !partEntries.isEmpty()
+                    ? partEntries.stream().map(PartEntryDTO::new).toList() : null;
+            this.modelTransform = modelTransform != null && !modelTransform.isIdentity()
+                    ? new ModelTransformDTO(modelTransform) : null;
         }
     }
 
@@ -317,6 +400,124 @@ public class OMOSerializer {
             this.x = position.x();
             this.y = position.y();
             this.z = position.z();
+        }
+    }
+
+    /**
+     * DTO for per-face texture data (v1.2+).
+     */
+    private static class FaceTextureDataDTO {
+        public List<FaceMappingEntryDTO> mappings;
+        public List<MaterialEntryDTO> materials;
+
+        public FaceTextureDataDTO(OMOFormat.FaceTextureData data) {
+            this.mappings = data.mappings().stream()
+                    .map(FaceMappingEntryDTO::new)
+                    .toList();
+            this.materials = data.materials().stream()
+                    .map(MaterialEntryDTO::new)
+                    .toList();
+        }
+    }
+
+    private static class FaceMappingEntryDTO {
+        public int faceId;
+        public int materialId;
+        public float u0;
+        public float v0;
+        public float u1;
+        public float v1;
+        public int uvRotationDegrees;
+
+        public FaceMappingEntryDTO(OMOFormat.FaceMappingEntry entry) {
+            this.faceId = entry.faceId();
+            this.materialId = entry.materialId();
+            this.u0 = entry.u0();
+            this.v0 = entry.v0();
+            this.u1 = entry.u1();
+            this.v1 = entry.v1();
+            this.uvRotationDegrees = entry.uvRotationDegrees();
+        }
+    }
+
+    private static class MaterialEntryDTO {
+        public int materialId;
+        public String name;
+        public String textureFile;
+        public String renderLayer;
+        public boolean emissive;
+        public int tintColor;
+
+        public MaterialEntryDTO(OMOFormat.MaterialEntry entry) {
+            this.materialId = entry.materialId();
+            this.name = entry.name();
+            this.textureFile = entry.textureFile();
+            this.renderLayer = entry.renderLayer();
+            this.emissive = entry.emissive();
+            this.tintColor = entry.tintColor();
+        }
+    }
+
+    /**
+     * DTO for model-level transform (v1.4+).
+     */
+    private static class ModelTransformDTO {
+        public float posX, posY, posZ;
+        public float rotX, rotY, rotZ;
+        public float scaleX, scaleY, scaleZ;
+
+        public ModelTransformDTO(OMOFormat.ModelTransform t) {
+            this.posX = t.posX();
+            this.posY = t.posY();
+            this.posZ = t.posZ();
+            this.rotX = t.rotX();
+            this.rotY = t.rotY();
+            this.rotZ = t.rotZ();
+            this.scaleX = t.scaleX();
+            this.scaleY = t.scaleY();
+            this.scaleZ = t.scaleZ();
+        }
+    }
+
+    /**
+     * DTO for model part entries (v1.3+).
+     * Geometry is sliced from the combined mesh using vertex/index/face ranges.
+     */
+    private static class PartEntryDTO {
+        public String id;
+        public String name;
+        public float originX, originY, originZ;
+        public float posX, posY, posZ;
+        public float rotX, rotY, rotZ;
+        public float scaleX, scaleY, scaleZ;
+        public int vertexStart, vertexCount;
+        public int indexStart, indexCount;
+        public int faceStart, faceCount;
+        public boolean visible, locked;
+
+        public PartEntryDTO(OMOFormat.PartEntry entry) {
+            this.id = entry.id();
+            this.name = entry.name();
+            this.originX = entry.originX();
+            this.originY = entry.originY();
+            this.originZ = entry.originZ();
+            this.posX = entry.posX();
+            this.posY = entry.posY();
+            this.posZ = entry.posZ();
+            this.rotX = entry.rotX();
+            this.rotY = entry.rotY();
+            this.rotZ = entry.rotZ();
+            this.scaleX = entry.scaleX();
+            this.scaleY = entry.scaleY();
+            this.scaleZ = entry.scaleZ();
+            this.vertexStart = entry.vertexStart();
+            this.vertexCount = entry.vertexCount();
+            this.indexStart = entry.indexStart();
+            this.indexCount = entry.indexCount();
+            this.faceStart = entry.faceStart();
+            this.faceCount = entry.faceCount();
+            this.visible = entry.visible();
+            this.locked = entry.locked();
         }
     }
 }

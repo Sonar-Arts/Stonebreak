@@ -69,6 +69,18 @@ public class ViewportCamera {
     }
 
     /**
+     * Handles pan input (delegated to active controller).
+     * Translates the camera along its local right and up axes.
+     *
+     * @param deltaX Horizontal pan amount (screen-space)
+     * @param deltaY Vertical pan amount (screen-space)
+     */
+    public void pan(float deltaX, float deltaY) {
+        activeController.pan(deltaX, deltaY);
+        viewMatrixDirty = true;
+    }
+
+    /**
      * Handles zoom input (delegated to active controller).
      *
      * @param scrollDelta Scroll wheel delta
@@ -215,6 +227,10 @@ public class ViewportCamera {
     public void setMouseSensitivity(float sensitivity) {
         arcballController.setMouseSensitivity(sensitivity);
         firstPersonController.setMouseSensitivity(sensitivity);
+    }
+
+    public void setPanSensitivity(float sensitivity) {
+        arcballController.setPanSensitivity(sensitivity);
     }
 
     // ========== Arc-ball Specific Methods ==========

@@ -27,8 +27,9 @@ public class KeybindRegistry {
     // Action ID -> Action definition
     private final Map<String, KeybindAction> actions = new LinkedHashMap<>();
 
-    // Current bindings: ShortcutKey -> Action ID (for fast lookup)
-    private final Map<ShortcutKey, String> currentBindings = new LinkedHashMap<>();
+    // Context-scoped bindings: Context -> (ShortcutKey -> Action ID)
+    // Actions in different contexts may share the same key without conflict.
+    private final Map<String, Map<ShortcutKey, String>> contextBindings = new LinkedHashMap<>();
 
     // Customized bindings: Action ID -> Custom ShortcutKey (for persistence)
     private final Map<String, ShortcutKey> customBindings = new HashMap<>();
@@ -72,10 +73,12 @@ public class KeybindRegistry {
             throw new IllegalArgumentException("Action ID already registered: " + action.getId());
         }
 
-        // Check for default key conflicts with other defaults
+        // Check for default key conflicts only within the same context
+        String context = action.getContext();
         for (KeybindAction existing : actions.values()) {
-            if (existing.getDefaultKey().equals(action.getDefaultKey())) {
-                logger.error("Default keybind conflict detected:");
+            if (existing.getContext().equals(context) &&
+                    existing.getDefaultKey().equals(action.getDefaultKey())) {
+                logger.error("Default keybind conflict detected within context '{}':", context);
                 logger.error("  Existing: {} ({}) -> {}",
                     existing.getId(), existing.getDisplayName(), existing.getDefaultKey().getDisplayName());
                 logger.error("  New: {} ({}) -> {}",
@@ -90,11 +93,12 @@ public class KeybindRegistry {
         // Register the action
         actions.put(action.getId(), action);
 
-        // Add default binding to current bindings
-        currentBindings.put(action.getDefaultKey(), action.getId());
+        // Add default binding to context-scoped bindings
+        contextBindings.computeIfAbsent(context, k -> new LinkedHashMap<>())
+                .put(action.getDefaultKey(), action.getId());
 
-        logger.trace("Registered action: {} ({}) -> {}",
-            action.getId(), action.getDisplayName(), action.getDefaultKey().getDisplayName());
+        logger.trace("Registered action: {} ({}) [{}] -> {}",
+            action.getId(), action.getDisplayName(), context, action.getDefaultKey().getDisplayName());
     }
 
     /**
@@ -114,19 +118,23 @@ public class KeybindRegistry {
             throw new IllegalArgumentException("Action not registered: " + actionId);
         }
 
-        // Remove old binding from current bindings
+        // Get context-scoped binding map
+        Map<ShortcutKey, String> contextMap = contextBindings.computeIfAbsent(
+                action.getContext(), k -> new LinkedHashMap<>());
+
+        // Remove old binding from context bindings
         ShortcutKey oldKey = getKeybind(actionId);
-        currentBindings.remove(oldKey);
+        contextMap.remove(oldKey);
 
         if (key == null) {
             // Revert to default
             customBindings.remove(actionId);
-            currentBindings.put(action.getDefaultKey(), actionId);
+            contextMap.put(action.getDefaultKey(), actionId);
             logger.debug("Reverted {} to default: {}", actionId, action.getDefaultKey().getDisplayName());
         } else {
             // Set custom binding
             customBindings.put(actionId, key);
-            currentBindings.put(key, actionId);
+            contextMap.put(key, actionId);
             logger.debug("Set custom keybind for {}: {}", actionId, key.getDisplayName());
         }
     }
@@ -201,10 +209,11 @@ public class KeybindRegistry {
         // Clear all custom bindings
         customBindings.clear();
 
-        // Rebuild current bindings from defaults
-        currentBindings.clear();
+        // Rebuild context-scoped bindings from defaults
+        contextBindings.clear();
         for (KeybindAction action : actions.values()) {
-            currentBindings.put(action.getDefaultKey(), action.getId());
+            contextBindings.computeIfAbsent(action.getContext(), k -> new LinkedHashMap<>())
+                    .put(action.getDefaultKey(), action.getId());
         }
 
         logger.debug("All keybinds reset to defaults");
@@ -222,7 +231,15 @@ public class KeybindRegistry {
      * @return conflict result indicating if there's a conflict and which action conflicts
      */
     public ConflictResult checkConflict(String actionId, ShortcutKey newKey) {
-        String conflictingActionId = currentBindings.get(newKey);
+        KeybindAction action = actions.get(actionId);
+        if (action == null) {
+            throw new IllegalArgumentException("Action not registered: " + actionId);
+        }
+
+        // Only check within the same context
+        Map<ShortcutKey, String> contextMap = contextBindings.getOrDefault(
+                action.getContext(), Map.of());
+        String conflictingActionId = contextMap.get(newKey);
 
         // No conflict if key is not bound, or if it's bound to the same action
         if (conflictingActionId == null || conflictingActionId.equals(actionId)) {
@@ -261,6 +278,64 @@ public class KeybindRegistry {
     }
 
     /**
+     * Gets all unique contexts in registration order.
+     * <p>
+     * Contexts represent logical sections of the application (e.g., "viewport", "texture").
+     * </p>
+     *
+     * @return set of context names, in the order they were first registered
+     */
+    public Set<String> getAllContexts() {
+        Set<String> contexts = new LinkedHashSet<>();
+        for (KeybindAction action : actions.values()) {
+            contexts.add(action.getContext());
+        }
+        return contexts;
+    }
+
+    /**
+     * Gets all actions belonging to a specific context.
+     *
+     * @param context the context name (e.g., "viewport", "texture")
+     * @return list of actions in the context, in registration order
+     */
+    public List<KeybindAction> getActionsByContext(String context) {
+        return actions.values().stream()
+                .filter(action -> action.getContext().equals(context))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Gets all unique categories within a specific context, in registration order.
+     *
+     * @param context the context name
+     * @return set of category names within the context
+     */
+    public Set<String> getCategoriesForContext(String context) {
+        Set<String> categories = new LinkedHashSet<>();
+        for (KeybindAction action : actions.values()) {
+            if (action.getContext().equals(context)) {
+                categories.add(action.getCategory());
+            }
+        }
+        return categories;
+    }
+
+    /**
+     * Gets all actions matching a specific context and category.
+     *
+     * @param context  the context name
+     * @param category the category name
+     * @return list of matching actions, in registration order
+     */
+    public List<KeybindAction> getActionsByContextAndCategory(String context, String category) {
+        return actions.values().stream()
+                .filter(action -> action.getContext().equals(context)
+                        && action.getCategory().equals(category))
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Gets all registered actions.
      *
      * @return unmodifiable collection of all actions
@@ -295,7 +370,7 @@ public class KeybindRegistry {
      */
     public synchronized void clear() {
         actions.clear();
-        currentBindings.clear();
+        contextBindings.clear();
         customBindings.clear();
         logger.warn("KeybindRegistry cleared");
     }

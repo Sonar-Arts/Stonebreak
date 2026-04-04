@@ -20,7 +20,7 @@ public class InputContext {
     public final float mouseX;
     public final float mouseY;
 
-    // Mouse state
+    // Mouse state (left button)
     public final boolean mouseInBounds;
     public final boolean viewportHovered;
     public final boolean mouseClicked;
@@ -28,6 +28,11 @@ public class InputContext {
     public final boolean mouseReleased;
     public final float mouseWheel;
     public final ImVec2 mouseDelta;
+
+    // Mouse state (middle button)
+    public final boolean middleMouseClicked;
+    public final boolean middleMouseDown;
+    public final boolean middleMouseReleased;
 
     // Modifier key state
     public final boolean shiftDown;
@@ -54,6 +59,9 @@ public class InputContext {
      * @param mouseReleased Whether left mouse button was released this frame
      * @param mouseWheel Mouse wheel delta this frame
      * @param mouseDelta Mouse movement delta this frame
+     * @param middleMouseClicked Whether middle mouse button was clicked this frame
+     * @param middleMouseDown Whether middle mouse button is currently held down
+     * @param middleMouseReleased Whether middle mouse button was released this frame
      * @param viewportWidth Width of viewport in pixels
      * @param viewportHeight Height of viewport in pixels
      * @param viewMatrix Camera view matrix
@@ -72,6 +80,9 @@ public class InputContext {
             boolean mouseReleased,
             float mouseWheel,
             ImVec2 mouseDelta,
+            boolean middleMouseClicked,
+            boolean middleMouseDown,
+            boolean middleMouseReleased,
             int viewportWidth,
             int viewportHeight,
             Matrix4f viewMatrix,
@@ -89,6 +100,9 @@ public class InputContext {
         this.mouseReleased = mouseReleased;
         this.mouseWheel = mouseWheel;
         this.mouseDelta = mouseDelta;
+        this.middleMouseClicked = middleMouseClicked;
+        this.middleMouseDown = middleMouseDown;
+        this.middleMouseReleased = middleMouseReleased;
         this.viewportWidth = viewportWidth;
         this.viewportHeight = viewportHeight;
         this.viewMatrix = viewMatrix;
