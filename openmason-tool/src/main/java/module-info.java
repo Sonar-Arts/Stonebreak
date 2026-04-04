@@ -22,8 +22,8 @@ module com.openmason {
     requires com.fasterxml.jackson.annotation;
 
     // Apache Batik for SVG icon processing (automatic modules)
-    requires batik.transcoder;
-    requires batik.codec;
+    requires org.apache.xmlgraphics.batik.transcoder;
+    requires org.apache.xmlgraphics.batik.codec;
 
     // Logging
     requires org.slf4j;
