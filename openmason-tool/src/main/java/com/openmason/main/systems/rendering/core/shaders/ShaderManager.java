@@ -34,6 +34,7 @@ public class ShaderManager {
             shaderPrograms.put(ShaderType.MATRIX, createMatrixShader());
             shaderPrograms.put(ShaderType.GIZMO, createGizmoShader());
             shaderPrograms.put(ShaderType.FACE, createFaceShader());
+            shaderPrograms.put(ShaderType.VERTEX, createVertexShader());
             shaderPrograms.put(ShaderType.INFINITE_GRID, createInfiniteGridShader());
 
             initialized = true;
@@ -270,6 +271,86 @@ public class ShaderManager {
 
         logger.debug("FACE shader created - program: {}, mvp: {}, color: {}", program, mvpLocation, colorLocation);
         return new ShaderProgram(ShaderType.FACE, program, vertexShader, fragmentShader, mvpLocation, colorLocation);
+    }
+
+    /**
+     * Create vertex point shader that renders circles with outlines via gl_PointCoord.
+     * Replaces square GL_POINTS with smooth anti-aliased circles for a modern look.
+     */
+    private ShaderProgram createVertexShader() {
+        logger.debug("Creating VERTEX shader program");
+
+        String vertexShaderSource = """
+            #version 330 core
+            layout (location = 0) in vec3 aPos;
+            layout (location = 1) in vec3 aColor;
+
+            uniform mat4 uMVPMatrix;
+            uniform float uIntensity;
+            uniform float uPointSize;
+
+            out vec3 vertexColor;
+            out float vIntensity;
+
+            void main() {
+                gl_Position = uMVPMatrix * vec4(aPos, 1.0);
+                gl_PointSize = uPointSize;
+                vertexColor = aColor;
+                vIntensity = uIntensity;
+            }
+            """;
+
+        String fragmentShaderSource = """
+            #version 330 core
+            in vec3 vertexColor;
+            in float vIntensity;
+            out vec4 FragColor;
+
+            void main() {
+                // gl_PointCoord: (0,0) top-left to (1,1) bottom-right of the point sprite
+                vec2 coord = gl_PointCoord * 2.0 - 1.0; // remap to [-1, 1]
+                float dist = length(coord);
+
+                // Discard outside the circle
+                if (dist > 1.0) {
+                    discard;
+                }
+
+                // Anti-aliased circle edge
+                float outerEdge = 1.0 - smoothstep(0.85, 1.0, dist);
+
+                // Outline ring: dark border between 0.6 and 0.85 radius
+                float outlineRing = smoothstep(0.55, 0.65, dist) * (1.0 - smoothstep(0.8, 0.9, dist));
+
+                // Compute fill color based on intensity
+                vec3 fillColor;
+                if (vIntensity <= 1.0) {
+                    fillColor = vertexColor;
+                } else {
+                    // Blend toward white for hover/selection glow
+                    float glowFactor = clamp((vIntensity - 1.0) / 2.0, 0.0, 1.0);
+                    fillColor = mix(vertexColor, vec3(1.0), glowFactor);
+                }
+
+                // Dark outline color (semi-transparent dark version of the fill)
+                vec3 outlineColor = fillColor * 0.2;
+
+                // Combine: fill with outline ring overlay
+                vec3 finalColor = mix(fillColor, outlineColor, outlineRing * 0.7);
+
+                FragColor = vec4(finalColor, outerEdge);
+            }
+            """;
+
+        int vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource, "VERTEX_POINT_VERTEX");
+        int fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource, "VERTEX_POINT_FRAGMENT");
+        int program = linkProgram(vertexShader, fragmentShader);
+
+        int mvpLocation = glGetUniformLocation(program, "uMVPMatrix");
+        int colorLocation = -1;
+
+        logger.debug("VERTEX shader created - program: {}, mvp: {}", program, mvpLocation);
+        return new ShaderProgram(ShaderType.VERTEX, program, vertexShader, fragmentShader, mvpLocation, colorLocation);
     }
 
     /**

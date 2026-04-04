@@ -36,5 +36,11 @@ public enum ShaderType {
      * Face selection shader with alpha transparency support for overlay rendering.
      * Uniforms: uMVPMatrix, uColor, uAlpha
      */
-    FACE
+    FACE,
+
+    /**
+     * Vertex point shader rendering circles with outlines via gl_PointCoord.
+     * Uniforms: uMVPMatrix, uIntensity, uPointSize
+     */
+    VERTEX
 }

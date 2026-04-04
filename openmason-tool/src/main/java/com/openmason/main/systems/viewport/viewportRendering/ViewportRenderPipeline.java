@@ -405,8 +405,8 @@ public class ViewportRenderPipeline {
                         logger.trace("Vertex data extracted in model space");
                     }
 
-                    ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);
-                    vertexRenderer.render(basicShaderBlockModel, context, transformState.getTransformMatrix());
+                    ShaderProgram vertexShader = shaderManager.getShaderProgram(ShaderType.VERTEX);
+                    vertexRenderer.render(vertexShader, context, transformState.getTransformMatrix());
                     break;
 
                 case BLOCK:

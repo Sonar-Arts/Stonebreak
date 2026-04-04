@@ -40,11 +40,11 @@ public class VertexRenderer implements MeshChangeListener {
 
     // Rendering state
     private boolean enabled = false;
-    private float pointSize = 5.0f;
-    private float selectedPointSize = 8.0f;
-    private final Vector3f defaultVertexColor = new Vector3f(1.0f, 0.6f, 0.0f); // Blender's orange
-    private final Vector3f selectedVertexColor = new Vector3f(1.0f, 1.0f, 1.0f); // White
-    private final Vector3f modifiedVertexColor = new Vector3f(1.0f, 1.0f, 0.0f); // Yellow
+    private float pointSize = 7.0f;
+    private float selectedPointSize = 10.0f;
+    private final Vector3f defaultVertexColor = new Vector3f(0.95f, 0.55f, 0.1f); // Warm orange
+    private final Vector3f selectedVertexColor = new Vector3f(1.0f, 1.0f, 1.0f);  // White
+    private final Vector3f modifiedVertexColor = new Vector3f(1.0f, 0.85f, 0.2f); // Gold
 
     // Hover state
     private int hoveredVertexIndex = -1; // -1 means no vertex is hovered
@@ -292,46 +292,37 @@ public class VertexRenderer implements MeshChangeListener {
         }
 
         try {
-            // Use shader
             shader.use();
 
-            // Calculate MVP matrix with model transform (vertices are in model space)
             Matrix4f viewMatrix = context.getCamera().getViewMatrix();
             Matrix4f projectionMatrix = context.getCamera().getProjectionMatrix();
             Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix).mul(modelMatrix);
-
-            // Upload MVP matrix
             shader.setMat4("uMVPMatrix", mvpMatrix);
 
-            // Set point size (fixed function)
-            glPointSize(pointSize);
+            // Enable point sprite rendering (shader controls gl_PointSize)
+            glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            // Save and modify depth function to ensure points are visible on surfaces
             int prevDepthFunc = glGetInteger(GL_DEPTH_FUNC);
             glDepthFunc(GL_LEQUAL);
 
-            // Bind VAO
             glBindVertexArray(vao);
 
-            // Render vertices in order: Normal → Modified → Hovered → Selected (always on top)
-            // Each state has different intensity for brightness control
+            // Intensity levels for shader-based glow
             float normalIntensity = 1.0f;
-            float modifiedIntensity = 2.0f;   // Yellow glow for unsaved changes
-            float hoverIntensity = 2.5f;      // Bright yellow for hover
-            float selectedIntensity = 3.0f;   // Brightest white for selection
-
-            // Set normal point size for most vertices
-            glPointSize(pointSize);
+            float modifiedIntensity = 1.5f;
+            float hoverIntensity = 2.0f;
+            float selectedIntensity = 3.0f;
 
             // Render normal and modified vertices
             shader.setFloat("uIntensity", normalIntensity);
+            shader.setFloat("uPointSize", pointSize);
             for (int i = 0; i < vertexCount; i++) {
-                // Skip hovered and selected vertices (will render separately)
                 if (i == hoveredVertexIndex || selectedVertexIndices.contains(i)) {
                     continue;
                 }
 
-                // Modified vertices get higher intensity for visual distinction
                 if (modifiedVertices.contains(i)) {
                     shader.setFloat("uIntensity", modifiedIntensity);
                     glDrawArrays(GL_POINTS, i, 1);
@@ -341,15 +332,16 @@ public class VertexRenderer implements MeshChangeListener {
                 }
             }
 
-            // Render hovered vertex (if any and not selected)
+            // Render hovered vertex
             if (hoveredVertexIndex >= 0 && !selectedVertexIndices.contains(hoveredVertexIndex)) {
                 shader.setFloat("uIntensity", hoverIntensity);
+                shader.setFloat("uPointSize", pointSize + 2.0f);
                 glDrawArrays(GL_POINTS, hoveredVertexIndex, 1);
             }
 
-            // Render all selected vertices last (always on top) with larger point size
+            // Render selected vertices last (always on top)
             if (!selectedVertexIndices.isEmpty()) {
-                glPointSize(selectedPointSize);
+                shader.setFloat("uPointSize", selectedPointSize);
                 shader.setFloat("uIntensity", selectedIntensity);
                 for (int selectedIndex : selectedVertexIndices) {
                     if (selectedIndex >= 0 && selectedIndex < vertexCount) {
@@ -359,12 +351,9 @@ public class VertexRenderer implements MeshChangeListener {
             }
 
             glBindVertexArray(0);
-
-            // Restore normal point size
-            glPointSize(pointSize);
-
-            // Restore previous depth function
             glDepthFunc(prevDepthFunc);
+            glDisable(GL_VERTEX_PROGRAM_POINT_SIZE);
+            glDisable(GL_BLEND);
 
         } catch (Exception e) {
             logger.error("Error rendering vertices", e);
@@ -927,6 +916,7 @@ public class VertexRenderer implements MeshChangeListener {
 
     public void setPointSize(float pointSize) {
         this.pointSize = Math.max(1.0f, Math.min(15.0f, pointSize));
+        this.selectedPointSize = this.pointSize + 3.0f;
         logger.trace("Point size set to: {}", this.pointSize);
     }
 

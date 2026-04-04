@@ -318,7 +318,7 @@ public class FaceRenderer implements MeshChangeListener {
 
             int prevDepthFunc = glGetInteger(GL_DEPTH_FUNC);
             glDepthFunc(GL_LEQUAL);
-            glDepthRange(0.0, 0.999); // bias toward camera like EdgeRenderer
+            glDepthRange(0.0, 0.99999); // subtle bias to resolve coplanar z-fighting
             glBindVertexArray(lineVao);
 
             // Selected faces

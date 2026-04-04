@@ -70,10 +70,10 @@ public class EdgeRenderer implements MeshChangeListener {
 
     /**
      * Depth range far value for edge rendering.
-     * Slightly less than 1.0 to bias edges toward the camera, preventing z-fighting
-     * when edges are coplanar with face geometry (e.g., knife cut edges on a flat surface).
+     * Slightly less than 1.0 to bias coplanar edges toward the camera.
+     * Must be very close to 1.0 to avoid back-face edges bleeding through front faces.
      */
-    private static final double EDGE_DEPTH_RANGE_FAR = 0.999;
+    private static final double EDGE_DEPTH_RANGE_FAR = 0.99999;
 
     /** Normal intensity for edge rendering. */
     private static final float NORMAL_INTENSITY = 1.0f;
