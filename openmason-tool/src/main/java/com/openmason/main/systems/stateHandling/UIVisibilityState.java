@@ -14,6 +14,8 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
     private final ImBoolean showToolbar = new ImBoolean(true);
     private final ImBoolean showPreferencesWindow = new ImBoolean(false);
     private final ImBoolean showAboutWindow = new ImBoolean(false);
+    private final ImBoolean showSBOExportWindow = new ImBoolean(false);
+    private final ImBoolean showSBEExportWindow = new ImBoolean(false);
 
     // Getters
 
@@ -35,6 +37,14 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
 
     public ImBoolean getShowAboutWindow() {
         return showAboutWindow;
+    }
+
+    public ImBoolean getShowSBOExportWindow() {
+        return showSBOExportWindow;
+    }
+
+    public ImBoolean getShowSBEExportWindow() {
+        return showSBEExportWindow;
     }
 
     // Toggle methods
@@ -74,6 +84,8 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
         showToolbar.set(true);
         showPreferencesWindow.set(false);
         showAboutWindow.set(false);
+        showSBOExportWindow.set(false);
+        showSBEExportWindow.set(false);
     }
 
     /**

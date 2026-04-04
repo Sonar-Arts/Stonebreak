@@ -428,6 +428,14 @@ public class mainOpenMason {
             safeRender(() -> mainInterface.getUnifiedPreferencesWindow().render(), "Preferences Window");
         }
 
+        if (mainInterface != null && mainInterface.getSBOExportWindow() != null) {
+            safeRender(() -> mainInterface.getSBOExportWindow().render(), "SBO Export Window");
+        }
+
+        if (mainInterface != null && mainInterface.getSBEExportWindow() != null) {
+            safeRender(() -> mainInterface.getSBEExportWindow().render(), "SBE Export Window");
+        }
+
         // Render unsaved changes dialog (must be rendered outside other windows for modal to work)
         if (mainInterface != null && mainInterface.getFileMenuHandler() != null) {
             safeRender(() -> mainInterface.getFileMenuHandler().getUnsavedChangesDialog().render(),

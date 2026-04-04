@@ -43,6 +43,8 @@ module com.openmason {
     opens com.openmason.main.systems.themes.persistence to com.fasterxml.jackson.databind;
     opens com.openmason.main.systems.menus.textureCreator.io to com.fasterxml.jackson.databind;
     opens com.openmason.main.systems.rendering.model.io.omo to com.fasterxml.jackson.databind;
+    opens com.openmason.main.systems.rendering.model.io.sbo to com.fasterxml.jackson.databind;
+    opens com.openmason.main.systems.rendering.model.io.sbe to com.fasterxml.jackson.databind;
 
     // Export packages for potential future extensions
     exports com.openmason.main;

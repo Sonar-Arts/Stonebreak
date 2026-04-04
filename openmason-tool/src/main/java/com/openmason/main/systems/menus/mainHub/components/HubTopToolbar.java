@@ -23,7 +23,7 @@ public class HubTopToolbar {
      */
     public void render() {
         // Version info (left side)
-        String editorVersion = "Open Mason v0.0.2";
+        String editorVersion = "Open Mason v0.0.3";
         ImGui.text(editorVersion);
         ImGui.sameLine();
         ImGui.spacing();

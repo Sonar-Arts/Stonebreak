@@ -18,6 +18,8 @@ import com.openmason.main.systems.stateHandling.UIVisibilityState;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.dialogs.AboutDialog;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
+import com.openmason.main.systems.menus.dialogs.SBEExportWindow;
+import com.openmason.main.systems.menus.dialogs.SBOExportWindow;
 import com.openmason.main.systems.menus.preferences.PreferencesWindow;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
@@ -59,6 +61,8 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private ModelBrowserImGui modelBrowserImGui;
 
     private PreferencesWindow preferencesWindow; // Initialized after components
+    private SBOExportWindow sboExportWindow; // Initialized after components
+    private SBEExportWindow sbeExportWindow; // Initialized after components
     private final AboutDialog aboutDialog;
 
     // Menu System
@@ -196,6 +200,30 @@ public class MainImGuiInterface implements ModelBrowserListener {
                     propertyPanelImGui
             );
             logger.debug("Unified preferences window initialized (TextureCreatorImGui will be set later)");
+
+            // Initialize SBO export window
+            this.sboExportWindow = new SBOExportWindow(
+                    uiVisibilityState.getShowSBOExportWindow(),
+                    themeManager,
+                    modelState,
+                    statusService,
+                    fileDialogService
+            );
+            toolsMenuHandler.setSBOExportWindow(sboExportWindow);
+
+            // Initialize SBE export window
+            this.sbeExportWindow = new SBEExportWindow(
+                    uiVisibilityState.getShowSBEExportWindow(),
+                    themeManager,
+                    modelState,
+                    statusService,
+                    fileDialogService
+            );
+            toolsMenuHandler.setSBEExportWindow(sbeExportWindow);
+
+            toolsMenuHandler.setModelState(modelState);
+            toolsMenuHandler.setStatusService(statusService);
+            logger.debug("SBO and SBE export windows initialized");
         } catch (Exception e) {
             logger.error("Failed to initialize components", e);
         }
@@ -534,6 +562,20 @@ public class MainImGuiInterface implements ModelBrowserListener {
      */
     public PreferencesWindow getUnifiedPreferencesWindow() {
         return preferencesWindow;
+    }
+
+    /**
+     * Gets the SBO export window for external rendering.
+     */
+    public SBOExportWindow getSBOExportWindow() {
+        return sboExportWindow;
+    }
+
+    /**
+     * Gets the SBE export window for external rendering.
+     */
+    public SBEExportWindow getSBEExportWindow() {
+        return sbeExportWindow;
     }
 
     /**
