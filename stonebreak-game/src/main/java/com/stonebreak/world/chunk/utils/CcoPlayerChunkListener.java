@@ -1,6 +1,6 @@
 package com.stonebreak.world.chunk.utils;
 
-import com.stonebreak.world.chunk.api.commonChunkOperations.core.CcoPlayerTracker;
+import com.openmason.engine.voxel.cco.core.CcoPlayerTracker;
 import org.joml.Vector3f;
 
 /**

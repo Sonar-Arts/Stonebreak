@@ -1,14 +1,20 @@
 package com.stonebreak.world.chunk.api.commonChunkOperations;
 
-import com.stonebreak.world.chunk.api.commonChunkOperations.buffers.CcoBufferAllocator;
-import com.stonebreak.world.chunk.api.commonChunkOperations.buffers.CcoBufferPool;
-import com.stonebreak.world.chunk.api.commonChunkOperations.coordinates.CcoBounds;
-import com.stonebreak.world.chunk.api.commonChunkOperations.data.*;
-import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBlockReader;
-import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBlockWriter;
-import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBulkOperations;
+import com.openmason.engine.voxel.cco.buffers.CcoBufferAllocator;
+import com.openmason.engine.voxel.cco.buffers.CcoBufferPool;
+import com.openmason.engine.voxel.cco.coordinates.CcoBounds;
+import com.openmason.engine.voxel.cco.data.CcoBlockArray;
+import com.openmason.engine.voxel.cco.data.CcoChunkMetadata;
+import com.openmason.engine.voxel.cco.data.CcoChunkState;
+import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
+import com.openmason.engine.voxel.cco.data.CcoBufferHandle;
+import com.openmason.engine.voxel.cco.data.CcoMeshData;
+import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializableSnapshot;
+import com.openmason.engine.voxel.cco.operations.CcoBlockReader;
+import com.openmason.engine.voxel.cco.operations.CcoBlockWriter;
+import com.openmason.engine.voxel.cco.operations.CcoBulkOperations;
 import com.stonebreak.world.chunk.api.commonChunkOperations.serialization.*;
-import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
+import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
 import com.stonebreak.blocks.BlockType;
 
 /**

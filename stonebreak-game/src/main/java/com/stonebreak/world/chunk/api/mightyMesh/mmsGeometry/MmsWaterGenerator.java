@@ -4,7 +4,7 @@ import com.stonebreak.blocks.Water;
 import com.stonebreak.blocks.waterSystem.WaterBlock;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsBufferLayout;
+import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing.MmsTextureMapper;
 
 /**

@@ -181,6 +181,13 @@ public class Game {
         CowTextureAtlas.initialize();
         System.out.println("Cow texture atlas initialized");
 
+        // Configure engine voxel bounds before any CCO/MMS usage
+        com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(
+                new com.openmason.engine.voxel.VoxelWorldConfig(
+                        com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE,
+                        com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT,
+                        com.stonebreak.world.operations.WorldConfiguration.SEA_LEVEL));
+
         // Initialize MMS API early (before World creation)
         // World will be null at this point, but that's okay - it will be set when World is created
         com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, null);

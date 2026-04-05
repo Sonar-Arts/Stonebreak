@@ -1,7 +1,7 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsBufferLayout;
+import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 
 /**
  * Mighty Mesh System - Cross-section geometry generator for flower blocks.

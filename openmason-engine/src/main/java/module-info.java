@@ -22,6 +22,7 @@ module openmason.engine {
 
     // Java base modules
     requires java.desktop;
+    requires java.logging;
 
     // Export rendering API
     exports com.openmason.engine.rendering.api;
@@ -40,6 +41,22 @@ module openmason.engine {
     exports com.openmason.engine.rendering.model.gmr.extraction;
     exports com.openmason.engine.rendering.model.gmr.notification;
     exports com.openmason.engine.rendering.model.gmr.parts;
+
+    // Export voxel abstractions
+    exports com.openmason.engine.voxel;
+
+    // Export CCO (Common Chunk Operations)
+    exports com.openmason.engine.voxel.cco.core;
+    exports com.openmason.engine.voxel.cco.data;
+    exports com.openmason.engine.voxel.cco.state;
+    exports com.openmason.engine.voxel.cco.coordinates;
+    exports com.openmason.engine.voxel.cco.operations;
+    exports com.openmason.engine.voxel.cco.buffers;
+    exports com.openmason.engine.voxel.cco.performance;
+
+    // Export MMS (Mighty Mesh System) - being migrated
+    exports com.openmason.engine.voxel.mms.mmsCore;
+    exports com.openmason.engine.voxel.mms.mmsGeometry;
 
     // Export format classes
     exports com.openmason.engine.format.sbo;

@@ -1,5 +1,7 @@
 package com.stonebreak.world.chunk.api.commonChunkOperations.data;
 
+import com.openmason.engine.voxel.cco.data.CcoBlockArray;
+import com.openmason.engine.voxel.cco.data.CcoChunkMetadata;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.EntityData;
@@ -104,10 +106,11 @@ public final class CcoSerializableSnapshot {
      * Creates a snapshot from CCO metadata and block array.
      */
     public static CcoSerializableSnapshot from(CcoChunkMetadata metadata, CcoBlockArray blockArray) {
+        // Safe cast: the game always stores BlockType values in the IBlockType array
         return new CcoSerializableSnapshot(
                 metadata.getChunkX(),
                 metadata.getChunkZ(),
-                blockArray.getUnderlyingArray(),
+                (BlockType[][][]) blockArray.getUnderlyingArray(),
                 metadata.getLastModified(),
                 metadata.isFeaturesPopulated()
         );

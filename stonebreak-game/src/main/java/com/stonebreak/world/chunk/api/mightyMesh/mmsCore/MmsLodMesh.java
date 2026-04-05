@@ -1,5 +1,7 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
 
+import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
+
 import java.util.EnumMap;
 import java.util.Map;
 

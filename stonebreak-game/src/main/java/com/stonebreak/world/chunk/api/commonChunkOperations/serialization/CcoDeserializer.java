@@ -1,8 +1,12 @@
 package com.stonebreak.world.chunk.api.commonChunkOperations.serialization;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.chunk.api.commonChunkOperations.data.*;
-import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
+import com.openmason.engine.voxel.cco.data.CcoBlockArray;
+import com.openmason.engine.voxel.cco.data.CcoChunkMetadata;
+import com.openmason.engine.voxel.cco.data.CcoChunkState;
+import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
+import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializableSnapshot;
+import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
 import com.stonebreak.world.save.model.ChunkData;
 
 import java.util.Objects;

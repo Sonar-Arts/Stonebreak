@@ -56,7 +56,7 @@ public final class FlowBlockInteraction {
 
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-        BlockType below = chunk.getBlockReader().get(localX, y - 1, localZ);
+        BlockType below = (BlockType) chunk.getBlockReader().get(localX, y - 1, localZ);
 
         if (below == BlockType.WATER) {
             return true;

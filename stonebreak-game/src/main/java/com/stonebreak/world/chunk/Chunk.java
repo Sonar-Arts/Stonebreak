@@ -5,14 +5,18 @@ import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory.ComponentBundle;
-import com.stonebreak.world.chunk.api.commonChunkOperations.coordinates.CcoCoordinates;
-import com.stonebreak.world.chunk.api.commonChunkOperations.data.*;
-import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBlockReader;
-import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBlockWriter;
+import com.openmason.engine.voxel.cco.coordinates.CcoCoordinates;
+import com.openmason.engine.voxel.cco.data.CcoBlockArray;
+import com.openmason.engine.voxel.cco.data.CcoChunkMetadata;
+import com.openmason.engine.voxel.cco.data.CcoChunkState;
+import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
+import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializableSnapshot;
+import com.openmason.engine.voxel.cco.operations.CcoBlockReader;
+import com.openmason.engine.voxel.cco.operations.CcoBlockWriter;
 import com.stonebreak.world.chunk.api.commonChunkOperations.serialization.CcoSnapshotBuilder;
-import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
+import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
 import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshData;
+import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsRenderableHandle;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
 
@@ -89,7 +93,7 @@ public class Chunk {
      * Gets the block type at the specified local position.
      */
     public BlockType getBlock(int x, int y, int z) {
-        return reader.get(x, y, z);
+        return (BlockType) reader.get(x, y, z);
     }
 
     /**
@@ -330,7 +334,7 @@ public class Chunk {
         // CRITICAL FIX: Deep copy blocks array IMMEDIATELY to prevent race conditions
         // This ensures the snapshot is truly immutable and captures the exact state
         // at the moment checkAndClearDataDirty() was called.
-        BlockType[][][] blocksCopy = blocks.deepCopy();
+        BlockType[][][] blocksCopy = (BlockType[][][]) blocks.deepCopy();
 
         // Extract water metadata from WaterSystem
         java.util.Map<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> waterMetadata = new java.util.HashMap<>();
@@ -435,7 +439,7 @@ public class Chunk {
 
         // Copy block data
         BlockType[][][] snapshotBlocks = snapshot.getBlocks();
-        BlockType[][][] currentBlocks = blocks.getUnderlyingArray();
+        BlockType[][][] currentBlocks = (BlockType[][][]) blocks.getUnderlyingArray();
         for (int ix = 0; ix < 16; ix++) {
             for (int iy = 0; iy < 256; iy++) {
                 System.arraycopy(snapshotBlocks[ix][iy], 0, currentBlocks[ix][iy], 0, 16);

@@ -2,7 +2,7 @@ package com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.TextureAtlas;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsBufferLayout;
+import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 
 /**
  * Mighty Mesh System - Texture atlas-based texture coordinate mapper.

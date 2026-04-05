@@ -2,13 +2,13 @@ package com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.api.commonChunkOperations.core.CcoChunkData;
-import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
-import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
-import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoDirtyTracker;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsBufferLayout;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshBuilder;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshData;
+import com.openmason.engine.voxel.cco.core.CcoChunkData;
+import com.openmason.engine.voxel.cco.data.CcoChunkState;
+import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
+import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
+import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
+import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
+import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsCuboidGenerator;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsCrossGenerator;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsGeometryService;
@@ -103,7 +103,7 @@ public class MmsCcoAdapter {
             for (int lx = 0; lx < WorldConfiguration.CHUNK_SIZE; lx++) {
                 for (int ly = 0; ly < WorldConfiguration.WORLD_HEIGHT; ly++) {
                     for (int lz = 0; lz < WorldConfiguration.CHUNK_SIZE; lz++) {
-                        BlockType blockType = chunkData.getBlock(lx, ly, lz);
+                        BlockType blockType = (BlockType) chunkData.getBlock(lx, ly, lz);
 
                         // Skip air blocks
                         if (blockType == BlockType.AIR) {
@@ -354,7 +354,7 @@ public class MmsCcoAdapter {
         if (adjX >= 0 && adjX < WorldConfiguration.CHUNK_SIZE &&
             adjY >= 0 && adjY < WorldConfiguration.WORLD_HEIGHT &&
             adjZ >= 0 && adjZ < WorldConfiguration.CHUNK_SIZE) {
-            return chunkData.getBlock(adjX, adjY, adjZ);
+            return (BlockType) chunkData.getBlock(adjX, adjY, adjZ);
         }
 
         // Out of bounds - query neighboring chunk via world

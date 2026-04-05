@@ -1,5 +1,6 @@
 package com.stonebreak.blocks;
 
+import com.openmason.engine.voxel.IBlockType;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemCategory;
 import com.stonebreak.config.Settings;
@@ -8,7 +9,7 @@ import com.stonebreak.config.Settings;
  * Defines all block types in the game.
  * These are items that can be placed in the world as blocks.
  */
-public enum BlockType implements Item {
+public enum BlockType implements Item, IBlockType {
     // Added atlasX, atlasY for inventory/hotbar display.
     // These are the primary texture coordinates for the block.
     // For blocks like GRASS with multiple textures, this will be the "icon" texture (e.g., grass top).
@@ -88,6 +89,11 @@ public enum BlockType implements Item {
     
     public boolean isBreakable() {
         return breakable;
+    }
+
+    @Override
+    public boolean isAir() {
+        return this == AIR;
     }
     
     /**

@@ -1,6 +1,6 @@
 package com.stonebreak.world.chunk.api.commonChunkOperations.serialization;
 
-import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoBlockArray;
+import com.openmason.engine.voxel.cco.data.CcoBlockArray;
 
 /**
  * Provides hints to the save system for palette compression optimization.

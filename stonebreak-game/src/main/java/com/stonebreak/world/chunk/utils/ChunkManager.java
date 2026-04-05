@@ -5,8 +5,8 @@ import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
-import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
+import com.openmason.engine.voxel.cco.data.CcoChunkState;
+import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.ArrayList;

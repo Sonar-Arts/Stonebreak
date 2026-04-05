@@ -2,8 +2,8 @@ package com.stonebreak.world.chunk.utils;
 
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.api.commonChunkOperations.performance.CcoMetrics;
-import com.stonebreak.world.chunk.api.commonChunkOperations.performance.CcoProfiler;
+import com.openmason.engine.voxel.cco.performance.CcoMetrics;
+import com.openmason.engine.voxel.cco.performance.CcoProfiler;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.io.BufferedWriter;

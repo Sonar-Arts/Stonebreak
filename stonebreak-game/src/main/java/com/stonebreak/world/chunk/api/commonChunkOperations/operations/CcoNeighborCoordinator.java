@@ -1,7 +1,7 @@
 package com.stonebreak.world.chunk.api.commonChunkOperations.operations;
 
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
+import com.openmason.engine.voxel.cco.data.CcoChunkState;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.function.Consumer;

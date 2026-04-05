@@ -1,6 +1,8 @@
 package com.stonebreak.world.chunk.api.commonChunkOperations.serialization;
 
-import com.stonebreak.world.chunk.api.commonChunkOperations.data.*;
+import com.openmason.engine.voxel.cco.data.CcoBlockArray;
+import com.openmason.engine.voxel.cco.data.CcoChunkMetadata;
+import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializableSnapshot;
 
 import java.time.LocalDateTime;
 import java.util.Objects;

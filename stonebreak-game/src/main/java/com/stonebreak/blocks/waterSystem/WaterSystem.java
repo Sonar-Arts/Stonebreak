@@ -4,7 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.handlers.FlowBlockInteraction;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBlockReader;
+import com.openmason.engine.voxel.cco.operations.CcoBlockReader;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.HashMap;
@@ -711,7 +711,7 @@ public final class WaterSystem {
 
         int localX = Math.floorMod(pos.x(), WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(pos.z(), WorldConfiguration.CHUNK_SIZE);
-        return reader.get(localX, pos.y(), localZ);
+        return (BlockType) reader.get(localX, pos.y(), localZ);
     }
 
     /**
