@@ -17,7 +17,6 @@ import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.components.OverlayRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
-import com.stonebreak.rendering.sbo.SBOIconRenderer;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
 import com.stonebreak.rendering.sbo.SBOTextureIntegrator;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher;
@@ -146,9 +145,6 @@ public class Renderer {
                 }
 
                 if (meshProcessor.size() > 0) {
-                    // Initialize SBO icon renderer for hotbar/drop rendering
-                    SBOIconRenderer.initialize(meshProcessor);
-
                     // Create dispatcher with SBO provider (deferred -- MmsAPI not initialized yet)
                     MmsFaceCullingService cullingService = new MmsFaceCullingService();
                     MmsSBOBlockProvider sboProvider = new MmsSBOBlockProvider(meshProcessor, cullingService);
@@ -190,7 +186,6 @@ public class Renderer {
     public void applySBODispatcher() {
         if (pendingSBODispatcher != null && com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.isInitialized()) {
             com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.getInstance().setSBODispatcher(pendingSBODispatcher, pendingSBOProvider);
-            SBOIconRenderer.uploadToGPU();
             System.out.println("[Renderer] SBO dispatcher applied to MmsAPI");
             pendingSBODispatcher = null;
             pendingSBOProvider = null;
