@@ -29,6 +29,7 @@ import com.stonebreak.rendering.gameWorld.sky.SkyRenderer;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
 import com.stonebreak.world.World;
+import com.openmason.engine.voxel.sbo.SBORenderData;
 
 /**
  * Specialized renderer for 3D world elements including chunks, entities, and world-specific effects.
@@ -121,6 +122,9 @@ public class WorldRenderer {
 
         // Render opaque pass
         renderOpaquePass(visibleChunks);
+
+        // Render SBO blocks (blocks with SBO textures, rendered separately from atlas)
+        renderSBOPass(visibleChunks);
 
         // Render entities after opaque blocks but before transparent water
         // This allows water to blend over entities when viewing through water
@@ -247,6 +251,27 @@ public class WorldRenderer {
     }
 
     private static int debugOpaquePassCount = 0;
+
+    /**
+     * Render SBO blocks from all visible chunks.
+     * Each face binds its own SBO texture before drawing.
+     */
+    private void renderSBOPass(Map<ChunkPosition, Chunk> visibleChunks) {
+        int sboCount = 0;
+        for (Chunk chunk : visibleChunks.values()) {
+            com.openmason.engine.voxel.sbo.SBORenderData sboData = chunk.getSBORenderData();
+            if (sboData != null) {
+                sboCount++;
+                sboData.render();
+            }
+        }
+        if (debugSBOPassCount < 3 && sboCount > 0) {
+            System.out.println("[WorldRenderer] SBO pass: " + sboCount + " chunks with SBO meshes");
+            debugSBOPassCount++;
+        }
+    }
+
+    private static int debugSBOPassCount = 0;
 
     /**
      * Render transparent pass (water parts of chunks).

@@ -19,6 +19,11 @@ import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
 import com.stonebreak.rendering.sbo.SBOTextureIntegrator;
+import com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher;
+import com.openmason.engine.voxel.mms.mmsIntegration.MmsFaceCullingService;
+import com.openmason.engine.voxel.mms.mmsIntegration.MmsSBOBlockProvider;
+import com.openmason.engine.voxel.sbo.SBOMeshProcessor;
+import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.ui.Font;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.chat.ChatSystem;
@@ -41,6 +46,10 @@ public class Renderer {
     private final RenderingConfigurationManager configManager;
     private final BlockDefinitionRegistry blockRegistry;
     
+    // SBO dispatcher (deferred until MmsAPI is initialized)
+    private MmsBlockGeometryDispatcher pendingSBODispatcher;
+    private MmsSBOBlockProvider pendingSBOProvider;
+
     // Specialized renderers
     private final BlockRenderer blockRenderer;
     private final PlayerArmRenderer playerArmRenderer;
@@ -125,6 +134,25 @@ public class Renderer {
                     int integrated = integrator.integrateAll();
                     System.out.println("[Renderer] SBO integration: " + integrated + " block textures updated");
                 }
+
+                // Process SBO meshes for GMR rendering
+                SBOMeshProcessor meshProcessor = new SBOMeshProcessor();
+                for (com.stonebreak.blocks.BlockType blockType : com.stonebreak.blocks.BlockType.values()) {
+                    if (bridge.isSBOBlock(blockType)) {
+                        SBOParseResult sbo = bridge.getSBODefinition(blockType);
+                        meshProcessor.process(blockType, sbo);
+                    }
+                }
+
+                if (meshProcessor.size() > 0) {
+                    // Create dispatcher with SBO provider (deferred -- MmsAPI not initialized yet)
+                    MmsFaceCullingService cullingService = new MmsFaceCullingService();
+                    MmsSBOBlockProvider sboProvider = new MmsSBOBlockProvider(meshProcessor, cullingService);
+                    pendingSBODispatcher = new MmsBlockGeometryDispatcher();
+                    pendingSBODispatcher.registerProvider(sboProvider);
+                    pendingSBOProvider = sboProvider;
+                    System.out.println("[Renderer] SBO mesh processor: " + meshProcessor.size() + " block types processed (dispatcher deferred)");
+                }
             }
         } catch (Exception e) {
             System.err.println("[Renderer] SBO initialization failed (non-fatal): " + e.getMessage());
@@ -149,6 +177,19 @@ public class Renderer {
 
     public Font getFont() {
         return resourceManager.getFont();
+    }
+
+    /**
+     * Apply the deferred SBO dispatcher to MmsAPI.
+     * Call this after MmsAPI is initialized.
+     */
+    public void applySBODispatcher() {
+        if (pendingSBODispatcher != null && com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.isInitialized()) {
+            com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.getInstance().setSBODispatcher(pendingSBODispatcher, pendingSBOProvider);
+            System.out.println("[Renderer] SBO dispatcher applied to MmsAPI");
+            pendingSBODispatcher = null;
+            pendingSBOProvider = null;
+        }
     }
 
     public ShaderProgram getShaderProgram() {

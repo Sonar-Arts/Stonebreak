@@ -274,6 +274,17 @@ public final class MmsRenderableHandle implements AutoCloseable {
     }
 
     /**
+     * Renders a sub-range of the mesh indices.
+     * VAO must be bound first via {@link #bind()}.
+     *
+     * @param indexOffset byte offset into the index buffer (index * 4 for GL_UNSIGNED_INT)
+     * @param count       number of indices to draw
+     */
+    public void renderRange(int indexOffset, int count) {
+        GL15.glDrawElements(GL15.GL_TRIANGLES, count, GL15.GL_UNSIGNED_INT, (long) indexOffset * 4L);
+    }
+
+    /**
      * Binds the VAO for rendering without drawing.
      * Useful for custom rendering operations.
      *

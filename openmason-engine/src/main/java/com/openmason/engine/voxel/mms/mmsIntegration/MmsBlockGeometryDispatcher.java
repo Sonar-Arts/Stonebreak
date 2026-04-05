@@ -57,6 +57,21 @@ public class MmsBlockGeometryDispatcher {
     }
 
     /**
+     * Check if any registered provider handles the given block type.
+     *
+     * @param blockType the block type to check
+     * @return true if a provider exists for this block type
+     */
+    public boolean handles(IBlockType blockType) {
+        for (MmsBlockGeometryProvider provider : providers) {
+            if (provider.handles(blockType)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Get the number of registered providers.
      */
     public int getProviderCount() {

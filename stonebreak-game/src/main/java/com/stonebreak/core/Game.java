@@ -193,6 +193,11 @@ public class Game {
         com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, null);
         System.out.println("[MMS-API] Mighty Mesh System pre-initialized (World will be set later)");
 
+        // Apply deferred SBO dispatcher now that MmsAPI is initialized
+        if (renderer != null) {
+            renderer.applySBODispatcher();
+        }
+
         System.out.println("[STARTUP] Core components initialized (no world/player yet)");
     }
 

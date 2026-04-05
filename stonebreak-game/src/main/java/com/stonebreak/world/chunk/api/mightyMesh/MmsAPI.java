@@ -8,6 +8,7 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
 import com.openmason.engine.voxel.cco.core.CcoChunkData;
 import com.openmason.engine.voxel.cco.data.CcoChunkMetadata;
+import com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshCache;
@@ -182,7 +183,7 @@ public final class MmsAPI {
      * @param chunk Chunk to generate mesh for
      * @return Generated mesh data
      */
-    public MmsMeshData generateChunkMesh(Chunk chunk) {
+    public ChunkMeshResult generateChunkMesh(Chunk chunk) {
         ensureInitialized();
 
         if (chunk == null) {
@@ -195,14 +196,15 @@ public final class MmsAPI {
             // Create CcoChunkData wrapper for the chunk
             CcoChunkDataWrapper wrapper = new CcoChunkDataWrapper(chunk);
 
-            // Use CCO adapter to generate mesh
-            MmsMeshData meshData = ccoAdapter.generateChunkMesh(
+            // Use CCO adapter to generate mesh (returns atlas + SBO meshes)
+            ChunkMeshResult meshResult = ccoAdapter.generateChunkMesh(
                 wrapper,
                 chunk.getCcoStateManager(),
                 chunk.getCcoDirtyTracker()
             );
 
-            // Record statistics
+            // Record statistics for atlas mesh
+            MmsMeshData meshData = meshResult.atlasMesh();
             long generationTime = System.currentTimeMillis() - startTime;
             statistics.recordMeshGeneration(
                 meshData.getVertexCount(),
@@ -211,7 +213,7 @@ public final class MmsAPI {
                 meshData.getMemoryUsageBytes()
             );
 
-            return meshData;
+            return meshResult;
 
         } catch (Exception e) {
             statistics.recordMeshFailure();
@@ -258,8 +260,8 @@ public final class MmsAPI {
      * @return Renderable handle
      */
     public MmsRenderableHandle generateAndUploadChunkMesh(Chunk chunk) {
-        MmsMeshData meshData = generateChunkMesh(chunk);
-        return uploadMeshToGPU(meshData);
+        ChunkMeshResult result = generateChunkMesh(chunk);
+        return uploadMeshToGPU(result.atlasMesh());
     }
 
     // === Advanced Features (MMS 1.1) ===
@@ -290,8 +292,9 @@ public final class MmsAPI {
             }
         }
 
-        // Generate mesh
-        MmsMeshData meshData = generateChunkMesh(chunk);
+        // Generate mesh - extract atlas mesh from result
+        ChunkMeshResult result = generateChunkMesh(chunk);
+        MmsMeshData meshData = result.atlasMesh();
 
         // Cache the result
         if (meshCachingEnabled && !meshData.isEmpty()) {
@@ -592,6 +595,17 @@ public final class MmsAPI {
         meshPipeline = new MmsMeshPipeline(world, config, errorReporter);
         System.out.println("[MmsAPI] Created new mesh pipeline for world");
         return meshPipeline;
+    }
+
+    /**
+     * Sets the SBO block geometry dispatcher on the CCO adapter.
+     * Call this after SBO mesh processing is initialized.
+     */
+    public void setSBODispatcher(com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher dispatcher,
+                                com.openmason.engine.voxel.mms.mmsIntegration.MmsSBOBlockProvider provider) {
+        if (ccoAdapter != null) {
+            ccoAdapter.setSBODispatcher(dispatcher, provider);
+        }
     }
 
     // === Lifecycle ===

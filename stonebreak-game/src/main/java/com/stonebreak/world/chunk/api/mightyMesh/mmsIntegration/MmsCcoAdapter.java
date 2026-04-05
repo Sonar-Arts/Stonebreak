@@ -6,9 +6,13 @@ import com.openmason.engine.voxel.cco.core.CcoChunkData;
 import com.openmason.engine.voxel.cco.data.CcoChunkState;
 import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
 import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
+import com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult;
 import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
+import com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher;
+import com.openmason.engine.voxel.mms.mmsIntegration.MmsSBOBlockProvider;
+import com.openmason.engine.voxel.sbo.SBORenderData;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsCrossGenerator;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsGeometryService;
@@ -37,6 +41,8 @@ public class MmsCcoAdapter {
     private final MmsTextureMapper textureMapper;
     private MmsWaterGenerator waterGenerator; // Created when world is set
     private World world; // Not final - can be set after construction
+    private MmsBlockGeometryDispatcher sboDispatcher; // For SBO blocks (set after SBO init)
+    private MmsSBOBlockProvider sboProvider; // Direct reference for flush/batch operations
 
     /**
      * Creates a CCO adapter with the specified services.
@@ -77,6 +83,19 @@ public class MmsCcoAdapter {
     }
 
     /**
+     * Sets the SBO block geometry dispatcher.
+     * When set, SBO blocks are routed to the dispatcher and their mesh data
+     * goes into a separate SBO mesh builder (for separate texture rendering).
+     *
+     * @param dispatcher the SBO geometry dispatcher
+     */
+    public void setSBODispatcher(MmsBlockGeometryDispatcher dispatcher, MmsSBOBlockProvider provider) {
+        this.sboDispatcher = dispatcher;
+        this.sboProvider = provider;
+        System.out.println("[MmsCcoAdapter] SBO dispatcher set (" + dispatcher.getProviderCount() + " providers)");
+    }
+
+    /**
      * Generates mesh data for a chunk using CCO data.
      *
      * @param chunkData CCO chunk data
@@ -84,7 +103,7 @@ public class MmsCcoAdapter {
      * @param dirtyTracker CCO dirty tracker
      * @return Generated mesh data
      */
-    public MmsMeshData generateChunkMesh(CcoChunkData chunkData,
+    public ChunkMeshResult generateChunkMesh(CcoChunkData chunkData,
                                          CcoAtomicStateManager stateManager,
                                          CcoDirtyTracker dirtyTracker) {
 
@@ -92,9 +111,17 @@ public class MmsCcoAdapter {
         stateManager.addState(CcoChunkState.MESH_GENERATING);
 
         try {
-            MmsMeshBuilder builder = MmsMeshBuilder.createWithCapacity(
-                WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE * 64 // Estimate
+            MmsMeshBuilder atlasBuilder = MmsMeshBuilder.createWithCapacity(
+                WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE * 64
             );
+            MmsMeshBuilder sboBuilder = (sboProvider != null)
+                    ? MmsMeshBuilder.createWithCapacity(WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE * 16)
+                    : null;
+
+            // Reset SBO provider for this chunk
+            if (sboProvider != null) {
+                sboProvider.resetForChunk();
+            }
 
             int chunkX = chunkData.getChunkX();
             int chunkZ = chunkData.getChunkZ();
@@ -110,32 +137,51 @@ public class MmsCcoAdapter {
                             continue;
                         }
 
+                        // Route SBO blocks to the SBO dispatcher (separate mesh/texture)
+                        if (sboDispatcher != null && sboDispatcher.handles(blockType)) {
+                            sboDispatcher.addBlockGeometry(sboBuilder, blockType,
+                                    lx, ly, lz, chunkX, chunkZ, chunkData);
+                            continue;
+                        }
+
                         // Handle cross-section blocks (flowers)
                         if (isCrossBlock(blockType)) {
-                            addCrossBlock(builder, blockType, lx, ly, lz, chunkX, chunkZ);
+                            addCrossBlock(atlasBuilder, blockType, lx, ly, lz, chunkX, chunkZ);
                             continue;
                         }
 
                         // Handle water blocks with special geometry
                         if (blockType == BlockType.WATER) {
-                            addWaterBlockWithCulling(builder, lx, ly, lz, chunkX, chunkZ, chunkData);
+                            addWaterBlockWithCulling(atlasBuilder, lx, ly, lz, chunkX, chunkZ, chunkData);
                             continue;
                         }
 
                         // Handle standard cube blocks with face culling
-                        addCubeBlockWithCulling(builder, blockType, lx, ly, lz, chunkX, chunkZ, chunkData);
+                        addCubeBlockWithCulling(atlasBuilder, blockType, lx, ly, lz, chunkX, chunkZ, chunkData);
                     }
                 }
             }
 
-            // Build final mesh
-            MmsMeshData meshData = builder.build();
+            // Flush SBO blocks sorted by face into the SBO builder
+            SBORenderData.FaceBatch[] sboBatches = null;
+            if (sboProvider != null && sboBuilder != null) {
+                sboProvider.flushToBuilder(sboBuilder, chunkData);
+                if (!sboBuilder.isEmpty()) {
+                    // Provider tracked the block type during addBlockGeometry calls
+                    sboBatches = sboProvider.buildFaceBatches(sboProvider.getPendingBlockType());
+                }
+            }
+
+            // Build final meshes
+            MmsMeshData atlasMesh = atlasBuilder.build();
+            MmsMeshData sboMesh = (sboBuilder != null && !sboBuilder.isEmpty()) ? sboBuilder.build() : null;
+            ChunkMeshResult meshResult = new ChunkMeshResult(atlasMesh, sboMesh, sboBatches);
 
             // Update CCO state
             stateManager.removeState(CcoChunkState.MESH_GENERATING);
             stateManager.addState(CcoChunkState.MESH_CPU_READY);
 
-            return meshData;
+            return meshResult;
 
         } catch (Exception e) {
             // Handle errors

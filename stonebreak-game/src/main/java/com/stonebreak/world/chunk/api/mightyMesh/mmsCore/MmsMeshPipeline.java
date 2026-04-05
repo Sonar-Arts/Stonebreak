@@ -249,10 +249,14 @@ public final class MmsMeshPipeline {
                 throw new IllegalStateException("MMS API not initialized");
             }
 
-            meshData = MmsAPI.getInstance().generateChunkMesh(chunk);
+            com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult meshResult = MmsAPI.getInstance().generateChunkMesh(chunk);
+            meshData = meshResult.atlasMesh();
             success = meshData != null && !meshData.isEmpty();
 
             if (success) {
+                // Store the full mesh result on the chunk so SBO mesh also gets uploaded
+                chunk.setPendingChunkMeshResult(meshResult);
+
                 // Get priority for this chunk (default to world generation priority)
                 int priority = chunkPriorityMap.getOrDefault(chunk, PRIORITY_WORLD_GENERATION);
 
@@ -379,6 +383,20 @@ public final class MmsMeshPipeline {
 
                     // Set new handle and mark GPU ready
                     task.chunk.setMmsRenderableHandle(handle);
+
+                    // Upload SBO mesh if the chunk has one
+                    com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult meshResult = task.chunk.getPendingChunkMeshResult();
+                    if (meshResult != null && meshResult.hasSBOMesh()) {
+                        com.openmason.engine.voxel.sbo.SBORenderData oldSbo = task.chunk.getSBORenderData();
+                        if (oldSbo != null) {
+                            handlesPendingGpuCleanup.offer(oldSbo.getHandle());
+                        }
+                        MmsRenderableHandle sboHandle = MmsAPI.getInstance().uploadMeshToGPU(meshResult.sboMesh());
+                        task.chunk.setSBORenderData(
+                                new com.openmason.engine.voxel.sbo.SBORenderData(sboHandle, meshResult.sboBatches()));
+                    }
+                    task.chunk.setPendingChunkMeshResult(null); // Clear after upload
+
                     // CRITICAL: Remove MESH_CPU_READY first because mesh states are mutually exclusive!
                     task.chunk.getCcoStateManager().removeState(CcoChunkState.MESH_CPU_READY);
                     task.chunk.getCcoStateManager().addState(CcoChunkState.MESH_GPU_UPLOADED);

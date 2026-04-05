@@ -16,6 +16,7 @@ import com.openmason.engine.voxel.cco.operations.CcoBlockWriter;
 import com.stonebreak.world.chunk.api.commonChunkOperations.serialization.CcoSnapshotBuilder;
 import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
 import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
+import com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
@@ -50,7 +51,9 @@ public class Chunk {
 
     // Mesh data and buffers (MMS-based)
     private MmsMeshData pendingMmsMeshData;
+    private ChunkMeshResult pendingChunkMeshResult;
     private MmsRenderableHandle renderableHandle;
+    private com.openmason.engine.voxel.sbo.SBORenderData sboRenderData;
     private boolean meshGenerated = false;
 
     /**
@@ -128,7 +131,8 @@ public class Chunk {
                 return;
             }
 
-            pendingMmsMeshData = MmsAPI.getInstance().generateChunkMesh(this);
+            pendingChunkMeshResult = MmsAPI.getInstance().generateChunkMesh(this);
+            pendingMmsMeshData = pendingChunkMeshResult.atlasMesh();
 
             // MMS API already updates state, but ensure consistency
             // Mark mesh as ready for GPU upload
@@ -173,6 +177,18 @@ public class Chunk {
             renderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingMmsMeshData);
             meshGenerated = true;
 
+            // Upload SBO mesh if present
+            if (pendingChunkMeshResult != null && pendingChunkMeshResult.hasSBOMesh()) {
+                if (sboRenderData != null) {
+                    sboRenderData.close();
+                }
+                MmsRenderableHandle sboHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingChunkMeshResult.sboMesh());
+                sboRenderData = new com.openmason.engine.voxel.sbo.SBORenderData(sboHandle, pendingChunkMeshResult.sboBatches());
+            } else if (sboRenderData != null) {
+                sboRenderData.close();
+                sboRenderData = null;
+            }
+
             stateManager.removeState(CcoChunkState.MESH_CPU_READY);
             stateManager.addState(CcoChunkState.MESH_GPU_UPLOADED);
 
@@ -185,6 +201,7 @@ public class Chunk {
             dirtyTracker.markMeshDirtyOnly();
         } finally {
             pendingMmsMeshData = null;
+            pendingChunkMeshResult = null;
         }
     }
 
@@ -513,6 +530,30 @@ public class Chunk {
     // ===== Resource Cleanup =====
 
     /**
+     * Gets the SBO mesh renderable handle for blocks rendered with SBO textures.
+     * @return SBO renderable handle, or null if no SBO blocks in this chunk
+     */
+    public com.openmason.engine.voxel.sbo.SBORenderData getSBORenderData() {
+        return sboRenderData;
+    }
+
+    /**
+     * Sets the pending chunk mesh result from the mesh pipeline.
+     * This ensures the SBO mesh is available for GPU upload in applyPreparedDataToGL().
+     */
+    public void setPendingChunkMeshResult(ChunkMeshResult result) {
+        this.pendingChunkMeshResult = result;
+    }
+
+    public ChunkMeshResult getPendingChunkMeshResult() {
+        return pendingChunkMeshResult;
+    }
+
+    public void setSBORenderData(com.openmason.engine.voxel.sbo.SBORenderData data) {
+        this.sboRenderData = data;
+    }
+
+    /**
      * Cleans up CPU-side resources. Safe to call from any thread.
      * NOTE: Block array cleanup removed - blocks must remain accessible for
      * collision detection and neighbor chunk meshing during unload.
@@ -520,6 +561,7 @@ public class Chunk {
      */
     public void cleanupCpuResources() {
         pendingMmsMeshData = null;
+        pendingChunkMeshResult = null;
 
         // Block array intentionally NOT cleared here - it's needed for:
         // 1. Player collision detection during chunk unload
@@ -535,6 +577,10 @@ public class Chunk {
         if (renderableHandle != null) {
             renderableHandle.close();
             renderableHandle = null;
+        }
+        if (sboRenderData != null) {
+            sboRenderData.close();
+            sboRenderData = null;
         }
         meshGenerated = false;
     }

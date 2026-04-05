@@ -2,6 +2,7 @@ package com.openmason.engine.voxel.mms.mmsGeometry;
 
 import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.cco.core.CcoChunkData;
+import com.openmason.engine.voxel.cco.coordinates.CcoBounds;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
 
 /**
@@ -30,10 +31,6 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
  * @since MMS 1.1
  */
 public final class MmsGreedyMesher {
-
-    // Chunk dimensions
-    private static final int CHUNK_SIZE = 16;
-    private static final int CHUNK_HEIGHT = 256;
 
     // Face direction constants
     private static final int DIR_POS_X = 0;
@@ -137,10 +134,12 @@ public final class MmsGreedyMesher {
     }
 
     private static int[] getAxisDimensions(int direction) {
+        int cs = CcoBounds.getConfig().chunkSize();
+        int ch = CcoBounds.getConfig().worldHeight();
         return switch (direction) {
-            case DIR_POS_X, DIR_NEG_X -> new int[]{CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE};
-            case DIR_POS_Y, DIR_NEG_Y -> new int[]{CHUNK_SIZE, CHUNK_SIZE, CHUNK_HEIGHT};
-            case DIR_POS_Z, DIR_NEG_Z -> new int[]{CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE};
+            case DIR_POS_X, DIR_NEG_X -> new int[]{cs, ch, cs};
+            case DIR_POS_Y, DIR_NEG_Y -> new int[]{cs, cs, ch};
+            case DIR_POS_Z, DIR_NEG_Z -> new int[]{cs, ch, cs};
             default -> throw new IllegalArgumentException("Invalid direction: " + direction);
         };
     }
