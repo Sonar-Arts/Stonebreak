@@ -1,6 +1,4 @@
-package com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
-
-import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
+package com.openmason.engine.voxel.mms.mmsCore;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -27,7 +25,7 @@ import java.util.zip.GZIPOutputStream;
  * - L2 Cache: Disk-based cache (slower, larger capacity)
  *
  * Performance:
- * - L1 hit: <1μs
+ * - L1 hit: <1us
  * - L2 hit: ~10ms (disk I/O + decompression)
  * - Miss: ~5ms (mesh generation)
  *

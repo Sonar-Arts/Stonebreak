@@ -2,22 +2,23 @@ package com.stonebreak.world.chunk.api.mightyMesh;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.world.chunk.api.voxel.TextureAtlasAdapter;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
 import com.openmason.engine.voxel.cco.core.CcoChunkData;
 import com.openmason.engine.voxel.cco.data.CcoChunkMetadata;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsRenderableHandle;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshCache;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsBufferPool;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsAsyncUploader;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsLodLevel;
+import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
+import com.openmason.engine.voxel.mms.mmsCore.MmsMeshCache;
+import com.openmason.engine.voxel.mms.mmsCore.MmsBufferPool;
+import com.openmason.engine.voxel.mms.mmsCore.MmsAsyncUploader;
+import com.openmason.engine.voxel.mms.mmsCore.MmsLodLevel;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.MmsCcoAdapter;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsMetrics.MmsStatistics;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing.MmsAtlasTextureMapper;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing.MmsTextureMapper;
+import com.openmason.engine.voxel.mms.mmsMetrics.MmsStatistics;
+import com.openmason.engine.voxel.mms.mmsTexturing.MmsAtlasTextureMapper;
+import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
 
 /**
  * Mighty Mesh System - Main API Facade.
@@ -90,7 +91,7 @@ public final class MmsAPI {
         }
 
         this.world = world; // Can be null initially
-        this.textureMapper = new MmsAtlasTextureMapper(textureAtlas);
+        this.textureMapper = new MmsAtlasTextureMapper(new TextureAtlasAdapter(textureAtlas));
         this.ccoAdapter = new MmsCcoAdapter(textureMapper, world);
         this.statistics = new MmsStatistics();
 

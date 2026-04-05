@@ -1,6 +1,5 @@
-package com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
+package com.openmason.engine.voxel.mms.mmsGeometry;
 
-import com.stonebreak.blocks.BlockType;
 import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 
 /**
@@ -102,10 +101,10 @@ public class MmsCrossGenerator implements MmsGeometryService {
         int[] indices = new int[MmsBufferLayout.INDICES_PER_CROSS];
         int idx = 0;
 
-        // Cross uses 8 vertices (2 planes × 4 vertices each)
+        // Cross uses 8 vertices (2 planes x 4 vertices each)
         // Each plane is rendered from both sides via index winding
-        // Front face: CCW winding (0→1→2, 0→2→3)
-        // Back face: CW winding (0→3→2, 0→2→1) which appears as CCW from the back
+        // Front face: CCW winding (0->1->2, 0->2->3)
+        // Back face: CW winding (0->3->2, 0->2->1) which appears as CCW from the back
 
         // Plane 1 Front (vertices 0-3, CCW from front)
         indices[idx++] = baseVertexIndex + 0;

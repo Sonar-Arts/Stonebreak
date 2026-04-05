@@ -1,11 +1,13 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
 
+import com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator;
+import com.openmason.engine.voxel.mms.mmsGeometry.MmsGeometryService;
 import com.stonebreak.blocks.Water;
 import com.stonebreak.blocks.waterSystem.WaterBlock;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
 import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing.MmsTextureMapper;
+import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
 
 /**
  * Mighty Mesh System - Water block geometry generator.

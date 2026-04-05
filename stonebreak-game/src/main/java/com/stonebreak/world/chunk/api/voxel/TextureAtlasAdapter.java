@@ -14,10 +14,15 @@ public record TextureAtlasAdapter(TextureAtlas textureAtlas) implements ITexture
 
     @Override
     public float[] getBlockFaceUVs(IBlockType blockType, int face) {
-        if (blockType instanceof BlockTypeAdapter adapter) {
-            BlockType.Face blockFace = face >= 0 && face < FACES.length ? FACES[face] : null;
-            return textureAtlas.getBlockFaceUVs(adapter.unwrap(), blockFace);
+        BlockType bt;
+        if (blockType instanceof BlockType directType) {
+            bt = directType;
+        } else if (blockType instanceof BlockTypeAdapter adapter) {
+            bt = adapter.unwrap();
+        } else {
+            return new float[]{0, 0, 1, 1};
         }
-        return new float[]{0, 0, 1, 1};
+        BlockType.Face blockFace = face >= 0 && face < FACES.length ? FACES[face] : null;
+        return textureAtlas.getBlockFaceUVs(bt, blockFace);
     }
 }

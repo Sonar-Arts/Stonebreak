@@ -1,6 +1,5 @@
-package com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
+package com.openmason.engine.voxel.mms.mmsGeometry;
 
-import com.stonebreak.blocks.BlockType;
 import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 
 /**

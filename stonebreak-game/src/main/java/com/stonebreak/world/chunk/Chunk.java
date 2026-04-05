@@ -17,7 +17,7 @@ import com.stonebreak.world.chunk.api.commonChunkOperations.serialization.CcoSna
 import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
 import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsRenderableHandle;
+import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
 
 

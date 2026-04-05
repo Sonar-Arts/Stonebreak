@@ -1,6 +1,4 @@
-package com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
-
-import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
+package com.openmason.engine.voxel.mms.mmsCore;
 
 import java.util.EnumMap;
 import java.util.Map;

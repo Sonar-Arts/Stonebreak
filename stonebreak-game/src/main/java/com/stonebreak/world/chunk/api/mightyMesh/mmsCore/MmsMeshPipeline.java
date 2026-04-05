@@ -1,6 +1,7 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
 
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
+import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkManager;

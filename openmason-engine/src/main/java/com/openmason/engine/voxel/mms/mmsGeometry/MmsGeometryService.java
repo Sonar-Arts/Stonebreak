@@ -1,6 +1,4 @@
-package com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
-
-import com.stonebreak.blocks.BlockType;
+package com.openmason.engine.voxel.mms.mmsGeometry;
 
 /**
  * Mighty Mesh System - Geometry generation service interface.

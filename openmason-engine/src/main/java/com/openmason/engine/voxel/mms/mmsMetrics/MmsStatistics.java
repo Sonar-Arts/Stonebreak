@@ -1,4 +1,4 @@
-package com.stonebreak.world.chunk.api.mightyMesh.mmsMetrics;
+package com.openmason.engine.voxel.mms.mmsMetrics;
 
 import java.util.concurrent.atomic.AtomicLong;
 

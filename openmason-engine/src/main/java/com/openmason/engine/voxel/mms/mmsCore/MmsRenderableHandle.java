@@ -1,7 +1,5 @@
-package com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
+package com.openmason.engine.voxel.mms.mmsCore;
 
-import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
-import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 

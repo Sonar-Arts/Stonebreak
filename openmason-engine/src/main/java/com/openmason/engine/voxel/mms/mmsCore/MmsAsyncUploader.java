@@ -1,6 +1,4 @@
-package com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
-
-import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
+package com.openmason.engine.voxel.mms.mmsCore;
 
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;

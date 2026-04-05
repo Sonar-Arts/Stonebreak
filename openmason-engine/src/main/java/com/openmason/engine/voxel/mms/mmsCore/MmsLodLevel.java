@@ -1,4 +1,4 @@
-package com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
+package com.openmason.engine.voxel.mms.mmsCore;
 
 /**
  * Mighty Mesh System - Level of Detail enumeration.

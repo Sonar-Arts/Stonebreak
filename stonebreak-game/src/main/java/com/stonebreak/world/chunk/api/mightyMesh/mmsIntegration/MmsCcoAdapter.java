@@ -9,12 +9,12 @@ import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
 import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsCuboidGenerator;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsCrossGenerator;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsGeometryService;
+import com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator;
+import com.openmason.engine.voxel.mms.mmsGeometry.MmsCrossGenerator;
+import com.openmason.engine.voxel.mms.mmsGeometry.MmsGeometryService;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsWaterGenerator;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing.MmsAtlasTextureMapper;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing.MmsTextureMapper;
+import com.openmason.engine.voxel.mms.mmsTexturing.MmsAtlasTextureMapper;
+import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
