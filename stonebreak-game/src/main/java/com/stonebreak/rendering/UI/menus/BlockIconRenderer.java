@@ -291,11 +291,17 @@ public class BlockIconRenderer {
      * Renders the actual block cube geometry.
      */
     private void renderBlockCube(BlockType type, TextureAtlas textureAtlas) {
-        // Use CBR system for rendering block cube
+        // Use SBO model if available (supports non-cubic block shapes)
+        if (com.stonebreak.rendering.sbo.SBOIconRenderer.hasSBOModel(type)) {
+            com.stonebreak.rendering.sbo.SBOIconRenderer.render(type);
+            return;
+        }
+
+        // Fallback: Use CBR system for rendering block cube
         if (!blockRenderer.hasCBRSupport()) {
             throw new IllegalStateException("BlockIconRenderer requires CBR support. BlockRenderer must be initialized with BlockDefinitionRegistry.");
         }
-        
+
         CBRResourceManager.BlockRenderResource resource = blockRenderer.getBlockRenderResource(type);
         resource.getMesh().bind();
         glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);

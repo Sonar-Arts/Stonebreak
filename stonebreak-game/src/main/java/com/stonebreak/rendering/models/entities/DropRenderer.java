@@ -246,10 +246,14 @@ public class DropRenderer {
         float alpha = isTransparent ? 0.95f : 1.0f;
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, alpha));
         
-        // Render the block mesh
-        resource.getMesh().bind();
-        glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
-        
+        // Render the block mesh -- use SBO model if available
+        if (com.stonebreak.rendering.sbo.SBOIconRenderer.hasSBOModel(blockType)) {
+            com.stonebreak.rendering.sbo.SBOIconRenderer.render(blockType);
+        } else {
+            resource.getMesh().bind();
+            glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
+        }
+
         // Restore depth writes for subsequent rendering
         glDepthMask(true);
     }
