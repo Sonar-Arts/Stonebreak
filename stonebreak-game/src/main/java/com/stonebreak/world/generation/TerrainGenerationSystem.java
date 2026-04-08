@@ -215,7 +215,7 @@ public class TerrainGenerationSystem {
                     // Check cave density if potentially underground
                     // Caves are integrated into terrain generation (Minecraft 1.18+ approach)
                     if (shouldBeSolid && caveGenerator.canGenerateCaves(y)) {
-                        float caveDensity = caveGenerator.sampleCaveDensity(worldX, y, worldZ, height);
+                        float caveDensity = caveGenerator.sampleCaveDensity(worldX, y, worldZ, height, params.weirdness);
                         // High cave density carves out the block
                         if (caveDensity > 0.0f) {
                             shouldBeSolid = false; // Cave removes this block

@@ -67,7 +67,7 @@ public class Main {
     // Static references for system-wide access
     private static Main instance;
 
-    public static void main(String[] args) {
+    static void main(String[] args) {
         new Main().run();
     }
     
@@ -454,7 +454,7 @@ public class Main {
                         }
                         // General player input handling (movement, interaction) happens if not paused for UI.
                         // InputHandler's own logic + Game.update() decides if player/world updates proceed.
-                        Player player = game.getPlayer();
+                        Player player = Game.getPlayer();
                         if (player != null) {
                             inputHandler.handleInput(player);
                         }
@@ -600,8 +600,8 @@ public class Main {
 
     private void render3DWorld(Game game, Renderer renderer) {
         try {
-            World world = game.getWorld();
-            Player player = game.getPlayer();
+            World world = Game.getWorld();
+            Player player = Game.getPlayer();
             if (world != null && player != null) {
                 renderer.renderWorld(world, player, game.getTotalTimeElapsed());
             }
@@ -612,8 +612,8 @@ public class Main {
     }
 
     private void logRenderCrash(Game game, Exception e) {
-        World world = game.getWorld();
-        Player player = game.getPlayer();
+        World world = Game.getWorld();
+        Player player = Game.getPlayer();
 
         System.err.println("CRITICAL CRASH: Exception in renderWorld() - State: " + game.getState());
         System.err.println("Time: " + java.time.LocalDateTime.now());
@@ -814,7 +814,8 @@ public class Main {
         }
 
         // Clean up world resources (while OpenGL context is still valid)
-        World world = Game.getInstance().getWorld();
+        Game.getInstance();
+        World world = Game.getWorld();
         if (world != null) {
             world.cleanup();
             Game.logDetailedMemoryInfo("After world cleanup");

@@ -108,7 +108,7 @@ public class LakeGenerationVisualTest {
     // Camera system
     private Vector3f cameraPos = new Vector3f(0.0f, 10.0f, 20.0f);
     private Vector3f cameraFront = new Vector3f(0.0f, 0.0f, -1.0f);
-    private Vector3f cameraUp = new Vector3f(0.0f, 1.0f, 0.0f);
+    private final Vector3f cameraUp = new Vector3f(0.0f, 1.0f, 0.0f);
     private float yaw = -90.0f;
     private float pitch = -15.0f;
     private float lastX = windowWidth / 2.0f;
@@ -116,10 +116,10 @@ public class LakeGenerationVisualTest {
     private boolean firstMouse = true;
 
     // Movement and timing
-    private boolean[] keys = new boolean[GLFW_KEY_LAST];
+    private final boolean[] keys = new boolean[GLFW_KEY_LAST];
     private float deltaTime = 0.0f;
     private float lastFrame = 0.0f;
-    private float cameraSpeed = 10.0f;
+    private final float cameraSpeed = 10.0f;
 
     @BeforeEach
     void setUp() {

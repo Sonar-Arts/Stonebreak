@@ -1898,7 +1898,7 @@ public class Game {
                             } else {
                                 System.out.println("World load incomplete or invalid; generating new world.");
                                 createNewWorldWithGeneration(worldName, seed);
-                                return; // performInitialWorldGeneration handles completion
+                                // performInitialWorldGeneration handles completion
                             }
                         } catch (Exception e) {
                             System.err.println("Error applying loaded world state: " + e.getMessage());

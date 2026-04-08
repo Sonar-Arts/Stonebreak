@@ -299,10 +299,9 @@ class LakeGenerationIntegrationTest {
                 if (hasBasinWater) {
                     // Check if neighboring columns have large height drops (cliff edge)
                     int terrainHeight = cliffTerrainHeights[0][0][x][z];
-                    boolean isCliffEdge = false;
+                    boolean isCliffEdge = x > 0 && Math.abs(terrainHeight - cliffTerrainHeights[0][0][x - 1][z]) > 4;
 
                     // Check 4 directions (if in bounds)
-                    if (x > 0 && Math.abs(terrainHeight - cliffTerrainHeights[0][0][x-1][z]) > 4) isCliffEdge = true;
                     if (x < 15 && Math.abs(terrainHeight - cliffTerrainHeights[0][0][x+1][z]) > 4) isCliffEdge = true;
                     if (z > 0 && Math.abs(terrainHeight - cliffTerrainHeights[0][0][x][z-1]) > 4) isCliffEdge = true;
                     if (z < 15 && Math.abs(terrainHeight - cliffTerrainHeights[0][0][x][z+1]) > 4) isCliffEdge = true;
@@ -442,227 +441,254 @@ class LakeGenerationIntegrationTest {
     // ==================== Mock Classes ====================
 
     /**
-     * Terrain generator that creates a large basin for integration testing.
-     */
-    private static class LargeBasinTerrainGenerator implements TerrainGenerator {
-        private final int centerX, centerZ;
-        private final int centerHeight, rimHeight;
-        private final int innerRadius, outerRadius;
+         * Terrain generator that creates a large basin for integration testing.
+         */
+        private record LargeBasinTerrainGenerator(int centerX, int centerZ, int centerHeight, int rimHeight,
+                                                  int innerRadius, int outerRadius) implements TerrainGenerator {
 
-        public LargeBasinTerrainGenerator(int centerX, int centerZ, int centerHeight,
-                                          int rimHeight, int innerRadius, int outerRadius) {
-            this.centerX = centerX;
-            this.centerZ = centerZ;
-            this.centerHeight = centerHeight;
-            this.rimHeight = rimHeight;
-            this.innerRadius = innerRadius;
-            this.outerRadius = outerRadius;
+        @Override
+            public int generateHeight(int x, int z, MultiNoiseParameters params) {
+                int dx = x - centerX;
+                int dz = z - centerZ;
+                double dist = Math.sqrt(dx * dx + dz * dz);
+
+                if (dist < innerRadius) {
+                    return centerHeight; // Basin center
+                } else if (dist < outerRadius) {
+                    // Gradual slope to rim
+                    double factor = (dist - innerRadius) / (outerRadius - innerRadius);
+                    return (int) (centerHeight + (rimHeight - centerHeight) * factor);
+                } else {
+                    return rimHeight; // Rim
+                }
+            }
+
+            @Override
+            public String getName() {
+                return "LargeBasinMock";
+            }
+
+        @Override
+        public String getDescription() {
+            return "Integration test basin";
         }
 
         @Override
-        public int generateHeight(int x, int z, MultiNoiseParameters params) {
-            int dx = x - centerX;
-            int dz = z - centerZ;
-            double dist = Math.sqrt(dx * dx + dz * dz);
-
-            if (dist < innerRadius) {
-                return centerHeight; // Basin center
-            } else if (dist < outerRadius) {
-                // Gradual slope to rim
-                double factor = (dist - innerRadius) / (outerRadius - innerRadius);
-                return (int)(centerHeight + (rimHeight - centerHeight) * factor);
-            } else {
-                return rimHeight; // Rim
-            }
+        public long getSeed() {
+            return 0;
         }
 
-        @Override public String getName() { return "LargeBasinMock"; }
-        @Override public String getDescription() { return "Integration test basin"; }
-        @Override public long getSeed() { return 0; }
-        @Override public TerrainGeneratorType getType() { return TerrainGeneratorType.SPLINE; }
-        @Override public HeightCalculationDebugInfo getHeightCalculationDebugInfo(int x, int z, MultiNoiseParameters params) { return null; }
-    }
+        @Override
+        public TerrainGeneratorType getType() {
+            return TerrainGeneratorType.SPLINE;
+        }
+
+        @Override
+        public HeightCalculationDebugInfo getHeightCalculationDebugInfo(int x, int z, MultiNoiseParameters params) {
+            return null;
+        }
+        }
 
     /**
-     * Terrain generator that creates a basin with one low outlier rim sample.
-     * This tests outlier filtering - the low sample should be removed.
-     */
-    private static class BasinWithOutlierTerrainGenerator implements TerrainGenerator {
-        private final int centerX, centerZ;
-        private final int centerHeight, normalRimHeight, outlierHeight;
-        private final int innerRadius, outerRadius;
+         * Terrain generator that creates a basin with one low outlier rim sample.
+         * This tests outlier filtering - the low sample should be removed.
+         */
+        private record BasinWithOutlierTerrainGenerator(int centerX, int centerZ, int centerHeight, int normalRimHeight,
+                                                        int outlierHeight, int innerRadius,
+                                                        int outerRadius) implements TerrainGenerator {
 
-        public BasinWithOutlierTerrainGenerator(int centerX, int centerZ, int centerHeight,
-                                               int normalRimHeight, int outlierHeight,
-                                               int innerRadius, int outerRadius) {
-            this.centerX = centerX;
-            this.centerZ = centerZ;
-            this.centerHeight = centerHeight;
-            this.normalRimHeight = normalRimHeight;
-            this.outlierHeight = outlierHeight;
-            this.innerRadius = innerRadius;
-            this.outerRadius = outerRadius;
+        @Override
+            public int generateHeight(int x, int z, MultiNoiseParameters params) {
+                int dx = x - centerX;
+                int dz = z - centerZ;
+                double dist = Math.sqrt(dx * dx + dz * dz);
+                double angle = Math.atan2(dz, dx);
+
+                if (dist < innerRadius) {
+                    return centerHeight; // Basin center
+                } else if (dist < outerRadius) {
+                    // Gradual slope to rim
+                    double factor = (dist - innerRadius) / (outerRadius - innerRadius);
+                    int targetRimHeight = normalRimHeight;
+
+                    // Create single low outlier at angle = 0 radians (east direction)
+                    // This simulates a narrow gap in the rim
+                    if (Math.abs(angle) < 0.2) { // ~11 degrees on either side
+                        targetRimHeight = outlierHeight;
+                    }
+
+                    return (int) (centerHeight + (targetRimHeight - centerHeight) * factor);
+                } else {
+                    // Outside rim: normal height, except for narrow gap
+                    if (Math.abs(angle) < 0.2) {
+                        return outlierHeight; // Low outlier
+                    }
+                    return normalRimHeight; // Normal rim
+                }
+            }
+
+            @Override
+            public String getName() {
+                return "BasinWithOutlierMock";
+            }
+
+        @Override
+        public String getDescription() {
+            return "Basin with single low outlier";
         }
 
         @Override
-        public int generateHeight(int x, int z, MultiNoiseParameters params) {
-            int dx = x - centerX;
-            int dz = z - centerZ;
-            double dist = Math.sqrt(dx * dx + dz * dz);
-            double angle = Math.atan2(dz, dx);
+        public long getSeed() {
+            return 0;
+        }
 
-            if (dist < innerRadius) {
-                return centerHeight; // Basin center
-            } else if (dist < outerRadius) {
-                // Gradual slope to rim
-                double factor = (dist - innerRadius) / (outerRadius - innerRadius);
-                int targetRimHeight = normalRimHeight;
+        @Override
+        public TerrainGeneratorType getType() {
+            return TerrainGeneratorType.SPLINE;
+        }
 
-                // Create single low outlier at angle = 0 radians (east direction)
-                // This simulates a narrow gap in the rim
-                if (Math.abs(angle) < 0.2) { // ~11 degrees on either side
-                    targetRimHeight = outlierHeight;
+        @Override
+        public HeightCalculationDebugInfo getHeightCalculationDebugInfo(int x, int z, MultiNoiseParameters params) {
+            return null;
+        }
+        }
+
+    /**
+         * Terrain generator that creates highly irregular terrain (canyon, mesa).
+         * Should fail the 75% outlier threshold with extreme height variations.
+         */
+        private record IrregularTerrainGenerator(int centerX, int centerZ, int baseHeight, int innerRadius,
+                                                 int outerRadius) implements TerrainGenerator {
+
+        @Override
+            public int generateHeight(int x, int z, MultiNoiseParameters params) {
+                int dx = x - centerX;
+                int dz = z - centerZ;
+                double dist = Math.sqrt(dx * dx + dz * dz);
+                double angle = Math.atan2(dz, dx);
+
+                if (dist < innerRadius) {
+                    return baseHeight; // Center (70 for above sea level testing)
+                } else if (dist < outerRadius) {
+                    // Create EXTREMELY irregular rim to trigger outlier filtering
+                    // Heights vary from 65 to 95 (30 block range!)
+                    // This creates > 50% outliers, failing the 75% threshold
+                    double factor = (dist - innerRadius) / (outerRadius - innerRadius);
+                    double segments = 16.0; // Match sample count
+                    double segmentIndex = (angle + Math.PI) / (2 * Math.PI) * segments;
+                    int segment = (int) segmentIndex;
+
+                    // Extreme variations: half very low (65-68), half very high (90-95)
+                    // This creates a "canyon" or "mesa" pattern that's clearly not a basin
+                    int[] heights = {65, 95, 67, 93, 66, 94, 68, 92, 65, 95, 67, 93, 66, 94, 68, 92};
+                    int targetHeight = heights[segment % 16];
+
+                    return (int) (baseHeight + (targetHeight - baseHeight) * factor);
+                } else {
+                    // Outside: continue extreme irregular pattern
+                    double segments = 16.0;
+                    double angle2 = Math.atan2(z - centerZ, x - centerX);
+                    double segmentIndex = (angle2 + Math.PI) / (2 * Math.PI) * segments;
+                    int segment = (int) segmentIndex;
+                    int[] heights = {65, 95, 67, 93, 66, 94, 68, 92, 65, 95, 67, 93, 66, 94, 68, 92};
+                    return heights[segment % 16];
+                }
+            }
+
+            @Override
+            public String getName() {
+                return "IrregularTerrainMock";
+            }
+
+        @Override
+        public String getDescription() {
+            return "Irregular terrain (canyon/mesa)";
+        }
+
+        @Override
+        public long getSeed() {
+            return 0;
+        }
+
+        @Override
+        public TerrainGeneratorType getType() {
+            return TerrainGeneratorType.SPLINE;
+        }
+
+        @Override
+        public HeightCalculationDebugInfo getHeightCalculationDebugInfo(int x, int z, MultiNoiseParameters params) {
+            return null;
+        }
+        }
+
+    /**
+         * Terrain generator that creates a basin with a steep cliff on one side.
+         * Tests edge detection - water should not generate on the cliff face.
+         *
+         * <p>Basin has flat interior (64-66) with gentle slopes, but steep cliff on north side.</p>
+         */
+        private record CliffEdgeTerrainGenerator(int centerX, int centerZ, int basinHeight, int rimHeight, int basinRadius,
+                                                 int cliffDrop) implements TerrainGenerator {
+
+        @Override
+            public int generateHeight(int x, int z, MultiNoiseParameters params) {
+                int dx = x - centerX;
+                int dz = z - centerZ;
+                double dist = Math.sqrt(dx * dx + dz * dz);
+
+                // Flat basin interior (gentle slopes only)
+                if (dist < basinRadius * 0.7) {
+                    // Very gentle slope in interior (max 1-2 block difference between neighbors)
+                    return basinHeight + (int) (dist / (basinRadius * 0.7) * 2); // Rises 2 blocks max
                 }
 
-                return (int)(centerHeight + (targetRimHeight - centerHeight) * factor);
-            } else {
-                // Outside rim: normal height, except for narrow gap
-                if (Math.abs(angle) < 0.2) {
-                    return outlierHeight; // Low outlier
+                // Transition zone - slopes toward rim
+                if (dist < basinRadius) {
+                    double factor = (dist - basinRadius * 0.7) / (basinRadius * 0.3);
+                    int height = basinHeight + 2 + (int) ((rimHeight - basinHeight - 2) * factor);
+
+                    // Create steep cliff on north side (z < centerZ - 20)
+                    if (z < centerZ - 20) {
+                        return height - cliffDrop; // Sudden drop
+                    }
+
+                    return height;
                 }
-                return normalRimHeight; // Normal rim
-            }
-        }
 
-        @Override public String getName() { return "BasinWithOutlierMock"; }
-        @Override public String getDescription() { return "Basin with single low outlier"; }
-        @Override public long getSeed() { return 0; }
-        @Override public TerrainGeneratorType getType() { return TerrainGeneratorType.SPLINE; }
-        @Override public HeightCalculationDebugInfo getHeightCalculationDebugInfo(int x, int z, MultiNoiseParameters params) { return null; }
-    }
-
-    /**
-     * Terrain generator that creates highly irregular terrain (canyon, mesa).
-     * Should fail the 75% outlier threshold with extreme height variations.
-     */
-    private static class IrregularTerrainGenerator implements TerrainGenerator {
-        private final int centerX, centerZ;
-        private final int baseHeight;
-        private final int innerRadius, outerRadius;
-
-        public IrregularTerrainGenerator(int centerX, int centerZ, int baseHeight,
-                                        int innerRadius, int outerRadius) {
-            this.centerX = centerX;
-            this.centerZ = centerZ;
-            this.baseHeight = baseHeight;
-            this.innerRadius = innerRadius;
-            this.outerRadius = outerRadius;
-        }
-
-        @Override
-        public int generateHeight(int x, int z, MultiNoiseParameters params) {
-            int dx = x - centerX;
-            int dz = z - centerZ;
-            double dist = Math.sqrt(dx * dx + dz * dz);
-            double angle = Math.atan2(dz, dx);
-
-            if (dist < innerRadius) {
-                return baseHeight; // Center (70 for above sea level testing)
-            } else if (dist < outerRadius) {
-                // Create EXTREMELY irregular rim to trigger outlier filtering
-                // Heights vary from 65 to 95 (30 block range!)
-                // This creates > 50% outliers, failing the 75% threshold
-                double factor = (dist - innerRadius) / (outerRadius - innerRadius);
-                double segments = 16.0; // Match sample count
-                double segmentIndex = (angle + Math.PI) / (2 * Math.PI) * segments;
-                int segment = (int) segmentIndex;
-
-                // Extreme variations: half very low (65-68), half very high (90-95)
-                // This creates a "canyon" or "mesa" pattern that's clearly not a basin
-                int[] heights = {65, 95, 67, 93, 66, 94, 68, 92, 65, 95, 67, 93, 66, 94, 68, 92};
-                int targetHeight = heights[segment % 16];
-
-                return (int)(baseHeight + (targetHeight - baseHeight) * factor);
-            } else {
-                // Outside: continue extreme irregular pattern
-                double segments = 16.0;
-                double angle2 = Math.atan2(z - centerZ, x - centerX);
-                double segmentIndex = (angle2 + Math.PI) / (2 * Math.PI) * segments;
-                int segment = (int) segmentIndex;
-                int[] heights = {65, 95, 67, 93, 66, 94, 68, 92, 65, 95, 67, 93, 66, 94, 68, 92};
-                return heights[segment % 16];
-            }
-        }
-
-        @Override public String getName() { return "IrregularTerrainMock"; }
-        @Override public String getDescription() { return "Irregular terrain (canyon/mesa)"; }
-        @Override public long getSeed() { return 0; }
-        @Override public TerrainGeneratorType getType() { return TerrainGeneratorType.SPLINE; }
-        @Override public HeightCalculationDebugInfo getHeightCalculationDebugInfo(int x, int z, MultiNoiseParameters params) { return null; }
-    }
-
-    /**
-     * Terrain generator that creates a basin with a steep cliff on one side.
-     * Tests edge detection - water should not generate on the cliff face.
-     *
-     * <p>Basin has flat interior (64-66) with gentle slopes, but steep cliff on north side.</p>
-     */
-    private static class CliffEdgeTerrainGenerator implements TerrainGenerator {
-        private final int centerX, centerZ;
-        private final int basinHeight, rimHeight;
-        private final int basinRadius;
-        private final int cliffDrop;
-
-        public CliffEdgeTerrainGenerator(int centerX, int centerZ, int basinHeight,
-                                        int rimHeight, int basinRadius, int cliffDrop) {
-            this.centerX = centerX;
-            this.centerZ = centerZ;
-            this.basinHeight = basinHeight;
-            this.rimHeight = rimHeight;
-            this.basinRadius = basinRadius;
-            this.cliffDrop = cliffDrop;
-        }
-
-        @Override
-        public int generateHeight(int x, int z, MultiNoiseParameters params) {
-            int dx = x - centerX;
-            int dz = z - centerZ;
-            double dist = Math.sqrt(dx * dx + dz * dz);
-
-            // Flat basin interior (gentle slopes only)
-            if (dist < basinRadius * 0.7) {
-                // Very gentle slope in interior (max 1-2 block difference between neighbors)
-                return basinHeight + (int)(dist / (basinRadius * 0.7) * 2); // Rises 2 blocks max
-            }
-
-            // Transition zone - slopes toward rim
-            if (dist < basinRadius) {
-                double factor = (dist - basinRadius * 0.7) / (basinRadius * 0.3);
-                int height = basinHeight + 2 + (int)((rimHeight - basinHeight - 2) * factor);
-
-                // Create steep cliff on north side (z < centerZ - 20)
+                // Outside basin: rim height
+                // But with cliff on north side
                 if (z < centerZ - 20) {
-                    return height - cliffDrop; // Sudden drop
+                    return rimHeight - cliffDrop; // Cliff face
                 }
 
-                return height;
+                return rimHeight; // Normal rim
             }
 
-            // Outside basin: rim height
-            // But with cliff on north side
-            if (z < centerZ - 20) {
-                return rimHeight - cliffDrop; // Cliff face
+            @Override
+            public String getName() {
+                return "CliffEdgeTestMock";
             }
 
-            return rimHeight; // Normal rim
+        @Override
+        public String getDescription() {
+            return "Basin with steep cliff";
         }
 
-        @Override public String getName() { return "CliffEdgeTestMock"; }
-        @Override public String getDescription() { return "Basin with steep cliff"; }
-        @Override public long getSeed() { return 0; }
-        @Override public TerrainGeneratorType getType() { return TerrainGeneratorType.SPLINE; }
-        @Override public HeightCalculationDebugInfo getHeightCalculationDebugInfo(int x, int z, MultiNoiseParameters params) { return null; }
-    }
+        @Override
+        public long getSeed() {
+            return 0;
+        }
+
+        @Override
+        public TerrainGeneratorType getType() {
+            return TerrainGeneratorType.SPLINE;
+        }
+
+        @Override
+        public HeightCalculationDebugInfo getHeightCalculationDebugInfo(int x, int z, MultiNoiseParameters params) {
+            return null;
+        }
+        }
 
     /**
      * Mock noise router for integration tests.

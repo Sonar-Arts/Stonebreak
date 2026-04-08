@@ -275,9 +275,7 @@ public class BasinWaterFiller {
             // Allow deeper water in high-variation basins (true basins have varied terrain)
             // Reject deep water in low-variation areas (likely interpolation artifacts)
             int maxAllowedDepth = (int) (config.maxWaterDepth + (variation * config.maxBasinDepthVariance));
-            if (depth > maxAllowedDepth) {
-                return false; // Likely interpolation artifact - water too deep for terrain variation
-            }
+            return depth <= maxAllowedDepth; // Likely interpolation artifact - water too deep for terrain variation
         }
 
         return true; // All neighbors pass - water can be placed

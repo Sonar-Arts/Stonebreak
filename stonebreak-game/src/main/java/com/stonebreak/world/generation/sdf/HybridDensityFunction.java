@@ -152,6 +152,18 @@ public class HybridDensityFunction implements DensityFunction {
         overhangGenerator.generateOverhangs(chunkX, chunkZ, heightmapCache, factorMapCache);
         archGenerator.generateArches(chunkX, chunkZ, heightmapCache, weirdnessMapCache);
 
+        // Phase 2.1: Pre-compute cave density cache for trilinear interpolation
+        // Convert heightmapCache to int[][] for cave system
+        int[][] surfaceHeightMap = new int[16][16];
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                surfaceHeightMap[x][z] = (int) heightmapCache[x][z];
+            }
+        }
+
+        // Pre-compute cave density cache (1,625 samples instead of 65,536)
+        caveSystem.precomputeCaveDensityCache(chunkX, chunkZ, surfaceHeightMap, weirdnessMapCache);
+
         cacheInitialized = true;
     }
 
@@ -181,8 +193,8 @@ public class HybridDensityFunction implements DensityFunction {
         // Positive above surface (air), negative below surface (solid)
         float terrainDensity = surfaceHeight - y;
 
-        // CAVE DENSITY (SDF-based)
-        float caveDensity = caveSystem.sampleCaveDensity(x, y, z, (int) surfaceHeight);
+        // CAVE DENSITY (SDF-based, weirdness-gated surface opening)
+        float caveDensity = caveSystem.sampleCaveDensity(x, y, z, (int) surfaceHeight, params.weirdness);
 
         // OVERHANG DENSITY (factor-gated SDF)
         float factor = factorRouter.getFactor(params);
