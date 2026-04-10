@@ -113,6 +113,23 @@ public class Noise3D {
     }
 
     /**
+     * Samples raw fractal noise without any height bias.
+     *
+     * Use this for systems that need unbiased noise across all Y levels —
+     * in particular cave ridge detection, where the height bias in getDensity()
+     * makes caves mathematically impossible above Y ≈ 130.
+     *
+     * @param x     World X coordinate
+     * @param y     World Y coordinate
+     * @param z     World Z coordinate
+     * @param scale Noise scale (larger = smoother features)
+     * @return Raw noise value in approximately [-1, 1]
+     */
+    public float getRawNoise(int x, int y, int z, float scale) {
+        return (float) getFractalNoise3D(x / scale, y / scale, z / scale);
+    }
+
+    /**
      * Combines multiple octaves of 3D simplex noise for natural terrain.
      */
     private double getFractalNoise3D(double x, double y, double z) {

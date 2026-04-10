@@ -16,9 +16,9 @@ import com.stonebreak.world.generation.noise.Noise3D;
  *
  * Depth Control:
  * Cave density is modulated by depth to prevent surface holes:
- * - Near surface (Y > 70): Fading cave influence
- * - Mid-depth (Y 10-70): Moderate caves
- * - Deep underground (Y < 10): Full cave systems
+ * - Within SURFACE_FADE_DEPTH blocks of the surface: smoothly fading influence
+ * - Everywhere else inside terrain: full cave strength
+ * - Surface openings (entrances, overhangs) gated by weirdness noise
  *
  * Thread Safety:
  * - Immutable after construction
@@ -31,12 +31,11 @@ public class CaveNoiseGenerator {
     private final Noise3D spaghettiNoise2;
 
     // Spaghetti cave parameters (tunnel networks)
-    private static final float SPAGHETTI_SCALE = 50.0f;  // Medium scale for tunnels
+    private static final float SPAGHETTI_SCALE = 45.0f;  // Medium scale for tunnels
     private static final float SPAGHETTI_THRESHOLD = 0.20f;  // Threshold for tunnel formation
 
     // Altitude adjustment parameters
     private static final int SURFACE_FADE_DEPTH = 20;  // Fade caves over this many blocks below the surface
-    private static final int DEEP_CAVE_START = 10;  // Full cave systems below this Y
     // Weirdness thresholds for surface cave openings
     private static final float WEIRDNESS_OPENING_THRESHOLD = 0.4f;
     private static final float WEIRDNESS_OPENING_MAX = 0.9f;
@@ -80,15 +79,19 @@ public class CaveNoiseGenerator {
      * Samples spaghetti cave noise for long tunnel networks.
      *
      * Algorithm:
-     * 1. Sample two independent 3D noise functions
+     * 1. Sample two independent 3D noise functions (raw — no height bias)
      * 2. Take absolute value of each (creates ridged surfaces)
      * 3. Add the absolute values together
      * 4. Caves form where BOTH values are small (intersection creates 1D paths)
      * 5. Apply threshold to control tunnel width
+     *
+     * Uses getRawNoise() instead of getDensity() to avoid the height bias in
+     * Noise3D, which makes getDensity() always negative above Y ≈ 130 and
+     * would prevent any caves from forming in mountains.
      */
     private float sampleSpaghettiCaves(int worldX, int y, int worldZ) {
-        float noise1 = spaghettiNoise1.getDensity(worldX, y, worldZ, SPAGHETTI_SCALE);
-        float noise2 = spaghettiNoise2.getDensity(worldX, y, worldZ, SPAGHETTI_SCALE);
+        float noise1 = spaghettiNoise1.getRawNoise(worldX, y, worldZ, SPAGHETTI_SCALE);
+        float noise2 = spaghettiNoise2.getRawNoise(worldX, y, worldZ, SPAGHETTI_SCALE);
 
         float combined = Math.abs(noise1) + Math.abs(noise2);
 
@@ -99,7 +102,8 @@ public class CaveNoiseGenerator {
      * Calculates altitude-based modulation factor for cave density.
      *
      * <p>The fade zone is surface-relative, not fixed to an absolute Y level.
-     * High weirdness shrinks the fade zone, allowing caves to reach the surface.</p>
+     * High weirdness shrinks the fade zone, allowing caves to reach the surface
+     * as entrances or overhangs. Everywhere below the fade zone is full strength.</p>
      *
      * @param y World Y coordinate
      * @param surfaceHeight Surface height at this XZ position (from heightmap)
@@ -112,7 +116,8 @@ public class CaveNoiseGenerator {
         // Above the heightmap surface: never carve
         if (depthBelowSurface < 0) return 0.0f;
 
-        // Weirdness shrinks the fade zone: at max weirdness the buffer reaches 0
+        // Weirdness shrinks the fade zone: at max weirdness the buffer reaches 0,
+        // allowing caves to break the surface as entrances or overhangs
         float openingFactor = calcOpeningFactor(weirdness);
         float effectiveFadeDepth = SURFACE_FADE_DEPTH * (1.0f - openingFactor);
 
@@ -122,17 +127,8 @@ public class CaveNoiseGenerator {
             return smoothstep(t);
         }
 
-        // Deep caves: full strength
-        if (y < DEEP_CAVE_START) {
-            return 1.0f;
-        }
-
-        // Transition zone between deep caves and surface fade
-        int fadeStart = surfaceHeight - SURFACE_FADE_DEPTH;
-        float transitionRange = fadeStart - DEEP_CAVE_START;
-        if (transitionRange <= 0) return 1.0f;
-        float transitionAmount = (y - DEEP_CAVE_START) / transitionRange;
-        return 1.0f - (smoothstep(transitionAmount) * 0.4f);
+        // Full strength inside hills, mountains, and deep underground
+        return 1.0f;
     }
 
     /**
