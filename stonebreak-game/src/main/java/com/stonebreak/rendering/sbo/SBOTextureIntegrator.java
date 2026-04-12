@@ -87,10 +87,24 @@ public class SBOTextureIntegrator {
         // mapping or separate default texture. Hand/inventory renderers often
         // read `rose_top`/etc. for their UVs, so if we don't overlay every
         // atlas slot they'll show the pre-SBO pixels. When no explicit default
-        // exists, fall back to the first available material texture so the
-        // sprite gets splashed across all atlas slots this block owns.
+        // exists, prefer a material that's actually referenced by a face
+        // mapping — those are the visual sprites by definition. An arbitrary
+        // HashMap-iteration fallback can pick placeholder materials (tiny
+        // utility textures with distinct materialIds) and splash them across
+        // the unmapped atlas slots, which ends up looking like a different
+        // block entirely when sampled by CROSS geometry that reads `top`.
         if (defaultTexture == null && !materialTextures.isEmpty()) {
-            defaultTexture = materialTextures.values().iterator().next();
+            for (ParsedFaceMapping mapping : sbo.faceMappings()) {
+                BufferedImage mapped = materialTextures.get(mapping.materialId());
+                if (mapped != null) {
+                    defaultTexture = mapped;
+                    break;
+                }
+            }
+            // Last-resort fallback: any available material, even if unmapped.
+            if (defaultTexture == null) {
+                defaultTexture = materialTextures.values().iterator().next();
+            }
         }
 
         if (materialTextures.isEmpty() && defaultTexture == null) {

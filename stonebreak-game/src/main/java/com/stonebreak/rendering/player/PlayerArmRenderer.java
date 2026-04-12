@@ -49,17 +49,19 @@ public class PlayerArmRenderer {
     /**
      * Creates and initializes the player arm renderer with specialized components.
      */
-    public PlayerArmRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, Matrix4f projectionMatrix, com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry blockRegistry) {
+    public PlayerArmRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, Matrix4f projectionMatrix,
+                             com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry blockRegistry,
+                             com.stonebreak.rendering.sbo.SBOHandMeshRegistry sboHandMeshRegistry) {
         this.shaderProgram = shaderProgram;
         this.textureAtlas = textureAtlas;
         this.projectionMatrix = projectionMatrix;
-        
+
         // Initialize specialized components
         this.animator = new PlayerArmAnimator();
         this.armGeometry = new ArmGeometry();
-        this.handItemRenderer = new HandItemRenderer(shaderProgram, textureAtlas, blockRegistry);
+        this.handItemRenderer = new HandItemRenderer(shaderProgram, textureAtlas, blockRegistry, sboHandMeshRegistry);
         this.armTexture = new PlayerArmTexture();
-        
+
         initialize();
     }
     

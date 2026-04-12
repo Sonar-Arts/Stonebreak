@@ -18,6 +18,7 @@ import com.stonebreak.rendering.UI.components.OverlayRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
+import com.stonebreak.rendering.sbo.SBOHandMeshRegistry;
 import com.stonebreak.rendering.sbo.SBOTextureIntegrator;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsFaceCullingService;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBORendererAPI;
@@ -53,6 +54,9 @@ public class Renderer {
     // SBO bridge for debug/query access
     private SBOBlockBridge sboBlockBridge;
 
+    // SBO-derived hand-rendering meshes (ensures in-hand geometry matches in-world)
+    private SBOHandMeshRegistry sboHandMeshRegistry;
+
     // Specialized renderers
     private final BlockRenderer blockRenderer;
     private final PlayerArmRenderer playerArmRenderer;
@@ -84,11 +88,23 @@ public class Renderer {
         
         // Initialize specialized renderers with CBR support
         blockRenderer = new BlockRenderer(resourceManager.getTextureAtlas(), blockRegistry);
-        
-        playerArmRenderer = new PlayerArmRenderer(resourceManager.getShaderProgram(), 
-                                                 resourceManager.getTextureAtlas(), 
+
+        // Build SBO hand-mesh registry now that CBR's MeshManager is available.
+        // Runs after the SBO bridge and texture integration (initializeSBOBlocks
+        // above) so atlas UVs have already been populated.
+        if (sboBlockBridge != null && sboBlockBridge.size() > 0) {
+            sboHandMeshRegistry = new SBOHandMeshRegistry(
+                    blockRenderer.getCBRResourceManager(),
+                    resourceManager.getTextureAtlas());
+            int built = sboHandMeshRegistry.buildFlowerMeshes(sboBlockBridge);
+            System.out.println("[Renderer] SBO hand-mesh registry: built " + built + " flower meshes");
+        }
+
+        playerArmRenderer = new PlayerArmRenderer(resourceManager.getShaderProgram(),
+                                                 resourceManager.getTextureAtlas(),
                                                  configManager.getProjectionMatrix(),
-                                                 blockRegistry);
+                                                 blockRegistry,
+                                                 sboHandMeshRegistry);
         
         uiRenderer = new UIRenderer();
         uiRenderer.init();

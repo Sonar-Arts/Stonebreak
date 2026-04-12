@@ -9,8 +9,10 @@ import com.stonebreak.rendering.player.geometry.ArmGeometry;
 import com.stonebreak.rendering.player.geometry.HandBlockGeometry;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer;
+import com.stonebreak.rendering.sbo.SBOHandMeshRegistry;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManager;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL20;
@@ -29,30 +31,42 @@ public class HandItemRenderer {
     private final HandBlockGeometry handBlockGeometry;
     private final BlockRenderer blockRenderer;
     private final VoxelizedSpriteRenderer voxelizedSpriteRenderer;
-    
+    // Optional — when present, held flowers (and future SBO-custom blocks)
+    // render using the SBO's own geometry for in-hand/in-world parity.
+    private final SBOHandMeshRegistry sboHandMeshRegistry;
+
     public HandItemRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas) {
-        this.shaderProgram = shaderProgram;
-        this.textureAtlas = textureAtlas;
-        this.handBlockGeometry = new HandBlockGeometry(textureAtlas);
-        this.blockRenderer = new BlockRenderer();
-        this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram, textureAtlas);
+        this(shaderProgram, textureAtlas, null, null);
     }
-    
+
     public HandItemRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, BlockDefinitionRegistry blockRegistry) {
+        this(shaderProgram, textureAtlas, blockRegistry, null);
+    }
+
+    public HandItemRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas,
+                            BlockDefinitionRegistry blockRegistry,
+                            SBOHandMeshRegistry sboHandMeshRegistry) {
         this.shaderProgram = shaderProgram;
         this.textureAtlas = textureAtlas;
         this.handBlockGeometry = new HandBlockGeometry(textureAtlas);
-        this.blockRenderer = new BlockRenderer(textureAtlas, blockRegistry);
+        this.blockRenderer = blockRegistry != null
+                ? new BlockRenderer(textureAtlas, blockRegistry)
+                : new BlockRenderer();
         this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram, textureAtlas);
+        this.sboHandMeshRegistry = sboHandMeshRegistry;
     }
     
     /**
      * Renders a block in the player's hand using appropriate rendering method.
      */
     public void renderBlockInHand(BlockType blockType) {
-        switch (blockType) {
-            case ROSE, DANDELION -> renderFlowerInHand(blockType); // Cross pattern for flowers
-            default -> renderCubeBlockInHand(blockType); // 3D cube for regular blocks
+        // Delegate cross-plane rendering decisions to BlockType.isFlower() so
+        // any future flower added to that registry automatically gets the
+        // correct hand geometry — no switch-statement babysitting here.
+        if (blockType != null && blockType.isFlower()) {
+            renderFlowerInHand(blockType);
+        } else {
+            renderCubeBlockInHand(blockType);
         }
     }
     
@@ -122,14 +136,23 @@ public class HandItemRenderer {
         // No tint - use pure white
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
         
-        // Use CBR system for rendering flower cross
-        if (!blockRenderer.hasCBRSupport()) {
-            throw new IllegalStateException("HandItemRenderer requires CBR support. Use constructor with BlockDefinitionRegistry.");
+        // Prefer the SBO's own mesh so in-hand geometry matches the in-world
+        // SBO model. Falls back to CBR's hard-coded CROSS mesh when no SBO is
+        // registered for this flower (e.g. vanilla-only install).
+        MeshManager.MeshResource sboMesh = sboHandMeshRegistry != null
+                ? sboHandMeshRegistry.getMesh(flowerType)
+                : null;
+        if (sboMesh != null) {
+            sboMesh.bind();
+            glDrawElements(GL_TRIANGLES, sboMesh.getIndexCount(), GL_UNSIGNED_INT, 0);
+        } else {
+            if (!blockRenderer.hasCBRSupport()) {
+                throw new IllegalStateException("HandItemRenderer requires CBR support. Use constructor with BlockDefinitionRegistry.");
+            }
+            CBRResourceManager.BlockRenderResource resource = blockRenderer.getFlowerCrossResource(flowerType);
+            resource.getMesh().bind();
+            glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
         }
-        
-        CBRResourceManager.BlockRenderResource resource = blockRenderer.getFlowerCrossResource(flowerType);
-        resource.getMesh().bind();
-        glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
 
         // Restore world rendering state
         shaderProgram.setUniform("u_isUIElement", false);

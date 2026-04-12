@@ -76,9 +76,12 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
      * Determines the appropriate render type for a block type.
      */
     private BlockDefinition.RenderType determineRenderType(BlockType blockType) {
+        // Flowers / cross-plane blocks are sourced from BlockType.isFlower() so
+        // new flowers only need to be added to that one registry method.
+        if (blockType.isFlower()) {
+            return BlockDefinition.RenderType.CROSS;
+        }
         switch (blockType) {
-            case ROSE, DANDELION:
-                return BlockDefinition.RenderType.CROSS;
             case GRASS, SNOWY_DIRT:
                 return BlockDefinition.RenderType.CUBE_DIRECTIONAL;
             case WOOD, PINE, ELM_WOOD_LOG:
@@ -96,9 +99,11 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
      * Determines the appropriate render layer for a block type.
      */
     private BlockDefinition.RenderLayer determineRenderLayer(BlockType blockType) {
+        // Flowers are always CUTOUT — sourced from BlockType.isFlower().
+        if (blockType.isFlower()) {
+            return BlockDefinition.RenderLayer.CUTOUT;
+        }
         switch (blockType) {
-            case ROSE, DANDELION:
-                return BlockDefinition.RenderLayer.CUTOUT; // Transparent flowers
             case LEAVES, PINE_LEAVES, ELM_LEAVES:
                 // Leaf blocks use cutout only when transparency is enabled
                 // When disabled, use opaque to show the black spots
