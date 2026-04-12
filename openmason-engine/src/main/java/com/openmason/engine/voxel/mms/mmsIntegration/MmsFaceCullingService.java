@@ -5,6 +5,7 @@ import com.openmason.engine.voxel.IVoxelWorld;
 import com.openmason.engine.voxel.VoxelWorldConfig;
 import com.openmason.engine.voxel.cco.core.CcoChunkData;
 import com.openmason.engine.voxel.cco.coordinates.CcoBounds;
+import com.openmason.engine.voxel.sbo.sboRenderer.SBOCullingPolicy;
 
 /**
  * Shared face culling logic for block geometry providers.
@@ -13,7 +14,7 @@ import com.openmason.engine.voxel.cco.coordinates.CcoBounds;
  * adjacent block transparency. Extracted from the legacy MmsCcoAdapter
  * to be reused by all geometry providers.
  */
-public class MmsFaceCullingService {
+public class MmsFaceCullingService implements SBOCullingPolicy {
 
     private IVoxelWorld world;
 

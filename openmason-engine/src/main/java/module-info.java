@@ -61,6 +61,7 @@ module openmason.engine {
     exports com.openmason.engine.voxel.mms.mmsMetrics;
     exports com.openmason.engine.voxel.mms.mmsIntegration;
     exports com.openmason.engine.voxel.sbo;
+    exports com.openmason.engine.voxel.sbo.sboRenderer;
 
     // Export format classes
     exports com.openmason.engine.format.sbo;

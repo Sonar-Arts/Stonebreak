@@ -77,6 +77,9 @@ public final class MmsAPI {
     private boolean bufferPoolingEnabled = true;
     private boolean asyncUploadEnabled = false; // Disabled by default for stability
 
+    // SBO culling service — needs world reference for cross-chunk face culling
+    private com.openmason.engine.voxel.mms.mmsIntegration.MmsFaceCullingService sboCullingService;
+
     // State
     private volatile boolean initialized = false;
 
@@ -171,6 +174,10 @@ public final class MmsAPI {
         if (ccoAdapter != null) {
             ccoAdapter.setWorld(world);
             System.out.println("[MmsAPI] World instance updated in MmsAPI and CCO adapter");
+        }
+        if (sboCullingService != null) {
+            sboCullingService.setWorld(new com.stonebreak.world.chunk.api.voxel.WorldAdapter(world));
+            System.out.println("[MmsAPI] World set on SBO culling service");
         }
     }
 
@@ -591,6 +598,9 @@ public final class MmsAPI {
         if (ccoAdapter != null) {
             ccoAdapter.setWorld(world);
         }
+        if (sboCullingService != null) {
+            sboCullingService.setWorld(new com.stonebreak.world.chunk.api.voxel.WorldAdapter(world));
+        }
 
         meshPipeline = new MmsMeshPipeline(world, config, errorReporter);
         System.out.println("[MmsAPI] Created new mesh pipeline for world");
@@ -598,7 +608,33 @@ public final class MmsAPI {
     }
 
     /**
-     * Sets the SBO block geometry dispatcher on the CCO adapter.
+     * Sets the SBO stamp emitter on the CCO adapter.
+     * Call this after the SBO Renderer API is initialized.
+     *
+     * @param emitter the stamp emitter from SBORendererAPI
+     */
+    public void setSBOStampEmitter(com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter emitter) {
+        if (ccoAdapter != null) {
+            ccoAdapter.setSBOStampEmitter(emitter);
+        }
+    }
+
+    /**
+     * Sets the SBO face culling service so its world reference can be updated
+     * when the world becomes available.
+     *
+     * @param cullingService the culling service used by the SBO stamp emitter
+     */
+    public void setSBOCullingService(com.openmason.engine.voxel.mms.mmsIntegration.MmsFaceCullingService cullingService) {
+        this.sboCullingService = cullingService;
+        // If world is already set, immediately wire it
+        if (world != null) {
+            cullingService.setWorld(new com.stonebreak.world.chunk.api.voxel.WorldAdapter(world));
+        }
+    }
+
+    /**
+     * Sets the SBO block geometry dispatcher on the CCO adapter (legacy compatibility).
      * Call this after SBO mesh processing is initialized.
      */
     public void setSBODispatcher(com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher dispatcher,

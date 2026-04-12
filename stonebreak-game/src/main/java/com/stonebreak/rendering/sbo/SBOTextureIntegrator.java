@@ -2,6 +2,7 @@ package com.stonebreak.rendering.sbo;
 
 import com.openmason.engine.format.mesh.ParsedFaceMapping;
 import com.openmason.engine.format.sbo.SBOParseResult;
+import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.textures.atlas.AtlasMetadata;
@@ -101,7 +102,7 @@ public class SBOTextureIntegrator {
             if (entry == null) continue;
 
             // Determine the GMR face ID that corresponds to this atlas face name
-            int gmrFaceId = atlasNameToGmrFaceId(faceName);
+            int gmrFaceId = SBOFaceConventions.atlasNameToGmr(faceName);
 
             // Look up which material this face uses
             BufferedImage faceTexture = null;
@@ -134,21 +135,6 @@ public class SBOTextureIntegrator {
                     blockType, sbo.getObjectName(), faceToMaterialId.size(), uniqueMaterials);
         }
         return anySuccess;
-    }
-
-    /**
-     * Maps atlas face name to GMR face ID.
-     */
-    private int atlasNameToGmrFaceId(String faceName) {
-        return switch (faceName) {
-            case "south" -> 0;   // GMR FRONT (+Z)
-            case "north" -> 1;   // GMR BACK (-Z)
-            case "west" -> 2;    // GMR LEFT (-X)
-            case "east" -> 3;    // GMR RIGHT (+X)
-            case "top" -> 4;     // GMR TOP (+Y)
-            case "bottom" -> 5;  // GMR BOTTOM (-Y)
-            default -> -1;
-        };
     }
 
     private AtlasMetadata.TextureEntry findAtlasEntry(BlockType blockType, String face) {

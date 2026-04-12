@@ -6,6 +6,8 @@ import com.openmason.engine.format.mesh.ParsedMeshData;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.ITextureCoordProvider;
+import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions;
+import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,19 +30,7 @@ public class SBOMeshProcessor {
 
     private static final Logger logger = LoggerFactory.getLogger(SBOMeshProcessor.class);
 
-    /**
-     * Static mapping from GMR face ID to MMS face ID.
-     * GMR: 0=FRONT(+Z), 1=BACK(-Z), 2=LEFT(-X), 3=RIGHT(+X), 4=TOP(+Y), 5=BOTTOM(-Y)
-     * MMS: 0=TOP(+Y), 1=BOTTOM(-Y), 2=NORTH(-Z), 3=SOUTH(+Z), 4=EAST(+X), 5=WEST(-X)
-     */
-    private static final int[] GMR_TO_MMS_FACE = {
-            3, // GMR 0 (FRONT +Z)  → MMS 3 (SOUTH +Z)
-            2, // GMR 1 (BACK -Z)   → MMS 2 (NORTH -Z)
-            5, // GMR 2 (LEFT -X)   → MMS 5 (WEST -X)
-            4, // GMR 3 (RIGHT +X)  → MMS 4 (EAST +X)
-            0, // GMR 4 (TOP +Y)    → MMS 0 (TOP +Y)
-            1  // GMR 5 (BOTTOM -Y) → MMS 1 (BOTTOM -Y)
-    };
+    // Face ID convention mapping now provided by SBOFaceConventions.gmrToMms()
 
     /**
      * Pre-baked vertex data for one face of an SBO block type.
@@ -66,6 +56,7 @@ public class SBOMeshProcessor {
 
     /**
      * Process and cache an SBO block's mesh data into a pre-computed {@link BlockStamp}.
+     * Stores the stamp in this processor's internal cache.
      *
      * @param blockType    the block type this SBO defines
      * @param sbo          the parsed SBO result containing mesh data
@@ -73,6 +64,21 @@ public class SBOMeshProcessor {
      * @return true if successfully processed
      */
     public boolean process(IBlockType blockType, SBOParseResult sbo, ITextureCoordProvider uvProvider) {
+        return process(blockType, sbo, uvProvider, null);
+    }
+
+    /**
+     * Process an SBO block's mesh data into a pre-computed {@link BlockStamp}.
+     * Stores the stamp in both this processor's internal cache and the provided external cache.
+     *
+     * @param blockType      the block type this SBO defines
+     * @param sbo            the parsed SBO result containing mesh data
+     * @param uvProvider     texture coordinate provider for atlas UV lookups
+     * @param externalCache  optional external stamp cache to also store into (may be null)
+     * @return true if successfully processed
+     */
+    public boolean process(IBlockType blockType, SBOParseResult sbo,
+                           ITextureCoordProvider uvProvider, SBOStampCache externalCache) {
         ParsedMeshData meshData = sbo.meshData();
         if (meshData == null || !meshData.hasGeometry()) {
             logger.warn("SBO for {} has no mesh data", blockType.getName());
@@ -92,7 +98,7 @@ public class SBOMeshProcessor {
             int[] originalFaceIds = meshData.triangleToFaceId();
             remappedFaceIds = new int[originalFaceIds.length];
             for (int i = 0; i < originalFaceIds.length; i++) {
-                remappedFaceIds[i] = GMR_TO_MMS_FACE[Math.clamp(originalFaceIds[i], 0, 5)];
+                remappedFaceIds[i] = SBOFaceConventions.gmrToMms(originalFaceIds[i]);
             }
         }
 
@@ -100,6 +106,11 @@ public class SBOMeshProcessor {
         BlockStamp stamp = buildBlockStamp(blockType, processed, remappedFaceIds, uvProvider);
         stampCache.put(blockType.getId(), stamp);
         processedTypes.add(blockType.getId());
+
+        // Also store in external cache if provided
+        if (externalCache != null) {
+            externalCache.put(blockType, stamp);
+        }
 
         // Log mesh info
         int totalVerts = 0;

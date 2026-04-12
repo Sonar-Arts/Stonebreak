@@ -19,10 +19,9 @@ import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
 import com.stonebreak.rendering.sbo.SBOTextureIntegrator;
-import com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsFaceCullingService;
-import com.openmason.engine.voxel.mms.mmsIntegration.MmsSBOBlockProvider;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor;
+import com.openmason.engine.voxel.sbo.sboRenderer.SBORendererAPI;
+import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.ui.Font;
 import com.stonebreak.rendering.shaders.ShaderProgram;
@@ -46,9 +45,10 @@ public class Renderer {
     private final RenderingConfigurationManager configManager;
     private final BlockDefinitionRegistry blockRegistry;
     
-    // SBO dispatcher (deferred until MmsAPI is initialized)
-    private MmsBlockGeometryDispatcher pendingSBODispatcher;
-    private MmsSBOBlockProvider pendingSBOProvider;
+    // SBO renderer API (deferred emitter setup until MmsAPI is initialized)
+    private SBORendererAPI sboRendererAPI;
+    private SBOStampEmitter pendingSBOEmitter;
+    private MmsFaceCullingService sboCullingService;
 
     // SBO bridge for debug/query access
     private SBOBlockBridge sboBlockBridge;
@@ -139,24 +139,26 @@ public class Renderer {
                     System.out.println("[Renderer] SBO integration: " + integrated + " block textures updated");
                 }
 
-                // Process SBO meshes with atlas UV remapping for stamp-based rendering
-                SBOMeshProcessor meshProcessor = new SBOMeshProcessor();
-                var uvProvider = new com.stonebreak.world.chunk.api.voxel.TextureAtlasAdapter(textureAtlas);
+                // Build SBO block map for the renderer API
+                java.util.Map<com.stonebreak.blocks.BlockType, SBOParseResult> sboBlockMap = new java.util.LinkedHashMap<>();
                 for (com.stonebreak.blocks.BlockType blockType : com.stonebreak.blocks.BlockType.values()) {
                     if (bridge.isSBOBlock(blockType)) {
-                        SBOParseResult sbo = bridge.getSBODefinition(blockType);
-                        meshProcessor.process(blockType, sbo, uvProvider);
+                        sboBlockMap.put(blockType, bridge.getSBODefinition(blockType));
                     }
                 }
 
-                if (meshProcessor.size() > 0) {
-                    // Create dispatcher with SBO provider (deferred -- MmsAPI not initialized yet)
-                    MmsFaceCullingService cullingService = new MmsFaceCullingService();
-                    MmsSBOBlockProvider sboProvider = new MmsSBOBlockProvider(meshProcessor, cullingService);
-                    pendingSBODispatcher = new MmsBlockGeometryDispatcher();
-                    pendingSBODispatcher.registerProvider(sboProvider);
-                    pendingSBOProvider = sboProvider;
-                    System.out.println("[Renderer] SBO mesh processor: " + meshProcessor.size() + " block types processed (dispatcher deferred)");
+                if (!sboBlockMap.isEmpty()) {
+                    // Initialize the SBO Renderer API — processes all SBO meshes into stamps
+                    var uvProvider = new com.stonebreak.world.chunk.api.voxel.TextureAtlasAdapter(textureAtlas);
+                    sboRendererAPI = new SBORendererAPI();
+                    int processed = sboRendererAPI.initialize(sboBlockMap, uvProvider);
+
+                    if (processed > 0) {
+                        // Create deferred emitter with face culling (world set later in applySBODispatcher)
+                        sboCullingService = new MmsFaceCullingService();
+                        pendingSBOEmitter = sboRendererAPI.createEmitter(sboCullingService);
+                        System.out.println("[Renderer] SBO Renderer API: " + processed + " block types processed (emitter deferred)");
+                    }
                 }
             }
         } catch (Exception e) {
@@ -192,15 +194,15 @@ public class Renderer {
     }
 
     /**
-     * Apply the deferred SBO dispatcher to MmsAPI.
+     * Apply the deferred SBO stamp emitter to MmsAPI.
      * Call this after MmsAPI is initialized.
      */
     public void applySBODispatcher() {
-        if (pendingSBODispatcher != null && com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.isInitialized()) {
-            com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.getInstance().setSBODispatcher(pendingSBODispatcher, pendingSBOProvider);
-            System.out.println("[Renderer] SBO dispatcher applied to MmsAPI");
-            pendingSBODispatcher = null;
-            pendingSBOProvider = null;
+        if (pendingSBOEmitter != null && com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.isInitialized()) {
+            com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.getInstance().setSBOStampEmitter(pendingSBOEmitter);
+            com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.getInstance().setSBOCullingService(sboCullingService);
+            System.out.println("[Renderer] SBO stamp emitter applied to MmsAPI");
+            pendingSBOEmitter = null;
         }
     }
 

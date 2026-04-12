@@ -5,6 +5,7 @@ import com.openmason.engine.voxel.cco.core.CcoChunkData;
 import com.openmason.engine.voxel.cco.coordinates.CcoBounds;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
 import com.openmason.engine.voxel.sbo.SBOMeshProcessor;
+import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
 
 import java.util.*;
 
@@ -23,6 +24,7 @@ public class MmsSBOBlockProvider implements MmsBlockGeometryProvider {
 
     private final SBOMeshProcessor meshProcessor;
     private final MmsFaceCullingService cullingService;
+    private SBOStampEmitter stampEmitter;
 
     /** Thread-local per-chunk build context. */
     private final ThreadLocal<ChunkBuildContext> buildContext = ThreadLocal.withInitial(ChunkBuildContext::new);
@@ -86,6 +88,17 @@ public class MmsSBOBlockProvider implements MmsBlockGeometryProvider {
         this.cullingService = cullingService;
     }
 
+    /**
+     * Set the stamp emitter for delegated geometry emission.
+     * When set, {@link #flushBlockType} delegates to the emitter
+     * instead of performing inline stamp emission.
+     *
+     * @param emitter the stamp emitter from the SBORendererAPI
+     */
+    public void setStampEmitter(SBOStampEmitter emitter) {
+        this.stampEmitter = emitter;
+    }
+
     @Override
     public boolean handles(IBlockType blockType) {
         return meshProcessor.hasMesh(blockType);
@@ -126,13 +139,31 @@ public class MmsSBOBlockProvider implements MmsBlockGeometryProvider {
         IntBuffer blocks = ctx.pendingBlocksByType.get(blockType);
         if (blocks == null || blocks.isEmpty()) return;
 
-        SBOMeshProcessor.BlockStamp stamp = meshProcessor.getBlockStamp(blockType);
-        if (stamp == null) return;
-
         int cs = CcoBounds.getConfig().chunkSize();
         int blockCount = blocks.blockCount();
 
-        // Emit stamp per face with culling
+        // Delegate to SBOStampEmitter when available
+        if (stampEmitter != null) {
+            for (int b = 0; b < blockCount; b++) {
+                int base = b * 3;
+                int lx = blocks.data[base];
+                int ly = blocks.data[base + 1];
+                int lz = blocks.data[base + 2];
+
+                float worldX = lx + ctx.chunkX * cs + 0.5f;
+                float worldY = ly + 0.5f;
+                float worldZ = lz + ctx.chunkZ * cs + 0.5f;
+
+                stampEmitter.emitBlock(atlasBuilder, blockType, lx, ly, lz,
+                        worldX, worldY, worldZ, chunkData);
+            }
+            return;
+        }
+
+        // Legacy fallback: inline emission using mesh processor directly
+        SBOMeshProcessor.BlockStamp stamp = meshProcessor.getBlockStamp(blockType);
+        if (stamp == null) return;
+
         for (int face = 0; face < 6; face++) {
             SBOMeshProcessor.FaceStamp faceStamp = stamp.faces()[face];
             if (faceStamp.vertexCount() == 0) continue;
@@ -140,8 +171,7 @@ public class MmsSBOBlockProvider implements MmsBlockGeometryProvider {
             float[] pos = faceStamp.positions();
             float[] nrm = faceStamp.normals();
             float[] uv = faceStamp.atlasUVs();
-            int vertCount = faceStamp.vertexCount();
-            int triCount = vertCount / 3;
+            int triCount = faceStamp.vertexCount() / 3;
 
             for (int b = 0; b < blockCount; b++) {
                 int base = b * 3;
@@ -149,7 +179,6 @@ public class MmsSBOBlockProvider implements MmsBlockGeometryProvider {
                 int ly = blocks.data[base + 1];
                 int lz = blocks.data[base + 2];
 
-                // Face culling
                 if (cullingService != null &&
                     !cullingService.shouldRenderFace(blockType, lx, ly, lz, face, chunkData)) {
                     continue;
@@ -159,7 +188,6 @@ public class MmsSBOBlockProvider implements MmsBlockGeometryProvider {
                 float worldY = ly + 0.5f;
                 float worldZ = lz + ctx.chunkZ * cs + 0.5f;
 
-                // Emit all triangles for this face, copying pre-baked stamp data with position offset
                 for (int tri = 0; tri < triCount; tri++) {
                     int baseVertex = atlasBuilder.getVertexCount();
 
