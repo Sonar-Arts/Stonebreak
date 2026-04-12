@@ -2,6 +2,7 @@ package com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction;
 
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.state.TransformState;
+import com.openmason.main.systems.viewport.util.SnappingUtil;
 import org.joml.Vector3f;
 
 /**
@@ -41,6 +42,18 @@ public class TransformApplier {
             }
         } else if (transformTarget instanceof PartTransformTarget partTarget) {
             Vector3f delta = new Vector3f(newPos).sub(dragStartPos);
+            // Snap the group delta so unselected model-level part drags honor
+            // grid snapping just like selected-part and model-transform paths.
+            // Snapping the delta (vs. each part's absolute position) preserves
+            // group cohesion — every part moves by the same grid-aligned offset.
+            if (viewportState != null && viewportState.getGridSnappingEnabled().get()) {
+                float inc = viewportState.getGridSnappingIncrement().get();
+                delta.set(
+                        SnappingUtil.snapToGrid(delta.x, inc),
+                        SnappingUtil.snapToGrid(delta.y, inc),
+                        SnappingUtil.snapToGrid(delta.z, inc)
+                );
+            }
             partTarget.applyTranslationDeltaToUnlocked(delta);
         } else {
             if (viewportState != null && viewportState.getGridSnappingEnabled().get()) {

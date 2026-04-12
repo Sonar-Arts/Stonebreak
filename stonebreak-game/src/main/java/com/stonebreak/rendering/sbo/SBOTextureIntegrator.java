@@ -81,6 +81,18 @@ public class SBOTextureIntegrator {
             }
         }
 
+        // Cross-plane blocks (flowers, saplings) typically map only the two
+        // visible plane faces (GMR 0/1 — atlas north/south) and leave the
+        // remaining atlas faces (top/bottom/east/west) without an explicit
+        // mapping or separate default texture. Hand/inventory renderers often
+        // read `rose_top`/etc. for their UVs, so if we don't overlay every
+        // atlas slot they'll show the pre-SBO pixels. When no explicit default
+        // exists, fall back to the first available material texture so the
+        // sprite gets splashed across all atlas slots this block owns.
+        if (defaultTexture == null && !materialTextures.isEmpty()) {
+            defaultTexture = materialTextures.values().iterator().next();
+        }
+
         if (materialTextures.isEmpty() && defaultTexture == null) {
             logger.warn("No texture found in SBO for block {}", blockType);
             return false;
