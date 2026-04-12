@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.sbo;
 
+import com.openmason.engine.format.mesh.ParsedFaceMapping;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.TextureAtlas;
@@ -10,7 +11,8 @@ import org.slf4j.LoggerFactory;
 
 import java.awt.image.BufferedImage;
 import java.nio.ByteBuffer;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Integrates SBO textures into the game's texture atlas at runtime.
@@ -64,35 +66,61 @@ public class SBOTextureIntegrator {
     }
 
     private boolean integrateBlock(BlockType blockType, SBOParseResult sbo, int atlasTextureId) {
-        // Extract the texture from the SBO
-        BufferedImage texture = null;
+        // Extract material textures keyed by materialId
+        Map<Integer, BufferedImage> materialTextures = extractor.extractMaterialTexturesByMaterialId(sbo);
 
-        // Try material textures first
-        List<BufferedImage> materialTextures = extractor.extractMaterialTextures(sbo);
-        if (!materialTextures.isEmpty()) {
-            texture = materialTextures.getFirst();
+        // Extract default texture as fallback
+        BufferedImage defaultTexture = extractor.extractDefaultTexture(sbo);
+
+        // If no material textures and no default, try the flat list (legacy SBOs)
+        if (materialTextures.isEmpty() && defaultTexture == null) {
+            var flatList = extractor.extractMaterialTextures(sbo);
+            if (!flatList.isEmpty()) {
+                defaultTexture = flatList.getFirst();
+            }
         }
 
-        // Fall back to default texture
-        if (texture == null) {
-            texture = extractor.extractDefaultTexture(sbo);
-        }
-
-        if (texture == null) {
+        if (materialTextures.isEmpty() && defaultTexture == null) {
             logger.warn("No texture found in SBO for block {}", blockType);
             return false;
         }
 
-        // For each face of this block, find its atlas position and overlay
+        // Build faceId → materialId lookup from face mappings
+        Map<Integer, Integer> faceToMaterialId = new HashMap<>();
+        for (ParsedFaceMapping mapping : sbo.faceMappings()) {
+            faceToMaterialId.put(mapping.faceId(), mapping.materialId());
+        }
+
+        // For each face, find the correct texture via face mapping → material
         String[] faces = {"top", "bottom", "north", "south", "east", "west"};
         boolean anySuccess = false;
 
-        for (String face : faces) {
-            AtlasMetadata.TextureEntry entry = findAtlasEntry(blockType, face);
+        for (int atlasIdx = 0; atlasIdx < faces.length; atlasIdx++) {
+            String faceName = faces[atlasIdx];
+            AtlasMetadata.TextureEntry entry = findAtlasEntry(blockType, faceName);
             if (entry == null) continue;
 
+            // Determine the GMR face ID that corresponds to this atlas face name
+            int gmrFaceId = atlasNameToGmrFaceId(faceName);
+
+            // Look up which material this face uses
+            BufferedImage faceTexture = null;
+            if (gmrFaceId >= 0) {
+                Integer materialId = faceToMaterialId.get(gmrFaceId);
+                if (materialId != null) {
+                    faceTexture = materialTextures.get(materialId);
+                }
+            }
+
+            // Fall back to default texture if no per-face mapping or material
+            if (faceTexture == null) {
+                faceTexture = defaultTexture;
+            }
+
+            if (faceTexture == null) continue;
+
             // Scale texture to atlas tile size if needed
-            BufferedImage tileTexture = scaleTo(texture, entry.getWidth(), entry.getHeight());
+            BufferedImage tileTexture = scaleTo(faceTexture, entry.getWidth(), entry.getHeight());
 
             // Upload to atlas GPU texture at the entry's position
             overlayOnAtlas(atlasTextureId, tileTexture, entry.getX(), entry.getY());
@@ -100,9 +128,27 @@ public class SBOTextureIntegrator {
         }
 
         if (anySuccess) {
-            logger.info("Integrated SBO texture for {} ({})", blockType, sbo.getObjectName());
+            int uniqueMaterials = faceToMaterialId.values().stream().collect(
+                    java.util.stream.Collectors.toSet()).size();
+            logger.info("Integrated SBO texture for {} ({}) — {} face mappings, {} unique materials",
+                    blockType, sbo.getObjectName(), faceToMaterialId.size(), uniqueMaterials);
         }
         return anySuccess;
+    }
+
+    /**
+     * Maps atlas face name to GMR face ID.
+     */
+    private int atlasNameToGmrFaceId(String faceName) {
+        return switch (faceName) {
+            case "south" -> 0;   // GMR FRONT (+Z)
+            case "north" -> 1;   // GMR BACK (-Z)
+            case "west" -> 2;    // GMR LEFT (-X)
+            case "east" -> 3;    // GMR RIGHT (+X)
+            case "top" -> 4;     // GMR TOP (+Y)
+            case "bottom" -> 5;  // GMR BOTTOM (-Y)
+            default -> -1;
+        };
     }
 
     private AtlasMetadata.TextureEntry findAtlasEntry(BlockType blockType, String face) {

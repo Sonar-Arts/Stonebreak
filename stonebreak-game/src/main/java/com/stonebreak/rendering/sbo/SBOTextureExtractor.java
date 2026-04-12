@@ -10,7 +10,9 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Extracts texture images from SBO parse results.
@@ -49,6 +51,36 @@ public class SBOTextureExtractor {
         }
 
         return images;
+    }
+
+    /**
+     * Extract material textures keyed by materialId.
+     *
+     * @param result the parsed SBO
+     * @return map of materialId to decoded BufferedImage
+     */
+    public Map<Integer, BufferedImage> extractMaterialTexturesByMaterialId(SBOParseResult result) {
+        Map<Integer, BufferedImage> map = new HashMap<>();
+
+        for (ParsedMaterialData material : result.materials()) {
+            if (material.texturePng() == null || material.texturePng().length == 0) {
+                logger.warn("Material {} (id={}) has no texture data", material.name(), material.materialId());
+                continue;
+            }
+
+            try {
+                BufferedImage image = ImageIO.read(new ByteArrayInputStream(material.texturePng()));
+                if (image != null) {
+                    map.put(material.materialId(), image);
+                    logger.debug("Extracted material texture '{}' (id={}): {}x{}",
+                            material.name(), material.materialId(), image.getWidth(), image.getHeight());
+                }
+            } catch (IOException e) {
+                logger.error("Failed to decode material texture '{}' (id={})", material.name(), material.materialId(), e);
+            }
+        }
+
+        return map;
     }
 
     /**
