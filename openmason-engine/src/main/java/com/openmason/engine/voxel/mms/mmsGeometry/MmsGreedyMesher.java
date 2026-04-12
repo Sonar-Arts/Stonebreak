@@ -200,7 +200,13 @@ public final class MmsGreedyMesher {
             return true;
         }
 
-        return neighbor.isTransparent() && !current.isTransparent();
+        // Transparent blocks render faces against any different block type
+        if (current.isTransparent()) {
+            return current != neighbor;
+        }
+
+        // Opaque blocks render faces against transparent blocks
+        return neighbor.isTransparent();
     }
 
     private static int[] getDirectionOffset(int direction) {
