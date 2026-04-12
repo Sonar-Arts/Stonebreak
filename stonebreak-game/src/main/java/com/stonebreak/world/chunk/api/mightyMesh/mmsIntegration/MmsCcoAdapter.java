@@ -143,8 +143,18 @@ public class MmsCcoAdapter {
                             float worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE + 0.5f;
                             float worldY = ly + 0.5f;
                             float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE + 0.5f;
+
+                            // Compute block height for stackable blocks (e.g. snow layers)
+                            float blockHeight = 1.0f;
+                            if (blockType == BlockType.SNOW && world != null) {
+                                int wx = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
+                                int wz = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
+                                int layers = world.getSnowLayers(wx, ly, wz);
+                                blockHeight = Math.min(1.0f, Math.max(0.125f, layers * 0.125f));
+                            }
+
                             sboStampEmitter.emitBlock(atlasBuilder, blockType, lx, ly, lz,
-                                    worldX, worldY, worldZ, chunkData);
+                                    worldX, worldY, worldZ, chunkData, blockHeight);
                             continue;
                         }
 
@@ -450,22 +460,14 @@ public class MmsCcoAdapter {
 
     /**
      * Checks if a block type is transparent and requires special culling.
-     *
-     * Transparent blocks:
-     * - Water: Semi-transparent liquid
-     * - Leaves: Alpha-tested foliage (all tree types)
-     * - Flowers: Cross-section blocks with alpha testing
+     * Delegates to {@link BlockType#isTransparent()} to stay consistent
+     * with the SBO culling path and avoid missing new transparent types.
      *
      * @param blockType Block type to check
      * @return true if block is transparent
      */
     private boolean isTransparent(BlockType blockType) {
-        return blockType == BlockType.WATER ||
-               blockType == BlockType.LEAVES ||
-               blockType == BlockType.PINE_LEAVES ||
-               blockType == BlockType.ELM_LEAVES ||
-               blockType == BlockType.ROSE ||
-               blockType == BlockType.DANDELION;
+        return blockType.isTransparent();
     }
 
     /**

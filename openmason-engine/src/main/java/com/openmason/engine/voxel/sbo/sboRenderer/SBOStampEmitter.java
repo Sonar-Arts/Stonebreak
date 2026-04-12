@@ -35,7 +35,7 @@ public class SBOStampEmitter {
     }
 
     /**
-     * Emit an SBO block's geometry into the mesh builder.
+     * Emit an SBO block's geometry into the mesh builder at full block height.
      *
      * <p>Looks up the block's pre-computed stamp, then for each of the 6 faces:
      * checks the culling policy, and if visible, copies the stamp's position,
@@ -55,6 +55,31 @@ public class SBOStampEmitter {
                           int lx, int ly, int lz,
                           float worldX, float worldY, float worldZ,
                           CcoChunkData chunkData) {
+        emitBlock(builder, blockType, lx, ly, lz, worldX, worldY, worldZ, chunkData, 1.0f);
+    }
+
+    /**
+     * Emit an SBO block's geometry into the mesh builder with a specified block height.
+     *
+     * <p>Supports partial-height blocks (e.g. snow layers). When {@code blockHeight}
+     * is less than 1.0, vertex Y positions are scaled so the block bottom stays at
+     * the block origin and the top is at {@code blockHeight} fraction of full height.
+     *
+     * @param builder     the chunk mesh builder to emit vertices/indices into
+     * @param blockType   the SBO block type
+     * @param lx          local X coordinate within the chunk (for culling)
+     * @param ly          local Y coordinate within the chunk (for culling)
+     * @param lz          local Z coordinate within the chunk (for culling)
+     * @param worldX      world-space X position for this block
+     * @param worldY      world-space Y position for this block
+     * @param worldZ      world-space Z position for this block
+     * @param chunkData   chunk data for face culling neighbor lookups
+     * @param blockHeight fraction of full block height (0.0-1.0), 1.0 = full cube
+     */
+    public void emitBlock(MmsMeshBuilder builder, IBlockType blockType,
+                          int lx, int ly, int lz,
+                          float worldX, float worldY, float worldZ,
+                          CcoChunkData chunkData, float blockHeight) {
 
         BlockStamp stamp = cache.get(blockType);
         if (stamp == null) return;
@@ -69,20 +94,25 @@ public class SBOStampEmitter {
             FaceStamp faceStamp = stamp.faces()[face];
             if (faceStamp.vertexCount() == 0) continue;
 
-            emitFaceStamp(builder, faceStamp, worldX, worldY, worldZ, alphaFlag);
+            emitFaceStamp(builder, faceStamp, worldX, worldY, worldZ, alphaFlag, blockHeight);
         }
     }
 
     /**
      * Emit a single face stamp's geometry into the builder.
+     *
+     * <p>When {@code blockHeight} is less than 1.0, Y positions are scaled so the
+     * block bottom stays anchored and the top compresses to the specified height.
+     * The formula maps model-space Y from [-0.5, 0.5] to [-0.5, -0.5 + blockHeight].
      */
     private void emitFaceStamp(MmsMeshBuilder builder, FaceStamp faceStamp,
                                float worldX, float worldY, float worldZ,
-                               float alphaFlag) {
+                               float alphaFlag, float blockHeight) {
         float[] pos = faceStamp.positions();
         float[] nrm = faceStamp.normals();
         float[] uv = faceStamp.atlasUVs();
         int triCount = faceStamp.vertexCount() / 3;
+        boolean scaleY = blockHeight < 1.0f;
 
         for (int tri = 0; tri < triCount; tri++) {
             int baseVertex = builder.getVertexCount();
@@ -92,9 +122,15 @@ public class SBOStampEmitter {
                 int pOff = vi * 3;
                 int tOff = vi * 2;
 
+                float vy = pos[pOff + 1];
+                if (scaleY) {
+                    // Scale Y: map [-0.5, 0.5] → [-0.5, -0.5 + blockHeight]
+                    vy = -0.5f + (vy + 0.5f) * blockHeight;
+                }
+
                 builder.addVertex(
                         pos[pOff] + worldX,
-                        pos[pOff + 1] + worldY,
+                        vy + worldY,
                         pos[pOff + 2] + worldZ,
                         uv[tOff], uv[tOff + 1],
                         nrm[pOff], nrm[pOff + 1], nrm[pOff + 2],

@@ -33,7 +33,7 @@ public class SBOBlockBridge {
             Map.entry("stonebreak:gravel", BlockType.GRAVEL),
             Map.entry("stonebreak:cobblestone", BlockType.COBBLESTONE),
             Map.entry("stonebreak:wood", BlockType.WOOD),
-            Map.entry("stonebreak:pine", BlockType.PINE),
+            Map.entry("stonebreak:pine_wood_log", BlockType.PINE),
             Map.entry("stonebreak:elm_wood_log", BlockType.ELM_WOOD_LOG),
             Map.entry("stonebreak:leaves", BlockType.LEAVES),
             Map.entry("stonebreak:pine_leaves", BlockType.PINE_LEAVES),
