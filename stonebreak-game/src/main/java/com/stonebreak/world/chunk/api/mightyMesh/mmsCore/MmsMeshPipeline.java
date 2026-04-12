@@ -13,7 +13,6 @@ import com.stonebreak.core.Game;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
 
 /**
  * Mighty Mesh System - Complete mesh building pipeline with orchestration.
@@ -48,10 +47,14 @@ public final class MmsMeshPipeline {
     private final ExecutorService meshGenerationExecutor;
     private final Set<Chunk> chunksToGenerateMesh;
     private final PriorityBlockingQueue<MeshUploadTask> meshesReadyForGLUpload;
+    private final Set<Chunk> chunksInUploadQueue; // O(1) lookup mirror of meshesReadyForGLUpload
     private final Queue<Chunk> chunksFailedToGenerateMesh;
     private final Queue<MmsRenderableHandle> handlesPendingGpuCleanup;
     private final Map<Chunk, Integer> chunkRetryCount;
     private final Map<Chunk, Integer> chunkPriorityMap;
+
+    // Reusable list for per-frame sorting (avoids allocation every frame)
+    private final List<Chunk> reusableChunkSortList = new ArrayList<>();
 
     // Dependencies
     private final ChunkErrorReporter errorReporter;
@@ -107,6 +110,7 @@ public final class MmsMeshPipeline {
         );
         this.chunksToGenerateMesh = ConcurrentHashMap.newKeySet();
         this.meshesReadyForGLUpload = new PriorityBlockingQueue<>(100); // Initial capacity 100
+        this.chunksInUploadQueue = ConcurrentHashMap.newKeySet();
         this.chunksFailedToGenerateMesh = new ConcurrentLinkedQueue<>();
         this.handlesPendingGpuCleanup = new ConcurrentLinkedQueue<>();
         this.chunkRetryCount = new ConcurrentHashMap<>();
@@ -181,11 +185,12 @@ public final class MmsMeshPipeline {
         int playerChunkX = player != null ? (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE) : 0;
         int playerChunkZ = player != null ? (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE) : 0;
 
-        // Batch chunks to process this frame (limited by frame budget)
-        List<Chunk> chunksToProcess = new ArrayList<>(chunksToGenerateMesh);
+        // Batch chunks to process this frame (reuse list to avoid per-frame allocation)
+        reusableChunkSortList.clear();
+        reusableChunkSortList.addAll(chunksToGenerateMesh);
 
         // Sort by distance to player (closest first)
-        chunksToProcess.sort((a, b) -> {
+        reusableChunkSortList.sort((a, b) -> {
             int distA = Math.max(Math.abs(a.getChunkX() - playerChunkX), Math.abs(a.getChunkZ() - playerChunkZ));
             int distB = Math.max(Math.abs(b.getChunkX() - playerChunkX), Math.abs(b.getChunkZ() - playerChunkZ));
             return Integer.compare(distA, distB);
@@ -193,7 +198,7 @@ public final class MmsMeshPipeline {
 
         // Process only up to the frame budget limit
         int processedThisFrame = 0;
-        Iterator<Chunk> iterator = chunksToProcess.iterator();
+        Iterator<Chunk> iterator = reusableChunkSortList.iterator();
         while (iterator.hasNext() && processedThisFrame < currentMeshBuildsPerFrame) {
             Chunk chunk = iterator.next();
 
@@ -262,6 +267,7 @@ public final class MmsMeshPipeline {
 
                 // Queue for GL upload with priority
                 meshesReadyForGLUpload.offer(new MeshUploadTask(chunk, meshData, priority));
+                chunksInUploadQueue.add(chunk);
 
                 // Mark chunk state as CPU ready
                 synchronized (chunk) {
@@ -347,6 +353,8 @@ public final class MmsMeshPipeline {
         int maxUpdatesPerFrame = ChunkManager.getOptimizedGLBatchSize();
 
         while ((task = meshesReadyForGLUpload.poll()) != null) {
+            chunksInUploadQueue.remove(task.chunk);
+
             // Player modifications bypass batch limit for instant feedback
             boolean isPlayerPriority = task.priority >= PRIORITY_PLAYER_MODIFICATION;
 
@@ -354,24 +362,13 @@ public final class MmsMeshPipeline {
             if (!isPlayerPriority && updatesThisFrame >= maxUpdatesPerFrame) {
                 // Put task back and stop processing
                 meshesReadyForGLUpload.offer(task);
+                chunksInUploadQueue.add(task.chunk);
                 break;
             }
 
             try {
                 // Upload mesh to GPU using MMS API
                 MmsRenderableHandle handle = MmsAPI.getInstance().uploadMeshToGPU(task.meshData);
-
-                // CRITICAL: Explicitly null out mesh data to allow GC after GPU upload
-                // Without this, MeshUploadTask keeps references to large float arrays
-                // causing severe memory leaks (hundreds of MB accumulate)
-                task.meshData = null;
-
-                // Debug: Log first few uploads
-                // if (debugGLUploadSuccessCount < 3) {
-                //     System.out.println("[MmsMeshPipeline] Uploaded chunk (" + task.chunk.getChunkX() + "," +
-                //         task.chunk.getChunkZ() + ") with " + handle.getIndexCount() + " indices (priority: " + task.priority + ")");
-                //     debugGLUploadSuccessCount++;
-                // }
 
                 // Store handle in chunk for rendering
                 synchronized (task.chunk) {
@@ -384,31 +381,30 @@ public final class MmsMeshPipeline {
                     // Set new handle and mark GPU ready
                     task.chunk.setMmsRenderableHandle(handle);
 
-                    // Upload SBO mesh if the chunk has one
+                    // Upload SBO meshes if the chunk has any (one per block type)
                     com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult meshResult = task.chunk.getPendingChunkMeshResult();
                     if (meshResult != null && meshResult.hasSBOMesh()) {
-                        com.openmason.engine.voxel.sbo.SBORenderData oldSbo = task.chunk.getSBORenderData();
-                        if (oldSbo != null) {
-                            handlesPendingGpuCleanup.offer(oldSbo.getHandle());
+                        // Clean up old SBO handles
+                        java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> oldSboList = task.chunk.getSBORenderDataList();
+                        if (oldSboList != null) {
+                            for (com.openmason.engine.voxel.sbo.SBORenderData oldSbo : oldSboList) {
+                                handlesPendingGpuCleanup.offer(oldSbo.getHandle());
+                            }
                         }
-                        MmsRenderableHandle sboHandle = MmsAPI.getInstance().uploadMeshToGPU(meshResult.sboMesh());
-                        task.chunk.setSBORenderData(
-                                new com.openmason.engine.voxel.sbo.SBORenderData(sboHandle, meshResult.sboBatches()));
+                        // Upload new SBO entries
+                        java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> newSboList =
+                                new java.util.ArrayList<>(meshResult.sboEntries().size());
+                        for (com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult.SBOEntry entry : meshResult.sboEntries()) {
+                            MmsRenderableHandle sboHandle = MmsAPI.getInstance().uploadMeshToGPU(entry.meshData());
+                            newSboList.add(new com.openmason.engine.voxel.sbo.SBORenderData(sboHandle, entry.batches()));
+                        }
+                        task.chunk.setSBORenderDataList(newSboList);
                     }
-                    task.chunk.setPendingChunkMeshResult(null); // Clear after upload
 
                     // CRITICAL: Remove MESH_CPU_READY first because mesh states are mutually exclusive!
                     task.chunk.getCcoStateManager().removeState(CcoChunkState.MESH_CPU_READY);
                     task.chunk.getCcoStateManager().addState(CcoChunkState.MESH_GPU_UPLOADED);
                     task.chunk.getCcoDirtyTracker().clearMeshDirty();
-
-                    // Debug: Verify it was set
-                    // if (debugGLUploadSuccessCount <= 3) {
-                    //     System.out.println("[MmsMeshPipeline] Chunk (" + task.chunk.getChunkX() + "," +
-                    //         task.chunk.getChunkZ() + ") now has handle=" + (task.chunk.getMmsRenderableHandle() != null) +
-                    //         " meshGen=" + task.chunk.isMeshGenerated() +
-                    //         " renderable=" + task.chunk.getCcoStateManager().isRenderable());
-                    // }
                 }
 
                 updatesThisFrame++;
@@ -417,6 +413,11 @@ public final class MmsMeshPipeline {
                 errorReporter.reportGLUpdateError(task.chunk, e,
                     updatesThisFrame, maxUpdatesPerFrame,
                     meshesReadyForGLUpload.size());
+            } finally {
+                // Always release CPU-side mesh data regardless of success/failure
+                // to prevent large float arrays from being retained by MeshUploadTask or Chunk
+                task.meshData = null;
+                task.chunk.setPendingChunkMeshResult(null);
             }
         }
 
@@ -492,7 +493,9 @@ public final class MmsMeshPipeline {
         chunksFailedToGenerateMesh.remove(chunk);
 
         // Remove from upload queue
-        meshesReadyForGLUpload.removeIf(task -> task.chunk == chunk);
+        if (chunksInUploadQueue.remove(chunk)) {
+            meshesReadyForGLUpload.removeIf(task -> task.chunk == chunk);
+        }
     }
 
     // === CCO State Management ===
@@ -568,13 +571,13 @@ public final class MmsMeshPipeline {
 
     /**
      * Checks if upload queue contains a mesh for the given chunk.
+     * O(1) via mirror HashSet instead of O(n) stream scan.
      *
      * @param chunk Chunk to check
      * @return true if mesh is in upload queue
      */
     private boolean containsMeshForChunk(Chunk chunk) {
-        return meshesReadyForGLUpload.stream()
-            .anyMatch(task -> task.chunk == chunk);
+        return chunksInUploadQueue.contains(chunk);
     }
 
     // === Lifecycle ===
@@ -619,6 +622,7 @@ public final class MmsMeshPipeline {
     private void clearQueues() {
         chunksToGenerateMesh.clear();
         meshesReadyForGLUpload.clear();
+        chunksInUploadQueue.clear();
         chunksFailedToGenerateMesh.clear();
         chunkRetryCount.clear();
         chunkPriorityMap.clear();

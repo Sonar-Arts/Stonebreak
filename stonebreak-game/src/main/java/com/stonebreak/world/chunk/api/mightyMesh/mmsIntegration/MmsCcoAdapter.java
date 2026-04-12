@@ -12,13 +12,12 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsSBOBlockProvider;
-import com.openmason.engine.voxel.sbo.SBORenderData;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsCrossGenerator;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsGeometryService;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsWaterGenerator;
-import com.openmason.engine.voxel.mms.mmsTexturing.MmsAtlasTextureMapper;
 import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
+import com.openmason.engine.voxel.sbo.SBOMeshProcessor;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
@@ -41,8 +40,7 @@ public class MmsCcoAdapter {
     private final MmsTextureMapper textureMapper;
     private MmsWaterGenerator waterGenerator; // Created when world is set
     private World world; // Not final - can be set after construction
-    private MmsBlockGeometryDispatcher sboDispatcher; // For SBO blocks (set after SBO init)
-    private MmsSBOBlockProvider sboProvider; // Direct reference for flush/batch operations
+    private SBOMeshProcessor sboMeshProcessor; // Direct stamp lookup for inline emission
 
     /**
      * Creates a CCO adapter with the specified services.
@@ -89,10 +87,14 @@ public class MmsCcoAdapter {
      *
      * @param dispatcher the SBO geometry dispatcher
      */
+    /**
+     * Sets the SBO mesh processor for inline stamp-based emission.
+     * SBO blocks are emitted directly during the block iteration loop using
+     * pre-computed stamps, avoiding dispatcher overhead and two-pass processing.
+     */
     public void setSBODispatcher(MmsBlockGeometryDispatcher dispatcher, MmsSBOBlockProvider provider) {
-        this.sboDispatcher = dispatcher;
-        this.sboProvider = provider;
-        System.out.println("[MmsCcoAdapter] SBO dispatcher set (" + dispatcher.getProviderCount() + " providers)");
+        this.sboMeshProcessor = provider.getMeshProcessor();
+        System.out.println("[MmsCcoAdapter] SBO mesh processor set (" + sboMeshProcessor.size() + " stamp types)");
     }
 
     /**
@@ -114,14 +116,6 @@ public class MmsCcoAdapter {
             MmsMeshBuilder atlasBuilder = MmsMeshBuilder.createWithCapacity(
                 WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE * 64
             );
-            MmsMeshBuilder sboBuilder = (sboProvider != null)
-                    ? MmsMeshBuilder.createWithCapacity(WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE * 16)
-                    : null;
-
-            // Reset SBO provider for this chunk
-            if (sboProvider != null) {
-                sboProvider.resetForChunk();
-            }
 
             int chunkX = chunkData.getChunkX();
             int chunkZ = chunkData.getChunkZ();
@@ -137,10 +131,9 @@ public class MmsCcoAdapter {
                             continue;
                         }
 
-                        // Route SBO blocks to the SBO dispatcher (separate mesh/texture)
-                        if (sboDispatcher != null && sboDispatcher.handles(blockType)) {
-                            sboDispatcher.addBlockGeometry(sboBuilder, blockType,
-                                    lx, ly, lz, chunkX, chunkZ, chunkData);
+                        // Handle SBO blocks inline using pre-computed stamps
+                        if (sboMeshProcessor != null && sboMeshProcessor.hasMesh(blockType)) {
+                            addSBOBlockWithCulling(atlasBuilder, blockType, lx, ly, lz, chunkX, chunkZ, chunkData);
                             continue;
                         }
 
@@ -162,20 +155,9 @@ public class MmsCcoAdapter {
                 }
             }
 
-            // Flush SBO blocks sorted by face into the SBO builder
-            SBORenderData.FaceBatch[] sboBatches = null;
-            if (sboProvider != null && sboBuilder != null) {
-                sboProvider.flushToBuilder(sboBuilder, chunkData);
-                if (!sboBuilder.isEmpty()) {
-                    // Provider tracked the block type during addBlockGeometry calls
-                    sboBatches = sboProvider.buildFaceBatches(sboProvider.getPendingBlockType());
-                }
-            }
-
-            // Build final meshes
+            // Build final mesh (all geometry in one atlas mesh)
             MmsMeshData atlasMesh = atlasBuilder.build();
-            MmsMeshData sboMesh = (sboBuilder != null && !sboBuilder.isEmpty()) ? sboBuilder.build() : null;
-            ChunkMeshResult meshResult = new ChunkMeshResult(atlasMesh, sboMesh, sboBatches);
+            ChunkMeshResult meshResult = new ChunkMeshResult(atlasMesh);
 
             // Update CCO state
             stateManager.removeState(CcoChunkState.MESH_GENERATING);
@@ -337,6 +319,59 @@ public class MmsCcoAdapter {
                 );
             }
             builder.endFace();
+        }
+    }
+
+    /**
+     * Adds an SBO block using pre-computed stamp data with face culling.
+     * Emits stamp geometry directly into the atlas builder — single-pass, no dispatcher.
+     */
+    private void addSBOBlockWithCulling(MmsMeshBuilder builder, BlockType blockType,
+                                        int lx, int ly, int lz, int chunkX, int chunkZ,
+                                        CcoChunkData chunkData) {
+
+        SBOMeshProcessor.BlockStamp stamp = sboMeshProcessor.getBlockStamp(blockType);
+        if (stamp == null) return;
+
+        float worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE + 0.5f;
+        float worldY = ly + 0.5f;
+        float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE + 0.5f;
+
+        for (int face = 0; face < 6; face++) {
+            if (!shouldRenderFace(blockType, lx, ly, lz, face, chunkData)) {
+                continue;
+            }
+
+            SBOMeshProcessor.FaceStamp faceStamp = stamp.faces()[face];
+            if (faceStamp.vertexCount() == 0) continue;
+
+            float[] pos = faceStamp.positions();
+            float[] nrm = faceStamp.normals();
+            float[] uv = faceStamp.atlasUVs();
+            int triCount = faceStamp.vertexCount() / 3;
+
+            for (int tri = 0; tri < triCount; tri++) {
+                int baseVertex = builder.getVertexCount();
+
+                for (int v = 0; v < 3; v++) {
+                    int vi = tri * 3 + v;
+                    int pOff = vi * 3;
+                    int tOff = vi * 2;
+
+                    builder.addVertex(
+                            pos[pOff] + worldX,
+                            pos[pOff + 1] + worldY,
+                            pos[pOff + 2] + worldZ,
+                            uv[tOff], uv[tOff + 1],
+                            nrm[pOff], nrm[pOff + 1], nrm[pOff + 2],
+                            0.0f, 0.0f
+                    );
+                }
+
+                builder.addIndex(baseVertex);
+                builder.addIndex(baseVertex + 1);
+                builder.addIndex(baseVertex + 2);
+            }
         }
     }
 

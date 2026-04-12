@@ -259,10 +259,12 @@ public class WorldRenderer {
     private void renderSBOPass(Map<ChunkPosition, Chunk> visibleChunks) {
         int sboCount = 0;
         for (Chunk chunk : visibleChunks.values()) {
-            com.openmason.engine.voxel.sbo.SBORenderData sboData = chunk.getSBORenderData();
-            if (sboData != null) {
+            java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> sboList = chunk.getSBORenderDataList();
+            if (sboList != null && !sboList.isEmpty()) {
                 sboCount++;
-                sboData.render();
+                for (com.openmason.engine.voxel.sbo.SBORenderData sboData : sboList) {
+                    sboData.render();
+                }
             }
         }
         if (debugSBOPassCount < 3 && sboCount > 0) {

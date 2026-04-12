@@ -22,6 +22,8 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
 
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -53,7 +55,7 @@ public class Chunk {
     private MmsMeshData pendingMmsMeshData;
     private ChunkMeshResult pendingChunkMeshResult;
     private MmsRenderableHandle renderableHandle;
-    private com.openmason.engine.voxel.sbo.SBORenderData sboRenderData;
+    private List<com.openmason.engine.voxel.sbo.SBORenderData> sboRenderDataList;
     private boolean meshGenerated = false;
 
     /**
@@ -177,16 +179,17 @@ public class Chunk {
             renderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingMmsMeshData);
             meshGenerated = true;
 
-            // Upload SBO mesh if present
+            // Upload SBO meshes if present (one per block type)
             if (pendingChunkMeshResult != null && pendingChunkMeshResult.hasSBOMesh()) {
-                if (sboRenderData != null) {
-                    sboRenderData.close();
+                closeSBORenderData();
+                sboRenderDataList = new ArrayList<>(pendingChunkMeshResult.sboEntries().size());
+                for (ChunkMeshResult.SBOEntry entry : pendingChunkMeshResult.sboEntries()) {
+                    MmsRenderableHandle sboHandle = MmsAPI.getInstance().uploadMeshToGPU(entry.meshData());
+                    sboRenderDataList.add(new com.openmason.engine.voxel.sbo.SBORenderData(sboHandle, entry.batches()));
                 }
-                MmsRenderableHandle sboHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingChunkMeshResult.sboMesh());
-                sboRenderData = new com.openmason.engine.voxel.sbo.SBORenderData(sboHandle, pendingChunkMeshResult.sboBatches());
-            } else if (sboRenderData != null) {
-                sboRenderData.close();
-                sboRenderData = null;
+            } else {
+                closeSBORenderData();
+                sboRenderDataList = null;
             }
 
             stateManager.removeState(CcoChunkState.MESH_CPU_READY);
@@ -530,11 +533,11 @@ public class Chunk {
     // ===== Resource Cleanup =====
 
     /**
-     * Gets the SBO mesh renderable handle for blocks rendered with SBO textures.
-     * @return SBO renderable handle, or null if no SBO blocks in this chunk
+     * Gets the list of SBO render data entries for blocks rendered with SBO textures.
+     * @return SBO render data list, or null if no SBO blocks in this chunk
      */
-    public com.openmason.engine.voxel.sbo.SBORenderData getSBORenderData() {
-        return sboRenderData;
+    public List<com.openmason.engine.voxel.sbo.SBORenderData> getSBORenderDataList() {
+        return sboRenderDataList;
     }
 
     /**
@@ -549,8 +552,17 @@ public class Chunk {
         return pendingChunkMeshResult;
     }
 
-    public void setSBORenderData(com.openmason.engine.voxel.sbo.SBORenderData data) {
-        this.sboRenderData = data;
+    public void setSBORenderDataList(List<com.openmason.engine.voxel.sbo.SBORenderData> dataList) {
+        this.sboRenderDataList = dataList;
+    }
+
+    private void closeSBORenderData() {
+        if (sboRenderDataList != null) {
+            for (com.openmason.engine.voxel.sbo.SBORenderData data : sboRenderDataList) {
+                data.close();
+            }
+            sboRenderDataList = null;
+        }
     }
 
     /**
@@ -572,17 +584,19 @@ public class Chunk {
 
     /**
      * Cleans up GPU resources using MMS API. MUST be called from the main OpenGL thread.
+     * Also clears any pending CPU-side mesh data to prevent retention after unload.
      */
     public void cleanupGpuResources() {
         if (renderableHandle != null) {
             renderableHandle.close();
             renderableHandle = null;
         }
-        if (sboRenderData != null) {
-            sboRenderData.close();
-            sboRenderData = null;
-        }
+        closeSBORenderData();
         meshGenerated = false;
+
+        // Clear CPU-side mesh data that may still be pending upload
+        pendingMmsMeshData = null;
+        pendingChunkMeshResult = null;
     }
 
     // ===== CCO Component Access =====

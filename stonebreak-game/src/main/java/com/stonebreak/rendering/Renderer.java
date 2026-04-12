@@ -135,12 +135,13 @@ public class Renderer {
                     System.out.println("[Renderer] SBO integration: " + integrated + " block textures updated");
                 }
 
-                // Process SBO meshes for GMR rendering
+                // Process SBO meshes with atlas UV remapping for stamp-based rendering
                 SBOMeshProcessor meshProcessor = new SBOMeshProcessor();
+                var uvProvider = new com.stonebreak.world.chunk.api.voxel.TextureAtlasAdapter(textureAtlas);
                 for (com.stonebreak.blocks.BlockType blockType : com.stonebreak.blocks.BlockType.values()) {
                     if (bridge.isSBOBlock(blockType)) {
                         SBOParseResult sbo = bridge.getSBODefinition(blockType);
-                        meshProcessor.process(blockType, sbo);
+                        meshProcessor.process(blockType, sbo, uvProvider);
                     }
                 }
 

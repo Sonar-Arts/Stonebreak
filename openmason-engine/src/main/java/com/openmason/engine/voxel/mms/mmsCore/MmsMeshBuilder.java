@@ -1,18 +1,17 @@
 package com.openmason.engine.voxel.mms.mmsCore;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
 
 /**
  * Mighty Mesh System - Fluent builder for creating MmsMeshData.
  *
  * Provides a clean, type-safe API for incrementally building mesh data.
- * Automatically handles array resizing and validation.
+ * Uses primitive arrays with manual growth to avoid autoboxing overhead.
  *
  * Design Philosophy:
  * - KISS: Simple, intuitive API
  * - Type-safe: Compile-time safety where possible
- * - Efficient: Minimal allocations, smart array growth
+ * - Efficient: Zero autoboxing, minimal allocations, smart array growth
  * - Fail-fast: Validation on build()
  *
  * Usage Example:
@@ -31,13 +30,21 @@ import java.util.List;
  */
 public final class MmsMeshBuilder {
 
-    // Dynamic arrays with capacity management
-    private List<Float> positions;
-    private List<Float> texCoords;
-    private List<Float> normals;
-    private List<Float> waterFlags;
-    private List<Float> alphaFlags;
-    private List<Integer> indices;
+    // Primitive arrays with manual size tracking (no autoboxing)
+    private float[] positions;
+    private float[] texCoords;
+    private float[] normals;
+    private float[] waterFlags;
+    private float[] alphaFlags;
+    private int[] indices;
+
+    // Current sizes (logical length, not capacity)
+    private int posSize;
+    private int texSize;
+    private int normSize;
+    private int waterSize;
+    private int alphaSize;
+    private int indexSize;
 
     // Face building state
     private int currentFaceVertexStart;
@@ -45,7 +52,6 @@ public final class MmsMeshBuilder {
 
     // Configuration
     private boolean validateOnBuild = true;
-    private int initialCapacity;
 
     /**
      * Creates a new mesh builder with default capacity.
@@ -60,13 +66,12 @@ public final class MmsMeshBuilder {
      * @param initialCapacity Initial capacity hint (number of vertices)
      */
     private MmsMeshBuilder(int initialCapacity) {
-        this.initialCapacity = initialCapacity;
-        this.positions = new ArrayList<>(initialCapacity * MmsBufferLayout.POSITION_SIZE);
-        this.texCoords = new ArrayList<>(initialCapacity * MmsBufferLayout.TEXTURE_SIZE);
-        this.normals = new ArrayList<>(initialCapacity * MmsBufferLayout.NORMAL_SIZE);
-        this.waterFlags = new ArrayList<>(initialCapacity);
-        this.alphaFlags = new ArrayList<>(initialCapacity);
-        this.indices = new ArrayList<>(initialCapacity * 2); // Estimate 1.5 indices per vertex
+        this.positions = new float[initialCapacity * MmsBufferLayout.POSITION_SIZE];
+        this.texCoords = new float[initialCapacity * MmsBufferLayout.TEXTURE_SIZE];
+        this.normals = new float[initialCapacity * MmsBufferLayout.NORMAL_SIZE];
+        this.waterFlags = new float[initialCapacity];
+        this.alphaFlags = new float[initialCapacity];
+        this.indices = new int[initialCapacity * 2]; // Estimate ~1.5 indices per vertex
         this.currentFaceVertexStart = -1;
         this.totalVertices = 0;
     }
@@ -132,23 +137,42 @@ public final class MmsMeshBuilder {
                                      float nx, float ny, float nz,
                                      float waterFlag, float alphaFlag) {
 
-        // Add position
-        positions.add(x);
-        positions.add(y);
-        positions.add(z);
+        // Ensure capacity for positions (3 floats)
+        int posRequired = posSize + 3;
+        if (posRequired > positions.length) {
+            positions = Arrays.copyOf(positions, grow(positions.length, posRequired));
+        }
+        positions[posSize++] = x;
+        positions[posSize++] = y;
+        positions[posSize++] = z;
 
-        // Add texture coordinates
-        texCoords.add(u);
-        texCoords.add(v);
+        // Ensure capacity for texCoords (2 floats)
+        int texRequired = texSize + 2;
+        if (texRequired > texCoords.length) {
+            texCoords = Arrays.copyOf(texCoords, grow(texCoords.length, texRequired));
+        }
+        texCoords[texSize++] = u;
+        texCoords[texSize++] = v;
 
-        // Add normal
-        normals.add(nx);
-        normals.add(ny);
-        normals.add(nz);
+        // Ensure capacity for normals (3 floats)
+        int normRequired = normSize + 3;
+        if (normRequired > normals.length) {
+            normals = Arrays.copyOf(normals, grow(normals.length, normRequired));
+        }
+        normals[normSize++] = nx;
+        normals[normSize++] = ny;
+        normals[normSize++] = nz;
 
-        // Add flags
-        waterFlags.add(waterFlag);
-        alphaFlags.add(alphaFlag);
+        // Ensure capacity for flags (1 float each)
+        if (waterSize >= waterFlags.length) {
+            waterFlags = Arrays.copyOf(waterFlags, grow(waterFlags.length, waterSize + 1));
+        }
+        waterFlags[waterSize++] = waterFlag;
+
+        if (alphaSize >= alphaFlags.length) {
+            alphaFlags = Arrays.copyOf(alphaFlags, grow(alphaFlags.length, alphaSize + 1));
+        }
+        alphaFlags[alphaSize++] = alphaFlag;
 
         totalVertices++;
         return this;
@@ -174,16 +198,22 @@ public final class MmsMeshBuilder {
             );
         }
 
+        // Ensure capacity for 6 indices (2 triangles)
+        int idxRequired = indexSize + 6;
+        if (idxRequired > indices.length) {
+            indices = Arrays.copyOf(indices, grow(indices.length, idxRequired));
+        }
+
         // Generate quad indices (2 triangles) with correct winding
         // Triangle 1: v0, v2, v1 (reversed for outward-facing normals)
-        indices.add(currentFaceVertexStart);
-        indices.add(currentFaceVertexStart + 2);
-        indices.add(currentFaceVertexStart + 1);
+        indices[indexSize++] = currentFaceVertexStart;
+        indices[indexSize++] = currentFaceVertexStart + 2;
+        indices[indexSize++] = currentFaceVertexStart + 1;
 
         // Triangle 2: v0, v3, v2 (reversed for outward-facing normals)
-        indices.add(currentFaceVertexStart);
-        indices.add(currentFaceVertexStart + 3);
-        indices.add(currentFaceVertexStart + 2);
+        indices[indexSize++] = currentFaceVertexStart;
+        indices[indexSize++] = currentFaceVertexStart + 3;
+        indices[indexSize++] = currentFaceVertexStart + 2;
 
         currentFaceVertexStart = -1;
         return this;
@@ -197,7 +227,10 @@ public final class MmsMeshBuilder {
      * @return this builder for chaining
      */
     public MmsMeshBuilder addIndex(int index) {
-        indices.add(index);
+        if (indexSize >= indices.length) {
+            indices = Arrays.copyOf(indices, grow(indices.length, indexSize + 1));
+        }
+        indices[indexSize++] = index;
         return this;
     }
 
@@ -223,35 +256,26 @@ public final class MmsMeshBuilder {
         for (int i = 0; i < MmsBufferLayout.VERTICES_PER_QUAD; i++) {
             int offset = i * MmsBufferLayout.VERTEX_SIZE;
 
-            // Position
-            positions.add(faceData[offset]);
-            positions.add(faceData[offset + 1]);
-            positions.add(faceData[offset + 2]);
-
-            // Texture
-            texCoords.add(faceData[offset + 3]);
-            texCoords.add(faceData[offset + 4]);
-
-            // Normal
-            normals.add(faceData[offset + 5]);
-            normals.add(faceData[offset + 6]);
-            normals.add(faceData[offset + 7]);
-
-            // Flags
-            waterFlags.add(faceData[offset + 8]);
-            alphaFlags.add(faceData[offset + 9]);
-
-            totalVertices++;
+            addVertex(
+                faceData[offset], faceData[offset + 1], faceData[offset + 2],
+                faceData[offset + 3], faceData[offset + 4],
+                faceData[offset + 5], faceData[offset + 6], faceData[offset + 7],
+                faceData[offset + 8], faceData[offset + 9]
+            );
         }
 
         // Add indices for 2 triangles
-        indices.add(baseVertex);
-        indices.add(baseVertex + 1);
-        indices.add(baseVertex + 2);
+        int idxRequired = indexSize + 6;
+        if (idxRequired > indices.length) {
+            indices = Arrays.copyOf(indices, grow(indices.length, idxRequired));
+        }
+        indices[indexSize++] = baseVertex;
+        indices[indexSize++] = baseVertex + 1;
+        indices[indexSize++] = baseVertex + 2;
 
-        indices.add(baseVertex);
-        indices.add(baseVertex + 2);
-        indices.add(baseVertex + 3);
+        indices[indexSize++] = baseVertex;
+        indices[indexSize++] = baseVertex + 2;
+        indices[indexSize++] = baseVertex + 3;
 
         return this;
     }
@@ -262,12 +286,12 @@ public final class MmsMeshBuilder {
      * @return this builder for chaining
      */
     public MmsMeshBuilder reset() {
-        positions.clear();
-        texCoords.clear();
-        normals.clear();
-        waterFlags.clear();
-        alphaFlags.clear();
-        indices.clear();
+        posSize = 0;
+        texSize = 0;
+        normSize = 0;
+        waterSize = 0;
+        alphaSize = 0;
+        indexSize = 0;
         currentFaceVertexStart = -1;
         totalVertices = 0;
         return this;
@@ -288,7 +312,7 @@ public final class MmsMeshBuilder {
      * @return Index count
      */
     public int getIndexCount() {
-        return indices.size();
+        return indexSize;
     }
 
     /**
@@ -318,13 +342,13 @@ public final class MmsMeshBuilder {
             return MmsMeshData.empty();
         }
 
-        // Convert lists to arrays
-        float[] posArray = toFloatArray(positions);
-        float[] texArray = toFloatArray(texCoords);
-        float[] normArray = toFloatArray(normals);
-        float[] waterArray = toFloatArray(waterFlags);
-        float[] alphaArray = toFloatArray(alphaFlags);
-        int[] indexArray = toIntArray(indices);
+        // Trim arrays to exact size (no boxing - just array copy)
+        float[] posArray = Arrays.copyOf(positions, posSize);
+        float[] texArray = Arrays.copyOf(texCoords, texSize);
+        float[] normArray = Arrays.copyOf(normals, normSize);
+        float[] waterArray = Arrays.copyOf(waterFlags, waterSize);
+        float[] alphaArray = Arrays.copyOf(alphaFlags, alphaSize);
+        int[] indexArray = Arrays.copyOf(indices, indexSize);
 
         // Create mesh data
         MmsMeshData meshData = new MmsMeshData(
@@ -354,24 +378,13 @@ public final class MmsMeshBuilder {
     // === Helper Methods ===
 
     /**
-     * Converts Float list to primitive float array.
+     * Computes new capacity using 1.5x growth factor, ensuring at least minRequired.
      */
-    private static float[] toFloatArray(List<Float> list) {
-        float[] array = new float[list.size()];
-        for (int i = 0; i < list.size(); i++) {
-            array[i] = list.get(i);
+    private static int grow(int currentCapacity, int minRequired) {
+        int newCapacity = currentCapacity + (currentCapacity >> 1); // 1.5x growth
+        if (newCapacity < minRequired) {
+            newCapacity = minRequired;
         }
-        return array;
-    }
-
-    /**
-     * Converts Integer list to primitive int array.
-     */
-    private static int[] toIntArray(List<Integer> list) {
-        int[] array = new int[list.size()];
-        for (int i = 0; i < list.size(); i++) {
-            array[i] = list.get(i);
-        }
-        return array;
+        return newCapacity;
     }
 }

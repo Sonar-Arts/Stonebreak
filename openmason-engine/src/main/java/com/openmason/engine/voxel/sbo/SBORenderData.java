@@ -33,7 +33,8 @@ public class SBORenderData {
     }
 
     /**
-     * Render all SBO faces, binding each face's texture before drawing.
+     * Render all SBO faces, merging consecutive same-texture batches into
+     * single draw calls and skipping redundant glBindTexture.
      */
     public void render() {
         if (handle == null || batches == null || batches.length == 0) {
@@ -43,11 +44,43 @@ public class SBORenderData {
         handle.bind();
         glActiveTexture(GL_TEXTURE0);
 
+        int boundTexture = -1;
+        int mergedOffset = -1;
+        int mergedCount = 0;
+
         for (FaceBatch batch : batches) {
-            if (batch.indexCount() > 0 && batch.textureId() > 0) {
-                glBindTexture(GL_TEXTURE_2D, batch.textureId());
-                handle.renderRange(batch.indexOffset(), batch.indexCount());
+            if (batch.indexCount() <= 0 || batch.textureId() <= 0) {
+                // Flush any pending merged batch before skipping
+                if (mergedCount > 0) {
+                    handle.renderRange(mergedOffset, mergedCount);
+                    mergedCount = 0;
+                }
+                continue;
             }
+
+            if (batch.textureId() == boundTexture &&
+                mergedCount > 0 &&
+                batch.indexOffset() == mergedOffset + mergedCount) {
+                // Contiguous range with same texture - merge
+                mergedCount += batch.indexCount();
+            } else {
+                // Flush previous merged batch
+                if (mergedCount > 0) {
+                    handle.renderRange(mergedOffset, mergedCount);
+                }
+                // Start new batch
+                if (batch.textureId() != boundTexture) {
+                    glBindTexture(GL_TEXTURE_2D, batch.textureId());
+                    boundTexture = batch.textureId();
+                }
+                mergedOffset = batch.indexOffset();
+                mergedCount = batch.indexCount();
+            }
+        }
+
+        // Flush final batch
+        if (mergedCount > 0) {
+            handle.renderRange(mergedOffset, mergedCount);
         }
 
         MmsRenderableHandle.unbind();
