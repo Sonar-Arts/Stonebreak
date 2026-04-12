@@ -635,6 +635,93 @@ public class TextureCreatorController {
         return faceRegionUV;
     }
 
+    /**
+     * Import a PNG into the active face region, resizing to fit the UV bounds.
+     *
+     * <p>Loads the PNG at native resolution, scales it to match the face region's
+     * pixel dimensions on the canvas, and stamps the pixels onto the active layer.
+     * Respects the face mask so only editable pixels are modified. The operation
+     * is fully undoable via {@link DrawCommand}.
+     *
+     * @param filePath path to the PNG file
+     * @return true if the import succeeded and pixels were applied
+     */
+    public boolean importTextureToFaceRegion(String filePath) {
+        if (!faceRegionActive || faceRegionUV == null) {
+            logger.warn("Cannot import to face region: no face region active");
+            return false;
+        }
+
+        PixelCanvas sourceCanvas = importer.importFromPNG(filePath);
+        if (sourceCanvas == null) {
+            logger.error("Failed to load PNG for face region import: {}", filePath);
+            return false;
+        }
+
+        PixelCanvas activeCanvas = getActiveLayerCanvas();
+        if (activeCanvas == null) {
+            logger.warn("No active layer canvas for face region import");
+            return false;
+        }
+
+        int canvasWidth = layerManager.getCanvasWidth();
+        int canvasHeight = layerManager.getCanvasHeight();
+
+        // Calculate the face region bounds in pixel coordinates
+        int regionX = Math.round(faceRegionUV.u0() * canvasWidth);
+        int regionY = Math.round(faceRegionUV.v0() * canvasHeight);
+        int regionW = Math.round((faceRegionUV.u1() - faceRegionUV.u0()) * canvasWidth);
+        int regionH = Math.round((faceRegionUV.v1() - faceRegionUV.v0()) * canvasHeight);
+
+        if (regionW <= 0 || regionH <= 0) {
+            logger.warn("Face region has zero area: {}x{}", regionW, regionH);
+            return false;
+        }
+
+        // Resize the imported image to match the face region dimensions
+        PixelCanvas resized = sourceCanvas.resized(regionW, regionH);
+
+        // Create an undoable command and stamp pixels onto the active canvas
+        DrawCommand importCommand = new DrawCommand(activeCanvas, "Import PNG to Face");
+
+        CanvasShapeMask effectiveMask = activeCanvas.getShapeMask();
+        int pixelsApplied = 0;
+
+        for (int dy = 0; dy < regionH; dy++) {
+            for (int dx = 0; dx < regionW; dx++) {
+                int canvasX = regionX + dx;
+                int canvasY = regionY + dy;
+
+                if (!activeCanvas.isValidCoordinate(canvasX, canvasY)) {
+                    continue;
+                }
+
+                // Respect the face mask
+                if (effectiveMask != null && !effectiveMask.isEditable(canvasX, canvasY)) {
+                    continue;
+                }
+
+                int newColor = resized.getPixel(dx, dy);
+                int oldColor = activeCanvas.getPixel(canvasX, canvasY);
+
+                if (oldColor != newColor) {
+                    importCommand.recordPixelChange(canvasX, canvasY, oldColor, newColor);
+                    pixelsApplied++;
+                }
+            }
+        }
+
+        if (importCommand.hasChanges()) {
+            commandHistory.executeCommand(importCommand);
+            notifyLayerModified();
+            logger.info("Imported PNG to face region: {} pixels applied from {}", pixelsApplied, filePath);
+            return true;
+        }
+
+        logger.debug("PNG import to face region resulted in no pixel changes");
+        return true;
+    }
+
     // ── Shape mask auto-assignment ──────────────────────────────────────
 
     /**

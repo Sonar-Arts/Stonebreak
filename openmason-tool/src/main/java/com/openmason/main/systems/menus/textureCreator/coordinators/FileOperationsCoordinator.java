@@ -107,14 +107,28 @@ public class FileOperationsCoordinator {
 
     /**
      * Import PNG with intelligent dimension detection.
-     * - Detects PNG dimensions
-     * - Auto-imports if exact match (16x16 or 64x48)
-     * - Shows dialog for other sizes
+     * <ul>
+     *   <li>If face-region editing is active, the PNG is resized to fit the face
+     *       and stamped onto the active canvas (respecting the face mask).</li>
+     *   <li>Otherwise, detects PNG dimensions and auto-imports or shows a dialog.</li>
+     * </ul>
      *
      * @param importPNGDialog dialog to show for non-standard sizes
      */
     public void importPNG(ImportPNGDialog importPNGDialog) {
         fileDialogService.showOpenPNGDialog(filePath -> {
+            // Face-region mode: import directly into the face region
+            if (controller.isFaceRegionActive()) {
+                logger.info("Face region active — importing PNG to face: {}", filePath);
+                boolean success = controller.importTextureToFaceRegion(filePath);
+                if (success) {
+                    logger.info("Successfully imported PNG to face region: {}", filePath);
+                } else {
+                    logger.error("Failed to import PNG to face region: {}", filePath);
+                }
+                return;
+            }
+
             logger.info("Detecting PNG dimensions: {}", filePath);
 
             // Detect PNG dimensions
