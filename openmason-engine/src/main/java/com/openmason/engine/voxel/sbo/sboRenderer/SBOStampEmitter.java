@@ -59,6 +59,8 @@ public class SBOStampEmitter {
         BlockStamp stamp = cache.get(blockType);
         if (stamp == null) return;
 
+        float alphaFlag = (blockType.isTransparent() && !blockType.isAir()) ? 1.0f : 0.0f;
+
         for (int face = 0; face < SBOFaceConventions.FACE_COUNT; face++) {
             if (!cullingPolicy.shouldRenderFace(blockType, lx, ly, lz, face, chunkData)) {
                 continue;
@@ -67,7 +69,7 @@ public class SBOStampEmitter {
             FaceStamp faceStamp = stamp.faces()[face];
             if (faceStamp.vertexCount() == 0) continue;
 
-            emitFaceStamp(builder, faceStamp, worldX, worldY, worldZ);
+            emitFaceStamp(builder, faceStamp, worldX, worldY, worldZ, alphaFlag);
         }
     }
 
@@ -75,7 +77,8 @@ public class SBOStampEmitter {
      * Emit a single face stamp's geometry into the builder.
      */
     private void emitFaceStamp(MmsMeshBuilder builder, FaceStamp faceStamp,
-                               float worldX, float worldY, float worldZ) {
+                               float worldX, float worldY, float worldZ,
+                               float alphaFlag) {
         float[] pos = faceStamp.positions();
         float[] nrm = faceStamp.normals();
         float[] uv = faceStamp.atlasUVs();
@@ -95,7 +98,7 @@ public class SBOStampEmitter {
                         pos[pOff + 2] + worldZ,
                         uv[tOff], uv[tOff + 1],
                         nrm[pOff], nrm[pOff + 1], nrm[pOff + 2],
-                        0.0f, 0.0f
+                        0.0f, alphaFlag
                 );
             }
 
