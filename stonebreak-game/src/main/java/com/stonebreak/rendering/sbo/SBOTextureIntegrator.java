@@ -147,15 +147,20 @@ public class SBOTextureIntegrator {
         return metadata.findBlockTexture(blockName, face);
     }
 
+    /**
+     * Resolve the atlas key prefix for a block type. The atlas is inconsistent
+     * on the {@code _block} suffix — {@code dirt_block_*}/{@code grass_block_*}
+     * use it, while {@code stone_*}, {@code cobblestone_*}, {@code gravel},
+     * {@code coal_ore_*}, {@code sandstone_*}, etc. do not. {@link AtlasMetadata
+     * #findBlockTexture} will try {@code "<name>_<face>"} then fall back to the
+     * bare {@code "<name>"} for uniform blocks like gravel, so we just need to
+     * hand it the base name that actually exists.
+     */
     private String getBlockTextureName(BlockType blockType) {
         return switch (blockType) {
             case DIRT -> "dirt_block";
-            case STONE -> "stone_block";
             case GRASS -> "grass_block";
-            case SAND -> "sand_block";
-            case GRAVEL -> "gravel_block";
-            case COBBLESTONE -> "cobblestone_block";
-            default -> blockType.name().toLowerCase() + "_block";
+            default -> blockType.name().toLowerCase();
         };
     }
 
