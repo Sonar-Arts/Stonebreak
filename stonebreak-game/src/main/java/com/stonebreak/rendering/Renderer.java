@@ -50,6 +50,9 @@ public class Renderer {
     private MmsBlockGeometryDispatcher pendingSBODispatcher;
     private MmsSBOBlockProvider pendingSBOProvider;
 
+    // SBO bridge for debug/query access
+    private SBOBlockBridge sboBlockBridge;
+
     // Specialized renderers
     private final BlockRenderer blockRenderer;
     private final PlayerArmRenderer playerArmRenderer;
@@ -128,6 +131,7 @@ public class Renderer {
             if (loaded > 0) {
                 SBOBlockBridge bridge = new SBOBlockBridge();
                 bridge.initialize(registry);
+                this.sboBlockBridge = bridge;
 
                 if (bridge.size() > 0) {
                     SBOTextureIntegrator integrator = new SBOTextureIntegrator(textureAtlas, bridge);
@@ -159,6 +163,13 @@ public class Renderer {
             System.err.println("[Renderer] SBO initialization failed (non-fatal): " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Returns the SBO block bridge, or null if SBO initialization failed or no SBO blocks were loaded.
+     */
+    public SBOBlockBridge getSBOBlockBridge() {
+        return sboBlockBridge;
     }
 
     /**

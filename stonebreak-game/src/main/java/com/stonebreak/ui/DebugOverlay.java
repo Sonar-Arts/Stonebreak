@@ -15,6 +15,7 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.rendering.Renderer;
+import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.mobs.cow.Cow;
 import com.stonebreak.mobs.cow.CowAI;
 import java.util.List;
@@ -104,6 +105,13 @@ public class DebugOverlay {
         debug.append(String.format("Block Below: %s\n", blockBelowName));
         debug.append(String.format("Continentalness: %.3f\n", continentalness));
         debug.append("\n");
+
+        // Targeted block info (what the player is looking at)
+        String targetedBlockInfo = getTargetedBlockInfo(player);
+        if (targetedBlockInfo != null) {
+            debug.append(targetedBlockInfo);
+            debug.append("\n");
+        }
         debug.append(String.format("FPS: %.0f (avg)\n", averageFPS));
         debug.append(String.format("Memory: %d/%d MB\n", usedMemory, maxMemory));
         debug.append(String.format("Chunks: %d loaded\n", loadedChunks));
@@ -295,6 +303,55 @@ public class DebugOverlay {
         
         // Use the renderer's path wireframe rendering method
         renderer.renderWireframePath(pathPoints, blue);
+    }
+
+    /**
+     * Gets information about the block the player is looking at,
+     * including whether it uses an SBO model or the legacy mesh system.
+     */
+    private String getTargetedBlockInfo(Player player) {
+        Vector3f position = player.getPosition();
+        Camera camera = player.getCamera();
+        World world = Game.getWorld();
+
+        if (camera == null || world == null) {
+            return null;
+        }
+
+        Vector3f rayOrigin = new Vector3f(position.x, position.y + 1.6f, position.z);
+        Vector3f rayDirection = camera.getFront();
+
+        float maxDistance = 6.0f;
+        float stepSize = 0.05f;
+
+        for (float distance = 0; distance < maxDistance; distance += stepSize) {
+            Vector3f point = new Vector3f(rayDirection).mul(distance).add(rayOrigin);
+
+            int blockX = (int) Math.floor(point.x);
+            int blockY = (int) Math.floor(point.y);
+            int blockZ = (int) Math.floor(point.z);
+
+            BlockType blockType = world.getBlockAt(blockX, blockY, blockZ);
+
+            if (blockType != null && blockType != BlockType.AIR) {
+                StringBuilder info = new StringBuilder();
+                info.append("─── Targeted Block ───\n");
+                info.append(String.format("Block: %s (%d, %d, %d)\n", blockType.name(), blockX, blockY, blockZ));
+
+                Renderer renderer = Game.getRenderer();
+                SBOBlockBridge bridge = renderer != null ? renderer.getSBOBlockBridge() : null;
+
+                if (bridge != null && bridge.isSBOBlock(blockType)) {
+                    info.append("Model: SBO\n");
+                } else {
+                    info.append("Model: Legacy Mesh\n");
+                }
+
+                return info.toString();
+            }
+        }
+
+        return null;
     }
 
     private String getCardinalDirection(Vector3f front) {
