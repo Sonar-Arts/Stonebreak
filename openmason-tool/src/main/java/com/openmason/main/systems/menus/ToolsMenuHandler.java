@@ -2,6 +2,7 @@ package com.openmason.main.systems.menus;
 
 import com.openmason.main.systems.menus.dialogs.SBEExportWindow;
 import com.openmason.main.systems.menus.dialogs.SBOExportWindow;
+import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.services.StatusService;
 import com.openmason.main.systems.stateHandling.ModelState;
 import imgui.ImGui;
@@ -20,6 +21,7 @@ public class ToolsMenuHandler {
     private SBEExportWindow sbeExportWindow;
     private ModelState modelState;
     private StatusService statusService;
+    private ModelOperationService modelOperations;
 
     /**
      * Set the callback for opening the texture editor.
@@ -57,6 +59,15 @@ public class ToolsMenuHandler {
     }
 
     /**
+     * Set model operation service for auto-saving the OMO before export.
+     * Allows the export flow to sync in-memory edits to disk so Stonebreak
+     * exports always reflect the latest model state.
+     */
+    public void setModelOperations(ModelOperationService modelOperations) {
+        this.modelOperations = modelOperations;
+    }
+
+    /**
      * Render the tools menu.
      */
     public void render() {
@@ -72,9 +83,12 @@ public class ToolsMenuHandler {
 
         ImGui.separator();
 
+        // Stonebreak exports only need an OMO on disk — source tag is irrelevant.
+        // Also allow saveable (NEW) models so the export flow can route them
+        // through a save-first prompt in prepareForExport().
         boolean canExport = modelState != null
                 && modelState.isModelLoaded()
-                && modelState.canSaveModel();
+                && (modelState.hasOMOFile() || modelState.canSaveModel());
         if (ImGui.menuItem("Export SBO", "Ctrl+Shift+E", false, canExport)) {
             exportSBO();
         }
@@ -90,7 +104,7 @@ public class ToolsMenuHandler {
      * Open the SBO export window.
      */
     private void exportSBO() {
-        if (!validateExportPreconditions("SBO")) return;
+        if (!prepareForExport("SBO")) return;
 
         if (sboExportWindow != null) {
             sboExportWindow.show();
@@ -104,7 +118,7 @@ public class ToolsMenuHandler {
      * Open the SBE export window.
      */
     private void exportSBE() {
-        if (!validateExportPreconditions("SBE")) return;
+        if (!prepareForExport("SBE")) return;
 
         if (sbeExportWindow != null) {
             sbeExportWindow.show();
@@ -115,23 +129,46 @@ public class ToolsMenuHandler {
     }
 
     /**
-     * Common validation for Stonebreak export formats.
+     * Validate preconditions and auto-sync the on-disk OMO for Stonebreak exports.
+     *
+     * <p>The SBO/SBE serializers read the .OMO file from disk, so the file must
+     * both exist and reflect the current in-memory model. If the model has an
+     * OMO path already (loaded from a project or previously saved), we flush
+     * any pending edits to disk before the export dialog opens. If there is no
+     * OMO path yet (a fresh unsaved model), we trigger the standard save flow
+     * so the user can pick a location — the export can be re-invoked after.
      *
      * @param formatName display name for status messages
-     * @return true if preconditions are met
+     * @return true if the export dialog should open
      */
-    private boolean validateExportPreconditions(String formatName) {
+    private boolean prepareForExport(String formatName) {
         if (modelState == null || !modelState.isModelLoaded()) {
             if (statusService != null) statusService.updateStatus("No model to export");
             return false;
         }
 
         String omoPath = modelState.getCurrentOMOFilePath();
-        if (omoPath == null || omoPath.isBlank()) {
-            if (statusService != null) statusService.updateStatus("Save model as .OMO before exporting to ." + formatName);
+        boolean hasOmoPath = omoPath != null && !omoPath.isBlank();
+
+        if (!hasOmoPath) {
+            // No OMO on disk yet — route through the normal save flow. The save
+            // dialog is async, so the user invokes export again afterwards.
+            if (modelOperations != null) {
+                if (statusService != null) {
+                    statusService.updateStatus("Save model as .OMO before exporting to ." + formatName);
+                }
+                modelOperations.saveModel();
+            } else if (statusService != null) {
+                statusService.updateStatus("Save model as .OMO before exporting to ." + formatName);
+            }
             return false;
         }
 
+        // Sync in-memory edits to the existing OMO so the export embeds fresh bytes.
+        // Only save when dirty — avoids spurious disk writes on clean reloads.
+        if (modelOperations != null && modelState.hasUnsavedChanges()) {
+            modelOperations.saveModel();
+        }
         return true;
     }
 }

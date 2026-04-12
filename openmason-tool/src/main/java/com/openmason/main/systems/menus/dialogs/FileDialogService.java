@@ -10,6 +10,9 @@ import org.slf4j.LoggerFactory;
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.io.File;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.lwjgl.util.nfd.NativeFileDialog.*;
 
@@ -25,6 +28,14 @@ public class FileDialogService {
 
     private final StatusService statusService;
     private volatile boolean nfdInitialized = false;
+
+    /**
+     * Per-file-type last-used directory. Keyed by the filter spec (e.g. "omo",
+     * "omp", "sbo") so each format keeps an independent navigation context —
+     * saving a .sbo right after a .omo no longer forces the user back to the
+     * OS default directory.
+     */
+    private final Map<String, String> lastDirectoryByType = new ConcurrentHashMap<>();
 
     public FileDialogService(StatusService statusService) {
         this.statusService = statusService;
@@ -162,12 +173,16 @@ public class FileDialogService {
                     createFilter(filters, i, stack, filterNames[i], filterSpecs[i]);
                 }
 
-                // Show open dialog
-                int result = NFD_OpenDialog(outPath, filters, (CharSequence) null);
+                // Show open dialog — seed the default path with the last directory
+                // used for any of these filter types, so each format keeps its
+                // own navigation context across sessions.
+                String defaultPath = resolveDefaultDirectory(filterSpecs);
+                int result = NFD_OpenDialog(outPath, filters, defaultPath);
 
                 if (result == NFD_OKAY) {
                     String selectedPath = outPath.getStringUTF8(0);
                     NFD_FreePath(outPath.get(0));
+                    rememberDirectoryFor(filterSpecs, selectedPath);
                     logger.info("{}: {}", logPrefix, selectedPath);
                     callback.onOpen(selectedPath);
                     statusService.updateStatus("Opened: " + new File(selectedPath).getName());
@@ -204,8 +219,10 @@ public class FileDialogService {
             try (NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1)) {
                 createFilter(filters, 0, stack, filterName, filterSpec);
 
-                // Show save dialog
-                int result = NFD_SaveDialog(outPath, filters, null, stack.UTF8(defaultFileName));
+                // Show save dialog — seed default path with the last directory
+                // used for this file type so each format has its own context.
+                String defaultPath = resolveDefaultDirectory(new String[]{filterSpec});
+                int result = NFD_SaveDialog(outPath, filters, defaultPath, defaultFileName);
 
                 if (result == NFD_OKAY) {
                     String selectedPath = outPath.getStringUTF8(0);
@@ -216,6 +233,7 @@ public class FileDialogService {
                         selectedPath += "." + filterSpec;
                     }
 
+                    rememberDirectoryFor(new String[]{filterSpec}, selectedPath);
                     logger.info("{}: {}", logPrefix, selectedPath);
                     callback.onSave(selectedPath);
                     statusService.updateStatus("Saved: " + new File(selectedPath).getName());
@@ -230,6 +248,44 @@ public class FileDialogService {
         } catch (Exception e) {
             logger.error("Error showing {} dialog", logPrefix, e);
             statusService.updateStatus("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Look up the last-used directory for any of the given filter specs.
+     * Returns the first match so multi-filter dialogs (e.g. OMT + PNG) reuse
+     * whichever context the user most recently navigated within.
+     */
+    private String resolveDefaultDirectory(String[] filterSpecs) {
+        for (String spec : filterSpecs) {
+            String dir = lastDirectoryByType.get(spec.toLowerCase());
+            if (dir != null && new File(dir).isDirectory()) {
+                return dir;
+            }
+        }
+        return null; // NFD falls back to its default when null
+    }
+
+    /**
+     * Record the parent directory of a just-selected file under each of the
+     * provided filter specs. Multi-filter dialogs record the same directory
+     * for every accepted extension so the context follows the user's intent.
+     */
+    private void rememberDirectoryFor(String[] filterSpecs, String selectedPath) {
+        if (selectedPath == null || selectedPath.isBlank()) {
+            return;
+        }
+        try {
+            Path parent = Path.of(selectedPath).getParent();
+            if (parent == null) {
+                return;
+            }
+            String dir = parent.toString();
+            for (String spec : filterSpecs) {
+                lastDirectoryByType.put(spec.toLowerCase(), dir);
+            }
+        } catch (Exception e) {
+            logger.debug("Could not record directory for {}: {}", selectedPath, e.getMessage());
         }
     }
 

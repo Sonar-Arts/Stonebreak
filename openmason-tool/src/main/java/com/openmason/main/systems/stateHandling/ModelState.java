@@ -95,6 +95,17 @@ public class ModelState {
     }
 
     /**
+     * Check if the current model has a backing .OMO file on disk.
+     * This is the actual prerequisite for Stonebreak exports (SBO/SBE),
+     * which read the OMO bytes from disk — independent of {@link ModelSource},
+     * since a project-loaded model may end up with a non-OMO source tag
+     * while still having a valid on-disk path.
+     */
+    public boolean hasOMOFile() {
+        return currentOMOFilePath != null && !currentOMOFilePath.isBlank();
+    }
+
+    /**
      * Reset model state to initial values.
      */
     public void reset() {

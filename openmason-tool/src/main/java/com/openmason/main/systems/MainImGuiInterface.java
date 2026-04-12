@@ -223,6 +223,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
             toolsMenuHandler.setModelState(modelState);
             toolsMenuHandler.setStatusService(statusService);
+            toolsMenuHandler.setModelOperations(modelOperations);
             logger.debug("SBO and SBE export windows initialized");
         } catch (Exception e) {
             logger.error("Failed to initialize components", e);

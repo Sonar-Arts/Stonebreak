@@ -107,6 +107,8 @@ public class ModelOperationService {
 
             // Update state
             modelState.reset();
+            modelState.setModelLoaded(true); // Blank model is live in the viewport
+            modelState.setCurrentModelPath(currentEditableModel.getName());
             modelState.setUnsavedChanges(true); // New models are unsaved
             modelState.setModelSource(ModelState.ModelSource.NEW); // Mark as new model
 
@@ -249,6 +251,7 @@ public class ModelOperationService {
             boolean success = omoSerializer.save(currentEditableModel, filePath, meshData);
 
             if (success) {
+                modelState.setModelLoaded(true); // Ensure export gates see a live model
                 modelState.setUnsavedChanges(false);
                 modelState.setCurrentModelPath(currentEditableModel.getName());
                 modelState.setCurrentOMOFilePath(filePath);
