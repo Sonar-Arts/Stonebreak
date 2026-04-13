@@ -59,14 +59,16 @@ public final class SBONormalComputer {
             float v1x = srcVertices[i1 * 3], v1y = srcVertices[i1 * 3 + 1], v1z = srcVertices[i1 * 3 + 2];
             float v2x = srcVertices[i2 * 3], v2y = srcVertices[i2 * 3 + 1], v2z = srcVertices[i2 * 3 + 2];
 
-            // Compute face normal: cross(edge2, edge1) for outward-facing normals
-            // SBO models from Open Mason use clockwise winding, so we reverse
-            // the cross product order to get outward-pointing normals
+            // Compute face normal from triangle edges. Winding is not assumed:
+            // after computing the normal, we flip it if it points toward the
+            // block center (positions are block-local in [-0.5, 0.5], center at
+            // origin), guaranteeing outward-facing normals regardless of CW/CCW
+            // source winding.
             float e1x = v1x - v0x, e1y = v1y - v0y, e1z = v1z - v0z;
             float e2x = v2x - v0x, e2y = v2y - v0y, e2z = v2z - v0z;
-            float nx = e2y * e1z - e2z * e1y;
-            float ny = e2z * e1x - e2x * e1z;
-            float nz = e2x * e1y - e2y * e1x;
+            float nx = e1y * e2z - e1z * e2y;
+            float ny = e1z * e2x - e1x * e2z;
+            float nz = e1x * e2y - e1y * e2x;
 
             // Normalize
             float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
@@ -74,6 +76,18 @@ public final class SBONormalComputer {
                 nx /= len;
                 ny /= len;
                 nz /= len;
+            }
+
+            // Ensure normal points outward from block center (origin). If the
+            // dot product with the triangle centroid is negative, the normal
+            // points inward — flip it.
+            float cx = (v0x + v1x + v2x) * (1f / 3f);
+            float cy = (v0y + v1y + v2y) * (1f / 3f);
+            float cz = (v0z + v1z + v2z) * (1f / 3f);
+            if (nx * cx + ny * cy + nz * cz < 0f) {
+                nx = -nx;
+                ny = -ny;
+                nz = -nz;
             }
 
             // Write de-indexed vertices
