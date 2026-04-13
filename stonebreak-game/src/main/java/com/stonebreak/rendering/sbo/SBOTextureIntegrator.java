@@ -186,6 +186,9 @@ public class SBOTextureIntegrator {
         return switch (blockType) {
             case DIRT -> "dirt_block";
             case GRASS -> "grass_block";
+            case WOOD_PLANKS -> "wood_planks_custom";
+            case PINE_WOOD_PLANKS -> "pine_wood_planks_custom";
+            case ELM_WOOD_PLANKS -> "elm_wood_planks_custom";
             default -> blockType.name().toLowerCase();
         };
     }
