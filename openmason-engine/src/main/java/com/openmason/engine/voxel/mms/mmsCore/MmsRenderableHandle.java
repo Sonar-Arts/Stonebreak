@@ -155,7 +155,7 @@ public final class MmsRenderableHandle implements AutoCloseable {
     /**
      * Creates interleaved vertex data from separated arrays.
      *
-     * Layout: [pos(3) + tex(2) + normal(3) + water(1) + alpha(1)] * vertexCount
+     * Layout: [pos(3) + tex(2) + normal(3) + water(1) + alpha(1) + translucent(1)] * vertexCount
      *
      * @param meshData Source mesh data
      * @return Interleaved vertex data array
@@ -169,6 +169,7 @@ public final class MmsRenderableHandle implements AutoCloseable {
         float[] normals = meshData.getVertexNormals();
         float[] water = meshData.getWaterHeightFlags();
         float[] alpha = meshData.getAlphaTestFlags();
+        float[] translucent = meshData.getTranslucentFlags();
 
         for (int i = 0; i < vertexCount; i++) {
             int offset = i * MmsBufferLayout.VERTEX_SIZE;
@@ -192,6 +193,9 @@ public final class MmsRenderableHandle implements AutoCloseable {
 
             // Alpha flag (1 float)
             interleaved[offset + 9] = alpha[i];
+
+            // Translucent flag (1 float)
+            interleaved[offset + 10] = translucent[i];
         }
 
         return interleaved;
@@ -256,6 +260,17 @@ public final class MmsRenderableHandle implements AutoCloseable {
             false,
             stride,
             MmsBufferLayout.ALPHA_FLAG_OFFSET
+        );
+
+        // Translucent flag attribute (location 5)
+        GL30.glEnableVertexAttribArray(MmsBufferLayout.TRANSLUCENT_FLAG_LOCATION);
+        GL30.glVertexAttribPointer(
+            MmsBufferLayout.TRANSLUCENT_FLAG_LOCATION,
+            MmsBufferLayout.TRANSLUCENT_FLAG_SIZE,
+            GL15.GL_FLOAT,
+            false,
+            stride,
+            MmsBufferLayout.TRANSLUCENT_FLAG_OFFSET
         );
     }
 

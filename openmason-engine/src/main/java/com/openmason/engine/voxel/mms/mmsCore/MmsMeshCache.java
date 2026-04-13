@@ -338,7 +338,7 @@ public final class MmsMeshCache {
      */
     private void serializeMesh(MmsMeshData mesh, DataOutputStream dos) throws IOException {
         // Write header
-        dos.writeInt(0x4D4D5301); // Magic number: "MMS\1"
+        dos.writeInt(0x4D4D5302); // Magic number: "MMS\2" (bumped: added translucentFlags)
         dos.writeInt(mesh.getVertexCount());
         dos.writeInt(mesh.getIndexCount());
 
@@ -348,6 +348,7 @@ public final class MmsMeshCache {
         writeFloatArray(dos, mesh.getVertexNormals());
         writeFloatArray(dos, mesh.getWaterHeightFlags());
         writeFloatArray(dos, mesh.getAlphaTestFlags());
+        writeFloatArray(dos, mesh.getTranslucentFlags());
 
         // Write index data
         writeIntArray(dos, mesh.getIndices(), mesh.getIndexCount());
@@ -363,8 +364,8 @@ public final class MmsMeshCache {
     private MmsMeshData deserializeMesh(DataInputStream dis) throws IOException {
         // Read and verify header
         int magic = dis.readInt();
-        if (magic != 0x4D4D5301) {
-            throw new IOException("Invalid cache file format");
+        if (magic != 0x4D4D5302) {
+            throw new IOException("Invalid or outdated cache file format");
         }
 
         int vertexCount = dis.readInt();
@@ -376,13 +377,14 @@ public final class MmsMeshCache {
         float[] normals = readFloatArray(dis, vertexCount * 3);
         float[] waterFlags = readFloatArray(dis, vertexCount);
         float[] alphaFlags = readFloatArray(dis, vertexCount);
+        float[] translucentFlags = readFloatArray(dis, vertexCount);
 
         // Read index data
         int[] indices = readIntArray(dis, indexCount);
 
         return new MmsMeshData(
             positions, texCoords, normals,
-            waterFlags, alphaFlags, indices, indexCount
+            waterFlags, alphaFlags, translucentFlags, indices, indexCount
         );
     }
 

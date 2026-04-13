@@ -30,6 +30,7 @@ public final class MmsMeshData {
     private final float[] vertexNormals;       // nx, ny, nz per vertex
     private final float[] waterHeightFlags;    // water height encoding per vertex
     private final float[] alphaTestFlags;      // alpha test flag per vertex
+    private final float[] translucentFlags;    // translucent render flag per vertex (0.0 opaque/cutout, 1.0 translucent blend)
 
     // Index data
     private final int[] indices;
@@ -43,7 +44,7 @@ public final class MmsMeshData {
     // Empty mesh singleton
     private static final MmsMeshData EMPTY = new MmsMeshData(
         new float[0], new float[0], new float[0],
-        new float[0], new float[0], new int[0], 0
+        new float[0], new float[0], new float[0], new int[0], 0
     );
 
     /**
@@ -54,19 +55,22 @@ public final class MmsMeshData {
      * @param vertexNormals Normal vectors (nx,ny,nz per vertex)
      * @param waterHeightFlags Water height encoding (1 float per vertex)
      * @param alphaTestFlags Alpha test flags (1 float per vertex)
+     * @param translucentFlags Translucent render flags (1 float per vertex)
      * @param indices Triangle indices
      * @param indexCount Number of valid indices to use
      * @throws NullPointerException if any array is null
      * @throws IllegalArgumentException if arrays are inconsistent or invalid
      */
     public MmsMeshData(float[] vertexPositions, float[] textureCoordinates, float[] vertexNormals,
-                       float[] waterHeightFlags, float[] alphaTestFlags, int[] indices, int indexCount) {
+                       float[] waterHeightFlags, float[] alphaTestFlags, float[] translucentFlags,
+                       int[] indices, int indexCount) {
         // Null checks
         this.vertexPositions = Objects.requireNonNull(vertexPositions, "vertexPositions cannot be null");
         this.textureCoordinates = Objects.requireNonNull(textureCoordinates, "textureCoordinates cannot be null");
         this.vertexNormals = Objects.requireNonNull(vertexNormals, "vertexNormals cannot be null");
         this.waterHeightFlags = Objects.requireNonNull(waterHeightFlags, "waterHeightFlags cannot be null");
         this.alphaTestFlags = Objects.requireNonNull(alphaTestFlags, "alphaTestFlags cannot be null");
+        this.translucentFlags = Objects.requireNonNull(translucentFlags, "translucentFlags cannot be null");
         this.indices = Objects.requireNonNull(indices, "indices cannot be null");
         this.indexCount = indexCount;
 
@@ -143,6 +147,13 @@ public final class MmsMeshData {
             );
         }
 
+        if (translucentFlags.length != vertexCount) {
+            throw new IllegalArgumentException(
+                String.format("Translucent flag array size mismatch: expected %d, got %d",
+                    vertexCount, translucentFlags.length)
+            );
+        }
+
         if (indexCount % 3 != 0) {
             throw new IllegalArgumentException(
                 String.format("Index count must be multiple of 3 (triangles), got %d", indexCount)
@@ -161,6 +172,7 @@ public final class MmsMeshData {
                (long) vertexNormals.length * Float.BYTES +
                (long) waterHeightFlags.length * Float.BYTES +
                (long) alphaTestFlags.length * Float.BYTES +
+               (long) translucentFlags.length * Float.BYTES +
                (long) indices.length * Integer.BYTES +
                // Object overhead (approximate)
                64L;
@@ -216,6 +228,16 @@ public final class MmsMeshData {
      */
     public float[] getAlphaTestFlags() {
         return alphaTestFlags;
+    }
+
+    /**
+     * Gets translucent flag data.
+     * WARNING: Do not modify the returned array. This is a direct reference for performance.
+     *
+     * @return Translucent flags array (1 float per vertex, 1.0 = translucent)
+     */
+    public float[] getTranslucentFlags() {
+        return translucentFlags;
     }
 
     /**
@@ -278,6 +300,7 @@ public final class MmsMeshData {
                Arrays.equals(vertexNormals, that.vertexNormals) &&
                Arrays.equals(waterHeightFlags, that.waterHeightFlags) &&
                Arrays.equals(alphaTestFlags, that.alphaTestFlags) &&
+               Arrays.equals(translucentFlags, that.translucentFlags) &&
                Arrays.equals(indices, that.indices);
     }
 
@@ -289,6 +312,7 @@ public final class MmsMeshData {
         result = 31 * result + Arrays.hashCode(vertexNormals);
         result = 31 * result + Arrays.hashCode(waterHeightFlags);
         result = 31 * result + Arrays.hashCode(alphaTestFlags);
+        result = 31 * result + Arrays.hashCode(translucentFlags);
         result = 31 * result + Arrays.hashCode(indices);
         return result;
     }

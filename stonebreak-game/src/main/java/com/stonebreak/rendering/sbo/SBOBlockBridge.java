@@ -1,7 +1,9 @@
 package com.stonebreak.rendering.sbo;
 
+import com.openmason.engine.format.mesh.ParsedMaterialData;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -103,5 +105,47 @@ public class SBOBlockBridge {
      */
     public int size() {
         return sboByBlockType.size();
+    }
+
+    /**
+     * Resolve the most permissive render layer explicitly declared by an
+     * SBO's materials. TRANSLUCENT dominates CUTOUT.
+     *
+     * <p>Returns {@code null} when the SBO either isn't registered or its
+     * materials only declare OPAQUE (or nothing at all). This lets the
+     * caller fall back to legacy hardcoded rules for blocks whose SBO
+     * doesn't opt into a non-opaque layer — important during the transition
+     * period where older SBOs may be missing the renderLayer field.
+     *
+     * @param blockType the block type
+     * @return the resolved render layer, or {@code null} if no non-opaque
+     *         declaration was found
+     */
+    public BlockDefinition.RenderLayer getRenderLayer(BlockType blockType) {
+        SBOParseResult result = sboByBlockType.get(blockType);
+        if (result == null || result.materials() == null || result.materials().isEmpty()) {
+            return null;
+        }
+
+        BlockDefinition.RenderLayer resolved = null;
+        for (ParsedMaterialData material : result.materials()) {
+            BlockDefinition.RenderLayer layer = parseRenderLayer(material.renderLayer());
+            if (layer == BlockDefinition.RenderLayer.TRANSLUCENT) {
+                return BlockDefinition.RenderLayer.TRANSLUCENT;
+            }
+            if (layer == BlockDefinition.RenderLayer.CUTOUT) {
+                resolved = BlockDefinition.RenderLayer.CUTOUT;
+            }
+        }
+        return resolved;
+    }
+
+    private static BlockDefinition.RenderLayer parseRenderLayer(String raw) {
+        if (raw == null) return BlockDefinition.RenderLayer.OPAQUE;
+        return switch (raw.trim().toUpperCase()) {
+            case "TRANSLUCENT" -> BlockDefinition.RenderLayer.TRANSLUCENT;
+            case "CUTOUT" -> BlockDefinition.RenderLayer.CUTOUT;
+            default -> BlockDefinition.RenderLayer.OPAQUE;
+        };
     }
 }

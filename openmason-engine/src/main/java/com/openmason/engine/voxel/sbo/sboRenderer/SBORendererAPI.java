@@ -82,6 +82,18 @@ public class SBORendererAPI {
     }
 
     /**
+     * Create a stamp emitter with an explicit translucency policy.
+     *
+     * @param cullingPolicy      face culling strategy
+     * @param translucencyPolicy predicate identifying translucent blocks
+     * @return a new emitter backed by this API's stamp cache
+     */
+    public SBOStampEmitter createEmitter(SBOCullingPolicy cullingPolicy,
+                                         java.util.function.Predicate<com.openmason.engine.voxel.IBlockType> translucencyPolicy) {
+        return new SBOStampEmitter(stampCache, cullingPolicy, translucencyPolicy);
+    }
+
+    /**
      * Check if a block type has SBO geometry.
      *
      * @param blockType the block type to check

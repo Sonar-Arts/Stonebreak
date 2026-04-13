@@ -7,6 +7,8 @@ import com.openmason.engine.voxel.cco.core.CcoChunkData;
 import com.openmason.engine.voxel.cco.coordinates.CcoBounds;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOCullingPolicy;
 
+import java.util.function.Predicate;
+
 /**
  * Shared face culling logic for block geometry providers.
  *
@@ -17,8 +19,39 @@ import com.openmason.engine.voxel.sbo.sboRenderer.SBOCullingPolicy;
 public class MmsFaceCullingService implements SBOCullingPolicy {
 
     private IVoxelWorld world;
+    private Predicate<IBlockType> translucencyPolicy = block -> false;
+    private Predicate<IBlockType> crossBlockPolicy = block -> false;
 
     public MmsFaceCullingService() {
+    }
+
+    /**
+     * Configure the predicate that identifies TRANSLUCENT (alpha-blended,
+     * cube-shaped) blocks such as ice. Translucent cube faces are culled
+     * against opaque neighbors to avoid coplanar z-fighting in the
+     * transparent pass (depth writes disabled).
+     *
+     * <p>CUTOUT blocks (flowers, leaves) do NOT use this rule — their
+     * "faces" aren't cube faces and culling them drops geometry.
+     *
+     * @param policy predicate returning true for translucent blocks
+     */
+    public void setTranslucencyPolicy(Predicate<IBlockType> policy) {
+        this.translucencyPolicy = policy != null ? policy : block -> false;
+    }
+
+    /**
+     * Configure the predicate that identifies cross-plane blocks (flowers
+     * and similar non-cube geometry). These blocks skip neighbor-based
+     * face culling entirely: their geometry is two intersecting planes
+     * packed into the stamp's face slots, so culling a "face" because a
+     * neighbor exists can drop an entire visible plane (notably when two
+     * flowers of the same type are adjacent).
+     *
+     * @param policy predicate returning true for cross-plane blocks
+     */
+    public void setCrossBlockPolicy(Predicate<IBlockType> policy) {
+        this.crossBlockPolicy = policy != null ? policy : block -> false;
     }
 
     /**
@@ -57,7 +90,11 @@ public class MmsFaceCullingService implements SBOCullingPolicy {
      * <p>Culling Rules:
      * <ol>
      *   <li>Always render against AIR</li>
-     *   <li>Transparent blocks render against different block types</li>
+     *   <li>Transparent blocks render against different transparent block
+     *       types (so e.g. water next to ice is visible both ways), but are
+     *       culled against opaque neighbors — the opaque block fully hides
+     *       the adjacent face, and drawing it only causes coplanar
+     *       z-fighting in the transparent pass (depth writes disabled).</li>
      *   <li>Opaque blocks cull against other opaque blocks</li>
      *   <li>Opaque blocks render against transparent blocks</li>
      * </ol>
@@ -67,7 +104,26 @@ public class MmsFaceCullingService implements SBOCullingPolicy {
             return true;
         }
 
+        // Cross-plane blocks (flowers) bypass neighbor culling entirely.
+        // Their geometry isn't oriented to cube faces, so any face-slot
+        // culling can silently drop a visible plane.
+        if (crossBlockPolicy.test(blockType)) {
+            return true;
+        }
+
         if (blockType.isTransparent()) {
+            // TRANSLUCENT cube-shaped blocks (e.g. ice) need stricter culling:
+            // the face is hidden behind any opaque neighbor, and rendering it
+            // causes coplanar z-fighting in the transparent pass since depth
+            // writes are disabled there.
+            //
+            // Other transparent blocks (CUTOUT flowers, leaves) keep the
+            // permissive "different type" rule — their "faces" may actually
+            // be cross-plane geometry packed into face slots, so culling
+            // them against opaque neighbors drops visible planes.
+            if (translucencyPolicy.test(blockType)) {
+                return adjacentBlock.isTransparent() && blockType != adjacentBlock;
+            }
             return blockType != adjacentBlock;
         }
 

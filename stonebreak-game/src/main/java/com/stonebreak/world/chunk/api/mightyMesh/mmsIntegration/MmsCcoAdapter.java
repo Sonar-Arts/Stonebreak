@@ -447,8 +447,11 @@ public class MmsCcoAdapter {
             return true;
         }
 
-        // Transparent blocks (water, leaves, flowers) render against different block types
-        // This prevents water-to-water face culling, allowing water to blend correctly
+        // Transparent blocks (water, leaves, flowers) render against different block types.
+        // Note: the stricter cull-against-opaque rule for cube-shaped TRANSLUCENT
+        // blocks (e.g. ice) lives in MmsFaceCullingService, which has access to
+        // the translucency policy. This legacy CCO path is used for water/cross
+        // geometry where the permissive rule is correct.
         if (isTransparent(blockType)) {
             return blockType != adjacentBlock;
         }

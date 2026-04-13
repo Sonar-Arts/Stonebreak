@@ -6,6 +6,8 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
 import com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp;
 import com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp;
 
+import java.util.function.Predicate;
+
 /**
  * Emits pre-computed SBO stamp geometry into a chunk mesh builder.
  *
@@ -22,16 +24,35 @@ public class SBOStampEmitter {
 
     private final SBOStampCache cache;
     private final SBOCullingPolicy cullingPolicy;
+    private final Predicate<IBlockType> translucencyPolicy;
 
     /**
      * Creates an emitter with the given stamp cache and culling policy.
+     * Translucency policy defaults to always-false (no blocks are translucent).
      *
      * @param cache         cache of pre-computed block stamps
      * @param cullingPolicy strategy for deciding which faces to render
      */
     public SBOStampEmitter(SBOStampCache cache, SBOCullingPolicy cullingPolicy) {
+        this(cache, cullingPolicy, block -> false);
+    }
+
+    /**
+     * Creates an emitter with an explicit translucency policy.
+     * Blocks matched by the policy are emitted into the transparent render
+     * pass with their sampled texture alpha preserved (alpha blending),
+     * rather than being treated as cutout (alpha testing).
+     *
+     * @param cache              cache of pre-computed block stamps
+     * @param cullingPolicy      strategy for deciding which faces to render
+     * @param translucencyPolicy returns true when a block should use
+     *                           translucent alpha-blended rendering
+     */
+    public SBOStampEmitter(SBOStampCache cache, SBOCullingPolicy cullingPolicy,
+                           Predicate<IBlockType> translucencyPolicy) {
         this.cache = cache;
         this.cullingPolicy = cullingPolicy;
+        this.translucencyPolicy = translucencyPolicy != null ? translucencyPolicy : block -> false;
     }
 
     /**
@@ -84,7 +105,13 @@ public class SBOStampEmitter {
         BlockStamp stamp = cache.get(blockType);
         if (stamp == null) return;
 
-        float alphaFlag = (blockType.isTransparent() && !blockType.isAir()) ? 1.0f : 0.0f;
+        boolean translucent = translucencyPolicy.test(blockType);
+        // Translucent blocks use alpha-blended rendering (sampled alpha), not
+        // alpha testing — so we must not set the cutout/alpha-test flag for them
+        // or the fragment shader will force them into the opaque pass and lose
+        // partial transparency.
+        float alphaFlag = (!translucent && blockType.isTransparent() && !blockType.isAir()) ? 1.0f : 0.0f;
+        float translucentFlag = translucent ? 1.0f : 0.0f;
 
         for (int face = 0; face < SBOFaceConventions.FACE_COUNT; face++) {
             if (!cullingPolicy.shouldRenderFace(blockType, lx, ly, lz, face, chunkData)) {
@@ -94,7 +121,7 @@ public class SBOStampEmitter {
             FaceStamp faceStamp = stamp.faces()[face];
             if (faceStamp.vertexCount() == 0) continue;
 
-            emitFaceStamp(builder, faceStamp, worldX, worldY, worldZ, alphaFlag, blockHeight);
+            emitFaceStamp(builder, faceStamp, worldX, worldY, worldZ, alphaFlag, translucentFlag, blockHeight);
         }
     }
 
@@ -107,7 +134,7 @@ public class SBOStampEmitter {
      */
     private void emitFaceStamp(MmsMeshBuilder builder, FaceStamp faceStamp,
                                float worldX, float worldY, float worldZ,
-                               float alphaFlag, float blockHeight) {
+                               float alphaFlag, float translucentFlag, float blockHeight) {
         float[] pos = faceStamp.positions();
         float[] nrm = faceStamp.normals();
         float[] uv = faceStamp.atlasUVs();
@@ -134,7 +161,7 @@ public class SBOStampEmitter {
                         pos[pOff + 2] + worldZ,
                         uv[tOff], uv[tOff + 1],
                         nrm[pOff], nrm[pOff + 1], nrm[pOff + 2],
-                        0.0f, alphaFlag
+                        0.0f, alphaFlag, translucentFlag
                 );
             }
 

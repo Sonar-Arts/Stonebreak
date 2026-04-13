@@ -3,6 +3,7 @@ package com.stonebreak.rendering.core;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
+import com.stonebreak.rendering.sbo.SBOBlockBridge;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,11 +20,25 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
     
     private final Map<String, BlockDefinition> definitionsByResourceId;
     private final Map<Integer, BlockDefinition> definitionsByNumericId;
-    
+    private final SBOBlockBridge sboBlockBridge;
+
     public GameBlockDefinitionRegistry() {
+        this(null);
+    }
+
+    /**
+     * Construct a registry that consults the supplied SBO bridge when
+     * determining render layers. Blocks backed by an SBO with a declared
+     * render layer (OPAQUE / CUTOUT / TRANSLUCENT) honor that declaration.
+     *
+     * @param sboBlockBridge optional SBO bridge; if {@code null}, legacy
+     *                       hardcoded render-layer rules are used.
+     */
+    public GameBlockDefinitionRegistry(SBOBlockBridge sboBlockBridge) {
         this.definitionsByResourceId = new ConcurrentHashMap<>();
         this.definitionsByNumericId = new ConcurrentHashMap<>();
-        
+        this.sboBlockBridge = sboBlockBridge;
+
         initializeBlockDefinitions();
     }
     
@@ -99,11 +114,26 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
      * Determines the appropriate render layer for a block type.
      */
     private BlockDefinition.RenderLayer determineRenderLayer(BlockType blockType) {
+        // SBO-declared render layer takes precedence when the block has
+        // an SBO override. This lets content authors mark a block as
+        // TRANSLUCENT (e.g. ice) from the .sbo manifest without code changes.
+        if (sboBlockBridge != null && sboBlockBridge.isSBOBlock(blockType)) {
+            BlockDefinition.RenderLayer sboLayer = sboBlockBridge.getRenderLayer(blockType);
+            if (sboLayer != null) {
+                return sboLayer;
+            }
+        }
+
         // Flowers are always CUTOUT — sourced from BlockType.isFlower().
         if (blockType.isFlower()) {
             return BlockDefinition.RenderLayer.CUTOUT;
         }
         switch (blockType) {
+            case ICE:
+                // Ice has partial-alpha textures that must alpha-blend, not
+                // alpha-test. Marked here as a fallback when the SBO does not
+                // declare a render layer explicitly.
+                return BlockDefinition.RenderLayer.TRANSLUCENT;
             case LEAVES, PINE_LEAVES, ELM_LEAVES:
                 // Leaf blocks use cutout only when transparency is enabled
                 // When disabled, use opaque to show the black spots

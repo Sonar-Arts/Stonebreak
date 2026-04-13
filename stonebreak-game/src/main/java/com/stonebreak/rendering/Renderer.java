@@ -82,8 +82,10 @@ public class Renderer {
 
         configManager = new RenderingConfigurationManager(width, height);
 
-        // Initialize block definition registry for CBR support
-        blockRegistry = new GameBlockDefinitionRegistry();
+        // Initialize block definition registry for CBR support.
+        // The SBO bridge (populated above) is consulted so SBO-declared
+        // render layers (e.g. TRANSLUCENT for ice) are honored.
+        blockRegistry = new GameBlockDefinitionRegistry(sboBlockBridge);
         
         
         // Initialize specialized renderers with CBR support
@@ -172,7 +174,32 @@ public class Renderer {
                     if (processed > 0) {
                         // Create deferred emitter with face culling (world set later in applySBODispatcher)
                         sboCullingService = new MmsFaceCullingService();
-                        pendingSBOEmitter = sboRendererAPI.createEmitter(sboCullingService);
+
+                        // Translucency policy: consult the CBR block registry
+                        // (populated after this method returns) for the block's
+                        // resolved render layer. Deferred lookup via `this`
+                        // reference — the predicate is only invoked later at
+                        // chunk-mesh time, by which point blockRegistry is set.
+                        java.util.function.Predicate<com.openmason.engine.voxel.IBlockType> translucencyPolicy = block -> {
+                            if (!(block instanceof com.stonebreak.blocks.BlockType bt)) return false;
+                            if (blockRegistry == null) return false;
+                            String resourceId = "stonebreak:" + bt.name().toLowerCase();
+                            return blockRegistry.getDefinition(resourceId)
+                                    .map(def -> def.getRenderLayer() == com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition.RenderLayer.TRANSLUCENT)
+                                    .orElse(false);
+                        };
+
+                        sboCullingService.setTranslucencyPolicy(translucencyPolicy);
+
+                        // Cross-plane blocks (flowers) must bypass neighbor
+                        // face culling — their "faces" are packed planes,
+                        // so culling can drop visible geometry (most
+                        // notably when two flowers of the same type are
+                        // adjacent).
+                        sboCullingService.setCrossBlockPolicy(block ->
+                                block instanceof com.stonebreak.blocks.BlockType bt && bt.isFlower());
+
+                        pendingSBOEmitter = sboRendererAPI.createEmitter(sboCullingService, translucencyPolicy);
                         System.out.println("[Renderer] SBO Renderer API: " + processed + " block types processed (emitter deferred)");
                     }
                 }

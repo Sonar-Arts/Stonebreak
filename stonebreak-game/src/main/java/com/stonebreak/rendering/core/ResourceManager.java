@@ -58,11 +58,13 @@ public class ResourceManager {
                layout (location=2) in vec3 normal;
                layout (location=3) in float waterHeight;
                layout (location=4) in float isAlphaTested;
+               layout (location=5) in float isTranslucent;
                out vec2 outTexCoord;
                out vec3 outNormal;
                out vec3 fragPos;
                out float v_waterHeight;
                out float v_isAlphaTested;
+               out float v_isTranslucent;
                uniform mat4 projectionMatrix;
                uniform mat4 viewMatrix;
                uniform mat4 modelMatrix;
@@ -131,6 +133,7 @@ public class ResourceManager {
                    fragPos = (modelMatrix * vec4(pos, 1.0)).xyz;
                    v_waterHeight = waterHeight;
                    v_isAlphaTested = isAlphaTested;
+                   v_isTranslucent = isTranslucent;
                }""";
     }
     
@@ -142,6 +145,7 @@ public class ResourceManager {
                in vec3 fragPos;
                in float v_waterHeight;
                in float v_isAlphaTested;
+               in float v_isTranslucent;
                out vec4 fragColor;
                uniform sampler2D texture_sampler;
                uniform vec4 u_color;
@@ -172,6 +176,9 @@ public class ResourceManager {
                            if (v_isAlphaTested > 0.5) {
                                if (sampledAlpha < 0.1) discard;
                                fragColor = vec4(textureColor.rgb * brightness, 1.0);
+                           } else if (v_isTranslucent > 0.5) {
+                               if (u_renderPass == 0) discard;
+                               else fragColor = vec4(textureColor.rgb * brightness, sampledAlpha);
                            } else if (v_waterHeight > 0.0) {
                                if (u_renderPass == 0) discard;
                                else fragColor = vec4(textureColor.rgb * brightness, sampledAlpha);
@@ -220,6 +227,14 @@ public class ResourceManager {
                                fragColor = vec4(result, 1.0);
                            } else {
                                discard;
+                           }
+                       } else if (v_isTranslucent > 0.5) {
+                           // Translucent blocks (e.g. ice) are rendered in transparent pass only
+                           // with the texture's native alpha preserved for proper blending.
+                           if (u_renderPass == 0) {
+                               discard;
+                           } else {
+                               fragColor = vec4(result, sampledAlpha);
                            }
                        } else if (v_waterHeight > 0.01) {
                            // Water blocks are rendered in transparent pass only
