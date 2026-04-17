@@ -37,8 +37,8 @@ public class CaveNoiseGenerator {
     // Altitude adjustment parameters
     private static final int SURFACE_FADE_DEPTH = 20;  // Fade caves over this many blocks below the surface
     // Weirdness thresholds for surface cave openings
-    private static final float WEIRDNESS_OPENING_THRESHOLD = 0.4f;
-    private static final float WEIRDNESS_OPENING_MAX = 0.9f;
+    private static final float WEIRDNESS_OPENING_THRESHOLD = 0.65f;
+    private static final float WEIRDNESS_OPENING_MAX = 0.95f;
 
     /**
      * Creates a new cave noise generator with the given seed.
