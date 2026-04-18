@@ -7,8 +7,7 @@ import com.stonebreak.world.generation.water.GridPosition;
 import com.stonebreak.world.generation.utils.GridInterpolation;
 import com.stonebreak.world.generation.utils.TerrainCalculations;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -24,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *     <li>Elevation probability (exponential decay via {@link ElevationProbabilityCalculator})</li>
  *     <li>Grid-based calculation (256-block resolution default)</li>
  *     <li>Bilinear interpolation for smooth water surfaces</li>
- *     <li>LRU cache eviction (prevents unbounded growth)</li>
+ *     <li>Permanent per-grid-cell cache (computed once, stored for world lifetime)</li>
  * </ul>
  *
  * <p><strong>Algorithm:</strong></p>
@@ -32,7 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * For each column:
  *   1. Early exit if terrain &lt; 66 or bad climate
  *   2. Calculate grid cell coordinates
- *   3. Get/interpolate 4 corner grid values (LRU cached)
+ *   3. Get/interpolate 4 corner grid values (permanently cached)
  *   4. Each grid value calculated via:
  *      - Simple single-ring sampling (16 samples)
  *      - Depth validation (>= 2 blocks)
@@ -49,8 +48,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class BasinWaterLevelGrid {
 
-    private final Map<GridPosition, Integer> gridCache;
-    private final Map<GridPosition, BasinDetectionResult> metadataCache; // NEW: Cache for basin detection metadata
+    // Permanent cache: grid cell → detection result (computed once, stored for world lifetime)
+    private final ConcurrentHashMap<GridPosition, BasinDetectionResult> resultCache;
     private final SimpleBasinDetector basinDetector;
     private final ElevationProbabilityCalculator probabilityCalculator;
     private final NoiseRouter noiseRouter;
@@ -78,22 +77,10 @@ public class BasinWaterLevelGrid {
      */
     public BasinWaterLevelGrid(NoiseRouter noiseRouter, TerrainGenerator terrainGenerator,
                                WaterGenerationConfig config, long seed) {
-        // Initialize LRU cache with size limit to prevent unbounded growth
-        // access-order = true enables LRU behavior
-        this.gridCache = new LinkedHashMap<>(16, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<GridPosition, Integer> eldest) {
-                return size() > config.maxGridCacheSize;
-            }
-        };
-
-        // Initialize metadata cache (NEW: for adaptive validation)
-        this.metadataCache = new LinkedHashMap<>(16, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<GridPosition, BasinDetectionResult> eldest) {
-                return size() > config.maxGridCacheSize;
-            }
-        };
+        // Permanent result cache: each grid cell is computed once and stored for the world's lifetime.
+        // ConcurrentHashMap ensures thread-safe access from parallel chunk generation threads,
+        // and computeIfAbsent guarantees the detection function runs at most once per key.
+        this.resultCache = new ConcurrentHashMap<>();
 
         this.noiseRouter = noiseRouter;
         this.terrainGenerator = terrainGenerator;
@@ -120,9 +107,9 @@ public class BasinWaterLevelGrid {
      * <p>Only operates on terrain >= basinMinimumElevation (66 default).
      * Applies climate filtering, rim detection, and elevation falloff.</p>
      *
-     * <p><strong>Performance:</strong> O(1) amortized due to grid caching.
-     * First access to a grid cell is O(N²) for rim detection, subsequent
-     * accesses within the same grid cell are O(1).</p>
+     * <p><strong>Performance:</strong> O(1) after first access. First access to a grid cell
+     * runs basin detection (O(N²) for rim sampling); result is then stored permanently —
+     * all subsequent accesses for that cell are O(1) with no re-detection.</p>
      *
      * @param worldX World X coordinate
      * @param worldZ World Z coordinate
@@ -160,11 +147,11 @@ public class BasinWaterLevelGrid {
         float localX = (worldX - gridX * config.waterGridResolution) / (float)config.waterGridResolution;
         float localZ = (worldZ - gridZ * config.waterGridResolution) / (float)config.waterGridResolution;
 
-        // Get 4 corner grid values (cached or calculated)
-        int water00 = getOrCalculateGridValue(gridX, gridZ);
-        int water10 = getOrCalculateGridValue(gridX + 1, gridZ);
-        int water01 = getOrCalculateGridValue(gridX, gridZ + 1);
-        int water11 = getOrCalculateGridValue(gridX + 1, gridZ + 1);
+        // Get 4 corner grid values (computed once per cell, permanently cached)
+        int water00 = getOrCalculateResult(gridX,     gridZ    ).waterLevel();
+        int water10 = getOrCalculateResult(gridX + 1, gridZ    ).waterLevel();
+        int water01 = getOrCalculateResult(gridX,     gridZ + 1).waterLevel();
+        int water11 = getOrCalculateResult(gridX + 1, gridZ + 1).waterLevel();
 
         // Bilinear interpolation
         int waterLevel = bilinearInterpolate(water00, water10, water01, water11, localX, localZ);
@@ -194,35 +181,39 @@ public class BasinWaterLevelGrid {
     }
 
     /**
-     * Gets a cached grid value or calculates it if not cached.
+     * Gets the cached result for a grid cell, computing it exactly once if not yet cached.
      *
-     * <p>Uses LRU cache with access-order LinkedHashMap. NOT thread-safe - assumes
-     * single-threaded access per world instance.</p>
+     * <p>Uses {@link ConcurrentHashMap#computeIfAbsent}, which is atomic — the detection
+     * function runs at most once per key even under concurrent chunk generation. The result
+     * is stored permanently for the lifetime of the world instance (no eviction).</p>
      *
      * @param gridX Grid X coordinate
      * @param gridZ Grid Z coordinate
-     * @return Basin water level at grid point, or -1 if no water
+     * @return Cached or freshly computed {@link BasinDetectionResult} for this grid cell
      */
-    private int getOrCalculateGridValue(int gridX, int gridZ) {
+    private BasinDetectionResult getOrCalculateResult(int gridX, int gridZ) {
         GridPosition key = new GridPosition(gridX, gridZ);
-        return gridCache.computeIfAbsent(key, _ -> calculateGridWaterLevel(gridX, gridZ));
+        return resultCache.computeIfAbsent(key, _ -> calculateGridResult(gridX, gridZ));
     }
 
     /**
-     * Calculates basin water level at a grid point using simple single-ring sampling.
+     * Computes the basin detection result for a grid cell.
      *
-     * <p><strong>Simplified Algorithm (KISS):</strong></p>
+     * <p>Called at most once per grid cell — the result is permanently stored in
+     * {@code resultCache} by {@link #getOrCalculateResult}.</p>
+     *
+     * <p><strong>Algorithm (KISS):</strong></p>
      * <ol>
      *     <li>Apply elevation probability falloff (exponential decay)</li>
-     *     <li>Detect basin using simple single-ring sampling (16 samples)</li>
-     *     <li>Return water level or -1 if no valid basin</li>
+     *     <li>Detect basin using single-ring sampling with adaptive radius widening</li>
+     *     <li>Return the full {@link BasinDetectionResult} (including {@code noBasin()} sentinels)</li>
      * </ol>
      *
      * @param gridX Grid X coordinate
      * @param gridZ Grid Z coordinate
-     * @return Basin water level at grid point, or -1 if no water
+     * @return Detection result — {@link BasinDetectionResult#noBasin()} if rejected, otherwise full metadata
      */
-    private int calculateGridWaterLevel(int gridX, int gridZ) {
+    private BasinDetectionResult calculateGridResult(int gridX, int gridZ) {
         // World position at center of grid cell
         int centerX = gridX * config.waterGridResolution + config.waterGridResolution / 2;
         int centerZ = gridZ * config.waterGridResolution + config.waterGridResolution / 2;
@@ -246,10 +237,10 @@ public class BasinWaterLevelGrid {
         if (!shouldGenerate) {
             failedProbability.incrementAndGet();
             if (shouldLog) System.out.printf("  REJECTED: Probability check failed at y=%d%n", centerTerrainHeight);
-            return -1; // Filtered by elevation probability
+            return BasinDetectionResult.noBasin();
         }
 
-        // Detect basin using adaptive ring radius widening (now returns metadata)
+        // Detect basin using adaptive ring radius widening
         BasinDetectionResult result = basinDetector.detectBasinWaterLevelWithAdaptiveRadius(centerX, centerZ);
 
         if (shouldLog) {
@@ -258,34 +249,30 @@ public class BasinWaterLevelGrid {
                 "NO BASIN");
         }
 
-        // No basin found (too shallow depth check failed)
+        // No basin found
         if (!result.hasBasin()) {
             failedRim.incrementAndGet();
             if (shouldLog) {
                 String failureReason = basinDetector.getLastFailureReason();
                 System.out.printf("  REJECTED: %s%n", failureReason != null ? failureReason : "No basin found");
             }
-            return -1;
+            return BasinDetectionResult.noBasin();
         }
 
-        // NEW: Check for valley rejection (aspect ratio based)
+        // Reject valleys (aspect ratio based)
         if (result.isValley()) {
-            failedRim.incrementAndGet(); // Count as failed (valley rejected)
+            failedRim.incrementAndGet();
             if (shouldLog) {
                 System.out.printf("  REJECTED: Valley detected (depth=%d > width/3=%d)%n",
                     result.getBasinDepth(), (result.detectionRadius() * 2) / 3);
             }
-            return -1;
+            return BasinDetectionResult.noBasin();
         }
-
-        // Cache metadata for later use in validation
-        GridPosition key = new GridPosition(gridX, gridZ);
-        metadataCache.put(key, result);
 
         succeeded.incrementAndGet();
         if (shouldLog) System.out.printf("  SUCCESS: Water level = %d (radius=%d, depth=%d)%n",
             result.waterLevel(), result.detectionRadius(), result.getBasinDepth());
-        return result.waterLevel();
+        return result;
     }
 
     /**
@@ -325,17 +312,16 @@ public class BasinWaterLevelGrid {
      */
     public BasinDetectionResult getBasinMetadata(int gridX, int gridZ) {
         GridPosition key = new GridPosition(gridX, gridZ);
-        return metadataCache.getOrDefault(key, BasinDetectionResult.noBasin());
+        return resultCache.getOrDefault(key, BasinDetectionResult.noBasin());
     }
 
     /**
-     * Clears both the grid cache and metadata cache.
+     * Clears the result cache.
      *
-     * <p>Should be called when switching worlds or when memory pressure is high.</p>
+     * <p>Should be called when switching worlds so the new world starts fresh.</p>
      */
     public void clearCache() {
-        gridCache.clear();
-        metadataCache.clear(); // NEW: Clear metadata cache too
+        resultCache.clear();
     }
 
     /**
@@ -345,7 +331,7 @@ public class BasinWaterLevelGrid {
      */
     @SuppressWarnings("unused") // Useful for debugging/monitoring
     public int getCacheSize() {
-        return gridCache.size();
+        return resultCache.size();
     }
 
     /**
