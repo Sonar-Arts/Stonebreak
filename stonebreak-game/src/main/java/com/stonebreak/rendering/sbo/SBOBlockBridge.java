@@ -54,7 +54,11 @@ public class SBOBlockBridge {
             Map.entry("stonebreak:clay", BlockType.CLAY),
             Map.entry("stonebreak:snow", BlockType.SNOW),
             Map.entry("stonebreak:ice", BlockType.ICE),
-            Map.entry("stonebreak:bedrock", BlockType.BEDROCK)
+            Map.entry("stonebreak:bedrock", BlockType.BEDROCK),
+            Map.entry("stonebreak:crystal", BlockType.CRYSTAL),
+            Map.entry("stonebreak:iron_ore", BlockType.IRON_ORE),
+            Map.entry("stonebreak:magma", BlockType.MAGMA),
+            Map.entry("stonebreak:workbench", BlockType.WORKBENCH)
     );
 
     private final EnumMap<BlockType, SBOParseResult> sboByBlockType = new EnumMap<>(BlockType.class);

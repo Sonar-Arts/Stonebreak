@@ -16,8 +16,7 @@ import java.util.*;
  * to the face bounds. Supports UV rotation and falls back to full {@code (0,0)→(1,1)}
  * mapping for faces without explicit mappings.
  *
- * <p>Replaces the deprecated {@link UVCoordinateGenerator} which assumed cube topology.
- * This implementation supports arbitrary geometry with any face count and layout.
+ * <p>Supports arbitrary geometry with any face count and layout (no cube assumptions).
  *
  * <p><b>Algorithm:</b>
  * <ol>
