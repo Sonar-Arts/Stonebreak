@@ -5,6 +5,7 @@ import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.ChunkGenerationContext;
+import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -21,10 +22,13 @@ public class SurfaceDecorationGenerator {
 
     private final DeterministicRandom rng;
     private final HeightMapGenerator heightMap;
+    private final BiomeManager biomeManager;
 
-    public SurfaceDecorationGenerator(DeterministicRandom rng, HeightMapGenerator heightMap) {
+    public SurfaceDecorationGenerator(DeterministicRandom rng, HeightMapGenerator heightMap,
+                                      BiomeManager biomeManager) {
         this.rng = rng;
         this.heightMap = heightMap;
+        this.biomeManager = biomeManager;
     }
 
     public void generate(ChunkGenerationContext ctx) {
@@ -104,7 +108,7 @@ public class SurfaceDecorationGenerator {
     }
 
     private void placeOnSurface(World world, int worldX, int worldZ, BlockType expected, BlockType replacement) {
-        int y = heightMap.generateHeight(worldX, worldZ) - 1;
+        int y = heightMap.generateHeight(worldX, worldZ, biomeManager) - 1;
         if (world.getBlockAt(worldX, y, worldZ) == expected) {
             world.setBlockAt(worldX, y, worldZ, replacement);
         }

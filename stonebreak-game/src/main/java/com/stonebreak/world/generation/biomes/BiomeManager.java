@@ -13,14 +13,16 @@ public class BiomeManager {
 
     private final NoiseGenerator moistureNoise;
     private final NoiseGenerator temperatureNoise;
+    private final BiomeClassifier classifier;
 
     public BiomeManager(long seed) {
         this.moistureNoise = new NoiseGenerator(seed);
         this.temperatureNoise = new NoiseGenerator(seed + 1);
+        this.classifier = new BiomeClassifier();
     }
 
     public BiomeType getBiome(int x, int z) {
-        return classify(getTemperature(x, z), getMoisture(x, z));
+        return classifier.classify(getTemperature(x, z), getMoisture(x, z));
     }
 
     public float getMoisture(int x, int z) {
@@ -44,13 +46,4 @@ public class BiomeManager {
         }
     }
 
-    private static BiomeType classify(float temperature, float moisture) {
-        if (temperature > 0.65f) {
-            return moisture < 0.35f ? BiomeType.DESERT : BiomeType.RED_SAND_DESERT;
-        }
-        if (temperature < 0.35f) {
-            return moisture > 0.6f ? BiomeType.SNOWY_PLAINS : BiomeType.PLAINS;
-        }
-        return moisture < 0.3f ? BiomeType.DESERT : BiomeType.PLAINS;
-    }
 }

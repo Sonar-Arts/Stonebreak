@@ -43,7 +43,7 @@ public class TerrainGenerationSystem {
         this.biomeManager = new BiomeManager(seed);
         this.oreGenerator = new OreGenerator(deterministicRandom);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
-        this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator);
+        this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, biomeManager);
     }
 
     public long getSeed() {
@@ -64,9 +64,9 @@ public class TerrainGenerationSystem {
 
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
-        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights);
         updateLoadingProgress("Determining Biomes");
         biomeManager.populateChunkBiomes(chunkX, chunkZ, biomes);
+        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, biomeManager, heights);
 
         updateLoadingProgress("Applying Biome Materials");
         int baseX = chunkX * CHUNK_SIZE;
@@ -109,8 +109,8 @@ public class TerrainGenerationSystem {
 
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
-        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights);
         biomeManager.populateChunkBiomes(chunkX, chunkZ, biomes);
+        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, biomeManager, heights);
         BiomeType dominantBiome = biomes[(CHUNK_SIZE / 2) * CHUNK_SIZE + (CHUNK_SIZE / 2)];
 
         ChunkGenerationContext ctx = new ChunkGenerationContext(
