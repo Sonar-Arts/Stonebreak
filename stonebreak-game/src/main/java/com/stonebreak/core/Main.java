@@ -10,7 +10,6 @@ import com.stonebreak.input.MouseCaptureManager;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
-import com.stonebreak.textures.atlas.TextureAtlasBuilder;
 import com.stonebreak.ui.DebugOverlay;
 import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
@@ -327,9 +326,6 @@ public class Main {
     private void initializeGameComponents() {
           MemoryProfiler profiler = MemoryProfiler.getInstance();
           profiler.takeSnapshot("before_initialization");
-
-          // Check if texture atlas needs regeneration
-          regenerateAtlasIfNeeded();
 
           // Initialize the renderer with window dimensions
           renderer = new Renderer(width, height);
@@ -722,39 +718,6 @@ public class Main {
                 debugOverlay.render(renderer.getUIRenderer());
                 renderer.endUIFrame();
             }
-        }
-    }
-    
-    /**
-     * Check if texture atlas needs regeneration and regenerate if necessary.
-     * This ensures textures are up-to-date before rendering starts.
-     */
-    private void regenerateAtlasIfNeeded() {
-        try {
-            System.out.println("Checking if texture atlas regeneration is needed...");
-            
-            TextureAtlasBuilder atlasBuilder = new TextureAtlasBuilder();
-            
-            if (atlasBuilder.shouldRegenerateAtlas()) {
-                System.out.println("Texture atlas regeneration required - starting generation...");
-                
-                long startTime = System.currentTimeMillis();
-                boolean success = atlasBuilder.generateAtlas();
-                long endTime = System.currentTimeMillis();
-                
-                if (success) {
-                    System.out.println("Texture atlas regenerated successfully in " + (endTime - startTime) + "ms");
-                } else {
-                    System.err.println("Failed to regenerate texture atlas - game may display incorrectly");
-                }
-            } else {
-                System.out.println("Texture atlas is up-to-date, no regeneration needed");
-            }
-            
-        } catch (Exception e) {
-            System.err.println("Error during atlas regeneration check: " + e.getMessage());
-            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
-            System.err.println("Continuing with existing atlas...");
         }
     }
     

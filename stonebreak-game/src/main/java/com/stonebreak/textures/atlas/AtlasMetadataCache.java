@@ -1,6 +1,5 @@
 package com.stonebreak.textures.atlas;
 
-import com.stonebreak.textures.loaders.TextureResourceLoader;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -35,10 +34,10 @@ public class AtlasMetadataCache {
         public final int atlasX, atlasY;     // Pixel coordinates in atlas
         public final int width, height;     // Texture dimensions
         public final String textureName;    // Name/ID of texture
-        public final TextureResourceLoader.TextureType type;      // Type of texture
-        
+        public final TextureType type;      // Type of texture
+
         public TextureCoordinates(String textureName, float u1, float v1, float u2, float v2,
-                                 int atlasX, int atlasY, int width, int height, TextureResourceLoader.TextureType type) {
+                                 int atlasX, int atlasY, int width, int height, TextureType type) {
             this.textureName = textureName;
             this.u1 = u1;
             this.v1 = v1;
@@ -62,7 +61,14 @@ public class AtlasMetadataCache {
         }
     }
     
-    // TextureType enum is now defined in TextureResourceLoader
+    /**
+     * Classification of textures stored in the atlas.
+     */
+    public enum TextureType {
+        BLOCK_UNIFORM,
+        BLOCK_CUBE_CROSS,
+        ITEM
+    }
     
     /**
      * Internal cache entry with timestamp for TTL management.
