@@ -327,6 +327,14 @@ public class WorldChunkStore {
                 try {
                     terrainSystem.populateChunkWithFeatures(world, chunk, world.getSnowLayerManager());
                     chunk.setFeaturesPopulated(true);
+                    // Features write via chunk.setBlock(), which only flips the CCO dirty flag
+                    // and does not schedule a remesh. If the mesh was already built from
+                    // terrain-only data (common when flying fast), flowers/wildgrass would
+                    // stay invisible until another write forced a rebuild. Schedule it here
+                    // so every populated chunk is guaranteed to remesh once features land.
+                    if (meshPipeline != null) {
+                        meshPipeline.scheduleConditionalMeshBuild(chunk);
+                    }
                     processed++;
                 } catch (Exception e) {
                     System.err.println("Exception populating features for chunk (" + x + ", " + z + "): " + e.getMessage());
