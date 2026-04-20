@@ -100,7 +100,7 @@ public class ChunkManager {
         loadEnteredChunks(requiredChunks);
         ensureVisibleChunksAreReady(playerChunkX, playerChunkZ);
 
-        com.stonebreak.world.lod.LodManager lod = world.getLodManager();
+        com.stonebreak.world.fastlod.FastLodManager lod = world.getFastLodManager();
         if (lod != null) {
             lod.updateRing(playerChunkX, playerChunkZ);
         }

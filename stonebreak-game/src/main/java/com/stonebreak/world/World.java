@@ -19,8 +19,12 @@ import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
 import com.stonebreak.world.chunk.utils.WorldChunkStore;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.world.lod.LodManager;
+import com.stonebreak.world.fastlod.FastLodManager;
+import com.stonebreak.world.fastlod.FastLodStore;
 import com.stonebreak.world.operations.WorldConfiguration;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 /**
  * Manages the game world and chunks using a modular architecture.
@@ -44,7 +48,7 @@ public class World {
     private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
 
     // Lazily constructed once the render-thread hands us a texture atlas.
-    private volatile LodManager lodManager;
+    private volatile FastLodManager fastLodManager;
 
     public World() {
         this(new WorldConfiguration());
@@ -431,10 +435,10 @@ public class World {
             chunkManager.shutdown();
         }
 
-        if (lodManager != null) {
-            lodManager.shutdown();
+        if (fastLodManager != null) {
+            fastLodManager.shutdown();
             // Drain the final cleanup queue on the GL thread.
-            lodManager.applyGLUpdates();
+            fastLodManager.applyGLUpdates();
         }
 
         if (meshPipeline != null) {
@@ -445,20 +449,40 @@ public class World {
     }
 
     /**
-     * Constructs the distant-terrain LOD manager the first time the render
-     * thread has a texture atlas to bind. Idempotent; safe to call each frame.
+     * Constructs the Fast LOD manager the first time the render thread hands
+     * us a texture atlas. Opens a persistent SQLite cache under the active
+     * world's save directory when one is available; otherwise runs without
+     * persistence. Idempotent; safe to call each frame.
      */
-    public void ensureLodManager(com.stonebreak.rendering.textures.TextureAtlas atlas) {
-        if (lodManager != null || atlas == null || terrainSystem == null) return;
+    public void ensureFastLodManager(com.stonebreak.rendering.textures.TextureAtlas atlas) {
+        if (fastLodManager != null || atlas == null || terrainSystem == null) return;
         synchronized (this) {
-            if (lodManager == null) {
-                lodManager = new LodManager(config, terrainSystem, atlas);
-            }
+            if (fastLodManager != null) return;
+            FastLodStore store = openFastLodStoreIfPossible();
+            fastLodManager = new FastLodManager(config, terrainSystem, atlas, store);
         }
     }
 
-    public LodManager getLodManager() {
-        return lodManager;
+    private static FastLodStore openFastLodStoreIfPossible() {
+        // Resolves the save directory through Game so World stays agnostic of
+        // how save state is plumbed. Any failure (no save service, bad path,
+        // SQLite driver missing) falls through to pure in-memory LOD.
+        try {
+            com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
+            com.stonebreak.world.save.SaveService svc = (game != null) ? game.getSaveService() : null;
+            if (svc == null) return null;
+            String worldPath = svc.getWorldPath();
+            if (worldPath == null || worldPath.isEmpty()) return null;
+            Path dbPath = Paths.get(worldPath, "fastlod", "cache.sqlite");
+            return FastLodStore.open(dbPath);
+        } catch (Exception e) {
+            System.err.println("[World] FastLod store setup failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    public FastLodManager getFastLodManager() {
+        return fastLodManager;
     }
 
     public WorldConfiguration getConfig() {

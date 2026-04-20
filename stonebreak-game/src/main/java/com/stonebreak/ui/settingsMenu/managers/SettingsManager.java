@@ -79,7 +79,7 @@ public class SettingsManager {
     
     /**
      * Pushes render + LOD distance from Settings into the live world config.
-     * ChunkManager and LodManager both read from that config each tick, so the
+     * ChunkManager and FastLodManager both read from that config each tick, so the
      * change takes effect within ~1s without a world restart.
      */
     public void applyWorldDistanceSettings() {
