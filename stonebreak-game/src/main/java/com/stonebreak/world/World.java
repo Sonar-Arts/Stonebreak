@@ -114,7 +114,19 @@ public class World {
             }, config);
 
             this.waterSystem = new WaterSystem(this);
-            this.chunkStore.setChunkListeners(waterSystem::onChunkLoaded, waterSystem::onChunkUnloaded);
+            this.chunkStore.setChunkListeners(chunk -> {
+                waterSystem.onChunkLoaded(chunk);
+                // Mark already-meshed neighbors dirty so their chunk-border faces
+                // (especially water seams) rebuild against this newly loaded chunk.
+                if (meshPipeline != null) {
+                    int cx = chunk.getX();
+                    int cz = chunk.getZ();
+                    markMeshedNeighborDirty(cx - 1, cz);
+                    markMeshedNeighborDirty(cx + 1, cz);
+                    markMeshedNeighborDirty(cx, cz - 1);
+                    markMeshedNeighborDirty(cx, cz + 1);
+                }
+            }, waterSystem::onChunkUnloaded);
 
             this.chunkManager = new ChunkManager(this, config.getRenderDistance());
 
@@ -591,6 +603,19 @@ public class World {
      */
     private void resetMeshGenerationState(Chunk chunk) {
         chunk.getCcoDirtyTracker().markMeshDirtyOnly();
+    }
+
+    /**
+     * Marks an existing, meshed neighbor chunk dirty and schedules a rebuild so
+     * its border faces (water seams in particular) recompute with correct data.
+     * No-op if the neighbor isn't loaded or hasn't been meshed yet.
+     */
+    private void markMeshedNeighborDirty(int chunkX, int chunkZ) {
+        Chunk neighbor = chunkStore.getChunk(chunkX, chunkZ);
+        if (neighbor == null) return;
+        if (!neighbor.isMeshGenerated()) return;
+        neighbor.getCcoDirtyTracker().markMeshDirtyOnly();
+        meshPipeline.scheduleConditionalMeshBuild(neighbor);
     }
 
     /**
