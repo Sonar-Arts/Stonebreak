@@ -50,26 +50,27 @@ public class VegetationGenerator {
 
     private void placeTree(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
                            int surface, BiomeType biome, BlockType surfaceBlock) {
+        FeatureQueue queue = ctx.world.getFeatureQueue();
         if (biome == BiomeType.PLAINS && surfaceBlock == BlockType.GRASS &&
             rng.shouldGenerate(worldX, worldZ, "tree", TREE_CHANCE)) {
             if (rng.shouldGenerate(worldX, worldZ, "tree_type", ELM_TREE_CHANCE)) {
-                TreeGenerator.generateElmTree(ctx.world, ctx.chunk, x, surface, z,
+                TreeGenerator.generateElmTree(ctx.world, queue, ctx.chunk, x, surface, z,
                     rng.getRandomForPosition(worldX, worldZ, "elm_tree"), treeRandomLock);
             } else {
-                TreeGenerator.generateTree(ctx.world, ctx.chunk, x, surface, z);
+                TreeGenerator.generateTree(ctx.world, queue, ctx.chunk, x, surface, z);
             }
         } else if (biome == BiomeType.SNOWY_PLAINS && surfaceBlock == BlockType.SNOWY_DIRT &&
                    rng.shouldGenerate(worldX, worldZ, "pine_tree", PINE_TREE_CHANCE)) {
-            TreeGenerator.generatePineTree(ctx.world, ctx.chunk, x, surface, z);
+            TreeGenerator.generatePineTree(ctx.world, queue, ctx.chunk, x, surface, z);
         } else if (biome == BiomeType.TAIGA && surfaceBlock == BlockType.SNOWY_DIRT &&
                    rng.shouldGenerate(worldX, worldZ, "taiga_pine_tree", TAIGA_PINE_CHANCE)) {
-            TreeGenerator.generatePineTree(ctx.world, ctx.chunk, x, surface, z);
+            TreeGenerator.generatePineTree(ctx.world, queue, ctx.chunk, x, surface, z);
         } else if (biome == BiomeType.TUNDRA && surfaceBlock == BlockType.GRAVEL &&
                    rng.shouldGenerate(worldX, worldZ, "tundra_pine_tree", TUNDRA_PINE_CHANCE)) {
-            TreeGenerator.generatePineTree(ctx.world, ctx.chunk, x, surface, z);
+            TreeGenerator.generatePineTree(ctx.world, queue, ctx.chunk, x, surface, z);
         } else if (biome == BiomeType.MEADOW && surfaceBlock == BlockType.GRASS &&
                    rng.shouldGenerate(worldX, worldZ, "meadow_tree", MEADOW_TREE_CHANCE)) {
-            TreeGenerator.generateElmTree(ctx.world, ctx.chunk, x, surface, z,
+            TreeGenerator.generateElmTree(ctx.world, queue, ctx.chunk, x, surface, z,
                 rng.getRandomForPosition(worldX, worldZ, "meadow_elm"), treeRandomLock);
         }
     }

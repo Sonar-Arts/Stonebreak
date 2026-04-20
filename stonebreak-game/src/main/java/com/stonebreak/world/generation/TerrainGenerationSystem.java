@@ -11,7 +11,11 @@ import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
+import com.stonebreak.world.generation.heightmap.Density3D;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
+import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
+
+import java.util.BitSet;
 import com.stonebreak.world.generation.terrain.MobGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -32,6 +36,8 @@ public class TerrainGenerationSystem {
     private final VegetationGenerator vegetationGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
     private final DeterministicRandom deterministicRandom;
+    private final Density3D density3D;
+    private final PerlinWormCarver wormCarver;
 
     private final Random animalRandom = new Random();
     private final Object animalRandomLock = new Object();
@@ -44,6 +50,8 @@ public class TerrainGenerationSystem {
         this.oreGenerator = new OreGenerator(deterministicRandom);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
         this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, biomeManager, seed);
+        this.density3D = new Density3D(seed);
+        this.wormCarver = new PerlinWormCarver(seed, heightMapGenerator);
     }
 
     public long getSeed() {
@@ -105,6 +113,7 @@ public class TerrainGenerationSystem {
         heightMapGenerator.populateChunkHeights(chunkX, chunkZ, biomeManager, baseHeights, heights);
 
         updateLoadingProgress("Applying Biome Materials");
+        BitSet wormMask = wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -115,7 +124,11 @@ public class TerrainGenerationSystem {
                 int worldX = baseX + x;
                 int worldZ = baseZ + z;
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
-                    chunk.setBlock(x, y, z, determineBlockType(worldX, y, worldZ, height, biome));
+                    if (y > 0 && y < height && wormMask.get((x << 12) | (y << 4) | z)) {
+                        chunk.setBlock(x, y, z, BlockType.AIR);
+                    } else {
+                        chunk.setBlock(x, y, z, determineBlockType(worldX, y, worldZ, height, biome));
+                    }
                 }
             }
         }
@@ -166,6 +179,9 @@ public class TerrainGenerationSystem {
     private BlockType determineBlockType(int worldX, int y, int worldZ, int height, BiomeType biome) {
         if (y == 0) {
             return BlockType.BEDROCK;
+        }
+        if (y < height && !density3D.isSolid(worldX, y, worldZ, height, biome)) {
+            return BlockType.AIR;
         }
         if (y < height - 4) {
             if (biome == BiomeType.RED_SAND_DESERT && y < height - 10 &&

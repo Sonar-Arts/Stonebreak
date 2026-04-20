@@ -297,7 +297,12 @@ public class Chunk {
     }
 
     public boolean isDataReadyForGL() {
-        return stateManager.hasState(CcoChunkState.MESH_CPU_READY);
+        // Either CPU-built awaiting upload OR already uploaded — both mean "renderable mesh
+        // exists, no rebuild needed". The pipeline transitions CPU_READY → GPU_UPLOADED on
+        // upload (mutually exclusive states), so checking only CPU_READY would falsely
+        // report "not ready" for every chunk that's finished uploading and is rendering fine.
+        return stateManager.hasState(CcoChunkState.MESH_CPU_READY)
+            || stateManager.hasState(CcoChunkState.MESH_GPU_UPLOADED);
     }
 
     public boolean isMeshDataGenerationScheduledOrInProgress() {

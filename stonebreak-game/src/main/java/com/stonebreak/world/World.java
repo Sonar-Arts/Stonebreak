@@ -40,6 +40,7 @@ public class World {
     private final MmsMeshPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
     private final WaterSystem waterSystem;
+    private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
 
     public World() {
         this(new WorldConfiguration());
@@ -85,7 +86,7 @@ public class World {
         }
 
         // Create FeatureQueue for multi-chunk features
-        com.stonebreak.world.generation.features.FeatureQueue featureQueue = new com.stonebreak.world.generation.features.FeatureQueue();
+        this.featureQueue = new com.stonebreak.world.generation.features.FeatureQueue();
 
         // Always create chunk store - tests may need chunk loading functionality
         // In test mode, meshPipeline is null but WorldChunkStore handles this gracefully
@@ -300,6 +301,10 @@ public class World {
 
     public WaterSystem getWaterSystem() {
         return waterSystem;
+    }
+
+    public com.stonebreak.world.generation.features.FeatureQueue getFeatureQueue() {
+        return featureQueue;
     }
     
     
