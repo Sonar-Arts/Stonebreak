@@ -43,7 +43,7 @@ public class TerrainGenerationSystem {
         this.biomeManager = new BiomeManager(seed);
         this.oreGenerator = new OreGenerator(deterministicRandom);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
-        this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, biomeManager);
+        this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, biomeManager, seed);
     }
 
     public long getSeed() {
@@ -154,9 +154,12 @@ public class TerrainGenerationSystem {
     private static BlockType subsurfaceBlock(BiomeType biome) {
         if (biome == null) return BlockType.DIRT;
         return switch (biome) {
-            case RED_SAND_DESERT -> BlockType.RED_SANDSTONE;
+            case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SANDSTONE;
             case DESERT -> BlockType.SANDSTONE;
-            case PLAINS, SNOWY_PLAINS -> BlockType.DIRT;
+            case PLAINS, SNOWY_PLAINS, TAIGA, MEADOW -> BlockType.DIRT;
+            case TUNDRA, STONY_PEAKS -> BlockType.STONE;
+            case GRAVEL_BEACH -> BlockType.SAND;
+            case ICE_FIELDS -> BlockType.ICE;
         };
     }
 
@@ -164,9 +167,12 @@ public class TerrainGenerationSystem {
         if (biome == null) return BlockType.DIRT;
         return switch (biome) {
             case DESERT -> BlockType.SAND;
-            case RED_SAND_DESERT -> BlockType.RED_SAND;
-            case PLAINS -> BlockType.GRASS;
-            case SNOWY_PLAINS -> BlockType.SNOWY_DIRT;
+            case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SAND;
+            case PLAINS, MEADOW -> BlockType.GRASS;
+            case SNOWY_PLAINS, TAIGA -> BlockType.SNOWY_DIRT;
+            case TUNDRA, GRAVEL_BEACH -> BlockType.GRAVEL;
+            case STONY_PEAKS -> BlockType.STONE;
+            case ICE_FIELDS -> BlockType.ICE;
         };
     }
 

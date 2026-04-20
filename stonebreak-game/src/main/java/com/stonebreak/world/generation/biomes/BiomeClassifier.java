@@ -19,22 +19,22 @@ public final class BiomeClassifier {
      * Whittaker table: [temperature][moisture]. Static so every BiomeManager
      * shares the same table without re-allocating on each construction.
      *
-     *            Dry →                                                → Wet
-     *            col0       col1       col2       col3       col4       col5
-     * row5 Hot   RED_SAND   DESERT     RED_SAND   RED_SAND   RED_SAND   PLAINS
-     * row4       RED_SAND   DESERT     RED_SAND   RED_SAND   PLAINS     PLAINS
-     * row3       DESERT     DESERT     PLAINS     PLAINS     PLAINS     PLAINS
-     * row2       DESERT     DESERT     PLAINS     PLAINS     PLAINS     PLAINS
-     * row1       PLAINS     PLAINS     PLAINS     SNOWY      SNOWY      SNOWY
-     * row0 Cold  PLAINS     PLAINS     SNOWY      SNOWY      SNOWY      SNOWY
+     *            Dry →                                                          → Wet
+     *            col0        col1         col2         col3         col4         col5
+     * row5 Hot   BADLANDS    DESERT       RED_SAND     RED_SAND     RED_SAND     PLAINS
+     * row4       BADLANDS    DESERT       RED_SAND     RED_SAND     PLAINS       PLAINS
+     * row3       DESERT      DESERT       PLAINS       PLAINS       PLAINS       PLAINS
+     * row2       STONY_PEAKS PLAINS       PLAINS       MEADOW       PLAINS       PLAINS
+     * row1       TUNDRA      TUNDRA       TAIGA        SNOWY_PLAINS SNOWY_PLAINS ICE_FIELDS
+     * row0 Cold  TUNDRA      TUNDRA       TUNDRA       ICE_FIELDS   ICE_FIELDS   ICE_FIELDS
      */
     private static final BiomeType[][] WHITTAKER = {
-        { BiomeType.PLAINS,          BiomeType.PLAINS,  BiomeType.SNOWY_PLAINS,   BiomeType.SNOWY_PLAINS,   BiomeType.SNOWY_PLAINS,   BiomeType.SNOWY_PLAINS },
-        { BiomeType.PLAINS,          BiomeType.PLAINS,  BiomeType.PLAINS,         BiomeType.SNOWY_PLAINS,   BiomeType.SNOWY_PLAINS,   BiomeType.SNOWY_PLAINS },
-        { BiomeType.DESERT,          BiomeType.DESERT,  BiomeType.PLAINS,         BiomeType.PLAINS,         BiomeType.PLAINS,         BiomeType.PLAINS },
-        { BiomeType.DESERT,          BiomeType.DESERT,  BiomeType.PLAINS,         BiomeType.PLAINS,         BiomeType.PLAINS,         BiomeType.PLAINS },
-        { BiomeType.RED_SAND_DESERT, BiomeType.DESERT,  BiomeType.RED_SAND_DESERT, BiomeType.RED_SAND_DESERT, BiomeType.PLAINS,        BiomeType.PLAINS },
-        { BiomeType.RED_SAND_DESERT, BiomeType.DESERT,  BiomeType.RED_SAND_DESERT, BiomeType.RED_SAND_DESERT, BiomeType.RED_SAND_DESERT, BiomeType.PLAINS }
+        { BiomeType.TUNDRA,          BiomeType.TUNDRA,       BiomeType.TUNDRA,          BiomeType.ICE_FIELDS,      BiomeType.ICE_FIELDS,      BiomeType.ICE_FIELDS },
+        { BiomeType.TUNDRA,          BiomeType.TUNDRA,       BiomeType.TAIGA,           BiomeType.SNOWY_PLAINS,    BiomeType.SNOWY_PLAINS,    BiomeType.ICE_FIELDS },
+        { BiomeType.STONY_PEAKS,     BiomeType.PLAINS,       BiomeType.PLAINS,          BiomeType.MEADOW,          BiomeType.PLAINS,          BiomeType.PLAINS },
+        { BiomeType.DESERT,          BiomeType.DESERT,       BiomeType.PLAINS,          BiomeType.PLAINS,          BiomeType.PLAINS,          BiomeType.PLAINS },
+        { BiomeType.BADLANDS,        BiomeType.DESERT,       BiomeType.RED_SAND_DESERT, BiomeType.RED_SAND_DESERT, BiomeType.PLAINS,          BiomeType.PLAINS },
+        { BiomeType.BADLANDS,        BiomeType.DESERT,       BiomeType.RED_SAND_DESERT, BiomeType.RED_SAND_DESERT, BiomeType.RED_SAND_DESERT, BiomeType.PLAINS }
     };
 
     /**

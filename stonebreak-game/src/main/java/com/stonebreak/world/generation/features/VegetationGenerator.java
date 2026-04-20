@@ -16,7 +16,11 @@ public class VegetationGenerator {
     private static final float TREE_CHANCE = 0.01f;
     private static final float ELM_TREE_CHANCE = 0.4f;
     private static final float PINE_TREE_CHANCE = 0.015f;
+    private static final float TAIGA_PINE_CHANCE = 0.03f;
+    private static final float TUNDRA_PINE_CHANCE = 0.003f;
+    private static final float MEADOW_TREE_CHANCE = 0.002f;
     private static final float FLOWER_CHANCE = 0.08f;
+    private static final float MEADOW_FLOWER_CHANCE = 0.25f;
 
     private final DeterministicRandom rng;
     private final Object treeRandomLock = new Object();
@@ -57,23 +61,42 @@ public class VegetationGenerator {
         } else if (biome == BiomeType.SNOWY_PLAINS && surfaceBlock == BlockType.SNOWY_DIRT &&
                    rng.shouldGenerate(worldX, worldZ, "pine_tree", PINE_TREE_CHANCE)) {
             TreeGenerator.generatePineTree(ctx.world, ctx.chunk, x, surface, z);
+        } else if (biome == BiomeType.TAIGA && surfaceBlock == BlockType.SNOWY_DIRT &&
+                   rng.shouldGenerate(worldX, worldZ, "taiga_pine_tree", TAIGA_PINE_CHANCE)) {
+            TreeGenerator.generatePineTree(ctx.world, ctx.chunk, x, surface, z);
+        } else if (biome == BiomeType.TUNDRA && surfaceBlock == BlockType.GRAVEL &&
+                   rng.shouldGenerate(worldX, worldZ, "tundra_pine_tree", TUNDRA_PINE_CHANCE)) {
+            TreeGenerator.generatePineTree(ctx.world, ctx.chunk, x, surface, z);
+        } else if (biome == BiomeType.MEADOW && surfaceBlock == BlockType.GRASS &&
+                   rng.shouldGenerate(worldX, worldZ, "meadow_tree", MEADOW_TREE_CHANCE)) {
+            TreeGenerator.generateElmTree(ctx.world, ctx.chunk, x, surface, z,
+                rng.getRandomForPosition(worldX, worldZ, "meadow_elm"), treeRandomLock);
         }
     }
 
     private void placeFlower(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
                              int surface, BiomeType biome, BlockType surfaceBlock) {
-        if (biome != BiomeType.PLAINS || surfaceBlock != BlockType.GRASS) {
+        float chance = flowerChance(biome);
+        if (chance <= 0f || surfaceBlock != BlockType.GRASS) {
             return;
         }
         if (ctx.chunk.getBlock(x, surface, z) != BlockType.AIR) {
             return;
         }
-        if (!rng.shouldGenerate(worldX, worldZ, "flower", FLOWER_CHANCE)) {
+        if (!rng.shouldGenerate(worldX, worldZ, "flower", chance)) {
             return;
         }
         BlockType flower = rng.getBoolean(worldX, worldZ, "flower_type")
             ? BlockType.ROSE
             : BlockType.DANDELION;
         ctx.chunk.setBlock(x, surface, z, flower);
+    }
+
+    private static float flowerChance(BiomeType biome) {
+        return switch (biome) {
+            case PLAINS -> FLOWER_CHANCE;
+            case MEADOW -> MEADOW_FLOWER_CHANCE;
+            default -> 0f;
+        };
     }
 }

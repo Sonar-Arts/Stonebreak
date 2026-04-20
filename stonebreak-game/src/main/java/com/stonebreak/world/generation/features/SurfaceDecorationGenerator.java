@@ -5,6 +5,7 @@ import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.ChunkGenerationContext;
+import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
@@ -19,16 +20,32 @@ public class SurfaceDecorationGenerator {
     private static final float ICE_CHANCE = 0.03f;
     private static final float SNOW_CHANCE = 0.08f; // cumulative threshold (>= ICE_CHANCE)
     private static final float CLAY_CHANCE = 0.008f;
+    private static final float TUNDRA_ICE_CHANCE = 0.01f;
+    private static final float TAIGA_SNOW_CHANCE = 0.03f;
+    private static final float STONY_PEAKS_GRAVEL_CHANCE = 0.05f;
+    private static final float STONY_PEAKS_COAL_CHANCE = 0.08f; // cumulative
+    // Beach banding: simplex-noise thresholds produce smooth gravel/sand waves
+    // instead of salt-and-pepper mixing. Scale sets wave wavelength (~1/scale blocks);
+    // threshold shifts the gravel/sand balance (positive = more gravel).
+    private static final float BEACH_NOISE_SCALE = 0.09f;
+    private static final float BEACH_SAND_THRESHOLD = 0.1f;
+    private static final long BEACH_NOISE_SEED_SALT = 0x8EAC51A8D1L;
+    private static final float ICE_FIELDS_SNOW_CHANCE = 0.6f;
+    private static final float BADLANDS_CLAY_CHANCE = 0.03f;
+    private static final float BADLANDS_GRAVEL_CHANCE = 0.05f; // cumulative
+    private static final float BADLANDS_COBBLE_CHANCE = 0.06f; // cumulative
 
     private final DeterministicRandom rng;
     private final HeightMapGenerator heightMap;
     private final BiomeManager biomeManager;
+    private final NoiseGenerator beachNoise;
 
     public SurfaceDecorationGenerator(DeterministicRandom rng, HeightMapGenerator heightMap,
-                                      BiomeManager biomeManager) {
+                                      BiomeManager biomeManager, long worldSeed) {
         this.rng = rng;
         this.heightMap = heightMap;
         this.biomeManager = biomeManager;
+        this.beachNoise = new NoiseGenerator(worldSeed ^ BEACH_NOISE_SEED_SALT);
     }
 
     public void generate(ChunkGenerationContext ctx) {
@@ -48,6 +65,12 @@ public class SurfaceDecorationGenerator {
                     case DESERT -> generateGravel(ctx, x, z, worldX, worldZ, surfaceBlock);
                     case SNOWY_PLAINS -> generateIceAndSnow(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
                     case RED_SAND_DESERT -> generateClay(ctx.world, worldX, worldZ, surfaceBlock);
+                    case TUNDRA -> generateTundraIce(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
+                    case TAIGA -> generateTaigaSnow(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
+                    case STONY_PEAKS -> generateStonyPeakFeatures(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
+                    case GRAVEL_BEACH -> generateBeachSand(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
+                    case ICE_FIELDS -> generateGlacialSnow(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
+                    case BADLANDS -> generateBadlandsBands(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
                     default -> { /* none */ }
                 }
             }
@@ -80,9 +103,7 @@ public class SurfaceDecorationGenerator {
         if (roll < ICE_CHANCE) {
             ctx.chunk.setBlock(x, surface, z, BlockType.ICE);
         } else if (roll < SNOW_CHANCE) {
-            ctx.chunk.setBlock(x, surface, z, BlockType.SNOW);
-            int layers = 1 + rng.getInt(worldX, worldZ, "snow_layers", 3);
-            ctx.snowLayerManager.setSnowLayers(worldX, surface, worldZ, layers);
+            placeSnowLayers(ctx, x, z, worldX, worldZ, surface, 1, 3);
         }
     }
 
@@ -105,6 +126,86 @@ public class SurfaceDecorationGenerator {
                 }
             }
         }
+    }
+
+    private void generateTundraIce(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
+                                   int surface, BlockType surfaceBlock) {
+        if (surfaceBlock != BlockType.GRAVEL || ctx.chunk.getBlock(x, surface, z) != BlockType.AIR) {
+            return;
+        }
+        if (rng.getFloat(worldX, worldZ, "tundra_feature") < TUNDRA_ICE_CHANCE) {
+            ctx.chunk.setBlock(x, surface, z, BlockType.ICE);
+        }
+    }
+
+    private void generateTaigaSnow(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
+                                   int surface, BlockType surfaceBlock) {
+        if (surfaceBlock != BlockType.SNOWY_DIRT || ctx.chunk.getBlock(x, surface, z) != BlockType.AIR) {
+            return;
+        }
+        if (rng.shouldGenerate(worldX, worldZ, "taiga_snow", TAIGA_SNOW_CHANCE)) {
+            placeSnowLayers(ctx, x, z, worldX, worldZ, surface, 1, 2);
+        }
+    }
+
+    private void generateStonyPeakFeatures(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
+                                           int surface, BlockType surfaceBlock) {
+        if (surfaceBlock != BlockType.STONE || ctx.chunk.getBlock(x, surface, z) != BlockType.AIR) {
+            return;
+        }
+        float roll = rng.getFloat(worldX, worldZ, "stony_peaks_feature");
+        if (roll < STONY_PEAKS_GRAVEL_CHANCE) {
+            ctx.chunk.setBlock(x, surface - 1, z, BlockType.GRAVEL);
+        } else if (roll < STONY_PEAKS_COAL_CHANCE) {
+            ctx.chunk.setBlock(x, surface - 1, z, BlockType.COAL_ORE);
+        }
+    }
+
+    private void generateBeachSand(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
+                                   int surface, BlockType surfaceBlock) {
+        if (surfaceBlock != BlockType.GRAVEL) {
+            return;
+        }
+        float n = beachNoise.noise(worldX * BEACH_NOISE_SCALE, worldZ * BEACH_NOISE_SCALE);
+        if (n > BEACH_SAND_THRESHOLD) {
+            ctx.chunk.setBlock(x, surface - 1, z, BlockType.SAND);
+        }
+    }
+
+    private void generateGlacialSnow(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
+                                     int surface, BlockType surfaceBlock) {
+        if (surfaceBlock != BlockType.ICE || ctx.chunk.getBlock(x, surface, z) != BlockType.AIR) {
+            return;
+        }
+        if (rng.getFloat(worldX, worldZ, "glacial_feature") < ICE_FIELDS_SNOW_CHANCE) {
+            placeSnowLayers(ctx, x, z, worldX, worldZ, surface, 2, 3);
+        }
+    }
+
+    private void generateBadlandsBands(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
+                                       int surface, BlockType surfaceBlock) {
+        if (surfaceBlock != BlockType.RED_SAND || ctx.chunk.getBlock(x, surface, z) != BlockType.AIR) {
+            return;
+        }
+        float roll = rng.getFloat(worldX, worldZ, "badlands_feature");
+        BlockType replacement;
+        if (roll < BADLANDS_CLAY_CHANCE) {
+            replacement = BlockType.CLAY;
+        } else if (roll < BADLANDS_GRAVEL_CHANCE) {
+            replacement = BlockType.GRAVEL;
+        } else if (roll < BADLANDS_COBBLE_CHANCE) {
+            replacement = BlockType.RED_SAND_COBBLESTONE;
+        } else {
+            return;
+        }
+        ctx.chunk.setBlock(x, surface - 1, z, replacement);
+    }
+
+    private void placeSnowLayers(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
+                                 int surface, int minLayers, int extraBound) {
+        ctx.chunk.setBlock(x, surface, z, BlockType.SNOW);
+        int layers = minLayers + rng.getInt(worldX, worldZ, "snow_layers", extraBound);
+        ctx.snowLayerManager.setSnowLayers(worldX, surface, worldZ, layers);
     }
 
     private void placeOnSurface(World world, int worldX, int worldZ, BlockType expected, BlockType replacement) {
