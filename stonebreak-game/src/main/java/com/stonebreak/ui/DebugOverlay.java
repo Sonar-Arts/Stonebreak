@@ -94,12 +94,12 @@ public class DebugOverlay {
         float temperature = world.getTemperatureAt(x, z);
         float moisture = world.getMoistureAt(x, z);
 
-        // Get continentalness value at player position
+        // Noise channels driving terrain shape
         float continentalness = world.getContinentalnessAt(x, z);
-
-        float erosionNoise = world.getErosionNoiseAt(x, z);
+        float erosion = world.getErosionAt(x, z);
+        float peaksValleys = world.getPeaksValleysAt(x, z);
         int baseHeight = world.getBaseHeightAt(x, z);
-        int heightBeforeErosion = world.getHeightBeforeErosionAt(x, z);
+        int shapedHeight = world.getShapedHeightAt(x, z);
         int finalHeight = world.getFinalTerrainHeightAt(x, z);
 
         // Calculate facing direction from camera's front vector
@@ -118,10 +118,11 @@ public class DebugOverlay {
         debug.append(String.format("Temperature: %.3f\n", temperature));
         debug.append(String.format("Moisture: %.3f\n", moisture));
         debug.append(String.format("Continentalness: %.3f\n", continentalness));
-        debug.append(String.format("Erosion Noise: %.3f\n", erosionNoise));
-        debug.append(String.format("Height: %d base / %d +biome (%+d) / %d final (%+d erosion)\n",
-                baseHeight, heightBeforeErosion, heightBeforeErosion - baseHeight,
-                finalHeight, finalHeight - heightBeforeErosion));
+        debug.append(String.format("Erosion: %.3f\n", erosion));
+        debug.append(String.format("Peaks/Valleys: %.3f\n", peaksValleys));
+        debug.append(String.format("Height: %d base / %d shaped (%+d) / %d final (%+d detail)\n",
+                baseHeight, shapedHeight, shapedHeight - baseHeight,
+                finalHeight, finalHeight - shapedHeight));
         debug.append("\n");
 
         // Targeted block info (what the player is looking at)

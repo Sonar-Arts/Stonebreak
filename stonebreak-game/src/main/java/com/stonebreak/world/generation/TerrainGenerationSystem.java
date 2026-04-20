@@ -14,6 +14,7 @@ import com.stonebreak.world.generation.features.VegetationGenerator;
 import com.stonebreak.world.generation.heightmap.Density3D;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
+import com.stonebreak.world.generation.noise.NoiseRouter;
 
 import java.util.BitSet;
 import com.stonebreak.world.generation.terrain.MobGenerator;
@@ -30,6 +31,7 @@ public class TerrainGenerationSystem {
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
     private final long seed;
+    private final NoiseRouter noiseRouter;
     private final HeightMapGenerator heightMapGenerator;
     private final BiomeManager biomeManager;
     private final OreGenerator oreGenerator;
@@ -45,11 +47,12 @@ public class TerrainGenerationSystem {
     public TerrainGenerationSystem(long seed) {
         this.seed = seed;
         this.deterministicRandom = new DeterministicRandom(seed);
-        this.heightMapGenerator = new HeightMapGenerator(seed);
-        this.biomeManager = new BiomeManager(seed);
+        this.noiseRouter = new NoiseRouter(seed);
+        this.heightMapGenerator = new HeightMapGenerator(noiseRouter);
+        this.biomeManager = new BiomeManager(noiseRouter, heightMapGenerator);
         this.oreGenerator = new OreGenerator(deterministicRandom);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
-        this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, biomeManager, seed);
+        this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, seed);
         this.density3D = new Density3D(seed);
         this.wormCarver = new PerlinWormCarver(seed, heightMapGenerator);
     }
@@ -59,7 +62,15 @@ public class TerrainGenerationSystem {
     }
 
     public float getContinentalnessAt(int x, int z) {
-        return heightMapGenerator.getContinentalness(x, z);
+        return noiseRouter.continentalness(x, z);
+    }
+
+    public float getErosionAt(int x, int z) {
+        return noiseRouter.erosion(x, z);
+    }
+
+    public float getPeaksValleysAt(int x, int z) {
+        return noiseRouter.peaksValleys(x, z);
     }
 
     public BiomeType getBiomeAt(int x, int z) {
@@ -74,23 +85,19 @@ public class TerrainGenerationSystem {
         return biomeManager.getTemperature(x, z);
     }
 
-    public float getErosionNoiseAt(int x, int z) {
-        return heightMapGenerator.getErosionNoise(x, z);
-    }
-
-    /** Continentalness-only height, before biome delta or erosion. */
+    /** Continentalness-only base height (debug). */
     public int getBaseHeightAt(int x, int z) {
-        return heightMapGenerator.generateHeight(x, z);
+        return heightMapGenerator.baseHeight(x, z);
     }
 
-    /** Blended biome-aware height before erosion (for debug). */
-    public int getHeightBeforeErosionAt(int x, int z) {
-        return heightMapGenerator.getHeightBeforeErosion(x, z, biomeManager);
+    /** Shape with PV/erosion, no surface detail (debug). */
+    public int getShapedHeightAt(int x, int z) {
+        return heightMapGenerator.shapedHeight(x, z);
     }
 
     /** Final terrain height as used by chunk generation. */
     public int getFinalTerrainHeightAt(int x, int z) {
-        return heightMapGenerator.generateHeight(x, z, biomeManager);
+        return heightMapGenerator.generateHeight(x, z);
     }
 
     /**
@@ -101,16 +108,13 @@ public class TerrainGenerationSystem {
         updateLoadingProgress("Generating Base Terrain Shape");
         Chunk chunk = new Chunk(chunkX, chunkZ);
 
-        int[] baseHeights = new int[CHUNK_SIZE * CHUNK_SIZE];
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
 
-        // Base continentalness heights drive altitude-aware biome selection; the
-        // blended+eroded heights in turn use those biomes.
-        heightMapGenerator.populateBaseHeights(chunkX, chunkZ, baseHeights);
+        // Shape first (noise-driven), then skin with biomes. Biomes do not influence shape.
+        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights);
         updateLoadingProgress("Determining Biomes");
-        biomeManager.populateChunkBiomes(chunkX, chunkZ, baseHeights, biomes);
-        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, biomeManager, baseHeights, heights);
+        biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
 
         updateLoadingProgress("Applying Biome Materials");
         BitSet wormMask = wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
@@ -156,12 +160,10 @@ public class TerrainGenerationSystem {
 
         updateLoadingProgress("Adding Surface Decorations & Details");
 
-        int[] baseHeights = new int[CHUNK_SIZE * CHUNK_SIZE];
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
-        heightMapGenerator.populateBaseHeights(chunkX, chunkZ, baseHeights);
-        biomeManager.populateChunkBiomes(chunkX, chunkZ, baseHeights, biomes);
-        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, biomeManager, baseHeights, heights);
+        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights);
+        biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
         BiomeType dominantBiome = biomes[(CHUNK_SIZE / 2) * CHUNK_SIZE + (CHUNK_SIZE / 2)];
 
         ChunkGenerationContext ctx = new ChunkGenerationContext(
@@ -209,10 +211,9 @@ public class TerrainGenerationSystem {
         if (biome == null) return BlockType.DIRT;
         return switch (biome) {
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SANDSTONE;
-            case DESERT -> BlockType.SANDSTONE;
+            case DESERT, BEACH -> BlockType.SANDSTONE;
             case PLAINS, SNOWY_PLAINS, TAIGA, MEADOW -> BlockType.DIRT;
             case TUNDRA, STONY_PEAKS -> BlockType.STONE;
-            case GRAVEL_BEACH -> BlockType.SAND;
             case ICE_FIELDS -> BlockType.ICE;
         };
     }
@@ -220,11 +221,11 @@ public class TerrainGenerationSystem {
     private static BlockType surfaceBlock(BiomeType biome) {
         if (biome == null) return BlockType.DIRT;
         return switch (biome) {
-            case DESERT -> BlockType.SAND;
+            case DESERT, BEACH -> BlockType.SAND;
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SAND;
             case PLAINS, MEADOW -> BlockType.GRASS;
             case SNOWY_PLAINS, TAIGA -> BlockType.SNOWY_DIRT;
-            case TUNDRA, GRAVEL_BEACH -> BlockType.GRAVEL;
+            case TUNDRA -> BlockType.GRAVEL;
             case STONY_PEAKS -> BlockType.STONE;
             case ICE_FIELDS -> BlockType.ICE;
         };
