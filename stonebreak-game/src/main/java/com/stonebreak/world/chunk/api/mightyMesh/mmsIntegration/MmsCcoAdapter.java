@@ -353,6 +353,23 @@ public class MmsCcoAdapter {
         int adjY = ly + getFaceOffsetY(face);
         int adjZ = lz + getFaceOffsetZ(face);
 
+        // For horizontal side faces (N/S/E/W) crossing into an unloaded neighbor chunk,
+        // assume the neighbor is water to prevent visible chunk-border water seams.
+        // The neighbor chunk will trigger a remesh of this chunk when it loads.
+        if (face >= 2 && face <= 5 && adjY >= 0 && adjY < WorldConfiguration.WORLD_HEIGHT) {
+            boolean outOfChunk = adjX < 0 || adjX >= WorldConfiguration.CHUNK_SIZE
+                              || adjZ < 0 || adjZ >= WorldConfiguration.CHUNK_SIZE;
+            if (outOfChunk && world != null) {
+                int worldX = adjX + chunkData.getChunkX() * WorldConfiguration.CHUNK_SIZE;
+                int worldZ = adjZ + chunkData.getChunkZ() * WorldConfiguration.CHUNK_SIZE;
+                int ncx = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
+                int ncz = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
+                if (!world.hasChunkAt(ncx, ncz)) {
+                    return false;
+                }
+            }
+        }
+
         // Get adjacent block (handles chunk boundaries via world)
         BlockType adjacentBlock = getAdjacentBlock(adjX, adjY, adjZ, chunkData);
 

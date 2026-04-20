@@ -265,11 +265,57 @@ public class WorldActionHandler {
     }
 
     /**
-     * Deletes a world (placeholder for future functionality).
+     * Opens the delete confirmation dialog for the currently selected world.
+     */
+    public void requestDeleteSelectedWorld() {
+        String name = stateManager.getSelectedWorld();
+        if (name != null) stateManager.openDeleteDialog(name);
+    }
+
+    /**
+     * Cancels an in-progress delete confirmation.
+     */
+    public void cancelDeleteWorld() {
+        stateManager.closeDeleteDialog();
+    }
+
+    /**
+     * Executes the pending delete confirmed by the user.
+     */
+    public void confirmDeleteWorld() {
+        String name = stateManager.getWorldPendingDelete();
+        stateManager.closeDeleteDialog();
+        if (name != null) deleteWorld(name);
+    }
+
+    /**
+     * Deletes the world directory on disk and refreshes the world list.
      */
     public void deleteWorld(String worldName) {
-        // TODO: Implement world deletion functionality
-        System.out.println("Delete world requested for: " + worldName);
+        if (worldName == null || worldName.trim().isEmpty()) {
+            System.err.println("Cannot delete world: invalid name");
+            return;
+        }
+        java.nio.file.Path worldDir = java.nio.file.Paths.get("worlds", worldName);
+        if (!java.nio.file.Files.exists(worldDir)) {
+            System.err.println("Cannot delete world: directory missing for '" + worldName + "'");
+            refreshWorlds();
+            return;
+        }
+        try (java.util.stream.Stream<java.nio.file.Path> walk = java.nio.file.Files.walk(worldDir)) {
+            walk.sorted(java.util.Comparator.reverseOrder())
+                .forEach(p -> {
+                    try { java.nio.file.Files.delete(p); }
+                    catch (java.io.IOException ioEx) {
+                        System.err.println("Failed to delete " + p + ": " + ioEx.getMessage());
+                    }
+                });
+            System.out.println("Deleted world: " + worldName);
+        } catch (java.io.IOException ioEx) {
+            System.err.println("Error walking world directory '" + worldName + "': " + ioEx.getMessage());
+        } finally {
+            refreshWorlds();
+        }
     }
 
     /**

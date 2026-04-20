@@ -2,357 +2,270 @@ package com.stonebreak.ui.settingsMenu.managers;
 
 import com.stonebreak.config.Settings;
 import com.stonebreak.core.GameState;
-import com.stonebreak.rendering.UI.UIRenderer;
-import com.stonebreak.ui.components.buttons.Button;
-import com.stonebreak.ui.components.buttons.CategoryButton;
-import com.stonebreak.ui.components.buttons.DropdownButton;
-import com.stonebreak.ui.components.sliders.Slider;
+import com.stonebreak.rendering.UI.masonryUI.MButton;
+import com.stonebreak.rendering.UI.masonryUI.MCategoryButton;
+import com.stonebreak.rendering.UI.masonryUI.MDropdown;
+import com.stonebreak.rendering.UI.masonryUI.MScrollMath;
+import com.stonebreak.rendering.UI.masonryUI.MSlider;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
+
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Manages the UI state and components for the settings menu.
- * Handles component lifecycle, state tracking, and initialization.
+ * Holds the MasonryUI widgets and navigation state for the settings menu.
+ * Pure state — no rendering, no GL, no NanoVG. Handlers and renderers read
+ * and mutate these fields; the {@link com.stonebreak.ui.settingsMenu.renderers.SkijaSettingsRenderer}
+ * positions and draws them.
  */
-public class StateManager {
-    
+public final class StateManager {
+
     private final Settings settings;
-    private final UIRenderer uiRenderer;
-    
-    // ===== UI COMPONENTS =====
-    private Button applyButton;
-    private Button backButton;
-    private DropdownButton resolutionButton;
-    private DropdownButton armModelButton;
-    private DropdownButton crosshairStyleButton;
-    private Slider volumeSlider;
-    private Slider crosshairSizeSlider;
-    private Button leafTransparencyButton;
-    private Button waterShaderButton;
-    
-    // ===== CATEGORY COMPONENTS =====
-    private List<CategoryButton> categoryButtons;
-    
-    // ===== UI STATE =====
+
+    // ─────────────────────────────────────────────── Widgets
+    private MButton applyButton;
+    private MButton backButton;
+    private MDropdown resolutionButton;
+    private MDropdown armModelButton;
+    private MDropdown crosshairStyleButton;
+    private MSlider volumeSlider;
+    private MSlider crosshairSizeSlider;
+    private MButton leafTransparencyButton;
+    private MButton waterShaderButton;
+
+    private List<MCategoryButton<CategoryState>> categoryButtons;
+
+    // ─────────────────────────────────────────────── Navigation state
     private CategoryState selectedCategory = CategoryState.GENERAL;
-    private int selectedSettingInCategory = 0; // Index within the category's settings
+    private int selectedSettingInCategory = 0;
     private GameState previousState = GameState.MAIN_MENU;
-    
-    // ===== DROPDOWN STATE =====
+
     private int selectedResolutionIndex = 0;
     private int selectedArmModelIndex = 0;
     private int selectedCrosshairStyleIndex = 0;
-    
-    // ===== SCROLL STATE =====
-    private Map<CategoryState, ScrollManager> scrollManagers;
-    private ScrollManager currentScrollManager;
-    
-    public StateManager(Settings settings, UIRenderer uiRenderer) {
+
+    // ─────────────────────────────────────────────── Scroll state
+    private final Map<CategoryState, MScrollMath> scrollMathByCategory = new EnumMap<>(CategoryState.class);
+    private MScrollMath currentScrollMath;
+
+    public StateManager(Settings settings) {
         this.settings = settings;
-        this.uiRenderer = uiRenderer;
-        initializeState();
+        initSettingsState();
+        initScrollMaths();
+        initCategoryButtons();
+        initSettingWidgets();
     }
-    
-    /**
-     * Initializes the UI state and components.
-     */
-    private void initializeState() {
-        initializeSettingsState();
-        initializeScrollManagers();
-        initializeCategoryButtons();
-        initializeSettingButtons();
+
+    // ─────────────────────────────────────────────── Initialization
+
+    private void initSettingsState() {
+        selectedResolutionIndex = settings.getCurrentResolutionIndex();
+        selectedArmModelIndex = SettingsConfig.findArmModelIndex(settings.getArmModelType());
+        selectedCrosshairStyleIndex = SettingsConfig.findCrosshairStyleIndex(settings.getCrosshairStyle());
     }
-    
-    /**
-     * Initializes the UI state based on current settings values.
-     */
-    private void initializeSettingsState() {
-        this.selectedResolutionIndex = settings.getCurrentResolutionIndex();
-        this.selectedArmModelIndex = SettingsConfig.findArmModelIndex(settings.getArmModelType());
-        this.selectedCrosshairStyleIndex = SettingsConfig.findCrosshairStyleIndex(settings.getCrosshairStyle());
-    }
-    
-    /**
-     * Initializes scroll managers for each category.
-     */
-    private void initializeScrollManagers() {
-        scrollManagers = new HashMap<>();
-        
-        // Create a scroll manager for each category
+
+    private void initScrollMaths() {
         for (CategoryState category : CategoryState.values()) {
-            scrollManagers.put(category, new ScrollManager());
+            scrollMathByCategory.put(category, newScrollMath());
         }
-        
-        // Set current scroll manager to selected category
-        currentScrollManager = scrollManagers.get(selectedCategory);
+        currentScrollMath = scrollMathByCategory.get(selectedCategory);
     }
-    
-    /**
-     * Initializes the category buttons for left-side navigation.
-     */
-    private void initializeCategoryButtons() {
+
+    private static MScrollMath newScrollMath() {
+        return new MScrollMath()
+                .wheelSensitivity(SettingsConfig.SCROLL_WHEEL_SENSITIVITY)
+                .velocityFactor(SettingsConfig.SCROLL_VELOCITY_FACTOR)
+                .velocityDecay(SettingsConfig.SCROLL_VELOCITY_DECAY)
+                .lerpSpeed(SettingsConfig.SCROLL_LERP_SPEED)
+                .padding(SettingsConfig.SCROLL_CONTENT_PADDING);
+    }
+
+    private void initCategoryButtons() {
         categoryButtons = new ArrayList<>();
-        
         for (CategoryState category : CategoryState.values()) {
-            CategoryButton button = new CategoryButton(
-                category, 
-                0, 0, // Position will be set during rendering
-                SettingsConfig.CATEGORY_BUTTON_WIDTH, 
-                SettingsConfig.CATEGORY_BUTTON_HEIGHT,
-                null // Action will be set via callbacks
-            );
+            MCategoryButton<CategoryState> button = new MCategoryButton<>(category, category.getDisplayName());
+            button.size(SettingsConfig.CATEGORY_BUTTON_WIDTH, SettingsConfig.CATEGORY_BUTTON_HEIGHT);
             categoryButtons.add(button);
         }
     }
-    
-    /**
-     * Initializes the setting button components with their properties and actions.
-     */
-    public void initializeSettingButtons() {
-        // Create action handlers that will be set by the main SettingsMenu
-        applyButton = new Button("Apply Settings", 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, null);
-        backButton = new Button("Back", 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, null);
-        
-        // Initialize dropdown buttons
-        int[][] resolutions = Settings.getAvailableResolutions();
-        String[] resolutionStrings = createResolutionStrings(resolutions);
-        resolutionButton = new DropdownButton("Resolution", 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, 
-                                            resolutionStrings, SettingsConfig.DROPDOWN_ITEM_HEIGHT, null);
-        resolutionButton.setSelectedItemIndex(selectedResolutionIndex);
-        
-        armModelButton = new DropdownButton("Arm Model", 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, 
-                                          SettingsConfig.ARM_MODEL_NAMES, SettingsConfig.DROPDOWN_ITEM_HEIGHT, null);
-        armModelButton.setSelectedItemIndex(selectedArmModelIndex);
-        
-        crosshairStyleButton = new DropdownButton("Crosshair", 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, 
-                                                 SettingsConfig.CROSSHAIR_STYLE_NAMES, SettingsConfig.DROPDOWN_ITEM_HEIGHT, null);
-        crosshairStyleButton.setSelectedItemIndex(selectedCrosshairStyleIndex);
-        
-        // Initialize sliders
-        volumeSlider = new Slider("Master Volume", 0, 0, SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT, 
-                                SettingsConfig.MIN_VOLUME, SettingsConfig.MAX_VOLUME, settings.getMasterVolume(), null);
-        
-        crosshairSizeSlider = new Slider("Crosshair Size", 0, 0, SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT,
-                                       SettingsConfig.MIN_CROSSHAIR_SIZE, SettingsConfig.MAX_CROSSHAIR_SIZE, settings.getCrosshairSize(), null);
 
-        // Initialize leaf transparency button
-        String leafTransparencyText = "Leaf Transparency: " + (settings.getLeafTransparency() ? "ON" : "OFF");
-        leafTransparencyButton = new Button(leafTransparencyText, 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, null);
+    public void initSettingWidgets() {
+        applyButton = new MButton("Apply Settings").size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        backButton = new MButton("Back").size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
 
-        // Initialize water shader button
-        String waterShaderText = "Water Animation: " + (settings.getWaterShaderEnabled() ? "ON" : "OFF");
-        waterShaderButton = new Button(waterShaderText, 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, null);
+        String[] resolutionStrings = toResolutionStrings(Settings.getAvailableResolutions());
+        resolutionButton = new MDropdown("Resolution", resolutionStrings)
+                .itemHeight(SettingsConfig.DROPDOWN_ITEM_HEIGHT);
+        resolutionButton.size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        resolutionButton.setSelectedIndex(selectedResolutionIndex);
+
+        armModelButton = new MDropdown("Arm Model", SettingsConfig.ARM_MODEL_NAMES)
+                .itemHeight(SettingsConfig.DROPDOWN_ITEM_HEIGHT);
+        armModelButton.size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        armModelButton.setSelectedIndex(selectedArmModelIndex);
+
+        crosshairStyleButton = new MDropdown("Crosshair", SettingsConfig.CROSSHAIR_STYLE_NAMES)
+                .itemHeight(SettingsConfig.DROPDOWN_ITEM_HEIGHT);
+        crosshairStyleButton.size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        crosshairStyleButton.setSelectedIndex(selectedCrosshairStyleIndex);
+
+        volumeSlider = new MSlider("Master Volume",
+                SettingsConfig.MIN_VOLUME, SettingsConfig.MAX_VOLUME, settings.getMasterVolume())
+                .trackHeight(SettingsConfig.SLIDER_HEIGHT);
+        volumeSlider.size(SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT);
+
+        crosshairSizeSlider = new MSlider("Crosshair Size",
+                SettingsConfig.MIN_CROSSHAIR_SIZE, SettingsConfig.MAX_CROSSHAIR_SIZE, settings.getCrosshairSize())
+                .trackHeight(SettingsConfig.SLIDER_HEIGHT);
+        crosshairSizeSlider.size(SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT);
+
+        leafTransparencyButton = new MButton(leafTransparencyLabel())
+                .size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        waterShaderButton = new MButton(waterShaderLabel())
+                .size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
     }
-    
+
     /**
-     * Sets the callback actions for components after ActionHandler is created.
+     * Attach the action callbacks after construction. Keeps the state manager
+     * free of behavioral logic.
      */
     public void setCallbacks(Runnable applyAction, Runnable backAction, Runnable resolutionAction,
-                           Runnable armModelAction, Runnable crosshairStyleAction,
-                           java.util.function.Consumer<Float> volumeAction, java.util.function.Consumer<Float> crosshairSizeAction,
-                           Runnable leafTransparencyAction, Runnable waterShaderAction) {
-        applyButton.setOnClickAction(applyAction);
-        backButton.setOnClickAction(backAction);
-        resolutionButton.setOnSelectionChangeAction(resolutionAction);
-        armModelButton.setOnSelectionChangeAction(armModelAction);
-        crosshairStyleButton.setOnSelectionChangeAction(crosshairStyleAction);
-        volumeSlider.setOnValueChangeAction(volumeAction);
-        crosshairSizeSlider.setOnValueChangeAction(crosshairSizeAction);
-        leafTransparencyButton.setOnClickAction(leafTransparencyAction);
-        waterShaderButton.setOnClickAction(waterShaderAction);
-        
-        // Set category button callbacks - each will set the selected category
-        for (CategoryButton button : categoryButtons) {
-            final CategoryState category = button.getCategory();
-            button.setOnClickAction(() -> {
-                setSelectedCategory(category); // Use the setter method to trigger dropdown closing
-            });
+                             Runnable armModelAction, Runnable crosshairStyleAction,
+                             java.util.function.Consumer<Float> volumeAction,
+                             java.util.function.Consumer<Float> crosshairSizeAction,
+                             Runnable leafTransparencyAction, Runnable waterShaderAction) {
+        applyButton.setOnClick(applyAction);
+        backButton.setOnClick(backAction);
+        resolutionButton.setOnSelectionChanged(resolutionAction);
+        armModelButton.setOnSelectionChanged(armModelAction);
+        crosshairStyleButton.setOnSelectionChanged(crosshairStyleAction);
+        volumeSlider.setOnChange(volumeAction);
+        crosshairSizeSlider.setOnChange(crosshairSizeAction);
+        leafTransparencyButton.setOnClick(leafTransparencyAction);
+        waterShaderButton.setOnClick(waterShaderAction);
+
+        for (MCategoryButton<CategoryState> button : categoryButtons) {
+            CategoryState category = button.tag();
+            button.setOnClick(() -> setSelectedCategory(category));
         }
     }
-    
-    /**
-     * Creates display strings for resolution options.
-     */
-    private String[] createResolutionStrings(int[][] resolutions) {
-        String[] resolutionStrings = new String[resolutions.length];
+
+    private static String[] toResolutionStrings(int[][] resolutions) {
+        String[] out = new String[resolutions.length];
         for (int i = 0; i < resolutions.length; i++) {
-            resolutionStrings[i] = resolutions[i][0] + "x" + resolutions[i][1];
+            out[i] = resolutions[i][0] + "x" + resolutions[i][1];
         }
-        return resolutionStrings;
+        return out;
     }
-    
-    /**
-     * Updates the selection state of all UI components based on the current selected category and setting.
-     */
+
+    // ─────────────────────────────────────────────── Category state
+
     public void updateButtonSelectionStates() {
-        // Update category button selection states
-        for (CategoryButton button : categoryButtons) {
-            button.setSelected(button.getCategory() == selectedCategory);
+        for (MCategoryButton<CategoryState> button : categoryButtons) {
+            button.setSelected(button.tag() == selectedCategory);
         }
-        
-        // Update setting selection states based on current category
-        CategoryState.SettingType[] settings = selectedCategory.getSettings();
-        CategoryState.SettingType currentSetting;
-        
-        if (selectedSettingInCategory < settings.length) {
-            // Regular setting within the category
-            currentSetting = settings[selectedSettingInCategory];
-        } else if (selectedSettingInCategory == settings.length) {
-            // Apply button
-            currentSetting = CategoryState.SettingType.APPLY;
-        } else if (selectedSettingInCategory == settings.length + 1) {
-            // Back button
-            currentSetting = CategoryState.SettingType.BACK;
-        } else {
-            // Out of bounds - default to apply
-            currentSetting = CategoryState.SettingType.APPLY;
-        }
-            
-        // Keep all setting button selections OFF - they should only show hover state, not persistent selection
-        // Only category buttons maintain persistent selection state
+        // Setting buttons are hover-only; no persistent selection on them.
         resolutionButton.setSelected(false);
-        volumeSlider.setSelected(false);
         armModelButton.setSelected(false);
         crosshairStyleButton.setSelected(false);
+        volumeSlider.setSelected(false);
         crosshairSizeSlider.setSelected(false);
         applyButton.setSelected(false);
         backButton.setSelected(false);
-        
-        // Note: selectedSettingInCategory is kept for internal state tracking (keyboard navigation, etc.)
-        // but it no longer affects visual selection state for setting buttons.
-        // Setting buttons should only show blue overlay when hovered, not when selected.
+        leafTransparencyButton.setSelected(false);
+        waterShaderButton.setSelected(false);
     }
-    
-    // ===== GETTERS AND SETTERS =====
-    
-    public CategoryState getSelectedCategory() { return selectedCategory; }
-    public void setSelectedCategory(CategoryState selectedCategory) {
-        this.selectedCategory = selectedCategory;
-        this.selectedSettingInCategory = 0; // Reset to first setting in category
 
-        // Close all open dropdowns when switching categories
+    public void closeAllDropdowns() {
+        if (resolutionButton != null) resolutionButton.close();
+        if (armModelButton != null) armModelButton.close();
+        if (crosshairStyleButton != null) crosshairStyleButton.close();
+    }
+
+    public void setSelectedCategory(CategoryState category) {
+        this.selectedCategory = category;
+        this.selectedSettingInCategory = 0;
         closeAllDropdowns();
-
-        // Switch to the scroll manager for the new category
-        currentScrollManager = scrollManagers.get(selectedCategory);
-        if (currentScrollManager != null) {
-            currentScrollManager.scrollTo(0); // Reset scroll position when switching categories
-        }
-    }
-    
-    public int getSelectedSettingInCategory() { return selectedSettingInCategory; }
-    public void setSelectedSettingInCategory(int selectedSettingInCategory) { 
-        this.selectedSettingInCategory = selectedSettingInCategory; 
-    }
-    
-    public GameState getPreviousState() { return previousState; }
-    public void setPreviousState(GameState previousState) { this.previousState = previousState; }
-    
-    // Legacy method for backward compatibility
-    @Deprecated
-    public int getSelectedButton() { 
-        return selectedSettingInCategory; 
-    }
-    
-    @Deprecated
-    public void setSelectedButton(int selectedButton) { 
-        this.selectedSettingInCategory = selectedButton; 
-    }
-    
-    public int getSelectedResolutionIndex() { return selectedResolutionIndex; }
-    public void setSelectedResolutionIndex(int selectedResolutionIndex) { this.selectedResolutionIndex = selectedResolutionIndex; }
-    
-    public int getSelectedArmModelIndex() { return selectedArmModelIndex; }
-    public void setSelectedArmModelIndex(int selectedArmModelIndex) { this.selectedArmModelIndex = selectedArmModelIndex; }
-    
-    public int getSelectedCrosshairStyleIndex() { return selectedCrosshairStyleIndex; }
-    public void setSelectedCrosshairStyleIndex(int selectedCrosshairStyleIndex) { this.selectedCrosshairStyleIndex = selectedCrosshairStyleIndex; }
-    
-    // ===== COMPONENT GETTERS =====
-    
-    public Button getApplyButton() { return applyButton; }
-    public Button getBackButton() { return backButton; }
-    public DropdownButton getResolutionButton() { return resolutionButton; }
-    public DropdownButton getArmModelButton() { return armModelButton; }
-    public DropdownButton getCrosshairStyleButton() { return crosshairStyleButton; }
-    public Slider getVolumeSlider() { return volumeSlider; }
-    public Slider getCrosshairSizeSlider() { return crosshairSizeSlider; }
-    public Button getLeafTransparencyButton() { return leafTransparencyButton; }
-    public Button getWaterShaderButton() { return waterShaderButton; }
-    public List<CategoryButton> getCategoryButtons() { return categoryButtons; }
-    
-    // ===== SCROLL MANAGER GETTERS =====
-    
-    public ScrollManager getCurrentScrollManager() { return currentScrollManager; }
-    public ScrollManager getScrollManagerForCategory(CategoryState category) { 
-        return scrollManagers.get(category); 
-    }
-    public UIRenderer getUIRenderer() { return uiRenderer; }
-    
-    // ===== DROPDOWN MANAGEMENT =====
-
-    /**
-     * Closes all open dropdown menus. This is called when switching categories
-     * to ensure no dropdown remains open from the previous category.
-     */
-    private void closeAllDropdowns() {
-        if (resolutionButton != null) {
-            resolutionButton.closeDropdown();
-        }
-        if (armModelButton != null) {
-            armModelButton.closeDropdown();
-        }
-        if (crosshairStyleButton != null) {
-            crosshairStyleButton.closeDropdown();
-        }
+        currentScrollMath = scrollMathByCategory.get(category);
+        if (currentScrollMath != null) currentScrollMath.scrollTo(0);
     }
 
-    // ===== NAVIGATION METHODS =====
-
-    /**
-     * Navigates to the next category in the list.
-     */
     public void navigateToNextCategory() {
-        int currentIndex = selectedCategory.getIndex();
-        int nextIndex = (currentIndex + 1) % CategoryState.values().length;
-        selectedCategory = CategoryState.fromIndex(nextIndex);
-        selectedSettingInCategory = 0;
-        closeAllDropdowns();
+        int next = (selectedCategory.getIndex() + 1) % CategoryState.values().length;
+        setSelectedCategory(CategoryState.fromIndex(next));
     }
-    
-    /**
-     * Navigates to the previous category in the list.
-     */
+
     public void navigateToPreviousCategory() {
-        int currentIndex = selectedCategory.getIndex();
-        int prevIndex = (currentIndex - 1 + CategoryState.values().length) % CategoryState.values().length;
-        selectedCategory = CategoryState.fromIndex(prevIndex);
-        selectedSettingInCategory = 0;
-        closeAllDropdowns();
+        int length = CategoryState.values().length;
+        int prev = (selectedCategory.getIndex() - 1 + length) % length;
+        setSelectedCategory(CategoryState.fromIndex(prev));
     }
-    
-    /**
-     * Navigates to the next setting within the current category.
-     */
+
     public void navigateToNextSettingInCategory() {
-        CategoryState.SettingType[] settings = selectedCategory.getSettings();
-        if (settings.length > 0) {
-            selectedSettingInCategory = (selectedSettingInCategory + 1) % (settings.length + 2); // +2 for Apply/Back
-        }
+        CategoryState.SettingType[] s = selectedCategory.getSettings();
+        if (s.length > 0) selectedSettingInCategory = (selectedSettingInCategory + 1) % (s.length + 2);
     }
-    
-    /**
-     * Navigates to the previous setting within the current category.
-     */
+
     public void navigateToPreviousSettingInCategory() {
-        CategoryState.SettingType[] settings = selectedCategory.getSettings();
-        if (settings.length > 0) {
-            int maxIndex = settings.length + 1; // +2 for Apply/Back, -1 for 0-based
-            selectedSettingInCategory = (selectedSettingInCategory - 1 + maxIndex + 2) % (settings.length + 2);
+        CategoryState.SettingType[] s = selectedCategory.getSettings();
+        if (s.length > 0) {
+            int mod = s.length + 2;
+            selectedSettingInCategory = (selectedSettingInCategory - 1 + mod) % mod;
         }
     }
+
+    // ─────────────────────────────────────────────── Label refresh
+
+    public void refreshLabels() {
+        resolutionButton.setText("Resolution: " + settings.getCurrentResolutionString());
+        armModelButton.setText("Arm Model: " + SettingsConfig.ARM_MODEL_NAMES[selectedArmModelIndex]);
+        crosshairStyleButton.setText("Crosshair: " + SettingsConfig.CROSSHAIR_STYLE_NAMES[selectedCrosshairStyleIndex]);
+        leafTransparencyButton.setText(leafTransparencyLabel());
+        waterShaderButton.setText(waterShaderLabel());
+    }
+
+    private String leafTransparencyLabel() {
+        return "Leaf Transparency: " + (settings.getLeafTransparency() ? "ON" : "OFF");
+    }
+
+    private String waterShaderLabel() {
+        return "Water Animation: " + (settings.getWaterShaderEnabled() ? "ON" : "OFF");
+    }
+
+    // ─────────────────────────────────────────────── Getters / setters
+
+    public CategoryState getSelectedCategory() { return selectedCategory; }
+    public int getSelectedSettingInCategory() { return selectedSettingInCategory; }
+    public void setSelectedSettingInCategory(int i) { this.selectedSettingInCategory = i; }
+
+    public GameState getPreviousState() { return previousState; }
+    public void setPreviousState(GameState state) { this.previousState = state; }
+
+    public int getSelectedButton() { return selectedSettingInCategory; }
+
+    public int getSelectedResolutionIndex() { return selectedResolutionIndex; }
+    public void setSelectedResolutionIndex(int i) { this.selectedResolutionIndex = i; }
+
+    public int getSelectedArmModelIndex() { return selectedArmModelIndex; }
+    public void setSelectedArmModelIndex(int i) { this.selectedArmModelIndex = i; }
+
+    public int getSelectedCrosshairStyleIndex() { return selectedCrosshairStyleIndex; }
+    public void setSelectedCrosshairStyleIndex(int i) { this.selectedCrosshairStyleIndex = i; }
+
+    public MButton getApplyButton() { return applyButton; }
+    public MButton getBackButton() { return backButton; }
+    public MDropdown getResolutionButton() { return resolutionButton; }
+    public MDropdown getArmModelButton() { return armModelButton; }
+    public MDropdown getCrosshairStyleButton() { return crosshairStyleButton; }
+    public MSlider getVolumeSlider() { return volumeSlider; }
+    public MSlider getCrosshairSizeSlider() { return crosshairSizeSlider; }
+    public MButton getLeafTransparencyButton() { return leafTransparencyButton; }
+    public MButton getWaterShaderButton() { return waterShaderButton; }
+    public List<MCategoryButton<CategoryState>> getCategoryButtons() { return categoryButtons; }
+
+    public MScrollMath getCurrentScrollMath() { return currentScrollMath; }
+    public MScrollMath getScrollMathForCategory(CategoryState category) { return scrollMathByCategory.get(category); }
 }

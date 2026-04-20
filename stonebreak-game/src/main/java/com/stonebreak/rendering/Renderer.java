@@ -14,6 +14,7 @@ import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.gameWorld.WorldRenderer;
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.components.OverlayRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
@@ -61,6 +62,7 @@ public class Renderer {
     private final BlockRenderer blockRenderer;
     private final PlayerArmRenderer playerArmRenderer;
     private final UIRenderer uiRenderer;
+    private final SkijaUIBackend skijaBackend;
     private final DebugRenderer debugRenderer;
     private final EntityRenderer entityRenderer;
     private final WorldRenderer worldRenderer;
@@ -115,7 +117,17 @@ public class Renderer {
                                                  configManager.getWindowHeight(), 
                                                  configManager.getProjectionMatrix());
         uiRenderer.initializeBlockIconRenderer(blockRenderer, configManager.getWindowHeight());
-        
+
+        skijaBackend = new SkijaUIBackend();
+        try {
+            skijaBackend.initialize(configManager.getWindowWidth(), configManager.getWindowHeight());
+            System.out.println("[Renderer] Skija UI backend initialized (" +
+                    configManager.getWindowWidth() + "x" + configManager.getWindowHeight() + ")");
+        } catch (Throwable t) {
+            System.err.println("[Renderer] Skija backend init failed: " + t.getMessage());
+            t.printStackTrace();
+        }
+
         debugRenderer = new DebugRenderer(resourceManager.getShaderProgram(), configManager.getProjectionMatrix());
         
         entityRenderer = new EntityRenderer();
@@ -222,6 +234,9 @@ public class Renderer {
      */
     public void updateProjectionMatrix(int width, int height) {
         configManager.updateWindowSize(width, height);
+        if (skijaBackend != null && skijaBackend.isAvailable()) {
+            skijaBackend.resize(width, height);
+        }
     }
 
     public int getWindowWidth() {
@@ -293,6 +308,14 @@ public class Renderer {
      */
     public UIRenderer getUIRenderer() {
         return uiRenderer;
+    }
+
+    /**
+     * Skija-backed UI backend (Skia bindings). Used by next-gen menus that have
+     * migrated off NanoVG.
+     */
+    public SkijaUIBackend getSkijaBackend() {
+        return skijaBackend;
     }
     
     /**
@@ -594,6 +617,13 @@ public class Renderer {
         }
         if (uiRenderer != null) {
             uiRenderer.cleanup();
+        }
+        if (skijaBackend != null) {
+            try {
+                skijaBackend.dispose();
+            } catch (Throwable t) {
+                System.err.println("[Renderer] Skija dispose failed: " + t.getMessage());
+            }
         }
         if (blockRenderer != null) {
             blockRenderer.cleanup();

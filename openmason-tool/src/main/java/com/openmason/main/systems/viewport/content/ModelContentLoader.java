@@ -1,7 +1,9 @@
 package com.openmason.main.systems.viewport.content;
 
 import com.openmason.engine.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.ModelPart;
 import com.openmason.engine.rendering.model.UVMode;
+import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.editable.ModelGeometry;
 import com.openmason.engine.format.omo.OMOFormat;
@@ -267,17 +269,14 @@ public class ModelContentLoader {
             geometry.getHeight() / 16f,
             geometry.getDepth() / 16f
         );
-        org.joml.Vector3f origin = new org.joml.Vector3f(
-            (float) geometry.getX(),
-            (float) geometry.getY(),
-            (float) geometry.getZ()
-        );
 
-        @SuppressWarnings("deprecation")
-        com.openmason.engine.rendering.model.ModelPart part =
-            com.openmason.engine.rendering.model.ModelPart.createCube("legacy_box", origin, size, UVMode.CUBE_NET);
+        // Uniform-faced cube: a single texture renders identically on all 6 faces.
+        // Geometry origin is metadata-only on the legacy path (not baked into vertices),
+        // and OMOFormat.MeshData has no origin field, so it's intentionally dropped here
+        // (matching prior behavior).
+        ModelPart part = PartShapeFactory.create(PartShapeFactory.Shape.CUBE, "legacy_box", size);
 
-        // Generate quad topology mapping (every 2 triangles = 1 face)
+        // Cube has quad topology: 12 triangles, 2 per face.
         int triangleCount = part.indices().length / 3;
         int[] triangleToFaceId = new int[triangleCount];
         for (int i = 0; i < triangleCount; i++) {
@@ -289,7 +288,7 @@ public class ModelContentLoader {
             part.texCoords(),
             part.indices(),
             triangleToFaceId,
-            UVMode.CUBE_NET.name()
+            UVMode.FLAT.name()
         );
     }
 

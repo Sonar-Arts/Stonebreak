@@ -10,7 +10,6 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.textures.atlas.AtlasMetadata;
 import com.stonebreak.textures.atlas.AtlasMetadataCache;
-import com.stonebreak.textures.loaders.TextureResourceLoader;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -537,7 +536,7 @@ public class TextureAtlas {
                 new AtlasMetadataCache.TextureCoordinates(
                     blockName, coords[0], coords[1], coords[2], coords[3],
                     texture.getX(), texture.getY(), texture.getWidth(), texture.getHeight(),
-                    TextureResourceLoader.TextureType.BLOCK_UNIFORM
+                    AtlasMetadataCache.TextureType.BLOCK_UNIFORM
                 ));
             return coords;
         }
@@ -647,7 +646,7 @@ public class TextureAtlas {
                 new AtlasMetadataCache.TextureCoordinates(
                     blockName + "_" + face, coords[0], coords[1], coords[2], coords[3],
                     texture.getX(), texture.getY(), texture.getWidth(), texture.getHeight(),
-                    TextureResourceLoader.TextureType.BLOCK_CUBE_CROSS
+                    AtlasMetadataCache.TextureType.BLOCK_CUBE_CROSS
                 ));
             return coords;
         }
@@ -691,7 +690,7 @@ public class TextureAtlas {
                 new AtlasMetadataCache.TextureCoordinates(
                     itemName, coords[0], coords[1], coords[2], coords[3],
                     texture.getX(), texture.getY(), texture.getWidth(), texture.getHeight(),
-                    TextureResourceLoader.TextureType.ITEM
+                    AtlasMetadataCache.TextureType.ITEM
                 ));
             return coords;
         }

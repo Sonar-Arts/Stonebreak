@@ -1,7 +1,6 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
 
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator;
-import com.openmason.engine.voxel.mms.mmsGeometry.MmsGeometryService;
 import com.stonebreak.blocks.Water;
 import com.stonebreak.blocks.waterSystem.WaterBlock;
 import com.stonebreak.blocks.BlockType;
@@ -88,14 +87,6 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
 
         // Get water height and corner heights for this block
         float[] cornerHeights = getSewnCornerHeights(blockX, blockY, blockZ);
-
-        // For side faces, ensure we use the exact same Y coordinates as the top face above
-        // This prevents gaps between the top surface and side faces
-        if (face >= 2 && face <= 5) {
-            // Side faces should align with the top face of this block
-            // The corner heights are already sewn, which should match, but we'll verify
-            cornerHeights = ensureSideFaceAlignment(blockX, blockY, blockZ, face, cornerHeights);
-        }
 
         float waterBottomY = computeWaterBottomAttachmentHeight(blockX, blockY, blockZ, worldY);
 
@@ -249,213 +240,16 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
     }
 
     /**
-     * Gets the water height for a block position.
+     * Returns corner heights for the specified block.
      *
-     * @param blockX Block X coordinate
-     * @param blockY Block Y coordinate
-     * @param blockZ Block Z coordinate
-     * @return Water height (0.0 - 0.875)
-     */
-    private float getWaterHeight(int blockX, int blockY, int blockZ) {
-        WaterBlock waterBlock = Water.getWaterBlock(blockX, blockY, blockZ);
-        if (waterBlock != null) {
-            float height = waterBlock.level() == WaterBlock.SOURCE_LEVEL ?
-                MAX_WATER_HEIGHT : (8 - waterBlock.level()) * MAX_WATER_HEIGHT / 8.0f;
-            return clampWaterHeight(height);
-        }
-
-        float level = Water.getWaterLevel(blockX, blockY, blockZ);
-        if (level > 0.0f) {
-            return clampWaterHeight(level * MAX_WATER_HEIGHT);
-        }
-
-        if (world.getBlockAt(blockX, blockY, blockZ) == BlockType.WATER) {
-            return clampWaterHeight(MAX_WATER_HEIGHT);
-        }
-
-        return 0.0f;
-    }
-
-    /**
-     * Computes corner heights for water surface with neighbor blending.
+     * Corner indices used throughout this generator:
+     * 0: (x, z+1) SW, 1: (x+1, z+1) SE, 2: (x+1, z) NE, 3: (x, z) NW.
      *
-     * Corner indices:
-     * 0: (x, z+1) - South-West
-     * 1: (x+1, z+1) - South-East
-     * 2: (x+1, z) - North-East
-     * 3: (x, z) - North-West
-     *
-     * @param blockX Block X coordinate
-     * @param blockY Block Y coordinate
-     * @param blockZ Block Z coordinate
-     * @param blockHeight Base block height
-     * @return Array of 4 corner heights
-     */
-    private float[] computeWaterCornerHeights(int blockX, int blockY, int blockZ, float blockHeight) {
-        float initialHeight = clampWaterHeight(blockHeight);
-        float[] heights = new float[]{initialHeight, initialHeight, initialHeight, initialHeight};
-
-        // Check for water above or below for vertical blending
-        WaterBlock waterAbove = Water.getWaterBlock(blockX, blockY + 1, blockZ);
-        WaterBlock waterBelow = Water.getWaterBlock(blockX, blockY - 1, blockZ);
-        BlockType blockBelow = (blockY > 0) ? world.getBlockAt(blockX, blockY - 1, blockZ) : BlockType.AIR;
-        WaterBlock currentWater = Water.getWaterBlock(blockX, blockY, blockZ);
-
-        boolean hasWaterAbove = waterAbove != null;
-        boolean shouldConnectBelow = waterBelow != null || blockBelow == BlockType.WATER;
-        boolean isFlowAboveSource = (currentWater != null && !currentWater.isSource()) &&
-            (waterBelow != null && waterBelow.isSource());
-
-        // Corner offsets: (dx, dz) for each corner's contributing neighbors
-        int[][][] cornerOffsets = new int[][][]{
-            {{0, 0}, {-1, 0}, {0, 1}, {-1, 1}},  // Corner 0: (x, z+1)
-            {{0, 0}, {1, 0}, {0, 1}, {1, 1}},    // Corner 1: (x+1, z+1)
-            {{0, 0}, {1, 0}, {0, -1}, {1, -1}},  // Corner 2: (x+1, z)
-            {{0, 0}, {-1, 0}, {0, -1}, {-1, -1}} // Corner 3: (x, z)
-        };
-
-        for (int corner = 0; corner < 4; corner++) {
-            float minHeight = clampWaterHeight(blockHeight);
-            int waterNeighborCount = 0;
-            int solidNeighborCount = 0;
-            boolean allSourceBlocks = true;
-            float heightSum = 0.0f;
-
-            // Sample horizontal neighbors
-            for (int[] offset : cornerOffsets[corner]) {
-                int sampleX = blockX + offset[0];
-                int sampleZ = blockZ + offset[1];
-
-                // Check for solid blocks (walls)
-                BlockType neighborType = world.getBlockAt(sampleX, blockY, sampleZ);
-                if (neighborType != null && !neighborType.isTransparent() && neighborType != BlockType.WATER) {
-                    solidNeighborCount++;
-                    continue;
-                }
-
-                float height = resolveWaterHeight(sampleX, blockY, sampleZ);
-                if (!Float.isNaN(height)) {
-                    waterNeighborCount++;
-                    heightSum += height;
-
-                    WaterBlock neighborWater = Water.getWaterBlock(sampleX, blockY, sampleZ);
-                    if (neighborWater == null || !neighborWater.isSource()) {
-                        allSourceBlocks = false;
-                    }
-
-                    minHeight = Math.min(minHeight, height);
-                }
-
-                // Blend with water above diagonally
-                if (hasWaterAbove && (offset[0] != 0 || offset[1] != 0)) {
-                    float heightAbove = resolveWaterHeight(sampleX, blockY + 1, sampleZ);
-                    if (!Float.isNaN(heightAbove)) {
-                        minHeight = Math.max(minHeight, heightAbove * 0.5f);
-                    }
-                }
-
-                // Blend with water below diagonally
-                if (shouldConnectBelow && (offset[0] != 0 || offset[1] != 0)) {
-                    float heightBelow = resolveWaterHeight(sampleX, blockY - 1, sampleZ);
-                    if (!Float.isNaN(heightBelow)) {
-                        minHeight = Math.min(minHeight, Math.max(minHeight, heightBelow * 0.75f));
-                    }
-                }
-            }
-
-            // Calculate final corner height with blending
-            if (solidNeighborCount > 0) {
-                // Corner against walls
-                if (allSourceBlocks && currentWater != null && currentWater.isSource()) {
-                    heights[corner] = clampWaterHeight(blockHeight);
-                } else if (waterNeighborCount > 0) {
-                    float avgHeight = heightSum / waterNeighborCount;
-                    float targetHeight = minHeight;
-
-                    if (avgHeight - minHeight > 0.05f) {
-                        targetHeight = minHeight + (avgHeight - minHeight) * 0.25f;
-                    }
-
-                    heights[corner] = clampWaterHeight(targetHeight);
-                } else {
-                    heights[corner] = clampWaterHeight(blockHeight);
-                }
-            } else {
-                // Open corner - use minimum height
-                float baseHeight = clampWaterHeight(minHeight);
-
-                // Check for sources below neighbors
-                int sourcesBelow = 0;
-                for (int[] offset : cornerOffsets[corner]) {
-                    int sampleX = blockX + offset[0];
-                    int sampleZ = blockZ + offset[1];
-                    WaterBlock neighborBelow = Water.getWaterBlock(sampleX, blockY - 1, sampleZ);
-                    if (neighborBelow != null && neighborBelow.isSource()) {
-                        sourcesBelow++;
-                    }
-                }
-
-                // Create smooth downward curve for waterfall edges
-                if (sourcesBelow > 0) {
-                    float downwardPull = Math.min(1.0f, sourcesBelow / 4.0f);
-                    baseHeight = baseHeight * (1.0f - downwardPull * 0.5f);
-                }
-
-                heights[corner] = baseHeight;
-            }
-        }
-
-        return heights;
-    }
-
-    /**
-     * Ensures side faces align perfectly with the top face to prevent gaps.
-     * This method is called for side faces only to guarantee that the top edge of a side face
-     * matches exactly with the corresponding edge of the top face.
-     *
-     * @param blockX Block X coordinate
-     * @param blockY Block Y coordinate
-     * @param blockZ Block Z coordinate
-     * @param cornerHeights Current corner heights (already sewn)
-     * @return Corner heights guaranteed to match the top face edge
-     */
-    private float[] ensureSideFaceAlignment(int blockX, int blockY, int blockZ, int face, float[] cornerHeights) {
-        float[] reference = peekCachedCornerHeights(blockX, blockY, blockZ);
-        if (reference == null) {
-            return cornerHeights;
-        }
-
-        int[] edgeCorners = switch (face) {
-            case 2 -> new int[]{2, 3}; // North edge shares NE and NW corners
-            case 3 -> new int[]{0, 1}; // South edge shares SW and SE corners
-            case 4 -> new int[]{1, 2}; // East edge shares SE and NE corners
-            case 5 -> new int[]{0, 3}; // West edge shares SW and NW corners
-            default -> new int[0];
-        };
-
-        for (int idx : edgeCorners) {
-            if (idx >= 0 && idx < cornerHeights.length) {
-                float aligned = alignHeight(reference[idx]);
-                cornerHeights[idx] = aligned;
-            }
-        }
-        return cornerHeights;
-    }
-
-    /**
-     * Gets the cached corner heights for the most recently processed block without cloning.
-     */
-    private float[] peekCachedCornerHeights(int blockX, int blockY, int blockZ) {
-        long key = packBlockKey(blockX, blockY, blockZ);
-        if (key == cachedCornerKey) {
-            return cachedCornerHeights;
-        }
-        return null;
-    }
-
-    /**
-     * Returns sewn corner heights for the specified block, reusing cached data so every face
-     * shares exactly the same height values.
+     * Each corner's height is computed purely from the corner's world-space
+     * (x, z) position — independent of which block is asking. This guarantees
+     * the four blocks sharing a corner all produce bit-identical heights, so
+     * the shader's `blockBase + waterHeight + wave` displacement never leaves
+     * visible seams along shared edges.
      */
     private float[] getSewnCornerHeights(int blockX, int blockY, int blockZ) {
         long key = packBlockKey(blockX, blockY, blockZ);
@@ -463,82 +257,89 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
             return cachedCornerHeights.clone();
         }
 
-        float blockHeight = getWaterHeight(blockX, blockY, blockZ);
-        float[] baseCornerHeights = computeWaterCornerHeights(blockX, blockY, blockZ, blockHeight);
-        float[] sewnHeights = sewCornerHeights(blockX, blockY, blockZ, baseCornerHeights);
-        normalizeCornerHeights(sewnHeights);
+        // Corner indices (see header): 0=(x, z+1), 1=(x+1, z+1), 2=(x+1, z), 3=(x, z).
+        float[] heights = new float[]{
+            cornerHeightAtWorld(blockX,     blockY, blockZ + 1),
+            cornerHeightAtWorld(blockX + 1, blockY, blockZ + 1),
+            cornerHeightAtWorld(blockX + 1, blockY, blockZ),
+            cornerHeightAtWorld(blockX,     blockY, blockZ),
+        };
+        normalizeCornerHeights(heights);
 
         cachedCornerKey = key;
-        cachedCornerHeights = sewnHeights;
-        return sewnHeights.clone();
+        cachedCornerHeights = heights;
+        return heights.clone();
     }
 
     /**
-     * Ensures this block's corner heights align with neighboring water blocks to avoid visible seams.
-     *
-     * @param blockX Block X coordinate
-     * @param blockY Block Y coordinate
-     * @param blockZ Block Z coordinate
-     * @param cornerHeights Base corner heights computed for this block
-     * @return Corner heights blended with neighbors along shared edges
+     * Computes the canonical water surface height at a corner identified by
+     * its world-space (x, z) position. Looks at the 4 voxels sharing the
+     * corner (at {@code blockY}) and derives a single deterministic value
+     * so every block referencing this corner sees exactly the same height.
      */
-    private float[] sewCornerHeights(int blockX, int blockY, int blockZ, float[] cornerHeights) {
-        float[] sewnHeights = cornerHeights.clone();
+    private float cornerHeightAtWorld(int cornerWx, int blockY, int cornerWz) {
+        float maxWaterHeight = 0.0f;
+        int waterCount = 0;
+        int solidCount = 0;
+        int sourceCount = 0;
+        int sourcesBelow = 0;
 
-        // North neighbor (z - 1) shares corners 2 (NE) and 3 (NW)
-        mergeEdgeHeightsWithNeighbor(sewnHeights, blockX, blockY, blockZ - 1,
-            new int[]{2, 3}, new int[]{1, 0});
+        // The 4 voxels adjacent to this corner in block-space.
+        for (int dx = -1; dx <= 0; dx++) {
+            for (int dz = -1; dz <= 0; dz++) {
+                int bx = cornerWx + dx;
+                int bz = cornerWz + dz;
 
-        // South neighbor (z + 1) shares corners 0 (SW) and 1 (SE)
-        mergeEdgeHeightsWithNeighbor(sewnHeights, blockX, blockY, blockZ + 1,
-            new int[]{0, 1}, new int[]{3, 2});
+                float h = resolveWaterHeight(bx, blockY, bz);
+                if (!Float.isNaN(h)) {
+                    waterCount++;
+                    maxWaterHeight = Math.max(maxWaterHeight, h);
+                    WaterBlock wb = Water.getWaterBlock(bx, blockY, bz);
+                    if (wb == null || wb.isSource()) {
+                        sourceCount++;
+                    }
+                } else {
+                    BlockType bt = world.getBlockAt(bx, blockY, bz);
+                    if (bt != null && !bt.isTransparent() && bt != BlockType.WATER) {
+                        solidCount++;
+                    }
+                }
 
-        // East neighbor (x + 1) shares corners 1 (SE) and 2 (NE)
-        mergeEdgeHeightsWithNeighbor(sewnHeights, blockX + 1, blockY, blockZ,
-            new int[]{1, 2}, new int[]{0, 3});
+                WaterBlock below = Water.getWaterBlock(bx, blockY - 1, bz);
+                if (below != null && below.isSource()) {
+                    sourcesBelow++;
+                }
+            }
+        }
 
-        // West neighbor (x - 1) shares corners 0 (SW) and 3 (NW)
-        mergeEdgeHeightsWithNeighbor(sewnHeights, blockX - 1, blockY, blockZ,
-            new int[]{0, 3}, new int[]{1, 2});
+        if (waterCount == 0) {
+            return 0.0f;
+        }
 
-        return sewnHeights;
+        // Any source voxel at this corner pins the surface to the full
+        // source height — this is the invariant that keeps open ocean flat.
+        if (sourceCount > 0) {
+            return clampWaterHeight(MAX_WATER_HEIGHT);
+        }
+
+        float height = maxWaterHeight;
+
+        // Walls present: use the tallest contributing flow directly (the
+        // neighbor blending from the old algorithm was the main source of
+        // per-block divergence and provided only a cosmetic curve).
+        if (solidCount > 0) {
+            return clampWaterHeight(height);
+        }
+
+        // Open flow with sources below → smooth waterfall edge pull.
+        if (sourcesBelow > 0) {
+            float downwardPull = Math.min(1.0f, sourcesBelow / 4.0f);
+            height = height * (1.0f - downwardPull * 0.5f);
+        }
+
+        return clampWaterHeight(height);
     }
 
-    /**
-     * Merges corner heights along an edge with the neighbor's corner heights, using the higher value to
-     * avoid gaps between adjacent water quads.
-     *
-     * @param targetHeights Heights to update
-     * @param neighborX Neighbor block X coordinate
-     * @param neighborY Neighbor block Y coordinate
-     * @param neighborZ Neighbor block Z coordinate
-     * @param ourCorners Corner indices for this block's edge (length 2)
-     * @param neighborCorners Corresponding corner indices on the neighbor block (length 2)
-     */
-    private void mergeEdgeHeightsWithNeighbor(float[] targetHeights, int neighborX, int neighborY, int neighborZ,
-                                              int[] ourCorners, int[] neighborCorners) {
-        if (ourCorners.length != neighborCorners.length) {
-            throw new IllegalArgumentException("Corner arrays must be the same length");
-        }
-
-        float neighborBlockHeight = getWaterHeight(neighborX, neighborY, neighborZ);
-        if (neighborBlockHeight <= 0.0f) {
-            return;
-        }
-
-        float[] neighborCornerHeights = computeWaterCornerHeights(neighborX, neighborY, neighborZ, neighborBlockHeight);
-        for (int i = 0; i < ourCorners.length; i++) {
-            int ourCorner = ourCorners[i];
-            int neighborCorner = neighborCorners[i];
-            if (ourCorner < 0 || ourCorner >= targetHeights.length) {
-                continue;
-            }
-            if (neighborCorner < 0 || neighborCorner >= neighborCornerHeights.length) {
-                continue;
-            }
-            targetHeights[ourCorner] = Math.max(targetHeights[ourCorner], neighborCornerHeights[neighborCorner]);
-        }
-    }
 
     /**
      * Computes water bottom attachment height for seamless connection to blocks below.

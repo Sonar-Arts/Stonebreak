@@ -44,10 +44,10 @@ public class ActionHandler {
         if (currentSetting == null) return;
         
         switch (currentSetting) {
-            case RESOLUTION -> stateManager.getResolutionButton().toggleDropdown();
+            case RESOLUTION -> stateManager.getResolutionButton().toggle();
             case VOLUME -> {} // Volume handled by mouse/keyboard interaction
-            case ARM_MODEL -> stateManager.getArmModelButton().toggleDropdown();
-            case CROSSHAIR_STYLE -> stateManager.getCrosshairStyleButton().toggleDropdown();
+            case ARM_MODEL -> stateManager.getArmModelButton().toggle();
+            case CROSSHAIR_STYLE -> stateManager.getCrosshairStyleButton().toggle();
             case CROSSHAIR_SIZE -> {} // Crosshair size handled by mouse/keyboard interaction
             case LEAF_TRANSPARENCY -> toggleLeafTransparency();
             case WATER_SHADER -> toggleWaterShader();
@@ -106,25 +106,25 @@ public class ActionHandler {
      * Callback for when resolution selection changes.
      */
     public void onResolutionChange() {
-        int newIndex = stateManager.getResolutionButton().getSelectedItemIndex();
+        int newIndex = stateManager.getResolutionButton().selectedIndex();
         settings.setResolutionByIndex(newIndex);
         stateManager.setSelectedResolutionIndex(newIndex);
     }
-    
+
     /**
      * Callback for when arm model selection changes.
      */
     public void onArmModelChange() {
-        int newIndex = stateManager.getArmModelButton().getSelectedItemIndex();
+        int newIndex = stateManager.getArmModelButton().selectedIndex();
         settings.setArmModelType(com.stonebreak.ui.settingsMenu.config.SettingsConfig.ARM_MODEL_TYPES[newIndex]);
         stateManager.setSelectedArmModelIndex(newIndex);
     }
-    
+
     /**
      * Callback for when crosshair style selection changes.
      */
     public void onCrosshairStyleChange() {
-        int newIndex = stateManager.getCrosshairStyleButton().getSelectedItemIndex();
+        int newIndex = stateManager.getCrosshairStyleButton().selectedIndex();
         settings.setCrosshairStyle(com.stonebreak.ui.settingsMenu.config.SettingsConfig.CROSSHAIR_STYLES[newIndex]);
         stateManager.setSelectedCrosshairStyleIndex(newIndex);
     }

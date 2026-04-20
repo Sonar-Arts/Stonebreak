@@ -303,10 +303,15 @@ public final class WaterSystem {
 
         boolean canFall = tryFlowDown(pos, current);
         if (!canFall && current.falling()) {
-            // When falling water lands, reset depth to level 1 (fresh flow starting point)
+            // When falling water lands, reset depth to level 1 (fresh flow starting point).
+            // Only dirty the chunk if the level actually changed — the mesh ignores `falling`,
+            // so a (1, falling) → (1, !falling) transition produces an identical mesh.
+            boolean levelWasOne = current.level() == 1;
             current = WaterBlock.flowing(1);
             cells.put(pos, current);
-            markChunkDirty(pos); // Batched visual update when falling water lands
+            if (!levelWasOne) {
+                markChunkDirty(pos);
+            }
         }
 
         int targetLevel = computeTargetLevel(pos, current);
@@ -322,9 +327,13 @@ public final class WaterSystem {
         WaterBlock updated = new WaterBlock(clampedLevel, shouldFall);
 
         if (!updated.equals(current)) {
+            boolean levelChanged = updated.level() != current.level();
             cells.put(pos, updated);
             scheduleNeighbors(pos);
-            markChunkDirty(pos); // Batched visual update when water level changes
+            // Mesh consumes only `level()`; pure `falling` flips don't change the rendered mesh.
+            if (levelChanged) {
+                markChunkDirty(pos);
+            }
         }
 
         spreadHorizontally(pos, updated);
@@ -466,8 +475,9 @@ public final class WaterSystem {
                     return false;
                 }
             }
-            // Check if the water level is actually changing
-            levelChanged = (existing.level() != candidate.level() || existing.falling() != candidate.falling());
+            // Check if the water level is actually changing (mesh ignores `falling`, so don't
+            // count a pure falling-flag flip as a visual change).
+            levelChanged = existing.level() != candidate.level();
         }
 
         if (FlowBlockInteraction.isFragile(blockType)) {

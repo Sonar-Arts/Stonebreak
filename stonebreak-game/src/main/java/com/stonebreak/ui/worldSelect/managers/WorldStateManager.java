@@ -13,12 +13,15 @@ public class WorldStateManager {
     private List<String> worldList = new ArrayList<>();
     private int selectedIndex = 0;
     private int hoveredIndex = -1;
+    private String hoveredButton = null;
     private int scrollOffset = 0;
 
     // ===== DIALOG STATE =====
     private boolean showCreateDialog = false;
     private String newWorldName = "";
     private String newWorldSeed = "";
+    private boolean showDeleteDialog = false;
+    private String worldPendingDelete = null;
 
     // ===== SCROLL STATE =====
     private static final int ITEMS_PER_PAGE = 8;
@@ -112,7 +115,12 @@ public class WorldStateManager {
 
     public void clearHover() {
         hoveredIndex = -1;
+        hoveredButton = null;
     }
+
+    public String getHoveredButton() { return hoveredButton; }
+
+    public void setHoveredButton(String key) { this.hoveredButton = key; }
 
     // ===== SCROLL MANAGEMENT =====
 
@@ -190,6 +198,29 @@ public class WorldStateManager {
         newWorldSeed = "";
     }
 
+    public boolean isShowDeleteDialog() {
+        return showDeleteDialog;
+    }
+
+    public String getWorldPendingDelete() {
+        return worldPendingDelete;
+    }
+
+    public void openDeleteDialog(String worldName) {
+        if (worldName == null || worldName.isEmpty()) return;
+        this.showDeleteDialog = true;
+        this.worldPendingDelete = worldName;
+    }
+
+    public void closeDeleteDialog() {
+        this.showDeleteDialog = false;
+        this.worldPendingDelete = null;
+    }
+
+    public boolean isAnyDialogOpen() {
+        return showCreateDialog || showDeleteDialog;
+    }
+
     // ===== TEXT INPUT MANAGEMENT =====
 
     public String getNewWorldName() {
@@ -209,6 +240,7 @@ public class WorldStateManager {
     }
 
     public void appendToWorldName(char character) {
+        if (Character.isSurrogate(character)) return;
         if (Character.isLetterOrDigit(character) || character == ' ' || character == '-' || character == '_') {
             if (newWorldName.length() < 32) { // Reasonable limit
                 newWorldName += character;
@@ -223,6 +255,7 @@ public class WorldStateManager {
     }
 
     public void appendToWorldSeed(char character) {
+        if (Character.isSurrogate(character)) return;
         if (Character.isLetterOrDigit(character) || character == '-') {
             if (newWorldSeed.length() < 20) { // Reasonable limit
                 newWorldSeed += character;
@@ -247,5 +280,6 @@ public class WorldStateManager {
         hoveredIndex = -1;
         scrollOffset = 0;
         closeCreateDialog();
+        closeDeleteDialog();
     }
 }

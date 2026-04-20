@@ -10,18 +10,19 @@ import static org.lwjgl.glfw.GLFW.glfwGetKey;
 
 import com.stonebreak.core.GameState;
 import com.stonebreak.core.Game;
-import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.ui.mainMenu.SkijaMainMenuRenderer;
 import com.stonebreak.ui.mainMenu.SplashTextManager;
 
 public class MainMenu {
-    private final UIRenderer uiRenderer;
+    private final SkijaMainMenuRenderer skijaRenderer;
     private int selectedButton = -1; // -1 = no selection, 0 = Singleplayer, 1 = Settings, 2 = Quit Game
     private final SplashTextManager splashTextManager;
     private String currentSplashText;
 
-    public MainMenu(UIRenderer uiRenderer) {
-        this.uiRenderer = uiRenderer;
+    public MainMenu(SkijaUIBackend skijaBackend) {
+        this.skijaRenderer = new SkijaMainMenuRenderer(skijaBackend);
         this.splashTextManager = SplashTextManager.getInstance();
         this.currentSplashText = splashTextManager.getRandomSplashText();
     }
@@ -106,7 +107,11 @@ public class MainMenu {
     }
     
     public void render(int windowWidth, int windowHeight) {
-        uiRenderer.renderMainMenu(windowWidth, windowHeight);
+        skijaRenderer.render(this, windowWidth, windowHeight);
+    }
+
+    public void dispose() {
+        if (skijaRenderer != null) skijaRenderer.dispose();
     }
     
     public int getSelectedButton() {

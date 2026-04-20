@@ -1,13 +1,12 @@
 package com.stonebreak.ui.worldSelect;
 
-import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
 import com.stonebreak.ui.worldSelect.handlers.WorldInputHandler;
 import com.stonebreak.ui.worldSelect.handlers.WorldMouseHandler;
 import com.stonebreak.ui.worldSelect.handlers.WorldActionHandler;
-import com.stonebreak.ui.worldSelect.renderers.WorldListRenderer;
-import com.stonebreak.ui.worldSelect.renderers.CreateDialogRenderer;
+import com.stonebreak.ui.worldSelect.renderers.SkijaWorldSelectRenderer;
 
 import java.util.List;
 
@@ -24,16 +23,14 @@ public class WorldSelectScreen {
     private final WorldActionHandler actionHandler;
     private final WorldInputHandler inputHandler;
     private final WorldMouseHandler mouseHandler;
-    private final WorldListRenderer listRenderer;
-    private final CreateDialogRenderer dialogRenderer;
+    private final SkijaWorldSelectRenderer skijaRenderer;
 
     // ===== CONSTRUCTOR =====
 
     /**
-     * Creates a new WorldSelectScreen with the specified UI renderer.
-     * Initializes all modular components and their dependencies.
+     * Creates a new WorldSelectScreen backed by the Skija UI renderer.
      */
-    public WorldSelectScreen(UIRenderer uiRenderer) {
+    public WorldSelectScreen(SkijaUIBackend skijaBackend) {
         // Initialize managers
         this.stateManager = new WorldStateManager();
         this.discoveryManager = new WorldDiscoveryManager();
@@ -43,16 +40,12 @@ public class WorldSelectScreen {
 
         // Initialize input handlers
         this.inputHandler = new WorldInputHandler(stateManager, actionHandler);
-        this.mouseHandler = new WorldMouseHandler(stateManager, actionHandler);
+        this.mouseHandler = new WorldMouseHandler(stateManager, actionHandler, inputHandler);
 
-        // Initialize renderers
-        this.listRenderer = new WorldListRenderer(uiRenderer, stateManager, discoveryManager);
-        this.dialogRenderer = new CreateDialogRenderer(uiRenderer, stateManager, inputHandler);
+        // Skija-backed renderer
+        this.skijaRenderer = new SkijaWorldSelectRenderer(skijaBackend, stateManager, discoveryManager, inputHandler);
 
-        // Set up component callbacks
         initializeCallbacks();
-
-        // Initial world discovery
         refreshWorlds();
     }
 
@@ -155,16 +148,16 @@ public class WorldSelectScreen {
     // ===== RENDERING =====
 
     /**
-     * Renders the complete world select screen using modular rendering system.
+     * Renders the complete world select screen via the Skija backend. The
+     * renderer brackets its own GL state — the caller does not need to begin
+     * or end a NanoVG frame around this call.
      */
     public void render(int width, int height) {
-        // Render main world list
-        listRenderer.renderWorldList(width, height);
+        skijaRenderer.render(width, height);
+    }
 
-        // Render create dialog if open
-        if (stateManager.isShowCreateDialog()) {
-            dialogRenderer.renderCreateDialog(width, height);
-        }
+    public void dispose() {
+        if (skijaRenderer != null) skijaRenderer.dispose();
     }
 
     // ===== PUBLIC API (COMPATIBILITY) =====

@@ -32,11 +32,27 @@ public class WorldInputHandler {
      * Handles all keyboard input for the world select screen.
      */
     public void handleInput(long window) {
-        if (stateManager.isShowCreateDialog()) {
+        if (stateManager.isShowDeleteDialog()) {
+            handleDeleteDialogInput(window);
+        } else if (stateManager.isShowCreateDialog()) {
             handleCreateDialogInput(window);
         } else {
             handleWorldListInput(window);
         }
+    }
+
+    private void handleDeleteDialogInput(long window) {
+        boolean enterPressed = isKeyPressed(window, GLFW_KEY_ENTER);
+        if (enterPressed && !enterKeyPressed) {
+            actionHandler.confirmDeleteWorld();
+        }
+        enterKeyPressed = enterPressed;
+
+        boolean escPressed = isKeyPressed(window, GLFW_KEY_ESCAPE);
+        if (escPressed && !escapeKeyPressed) {
+            actionHandler.cancelDeleteWorld();
+        }
+        escapeKeyPressed = escPressed;
     }
 
     /**

@@ -215,8 +215,7 @@ public class OMTTextureLoader {
             IntBuffer heightBuffer = stack.mallocInt(1);
             IntBuffer channelsBuffer = stack.mallocInt(1);
 
-            // Load texture in standard orientation (matches game's approach)
-            // UV coordinates in CubeNetMeshGenerator are designed for this
+            // Load texture in standard orientation (matches game's approach).
             STBImage.stbi_set_flip_vertically_on_load(false);
 
             ByteBuffer imageData = STBImage.stbi_load_from_memory(

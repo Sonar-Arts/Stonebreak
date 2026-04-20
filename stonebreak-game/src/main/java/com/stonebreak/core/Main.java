@@ -10,7 +10,6 @@ import com.stonebreak.input.MouseCaptureManager;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
-import com.stonebreak.textures.atlas.TextureAtlasBuilder;
 import com.stonebreak.ui.DebugOverlay;
 import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
@@ -141,13 +140,21 @@ public class Main {
         glfwSetCharCallback(window, (win, codepoint) -> {
             Game game = Game.getInstance();
 
+            // Drop codepoints outside the BMP; casting them to a single char
+            // would produce an unpaired surrogate that crashes Skija's text
+            // layout on the next measureTextWidth call.
+            if (codepoint < 0 || codepoint > 0xFFFF || Character.isSurrogate((char) codepoint)) {
+                return;
+            }
+            char character = (char) codepoint;
+
             // Handle world select screen character input
             if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
-                game.getWorldSelectScreen().handleCharacterInput((char) codepoint);
+                game.getWorldSelectScreen().handleCharacterInput(character);
             }
             // Pass character input to InputHandler for chat handling
             else if (inputHandler != null) {
-                inputHandler.handleCharacterInput((char) codepoint);
+                inputHandler.handleCharacterInput(character);
             }
         });
 
@@ -320,9 +327,6 @@ public class Main {
           MemoryProfiler profiler = MemoryProfiler.getInstance();
           profiler.takeSnapshot("before_initialization");
 
-          // Check if texture atlas needs regeneration
-          regenerateAtlasIfNeeded();
-
           // Initialize the renderer with window dimensions
           renderer = new Renderer(width, height);
           profiler.takeSnapshot("after_renderer_init");
@@ -466,10 +470,22 @@ public class Main {
         Renderer renderer = Game.getRenderer();
         
         switch (game.getState()) {
-            case MAIN_MENU -> renderUIState(renderer, game.getMainMenu());
-            case WORLD_SELECT -> renderUIState(renderer, game.getWorldSelectScreen());
+            case MAIN_MENU -> {
+                // Skija-backed; same GL-bracketing contract as world select.
+                com.stonebreak.ui.MainMenu mm = game.getMainMenu();
+                if (mm != null) mm.render(width, height);
+            }
+            case WORLD_SELECT -> {
+                // Skija backend brackets its own GL state; do not wrap in a NanoVG frame.
+                WorldSelectScreen wss = game.getWorldSelectScreen();
+                if (wss != null) wss.render(width, height);
+            }
             case LOADING -> renderUIState(renderer, game.getLoadingScreen());
-            case SETTINGS -> renderUIState(renderer, game.getSettingsMenu());
+            case SETTINGS -> {
+                // Skija-backed MasonryUI; brackets GL itself.
+                SettingsMenu sm = game.getSettingsMenu();
+                if (sm != null) sm.render(width, height);
+            }
             default -> render3DGameState(game, renderer);
         }
         
@@ -478,16 +494,10 @@ public class Main {
 
     private void renderUIState(Renderer renderer, Object screen) {
         if (renderer == null || screen == null) return;
-        
+
         renderer.beginUIFrame(width, height, 1.0f);
-        if (screen instanceof com.stonebreak.ui.MainMenu mainMenu) {
-            mainMenu.render(width, height);
-        } else if (screen instanceof WorldSelectScreen worldSelectScreen) {
-            worldSelectScreen.render(width, height);
-        } else if (screen instanceof com.stonebreak.ui.LoadingScreen loadingScreen) {
+        if (screen instanceof com.stonebreak.ui.LoadingScreen loadingScreen) {
             loadingScreen.render(width, height);
-        } else if (screen instanceof SettingsMenu settingsMenu) {
-            settingsMenu.render(width, height);
         }
         renderer.endUIFrame();
     }
@@ -708,39 +718,6 @@ public class Main {
                 debugOverlay.render(renderer.getUIRenderer());
                 renderer.endUIFrame();
             }
-        }
-    }
-    
-    /**
-     * Check if texture atlas needs regeneration and regenerate if necessary.
-     * This ensures textures are up-to-date before rendering starts.
-     */
-    private void regenerateAtlasIfNeeded() {
-        try {
-            System.out.println("Checking if texture atlas regeneration is needed...");
-            
-            TextureAtlasBuilder atlasBuilder = new TextureAtlasBuilder();
-            
-            if (atlasBuilder.shouldRegenerateAtlas()) {
-                System.out.println("Texture atlas regeneration required - starting generation...");
-                
-                long startTime = System.currentTimeMillis();
-                boolean success = atlasBuilder.generateAtlas();
-                long endTime = System.currentTimeMillis();
-                
-                if (success) {
-                    System.out.println("Texture atlas regenerated successfully in " + (endTime - startTime) + "ms");
-                } else {
-                    System.err.println("Failed to regenerate texture atlas - game may display incorrectly");
-                }
-            } else {
-                System.out.println("Texture atlas is up-to-date, no regeneration needed");
-            }
-            
-        } catch (Exception e) {
-            System.err.println("Error during atlas regeneration check: " + e.getMessage());
-            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
-            System.err.println("Continuing with existing atlas...");
         }
     }
     

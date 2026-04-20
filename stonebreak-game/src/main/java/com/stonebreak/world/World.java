@@ -18,6 +18,7 @@ import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
 import com.stonebreak.world.chunk.utils.WorldChunkStore;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
@@ -39,6 +40,7 @@ public class World {
     private final MmsMeshPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
     private final WaterSystem waterSystem;
+    private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
 
     public World() {
         this(new WorldConfiguration());
@@ -84,7 +86,7 @@ public class World {
         }
 
         // Create FeatureQueue for multi-chunk features
-        com.stonebreak.world.generation.features.FeatureQueue featureQueue = new com.stonebreak.world.generation.features.FeatureQueue();
+        this.featureQueue = new com.stonebreak.world.generation.features.FeatureQueue();
 
         // Always create chunk store - tests may need chunk loading functionality
         // In test mode, meshPipeline is null but WorldChunkStore handles this gracefully
@@ -112,7 +114,19 @@ public class World {
             }, config);
 
             this.waterSystem = new WaterSystem(this);
-            this.chunkStore.setChunkListeners(waterSystem::onChunkLoaded, waterSystem::onChunkUnloaded);
+            this.chunkStore.setChunkListeners(chunk -> {
+                waterSystem.onChunkLoaded(chunk);
+                // Mark already-meshed neighbors dirty so their chunk-border faces
+                // (especially water seams) rebuild against this newly loaded chunk.
+                if (meshPipeline != null) {
+                    int cx = chunk.getX();
+                    int cz = chunk.getZ();
+                    markMeshedNeighborDirty(cx - 1, cz);
+                    markMeshedNeighborDirty(cx + 1, cz);
+                    markMeshedNeighborDirty(cx, cz - 1);
+                    markMeshedNeighborDirty(cx, cz + 1);
+                }
+            }, waterSystem::onChunkUnloaded);
 
             this.chunkManager = new ChunkManager(this, config.getRenderDistance());
 
@@ -300,6 +314,10 @@ public class World {
     public WaterSystem getWaterSystem() {
         return waterSystem;
     }
+
+    public com.stonebreak.world.generation.features.FeatureQueue getFeatureQueue() {
+        return featureQueue;
+    }
     
     
     
@@ -309,7 +327,35 @@ public class World {
     public float getContinentalnessAt(int x, int z) {
         return terrainSystem.getContinentalnessAt(x, z);
     }
-    
+
+    public BiomeType getBiomeAt(int x, int z) {
+        return terrainSystem.getBiomeAt(x, z);
+    }
+
+    public float getMoistureAt(int x, int z) {
+        return terrainSystem.getMoistureAt(x, z);
+    }
+
+    public float getTemperatureAt(int x, int z) {
+        return terrainSystem.getTemperatureAt(x, z);
+    }
+
+    public float getErosionNoiseAt(int x, int z) {
+        return terrainSystem.getErosionNoiseAt(x, z);
+    }
+
+    public int getBaseHeightAt(int x, int z) {
+        return terrainSystem.getBaseHeightAt(x, z);
+    }
+
+    public int getHeightBeforeErosionAt(int x, int z) {
+        return terrainSystem.getHeightBeforeErosionAt(x, z);
+    }
+
+    public int getFinalTerrainHeightAt(int x, int z) {
+        return terrainSystem.getFinalTerrainHeightAt(x, z);
+    }
+
     /**
      * Gets a cached chunk position for coordinate lookup.
      */
@@ -557,6 +603,19 @@ public class World {
      */
     private void resetMeshGenerationState(Chunk chunk) {
         chunk.getCcoDirtyTracker().markMeshDirtyOnly();
+    }
+
+    /**
+     * Marks an existing, meshed neighbor chunk dirty and schedules a rebuild so
+     * its border faces (water seams in particular) recompute with correct data.
+     * No-op if the neighbor isn't loaded or hasn't been meshed yet.
+     */
+    private void markMeshedNeighborDirty(int chunkX, int chunkZ) {
+        Chunk neighbor = chunkStore.getChunk(chunkX, chunkZ);
+        if (neighbor == null) return;
+        if (!neighbor.isMeshGenerated()) return;
+        neighbor.getCcoDirtyTracker().markMeshDirtyOnly();
+        meshPipeline.scheduleConditionalMeshBuild(neighbor);
     }
 
     /**

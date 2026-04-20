@@ -1,8 +1,6 @@
 package com.openmason.engine.rendering.model.gmr.parts;
 
 import com.openmason.engine.rendering.model.ModelPart;
-import com.openmason.engine.rendering.model.UVMode;
-import com.openmason.engine.rendering.model.gmr.uv.UVCoordinateGenerator;
 import org.joml.Vector3f;
 
 /**
@@ -13,8 +11,6 @@ import org.joml.Vector3f;
  * <p>All shapes are centered at the origin with configurable size.
  */
 public final class PartShapeFactory {
-
-    private static final UVCoordinateGenerator UV_GENERATOR = new UVCoordinateGenerator();
 
     private PartShapeFactory() {
         throw new UnsupportedOperationException("Factory class");
@@ -72,12 +68,81 @@ public final class PartShapeFactory {
     // ========== Cube ==========
 
     /**
-     * Create a cube with the same mesh as the generic base model.
-     * 24 vertices (4 per face), 36 indices, 6 quad faces, cube net UVs.
+     * Create a cube where the assigned texture appears identically on all 6 faces.
+     * Each face maps the full texture (0..1 in both U and V) with no mirroring,
+     * so a single texture renders the same on every face when viewed from outside.
+     *
+     * <p>24 vertices (4 per face), 36 indices, 6 quad faces. Vertex order per face is
+     * BL, BR, TR, TL with CCW winding when viewed from the face's outward normal.
+     * Face order: Front(+Z), Back(-Z), Left(-X), Right(+X), Top(+Y), Bottom(-Y).
      */
-    @SuppressWarnings("deprecation")
     private static ModelPart createCube(String name, Vector3f size) {
-        return ModelPart.createCube(name, new Vector3f(0, 0, 0), size, UVMode.CUBE_NET);
+        float hw = size.x / 2.0f;
+        float hh = size.y / 2.0f;
+        float hd = size.z / 2.0f;
+
+        float[] vertices = {
+            // FRONT (+Z): BL, BR, TR, TL viewed from +Z
+            -hw, -hh,  hd,
+             hw, -hh,  hd,
+             hw,  hh,  hd,
+            -hw,  hh,  hd,
+
+            // BACK (-Z): BL, BR, TR, TL viewed from -Z (so +X is BL's left)
+             hw, -hh, -hd,
+            -hw, -hh, -hd,
+            -hw,  hh, -hd,
+             hw,  hh, -hd,
+
+            // LEFT (-X): BL, BR, TR, TL viewed from -X
+            -hw, -hh, -hd,
+            -hw, -hh,  hd,
+            -hw,  hh,  hd,
+            -hw,  hh, -hd,
+
+            // RIGHT (+X): BL, BR, TR, TL viewed from +X
+             hw, -hh,  hd,
+             hw, -hh, -hd,
+             hw,  hh, -hd,
+             hw,  hh,  hd,
+
+            // TOP (+Y): BL, BR, TR, TL viewed from +Y (looking down -Y)
+            -hw,  hh,  hd,
+             hw,  hh,  hd,
+             hw,  hh, -hd,
+            -hw,  hh, -hd,
+
+            // BOTTOM (-Y): BL, BR, TR, TL viewed from -Y (looking up +Y)
+            -hw, -hh, -hd,
+             hw, -hh, -hd,
+             hw, -hh,  hd,
+            -hw, -hh,  hd,
+        };
+
+        // Identical UVs on every face: BL=(0,1), BR=(1,1), TR=(1,0), TL=(0,0).
+        float[] texCoords = new float[6 * 4 * 2];
+        for (int face = 0; face < 6; face++) {
+            int o = face * 8;
+            texCoords[o    ] = 0.0f; texCoords[o + 1] = 1.0f; // BL
+            texCoords[o + 2] = 1.0f; texCoords[o + 3] = 1.0f; // BR
+            texCoords[o + 4] = 1.0f; texCoords[o + 5] = 0.0f; // TR
+            texCoords[o + 6] = 0.0f; texCoords[o + 7] = 0.0f; // TL
+        }
+
+        // 6 faces × 2 triangles = 12 triangles, CCW: (0,1,2) and (2,3,0) per face.
+        int[] indices = new int[36];
+        int idx = 0;
+        for (int face = 0; face < 6; face++) {
+            int base = face * 4;
+            indices[idx++] = base;
+            indices[idx++] = base + 1;
+            indices[idx++] = base + 2;
+            indices[idx++] = base + 2;
+            indices[idx++] = base + 3;
+            indices[idx++] = base;
+        }
+
+        return new ModelPart(name, new Vector3f(0, 0, 0), vertices, texCoords, indices, 2);
     }
 
     // ========== Pane ==========
