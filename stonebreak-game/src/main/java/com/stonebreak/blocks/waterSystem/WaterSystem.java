@@ -184,15 +184,21 @@ public final class WaterSystem {
             Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ
         );
 
-        // Remove pending updates for the unloaded chunk
-        // Use iterator to avoid ConcurrentModificationException with PriorityQueue
-        Iterator<ScheduledUpdate> iterator = pendingUpdates.iterator();
-        while (iterator.hasNext()) {
-            ScheduledUpdate update = iterator.next();
-            BlockPos pos = update.pos();
-            if (Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-                Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ) {
-                iterator.remove();
+        // Remove pending updates for the unloaded chunk.
+        // PriorityQueue is not thread-safe; synchronize with processQueue/enqueue
+        // to prevent heap shifts from yielding nulls or skipped elements during iteration.
+        synchronized (pendingUpdates) {
+            Iterator<ScheduledUpdate> iterator = pendingUpdates.iterator();
+            while (iterator.hasNext()) {
+                ScheduledUpdate update = iterator.next();
+                if (update == null) {
+                    continue;
+                }
+                BlockPos pos = update.pos();
+                if (Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+                    Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ) {
+                    iterator.remove();
+                }
             }
         }
 
@@ -254,13 +260,15 @@ public final class WaterSystem {
 
     private void processQueue(int budget) {
         int processed = 0;
-        while (processed < budget && !pendingUpdates.isEmpty()) {
-            ScheduledUpdate next = pendingUpdates.peek();
-            if (next.scheduledTick() > logicalTick) {
-                break;
+        while (processed < budget) {
+            ScheduledUpdate next;
+            synchronized (pendingUpdates) {
+                next = pendingUpdates.peek();
+                if (next == null || next.scheduledTick() > logicalTick) {
+                    break;
+                }
+                pendingUpdates.poll();
             }
-
-            pendingUpdates.poll();
             Long trackedTick = scheduledTicks.get(next.pos());
             if (trackedTick == null || trackedTick != next.scheduledTick()) {
                 continue; // Stale entry
@@ -579,7 +587,9 @@ public final class WaterSystem {
         }
 
         scheduledTicks.put(pos, scheduledTick);
-        pendingUpdates.add(new ScheduledUpdate(pos, scheduledTick));
+        synchronized (pendingUpdates) {
+            pendingUpdates.add(new ScheduledUpdate(pos, scheduledTick));
+        }
     }
 
     private static long chunkKey(int chunkX, int chunkZ) {
