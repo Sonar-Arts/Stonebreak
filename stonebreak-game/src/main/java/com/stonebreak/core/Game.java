@@ -147,10 +147,10 @@ public class Game {
         this.soundSystem.testBasicFunctionality(); // Test sound system
 
         // Initialize UI components that don't require world/player
-        this.mainMenu = new MainMenu(this.renderer.getUIRenderer());
-        this.settingsMenu = new SettingsMenu(this.renderer.getUIRenderer());
+        this.mainMenu = new MainMenu(this.renderer.getSkijaBackend());
+        this.settingsMenu = new SettingsMenu(this.renderer.getSkijaBackend());
         this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
-        this.worldSelectScreen = new WorldSelectScreen(this.renderer.getUIRenderer());
+        this.worldSelectScreen = new WorldSelectScreen(this.renderer.getSkijaBackend());
 
         // Initialize crosshair with settings
         initializeCrosshairSettings();

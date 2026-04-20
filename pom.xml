@@ -26,6 +26,7 @@
         <jackson.version.annotations>2.21</jackson.version.annotations>
         <junit.version>6.0.2</junit.version>
         <mockito.version>5.21.0</mockito.version>
+        <skija.version>0.143.13</skija.version>
     </properties>
 
     <dependencyManagement>
@@ -100,6 +101,15 @@
                 <scope>runtime</scope>
             </dependency>
             
+            <!-- Skija (HumbleUI fork) — Skia bindings for next-gen UI rendering.
+                 Platform jar is self-contained; switch classifier when targeting
+                 other OSes (skija-linux-x64, skija-macos-arm64, etc.). -->
+            <dependency>
+                <groupId>io.github.humbleui</groupId>
+                <artifactId>skija-windows-x64</artifactId>
+                <version>${skija.version}</version>
+            </dependency>
+
             <!-- LWJGL OpenAL for audio -->
             <dependency>
                 <groupId>org.lwjgl</groupId>

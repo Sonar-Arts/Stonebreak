@@ -3,239 +3,172 @@ package com.stonebreak.ui.settingsMenu.handlers;
 import static org.lwjgl.glfw.GLFW.*;
 
 import com.stonebreak.config.Settings;
-import com.stonebreak.ui.components.buttons.DropdownButton;
-import com.stonebreak.ui.components.sliders.Slider;
+import com.stonebreak.rendering.UI.masonryUI.MDropdown;
+import com.stonebreak.rendering.UI.masonryUI.MSlider;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
 
 /**
- * Handles keyboard input for the settings menu.
- * Manages navigation, value adjustments, and action execution.
+ * Keyboard dispatch for the settings menu. Category navigation, per-category
+ * setting navigation, Shift-modified value nudges, Enter/Escape actions.
  */
-public class InputHandler {
-    
+public final class InputHandler {
+
     private final StateManager stateManager;
     private final Settings settings;
     private final ActionHandler actionHandler;
-    
-    private boolean escapeKeyPressed = false;
-    
+
+    private boolean escapePressed;
+    private boolean enterPressed;
+
     public InputHandler(StateManager stateManager, Settings settings, ActionHandler actionHandler) {
         this.stateManager = stateManager;
         this.settings = settings;
         this.actionHandler = actionHandler;
     }
-    
-    /**
-     * Handles all keyboard input for the settings menu.
-     */
+
     public void handleInput(long window) {
-        handleCategoryNavigationKeys(window);
-        handleSettingNavigationKeys(window);
-        handleValueAdjustmentKeys(window);
-        handleActionKeys(window);
-        handleEscapeKey(window);
+        handleCategoryNavigation(window);
+        handleSettingNavigation(window);
+        handleValueAdjustment(window);
+        handleEnter(window);
+        handleEscape(window);
     }
-    
-    /**
-     * Handles left/right navigation keys for category selection.
-     */
-    private void handleCategoryNavigationKeys(long window) {
-        if (isKeyPressed(window, GLFW_KEY_LEFT, GLFW_KEY_A)) {
+
+    private void handleCategoryNavigation(long window) {
+        boolean shift = isShiftHeld(window);
+        if (shift) return; // Shift+arrows adjusts values, not category
+        if (pressed(window, GLFW_KEY_LEFT) || pressed(window, GLFW_KEY_A)) {
             stateManager.navigateToPreviousCategory();
         }
-        if (isKeyPressed(window, GLFW_KEY_RIGHT, GLFW_KEY_D)) {
+        if (pressed(window, GLFW_KEY_RIGHT) || pressed(window, GLFW_KEY_D)) {
             stateManager.navigateToNextCategory();
         }
     }
-    
-    /**
-     * Handles up/down navigation keys for setting selection within a category.
-     */
-    private void handleSettingNavigationKeys(long window) {
-        if (isKeyPressed(window, GLFW_KEY_UP, GLFW_KEY_W)) {
+
+    private void handleSettingNavigation(long window) {
+        if (pressed(window, GLFW_KEY_UP) || pressed(window, GLFW_KEY_W)) {
             stateManager.navigateToPreviousSettingInCategory();
         }
-        if (isKeyPressed(window, GLFW_KEY_DOWN, GLFW_KEY_S)) {
+        if (pressed(window, GLFW_KEY_DOWN) || pressed(window, GLFW_KEY_S)) {
             stateManager.navigateToNextSettingInCategory();
         }
     }
-    
-    /**
-     * Handles keys for adjusting setting values within the settings panel.
-     * Uses Shift+Left/Right to avoid conflict with category navigation.
-     */
-    private void handleValueAdjustmentKeys(long window) {
-        boolean shiftHeld = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
-        
-        if (shiftHeld) {
-            if (isKeyPressed(window, GLFW_KEY_LEFT, GLFW_KEY_A)) {
-                adjustSelectedSettingValue(-1);
-            }
-            if (isKeyPressed(window, GLFW_KEY_RIGHT, GLFW_KEY_D)) {
-                adjustSelectedSettingValue(1);
-            }
+
+    private void handleValueAdjustment(long window) {
+        if (!isShiftHeld(window)) return;
+        if (pressed(window, GLFW_KEY_LEFT) || pressed(window, GLFW_KEY_A)) {
+            adjustSelectedSettingValue(-1);
+        }
+        if (pressed(window, GLFW_KEY_RIGHT) || pressed(window, GLFW_KEY_D)) {
+            adjustSelectedSettingValue(1);
         }
     }
-    
-    /**
-     * Handles action keys like Enter.
-     */
-    private void handleActionKeys(long window) {
-        if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) {
-            // Get the current setting type based on category and selection
-            CategoryState.SettingType[] settings = stateManager.getSelectedCategory().getSettings();
-            CategoryState.SettingType currentSetting;
-            
-            if (stateManager.getSelectedSettingInCategory() < settings.length) {
-                currentSetting = settings[stateManager.getSelectedSettingInCategory()];
+
+    private void handleEnter(long window) {
+        boolean down = pressed(window, GLFW_KEY_ENTER);
+        if (down && !enterPressed) {
+            CategoryState.SettingType[] settingsArr = stateManager.getSelectedCategory().getSettings();
+            CategoryState.SettingType current;
+            if (stateManager.getSelectedSettingInCategory() < settingsArr.length) {
+                current = settingsArr[stateManager.getSelectedSettingInCategory()];
             } else {
-                // Handle Apply/Back buttons
-                int buttonIndex = stateManager.getSelectedSettingInCategory() - settings.length;
-                currentSetting = (buttonIndex == 0) ? CategoryState.SettingType.APPLY : CategoryState.SettingType.BACK;
+                int idx = stateManager.getSelectedSettingInCategory() - settingsArr.length;
+                current = (idx == 0) ? CategoryState.SettingType.APPLY : CategoryState.SettingType.BACK;
             }
-            
-            // Handle dropdown confirmations
-            if (currentSetting == CategoryState.SettingType.RESOLUTION && stateManager.getResolutionButton().isDropdownOpen()) {
+            if (current == CategoryState.SettingType.RESOLUTION && stateManager.getResolutionButton().isOpen()) {
                 confirmResolutionSelection();
             } else {
                 actionHandler.executeSelectedAction();
             }
         }
+        enterPressed = down;
     }
-    
-    /**
-     * Handles escape key with edge detection to prevent repeated triggers.
-     */
-    private void handleEscapeKey(long window) {
-        boolean isEscapePressed = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
-        if (isEscapePressed && !escapeKeyPressed) {
-            escapeKeyPressed = true;
-            actionHandler.goBack();
-        } else if (!isEscapePressed) {
-            escapeKeyPressed = false;
-        }
+
+    private void handleEscape(long window) {
+        boolean down = pressed(window, GLFW_KEY_ESCAPE);
+        if (down && !escapePressed) actionHandler.goBack();
+        escapePressed = down;
     }
-    
-    /**
-     * Utility method to check if any of the specified keys are pressed.
-     */
-    private boolean isKeyPressed(long window, int... keys) {
-        for (int key : keys) {
-            if (glfwGetKey(window, key) == GLFW_PRESS) {
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    /**
-     * Adjusts the currently selected setting value by the specified direction.
-     * @param direction -1 for decrease, 1 for increase
-     */
+
+    // ─────────────────────────────────────────────── Value adjust
+
     private void adjustSelectedSettingValue(int direction) {
-        // Get the current setting type based on category and selection
-        CategoryState.SettingType[] settings = stateManager.getSelectedCategory().getSettings();
-        if (stateManager.getSelectedSettingInCategory() >= settings.length) return; // Can't adjust Apply/Back buttons
-        
-        CategoryState.SettingType currentSetting = settings[stateManager.getSelectedSettingInCategory()];
-        if (currentSetting == null) return;
-        
-        switch (currentSetting) {
-            case RESOLUTION -> adjustResolutionSetting(direction);
-            case VOLUME -> adjustVolumeSetting(direction);
-            case ARM_MODEL -> adjustArmModelSetting(direction);
-            case CROSSHAIR_STYLE -> adjustCrosshairStyleSetting(direction);
-            case CROSSHAIR_SIZE -> adjustCrosshairSizeSetting(direction);
-            case LEAF_TRANSPARENCY -> adjustLeafTransparencySetting(direction);
+        CategoryState.SettingType[] s = stateManager.getSelectedCategory().getSettings();
+        if (stateManager.getSelectedSettingInCategory() >= s.length) return;
+        CategoryState.SettingType current = s[stateManager.getSelectedSettingInCategory()];
+        if (current == null) return;
+        switch (current) {
+            case RESOLUTION -> adjustResolution(direction);
+            case VOLUME -> adjustSlider(stateManager.getVolumeSlider(), direction * SettingsConfig.VOLUME_STEP);
+            case ARM_MODEL -> adjustArmModel(direction);
+            case CROSSHAIR_STYLE -> adjustCrosshairStyle(direction);
+            case CROSSHAIR_SIZE -> adjustSlider(stateManager.getCrosshairSizeSlider(), direction * SettingsConfig.CROSSHAIR_SIZE_STEP);
+            case LEAF_TRANSPARENCY -> { if (direction != 0) actionHandler.toggleLeafTransparency(); }
+            default -> {}
         }
     }
-    
-    /**
-     * Adjusts resolution setting or dropdown selection.
-     */
-    private void adjustResolutionSetting(int direction) {
-        DropdownButton resolutionButton = stateManager.getResolutionButton();
-        if (resolutionButton.isDropdownOpen()) {
-            resolutionButton.adjustSelection(direction);
-            stateManager.setSelectedResolutionIndex(resolutionButton.getSelectedItemIndex());
+
+    private void adjustResolution(int direction) {
+        MDropdown dropdown = stateManager.getResolutionButton();
+        if (dropdown.isOpen()) {
+            dropdown.adjustSelection(direction);
+            stateManager.setSelectedResolutionIndex(dropdown.selectedIndex());
         } else {
             int currentIndex = settings.getCurrentResolutionIndex();
-            int[][] resolutions = Settings.getAvailableResolutions();
-            int newIndex = Math.max(0, Math.min(resolutions.length - 1, currentIndex + direction));
-            settings.setResolutionByIndex(newIndex);
-            stateManager.setSelectedResolutionIndex(newIndex);
-            resolutionButton.setSelectedItemIndex(newIndex);
+            int max = Settings.getAvailableResolutions().length - 1;
+            int next = Math.max(0, Math.min(max, currentIndex + direction));
+            settings.setResolutionByIndex(next);
+            stateManager.setSelectedResolutionIndex(next);
+            dropdown.setSelectedIndex(next);
         }
     }
-    
-    /**
-     * Adjusts volume setting.
-     */
-    private void adjustVolumeSetting(int direction) {
-        Slider volumeSlider = stateManager.getVolumeSlider();
-        volumeSlider.adjustValue(direction * SettingsConfig.VOLUME_STEP);
-    }
-    
-    /**
-     * Adjusts arm model setting or dropdown selection.
-     */
-    private void adjustArmModelSetting(int direction) {
-        DropdownButton armModelButton = stateManager.getArmModelButton();
-        if (armModelButton.isDropdownOpen()) {
-            armModelButton.adjustSelection(direction);
-            stateManager.setSelectedArmModelIndex(armModelButton.getSelectedItemIndex());
+
+    private void adjustArmModel(int direction) {
+        MDropdown dropdown = stateManager.getArmModelButton();
+        if (dropdown.isOpen()) {
+            dropdown.adjustSelection(direction);
+            stateManager.setSelectedArmModelIndex(dropdown.selectedIndex());
         } else {
             int currentIndex = stateManager.getSelectedArmModelIndex();
-            int newIndex = Math.max(0, Math.min(SettingsConfig.ARM_MODEL_TYPES.length - 1, currentIndex + direction));
-            settings.setArmModelType(SettingsConfig.ARM_MODEL_TYPES[newIndex]);
-            stateManager.setSelectedArmModelIndex(newIndex);
-            armModelButton.setSelectedItemIndex(newIndex);
+            int max = SettingsConfig.ARM_MODEL_TYPES.length - 1;
+            int next = Math.max(0, Math.min(max, currentIndex + direction));
+            settings.setArmModelType(SettingsConfig.ARM_MODEL_TYPES[next]);
+            stateManager.setSelectedArmModelIndex(next);
+            dropdown.setSelectedIndex(next);
         }
     }
-    
-    /**
-     * Adjusts crosshair style setting or dropdown selection.
-     */
-    private void adjustCrosshairStyleSetting(int direction) {
-        DropdownButton crosshairStyleButton = stateManager.getCrosshairStyleButton();
-        if (crosshairStyleButton.isDropdownOpen()) {
-            crosshairStyleButton.adjustSelection(direction);
-            stateManager.setSelectedCrosshairStyleIndex(crosshairStyleButton.getSelectedItemIndex());
+
+    private void adjustCrosshairStyle(int direction) {
+        MDropdown dropdown = stateManager.getCrosshairStyleButton();
+        if (dropdown.isOpen()) {
+            dropdown.adjustSelection(direction);
+            stateManager.setSelectedCrosshairStyleIndex(dropdown.selectedIndex());
         } else {
             int currentIndex = stateManager.getSelectedCrosshairStyleIndex();
-            int newIndex = Math.max(0, Math.min(SettingsConfig.CROSSHAIR_STYLES.length - 1, currentIndex + direction));
-            settings.setCrosshairStyle(SettingsConfig.CROSSHAIR_STYLES[newIndex]);
-            stateManager.setSelectedCrosshairStyleIndex(newIndex);
-            crosshairStyleButton.setSelectedItemIndex(newIndex);
-        }
-    }
-    
-    /**
-     * Adjusts crosshair size setting.
-     */
-    private void adjustCrosshairSizeSetting(int direction) {
-        Slider crosshairSizeSlider = stateManager.getCrosshairSizeSlider();
-        crosshairSizeSlider.adjustValue(direction * SettingsConfig.CROSSHAIR_SIZE_STEP);
-    }
-
-    /**
-     * Toggles leaf transparency setting when direction indicates change.
-     */
-    private void adjustLeafTransparencySetting(int direction) {
-        // For toggle buttons, any direction change toggles the setting
-        if (direction != 0) {
-            actionHandler.toggleLeafTransparency();
+            int max = SettingsConfig.CROSSHAIR_STYLES.length - 1;
+            int next = Math.max(0, Math.min(max, currentIndex + direction));
+            settings.setCrosshairStyle(SettingsConfig.CROSSHAIR_STYLES[next]);
+            stateManager.setSelectedCrosshairStyleIndex(next);
+            dropdown.setSelectedIndex(next);
         }
     }
 
-    /**
-     * Confirms resolution selection from dropdown and closes it.
-     */
+    private void adjustSlider(MSlider slider, float step) { slider.adjustValue(step); }
+
     private void confirmResolutionSelection() {
-        int selectedIndex = stateManager.getSelectedResolutionIndex();
-        settings.setResolutionByIndex(selectedIndex);
-        stateManager.getResolutionButton().closeDropdown();
+        settings.setResolutionByIndex(stateManager.getSelectedResolutionIndex());
+        stateManager.getResolutionButton().close();
+    }
+
+    // ─────────────────────────────────────────────── Helpers
+
+    private static boolean pressed(long window, int key) {
+        return glfwGetKey(window, key) == GLFW_PRESS;
+    }
+
+    private static boolean isShiftHeld(long window) {
+        return pressed(window, GLFW_KEY_LEFT_SHIFT) || pressed(window, GLFW_KEY_RIGHT_SHIFT);
     }
 }

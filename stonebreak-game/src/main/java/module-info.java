@@ -11,6 +11,12 @@ module stonebreak.game {
     requires org.lwjgl.openal;
     requires org.lwjgl.nanovg;
     requires org.lwjgl.stb;
+
+    // Skija (Skia bindings). Maven coords: io.github.humbleui:skija-windows-x64,
+    // which pulls skija-shared (Java classes) and types (Point/Rect/RRect) transitively.
+    // These jars declare explicit module-info, so use the declared module names.
+    requires io.github.humbleui.skija.shared;
+    requires io.github.humbleui.types;
     
     // Math library
     requires org.joml;

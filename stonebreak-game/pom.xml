@@ -85,6 +85,12 @@
             <scope>runtime</scope>
         </dependency>
         
+        <!-- Skija (HumbleUI fork) — Skia bindings for next-gen UI rendering -->
+        <dependency>
+            <groupId>io.github.humbleui</groupId>
+            <artifactId>skija-windows-x64</artifactId>
+        </dependency>
+
         <!-- LWJGL OpenAL for audio -->
         <dependency>
             <groupId>org.lwjgl</groupId>

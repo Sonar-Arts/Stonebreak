@@ -141,13 +141,21 @@ public class Main {
         glfwSetCharCallback(window, (win, codepoint) -> {
             Game game = Game.getInstance();
 
+            // Drop codepoints outside the BMP; casting them to a single char
+            // would produce an unpaired surrogate that crashes Skija's text
+            // layout on the next measureTextWidth call.
+            if (codepoint < 0 || codepoint > 0xFFFF || Character.isSurrogate((char) codepoint)) {
+                return;
+            }
+            char character = (char) codepoint;
+
             // Handle world select screen character input
             if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
-                game.getWorldSelectScreen().handleCharacterInput((char) codepoint);
+                game.getWorldSelectScreen().handleCharacterInput(character);
             }
             // Pass character input to InputHandler for chat handling
             else if (inputHandler != null) {
-                inputHandler.handleCharacterInput((char) codepoint);
+                inputHandler.handleCharacterInput(character);
             }
         });
 
@@ -466,10 +474,22 @@ public class Main {
         Renderer renderer = Game.getRenderer();
         
         switch (game.getState()) {
-            case MAIN_MENU -> renderUIState(renderer, game.getMainMenu());
-            case WORLD_SELECT -> renderUIState(renderer, game.getWorldSelectScreen());
+            case MAIN_MENU -> {
+                // Skija-backed; same GL-bracketing contract as world select.
+                com.stonebreak.ui.MainMenu mm = game.getMainMenu();
+                if (mm != null) mm.render(width, height);
+            }
+            case WORLD_SELECT -> {
+                // Skija backend brackets its own GL state; do not wrap in a NanoVG frame.
+                WorldSelectScreen wss = game.getWorldSelectScreen();
+                if (wss != null) wss.render(width, height);
+            }
             case LOADING -> renderUIState(renderer, game.getLoadingScreen());
-            case SETTINGS -> renderUIState(renderer, game.getSettingsMenu());
+            case SETTINGS -> {
+                // Skija-backed MasonryUI; brackets GL itself.
+                SettingsMenu sm = game.getSettingsMenu();
+                if (sm != null) sm.render(width, height);
+            }
             default -> render3DGameState(game, renderer);
         }
         
@@ -478,16 +498,10 @@ public class Main {
 
     private void renderUIState(Renderer renderer, Object screen) {
         if (renderer == null || screen == null) return;
-        
+
         renderer.beginUIFrame(width, height, 1.0f);
-        if (screen instanceof com.stonebreak.ui.MainMenu mainMenu) {
-            mainMenu.render(width, height);
-        } else if (screen instanceof WorldSelectScreen worldSelectScreen) {
-            worldSelectScreen.render(width, height);
-        } else if (screen instanceof com.stonebreak.ui.LoadingScreen loadingScreen) {
+        if (screen instanceof com.stonebreak.ui.LoadingScreen loadingScreen) {
             loadingScreen.render(width, height);
-        } else if (screen instanceof SettingsMenu settingsMenu) {
-            settingsMenu.render(width, height);
         }
         renderer.endUIFrame();
     }

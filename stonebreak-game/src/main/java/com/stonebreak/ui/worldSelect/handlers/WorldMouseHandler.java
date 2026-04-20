@@ -1,234 +1,174 @@
 package com.stonebreak.ui.worldSelect.handlers;
 
-import com.stonebreak.ui.worldSelect.config.WorldSelectConfig;
+import com.stonebreak.ui.worldSelect.WorldSelectLayout;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
-import static org.lwjgl.glfw.GLFW.*;
+
+import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
+import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
 
 /**
- * Handles mouse input and interactions for the WorldSelectScreen.
- * Manages mouse movement, clicks, hover states, and scrolling.
+ * Hit-tests mouse events against {@link WorldSelectLayout} so screen geometry
+ * stays in sync with the Skija renderer.
  */
 public class WorldMouseHandler {
 
     private final WorldStateManager stateManager;
     private final WorldActionHandler actionHandler;
+    private final WorldInputHandler inputHandler;
 
-    public WorldMouseHandler(WorldStateManager stateManager, WorldActionHandler actionHandler) {
+    public WorldMouseHandler(WorldStateManager stateManager, WorldActionHandler actionHandler,
+                             WorldInputHandler inputHandler) {
         this.stateManager = stateManager;
         this.actionHandler = actionHandler;
+        this.inputHandler = inputHandler;
     }
 
-    /**
-     * Handles mouse movement for hover effects.
-     */
     public void handleMouseMove(double mouseX, double mouseY, int windowWidth, int windowHeight) {
-        float centerX = windowWidth / 2.0f;
-        float centerY = windowHeight / 2.0f;
-
+        WorldSelectLayout layout = WorldSelectLayout.compute(windowWidth, windowHeight);
+        if (stateManager.isShowDeleteDialog()) {
+            stateManager.setHoveredIndex(-1);
+            stateManager.setHoveredButton(hitConfirmButton(mouseX, mouseY, layout));
+            return;
+        }
         if (stateManager.isShowCreateDialog()) {
-            handleCreateDialogMouseMove((float) mouseX, (float) mouseY, centerX, centerY);
-        } else {
-            handleWorldListMouseMove((float) mouseX, (float) mouseY, centerX, centerY);
+            stateManager.setHoveredIndex(-1);
+            stateManager.setHoveredButton(hitDialogButton(mouseX, mouseY, layout));
+            return;
         }
-    }
-
-    /**
-     * Handles mouse movement for the world list.
-     */
-    private void handleWorldListMouseMove(float mouseX, float mouseY, float centerX, float centerY) {
-        // Calculate world list area
-        float listY = centerY - WorldSelectConfig.LIST_HEIGHT / 2.0f;
-        float listX = centerX - WorldSelectConfig.LIST_WIDTH / 2.0f;
-
-        // Check if mouse is within the world list area
-        if (mouseX >= listX && mouseX <= listX + WorldSelectConfig.LIST_WIDTH &&
-            mouseY >= listY && mouseY <= listY + WorldSelectConfig.LIST_HEIGHT) {
-
-            // Calculate which item the mouse is over
-            float relativeY = mouseY - listY;
-            int hoveredItemIndex = (int) (relativeY / WorldSelectConfig.ITEM_HEIGHT) + stateManager.getScrollOffset();
-
-            // Set hovered index if valid
-            if (hoveredItemIndex >= 0 && hoveredItemIndex < stateManager.getWorldList().size()) {
-                stateManager.setHoveredIndex(hoveredItemIndex);
-            } else {
-                stateManager.clearHover();
-            }
+        int total = stateManager.getWorldList().size();
+        int rowsVisible = stateManager.getVisibleEndIndex() - stateManager.getVisibleStartIndex();
+        int[] hit = new int[1];
+        if (layout.hitItem(mouseX, mouseY, rowsVisible, stateManager.getScrollOffset(), total, hit)) {
+            stateManager.setHoveredIndex(hit[0]);
         } else {
-            stateManager.clearHover();
+            stateManager.setHoveredIndex(-1);
         }
+        stateManager.setHoveredButton(hitActionButton(mouseX, mouseY, layout));
     }
 
-    /**
-     * Handles mouse movement for the create dialog.
-     */
-    private void handleCreateDialogMouseMove(float mouseX, float mouseY, float centerX, float centerY) {
-        // For now, just clear hover since we're not implementing button hover in dialogs
-        stateManager.clearHover();
+    private String hitActionButton(double mouseX, double mouseY, WorldSelectLayout layout) {
+        float w = WorldSelectLayout.ACTION_BUTTON_WIDTH;
+        float h = WorldSelectLayout.ACTION_BUTTON_HEIGHT;
+        if (layout.hitRect(mouseX, mouseY, layout.playButtonX,   layout.playButtonY,   w, h)) return "play";
+        if (layout.hitRect(mouseX, mouseY, layout.createButtonX, layout.createButtonY, w, h)) return "create";
+        if (layout.hitRect(mouseX, mouseY, layout.deleteButtonX, layout.deleteButtonY, w, h)) return "delete";
+        if (layout.hitRect(mouseX, mouseY, layout.backButtonX,   layout.backButtonY,   w, h)) return "back";
+        return null;
     }
 
-    /**
-     * Handles mouse click events.
-     */
+    private String hitDialogButton(double mouseX, double mouseY, WorldSelectLayout layout) {
+        float w = WorldSelectLayout.DIALOG_BUTTON_WIDTH;
+        float h = WorldSelectLayout.DIALOG_BUTTON_HEIGHT;
+        if (layout.hitRect(mouseX, mouseY, layout.dialogCreateX, layout.dialogButtonY, w, h)) return "dialog-create";
+        if (layout.hitRect(mouseX, mouseY, layout.dialogCancelX, layout.dialogButtonY, w, h)) return "dialog-cancel";
+        return null;
+    }
+
+    private String hitConfirmButton(double mouseX, double mouseY, WorldSelectLayout layout) {
+        float w = WorldSelectLayout.DIALOG_BUTTON_WIDTH;
+        float h = WorldSelectLayout.DIALOG_BUTTON_HEIGHT;
+        if (layout.hitRect(mouseX, mouseY, layout.confirmConfirmX, layout.confirmButtonY, w, h)) return "confirm-delete";
+        if (layout.hitRect(mouseX, mouseY, layout.confirmCancelX,  layout.confirmButtonY, w, h)) return "confirm-cancel";
+        return null;
+    }
+
     public void handleMouseClick(double mouseX, double mouseY, int windowWidth, int windowHeight, int button, int action) {
-        if (action != GLFW_PRESS) {
-            return; // Only handle press events
-        }
+        if (action != GLFW_PRESS || button != GLFW_MOUSE_BUTTON_LEFT) return;
+        WorldSelectLayout layout = WorldSelectLayout.compute(windowWidth, windowHeight);
 
-        float centerX = windowWidth / 2.0f;
-        float centerY = windowHeight / 2.0f;
-
-        if (stateManager.isShowCreateDialog()) {
-            handleCreateDialogMouseClick((float) mouseX, (float) mouseY, centerX, centerY, button);
+        if (stateManager.isShowDeleteDialog()) {
+            handleDeleteDialogClick(mouseX, mouseY, layout);
+        } else if (stateManager.isShowCreateDialog()) {
+            handleDialogClick(mouseX, mouseY, layout);
         } else {
-            handleWorldListMouseClick((float) mouseX, (float) mouseY, centerX, centerY, button);
+            handleListClick(mouseX, mouseY, layout);
         }
     }
 
-    /**
-     * Handles mouse clicks for the world list.
-     */
-    private void handleWorldListMouseClick(float mouseX, float mouseY, float centerX, float centerY, int button) {
-        if (button != GLFW_MOUSE_BUTTON_LEFT) {
-            return; // Only handle left clicks
+    private void handleListClick(double mouseX, double mouseY, WorldSelectLayout layout) {
+        int total = stateManager.getWorldList().size();
+        int rowsVisible = stateManager.getVisibleEndIndex() - stateManager.getVisibleStartIndex();
+        int[] hit = new int[1];
+        if (layout.hitItem(mouseX, mouseY, rowsVisible, stateManager.getScrollOffset(), total, hit)) {
+            stateManager.setSelectedIndex(hit[0]);
+            return; // single click selects; double-click / Play button loads
         }
 
-        // Check if click is on a world item
-        float listY = centerY - WorldSelectConfig.LIST_HEIGHT / 2.0f;
-        float listX = centerX - WorldSelectConfig.LIST_WIDTH / 2.0f;
-
-        if (mouseX >= listX && mouseX <= listX + WorldSelectConfig.LIST_WIDTH &&
-            mouseY >= listY && mouseY <= listY + WorldSelectConfig.LIST_HEIGHT) {
-
-            // Calculate clicked item
-            float relativeY = mouseY - listY;
-            int clickedItemIndex = (int) (relativeY / WorldSelectConfig.ITEM_HEIGHT) + stateManager.getScrollOffset();
-
-            // Select and load the clicked world
-            if (clickedItemIndex >= 0 && clickedItemIndex < stateManager.getWorldList().size()) {
-                stateManager.setSelectedIndex(clickedItemIndex);
-                actionHandler.loadSelectedWorld();
-                return;
-            }
+        if (layout.hitRect(mouseX, mouseY,
+                layout.playButtonX, layout.playButtonY,
+                WorldSelectLayout.ACTION_BUTTON_WIDTH, WorldSelectLayout.ACTION_BUTTON_HEIGHT)) {
+            actionHandler.loadSelectedWorld();
+            return;
         }
-
-        // Check if click is on "Create New World" button
-        float buttonY = centerY + WorldSelectConfig.LIST_HEIGHT / 2.0f + WorldSelectConfig.BUTTON_MARGIN;
-        float buttonX = centerX - WorldSelectConfig.BUTTON_WIDTH / 2.0f;
-
-        if (mouseX >= buttonX && mouseX <= buttonX + WorldSelectConfig.BUTTON_WIDTH &&
-            mouseY >= buttonY && mouseY <= buttonY + WorldSelectConfig.BUTTON_HEIGHT) {
+        if (layout.hitRect(mouseX, mouseY,
+                layout.createButtonX, layout.createButtonY,
+                WorldSelectLayout.ACTION_BUTTON_WIDTH, WorldSelectLayout.ACTION_BUTTON_HEIGHT)) {
             actionHandler.openCreateWorldDialog();
             return;
         }
-
-        // Check if click is on "Back" button
-        buttonY += WorldSelectConfig.BUTTON_HEIGHT + WorldSelectConfig.BUTTON_SPACING;
-
-        if (mouseX >= buttonX && mouseX <= buttonX + WorldSelectConfig.BUTTON_WIDTH &&
-            mouseY >= buttonY && mouseY <= buttonY + WorldSelectConfig.BUTTON_HEIGHT) {
+        if (layout.hitRect(mouseX, mouseY,
+                layout.deleteButtonX, layout.deleteButtonY,
+                WorldSelectLayout.ACTION_BUTTON_WIDTH, WorldSelectLayout.ACTION_BUTTON_HEIGHT)) {
+            if (stateManager.hasWorlds() && stateManager.getSelectedWorld() != null) {
+                actionHandler.requestDeleteSelectedWorld();
+            }
+            return;
+        }
+        if (layout.hitRect(mouseX, mouseY,
+                layout.backButtonX, layout.backButtonY,
+                WorldSelectLayout.ACTION_BUTTON_WIDTH, WorldSelectLayout.ACTION_BUTTON_HEIGHT)) {
             actionHandler.returnToMainMenu();
         }
     }
 
-    /**
-     * Handles mouse clicks for the create dialog.
-     */
-    private void handleCreateDialogMouseClick(float mouseX, float mouseY, float centerX, float centerY, int button) {
-        if (button != GLFW_MOUSE_BUTTON_LEFT) {
-            return; // Only handle left clicks
+    private void handleDeleteDialogClick(double mouseX, double mouseY, WorldSelectLayout layout) {
+        if (!layout.hitRect(mouseX, mouseY, layout.confirmDialogX, layout.confirmDialogY,
+                WorldSelectLayout.CONFIRM_DIALOG_WIDTH, WorldSelectLayout.CONFIRM_DIALOG_HEIGHT)) {
+            actionHandler.cancelDeleteWorld();
+            return;
         }
+        if (layout.hitRect(mouseX, mouseY, layout.confirmConfirmX, layout.confirmButtonY,
+                WorldSelectLayout.DIALOG_BUTTON_WIDTH, WorldSelectLayout.DIALOG_BUTTON_HEIGHT)) {
+            actionHandler.confirmDeleteWorld();
+            return;
+        }
+        if (layout.hitRect(mouseX, mouseY, layout.confirmCancelX, layout.confirmButtonY,
+                WorldSelectLayout.DIALOG_BUTTON_WIDTH, WorldSelectLayout.DIALOG_BUTTON_HEIGHT)) {
+            actionHandler.cancelDeleteWorld();
+        }
+    }
 
-        // Calculate dialog bounds
-        float dialogWidth = WorldSelectConfig.DIALOG_WIDTH;
-        float dialogHeight = WorldSelectConfig.DIALOG_HEIGHT;
-        float dialogX = centerX - dialogWidth / 2.0f;
-        float dialogY = centerY - dialogHeight / 2.0f;
-
-        // Check if click is outside dialog (close dialog)
-        if (mouseX < dialogX || mouseX > dialogX + dialogWidth ||
-            mouseY < dialogY || mouseY > dialogY + dialogHeight) {
+    private void handleDialogClick(double mouseX, double mouseY, WorldSelectLayout layout) {
+        // Click outside dialog cancels
+        if (!layout.hitRect(mouseX, mouseY, layout.dialogX, layout.dialogY,
+                WorldSelectLayout.DIALOG_WIDTH, WorldSelectLayout.DIALOG_HEIGHT)) {
             actionHandler.closeCreateWorldDialog();
             return;
         }
-
-        // Check if click is on "Create" button
-        float buttonY = dialogY + dialogHeight - WorldSelectConfig.BUTTON_HEIGHT - 20;
-        float createButtonX = centerX - WorldSelectConfig.BUTTON_WIDTH - 10;
-
-        if (mouseX >= createButtonX && mouseX <= createButtonX + WorldSelectConfig.BUTTON_WIDTH &&
-            mouseY >= buttonY && mouseY <= buttonY + WorldSelectConfig.BUTTON_HEIGHT) {
+        if (layout.hitRect(mouseX, mouseY, layout.dialogCreateX, layout.dialogButtonY,
+                WorldSelectLayout.DIALOG_BUTTON_WIDTH, WorldSelectLayout.DIALOG_BUTTON_HEIGHT)) {
             actionHandler.createWorldFromDialog();
             return;
         }
-
-        // Check if click is on "Cancel" button
-        float cancelButtonX = centerX + 10;
-
-        if (mouseX >= cancelButtonX && mouseX <= cancelButtonX + WorldSelectConfig.BUTTON_WIDTH &&
-            mouseY >= buttonY && mouseY <= buttonY + WorldSelectConfig.BUTTON_HEIGHT) {
+        if (layout.hitRect(mouseX, mouseY, layout.dialogCancelX, layout.dialogButtonY,
+                WorldSelectLayout.DIALOG_BUTTON_WIDTH, WorldSelectLayout.DIALOG_BUTTON_HEIGHT)) {
             actionHandler.closeCreateWorldDialog();
             return;
         }
-
-        // Check if click is on name input field
-        float nameFieldY = dialogY + 80;
-        float fieldX = dialogX + 20;
-        float fieldWidth = dialogWidth - 40;
-        float fieldHeight = 30;
-
-        if (mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
-            mouseY >= nameFieldY && mouseY <= nameFieldY + fieldHeight) {
-            // Switch to name input mode - handled by input handler
+        if (layout.hitRect(mouseX, mouseY, layout.nameFieldX, layout.nameFieldY,
+                WorldSelectLayout.DIALOG_INPUT_WIDTH, WorldSelectLayout.DIALOG_INPUT_HEIGHT)) {
+            inputHandler.setNameInputMode(true);
             return;
         }
-
-        // Check if click is on seed input field
-        float seedFieldY = nameFieldY + 60;
-
-        if (mouseX >= fieldX && mouseX <= fieldX + fieldWidth &&
-            mouseY >= seedFieldY && mouseY <= seedFieldY + fieldHeight) {
-            // Switch to seed input mode - handled by input handler
-            return;
+        if (layout.hitRect(mouseX, mouseY, layout.seedFieldX, layout.seedFieldY,
+                WorldSelectLayout.DIALOG_INPUT_WIDTH, WorldSelectLayout.DIALOG_INPUT_HEIGHT)) {
+            inputHandler.setNameInputMode(false);
         }
     }
 
-    /**
-     * Handles mouse wheel scrolling.
-     */
     public void handleMouseWheel(double yOffset) {
-        if (!stateManager.isShowCreateDialog()) {
-            stateManager.scroll(-yOffset); // Invert scroll direction for natural feel
+        if (!stateManager.isAnyDialogOpen()) {
+            stateManager.scroll(-yOffset);
         }
-    }
-
-    /**
-     * Checks if mouse is over a specific rectangular area.
-     */
-    private boolean isMouseOver(float mouseX, float mouseY, float x, float y, float width, float height) {
-        return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
-    }
-
-    /**
-     * Gets the index of the world item under the mouse cursor.
-     */
-    public int getMouseOverWorldIndex(double mouseX, double mouseY, int windowWidth, int windowHeight) {
-        float centerX = windowWidth / 2.0f;
-        float centerY = windowHeight / 2.0f;
-        float listY = centerY - WorldSelectConfig.LIST_HEIGHT / 2.0f;
-        float listX = centerX - WorldSelectConfig.LIST_WIDTH / 2.0f;
-
-        if (mouseX >= listX && mouseX <= listX + WorldSelectConfig.LIST_WIDTH &&
-            mouseY >= listY && mouseY <= listY + WorldSelectConfig.LIST_HEIGHT) {
-
-            float relativeY = (float) mouseY - listY;
-            int itemIndex = (int) (relativeY / WorldSelectConfig.ITEM_HEIGHT) + stateManager.getScrollOffset();
-
-            if (itemIndex >= 0 && itemIndex < stateManager.getWorldList().size()) {
-                return itemIndex;
-            }
-        }
-
-        return -1;
     }
 }
