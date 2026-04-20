@@ -11,7 +11,7 @@ public enum BiomeType {
     TUNDRA,
     TAIGA,
     STONY_PEAKS,
-    GRAVEL_BEACH,
+    BEACH,
     ICE_FIELDS,
     BADLANDS,
     MEADOW

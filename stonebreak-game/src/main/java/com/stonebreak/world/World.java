@@ -340,16 +340,20 @@ public class World {
         return terrainSystem.getTemperatureAt(x, z);
     }
 
-    public float getErosionNoiseAt(int x, int z) {
-        return terrainSystem.getErosionNoiseAt(x, z);
+    public float getErosionAt(int x, int z) {
+        return terrainSystem.getErosionAt(x, z);
+    }
+
+    public float getPeaksValleysAt(int x, int z) {
+        return terrainSystem.getPeaksValleysAt(x, z);
     }
 
     public int getBaseHeightAt(int x, int z) {
         return terrainSystem.getBaseHeightAt(x, z);
     }
 
-    public int getHeightBeforeErosionAt(int x, int z) {
-        return terrainSystem.getHeightBeforeErosionAt(x, z);
+    public int getShapedHeightAt(int x, int z) {
+        return terrainSystem.getShapedHeightAt(x, z);
     }
 
     public int getFinalTerrainHeightAt(int x, int z) {

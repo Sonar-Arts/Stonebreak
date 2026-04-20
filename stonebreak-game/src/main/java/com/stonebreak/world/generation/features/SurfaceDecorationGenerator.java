@@ -6,7 +6,6 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.ChunkGenerationContext;
 import com.stonebreak.world.generation.NoiseGenerator;
-import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -24,12 +23,6 @@ public class SurfaceDecorationGenerator {
     private static final float TAIGA_SNOW_CHANCE = 0.03f;
     private static final float STONY_PEAKS_GRAVEL_CHANCE = 0.05f;
     private static final float STONY_PEAKS_COAL_CHANCE = 0.08f; // cumulative
-    // Beach banding: simplex-noise thresholds produce smooth gravel/sand waves
-    // instead of salt-and-pepper mixing. Scale sets wave wavelength (~1/scale blocks);
-    // threshold shifts the gravel/sand balance (positive = more gravel).
-    private static final float BEACH_NOISE_SCALE = 0.09f;
-    private static final float BEACH_SAND_THRESHOLD = 0.1f;
-    private static final long BEACH_NOISE_SEED_SALT = 0x8EAC51A8D1L;
     private static final float ICE_FIELDS_SNOW_CHANCE = 0.6f;
     private static final float BADLANDS_CLAY_CHANCE = 0.03f;
     private static final float BADLANDS_GRAVEL_CHANCE = 0.05f; // cumulative
@@ -37,15 +30,11 @@ public class SurfaceDecorationGenerator {
 
     private final DeterministicRandom rng;
     private final HeightMapGenerator heightMap;
-    private final BiomeManager biomeManager;
-    private final NoiseGenerator beachNoise;
 
     public SurfaceDecorationGenerator(DeterministicRandom rng, HeightMapGenerator heightMap,
-                                      BiomeManager biomeManager, long worldSeed) {
+                                      long worldSeed) {
         this.rng = rng;
         this.heightMap = heightMap;
-        this.biomeManager = biomeManager;
-        this.beachNoise = new NoiseGenerator(worldSeed ^ BEACH_NOISE_SEED_SALT);
     }
 
     public void generate(ChunkGenerationContext ctx) {
@@ -68,7 +57,6 @@ public class SurfaceDecorationGenerator {
                     case TUNDRA -> generateTundraIce(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
                     case TAIGA -> generateTaigaSnow(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
                     case STONY_PEAKS -> generateStonyPeakFeatures(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
-                    case GRAVEL_BEACH -> generateBeachSand(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
                     case ICE_FIELDS -> generateGlacialSnow(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
                     case BADLANDS -> generateBadlandsBands(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
                     default -> { /* none */ }
@@ -161,17 +149,6 @@ public class SurfaceDecorationGenerator {
         }
     }
 
-    private void generateBeachSand(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
-                                   int surface, BlockType surfaceBlock) {
-        if (surfaceBlock != BlockType.GRAVEL) {
-            return;
-        }
-        float n = beachNoise.noise(worldX * BEACH_NOISE_SCALE, worldZ * BEACH_NOISE_SCALE);
-        if (n > BEACH_SAND_THRESHOLD) {
-            ctx.chunk.setBlock(x, surface - 1, z, BlockType.SAND);
-        }
-    }
-
     private void generateGlacialSnow(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
                                      int surface, BlockType surfaceBlock) {
         if (surfaceBlock != BlockType.ICE || ctx.chunk.getBlock(x, surface, z) != BlockType.AIR) {
@@ -209,7 +186,7 @@ public class SurfaceDecorationGenerator {
     }
 
     private void placeOnSurface(World world, int worldX, int worldZ, BlockType expected, BlockType replacement) {
-        int y = heightMap.generateHeight(worldX, worldZ, biomeManager) - 1;
+        int y = heightMap.generateHeight(worldX, worldZ) - 1;
         if (world.getBlockAt(worldX, y, worldZ) == expected) {
             world.setBlockAt(worldX, y, worldZ, replacement);
         }

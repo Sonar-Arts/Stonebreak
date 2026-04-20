@@ -1,15 +1,15 @@
 package com.stonebreak.world.generation.heightmap;
 
 import com.stonebreak.world.generation.NoiseGenerator;
-import com.stonebreak.world.generation.biomes.BiomeHeightConfig;
-import com.stonebreak.world.generation.biomes.BiomeHeightConfig.BiomeConfig;
+import com.stonebreak.world.generation.biomes.BiomeSurfaceConfig;
+import com.stonebreak.world.generation.biomes.BiomeSurfaceConfig.Entry;
 import com.stonebreak.world.generation.biomes.BiomeType;
 
 /**
  * Carves caves and surface overhangs out of would-be-solid terrain via 3D simplex noise.
  *
  * One sample per block in the active zone, no octave stacking, no smoothing pass.
- * Per-biome opt-in through {@link BiomeHeightConfig}'s caveIntensity / overhangIntensity.
+ * Per-biome opt-in through {@link BiomeSurfaceConfig}'s caveIntensity / overhangIntensity.
  * Outside its zones (bedrock floor, above surface, biomes with intensity = 0) the
  * call is a constant-time fast path.
  */
@@ -37,7 +37,7 @@ public final class Density3D {
         if (y < CAVE_FLOOR || y >= surfaceHeight) {
             return true;
         }
-        BiomeConfig cfg = BiomeHeightConfig.getConfig(biome);
+        Entry cfg = BiomeSurfaceConfig.get(biome);
         float intensity = (y >= surfaceHeight - OVERHANG_DEPTH)
             ? cfg.overhangIntensity
             : cfg.caveIntensity;
