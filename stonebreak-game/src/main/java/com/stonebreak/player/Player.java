@@ -14,6 +14,7 @@ import com.stonebreak.player.interaction.RaycastEngine;
 import com.stonebreak.player.lifecycle.PlayerSpawnService;
 import com.stonebreak.player.locomotion.FlightController;
 import com.stonebreak.player.locomotion.JumpHandler;
+import com.stonebreak.player.locomotion.SpectatorController;
 import com.stonebreak.player.locomotion.SwimmingController;
 import com.stonebreak.player.physics.CollisionHandler;
 import com.stonebreak.player.physics.GroundChecker;
@@ -50,6 +51,7 @@ public class Player {
     private final SwimmingController swimming;
     private final FlightController flight;
     private final JumpHandler jumpHandler;
+    private final SpectatorController spectator;
 
     // Combat
     private final AttackController attack;
@@ -79,10 +81,11 @@ public class Player {
         this.swimming = new SwimmingController(state, world);
         this.flight = new FlightController(state);
         this.jumpHandler = new JumpHandler(state);
-        this.movement = new MovementController(state, camera, collisionHandler, flight, swimming, jumpHandler);
 
         this.attack = new AttackController();
         this.health = new HealthController();
+        this.spectator = new SpectatorController(state, flight, health);
+        this.movement = new MovementController(state, camera, collisionHandler, flight, swimming, jumpHandler, spectator);
         this.fallDamage = new FallDamageHandler(state, health);
         this.deathHandler = new DeathHandler(state, health, inventory, camera, world);
 
@@ -111,7 +114,11 @@ public class Player {
 
         movement.applyGravity();
         movement.integrateAndCollide();
-        groundChecker.check();
+        if (spectator.isActive()) {
+            state.setOnGround(false);
+        } else {
+            groundChecker.check();
+        }
         movement.applyDamping();
 
         Vector3f p = state.getPosition();
@@ -183,6 +190,11 @@ public class Player {
     public void setFlying(boolean flying) { flight.setFlying(flying); }
     public boolean isFlightEnabled() { return flight.isFlightEnabled(); }
     public void setFlightEnabled(boolean enabled) { flight.setFlightEnabled(enabled); }
+
+    // Spectator
+    public boolean isSpectator() { return spectator.isActive(); }
+    public void setSpectator(boolean active) { spectator.setActive(active); }
+    public boolean isPlayerInsideSolidBlock() { return collisionHandler.isPlayerInsideSolidBlock(); }
 
     // Water
     public boolean isInWater() { return swimming.isInWater(); }

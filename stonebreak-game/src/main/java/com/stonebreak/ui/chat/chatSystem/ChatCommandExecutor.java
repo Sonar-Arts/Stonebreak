@@ -26,6 +26,7 @@ public class ChatCommandExecutor {
     private void registerCommands() {
         registerCommand(new CheatsCommand());
         registerCommand(new FlyCommand());
+        registerCommand(new SpectatorCommand());
         registerCommand(new HelpCommand());
         registerCommand(new ObtainCommand());
         registerCommand(new SpawnSoundEmitCommand());

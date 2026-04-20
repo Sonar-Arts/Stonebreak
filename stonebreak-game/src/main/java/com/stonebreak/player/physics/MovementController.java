@@ -4,6 +4,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.player.Camera;
 import com.stonebreak.player.locomotion.FlightController;
 import com.stonebreak.player.locomotion.JumpHandler;
+import com.stonebreak.player.locomotion.SpectatorController;
 import com.stonebreak.player.locomotion.SwimmingController;
 import com.stonebreak.player.state.PhysicsState;
 import org.joml.Vector3f;
@@ -28,15 +29,18 @@ public class MovementController {
     private final FlightController flight;
     private final SwimmingController swimming;
     private final JumpHandler jumpHandler;
+    private final SpectatorController spectator;
 
     public MovementController(PhysicsState state, Camera camera, CollisionHandler collisionHandler,
-                              FlightController flight, SwimmingController swimming, JumpHandler jumpHandler) {
+                              FlightController flight, SwimmingController swimming, JumpHandler jumpHandler,
+                              SpectatorController spectator) {
         this.state = state;
         this.camera = camera;
         this.collisionHandler = collisionHandler;
         this.flight = flight;
         this.swimming = swimming;
         this.jumpHandler = jumpHandler;
+        this.spectator = spectator;
     }
 
     public void applyGravity() {
@@ -57,6 +61,13 @@ public class MovementController {
         Vector3f position = state.getPosition();
         Vector3f velocity = state.getVelocity();
         float dt = Game.getDeltaTime();
+
+        if (spectator.isActive()) {
+            position.x += velocity.x * dt;
+            position.y += velocity.y * dt;
+            position.z += velocity.z * dt;
+            return;
+        }
 
         position.x += velocity.x * dt;
         collisionHandler.resolveX();
@@ -137,7 +148,7 @@ public class MovementController {
         }
 
         boolean jumpPressed = jump && !jumpHandler.wasJumpPressed();
-        boolean flightToggled = jumpPressed && flight.handleJumpPressForToggle();
+        boolean flightToggled = jumpPressed && !spectator.isActive() && flight.handleJumpPressForToggle();
         jumpHandler.processJumpInput(jump, flightToggled, flight.isFlying());
 
         // In-input anti-floating safety (mirror of the original Player.processMovement tail).

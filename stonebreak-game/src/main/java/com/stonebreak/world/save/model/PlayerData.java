@@ -17,6 +17,7 @@ public final class PlayerData {
     private final Vector2f rotation; // yaw, pitch
     private final float health;
     private final boolean flying;
+    private final boolean spectator;
     private final int gameMode; // 0=Survival, 1=Creative
     private final ItemStack[] inventory; // 36 slots: 9 hotbar + 27 main
     private final int selectedHotbarSlot;
@@ -28,6 +29,7 @@ public final class PlayerData {
         this.rotation = new Vector2f(builder.rotation);
         this.health = builder.health;
         this.flying = builder.flying;
+        this.spectator = builder.spectator;
         this.gameMode = builder.gameMode;
         this.inventory = Arrays.copyOf(builder.inventory, builder.inventory.length);
         this.selectedHotbarSlot = builder.selectedHotbarSlot;
@@ -40,6 +42,7 @@ public final class PlayerData {
     public Vector2f getRotation() { return new Vector2f(rotation); }
     public float getHealth() { return health; }
     public boolean isFlying() { return flying; }
+    public boolean isSpectator() { return spectator; }
     public int getGameMode() { return gameMode; }
     public ItemStack[] getInventory() { return Arrays.copyOf(inventory, inventory.length); }
     public int getSelectedHotbarSlot() { return selectedHotbarSlot; }
@@ -73,6 +76,7 @@ public final class PlayerData {
         private Vector2f rotation = new Vector2f(0, 0);
         private float health = 20.0f;
         private boolean flying = false;
+        private boolean spectator = false;
         private int gameMode = 1; // Creative mode default
         private ItemStack[] inventory = new ItemStack[36];
         private int selectedHotbarSlot = 0;
@@ -91,6 +95,7 @@ public final class PlayerData {
             this.rotation = new Vector2f(data.rotation);
             this.health = data.health;
             this.flying = data.flying;
+            this.spectator = data.spectator;
             this.gameMode = data.gameMode;
             this.inventory = Arrays.copyOf(data.inventory, data.inventory.length);
             this.selectedHotbarSlot = data.selectedHotbarSlot;
@@ -115,6 +120,11 @@ public final class PlayerData {
 
         public Builder flying(boolean flying) {
             this.flying = flying;
+            return this;
+        }
+
+        public Builder spectator(boolean spectator) {
+            this.spectator = spectator;
             return this;
         }
 
