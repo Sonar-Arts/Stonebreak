@@ -18,6 +18,7 @@ import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.ui.terrainMapper.TerrainMapperScreen;
 import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
@@ -56,6 +57,7 @@ public class Game {
     private DebugOverlay debugOverlay; // Debug overlay (F3)
     private LoadingScreen loadingScreen; // Loading screen for world generation
     private WorldSelectScreen worldSelectScreen; // World selection screen
+    private TerrainMapperScreen terrainMapperScreen; // Terrain preview + world creation screen
     private SaveService saveService; // World save/load system
     private WorldData currentWorldData; // Current world metadata
     private String currentWorldName; // Current world name for save system initialization
@@ -131,6 +133,7 @@ public class Game {
         this.settingsMenu = new SettingsMenu(this.renderer.getSkijaBackend());
         this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
         this.worldSelectScreen = new WorldSelectScreen(this.renderer.getSkijaBackend());
+        this.terrainMapperScreen = new TerrainMapperScreen(this.renderer.getSkijaBackend());
 
         initializeCrosshairSettings();
 
@@ -622,6 +625,13 @@ public class Game {
      */
     public WorldSelectScreen getWorldSelectScreen() {
         return worldSelectScreen;
+    }
+
+    /**
+     * Gets the terrain mapper screen (preview + world creation).
+     */
+    public TerrainMapperScreen getTerrainMapperScreen() {
+        return terrainMapperScreen;
     }
 
     /**

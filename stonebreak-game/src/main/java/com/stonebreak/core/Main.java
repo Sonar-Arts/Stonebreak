@@ -130,6 +130,10 @@ public class Main {
             if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
                 game.getWorldSelectScreen().handleKeyInput(key, action, mods);
             }
+            // Handle terrain mapper key input
+            else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
+                game.getTerrainMapperScreen().handleKeyInput(key, action, mods);
+            }
             // Pass key events to InputHandler for chat handling
             else if (inputHandler != null) {
                 inputHandler.handleKeyInput(key, action, mods);
@@ -151,6 +155,10 @@ public class Main {
             // Handle world select screen character input
             if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
                 game.getWorldSelectScreen().handleCharacterInput(character);
+            }
+            // Handle terrain mapper character input
+            else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
+                game.getTerrainMapperScreen().handleCharacterInput(character);
             }
             // Pass character input to InputHandler for chat handling
             else if (inputHandler != null) {
@@ -207,6 +215,16 @@ public class Main {
                         game.getSettingsMenu().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
                 }
+            } else if (game != null && game.getState() == GameState.TERRAIN_MAPPER) {
+                // Handle terrain mapper clicks
+                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
+                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
+                    glfwGetCursorPos(window, xpos, ypos);
+                    if (game.getTerrainMapperScreen() != null) {
+                        game.getTerrainMapperScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
+                    }
+                }
             } else if (inputHandler != null) {
                 inputHandler.processMouseButton(button, action, mods);
             }
@@ -239,6 +257,10 @@ public class Main {
             else if (game.getState() == GameState.SETTINGS && game.getSettingsMenu() != null) {
                 game.getSettingsMenu().handleMouseMove(xpos, ypos, width, height);
             }
+            // Handle terrain mapper hover events
+            else if (game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
+                game.getTerrainMapperScreen().handleMouseMove(xpos, ypos, width, height);
+            }
         });
 
         // Setup scroll callback for world select screen and hotbar selection
@@ -246,6 +268,13 @@ public class Main {
             Game game = Game.getInstance();
             if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
                 game.getWorldSelectScreen().handleMouseWheel(yoffset);
+            } else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
+                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
+                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
+                    glfwGetCursorPos(window, xpos, ypos);
+                    game.getTerrainMapperScreen().handleMouseWheel(xpos.get(), ypos.get(), yoffset);
+                }
             } else if (inputHandler != null) {
                 // Forward scroll events to InputHandler for hotbar selection and other UI interactions
                 inputHandler.handleScroll(yoffset);
@@ -395,6 +424,12 @@ public class Main {
                         game.getWorldSelectScreen().handleInput(window);
                     }
                 }
+                case TERRAIN_MAPPER -> {
+                    // Handle terrain mapper input
+                    if (game.getTerrainMapperScreen() != null) {
+                        game.getTerrainMapperScreen().handleInput(window);
+                    }
+                }
                 case LOADING -> {
                     // Handle loading screen input (primarily for error recovery)
                     if (game.getLoadingScreen() != null) {
@@ -479,6 +514,11 @@ public class Main {
                 // Skija backend brackets its own GL state; do not wrap in a NanoVG frame.
                 WorldSelectScreen wss = game.getWorldSelectScreen();
                 if (wss != null) wss.render(width, height);
+            }
+            case TERRAIN_MAPPER -> {
+                // Skija-backed MasonryUI; brackets GL itself.
+                com.stonebreak.ui.terrainMapper.TerrainMapperScreen tms = game.getTerrainMapperScreen();
+                if (tms != null) tms.render(width, height);
             }
             case LOADING -> renderUIState(renderer, game.getLoadingScreen());
             case SETTINGS -> {
