@@ -15,11 +15,12 @@ import com.stonebreak.world.operations.WorldConfiguration;
  */
 public class SurfaceDecorationGenerator {
     private static final int MIN_SURFACE_Y = 64;
-    private static final float GRAVEL_CHANCE = 0.01f;
+    private static final float GRAVEL_CHANCE = 0.0015f;
     private static final float ICE_CHANCE = 0.03f;
     private static final float SNOW_CHANCE = 0.08f; // cumulative threshold (>= ICE_CHANCE)
-    private static final float CLAY_CHANCE = 0.008f;
+    private static final float CLAY_CHANCE = 0.0012f;
     private static final float TUNDRA_ICE_CHANCE = 0.01f;
+    private static final float TUNDRA_SNOW_CHANCE = 0.55f; // cumulative threshold (>= TUNDRA_ICE_CHANCE)
     private static final float TAIGA_SNOW_CHANCE = 0.03f;
     private static final float STONY_PEAKS_GRAVEL_CHANCE = 0.05f;
     private static final float STONY_PEAKS_COAL_CHANCE = 0.08f; // cumulative
@@ -71,13 +72,18 @@ public class SurfaceDecorationGenerator {
             !rng.shouldGenerate(worldX, worldZ, "gravel_patch", GRAVEL_CHANCE)) {
             return;
         }
-        int patchSize = rng.getBoolean(worldX, worldZ, "gravel_patch_size") ? 2 : 3;
-        int half = patchSize / 2;
-        for (int dx = 0; dx < patchSize; dx++) {
-            for (int dz = 0; dz < patchSize; dz++) {
-                int px = worldX + dx - half;
-                int pz = worldZ + dz - half;
-                placeOnSurface(ctx.world, px, pz, BlockType.SAND, BlockType.GRAVEL);
+        int radius = 4 + rng.getInt(worldX, worldZ, "gravel_patch_size", 3);
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                double distance = Math.sqrt(dx * dx + dz * dz);
+                if (distance > radius) continue;
+
+                int px = worldX + dx;
+                int pz = worldZ + dz;
+                float placeChance = 1.0f - (float) (distance / radius) * 0.35f;
+                if (rng.getFloat(px, pz, "gravel_place") < placeChance) {
+                    placeOnSurface(ctx.world, px, pz, BlockType.SAND, BlockType.GRAVEL);
+                }
             }
         }
     }
@@ -100,7 +106,7 @@ public class SurfaceDecorationGenerator {
             !rng.shouldGenerate(worldX, worldZ, "clay_patch", CLAY_CHANCE)) {
             return;
         }
-        int radius = 1 + (rng.getBoolean(worldX, worldZ, "clay_patch_size") ? 1 : 0);
+        int radius = 4 + rng.getInt(worldX, worldZ, "clay_patch_size", 3);
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
                 double distance = Math.sqrt(dx * dx + dz * dz);
@@ -118,11 +124,14 @@ public class SurfaceDecorationGenerator {
 
     private void generateTundraIce(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
                                    int surface, BlockType surfaceBlock) {
-        if (surfaceBlock != BlockType.GRAVEL || ctx.chunk.getBlock(x, surface, z) != BlockType.AIR) {
+        if (surfaceBlock != BlockType.SNOWY_DIRT || ctx.chunk.getBlock(x, surface, z) != BlockType.AIR) {
             return;
         }
-        if (rng.getFloat(worldX, worldZ, "tundra_feature") < TUNDRA_ICE_CHANCE) {
+        float roll = rng.getFloat(worldX, worldZ, "tundra_feature");
+        if (roll < TUNDRA_ICE_CHANCE) {
             ctx.chunk.setBlock(x, surface, z, BlockType.ICE);
+        } else if (roll < TUNDRA_SNOW_CHANCE) {
+            placeSnowLayers(ctx, x, z, worldX, worldZ, surface, 1, 3);
         }
     }
 
