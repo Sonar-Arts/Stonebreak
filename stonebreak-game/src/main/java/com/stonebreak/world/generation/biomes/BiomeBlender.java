@@ -52,7 +52,7 @@ public final class BiomeBlender {
      * @param x            world X coordinate
      * @param z            world Z coordinate
      */
-    public BiomeBlendResult getBlendedBiome(BiomeManager biomeManager, int x, int z) {
+    public BiomeBlendResult getBlendedBiome(BiomeManager biomeManager, int x, int z, int height) {
         float[] weights = new float[BIOME_COUNT];
         float totalWeight = 0f;
 
@@ -64,7 +64,9 @@ public final class BiomeBlender {
                 }
                 int sampleX = x + dx * SAMPLE_SPACING;
                 int sampleZ = z + dz * SAMPLE_SPACING;
-                BiomeType biome = biomeManager.getBiome(sampleX, sampleZ);
+                // Use the centre cell's base height for all samples - terrain varies
+                // little across the 8-block spacing and this avoids re-sampling noise.
+                BiomeType biome = biomeManager.getBiomeAt(sampleX, sampleZ, height);
                 weights[biome.ordinal()] += weight;
                 totalWeight += weight;
             }

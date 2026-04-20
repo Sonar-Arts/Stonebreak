@@ -10,10 +10,11 @@ import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Maps continentalness noise to terrain height via a spline, then optionally
- * applies biome-specific height modulation with smooth inter-biome blending.
+ * Maps continentalness noise to terrain height via a spline, then applies a
+ * weighted blend of per-biome height deltas plus a low-amplitude erosion
+ * weathering pass.
  *
- * Final height = base continentalness height + (weighted) biome height delta.
+ * Final height = clamp( (base + weighted biome delta) * (1 + erosion * ERODE_FACTOR) )
  */
 public class HeightMapGenerator {
     private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
@@ -23,15 +24,24 @@ public class HeightMapGenerator {
     /** Above this dominance fraction we skip blending entirely (cheap fast path). */
     private static final float STRONG_DOMINANCE_THRESHOLD = 0.8f;
 
+    /** Erosion noise scales at 1/40th world coordinates for high-frequency weathering. */
+    private static final float EROSION_SCALE = 1f / 40f;
+    /** Erosion noise output is dampened to this fraction of raw [-1, 1] range. */
+    private static final float EROSION_AMPLITUDE = 0.3f;
+    /** How much the dampened erosion value scales height (5% multiplicative variation). */
+    private static final float EROSION_STRENGTH = 0.05f;
+
     private static final BiomeType[] BIOMES = BiomeType.values();
 
     private final NoiseGenerator continentalnessNoise;
+    private final NoiseGenerator erosionNoise;
     private final SplineInterpolator terrainSpline;
     private final BiomeHeightModifier biomeHeightModifier;
     private final BiomeBlender biomeBlender;
 
     public HeightMapGenerator(long seed) {
         this.continentalnessNoise = new NoiseGenerator(seed + 2);
+        this.erosionNoise = new NoiseGenerator(seed + 5, 4, 0.35, 2.0);
         this.biomeHeightModifier = new BiomeHeightModifier(seed);
         this.biomeBlender = new BiomeBlender();
         this.terrainSpline = new SplineInterpolator();
@@ -57,24 +67,25 @@ public class HeightMapGenerator {
 
     /**
      * Single-cell biome-aware height lookup. Equivalent to the per-cell body of
-     * {@link #populateChunkHeights(int, int, BiomeManager, int[])}; use this for
+     * {@link #populateChunkHeights(int, int, BiomeManager, int[], int[])}; use this for
      * off-chunk placements where the chunk height grid is not available.
      */
     public int generateHeight(int x, int z, BiomeManager biomeManager) {
         int baseHeight = generateHeight(x, z);
-        BiomeBlendResult blend = biomeBlender.getBlendedBiome(biomeManager, x, z);
+        BiomeBlendResult blend = biomeBlender.getBlendedBiome(biomeManager, x, z, baseHeight);
         return generateBlendedHeight(baseHeight, blend, x, z);
     }
 
-    /** Base height plus a single biome's modifier. */
+    /** Base height plus a single biome's modifier (erosion applied). */
     public int applyBiomeModifier(int baseHeight, BiomeType biome, int x, int z) {
-        return clampToWorld(baseHeight + biomeHeightModifier.calculateHeightDelta(biome, x, z));
+        int modified = baseHeight + biomeHeightModifier.calculateHeightDelta(biome, x, z);
+        return clampToWorld(applyErosion(modified, x, z));
     }
 
     /**
-     * Base height plus a weighted blend of all biomes' modifiers. Falls back to
-     * a single-biome modifier when one biome overwhelmingly dominates the blend
-     * (avoids redundant noise evaluations).
+     * Base height plus a weighted blend of all biomes' modifiers, with an erosion
+     * pass. Falls back to a single-biome modifier when one biome overwhelmingly
+     * dominates the blend (avoids redundant noise evaluations).
      */
     public int generateBlendedHeight(int baseHeight, BiomeBlendResult blend, int x, int z) {
         if (blend.isStronglyDominant(STRONG_DOMINANCE_THRESHOLD)) {
@@ -90,15 +101,45 @@ public class HeightMapGenerator {
             }
             weightedDelta += w * biomeHeightModifier.calculateHeightDelta(BIOMES[i], x, z);
         }
+        int preErosion = baseHeight + Math.round(weightedDelta);
+        return clampToWorld(applyErosion(preErosion, x, z));
+    }
+
+    /** Raw erosion noise sample in approximately [-0.3, 0.3]. */
+    public float getErosionNoise(int x, int z) {
+        return erosionNoise.noise(x * EROSION_SCALE, z * EROSION_SCALE) * EROSION_AMPLITUDE;
+    }
+
+    /** Blended biome-aware height before erosion is applied (for debug). */
+    public int getHeightBeforeErosion(int x, int z, BiomeManager biomeManager) {
+        int baseHeight = generateHeight(x, z);
+        BiomeBlendResult blend = biomeBlender.getBlendedBiome(biomeManager, x, z, baseHeight);
+        if (blend.isStronglyDominant(STRONG_DOMINANCE_THRESHOLD)) {
+            return clampToWorld(baseHeight
+                + biomeHeightModifier.calculateHeightDelta(blend.getDominantBiome(), x, z));
+        }
+        float[] weights = blend.getWeightsByOrdinal();
+        float weightedDelta = 0f;
+        for (int i = 0; i < weights.length; i++) {
+            float w = weights[i];
+            if (w > 0f) {
+                weightedDelta += w * biomeHeightModifier.calculateHeightDelta(BIOMES[i], x, z);
+            }
+        }
         return clampToWorld(baseHeight + Math.round(weightedDelta));
     }
 
+    private int applyErosion(int height, int x, int z) {
+        float erosion = getErosionNoise(x, z);
+        return Math.round(height * (1f + erosion * EROSION_STRENGTH));
+    }
+
     /**
-     * Fills a 16x16 base-height grid for the given chunk, indexed [x*16+z].
-     * No biome-aware modulation; callers that want biome-driven terrain should
-     * use {@link #populateChunkHeights(int, int, BiomeManager, int[])}.
+     * Fills a 16x16 base-height grid (continentalness only) for the given chunk,
+     * indexed [x*16+z]. Callers that want biome-driven blended terrain should
+     * follow up with {@link #populateChunkHeights(int, int, BiomeManager, int[], int[])}.
      */
-    public void populateChunkHeights(int chunkX, int chunkZ, int[] out) {
+    public void populateBaseHeights(int chunkX, int chunkZ, int[] out) {
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -109,18 +150,23 @@ public class HeightMapGenerator {
     }
 
     /**
-     * Fills a 16x16 biome-aware height grid with blended transitions.
+     * Fills a 16x16 biome-aware height grid (blended + eroded). {@code baseHeights}
+     * must already contain per-cell continentalness-only heights (from
+     * {@link #populateBaseHeights(int, int, int[])}); they drive altitude chill in
+     * the biome blend.
      */
-    public void populateChunkHeights(int chunkX, int chunkZ, BiomeManager biomeManager, int[] out) {
+    public void populateChunkHeights(int chunkX, int chunkZ, BiomeManager biomeManager,
+                                     int[] baseHeights, int[] out) {
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
+                int idx = x * CHUNK_SIZE + z;
                 int worldX = baseX + x;
                 int worldZ = baseZ + z;
-                int baseHeight = generateHeight(worldX, worldZ);
-                BiomeBlendResult blend = biomeBlender.getBlendedBiome(biomeManager, worldX, worldZ);
-                out[x * CHUNK_SIZE + z] = generateBlendedHeight(baseHeight, blend, worldX, worldZ);
+                int baseHeight = baseHeights[idx];
+                BiomeBlendResult blend = biomeBlender.getBlendedBiome(biomeManager, worldX, worldZ, baseHeight);
+                out[idx] = generateBlendedHeight(baseHeight, blend, worldX, worldZ);
             }
         }
     }

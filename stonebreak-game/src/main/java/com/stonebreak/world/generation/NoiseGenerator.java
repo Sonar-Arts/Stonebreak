@@ -7,17 +7,28 @@ import java.util.Random;
  * This is a more robust implementation with proper error handling.
  */
 public class NoiseGenerator {
-    
-    private static final int OCTAVES = 8;
-    private static final double PERSISTENCE = 0.45;
-    private static final double LACUNARITY = 2.0;
-    
+
+    private static final int DEFAULT_OCTAVES = 8;
+    private static final double DEFAULT_PERSISTENCE = 0.45;
+    private static final double DEFAULT_LACUNARITY = 2.0;
+
+    private final int octaves;
+    private final double persistence;
+    private final double lacunarity;
+
     private final int[] permutation;
     @SuppressWarnings("unused")
     private final int seed;
-    
+
     public NoiseGenerator(long seed) {
+        this(seed, DEFAULT_OCTAVES, DEFAULT_PERSISTENCE, DEFAULT_LACUNARITY);
+    }
+
+    public NoiseGenerator(long seed, int octaves, double persistence, double lacunarity) {
         this.seed = (int) (seed % Integer.MAX_VALUE);
+        this.octaves = octaves;
+        this.persistence = persistence;
+        this.lacunarity = lacunarity;
         Random random = new Random(seed);
         permutation = new int[512];
         
@@ -54,11 +65,11 @@ public class NoiseGenerator {
         double amplitude = 1;
         double maxValue = 0;
         
-        for (int i = 0; i < OCTAVES; i++) {
+        for (int i = 0; i < octaves; i++) {
             total += getSimplexNoise(x * frequency, y * frequency) * amplitude;
             maxValue += amplitude;
-            amplitude *= PERSISTENCE;
-            frequency *= LACUNARITY;
+            amplitude *= persistence;
+            frequency *= lacunarity;
         }
         
         // Normalize the result

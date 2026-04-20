@@ -1,5 +1,7 @@
 package com.stonebreak.world.generation.biomes;
 
+import java.util.List;
+
 /**
  * Classifies biomes using a Whittaker diagram lookup based on temperature and moisture.
  *
@@ -49,5 +51,36 @@ public final class BiomeClassifier {
         int moistureIndex = Math.min(MOISTURE_DIVISIONS - 1,
                 Math.max(0, (int) (moisture * MOISTURE_DIVISIONS)));
         return WHITTAKER[tempIndex][moistureIndex];
+    }
+
+    /**
+     * Whittaker classification constrained to {@code allowed}. If the natural
+     * classification is disallowed, falls back to the nearest allowed cell in
+     * (temperature, moisture) grid space using Chebyshev distance.
+     */
+    public BiomeType classifyWithFilter(float temperature, float moisture, List<BiomeType> allowed) {
+        BiomeType natural = classify(temperature, moisture);
+        if (allowed.contains(natural)) {
+            return natural;
+        }
+
+        int centerT = Math.min(TEMP_DIVISIONS - 1, Math.max(0, (int) (temperature * TEMP_DIVISIONS)));
+        int centerM = Math.min(MOISTURE_DIVISIONS - 1, Math.max(0, (int) (moisture * MOISTURE_DIVISIONS)));
+        int maxR = Math.max(TEMP_DIVISIONS, MOISTURE_DIVISIONS);
+        for (int r = 1; r < maxR; r++) {
+            for (int dt = -r; dt <= r; dt++) {
+                for (int dm = -r; dm <= r; dm++) {
+                    if (Math.abs(dt) != r && Math.abs(dm) != r) continue;
+                    int t = centerT + dt;
+                    int m = centerM + dm;
+                    if (t < 0 || t >= TEMP_DIVISIONS || m < 0 || m >= MOISTURE_DIVISIONS) continue;
+                    BiomeType candidate = WHITTAKER[t][m];
+                    if (allowed.contains(candidate)) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+        return allowed.get(0);
     }
 }

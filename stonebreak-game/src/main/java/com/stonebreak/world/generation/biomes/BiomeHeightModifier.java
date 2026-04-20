@@ -8,10 +8,12 @@ import com.stonebreak.world.generation.NoiseGenerator;
  * Final height = base continentalness height + this delta.
  *
  * Noise seed offset map (must stay distinct so channels are independent):
- *   seed + 0 : moisture         (BiomeManager)
- *   seed + 1 : temperature      (BiomeManager)
- *   seed + 2 : continentalness  (HeightMapGenerator)
- *   seed + 3 : biome detail     (this class)
+ *   seed + 0 : moisture                 (BiomeManager)
+ *   seed + 1 : temperature              (BiomeManager)
+ *   seed + 2 : continentalness (height) (HeightMapGenerator)
+ *   seed + 3 : biome detail             (this class)
+ *   seed + 4 : climate continentalness  (ClimateRegionManager)
+ *   seed + 5 : erosion                  (HeightMapGenerator)
  */
 public final class BiomeHeightModifier {
 

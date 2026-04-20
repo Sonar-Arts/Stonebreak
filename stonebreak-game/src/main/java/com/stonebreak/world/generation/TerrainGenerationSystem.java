@@ -54,6 +54,37 @@ public class TerrainGenerationSystem {
         return heightMapGenerator.getContinentalness(x, z);
     }
 
+    public BiomeType getBiomeAt(int x, int z) {
+        return biomeManager.getBiome(x, z);
+    }
+
+    public float getMoistureAt(int x, int z) {
+        return biomeManager.getMoisture(x, z);
+    }
+
+    public float getTemperatureAt(int x, int z) {
+        return biomeManager.getTemperature(x, z);
+    }
+
+    public float getErosionNoiseAt(int x, int z) {
+        return heightMapGenerator.getErosionNoise(x, z);
+    }
+
+    /** Continentalness-only height, before biome delta or erosion. */
+    public int getBaseHeightAt(int x, int z) {
+        return heightMapGenerator.generateHeight(x, z);
+    }
+
+    /** Blended biome-aware height before erosion (for debug). */
+    public int getHeightBeforeErosionAt(int x, int z) {
+        return heightMapGenerator.getHeightBeforeErosion(x, z, biomeManager);
+    }
+
+    /** Final terrain height as used by chunk generation. */
+    public int getFinalTerrainHeightAt(int x, int z) {
+        return heightMapGenerator.generateHeight(x, z, biomeManager);
+    }
+
     /**
      * Generates terrain blocks for a chunk. Features are populated separately
      * once neighbor chunks exist (prevents recursive generation across chunk borders).
@@ -62,11 +93,16 @@ public class TerrainGenerationSystem {
         updateLoadingProgress("Generating Base Terrain Shape");
         Chunk chunk = new Chunk(chunkX, chunkZ);
 
+        int[] baseHeights = new int[CHUNK_SIZE * CHUNK_SIZE];
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
+
+        // Base continentalness heights drive altitude-aware biome selection; the
+        // blended+eroded heights in turn use those biomes.
+        heightMapGenerator.populateBaseHeights(chunkX, chunkZ, baseHeights);
         updateLoadingProgress("Determining Biomes");
-        biomeManager.populateChunkBiomes(chunkX, chunkZ, biomes);
-        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, biomeManager, heights);
+        biomeManager.populateChunkBiomes(chunkX, chunkZ, baseHeights, biomes);
+        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, biomeManager, baseHeights, heights);
 
         updateLoadingProgress("Applying Biome Materials");
         int baseX = chunkX * CHUNK_SIZE;
@@ -107,10 +143,12 @@ public class TerrainGenerationSystem {
 
         updateLoadingProgress("Adding Surface Decorations & Details");
 
+        int[] baseHeights = new int[CHUNK_SIZE * CHUNK_SIZE];
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
-        biomeManager.populateChunkBiomes(chunkX, chunkZ, biomes);
-        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, biomeManager, heights);
+        heightMapGenerator.populateBaseHeights(chunkX, chunkZ, baseHeights);
+        biomeManager.populateChunkBiomes(chunkX, chunkZ, baseHeights, biomes);
+        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, biomeManager, baseHeights, heights);
         BiomeType dominantBiome = biomes[(CHUNK_SIZE / 2) * CHUNK_SIZE + (CHUNK_SIZE / 2)];
 
         ChunkGenerationContext ctx = new ChunkGenerationContext(
