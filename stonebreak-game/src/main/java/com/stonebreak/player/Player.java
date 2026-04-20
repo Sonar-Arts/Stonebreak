@@ -593,7 +593,7 @@ public class Player {      // Player settings
 
     /**
      * Calculates and applies fall damage based on fall distance.
-     * Player takes 1 heart (2 health) of damage for every 3 blocks fallen.
+     * No damage for the first 4 blocks; 1/4 heart per additional block fallen.
      */
     private void calculateFallDamage() {
         // Don't calculate fall damage during spawn protection
@@ -613,10 +613,10 @@ public class Player {      // Player settings
         if (onGround && wasFalling) {
             float fallDistance = previousY - position.y;
 
-            // Only apply damage if fall distance is significant (more than 3 blocks)
-            if (fallDistance > 3.0f) {
-                // Calculate damage: 1 heart (2 health) per 3 blocks fallen
-                float damage = ((fallDistance - 3.0f) / 3.0f) * HEALTH_PER_HEART;
+            // Only apply damage if fall distance is significant (more than 4 blocks)
+            if (fallDistance > 4.0f) {
+                // Calculate damage: 1/4 heart (0.5 health) per block beyond threshold
+                float damage = (fallDistance - 4.0f) * (HEALTH_PER_HEART * 0.25f);
                 damage(damage);
             }
 
