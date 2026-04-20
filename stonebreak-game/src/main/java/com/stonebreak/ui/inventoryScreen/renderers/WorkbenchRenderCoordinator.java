@@ -1,6 +1,7 @@
 package com.stonebreak.ui.inventoryScreen.renderers;
 
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.rendering.UI.components.MHotbarRenderer;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
@@ -39,6 +40,8 @@ public class WorkbenchRenderCoordinator {
 
     private static final String RECIPE_BUTTON_TEXT = "Recipes";
 
+    private final MHotbarRenderer mHotbarRenderer;
+
     public WorkbenchRenderCoordinator(UIRenderer uiRenderer,
                                      Renderer renderer,
                                      InputHandler inputHandler,
@@ -46,13 +49,14 @@ public class WorkbenchRenderCoordinator {
                                      InventoryController controller,
                                      InventoryInputManager inputManager,
                                      InventoryCraftingManager craftingManager) {
-        this.uiRenderer = uiRenderer;
-        this.renderer = renderer;
-        this.inputHandler = inputHandler;
-        this.inventory = inventory;
-        this.controller = controller;
-        this.inputManager = inputManager;
+        this.uiRenderer      = uiRenderer;
+        this.renderer        = renderer;
+        this.inputHandler    = inputHandler;
+        this.inventory       = inventory;
+        this.controller      = controller;
+        this.inputManager    = inputManager;
         this.craftingManager = craftingManager;
+        this.mHotbarRenderer = new MHotbarRenderer(uiRenderer, renderer);
     }
 
     public void render(int screenWidth, int screenHeight) {
@@ -101,18 +105,16 @@ public class WorkbenchRenderCoordinator {
     }
 
     public void renderHotbar(int screenWidth, int screenHeight) {
-        uiRenderer.renderHotbar(controller.getHotbarScreen(), screenWidth, screenHeight,
-                              renderer.getTextureAtlas(), renderer.getShaderProgram());
-        uiRenderer.renderHotbarTooltip(controller.getHotbarScreen(), screenWidth, screenHeight);
+        mHotbarRenderer.renderHotbar(controller.getHotbarScreen(), screenWidth, screenHeight);
+        mHotbarRenderer.renderHotbarTooltip(controller.getHotbarScreen(), screenWidth, screenHeight);
     }
 
     public void renderHotbarWithoutTooltips(int screenWidth, int screenHeight) {
-        uiRenderer.renderHotbar(controller.getHotbarScreen(), screenWidth, screenHeight,
-                              renderer.getTextureAtlas(), renderer.getShaderProgram());
+        mHotbarRenderer.renderHotbar(controller.getHotbarScreen(), screenWidth, screenHeight);
     }
 
     public void renderHotbarTooltipsOnly(int screenWidth, int screenHeight) {
-        uiRenderer.renderHotbarTooltip(controller.getHotbarScreen(), screenWidth, screenHeight);
+        mHotbarRenderer.renderHotbarTooltip(controller.getHotbarScreen(), screenWidth, screenHeight);
     }
 
     private void renderPanel(InventoryLayoutCalculator.InventoryLayout layout) {
