@@ -46,7 +46,8 @@ public enum BlockType implements Item, IBlockType {
     GRAVEL(30, "Gravel", true, true, 8, 3, 1.5f),
     CLAY(31, "Clay", true, true, 0, 4, 2.0f),
     RED_SAND_COBBLESTONE(32, "Red Sand Cobblestone", true, true, 1, 4, 4.0f),
-    SAND_COBBLESTONE(33, "Sand Cobblestone", true, true, 2, 4, 4.0f);
+    SAND_COBBLESTONE(33, "Sand Cobblestone", true, true, 2, 4, 4.0f),
+    WILDGRASS(34, "Wildgrass", false, true, 6, 12, 0.1f);
 
     public enum Face {
         TOP(0), BOTTOM(1), SIDE_NORTH(2), SIDE_SOUTH(3), SIDE_EAST(4), SIDE_WEST(5);
@@ -113,7 +114,7 @@ public enum BlockType implements Item, IBlockType {
         }
 
         // For non-leaf blocks, use the original logic
-        return this == AIR || this == WATER || this == ROSE || this == DANDELION || this == ICE || this == SNOW;
+        return this == AIR || this == WATER || this == ROSE || this == DANDELION || this == WILDGRASS || this == ICE || this == SNOW;
     }
 
     @Override
@@ -226,7 +227,7 @@ public enum BlockType implements Item, IBlockType {
      * @return true if this is a flower block
      */
     public boolean isFlower() {
-        return this == ROSE || this == DANDELION;
+        return this == ROSE || this == DANDELION || this == WILDGRASS;
     }
 
     /**
@@ -301,6 +302,7 @@ public enum BlockType implements Item, IBlockType {
             case CLAY -> new float[]{0, 4}; // All faces use (0,4)
             case RED_SAND_COBBLESTONE -> new float[]{1, 4}; // All faces use (1,4)
             case SAND_COBBLESTONE -> new float[]{2, 4}; // All faces use (2,4)
+            case WILDGRASS -> new float[]{6, 12};
             default -> new float[]{0, 0};
         };
     }

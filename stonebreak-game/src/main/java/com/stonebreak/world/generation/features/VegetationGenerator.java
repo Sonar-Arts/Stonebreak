@@ -87,9 +87,14 @@ public class VegetationGenerator {
         if (!rng.shouldGenerate(worldX, worldZ, "flower", chance)) {
             return;
         }
-        BlockType flower = rng.getBoolean(worldX, worldZ, "flower_type")
-            ? BlockType.ROSE
-            : BlockType.DANDELION;
+        BlockType flower;
+        if (rng.getBoolean(worldX, worldZ, "flower_type")) {
+            flower = rng.getBoolean(worldX, worldZ, "flower_subtype")
+                ? BlockType.ROSE
+                : BlockType.WILDGRASS;
+        } else {
+            flower = BlockType.DANDELION;
+        }
         ctx.chunk.setBlock(x, surface, z, flower);
     }
 

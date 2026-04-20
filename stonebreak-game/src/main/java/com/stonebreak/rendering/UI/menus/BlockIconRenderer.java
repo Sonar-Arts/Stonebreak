@@ -75,7 +75,7 @@ public class BlockIconRenderer {
 
         // Check if this is a flower block - render as flat 2D texture instead of 3D cube
         // Note: Items (STICK, WOODEN_PICKAXE) are now in ItemType enum and handled separately
-        if (type == BlockType.ROSE || type == BlockType.DANDELION) {
+        if (type == BlockType.ROSE || type == BlockType.DANDELION || type == BlockType.WILDGRASS) {
             renderFlowerIcon(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas);
             return;
         }

@@ -271,8 +271,9 @@ public abstract class LivingEntity extends Entity {
      * Helper method to identify flower blocks.
      */
     private boolean isFlower(BlockType blockType) {
-        return blockType == BlockType.ROSE || 
-               blockType == BlockType.DANDELION;
+        return blockType == BlockType.ROSE ||
+               blockType == BlockType.DANDELION ||
+               blockType == BlockType.WILDGRASS;
     }
     
     // Abstract methods that must be implemented by subclasses
