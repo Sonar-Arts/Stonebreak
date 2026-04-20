@@ -26,6 +26,7 @@ import com.stonebreak.rendering.models.entities.DropRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.gameWorld.sky.SkyRenderer;
+import com.stonebreak.rendering.gameWorld.lod.LodRenderPass;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
 import com.stonebreak.world.World;
@@ -46,6 +47,7 @@ public class WorldRenderer {
     private final EntityRenderer entityRenderer;
     private final DropRenderer dropRenderer;
     private final SkyRenderer skyRenderer;
+    private final LodRenderPass lodRenderPass;
     
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
@@ -64,6 +66,7 @@ public class WorldRenderer {
         this.entityRenderer = entityRenderer;
         this.dropRenderer = dropRenderer;
         this.skyRenderer = new SkyRenderer();
+        this.lodRenderPass = new LodRenderPass();
     }
     
     /**
@@ -122,6 +125,10 @@ public class WorldRenderer {
 
         // Render opaque pass
         renderOpaquePass(visibleChunks);
+
+        // Render distant-terrain LOD between detail opaque and SBO; shares shader/atlas state.
+        world.ensureLodManager(textureAtlas);
+        lodRenderPass.render(shaderProgram, world.getLodManager());
 
         // Render SBO blocks (blocks with SBO textures, rendered separately from atlas)
         renderSBOPass(visibleChunks);

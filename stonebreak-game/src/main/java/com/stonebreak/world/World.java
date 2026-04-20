@@ -19,6 +19,7 @@ import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
 import com.stonebreak.world.chunk.utils.WorldChunkStore;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.lod.LodManager;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
@@ -41,6 +42,9 @@ public class World {
     private final ChunkErrorReporter errorReporter;
     private final WaterSystem waterSystem;
     private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
+
+    // Lazily constructed once the render-thread hands us a texture atlas.
+    private volatile LodManager lodManager;
 
     public World() {
         this(new WorldConfiguration());
@@ -65,6 +69,20 @@ public class World {
      */
     protected World(WorldConfiguration config, long seed, boolean testMode) {
         this.config = config;
+
+        // In production runs, align the world config with the latest persisted
+        // user settings before any subsystem reads from it. Tests construct
+        // their own configs and skip the singleton.
+        if (!testMode) {
+            try {
+                com.stonebreak.config.Settings s = com.stonebreak.config.Settings.getInstance();
+                config.setRenderDistance(s.getRenderDistance());
+                config.setLodRange(s.getLodDistance());
+                config.setLodEnabled(s.getLodEnabled());
+            } catch (Exception ignored) {
+                // Settings singleton unavailable (e.g. very early bootstrap) — use config defaults.
+            }
+        }
 
         this.terrainSystem = new TerrainGenerationSystem(seed);
         this.snowLayerManager = new SnowLayerManager();
@@ -413,11 +431,38 @@ public class World {
             chunkManager.shutdown();
         }
 
+        if (lodManager != null) {
+            lodManager.shutdown();
+            // Drain the final cleanup queue on the GL thread.
+            lodManager.applyGLUpdates();
+        }
+
         if (meshPipeline != null) {
             meshPipeline.shutdown();
             meshPipeline.processGpuCleanupQueue();
         }
         chunkStore.cleanup();
+    }
+
+    /**
+     * Constructs the distant-terrain LOD manager the first time the render
+     * thread has a texture atlas to bind. Idempotent; safe to call each frame.
+     */
+    public void ensureLodManager(com.stonebreak.rendering.textures.TextureAtlas atlas) {
+        if (lodManager != null || atlas == null || terrainSystem == null) return;
+        synchronized (this) {
+            if (lodManager == null) {
+                lodManager = new LodManager(config, terrainSystem, atlas);
+            }
+        }
+    }
+
+    public LodManager getLodManager() {
+        return lodManager;
+    }
+
+    public WorldConfiguration getConfig() {
+        return config;
     }
 
     /**

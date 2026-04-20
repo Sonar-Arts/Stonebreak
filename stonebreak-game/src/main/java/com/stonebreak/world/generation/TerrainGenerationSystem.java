@@ -101,6 +101,39 @@ public class TerrainGenerationSystem {
     }
 
     /**
+     * Returns the surface block a column would place at its top air-adjacent cell,
+     * derived from the same biome rules as {@link #determineBlockType}. Submerged
+     * columns (surface below sea level) are reported as {@link BlockType#WATER} so
+     * coarse renderers can paint a water sheet without block data.
+     */
+    public BlockType getSurfaceBlockAt(int worldX, int worldZ) {
+        int height = heightMapGenerator.generateHeight(worldX, worldZ);
+        if (height < SEA_LEVEL) {
+            return BlockType.WATER;
+        }
+        return surfaceBlock(biomeManager.getBiome(worldX, worldZ));
+    }
+
+    /** Deterministic RNG for shared probing logic (tree placement, etc.). */
+    public DeterministicRandom getDeterministicRandom() {
+        return deterministicRandom;
+    }
+
+    /**
+     * Probes whether a tree would be placed at this column, without mutating any
+     * chunk. Distant-terrain LOD uses this to emit silhouette geometry matching
+     * the real generator's deterministic placements.
+     */
+    public com.stonebreak.world.generation.features.VegetationGenerator.TreeSample getTreeAt(int worldX, int worldZ) {
+        int height = heightMapGenerator.generateHeight(worldX, worldZ);
+        if (height < SEA_LEVEL) return null;
+        BlockType surface = surfaceBlock(biomeManager.getBiome(worldX, worldZ));
+        BiomeType biome = biomeManager.getBiome(worldX, worldZ);
+        return com.stonebreak.world.generation.features.VegetationGenerator.probeTree(
+                worldX, worldZ, biome, surface, deterministicRandom);
+    }
+
+    /**
      * Generates terrain blocks for a chunk. Features are populated separately
      * once neighbor chunks exist (prevents recursive generation across chunk borders).
      */

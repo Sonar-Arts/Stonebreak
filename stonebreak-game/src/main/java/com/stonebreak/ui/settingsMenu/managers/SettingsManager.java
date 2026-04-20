@@ -78,6 +78,22 @@ public class SettingsManager {
     }
     
     /**
+     * Pushes render + LOD distance from Settings into the live world config.
+     * ChunkManager and LodManager both read from that config each tick, so the
+     * change takes effect within ~1s without a world restart.
+     */
+    public void applyWorldDistanceSettings() {
+        com.stonebreak.world.World world = Game.getWorld();
+        if (world == null || world.getConfig() == null) return;
+        world.getConfig().setRenderDistance(settings.getRenderDistance());
+        world.getConfig().setLodRange(settings.getLodDistance());
+        world.getConfig().setLodEnabled(settings.getLodEnabled());
+        System.out.println("Applied render distance: " + settings.getRenderDistance()
+                + ", LOD distance: " + settings.getLodDistance()
+                + ", LOD enabled: " + settings.getLodEnabled());
+    }
+
+    /**
      * Applies window resolution changes to the actual window.
      */
     private void applyWindowResize() {

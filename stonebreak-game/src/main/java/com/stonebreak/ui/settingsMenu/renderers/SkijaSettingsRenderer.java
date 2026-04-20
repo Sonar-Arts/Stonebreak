@@ -181,13 +181,19 @@ public final class SkijaSettingsRenderer {
     private void positionAndRenderSetting(CategoryState.SettingType type, float centerX, float y) {
         MWidget widget = resolveWidget(type);
         if (widget == null) return;
-        if (type == CategoryState.SettingType.VOLUME || type == CategoryState.SettingType.CROSSHAIR_SIZE) {
-            // Sliders use centre-positioning
+        if (isSlider(type)) {
             widget.position(centerX, y + SettingsConfig.BUTTON_HEIGHT / 2f);
         } else {
             widget.position(centerX - SettingsConfig.BUTTON_WIDTH / 2f, y);
         }
         widget.render(ui);
+    }
+
+    private static boolean isSlider(CategoryState.SettingType type) {
+        return type == CategoryState.SettingType.VOLUME
+                || type == CategoryState.SettingType.CROSSHAIR_SIZE
+                || type == CategoryState.SettingType.RENDER_DISTANCE
+                || type == CategoryState.SettingType.LOD_DISTANCE;
     }
 
     private MWidget resolveWidget(CategoryState.SettingType type) {
@@ -199,6 +205,9 @@ public final class SkijaSettingsRenderer {
             case CROSSHAIR_SIZE   -> state.getCrosshairSizeSlider();
             case LEAF_TRANSPARENCY -> state.getLeafTransparencyButton();
             case WATER_SHADER     -> state.getWaterShaderButton();
+            case RENDER_DISTANCE  -> state.getRenderDistanceSlider();
+            case LOD_DISTANCE     -> state.getLodDistanceSlider();
+            case LOD_ENABLED      -> state.getLodEnabledButton();
             default -> null;
         };
     }

@@ -30,6 +30,11 @@ public class Settings {
     // Quality settings
     private boolean leafTransparency = true;
     private boolean waterShaderEnabled = true;
+
+    // Performance + advanced settings — defaults sourced from WorldConfiguration to avoid drift.
+    private int renderDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_RENDER_DISTANCE;
+    private int lodDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_LOD_RANGE;
+    private boolean lodEnabled = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_LOD_ENABLED;
     
     // Available resolutions (ordered smallest to largest by total pixels)
     private static final int[][] RESOLUTIONS = {
@@ -71,7 +76,10 @@ public class Settings {
             json.append("  \"crosshairColorB\": ").append(crosshairColorB).append(",\n");
             json.append("  \"crosshairOutline\": ").append(crosshairOutline).append(",\n");
             json.append("  \"leafTransparency\": ").append(leafTransparency).append(",\n");
-            json.append("  \"waterShaderEnabled\": ").append(waterShaderEnabled).append("\n");
+            json.append("  \"waterShaderEnabled\": ").append(waterShaderEnabled).append(",\n");
+            json.append("  \"renderDistance\": ").append(renderDistance).append(",\n");
+            json.append("  \"lodDistance\": ").append(lodDistance).append(",\n");
+            json.append("  \"lodEnabled\": ").append(lodEnabled).append("\n");
             json.append("}");
             
             Files.write(Paths.get(SETTINGS_FILE), json.toString().getBytes());
@@ -232,6 +240,29 @@ public class Settings {
                         System.err.println("Invalid waterShaderEnabled value: " + value);
                     }
                 }
+            } else if (line.contains("renderDistance")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        setRenderDistance(Integer.parseInt(value));
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid renderDistance value: " + value);
+                    }
+                }
+            } else if (line.contains("lodDistance")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        setLodDistance(Integer.parseInt(value));
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid lodDistance value: " + value);
+                    }
+                }
+            } else if (line.contains("lodEnabled")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    lodEnabled = Boolean.parseBoolean(value);
+                }
             }
         }
     }
@@ -278,6 +309,11 @@ public class Settings {
     // Quality getters
     public boolean getLeafTransparency() { return leafTransparency; }
     public boolean getWaterShaderEnabled() { return waterShaderEnabled; }
+
+    // Performance / advanced getters
+    public int getRenderDistance() { return renderDistance; }
+    public int getLodDistance() { return lodDistance; }
+    public boolean getLodEnabled() { return lodEnabled; }
     
     // Setters
     public void setResolution(int width, int height) {
@@ -341,6 +377,20 @@ public class Settings {
 
     public void setWaterShaderEnabled(boolean waterShaderEnabled) {
         this.waterShaderEnabled = waterShaderEnabled;
+    }
+
+    public void setRenderDistance(int value) {
+        this.renderDistance = Math.max(com.stonebreak.world.operations.WorldConfiguration.MIN_RENDER_DISTANCE,
+                Math.min(com.stonebreak.world.operations.WorldConfiguration.MAX_RENDER_DISTANCE, value));
+    }
+
+    public void setLodDistance(int value) {
+        this.lodDistance = Math.max(com.stonebreak.world.operations.WorldConfiguration.MIN_LOD_RANGE,
+                Math.min(com.stonebreak.world.operations.WorldConfiguration.MAX_LOD_RANGE, value));
+    }
+
+    public void setLodEnabled(boolean value) {
+        this.lodEnabled = value;
     }
     
     // Helper methods
