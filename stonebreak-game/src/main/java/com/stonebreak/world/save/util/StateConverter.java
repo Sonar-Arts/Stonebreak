@@ -4,6 +4,7 @@ import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.model.PlayerData;
 import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.World;
+import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializableSnapshot;
@@ -12,8 +13,9 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.blocks.BlockType;
 import org.joml.Vector3f;
 import org.joml.Vector2f;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 
 /**
  * Utility class for converting between game objects and data models.
@@ -42,6 +44,8 @@ public final class StateConverter {
             combinedInventory[i + 9] = inventory.getMainInventoryItem(i);
         }
 
+        CharacterStats cs = player.getCharacterStats();
+
         return PlayerData.builder()
             .position(new Vector3f(player.getPosition()))
             .rotation(new Vector2f(player.getCamera().getYaw(), player.getCamera().getPitch()))
@@ -52,6 +56,13 @@ public final class StateConverter {
             .inventory(combinedInventory)
             .selectedHotbarSlot(inventory.getSelectedSlot())
             .worldName(worldName)
+            .selectedClassId(cs.getSelectedClassId())
+            .spentAbilityCp(new HashMap<>(cs.getSpentAbilityCp()))
+            .skillLevels(new HashMap<>(cs.getSkillLevels()))
+            .acquiredFeatIds(new HashSet<>(cs.getAcquiredFeatIds()))
+            .remainingCp(cs.getRemainingCp())
+            .remainingSp(cs.getRemainingSkillPoints())
+            .remainingFp(cs.getRemainingFeatPoints())
             .build();
     }
 
@@ -103,6 +114,18 @@ public final class StateConverter {
             // Set selected hotbar slot
             inventory.setSelectedSlot(data.getSelectedHotbarSlot());
         }
+
+        // Restore RPG / character progression
+        CharacterStats cs = player.getCharacterStats();
+        cs.restore(
+            data.getSelectedClassId(),
+            new HashMap<>(data.getSpentAbilityCp()),
+            new HashMap<>(data.getSkillLevels()),
+            new HashSet<>(data.getAcquiredFeatIds()),
+            data.getRemainingCp(),
+            data.getRemainingSkillPoints(),
+            data.getRemainingFeatPoints()
+        );
     }
 
     /**

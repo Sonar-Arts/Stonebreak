@@ -11,32 +11,40 @@ import com.stonebreak.rendering.Renderer;
  */
 public class CharacterScreen {
 
-    private final CharacterController controller;
+  private final CharacterController controller;
 
-    public CharacterScreen(Player player, Renderer renderer, InputHandler inputHandler) {
-        CharacterStats stats = new CharacterStats(player);
+  public CharacterScreen(Player player, Renderer renderer, InputHandler inputHandler) {
+    CharacterStats stats = player.getCharacterStats();
 
-        this.controller = new CharacterController();
+    this.controller = new CharacterController();
 
-        CharacterRenderCoordinator rc = new CharacterRenderCoordinator(
-                renderer, inputHandler, stats, controller);
+    CharacterRenderCoordinator rc = new CharacterRenderCoordinator(
+        renderer, inputHandler, stats, controller);
 
-        this.controller.setRenderCoordinator(rc);
-    }
+    this.controller.setRenderCoordinator(rc);
+  }
 
-    public void toggleVisibility() {
-        controller.toggleVisibility();
-    }
+  public CharacterController getController() {
+    return controller;
+  }
 
-    public boolean isVisible() {
-        return controller.isVisible();
-    }
+  public void toggleVisibility() {
+    controller.toggleVisibility();
+  }
 
-    public void render(int screenWidth, int screenHeight) {
-        controller.render(screenWidth, screenHeight);
-    }
+  public boolean isVisible() {
+    return controller.isVisible();
+  }
 
-    public void handleMouseInput(int screenWidth, int screenHeight) {
-        controller.handleMouseInput(screenWidth, screenHeight);
-    }
+  public void render(int screenWidth, int screenHeight) {
+    controller.render(screenWidth, screenHeight);
+  }
+
+  public void handleMouseInput(int screenWidth, int screenHeight) {
+    controller.handleMouseInput(screenWidth, screenHeight);
+  }
+
+  public void handleScroll(float deltaY) {
+    controller.handleScroll(deltaY);
+  }
 }

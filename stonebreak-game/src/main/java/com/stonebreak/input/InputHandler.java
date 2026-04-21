@@ -831,6 +831,7 @@ public class InputHandler {
 
         com.stonebreak.ui.characterScreen.CharacterScreen characterScreenScroll = Game.getInstance().getCharacterScreen();
         if (characterScreenScroll != null && characterScreenScroll.isVisible()) {
+            characterScreenScroll.handleScroll((float) yOffset);
             return; // Character screen is open, block hotbar selection
         }
 

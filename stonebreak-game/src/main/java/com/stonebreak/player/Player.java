@@ -68,6 +68,9 @@ public class Player {
     // Lifecycle
     private final PlayerSpawnService spawnService;
 
+    // RPG
+    private final CharacterStats characterStats;
+
     public Player(World world) {
         IBlockPlacementService blockPlacementService = new BlockPlacementValidator(world);
         this.state = new PhysicsState();
@@ -96,6 +99,8 @@ public class Player {
 
         this.spawnService = new PlayerSpawnService(state, camera, inventory, health, attack,
                 blockBreaker, flight, jumpHandler, swimming);
+
+        this.characterStats = new CharacterStats(this);
     }
 
     public void update() {
@@ -168,6 +173,9 @@ public class Player {
     public Camera getCamera() { return camera; }
     public Inventory getInventory() { return inventory; }
     public Matrix4f getViewMatrix() { return camera.getViewMatrix(); }
+
+    // RPG
+    public CharacterStats getCharacterStats() { return characterStats; }
 
     // Health / death
     public float getHealth() { return health.getHealth(); }

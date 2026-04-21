@@ -56,6 +56,9 @@ public class InventoryRenderCoordinator {
     // Tab bar buttons — visual only; click detection is in InventoryInputManager
     private final MButton tabInventory;
     private final MButton tabCharacter;
+    private final MButton tabClasses;
+    private final MButton tabSkills;
+    private final MButton tabFeats;
 
     // Crafting arrow fill: ARGB equivalent of old InventoryTheme.Crafting.ARROW_FILL (140,140,140,180)
     private static final int ARROW_FILL = 0xB48C8C8C;
@@ -65,8 +68,9 @@ public class InventoryRenderCoordinator {
     private static final int PANEL_FILL_TRANS = 0xBF6B6B6B;
 
     // Tab bar constants — shared with InventoryInputManager for click-detection bounds
-    public static final int INV_TAB_WIDTH  = 100;
+    public static final int INV_TAB_WIDTH  = 84;
     public static final int INV_TAB_HEIGHT = 28;
+    public static final int INV_TAB_GAP    = 4;
 
     public InventoryRenderCoordinator(UIRenderer uiRenderer,
                                       Renderer renderer,
@@ -90,9 +94,12 @@ public class InventoryRenderCoordinator {
         this.recipeButton   = new MButton("Recipes");
         this.craftAllButton = new MButton("Craft All").fontSize(MStyle.FONT_META);
 
-        // Tab buttons — visual only
+        // Tab buttons — visual only; click detection is in InventoryInputManager
         this.tabInventory = new MButton("Inventory").fontSize(MStyle.FONT_META);
         this.tabCharacter = new MButton("Character").fontSize(MStyle.FONT_META);
+        this.tabClasses   = new MButton("Classes").fontSize(MStyle.FONT_META);
+        this.tabSkills    = new MButton("Skills").fontSize(MStyle.FONT_META);
+        this.tabFeats     = new MButton("Feats").fontSize(MStyle.FONT_META);
     }
 
     // ─────────────────────────────────────────────── Public entry points
@@ -113,6 +120,9 @@ public class InventoryRenderCoordinator {
         updateTabBounds(layout);
         tabInventory.updateHover(mouseX, mouseY);
         tabCharacter.updateHover(mouseX, mouseY);
+        tabClasses  .updateHover(mouseX, mouseY);
+        tabSkills   .updateHover(mouseX, mouseY);
+        tabFeats    .updateHover(mouseX, mouseY);
 
         // Phase A — Skija: panel, titles, slot backgrounds, buttons, arrow
         if (ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
@@ -485,35 +495,41 @@ public class InventoryRenderCoordinator {
 
     // ─────────────────────────────────────────────── Tab bar
 
-    /** Positions the tab buttons flush above the inventory panel. */
+    /** Positions all five tab buttons flush above the inventory panel. */
     private void updateTabBounds(InventoryLayoutCalculator.InventoryLayout layout) {
         float tabY = layout.panelStartY - INV_TAB_HEIGHT;
-        tabInventory.bounds(layout.panelStartX,                      tabY, INV_TAB_WIDTH, INV_TAB_HEIGHT);
-        tabCharacter.bounds(layout.panelStartX + INV_TAB_WIDTH + 4f, tabY, INV_TAB_WIDTH, INV_TAB_HEIGHT);
+        float stride = INV_TAB_WIDTH + INV_TAB_GAP;
+        tabInventory.bounds(layout.panelStartX,              tabY, INV_TAB_WIDTH, INV_TAB_HEIGHT);
+        tabCharacter.bounds(layout.panelStartX + stride,     tabY, INV_TAB_WIDTH, INV_TAB_HEIGHT);
+        tabClasses  .bounds(layout.panelStartX + stride * 2, tabY, INV_TAB_WIDTH, INV_TAB_HEIGHT);
+        tabSkills   .bounds(layout.panelStartX + stride * 3, tabY, INV_TAB_WIDTH, INV_TAB_HEIGHT);
+        tabFeats    .bounds(layout.panelStartX + stride * 4, tabY, INV_TAB_WIDTH, INV_TAB_HEIGHT);
     }
 
-    /** Draws the Inventory (active) and Character (inactive) tabs above the panel. */
+    /** Draws all five tabs — Inventory is always active here. */
     private void drawTabBar(Canvas canvas, InventoryLayoutCalculator.InventoryLayout layout) {
         float tabY = layout.panelStartY - INV_TAB_HEIGHT;
-        drawInventoryTab(canvas, layout.panelStartX, tabY,
-                INV_TAB_WIDTH, INV_TAB_HEIGHT, "Inventory", true, tabInventory.isHovered());
-        drawInventoryTab(canvas, layout.panelStartX + INV_TAB_WIDTH + 4f, tabY,
-                INV_TAB_WIDTH, INV_TAB_HEIGHT, "Character", false, tabCharacter.isHovered());
+        float stride = INV_TAB_WIDTH + INV_TAB_GAP;
+        drawTab(canvas, layout.panelStartX,              tabY, "Inventory", true,  tabInventory.isHovered());
+        drawTab(canvas, layout.panelStartX + stride,     tabY, "Character", false, tabCharacter.isHovered());
+        drawTab(canvas, layout.panelStartX + stride * 2, tabY, "Classes",   false, tabClasses.isHovered());
+        drawTab(canvas, layout.panelStartX + stride * 3, tabY, "Skills",    false, tabSkills.isHovered());
+        drawTab(canvas, layout.panelStartX + stride * 4, tabY, "Feats",     false, tabFeats.isHovered());
     }
 
-    private void drawInventoryTab(Canvas canvas, float x, float y, float w, float h,
-                                  String label, boolean active, boolean hovered) {
+    private void drawTab(Canvas canvas, float x, float y, String label, boolean active, boolean hovered) {
         int fill = active ? 0xFF7A7A7A
                 : hovered ? MStyle.BUTTON_FILL_HI
                 : MStyle.BUTTON_FILL;
-        MPainter.stoneSurface(canvas, x, y, w, h, MStyle.BUTTON_RADIUS,
+        MPainter.stoneSurface(canvas, x, y, INV_TAB_WIDTH, INV_TAB_HEIGHT, MStyle.BUTTON_RADIUS,
                 fill, MStyle.BUTTON_BORDER,
                 MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
         Font font  = ui.fonts().get(MStyle.FONT_META);
         int  color = active ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-        float ty   = y + h * 0.5f + MStyle.FONT_META * 0.38f;
-        MPainter.drawCenteredStringWithShadow(canvas, label, x + w / 2f, ty, font, color, MStyle.TEXT_SHADOW);
+        float ty   = y + INV_TAB_HEIGHT * 0.5f + MStyle.FONT_META * 0.38f;
+        MPainter.drawCenteredStringWithShadow(canvas, label,
+                x + INV_TAB_WIDTH / 2f, ty, font, color, MStyle.TEXT_SHADOW);
     }
 
     private void checkHover(ItemStack itemStack, float sx, float sy, int slotSize,

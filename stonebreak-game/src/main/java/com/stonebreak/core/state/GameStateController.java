@@ -3,6 +3,7 @@ package com.stonebreak.core.state;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.input.MouseCaptureManager;
+import com.stonebreak.rpg.CharacterPanelTab;
 import com.stonebreak.ui.MainMenu;
 import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.characterScreen.CharacterScreen;
@@ -166,6 +167,22 @@ public final class GameStateController {
             if (pauseMenu == null || !pauseMenu.isVisible()) {
                 setState(GameState.PLAYING);
             }
+        }
+    }
+
+    /**
+     * Opens the character screen at the given tab, switching from any current state.
+     * If the character screen is already visible, just switches the active tab.
+     */
+    public void openCharacterTab(CharacterPanelTab tab) {
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen == null) return;
+
+        characterScreen.getController().setActiveTab(tab);
+
+        if (!characterScreen.isVisible()) {
+            characterScreen.toggleVisibility();
+            setState(GameState.CHARACTER_SHEET_UI);
         }
     }
 

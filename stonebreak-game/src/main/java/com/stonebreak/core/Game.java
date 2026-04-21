@@ -14,6 +14,7 @@ import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.*;
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.ui.DeathMenu;
+import com.stonebreak.rpg.CharacterPanelTab;
 import com.stonebreak.ui.characterScreen.CharacterScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
@@ -440,6 +441,11 @@ public class Game {
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#toggleCharacterScreen()}. */
     public void toggleCharacterScreen() {
         stateController.toggleCharacterScreen();
+    }
+
+    /** Opens the character screen at the given tab. */
+    public void openCharacterTab(CharacterPanelTab tab) {
+        stateController.openCharacterTab(tab);
     }
 
     /** Gets the current game state. */
