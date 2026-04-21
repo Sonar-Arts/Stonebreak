@@ -25,6 +25,9 @@ public class InventoryInputManager {
     // Craft All button properties
     private float craftAllButtonX, craftAllButtonY, craftAllButtonWidth, craftAllButtonHeight;
 
+    // Character tab bounds (mirrors InventoryRenderCoordinator tab geometry)
+    private float charTabX, charTabY, charTabWidth, charTabHeight;
+
     public InventoryInputManager(InputHandler inputHandler,
                                 Inventory inventory,
                                 InventorySlotManager slotManager,
@@ -66,6 +69,14 @@ public class InventoryInputManager {
         }
 
         if (dragState.draggedItemStack == null) {
+            // Check character tab first (above panel)
+            if (isCharTabClicked(mouseX, mouseY, layout)) {
+                Game.getInstance().toggleInventoryScreen(); // closes inventory → PLAYING
+                Game.getInstance().toggleCharacterScreen(); // opens character → CHARACTER_SHEET_UI
+                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                return;
+            }
+
             // Check recipe button first
             if (isRecipeButtonClicked(mouseX, mouseY, layout)) {
                 Game.getInstance().openRecipeBookScreen();
@@ -142,6 +153,20 @@ public class InventoryInputManager {
         // Position button below the output slot
         craftAllButtonX = layout.outputSlotX + (InventoryLayoutCalculator.getSlotSize() - craftAllButtonWidth) / 2;
         craftAllButtonY = layout.outputSlotY + InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding();
+    }
+
+    private boolean isCharTabClicked(float mouseX, float mouseY,
+                                     InventoryLayoutCalculator.InventoryLayout layout) {
+        updateCharTabBounds(layout);
+        return mouseX >= charTabX && mouseX <= charTabX + charTabWidth
+                && mouseY >= charTabY && mouseY <= charTabY + charTabHeight;
+    }
+
+    private void updateCharTabBounds(InventoryLayoutCalculator.InventoryLayout layout) {
+        charTabWidth  = com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.INV_TAB_WIDTH;
+        charTabHeight = com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.INV_TAB_HEIGHT;
+        charTabX      = layout.panelStartX + charTabWidth + 4f;
+        charTabY      = layout.panelStartY - charTabHeight;
     }
 
     private void handleCraftAll() {
