@@ -88,6 +88,18 @@ public class FeatsTabRenderer {
     return handleListClick(mx, my, filtered, px, py);
   }
 
+  /** Handles a right-click; returns true if consumed. */
+  public boolean handleRightClick(float mx, float my, CharacterStats stats, float px, float py) {
+    if (levelFilterBtn.contains(mx, my)) {
+      filterLevel = (filterLevel - 1 + 11) % 11;
+      levelFilterBtn.setText(filterLevel == 0 ? "Level: All" : "Level: " + filterLevel);
+      selectedFeatId = null;
+      scrollOffset = 0f;
+      return true;
+    }
+    return false;
+  }
+
   /** Scrolls the feat list. */
   public void handleScroll(float deltaY, float px, float py) {
     List<FeatDefinition> filtered = FeatRegistry.filter(filterLevel, filterGeneral);

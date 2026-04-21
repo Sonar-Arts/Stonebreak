@@ -25,6 +25,7 @@ import org.joml.Vector2f;
 import java.util.List;
 
 import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
+import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_RIGHT;
 
 /**
  * Renders the Character Screen using Skija/MasonryUI (Phase A only — no GL item icons needed).
@@ -134,7 +135,10 @@ public class CharacterRenderCoordinator {
     float mx = mouse.x;
     float my = mouse.y;
 
-    if (!inputHandler.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT)) {
+    boolean leftClick  = inputHandler.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
+    boolean rightClick = inputHandler.isMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT);
+
+    if (!leftClick && !rightClick) {
       return;
     }
 
@@ -142,44 +146,54 @@ public class CharacterRenderCoordinator {
     float py = (screenHeight - PANEL_HEIGHT) / 2f;
     updateTabBounds(px, py);
 
-    // Inventory tab — close character screen, open inventory
-    if (tabInventory.contains(mx, my)) {
-      controller.setVisible(false);
-      Game.getInstance().toggleInventoryScreen();
-      inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
-      return;
-    }
-    // Character tab — already on overview
-    if (tabCharacter.contains(mx, my)) {
-      controller.setActiveTab(CharacterPanelTab.OVERVIEW);
-      inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
-      return;
-    }
-    if (tabClasses.contains(mx, my)) {
-      controller.setActiveTab(CharacterPanelTab.CLASSES);
-      inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
-      return;
-    }
-    if (tabSkills.contains(mx, my)) {
-      controller.setActiveTab(CharacterPanelTab.SKILLS);
-      inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
-      return;
-    }
-    if (tabFeats.contains(mx, my)) {
-      controller.setActiveTab(CharacterPanelTab.FEATS);
-      inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
-      return;
+    if (leftClick) {
+      // Inventory tab — close character screen, open inventory
+      if (tabInventory.contains(mx, my)) {
+        controller.setVisible(false);
+        Game.getInstance().toggleInventoryScreen();
+        inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
+        return;
+      }
+      if (tabCharacter.contains(mx, my)) {
+        controller.setActiveTab(CharacterPanelTab.OVERVIEW);
+        inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
+        return;
+      }
+      if (tabClasses.contains(mx, my)) {
+        controller.setActiveTab(CharacterPanelTab.CLASSES);
+        inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
+        return;
+      }
+      if (tabSkills.contains(mx, my)) {
+        controller.setActiveTab(CharacterPanelTab.SKILLS);
+        inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
+        return;
+      }
+      if (tabFeats.contains(mx, my)) {
+        controller.setActiveTab(CharacterPanelTab.FEATS);
+        inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
+        return;
+      }
+
+      boolean consumed = switch (controller.getActiveTab()) {
+        case CLASSES -> classesRenderer.handleClick(mx, my, stats, px, py);
+        case SKILLS  -> skillsRenderer.handleClick(mx, my, stats);
+        case FEATS   -> featsRenderer.handleClick(mx, my, stats, px, py);
+        default      -> false;
+      };
+      if (consumed) {
+        inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
+      }
     }
 
-    // Delegate click to the active sub-tab renderer
-    boolean consumed = switch (controller.getActiveTab()) {
-      case CLASSES -> classesRenderer.handleClick(mx, my, stats, px, py);
-      case SKILLS  -> skillsRenderer.handleClick(mx, my, stats);
-      case FEATS   -> featsRenderer.handleClick(mx, my, stats, px, py);
-      default      -> false;
-    };
-    if (consumed) {
-      inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
+    if (rightClick) {
+      boolean consumed = switch (controller.getActiveTab()) {
+        case FEATS -> featsRenderer.handleRightClick(mx, my, stats, px, py);
+        default    -> false;
+      };
+      if (consumed) {
+        inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_RIGHT);
+      }
     }
   }
 
