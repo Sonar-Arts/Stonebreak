@@ -123,9 +123,10 @@ public class CharacterRenderCoordinator {
         float rightColW = PANEL_WIDTH - leftColW - 44f;
         float contentY  = py + 20f;
 
-        // ── Left column: silhouette + class + feats ──────────────────────────
+        // ── Left column: silhouette + class + feats + currencies ─────────────
         drawCharacterSilhouette(canvas, leftColX, contentY, leftColW);
         drawClassAndFeats(canvas, leftColX, contentY + 162f, leftColW);
+        drawCurrencies(canvas, leftColX, contentY + 300f, leftColW);
 
         // ── Right column: ability scores ─────────────────────────────────────
         drawAbilityScores(canvas, rightColX, contentY, rightColW, mx, my);
@@ -290,6 +291,30 @@ public class CharacterRenderCoordinator {
                         MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
                 y += 18f;
             }
+        }
+    }
+
+    // ─────────────────────────────────────────────── Left column — currencies
+
+    /**
+     * Draws CP, SP, and FP point totals beneath the feats section.
+     * All values are placeholder stubs until the level-up system is implemented.
+     */
+    private void drawCurrencies(Canvas canvas, float colX, float colY, float colW) {
+        Font font = ui.fonts().get(MStyle.FONT_META);
+        drawEngravedRule(canvas, colX, colY, colW);
+        float y = colY + 14f;
+
+        record Entry(String label, int value) {}
+        Entry[] entries = {
+            new Entry("CP", stats.getClassPoints()),
+            new Entry("SP", stats.getSkillPoints()),
+            new Entry("FP", stats.getFeatPoints()),
+        };
+        for (Entry e : entries) {
+            MPainter.drawStringWithShadow(canvas, e.label() + ": " + e.value(),
+                    colX + 4f, y, font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+            y += 18f;
         }
     }
 

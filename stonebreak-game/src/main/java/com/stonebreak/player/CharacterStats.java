@@ -33,6 +33,12 @@ public class CharacterStats {
     public List<String> getFeats()         { return List.of(); }
     public List<String> getStatusEffects() { return List.of(); }
 
+    // ─────────────────────────────────────────────── Point currencies (stubs)
+
+    public int getClassPoints() { return 100; }
+    public int getSkillPoints() { return 100; }
+    public int getFeatPoints()  { return 100; }
+
     // ─────────────────────────────────────────────── Vitals
 
     /** Live health from player. */
