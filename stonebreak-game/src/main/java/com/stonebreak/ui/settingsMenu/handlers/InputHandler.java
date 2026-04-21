@@ -106,6 +106,9 @@ public final class InputHandler {
             case CROSSHAIR_STYLE -> adjustCrosshairStyle(direction);
             case CROSSHAIR_SIZE -> adjustSlider(stateManager.getCrosshairSizeSlider(), direction * SettingsConfig.CROSSHAIR_SIZE_STEP);
             case LEAF_TRANSPARENCY -> { if (direction != 0) actionHandler.toggleLeafTransparency(); }
+            case RENDER_DISTANCE -> adjustSlider(stateManager.getRenderDistanceSlider(), direction);
+            case LOD_DISTANCE -> adjustSlider(stateManager.getLodDistanceSlider(), direction);
+            case LOD_ENABLED -> { if (direction != 0) actionHandler.toggleLodEnabled(); }
             default -> {}
         }
     }

@@ -31,7 +31,6 @@ import java.util.concurrent.TimeUnit;
 public class ChunkManager {
 
     private final World world;
-    private final int renderDistance;
     private final WorldConfiguration config;
     private final Set<ChunkPosition> activeChunkPositions = Collections.synchronizedSet(new HashSet<>());
     private float updateTimer = 0.0f;
@@ -50,8 +49,9 @@ public class ChunkManager {
 
     public ChunkManager(World world, int renderDistance) {
         this.world = world;
-        this.renderDistance = renderDistance;
-        this.config = new WorldConfiguration(renderDistance, calculateOptimalChunkLoadThreads());
+        // Reuse the world's shared config so runtime render-distance changes flow
+        // through here without rebuilding the manager.
+        this.config = world.getConfig();
 
         // Create thread pool with optimal thread count
         // Typically 4-6 threads on modern CPUs
@@ -99,11 +99,16 @@ public class ChunkManager {
         unloadExitedChunks(requiredChunks);
         loadEnteredChunks(requiredChunks);
         ensureVisibleChunksAreReady(playerChunkX, playerChunkZ);
+
+        com.stonebreak.world.fastlod.FastLodManager lod = world.getFastLodManager();
+        if (lod != null) {
+            lod.updateRing(playerChunkX, playerChunkZ);
+        }
     }
 
     private Set<ChunkPosition> calculateRequiredChunks(int playerChunkX, int playerChunkZ) {
         Set<ChunkPosition> required = new HashSet<>();
-        int loadDistance = renderDistance + 1;
+        int loadDistance = config.getRenderDistance() + 1;
         for (int x = playerChunkX - loadDistance; x <= playerChunkX + loadDistance; x++) {
             for (int z = playerChunkZ - loadDistance; z <= playerChunkZ + loadDistance; z++) {
                 required.add(world.getCachedChunkPosition(x, z));
@@ -309,6 +314,7 @@ public class ChunkManager {
     }
 
     private void ensureVisibleChunksAreReady(int playerChunkX, int playerChunkZ) {
+        int renderDistance = config.getRenderDistance();
         for (int x = playerChunkX - renderDistance; x <= playerChunkX + renderDistance; x++) {
             for (int z = playerChunkZ - renderDistance; z <= playerChunkZ + renderDistance; z++) {
                 world.ensureChunkIsReadyForRender(x, z);

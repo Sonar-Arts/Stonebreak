@@ -55,7 +55,10 @@ public final class SettingsMenu {
                 actionHandler::onVolumeChange,
                 actionHandler::onCrosshairSizeChange,
                 actionHandler::toggleLeafTransparency,
-                actionHandler::toggleWaterShader
+                actionHandler::toggleWaterShader,
+                actionHandler::onRenderDistanceChange,
+                actionHandler::onLodDistanceChange,
+                actionHandler::toggleLodEnabled
         );
     }
 

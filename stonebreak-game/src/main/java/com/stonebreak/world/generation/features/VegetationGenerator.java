@@ -12,15 +12,62 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * Plants trees and flowers on the surface column.
  */
 public class VegetationGenerator {
-    private static final int MIN_SURFACE_Y = 64;
-    private static final float TREE_CHANCE = 0.01f;
-    private static final float ELM_TREE_CHANCE = 0.4f;
-    private static final float PINE_TREE_CHANCE = 0.015f;
-    private static final float TAIGA_PINE_CHANCE = 0.03f;
-    private static final float TUNDRA_PINE_CHANCE = 0.003f;
-    private static final float MEADOW_TREE_CHANCE = 0.002f;
+    public static final int MIN_SURFACE_Y = 64;
+    public static final float TREE_CHANCE = 0.01f;
+    public static final float ELM_TREE_CHANCE = 0.4f;
+    public static final float PINE_TREE_CHANCE = 0.015f;
+    public static final float TAIGA_PINE_CHANCE = 0.03f;
+    public static final float TUNDRA_PINE_CHANCE = 0.003f;
+    public static final float MEADOW_TREE_CHANCE = 0.002f;
     private static final float FLOWER_CHANCE = 0.08f;
     private static final float MEADOW_FLOWER_CHANCE = 0.25f;
+
+    /** Tree variety identifier, carries the trunk + leaf block types it renders with. */
+    public enum TreeKind {
+        OAK(BlockType.WOOD, BlockType.LEAVES),
+        ELM(BlockType.ELM_WOOD_LOG, BlockType.ELM_LEAVES),
+        PINE(BlockType.PINE, BlockType.PINE_LEAVES);
+
+        private final BlockType trunk;
+        private final BlockType leaves;
+        TreeKind(BlockType trunk, BlockType leaves) { this.trunk = trunk; this.leaves = leaves; }
+        public BlockType trunkBlock() { return trunk; }
+        public BlockType leavesBlock() { return leaves; }
+    }
+
+    /** Result of {@link #probeTree}; {@code trunkHeight} follows the real generator's logic. */
+    public record TreeSample(TreeKind kind, int trunkHeight) {}
+
+    /**
+     * Deterministically decides whether a tree exists at this column without
+     * mutating any chunk. Shared with distant-terrain LOD so both paths agree on
+     * placement. Matches {@link #placeTree} but without feature queue / chunk writes.
+     */
+    public static TreeSample probeTree(int worldX, int worldZ, BiomeType biome,
+                                       BlockType surfaceBlock, DeterministicRandom rng) {
+        if (biome == BiomeType.PLAINS && surfaceBlock == BlockType.GRASS &&
+                rng.shouldGenerate(worldX, worldZ, "tree", TREE_CHANCE)) {
+            if (rng.shouldGenerate(worldX, worldZ, "tree_type", ELM_TREE_CHANCE)) {
+                int h = 8 + rng.getRandomForPosition(worldX, worldZ, "elm_tree").nextInt(5);
+                return new TreeSample(TreeKind.ELM, h);
+            }
+            return new TreeSample(TreeKind.OAK, 5);
+        }
+        if (biome == BiomeType.SNOWY_PLAINS && surfaceBlock == BlockType.SNOWY_DIRT &&
+                rng.shouldGenerate(worldX, worldZ, "pine_tree", PINE_TREE_CHANCE)) {
+            return new TreeSample(TreeKind.PINE, 7);
+        }
+        if (biome == BiomeType.TAIGA && surfaceBlock == BlockType.SNOWY_DIRT &&
+                rng.shouldGenerate(worldX, worldZ, "taiga_pine_tree", TAIGA_PINE_CHANCE)) {
+            return new TreeSample(TreeKind.PINE, 7);
+        }
+        if (biome == BiomeType.MEADOW && surfaceBlock == BlockType.GRASS &&
+                rng.shouldGenerate(worldX, worldZ, "meadow_tree", MEADOW_TREE_CHANCE)) {
+            int h = 8 + rng.getRandomForPosition(worldX, worldZ, "meadow_elm").nextInt(5);
+            return new TreeSample(TreeKind.ELM, h);
+        }
+        return null;
+    }
 
     private final DeterministicRandom rng;
     private final Object treeRandomLock = new Object();
@@ -87,9 +134,14 @@ public class VegetationGenerator {
         if (!rng.shouldGenerate(worldX, worldZ, "flower", chance)) {
             return;
         }
-        BlockType flower = rng.getBoolean(worldX, worldZ, "flower_type")
-            ? BlockType.ROSE
-            : BlockType.DANDELION;
+        BlockType flower;
+        if (rng.getBoolean(worldX, worldZ, "flower_type")) {
+            flower = rng.getBoolean(worldX, worldZ, "flower_subtype")
+                ? BlockType.ROSE
+                : BlockType.WILDGRASS;
+        } else {
+            flower = BlockType.DANDELION;
+        }
         ctx.chunk.setBlock(x, surface, z, flower);
     }
 

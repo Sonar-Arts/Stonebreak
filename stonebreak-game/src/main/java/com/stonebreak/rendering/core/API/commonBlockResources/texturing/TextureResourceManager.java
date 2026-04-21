@@ -304,6 +304,7 @@ public class TextureResourceManager implements AutoCloseable {
             // Flowers
             case "dandelion": return BlockType.DANDELION;
             case "rose": return BlockType.ROSE;
+            case "wildgrass": return BlockType.WILDGRASS;
             
             // Utility blocks
             case "workbench": return BlockType.WORKBENCH;

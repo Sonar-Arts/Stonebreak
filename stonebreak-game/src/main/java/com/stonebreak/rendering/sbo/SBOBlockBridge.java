@@ -51,6 +51,7 @@ public class SBOBlockBridge {
             Map.entry("stonebreak:red_sand_cobblestone", BlockType.RED_SAND_COBBLESTONE),
             Map.entry("stonebreak:rose", BlockType.ROSE),
             Map.entry("stonebreak:dandelion", BlockType.DANDELION),
+            Map.entry("stonebreak:wildgrass", BlockType.WILDGRASS),
             Map.entry("stonebreak:clay", BlockType.CLAY),
             Map.entry("stonebreak:snow", BlockType.SNOW),
             Map.entry("stonebreak:ice", BlockType.ICE),

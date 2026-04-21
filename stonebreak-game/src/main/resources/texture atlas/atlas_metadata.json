@@ -1395,6 +1395,48 @@
       "y" : 144,
       "type" : "block_cube_cross",
       "height" : 16
+    },
+    "wildgrass_top" : {
+      "x" : 96,
+      "width" : 16,
+      "y" : 192,
+      "type" : "block_cube_cross",
+      "height" : 16
+    },
+    "wildgrass_bottom" : {
+      "x" : 112,
+      "width" : 16,
+      "y" : 192,
+      "type" : "block_cube_cross",
+      "height" : 16
+    },
+    "wildgrass_north" : {
+      "x" : 128,
+      "width" : 16,
+      "y" : 192,
+      "type" : "block_cube_cross",
+      "height" : 16
+    },
+    "wildgrass_south" : {
+      "x" : 144,
+      "width" : 16,
+      "y" : 192,
+      "type" : "block_cube_cross",
+      "height" : 16
+    },
+    "wildgrass_east" : {
+      "x" : 160,
+      "width" : 16,
+      "y" : 192,
+      "type" : "block_cube_cross",
+      "height" : 16
+    },
+    "wildgrass_west" : {
+      "x" : 176,
+      "width" : 16,
+      "y" : 192,
+      "type" : "block_cube_cross",
+      "height" : 16
     }
   }
 }

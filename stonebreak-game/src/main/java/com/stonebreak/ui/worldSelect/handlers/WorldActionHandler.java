@@ -97,10 +97,12 @@ public class WorldActionHandler {
     // ===== WORLD CREATION ACTIONS =====
 
     /**
-     * Opens the create world dialog.
+     * Transitions to the terrain mapper screen for world creation. Replaces
+     * the legacy in-place create-world dialog; the mapper owns its own name
+     * and seed entry plus a live terrain preview.
      */
     public void openCreateWorldDialog() {
-        stateManager.openCreateDialog();
+        Game.getInstance().setState(GameState.TERRAIN_MAPPER);
     }
 
     /**

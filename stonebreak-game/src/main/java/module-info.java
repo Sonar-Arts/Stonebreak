@@ -37,6 +37,7 @@ module stonebreak.game {
     requires java.desktop;
     requires java.management;
     requires java.logging;
+    requires java.sql;        // SQLite JDBC driver for FastLod persistent cache
 
     // JUnit 5 for testing (requires static = compile-time only)
 

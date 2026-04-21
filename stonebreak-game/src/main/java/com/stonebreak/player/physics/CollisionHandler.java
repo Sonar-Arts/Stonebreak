@@ -225,6 +225,32 @@ public class CollisionHandler {
         }
     }
 
+    /**
+     * Returns true if the player AABB currently overlaps any solid block. Used to warn
+     * the player that exiting spectator mode will leave them stuck.
+     */
+    public boolean isPlayerInsideSolidBlock() {
+        Vector3f position = state.getPosition();
+        float halfWidth = PLAYER_WIDTH / 2;
+        int minX = (int) Math.floor(position.x - halfWidth);
+        int maxX = (int) Math.ceil(position.x + halfWidth);
+        int minY = (int) Math.floor(position.y);
+        int maxY = (int) Math.ceil(position.y + PLAYER_HEIGHT);
+        int minZ = (int) Math.floor(position.z - halfWidth);
+        int maxZ = (int) Math.ceil(position.z + halfWidth);
+
+        for (int x = minX; x < maxX; x++) {
+            for (int y = minY; y < maxY; y++) {
+                for (int z = minZ; z < maxZ; z++) {
+                    if (world.getBlockAt(x, y, z).isSolid()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     public float getBlockCollisionHeight(int x, int y, int z) {
         BlockType block = world.getBlockAt(x, y, z);
         if (block == BlockType.SNOW) {

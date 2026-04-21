@@ -28,6 +28,8 @@ public final class MouseHandler {
         updateHoverStates((float) mouseX, (float) mouseY);
         stateManager.getVolumeSlider().handleDrag((float) mouseX);
         stateManager.getCrosshairSizeSlider().handleDrag((float) mouseX);
+        stateManager.getRenderDistanceSlider().handleDrag((float) mouseX);
+        stateManager.getLodDistanceSlider().handleDrag((float) mouseX);
     }
 
     public void handleMouseClick(double mouseX, double mouseY, int windowWidth, int windowHeight, int button, int action) {
@@ -36,6 +38,8 @@ public final class MouseHandler {
         } else if (action == GLFW_RELEASE) {
             stateManager.getVolumeSlider().stopDragging();
             stateManager.getCrosshairSizeSlider().stopDragging();
+            stateManager.getRenderDistanceSlider().stopDragging();
+            stateManager.getLodDistanceSlider().stopDragging();
         }
     }
 
@@ -59,6 +63,9 @@ public final class MouseHandler {
         stateManager.getBackButton().updateHover(mouseX, mouseY);
         stateManager.getVolumeSlider().updateHover(mouseX, mouseY);
         stateManager.getCrosshairSizeSlider().updateHover(mouseX, mouseY);
+        stateManager.getRenderDistanceSlider().updateHover(mouseX, mouseY);
+        stateManager.getLodDistanceSlider().updateHover(mouseX, mouseY);
+        stateManager.getLodEnabledButton().updateHover(mouseX, mouseY);
     }
 
     private void handlePress(float mouseX, float mouseY) {
@@ -111,6 +118,9 @@ public final class MouseHandler {
             case CROSSHAIR_SIZE    -> stateManager.getCrosshairSizeSlider().handleClick(mouseX, mouseY);
             case LEAF_TRANSPARENCY -> stateManager.getLeafTransparencyButton().handleClick(mouseX, mouseY);
             case WATER_SHADER      -> stateManager.getWaterShaderButton().handleClick(mouseX, mouseY);
+            case RENDER_DISTANCE   -> stateManager.getRenderDistanceSlider().handleClick(mouseX, mouseY);
+            case LOD_DISTANCE      -> stateManager.getLodDistanceSlider().handleClick(mouseX, mouseY);
+            case LOD_ENABLED       -> stateManager.getLodEnabledButton().handleClick(mouseX, mouseY);
             default -> false;
         };
     }

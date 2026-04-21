@@ -494,7 +494,7 @@ public class MmsCcoAdapter {
      * Checks if a block type is a cross-section block.
      */
     private boolean isCrossBlock(BlockType blockType) {
-        return blockType == BlockType.ROSE || blockType == BlockType.DANDELION;
+        return blockType == BlockType.ROSE || blockType == BlockType.DANDELION || blockType == BlockType.WILDGRASS;
     }
 
     // Face offset helpers

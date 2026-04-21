@@ -47,6 +47,7 @@ public final class StateConverter {
             .rotation(new Vector2f(player.getCamera().getYaw(), player.getCamera().getPitch()))
             .health(player.getHealth())
             .flying(player.isFlying())
+            .spectator(player.isSpectator())
             .gameMode(1) // Creative mode default
             .inventory(combinedInventory)
             .selectedHotbarSlot(inventory.getSelectedSlot())
@@ -70,6 +71,7 @@ public final class StateConverter {
         // Apply player state
         player.setHealth(data.getHealth());
         player.setFlying(data.isFlying());
+        player.setSpectator(data.isSpectator()); // Must be AFTER setFlying — spectator captures prior flight state.
 
         // Apply inventory
         ItemStack[] loadedInventory = data.getInventory();

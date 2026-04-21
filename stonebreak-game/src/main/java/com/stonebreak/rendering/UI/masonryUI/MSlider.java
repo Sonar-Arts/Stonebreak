@@ -12,7 +12,7 @@ import java.util.function.Consumer;
  */
 public final class MSlider extends MWidget {
 
-    private final String label;
+    private String label;
     private float min, max, value;
     private boolean dragging;
     private Consumer<Float> onChange;
@@ -42,6 +42,7 @@ public final class MSlider extends MWidget {
     }
 
     public void setOnChange(Consumer<Float> consumer) { this.onChange = consumer; }
+    public void setLabel(String label) { this.label = label; }
 
     public float value() { return value; }
     public void setValue(float v) {

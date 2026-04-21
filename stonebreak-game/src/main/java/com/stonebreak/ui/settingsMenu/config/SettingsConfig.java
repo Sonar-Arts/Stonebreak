@@ -48,6 +48,13 @@ public final class SettingsConfig {
     public static final float VOLUME_STEP = 0.1f;
     public static final float MIN_VOLUME = 0.0f;
     public static final float MAX_VOLUME = 1.0f;
+
+    // ===== WORLD DISTANCE CONFIGURATION =====
+    // Mirrors WorldConfiguration bounds so UI and engine agree on valid ranges.
+    public static final float MIN_RENDER_DISTANCE = com.stonebreak.world.operations.WorldConfiguration.MIN_RENDER_DISTANCE;
+    public static final float MAX_RENDER_DISTANCE = com.stonebreak.world.operations.WorldConfiguration.MAX_RENDER_DISTANCE;
+    public static final float MIN_LOD_DISTANCE = com.stonebreak.world.operations.WorldConfiguration.MIN_LOD_RANGE;
+    public static final float MAX_LOD_DISTANCE = com.stonebreak.world.operations.WorldConfiguration.MAX_LOD_RANGE;
     
     // ===== TWO-PANEL LAYOUT POSITIONING =====
     

@@ -566,6 +566,7 @@ public class TextureAtlas {
             case ICE: return "ice";
             case SNOW: return "snow";
             case DANDELION: return "dandelion";
+            case WILDGRASS: return "wildgrass";
             case ROSE: return "rose"; // Fixed: atlas has rose_* textures
             case ELM_WOOD_LOG: return "elm_wood_log";
             case MAGMA: return "magma";

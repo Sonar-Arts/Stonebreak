@@ -51,8 +51,10 @@ public class ActionHandler {
             case CROSSHAIR_SIZE -> {} // Crosshair size handled by mouse/keyboard interaction
             case LEAF_TRANSPARENCY -> toggleLeafTransparency();
             case WATER_SHADER -> toggleWaterShader();
+            case LOD_ENABLED -> toggleLodEnabled();
             case APPLY -> applySettings();
             case BACK -> goBack();
+            default -> {}
         }
     }
     
@@ -62,11 +64,12 @@ public class ActionHandler {
      */
     public void applySettings() {
         settings.saveSettings();
-        
+
         settingsManager.applyAudioSettings();
         settingsManager.applyCrosshairSettings();
         settingsManager.applyDisplaySettings();
-        
+        settingsManager.applyWorldDistanceSettings();
+
         System.out.println("Settings applied successfully!");
         // Note: Removed goBack() call - users should be able to continue adjusting settings
     }
@@ -141,6 +144,37 @@ public class ActionHandler {
      */
     public void onCrosshairSizeChange(Float newSize) {
         settings.setCrosshairSize(newSize);
+    }
+
+    /**
+     * Callback for when render-distance slider value changes. Stores in settings;
+     * world config is pushed on Apply.
+     */
+    public void onRenderDistanceChange(Float newValue) {
+        settings.setRenderDistance(Math.round(newValue));
+    }
+
+    /**
+     * Callback for when LOD-distance slider value changes. Stores in settings;
+     * world config is pushed on Apply.
+     */
+    public void onLodDistanceChange(Float newValue) {
+        settings.setLodDistance(Math.round(newValue));
+    }
+
+    /**
+     * Toggles the distant-terrain LOD system on/off. Applies to the live world
+     * config immediately so the player sees the change without pressing Apply;
+     * persistence still waits for Apply / save.
+     */
+    public void toggleLodEnabled() {
+        boolean now = !settings.getLodEnabled();
+        settings.setLodEnabled(now);
+        com.stonebreak.world.World world = Game.getWorld();
+        if (world != null && world.getConfig() != null) {
+            world.getConfig().setLodEnabled(now);
+        }
+        System.out.println("Distant Terrain LOD toggled to: " + (now ? "ON" : "OFF"));
     }
 
     /**

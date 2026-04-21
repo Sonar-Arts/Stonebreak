@@ -13,6 +13,16 @@ public class WorldConfiguration {
     // Rendering settings
     public static final int DEFAULT_RENDER_DISTANCE = 8;
 
+    // LOD (distant terrain) settings
+    public static final int DEFAULT_LOD_RANGE = 24;
+    public static final int MIN_LOD_RANGE = 0;
+    public static final int MAX_LOD_RANGE = 48;
+    public static final boolean DEFAULT_LOD_ENABLED = true;
+
+    // Render-distance bounds for settings UI / runtime tuning.
+    public static final int MIN_RENDER_DISTANCE = 4;
+    public static final int MAX_RENDER_DISTANCE = 24;
+
     // Memory management
     public static final int MAX_CHUNK_POSITION_CACHE_SIZE = 10000;
 
@@ -26,16 +36,25 @@ public class WorldConfiguration {
     // Threading
     public static final int CHUNK_BUILD_EXECUTOR_TIMEOUT_SECONDS = 2;
     
-    private final int renderDistance;
+    // Render/LOD distances are settings-driven and mutable at runtime; worker count is fixed.
+    private volatile int renderDistance;
     private final int chunkBuildThreads;
+    private volatile int lodRange;
+    private volatile boolean lodEnabled;
 
     public WorldConfiguration() {
         this(DEFAULT_RENDER_DISTANCE, calculateOptimalThreadCount());
     }
 
     public WorldConfiguration(int renderDistance, int chunkBuildThreads) {
+        this(renderDistance, chunkBuildThreads, DEFAULT_LOD_RANGE, DEFAULT_LOD_ENABLED);
+    }
+
+    public WorldConfiguration(int renderDistance, int chunkBuildThreads, int lodRange, boolean lodEnabled) {
         this.renderDistance = Math.max(1, renderDistance);
         this.chunkBuildThreads = Math.max(1, chunkBuildThreads);
+        this.lodRange = Math.max(0, lodRange);
+        this.lodEnabled = lodEnabled;
     }
 
     public int getRenderDistance() {
@@ -46,10 +65,28 @@ public class WorldConfiguration {
         return chunkBuildThreads;
     }
 
+    public int getLodRange() {
+        return lodRange;
+    }
 
+    public boolean isLodEnabled() {
+        return lodEnabled;
+    }
 
     public int getBorderChunkDistance() {
         return renderDistance + 1;
+    }
+
+    public void setRenderDistance(int value) {
+        this.renderDistance = Math.max(MIN_RENDER_DISTANCE, Math.min(MAX_RENDER_DISTANCE, value));
+    }
+
+    public void setLodRange(int value) {
+        this.lodRange = Math.max(MIN_LOD_RANGE, Math.min(MAX_LOD_RANGE, value));
+    }
+
+    public void setLodEnabled(boolean value) {
+        this.lodEnabled = value;
     }
 
     private static int calculateOptimalThreadCount() {
@@ -59,10 +96,14 @@ public class WorldConfiguration {
     public static class Builder {
         private int renderDistance = DEFAULT_RENDER_DISTANCE;
         private int chunkBuildThreads = calculateOptimalThreadCount();
+        private int lodRange = DEFAULT_LOD_RANGE;
+        private boolean lodEnabled = DEFAULT_LOD_ENABLED;
 
+        public Builder lodRange(int value) { this.lodRange = value; return this; }
+        public Builder lodEnabled(boolean value) { this.lodEnabled = value; return this; }
 
         public WorldConfiguration build() {
-            return new WorldConfiguration(renderDistance, chunkBuildThreads);
+            return new WorldConfiguration(renderDistance, chunkBuildThreads, lodRange, lodEnabled);
         }
     }
 }
