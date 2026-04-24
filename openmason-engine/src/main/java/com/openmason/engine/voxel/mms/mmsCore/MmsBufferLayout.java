@@ -6,13 +6,14 @@ package com.openmason.engine.voxel.mms.mmsCore;
  * Defines the standard vertex attribute layout used by MMS.
  * This ensures consistency across all mesh generation and rendering operations.
  *
- * Interleaved Layout (44 bytes per vertex):
+ * Interleaved Layout (48 bytes per vertex):
  * - Position (3 floats = 12 bytes): x, y, z
  * - Texture Coordinates (2 floats = 8 bytes): u, v
  * - Normal (3 floats = 12 bytes): nx, ny, nz
  * - Water Height Flag (1 float = 4 bytes): height encoding
  * - Alpha Test Flag (1 float = 4 bytes): alpha test flag
  * - Translucent Flag (1 float = 4 bytes): translucent render flag (0.0 = opaque/cutout, 1.0 = translucent blend)
+ * - Light (1 float = 4 bytes): combined world light in [0,1], 1.0 = fully lit (default)
  *
  * Design Philosophy:
  * - KISS: Simple, well-defined layout
@@ -48,10 +49,13 @@ public final class MmsBufferLayout {
     /** Number of floats per translucent flag */
     public static final int TRANSLUCENT_FLAG_SIZE = 1;
 
+    /** Number of floats per light value */
+    public static final int LIGHT_SIZE = 1;
+
     /** Total number of floats per vertex (interleaved) */
     public static final int VERTEX_SIZE = POSITION_SIZE + TEXTURE_SIZE + NORMAL_SIZE +
                                            WATER_FLAG_SIZE + ALPHA_FLAG_SIZE +
-                                           TRANSLUCENT_FLAG_SIZE; // = 11
+                                           TRANSLUCENT_FLAG_SIZE + LIGHT_SIZE; // = 12
 
     // === Vertex Attribute Sizes (in bytes) ===
 
@@ -73,8 +77,11 @@ public final class MmsBufferLayout {
     /** Size of translucent flag attribute in bytes */
     public static final int TRANSLUCENT_FLAG_SIZE_BYTES = TRANSLUCENT_FLAG_SIZE * Float.BYTES; // 4
 
+    /** Size of light attribute in bytes */
+    public static final int LIGHT_SIZE_BYTES = LIGHT_SIZE * Float.BYTES; // 4
+
     /** Total size of one vertex in bytes (stride) */
-    public static final int VERTEX_STRIDE_BYTES = VERTEX_SIZE * Float.BYTES; // 44
+    public static final int VERTEX_STRIDE_BYTES = VERTEX_SIZE * Float.BYTES; // 48
 
     // === Vertex Attribute Offsets (in bytes for OpenGL) ===
 
@@ -96,6 +103,9 @@ public final class MmsBufferLayout {
     /** Offset of translucent flag attribute in interleaved buffer */
     public static final long TRANSLUCENT_FLAG_OFFSET = ALPHA_FLAG_OFFSET + ALPHA_FLAG_SIZE_BYTES;
 
+    /** Offset of light attribute in interleaved buffer */
+    public static final long LIGHT_OFFSET = TRANSLUCENT_FLAG_OFFSET + TRANSLUCENT_FLAG_SIZE_BYTES;
+
     // === Vertex Attribute Locations (OpenGL shader locations) ===
 
     /** Shader attribute location for position */
@@ -115,6 +125,9 @@ public final class MmsBufferLayout {
 
     /** Shader attribute location for translucent flag */
     public static final int TRANSLUCENT_FLAG_LOCATION = 5;
+
+    /** Shader attribute location for per-vertex light */
+    public static final int LIGHT_LOCATION = 6;
 
     // === Standard Geometry Constants ===
 

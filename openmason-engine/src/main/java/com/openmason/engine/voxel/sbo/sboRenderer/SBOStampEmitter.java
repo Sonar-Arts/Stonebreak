@@ -25,6 +25,7 @@ public class SBOStampEmitter {
     private final SBOStampCache cache;
     private final SBOCullingPolicy cullingPolicy;
     private final Predicate<IBlockType> translucencyPolicy;
+    private volatile SBOFaceLightSampler lightSampler = SBOFaceLightSampler.FULLY_LIT;
 
     /**
      * Creates an emitter with the given stamp cache and culling policy.
@@ -53,6 +54,15 @@ public class SBOStampEmitter {
         this.cache = cache;
         this.cullingPolicy = cullingPolicy;
         this.translucencyPolicy = translucencyPolicy != null ? translucencyPolicy : block -> false;
+    }
+
+    /**
+     * Installs a per-face light sampler. Emission will call this for every visible
+     * face and bake the result into each vertex's light attribute. Passing null
+     * reverts to {@link SBOFaceLightSampler#FULLY_LIT}.
+     */
+    public void setLightSampler(SBOFaceLightSampler sampler) {
+        this.lightSampler = sampler != null ? sampler : SBOFaceLightSampler.FULLY_LIT;
     }
 
     /**
@@ -121,7 +131,7 @@ public class SBOStampEmitter {
             FaceStamp faceStamp = stamp.faces()[face];
             if (faceStamp.vertexCount() == 0) continue;
 
-            emitFaceStamp(builder, faceStamp, worldX, worldY, worldZ, alphaFlag, translucentFlag, blockHeight);
+            emitFaceStamp(builder, faceStamp, worldX, worldY, worldZ, alphaFlag, translucentFlag, blockHeight, face, chunkData);
         }
     }
 
@@ -134,7 +144,8 @@ public class SBOStampEmitter {
      */
     private void emitFaceStamp(MmsMeshBuilder builder, FaceStamp faceStamp,
                                float worldX, float worldY, float worldZ,
-                               float alphaFlag, float translucentFlag, float blockHeight) {
+                               float alphaFlag, float translucentFlag, float blockHeight,
+                               int face, CcoChunkData chunkData) {
         float[] pos = faceStamp.positions();
         float[] nrm = faceStamp.normals();
         float[] uv = faceStamp.atlasUVs();
@@ -155,13 +166,15 @@ public class SBOStampEmitter {
                     vy = -0.5f + (vy + 0.5f) * blockHeight;
                 }
 
+                float wx = pos[pOff] + worldX;
+                float wyAbs = vy + worldY;
+                float wz = pos[pOff + 2] + worldZ;
+                float vertexLight = lightSampler.sampleVertexLight(face, wx, wyAbs, wz, chunkData);
                 builder.addVertex(
-                        pos[pOff] + worldX,
-                        vy + worldY,
-                        pos[pOff + 2] + worldZ,
+                        wx, wyAbs, wz,
                         uv[tOff], uv[tOff + 1],
                         nrm[pOff], nrm[pOff + 1], nrm[pOff + 2],
-                        0.0f, alphaFlag, translucentFlag
+                        0.0f, alphaFlag, translucentFlag, vertexLight
                 );
             }
 

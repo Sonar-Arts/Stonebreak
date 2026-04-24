@@ -40,6 +40,7 @@ public class MmsCcoAdapter {
     private final MmsTextureMapper textureMapper;
     private MmsWaterGenerator waterGenerator; // Created when world is set
     private World world; // Not final - can be set after construction
+    private com.stonebreak.world.lighting.WorldLightingContext shadowContext; // Built when world is set
     private SBOStampEmitter sboStampEmitter; // SBO block stamp emission via SBORendererAPI
 
     /**
@@ -61,6 +62,7 @@ public class MmsCcoAdapter {
 
         if (world != null) {
             this.waterGenerator = new MmsWaterGenerator(world, textureMapper);
+            this.shadowContext = new com.stonebreak.world.lighting.WorldLightingContext(world);
             System.out.println("[MmsCcoAdapter] Water generator initialized with provided world instance");
         }
     }
@@ -77,6 +79,7 @@ public class MmsCcoAdapter {
         }
         this.world = world;
         this.waterGenerator = new MmsWaterGenerator(world, textureMapper);
+        this.shadowContext = new com.stonebreak.world.lighting.WorldLightingContext(world);
         System.out.println("[MmsCcoAdapter] World instance set successfully (water generator initialized)");
     }
 
@@ -88,6 +91,10 @@ public class MmsCcoAdapter {
      */
     public void setSBOStampEmitter(SBOStampEmitter emitter) {
         this.sboStampEmitter = emitter;
+        // Per-vertex shadow sampling — heightmap sky occlusion + classic AO.
+        // Deterministic at first mesh build; no seed races, no stale data.
+        emitter.setLightSampler((face, vx, vy, vz, data) ->
+            com.openmason.engine.voxel.lighting.VertexLightSampler.sampleCombined(shadowContext, vx, vy, vz, face));
         System.out.println("[MmsCcoAdapter] SBO stamp emitter set (" + emitter.getCache().size() + " stamp types)");
     }
 
@@ -326,21 +333,33 @@ public class MmsCcoAdapter {
             // Generate alpha flags
             float[] alphaFlags = textureMapper.generateAlphaFlags(blockType);
 
-            // Add face to builder
+            // Per-vertex smooth lighting — each vertex averages the 4 air-side
+            // cells it touches. Gives gradient shadow transitions across faces.
             builder.beginFace();
             for (int i = 0; i < 4; i++) {
                 int vIdx = i * 3;
                 int tIdx = i * 2;
+                float vx = vertices[vIdx];
+                float vy = vertices[vIdx + 1];
+                float vz = vertices[vIdx + 2];
+                float vertexLight = sampleVertexLight(vx, vy, vz, face);
 
                 builder.addVertex(
-                    vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
+                    vx, vy, vz,
                     texCoords[tIdx], texCoords[tIdx + 1],
                     normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                    0.0f, alphaFlags[i] // No water flags needed
+                    0.0f, alphaFlags[i], 0.0f, vertexLight
                 );
             }
             builder.endFace();
         }
+    }
+
+    /**
+     * Per-vertex shadow sample: sky occlusion (heightmap) × classic AO.
+     */
+    private float sampleVertexLight(float vx, float vy, float vz, int face) {
+        return com.openmason.engine.voxel.lighting.VertexLightSampler.sampleCombined(shadowContext, vx, vy, vz, face);
     }
 
     /**

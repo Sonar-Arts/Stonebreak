@@ -19,7 +19,12 @@ import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
 import com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
+import com.openmason.engine.voxel.lighting.ChunkHeightMap;
+import com.openmason.engine.voxel.lighting.ColumnOpacityProbe;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
+import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.lighting.BlockOpacity;
+import com.stonebreak.world.lighting.WorldLightingContext;
 
 
 import java.util.ArrayList;
@@ -57,6 +62,12 @@ public class Chunk {
     private MmsRenderableHandle renderableHandle;
     private List<com.openmason.engine.voxel.sbo.SBORenderData> sboRenderDataList;
     private boolean meshGenerated = false;
+
+    // Per-column sky-shadow heightmap. Pure function of block data; maintained
+    // incrementally by setBlock. No propagation, no seeding queue.
+    private final ChunkHeightMap heightMap = new ChunkHeightMap(
+            WorldConfiguration.CHUNK_SIZE, WorldConfiguration.WORLD_HEIGHT, WorldConfiguration.CHUNK_SIZE);
+    private final ColumnOpacityProbe opacityProbe = WorldLightingContext.probeFor(this);
 
     /**
      * Creates a new chunk at the specified position using CCO API.
@@ -106,10 +117,23 @@ public class Chunk {
      * Automatically marks chunk as dirty for mesh regeneration and saving.
      */
     public void setBlock(int x, int y, int z, BlockType blockType) {
+        BlockType previous = (BlockType) reader.get(x, y, z);
         boolean changed = writer.set(x, y, z, blockType);
         if (changed) {
             metadata = metadata.withUpdatedTimestamp();
+            // Keep the sky-shadow heightmap in sync. Single hook point that
+            // covers both World.setBlockAt and direct chunk.setBlock callers
+            // (terrain gen, feature population).
+            heightMap.onBlockChanged(x, y, z,
+                    BlockOpacity.isOpaque(blockType),
+                    BlockOpacity.isOpaque(previous),
+                    opacityProbe);
         }
+    }
+
+    /** Returns the engine opacity probe bound to this chunk — used by recomputeAll callers. */
+    public ColumnOpacityProbe getOpacityProbe() {
+        return opacityProbe;
     }
 
     // ===== Mesh Operations (CCO-based) =====
@@ -626,6 +650,11 @@ public class Chunk {
      */
     public CcoDirtyTracker getCcoDirtyTracker() {
         return dirtyTracker;
+    }
+
+    /** Access to the sky-shadow heightmap used by the shadow sampler. */
+    public ChunkHeightMap getHeightMap() {
+        return heightMap;
     }
 
     /**

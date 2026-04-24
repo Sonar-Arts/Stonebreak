@@ -90,6 +90,11 @@ public class PlayerArmRenderer {
         glEnable(GL_DEPTH_TEST);
         glDepthMask(true);
 
+        // Sample world light at the player's eye so the arm/held item darken in
+        // caves and night. Reset to -1 at the end so subsequent draws fall back
+        // to their per-vertex light (terrain must not inherit this override).
+        shaderProgram.setUniform("u_playerLight", samplePlayerLight(player));
+
         // Reset transformation matrix
         reusableArmViewModel.identity();
         
@@ -119,7 +124,27 @@ public class PlayerArmRenderer {
         // Clean up state
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
+        shaderProgram.setUniform("u_playerLight", -1.0f);
         shaderProgram.unbind();
+    }
+
+    /**
+     * Reads the sky-shadow state at the player's eye cell. Falls back to fully
+     * lit when the world isn't available (early boot, menus) so the arm is
+     * never mysteriously black.
+     */
+    private float samplePlayerLight(Player player) {
+        try {
+            com.stonebreak.world.World world = com.stonebreak.core.Game.getWorld();
+            if (world == null) return 1.0f;
+            org.joml.Vector3f pos = player.getPosition();
+            com.stonebreak.world.lighting.WorldLightingContext ctx =
+                new com.stonebreak.world.lighting.WorldLightingContext(world);
+            return com.openmason.engine.voxel.lighting.VertexLightSampler.samplePointSky(
+                ctx, pos.x, pos.y + 1.6f, pos.z);
+        } catch (Exception ignored) {
+            return 1.0f;
+        }
     }
     
     /**
