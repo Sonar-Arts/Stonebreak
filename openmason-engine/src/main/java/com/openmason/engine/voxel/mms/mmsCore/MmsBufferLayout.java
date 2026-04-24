@@ -6,19 +6,18 @@ package com.openmason.engine.voxel.mms.mmsCore;
  * Defines the standard vertex attribute layout used by MMS.
  * This ensures consistency across all mesh generation and rendering operations.
  *
- * Interleaved Layout (48 bytes per vertex):
+ * Interleaved Layout (36 bytes per vertex):
  * - Position (3 floats = 12 bytes): x, y, z
  * - Texture Coordinates (2 floats = 8 bytes): u, v
  * - Normal (3 floats = 12 bytes): nx, ny, nz
- * - Water Height Flag (1 float = 4 bytes): height encoding
- * - Alpha Test Flag (1 float = 4 bytes): alpha test flag
- * - Translucent Flag (1 float = 4 bytes): translucent render flag (0.0 = opaque/cutout, 1.0 = translucent blend)
- * - Light (1 float = 4 bytes): combined world light in [0,1], 1.0 = fully lit (default)
+ * - Flags (4 unsigned bytes normalized = 4 bytes):
+ *     .x water-height (0..1), .y alpha-test (0/1), .z translucent (0/1), .w light (0..1)
  *
- * Design Philosophy:
- * - KISS: Simple, well-defined layout
- * - Performance: Interleaved layout optimal for GPU cache
- * - Extensible: Easy to add attributes without breaking compatibility
+ * The four flag fields were previously four separate float attributes (48-byte
+ * vertex). Packing them into a single RGBA byte attribute saves 12 bytes per
+ * vertex — a meaningful chunk of VRAM and bandwidth for world-scale meshes —
+ * at the cost of 1/255 precision loss on the fractional fields (water height,
+ * light), which is below perceptual threshold.
  *
  * @since MMS 1.0
  */
@@ -29,7 +28,7 @@ public final class MmsBufferLayout {
         throw new AssertionError("MmsBufferLayout is a static utility class");
     }
 
-    // === Vertex Attribute Sizes (in floats) ===
+    // === Vertex Attribute Sizes (in floats for pos/tex/normal, bytes for flags) ===
 
     /** Number of floats per vertex position (x, y, z) */
     public static final int POSITION_SIZE = 3;
@@ -40,94 +39,34 @@ public final class MmsBufferLayout {
     /** Number of floats per normal vector (nx, ny, nz) */
     public static final int NORMAL_SIZE = 3;
 
-    /** Number of floats per water height flag */
-    public static final int WATER_FLAG_SIZE = 1;
-
-    /** Number of floats per alpha test flag */
-    public static final int ALPHA_FLAG_SIZE = 1;
-
-    /** Number of floats per translucent flag */
-    public static final int TRANSLUCENT_FLAG_SIZE = 1;
-
-    /** Number of floats per light value */
-    public static final int LIGHT_SIZE = 1;
-
-    /** Total number of floats per vertex (interleaved) */
-    public static final int VERTEX_SIZE = POSITION_SIZE + TEXTURE_SIZE + NORMAL_SIZE +
-                                           WATER_FLAG_SIZE + ALPHA_FLAG_SIZE +
-                                           TRANSLUCENT_FLAG_SIZE + LIGHT_SIZE; // = 12
+    /** Number of bytes in the packed flags attribute (water, alpha, translucent, light). */
+    public static final int FLAGS_COMPONENTS = 4;
 
     // === Vertex Attribute Sizes (in bytes) ===
 
-    /** Size of position attribute in bytes */
     public static final int POSITION_SIZE_BYTES = POSITION_SIZE * Float.BYTES; // 12
+    public static final int TEXTURE_SIZE_BYTES = TEXTURE_SIZE * Float.BYTES;   // 8
+    public static final int NORMAL_SIZE_BYTES = NORMAL_SIZE * Float.BYTES;     // 12
+    public static final int FLAGS_SIZE_BYTES = FLAGS_COMPONENTS;               // 4
 
-    /** Size of texture coordinate attribute in bytes */
-    public static final int TEXTURE_SIZE_BYTES = TEXTURE_SIZE * Float.BYTES; // 8
+    /** Total size of one vertex in bytes (stride). */
+    public static final int VERTEX_STRIDE_BYTES =
+            POSITION_SIZE_BYTES + TEXTURE_SIZE_BYTES + NORMAL_SIZE_BYTES + FLAGS_SIZE_BYTES; // 36
 
-    /** Size of normal attribute in bytes */
-    public static final int NORMAL_SIZE_BYTES = NORMAL_SIZE * Float.BYTES; // 12
+    // === Vertex Attribute Offsets (in bytes) ===
 
-    /** Size of water flag attribute in bytes */
-    public static final int WATER_FLAG_SIZE_BYTES = WATER_FLAG_SIZE * Float.BYTES; // 4
-
-    /** Size of alpha flag attribute in bytes */
-    public static final int ALPHA_FLAG_SIZE_BYTES = ALPHA_FLAG_SIZE * Float.BYTES; // 4
-
-    /** Size of translucent flag attribute in bytes */
-    public static final int TRANSLUCENT_FLAG_SIZE_BYTES = TRANSLUCENT_FLAG_SIZE * Float.BYTES; // 4
-
-    /** Size of light attribute in bytes */
-    public static final int LIGHT_SIZE_BYTES = LIGHT_SIZE * Float.BYTES; // 4
-
-    /** Total size of one vertex in bytes (stride) */
-    public static final int VERTEX_STRIDE_BYTES = VERTEX_SIZE * Float.BYTES; // 48
-
-    // === Vertex Attribute Offsets (in bytes for OpenGL) ===
-
-    /** Offset of position attribute in interleaved buffer */
     public static final long POSITION_OFFSET = 0L;
-
-    /** Offset of texture coordinate attribute in interleaved buffer */
-    public static final long TEXTURE_OFFSET = POSITION_SIZE_BYTES;
-
-    /** Offset of normal attribute in interleaved buffer */
-    public static final long NORMAL_OFFSET = TEXTURE_OFFSET + TEXTURE_SIZE_BYTES;
-
-    /** Offset of water flag attribute in interleaved buffer */
-    public static final long WATER_FLAG_OFFSET = NORMAL_OFFSET + NORMAL_SIZE_BYTES;
-
-    /** Offset of alpha flag attribute in interleaved buffer */
-    public static final long ALPHA_FLAG_OFFSET = WATER_FLAG_OFFSET + WATER_FLAG_SIZE_BYTES;
-
-    /** Offset of translucent flag attribute in interleaved buffer */
-    public static final long TRANSLUCENT_FLAG_OFFSET = ALPHA_FLAG_OFFSET + ALPHA_FLAG_SIZE_BYTES;
-
-    /** Offset of light attribute in interleaved buffer */
-    public static final long LIGHT_OFFSET = TRANSLUCENT_FLAG_OFFSET + TRANSLUCENT_FLAG_SIZE_BYTES;
+    public static final long TEXTURE_OFFSET = POSITION_SIZE_BYTES;                         // 12
+    public static final long NORMAL_OFFSET = TEXTURE_OFFSET + TEXTURE_SIZE_BYTES;          // 20
+    public static final long FLAGS_OFFSET = NORMAL_OFFSET + NORMAL_SIZE_BYTES;             // 32
 
     // === Vertex Attribute Locations (OpenGL shader locations) ===
 
-    /** Shader attribute location for position */
     public static final int POSITION_LOCATION = 0;
-
-    /** Shader attribute location for texture coordinates */
     public static final int TEXTURE_LOCATION = 1;
-
-    /** Shader attribute location for normal */
     public static final int NORMAL_LOCATION = 2;
-
-    /** Shader attribute location for water flag */
-    public static final int WATER_FLAG_LOCATION = 3;
-
-    /** Shader attribute location for alpha test flag */
-    public static final int ALPHA_FLAG_LOCATION = 4;
-
-    /** Shader attribute location for translucent flag */
-    public static final int TRANSLUCENT_FLAG_LOCATION = 5;
-
-    /** Shader attribute location for per-vertex light */
-    public static final int LIGHT_LOCATION = 6;
+    /** Packed flags: vec4 of unsigned bytes normalized to [0,1]. Read as aFlags.xyzw in shaders. */
+    public static final int FLAGS_LOCATION = 3;
 
     // === Standard Geometry Constants ===
 
@@ -154,120 +93,38 @@ public final class MmsBufferLayout {
 
     // === Memory Estimation Helpers ===
 
-    /**
-     * Calculates the number of floats needed for position data.
-     *
-     * @param vertexCount Number of vertices
-     * @return Number of floats required
-     */
     public static int calculatePositionArraySize(int vertexCount) {
         return vertexCount * POSITION_SIZE;
     }
 
-    /**
-     * Calculates the number of floats needed for texture coordinate data.
-     *
-     * @param vertexCount Number of vertices
-     * @return Number of floats required
-     */
     public static int calculateTextureArraySize(int vertexCount) {
         return vertexCount * TEXTURE_SIZE;
     }
 
-    /**
-     * Calculates the number of floats needed for normal data.
-     *
-     * @param vertexCount Number of vertices
-     * @return Number of floats required
-     */
     public static int calculateNormalArraySize(int vertexCount) {
         return vertexCount * NORMAL_SIZE;
     }
 
-    /**
-     * Calculates the number of floats needed for water flag data.
-     *
-     * @param vertexCount Number of vertices
-     * @return Number of floats required
-     */
-    public static int calculateWaterFlagArraySize(int vertexCount) {
-        return vertexCount * WATER_FLAG_SIZE;
-    }
-
-    /**
-     * Calculates the number of floats needed for alpha flag data.
-     *
-     * @param vertexCount Number of vertices
-     * @return Number of floats required
-     */
-    public static int calculateAlphaFlagArraySize(int vertexCount) {
-        return vertexCount * ALPHA_FLAG_SIZE;
-    }
-
-    /**
-     * Calculates the number of floats needed for translucent flag data.
-     *
-     * @param vertexCount Number of vertices
-     * @return Number of floats required
-     */
-    public static int calculateTranslucentFlagArraySize(int vertexCount) {
-        return vertexCount * TRANSLUCENT_FLAG_SIZE;
-    }
-
-    /**
-     * Calculates the total memory required for interleaved vertex data.
-     *
-     * @param vertexCount Number of vertices
-     * @return Memory in bytes
-     */
     public static long calculateInterleavedBufferSize(int vertexCount) {
         return (long) vertexCount * VERTEX_STRIDE_BYTES;
     }
 
-    /**
-     * Calculates memory required for index data.
-     *
-     * @param indexCount Number of indices
-     * @return Memory in bytes
-     */
     public static long calculateIndexBufferSize(int indexCount) {
         return (long) indexCount * Integer.BYTES;
     }
 
-    /**
-     * Calculates total mesh memory including vertex and index data.
-     *
-     * @param vertexCount Number of vertices
-     * @param indexCount Number of indices
-     * @return Total memory in bytes
-     */
     public static long calculateTotalMeshMemory(int vertexCount, int indexCount) {
         return calculateInterleavedBufferSize(vertexCount) + calculateIndexBufferSize(indexCount);
     }
 
     // === Validation Helpers ===
 
-    /**
-     * Validates that vertex count is reasonable.
-     *
-     * @param vertexCount Number of vertices
-     * @throws IllegalArgumentException if vertex count is invalid
-     */
     public static void validateVertexCount(int vertexCount) {
         if (vertexCount < 0) {
             throw new IllegalArgumentException("Vertex count cannot be negative: " + vertexCount);
         }
-        if (vertexCount > Integer.MAX_VALUE / VERTEX_SIZE) {
-            throw new IllegalArgumentException("Vertex count too large: " + vertexCount);
-        }
     }
 
-    /**
-     * Validates that index count is reasonable.
-     *
-     * @param indexCount Number of indices
-     * @throws IllegalArgumentException if index count is invalid
-     */
     public static void validateIndexCount(int indexCount) {
         if (indexCount < 0) {
             throw new IllegalArgumentException("Index count cannot be negative: " + indexCount);
@@ -275,5 +132,29 @@ public final class MmsBufferLayout {
         if (indexCount % 3 != 0) {
             throw new IllegalArgumentException("Index count must be multiple of 3 (triangles): " + indexCount);
         }
+    }
+
+    // === Flag Packing ===
+
+    /**
+     * Packs the four per-vertex flag values into a single 32-bit little-endian
+     * word laid out as byte 0 = water, 1 = alpha, 2 = translucent, 3 = light.
+     * Values are clamped to [0,1] then scaled to 0..255. GL reads this word
+     * with {@code GL_UNSIGNED_BYTE + normalized=true} so the shader sees it as
+     * a vec4 of [0,1] floats.
+     */
+    public static int packFlags(float water, float alpha, float translucent, float light) {
+        int w = toUnsignedByte(water);
+        int a = toUnsignedByte(alpha);
+        int t = toUnsignedByte(translucent);
+        int l = toUnsignedByte(light);
+        return w | (a << 8) | (t << 16) | (l << 24);
+    }
+
+    /** Clamps a [0,1] float to the 0..255 unsigned-byte range. */
+    public static int toUnsignedByte(float f) {
+        if (f <= 0f) return 0;
+        if (f >= 1f) return 255;
+        return (int) (f * 255f + 0.5f);
     }
 }

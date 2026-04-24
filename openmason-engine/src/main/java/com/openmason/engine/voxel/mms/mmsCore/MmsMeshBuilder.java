@@ -277,53 +277,6 @@ public final class MmsMeshBuilder {
     }
 
     /**
-     * Adds a pre-built quad face with all vertex data.
-     * This is more efficient than using beginFace()/addVertex()/endFace().
-     *
-     * @param faceData Array containing all vertex data for 4 vertices
-     *                 (each vertex: x,y,z,u,v,nx,ny,nz,water,alpha = 10 floats)
-     * @return this builder for chaining
-     */
-    public MmsMeshBuilder addQuadFace(float[] faceData) {
-        if (faceData.length != MmsBufferLayout.VERTICES_PER_QUAD * MmsBufferLayout.VERTEX_SIZE) {
-            throw new IllegalArgumentException(
-                String.format("Expected %d floats for quad face, got %d",
-                    MmsBufferLayout.VERTICES_PER_QUAD * MmsBufferLayout.VERTEX_SIZE, faceData.length)
-            );
-        }
-
-        int baseVertex = totalVertices;
-
-        // Parse and add all 4 vertices
-        for (int i = 0; i < MmsBufferLayout.VERTICES_PER_QUAD; i++) {
-            int offset = i * MmsBufferLayout.VERTEX_SIZE;
-
-            addVertex(
-                faceData[offset], faceData[offset + 1], faceData[offset + 2],
-                faceData[offset + 3], faceData[offset + 4],
-                faceData[offset + 5], faceData[offset + 6], faceData[offset + 7],
-                faceData[offset + 8], faceData[offset + 9], faceData[offset + 10],
-                faceData[offset + 11]
-            );
-        }
-
-        // Add indices for 2 triangles
-        int idxRequired = indexSize + 6;
-        if (idxRequired > indices.length) {
-            indices = Arrays.copyOf(indices, grow(indices.length, idxRequired));
-        }
-        indices[indexSize++] = baseVertex;
-        indices[indexSize++] = baseVertex + 1;
-        indices[indexSize++] = baseVertex + 2;
-
-        indices[indexSize++] = baseVertex;
-        indices[indexSize++] = baseVertex + 2;
-        indices[indexSize++] = baseVertex + 3;
-
-        return this;
-    }
-
-    /**
      * Resets the builder to empty state, reusing allocated arrays.
      *
      * @return this builder for chaining

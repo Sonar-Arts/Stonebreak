@@ -59,10 +59,10 @@ public class ResourceManager {
                layout (location=0) in vec3 position;
                layout (location=1) in vec2 texCoord;
                layout (location=2) in vec3 normal;
-               layout (location=3) in float waterHeight;
-               layout (location=4) in float isAlphaTested;
-               layout (location=5) in float isTranslucent;
-               layout (location=6) in float aLight;
+               // Packed flags attribute: x=waterHeight, y=alphaTest, z=translucent, w=light.
+               // GL provides this as a normalized [0,1] vec4 from 4 unsigned bytes — saves
+               // 12 bytes per vertex compared to 4 separate float attributes.
+               layout (location=3) in vec4 aFlags;
                out vec2 outTexCoord;
                out vec3 outNormal;
                out vec3 fragPos;
@@ -81,6 +81,12 @@ public class ResourceManager {
                uniform bool u_isUIElement;
                uniform float u_waterDepthOffset;
                void main() {
+                   // Unpack the interleaved flag attributes.
+                   float waterHeight = aFlags.x;
+                   float isAlphaTested = aFlags.y;
+                   float isTranslucent = aFlags.z;
+                   float aLight = aFlags.w;
+
                    // Compute world-space position first for stable, seamless waves
                    vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
                    vec3 pos = position;

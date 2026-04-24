@@ -198,23 +198,32 @@ public class PlayerArmRenderer {
      * Renders the default arm when no item is selected.
      */
     private void renderDefaultArm() {
-        // Set up shader for arm texture
+        // Set up shader for arm texture. The arm VAO only binds position + uv —
+        // it does NOT provide the normal or the packed flags attribute, so we
+        // must force the shader into the UI-element path (flat textured, no
+        // phong). Otherwise the phong branch would call normalize(outNormal)
+        // on an unbound attribute (defaulting to zero) and produce NaN pixels.
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
-        
+        shaderProgram.setUniform("u_isUIElement", true);
+        shaderProgram.setUniform("u_renderPass", 0);
+
         // Bind arm texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, armTexture.getArmTextureId());
         shaderProgram.setUniform("texture_sampler", 0);
-        
+
         // Use original texture colors
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        
+
         // Render arm geometry using appropriate model type from settings
         Settings settings = Settings.getInstance();
         GL30.glBindVertexArray(armGeometry.getArmVao(settings.isSlimArms()));
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+
+        // Restore UI-element flag so subsequent terrain draws use phong.
+        shaderProgram.setUniform("u_isUIElement", false);
     }
     
     /**

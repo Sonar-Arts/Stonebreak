@@ -24,17 +24,21 @@ public final class ChunkHeightMap {
     private final int width;
     private final int height;
     private final int depth;
-    private final int[] heights;
+    /** 16-bit column heights — covers any Y up to 32767 in half the memory of int[]. */
+    private final short[] heights;
     private volatile boolean populated = false;
 
     public ChunkHeightMap(int width, int height, int depth) {
         if (width <= 0 || height <= 0 || depth <= 0) {
             throw new IllegalArgumentException("ChunkHeightMap dimensions must be positive");
         }
+        if (height > Short.MAX_VALUE) {
+            throw new IllegalArgumentException("ChunkHeightMap height exceeds short range: " + height);
+        }
         this.width = width;
         this.height = height;
         this.depth = depth;
-        this.heights = new int[width * depth];
+        this.heights = new short[width * depth];
     }
 
     public int getWidth()  { return width;  }
@@ -42,7 +46,7 @@ public final class ChunkHeightMap {
     public int getDepth()  { return depth;  }
 
     public int getHeight(int lx, int lz) {
-        return heights[lz * width + lx];
+        return heights[lz * width + lx] & 0xFFFF;
     }
 
     /** True once {@link #recomputeAll} has run at least once. */
@@ -57,7 +61,7 @@ public final class ChunkHeightMap {
     public void recomputeAll(ColumnOpacityProbe probe) {
         for (int lx = 0; lx < width; lx++) {
             for (int lz = 0; lz < depth; lz++) {
-                heights[lz * width + lx] = scanColumn(lx, lz, height - 1, probe);
+                heights[lz * width + lx] = (short) scanColumn(lx, lz, height - 1, probe);
             }
         }
         populated = true;
@@ -82,17 +86,17 @@ public final class ChunkHeightMap {
             return;
         }
         int idx = lz * width + lx;
-        int current = heights[idx];
+        int current = heights[idx] & 0xFFFF;
 
         if (newOpaque && !oldOpaque) {
             if (ly + 1 > current) {
-                heights[idx] = ly + 1;
+                heights[idx] = (short) (ly + 1);
             }
             return;
         }
         if (!newOpaque && oldOpaque) {
             if (ly + 1 == current) {
-                heights[idx] = scanColumn(lx, lz, ly - 1, probe);
+                heights[idx] = (short) scanColumn(lx, lz, ly - 1, probe);
             }
         }
         // Opacity unchanged, or change below current top — no-op.
@@ -107,6 +111,6 @@ public final class ChunkHeightMap {
     }
 
     public long getMemoryUsageBytes() {
-        return (long) heights.length * Integer.BYTES + 32L;
+        return (long) heights.length * Short.BYTES + 32L;
     }
 }
