@@ -145,6 +145,9 @@ public class ColorPalette {
 
         GL11.glBindTexture(GL11.GL_TEXTURE_1D, 0);
         created = true;
+        com.openmason.engine.diagnostics.GpuMemoryTracker.getInstance()
+            .track(com.openmason.engine.diagnostics.GpuMemoryTracker.Category.PLAYER_GEOMETRY,
+                   (long) uniqueColors.size() * 4L);
 
         System.out.println("Created color palette texture for " + itemType.getName() +
                           " (ID: " + textureId + ", " + uniqueColors.size() + " colors)");
@@ -204,6 +207,9 @@ public class ColorPalette {
     public void cleanup() {
         if (created && textureId != -1) {
             GL11.glDeleteTextures(textureId);
+            com.openmason.engine.diagnostics.GpuMemoryTracker.getInstance()
+                .untrack(com.openmason.engine.diagnostics.GpuMemoryTracker.Category.PLAYER_GEOMETRY,
+                         (long) uniqueColors.size() * 4L);
             textureId = -1;
             created = false;
         }

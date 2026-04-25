@@ -343,6 +343,29 @@ public class UIRenderer {
             menuRenderer.drawSeparatorLine(centerX, y, width);
         }
     }
+
+    /**
+     * Draws a translucent rounded panel for debug HUD groups.
+     * Uses NanoVG so it composites correctly with the existing text overlay.
+     */
+    public void drawDebugPanel(float x, float y, float width, float height) {
+        if (vg == 0) return;
+        org.lwjgl.nanovg.NVGColor fill = org.lwjgl.nanovg.NVGColor.create();
+        org.lwjgl.nanovg.NVGColor border = org.lwjgl.nanovg.NVGColor.create();
+        org.lwjgl.nanovg.NanoVG.nvgRGBA((byte) 0, (byte) 0, (byte) 0, (byte) 160, fill);
+        org.lwjgl.nanovg.NanoVG.nvgRGBA((byte) 255, (byte) 255, (byte) 255, (byte) 60, border);
+
+        org.lwjgl.nanovg.NanoVG.nvgBeginPath(vg);
+        org.lwjgl.nanovg.NanoVG.nvgRoundedRect(vg, x, y, width, height, 6f);
+        org.lwjgl.nanovg.NanoVG.nvgFillColor(vg, fill);
+        org.lwjgl.nanovg.NanoVG.nvgFill(vg);
+
+        org.lwjgl.nanovg.NanoVG.nvgBeginPath(vg);
+        org.lwjgl.nanovg.NanoVG.nvgRoundedRect(vg, x + 0.5f, y + 0.5f, width - 1f, height - 1f, 6f);
+        org.lwjgl.nanovg.NanoVG.nvgStrokeColor(vg, border);
+        org.lwjgl.nanovg.NanoVG.nvgStrokeWidth(vg, 1f);
+        org.lwjgl.nanovg.NanoVG.nvgStroke(vg);
+    }
     
     // ===== Text Input Rendering Delegation =====
 

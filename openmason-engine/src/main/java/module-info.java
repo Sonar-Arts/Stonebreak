@@ -66,6 +66,9 @@ module openmason.engine {
     // Export lighting (heightmap + per-vertex sky/AO sampler, block-agnostic)
     exports com.openmason.engine.voxel.lighting;
 
+    // Export diagnostics (GPU memory tracker, etc.)
+    exports com.openmason.engine.diagnostics;
+
     // Export format classes
     exports com.openmason.engine.format.sbo;
     exports com.openmason.engine.format.sbe;

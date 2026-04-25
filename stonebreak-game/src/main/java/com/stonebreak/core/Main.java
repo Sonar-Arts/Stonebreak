@@ -67,6 +67,7 @@ public class Main {
     private static Main instance;
 
     public static void main(String[] args) {
+        GcEnforcement.enforce();
         new Main().run();
     }
     
@@ -752,11 +753,14 @@ public class Main {
         DebugOverlay debugOverlay = Game.getDebugOverlay();
         if (debugOverlay != null && debugOverlay.isVisible()) {
             debugOverlay.renderWireframes(renderer);
-            
+
             if (renderer != null) {
+                // Right-side text overlay uses NanoVG.
                 renderer.beginUIFrame(width, height, 1.0f);
                 debugOverlay.render(renderer.getUIRenderer());
                 renderer.endUIFrame();
+                // Left-side resource cards use MasonryUI/Skija (separate GL bracket).
+                debugOverlay.renderResourcePanels(renderer, width, height);
             }
         }
     }

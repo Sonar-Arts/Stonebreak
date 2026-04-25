@@ -1,5 +1,6 @@
 package com.openmason.engine.voxel.mms.mmsCore;
 
+import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 
@@ -187,6 +188,8 @@ public final class MmsBufferPool {
         // Try exact bucket first
         PooledBuffer buffer = findSuitableBuffer(pools[bucket], sizeBytes);
         if (buffer != null) {
+            GpuMemoryTracker.getInstance()
+                .untrack(GpuMemoryTracker.Category.BUFFER_POOL_IDLE, buffer.sizeBytes);
             totalReuses.incrementAndGet();
             activeBuffers.incrementAndGet();
             return buffer.id;
@@ -196,6 +199,8 @@ public final class MmsBufferPool {
         if (bucket > 0) {
             buffer = findSuitableBuffer(pools[bucket - 1], sizeBytes);
             if (buffer != null) {
+                GpuMemoryTracker.getInstance()
+                    .untrack(GpuMemoryTracker.Category.BUFFER_POOL_IDLE, buffer.sizeBytes);
                 totalReuses.incrementAndGet();
                 activeBuffers.incrementAndGet();
                 return buffer.id;
@@ -204,6 +209,8 @@ public final class MmsBufferPool {
         if (bucket < SIZE_BUCKET_COUNT - 1) {
             buffer = findSuitableBuffer(pools[bucket + 1], sizeBytes);
             if (buffer != null) {
+                GpuMemoryTracker.getInstance()
+                    .untrack(GpuMemoryTracker.Category.BUFFER_POOL_IDLE, buffer.sizeBytes);
                 totalReuses.incrementAndGet();
                 activeBuffers.incrementAndGet();
                 return buffer.id;
@@ -239,6 +246,8 @@ public final class MmsBufferPool {
 
         if (pool.size() < MAX_POOL_SIZE) {
             pool.offer(new PooledBuffer(bufferId, sizeBytes));
+            GpuMemoryTracker.getInstance()
+                .track(GpuMemoryTracker.Category.BUFFER_POOL_IDLE, sizeBytes);
             totalReturns.incrementAndGet();
         } else {
             // Pool full, delete the buffer
@@ -325,6 +334,14 @@ public final class MmsBufferPool {
         totalReuses.set(0);
         totalReturns.set(0);
         activeBuffers.set(0);
+        // Pool is now empty — zero out the idle category so the tracker
+        // doesn't carry orphan bytes across world reloads.
+        long stale = GpuMemoryTracker.getInstance()
+            .getBytes(GpuMemoryTracker.Category.BUFFER_POOL_IDLE);
+        if (stale > 0) {
+            GpuMemoryTracker.getInstance()
+                .untrack(GpuMemoryTracker.Category.BUFFER_POOL_IDLE, stale);
+        }
     }
 
     /**

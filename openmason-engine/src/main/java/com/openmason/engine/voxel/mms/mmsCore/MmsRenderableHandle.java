@@ -1,5 +1,6 @@
 package com.openmason.engine.voxel.mms.mmsCore;
 
+import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
@@ -147,6 +148,12 @@ public final class MmsRenderableHandle implements AutoCloseable {
 
         // Calculate GPU memory usage
         long memoryUsage = vboSizeBytes + eboSizeBytes;
+
+        // Charge the active VRAM. If useBufferPool=true, BUFFER_POOL_IDLE has
+        // already been decremented inside the pool's acquire path; we now
+        // attribute these bytes to the active CHUNK_MESH bucket.
+        GpuMemoryTracker.getInstance()
+            .track(GpuMemoryTracker.Category.CHUNK_MESH, memoryUsage);
 
         return new MmsRenderableHandle(
             vaoId, vboId, eboId, meshData.getIndexCount(),
@@ -377,6 +384,11 @@ public final class MmsRenderableHandle implements AutoCloseable {
     @Override
     public void close() {
         if (disposed.compareAndSet(false, true)) {
+            // Active VRAM moves out of CHUNK_MESH whether the buffers go to
+            // the pool (which re-tags them as BUFFER_POOL_IDLE) or are
+            // outright deleted.
+            GpuMemoryTracker.getInstance()
+                .untrack(GpuMemoryTracker.Category.CHUNK_MESH, memoryUsageBytes);
             if (useBufferPool) {
                 // Return buffers to pool for reuse
                 MmsBufferPool pool = MmsBufferPool.getInstance();
