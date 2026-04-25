@@ -25,6 +25,8 @@ import java.util.ArrayDeque;
 // OpenGL imports for GPU information
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL20.*;
+import org.lwjgl.opengl.GL;
+import org.lwjgl.opengl.GLCapabilities;
 
 public class DebugOverlay {
     private boolean visible = false;
@@ -39,6 +41,17 @@ public class DebugOverlay {
     private String gpuRenderer = null;
     private String gpuVersion = null;
     private boolean gpuInfoQueried = false;
+
+    // VRAM query extension constants
+    private static final int GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX = 0x9047;
+    private static final int GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX = 0x9048;
+    private static final int GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX = 0x9049;
+    private static final int TEXTURE_FREE_MEMORY_ATI = 0x87FC;
+
+    // VRAM tracking
+    private enum VramSource { NONE, NVIDIA, AMD }
+    private VramSource vramSource = null;
+    private long vramTotalKB = 0; // 0 if unknown
 
     public DebugOverlay() {
     }
@@ -133,6 +146,7 @@ public class DebugOverlay {
         }
         debug.append(String.format("FPS: %.0f (avg)\n", averageFPS));
         debug.append(String.format("Memory: %d/%d MB\n", usedMemory, maxMemory));
+        debug.append(getVramText());
         debug.append(String.format("Chunks: %d loaded\n", loadedChunks));
         debug.append(String.format("Pending Mesh: %d\n", world.getPendingMeshBuildCount()));
         debug.append(String.format("Pending GL: %d\n", world.getPendingGLUploadCount()));
@@ -215,6 +229,59 @@ public class DebugOverlay {
             gpuRenderer = "Error querying GPU";
             gpuVersion = "Error querying OpenGL version";
             gpuInfoQueried = true; // Don't try again
+        }
+    }
+
+    /**
+     * Detects which VRAM-query extension is available and caches total VRAM.
+     */
+    private void detectVramSource() {
+        if (vramSource != null) {
+            return;
+        }
+        try {
+            GLCapabilities caps = GL.getCapabilities();
+            if (caps.GL_NVX_gpu_memory_info) {
+                vramSource = VramSource.NVIDIA;
+                int dedicatedKB = glGetInteger(GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX);
+                vramTotalKB = dedicatedKB > 0 ? dedicatedKB : glGetInteger(GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX);
+            } else if (caps.GL_ATI_meminfo) {
+                vramSource = VramSource.AMD;
+                vramTotalKB = 0; // AMD extension only reports free memory
+            } else {
+                vramSource = VramSource.NONE;
+            }
+        } catch (Exception e) {
+            vramSource = VramSource.NONE;
+        }
+    }
+
+    /**
+     * Builds the VRAM section of the debug text.
+     */
+    private String getVramText() {
+        detectVramSource();
+        try {
+            switch (vramSource) {
+                case NVIDIA -> {
+                    int freeKB = glGetInteger(GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX);
+                    if (vramTotalKB > 0) {
+                        long usedMB = (vramTotalKB - freeKB) / 1024;
+                        long totalMB = vramTotalKB / 1024;
+                        return String.format("VRAM: %d/%d MB\n", usedMB, totalMB);
+                    }
+                    return String.format("VRAM Free: %d MB\n", freeKB / 1024);
+                }
+                case AMD -> {
+                    int freeKB = glGetInteger(TEXTURE_FREE_MEMORY_ATI);
+                    return String.format("VRAM Free: %d MB\n", freeKB / 1024);
+                }
+                default -> {
+                    return "VRAM: N/A\n";
+                }
+            }
+        } catch (Exception e) {
+            return "VRAM: N/A\n";
         }
     }
 
