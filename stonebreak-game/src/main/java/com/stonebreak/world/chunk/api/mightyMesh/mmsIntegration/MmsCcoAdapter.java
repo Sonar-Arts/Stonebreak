@@ -9,6 +9,7 @@ import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
 import com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult;
 import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
+import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilderPool;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsSBOBlockProvider;
@@ -126,11 +127,16 @@ public class MmsCcoAdapter {
         // Mark as generating
         stateManager.addState(CcoChunkState.MESH_GENERATING);
 
-        try {
-            MmsMeshBuilder atlasBuilder = MmsMeshBuilder.createWithCapacity(
-                WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE * 64
-            );
+        // Pooled builder — reused across chunks to avoid the ~640 KB
+        // float[]/int[] allocation per build. The build() call below deep-copies
+        // its data into the immutable MmsMeshData, so the builder is safe to
+        // release back to the pool as soon as that returns.
+        MmsMeshBuilderPool builderPool = MmsMeshBuilderPool.getInstance();
+        MmsMeshBuilder atlasBuilder = builderPool.acquire(
+            WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE * 64
+        );
 
+        try {
             int chunkX = chunkData.getChunkX();
             int chunkZ = chunkData.getChunkZ();
 
@@ -199,6 +205,9 @@ public class MmsCcoAdapter {
             dirtyTracker.markMeshDirtyOnly();
             throw new RuntimeException("Mesh generation failed for chunk (" +
                 chunkData.getChunkX() + ", " + chunkData.getChunkZ() + ")", e);
+        } finally {
+            // Builder's data has been copied out by build(); safe to recycle.
+            builderPool.release(atlasBuilder);
         }
     }
 

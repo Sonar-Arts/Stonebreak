@@ -25,6 +25,18 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
  */
 public class MmsCuboidGenerator implements MmsGeometryService {
 
+    /**
+     * Per-thread scratch vertex buffer reused across face emissions. Mesh
+     * builds happen on worker threads; the consumer copies values into
+     * MmsMeshBuilder before the next face is generated, so a single
+     * thread-local slot per role is safe. Eliminates ~6 small float[]
+     * allocations per visible cube face.
+     */
+    private static final ThreadLocal<float[]> SCRATCH_VERTICES =
+        ThreadLocal.withInitial(() -> new float[MmsBufferLayout.POSITION_SIZE * MmsBufferLayout.VERTICES_PER_QUAD]);
+    private static final ThreadLocal<float[]> SCRATCH_NORMALS =
+        ThreadLocal.withInitial(() -> new float[MmsBufferLayout.NORMAL_SIZE * MmsBufferLayout.VERTICES_PER_QUAD]);
+
     // Pre-computed face normals (constant across all cubes)
     private static final float[][] FACE_NORMALS = {
         {0, 1, 0},   // Top
@@ -88,7 +100,7 @@ public class MmsCuboidGenerator implements MmsGeometryService {
             throw new IllegalArgumentException("Invalid face index: " + face);
         }
 
-        float[] vertices = new float[MmsBufferLayout.POSITION_SIZE * MmsBufferLayout.VERTICES_PER_QUAD];
+        float[] vertices = SCRATCH_VERTICES.get();
         float[][] offsets = FACE_VERTEX_OFFSETS[face];
 
         for (int i = 0; i < MmsBufferLayout.VERTICES_PER_QUAD; i++) {
@@ -109,7 +121,7 @@ public class MmsCuboidGenerator implements MmsGeometryService {
             throw new IllegalArgumentException("Invalid face index: " + face);
         }
 
-        float[] normals = new float[MmsBufferLayout.NORMAL_SIZE * MmsBufferLayout.VERTICES_PER_QUAD];
+        float[] normals = SCRATCH_NORMALS.get();
         float[] faceNormal = FACE_NORMALS[face];
 
         // All 4 vertices of a face share the same normal

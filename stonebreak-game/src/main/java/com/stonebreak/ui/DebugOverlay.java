@@ -65,6 +65,15 @@ public class DebugOverlay {
     // MasonryUI for the left-side resource panels. Lazily built once a Renderer exists.
     private MasonryUI masonryUI = null;
 
+    // Cached panels — rebuilt periodically rather than every frame. Reading
+    // MXBeans + GPU snapshot + building MStatPanel structures every frame
+    // generates measurable churn while F3 is open; values change slowly enough
+    // that 4 Hz is plenty.
+    private static final long PANEL_REBUILD_INTERVAL_MS = 250L;
+    private long lastPanelRebuildMs = 0L;
+    private MStatPanel cachedRamPanel = null;
+    private MStatPanel cachedVramPanel = null;
+
     public DebugOverlay() {
     }
 
@@ -385,6 +394,17 @@ public class DebugOverlay {
             masonryUI = new MasonryUI(renderer.getSkijaBackend());
         }
         if (!masonryUI.isAvailable()) return;
+
+        // Refresh the panel data on a fixed cadence; render the cached panels
+        // on every frame in between.
+        long now = System.currentTimeMillis();
+        if (cachedRamPanel == null || cachedVramPanel == null
+                || now - lastPanelRebuildMs >= PANEL_REBUILD_INTERVAL_MS) {
+            cachedRamPanel = buildRamPanel();
+            cachedVramPanel = buildVramPanel();
+            lastPanelRebuildMs = now;
+        }
+
         if (!masonryUI.beginFrame(sw, sh, 1.0f)) return;
         try {
             float leftMargin = 10f;
@@ -392,12 +412,10 @@ public class DebugOverlay {
             float gap = 8f;
             float y = 10f;
 
-            MStatPanel ramPanel = buildRamPanel();
-            float ramHeight = ramPanel.render(masonryUI, leftMargin, y, panelWidth);
+            float ramHeight = cachedRamPanel.render(masonryUI, leftMargin, y, panelWidth);
             y += ramHeight + gap;
 
-            MStatPanel vramPanel = buildVramPanel();
-            vramPanel.render(masonryUI, leftMargin, y, panelWidth);
+            cachedVramPanel.render(masonryUI, leftMargin, y, panelWidth);
 
             masonryUI.renderOverlays();
         } finally {

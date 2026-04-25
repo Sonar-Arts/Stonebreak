@@ -51,6 +51,17 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
     private float[] cachedCornerHeights;
 
     /**
+     * Per-thread scratch buffers reused across water-face emissions. Water
+     * blocks rebuild often (flow updates, wave-driven remeshes) so the
+     * per-face allocations were noticeable. Each role gets its own slot
+     * because the consumer reads multiple of them at once.
+     */
+    private static final ThreadLocal<float[]> SCRATCH_WATER_VERTS =
+        ThreadLocal.withInitial(() -> new float[MmsBufferLayout.POSITION_SIZE * MmsBufferLayout.VERTICES_PER_QUAD]);
+    private static final ThreadLocal<float[]> SCRATCH_WATER_FLAGS =
+        ThreadLocal.withInitial(() -> new float[MmsBufferLayout.VERTICES_PER_QUAD]);
+
+    /**
      * Creates a water generator with world reference for neighbor lookups.
      *
      * @param world World instance for accessing water blocks
@@ -90,7 +101,7 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
 
         float waterBottomY = computeWaterBottomAttachmentHeight(blockX, blockY, blockZ, worldY);
 
-        float[] vertices = new float[MmsBufferLayout.POSITION_SIZE * MmsBufferLayout.VERTICES_PER_QUAD];
+        float[] vertices = SCRATCH_WATER_VERTS.get();
         int idx = 0;
 
         switch (face) {
@@ -195,7 +206,7 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
      */
     public float[] generateWaterFlags(int face, int blockX, int blockY, int blockZ, float blockHeight) {
         float[] cornerHeights = getSewnCornerHeights(blockX, blockY, blockZ);
-        float[] waterFlags = new float[MmsBufferLayout.VERTICES_PER_QUAD];
+        float[] waterFlags = SCRATCH_WATER_FLAGS.get();
 
         switch (face) {
             case 0 -> { // Top face - Use corner heights
