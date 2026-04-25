@@ -35,6 +35,11 @@ public class Settings {
     private int renderDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_RENDER_DISTANCE;
     private int lodDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_LOD_RANGE;
     private boolean lodEnabled = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_LOD_ENABLED;
+
+    // VSync — when true, GLFW caps to display refresh and the manual FPS
+    // limiter is bypassed. Default ON: most users expect tear-free output and
+    // ZGC keeps frame pacing stable.
+    private boolean vsyncEnabled = true;
     
     // Available resolutions (ordered smallest to largest by total pixels)
     private static final int[][] RESOLUTIONS = {
@@ -79,7 +84,8 @@ public class Settings {
             json.append("  \"waterShaderEnabled\": ").append(waterShaderEnabled).append(",\n");
             json.append("  \"renderDistance\": ").append(renderDistance).append(",\n");
             json.append("  \"lodDistance\": ").append(lodDistance).append(",\n");
-            json.append("  \"lodEnabled\": ").append(lodEnabled).append("\n");
+            json.append("  \"lodEnabled\": ").append(lodEnabled).append(",\n");
+            json.append("  \"vsyncEnabled\": ").append(vsyncEnabled).append("\n");
             json.append("}");
             
             Files.write(Paths.get(SETTINGS_FILE), json.toString().getBytes());
@@ -263,6 +269,11 @@ public class Settings {
                 if (value != null) {
                     lodEnabled = Boolean.parseBoolean(value);
                 }
+            } else if (line.contains("vsyncEnabled")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    vsyncEnabled = Boolean.parseBoolean(value);
+                }
             }
         }
     }
@@ -314,6 +325,7 @@ public class Settings {
     public int getRenderDistance() { return renderDistance; }
     public int getLodDistance() { return lodDistance; }
     public boolean getLodEnabled() { return lodEnabled; }
+    public boolean isVsyncEnabled() { return vsyncEnabled; }
     
     // Setters
     public void setResolution(int width, int height) {
@@ -391,6 +403,14 @@ public class Settings {
 
     public void setLodEnabled(boolean value) {
         this.lodEnabled = value;
+    }
+
+    /**
+     * Enables or disables VSync. Takes effect on the next call to
+     * {@link com.stonebreak.core.Main#applyVsyncSetting()} (i.e. live).
+     */
+    public void setVsyncEnabled(boolean value) {
+        this.vsyncEnabled = value;
     }
     
     // Helper methods

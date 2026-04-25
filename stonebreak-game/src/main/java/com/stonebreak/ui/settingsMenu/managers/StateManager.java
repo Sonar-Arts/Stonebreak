@@ -38,6 +38,7 @@ public final class StateManager {
     private MSlider renderDistanceSlider;
     private MSlider lodDistanceSlider;
     private MButton lodEnabledButton;
+    private MButton vsyncButton;
 
     private List<MCategoryButton<CategoryState>> categoryButtons;
 
@@ -144,6 +145,9 @@ public final class StateManager {
 
         lodEnabledButton = new MButton(lodEnabledLabel())
                 .size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+
+        vsyncButton = new MButton(vsyncLabel())
+                .size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
     }
 
     /**
@@ -157,7 +161,8 @@ public final class StateManager {
                              Runnable leafTransparencyAction, Runnable waterShaderAction,
                              java.util.function.Consumer<Float> renderDistanceAction,
                              java.util.function.Consumer<Float> lodDistanceAction,
-                             Runnable lodEnabledAction) {
+                             Runnable lodEnabledAction,
+                             Runnable vsyncAction) {
         applyButton.setOnClick(applyAction);
         backButton.setOnClick(backAction);
         resolutionButton.setOnSelectionChanged(resolutionAction);
@@ -170,6 +175,7 @@ public final class StateManager {
         renderDistanceSlider.setOnChange(renderDistanceAction);
         lodDistanceSlider.setOnChange(lodDistanceAction);
         lodEnabledButton.setOnClick(lodEnabledAction);
+        vsyncButton.setOnClick(vsyncAction);
 
         for (MCategoryButton<CategoryState> button : categoryButtons) {
             CategoryState category = button.tag();
@@ -204,6 +210,7 @@ public final class StateManager {
         renderDistanceSlider.setSelected(false);
         lodDistanceSlider.setSelected(false);
         lodEnabledButton.setSelected(false);
+        vsyncButton.setSelected(false);
     }
 
     public void closeAllDropdowns() {
@@ -255,6 +262,7 @@ public final class StateManager {
         renderDistanceSlider.setLabel(renderDistanceLabel());
         lodDistanceSlider.setLabel(lodDistanceLabel());
         lodEnabledButton.setText(lodEnabledLabel());
+        vsyncButton.setText(vsyncLabel());
     }
 
     private String leafTransparencyLabel() {
@@ -275,6 +283,10 @@ public final class StateManager {
 
     private String lodEnabledLabel() {
         return "Distant Terrain LOD: " + (settings.getLodEnabled() ? "ON" : "OFF");
+    }
+
+    private String vsyncLabel() {
+        return "VSync: " + (settings.isVsyncEnabled() ? "ON" : "OFF");
     }
 
     // ─────────────────────────────────────────────── Getters / setters
@@ -309,6 +321,7 @@ public final class StateManager {
     public MSlider getRenderDistanceSlider() { return renderDistanceSlider; }
     public MSlider getLodDistanceSlider() { return lodDistanceSlider; }
     public MButton getLodEnabledButton() { return lodEnabledButton; }
+    public MButton getVsyncButton() { return vsyncButton; }
     public List<MCategoryButton<CategoryState>> getCategoryButtons() { return categoryButtons; }
 
     public MScrollMath getCurrentScrollMath() { return currentScrollMath; }

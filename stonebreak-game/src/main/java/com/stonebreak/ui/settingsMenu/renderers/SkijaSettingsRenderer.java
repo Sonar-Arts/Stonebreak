@@ -208,6 +208,7 @@ public final class SkijaSettingsRenderer {
             case RENDER_DISTANCE  -> state.getRenderDistanceSlider();
             case LOD_DISTANCE     -> state.getLodDistanceSlider();
             case LOD_ENABLED      -> state.getLodEnabledButton();
+            case VSYNC            -> state.getVsyncButton();
             default -> null;
         };
     }

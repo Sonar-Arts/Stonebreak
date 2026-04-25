@@ -52,6 +52,7 @@ public class ActionHandler {
             case LEAF_TRANSPARENCY -> toggleLeafTransparency();
             case WATER_SHADER -> toggleWaterShader();
             case LOD_ENABLED -> toggleLodEnabled();
+            case VSYNC -> toggleVsync();
             case APPLY -> applySettings();
             case BACK -> goBack();
             default -> {}
@@ -175,6 +176,17 @@ public class ActionHandler {
             world.getConfig().setLodEnabled(now);
         }
         System.out.println("Distant Terrain LOD toggled to: " + (now ? "ON" : "OFF"));
+    }
+
+    /**
+     * Toggles VSync. The cap-based limiter picks up the new setting on the
+     * next frame; we also push the change to GLFW so the log line and any
+     * future driver-level fallback stays in sync.
+     */
+    public void toggleVsync() {
+        boolean now = !settings.isVsyncEnabled();
+        settings.setVsyncEnabled(now);
+        com.stonebreak.core.Main.applyVsyncSetting();
     }
 
     /**
