@@ -111,6 +111,13 @@ public class MmsFaceCullingService implements SBOCullingPolicy {
             return true;
         }
 
+        // Compare by stable identity (block ID), not reference. Cross-chunk
+        // neighbor lookups go through WorldAdapter.getBlockAt(), which wraps
+        // each BlockType in a fresh BlockTypeAdapter record — so reference
+        // equality silently fails at chunk borders and lets same-type
+        // translucent faces leak through.
+        boolean sameType = blockType.getId() == adjacentBlock.getId();
+
         if (blockType.isTransparent()) {
             // TRANSLUCENT cube-shaped blocks (e.g. ice) need stricter culling:
             // the face is hidden behind any opaque neighbor, and rendering it
@@ -122,9 +129,9 @@ public class MmsFaceCullingService implements SBOCullingPolicy {
             // be cross-plane geometry packed into face slots, so culling
             // them against opaque neighbors drops visible planes.
             if (translucencyPolicy.test(blockType)) {
-                return adjacentBlock.isTransparent() && blockType != adjacentBlock;
+                return adjacentBlock.isTransparent() && !sameType;
             }
-            return blockType != adjacentBlock;
+            return !sameType;
         }
 
         return adjacentBlock.isTransparent();
