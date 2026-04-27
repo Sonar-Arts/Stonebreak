@@ -36,9 +36,13 @@ public final class WaterSystem {
     private static final float LEVEL_NORMALIZER = WaterBlock.MAX_LEVEL + 1.0f;
 
     private final World world;
-    private final Map<BlockPos, WaterBlock> cells = new ConcurrentHashMap<>();
+    // Cells and scheduled ticks are keyed by a packed (x, y, z) long instead of a
+    // BlockPos record. The mesh thread hits getWaterBlock thousands of times per
+    // chunk remesh; allocating a fresh BlockPos per lookup was the dominant
+    // source of allocation churn in the water hot path.
+    private final Map<Long, WaterBlock> cells = new ConcurrentHashMap<>();
     private final PriorityQueue<ScheduledUpdate> pendingUpdates = new PriorityQueue<>((a, b) -> Long.compare(a.scheduledTick(), b.scheduledTick()));
-    private final Map<BlockPos, Long> scheduledTicks = new ConcurrentHashMap<>();
+    private final Map<Long, Long> scheduledTicks = new ConcurrentHashMap<>();
     private final Set<Long> scannedChunks = new HashSet<>();
     private final Set<Long> dirtyChunks = new HashSet<>(); // Batched mesh updates
 
@@ -122,17 +126,14 @@ public final class WaterSystem {
                     if (reader.get(localX, y, localZ) == BlockType.WATER) {
                         int worldX = chunk.getChunkX() * WorldConfiguration.CHUNK_SIZE + localX;
                         int worldZ = chunk.getChunkZ() * WorldConfiguration.CHUNK_SIZE + localZ;
-                        BlockPos pos = new BlockPos(worldX, y, worldZ);
+                        long posKey = packKey(worldX, y, worldZ);
 
-                        // Check if this is a water block that needs processing
                         boolean needsUpdate = false;
 
-                        // Check if there's air below (flowing water)
                         if (y > 0 && reader.isAir(localX, y - 1, localZ)) {
                             needsUpdate = true;
                         }
 
-                        // Check if there's air beside (surface water)
                         if (!needsUpdate && (
                             (localX > 0 && reader.isAir(localX - 1, y, localZ)) ||
                             (localX < WorldConfiguration.CHUNK_SIZE - 1 && reader.isAir(localX + 1, y, localZ)) ||
@@ -142,19 +143,14 @@ public final class WaterSystem {
                             needsUpdate = true;
                         }
 
-                        // CRITICAL FIX: Only add as source if not already loaded from save metadata
-                        // When a chunk is loaded from disk, loadWaterMetadata() is called first,
-                        // which populates cells with correct flow levels. We must respect that data.
-                        // For newly generated chunks, cells will be empty, so we add sources normally.
-                        WaterBlock existing = cells.get(pos);
-                        if (existing == null) {
-                            cells.put(pos, WaterBlock.source());
+                        // Only seed a source when nothing was loaded from save metadata —
+                        // loadWaterMetadata() runs first and populates flow levels we must respect.
+                        if (cells.get(posKey) == null) {
+                            cells.put(posKey, WaterBlock.source());
                         }
-                        // If existing != null, water metadata was already loaded - keep it!
 
-                        // Only enqueue water that needs to flow
                         if (needsUpdate) {
-                            enqueueImmediate(pos);
+                            enqueueImmediate(posKey);
                         }
                     }
                 }
@@ -177,14 +173,11 @@ public final class WaterSystem {
         int chunkX = chunk.getChunkX();
         int chunkZ = chunk.getChunkZ();
 
-        // Remove water cells in the unloaded chunk
-        // Synchronized method ensures thread-safety during iteration
-        cells.keySet().removeIf(pos ->
-            Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-            Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ
+        cells.keySet().removeIf(posKey ->
+            Math.floorDiv(unpackX(posKey), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+            Math.floorDiv(unpackZ(posKey), WorldConfiguration.CHUNK_SIZE) == chunkZ
         );
 
-        // Remove pending updates for the unloaded chunk.
         // PriorityQueue is not thread-safe; synchronize with processQueue/enqueue
         // to prevent heap shifts from yielding nulls or skipped elements during iteration.
         synchronized (pendingUpdates) {
@@ -194,18 +187,17 @@ public final class WaterSystem {
                 if (update == null) {
                     continue;
                 }
-                BlockPos pos = update.pos();
-                if (Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-                    Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ) {
+                long posKey = update.posKey();
+                if (Math.floorDiv(unpackX(posKey), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+                    Math.floorDiv(unpackZ(posKey), WorldConfiguration.CHUNK_SIZE) == chunkZ) {
                     iterator.remove();
                 }
             }
         }
 
-        // Remove scheduled ticks for the unloaded chunk
-        scheduledTicks.keySet().removeIf(pos ->
-            Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-            Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ
+        scheduledTicks.keySet().removeIf(posKey ->
+            Math.floorDiv(unpackX(posKey), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+            Math.floorDiv(unpackZ(posKey), WorldConfiguration.CHUNK_SIZE) == chunkZ
         );
     }
 
@@ -218,31 +210,31 @@ public final class WaterSystem {
             return;
         }
 
-        BlockPos pos = new BlockPos(x, y, z);
+        long posKey = packKey(x, y, z);
         if (next == BlockType.WATER) {
             // Player-placed water always becomes a source block, even if replacing a flow
-            cells.put(pos, WaterBlock.source());
-            enqueueImmediate(pos);
-            scheduleNeighbors(pos);
+            cells.put(posKey, WaterBlock.source());
+            enqueueImmediate(posKey);
+            scheduleNeighbors(posKey);
             return;
         }
 
-        WaterBlock removed = cells.remove(pos);
+        WaterBlock removed = cells.remove(posKey);
         if (removed != null || previous == BlockType.WATER) {
-            enqueue(pos, NEIGHBOR_TICK_DELAY);
-            scheduleNeighbors(pos);
+            enqueue(posKey, NEIGHBOR_TICK_DELAY);
+            scheduleNeighbors(posKey);
         }
 
         // If a non-water block was removed (changed to air/replaceable), check neighbors for water sources
-        // This ensures water sources resume flowing when obstructions are removed
+        // so blocked sources resume flowing once the obstruction is gone.
         if (previous != BlockType.AIR && previous != BlockType.WATER && FlowBlockInteraction.canDisplace(next)) {
             for (int[] dir : HORIZONTAL_DIRECTIONS) {
-                BlockPos neighbor = pos.offset(dir[0], 0, dir[1]);
+                long neighbor = keyOffset(posKey, dir[0], 0, dir[1]);
                 if (cells.get(neighbor) != null) {
                     enqueueImmediate(neighbor);
                 }
             }
-            BlockPos above = pos.above();
+            long above = keyAbove(posKey);
             if (cells.get(above) != null) {
                 enqueueImmediate(above);
             }
@@ -254,7 +246,7 @@ public final class WaterSystem {
      */
     public void queueUpdate(int x, int y, int z) {
         if (isWithinWorld(y)) {
-            enqueue(new BlockPos(x, y, z), NEIGHBOR_TICK_DELAY);
+            enqueue(packKey(x, y, z), NEIGHBOR_TICK_DELAY);
         }
     }
 
@@ -269,121 +261,106 @@ public final class WaterSystem {
                 }
                 pendingUpdates.poll();
             }
-            Long trackedTick = scheduledTicks.get(next.pos());
+            Long trackedTick = scheduledTicks.get(next.posKey());
             if (trackedTick == null || trackedTick != next.scheduledTick()) {
                 continue; // Stale entry
             }
 
-            scheduledTicks.remove(next.pos());
-            updateCell(next.pos());
+            scheduledTicks.remove(next.posKey());
+            updateCell(next.posKey());
             processed++;
         }
     }
 
-    private void updateCell(BlockPos pos) {
-        if (!isWithinWorld(pos.y())) {
-            cells.remove(pos);
+    private void updateCell(long posKey) {
+        int posY = unpackY(posKey);
+        if (!isWithinWorld(posY)) {
+            cells.remove(posKey);
             return;
         }
 
-        BlockType blockType = getBlockViaCco(pos);
-        WaterBlock current = cells.get(pos);
+        BlockType blockType = getBlockViaCco(posKey);
+        WaterBlock current = cells.get(posKey);
 
         if (blockType != BlockType.WATER) {
             if (current != null) {
-                cells.remove(pos);
-                scheduleNeighbors(pos);
+                cells.remove(posKey);
+                scheduleNeighbors(posKey);
             }
             return;
         }
 
         if (current == null) {
-            current = deriveInitialState(pos);
-            cells.put(pos, current);
+            current = deriveInitialState(posKey);
+            cells.put(posKey, current);
         }
 
         // Source blocks never change state - they only produce falling water below them
         if (current.isSource()) {
-            tryFlowDown(pos, current); // Generate falling water below if needed
-            spreadHorizontally(pos, current); // Spread horizontally
-            return; // Source blocks remain unchanged
+            tryFlowDown(posKey, current);
+            spreadHorizontally(posKey, current);
+            return;
         }
 
-        boolean canFall = tryFlowDown(pos, current);
+        boolean canFall = tryFlowDown(posKey, current);
         if (!canFall && current.falling()) {
-            // When falling water lands, reset depth to level 1 (fresh flow starting point).
-            // Only dirty the chunk if the level actually changed — the mesh ignores `falling`,
-            // so a (1, falling) → (1, !falling) transition produces an identical mesh.
-            boolean levelWasOne = current.level() == 1;
-            current = WaterBlock.flowing(1);
-            cells.put(pos, current);
-            if (!levelWasOne) {
-                markChunkDirty(pos);
-            }
+            // Landing: drop the falling flag. Falling water is always level 1 (only
+            // tryFlowDown produces it), so the level is unchanged and the mesh — which
+            // consumes only level() — does not need rebuilding.
+            current = current.withoutFalling();
+            cells.put(posKey, current);
         }
 
-        int targetLevel = computeTargetLevel(pos, current);
+        int targetLevel = computeTargetLevel(posKey, current);
 
         if (!current.isSource() && targetLevel >= WaterBlock.EMPTY_LEVEL) {
-            removeWater(pos);
+            removeWater(posKey);
             return;
         }
 
         int clampedLevel = Math.min(targetLevel, WaterBlock.MAX_LEVEL);
-        // Water should be falling if there's space or falling water below
-        boolean shouldFall = canFall;
-        WaterBlock updated = new WaterBlock(clampedLevel, shouldFall);
+        WaterBlock updated = new WaterBlock(clampedLevel, canFall);
 
         if (!updated.equals(current)) {
             boolean levelChanged = updated.level() != current.level();
-            cells.put(pos, updated);
-            scheduleNeighbors(pos);
-            // Mesh consumes only `level()`; pure `falling` flips don't change the rendered mesh.
+            cells.put(posKey, updated);
+            // Neighbors only consume level(); a pure falling-flag flip should not
+            // cascade scheduling or remeshing.
             if (levelChanged) {
-                markChunkDirty(pos);
+                scheduleNeighbors(posKey);
+                markChunkDirty(posKey);
             }
         }
 
-        spreadHorizontally(pos, updated);
+        spreadHorizontally(posKey, updated);
     }
 
-    private WaterBlock deriveInitialState(BlockPos pos) {
-        BlockType above = (pos.y() + 1 < WorldConfiguration.WORLD_HEIGHT)
-            ? getBlockViaCco(pos.above())
+    private WaterBlock deriveInitialState(long posKey) {
+        int posY = unpackY(posKey);
+        BlockType above = (posY + 1 < WorldConfiguration.WORLD_HEIGHT)
+            ? getBlockViaCco(keyAbove(posKey))
             : BlockType.AIR;
-        if (above == BlockType.WATER && canFlowInto(pos.below())) {
+        if (above == BlockType.WATER && canFlowInto(keyBelow(posKey))) {
             return WaterBlock.falling(1);
         }
         return WaterBlock.source();
     }
 
-    private boolean tryFlowDown(BlockPos pos, WaterBlock current) {
-        BlockPos below = pos.below();
+    private boolean tryFlowDown(long posKey, WaterBlock current) {
+        long below = keyBelow(posKey);
 
-        // First check if there's already falling water below - if so, this block should also be falling
+        // Already-falling water below means our column is active; keep this block falling too.
         WaterBlock existing = cells.get(below);
         if (existing != null && existing.falling()) {
             return true;
         }
 
-        // Check if there's space below (treats source blocks as space for edge detection)
+        // No empty cell below → cannot fall. Solid blocks and existing water both block falling.
         if (!hasSpaceBelow(below)) {
             return false;
         }
 
-        // If there's a source block below, don't create water column - just maintain falling state visually
-        if (existing != null && existing.isSource()) {
-            return true; // Falling state for visual merge, but don't create water blocks below
-        }
-
-        // Actually try to fill the space below (canFlowInto prevents entering sources)
-        if (!canFlowInto(below)) {
-            return true; // Space exists but can't enter (e.g., source block) - still counts as "can fall"
-        }
-
-        // Falling water always starts at level 1, regardless of source level
-        boolean filled = tryFill(below, WaterBlock.falling(1));
-        if (filled) {
+        if (tryFill(below, WaterBlock.falling(1))) {
             scheduleNeighbors(below);
             return true;
         }
@@ -391,7 +368,7 @@ public final class WaterSystem {
         return false;
     }
 
-    private int computeTargetLevel(BlockPos pos, WaterBlock current) {
+    private int computeTargetLevel(long posKey, WaterBlock current) {
         if (current.isSource()) {
             return WaterBlock.SOURCE_LEVEL;
         }
@@ -400,13 +377,13 @@ public final class WaterSystem {
         int sourceNeighbors = 0;
 
         for (int[] dir : HORIZONTAL_DIRECTIONS) {
-            BlockPos neighborPos = pos.offset(dir[0], 0, dir[1]);
-            if (!isWithinWorld(neighborPos.y())) {
+            long neighborKey = keyOffset(posKey, dir[0], 0, dir[1]);
+            if (!isWithinWorld(unpackY(neighborKey))) {
                 continue;
             }
-            WaterBlock neighbor = cells.get(neighborPos);
+            WaterBlock neighbor = cells.get(neighborKey);
             if (neighbor == null) {
-                if (getBlockViaCco(neighborPos) != BlockType.WATER) {
+                if (getBlockViaCco(neighborKey) != BlockType.WATER) {
                     continue;
                 }
                 neighbor = WaterBlock.source();
@@ -417,64 +394,58 @@ public final class WaterSystem {
             minNeighbor = Math.min(minNeighbor, neighbor.level());
         }
 
-        if (sourceNeighbors >= 2 && FlowBlockInteraction.supportsSource(world, pos.x(), pos.y(), pos.z())) {
+        if (sourceNeighbors >= 2 && FlowBlockInteraction.supportsSource(world, unpackX(posKey), unpackY(posKey), unpackZ(posKey))) {
             return WaterBlock.SOURCE_LEVEL;
         }
 
-        WaterBlock above = cells.get(pos.above());
+        WaterBlock above = cells.get(keyAbove(posKey));
         if (above != null) {
             return Math.min(above.level(), minNeighbor + 1);
         }
 
-        // Edge case: All neighbors are level 7 or weaker (or no water neighbors found)
-        // Level 7 blocks should only be maintained by stronger neighbors (level 6 or better)
-        // If all neighbors are level 7, remove this block to allow proper cleanup
+        // Edge case: All neighbors level 7 or weaker → remove this block.
         if (minNeighbor == WaterBlock.MAX_LEVEL) {
-            return WaterBlock.EMPTY_LEVEL; // No stronger neighbors, remove
+            return WaterBlock.EMPTY_LEVEL;
         }
         return Math.min(minNeighbor + 1, WaterBlock.MAX_LEVEL);
     }
 
-    private void spreadHorizontally(BlockPos pos, WaterBlock state) {
+    private void spreadHorizontally(long posKey, WaterBlock state) {
         if (state.falling()) {
-            return; // Falling water does not spread sideways until it lands
+            return;
         }
 
         int spreadLevel = state.isSource() ? 1 : state.level() + 1;
         if (spreadLevel > WaterBlock.MAX_LEVEL) {
-            return; // Don't spread beyond max level
+            return;
         }
 
         for (int[] dir : HORIZONTAL_DIRECTIONS) {
-            BlockPos neighbor = pos.offset(dir[0], 0, dir[1]);
+            long neighbor = keyOffset(posKey, dir[0], 0, dir[1]);
 
-            // Check if the target position has space below (treats sources as space) - if so, water should be falling
-            boolean shouldBeFalling = hasSpaceBelow(neighbor.below());
-
-            if (tryFill(neighbor, new WaterBlock(spreadLevel, shouldBeFalling))) {
+            if (tryFill(neighbor, WaterBlock.flowing(spreadLevel))) {
                 scheduleNeighbors(neighbor);
             }
         }
     }
 
-    private boolean tryFill(BlockPos pos, WaterBlock candidate) {
-        if (!isWithinWorld(pos.y())) {
+    private boolean tryFill(long posKey, WaterBlock candidate) {
+        int posY = unpackY(posKey);
+        if (!isWithinWorld(posY)) {
             return false;
         }
 
-        BlockType blockType = getBlockViaCco(pos);
+        BlockType blockType = getBlockViaCco(posKey);
         if (!FlowBlockInteraction.canDisplace(blockType)) {
             return false;
         }
 
-        WaterBlock existing = cells.get(pos);
+        WaterBlock existing = cells.get(posKey);
         boolean levelChanged = false;
 
         if (existing != null) {
-            // CRITICAL: Source blocks should not be replaced by flows or falling water
-            // They can coexist - the source remains, and flows/falling water simply merge
             if (existing.isSource() && !candidate.isSource()) {
-                return false; // Keep the source, don't replace it with flow/falling water
+                return false;
             }
             if (!candidate.isStrongerThan(existing)) {
                 if (existing.falling() && !candidate.falling() && existing.level() == candidate.level()) {
@@ -483,50 +454,48 @@ public final class WaterSystem {
                     return false;
                 }
             }
-            // Check if the water level is actually changing (mesh ignores `falling`, so don't
-            // count a pure falling-flag flip as a visual change).
+            // Mesh ignores `falling`; treat a pure flag flip as not a visual change.
             levelChanged = existing.level() != candidate.level();
         }
 
         if (FlowBlockInteraction.isFragile(blockType)) {
-            FlowBlockInteraction.dropFragile(world, pos.x(), pos.y(), pos.z(), blockType);
-            setBlockViaCco(pos, BlockType.AIR);
+            FlowBlockInteraction.dropFragile(world, unpackX(posKey), posY, unpackZ(posKey), blockType);
+            setBlockViaCco(posKey, BlockType.AIR);
         }
 
         boolean blockTypeChanged = (blockType != BlockType.WATER);
         if (blockTypeChanged) {
-            setBlockViaCco(pos, BlockType.WATER);
+            setBlockViaCco(posKey, BlockType.WATER);
         }
 
-        cells.put(pos, candidate);
-        enqueue(pos, WATER_TICK_DELAY);
+        cells.put(posKey, candidate);
+        enqueue(posKey, WATER_TICK_DELAY);
 
-        // Trigger batched visual update if water level changed (even if block type stayed WATER)
         if (levelChanged && !blockTypeChanged) {
-            markChunkDirty(pos);
+            markChunkDirty(posKey);
         }
 
         return true;
     }
 
-    private void removeWater(BlockPos pos) {
-        cells.remove(pos);
-        if (getBlockViaCco(pos) == BlockType.WATER) {
-            setBlockViaCco(pos, BlockType.AIR);
+    private void removeWater(long posKey) {
+        cells.remove(posKey);
+        if (getBlockViaCco(posKey) == BlockType.WATER) {
+            setBlockViaCco(posKey, BlockType.AIR);
         }
-        scheduleNeighbors(pos);
+        scheduleNeighbors(posKey);
     }
 
     /**
      * Marks a chunk as needing a mesh rebuild due to water changes.
      * Updates are batched and applied at the end of each logical tick.
      */
-    private void markChunkDirty(BlockPos pos) {
-        if (!isWithinWorld(pos.y())) {
+    private void markChunkDirty(long posKey) {
+        if (!isWithinWorld(unpackY(posKey))) {
             return;
         }
-        int chunkX = Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE);
+        int chunkX = Math.floorDiv(unpackX(posKey), WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(unpackZ(posKey), WorldConfiguration.CHUNK_SIZE);
         dirtyChunks.add(chunkKey(chunkX, chunkZ));
     }
 
@@ -560,35 +529,35 @@ public final class WaterSystem {
         dirtyChunks.clear();
     }
 
-    private void scheduleNeighbors(BlockPos pos) {
-        enqueue(pos, NEIGHBOR_TICK_DELAY);
+    private void scheduleNeighbors(long posKey) {
+        enqueue(posKey, NEIGHBOR_TICK_DELAY);
         for (int[] dir : HORIZONTAL_DIRECTIONS) {
-            enqueue(pos.offset(dir[0], 0, dir[1]), NEIGHBOR_TICK_DELAY);
+            enqueue(keyOffset(posKey, dir[0], 0, dir[1]), NEIGHBOR_TICK_DELAY);
         }
-        enqueue(pos.above(), WATER_TICK_DELAY);
-        enqueue(pos.below(), WATER_TICK_DELAY);
+        enqueue(keyAbove(posKey), WATER_TICK_DELAY);
+        enqueue(keyBelow(posKey), WATER_TICK_DELAY);
     }
 
-    private void enqueueImmediate(BlockPos pos) {
-        enqueue(pos, IMMEDIATE_UPDATE_DELAY);
+    private void enqueueImmediate(long posKey) {
+        enqueue(posKey, IMMEDIATE_UPDATE_DELAY);
     }
 
-    private void enqueue(BlockPos pos, int delayTicks) {
-        if (!isWithinWorld(pos.y())) {
+    private void enqueue(long posKey, int delayTicks) {
+        if (!isWithinWorld(unpackY(posKey))) {
             return;
         }
 
         int clampedDelay = Math.max(0, delayTicks);
         long scheduledTick = logicalTick + clampedDelay;
 
-        Long existing = scheduledTicks.get(pos);
+        Long existing = scheduledTicks.get(posKey);
         if (existing != null && existing <= scheduledTick) {
             return;
         }
 
-        scheduledTicks.put(pos, scheduledTick);
+        scheduledTicks.put(posKey, scheduledTick);
         synchronized (pendingUpdates) {
-            pendingUpdates.add(new ScheduledUpdate(pos, scheduledTick));
+            pendingUpdates.add(new ScheduledUpdate(posKey, scheduledTick));
         }
     }
 
@@ -596,31 +565,28 @@ public final class WaterSystem {
         return (((long) chunkX) << 32) ^ (chunkZ & 0xFFFFFFFFL);
     }
 
-    private boolean canFlowInto(BlockPos pos) {
-        if (!isWithinWorld(pos.y())) {
+    private boolean canFlowInto(long posKey) {
+        if (!isWithinWorld(unpackY(posKey))) {
             return false;
         }
-        // Water cannot flow into positions occupied by source blocks
-        WaterBlock existing = cells.get(pos);
+        WaterBlock existing = cells.get(posKey);
         if (existing != null && existing.isSource()) {
             return false;
         }
-        return FlowBlockInteraction.canDisplace(getBlockViaCco(pos));
+        return FlowBlockInteraction.canDisplace(getBlockViaCco(posKey));
     }
 
     /**
-     * Checks if there's empty space below for water to fall into.
-     * Treats source blocks as "space" for falling logic (water should fall over sources like edges).
+     * Whether the cell at posKey is empty space water can occupy by falling.
+     * Solid blocks and existing water (source or flow) are not space.
      */
-    private boolean hasSpaceBelow(BlockPos pos) {
-        if (!isWithinWorld(pos.y())) {
+    private boolean hasSpaceBelow(long posKey) {
+        if (!isWithinWorld(unpackY(posKey))) {
             return false;
         }
-        BlockType blockType = getBlockViaCco(pos);
-        // Treat source blocks as space below (so water recognizes edge and falls)
-        WaterBlock existing = cells.get(pos);
-        if (existing != null && existing.isSource()) {
-            return true; // Source = space for falling purposes
+        BlockType blockType = getBlockViaCco(posKey);
+        if (blockType == BlockType.WATER) {
+            return false;
         }
         return FlowBlockInteraction.canDisplace(blockType);
     }
@@ -633,7 +599,7 @@ public final class WaterSystem {
         if (!isWithinWorld(y)) {
             return null;
         }
-        return cells.get(new BlockPos(x, y, z));
+        return cells.get(packKey(x, y, z));
     }
 
     public float getWaterLevel(int x, int y, int z) {
@@ -684,9 +650,8 @@ public final class WaterSystem {
             int worldX = chunkX * com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE + localX;
             int worldZ = chunkZ * com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE + localZ;
 
-            BlockPos pos = new BlockPos(worldX, y, worldZ);
             WaterBlock loadedState = new WaterBlock(entry.getValue().level(), entry.getValue().falling());
-            cells.put(pos, loadedState);
+            cells.put(packKey(worldX, y, worldZ), loadedState);
             loadedCount++;
         }
 
@@ -716,62 +681,101 @@ public final class WaterSystem {
      * Gets a block type at world coordinates using CCO API.
      * More efficient than world.getBlockAt() for frequent access patterns.
      */
-    private BlockType getBlockViaCco(BlockPos pos) {
-        if (!isWithinWorld(pos.y())) {
+    private BlockType getBlockViaCco(long posKey) {
+        int posY = unpackY(posKey);
+        if (!isWithinWorld(posY)) {
             return BlockType.AIR;
         }
 
-        int chunkX = Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE);
+        int posX = unpackX(posKey);
+        int posZ = unpackZ(posKey);
+        int chunkX = Math.floorDiv(posX, WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(posZ, WorldConfiguration.CHUNK_SIZE);
         CcoBlockReader reader = getReaderForChunk(chunkX, chunkZ);
 
         if (reader == null) {
             return BlockType.AIR;
         }
 
-        int localX = Math.floorMod(pos.x(), WorldConfiguration.CHUNK_SIZE);
-        int localZ = Math.floorMod(pos.z(), WorldConfiguration.CHUNK_SIZE);
-        return (BlockType) reader.get(localX, pos.y(), localZ);
+        int localX = Math.floorMod(posX, WorldConfiguration.CHUNK_SIZE);
+        int localZ = Math.floorMod(posZ, WorldConfiguration.CHUNK_SIZE);
+        return (BlockType) reader.get(localX, posY, localZ);
     }
 
     /**
      * Sets a block type at world coordinates using CCO API.
      * CCO automatically marks the chunk dirty for mesh regeneration and saving.
-     * This eliminates the need for suppressedCallbacks workaround.
      */
-    private void setBlockViaCco(BlockPos pos, BlockType type) {
-        if (!isWithinWorld(pos.y())) {
+    private void setBlockViaCco(long posKey, BlockType type) {
+        int posY = unpackY(posKey);
+        if (!isWithinWorld(posY)) {
             return;
         }
 
-        int chunkX = Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE);
+        int posX = unpackX(posKey);
+        int posZ = unpackZ(posKey);
+        int chunkX = Math.floorDiv(posX, WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(posZ, WorldConfiguration.CHUNK_SIZE);
         Chunk chunk = world.getChunkAt(chunkX, chunkZ);
 
         if (chunk == null) {
             return;
         }
 
-        int localX = Math.floorMod(pos.x(), WorldConfiguration.CHUNK_SIZE);
-        int localZ = Math.floorMod(pos.z(), WorldConfiguration.CHUNK_SIZE);
+        int localX = Math.floorMod(posX, WorldConfiguration.CHUNK_SIZE);
+        int localZ = Math.floorMod(posZ, WorldConfiguration.CHUNK_SIZE);
 
-        // CCO writer automatically marks dirty and handles callbacks
-        chunk.setBlock(localX, pos.y(), localZ, type);
+        chunk.setBlock(localX, posY, localZ, type);
     }
 
-    private record BlockPos(int x, int y, int z) {
-        BlockPos offset(int dx, int dy, int dz) {
-            return new BlockPos(x + dx, y + dy, z + dz);
-        }
+    // ===== POSITION KEY PACKING =====
+    // Packs (x, y, z) into a primitive long so map keys, queue entries, and
+    // method parameters never allocate. Layout: [x:24][z:24][y:16], all signed.
+    // The wider 16-bit y field lets keyBelow(y=0) and keyAbove(y=WORLD_HEIGHT-1)
+    // produce out-of-bounds y values that round-trip correctly through unpackY,
+    // so isWithinWorld() can reject them downstream. World x/z range is ±2^23.
 
-        BlockPos above() {
-            return offset(0, 1, 0);
-        }
+    private static final int X_SHIFT = 40;
+    private static final int Z_SHIFT = 16;
+    private static final long XZ_MASK = 0xFFFFFFL;
+    private static final long Y_MASK = 0xFFFFL;
+    private static final int XZ_SIGN_BIT = 0x00800000;
+    private static final int XZ_SIGN_EXT = 0xFF000000;
+    private static final int Y_SIGN_BIT = 0x00008000;
+    private static final int Y_SIGN_EXT = 0xFFFF0000;
 
-        BlockPos below() {
-            return offset(0, -1, 0);
-        }
+    private static long packKey(int x, int y, int z) {
+        return ((long)(x & 0xFFFFFF) << X_SHIFT)
+             | ((long)(z & 0xFFFFFF) << Z_SHIFT)
+             | (y & Y_MASK);
     }
 
-    private record ScheduledUpdate(BlockPos pos, long scheduledTick) { }
+    private static int unpackX(long key) {
+        int x = (int)((key >>> X_SHIFT) & XZ_MASK);
+        return (x & XZ_SIGN_BIT) != 0 ? x | XZ_SIGN_EXT : x;
+    }
+
+    private static int unpackY(long key) {
+        int y = (int)(key & Y_MASK);
+        return (y & Y_SIGN_BIT) != 0 ? y | Y_SIGN_EXT : y;
+    }
+
+    private static int unpackZ(long key) {
+        int z = (int)((key >>> Z_SHIFT) & XZ_MASK);
+        return (z & XZ_SIGN_BIT) != 0 ? z | XZ_SIGN_EXT : z;
+    }
+
+    private static long keyOffset(long key, int dx, int dy, int dz) {
+        return packKey(unpackX(key) + dx, unpackY(key) + dy, unpackZ(key) + dz);
+    }
+
+    private static long keyAbove(long key) {
+        return packKey(unpackX(key), unpackY(key) + 1, unpackZ(key));
+    }
+
+    private static long keyBelow(long key) {
+        return packKey(unpackX(key), unpackY(key) - 1, unpackZ(key));
+    }
+
+    private record ScheduledUpdate(long posKey, long scheduledTick) { }
 }

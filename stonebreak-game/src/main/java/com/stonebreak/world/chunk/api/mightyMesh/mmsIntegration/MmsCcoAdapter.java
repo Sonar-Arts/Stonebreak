@@ -36,6 +36,10 @@ import com.stonebreak.world.operations.WorldConfiguration;
  */
 public class MmsCcoAdapter {
 
+    // Water uses alpha blending, never alpha testing — flags are always zero.
+    // Hoisted to avoid per-face allocation in the meshing hot path.
+    private static final float[] WATER_ALPHA_FLAGS = {0.0f, 0.0f, 0.0f, 0.0f};
+
     private final MmsGeometryService cuboidGenerator;
     private final MmsCrossGenerator crossGenerator;
     private final MmsTextureMapper textureMapper;
@@ -291,12 +295,9 @@ public class MmsCcoAdapter {
             float[] baseTexCoords = textureMapper.generateFaceTextureCoordinates(BlockType.WATER, face);
             float[] texCoords = waterGenerator.generateWaterTextureCoordinates(face, blockX, blockY, blockZ, baseTexCoords);
 
-            // Generate alpha flags (water uses alpha blending, not testing)
-            float[] alphaFlags = new float[]{0.0f, 0.0f, 0.0f, 0.0f};
-
-            // Generate water flags with height encoding
-            float blockHeight = waterGenerator.generateWaterFlags(face, blockX, blockY, blockZ, 0.875f)[0];
-            float[] waterFlags = waterGenerator.generateWaterFlags(face, blockX, blockY, blockZ, blockHeight);
+            // generateWaterFlags ignores its blockHeight parameter; one call is sufficient.
+            // Returns a per-thread scratch array — read it before the next call.
+            float[] waterFlags = waterGenerator.generateWaterFlags(face, blockX, blockY, blockZ, 0.0f);
 
             // Add face to builder
             builder.beginFace();
@@ -308,7 +309,7 @@ public class MmsCcoAdapter {
                     vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
                     texCoords[tIdx], texCoords[tIdx + 1],
                     normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                    waterFlags[i], alphaFlags[i] // Water flags encode height
+                    waterFlags[i], WATER_ALPHA_FLAGS[i] // Water flags encode height
                 );
             }
             builder.endFace();

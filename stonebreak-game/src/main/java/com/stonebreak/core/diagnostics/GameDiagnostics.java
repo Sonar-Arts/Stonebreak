@@ -31,8 +31,6 @@ public final class GameDiagnostics {
         lastDebugTime = currentTime;
 
         if (currentTime - lastMemoryCheckTime > 30000) {
-            MemoryProfiler profiler = MemoryProfiler.getInstance();
-            profiler.checkMemoryPressure();
             lastMemoryCheckTime = currentTime;
 
             Runtime runtime = Runtime.getRuntime();
@@ -41,9 +39,9 @@ public final class GameDiagnostics {
             double memoryUsagePercent = (double) usedMemory / maxMemory * 100;
 
             if (memoryUsagePercent > 98) {
-                profiler.takeSnapshot("critical_memory_" + currentTime);
+                MemoryProfiler.getInstance().takeSnapshot("critical_memory_" + currentTime);
             } else if (memoryUsagePercent > 90) {
-                profiler.takeSnapshot("high_memory_usage_" + currentTime);
+                MemoryProfiler.getInstance().takeSnapshot("high_memory_usage_" + currentTime);
             }
         }
     }

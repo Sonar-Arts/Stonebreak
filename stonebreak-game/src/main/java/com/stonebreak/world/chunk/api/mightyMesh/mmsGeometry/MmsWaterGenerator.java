@@ -60,6 +60,8 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
         ThreadLocal.withInitial(() -> new float[MmsBufferLayout.POSITION_SIZE * MmsBufferLayout.VERTICES_PER_QUAD]);
     private static final ThreadLocal<float[]> SCRATCH_WATER_FLAGS =
         ThreadLocal.withInitial(() -> new float[MmsBufferLayout.VERTICES_PER_QUAD]);
+    private static final ThreadLocal<float[]> SCRATCH_WATER_TEXCOORDS =
+        ThreadLocal.withInitial(() -> new float[8]);
 
     /**
      * Creates a water generator with world reference for neighbor lookups.
@@ -172,23 +174,24 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
             throw new IllegalArgumentException("Base texture coordinates must have 8 floats (4 vertices × 2 coords)");
         }
 
-        // Clone base coordinates
-        float[] texCoords = baseTexCoords.clone();
-
-        // Only adjust side faces (not top or bottom)
-        if (face >= 2 && face <= 5) {
-            // Remap side faces to use the water top-face texture so the sides visually stick to the surface.
-            float[] bounds = waterTopTextureBounds;
-            float uMin = bounds[0];
-            float uMax = bounds[1];
-            float vTop = bounds[2];
-            float vBottom = bounds[3];
-
-            texCoords[0] = uMin;    texCoords[1] = vBottom;
-            texCoords[2] = uMax;    texCoords[3] = vBottom;
-            texCoords[4] = uMax;    texCoords[5] = vTop;
-            texCoords[6] = uMin;    texCoords[7] = vTop;
+        // Side faces remap to the water top-face texture; top/bottom pass through.
+        // Returns a per-thread scratch buffer — caller must consume before the next
+        // call on the same thread overwrites it.
+        if (face < 2 || face > 5) {
+            return baseTexCoords;
         }
+
+        float[] texCoords = SCRATCH_WATER_TEXCOORDS.get();
+        float[] bounds = waterTopTextureBounds;
+        float uMin = bounds[0];
+        float uMax = bounds[1];
+        float vTop = bounds[2];
+        float vBottom = bounds[3];
+
+        texCoords[0] = uMin;    texCoords[1] = vBottom;
+        texCoords[2] = uMax;    texCoords[3] = vBottom;
+        texCoords[4] = uMax;    texCoords[5] = vTop;
+        texCoords[6] = uMin;    texCoords[7] = vTop;
 
         return texCoords;
     }
@@ -265,7 +268,7 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
     private float[] getSewnCornerHeights(int blockX, int blockY, int blockZ) {
         long key = packBlockKey(blockX, blockY, blockZ);
         if (key == cachedCornerKey && cachedCornerHeights != null) {
-            return cachedCornerHeights.clone();
+            return cachedCornerHeights;
         }
 
         // Corner indices (see header): 0=(x, z+1), 1=(x+1, z+1), 2=(x+1, z), 3=(x, z).
@@ -279,7 +282,7 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
 
         cachedCornerKey = key;
         cachedCornerHeights = heights;
-        return heights.clone();
+        return heights;
     }
 
     /**
