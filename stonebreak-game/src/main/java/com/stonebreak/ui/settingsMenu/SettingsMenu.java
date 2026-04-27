@@ -58,7 +58,8 @@ public final class SettingsMenu {
                 actionHandler::toggleWaterShader,
                 actionHandler::onRenderDistanceChange,
                 actionHandler::onLodDistanceChange,
-                actionHandler::toggleLodEnabled
+                actionHandler::toggleLodEnabled,
+                actionHandler::toggleVsync
         );
     }
 

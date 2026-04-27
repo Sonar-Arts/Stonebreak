@@ -22,6 +22,19 @@ public class MmsCrossGenerator implements MmsGeometryService {
     private static final int VERTICES_PER_PLANE = 4;
 
     /**
+     * Per-thread scratch buffers reused across cross-block emissions. Cross
+     * blocks (flowers, grass) are sparse but still allocate three small
+     * arrays per emission. Indices need their own scratch since the consumer
+     * holds onto the int[] briefly while feeding it to the builder.
+     */
+    private static final ThreadLocal<float[]> SCRATCH_VERTICES =
+        ThreadLocal.withInitial(() -> new float[MmsBufferLayout.VERTICES_PER_CROSS * MmsBufferLayout.POSITION_SIZE]);
+    private static final ThreadLocal<float[]> SCRATCH_NORMALS =
+        ThreadLocal.withInitial(() -> new float[MmsBufferLayout.VERTICES_PER_CROSS * MmsBufferLayout.NORMAL_SIZE]);
+    private static final ThreadLocal<int[]> SCRATCH_INDICES =
+        ThreadLocal.withInitial(() -> new int[MmsBufferLayout.INDICES_PER_CROSS]);
+
+    /**
      * Generates cross geometry with 2 planes (8 vertices total).
      * Each plane is rendered double-sided via index winding (no duplicate vertices).
      * This prevents z-fighting while maintaining visibility from all angles.
@@ -32,7 +45,7 @@ public class MmsCrossGenerator implements MmsGeometryService {
      * @return Array of vertex positions for cross (24 floats = 8 vertices * 3 components)
      */
     public float[] generateCrossVertices(float worldX, float worldY, float worldZ) {
-        float[] vertices = new float[MmsBufferLayout.VERTICES_PER_CROSS * MmsBufferLayout.POSITION_SIZE];
+        float[] vertices = SCRATCH_VERTICES.get();
 
         // Cross pattern uses 2 diagonal planes
         // Plane 1: Southwest to Northeast (diagonal \)
@@ -63,7 +76,7 @@ public class MmsCrossGenerator implements MmsGeometryService {
      * @return Array of normal vectors (24 floats = 8 vertices * 3 components)
      */
     public float[] generateCrossNormals() {
-        float[] normals = new float[MmsBufferLayout.VERTICES_PER_CROSS * MmsBufferLayout.NORMAL_SIZE];
+        float[] normals = SCRATCH_NORMALS.get();
 
         // Normals calculated for diagonal planes
         // Plane 1: diagonal \ (faces northeast)
@@ -98,7 +111,7 @@ public class MmsCrossGenerator implements MmsGeometryService {
      * @return Array of 24 indices for 2 double-sided quads
      */
     public int[] generateCrossIndices(int baseVertexIndex) {
-        int[] indices = new int[MmsBufferLayout.INDICES_PER_CROSS];
+        int[] indices = SCRATCH_INDICES.get();
         int idx = 0;
 
         // Cross uses 8 vertices (2 planes x 4 vertices each)

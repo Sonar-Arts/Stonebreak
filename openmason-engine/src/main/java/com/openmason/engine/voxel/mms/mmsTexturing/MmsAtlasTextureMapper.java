@@ -23,6 +23,20 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
  */
 public class MmsAtlasTextureMapper implements MmsTextureMapper {
 
+    /**
+     * Per-thread scratch buffers reused across face emissions. Cube and cross
+     * variants each get their own slot — they have different lengths so they
+     * can't share. Eliminates ~4 small float[] allocations per visible face.
+     */
+    private static final ThreadLocal<float[]> SCRATCH_QUAD_TEX =
+        ThreadLocal.withInitial(() -> new float[MmsBufferLayout.TEXTURE_SIZE * MmsBufferLayout.VERTICES_PER_QUAD]);
+    private static final ThreadLocal<float[]> SCRATCH_CROSS_TEX =
+        ThreadLocal.withInitial(() -> new float[MmsBufferLayout.TEXTURE_SIZE * MmsBufferLayout.VERTICES_PER_CROSS]);
+    private static final ThreadLocal<float[]> SCRATCH_QUAD_ALPHA =
+        ThreadLocal.withInitial(() -> new float[MmsBufferLayout.VERTICES_PER_QUAD]);
+    private static final ThreadLocal<float[]> SCRATCH_CROSS_ALPHA =
+        ThreadLocal.withInitial(() -> new float[MmsBufferLayout.VERTICES_PER_CROSS]);
+
     private final ITextureCoordProvider provider;
 
     /**
@@ -42,7 +56,7 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
     public float[] generateFaceTextureCoordinates(IBlockType blockType, int face) {
         validateFaceIndex(face);
 
-        float[] texCoords = new float[MmsBufferLayout.TEXTURE_SIZE * MmsBufferLayout.VERTICES_PER_QUAD];
+        float[] texCoords = SCRATCH_QUAD_TEX.get();
 
         // Get atlas coordinates for this block/face combination
         float[] uvs = getBlockFaceUVs(blockType, face);
@@ -72,7 +86,7 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
 
     @Override
     public float[] generateCrossTextureCoordinates(IBlockType blockType) {
-        float[] texCoords = new float[MmsBufferLayout.TEXTURE_SIZE * MmsBufferLayout.VERTICES_PER_CROSS];
+        float[] texCoords = SCRATCH_CROSS_TEX.get();
 
         // Get atlas coordinates for cross block (use face 0 for cross blocks)
         float[] uvs = getBlockFaceUVs(blockType, 0);
@@ -104,7 +118,7 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
 
     @Override
     public float[] generateAlphaFlags(IBlockType blockType) {
-        float[] flags = new float[MmsBufferLayout.VERTICES_PER_QUAD];
+        float[] flags = SCRATCH_QUAD_ALPHA.get();
         float flagValue = requiresAlphaTesting(blockType) ? 1.0f : 0.0f;
 
         for (int i = 0; i < MmsBufferLayout.VERTICES_PER_QUAD; i++) {
@@ -121,7 +135,7 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
      * @return Array of 8 alpha flags
      */
     public float[] generateCrossAlphaFlags(IBlockType blockType) {
-        float[] flags = new float[MmsBufferLayout.VERTICES_PER_CROSS];
+        float[] flags = SCRATCH_CROSS_ALPHA.get();
         float flagValue = requiresAlphaTesting(blockType) ? 1.0f : 0.0f;
 
         for (int i = 0; i < MmsBufferLayout.VERTICES_PER_CROSS; i++) {

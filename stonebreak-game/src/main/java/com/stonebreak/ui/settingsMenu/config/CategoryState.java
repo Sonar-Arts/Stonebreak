@@ -8,7 +8,7 @@ public enum CategoryState {
     // ===== CATEGORIES =====
     GENERAL(0, new SettingType[]{SettingType.RESOLUTION}),
     QUALITY(1, new SettingType[]{SettingType.LEAF_TRANSPARENCY, SettingType.WATER_SHADER}),
-    PERFORMANCE(2, new SettingType[]{SettingType.RENDER_DISTANCE}),
+    PERFORMANCE(2, new SettingType[]{SettingType.RENDER_DISTANCE, SettingType.VSYNC}),
     ADVANCED(3, new SettingType[]{SettingType.ARM_MODEL, SettingType.LOD_ENABLED, SettingType.LOD_DISTANCE}),
     EXTRAS(4, new SettingType[]{SettingType.CROSSHAIR_STYLE, SettingType.CROSSHAIR_SIZE}),
     AUDIO(5, new SettingType[]{SettingType.VOLUME});
@@ -77,8 +77,9 @@ public enum CategoryState {
         RENDER_DISTANCE(7),
         LOD_DISTANCE(8),
         LOD_ENABLED(9),
-        APPLY(10),
-        BACK(11);
+        VSYNC(10),
+        APPLY(11),
+        BACK(12);
         
         private final int index;
         

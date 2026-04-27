@@ -218,6 +218,13 @@ public class CowTextureAtlas {
      * Create OpenGL texture from ByteBuffer data.
      */
     private static int createOpenGLTexture(ByteBuffer data, int width, int height) {
+        // Charge the new atlas before allocation; if a previous textureId
+        // exists, untrack it first.
+        if (CowTextureAtlas.textureId != -1) {
+            com.openmason.engine.diagnostics.GpuMemoryTracker.getInstance()
+                .untrack(com.openmason.engine.diagnostics.GpuMemoryTracker.Category.TEXTURE_ATLAS,
+                         estimateMipmappedRgba8Bytes(width, height));
+        }
         int textureId = GL11.glGenTextures();
         
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
@@ -234,11 +241,24 @@ public class CowTextureAtlas {
         
         // Generate mipmaps (OpenGL 3.0+)
         GL30.glGenerateMipmap(GL11.GL_TEXTURE_2D);
-        
+
         // Unbind texture
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-        
+
+        com.openmason.engine.diagnostics.GpuMemoryTracker.getInstance()
+            .track(com.openmason.engine.diagnostics.GpuMemoryTracker.Category.TEXTURE_ATLAS,
+                   estimateMipmappedRgba8Bytes(width, height));
+
         return textureId;
+    }
+
+    /**
+     * RGBA8 base level + full mipmap chain costs ~4/3 of the base. Used to
+     * charge the VRAM tracker without re-walking the mip pyramid.
+     */
+    private static long estimateMipmappedRgba8Bytes(int width, int height) {
+        long base = (long) width * height * 4L;
+        return base + base / 3L;
     }
     
     /**
@@ -247,9 +267,13 @@ public class CowTextureAtlas {
     public static void cleanup() {
         CowTextureLoader.clearCache();
         initialized = false;
-        
+
         if (textureId != -1) {
             GL11.glDeleteTextures(textureId);
+            // Atlas is always 256x256 (see initialize); keep this in sync if that changes.
+            com.openmason.engine.diagnostics.GpuMemoryTracker.getInstance()
+                .untrack(com.openmason.engine.diagnostics.GpuMemoryTracker.Category.TEXTURE_ATLAS,
+                         estimateMipmappedRgba8Bytes(256, 256));
             textureId = -1;
         }
     }

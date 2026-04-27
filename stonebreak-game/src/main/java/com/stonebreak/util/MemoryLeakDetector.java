@@ -90,7 +90,6 @@ public class MemoryLeakDetector {
         }
         
         lastHeapUsage = currentHeapUsage;
-        profiler.checkMemoryPressure();
     }
     
     /**

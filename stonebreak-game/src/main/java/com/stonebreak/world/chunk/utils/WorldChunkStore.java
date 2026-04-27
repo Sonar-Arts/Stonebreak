@@ -392,6 +392,11 @@ public class WorldChunkStore {
             // DO NOT populate features here - they will be populated by processPendingFeaturePopulation()
             // when neighbors exist and it's safe to do so without triggering recursion
 
+            // Populate the sky-shadow heightmap now that terrain is final.
+            // Avoids paying the lazy one-shot scan on the first mesh-build sample
+            // (which would otherwise block the mesh thread for ~1 ms/chunk).
+            chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
+
             // Initial mob spawning during chunk generation
             // Following Minecraft rules: "Most animals spawn within chunks when they are generated"
             // This is INITIAL population only - continuous spawning happens via spawning cycle
@@ -472,6 +477,9 @@ public class WorldChunkStore {
         if (!chunk.areFeaturesPopulated()) {
             chunk.setFeaturesPopulated(true);
         }
+        // Heightmap is not serialized — rebuild from deserialized blocks before
+        // the mesh-build samples it.
+        chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
         chunk.cleanupCpuResources();
         if (meshPipeline != null) {
             meshPipeline.scheduleConditionalMeshBuild(chunk);

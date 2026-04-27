@@ -66,6 +66,7 @@ public final class MouseHandler {
         stateManager.getRenderDistanceSlider().updateHover(mouseX, mouseY);
         stateManager.getLodDistanceSlider().updateHover(mouseX, mouseY);
         stateManager.getLodEnabledButton().updateHover(mouseX, mouseY);
+        stateManager.getVsyncButton().updateHover(mouseX, mouseY);
     }
 
     private void handlePress(float mouseX, float mouseY) {
@@ -121,6 +122,7 @@ public final class MouseHandler {
             case RENDER_DISTANCE   -> stateManager.getRenderDistanceSlider().handleClick(mouseX, mouseY);
             case LOD_DISTANCE      -> stateManager.getLodDistanceSlider().handleClick(mouseX, mouseY);
             case LOD_ENABLED       -> stateManager.getLodEnabledButton().handleClick(mouseX, mouseY);
+            case VSYNC             -> stateManager.getVsyncButton().handleClick(mouseX, mouseY);
             default -> false;
         };
     }

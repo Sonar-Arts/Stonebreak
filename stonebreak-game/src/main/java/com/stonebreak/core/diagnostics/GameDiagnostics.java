@@ -30,66 +30,24 @@ public final class GameDiagnostics {
         }
         lastDebugTime = currentTime;
 
-        MemoryProfiler profiler = MemoryProfiler.getInstance();
         if (currentTime - lastMemoryCheckTime > 30000) {
-            profiler.checkMemoryPressure();
             lastMemoryCheckTime = currentTime;
+
+            Runtime runtime = Runtime.getRuntime();
+            long maxMemory = runtime.maxMemory() / (1024 * 1024);
+            long usedMemory = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
+            double memoryUsagePercent = (double) usedMemory / maxMemory * 100;
+
+            if (memoryUsagePercent > 98) {
+                MemoryProfiler.getInstance().takeSnapshot("critical_memory_" + currentTime);
+            } else if (memoryUsagePercent > 90) {
+                MemoryProfiler.getInstance().takeSnapshot("high_memory_usage_" + currentTime);
+            }
         }
-
-        Runtime runtime = Runtime.getRuntime();
-        long maxMemory = runtime.maxMemory() / (1024 * 1024);
-        long totalMemory = runtime.totalMemory() / (1024 * 1024);
-        long freeMemory = runtime.freeMemory() / (1024 * 1024);
-        long usedMemory = totalMemory - freeMemory;
-        double memoryUsagePercent = (double) usedMemory / maxMemory * 100;
-
-        int chunkCount = 0;
-        int meshPendingCount = 0;
-        int glUploadPendingCount = 0;
-        if (Game.getWorld() != null) {
-            chunkCount = Game.getWorld().getLoadedChunkCount();
-            meshPendingCount = Game.getWorld().getPendingMeshBuildCount();
-            glUploadPendingCount = Game.getWorld().getPendingGLUploadCount();
-        }
-
-        String playerPos = "Unknown";
-        if (Game.getPlayer() != null) {
-            org.joml.Vector3f pos = Game.getPlayer().getPosition();
-            playerPos = String.format("%.1f, %.1f, %.1f", pos.x, pos.y, pos.z);
-        }
-
-        System.out.println("========== MEMORY & PERFORMANCE DEBUG ==========");
-        System.out.printf("Memory Usage: %d/%d MB (%.1f%% of max %d MB)%n",
-                         usedMemory, totalMemory, memoryUsagePercent, maxMemory);
-        System.out.printf("Free Memory: %d MB%n", freeMemory);
-        System.out.printf("Chunks: %d loaded, %d pending mesh, %d pending GL%n",
-                         chunkCount, meshPendingCount, glUploadPendingCount);
-        System.out.printf("Player Position: %s%n", playerPos);
-        System.out.printf("FPS: %d%n", Math.round(1.0f / Game.getDeltaTime()));
-        System.out.printf("Delta Time: %.3f ms%n", Game.getDeltaTime() * 1000);
-
-        if (memoryUsagePercent > 90) {
-            System.out.println("⚠️  HIGH: Memory usage above 90% - ZGC will manage automatically");
-            profiler.takeSnapshot("high_memory_usage_" + currentTime);
-        }
-        if (memoryUsagePercent > 98) {
-            System.out.println("🚨 CRITICAL: Memory usage above 98% - emergency cleanup triggered!");
-            profiler.takeSnapshot("critical_memory_" + currentTime);
-        }
-
-        System.out.println("===============================================");
     }
 
     /** Logs a one-line memory summary tagged with the supplied context. */
     public static void logDetailedMemoryInfo(String context) {
-        Runtime runtime = Runtime.getRuntime();
-        long maxMemory = runtime.maxMemory() / (1024 * 1024);
-        long totalMemory = runtime.totalMemory() / (1024 * 1024);
-        long freeMemory = runtime.freeMemory() / (1024 * 1024);
-        long usedMemory = totalMemory - freeMemory;
-
-        System.out.printf("[MEMORY] %s - Used: %dMB, Total: %dMB, Max: %dMB, Free: %dMB%n",
-                         context, usedMemory, totalMemory, maxMemory, freeMemory);
     }
 
     /**

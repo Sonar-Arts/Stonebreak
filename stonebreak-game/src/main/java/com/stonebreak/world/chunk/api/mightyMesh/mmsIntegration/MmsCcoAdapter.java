@@ -9,6 +9,7 @@ import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
 import com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult;
 import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
+import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilderPool;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsSBOBlockProvider;
@@ -35,11 +36,16 @@ import com.stonebreak.world.operations.WorldConfiguration;
  */
 public class MmsCcoAdapter {
 
+    // Water uses alpha blending, never alpha testing — flags are always zero.
+    // Hoisted to avoid per-face allocation in the meshing hot path.
+    private static final float[] WATER_ALPHA_FLAGS = {0.0f, 0.0f, 0.0f, 0.0f};
+
     private final MmsGeometryService cuboidGenerator;
     private final MmsCrossGenerator crossGenerator;
     private final MmsTextureMapper textureMapper;
     private MmsWaterGenerator waterGenerator; // Created when world is set
     private World world; // Not final - can be set after construction
+    private com.stonebreak.world.lighting.WorldLightingContext shadowContext; // Built when world is set
     private SBOStampEmitter sboStampEmitter; // SBO block stamp emission via SBORendererAPI
 
     /**
@@ -61,6 +67,7 @@ public class MmsCcoAdapter {
 
         if (world != null) {
             this.waterGenerator = new MmsWaterGenerator(world, textureMapper);
+            this.shadowContext = new com.stonebreak.world.lighting.WorldLightingContext(world);
             System.out.println("[MmsCcoAdapter] Water generator initialized with provided world instance");
         }
     }
@@ -77,6 +84,7 @@ public class MmsCcoAdapter {
         }
         this.world = world;
         this.waterGenerator = new MmsWaterGenerator(world, textureMapper);
+        this.shadowContext = new com.stonebreak.world.lighting.WorldLightingContext(world);
         System.out.println("[MmsCcoAdapter] World instance set successfully (water generator initialized)");
     }
 
@@ -88,6 +96,10 @@ public class MmsCcoAdapter {
      */
     public void setSBOStampEmitter(SBOStampEmitter emitter) {
         this.sboStampEmitter = emitter;
+        // Per-vertex shadow sampling — heightmap sky occlusion + classic AO.
+        // Deterministic at first mesh build; no seed races, no stale data.
+        emitter.setLightSampler((face, vx, vy, vz, data) ->
+            com.openmason.engine.voxel.lighting.VertexLightSampler.sampleCombined(shadowContext, vx, vy, vz, face));
         System.out.println("[MmsCcoAdapter] SBO stamp emitter set (" + emitter.getCache().size() + " stamp types)");
     }
 
@@ -119,11 +131,16 @@ public class MmsCcoAdapter {
         // Mark as generating
         stateManager.addState(CcoChunkState.MESH_GENERATING);
 
-        try {
-            MmsMeshBuilder atlasBuilder = MmsMeshBuilder.createWithCapacity(
-                WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE * 64
-            );
+        // Pooled builder — reused across chunks to avoid the ~640 KB
+        // float[]/int[] allocation per build. The build() call below deep-copies
+        // its data into the immutable MmsMeshData, so the builder is safe to
+        // release back to the pool as soon as that returns.
+        MmsMeshBuilderPool builderPool = MmsMeshBuilderPool.getInstance();
+        MmsMeshBuilder atlasBuilder = builderPool.acquire(
+            WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE * 64
+        );
 
+        try {
             int chunkX = chunkData.getChunkX();
             int chunkZ = chunkData.getChunkZ();
 
@@ -192,6 +209,9 @@ public class MmsCcoAdapter {
             dirtyTracker.markMeshDirtyOnly();
             throw new RuntimeException("Mesh generation failed for chunk (" +
                 chunkData.getChunkX() + ", " + chunkData.getChunkZ() + ")", e);
+        } finally {
+            // Builder's data has been copied out by build(); safe to recycle.
+            builderPool.release(atlasBuilder);
         }
     }
 
@@ -275,12 +295,9 @@ public class MmsCcoAdapter {
             float[] baseTexCoords = textureMapper.generateFaceTextureCoordinates(BlockType.WATER, face);
             float[] texCoords = waterGenerator.generateWaterTextureCoordinates(face, blockX, blockY, blockZ, baseTexCoords);
 
-            // Generate alpha flags (water uses alpha blending, not testing)
-            float[] alphaFlags = new float[]{0.0f, 0.0f, 0.0f, 0.0f};
-
-            // Generate water flags with height encoding
-            float blockHeight = waterGenerator.generateWaterFlags(face, blockX, blockY, blockZ, 0.875f)[0];
-            float[] waterFlags = waterGenerator.generateWaterFlags(face, blockX, blockY, blockZ, blockHeight);
+            // generateWaterFlags ignores its blockHeight parameter; one call is sufficient.
+            // Returns a per-thread scratch array — read it before the next call.
+            float[] waterFlags = waterGenerator.generateWaterFlags(face, blockX, blockY, blockZ, 0.0f);
 
             // Add face to builder
             builder.beginFace();
@@ -292,7 +309,7 @@ public class MmsCcoAdapter {
                     vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
                     texCoords[tIdx], texCoords[tIdx + 1],
                     normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                    waterFlags[i], alphaFlags[i] // Water flags encode height
+                    waterFlags[i], WATER_ALPHA_FLAGS[i] // Water flags encode height
                 );
             }
             builder.endFace();
@@ -326,21 +343,33 @@ public class MmsCcoAdapter {
             // Generate alpha flags
             float[] alphaFlags = textureMapper.generateAlphaFlags(blockType);
 
-            // Add face to builder
+            // Per-vertex smooth lighting — each vertex averages the 4 air-side
+            // cells it touches. Gives gradient shadow transitions across faces.
             builder.beginFace();
             for (int i = 0; i < 4; i++) {
                 int vIdx = i * 3;
                 int tIdx = i * 2;
+                float vx = vertices[vIdx];
+                float vy = vertices[vIdx + 1];
+                float vz = vertices[vIdx + 2];
+                float vertexLight = sampleVertexLight(vx, vy, vz, face);
 
                 builder.addVertex(
-                    vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
+                    vx, vy, vz,
                     texCoords[tIdx], texCoords[tIdx + 1],
                     normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                    0.0f, alphaFlags[i] // No water flags needed
+                    0.0f, alphaFlags[i], 0.0f, vertexLight
                 );
             }
             builder.endFace();
         }
+    }
+
+    /**
+     * Per-vertex shadow sample: sky occlusion (heightmap) × classic AO.
+     */
+    private float sampleVertexLight(float vx, float vy, float vz, int face) {
+        return com.openmason.engine.voxel.lighting.VertexLightSampler.sampleCombined(shadowContext, vx, vy, vz, face);
     }
 
     /**

@@ -37,6 +37,7 @@ public final class MmsMeshBuilder {
     private float[] waterFlags;
     private float[] alphaFlags;
     private float[] translucentFlags;
+    private float[] lightValues;
     private int[] indices;
 
     // Current sizes (logical length, not capacity)
@@ -46,6 +47,7 @@ public final class MmsMeshBuilder {
     private int waterSize;
     private int alphaSize;
     private int translucentSize;
+    private int lightSize;
     private int indexSize;
 
     // Face building state
@@ -74,6 +76,7 @@ public final class MmsMeshBuilder {
         this.waterFlags = new float[initialCapacity];
         this.alphaFlags = new float[initialCapacity];
         this.translucentFlags = new float[initialCapacity];
+        this.lightValues = new float[initialCapacity];
         this.indices = new int[initialCapacity * 2]; // Estimate ~1.5 indices per vertex
         this.currentFaceVertexStart = -1;
         this.totalVertices = 0;
@@ -152,6 +155,19 @@ public final class MmsMeshBuilder {
                                      float nx, float ny, float nz,
                                      float waterFlag, float alphaFlag,
                                      float translucentFlag) {
+        return addVertex(x, y, z, u, v, nx, ny, nz, waterFlag, alphaFlag, translucentFlag, 1.0f);
+    }
+
+    /**
+     * Adds a vertex with all attributes including a per-vertex world-light value.
+     *
+     * @param light Per-vertex light in [0,1]; 1.0 = fully lit (default when overload omitted)
+     */
+    public MmsMeshBuilder addVertex(float x, float y, float z,
+                                     float u, float v,
+                                     float nx, float ny, float nz,
+                                     float waterFlag, float alphaFlag,
+                                     float translucentFlag, float light) {
 
         // Ensure capacity for positions (3 floats)
         int posRequired = posSize + 3;
@@ -194,6 +210,11 @@ public final class MmsMeshBuilder {
             translucentFlags = Arrays.copyOf(translucentFlags, grow(translucentFlags.length, translucentSize + 1));
         }
         translucentFlags[translucentSize++] = translucentFlag;
+
+        if (lightSize >= lightValues.length) {
+            lightValues = Arrays.copyOf(lightValues, grow(lightValues.length, lightSize + 1));
+        }
+        lightValues[lightSize++] = light;
 
         totalVertices++;
         return this;
@@ -256,52 +277,6 @@ public final class MmsMeshBuilder {
     }
 
     /**
-     * Adds a pre-built quad face with all vertex data.
-     * This is more efficient than using beginFace()/addVertex()/endFace().
-     *
-     * @param faceData Array containing all vertex data for 4 vertices
-     *                 (each vertex: x,y,z,u,v,nx,ny,nz,water,alpha = 10 floats)
-     * @return this builder for chaining
-     */
-    public MmsMeshBuilder addQuadFace(float[] faceData) {
-        if (faceData.length != MmsBufferLayout.VERTICES_PER_QUAD * MmsBufferLayout.VERTEX_SIZE) {
-            throw new IllegalArgumentException(
-                String.format("Expected %d floats for quad face, got %d",
-                    MmsBufferLayout.VERTICES_PER_QUAD * MmsBufferLayout.VERTEX_SIZE, faceData.length)
-            );
-        }
-
-        int baseVertex = totalVertices;
-
-        // Parse and add all 4 vertices
-        for (int i = 0; i < MmsBufferLayout.VERTICES_PER_QUAD; i++) {
-            int offset = i * MmsBufferLayout.VERTEX_SIZE;
-
-            addVertex(
-                faceData[offset], faceData[offset + 1], faceData[offset + 2],
-                faceData[offset + 3], faceData[offset + 4],
-                faceData[offset + 5], faceData[offset + 6], faceData[offset + 7],
-                faceData[offset + 8], faceData[offset + 9], faceData[offset + 10]
-            );
-        }
-
-        // Add indices for 2 triangles
-        int idxRequired = indexSize + 6;
-        if (idxRequired > indices.length) {
-            indices = Arrays.copyOf(indices, grow(indices.length, idxRequired));
-        }
-        indices[indexSize++] = baseVertex;
-        indices[indexSize++] = baseVertex + 1;
-        indices[indexSize++] = baseVertex + 2;
-
-        indices[indexSize++] = baseVertex;
-        indices[indexSize++] = baseVertex + 2;
-        indices[indexSize++] = baseVertex + 3;
-
-        return this;
-    }
-
-    /**
      * Resets the builder to empty state, reusing allocated arrays.
      *
      * @return this builder for chaining
@@ -313,6 +288,7 @@ public final class MmsMeshBuilder {
         waterSize = 0;
         alphaSize = 0;
         translucentSize = 0;
+        lightSize = 0;
         indexSize = 0;
         currentFaceVertexStart = -1;
         totalVertices = 0;
@@ -371,11 +347,12 @@ public final class MmsMeshBuilder {
         float[] waterArray = Arrays.copyOf(waterFlags, waterSize);
         float[] alphaArray = Arrays.copyOf(alphaFlags, alphaSize);
         float[] translucentArray = Arrays.copyOf(translucentFlags, translucentSize);
+        float[] lightArray = Arrays.copyOf(lightValues, lightSize);
         int[] indexArray = Arrays.copyOf(indices, indexSize);
 
         // Create mesh data
         MmsMeshData meshData = new MmsMeshData(
-            posArray, texArray, normArray, waterArray, alphaArray, translucentArray,
+            posArray, texArray, normArray, waterArray, alphaArray, translucentArray, lightArray,
             indexArray, indexArray.length
         );
 

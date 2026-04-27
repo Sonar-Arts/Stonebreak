@@ -224,27 +224,25 @@
                         <option>--add-exports=java.base/sun.nio.ch=ALL-UNNAMED</option>
                         <option>--add-exports=java.base/sun.security.util=ALL-UNNAMED</option>
                         
-                        <!-- Use ZGC for ultra-low latency gaming performance -->
+                        <!-- Generational ZGC: sub-millisecond pauses, no frame hitches.
+                             On Java 24+ the generational mode is the default for ZGC
+                             so -XX:+UseZGC alone is sufficient. The previous build had
+                             "-XX:+UseZGenerationalGC" which is not a real flag. -->
                         <option>-XX:+UseZGC</option>
-                        <option>-XX:+UnlockExperimentalVMOptions</option>
-                        <!-- Enable generational ZGC for better allocation patterns -->
-                        <option>-XX:+UseZGenerationalGC</option>
-                        <!-- Increase heap size for better performance -->
+                        <!-- Heap sizing — preallocate to avoid grow-time pauses -->
                         <option>-Xms2g</option>
-                        <option>-Xmx4g</option>
-                        <!-- Optimize for consistent low-latency performance -->
+                        <option>-Xmx8g</option>
+                        <!-- Optimize for consistent low-latency performance.
+                             Linux-only knobs; harmless no-ops on Windows. -->
                         <option>-XX:+UseLargePages</option>
                         <option>-XX:+UseTransparentHugePages</option>
                         <!-- Reduce allocation overhead -->
                         <option>-XX:+UseStringDeduplication</option>
-                        <!-- Enable advanced JIT optimizations -->
-                        <option>-XX:+UseCompressedOops</option>
-                        <option>-XX:+UseCompressedClassPointers</option>
                         <!-- Optimize thread local allocation -->
                         <option>-XX:+UseTLAB</option>
                         <option>-XX:+ResizeTLAB</option>
-                        <!-- Enable biased locking for better synchronization -->
-                        <option>-XX:+UseBiasedLocking</option>
+                        <!-- (UseCompressedOops / UseCompressedClassPointers / UseBiasedLocking
+                             removed: defaults on JDK 25 / no longer recognized.) -->
                         
                         <!-- Additional stability flags for native library interaction -->
                         <option>-Djava.library.path=.</option>

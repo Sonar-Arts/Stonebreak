@@ -21,6 +21,10 @@ public class VoxelMesh {
     private int indexCount;
     private boolean created = false;
 
+    // Tracked GPU bytes — used to balance the VRAM tracker on cleanup.
+    private long trackedVboBytes = 0;
+    private long trackedEboBytes = 0;
+
     // Vertex data format: Position(3) + Normal(3) + TexCoord(2) = 8 floats per vertex
     private static final int VERTEX_SIZE = 8;
     private static final int VERTICES_PER_FACE = 4;
@@ -198,6 +202,7 @@ public class VoxelMesh {
         vbo = GL20.glGenBuffers();
         GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
         GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
+        trackedVboBytes = (long) vertexArray.length * Float.BYTES;
 
         // Set up vertex attributes
         int stride = VERTEX_SIZE * Float.BYTES;
@@ -218,6 +223,11 @@ public class VoxelMesh {
         ebo = GL20.glGenBuffers();
         GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ebo);
         GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
+        trackedEboBytes = (long) indexArray.length * Integer.BYTES;
+
+        com.openmason.engine.diagnostics.GpuMemoryTracker.getInstance()
+            .track(com.openmason.engine.diagnostics.GpuMemoryTracker.Category.PLAYER_GEOMETRY,
+                   trackedVboBytes + trackedEboBytes);
 
         // Unbind
         GL30.glBindVertexArray(0);
@@ -263,6 +273,14 @@ public class VoxelMesh {
             GL20.glDeleteBuffers(vbo);
             GL20.glDeleteBuffers(ebo);
             created = false;
+
+            long total = trackedVboBytes + trackedEboBytes;
+            if (total > 0) {
+                com.openmason.engine.diagnostics.GpuMemoryTracker.getInstance()
+                    .untrack(com.openmason.engine.diagnostics.GpuMemoryTracker.Category.PLAYER_GEOMETRY, total);
+                trackedVboBytes = 0;
+                trackedEboBytes = 0;
+            }
         }
     }
 }

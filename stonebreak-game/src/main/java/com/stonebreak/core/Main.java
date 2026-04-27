@@ -43,8 +43,21 @@ public class Main {
     // Game settings - loaded from Settings at startup
     private int width;
     private int height;
-    private static final int TARGET_FPS = 144;
-    private static final long FRAME_TIME_NANOS = (long)(1_000_000_000.0 / TARGET_FPS);
+
+    /**
+     * FPS cap used when VSync is disabled. Picked above common refresh rates
+     * so high-refresh monitors aren't held back by it.
+     */
+    private static final int UNCAPPED_TARGET_FPS = 240;
+
+    /**
+     * Detected monitor refresh rate. Used as the target FPS when VSync
+     * is enabled — capping at the display rate gives the same
+     * tear-suppression benefit as driver VSync (assuming G-Sync/FreeSync
+     * or simply running below the monitor's max) without the half-rate
+     * fallback that double-buffered swap-interval=1 imposes when frames miss.
+     */
+    private static int monitorRefreshHz = 60;
     
     // Game state
     private boolean running = false;
@@ -67,6 +80,7 @@ public class Main {
     private static Main instance;
 
     public static void main(String[] args) {
+        GcEnforcement.enforce();
         new Main().run();
     }
     
@@ -93,6 +107,35 @@ public class Main {
         this.width = settings.getWindowWidth();
         this.height = settings.getWindowHeight();
         System.out.println("Settings loaded - Window size: " + width + "x" + height);
+    }
+
+    /**
+     * VSync here means "cap to monitor refresh rate via the manual limiter,"
+     * not the driver's swap-interval=1. The cap delivers the same anti-tear
+     * benefit on G-Sync/FreeSync displays without the half-rate fallback that
+     * double-buffered swap-interval=1 forces when a frame misses vblank.
+     *
+     * <p>swapInterval is left at 0 unconditionally so the driver never blocks
+     * us — the {@code Thread.sleep} pacing in {@code loop()} does the work.
+     */
+    public static void applyVsyncSetting() {
+        glfwSwapInterval(0);
+        boolean enabled = Settings.getInstance().isVsyncEnabled();
+        System.out.println("[Display] VSync " + (enabled ? "enabled (cap " + monitorRefreshHz + " Hz)"
+                                                          : "disabled (cap " + UNCAPPED_TARGET_FPS + " FPS)"));
+    }
+
+    /**
+     * Returns the current per-frame nanosecond budget for the manual FPS
+     * limiter. Picks the monitor refresh rate when VSync is on, the
+     * uncapped target otherwise.
+     */
+    private static long currentFrameBudgetNanos() {
+        int targetHz = Settings.getInstance().isVsyncEnabled()
+                ? monitorRefreshHz
+                : UNCAPPED_TARGET_FPS;
+        if (targetHz <= 0) targetHz = 60; // defensive — never divide by zero
+        return 1_000_000_000L / targetHz;
     }
     
     private void init() {
@@ -310,7 +353,7 @@ public class Main {
             
             // Get the resolution of the primary monitor
             GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-            
+
             // Center the window
             if (vidmode != null) {
                 glfwSetWindowPos(
@@ -318,6 +361,15 @@ public class Main {
                     (vidmode.width() - pWidth.get(0)) / 2,
                     (vidmode.height() - pHeight.get(0)) / 2
                 );
+                // Capture the monitor's refresh rate as the VSync target. This
+                // is what the FPS cap uses when VSync is enabled — capping at
+                // the display rate avoids tearing without the half-rate
+                // fallback the driver's swap-interval=1 imposes on missed frames.
+                int hz = vidmode.refreshRate();
+                if (hz > 0) {
+                    monitorRefreshHz = hz;
+                    System.out.println("[Display] Monitor refresh rate: " + hz + " Hz");
+                }
             } else {
                 // Fallback or log error if vidmode is null
                 System.err.println("Could not get video mode for primary monitor. Window will not be centered.");
@@ -329,8 +381,10 @@ public class Main {
         // Make the OpenGL context current
         glfwMakeContextCurrent(window);
 
-        // Disable v-sync since we're implementing our own FPS limiter
-        glfwSwapInterval(0);
+        // Apply the persisted VSync preference. We never call
+        // glfwSwapInterval(1) — instead VSync = on caps the manual sleep
+        // limiter to the monitor's refresh rate.
+        applyVsyncSetting();
 
         // Make the window visible
         glfwShowWindow(window);
@@ -481,11 +535,14 @@ public class Main {
             long frameEndTime = System.nanoTime();
             long frameTimeNanos = frameEndTime - frameStartTime;
             
-            // Sleep if we're running faster than the target FPS
-            if (frameTimeNanos < FRAME_TIME_NANOS) {
+            // Sleep if we're running faster than the current target.
+            // VSync = on  → target = monitor refresh rate (cap-based "VSync")
+            // VSync = off → target = UNCAPPED_TARGET_FPS
+            long frameBudgetNanos = currentFrameBudgetNanos();
+            if (frameTimeNanos < frameBudgetNanos) {
                 try {
                     // Sleep to cap FPS (convert back to milliseconds for Thread.sleep)
-                    long sleepTimeNanos = FRAME_TIME_NANOS - frameTimeNanos;
+                    long sleepTimeNanos = frameBudgetNanos - frameTimeNanos;
                     long sleepTimeMillis = sleepTimeNanos / 1_000_000;
                     int sleepTimeNanosRemainder = (int)(sleepTimeNanos % 1_000_000);
                     
@@ -761,11 +818,14 @@ public class Main {
         DebugOverlay debugOverlay = Game.getDebugOverlay();
         if (debugOverlay != null && debugOverlay.isVisible()) {
             debugOverlay.renderWireframes(renderer);
-            
+
             if (renderer != null) {
+                // Right-side text overlay uses NanoVG.
                 renderer.beginUIFrame(width, height, 1.0f);
                 debugOverlay.render(renderer.getUIRenderer());
                 renderer.endUIFrame();
+                // Left-side resource cards use MasonryUI/Skija (separate GL bracket).
+                debugOverlay.renderResourcePanels(renderer, width, height);
             }
         }
     }

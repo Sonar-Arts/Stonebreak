@@ -42,6 +42,9 @@ public class EntityRenderer {
     
     // Track current texture variant for each part to avoid unnecessary updates
     private final Map<EntityType, Map<String, String>> currentTextureVariants = new HashMap<>();
+
+    // Tracked entity-mesh GPU bytes; counterbalanced on cleanup.
+    private long trackedEntityMeshBytes = 0;
     
     // Simple cube model for fallback entities
     private int simpleCubeVAO;
@@ -358,6 +361,13 @@ public class EntityRenderer {
         eboMaps.get(entityType).put(partName, ebo);
         texCoordVboMaps.get(entityType).put(partName, texVbo);
         vertexCountMaps.get(entityType).put(partName, indices.length);
+
+        long partBytes = (long) vertices.length * Float.BYTES
+                       + (long) texCoords.length * Float.BYTES
+                       + (long) indices.length * Integer.BYTES;
+        com.openmason.engine.diagnostics.GpuMemoryTracker.getInstance()
+            .track(com.openmason.engine.diagnostics.GpuMemoryTracker.Category.ENTITY_MESH, partBytes);
+        trackedEntityMeshBytes += partBytes;
         
         // Cleanup
         memFree(vertexBuffer);
@@ -765,6 +775,13 @@ public class EntityRenderer {
             texCoordVboMaps.clear();
             vertexCountMaps.clear();
             currentTextureVariants.clear();
+
+            if (trackedEntityMeshBytes > 0) {
+                com.openmason.engine.diagnostics.GpuMemoryTracker.getInstance()
+                    .untrack(com.openmason.engine.diagnostics.GpuMemoryTracker.Category.ENTITY_MESH,
+                             trackedEntityMeshBytes);
+                trackedEntityMeshBytes = 0;
+            }
         }
     }
 }

@@ -1,6 +1,15 @@
 package com.stonebreak.ui;
 
+import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.rendering.UI.masonryUI.MStatPanel;
+import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import java.lang.management.BufferPoolMXBean;
+import java.lang.management.GarbageCollectorMXBean;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryPoolMXBean;
+import java.lang.management.MemoryType;
+import java.lang.management.MemoryUsage;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 import com.stonebreak.blocks.BlockType;
@@ -25,6 +34,8 @@ import java.util.ArrayDeque;
 // OpenGL imports for GPU information
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL20.*;
+import org.lwjgl.opengl.GL;
+import org.lwjgl.opengl.GLCapabilities;
 
 public class DebugOverlay {
     private boolean visible = false;
@@ -39,6 +50,29 @@ public class DebugOverlay {
     private String gpuRenderer = null;
     private String gpuVersion = null;
     private boolean gpuInfoQueried = false;
+
+    // VRAM query extension constants
+    private static final int GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX = 0x9047;
+    private static final int GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX = 0x9048;
+    private static final int GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX = 0x9049;
+    private static final int TEXTURE_FREE_MEMORY_ATI = 0x87FC;
+
+    // VRAM tracking
+    private enum VramSource { NONE, NVIDIA, AMD }
+    private VramSource vramSource = null;
+    private long vramTotalKB = 0; // 0 if unknown
+
+    // MasonryUI for the left-side resource panels. Lazily built once a Renderer exists.
+    private MasonryUI masonryUI = null;
+
+    // Cached panels — rebuilt periodically rather than every frame. Reading
+    // MXBeans + GPU snapshot + building MStatPanel structures every frame
+    // generates measurable churn while F3 is open; values change slowly enough
+    // that 4 Hz is plenty.
+    private static final long PANEL_REBUILD_INTERVAL_MS = 250L;
+    private long lastPanelRebuildMs = 0L;
+    private MStatPanel cachedRamPanel = null;
+    private MStatPanel cachedVramPanel = null;
 
     public DebugOverlay() {
     }
@@ -71,13 +105,6 @@ public class DebugOverlay {
         // Get chunk coordinates
         int chunkX = x >> 4; // Divide by 16
         int chunkZ = z >> 4; // Divide by 16
-
-        // Get memory information
-        Runtime runtime = Runtime.getRuntime();
-        long maxMemory = runtime.maxMemory() / (1024 * 1024);
-        long totalMemory = runtime.totalMemory() / (1024 * 1024);
-        long freeMemory = runtime.freeMemory() / (1024 * 1024);
-        long usedMemory = totalMemory - freeMemory;
 
         // Get FPS
         updateAverageFPS();
@@ -132,7 +159,6 @@ public class DebugOverlay {
             debug.append("\n");
         }
         debug.append(String.format("FPS: %.0f (avg)\n", averageFPS));
-        debug.append(String.format("Memory: %d/%d MB\n", usedMemory, maxMemory));
         debug.append(String.format("Chunks: %d loaded\n", loadedChunks));
         debug.append(String.format("Pending Mesh: %d\n", world.getPendingMeshBuildCount()));
         debug.append(String.format("Pending GL: %d\n", world.getPendingGLUploadCount()));
@@ -219,6 +245,104 @@ public class DebugOverlay {
     }
 
     /**
+     * Detects which VRAM-query extension is available and caches total VRAM.
+     */
+    private void detectVramSource() {
+        if (vramSource != null) {
+            return;
+        }
+        try {
+            GLCapabilities caps = GL.getCapabilities();
+            if (caps.GL_NVX_gpu_memory_info) {
+                vramSource = VramSource.NVIDIA;
+                int dedicatedKB = glGetInteger(GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX);
+                vramTotalKB = dedicatedKB > 0 ? dedicatedKB : glGetInteger(GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX);
+            } else if (caps.GL_ATI_meminfo) {
+                vramSource = VramSource.AMD;
+                vramTotalKB = 0; // AMD extension only reports free memory
+            } else {
+                vramSource = VramSource.NONE;
+            }
+        } catch (Exception e) {
+            vramSource = VramSource.NONE;
+        }
+    }
+
+    /**
+     * Builds the VRAM section of the debug text. Headline number is the
+     * tracker's per-process total (what Stonebreak itself owns); the system
+     * reading is shown as smaller context so the two aren't confused.
+     */
+    @SuppressWarnings("unused") // retained for callers/tests; left panel reads tracker directly
+    private String getVramText() {
+        StringBuilder out = new StringBuilder();
+
+        GpuMemoryTracker.Snapshot snap = GpuMemoryTracker.getInstance().snapshot();
+        long trackedTotal = snap.totalBytes();
+        out.append(String.format("VRAM (Game): %s\n", formatBytes(trackedTotal)));
+
+        // Per-category breakdown: only show non-zero categories.
+        for (GpuMemoryTracker.Category c : GpuMemoryTracker.Category.values()) {
+            long bytes = snap.bytesOf(c);
+            if (bytes <= 0) continue;
+            long count = snap.countOf(c);
+            out.append(String.format("  %s: %s (%d)\n",
+                shortCategoryName(c), formatBytes(bytes), count));
+        }
+
+        // System-wide GPU reading for context — labelled clearly so it's not
+        // mistaken for our process footprint.
+        out.append(getSystemVramText());
+        return out.toString();
+    }
+
+    /** System-wide VRAM line — all processes combined, not just this one. */
+    @SuppressWarnings("unused") // legacy text helper — superseded by systemVramSummary()
+    private String getSystemVramText() {
+        detectVramSource();
+        try {
+            switch (vramSource) {
+                case NVIDIA -> {
+                    int freeKB = glGetInteger(GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX);
+                    if (vramTotalKB > 0) {
+                        long usedMB = (vramTotalKB - freeKB) / 1024;
+                        long totalMB = vramTotalKB / 1024;
+                        return String.format("GPU System: %d/%d MB\n", usedMB, totalMB);
+                    }
+                    return String.format("GPU Free: %d MB\n", freeKB / 1024);
+                }
+                case AMD -> {
+                    int freeKB = glGetInteger(TEXTURE_FREE_MEMORY_ATI);
+                    return String.format("GPU Free: %d MB\n", freeKB / 1024);
+                }
+                default -> {
+                    return "GPU System: N/A\n";
+                }
+            }
+        } catch (Exception e) {
+            return "GPU System: N/A\n";
+        }
+    }
+
+    private static String shortCategoryName(GpuMemoryTracker.Category c) {
+        return switch (c) {
+            case CHUNK_MESH      -> "Chunk Meshes";
+            case BUFFER_POOL_IDLE-> "Idle Pool";
+            case TEXTURE_ATLAS   -> "Tex Atlas";
+            case ENTITY_MESH     -> "Entity Meshes";
+            case PLAYER_GEOMETRY -> "Player Geom";
+            case OTHER           -> "Other";
+        };
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024L) return bytes + " B";
+        if (bytes < 1024L * 1024L) return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024L * 1024L * 1024L) return String.format("%.1f MB", bytes / (1024.0 * 1024.0));
+        return String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+    }
+
+    /**
      * Renders the debug overlay using the provided renderer.
      */
     public void render(UIRenderer uiRenderer) {
@@ -233,7 +357,7 @@ public class DebugOverlay {
 
         // Get window dimensions from Game instance to calculate right side position
         int windowWidth = Game.getWindowWidth();
-        
+
         String[] lines = debugText.split("\n");
         float rightMargin = 10; // Distance from right edge
         float y = 10; // Start position
@@ -254,6 +378,187 @@ public class DebugOverlay {
                 uiRenderer.drawText(line, x, y, "sans", 16, 1.0f, 1.0f, 1.0f, 1.0f);
             }
             y += lineHeight;
+        }
+
+    }
+
+    /**
+     * Renders the RAM and VRAM resource cards using MasonryUI/Skija.
+     *
+     * <p>Called from the main render loop <em>outside</em> the NanoVG UI frame,
+     * because Skija has its own GL state bracketing.
+     */
+    public void renderResourcePanels(com.stonebreak.rendering.Renderer renderer, int sw, int sh) {
+        if (!visible || renderer == null) return;
+        if (masonryUI == null) {
+            masonryUI = new MasonryUI(renderer.getSkijaBackend());
+        }
+        if (!masonryUI.isAvailable()) return;
+
+        // Refresh the panel data on a fixed cadence; render the cached panels
+        // on every frame in between.
+        long now = System.currentTimeMillis();
+        if (cachedRamPanel == null || cachedVramPanel == null
+                || now - lastPanelRebuildMs >= PANEL_REBUILD_INTERVAL_MS) {
+            cachedRamPanel = buildRamPanel();
+            cachedVramPanel = buildVramPanel();
+            lastPanelRebuildMs = now;
+        }
+
+        if (!masonryUI.beginFrame(sw, sh, 1.0f)) return;
+        try {
+            float leftMargin = 10f;
+            float panelWidth = 280f;
+            float gap = 8f;
+            float y = 10f;
+
+            float ramHeight = cachedRamPanel.render(masonryUI, leftMargin, y, panelWidth);
+            y += ramHeight + gap;
+
+            cachedVramPanel.render(masonryUI, leftMargin, y, panelWidth);
+
+            masonryUI.renderOverlays();
+        } finally {
+            masonryUI.endFrame();
+        }
+    }
+
+    /**
+     * Builds the RAM card. Combines:
+     *   • Heap usage bar (used / max)
+     *   • Per-pool heap breakdown (Eden / Survivor / Old, or ZGC pools)
+     *   • Non-heap pools (Metaspace, Code Cache, etc.)
+     *   • Direct + mapped buffer pools (where LWJGL native data lives)
+     *   • GC stats (collections, total time)
+     */
+    private MStatPanel buildRamPanel() {
+        Runtime runtime = Runtime.getRuntime();
+        long maxBytes = runtime.maxMemory();
+        long totalBytes = runtime.totalMemory();
+        long freeBytes = runtime.freeMemory();
+        long usedBytes = totalBytes - freeBytes;
+
+        MStatPanel panel = new MStatPanel("RAM (JVM)")
+            .usageBar(usedBytes, maxBytes,
+                formatBytes(usedBytes) + " / " + formatBytes(maxBytes));
+
+        // Heap pools — the "what's in the heap" breakdown.
+        panel.section("Heap Pools");
+        boolean anyHeap = false;
+        for (MemoryPoolMXBean pool : ManagementFactory.getMemoryPoolMXBeans()) {
+            if (pool.getType() != MemoryType.HEAP) continue;
+            MemoryUsage u = pool.getUsage();
+            if (u == null) continue;
+            panel.row(shortPoolName(pool.getName()), formatBytes(u.getUsed()));
+            anyHeap = true;
+        }
+        if (!anyHeap) panel.row("(none reported)", "");
+
+        // Non-heap pools — Metaspace, Code Cache, Compressed Class.
+        panel.section("Non-Heap");
+        long nonHeapTotal = 0;
+        for (MemoryPoolMXBean pool : ManagementFactory.getMemoryPoolMXBeans()) {
+            if (pool.getType() != MemoryType.NON_HEAP) continue;
+            MemoryUsage u = pool.getUsage();
+            if (u == null) continue;
+            nonHeapTotal += u.getUsed();
+            panel.row(shortPoolName(pool.getName()), formatBytes(u.getUsed()));
+        }
+        panel.row("Total Non-Heap", formatBytes(nonHeapTotal));
+
+        // Direct buffer pool — this is where LWJGL keeps native memory the JVM
+        // owns but ZGC doesn't manage. Often 2nd biggest after heap for us.
+        panel.section("Native Buffers");
+        for (BufferPoolMXBean pool : ManagementFactory.getPlatformMXBeans(BufferPoolMXBean.class)) {
+            String name = pool.getName(); // "direct" or "mapped"
+            long used = pool.getMemoryUsed();
+            long count = pool.getCount();
+            panel.row(name, formatBytes(used < 0 ? 0 : used) + " (" + count + ")");
+        }
+
+        // GC stats — gives a hint at allocation pressure.
+        long gcCollections = 0;
+        long gcTimeMs = 0;
+        for (GarbageCollectorMXBean gc : ManagementFactory.getGarbageCollectorMXBeans()) {
+            long c = gc.getCollectionCount();
+            long t = gc.getCollectionTime();
+            if (c > 0) gcCollections += c;
+            if (t > 0) gcTimeMs += t;
+        }
+        panel.section("GC");
+        panel.row("Collections", String.valueOf(gcCollections));
+        panel.row("Time Spent", gcTimeMs + " ms");
+        panel.row("Loaded Classes",
+            String.valueOf(ManagementFactory.getClassLoadingMXBean().getLoadedClassCount()));
+        return panel;
+    }
+
+    /**
+     * Builds the VRAM card from {@link GpuMemoryTracker}. The bar communicates
+     * "fraction of the GPU's dedicated VRAM that this process owns" when the
+     * NV/ATI extension is available.
+     */
+    private MStatPanel buildVramPanel() {
+        GpuMemoryTracker.Snapshot snap = GpuMemoryTracker.getInstance().snapshot();
+        long trackedTotal = snap.totalBytes();
+        long systemTotalBytes = vramTotalKB > 0 ? vramTotalKB * 1024L : 0L;
+
+        MStatPanel panel = new MStatPanel("VRAM (Game)")
+            .usageBar(trackedTotal, systemTotalBytes,
+                systemTotalBytes > 0
+                    ? formatBytes(trackedTotal) + " / " + formatBytes(systemTotalBytes)
+                    : formatBytes(trackedTotal));
+
+        panel.section("By Category");
+        boolean anyCategory = false;
+        for (GpuMemoryTracker.Category c : GpuMemoryTracker.Category.values()) {
+            long bytes = snap.bytesOf(c);
+            if (bytes <= 0) continue;
+            panel.row(shortCategoryName(c),
+                formatBytes(bytes) + " (" + snap.countOf(c) + ")");
+            anyCategory = true;
+        }
+        if (!anyCategory) panel.row("(nothing tracked)", "");
+
+        panel.section("System");
+        panel.row("All processes", systemVramSummary());
+        return panel;
+    }
+
+    /** Trims long pool names like "Compressed Class Space" → "Compressed Class". */
+    private static String shortPoolName(String name) {
+        if (name == null) return "?";
+        // ZGC reports "ZGC Young Generation" / "ZGC Old Generation" — keep it tight.
+        String n = name.replace("ZGC ", "")
+                       .replace(" Generation", " Gen")
+                       .replace(" Space", "")
+                       .replace("CodeHeap '", "Code: ")
+                       .replace("'", "");
+        return n;
+    }
+
+    /** Short string for the system VRAM reading (or N/A). */
+    private String systemVramSummary() {
+        detectVramSource();
+        try {
+            switch (vramSource) {
+                case NVIDIA -> {
+                    int freeKB = glGetInteger(GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX);
+                    if (vramTotalKB > 0) {
+                        long usedMB = (vramTotalKB - freeKB) / 1024;
+                        long totalMB = vramTotalKB / 1024;
+                        return usedMB + "/" + totalMB + " MB";
+                    }
+                    return (freeKB / 1024) + " MB free";
+                }
+                case AMD -> {
+                    int freeKB = glGetInteger(TEXTURE_FREE_MEMORY_ATI);
+                    return (freeKB / 1024) + " MB free";
+                }
+                default -> { return "N/A"; }
+            }
+        } catch (Exception e) {
+            return "N/A";
         }
     }
     

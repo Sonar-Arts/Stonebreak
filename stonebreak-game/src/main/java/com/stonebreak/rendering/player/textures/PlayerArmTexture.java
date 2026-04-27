@@ -79,7 +79,10 @@ public class PlayerArmTexture {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // Keep pixelated look
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, TEXTURE_WIDTH, TEXTURE_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
         glBindTexture(GL_TEXTURE_2D, 0);
-        
+        com.openmason.engine.diagnostics.GpuMemoryTracker.getInstance()
+            .track(com.openmason.engine.diagnostics.GpuMemoryTracker.Category.PLAYER_GEOMETRY,
+                   (long) TEXTURE_WIDTH * TEXTURE_HEIGHT * 4L);
+
         return armTextureId;
     }
     
@@ -96,6 +99,9 @@ public class PlayerArmTexture {
     public void cleanup() {
         if (armTextureId != 0) {
             glDeleteTextures(armTextureId);
+            com.openmason.engine.diagnostics.GpuMemoryTracker.getInstance()
+                .untrack(com.openmason.engine.diagnostics.GpuMemoryTracker.Category.PLAYER_GEOMETRY,
+                         (long) TEXTURE_WIDTH * TEXTURE_HEIGHT * 4L);
             armTextureId = 0;
         }
     }

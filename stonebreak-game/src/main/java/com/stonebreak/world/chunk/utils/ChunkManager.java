@@ -40,12 +40,6 @@ public class ChunkManager {
     private final ExecutorService chunkExecutor;
     private static final float UPDATE_INTERVAL = 1.0f; // Update every second
     private static volatile boolean optimizationsEnabled = true;
-    private static long lastMemoryCheck = 0;
-    private static boolean highMemoryPressure = false;
-
-    // Simple configuration
-    private static final long MEMORY_CHECK_INTERVAL = 2000; // 2 seconds
-    private static final double HIGH_MEMORY_THRESHOLD = 0.8; // 80% memory usage
 
     public ChunkManager(World world, int renderDistance) {
         this.world = world;
@@ -356,98 +350,15 @@ public class ChunkManager {
             return 32;
         }
 
-        updateMemoryPressure();
-
-        // Get current frame time
         float deltaTimeMs = Game.getDeltaTime() * 1000.0f;
 
-        // Adaptive adjustment based on frame time
         if (deltaTimeMs > GL_HIGH_FRAME_TIME_MS) {
-            // Frame time too high - reduce GL uploads per frame
             currentGLBatchSize = Math.max(MIN_GL_BATCH_SIZE, currentGLBatchSize - 2);
         } else if (deltaTimeMs < GL_LOW_FRAME_TIME_MS) {
-            // Frame time good - can increase GL uploads
             currentGLBatchSize = Math.min(MAX_GL_BATCH_SIZE, currentGLBatchSize + 1);
         }
 
-        // Apply memory pressure limits
-        if (highMemoryPressure) {
-            // Under memory pressure, cap batch size
-            currentGLBatchSize = Math.min(currentGLBatchSize, 8);
-        }
-
-        // Get memory-based base size for safety limits
-        int memorySafeBatchSize = getMemorySafeBatchSize();
-
-        // Return the more conservative of adaptive vs memory-safe
-        return Math.min(currentGLBatchSize, memorySafeBatchSize);
-    }
-
-    /**
-     * Gets a safe batch size based on current memory pressure.
-     * Acts as a safety limit for the adaptive sizing.
-     */
-    private static int getMemorySafeBatchSize() {
-        long heapUsed = java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed();
-        long heapMax = java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getMax();
-        double memoryUsage = (double) heapUsed / heapMax;
-
-        if (memoryUsage > 0.9) return 4;
-        if (memoryUsage > 0.8) return 12;
-        if (memoryUsage > 0.7) return 24;
-        return 64; // No memory constraint
-    }
-
-    private static void updateMemoryPressure() {
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastMemoryCheck < MEMORY_CHECK_INTERVAL) {
-            return;
-        }
-
-        lastMemoryCheck = currentTime;
-
-        Runtime runtime = Runtime.getRuntime();
-        long usedMemory = runtime.totalMemory() - runtime.freeMemory();
-        long maxMemory = runtime.maxMemory();
-        double memoryUsage = (double) usedMemory / maxMemory;
-
-        boolean previousPressure = highMemoryPressure;
-        highMemoryPressure = memoryUsage > HIGH_MEMORY_THRESHOLD;
-
-        if (highMemoryPressure && !previousPressure) {
-            System.out.println("ChunkManager: High memory pressure, reducing GL batch sizes.");
-        } else if (!highMemoryPressure && previousPressure) {
-            System.out.println("ChunkManager: Memory pressure relieved, resuming normal batch sizes.");
-        }
-    }
-
-    /**
-     * Determines if distant chunk mesh generation should be skipped.
-     * Uses CCO state management for accurate chunk state queries.
-     */
-    public static boolean shouldSkipDistantChunkMesh(Chunk chunk, int playerChunkX, int playerChunkZ) {
-        if (!optimizationsEnabled) {
-            return false;
-        }
-
-        updateMemoryPressure();
-
-        if (highMemoryPressure) {
-            // Check if chunk is already being unloaded using CCO state
-            if (chunk.getCcoStateManager().hasState(CcoChunkState.UNLOADING)) {
-                return true; // Don't generate mesh for unloading chunks
-            }
-
-            int distance = Math.max(Math.abs(chunk.getChunkX() - playerChunkX), Math.abs(chunk.getChunkZ() - playerChunkZ));
-            return distance > 6;
-        }
-
-        return false;
-    }
-
-    public static boolean isHighMemoryPressure() {
-        updateMemoryPressure();
-        return highMemoryPressure;
+        return currentGLBatchSize;
     }
 
     public static void setOptimizationsEnabled(boolean enabled) {

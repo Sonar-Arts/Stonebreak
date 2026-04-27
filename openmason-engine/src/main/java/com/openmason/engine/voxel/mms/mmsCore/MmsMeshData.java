@@ -31,6 +31,7 @@ public final class MmsMeshData {
     private final float[] waterHeightFlags;    // water height encoding per vertex
     private final float[] alphaTestFlags;      // alpha test flag per vertex
     private final float[] translucentFlags;    // translucent render flag per vertex (0.0 opaque/cutout, 1.0 translucent blend)
+    private final float[] lightValues;         // per-vertex world light in [0,1], 1.0 = fully lit
 
     // Index data
     private final int[] indices;
@@ -44,7 +45,7 @@ public final class MmsMeshData {
     // Empty mesh singleton
     private static final MmsMeshData EMPTY = new MmsMeshData(
         new float[0], new float[0], new float[0],
-        new float[0], new float[0], new float[0], new int[0], 0
+        new float[0], new float[0], new float[0], new float[0], new int[0], 0
     );
 
     /**
@@ -64,6 +65,20 @@ public final class MmsMeshData {
     public MmsMeshData(float[] vertexPositions, float[] textureCoordinates, float[] vertexNormals,
                        float[] waterHeightFlags, float[] alphaTestFlags, float[] translucentFlags,
                        int[] indices, int indexCount) {
+        this(vertexPositions, textureCoordinates, vertexNormals,
+             waterHeightFlags, alphaTestFlags, translucentFlags,
+             defaultLightArray(vertexPositions), indices, indexCount);
+    }
+
+    /**
+     * Creates immutable mesh data including per-vertex light values.
+     *
+     * @param lightValues Per-vertex world light in [0,1] (1 float per vertex)
+     */
+    public MmsMeshData(float[] vertexPositions, float[] textureCoordinates, float[] vertexNormals,
+                       float[] waterHeightFlags, float[] alphaTestFlags, float[] translucentFlags,
+                       float[] lightValues,
+                       int[] indices, int indexCount) {
         // Null checks
         this.vertexPositions = Objects.requireNonNull(vertexPositions, "vertexPositions cannot be null");
         this.textureCoordinates = Objects.requireNonNull(textureCoordinates, "textureCoordinates cannot be null");
@@ -71,6 +86,7 @@ public final class MmsMeshData {
         this.waterHeightFlags = Objects.requireNonNull(waterHeightFlags, "waterHeightFlags cannot be null");
         this.alphaTestFlags = Objects.requireNonNull(alphaTestFlags, "alphaTestFlags cannot be null");
         this.translucentFlags = Objects.requireNonNull(translucentFlags, "translucentFlags cannot be null");
+        this.lightValues = Objects.requireNonNull(lightValues, "lightValues cannot be null");
         this.indices = Objects.requireNonNull(indices, "indices cannot be null");
         this.indexCount = indexCount;
 
@@ -154,6 +170,13 @@ public final class MmsMeshData {
             );
         }
 
+        if (lightValues.length != vertexCount) {
+            throw new IllegalArgumentException(
+                String.format("Light values array size mismatch: expected %d, got %d",
+                    vertexCount, lightValues.length)
+            );
+        }
+
         if (indexCount % 3 != 0) {
             throw new IllegalArgumentException(
                 String.format("Index count must be multiple of 3 (triangles), got %d", indexCount)
@@ -173,6 +196,7 @@ public final class MmsMeshData {
                (long) waterHeightFlags.length * Float.BYTES +
                (long) alphaTestFlags.length * Float.BYTES +
                (long) translucentFlags.length * Float.BYTES +
+               (long) lightValues.length * Float.BYTES +
                (long) indices.length * Integer.BYTES +
                // Object overhead (approximate)
                64L;
@@ -241,6 +265,16 @@ public final class MmsMeshData {
     }
 
     /**
+     * Gets per-vertex world light values in [0,1].
+     * WARNING: Do not modify the returned array.
+     *
+     * @return Light values array (1 float per vertex)
+     */
+    public float[] getLightValues() {
+        return lightValues;
+    }
+
+    /**
      * Gets index data.
      * WARNING: Do not modify the returned array. This is a direct reference for performance.
      *
@@ -301,6 +335,7 @@ public final class MmsMeshData {
                Arrays.equals(waterHeightFlags, that.waterHeightFlags) &&
                Arrays.equals(alphaTestFlags, that.alphaTestFlags) &&
                Arrays.equals(translucentFlags, that.translucentFlags) &&
+               Arrays.equals(lightValues, that.lightValues) &&
                Arrays.equals(indices, that.indices);
     }
 
@@ -313,6 +348,7 @@ public final class MmsMeshData {
         result = 31 * result + Arrays.hashCode(waterHeightFlags);
         result = 31 * result + Arrays.hashCode(alphaTestFlags);
         result = 31 * result + Arrays.hashCode(translucentFlags);
+        result = 31 * result + Arrays.hashCode(lightValues);
         result = 31 * result + Arrays.hashCode(indices);
         return result;
     }
@@ -324,5 +360,13 @@ public final class MmsMeshData {
         }
         return String.format("MmsMeshData{vertices=%d, triangles=%d, memory=%d bytes}",
             vertexCount, triangleCount, memoryUsageBytes);
+    }
+
+    /** Returns a full-brightness (1.0) light array sized to match the given position array. */
+    private static float[] defaultLightArray(float[] positions) {
+        int verts = positions == null ? 0 : positions.length / 3;
+        float[] arr = new float[verts];
+        java.util.Arrays.fill(arr, 1.0f);
+        return arr;
     }
 }

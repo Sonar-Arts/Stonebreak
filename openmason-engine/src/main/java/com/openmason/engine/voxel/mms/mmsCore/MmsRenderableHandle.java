@@ -1,8 +1,11 @@
 package com.openmason.engine.voxel.mms.mmsCore;
 
+import com.openmason.engine.diagnostics.GpuMemoryTracker;
+import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 
+import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -105,9 +108,9 @@ public final class MmsRenderableHandle implements AutoCloseable {
             throw new IllegalArgumentException("Cannot upload empty mesh data");
         }
 
-        // Prepare interleaved data
-        float[] interleavedData = createInterleavedVertexData(meshData);
-        int vboSizeBytes = interleavedData.length * Float.BYTES;
+        // Prepare interleaved data (mixed float + packed-byte layout)
+        ByteBuffer interleavedData = createInterleavedVertexData(meshData);
+        int vboSizeBytes = interleavedData.remaining();
         int eboSizeBytes = meshData.getIndexCount() * Integer.BYTES;
 
         // Acquire buffers from pool or allocate new
@@ -146,6 +149,12 @@ public final class MmsRenderableHandle implements AutoCloseable {
         // Calculate GPU memory usage
         long memoryUsage = vboSizeBytes + eboSizeBytes;
 
+        // Charge the active VRAM. If useBufferPool=true, BUFFER_POOL_IDLE has
+        // already been decremented inside the pool's acquire path; we now
+        // attribute these bytes to the active CHUNK_MESH bucket.
+        GpuMemoryTracker.getInstance()
+            .track(GpuMemoryTracker.Category.CHUNK_MESH, memoryUsage);
+
         return new MmsRenderableHandle(
             vaoId, vboId, eboId, meshData.getIndexCount(),
             vboSizeBytes, eboSizeBytes, memoryUsage, useBufferPool
@@ -153,16 +162,21 @@ public final class MmsRenderableHandle implements AutoCloseable {
     }
 
     /**
-     * Creates interleaved vertex data from separated arrays.
+     * Builds the interleaved VBO data as a native ByteBuffer in little-endian
+     * order. The four flag fields (water, alpha, translucent, light) are
+     * packed into a single 4-byte word that GL reads as a normalized
+     * {@code GL_UNSIGNED_BYTE} vec4.
      *
-     * Layout: [pos(3) + tex(2) + normal(3) + water(1) + alpha(1) + translucent(1)] * vertexCount
+     * Layout per vertex (36 bytes):
+     *   pos(3 floats) | tex(2 floats) | normal(3 floats) | flags(4 bytes)
      *
      * @param meshData Source mesh data
-     * @return Interleaved vertex data array
+     * @return direct ByteBuffer positioned at 0, limit = vertexCount * stride
      */
-    private static float[] createInterleavedVertexData(MmsMeshData meshData) {
+    private static ByteBuffer createInterleavedVertexData(MmsMeshData meshData) {
         int vertexCount = meshData.getVertexCount();
-        float[] interleaved = new float[vertexCount * MmsBufferLayout.VERTEX_SIZE];
+        int totalBytes = vertexCount * MmsBufferLayout.VERTEX_STRIDE_BYTES;
+        ByteBuffer buffer = BufferUtils.createByteBuffer(totalBytes);
 
         float[] positions = meshData.getVertexPositions();
         float[] texCoords = meshData.getTextureCoordinates();
@@ -170,44 +184,42 @@ public final class MmsRenderableHandle implements AutoCloseable {
         float[] water = meshData.getWaterHeightFlags();
         float[] alpha = meshData.getAlphaTestFlags();
         float[] translucent = meshData.getTranslucentFlags();
+        float[] light = meshData.getLightValues();
 
         for (int i = 0; i < vertexCount; i++) {
-            int offset = i * MmsBufferLayout.VERTEX_SIZE;
-
             // Position (3 floats)
-            interleaved[offset] = positions[i * 3];
-            interleaved[offset + 1] = positions[i * 3 + 1];
-            interleaved[offset + 2] = positions[i * 3 + 2];
+            buffer.putFloat(positions[i * 3]);
+            buffer.putFloat(positions[i * 3 + 1]);
+            buffer.putFloat(positions[i * 3 + 2]);
 
             // Texture (2 floats)
-            interleaved[offset + 3] = texCoords[i * 2];
-            interleaved[offset + 4] = texCoords[i * 2 + 1];
+            buffer.putFloat(texCoords[i * 2]);
+            buffer.putFloat(texCoords[i * 2 + 1]);
 
             // Normal (3 floats)
-            interleaved[offset + 5] = normals[i * 3];
-            interleaved[offset + 6] = normals[i * 3 + 1];
-            interleaved[offset + 7] = normals[i * 3 + 2];
+            buffer.putFloat(normals[i * 3]);
+            buffer.putFloat(normals[i * 3 + 1]);
+            buffer.putFloat(normals[i * 3 + 2]);
 
-            // Water flag (1 float)
-            interleaved[offset + 8] = water[i];
-
-            // Alpha flag (1 float)
-            interleaved[offset + 9] = alpha[i];
-
-            // Translucent flag (1 float)
-            interleaved[offset + 10] = translucent[i];
+            // Packed flags (4 unsigned bytes)
+            int packed = MmsBufferLayout.packFlags(water[i], alpha[i], translucent[i], light[i]);
+            buffer.putInt(packed);
         }
 
-        return interleaved;
+        buffer.flip();
+        return buffer;
     }
 
     /**
-     * Configures OpenGL vertex attribute pointers for interleaved layout.
+     * Configures OpenGL vertex attribute pointers for the interleaved layout.
+     * Three float attributes (position, tex, normal) plus one packed-byte vec4
+     * attribute (water/alpha/translucent/light), normalized so the shader
+     * reads it as a [0,1] vec4.
      */
     private static void setupVertexAttributes() {
         int stride = MmsBufferLayout.VERTEX_STRIDE_BYTES;
 
-        // Position attribute (location 0)
+        // Position attribute (location 0) — 3 floats
         GL30.glEnableVertexAttribArray(MmsBufferLayout.POSITION_LOCATION);
         GL30.glVertexAttribPointer(
             MmsBufferLayout.POSITION_LOCATION,
@@ -218,7 +230,7 @@ public final class MmsRenderableHandle implements AutoCloseable {
             MmsBufferLayout.POSITION_OFFSET
         );
 
-        // Texture coordinate attribute (location 1)
+        // Texture coordinate attribute (location 1) — 2 floats
         GL30.glEnableVertexAttribArray(MmsBufferLayout.TEXTURE_LOCATION);
         GL30.glVertexAttribPointer(
             MmsBufferLayout.TEXTURE_LOCATION,
@@ -229,7 +241,7 @@ public final class MmsRenderableHandle implements AutoCloseable {
             MmsBufferLayout.TEXTURE_OFFSET
         );
 
-        // Normal attribute (location 2)
+        // Normal attribute (location 2) — 3 floats
         GL30.glEnableVertexAttribArray(MmsBufferLayout.NORMAL_LOCATION);
         GL30.glVertexAttribPointer(
             MmsBufferLayout.NORMAL_LOCATION,
@@ -240,37 +252,16 @@ public final class MmsRenderableHandle implements AutoCloseable {
             MmsBufferLayout.NORMAL_OFFSET
         );
 
-        // Water flag attribute (location 3)
-        GL30.glEnableVertexAttribArray(MmsBufferLayout.WATER_FLAG_LOCATION);
+        // Packed flags (location 3) — 4 unsigned bytes, normalized.
+        // Shader reads as vec4 aFlags: .x=water, .y=alpha, .z=translucent, .w=light
+        GL30.glEnableVertexAttribArray(MmsBufferLayout.FLAGS_LOCATION);
         GL30.glVertexAttribPointer(
-            MmsBufferLayout.WATER_FLAG_LOCATION,
-            MmsBufferLayout.WATER_FLAG_SIZE,
-            GL15.GL_FLOAT,
-            false,
+            MmsBufferLayout.FLAGS_LOCATION,
+            MmsBufferLayout.FLAGS_COMPONENTS,
+            GL15.GL_UNSIGNED_BYTE,
+            true, // normalized → shader sees [0,1]
             stride,
-            MmsBufferLayout.WATER_FLAG_OFFSET
-        );
-
-        // Alpha test flag attribute (location 4)
-        GL30.glEnableVertexAttribArray(MmsBufferLayout.ALPHA_FLAG_LOCATION);
-        GL30.glVertexAttribPointer(
-            MmsBufferLayout.ALPHA_FLAG_LOCATION,
-            MmsBufferLayout.ALPHA_FLAG_SIZE,
-            GL15.GL_FLOAT,
-            false,
-            stride,
-            MmsBufferLayout.ALPHA_FLAG_OFFSET
-        );
-
-        // Translucent flag attribute (location 5)
-        GL30.glEnableVertexAttribArray(MmsBufferLayout.TRANSLUCENT_FLAG_LOCATION);
-        GL30.glVertexAttribPointer(
-            MmsBufferLayout.TRANSLUCENT_FLAG_LOCATION,
-            MmsBufferLayout.TRANSLUCENT_FLAG_SIZE,
-            GL15.GL_FLOAT,
-            false,
-            stride,
-            MmsBufferLayout.TRANSLUCENT_FLAG_OFFSET
+            MmsBufferLayout.FLAGS_OFFSET
         );
     }
 
@@ -393,6 +384,11 @@ public final class MmsRenderableHandle implements AutoCloseable {
     @Override
     public void close() {
         if (disposed.compareAndSet(false, true)) {
+            // Active VRAM moves out of CHUNK_MESH whether the buffers go to
+            // the pool (which re-tags them as BUFFER_POOL_IDLE) or are
+            // outright deleted.
+            GpuMemoryTracker.getInstance()
+                .untrack(GpuMemoryTracker.Category.CHUNK_MESH, memoryUsageBytes);
             if (useBufferPool) {
                 // Return buffers to pool for reuse
                 MmsBufferPool pool = MmsBufferPool.getInstance();

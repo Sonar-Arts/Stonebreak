@@ -109,6 +109,7 @@ public final class InputHandler {
             case RENDER_DISTANCE -> adjustSlider(stateManager.getRenderDistanceSlider(), direction);
             case LOD_DISTANCE -> adjustSlider(stateManager.getLodDistanceSlider(), direction);
             case LOD_ENABLED -> { if (direction != 0) actionHandler.toggleLodEnabled(); }
+            case VSYNC -> { if (direction != 0) actionHandler.toggleVsync(); }
             default -> {}
         }
     }

@@ -48,6 +48,9 @@ public class ResourceManager {
         shaderProgram.createUniform("u_ambientLight");
         shaderProgram.createUniform("u_sunDirection");
         shaderProgram.createUniform("u_viewPos");
+        shaderProgram.createUniform("u_playerLight");
+        // Default to -1 so terrain (which never sets this) falls through to the per-vertex light.
+        shaderProgram.setUniform("u_playerLight", -1.0f);
     }
     
     private String getVertexShaderSource() {
@@ -56,15 +59,17 @@ public class ResourceManager {
                layout (location=0) in vec3 position;
                layout (location=1) in vec2 texCoord;
                layout (location=2) in vec3 normal;
-               layout (location=3) in float waterHeight;
-               layout (location=4) in float isAlphaTested;
-               layout (location=5) in float isTranslucent;
+               // Packed flags attribute: x=waterHeight, y=alphaTest, z=translucent, w=light.
+               // GL provides this as a normalized [0,1] vec4 from 4 unsigned bytes — saves
+               // 12 bytes per vertex compared to 4 separate float attributes.
+               layout (location=3) in vec4 aFlags;
                out vec2 outTexCoord;
                out vec3 outNormal;
                out vec3 fragPos;
                out float v_waterHeight;
                out float v_isAlphaTested;
                out float v_isTranslucent;
+               out float v_light;
                uniform mat4 projectionMatrix;
                uniform mat4 viewMatrix;
                uniform mat4 modelMatrix;
@@ -76,6 +81,12 @@ public class ResourceManager {
                uniform bool u_isUIElement;
                uniform float u_waterDepthOffset;
                void main() {
+                   // Unpack the interleaved flag attributes.
+                   float waterHeight = aFlags.x;
+                   float isAlphaTested = aFlags.y;
+                   float isTranslucent = aFlags.z;
+                   float aLight = aFlags.w;
+
                    // Compute world-space position first for stable, seamless waves
                    vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
                    vec3 pos = position;
@@ -134,6 +145,7 @@ public class ResourceManager {
                    v_waterHeight = waterHeight;
                    v_isAlphaTested = isAlphaTested;
                    v_isTranslucent = isTranslucent;
+                   v_light = aLight;
                }""";
     }
     
@@ -146,6 +158,7 @@ public class ResourceManager {
                in float v_waterHeight;
                in float v_isAlphaTested;
                in float v_isTranslucent;
+               in float v_light;
                out vec4 fragColor;
                uniform sampler2D texture_sampler;
                uniform vec4 u_color;
@@ -159,19 +172,30 @@ public class ResourceManager {
                uniform float u_ambientLight;
                uniform vec3 u_sunDirection;
                uniform vec3 u_viewPos;
+               uniform float u_playerLight;
                void main() {
                    if (u_isText) {
                        float alpha = texture(texture_sampler, outTexCoord).a;
                        fragColor = vec4(u_color.rgb, u_color.a * alpha);
                    } else if (u_useSolidColor) {
-                       fragColor = u_color;
+                       // Voxelized held sprites draw per-voxel solid colors — darken
+                       // by player world light so held tools fade out in caves too.
+                       float playerFactor = (u_playerLight >= 0.0)
+                           ? mix(0.15, 1.0, u_playerLight)
+                           : 1.0;
+                       fragColor = vec4(u_color.rgb * playerFactor, u_color.a);
                    } else {
                        vec4 textureColor = texture(texture_sampler, outTexCoord);
                        float sampledAlpha = textureColor.a;
 
-                       // UI elements get simple flat lighting
+                       // UI elements get simple flat lighting. When u_playerLight is set
+                       // (first-person arm / held item in the world), scale brightness by
+                       // the player's current world light so the arm darkens in caves.
                        if (u_isUIElement) {
-                           float brightness = 0.9;
+                           float playerWorldFactor = (u_playerLight >= 0.0)
+                               ? mix(0.15, 1.0, u_playerLight)
+                               : 1.0;
+                           float brightness = 0.9 * playerWorldFactor;
 
                            if (v_isAlphaTested > 0.5) {
                                if (sampledAlpha < 0.1) discard;
@@ -215,8 +239,14 @@ public class ResourceManager {
                        // Combine lighting components
                        vec3 result = ambient + diffuse + specular;
 
-                       // Ensure minimum visibility even at night
-                       result = max(result, textureColor.rgb * 0.15);
+                       // World light — per-vertex by default. Player-held geometry (arm, held item)
+                       // overrides via u_playerLight so it shades with whatever cell the player is in.
+                       float worldLight = (u_playerLight >= 0.0) ? u_playerLight : clamp(v_light, 0.0, 1.0);
+                       // Linear ramp with a 15% floor: per-vertex shadow values already
+                       // encode sky × AO, so the shader just lifts the darkest corners
+                       // enough to stay visible in caves without muddying mid-tones.
+                       float worldLightFactor = mix(0.15, 1.0, worldLight);
+                       result *= worldLightFactor;
 
                        if (v_isAlphaTested > 0.5) {
                            if (sampledAlpha < 0.1) {

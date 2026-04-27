@@ -2,6 +2,7 @@ package com.stonebreak.rendering.textures;
 
 import java.nio.ByteBuffer;
 
+import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import com.stonebreak.rendering.WaterEffects;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -63,7 +64,14 @@ public class TextureAtlas {
         
         // Initialize the texture ID by attempting to load generated atlas first
         this.textureId = initializeTexture(textureSize);
-        
+
+        // Charge atlas VRAM (RGBA8 base level only — mipmaps add ~33% if enabled).
+        if (textureId != 0 && actualAtlasWidth > 0 && actualAtlasHeight > 0) {
+            long bytes = (long) actualAtlasWidth * actualAtlasHeight * 4L;
+            GpuMemoryTracker.getInstance()
+                .track(GpuMemoryTracker.Category.TEXTURE_ATLAS, bytes);
+        }
+
         // Initialize the buffer for water tile updates
         this.waterTileUpdateBuffer = BufferUtils.createByteBuffer(texturePixelSize * texturePixelSize * 4);
         System.out.println("Texture atlas created with ID: " + textureId);
@@ -495,6 +503,9 @@ public class TextureAtlas {
     public void cleanup() {
         if (textureId != 0) {
             GL11.glDeleteTextures(textureId);
+            long bytes = (long) actualAtlasWidth * actualAtlasHeight * 4L;
+            GpuMemoryTracker.getInstance()
+                .untrack(GpuMemoryTracker.Category.TEXTURE_ATLAS, bytes);
         }
         if (nvgImageId != -1 && lastVgContext != 0) {
             // Clean up NanoVG image if it exists

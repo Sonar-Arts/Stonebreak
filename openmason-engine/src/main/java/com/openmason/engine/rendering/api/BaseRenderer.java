@@ -1,5 +1,6 @@
 package com.openmason.engine.rendering.api;
 
+import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.api.RenderContext;
 import org.joml.Matrix4f;
@@ -36,6 +37,9 @@ public abstract class BaseRenderer implements IRenderer {
     protected int vertexCount = 0;
     protected int indexCount = 0;
 
+    // Tracked GPU bytes for VRAM accounting; reset on cleanup.
+    private long trackedGpuBytes = 0;
+
     // State
     protected boolean initialized = false;
     protected boolean enabled = true;
@@ -69,6 +73,7 @@ public abstract class BaseRenderer implements IRenderer {
                 vbo = glGenBuffers();
                 glBindBuffer(GL_ARRAY_BUFFER, vbo);
                 glBufferData(GL_ARRAY_BUFFER, geometryData.vertices(), GL_DYNAMIC_DRAW);
+                trackedGpuBytes += (long) geometryData.vertices().length * Float.BYTES;
 
                 // Step 4: Create EBO if indexed
                 if (geometryData.isIndexed()) {
@@ -76,9 +81,14 @@ public abstract class BaseRenderer implements IRenderer {
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
                     glBufferData(GL_ELEMENT_ARRAY_BUFFER, geometryData.indices(), GL_STATIC_DRAW);
                     indexCount = geometryData.indexCount();
+                    trackedGpuBytes += (long) geometryData.indices().length * Integer.BYTES;
                 }
 
                 vertexCount = geometryData.vertexCount();
+                if (trackedGpuBytes > 0) {
+                    GpuMemoryTracker.getInstance()
+                        .track(GpuMemoryTracker.Category.ENTITY_MESH, trackedGpuBytes);
+                }
 
                 // Step 5: Let subclass configure vertex attributes
                 configureVertexAttributes();
@@ -163,6 +173,12 @@ public abstract class BaseRenderer implements IRenderer {
             vao = 0;
         }
 
+        if (trackedGpuBytes > 0) {
+            GpuMemoryTracker.getInstance()
+                .untrack(GpuMemoryTracker.Category.ENTITY_MESH, trackedGpuBytes);
+            trackedGpuBytes = 0;
+        }
+
         vertexCount = 0;
         indexCount = 0;
         initialized = false;
@@ -214,16 +230,31 @@ public abstract class BaseRenderer implements IRenderer {
         }
 
         // Create EBO on demand if it doesn't exist yet (e.g., model loaded after init)
+        long newEboBytes = (long) indices.length * Integer.BYTES;
+        long oldEboBytes = (long) indexCount * Integer.BYTES;
         if (ebo == 0) {
             glBindVertexArray(vao);
             ebo = glGenBuffers();
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices, GL_DYNAMIC_DRAW);
             glBindVertexArray(0);
+            GpuMemoryTracker.getInstance()
+                .track(GpuMemoryTracker.Category.ENTITY_MESH, newEboBytes);
+            trackedGpuBytes += newEboBytes;
         } else {
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices, GL_DYNAMIC_DRAW);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+            long delta = newEboBytes - oldEboBytes;
+            if (delta > 0) {
+                GpuMemoryTracker.getInstance()
+                    .track(GpuMemoryTracker.Category.ENTITY_MESH, delta);
+                trackedGpuBytes += delta;
+            } else if (delta < 0) {
+                GpuMemoryTracker.getInstance()
+                    .untrack(GpuMemoryTracker.Category.ENTITY_MESH, -delta);
+                trackedGpuBytes += delta; // delta is negative
+            }
         }
         indexCount = indices.length;
     }
