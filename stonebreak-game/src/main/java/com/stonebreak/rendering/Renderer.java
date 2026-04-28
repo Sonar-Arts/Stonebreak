@@ -620,6 +620,11 @@ public class Renderer {
         }
         if (skijaBackend != null) {
             try {
+                com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry.disposeAll();
+            } catch (Throwable t) {
+                System.err.println("[Renderer] MTexture dispose failed: " + t.getMessage());
+            }
+            try {
                 skijaBackend.dispose();
             } catch (Throwable t) {
                 System.err.println("[Renderer] Skija dispose failed: " + t.getMessage());

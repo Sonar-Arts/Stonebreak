@@ -3,8 +3,10 @@ package com.stonebreak.rendering.UI.masonryUI;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.ClipMode;
 import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.PaintMode;
+import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.types.RRect;
 import io.github.humbleui.types.Rect;
 
@@ -141,6 +143,22 @@ public final class MPainter {
         x *= 0x846CA68B;
         x ^= x >>> 16;
         return x;
+    }
+
+    // ─────────────────────────────────────────────── Images
+
+    /**
+     * Draw a Skija {@link Image} into the rect {@code (x, y, w, h)}.
+     * Uses nearest-neighbour sampling so pixel-art textures (the SBT/OMT
+     * assets that feed MasonryUI) stay crisp under integer scaling.
+     */
+    public static void drawImage(Canvas canvas, Image image, float x, float y, float w, float h) {
+        if (canvas == null || image == null || w <= 0f || h <= 0f) return;
+        try (Paint paint = new Paint()) {
+            Rect src = Rect.makeWH(image.getWidth(), image.getHeight());
+            Rect dst = Rect.makeXYWH(x, y, w, h);
+            canvas.drawImageRect(image, src, dst, SamplingMode.DEFAULT, paint, true);
+        }
     }
 
     // ─────────────────────────────────────────────── Text
