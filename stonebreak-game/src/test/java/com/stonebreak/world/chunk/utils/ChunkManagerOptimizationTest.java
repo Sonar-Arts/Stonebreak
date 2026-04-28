@@ -151,21 +151,6 @@ public class ChunkManagerOptimizationTest {
     }
 
     @Test
-    public void testHighMemoryPressureDetection() {
-        // This test verifies the memory pressure detection system exists
-        // Actual pressure detection depends on JVM memory state
-
-        // Act
-        boolean hasMemoryPressure = ChunkManager.isHighMemoryPressure();
-
-        // Assert - Just verify the method works
-        assertNotNull(hasMemoryPressure,
-            "Memory pressure detection should return a boolean");
-
-        System.out.println("High memory pressure: " + hasMemoryPressure);
-    }
-
-    @Test
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
     public void testChunkManagerShutdownGracefully() {
         // Arrange

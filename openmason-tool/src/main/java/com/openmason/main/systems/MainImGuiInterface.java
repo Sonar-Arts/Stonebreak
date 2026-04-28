@@ -20,6 +20,7 @@ import com.openmason.main.systems.menus.dialogs.AboutDialog;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.menus.dialogs.SBEExportWindow;
 import com.openmason.main.systems.menus.dialogs.SBOExportWindow;
+import com.openmason.main.systems.menus.dialogs.SBTExportWindow;
 import com.openmason.main.systems.menus.preferences.PreferencesWindow;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
@@ -63,6 +64,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private PreferencesWindow preferencesWindow; // Initialized after components
     private SBOExportWindow sboExportWindow; // Initialized after components
     private SBEExportWindow sbeExportWindow; // Initialized after components
+    private SBTExportWindow sbtExportWindow; // Initialized after components
     private final AboutDialog aboutDialog;
 
     // Menu System
@@ -221,10 +223,19 @@ public class MainImGuiInterface implements ModelBrowserListener {
             );
             toolsMenuHandler.setSBEExportWindow(sbeExportWindow);
 
+            // Initialize SBT export window — OMT path supplier is wired later
+            // when the TextureCreatorImGui becomes available.
+            this.sbtExportWindow = new SBTExportWindow(
+                    uiVisibilityState.getShowSBTExportWindow(),
+                    themeManager,
+                    statusService,
+                    fileDialogService
+            );
+
             toolsMenuHandler.setModelState(modelState);
             toolsMenuHandler.setStatusService(statusService);
             toolsMenuHandler.setModelOperations(modelOperations);
-            logger.debug("SBO and SBE export windows initialized");
+            logger.debug("SBO, SBE, and SBT export windows initialized");
         } catch (Exception e) {
             logger.error("Failed to initialize components", e);
         }
@@ -580,6 +591,13 @@ public class MainImGuiInterface implements ModelBrowserListener {
     }
 
     /**
+     * Gets the SBT export window for external rendering.
+     */
+    public SBTExportWindow getSBTExportWindow() {
+        return sbtExportWindow;
+    }
+
+    /**
      * Sets the TextureCreatorImGui instance for unified preferences.
      */
     public void setTextureCreatorInterface(TextureCreatorImGui textureCreatorImGui) {
@@ -588,6 +606,23 @@ public class MainImGuiInterface implements ModelBrowserListener {
             logger.debug("TextureCreatorImGui wired up to unified preferences window");
         } else {
             logger.warn("Cannot set TextureCreatorImGui - unified preferences window not initialized");
+        }
+
+        // Wire the SBT export OMT-path source — only project (.OMT) files are
+        // valid sources, never arbitrary PNG-backed sessions.
+        java.util.function.Supplier<String> omtPathSupplier = () -> {
+            if (textureCreatorImGui == null) return null;
+            var state = textureCreatorImGui.getState();
+            if (state == null || !state.isProjectFile() || !state.hasFilePath()) {
+                return null;
+            }
+            return state.getCurrentFilePath();
+        };
+        if (sbtExportWindow != null) {
+            sbtExportWindow.setOMTPathSupplier(omtPathSupplier);
+        }
+        if (textureCreatorImGui != null && sbtExportWindow != null) {
+            textureCreatorImGui.setSBTExportTrigger(sbtExportWindow::show, omtPathSupplier);
         }
     }
 

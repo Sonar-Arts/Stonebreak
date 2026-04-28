@@ -229,6 +229,7 @@ public class BlockThumbnailRenderer {
             case PINE -> "pine_wood";
             case ROSE -> "rose";
             case DANDELION -> "dandelion";
+            case WILDGRASS -> "wildgrass";
             case SANDSTONE -> "sandstone";
             case RED_SANDSTONE -> "red_sandstone";
             case SNOWY_DIRT -> "snowy_dirt";

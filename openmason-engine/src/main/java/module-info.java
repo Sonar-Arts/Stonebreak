@@ -72,11 +72,13 @@ module openmason.engine {
     // Export format classes
     exports com.openmason.engine.format.sbo;
     exports com.openmason.engine.format.sbe;
+    exports com.openmason.engine.format.sbt;
     exports com.openmason.engine.format.omo;
     exports com.openmason.engine.format.mesh;
 
     // Open format packages for Jackson JSON processing
     opens com.openmason.engine.format.sbo to com.fasterxml.jackson.databind;
     opens com.openmason.engine.format.sbe to com.fasterxml.jackson.databind;
+    opens com.openmason.engine.format.sbt to com.fasterxml.jackson.databind;
     opens com.openmason.engine.format.omo to com.fasterxml.jackson.databind;
 }
