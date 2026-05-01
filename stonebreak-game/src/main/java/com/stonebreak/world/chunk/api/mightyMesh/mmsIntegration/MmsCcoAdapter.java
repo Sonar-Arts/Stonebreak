@@ -406,6 +406,11 @@ public class MmsCcoAdapter {
         if (adjacentBlock == BlockType.WATER) {
             // Never render faces between water blocks - they blend seamlessly
             return false;
+        } else if (adjacentBlock == BlockType.ICE) {
+            // Treat ice as opaque from water's POV: submerged ice forces an
+            // opaque render path (see SBOStampEmitter override), so the water
+            // face touching it would only z-fight with the ice surface.
+            return false;
         } else {
             // Water vs non-water: render top face when adjacent to opaque blocks,
             // other faces when transparent (but not water)

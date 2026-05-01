@@ -51,6 +51,10 @@ public class ResourceManager {
         shaderProgram.createUniform("u_playerLight");
         // Default to -1 so terrain (which never sets this) falls through to the per-vertex light.
         shaderProgram.setUniform("u_playerLight", -1.0f);
+        shaderProgram.createUniform("u_translucentLayer");
+        // Default to -1 (no filter) so paths that don't split the translucent
+        // pass (UI, FastLOD, etc.) keep rendering everything as before.
+        shaderProgram.setUniform("u_translucentLayer", -1);
     }
     
     private String getVertexShaderSource() {
@@ -173,6 +177,12 @@ public class ResourceManager {
                uniform vec3 u_sunDirection;
                uniform vec3 u_viewPos;
                uniform float u_playerLight;
+               // Translucent sub-layer filter for the transparent pass.
+               // -1 = no filter (default); 0 = only translucent solids (e.g. ice);
+               // 1 = only water. Lets the transparent pass render ice first with
+               // depth-write enabled (occludes distant water/translucents) and
+               // water second with depth-write off (proper blending over ice).
+               uniform int u_translucentLayer;
                void main() {
                    if (u_isText) {
                        float alpha = texture(texture_sampler, outTexCoord).a;
@@ -259,17 +269,26 @@ public class ResourceManager {
                                discard;
                            }
                        } else if (v_isTranslucent > 0.5) {
-                           // Translucent blocks (e.g. ice) are rendered in transparent pass only
-                           // with the texture's native alpha preserved for proper blending.
+                           // Translucent blocks (e.g. ice): rendered in transparent
+                           // pass only, and only during the translucent-solid
+                           // sub-layer (depth-write ON) so they occlude distant
+                           // water/translucents — same approach Minecraft uses.
                            if (u_renderPass == 0) {
+                               discard;
+                           } else if (u_translucentLayer == 1) {
                                discard;
                            } else {
                                fragColor = vec4(result, sampledAlpha);
                            }
                        } else if (v_waterHeight > 0.01) {
                            // Water blocks are rendered in transparent pass only
-                           // Use threshold of 0.01 to distinguish actual water from epsilon flags
+                           // Use threshold of 0.01 to distinguish actual water from epsilon flags.
+                           // Skipped during the translucent-solid sub-layer so it
+                           // doesn't compete with ice (which is drawn first with
+                           // depth-write enabled).
                            if (u_renderPass == 0) {
+                               discard;
+                           } else if (u_translucentLayer == 0) {
                                discard;
                            } else {
                                fragColor = vec4(result, sampledAlpha);
