@@ -226,7 +226,12 @@ public class Main {
         // InputHandler will then decide how to process the click based on game state (paused, inventory open, etc.)
         glfwSetMouseButtonCallback(window, (win, button, action, mods) -> {
             Game game = Game.getInstance();
-            if (game != null && game.getState() == GameState.MAIN_MENU) {
+            if (game != null && game.getState() == GameState.STARTUP_INTRO) {
+                if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS
+                        && game.getStartupIntroScreen() != null) {
+                    game.getStartupIntroScreen().skipToMainMenu();
+                }
+            } else if (game != null && game.getState() == GameState.MAIN_MENU) {
                 // Handle main menu clicks
                 if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
                     try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
@@ -466,6 +471,11 @@ public class Main {
             // Handle input based on game state
             Game game = Game.getInstance();
             switch (game.getState()) {
+                case STARTUP_INTRO -> {
+                    if (game.getStartupIntroScreen() != null) {
+                        game.getStartupIntroScreen().handleInput(window);
+                    }
+                }
                 case MAIN_MENU -> {
                     // Handle main menu input
                     if (game.getMainMenu() != null) {
@@ -562,6 +572,10 @@ public class Main {
         Renderer renderer = Game.getRenderer();
         
         switch (game.getState()) {
+            case STARTUP_INTRO -> {
+                com.stonebreak.ui.startupIntro.SonarArtsIntroScreen intro = game.getStartupIntroScreen();
+                if (intro != null) intro.render(width, height);
+            }
             case MAIN_MENU -> {
                 // Skija-backed; same GL-bracketing contract as world select.
                 com.stonebreak.ui.MainMenu mm = game.getMainMenu();

@@ -53,6 +53,12 @@ public final class GameLoop {
         MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();
 
         switch (game.getState()) {
+            case STARTUP_INTRO -> {
+                if (game.getStartupIntroScreen() != null) {
+                    game.getStartupIntroScreen().update(deltaTime);
+                }
+                return false;
+            }
             case MAIN_MENU -> {
                 return false;
             }

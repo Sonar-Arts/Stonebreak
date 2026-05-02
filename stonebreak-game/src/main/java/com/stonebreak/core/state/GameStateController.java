@@ -18,8 +18,8 @@ public final class GameStateController {
 
     private final Game game;
 
-    private GameState currentState = GameState.MAIN_MENU;
-    private GameState previousGameState = GameState.MAIN_MENU;
+    private GameState currentState = GameState.STARTUP_INTRO;
+    private GameState previousGameState = GameState.STARTUP_INTRO;
     private boolean paused = false;
 
     public GameStateController(Game game) {
@@ -68,7 +68,7 @@ public final class GameStateController {
 
     private void updatePauseState(GameState state) {
         switch (state) {
-            case MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI -> paused = true;
+            case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI -> paused = true;
             case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI -> paused = false;
         }
     }
