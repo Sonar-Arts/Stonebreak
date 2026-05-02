@@ -87,6 +87,8 @@ public final class PlayerStateSynchronizer implements Synchronizer {
                 if (srv == null) return;
                 RemoteClient rc = srv.getClient(originId);
                 if (rc != null) rc.setHeldItemId(h.itemId());
+                RemotePlayer rp = remotePlayers.get(originId);
+                if (rp != null) rp.setHeldItemId(h.itemId());
                 ctx.broadcast(new Packet.PlayerHeldItemS2C(originId, h.itemId()));
             }
             case Packet.PlayerHeldItemS2C h -> {
