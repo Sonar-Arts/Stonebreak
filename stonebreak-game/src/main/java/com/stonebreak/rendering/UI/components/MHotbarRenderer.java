@@ -11,6 +11,8 @@ import com.stonebreak.rendering.UI.masonryUI.MItemSlot;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.stonebreak.rendering.UI.masonryUI.textures.MTexture;
+import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
 import com.stonebreak.ui.HotbarScreen;
 import com.stonebreak.ui.hotbar.core.HotbarLayoutCalculator;
 import io.github.humbleui.skija.Canvas;
@@ -41,12 +43,16 @@ public class MHotbarRenderer {
     private static final float BG_RADIUS    = 8f;
 
     // ── Health hearts ─────────────────────────────────────────────────────────
-    private static final int HEART_SIZE    = 16;
-    private static final int HEART_SPACING = 8;
-    private static final int HEART_Y_GAP   = 30; // pixels above hotbar background
-    private static final int HEART_BG      = 0xC83C3C3C; // RGBA(60,60,60,200)
-    private static final int HEART_FILL    = 0xFFDD2222;
-    private static final int HEART_BORDER  = 0xFF000000;
+    /** Target heart edge length, in pixels. Snapped at draw time to the
+     *  nearest integer multiple of the source texture's native size to avoid
+     *  nearest-neighbour sampling asymmetry. */
+    private static final int HEART_SIZE_TARGET = 28;
+    private static final int HEART_SPACING     = 2;
+    private static final int HEART_Y_GAP       = 38; // pixels above hotbar background
+
+    private static final String HEART_EMPTY_SBT = "/ui/HUD/Health Icon/SB_Empty_Health_Icon.sbt";
+    private static final String HEART_HALF_SBT  = "/ui/HUD/Health Icon/SB_Half_Health_Icon.sbt";
+    private static final String HEART_FULL_SBT  = "/ui/HUD/Health Icon/SB_Full_Health_Icon.sbt";
 
     public MHotbarRenderer(UIRenderer uiRenderer, Renderer renderer) {
         this.uiRenderer = uiRenderer;
@@ -142,22 +148,45 @@ public class MHotbarRenderer {
         int   hearts    = (int) Math.ceil(maxHealth / 2.0f);
         float filled    = health / 2.0f;
 
-        int totalW  = hearts * (HEART_SIZE + HEART_SPACING) - HEART_SPACING;
-        int startX  = layout.backgroundX + (layout.backgroundWidth - totalW) / 2;
-        int startY  = layout.backgroundY - HEART_Y_GAP;
+        MTexture empty = MTextureRegistry.get(HEART_EMPTY_SBT);
+        MTexture half  = MTextureRegistry.get(HEART_HALF_SBT);
+        MTexture full  = MTextureRegistry.get(HEART_FULL_SBT);
+
+        // Snap heart size to an integer multiple of the source texture's
+        // native edge length so nearest-neighbour sampling distributes pixels
+        // evenly. Pick the native size from whichever variant loaded first.
+        int nativeSize = nativeHeartSize(empty, half, full);
+        int scale      = Math.max(1, Math.round((float) HEART_SIZE_TARGET / nativeSize));
+        int heartSize  = nativeSize * scale;
+
+        int startX = layout.backgroundX;
+        int startY = layout.backgroundY - HEART_Y_GAP;
 
         for (int i = 0; i < hearts; i++) {
-            float x        = startX + i * (HEART_SIZE + HEART_SPACING);
-            float fill     = Math.max(0f, Math.min(1f, filled - i));
-            float fillH    = HEART_SIZE * fill;
-            float fillY    = startY + HEART_SIZE - fillH;
+            float x    = startX + i * (heartSize + HEART_SPACING);
+            float fill = Math.max(0f, Math.min(1f, filled - i));
 
-            MPainter.fillRect(canvas, x, startY, HEART_SIZE, HEART_SIZE, HEART_BG);
-            if (fill > 0f) {
-                MPainter.fillRect(canvas, x, fillY, HEART_SIZE, fillH, HEART_FILL);
+            MTexture sprite;
+            if (fill >= 0.75f)      sprite = full;
+            else if (fill >= 0.25f) sprite = half;
+            else                    sprite = empty;
+
+            if (sprite != null) {
+                MPainter.drawImage(canvas, sprite.image(), x, startY, heartSize, heartSize);
             }
-            MPainter.strokeRect(canvas, x, startY, HEART_SIZE, HEART_SIZE, HEART_BORDER, 1f);
         }
+    }
+
+    /** Largest native edge across the loaded heart variants, or the target
+     *  size as a fallback when no SBT loaded. */
+    private static int nativeHeartSize(MTexture... variants) {
+        int max = 0;
+        for (MTexture t : variants) {
+            if (t == null) continue;
+            int side = Math.max(t.width(), t.height());
+            if (side > max) max = side;
+        }
+        return max > 0 ? max : HEART_SIZE_TARGET;
     }
 
     // ─────────────────────────────────────────────── Phase B helpers

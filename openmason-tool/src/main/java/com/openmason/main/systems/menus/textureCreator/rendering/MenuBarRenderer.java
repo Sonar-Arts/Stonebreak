@@ -39,6 +39,8 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     private Runnable onSymmetryToggle;
     private Runnable onLayersPanelToggle;
     private Runnable onColorPanelToggle;
+    private Runnable onExportSBT;
+    private java.util.function.Supplier<String> sbtOmtPathSupplier = () -> null;
     private ImBoolean showLayersPanel;
     private ImBoolean showColorPanel;
 
@@ -124,6 +126,21 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     }
 
     /**
+     * Set callback invoked when the user triggers Export SBT from the Tools menu.
+     */
+    public void setOnExportSBT(Runnable callback) {
+        this.onExportSBT = callback;
+    }
+
+    /**
+     * Wire a supplier providing the current OMT file path on disk. Pulled at
+     * menu render time to gate the Export SBT entry's enable state.
+     */
+    public void setSBTOMTPathSupplier(java.util.function.Supplier<String> supplier) {
+        this.sbtOmtPathSupplier = supplier != null ? supplier : (() -> null);
+    }
+
+    /**
      * Render menu bar content.
      * Implements BaseMenuBarRenderer template method to provide texture editor menu structure.
      */
@@ -137,6 +154,7 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
         renderEditMenu();
         renderViewMenu();
         renderFiltersMenu();
+        renderToolsMenu();
         aboutMenu.render();
 
         // Render preferences button with separator
@@ -277,6 +295,24 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
             }
             if (ImGui.menuItem("Reset View", "0")) {
                 controller.getCanvasState().resetView();
+            }
+
+            ImGui.endMenu();
+        }
+    }
+
+    /**
+     * Render Tools menu — Stonebreak texture exports.
+     */
+    private void renderToolsMenu() {
+        if (ImGui.beginMenu("Tools")) {
+            String omtPath = sbtOmtPathSupplier.get();
+            boolean canExportSBT = omtPath != null && !omtPath.isBlank();
+
+            if (ImGui.menuItem("Export SBT...", "", false, canExportSBT)) {
+                if (onExportSBT != null) {
+                    onExportSBT.run();
+                }
             }
 
             ImGui.endMenu();

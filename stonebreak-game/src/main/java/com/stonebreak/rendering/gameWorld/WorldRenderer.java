@@ -290,16 +290,34 @@ public class WorldRenderer {
     private void renderTransparentPass(Map<ChunkPosition, Chunk> visibleChunks, Player player) {
         shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
         shaderProgram.setUniform("u_waterDepthOffset", -0.0001f); // Negative offset to pull water slightly closer
-        glDepthMask(false); // Disable depth writing for transparent objects
         glEnable(GL_BLEND); // Enable blending
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
 
         // Sort chunks from back to front for transparent pass
         sortChunksBackToFront(visibleChunks, player);
 
+        // Sub-pass A: translucent solids (e.g. ice). Depth-write ON so they
+        // occlude any farther translucent surface (most importantly distant
+        // water seen through ice — that's the artifact this fixes). The
+        // shader's water/translucent paths key off u_translucentLayer to
+        // pick which sub-layer they emit in.
+        shaderProgram.setUniform("u_translucentLayer", 0);
+        glDepthMask(true);
         for (Chunk chunk : reusableSortedChunks) {
-            chunk.render(); // Shader will discard non-water fragments
+            chunk.render();
         }
+
+        // Sub-pass B: water and remaining translucents. Depth-write OFF so
+        // multiple water layers blend correctly without occluding each other.
+        shaderProgram.setUniform("u_translucentLayer", 1);
+        glDepthMask(false);
+        for (Chunk chunk : reusableSortedChunks) {
+            chunk.render();
+        }
+
+        // Reset for downstream passes (drops, particles, etc.) that expect
+        // the legacy "no filter" behavior.
+        shaderProgram.setUniform("u_translucentLayer", -1);
     }
     
     /**

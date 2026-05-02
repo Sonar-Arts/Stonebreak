@@ -39,6 +39,8 @@ public class WindowedMenuBarRenderer {
     private Runnable onSymmetryToggle;
     private Runnable onLayersPanelToggle;
     private Runnable onColorPanelToggle;
+    private Runnable onExportSBT;
+    private java.util.function.Supplier<String> sbtOmtPathSupplier = () -> null;
     private ImBoolean showLayersPanel;
     private ImBoolean showColorPanel;
 
@@ -90,6 +92,21 @@ public class WindowedMenuBarRenderer {
     }
 
     /**
+     * Set callback invoked when the user triggers Export SBT from the Tools menu.
+     */
+    public void setOnExportSBT(Runnable callback) {
+        this.onExportSBT = callback;
+    }
+
+    /**
+     * Wire a supplier providing the current OMT file path on disk. Pulled at
+     * menu render time to gate the Export SBT entry's enable state.
+     */
+    public void setSBTOMTPathSupplier(java.util.function.Supplier<String> supplier) {
+        this.sbtOmtPathSupplier = supplier != null ? supplier : (() -> null);
+    }
+
+    /**
      * Render the menu bar as a fixed-height horizontal bar inside a window.
      */
     public void render() {
@@ -132,6 +149,7 @@ public class WindowedMenuBarRenderer {
         renderEditMenu();
         renderViewMenu();
         renderFiltersMenu();
+        renderToolsMenu();
         if (aboutMenu != null) {
             aboutMenu.render();
         }
@@ -265,6 +283,21 @@ public class WindowedMenuBarRenderer {
             }
             if (ImGui.menuItem("Reset View", "0")) {
                 controller.getCanvasState().resetView();
+            }
+
+            ImGui.endMenu();
+        }
+    }
+
+    private void renderToolsMenu() {
+        if (ImGui.beginMenu("Tools")) {
+            String omtPath = sbtOmtPathSupplier.get();
+            boolean canExportSBT = omtPath != null && !omtPath.isBlank();
+
+            if (ImGui.menuItem("Export SBT...", "", false, canExportSBT)) {
+                if (onExportSBT != null) {
+                    onExportSBT.run();
+                }
             }
 
             ImGui.endMenu();

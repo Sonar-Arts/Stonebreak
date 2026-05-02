@@ -26,6 +26,8 @@ public class SBOStampEmitter {
     private final SBOCullingPolicy cullingPolicy;
     private final Predicate<IBlockType> translucencyPolicy;
     private volatile SBOFaceLightSampler lightSampler = SBOFaceLightSampler.FULLY_LIT;
+    private volatile SBOInstanceTranslucencyOverride translucencyOverride = null;
+    private volatile SBOInstanceFaceCullPolicy instanceFaceCullPolicy = null;
 
     /**
      * Creates an emitter with the given stamp cache and culling policy.
@@ -63,6 +65,26 @@ public class SBOStampEmitter {
      */
     public void setLightSampler(SBOFaceLightSampler sampler) {
         this.lightSampler = sampler != null ? sampler : SBOFaceLightSampler.FULLY_LIT;
+    }
+
+    /**
+     * Installs a per-instance translucency override. When set and a block's
+     * base classification is translucent, the override is consulted to
+     * decide whether this specific instance should be emitted as fully
+     * opaque (e.g. ice submerged in water). Pass null to disable.
+     */
+    public void setInstanceTranslucencyOverride(SBOInstanceTranslucencyOverride override) {
+        this.translucencyOverride = override;
+    }
+
+    /**
+     * Installs a per-instance face cull policy. When set, this policy is
+     * consulted after the engine's standard neighbor culling and may
+     * additionally suppress individual faces (e.g. cull an ice block's top
+     * face when snow rests on it). Pass null to disable.
+     */
+    public void setInstanceFaceCullPolicy(SBOInstanceFaceCullPolicy policy) {
+        this.instanceFaceCullPolicy = policy;
     }
 
     /**
@@ -120,16 +142,36 @@ public class SBOStampEmitter {
         // alpha testing — so we must not set the cutout/alpha-test flag for them
         // or the fragment shader will force them into the opaque pass and lose
         // partial transparency.
-        float alphaFlag = (!translucent && blockType.isTransparent() && !blockType.isAir()) ? 1.0f : 0.0f;
-        float translucentFlag = translucent ? 1.0f : 0.0f;
+        float baseAlphaFlag = (!translucent && blockType.isTransparent() && !blockType.isAir()) ? 1.0f : 0.0f;
+        float baseTranslucentFlag = translucent ? 1.0f : 0.0f;
 
         for (int face = 0; face < SBOFaceConventions.FACE_COUNT; face++) {
             if (!cullingPolicy.shouldRenderFace(blockType, lx, ly, lz, face, chunkData)) {
                 continue;
             }
 
+            // Per-instance additional cull (e.g. cull ice top face when snow
+            // sits on it) — applied after the engine's standard culling.
+            if (instanceFaceCullPolicy != null
+                    && instanceFaceCullPolicy.shouldCullFace(blockType, lx, ly, lz, face, chunkData)) {
+                continue;
+            }
+
             FaceStamp faceStamp = stamp.faces()[face];
             if (faceStamp.vertexCount() == 0) continue;
+
+            // Per-face translucency override: a translucent block can opt
+            // individual faces into fully-opaque rendering (e.g. only the
+            // ice faces that touch water). Forces both translucent and
+            // alpha-test flags off so the fragment shader's regular opaque
+            // path is taken for that face.
+            float alphaFlag = baseAlphaFlag;
+            float translucentFlag = baseTranslucentFlag;
+            if (translucent && translucencyOverride != null
+                    && translucencyOverride.shouldRenderFaceAsOpaque(blockType, lx, ly, lz, face, chunkData)) {
+                alphaFlag = 0.0f;
+                translucentFlag = 0.0f;
+            }
 
             emitFaceStamp(builder, faceStamp, worldX, worldY, worldZ, alphaFlag, translucentFlag, blockHeight, face, chunkData);
         }

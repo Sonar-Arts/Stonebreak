@@ -431,6 +431,22 @@ public class TextureCreatorImGui {
         return state;
     }
 
+    /**
+     * Wire the Tools → Export SBT menu entry. The supplier provides the
+     * currently-saved .OMT file path (null if none) so the renderer can gate
+     * the entry's enable state without coupling to ModelState.
+     *
+     * @param onExportSBT      action invoked when the menu item is clicked
+     * @param omtPathSupplier  current .OMT path provider; null disables the entry
+     */
+    public void setSBTExportTrigger(Runnable onExportSBT,
+                                    java.util.function.Supplier<String> omtPathSupplier) {
+        menuBarRenderer.setOnExportSBT(onExportSBT);
+        menuBarRenderer.setSBTOMTPathSupplier(omtPathSupplier);
+        windowedMenuBarRenderer.setOnExportSBT(onExportSBT);
+        windowedMenuBarRenderer.setSBTOMTPathSupplier(omtPathSupplier);
+    }
+
     public TextureCreatorController getController() {
         return controller;
     }

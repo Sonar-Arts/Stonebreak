@@ -453,4 +453,20 @@ public class FileDialogService {
     public interface SaveSBECallback {
         void onSave(String filePath);
     }
+
+    /**
+     * Show save SBT (Stonebreak Texture) dialog using native file dialog.
+     * @param callback callback to receive selected file path
+     */
+    public void showSaveSBTDialog(SaveSBTCallback callback) {
+        showNFDSaveDialog("Exporting SBT file...", "Stonebreak Texture", "sbt",
+                "texture.sbt", "Export SBT to file", callback::onSave);
+    }
+
+    /**
+     * Callback interface for SBT save operations.
+     */
+    public interface SaveSBTCallback {
+        void onSave(String filePath);
+    }
 }

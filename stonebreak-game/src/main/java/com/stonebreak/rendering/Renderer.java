@@ -212,6 +212,23 @@ public class Renderer {
                                 block instanceof com.stonebreak.blocks.BlockType bt && bt.isFlower());
 
                         pendingSBOEmitter = sboRendererAPI.createEmitter(sboCullingService, translucencyPolicy);
+
+                        MmsFaceCullingService cullingForNeighborLookup = sboCullingService;
+
+                        // Per-face cull policy: cull an ice block's top face
+                        // when a snow layer sits directly on it. Snow's bottom
+                        // face is coplanar with ice's top face — rendering both
+                        // produces z-fighting at that shared plane.
+                        pendingSBOEmitter.setInstanceFaceCullPolicy((block, lx, ly, lz, face, chunkData) -> {
+                            if (face != 0) return false; // top face only
+                            if (!(block instanceof com.stonebreak.blocks.BlockType bt)) return false;
+                            if (bt != com.stonebreak.blocks.BlockType.ICE) return false;
+                            com.openmason.engine.voxel.IBlockType above =
+                                    cullingForNeighborLookup.getAdjacentBlock(lx, ly + 1, lz, chunkData);
+                            return above instanceof com.stonebreak.blocks.BlockType ab
+                                    && ab == com.stonebreak.blocks.BlockType.SNOW;
+                        });
+
                         System.out.println("[Renderer] SBO Renderer API: " + processed + " block types processed (emitter deferred)");
                     }
                 }
@@ -619,6 +636,11 @@ public class Renderer {
             uiRenderer.cleanup();
         }
         if (skijaBackend != null) {
+            try {
+                com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry.disposeAll();
+            } catch (Throwable t) {
+                System.err.println("[Renderer] MTexture dispose failed: " + t.getMessage());
+            }
             try {
                 skijaBackend.dispose();
             } catch (Throwable t) {
