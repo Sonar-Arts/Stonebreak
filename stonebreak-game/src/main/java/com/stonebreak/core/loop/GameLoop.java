@@ -102,6 +102,9 @@ public final class GameLoop {
                     recipeScreen.update(deltaTime);
                 }
             }
+            case CHARACTER_SHEET_UI -> {
+                // No per-frame character screen update needed; world continues to run.
+            }
             default -> {
                 return false;
             }
