@@ -128,6 +128,10 @@ public class Renderer {
             t.printStackTrace();
         }
 
+        // Skija-backed UI renderers (chat panel) need the backend; init now
+        // that it exists. UIRenderer.init() ran earlier and only set up NanoVG.
+        uiRenderer.initializeSkijaRenderers(skijaBackend);
+
         debugRenderer = new DebugRenderer(resourceManager.getShaderProgram(), configManager.getProjectionMatrix());
         
         entityRenderer = new EntityRenderer();

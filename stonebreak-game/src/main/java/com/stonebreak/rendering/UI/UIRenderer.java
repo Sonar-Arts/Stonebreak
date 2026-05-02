@@ -8,8 +8,9 @@ import com.stonebreak.items.Item;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
-import com.stonebreak.rendering.UI.components.ChatRenderer;
+import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.components.CrosshairRenderer;
+import com.stonebreak.ui.chat.SkijaChatRenderer;
 import com.stonebreak.rendering.UI.components.OpenGLQuadRenderer;
 import com.stonebreak.rendering.UI.components.HotbarRenderer;
 import com.stonebreak.rendering.UI.menus.BlockIconRenderer;
@@ -34,7 +35,7 @@ public class UIRenderer {
     
     // Specialized renderers
     private MenuRenderer menuRenderer;
-    private ChatRenderer chatRenderer;
+    private SkijaChatRenderer skijaChatRenderer;
     private VolumeSliderRenderer volumeSliderRenderer;
     private ItemIconRenderer itemIconRenderer;
     private BlockIconRenderer blockIconRenderer;
@@ -54,7 +55,6 @@ public class UIRenderer {
         
         // Initialize specialized renderers
         menuRenderer = new MenuRenderer(vg);
-        chatRenderer = new ChatRenderer(vg);
         volumeSliderRenderer = new VolumeSliderRenderer(vg);
         itemIconRenderer = new ItemIconRenderer(vg);
         crosshairRenderer = new CrosshairRenderer(vg);
@@ -84,6 +84,16 @@ public class UIRenderer {
      */
     public void initializeBlockIconRenderer(BlockRenderer blockRenderer, int windowHeight) {
         this.blockIconRenderer = new BlockIconRenderer(blockRenderer, this, windowHeight);
+    }
+
+    /**
+     * Wires the Skija backend into UIRenderer so renderers that draw via Skija
+     * (currently the chat panel) can be constructed. Called by Renderer after
+     * the backend is initialized — UIRenderer.init() runs before the backend
+     * exists, so chat construction happens here instead.
+     */
+    public void initializeSkijaRenderers(SkijaUIBackend skijaBackend) {
+        this.skijaChatRenderer = new SkijaChatRenderer(skijaBackend);
     }
     
     public void beginFrame(int width, int height, float pixelRatio) {
@@ -163,7 +173,9 @@ public class UIRenderer {
     // ===== Chat Rendering Delegation =====
     
     public void renderChat(ChatSystem chatSystem, int windowWidth, int windowHeight) {
-        chatRenderer.renderChat(chatSystem, windowWidth, windowHeight);
+        if (skijaChatRenderer != null) {
+            skijaChatRenderer.render(chatSystem, windowWidth, windowHeight);
+        }
     }
     
     // ===== Volume Slider Rendering Delegation =====
@@ -413,10 +425,11 @@ public class UIRenderer {
     }
 
     /**
-     * Get the chat renderer for chat-specific interactions.
+     * Get the Skija/MasonryUI chat renderer for chat-specific interactions
+     * (scrollbar drag, command click hit-testing, hover updates).
      */
-    public ChatRenderer getChatRenderer() {
-        return chatRenderer;
+    public SkijaChatRenderer getSkijaChatRenderer() {
+        return skijaChatRenderer;
     }
 
     public void cleanup() {
@@ -424,12 +437,17 @@ public class UIRenderer {
         if (openGLQuadRenderer != null) {
             openGLQuadRenderer.cleanup();
         }
-        
+
         // Cleanup hotbar renderer
         if (hotbarRenderer != null) {
             hotbarRenderer.cleanup();
         }
-        
+
+        if (skijaChatRenderer != null) {
+            skijaChatRenderer.dispose();
+            skijaChatRenderer = null;
+        }
+
         if (vg != 0) {
             try {
                 nvgDelete(vg);

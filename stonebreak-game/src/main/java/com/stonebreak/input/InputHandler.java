@@ -589,18 +589,18 @@ public class InputHandler {
                 if (action == GLFW_PRESS) {
                     // Handle scrollbar clicks first
                     UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-                    if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
+                    if (uiRenderer != null && uiRenderer.getSkijaChatRenderer() != null) {
                         int windowWidth = Game.getWindowWidth();
                         int windowHeight = Game.getWindowHeight();
 
                         // Try chat scrollbar
-                        if (uiRenderer.getChatRenderer().handleChatScrollbarPress(
+                        if (uiRenderer.getSkijaChatRenderer().handleChatScrollbarPress(
                                 chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight)) {
                             return; // Handled by scrollbar
                         }
 
                         // Try commands scrollbar
-                        if (uiRenderer.getChatRenderer().handleCommandScrollbarPress(
+                        if (uiRenderer.getSkijaChatRenderer().handleCommandScrollbarPress(
                                 chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight)) {
                             return; // Handled by scrollbar
                         }
@@ -611,8 +611,8 @@ public class InputHandler {
                 } else if (action == GLFW_RELEASE) {
                     // Handle scrollbar release
                     UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-                    if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
-                        uiRenderer.getChatRenderer().handleScrollbarRelease();
+                    if (uiRenderer != null && uiRenderer.getSkijaChatRenderer() != null) {
+                        uiRenderer.getSkijaChatRenderer().handleScrollbarRelease();
                     }
                 }
             }
@@ -859,12 +859,12 @@ public class InputHandler {
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-            if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
-                uiRenderer.getChatRenderer().updateMousePosition(currentMouseX, currentMouseY);
+            if (uiRenderer != null && uiRenderer.getSkijaChatRenderer() != null) {
+                uiRenderer.getSkijaChatRenderer().updateMousePosition(currentMouseX, currentMouseY);
 
                 // Handle scrollbar dragging
-                if (uiRenderer.getChatRenderer().isDraggingScrollbar()) {
-                    uiRenderer.getChatRenderer().handleScrollbarDrag(chatSystem, currentMouseY, Game.getWindowHeight());
+                if (uiRenderer.getSkijaChatRenderer().isDraggingScrollbar()) {
+                    uiRenderer.getSkijaChatRenderer().handleScrollbarDrag(chatSystem, currentMouseY, Game.getWindowHeight());
                 }
             }
         }
@@ -925,8 +925,8 @@ public class InputHandler {
         // Check if clicked on a command button (only if Commands tab is active)
         if (chatSystem.getCurrentTab() == ChatSystem.ChatTab.COMMANDS) {
             UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-            if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
-                String clickedCommand = uiRenderer.getChatRenderer().getClickedCommand(
+            if (uiRenderer != null && uiRenderer.getSkijaChatRenderer() != null) {
+                String clickedCommand = uiRenderer.getSkijaChatRenderer().getClickedCommand(
                     chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
 
                 if (clickedCommand != null) {
