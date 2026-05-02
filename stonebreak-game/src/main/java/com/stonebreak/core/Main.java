@@ -177,6 +177,13 @@ public class Main {
             else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
                 game.getTerrainMapperScreen().handleKeyInput(key, action, mods);
             }
+            // Multiplayer screens: text-field key handling
+            else if (game != null && game.getState() == GameState.HOST_WORLD_SELECT && game.getHostWorldScreen() != null) {
+                game.getHostWorldScreen().handleKeyInput(key, action, mods);
+            }
+            else if (game != null && game.getState() == GameState.JOIN_WORLD_SCREEN && game.getJoinWorldScreen() != null) {
+                game.getJoinWorldScreen().handleKeyInput(key, action, mods);
+            }
             // Pass key events to InputHandler for chat handling
             else if (inputHandler != null) {
                 inputHandler.handleKeyInput(key, action, mods);
@@ -202,6 +209,13 @@ public class Main {
             // Handle terrain mapper character input
             else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
                 game.getTerrainMapperScreen().handleCharacterInput(character);
+            }
+            // Multiplayer screens: text-field char input
+            else if (game != null && game.getState() == GameState.HOST_WORLD_SELECT && game.getHostWorldScreen() != null) {
+                game.getHostWorldScreen().handleCharInput(character);
+            }
+            else if (game != null && game.getState() == GameState.JOIN_WORLD_SCREEN && game.getJoinWorldScreen() != null) {
+                game.getJoinWorldScreen().handleCharInput(character);
             }
             // Pass character input to InputHandler for chat handling
             else if (inputHandler != null) {
@@ -273,6 +287,20 @@ public class Main {
                         game.getTerrainMapperScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
                 }
+            } else if (game != null && (game.getState() == GameState.MULTIPLAYER_MENU
+                    || game.getState() == GameState.HOST_WORLD_SELECT
+                    || game.getState() == GameState.JOIN_WORLD_SCREEN)) {
+                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
+                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
+                    glfwGetCursorPos(window, xpos, ypos);
+                    switch (game.getState()) {
+                        case MULTIPLAYER_MENU -> game.getMultiplayerMenu().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
+                        case HOST_WORLD_SELECT -> game.getHostWorldScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
+                        case JOIN_WORLD_SCREEN -> game.getJoinWorldScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
+                        default -> {}
+                    }
+                }
             } else if (inputHandler != null) {
                 inputHandler.processMouseButton(button, action, mods);
             }
@@ -308,6 +336,15 @@ public class Main {
             // Handle terrain mapper hover events
             else if (game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
                 game.getTerrainMapperScreen().handleMouseMove(xpos, ypos, width, height);
+            }
+            else if (game.getState() == GameState.MULTIPLAYER_MENU && game.getMultiplayerMenu() != null) {
+                game.getMultiplayerMenu().handleMouseMove(xpos, ypos, width, height);
+            }
+            else if (game.getState() == GameState.HOST_WORLD_SELECT && game.getHostWorldScreen() != null) {
+                game.getHostWorldScreen().handleMouseMove(xpos, ypos, width, height);
+            }
+            else if (game.getState() == GameState.JOIN_WORLD_SCREEN && game.getJoinWorldScreen() != null) {
+                game.getJoinWorldScreen().handleMouseMove(xpos, ypos, width, height);
             }
         });
 
@@ -506,6 +543,15 @@ public class Main {
                         game.getSettingsMenu().handleInput(window);
                     }
                 }
+                case MULTIPLAYER_MENU -> {
+                    if (game.getMultiplayerMenu() != null) game.getMultiplayerMenu().handleInput(window);
+                }
+                case HOST_WORLD_SELECT -> {
+                    if (game.getHostWorldScreen() != null) game.getHostWorldScreen().handleInput(window);
+                }
+                case JOIN_WORLD_SCREEN -> {
+                    if (game.getJoinWorldScreen() != null) game.getJoinWorldScreen().handleInput(window);
+                }
                 case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, CHARACTER_SHEET_UI -> {
                     // Handle in-game input if not a purely modal UI like MainMenu
                     // Game.update() will also check its internal state for what to update (e.g. player/world if not paused)
@@ -598,6 +644,15 @@ public class Main {
                 // Skija-backed MasonryUI; brackets GL itself.
                 SettingsMenu sm = game.getSettingsMenu();
                 if (sm != null) sm.render(width, height);
+            }
+            case MULTIPLAYER_MENU -> {
+                if (game.getMultiplayerMenu() != null) game.getMultiplayerMenu().render(width, height);
+            }
+            case HOST_WORLD_SELECT -> {
+                if (game.getHostWorldScreen() != null) game.getHostWorldScreen().render(width, height);
+            }
+            case JOIN_WORLD_SCREEN -> {
+                if (game.getJoinWorldScreen() != null) game.getJoinWorldScreen().render(width, height);
             }
             default -> render3DGameState(game, renderer);
         }

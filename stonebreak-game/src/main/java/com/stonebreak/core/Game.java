@@ -53,6 +53,9 @@ public class Game {
     private MouseCaptureManager mouseCaptureManager; // Mouse capture system
     private MainMenu mainMenu; // Main menu
     private SettingsMenu settingsMenu; // Settings menu
+    private com.stonebreak.ui.multiplayerMenu.MultiplayerMenu multiplayerMenu;
+    private com.stonebreak.ui.multiplayerMenu.HostWorldScreen hostWorldScreen;
+    private com.stonebreak.ui.multiplayerMenu.JoinWorldScreen joinWorldScreen;
     private SoundSystem soundSystem; // Sound system
     private ChatSystem chatSystem; // Chat system
     private CraftingManager craftingManager; // Crafting manager
@@ -136,6 +139,9 @@ public class Game {
 
         this.mainMenu = new MainMenu(this.renderer.getSkijaBackend());
         this.settingsMenu = new SettingsMenu(this.renderer.getSkijaBackend());
+        this.multiplayerMenu = new com.stonebreak.ui.multiplayerMenu.MultiplayerMenu(this.renderer.getSkijaBackend());
+        this.hostWorldScreen = new com.stonebreak.ui.multiplayerMenu.HostWorldScreen(this.renderer.getSkijaBackend());
+        this.joinWorldScreen = new com.stonebreak.ui.multiplayerMenu.JoinWorldScreen(this.renderer.getSkijaBackend());
         this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
         this.worldSelectScreen = new WorldSelectScreen(this.renderer.getSkijaBackend());
         this.terrainMapperScreen = new TerrainMapperScreen(this.renderer.getSkijaBackend());
@@ -485,6 +491,18 @@ public class Game {
      */
     public SettingsMenu getSettingsMenu() {
         return settingsMenu;
+    }
+
+    public com.stonebreak.ui.multiplayerMenu.MultiplayerMenu getMultiplayerMenu() {
+        return multiplayerMenu;
+    }
+
+    public com.stonebreak.ui.multiplayerMenu.HostWorldScreen getHostWorldScreen() {
+        return hostWorldScreen;
+    }
+
+    public com.stonebreak.ui.multiplayerMenu.JoinWorldScreen getJoinWorldScreen() {
+        return joinWorldScreen;
     }
     
     /**

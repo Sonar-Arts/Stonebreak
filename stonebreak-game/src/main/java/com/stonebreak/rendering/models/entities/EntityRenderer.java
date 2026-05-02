@@ -56,6 +56,9 @@ public class EntityRenderer {
     private int debugSphereVBO;
     private int debugSphereTexVBO;
 
+    // Renderer for multiplayer remote players (cylinder).
+    private final RemotePlayerRenderer remotePlayerRenderer = new RemotePlayerRenderer();
+
 
     /**
      * Initialize the entity renderer. Called by the main Renderer.
@@ -68,6 +71,7 @@ public class EntityRenderer {
         createSimpleCubeModel();
         createDebugSphereModel();
         initializeEntityModels();
+        remotePlayerRenderer.initialize();
         initialized = true;
     }
     
@@ -428,6 +432,12 @@ public class EntityRenderer {
 
         EntityType entityType = entity.getType();
 
+        // Multiplayer cylinder rendering takes its own path.
+        if (entityType == EntityType.REMOTE_PLAYER && entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
+            remotePlayerRenderer.render(rp, viewMatrix, projectionMatrix);
+            return;
+        }
+
         // Check if we have a complex model for this entity type
         if (vaoMaps.containsKey(entityType) && !vaoMaps.get(entityType).isEmpty()) {
             renderComplexEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
@@ -767,6 +777,8 @@ public class EntityRenderer {
             
             // Cleanup texture atlas
             CowTextureAtlas.cleanup();
+
+            remotePlayerRenderer.cleanup();
             
             // Clear all maps
             vaoMaps.clear();

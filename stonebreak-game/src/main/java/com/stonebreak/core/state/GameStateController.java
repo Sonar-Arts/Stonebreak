@@ -60,6 +60,19 @@ public final class GameStateController {
             game.getWorldSelectScreen().refreshWorlds();
         }
 
+        if (state == GameState.HOST_WORLD_SELECT && game.getHostWorldScreen() != null) {
+            game.getHostWorldScreen().onShow();
+        }
+        if (state == GameState.JOIN_WORLD_SCREEN && game.getJoinWorldScreen() != null) {
+            game.getJoinWorldScreen().onShow();
+        }
+
+        // Tear down any active multiplayer session when returning to the main menu.
+        if (state == GameState.MAIN_MENU
+                && com.stonebreak.network.MultiplayerSession.isOnline()) {
+            com.stonebreak.network.MultiplayerSession.shutdown();
+        }
+
         updatePauseState(state);
 
         MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();
@@ -70,7 +83,8 @@ public final class GameStateController {
 
     private void updatePauseState(GameState state) {
         switch (state) {
-            case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI -> paused = true;
+            case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI,
+                 MULTIPLAYER_MENU, HOST_WORLD_SELECT, JOIN_WORLD_SCREEN -> paused = true;
             case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI, CHARACTER_SHEET_UI -> paused = false;
         }
     }

@@ -330,6 +330,13 @@ public class World {
 
         waterSystem.onBlockChanged(x, y, z, previous, blockType);
 
+        // Multiplayer: broadcast locally-driven block changes (player modifications).
+        // Inbound network changes also flow through this path with isPlayerModification=true,
+        // but MultiplayerSession suppresses re-broadcast via its applyingRemote flag.
+        if (isPlayerModification) {
+            com.stonebreak.network.MultiplayerSession.onLocalBlockChange(x, y, z, blockType);
+        }
+
         return true;
     }
 

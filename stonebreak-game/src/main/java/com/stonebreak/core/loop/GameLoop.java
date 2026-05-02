@@ -39,6 +39,10 @@ public final class GameLoop {
      * (menu / loading / paused).
      */
     public void tick(float deltaTime) {
+        // Network pump runs in every state once a session is established so
+        // chunks/joins/disconnects keep flowing during loading screens too.
+        com.stonebreak.network.MultiplayerSession.tick();
+
         if (!routeStateUpdate(deltaTime)) {
             return;
         }

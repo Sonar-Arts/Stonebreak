@@ -80,10 +80,12 @@ public final class SkijaMainMenuRenderer {
             int selected = menu != null ? menu.getSelectedButton() : -1;
             drawButton(canvas, "Singleplayer", centerX - BUTTON_WIDTH / 2f,
                     centerY - 20f, selected == 0);
-            drawButton(canvas, "Settings", centerX - BUTTON_WIDTH / 2f,
+            drawButton(canvas, "Multiplayer", centerX - BUTTON_WIDTH / 2f,
                     centerY - 20f + BUTTON_SPACING, selected == 1);
-            drawButton(canvas, "Quit Game", centerX - BUTTON_WIDTH / 2f,
+            drawButton(canvas, "Settings", centerX - BUTTON_WIDTH / 2f,
                     centerY - 20f + BUTTON_SPACING * 2f, selected == 2);
+            drawButton(canvas, "Quit Game", centerX - BUTTON_WIDTH / 2f,
+                    centerY - 20f + BUTTON_SPACING * 3f, selected == 3);
         } finally {
             backend.endFrame();
         }
