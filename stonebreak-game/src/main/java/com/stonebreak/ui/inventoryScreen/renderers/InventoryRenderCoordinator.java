@@ -13,6 +13,7 @@ import com.stonebreak.rendering.UI.masonryUI.MButton;
 import com.stonebreak.rendering.UI.masonryUI.MItemSlot;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.rendering.UI.masonryUI.MTooltip;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.ui.inventoryScreen.core.InventoryController;
 import com.stonebreak.ui.inventoryScreen.core.InventoryCraftingManager;
@@ -21,8 +22,6 @@ import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
-import io.github.humbleui.skija.Paint;
-import io.github.humbleui.types.Rect;
 import org.joml.Vector2f;
 
 /**
@@ -135,7 +134,7 @@ public class InventoryRenderCoordinator {
 
         Vector2f mouse = inputHandler.getMousePosition();
         if (ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
-            drawTooltip(ui.canvas(), item.getName(), mouse.x + 15, mouse.y + 15,
+            MTooltip.draw(ui, item.getName(), mouse.x + 15, mouse.y + 15,
                         screenWidth, screenHeight);
             ui.endFrame();
         }
@@ -241,7 +240,7 @@ public class InventoryRenderCoordinator {
         float arrowX = layout.craftingElementsStartX + layout.craftInputGridVisualWidth
                 + slotPadding + (slotSize - 20) / 2f;
         float arrowY = layout.craftingGridStartY + (slotSize - 20) / 2f;
-        drawCraftingArrow(canvas, arrowX, arrowY, 20, 20);
+        MPainter.craftingArrow(canvas, arrowX, arrowY, 20, 20, ARROW_FILL);
 
         // Output slot
         float ox = layout.outputSlotX;
@@ -295,32 +294,6 @@ public class InventoryRenderCoordinator {
                 .bounds(x, y, size, size);
         slot.updateHover(mouseX, mouseY);
         slot.render(ui);
-    }
-
-    /**
-     * Draws a right-pointing arrow using horizontal rect slices — no Path API needed.
-     * Each slice is right-aligned to the tip so the slices form a filled triangle.
-     */
-    private void drawCraftingArrow(Canvas canvas, float x, float y, float w, float h) {
-        float centerY = y + h / 2f;
-        float bodyH   = Math.max(2f, h * 0.2f);
-        float bodyW   = w * 0.7f;
-        float headH   = h * 0.4f;
-        float headW   = w - bodyW;
-
-        try (Paint fill = new Paint().setColor(ARROW_FILL)) {
-            // Body
-            canvas.drawRect(Rect.makeXYWH(x, centerY - bodyH / 2f, bodyW, bodyH), fill);
-            // Triangle head: right-aligned horizontal slices, widest at center
-            int n = Math.max(4, (int) headH);
-            float sliceH = headH / n;
-            for (int i = 0; i < n; i++) {
-                float d = Math.abs(i + 0.5f - n / 2f) / (n / 2f); // 0 at centre, 1 at edges
-                float sliceW = Math.max(1f, (1f - d) * headW);
-                canvas.drawRect(Rect.makeXYWH(x + w - sliceW, centerY - headH / 2f + i * sliceH,
-                        sliceW, sliceH), fill);
-            }
-        }
     }
 
     // ─────────────────────────────────────────────── Phase B — GL item icons
@@ -426,32 +399,6 @@ public class InventoryRenderCoordinator {
         float textY = slotY + slotSize - 2f;
         MPainter.drawStringWithShadow(canvas, countStr, textX, textY,
                 font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-    }
-
-    // ─────────────────────────────────────────────── Tooltip
-
-    private void drawTooltip(Canvas canvas, String itemName,
-                             float x, float y, int screenWidth, int screenHeight) {
-        Font font    = ui.fonts().get(MStyle.FONT_ITEM);
-        float textW  = MPainter.measureWidth(font, itemName);
-        float pad    = 8f;
-        float boxW   = textW + pad * 2.5f;
-        float boxH   = MStyle.FONT_ITEM + pad * 2f;
-
-        // Keep within screen
-        float margin = 8f;
-        float bx = Math.max(margin, Math.min(x, screenWidth  - boxW - margin));
-        float by = Math.max(margin, Math.min(y, screenHeight - boxH - margin));
-
-        MPainter.stoneSurface(canvas, bx, by, boxW, boxH, MStyle.PANEL_RADIUS,
-                MStyle.PANEL_FILL_DEEP, MStyle.PANEL_BORDER,
-                MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, MStyle.PANEL_DROP_SHADOW,
-                MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
-
-        // Baseline: center the cap-height inside the box (≈ FONT_ITEM * 0.7 for cap height)
-        float textBaseline = by + boxH / 2f + MStyle.FONT_ITEM * 0.35f;
-        MPainter.drawCenteredStringWithShadow(canvas, itemName, bx + boxW / 2f, textBaseline,
-                font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
     }
 
     // ─────────────────────────────────────────────── Utilities

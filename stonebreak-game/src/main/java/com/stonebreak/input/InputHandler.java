@@ -677,30 +677,29 @@ public class InputHandler {
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible()) { // Main pause menu (Escape)
             if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-                UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-                if (uiRenderer != null) {
-                    if (pauseMenu.isResumeButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
-                        Game.getInstance().togglePauseMenu(); // Resume the game
+                int w = Game.getWindowWidth();
+                int h = Game.getWindowHeight();
+                if (pauseMenu.isResumeButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    Game.getInstance().togglePauseMenu(); // Resume the game
+                }
+                // Check settings button
+                else if (pauseMenu.isSettingsButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    // Go to settings menu, remember we came from the game
+                    SettingsMenu settingsMenu = Game.getInstance().getSettingsMenu();
+                    if (settingsMenu != null) {
+                        settingsMenu.setPreviousState(GameState.PLAYING);
                     }
-                    // Check settings button
-                    else if (pauseMenu.isSettingsButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
-                        // Go to settings menu, remember we came from the game
-                        SettingsMenu settingsMenu = Game.getInstance().getSettingsMenu();
-                        if (settingsMenu != null) {
-                            settingsMenu.setPreviousState(GameState.PLAYING);
-                        }
-                        // Mouse button states will be managed by the new state
-                        Game.getInstance().setState(GameState.SETTINGS);
-                        Game.getInstance().getPauseMenu().setVisible(false);
-                    }
-                    // Check quit button
-                    else if (pauseMenu.isQuitButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
-                        // Clean up world state before returning to main menu
-                        Game.getInstance().resetWorld();
-                        // Return to main menu
-                        Game.getInstance().setState(GameState.MAIN_MENU);
-                        Game.getInstance().getPauseMenu().setVisible(false);
-                    }
+                    // Mouse button states will be managed by the new state
+                    Game.getInstance().setState(GameState.SETTINGS);
+                    Game.getInstance().getPauseMenu().setVisible(false);
+                }
+                // Check quit button
+                else if (pauseMenu.isQuitButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    // Clean up world state before returning to main menu
+                    Game.getInstance().resetWorld();
+                    // Return to main menu
+                    Game.getInstance().setState(GameState.MAIN_MENU);
+                    Game.getInstance().getPauseMenu().setVisible(false);
                 }
             }
             return; // Pause menu handled or ignored the click
@@ -853,10 +852,7 @@ public class InputHandler {
 
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible()) {
-            UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-            if (uiRenderer != null) {
-                pauseMenu.updateHover(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight());
-            }
+            pauseMenu.updateHover(currentMouseX, currentMouseY, Game.getWindowWidth(), Game.getWindowHeight());
         }
 
         // Update chat renderer hover states and scrollbar dragging

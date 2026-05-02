@@ -122,7 +122,7 @@ public class Game {
         this.inputHandler = inputHandler;
 
         this.mouseCaptureManager = new MouseCaptureManager(window);
-        this.pauseMenu = new PauseMenu();
+        this.pauseMenu = new PauseMenu(this.renderer.getSkijaBackend());
         this.deathMenu = new DeathMenu();
         this.waterEffects = new WaterEffects();
 

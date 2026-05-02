@@ -744,16 +744,24 @@ public class Main {
     private void renderInventoryAndHotbar(Game game) {
         InventoryScreen inventoryScreen = game.getInventoryScreen();
         WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+        GameState state = game.getState();
+
+        // Recipe book takes the foreground; render just the hotbar underneath
+        // so hover detection over the inventory grid doesn't run.
+        if (state == GameState.RECIPE_BOOK_UI) {
+            if (inventoryScreen != null) {
+                inventoryScreen.renderHotbar(width, height);
+            }
+            return;
+        }
 
         // Check which screen is visible and render accordingly
         if (workbenchScreen != null && workbenchScreen.isVisible()) {
-            // Workbench is open - render workbench instead of inventory
             workbenchScreen.render();
         } else if (inventoryScreen != null) {
             if (inventoryScreen.isVisible()) {
                 inventoryScreen.render(width, height);
             } else {
-                // Neither workbench nor inventory is visible - render hotbar
                 inventoryScreen.renderHotbar(width, height);
             }
         }
@@ -767,9 +775,10 @@ public class Main {
     }
 
     private void renderActivePauseMenu(Game game, Renderer renderer) {
-        if ((game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) 
+        if ((game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED)
             && game.getPauseMenu() != null && game.getPauseMenu().isVisible()) {
-            game.getPauseMenu().render(renderer.getUIRenderer(), width, height);
+            // Skija-backed; brackets its own GL state.
+            game.getPauseMenu().render(width, height);
         }
     }
 
@@ -790,9 +799,8 @@ public class Main {
     private void renderPauseMenu(Game game, Renderer renderer) {
         PauseMenu pauseMenu = game.getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible() && renderer != null) {
-            renderer.beginUIFrame(width, height, 1.0f);
-            pauseMenu.render(renderer.getUIRenderer(), width, height);
-            renderer.endUIFrame();
+            // Skija-backed; brackets its own GL state — no NanoVG frame here.
+            pauseMenu.render(width, height);
             renderer.getUIRenderer().renderPauseMenuDepthCurtain();
         }
 

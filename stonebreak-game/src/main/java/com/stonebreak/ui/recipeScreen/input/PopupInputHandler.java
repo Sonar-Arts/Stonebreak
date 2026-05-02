@@ -1,103 +1,57 @@
 package com.stonebreak.ui.recipeScreen.input;
 
 import com.stonebreak.input.InputHandler;
-import com.stonebreak.ui.recipeScreen.core.PositionCalculator;
-import com.stonebreak.ui.recipeScreen.core.RecipeBookConstants;
+import com.stonebreak.ui.recipeScreen.renderers.RecipeRenderCoordinator;
 import com.stonebreak.ui.recipeScreen.state.PopupState;
 import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 
+/**
+ * Handles the recipe-detail variant cycler and ESC-to-deselect.
+ *
+ * Class name is preserved for backwards compatibility with the rest of the
+ * recipe screen module; the on-screen artifact is no longer a modal popup
+ * but a permanent right-side detail pane in the three-pane layout.
+ */
 public class PopupInputHandler {
     private final PopupState popupState;
     private final InputHandler inputHandler;
+    private RecipeRenderCoordinator coordinator;
 
     public PopupInputHandler(PopupState popupState, InputHandler inputHandler) {
         this.popupState = popupState;
         this.inputHandler = inputHandler;
     }
 
-    public boolean handlePopupClick(Vector2f mousePos) {
-        if (!popupState.isShowingRecipePopup() || popupState.isPopupJustOpened()) {
-            return false;
-        }
+    public void setCoordinator(RecipeRenderCoordinator coordinator) {
+        this.coordinator = coordinator;
+    }
 
-        PositionCalculator.PopupDimensions popup = PositionCalculator.calculatePopupDimensions();
+    /**
+     * Returns true if the click landed on a prev/next variant button and the
+     * caller should not run further click handling for this frame.
+     */
+    public boolean handleVariationClick(Vector2f mousePos) {
+        if (coordinator == null) return false;
+        if (!popupState.isShowingRecipePopup() || popupState.isPopupJustOpened()) return false;
+        if (!popupState.hasMultipleVariations()) return false;
 
-        if (isClickOutsidePopup(mousePos, popup)) {
-            closePopupAndConsumeClick();
+        if (coordinator.prevVariantClicked(mousePos.x, mousePos.y)) {
+            popupState.navigatePrevious();
+            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             return true;
         }
-
-        if (isClickOnCloseButton(mousePos, popup)) {
-            closePopupAndConsumeClick();
+        if (coordinator.nextVariantClicked(mousePos.x, mousePos.y)) {
+            popupState.navigateNext();
+            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             return true;
         }
-
-        if (popupState.hasMultipleVariations()) {
-            return handlePaginationButtons(mousePos, popup);
-        }
-
-        return true;
+        return false;
     }
 
     public void handleEscapeKey() {
         if (popupState.isShowingRecipePopup()) {
             popupState.closePopup();
         }
-    }
-
-    private boolean isClickOutsidePopup(Vector2f mousePos, PositionCalculator.PopupDimensions popup) {
-        return !PositionCalculator.isPointInBounds(mousePos.x, mousePos.y,
-                popup.x, popup.y, popup.width, popup.height);
-    }
-
-    private boolean isClickOnCloseButton(Vector2f mousePos, PositionCalculator.PopupDimensions popup) {
-        int closeButtonX = popup.x + popup.width - RecipeBookConstants.CLOSE_BUTTON_SIZE - 16;
-        int closeButtonY = popup.y + 16;
-
-        return PositionCalculator.isPointInBounds(mousePos.x, mousePos.y,
-                closeButtonX, closeButtonY,
-                RecipeBookConstants.CLOSE_BUTTON_SIZE, RecipeBookConstants.CLOSE_BUTTON_SIZE);
-    }
-
-    private boolean handlePaginationButtons(Vector2f mousePos, PositionCalculator.PopupDimensions popup) {
-        int buttonY = popup.y + 60;
-        int prevButtonX = popup.x + 20;
-        int nextButtonX = popup.x + popup.width - RecipeBookConstants.PAGINATION_BUTTON_SIZE - 20;
-
-        if (isClickOnPreviousButton(mousePos, prevButtonX, buttonY)) {
-            popupState.navigatePrevious();
-            consumeMouseClick();
-            return true;
-        }
-
-        if (isClickOnNextButton(mousePos, nextButtonX, buttonY)) {
-            popupState.navigateNext();
-            consumeMouseClick();
-            return true;
-        }
-
-        return true;
-    }
-
-    private boolean isClickOnPreviousButton(Vector2f mousePos, int buttonX, int buttonY) {
-        return PositionCalculator.isPointInBounds(mousePos.x, mousePos.y,
-                buttonX, buttonY,
-                RecipeBookConstants.PAGINATION_BUTTON_SIZE, RecipeBookConstants.PAGINATION_BUTTON_SIZE);
-    }
-
-    private boolean isClickOnNextButton(Vector2f mousePos, int buttonX, int buttonY) {
-        return PositionCalculator.isPointInBounds(mousePos.x, mousePos.y,
-                buttonX, buttonY,
-                RecipeBookConstants.PAGINATION_BUTTON_SIZE, RecipeBookConstants.PAGINATION_BUTTON_SIZE);
-    }
-
-    private void closePopupAndConsumeClick() {
-        popupState.closePopup();
-        consumeMouseClick();
-    }
-
-    private void consumeMouseClick() {
-        inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
     }
 }

@@ -2,6 +2,7 @@ package com.stonebreak.rendering.UI.components;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
+import com.stonebreak.core.GameState;
 import com.stonebreak.items.Item;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.UI.menus.BlockIconRenderer;
@@ -52,15 +53,24 @@ public class OverlayRenderer {
     
     /**
      * Renders inventory-related tooltips including both full inventory and hotbar tooltips.
+     *
+     * Gates on the active game state so a screen layered on top of the
+     * inventory (recipe book, workbench) doesn't leak inventory tooltips
+     * through its chrome.
      */
     private void renderInventoryTooltips(Game game, int windowWidth, int windowHeight) {
         InventoryScreen inventoryScreen = game.getInventoryScreen();
-        if (inventoryScreen != null) {
-            if (inventoryScreen.isVisible()) {
-                inventoryScreen.renderTooltipsOnly(windowWidth, windowHeight);
-            } else {
-                inventoryScreen.renderHotbarTooltipsOnly(windowWidth, windowHeight);
-            }
+        if (inventoryScreen == null) return;
+
+        GameState state = game.getState();
+        if (state == GameState.RECIPE_BOOK_UI || state == GameState.WORKBENCH_UI) {
+            return; // Owner screen renders its own tooltips.
+        }
+
+        if (inventoryScreen.isVisible()) {
+            inventoryScreen.renderTooltipsOnly(windowWidth, windowHeight);
+        } else {
+            inventoryScreen.renderHotbarTooltipsOnly(windowWidth, windowHeight);
         }
     }
     
@@ -89,16 +99,22 @@ public class OverlayRenderer {
      * This ensures dragged items appear above all other UI elements.
      */
     private void renderDraggedItems(Game game, int windowWidth, int windowHeight) {
-        // Render inventory dragged items
-        InventoryScreen inventoryScreen = game.getInventoryScreen();
-        if (inventoryScreen != null && inventoryScreen.isVisible()) {
-            inventoryScreen.renderDraggedItemOnly(windowWidth, windowHeight);
+        GameState state = game.getState();
+
+        // Inventory drag is only allowed in the inventory screen — never let it
+        // bleed through when a different screen owns the foreground.
+        if (state == GameState.INVENTORY_UI) {
+            InventoryScreen inventoryScreen = game.getInventoryScreen();
+            if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                inventoryScreen.renderDraggedItemOnly(windowWidth, windowHeight);
+            }
         }
 
-        // Render workbench dragged items
-        WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
-        if (workbenchScreen != null && workbenchScreen.isVisible()) {
-            workbenchScreen.renderDraggedItemOnly(windowWidth, windowHeight);
+        if (state == GameState.WORKBENCH_UI) {
+            WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+            if (workbenchScreen != null && workbenchScreen.isVisible()) {
+                workbenchScreen.renderDraggedItemOnly(windowWidth, windowHeight);
+            }
         }
     }
 
