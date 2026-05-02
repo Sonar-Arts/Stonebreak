@@ -226,7 +226,12 @@ public class Main {
         // InputHandler will then decide how to process the click based on game state (paused, inventory open, etc.)
         glfwSetMouseButtonCallback(window, (win, button, action, mods) -> {
             Game game = Game.getInstance();
-            if (game != null && game.getState() == GameState.MAIN_MENU) {
+            if (game != null && game.getState() == GameState.STARTUP_INTRO) {
+                if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS
+                        && game.getStartupIntroScreen() != null) {
+                    game.getStartupIntroScreen().skipToMainMenu();
+                }
+            } else if (game != null && game.getState() == GameState.MAIN_MENU) {
                 // Handle main menu clicks
                 if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
                     try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
@@ -466,6 +471,11 @@ public class Main {
             // Handle input based on game state
             Game game = Game.getInstance();
             switch (game.getState()) {
+                case STARTUP_INTRO -> {
+                    if (game.getStartupIntroScreen() != null) {
+                        game.getStartupIntroScreen().handleInput(window);
+                    }
+                }
                 case MAIN_MENU -> {
                     // Handle main menu input
                     if (game.getMainMenu() != null) {
@@ -496,7 +506,7 @@ public class Main {
                         game.getSettingsMenu().handleInput(window);
                     }
                 }
-                case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, CHARACTER_SHEET_UI -> {
+                case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI -> {
                     // Handle in-game input if not a purely modal UI like MainMenu
                     // Game.update() will also check its internal state for what to update (e.g. player/world if not paused)
                     if (inputHandler != null) {
@@ -507,8 +517,6 @@ public class Main {
                              game.getWorkbenchScreen().handleInput(inputHandler);
                         } else if (game.getInventoryScreen() != null && game.getInventoryScreen().isVisible()){
                              game.getInventoryScreen().handleMouseInput(width, height); // InventoryScreen has specific mouse handling for drag/drop
-                        } else if (game.getCharacterScreen() != null && game.getCharacterScreen().isVisible()) {
-                             game.getCharacterScreen().handleMouseInput(width, height);
                         }
                         // General player input handling (movement, interaction) happens if not paused for UI.
                         // InputHandler's own logic + Game.update() decides if player/world updates proceed.
@@ -564,6 +572,10 @@ public class Main {
         Renderer renderer = Game.getRenderer();
         
         switch (game.getState()) {
+            case STARTUP_INTRO -> {
+                com.stonebreak.ui.startupIntro.SonarArtsIntroScreen intro = game.getStartupIntroScreen();
+                if (intro != null) intro.render(width, height);
+            }
             case MAIN_MENU -> {
                 // Skija-backed; same GL-bracketing contract as world select.
                 com.stonebreak.ui.MainMenu mm = game.getMainMenu();
@@ -710,7 +722,7 @@ public class Main {
 
         renderer.beginUIFrame(width, height, 1.0f);
 
-        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI || game.getState() == GameState.RECIPE_BOOK_UI || game.getState() == GameState.CHARACTER_SHEET_UI) {
+        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI || game.getState() == GameState.RECIPE_BOOK_UI) {
             renderCrosshair(game, renderer);
             renderInventoryAndHotbar(game);
             renderChat(game, renderer);
@@ -746,23 +758,24 @@ public class Main {
     private void renderInventoryAndHotbar(Game game) {
         InventoryScreen inventoryScreen = game.getInventoryScreen();
         WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
-        com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = game.getCharacterScreen();
+        GameState state = game.getState();
 
-        // Check which screen is visible and render accordingly
-        if (workbenchScreen != null && workbenchScreen.isVisible()) {
-            // Workbench is open - render workbench instead of inventory
-            workbenchScreen.render();
-        } else if (characterScreen != null && characterScreen.isVisible()) {
-            // Character screen is open — render it, but keep the hotbar visible below
-            characterScreen.render(width, height);
+        // Recipe book takes the foreground; render just the hotbar underneath
+        // so hover detection over the inventory grid doesn't run.
+        if (state == GameState.RECIPE_BOOK_UI) {
             if (inventoryScreen != null) {
                 inventoryScreen.renderHotbar(width, height);
             }
+            return;
+        }
+
+        // Check which screen is visible and render accordingly
+        if (workbenchScreen != null && workbenchScreen.isVisible()) {
+            workbenchScreen.render();
         } else if (inventoryScreen != null) {
             if (inventoryScreen.isVisible()) {
                 inventoryScreen.render(width, height);
             } else {
-                // Neither workbench nor inventory is visible - render hotbar
                 inventoryScreen.renderHotbar(width, height);
             }
         }
@@ -776,9 +789,10 @@ public class Main {
     }
 
     private void renderActivePauseMenu(Game game, Renderer renderer) {
-        if ((game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) 
+        if ((game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED)
             && game.getPauseMenu() != null && game.getPauseMenu().isVisible()) {
-            game.getPauseMenu().render(renderer.getUIRenderer(), width, height);
+            // Skija-backed; brackets its own GL state.
+            game.getPauseMenu().render(width, height);
         }
     }
 
@@ -799,9 +813,8 @@ public class Main {
     private void renderPauseMenu(Game game, Renderer renderer) {
         PauseMenu pauseMenu = game.getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible() && renderer != null) {
-            renderer.beginUIFrame(width, height, 1.0f);
-            pauseMenu.render(renderer.getUIRenderer(), width, height);
-            renderer.endUIFrame();
+            // Skija-backed; brackets its own GL state — no NanoVG frame here.
+            pauseMenu.render(width, height);
             renderer.getUIRenderer().renderPauseMenuDepthCurtain();
         }
 

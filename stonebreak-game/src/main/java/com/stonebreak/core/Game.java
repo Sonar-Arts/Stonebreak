@@ -20,6 +20,7 @@ import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.ui.startupIntro.SonarArtsIntroScreen;
 import com.stonebreak.ui.terrainMapper.TerrainMapperScreen;
 import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import com.stonebreak.util.*;
@@ -61,6 +62,7 @@ public class Game {
     private LoadingScreen loadingScreen; // Loading screen for world generation
     private WorldSelectScreen worldSelectScreen; // World selection screen
     private TerrainMapperScreen terrainMapperScreen; // Terrain preview + world creation screen
+    private SonarArtsIntroScreen startupIntroScreen; // Boot-time Sonar Arts animation
     private SaveService saveService; // World save/load system
     private WorldData currentWorldData; // Current world metadata
     private String currentWorldName; // Current world name for save system initialization
@@ -125,7 +127,7 @@ public class Game {
         this.inputHandler = inputHandler;
 
         this.mouseCaptureManager = new MouseCaptureManager(window);
-        this.pauseMenu = new PauseMenu();
+        this.pauseMenu = new PauseMenu(this.renderer.getSkijaBackend());
         this.deathMenu = new DeathMenu();
         this.waterEffects = new WaterEffects();
 
@@ -137,6 +139,7 @@ public class Game {
         this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
         this.worldSelectScreen = new WorldSelectScreen(this.renderer.getSkijaBackend());
         this.terrainMapperScreen = new TerrainMapperScreen(this.renderer.getSkijaBackend());
+        this.startupIntroScreen = new SonarArtsIntroScreen(this.renderer.getSkijaBackend());
 
         initializeCrosshairSettings();
 
@@ -655,6 +658,13 @@ public class Game {
      */
     public TerrainMapperScreen getTerrainMapperScreen() {
         return terrainMapperScreen;
+    }
+
+    /**
+     * Gets the boot-time Sonar Arts intro screen.
+     */
+    public SonarArtsIntroScreen getStartupIntroScreen() {
+        return startupIntroScreen;
     }
 
     /**

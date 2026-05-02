@@ -145,6 +145,36 @@ public final class MPainter {
         return x;
     }
 
+    // ─────────────────────────────────────────────── Crafting arrow
+
+    /**
+     * Right-pointing arrow built from horizontal rect slices — no Path API
+     * needed. The body is a flat rect on the left; the head is a triangle
+     * approximated by progressively narrower right-aligned slices.
+     *
+     * Used by inventory, workbench, and the recipe detail pane.
+     */
+    public static void craftingArrow(Canvas canvas, float x, float y, float w, float h, int color) {
+        if (canvas == null || w <= 0f || h <= 0f) return;
+        float centerY = y + h / 2f;
+        float bodyH = Math.max(2f, h * 0.2f);
+        float bodyW = w * 0.7f;
+        float headH = h * 0.4f;
+        float headW = w - bodyW;
+
+        try (Paint fill = new Paint().setColor(color)) {
+            canvas.drawRect(Rect.makeXYWH(x, centerY - bodyH / 2f, bodyW, bodyH), fill);
+            int n = Math.max(4, (int) headH);
+            float sliceH = headH / n;
+            for (int i = 0; i < n; i++) {
+                float d = Math.abs(i + 0.5f - n / 2f) / (n / 2f); // 0 at centre, 1 at edges
+                float sliceW = Math.max(1f, (1f - d) * headW);
+                canvas.drawRect(Rect.makeXYWH(x + w - sliceW, centerY - headH / 2f + i * sliceH,
+                        sliceW, sliceH), fill);
+            }
+        }
+    }
+
     // ─────────────────────────────────────────────── Images
 
     /**

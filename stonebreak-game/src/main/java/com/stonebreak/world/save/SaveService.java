@@ -167,7 +167,7 @@ public class SaveService implements AutoCloseable {
                 }
                 WorldData data = worldOpt.get();
                 var playerOpt = repository.loadPlayer();
-                PlayerData playerData = playerOpt.orElse(PlayerData.createDefault(data.getWorldName()));
+                PlayerData playerData = playerOpt.orElse(null);
                 System.out.printf("[LOAD] World metadata loaded in %dms%n", System.currentTimeMillis() - start);
                 return new LoadResult(true, null, data, playerData);
             } catch (IOException e) {

@@ -1,27 +1,29 @@
 package com.stonebreak.ui.recipeScreen.core;
 
+/**
+ * Geometry constants for the three-pane recipe book layout (sidebar + grid +
+ * detail). Sizing matches the inventory's stone aesthetic so the two screens
+ * read as one family.
+ */
 public final class RecipeBookConstants {
 
-    public static final int RECIPE_DISPLAY_HEIGHT = 80;
-    public static final int ITEM_SLOT_SIZE = 40;
-    public static final int PADDING = 20;
-    public static final int TITLE_HEIGHT = 30;
+    public static final int PANEL_MAX_WIDTH    = 960;
+    public static final int PANEL_MAX_HEIGHT   = 700;
+    public static final int PANEL_MIN_MARGIN   = 80;
+    public static final int PANEL_PADDING      = 12;
 
-    public static final int MAX_PANEL_WIDTH = 900;
-    public static final int MAX_PANEL_HEIGHT = 700;
-    public static final int MIN_SCREEN_MARGIN = 100;
+    public static final int HEADER_HEIGHT      = 36;   // search bar row
+    public static final int SIDEBAR_WIDTH      = 140;  // left category column
+    public static final int DETAIL_WIDTH       = 250;  // right detail pane
 
-    public static final int CATEGORY_BUTTON_HEIGHT = 25;
-    public static final int CATEGORY_BUTTON_SPACING = 5;
-    public static final int SEARCH_BAR_HEIGHT = 30;
+    public static final int SLOT_SIZE          = 36;   // recipe / detail slots
+    public static final int SLOT_GAP           = 4;
 
-    public static final int POPUP_MAX_WIDTH = 600;
-    public static final int POPUP_MAX_HEIGHT = 480;
-    public static final int POPUP_MIN_MARGIN = 80;
-    public static final int CLOSE_BUTTON_SIZE = 24;
-    public static final int PAGINATION_BUTTON_SIZE = 30;
+    public static final int CATEGORY_BUTTON_HEIGHT = 32;
+    public static final int CATEGORY_BUTTON_GAP    = 4;
 
-    public static final long TYPING_TIMEOUT = 500L;
+    public static final int DETAIL_INPUT_GRID  = 3;    // 3×3 input grid
+    public static final int PAGINATION_BUTTON_SIZE = 28;
 
     public static final String[] CATEGORIES = {"All", "Building", "Tools", "Food", "Decorative"};
 

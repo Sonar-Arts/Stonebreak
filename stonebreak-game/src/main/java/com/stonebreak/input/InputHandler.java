@@ -640,18 +640,18 @@ public class InputHandler {
                 if (action == GLFW_PRESS) {
                     // Handle scrollbar clicks first
                     UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-                    if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
+                    if (uiRenderer != null && uiRenderer.getSkijaChatRenderer() != null) {
                         int windowWidth = Game.getWindowWidth();
                         int windowHeight = Game.getWindowHeight();
 
                         // Try chat scrollbar
-                        if (uiRenderer.getChatRenderer().handleChatScrollbarPress(
+                        if (uiRenderer.getSkijaChatRenderer().handleChatScrollbarPress(
                                 chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight)) {
                             return; // Handled by scrollbar
                         }
 
                         // Try commands scrollbar
-                        if (uiRenderer.getChatRenderer().handleCommandScrollbarPress(
+                        if (uiRenderer.getSkijaChatRenderer().handleCommandScrollbarPress(
                                 chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight)) {
                             return; // Handled by scrollbar
                         }
@@ -662,8 +662,8 @@ public class InputHandler {
                 } else if (action == GLFW_RELEASE) {
                     // Handle scrollbar release
                     UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-                    if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
-                        uiRenderer.getChatRenderer().handleScrollbarRelease();
+                    if (uiRenderer != null && uiRenderer.getSkijaChatRenderer() != null) {
+                        uiRenderer.getSkijaChatRenderer().handleScrollbarRelease();
                     }
                 }
             }
@@ -734,30 +734,29 @@ public class InputHandler {
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible()) { // Main pause menu (Escape)
             if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-                UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-                if (uiRenderer != null) {
-                    if (pauseMenu.isResumeButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
-                        Game.getInstance().togglePauseMenu(); // Resume the game
+                int w = Game.getWindowWidth();
+                int h = Game.getWindowHeight();
+                if (pauseMenu.isResumeButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    Game.getInstance().togglePauseMenu(); // Resume the game
+                }
+                // Check settings button
+                else if (pauseMenu.isSettingsButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    // Go to settings menu, remember we came from the game
+                    SettingsMenu settingsMenu = Game.getInstance().getSettingsMenu();
+                    if (settingsMenu != null) {
+                        settingsMenu.setPreviousState(GameState.PLAYING);
                     }
-                    // Check settings button
-                    else if (pauseMenu.isSettingsButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
-                        // Go to settings menu, remember we came from the game
-                        SettingsMenu settingsMenu = Game.getInstance().getSettingsMenu();
-                        if (settingsMenu != null) {
-                            settingsMenu.setPreviousState(GameState.PLAYING);
-                        }
-                        // Mouse button states will be managed by the new state
-                        Game.getInstance().setState(GameState.SETTINGS);
-                        Game.getInstance().getPauseMenu().setVisible(false);
-                    }
-                    // Check quit button
-                    else if (pauseMenu.isQuitButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
-                        // Clean up world state before returning to main menu
-                        Game.getInstance().resetWorld();
-                        // Return to main menu
-                        Game.getInstance().setState(GameState.MAIN_MENU);
-                        Game.getInstance().getPauseMenu().setVisible(false);
-                    }
+                    // Mouse button states will be managed by the new state
+                    Game.getInstance().setState(GameState.SETTINGS);
+                    Game.getInstance().getPauseMenu().setVisible(false);
+                }
+                // Check quit button
+                else if (pauseMenu.isQuitButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    // Clean up world state before returning to main menu
+                    Game.getInstance().resetWorld();
+                    // Return to main menu
+                    Game.getInstance().setState(GameState.MAIN_MENU);
+                    Game.getInstance().getPauseMenu().setVisible(false);
                 }
             }
             return; // Pause menu handled or ignored the click
@@ -916,22 +915,19 @@ public class InputHandler {
 
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible()) {
-            UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-            if (uiRenderer != null) {
-                pauseMenu.updateHover(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight());
-            }
+            pauseMenu.updateHover(currentMouseX, currentMouseY, Game.getWindowWidth(), Game.getWindowHeight());
         }
 
         // Update chat renderer hover states and scrollbar dragging
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-            if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
-                uiRenderer.getChatRenderer().updateMousePosition(currentMouseX, currentMouseY);
+            if (uiRenderer != null && uiRenderer.getSkijaChatRenderer() != null) {
+                uiRenderer.getSkijaChatRenderer().updateMousePosition(currentMouseX, currentMouseY);
 
                 // Handle scrollbar dragging
-                if (uiRenderer.getChatRenderer().isDraggingScrollbar()) {
-                    uiRenderer.getChatRenderer().handleScrollbarDrag(chatSystem, currentMouseY, Game.getWindowHeight());
+                if (uiRenderer.getSkijaChatRenderer().isDraggingScrollbar()) {
+                    uiRenderer.getSkijaChatRenderer().handleScrollbarDrag(chatSystem, currentMouseY, Game.getWindowHeight());
                 }
             }
         }
@@ -992,8 +988,8 @@ public class InputHandler {
         // Check if clicked on a command button (only if Commands tab is active)
         if (chatSystem.getCurrentTab() == ChatSystem.ChatTab.COMMANDS) {
             UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-            if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
-                String clickedCommand = uiRenderer.getChatRenderer().getClickedCommand(
+            if (uiRenderer != null && uiRenderer.getSkijaChatRenderer() != null) {
+                String clickedCommand = uiRenderer.getSkijaChatRenderer().getClickedCommand(
                     chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
 
                 if (clickedCommand != null) {
