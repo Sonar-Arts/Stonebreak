@@ -32,6 +32,9 @@ public final class PacketCodec {
     private static final byte T_ENTITY_TELEPORT_S2C = 17;
     private static final byte T_KICK_S2C            = 18;
     private static final byte T_MULTI_BLOCK_S2C     = 19;
+    private static final byte T_HELD_ITEM_C2S       = 20;
+    private static final byte T_HELD_ITEM_S2C       = 21;
+    private static final byte T_GIVE_ITEM_S2C       = 22;
 
     /** Hard cap on entries in a single MultiBlockChangeS2C packet (one full section). */
     private static final int MAX_MULTI_BLOCK_ENTRIES = 4096;
@@ -121,6 +124,20 @@ public final class PacketCodec {
                 body.writeFloat(p.z());
                 body.writeFloat(p.yaw());
                 body.writeFloat(p.pitch());
+            }
+            case Packet.PlayerHeldItemC2S p -> {
+                body.writeByte(T_HELD_ITEM_C2S);
+                body.writeInt(p.itemId());
+            }
+            case Packet.PlayerHeldItemS2C p -> {
+                body.writeByte(T_HELD_ITEM_S2C);
+                body.writeInt(p.playerId());
+                body.writeInt(p.itemId());
+            }
+            case Packet.GiveItemS2C p -> {
+                body.writeByte(T_GIVE_ITEM_S2C);
+                body.writeInt(p.itemId());
+                body.writeInt(p.count());
             }
             case Packet.PlayerJoinS2C p -> {
                 body.writeByte(T_PLAYER_JOIN_S2C);
@@ -245,6 +262,9 @@ public final class PacketCodec {
                         body.readInt(),
                         body.readFloat(), body.readFloat(), body.readFloat(),
                         body.readFloat(), body.readFloat());
+                case T_HELD_ITEM_C2S    -> new Packet.PlayerHeldItemC2S(body.readInt());
+                case T_HELD_ITEM_S2C    -> new Packet.PlayerHeldItemS2C(body.readInt(), body.readInt());
+                case T_GIVE_ITEM_S2C    -> new Packet.GiveItemS2C(body.readInt(), body.readInt());
                 case T_PLAYER_JOIN_S2C  -> new Packet.PlayerJoinS2C(
                         body.readInt(), boundedUtf(body, MAX_USERNAME_CHARS, "username"),
                         body.readFloat(), body.readFloat(), body.readFloat());

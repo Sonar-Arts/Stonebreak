@@ -160,11 +160,29 @@ public class BlockDrop extends Entity {
      */
     private void checkPlayerPickup() {
         if (world == null) return;
-        
+
         // Get player from game instance
         com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
         if (game == null) return;
-        
+
+        // Multiplayer host: pickup is server-authoritative for RemotePlayers too.
+        // We test those first so a remote player walking through a drop gets it
+        // even when the host's own player isn't nearby.
+        if (com.stonebreak.network.MultiplayerSession.isHosting()) {
+            com.stonebreak.mobs.entities.EntityManager em = com.stonebreak.core.Game.getEntityManager();
+            if (em != null) {
+                for (com.stonebreak.mobs.entities.Entity other : em.getAllEntities()) {
+                    if (!(other instanceof com.stonebreak.mobs.entities.RemotePlayer rp)) continue;
+                    if (!rp.isAlive()) continue;
+                    if (position.distance(rp.getPosition()) > PICKUP_RANGE) continue;
+                    com.stonebreak.network.MultiplayerSession.giveItemTo(
+                            rp.getPlayerId(), blockType.getId(), stackCount);
+                    alive = false;
+                    return;
+                }
+            }
+        }
+
         com.stonebreak.player.Player player = game.getPlayer();
         if (player == null) return;
 

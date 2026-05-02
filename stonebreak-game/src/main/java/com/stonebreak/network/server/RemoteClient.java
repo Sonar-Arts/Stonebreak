@@ -38,6 +38,8 @@ public final class RemoteClient {
     // Last known position (server-side cache, updated on PlayerStateC2S)
     private volatile float x, y, z, yaw, pitch;
     private volatile long lastStateNs = 0L;
+    /** Last reported held block/item id (PlayerHeldItemC2S). 0 = empty/air. */
+    private volatile int heldItemId = 0;
 
     /** Dedicated poison marker. Cannot collide with any wire-deliverable Packet. */
     private static final Object POISON = new Object();
@@ -78,6 +80,8 @@ public final class RemoteClient {
     }
 
     public long getLastStateNs() { return lastStateNs; }
+    public int getHeldItemId() { return heldItemId; }
+    public void setHeldItemId(int id) { this.heldItemId = id; }
 
     /**
      * Queue a packet for the writer thread. If the queue is full the client is

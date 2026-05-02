@@ -72,7 +72,20 @@ public final class BlockSynchronizer implements Synchronizer {
                     sendRevert(c.x(), c.y(), c.z(), originId, ctx);
                     return;
                 }
+                // If the client is breaking a block (placing AIR), spawn the
+                // appropriate drops server-side so other players see them.
+                // Mirrors what BlockBreaker.completeBreak does for host-driven
+                // breaks; we have to do it here because applyToWorld goes
+                // straight through World.setBlockAt and bypasses the break path.
+                BlockType prev = Game.getWorld() != null
+                        ? Game.getWorld().getBlockAt(c.x(), c.y(), c.z()) : null;
+                BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
                 applyToWorld(c.x(), c.y(), c.z(), c.blockTypeId());
+                if (prev != null && prev != BlockType.AIR && incoming == BlockType.AIR) {
+                    org.joml.Vector3f dropPos = new org.joml.Vector3f(
+                            c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f);
+                    com.stonebreak.util.DropUtil.handleBlockBroken(Game.getWorld(), dropPos, prev);
+                }
                 // Track for the chunk-snapshot path: SyncService.notifyLocal
                 // is suppressed during inbound application, so ChunkSynchronizer's
                 // own emitLocal won't fire — call it directly here instead.

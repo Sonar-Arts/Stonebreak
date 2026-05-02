@@ -442,22 +442,28 @@ public class WorldRenderer {
         com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
         
         if (entityManager != null && dropRenderer != null) {
-            // Get all entities and filter for drops
+            // Get all entities and filter for drops + collect remote players for held-item rendering.
             List<com.stonebreak.mobs.entities.Entity> allEntities = entityManager.getAllEntities();
             java.util.List<com.stonebreak.mobs.entities.Entity> drops = new java.util.ArrayList<>();
-            
+            java.util.List<com.stonebreak.mobs.entities.RemotePlayer> remotePlayers = new java.util.ArrayList<>();
+
             for (com.stonebreak.mobs.entities.Entity entity : allEntities) {
-                if (entity.isAlive() && isDropEntity(entity)) {
+                if (!entity.isAlive()) continue;
+                if (isDropEntity(entity)) {
                     drops.add(entity);
+                } else if (entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
+                    remotePlayers.add(rp);
                 }
             }
-            
-            // Render all drops at once with underwater fog support
+
+            World world = Game.getWorld();
+            Vector3f cameraPos = player.getCamera().getPosition();
+
             if (!drops.isEmpty()) {
-                World world = Game.getWorld();
-                // Get camera position (at eye level, not feet)
-                Vector3f cameraPos = player.getCamera().getPosition();
                 dropRenderer.renderDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
+            }
+            if (!remotePlayers.isEmpty()) {
+                dropRenderer.renderHeldBlocks(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
             }
         }
     }

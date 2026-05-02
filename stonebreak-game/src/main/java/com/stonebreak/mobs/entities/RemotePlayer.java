@@ -16,6 +16,8 @@ public class RemotePlayer extends LivingEntity {
     private final int playerId;
     private final String username;
     private float pitch;
+    /** Block/item id this remote player is currently holding. 0 = empty/air. */
+    private volatile int heldItemId;
 
     public RemotePlayer(World world, Vector3f position, int playerId, String username) {
         super(world, position, EntityType.REMOTE_PLAYER);
@@ -26,6 +28,8 @@ public class RemotePlayer extends LivingEntity {
     public int getPlayerId() { return playerId; }
     public String getUsername() { return username; }
     public float getPitch() { return pitch; }
+    public int getHeldItemId() { return heldItemId; }
+    public void setHeldItemId(int id) { this.heldItemId = id; }
 
     /**
      * Apply an authoritative state update from the network.

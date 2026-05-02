@@ -14,6 +14,9 @@ public sealed interface Packet
                 Packet.MultiBlockChangeS2C,
                 Packet.PlayerStateC2S,
                 Packet.PlayerStateS2C,
+                Packet.PlayerHeldItemC2S,
+                Packet.PlayerHeldItemS2C,
+                Packet.GiveItemS2C,
                 Packet.PlayerJoinS2C,
                 Packet.PlayerLeaveS2C,
                 Packet.DisconnectC2S,
@@ -26,7 +29,7 @@ public sealed interface Packet
                 Packet.EntityTeleportS2C {
 
     /** Bump on any wire-format change. Mismatched clients are kicked at handshake. */
-    int PROTOCOL_VERSION = 2;
+    int PROTOCOL_VERSION = 4;
 
     record HandshakeC2S(int protocolVersion, String username) implements Packet {}
 
@@ -56,6 +59,19 @@ public sealed interface Packet
     record PlayerStateS2C(int playerId,
                           float x, float y, float z,
                           float yaw, float pitch) implements Packet {}
+
+    /** Client → server: the local player switched their held hotbar item. */
+    record PlayerHeldItemC2S(int itemId) implements Packet {}
+
+    /** Server → all: a player's held item changed (or initial snapshot on join). */
+    record PlayerHeldItemS2C(int playerId, int itemId) implements Packet {}
+
+    /**
+     * Server → one client: hand the receiving client this item stack
+     * (host-authoritative drop pickup, command-give, etc.). The client adds it
+     * to their local inventory; host already updated its own state.
+     */
+    record GiveItemS2C(int itemId, int count) implements Packet {}
 
     record PlayerJoinS2C(int playerId, String username,
                          float x, float y, float z) implements Packet {}

@@ -147,6 +147,17 @@ public final class MultiplayerSession {
         SYNC.notifyLocal(new SyncEvent.BlockChanged(x, y, z, type));
     }
 
+    /**
+     * Host-side: hand a remote client an item stack (drop pickup, command-give).
+     * No-op on clients or offline. Client receives the {@link Packet.GiveItemS2C}
+     * and adds it to its local inventory in {@code PlayerStateSynchronizer}.
+     */
+    public static void giveItemTo(int playerId, int itemId, int count) {
+        if (mode != SyncMode.HOST || hostServer == null || count <= 0) return;
+        RemoteClient rc = hostServer.getClient(playerId);
+        if (rc != null) rc.send(new Packet.GiveItemS2C(itemId, count));
+    }
+
     private static void attachEntityListener() {
         EntityManager em = Game.getEntityManager();
         if (em == null) {

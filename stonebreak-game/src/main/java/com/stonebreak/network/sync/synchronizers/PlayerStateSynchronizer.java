@@ -33,9 +33,13 @@ public final class PlayerStateSynchronizer implements Synchronizer {
      */
     private final Map<Integer, RemotePlayer> remotePlayers = new ConcurrentHashMap<>();
 
+    /** Last held item id we broadcast for the local player; -1 means "never sent". */
+    private int lastBroadcastHeldItemId = -1;
+
     @Override
     public void onSessionStart(SyncContext ctx) {
         remotePlayers.clear();
+        lastBroadcastHeldItemId = -1;
     }
 
     @Override
@@ -52,7 +56,10 @@ public final class PlayerStateSynchronizer implements Synchronizer {
         return packet instanceof Packet.PlayerStateC2S
                 || packet instanceof Packet.PlayerStateS2C
                 || packet instanceof Packet.PlayerJoinS2C
-                || packet instanceof Packet.PlayerLeaveS2C;
+                || packet instanceof Packet.PlayerLeaveS2C
+                || packet instanceof Packet.PlayerHeldItemC2S
+                || packet instanceof Packet.PlayerHeldItemS2C
+                || packet instanceof Packet.GiveItemS2C;
     }
 
     @Override
@@ -74,15 +81,54 @@ public final class PlayerStateSynchronizer implements Synchronizer {
                 spawnRemote(j.playerId(), j.username(), j.x(), j.y(), j.z());
             }
             case Packet.PlayerLeaveS2C l -> despawnRemote(l.playerId());
+            case Packet.PlayerHeldItemC2S h -> {
+                if (originId == null) return;
+                IntegratedServer srv = MultiplayerSession.getServer();
+                if (srv == null) return;
+                RemoteClient rc = srv.getClient(originId);
+                if (rc != null) rc.setHeldItemId(h.itemId());
+                ctx.broadcast(new Packet.PlayerHeldItemS2C(originId, h.itemId()));
+            }
+            case Packet.PlayerHeldItemS2C h -> {
+                if (h.playerId() == ctx.localPlayerId()) return;
+                RemotePlayer rp = remotePlayers.get(h.playerId());
+                if (rp != null) rp.setHeldItemId(h.itemId());
+            }
+            case Packet.GiveItemS2C g -> {
+                Player local = Game.getPlayer();
+                if (local == null || local.getInventory() == null) return;
+                local.getInventory().addItem(new com.stonebreak.items.ItemStack(g.itemId(), g.count()));
+                com.stonebreak.audio.SoundSystem ss = Game.getInstance().getSoundSystem();
+                if (ss != null) ss.playSound("blockpickup");
+            }
             default -> {}
         }
     }
 
     @Override
-    public boolean handlesLocal(SyncEvent event) { return false; }
+    public boolean handlesLocal(SyncEvent event) {
+        return event instanceof SyncEvent.PeerJoined;
+    }
 
     @Override
-    public void emitLocal(SyncEvent event, SyncContext ctx) { /* no-op */ }
+    public void emitLocal(SyncEvent event, SyncContext ctx) {
+        if (ctx.mode() != SyncMode.HOST) return;
+        if (!(event instanceof SyncEvent.PeerJoined p)) return;
+        // Bring the new client up to date on every existing player's held item.
+        IntegratedServer srv = MultiplayerSession.getServer();
+        if (srv == null) return;
+        // Host's own held item.
+        Player local = Game.getPlayer();
+        if (local != null && local.getInventory() != null) {
+            int hostHeld = local.getInventory().getSelectedBlockTypeId();
+            ctx.sendTo(p.playerId(), new Packet.PlayerHeldItemS2C(0, hostHeld));
+        }
+        // Each other connected client's last reported held item.
+        for (RemoteClient rc : srv.getClients().values()) {
+            if (rc.getPlayerId() == p.playerId()) continue;
+            ctx.sendTo(p.playerId(), new Packet.PlayerHeldItemS2C(rc.getPlayerId(), rc.getHeldItemId()));
+        }
+    }
 
     @Override
     public void tick(float deltaTime, SyncContext ctx) {
@@ -97,6 +143,20 @@ public final class PlayerStateSynchronizer implements Synchronizer {
             ctx.broadcast(new Packet.PlayerStateS2C(0, pos.x, pos.y, pos.z, yaw, pitch));
         } else if (ctx.mode() == SyncMode.CLIENT) {
             ctx.broadcast(new Packet.PlayerStateC2S(pos.x, pos.y, pos.z, yaw, pitch));
+        }
+
+        // Held item changes are rare (slot scroll); poll the local inventory and
+        // emit a packet only when it actually changed.
+        if (p.getInventory() != null) {
+            int currentHeld = p.getInventory().getSelectedBlockTypeId();
+            if (currentHeld != lastBroadcastHeldItemId) {
+                lastBroadcastHeldItemId = currentHeld;
+                if (ctx.mode() == SyncMode.HOST) {
+                    ctx.broadcast(new Packet.PlayerHeldItemS2C(0, currentHeld));
+                } else {
+                    ctx.broadcast(new Packet.PlayerHeldItemC2S(currentHeld));
+                }
+            }
         }
     }
 
@@ -155,8 +215,14 @@ public final class PlayerStateSynchronizer implements Synchronizer {
 
     private void applyRemoteState(int playerId, float x, float y, float z, float yaw, float pitch) {
         RemotePlayer rp = remotePlayers.get(playerId);
+        // Defensive: if the entity was removed by some other path (chunk
+        // unload, world reload), our cached reference is dead — drop it and
+        // respawn from the latest network state.
+        if (rp != null && !rp.isAlive()) {
+            remotePlayers.remove(playerId);
+            rp = null;
+        }
         if (rp == null) {
-            // Late state for an unknown player — spawn lazily.
             spawnRemote(playerId, "Player" + playerId, x, y, z);
             rp = remotePlayers.get(playerId);
         }

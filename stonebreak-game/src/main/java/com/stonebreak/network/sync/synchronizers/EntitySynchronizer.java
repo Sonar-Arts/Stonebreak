@@ -207,16 +207,32 @@ public final class EntitySynchronizer implements Synchronizer {
         ticksSinceResync.put(e.getNetworkId(), 0);
     }
 
+    private static int parseInt(String s, int fallback) {
+        if (s == null) return fallback;
+        try { return Integer.parseInt(s.trim()); } catch (NumberFormatException ignored) { return fallback; }
+    }
+
     private static boolean isReplicable(Entity e) {
         if (e == null || e instanceof RemotePlayer) return false;
         EntityType t = e.getType();
-        return t == EntityType.COW; // v1: only mobs replicated
+        return t == EntityType.COW
+            || t == EntityType.BLOCK_DROP
+            || t == EntityType.ITEM_DROP;
     }
 
     private static Packet.EntitySpawnS2C spawnPacketFor(Entity e) {
         Vector3f p = e.getPosition();
         String metadata = "";
-        if (e instanceof Cow cow) metadata = cow.getTextureVariant();
+        if (e instanceof Cow cow) {
+            metadata = cow.getTextureVariant();
+        } else if (e instanceof com.stonebreak.mobs.entities.BlockDrop bd) {
+            // Encode the block id so the client shadow renders the correct mesh.
+            metadata = Integer.toString(bd.getBlockType().getId());
+        } else if (e instanceof com.stonebreak.mobs.entities.ItemDrop id) {
+            // "<itemId>:<count>"
+            com.stonebreak.items.ItemStack stack = id.getItemStack();
+            metadata = stack.getBlockTypeId() + ":" + stack.getCount();
+        }
         return new Packet.EntitySpawnS2C(
                 e.getNetworkId(), e.getType().ordinal(),
                 p.x, p.y, p.z, e.getRotation().y, metadata);
@@ -285,6 +301,22 @@ public final class EntitySynchronizer implements Synchronizer {
             case COW -> {
                 String variant = (metadata == null || metadata.isBlank()) ? "default" : metadata;
                 yield new Cow(Game.getWorld(), pos, variant);
+            }
+            case BLOCK_DROP -> {
+                int blockId = parseInt(metadata, 0);
+                com.stonebreak.blocks.BlockType bt = com.stonebreak.blocks.BlockType.getById(blockId);
+                if (bt == null) bt = com.stonebreak.blocks.BlockType.AIR;
+                yield new com.stonebreak.mobs.entities.BlockDrop(Game.getWorld(), pos, bt);
+            }
+            case ITEM_DROP -> {
+                int itemId = 0; int count = 1;
+                if (metadata != null && metadata.contains(":")) {
+                    String[] parts = metadata.split(":", 2);
+                    itemId = parseInt(parts[0], 0);
+                    count = Math.max(1, parseInt(parts[1], 1));
+                }
+                yield new com.stonebreak.mobs.entities.ItemDrop(
+                        Game.getWorld(), pos, new com.stonebreak.items.ItemStack(itemId, count));
             }
             default -> null;
         };

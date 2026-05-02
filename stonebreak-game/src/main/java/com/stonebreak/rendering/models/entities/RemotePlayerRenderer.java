@@ -169,6 +169,9 @@ public final class RemotePlayerRenderer {
         GL30.glBindVertexArray(vao);
         GL11.glDrawElements(GL11.GL_TRIANGLES, indexCount, GL11.GL_UNSIGNED_INT, 0);
 
+        // Held-item rendering is done in a separate pass through DropRenderer
+        // (textured-block path) — see WorldRenderer.renderDrops.
+
         GL30.glBindVertexArray(previousVAO);
         shader.unbind();
         GL20.glUseProgram(previousProgram);

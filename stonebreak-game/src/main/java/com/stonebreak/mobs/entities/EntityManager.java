@@ -532,17 +532,22 @@ public class EntityManager {
     public void removeEntitiesInChunk(int chunkX, int chunkZ) {
         int chunkMinX = chunkX * 16;
         int chunkMaxX = chunkMinX + 16;
-        int chunkMinZ = chunkZ * 16; 
+        int chunkMinZ = chunkZ * 16;
         int chunkMaxZ = chunkMinZ + 16;
-        
+
         int removedCount = 0;
-        
+
         synchronized (entitiesToRemove) {
             for (Entity entity : entities) {
                 if (entity.isAlive()) {
+                    // Network-driven entities are tied to a player id, not a
+                    // chunk — they must survive chunk unloads or they vanish
+                    // for viewers when the owner walks out of view distance
+                    // and never come back without an explicit despawn packet.
+                    if (entity.getType() == EntityType.REMOTE_PLAYER) continue;
                     Vector3f pos = entity.getPosition();
                     // Check if entity is within the chunk bounds
-                    if (pos.x >= chunkMinX && pos.x < chunkMaxX && 
+                    if (pos.x >= chunkMinX && pos.x < chunkMaxX &&
                         pos.z >= chunkMinZ && pos.z < chunkMaxZ) {
                         entitiesToRemove.add(entity);
                         removedCount++;
