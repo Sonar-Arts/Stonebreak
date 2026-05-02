@@ -36,6 +36,15 @@ public class EntityManager {
     private final ExecutorService entityDeserializationExecutor;
     private final Queue<Entity> pendingEntityAdditions;
     private static final int MAX_ENTITY_ADDITIONS_PER_FRAME = 20;
+
+    /** Lifecycle listener — used by the network sync layer to replicate entities. */
+    public interface Listener {
+        default void onEntityAdded(Entity entity)   {}
+        default void onEntityRemoved(Entity entity) {}
+    }
+    private final List<Listener> listeners = new CopyOnWriteArrayList<>();
+    public void addListener(Listener l) { listeners.add(l); }
+    public void removeListener(Listener l) { listeners.remove(l); }
     
     /**
      * Creates a new entity manager for the specified world.
@@ -70,17 +79,26 @@ public class EntityManager {
         // Add new entities
         synchronized (entitiesToAdd) {
             if (!entitiesToAdd.isEmpty()) {
+                List<Entity> added = new ArrayList<>(entitiesToAdd);
                 entities.addAll(entitiesToAdd);
                 entitiesToAdd.clear();
+                for (Entity e : added) fireAdded(e);
             }
         }
-        
+
         // Update all entities
         for (Entity entity : entities) {
             if (entity.isAlive()) {
-                // Update entity
+                // Network shadows are driven by inbound state packets — skip local
+                // AI/physics. Apply network interpolation each frame so motion is
+                // smooth between snapshots instead of teleporting at tick rate.
+                if (entity.isNetworkShadow()) {
+                    if (entity.getInterpolator() != null) entity.getInterpolator().apply(entity);
+                    continue;
+                }
+
                 entity.update(deltaTime);
-                
+
                 // Apply physics and collision
                 if (entity instanceof LivingEntity livingEntity) {
                     collision.applyLivingEntityPhysics(livingEntity, deltaTime);
@@ -101,8 +119,25 @@ public class EntityManager {
         // Remove dead entities
         synchronized (entitiesToRemove) {
             if (!entitiesToRemove.isEmpty()) {
+                List<Entity> removed = new ArrayList<>(entitiesToRemove);
                 entities.removeAll(entitiesToRemove);
                 entitiesToRemove.clear();
+                for (Entity e : removed) fireRemoved(e);
+            }
+        }
+    }
+
+    private void fireAdded(Entity e) {
+        for (Listener l : listeners) {
+            try { l.onEntityAdded(e); } catch (Exception ex) {
+                System.err.println("[EntityManager] Listener.onEntityAdded threw: " + ex);
+            }
+        }
+    }
+    private void fireRemoved(Entity e) {
+        for (Listener l : listeners) {
+            try { l.onEntityRemoved(e); } catch (Exception ex) {
+                System.err.println("[EntityManager] Listener.onEntityRemoved threw: " + ex);
             }
         }
     }

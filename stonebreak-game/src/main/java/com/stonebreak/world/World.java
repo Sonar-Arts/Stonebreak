@@ -604,6 +604,38 @@ public class World {
     }
 
     /**
+     * Overwrite a chunk's block contents with a payload received over the
+     * network and trigger a mesh rebuild.
+     *
+     * <p>Used by the multiplayer chunk synchronizer to push the host's
+     * authoritative chunk state onto a joining client so any pre-connection
+     * modifications (player builds, etc.) are reflected exactly. Returns
+     * silently if the world hasn't loaded enough infrastructure yet.
+     */
+    public void installNetworkChunk(int chunkX, int chunkZ, byte[] payload) {
+        if (chunkStore == null) return;
+        Chunk chunk = chunkStore.getOrCreateChunk(chunkX, chunkZ);
+        if (chunk == null) {
+            // Async generation in progress; skip this packet — the host will
+            // re-broadcast modified chunks on a future tick if needed.
+            return;
+        }
+        try {
+            com.stonebreak.network.protocol.NetworkChunkCodec.decodeInto(payload, chunk);
+        } catch (Exception e) {
+            System.err.println("[NETWORK] Failed to decode chunk (" + chunkX + "," + chunkZ + "): " + e.getMessage());
+            return;
+        }
+        if (meshPipeline != null) {
+            markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+            if (neighborCoordinator != null) {
+                neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, 0, 0,
+                        meshPipeline::scheduleConditionalMeshBuild);
+            }
+        }
+    }
+
+    /**
      * Triggers a mesh rebuild for all loaded chunks.
      * Use this when global visual settings change that affect block rendering.
      * This method requires a player position to determine which chunks are currently loaded.

@@ -3,82 +3,112 @@ package com.stonebreak.network;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
+import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
-import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.network.client.ClientConnection;
 import com.stonebreak.network.client.NetworkEventBus;
 import com.stonebreak.network.protocol.Packet;
 import com.stonebreak.network.server.IntegratedServer;
 import com.stonebreak.network.server.RemoteClient;
-import com.stonebreak.player.Player;
+import com.stonebreak.network.sync.SyncContext;
+import com.stonebreak.network.sync.SyncEvent;
+import com.stonebreak.network.sync.SyncMode;
+import com.stonebreak.network.sync.SyncService;
+import com.stonebreak.network.sync.synchronizers.BlockSynchronizer;
+import com.stonebreak.network.sync.synchronizers.ChatSynchronizer;
+import com.stonebreak.network.sync.synchronizers.ChunkSynchronizer;
+import com.stonebreak.network.sync.synchronizers.EntitySynchronizer;
+import com.stonebreak.network.sync.synchronizers.PlayerStateSynchronizer;
 import org.joml.Vector3f;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
- * Process-wide multiplayer state. At most one of {hostServer, clientConnection}
- * is active at a time:
+ * Lifecycle owner for the multiplayer session.
+ *
+ * <p>Responsibilities kept here:
  * <ul>
- *   <li>HOST mode: this JVM owns the world; remote clients connect over TCP and
- *       receive broadcasts when local blocks/players change.</li>
- *   <li>CLIENT mode: this JVM connects to a remote host; the local world is
- *       generated from the host's seed (so terrain matches), and only block
- *       changes + player states are synced.</li>
+ *   <li>Start / stop / mode tracking (HOST | CLIENT | OFFLINE).</li>
+ *   <li>Holding the {@link IntegratedServer} or {@link ClientConnection}.</li>
+ *   <li>Initial handshake / welcome / join-snapshot — protocol bootstrapping
+ *       that has to happen before per-domain sync makes sense.</li>
+ *   <li>Per-tick pump that drains transport queues and forwards each packet
+ *       into the {@link SyncService}.</li>
  * </ul>
+ *
+ * <p>All ongoing state replication (blocks, chat, entities, player state) is
+ * delegated to {@link SyncService} and its registered synchronizers — this
+ * class never talks to the world or entity systems directly outside of the
+ * handshake path.
  */
 public final class MultiplayerSession {
 
-    public enum Mode { OFFLINE, HOST, CLIENT }
-
-    private static volatile Mode mode = Mode.OFFLINE;
+    private static volatile SyncMode mode = SyncMode.OFFLINE;
     private static volatile IntegratedServer hostServer;
     private static volatile ClientConnection clientConnection;
     private static volatile NetworkEventBus clientEventBus;
-    private static volatile int localPlayerId = -1;          // server-assigned id for joined clients
-    private static volatile String localUsername = "Player";
-    private static volatile long pendingHostSeed = 0L;        // seed received in WelcomeS2C, awaiting world gen
+    private static volatile int localPlayerId = -1;
 
-    /** Player ids → remote player entities currently in the world. */
-    private static final Map<Integer, RemotePlayer> remotePlayers = new HashMap<>();
+    // Fixed 20 Hz server tick (Minecraft's standard rate).
+    // Inbound packets are drained every frame for responsiveness; periodic
+    // broadcasts (entity state, player state, chunk pushes) only fire on a
+    // server tick boundary so cadence doesn't depend on render FPS.
+    private static final long TICK_PERIOD_NS = 50_000_000L;
+    private static final long MAX_ACCUMULATOR_NS = TICK_PERIOD_NS * 5;
+    private static long lastTickNs = 0L;
+    private static long tickAccumulatorNs = 0L;
 
-    /** Suppress broadcast when applying an inbound network change. */
-    private static final ThreadLocal<Boolean> applyingRemote = ThreadLocal.withInitial(() -> false);
+    private static final SyncService SYNC = new SyncService();
 
-    /** Throttle for periodic player-state broadcast (~20 Hz). */
-    private static long lastPlayerStateBroadcastMs = 0L;
-    private static final long PLAYER_STATE_PERIOD_MS = 50L;
+    private static EntityManager.Listener entityListener;
+
+    static {
+        // One-time registration; synchronizers are stateless across sessions.
+        SYNC.register(new BlockSynchronizer());
+        SYNC.register(new PlayerStateSynchronizer());
+        SYNC.register(new ChatSynchronizer());
+        SYNC.register(new EntitySynchronizer());
+        SYNC.register(new ChunkSynchronizer());
+    }
 
     private MultiplayerSession() {}
 
     // ────────────────────────────────────────────────── Mode queries
 
-    public static Mode getMode() { return mode; }
-    public static boolean isHosting() { return mode == Mode.HOST; }
-    public static boolean isClient() { return mode == Mode.CLIENT; }
-    public static boolean isOnline() { return mode != Mode.OFFLINE; }
+    public static SyncMode getMode() { return mode; }
+    public static boolean isHosting() { return mode == SyncMode.HOST; }
+    public static boolean isClient()  { return mode == SyncMode.CLIENT; }
+    public static boolean isOnline()  { return mode != SyncMode.OFFLINE; }
+    public static SyncService getSyncService() { return SYNC; }
+    public static IntegratedServer getServer() { return hostServer; }
 
     // ────────────────────────────────────────────────── Lifecycle
 
     public static synchronized void startHosting(int port) throws IOException {
-        if (mode != Mode.OFFLINE) shutdown();
+        if (mode != SyncMode.OFFLINE) shutdown();
         hostServer = new IntegratedServer(port);
-        mode = Mode.HOST;
-        localPlayerId = 0; // host is always id 0 for our purposes
-        localUsername = com.stonebreak.config.Settings.getInstance().getMultiplayerUsername();
+        mode = SyncMode.HOST;
+        localPlayerId = 0;
+        lastTickNs = System.nanoTime();
+        tickAccumulatorNs = 0L;
+        SYNC.start(buildContext());
+        attachEntityListener();
     }
 
     public static synchronized void joinServer(String host, int port, String username) throws IOException {
-        if (mode != Mode.OFFLINE) shutdown();
+        if (mode != SyncMode.OFFLINE) shutdown();
         clientEventBus = new NetworkEventBus();
         clientConnection = new ClientConnection(host, port, clientEventBus);
-        mode = Mode.CLIENT;
-        localUsername = username;
+        mode = SyncMode.CLIENT;
+        lastTickNs = System.nanoTime();
+        tickAccumulatorNs = 0L;
+        SYNC.start(buildContext());
         clientConnection.send(new Packet.HandshakeC2S(username));
     }
 
     public static synchronized void shutdown() {
+        detachEntityListener();
+        SYNC.stop();
         if (clientConnection != null) {
             try { clientConnection.send(new Packet.DisconnectC2S("client_quit")); } catch (Exception ignored) {}
             clientConnection.close();
@@ -89,40 +119,81 @@ public final class MultiplayerSession {
             hostServer = null;
         }
         clientEventBus = null;
-        remotePlayers.clear();
-        mode = Mode.OFFLINE;
+        mode = SyncMode.OFFLINE;
         localPlayerId = -1;
-        pendingHostSeed = 0L;
     }
 
-    // ────────────────────────────────────────────────── World/block hooks
-
-    /** Called by World.setBlockAt before mutating; returns true to suppress re-broadcast on inbound packets. */
-    public static boolean isApplyingRemoteChange() { return applyingRemote.get(); }
+    // ────────────────────────────────────────────────── World/entity hooks
 
     /**
-     * Hook from World.setBlockAt: notify peers of a locally-driven block change.
-     * Block id encodes a short; AIR is 0.
+     * Hook from {@code World.setBlockAt}: forward a locally-driven block change
+     * into the sync service. The service suppresses re-broadcast when the
+     * change came from an inbound packet via its applyingInbound flag.
      */
     public static void onLocalBlockChange(int x, int y, int z, BlockType type) {
-        if (mode == Mode.OFFLINE || applyingRemote.get()) return;
-        short id = (short) (type == null ? 0 : type.getId());
-        if (mode == Mode.HOST && hostServer != null) {
-            hostServer.broadcast(new Packet.BlockChangeS2C(x, y, z, id));
-        } else if (mode == Mode.CLIENT && clientConnection != null) {
-            clientConnection.send(new Packet.BlockChangeC2S(x, y, z, id));
-        }
+        if (!isOnline()) return;
+        SYNC.notifyLocal(new SyncEvent.BlockChanged(x, y, z, type));
     }
 
-    // ────────────────────────────────────────────────── Per-tick pump (called from main thread)
+    private static void attachEntityListener() {
+        EntityManager em = Game.getEntityManager();
+        if (em == null) {
+            // World may not exist yet (host hasn't loaded a world). Listener
+            // will be re-attached lazily on first tick once the manager exists.
+            return;
+        }
+        if (entityListener != null) em.removeListener(entityListener);
+        entityListener = new EntityManager.Listener() {
+            @Override public void onEntityAdded(Entity e)   { SYNC.notifyLocal(new SyncEvent.EntitySpawned(e)); }
+            @Override public void onEntityRemoved(Entity e) { SYNC.notifyLocal(new SyncEvent.EntityDespawned(e)); }
+        };
+        em.addListener(entityListener);
+    }
+
+    private static void detachEntityListener() {
+        EntityManager em = Game.getEntityManager();
+        if (em != null && entityListener != null) em.removeListener(entityListener);
+        entityListener = null;
+    }
+
+    // ────────────────────────────────────────────────── Per-tick pump
 
     public static void tick() {
-        if (mode == Mode.OFFLINE) return;
+        if (!isOnline()) return;
 
-        if (mode == Mode.HOST && hostServer != null) {
-            hostServer.getInboundEvents().drain(p -> handleServerPacket(hostServer, p));
-        } else if (mode == Mode.CLIENT && clientEventBus != null) {
-            clientEventBus.drain(MultiplayerSession::handleClientPacket);
+        // Lazy listener attach (entity manager only exists after world load).
+        if (entityListener == null && Game.getEntityManager() != null) {
+            attachEntityListener();
+            // Snapshot existing entities into the sync layer.
+            for (Entity e : Game.getEntityManager().getAllEntities()) {
+                if (mode == SyncMode.HOST) SYNC.notifyLocal(new SyncEvent.EntitySpawned(e));
+            }
+        }
+
+        // Drain transport queues, dispatch each packet through the sync layer
+        // (handshake/welcome are special-cased here; everything else goes to SyncService).
+        if (mode == SyncMode.HOST && hostServer != null) {
+            hostServer.getInboundEvents().drain(p -> {
+                Integer originId = hostServer.getOrigin(p);
+                if (p instanceof Packet.HandshakeC2S hs) {
+                    handleHandshake(originId, hs);
+                } else if (p instanceof Packet.DisconnectC2S) {
+                    if (originId != null) {
+                        RemoteClient rc = hostServer.getClient(originId);
+                        if (rc != null) rc.close();
+                    }
+                } else {
+                    SYNC.onInbound(p, originId);
+                }
+            });
+        } else if (mode == SyncMode.CLIENT && clientEventBus != null) {
+            clientEventBus.drain(p -> {
+                if (p instanceof Packet.WelcomeS2C w) {
+                    handleWelcome(w);
+                } else {
+                    SYNC.onInbound(p, null);
+                }
+            });
             if (clientConnection == null || !clientConnection.isConnected()) {
                 System.out.println("[NETWORK] Lost server connection; returning to main menu.");
                 shutdown();
@@ -131,155 +202,90 @@ public final class MultiplayerSession {
             }
         }
 
-        // Broadcast local player state ~20 Hz
-        long now = System.currentTimeMillis();
-        if (now - lastPlayerStateBroadcastMs >= PLAYER_STATE_PERIOD_MS) {
-            lastPlayerStateBroadcastMs = now;
-            broadcastLocalPlayerState();
+        // Fixed-step server tick: run synchronizers' periodic broadcasts at
+        // exactly 20 Hz regardless of render frame rate.
+        long now = System.nanoTime();
+        if (lastTickNs == 0L) lastTickNs = now;
+        tickAccumulatorNs += now - lastTickNs;
+        lastTickNs = now;
+        if (tickAccumulatorNs > MAX_ACCUMULATOR_NS) tickAccumulatorNs = MAX_ACCUMULATOR_NS;
+        while (tickAccumulatorNs >= TICK_PERIOD_NS) {
+            tickAccumulatorNs -= TICK_PERIOD_NS;
+            SYNC.tick(TICK_PERIOD_NS / 1_000_000_000f);
         }
     }
 
-    private static void broadcastLocalPlayerState() {
-        Player p = Game.getPlayer();
-        if (p == null) return;
-        Vector3f pos = p.getPosition();
-        float yaw = p.getCamera() != null ? p.getCamera().getYaw() : 0f;
-        float pitch = p.getCamera() != null ? p.getCamera().getPitch() : 0f;
-        if (mode == Mode.HOST && hostServer != null) {
-            // Host appears to clients as id 0
-            hostServer.broadcast(new Packet.PlayerStateS2C(0, pos.x, pos.y, pos.z, yaw, pitch));
-        } else if (mode == Mode.CLIENT && clientConnection != null) {
-            clientConnection.send(new Packet.PlayerStateC2S(pos.x, pos.y, pos.z, yaw, pitch));
+    // ────────────────────────────────────────────────── Handshake / welcome
+
+    private static void handleHandshake(Integer originId, Packet.HandshakeC2S hs) {
+        if (originId == null || hostServer == null) return;
+        RemoteClient rc = hostServer.getClient(originId);
+        if (rc == null) return;
+        rc.setUsername(hs.username());
+
+        com.stonebreak.player.Player hostPlayer = Game.getPlayer();
+        long seed = Game.getInstance().getCurrentWorldSeed();
+        Vector3f spawn = hostPlayer != null ? hostPlayer.getPosition() : new Vector3f(0, 80, 0);
+
+        // 1. Tell the new client who they are + the seed (so they can mirror terrain).
+        rc.send(new Packet.WelcomeS2C(originId, seed, spawn.x, spawn.y, spawn.z));
+
+        // 2. Roster bootstrap: tell new client about everyone already present.
+        rc.send(new Packet.PlayerJoinS2C(0, "Host", spawn.x, spawn.y, spawn.z));
+        for (RemoteClient other : hostServer.getClients().values()) {
+            if (other.getPlayerId() != originId) {
+                rc.send(new Packet.PlayerJoinS2C(other.getPlayerId(), other.getUsername(),
+                        other.getX(), other.getY(), other.getZ()));
+            }
         }
+
+        // 3. Tell existing clients about the newcomer.
+        hostServer.broadcastExcept(originId,
+                new Packet.PlayerJoinS2C(originId, hs.username(), spawn.x, spawn.y, spawn.z));
+
+        // 4. Fire PeerJoined so each interested synchronizer can deliver its
+        //    snapshot (entities, modified chunks, future: weather, time-of-day...).
+        SYNC.notifyLocal(new SyncEvent.PeerJoined(originId, hs.username()));
+
+        System.out.println("[SERVER] " + hs.username() + " joined as id " + originId);
     }
 
-    // ────────────────────────────────────────────────── Server packet handling
-
-    private static void handleServerPacket(IntegratedServer server, Packet packet) {
-        Integer originId = server.getOrigin(packet);
-        switch (packet) {
-            case Packet.HandshakeC2S hs -> {
-                if (originId == null) return;
-                RemoteClient rc = server.getClient(originId);
-                if (rc == null) return;
-                rc.setUsername(hs.username());
-
-                Player hostPlayer = Game.getPlayer();
-                long seed = Game.getInstance().getCurrentWorldSeed();
-                Vector3f spawn = hostPlayer != null ? hostPlayer.getPosition() : new Vector3f(0, 80, 0);
-                rc.send(new Packet.WelcomeS2C(originId, seed, spawn.x, spawn.y, spawn.z));
-
-                // Tell new client about everyone already present (host + other clients).
-                rc.send(new Packet.PlayerJoinS2C(0, "Host", spawn.x, spawn.y, spawn.z));
-                for (RemoteClient other : server.getClients().values()) {
-                    if (other.getPlayerId() != originId) {
-                        rc.send(new Packet.PlayerJoinS2C(other.getPlayerId(), other.getUsername(),
-                                other.getX(), other.getY(), other.getZ()));
-                    }
-                }
-                // Tell existing clients about the new one.
-                server.broadcastExcept(originId, new Packet.PlayerJoinS2C(originId, hs.username(),
-                        spawn.x, spawn.y, spawn.z));
-
-                spawnRemotePlayerLocally(originId, hs.username(), spawn.x, spawn.y, spawn.z);
-                System.out.println("[SERVER] " + hs.username() + " joined as id " + originId);
-            }
-            case Packet.BlockChangeC2S bc -> {
-                applyBlockChangeFromNetwork(bc.x(), bc.y(), bc.z(), bc.blockTypeId());
-                // Re-broadcast to everyone (including originator for echo confirmation).
-                server.broadcast(new Packet.BlockChangeS2C(bc.x(), bc.y(), bc.z(), bc.blockTypeId()));
-            }
-            case Packet.PlayerStateC2S ps -> {
-                if (originId == null) return;
-                RemoteClient rc = server.getClient(originId);
-                if (rc != null) rc.updateState(ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch());
-                applyRemotePlayerState(originId, ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch());
-                server.broadcastExcept(originId,
-                        new Packet.PlayerStateS2C(originId, ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch()));
-            }
-            case Packet.DisconnectC2S dc -> {
-                if (originId == null) return;
-                RemoteClient rc = server.getClient(originId);
-                if (rc != null) rc.close();
-            }
-            default -> { /* server ignores S2C packets */ }
-        }
+    private static void handleWelcome(Packet.WelcomeS2C w) {
+        localPlayerId = w.playerId();
+        System.out.println("[CLIENT] Welcomed as id " + w.playerId() + " (seed=" + w.worldSeed() + ")");
+        String name = "mp_" + System.currentTimeMillis();
+        Game.getInstance().startWorldGeneration(name, w.worldSeed());
     }
 
-    // ────────────────────────────────────────────────── Client packet handling
+    // ────────────────────────────────────────────────── SyncContext
 
-    private static void handleClientPacket(Packet packet) {
-        switch (packet) {
-            case Packet.WelcomeS2C w -> {
-                localPlayerId = w.playerId();
-                pendingHostSeed = w.worldSeed();
-                System.out.println("[CLIENT] Welcomed as id " + w.playerId() + " (seed=" + w.worldSeed() + ")");
-                // Generate a local world with the host's seed so terrain matches.
-                String name = "mp_" + System.currentTimeMillis();
-                Game.getInstance().startWorldGeneration(name, w.worldSeed());
-                // Player will be spawned by world-gen flow; reposition once available.
-            }
-            case Packet.PlayerJoinS2C j -> {
-                if (j.playerId() != localPlayerId) {
-                    spawnRemotePlayerLocally(j.playerId(), j.username(), j.x(), j.y(), j.z());
+    private static SyncContext buildContext() {
+        return new SyncContext() {
+            @Override public SyncMode mode() { return mode; }
+            @Override public int localPlayerId() { return localPlayerId; }
+
+            @Override public void broadcast(Packet packet) {
+                if (mode == SyncMode.HOST && hostServer != null) {
+                    hostServer.broadcast(packet);
+                } else if (mode == SyncMode.CLIENT && clientConnection != null) {
+                    clientConnection.send(packet);
                 }
             }
-            case Packet.PlayerLeaveS2C l -> {
-                despawnRemotePlayerLocally(l.playerId());
-            }
-            case Packet.PlayerStateS2C s -> {
-                if (s.playerId() != localPlayerId) {
-                    applyRemotePlayerState(s.playerId(), s.x(), s.y(), s.z(), s.yaw(), s.pitch());
+
+            @Override public void broadcastExcept(int excludePlayerId, Packet packet) {
+                if (mode == SyncMode.HOST && hostServer != null) {
+                    hostServer.broadcastExcept(excludePlayerId, packet);
                 }
             }
-            case Packet.BlockChangeS2C b -> {
-                applyBlockChangeFromNetwork(b.x(), b.y(), b.z(), b.blockTypeId());
+
+            @Override public void sendTo(int playerId, Packet packet) {
+                if (mode == SyncMode.HOST && hostServer != null) {
+                    RemoteClient rc = hostServer.getClient(playerId);
+                    if (rc != null) rc.send(packet);
+                }
             }
-            case Packet.ChunkDataS2C cd -> {
-                // v1: chunk data not used (clients regenerate from seed).
-            }
-            default -> { /* clients ignore C2S packets */ }
-        }
-    }
 
-    // ────────────────────────────────────────────────── Apply helpers
-
-    private static void applyBlockChangeFromNetwork(int x, int y, int z, short blockTypeId) {
-        if (Game.getWorld() == null) return;
-        BlockType type = BlockType.getById(blockTypeId & 0xFFFF);
-        if (type == null) type = BlockType.AIR;
-        applyingRemote.set(true);
-        try {
-            Game.getWorld().setBlockAt(x, y, z, type, true);
-        } finally {
-            applyingRemote.set(false);
-        }
-    }
-
-    private static void spawnRemotePlayerLocally(int playerId, String username, float x, float y, float z) {
-        if (Game.getWorld() == null) return;
-        EntityManager em = Game.getEntityManager();
-        if (em == null) return;
-        if (remotePlayers.containsKey(playerId)) return;
-        RemotePlayer rp = new RemotePlayer(Game.getWorld(), new Vector3f(x, y, z), playerId, username);
-        em.addEntity(rp);
-        remotePlayers.put(playerId, rp);
-    }
-
-    private static void despawnRemotePlayerLocally(int playerId) {
-        RemotePlayer rp = remotePlayers.remove(playerId);
-        if (rp != null && Game.getEntityManager() != null) {
-            Game.getEntityManager().removeEntity(rp);
-        }
-    }
-
-    private static void applyRemotePlayerState(int playerId, float x, float y, float z, float yaw, float pitch) {
-        RemotePlayer rp = remotePlayers.get(playerId);
-        if (rp == null) {
-            // Late state for an unknown player — spawn lazily.
-            spawnRemotePlayerLocally(playerId, "Player" + playerId, x, y, z);
-            rp = remotePlayers.get(playerId);
-        }
-        if (rp != null) rp.applyNetworkState(x, y, z, yaw, pitch);
+            @Override public boolean isApplyingInbound() { return SYNC.isApplyingInbound(); }
+        };
     }
 }

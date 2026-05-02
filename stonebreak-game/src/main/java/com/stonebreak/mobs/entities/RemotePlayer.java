@@ -27,10 +27,20 @@ public class RemotePlayer extends LivingEntity {
     public String getUsername() { return username; }
     public float getPitch() { return pitch; }
 
-    /** Apply an authoritative state update from the network. */
+    /**
+     * Apply an authoritative state update from the network.
+     * If an interpolator is attached the new state is queued as the next
+     * target sample (smoothed across the next snapshot interval); otherwise
+     * the position is set immediately.
+     */
     public void applyNetworkState(float x, float y, float z, float yaw, float pitch) {
-        this.position.set(x, y, z);
-        this.rotation.y = yaw;
+        com.stonebreak.network.sync.NetworkInterpolator interp = getInterpolator();
+        if (interp != null) {
+            interp.receive(x, y, z, yaw, pitch, this);
+        } else {
+            this.position.set(x, y, z);
+            this.rotation.y = yaw;
+        }
         this.pitch = pitch;
     }
 

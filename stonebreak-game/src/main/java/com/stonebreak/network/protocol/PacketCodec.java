@@ -23,6 +23,13 @@ public final class PacketCodec {
     private static final byte T_PLAYER_JOIN_S2C  = 8;
     private static final byte T_PLAYER_LEAVE_S2C = 9;
     private static final byte T_DISCONNECT_C2S   = 10;
+    private static final byte T_CHAT_MESSAGE_C2S = 11;
+    private static final byte T_CHAT_MESSAGE_S2C = 12;
+    private static final byte T_ENTITY_SPAWN_S2C = 13;
+    private static final byte T_ENTITY_DESPAWN_S2C = 14;
+    private static final byte T_ENTITY_STATE_S2C = 15;
+    private static final byte T_ENTITY_MOVE_S2C = 16;
+    private static final byte T_ENTITY_TELEPORT_S2C = 17;
 
     private static final int MAX_FRAME_BYTES = 8 * 1024 * 1024; // 8 MiB safety cap
 
@@ -98,6 +105,54 @@ public final class PacketCodec {
                 body.writeByte(T_DISCONNECT_C2S);
                 body.writeUTF(p.reason());
             }
+            case Packet.ChatMessageC2S p -> {
+                body.writeByte(T_CHAT_MESSAGE_C2S);
+                body.writeUTF(p.text());
+            }
+            case Packet.ChatMessageS2C p -> {
+                body.writeByte(T_CHAT_MESSAGE_S2C);
+                body.writeInt(p.senderId());
+                body.writeUTF(p.senderName());
+                body.writeUTF(p.text());
+            }
+            case Packet.EntitySpawnS2C p -> {
+                body.writeByte(T_ENTITY_SPAWN_S2C);
+                body.writeInt(p.networkId());
+                body.writeInt(p.entityTypeOrdinal());
+                body.writeFloat(p.x());
+                body.writeFloat(p.y());
+                body.writeFloat(p.z());
+                body.writeFloat(p.yaw());
+                body.writeUTF(p.metadata() == null ? "" : p.metadata());
+            }
+            case Packet.EntityDespawnS2C p -> {
+                body.writeByte(T_ENTITY_DESPAWN_S2C);
+                body.writeInt(p.networkId());
+            }
+            case Packet.EntityStateS2C p -> {
+                body.writeByte(T_ENTITY_STATE_S2C);
+                body.writeInt(p.networkId());
+                body.writeFloat(p.x());
+                body.writeFloat(p.y());
+                body.writeFloat(p.z());
+                body.writeFloat(p.yaw());
+            }
+            case Packet.EntityMoveS2C p -> {
+                body.writeByte(T_ENTITY_MOVE_S2C);
+                body.writeInt(p.networkId());
+                body.writeShort(p.dx());
+                body.writeShort(p.dy());
+                body.writeShort(p.dz());
+                body.writeShort(p.yawDeg10());
+            }
+            case Packet.EntityTeleportS2C p -> {
+                body.writeByte(T_ENTITY_TELEPORT_S2C);
+                body.writeInt(p.networkId());
+                body.writeFloat(p.x());
+                body.writeFloat(p.y());
+                body.writeFloat(p.z());
+                body.writeFloat(p.yaw());
+            }
         }
         body.flush();
         byte[] bytes = buf.toByteArray();
@@ -148,6 +203,26 @@ public final class PacketCodec {
                         body.readFloat(), body.readFloat(), body.readFloat());
                 case T_PLAYER_LEAVE_S2C -> new Packet.PlayerLeaveS2C(body.readInt());
                 case T_DISCONNECT_C2S   -> new Packet.DisconnectC2S(body.readUTF());
+                case T_CHAT_MESSAGE_C2S -> new Packet.ChatMessageC2S(body.readUTF());
+                case T_CHAT_MESSAGE_S2C -> new Packet.ChatMessageS2C(
+                        body.readInt(), body.readUTF(), body.readUTF());
+                case T_ENTITY_SPAWN_S2C -> new Packet.EntitySpawnS2C(
+                        body.readInt(), body.readInt(),
+                        body.readFloat(), body.readFloat(), body.readFloat(),
+                        body.readFloat(), body.readUTF());
+                case T_ENTITY_DESPAWN_S2C -> new Packet.EntityDespawnS2C(body.readInt());
+                case T_ENTITY_STATE_S2C -> new Packet.EntityStateS2C(
+                        body.readInt(),
+                        body.readFloat(), body.readFloat(), body.readFloat(),
+                        body.readFloat());
+                case T_ENTITY_MOVE_S2C -> new Packet.EntityMoveS2C(
+                        body.readInt(),
+                        body.readShort(), body.readShort(), body.readShort(),
+                        body.readShort());
+                case T_ENTITY_TELEPORT_S2C -> new Packet.EntityTeleportS2C(
+                        body.readInt(),
+                        body.readFloat(), body.readFloat(), body.readFloat(),
+                        body.readFloat());
                 default -> throw new IOException("Unknown packet type: " + type);
             };
         } catch (EOFException eof) {
