@@ -10,6 +10,7 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.save.SaveService;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.util.StateConverter;
+import com.stonebreak.world.spawn.SpawnLocator;
 
 /**
  * Orchestrates world loading and generation. Owns the loading-screen
@@ -89,7 +90,8 @@ public final class WorldGenerationCoordinator {
             World world = Game.getWorld();
             Player player = Game.getPlayer();
             if (world != null && player != null) {
-                Vector3f playerPosition = new Vector3f(0, 100, 0);
+                Vector3f playerPosition = null;
+                boolean isNewPlayer = false;
 
                 SaveService saveService = game.getSaveService();
                 String currentWorldName = game.getCurrentWorldName();
@@ -121,6 +123,7 @@ public final class WorldGenerationCoordinator {
                                 System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + timeOfDay.getTimeString() + ")");
                             }
                         } else {
+                            isNewPlayer = true;
                             player.giveStartingItems();
                             game.setTimeOfDay(new TimeOfDay(TimeOfDay.NOON));
                             System.out.println("[PLAYER-DATA] ✓ No existing player data found for world '" + currentWorldName + "' - treating as new world, giving starting items");
@@ -133,14 +136,22 @@ public final class WorldGenerationCoordinator {
                         System.err.println("[SAVE-SYSTEM] Error details: " + e.getClass().getSimpleName() + " - " + e.getMessage());
                         e.printStackTrace();
 
+                        isNewPlayer = true;
                         player.giveStartingItems();
                         System.out.println("[PLAYER-DATA] Save system failed, giving starting items as fallback: " + e.getMessage());
                     }
                 } else {
+                    isNewPlayer = true;
                     player.giveStartingItems();
                     game.setTimeOfDay(new TimeOfDay(TimeOfDay.NOON));
                     System.out.println("[PLAYER-DATA] No save system available for world '" + currentWorldName + "', giving starting items");
                     System.out.println("[TIME-SYSTEM] ✓ Initialized new world time at noon (no save system)");
+                }
+
+                if (isNewPlayer) {
+                    playerPosition = locateAndApplyNewPlayerSpawn(world, player, saveService);
+                } else if (playerPosition == null) {
+                    playerPosition = new Vector3f(player.getPosition());
                 }
 
                 generateChunksAroundPosition(world, loadingScreen, playerPosition);
@@ -157,6 +168,34 @@ public final class WorldGenerationCoordinator {
             System.err.println("World generation error details: " + e.getClass().getSimpleName() + " - " + e.getMessage());
             completeWorldGeneration();
         }
+    }
+
+    /**
+     * Picks a safe surface spawn for a brand-new player, applies it to the
+     * player and world, and persists it through {@link SaveService} when one
+     * is available. Returns the chosen position so chunk pre-generation can
+     * center on it.
+     */
+    private Vector3f locateAndApplyNewPlayerSpawn(World world, Player player, SaveService saveService) {
+        Vector3f spawn = new SpawnLocator(world).findSafeSurfaceSpawn();
+
+        player.setPosition(spawn);
+        world.setSpawnPosition(spawn);
+
+        WorldData currentWorldData = game.getCurrentWorldData();
+        if (currentWorldData != null) {
+            WorldData updated = new WorldData.Builder(currentWorldData)
+                .spawnPosition(spawn)
+                .build();
+            game.setCurrentWorldData(updated);
+            if (saveService != null) {
+                saveService.initialize(updated, player, world);
+                System.out.println("[SPAWN] Updated SaveService world data with new spawn: " + spawn);
+            }
+        }
+
+        System.out.println("[SPAWN] New player spawn applied: " + spawn);
+        return spawn;
     }
 
     private void generateChunksAroundPosition(World world, LoadingScreen loadingScreen, Vector3f playerPosition) {
@@ -285,6 +324,25 @@ public final class WorldGenerationCoordinator {
                                         System.out.println("[TIME-SYSTEM] ✓ Initialized new world time at noon (no player data)");
                                     }
                                     System.out.println("[PLAYER-DATA] No player data found - giving starting items");
+
+                                    Vector3f newSpawn = locateAndApplyNewPlayerSpawn(freshWorld, freshPlayer, saveService);
+                                    int spawnChunkX = (int) Math.floor(newSpawn.x / 16);
+                                    int spawnChunkZ = (int) Math.floor(newSpawn.z / 16);
+                                    for (int ring = 0; ring <= INITIAL_RENDER_DISTANCE; ring++) {
+                                        for (int x = spawnChunkX - ring; x <= spawnChunkX + ring; x++) {
+                                            for (int z = spawnChunkZ - ring; z <= spawnChunkZ + ring; z++) {
+                                                if (ring == 0 || x == spawnChunkX - ring || x == spawnChunkX + ring ||
+                                                    z == spawnChunkZ - ring || z == spawnChunkZ + ring) {
+                                                    freshWorld.getChunkAt(x, z);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    try {
+                                        Thread.sleep(300);
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                    }
                                 }
 
                                 saveService.startAutoSave();

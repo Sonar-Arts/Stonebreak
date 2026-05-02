@@ -54,6 +54,10 @@ public final class GameStateController {
             mainMenu.refreshSplashText();
         }
 
+        if (state == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
+            game.getWorldSelectScreen().refreshWorlds();
+        }
+
         updatePauseState(state);
 
         MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();

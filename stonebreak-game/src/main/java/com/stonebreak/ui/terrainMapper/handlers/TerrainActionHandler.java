@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.Random;
 
 /**
  * Screen-level actions: create world, go back, simulate seed. Owns all
@@ -54,6 +55,10 @@ public final class TerrainActionHandler {
         }
 
         long seed = state.getResolvedSeed();
+        if (seed == 0L && state.getSeedText().isBlank()) {
+            seed = new Random().nextLong();
+            System.out.println("[WORLD-CREATE] No seed entered; using random seed: " + seed);
+        }
         WorldData worldData = WorldData.builder()
                 .worldName(name)
                 .seed(seed)
