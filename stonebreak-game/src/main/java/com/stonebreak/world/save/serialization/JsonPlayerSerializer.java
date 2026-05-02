@@ -8,6 +8,8 @@ import org.joml.Vector3f;
 import org.joml.Vector2f;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * JSON serializer for PlayerData.
@@ -66,7 +68,51 @@ public class JsonPlayerSerializer {
             json.append("\n");
         }
         System.out.println("[SAVE-DEBUG] ========== END INVENTORY SAVE ==========");
-        json.append("  ]\n");
+        json.append("  ],\n");
+
+        // RPG / character progression
+        String classId = player.getSelectedClassId();
+        if (classId != null) {
+            json.append("  \"characterClass\": \"").append(JsonParsingUtil.escapeJson(classId)).append("\",\n");
+        } else {
+            json.append("  \"characterClass\": null,\n");
+        }
+        json.append("  \"remainingCp\": ").append(player.getRemainingCp()).append(",\n");
+        json.append("  \"remainingSp\": ").append(player.getRemainingSkillPoints()).append(",\n");
+        json.append("  \"remainingFp\": ").append(player.getRemainingFeatPoints()).append(",\n");
+
+        // spentAbilityCp map
+        json.append("  \"spentAbilityCp\": {");
+        Map<String, Integer> abilityCp = player.getSpentAbilityCp();
+        boolean firstEntry = true;
+        for (Map.Entry<String, Integer> e : abilityCp.entrySet()) {
+            if (!firstEntry) json.append(", ");
+            json.append("\"").append(JsonParsingUtil.escapeJson(e.getKey())).append("\": ").append(e.getValue());
+            firstEntry = false;
+        }
+        json.append("},\n");
+
+        // skillLevels map
+        json.append("  \"skillLevels\": {");
+        Map<String, Integer> skills = player.getSkillLevels();
+        firstEntry = true;
+        for (Map.Entry<String, Integer> e : skills.entrySet()) {
+            if (!firstEntry) json.append(", ");
+            json.append("\"").append(JsonParsingUtil.escapeJson(e.getKey())).append("\": ").append(e.getValue());
+            firstEntry = false;
+        }
+        json.append("},\n");
+
+        // acquiredFeats set
+        json.append("  \"acquiredFeats\": [");
+        Set<String> feats = player.getAcquiredFeatIds();
+        firstEntry = true;
+        for (String featId : feats) {
+            if (!firstEntry) json.append(", ");
+            json.append("\"").append(JsonParsingUtil.escapeJson(featId)).append("\"");
+            firstEntry = false;
+        }
+        json.append("]\n");
 
         json.append("}");
 
@@ -117,6 +163,19 @@ public class JsonPlayerSerializer {
             }
 
             builder.inventory(inventory);
+
+            // RPG / character progression (gracefully absent in old saves)
+            String characterClass = JsonParsingUtil.extractStringOptional(json, "characterClass");
+            if (characterClass != null) {
+                builder.selectedClassId(characterClass);
+            }
+            builder.remainingCp(JsonParsingUtil.extractInt(json, "remainingCp", 100));
+            builder.remainingSp(JsonParsingUtil.extractInt(json, "remainingSp", 100));
+            builder.remainingFp(JsonParsingUtil.extractInt(json, "remainingFp", 100));
+            builder.spentAbilityCp(JsonParsingUtil.extractStringIntMap(json, "spentAbilityCp"));
+            builder.skillLevels(JsonParsingUtil.extractStringIntMap(json, "skillLevels"));
+            builder.acquiredFeatIds(JsonParsingUtil.extractStringSet(json, "acquiredFeats"));
+
             return builder.build();
 
         } catch (Exception e) {

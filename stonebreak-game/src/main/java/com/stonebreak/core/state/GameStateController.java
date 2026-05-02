@@ -3,8 +3,10 @@ package com.stonebreak.core.state;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.input.MouseCaptureManager;
+import com.stonebreak.rpg.CharacterPanelTab;
 import com.stonebreak.ui.MainMenu;
 import com.stonebreak.ui.PauseMenu;
+import com.stonebreak.ui.characterScreen.CharacterScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
@@ -69,7 +71,7 @@ public final class GameStateController {
     private void updatePauseState(GameState state) {
         switch (state) {
             case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI -> paused = true;
-            case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI -> paused = false;
+            case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI, CHARACTER_SHEET_UI -> paused = false;
         }
     }
 
@@ -153,6 +155,38 @@ public final class GameStateController {
             }
             contextDetails += ", CurrentState: " + currentState;
             System.out.println("Cannot open RecipeBook: Not in a valid context (" + contextDetails + ").");
+        }
+    }
+
+    public void toggleCharacterScreen() {
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen == null) return;
+
+        characterScreen.toggleVisibility();
+
+        if (characterScreen.isVisible()) {
+            setState(GameState.CHARACTER_SHEET_UI);
+        } else {
+            PauseMenu pauseMenu = game.getPauseMenu();
+            if (pauseMenu == null || !pauseMenu.isVisible()) {
+                setState(GameState.PLAYING);
+            }
+        }
+    }
+
+    /**
+     * Opens the character screen at the given tab, switching from any current state.
+     * If the character screen is already visible, just switches the active tab.
+     */
+    public void openCharacterTab(CharacterPanelTab tab) {
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen == null) return;
+
+        characterScreen.getController().setActiveTab(tab);
+
+        if (!characterScreen.isVisible()) {
+            characterScreen.toggleVisibility();
+            setState(GameState.CHARACTER_SHEET_UI);
         }
     }
 

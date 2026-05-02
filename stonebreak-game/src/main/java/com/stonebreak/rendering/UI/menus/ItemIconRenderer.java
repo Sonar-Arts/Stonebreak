@@ -5,15 +5,23 @@ import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.UI.core.BaseRenderer;
+import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.nanovg.NVGPaint;
 import org.lwjgl.system.MemoryStack;
+
+import java.awt.image.BufferedImage;
+import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.lwjgl.nanovg.NanoVG.*;
 import static org.lwjgl.system.MemoryStack.stackPush;
 
 public class ItemIconRenderer extends BaseRenderer {
-    
+
+    private final Map<ItemType, Integer> sbtImageCache = new HashMap<>();
+
     public ItemIconRenderer(long vg) {
         super(vg);
     }
@@ -48,6 +56,11 @@ public class ItemIconRenderer extends BaseRenderer {
         if (item instanceof BlockType blockType) {
             texCoords = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.TOP);
         } else if (item instanceof ItemType itemType) {
+            String sbtPath = SpriteVoxelizer.getSbtTexturePath(itemType);
+            if (sbtPath != null) {
+                renderSbtItemIcon(x, y, w, h, itemType, sbtPath);
+                return;
+            }
             texCoords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
         } else {
             float atlasSize = 16.0f;
@@ -139,6 +152,50 @@ public class ItemIconRenderer extends BaseRenderer {
         }
     }
     
+    private void renderSbtItemIcon(float x, float y, float w, float h,
+                                   ItemType itemType, String sbtPath) {
+        int imageId = getSbtNvgImage(itemType, sbtPath);
+        if (imageId < 0) return;
+        try (MemoryStack stack = stackPush()) {
+            NVGPaint paint = NVGPaint.malloc(stack);
+            nvgImagePattern(vg, x, y, w, h, 0, imageId, 1.0f, paint);
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, w, h);
+            nvgFillPaint(vg, paint);
+            nvgFill(vg);
+        }
+    }
+
+    private int getSbtNvgImage(ItemType itemType, String sbtPath) {
+        Integer cached = sbtImageCache.get(itemType);
+        if (cached != null) return cached;
+
+        String resourcePath = sbtPath.startsWith("/") ? sbtPath.substring(1) : sbtPath;
+        BufferedImage img = SpriteVoxelizer.loadSpriteFromSbt(resourcePath);
+        if (img == null) {
+            sbtImageCache.put(itemType, -1);
+            return -1;
+        }
+
+        int imgW = img.getWidth();
+        int imgH = img.getHeight();
+        int[] argb = new int[imgW * imgH];
+        img.getRGB(0, 0, imgW, imgH, argb, 0, imgW);
+
+        ByteBuffer rgba = ByteBuffer.allocateDirect(imgW * imgH * 4);
+        for (int px : argb) {
+            rgba.put((byte) ((px >> 16) & 0xFF)); // R
+            rgba.put((byte) ((px >> 8)  & 0xFF)); // G
+            rgba.put((byte) (px         & 0xFF)); // B
+            rgba.put((byte) ((px >> 24) & 0xFF)); // A
+        }
+        rgba.flip();
+
+        int imageId = nvgCreateImageRGBA(vg, imgW, imgH, 0, rgba);
+        sbtImageCache.put(itemType, imageId);
+        return imageId;
+    }
+
     public void renderItemIcon(float x, float y, float w, float h, int blockTypeId, TextureAtlas textureAtlas) {
         BlockType blockType = BlockType.getById(blockTypeId);
         if (blockType != null) {

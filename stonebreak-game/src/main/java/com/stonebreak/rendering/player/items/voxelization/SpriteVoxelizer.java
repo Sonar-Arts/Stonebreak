@@ -1,13 +1,20 @@
 package com.stonebreak.rendering.player.items.voxelization;
 
 import com.stonebreak.items.ItemType;
+import com.openmason.engine.format.sbt.SBTParser;
+import com.openmason.engine.format.omt.OMTReader;
+import com.openmason.engine.format.omt.OMTArchive;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.joml.Quaternionf;
 import org.joml.AxisAngle4f;
 
 import javax.imageio.ImageIO;
+import java.awt.AlphaComposite;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -171,6 +178,12 @@ public class SpriteVoxelizer {
             return null;
         }
 
+        if (spritePath.endsWith(".sbt")) {
+            BufferedImage image = loadSpriteFromSbt(spritePath);
+            if (image != null) spriteCache.put(itemType, image);
+            return image;
+        }
+
         try {
             // Try different approaches for module compatibility (following existing patterns)
             InputStream inputStream = null;
@@ -234,11 +247,84 @@ public class SpriteVoxelizer {
                 return "Items/Textures/wooden_bucket_base.png";
             case WOODEN_BUCKET_WATER:
                 return "Items/Textures/wooden_bucket_water.png";
+            case SWORD:
+                return "Items/Textures/SBT/Sword.sbt";
+            case WAR_AXE:
+                return "Items/Textures/SBT/WarAxe.sbt";
+            case PATTY_SMACKER:
+                return "Items/Textures/SBT/Patty Smacker.sbt";
+            case SNOWBALL:
+                return "Items/Textures/SBT/Snowball.sbt";
+            case STONE_SHOVEL:
+                return "Items/Textures/SBT/Stone_Shovel.sbt";
+            case WOODEN_SHOVEL:
+                return "Items/Textures/SBT/Wooden_Shovel.sbt";
             default:
                 return null;
         }
     }
 
+
+    /**
+     * Returns the SBT classpath resource path (with leading {@code /}) for items whose
+     * texture is an SBT archive, or {@code null} for PNG-backed or unknown items.
+     * Suitable for use with {@link com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry}.
+     */
+    public static String getSbtTexturePath(ItemType itemType) {
+        String path = getSpritePathForItem(itemType);
+        return (path != null && path.endsWith(".sbt")) ? "/" + path : null;
+    }
+
+    public static BufferedImage loadSpriteFromSbt(String resourcePath) {
+        byte[] sbtBytes = readResourceBytes(resourcePath);
+        if (sbtBytes == null) {
+            System.err.println("Could not find SBT resource: " + resourcePath);
+            return null;
+        }
+        try {
+            SBTParser.Result sbt = new SBTParser().read(sbtBytes);
+            OMTArchive archive = new OMTReader().read(sbt.omtBytes());
+            return compositeLayers(archive);
+        } catch (IOException e) {
+            System.err.println("Failed to load SBT sprite " + resourcePath + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static BufferedImage compositeLayers(OMTArchive archive) throws IOException {
+        int w = archive.canvasSize().width();
+        int h = archive.canvasSize().height();
+        BufferedImage result = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = result.createGraphics();
+        try {
+            for (OMTArchive.Layer layer : archive.layers()) {
+                if (!layer.visible() || layer.opacity() <= 0f) continue;
+                BufferedImage layerImg = ImageIO.read(new ByteArrayInputStream(layer.pngBytes()));
+                if (layerImg == null) continue;
+                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, layer.opacity()));
+                g2d.drawImage(layerImg, 0, 0, null);
+            }
+        } finally {
+            g2d.dispose();
+        }
+        return result;
+    }
+
+    private static byte[] readResourceBytes(String resourcePath) {
+        InputStream candidate = SpriteVoxelizer.class.getClassLoader().getResourceAsStream(resourcePath);
+        if (candidate == null) candidate = SpriteVoxelizer.class.getResourceAsStream("/" + resourcePath);
+        if (candidate == null) candidate = Thread.currentThread().getContextClassLoader().getResourceAsStream(resourcePath);
+        if (candidate == null) return null;
+        try (InputStream in = candidate) {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) baos.write(buf, 0, n);
+            return baos.toByteArray();
+        } catch (IOException e) {
+            return null;
+        }
+    }
 
     /**
      * Gets the default voxel size for rendering.

@@ -14,6 +14,8 @@ import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.*;
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.ui.DeathMenu;
+import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.ui.characterScreen.CharacterScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
@@ -43,6 +45,7 @@ public class Game {
     private PauseMenu pauseMenu;
     private DeathMenu deathMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
+    private CharacterScreen characterScreen; // Character stats screen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
     private RecipeScreen recipeScreen; // Added RecipeBookScreen
     private WaterEffects waterEffects; // Water effects manager
@@ -205,6 +208,9 @@ public class Game {
         } else {
             System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, TextureAtlas, InputHandler, or CraftingManager).");
         }
+
+        // Initialize CharacterScreen
+        this.characterScreen = new CharacterScreen(player, renderer, this.inputHandler);
 
         // Initialize WorkbenchScreen
         if (this.renderer.getUIRenderer() != null) {
@@ -426,6 +432,23 @@ public class Game {
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#toggleInventoryScreen()}. */
     public void toggleInventoryScreen() {
         stateController.toggleInventoryScreen();
+    }
+
+    /**
+     * Gets the character screen.
+     */
+    public CharacterScreen getCharacterScreen() {
+        return characterScreen;
+    }
+
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#toggleCharacterScreen()}. */
+    public void toggleCharacterScreen() {
+        stateController.toggleCharacterScreen();
+    }
+
+    /** Opens the character screen at the given tab. */
+    public void openCharacterTab(CharacterPanelTab tab) {
+        stateController.openCharacterTab(tab);
     }
 
     /** Gets the current game state. */

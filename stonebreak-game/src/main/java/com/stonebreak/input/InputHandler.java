@@ -57,6 +57,7 @@ public class InputHandler {
     // Key state tracking for toggle actions
     private boolean escapeKeyPressed = false;
     private boolean inventoryKeyPressed = false; // Added for inventory toggle
+    private boolean characterKeyPressed = false; // Added for character screen toggle
     private boolean chatKeyPressed = false; // Added for chat toggle
     private boolean qKeyPressed = false; // Added for item dropping
     private boolean f3KeyPressed = false; // Added for debug info
@@ -145,6 +146,7 @@ public class InputHandler {
             // Handle system-level toggles first, as they might change the active UI
             handleEscapeKey();      // Toggles pauseMenu and game state transitions
             handleInventoryKey();   // Toggles inventoryScreen and INVENTORY_UI state
+            handleCharacterKey();   // Toggles characterScreen and CHARACTER_SHEET_UI state
             handleChatKey();        // Opens chatSystem, sets cursor
             handleDropKey();        // Drops selected item when Q is pressed
             handleDebugKeys();      // Handle debug and memory profiling keys
@@ -264,7 +266,16 @@ public class InputHandler {
                 game.toggleInventoryScreen(); // This toggles visibility and handles pause/cursor
                 return; // Action taken
             }
-            
+
+            // 4.5 Close Character Screen
+            if (game.getState() == GameState.CHARACTER_SHEET_UI) {
+                com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = game.getCharacterScreen();
+                if (characterScreen != null && characterScreen.isVisible()) {
+                    game.toggleCharacterScreen();
+                    return; // Action taken
+                }
+            }
+
             // 5. Toggle Pause Menu (if no other screen was closed by Escape above)
             // No specific UI screen active, so toggle the main pause menu
             game.togglePauseMenu(); // This will manage paused state and PauseMenu visibility
@@ -314,6 +325,46 @@ public class InputHandler {
         }
     }
     
+    private void handleCharacterKey() {
+        boolean isCharKeyPressed = glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS;
+
+        if (isCharKeyPressed && !characterKeyPressed) {
+            characterKeyPressed = true;
+
+            // If character screen is already open, close it
+            if (Game.getInstance().getState() == GameState.CHARACTER_SHEET_UI) {
+                Game.getInstance().toggleCharacterScreen();
+                return;
+            }
+
+            // Don't open if chat is open
+            ChatSystem chatSystem = Game.getInstance().getChatSystem();
+            if (chatSystem != null && chatSystem.isOpen()) return;
+
+            // Don't open if workbench is open
+            WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
+            if (workbenchScreen != null && workbenchScreen.isVisible()) return;
+
+            // Don't open if recipe book is open
+            RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
+            if (recipeScreen != null && recipeScreen.isVisible()) return;
+
+            // Don't open if in a non-game state
+            GameState state = Game.getInstance().getState();
+            if (state != GameState.PLAYING && state != GameState.INVENTORY_UI) return;
+
+            // If inventory is open, close it first then open character
+            InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
+            if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                Game.getInstance().toggleInventoryScreen();
+            }
+
+            Game.getInstance().toggleCharacterScreen();
+        } else if (!isCharKeyPressed) {
+            characterKeyPressed = false;
+        }
+    }
+
     private void handleChatKey() {
         boolean isChatKeyPressed = glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS;
         
@@ -642,7 +693,13 @@ public class InputHandler {
             // InventoryScreen.handleMouseInput manages its clicks. This prevents world clicks.
             return;
         }
-        
+
+        com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = Game.getInstance().getCharacterScreen();
+        if (characterScreen != null && characterScreen.isVisible()) {
+            // CharacterScreen.handleMouseInput manages its clicks. This prevents world clicks.
+            return;
+        }
+
         // If death menu is active, it handles clicks for respawn button
         com.stonebreak.ui.DeathMenu deathMenu = Game.getInstance().getDeathMenu();
         if (deathMenu != null && deathMenu.isVisible()) {
@@ -762,13 +819,19 @@ public class InputHandler {
         InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
         WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
 
-        // Block hotbar scroll if inventory or workbench screen is open
+        // Block hotbar scroll if inventory, workbench, or character screen is open
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
             return; // Inventory screen is open, block hotbar selection
         }
 
         if (workbenchScreen != null && workbenchScreen.isVisible()) {
             return; // Workbench screen is open, block hotbar selection
+        }
+
+        com.stonebreak.ui.characterScreen.CharacterScreen characterScreenScroll = Game.getInstance().getCharacterScreen();
+        if (characterScreenScroll != null && characterScreenScroll.isVisible()) {
+            characterScreenScroll.handleScroll((float) yOffset);
+            return; // Character screen is open, block hotbar selection
         }
 
         // Only allow hotbar scrolling in PLAYING state

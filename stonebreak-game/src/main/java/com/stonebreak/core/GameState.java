@@ -11,5 +11,6 @@ public enum GameState {
     SETTINGS,
     WORKBENCH_UI,
     INVENTORY_UI,    // State for when inventory is open
-    RECIPE_BOOK_UI   // State for Recipe Book UI
+    RECIPE_BOOK_UI,   // State for Recipe Book UI
+    CHARACTER_SHEET_UI // State for when character screen is open
 }

@@ -506,7 +506,7 @@ public class Main {
                         game.getSettingsMenu().handleInput(window);
                     }
                 }
-                case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI -> {
+                case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, CHARACTER_SHEET_UI -> {
                     // Handle in-game input if not a purely modal UI like MainMenu
                     // Game.update() will also check its internal state for what to update (e.g. player/world if not paused)
                     if (inputHandler != null) {
@@ -517,6 +517,8 @@ public class Main {
                              game.getWorkbenchScreen().handleInput(inputHandler);
                         } else if (game.getInventoryScreen() != null && game.getInventoryScreen().isVisible()){
                              game.getInventoryScreen().handleMouseInput(width, height); // InventoryScreen has specific mouse handling for drag/drop
+                        } else if (game.getCharacterScreen() != null && game.getCharacterScreen().isVisible()) {
+                             game.getCharacterScreen().handleMouseInput(width, height);
                         }
                         // General player input handling (movement, interaction) happens if not paused for UI.
                         // InputHandler's own logic + Game.update() decides if player/world updates proceed.
@@ -722,7 +724,7 @@ public class Main {
 
         renderer.beginUIFrame(width, height, 1.0f);
 
-        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI || game.getState() == GameState.RECIPE_BOOK_UI) {
+        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI || game.getState() == GameState.RECIPE_BOOK_UI || game.getState() == GameState.CHARACTER_SHEET_UI) {
             renderCrosshair(game, renderer);
             renderInventoryAndHotbar(game);
             renderChat(game, renderer);
@@ -758,6 +760,7 @@ public class Main {
     private void renderInventoryAndHotbar(Game game) {
         InventoryScreen inventoryScreen = game.getInventoryScreen();
         WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+        com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = game.getCharacterScreen();
         GameState state = game.getState();
 
         // Recipe book takes the foreground; render just the hotbar underneath
@@ -772,6 +775,12 @@ public class Main {
         // Check which screen is visible and render accordingly
         if (workbenchScreen != null && workbenchScreen.isVisible()) {
             workbenchScreen.render();
+        } else if (characterScreen != null && characterScreen.isVisible()) {
+            // Character screen is open — render it, but keep the hotbar visible below
+            characterScreen.render(width, height);
+            if (inventoryScreen != null) {
+                inventoryScreen.renderHotbar(width, height);
+            }
         } else if (inventoryScreen != null) {
             if (inventoryScreen.isVisible()) {
                 inventoryScreen.render(width, height);

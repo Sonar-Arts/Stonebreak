@@ -4,6 +4,8 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
+import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.UIRenderer;
@@ -79,6 +81,7 @@ public class MHotbarRenderer {
             Canvas canvas = ui.canvas();
             drawBackground(canvas, layout);
             drawSlots(layout, selected);
+            drawSbtItemIcons(canvas, slots, layout);
             drawHealthHearts(canvas, layout);
             ui.renderOverlays();
             ui.endFrame();
@@ -177,6 +180,30 @@ public class MHotbarRenderer {
         }
     }
 
+    private void drawSbtItemIcons(Canvas canvas, ItemStack[] slots,
+                                  HotbarLayoutCalculator.HotbarLayout layout) {
+        int iconSize    = HotbarLayoutCalculator.calculateIconSize();
+        int iconPadding = HotbarLayoutCalculator.calculateIconPadding();
+
+        for (int i = 0; i < slots.length; i++) {
+            ItemStack stack = slots[i];
+            if (stack == null || stack.isEmpty()) continue;
+            Item item = stack.getItem();
+            if (!(item instanceof ItemType itemType)) continue;
+
+            String sbtPath = SpriteVoxelizer.getSbtTexturePath(itemType);
+            if (sbtPath == null) continue;
+
+            MTexture tex = MTextureRegistry.get(sbtPath);
+            if (tex == null) continue;
+
+            HotbarLayoutCalculator.SlotPosition pos =
+                    HotbarLayoutCalculator.calculateSlotPosition(i, layout);
+            MPainter.drawImage(canvas, tex.image(),
+                    pos.x + iconPadding, pos.y + iconPadding, iconSize, iconSize);
+        }
+    }
+
     /** Largest native edge across the loaded heart variants, or the target
      *  size as a fallback when no SBT loaded. */
     private static int nativeHeartSize(MTexture... variants) {
@@ -211,7 +238,7 @@ public class MHotbarRenderer {
             if (item instanceof BlockType bt) {
                 uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt,
                         iconX, iconY, iconSize, iconSize, renderer.getTextureAtlas());
-            } else {
+            } else if (!(item instanceof ItemType it && SpriteVoxelizer.getSbtTexturePath(it) != null)) {
                 uiRenderer.renderItemIcon(iconX, iconY, iconSize, iconSize,
                         item, renderer.getTextureAtlas());
             }

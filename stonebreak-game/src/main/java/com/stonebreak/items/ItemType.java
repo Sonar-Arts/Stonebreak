@@ -12,7 +12,15 @@ public enum ItemType implements Item {
     WOODEN_PICKAXE(1002, "Wooden Pickaxe", 3, 3, ItemCategory.TOOLS, 1),
     WOODEN_AXE(1003, "Wooden Axe", 8, 3, ItemCategory.TOOLS, 1),
     WOODEN_BUCKET(1004, "Wooden Bucket", 0, 4, ItemCategory.TOOLS, 16),
-    WOODEN_BUCKET_WATER(1005, "Wooden Water Bucket", 1, 4, ItemCategory.TOOLS, 1);
+    WOODEN_BUCKET_WATER(1005, "Wooden Water Bucket", 1, 4, ItemCategory.TOOLS, 1),
+
+    // SBT-textured items
+    PATTY_SMACKER(1006, "Patty Smacker", 0, 0, ItemCategory.TOOLS, 1),
+    SNOWBALL(1007, "Snowball", 0, 0, ItemCategory.MATERIALS, 16),
+    STONE_SHOVEL(1008, "Stone Shovel", 0, 0, ItemCategory.TOOLS, 1),
+    SWORD(1009, "Sword", 0, 0, ItemCategory.TOOLS, 1),
+    WAR_AXE(1010, "War Axe", 0, 0, ItemCategory.TOOLS, 1),
+    WOODEN_SHOVEL(1011, "Wooden Shovel", 0, 0, ItemCategory.TOOLS, 1);
     
     private final int id;
     private final String name;

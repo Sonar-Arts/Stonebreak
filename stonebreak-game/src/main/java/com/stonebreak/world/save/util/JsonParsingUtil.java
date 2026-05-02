@@ -4,6 +4,10 @@ import org.joml.Vector3f;
 import org.joml.Vector2f;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
@@ -187,6 +191,54 @@ public class JsonParsingUtil {
             return new Vector2f(x, y);
         }
         return new Vector2f(0, 0); // Default rotation
+    }
+
+    // ===== Collection Extraction Methods =====
+
+    /**
+     * Extracts a JSON object as a Map&lt;String, Integer&gt;.
+     * Handles: "key": { "k1": 1, "k2": 2 }
+     * Returns empty map if key not found.
+     */
+    public static Map<String, Integer> extractStringIntMap(String json, String key) {
+        Map<String, Integer> result = new HashMap<>();
+        // Match the object block for this key
+        String pattern = "\"" + key + "\"\\s*:\\s*\\{([^}]*)\\}";
+        Pattern p = Pattern.compile(pattern, Pattern.DOTALL);
+        Matcher m = p.matcher(json);
+        if (!m.find()) {
+            return result;
+        }
+        String content = m.group(1);
+        // Match individual "key": value pairs
+        Pattern entryPattern = Pattern.compile("\"([^\"]+)\"\\s*:\\s*(-?\\d+)");
+        Matcher em = entryPattern.matcher(content);
+        while (em.find()) {
+            result.put(em.group(1), Integer.parseInt(em.group(2)));
+        }
+        return result;
+    }
+
+    /**
+     * Extracts a JSON array as a Set&lt;String&gt;.
+     * Handles: "key": ["a", "b", "c"]
+     * Returns empty set if key not found.
+     */
+    public static Set<String> extractStringSet(String json, String key) {
+        Set<String> result = new HashSet<>();
+        String pattern = "\"" + key + "\"\\s*:\\s*\\[([^\\]]*)\\]";
+        Pattern p = Pattern.compile(pattern, Pattern.DOTALL);
+        Matcher m = p.matcher(json);
+        if (!m.find()) {
+            return result;
+        }
+        String content = m.group(1);
+        Pattern itemPattern = Pattern.compile("\"([^\"]+)\"");
+        Matcher im = itemPattern.matcher(content);
+        while (im.find()) {
+            result.add(im.group(1));
+        }
+        return result;
     }
 
     // ===== Nested Object Extraction Methods =====
