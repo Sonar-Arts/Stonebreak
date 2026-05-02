@@ -17,9 +17,9 @@ import org.joml.Vector3f;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -39,12 +39,17 @@ public final class EntitySynchronizer implements Synchronizer {
 
     private static final float MIN_BROADCAST_DELTA = 0.005f;
     private static final float MIN_BROADCAST_YAW_DEG = 0.5f;
+    /** Force an absolute teleport every N ticks per entity to bound drift from lost/dropped deltas. */
+    private static final int RESYNC_PERIOD_TICKS = 40; // 40 * 50ms = 2 s
 
     private final AtomicInteger nextNetworkId = new AtomicInteger(1);
-    /** Network id → local Entity (host: tracked entities; client: shadow entities). */
-    private final Map<Integer, Entity> byNetworkId = new HashMap<>();
+    /** Network id → local Entity (host: tracked entities; client: shadow entities). Concurrent
+     *  because session-end teardown can race with the main-thread tick. */
+    private final Map<Integer, Entity> byNetworkId = new ConcurrentHashMap<>();
     /** Host: last absolute position+yaw broadcast for each entity (for delta calc). */
-    private final Map<Integer, float[]> lastBroadcast = new HashMap<>();
+    private final Map<Integer, float[]> lastBroadcast = new ConcurrentHashMap<>();
+    /** Host: ticks since the last absolute teleport for each entity. */
+    private final Map<Integer, Integer> ticksSinceResync = new ConcurrentHashMap<>();
     /** Client: spawn packets that arrived before the world was ready. */
     private final Deque<Packet.EntitySpawnS2C> pendingSpawns = new ArrayDeque<>();
 
@@ -53,6 +58,7 @@ public final class EntitySynchronizer implements Synchronizer {
         nextNetworkId.set(1);
         byNetworkId.clear();
         lastBroadcast.clear();
+        ticksSinceResync.clear();
 
         // Host: snapshot existing entities so they're tracked + can be replicated.
         if (ctx.mode() == SyncMode.HOST && Game.getEntityManager() != null) {
@@ -72,6 +78,7 @@ public final class EntitySynchronizer implements Synchronizer {
         }
         byNetworkId.clear();
         lastBroadcast.clear();
+        ticksSinceResync.clear();
         pendingSpawns.clear();
     }
 
@@ -118,6 +125,7 @@ public final class EntitySynchronizer implements Synchronizer {
                 if (e.getNetworkId() < 0) return;
                 byNetworkId.remove(e.getNetworkId());
                 lastBroadcast.remove(e.getNetworkId());
+                ticksSinceResync.remove(e.getNetworkId());
                 ctx.broadcast(new Packet.EntityDespawnS2C(e.getNetworkId()));
             }
             case SyncEvent.PeerJoined pj -> sendSnapshotTo(pj.playerId(), ctx);
@@ -146,13 +154,21 @@ public final class EntitySynchronizer implements Synchronizer {
             float dz = p.z - last[2];
             float dyaw = Math.abs(yaw - last[3]);
 
+            int sinceResync = ticksSinceResync.getOrDefault(id, 0) + 1;
             boolean posMoved = Math.abs(dx) >= MIN_BROADCAST_DELTA
                             || Math.abs(dy) >= MIN_BROADCAST_DELTA
                             || Math.abs(dz) >= MIN_BROADCAST_DELTA;
             boolean rotMoved = dyaw >= MIN_BROADCAST_YAW_DEG;
-            if (!posMoved && !rotMoved) continue;
+            // Force an absolute resync periodically so any dropped/corrupted delta
+            // can't keep clients silently drifting forever. Acts as a heartbeat too.
+            boolean forceResync = sinceResync >= RESYNC_PERIOD_TICKS;
 
-            if (EntityDeltaCodec.fitsInDelta(dx, dy, dz)) {
+            if (!posMoved && !rotMoved && !forceResync) {
+                ticksSinceResync.put(id, sinceResync);
+                continue;
+            }
+
+            if (!forceResync && EntityDeltaCodec.fitsInDelta(dx, dy, dz)) {
                 short edx = EntityDeltaCodec.encodePosDelta(dx);
                 short edy = EntityDeltaCodec.encodePosDelta(dy);
                 short edz = EntityDeltaCodec.encodePosDelta(dz);
@@ -164,9 +180,11 @@ public final class EntitySynchronizer implements Synchronizer {
                 last[1] += EntityDeltaCodec.decodePosDelta(edy);
                 last[2] += EntityDeltaCodec.decodePosDelta(edz);
                 last[3] = EntityDeltaCodec.decodeYawDeg(eyaw);
+                ticksSinceResync.put(id, sinceResync);
             } else {
                 ctx.broadcast(new Packet.EntityTeleportS2C(id, p.x, p.y, p.z, yaw));
                 last[0] = p.x; last[1] = p.y; last[2] = p.z; last[3] = yaw;
+                ticksSinceResync.put(id, 0);
             }
         }
     }
@@ -186,6 +204,7 @@ public final class EntitySynchronizer implements Synchronizer {
         byNetworkId.put(e.getNetworkId(), e);
         Vector3f p = e.getPosition();
         lastBroadcast.put(e.getNetworkId(), new float[]{p.x, p.y, p.z, e.getRotation().y});
+        ticksSinceResync.put(e.getNetworkId(), 0);
     }
 
     private static boolean isReplicable(Entity e) {

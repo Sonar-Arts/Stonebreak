@@ -26,7 +26,9 @@ public final class RemoteClient {
     private final Socket socket;
     private final DataInputStream in;
     private final DataOutputStream out;
-    private final LinkedBlockingQueue<Packet> outbound = new LinkedBlockingQueue<>();
+    /** Hard cap on queued outbound packets; over this we drop the slow client. */
+    private static final int OUTBOUND_CAPACITY = 4096;
+    private final LinkedBlockingQueue<Object> outbound = new LinkedBlockingQueue<>(OUTBOUND_CAPACITY);
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final BiConsumer<RemoteClient, Packet> onPacket;
     private final Runnable onDisconnect;
@@ -35,8 +37,10 @@ public final class RemoteClient {
 
     // Last known position (server-side cache, updated on PlayerStateC2S)
     private volatile float x, y, z, yaw, pitch;
+    private volatile long lastStateNs = 0L;
 
-    private static final Packet POISON = new Packet.DisconnectC2S("__poison__");
+    /** Dedicated poison marker. Cannot collide with any wire-deliverable Packet. */
+    private static final Object POISON = new Object();
 
     public RemoteClient(int playerId, Socket socket,
                         BiConsumer<RemoteClient, Packet> onPacket,
@@ -44,6 +48,7 @@ public final class RemoteClient {
         this.playerId = playerId;
         this.socket = socket;
         this.socket.setTcpNoDelay(true);
+        this.socket.setKeepAlive(true);
         this.in = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
         this.out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
         this.onPacket = onPacket;
@@ -69,11 +74,22 @@ public final class RemoteClient {
 
     public void updateState(float x, float y, float z, float yaw, float pitch) {
         this.x = x; this.y = y; this.z = z; this.yaw = yaw; this.pitch = pitch;
+        this.lastStateNs = System.nanoTime();
     }
 
+    public long getLastStateNs() { return lastStateNs; }
+
+    /**
+     * Queue a packet for the writer thread. If the queue is full the client is
+     * stuck — disconnect rather than block the caller (block edits, broadcasts,
+     * chunk pushes all run on the host's main thread).
+     */
     public void send(Packet packet) {
-        if (running.get()) {
-            outbound.add(packet);
+        if (!running.get()) return;
+        if (!outbound.offer(packet)) {
+            System.err.println("[SERVER] Outbound queue full for client " + playerId
+                    + " (cap=" + OUTBOUND_CAPACITY + "); disconnecting.");
+            close();
         }
     }
 
@@ -83,7 +99,8 @@ public final class RemoteClient {
 
     public void close() {
         if (!running.compareAndSet(true, false)) return;
-        outbound.add(POISON);
+        // Wake the writer thread; offer (not add) so we never block on a full queue.
+        outbound.offer(POISON);
         try { socket.close(); } catch (IOException ignored) {}
         if (onDisconnect != null) onDisconnect.run();
     }
@@ -106,9 +123,9 @@ public final class RemoteClient {
     private void writeLoop() {
         try {
             while (running.get()) {
-                Packet p = outbound.take();
-                if (p == POISON) break;
-                PacketCodec.write(out, p);
+                Object item = outbound.take();
+                if (item == POISON) break;
+                PacketCodec.write(out, (Packet) item);
             }
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();

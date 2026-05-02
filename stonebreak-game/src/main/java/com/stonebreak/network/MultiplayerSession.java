@@ -64,11 +64,15 @@ public final class MultiplayerSession {
 
     static {
         // One-time registration; synchronizers are stateless across sessions.
-        SYNC.register(new BlockSynchronizer());
+        // BlockSynchronizer needs a reference to ChunkSynchronizer so it can
+        // mark chunks modified after applying inbound client edits (the normal
+        // SyncEvent path is suppressed during inbound application).
+        ChunkSynchronizer chunkSync = new ChunkSynchronizer();
+        SYNC.register(new BlockSynchronizer(chunkSync));
         SYNC.register(new PlayerStateSynchronizer());
         SYNC.register(new ChatSynchronizer());
         SYNC.register(new EntitySynchronizer());
-        SYNC.register(new ChunkSynchronizer());
+        SYNC.register(chunkSync);
     }
 
     private MultiplayerSession() {}
@@ -103,7 +107,7 @@ public final class MultiplayerSession {
         lastTickNs = System.nanoTime();
         tickAccumulatorNs = 0L;
         SYNC.start(buildContext());
-        clientConnection.send(new Packet.HandshakeC2S(username));
+        clientConnection.send(new Packet.HandshakeC2S(Packet.PROTOCOL_VERSION, username));
     }
 
     public static synchronized void shutdown() {
@@ -159,6 +163,14 @@ public final class MultiplayerSession {
     // ────────────────────────────────────────────────── Per-tick pump
 
     public static void tick() {
+        // Synchronize on the same monitor as start/stop so we never read a
+        // half-torn-down hostServer/clientConnection mid-shutdown.
+        synchronized (MultiplayerSession.class) {
+            tickLocked();
+        }
+    }
+
+    private static void tickLocked() {
         if (!isOnline()) return;
 
         // Lazy listener attach (entity manager only exists after world load).
@@ -173,15 +185,12 @@ public final class MultiplayerSession {
         // Drain transport queues, dispatch each packet through the sync layer
         // (handshake/welcome are special-cased here; everything else goes to SyncService).
         if (mode == SyncMode.HOST && hostServer != null) {
-            hostServer.getInboundEvents().drain(p -> {
-                Integer originId = hostServer.getOrigin(p);
+            hostServer.getInboundEvents().drain((p, originId) -> {
                 if (p instanceof Packet.HandshakeC2S hs) {
                     handleHandshake(originId, hs);
                 } else if (p instanceof Packet.DisconnectC2S) {
-                    if (originId != null) {
-                        RemoteClient rc = hostServer.getClient(originId);
-                        if (rc != null) rc.close();
-                    }
+                    RemoteClient rc = hostServer.getClient(originId);
+                    if (rc != null) rc.close();
                 } else {
                     SYNC.onInbound(p, originId);
                 }
@@ -190,6 +199,10 @@ public final class MultiplayerSession {
             clientEventBus.drain(p -> {
                 if (p instanceof Packet.WelcomeS2C w) {
                     handleWelcome(w);
+                } else if (p instanceof Packet.KickS2C kick) {
+                    System.out.println("[CLIENT] Kicked by server: " + kick.reason());
+                    shutdown();
+                    Game.getInstance().setState(GameState.MAIN_MENU);
                 } else {
                     SYNC.onInbound(p, null);
                 }
@@ -221,6 +234,14 @@ public final class MultiplayerSession {
         if (originId == null || hostServer == null) return;
         RemoteClient rc = hostServer.getClient(originId);
         if (rc == null) return;
+        if (hs.protocolVersion() != Packet.PROTOCOL_VERSION) {
+            String msg = "Protocol mismatch (server=" + Packet.PROTOCOL_VERSION
+                       + ", client=" + hs.protocolVersion() + ")";
+            System.out.println("[SERVER] Rejecting client " + originId + ": " + msg);
+            rc.send(new Packet.KickS2C(msg));
+            rc.close();
+            return;
+        }
         rc.setUsername(hs.username());
 
         com.stonebreak.player.Player hostPlayer = Game.getPlayer();

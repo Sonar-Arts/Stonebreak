@@ -30,8 +30,28 @@ public final class PacketCodec {
     private static final byte T_ENTITY_STATE_S2C = 15;
     private static final byte T_ENTITY_MOVE_S2C = 16;
     private static final byte T_ENTITY_TELEPORT_S2C = 17;
+    private static final byte T_KICK_S2C            = 18;
+    private static final byte T_MULTI_BLOCK_S2C     = 19;
+
+    /** Hard cap on entries in a single MultiBlockChangeS2C packet (one full section). */
+    private static final int MAX_MULTI_BLOCK_ENTRIES = 4096;
 
     private static final int MAX_FRAME_BYTES = 8 * 1024 * 1024; // 8 MiB safety cap
+
+    // Per-string upper bounds (decoded UTF-16 char count). DataInput#readUTF
+    // already caps at 65535 bytes, but a 60 KB username is hostile — clamp early.
+    private static final int MAX_USERNAME_CHARS = 32;
+    private static final int MAX_CHAT_CHARS     = 256;
+    private static final int MAX_REASON_CHARS   = 128;
+    private static final int MAX_METADATA_CHARS = 256;
+
+    private static String boundedUtf(DataInputStream in, int maxChars, String field) throws IOException {
+        String s = in.readUTF();
+        if (s.length() > maxChars) {
+            throw new IOException("Field '" + field + "' exceeds " + maxChars + " chars (got " + s.length() + ")");
+        }
+        return s;
+    }
 
     private PacketCodec() {}
 
@@ -41,7 +61,12 @@ public final class PacketCodec {
         switch (packet) {
             case Packet.HandshakeC2S p -> {
                 body.writeByte(T_HANDSHAKE_C2S);
+                body.writeInt(p.protocolVersion());
                 body.writeUTF(p.username());
+            }
+            case Packet.KickS2C p -> {
+                body.writeByte(T_KICK_S2C);
+                body.writeUTF(p.reason() == null ? "" : p.reason());
             }
             case Packet.WelcomeS2C p -> {
                 body.writeByte(T_WELCOME_S2C);
@@ -71,6 +96,14 @@ public final class PacketCodec {
                 body.writeInt(p.y());
                 body.writeInt(p.z());
                 body.writeShort(p.blockTypeId());
+            }
+            case Packet.MultiBlockChangeS2C p -> {
+                body.writeByte(T_MULTI_BLOCK_S2C);
+                body.writeInt(p.sectionX());
+                body.writeInt(p.sectionY());
+                body.writeInt(p.sectionZ());
+                body.writeInt(p.packed().length);
+                for (int v : p.packed()) body.writeInt(v);
             }
             case Packet.PlayerStateC2S p -> {
                 body.writeByte(T_PLAYER_STATE_C2S);
@@ -172,7 +205,9 @@ public final class PacketCodec {
         byte type = body.readByte();
         try {
             return switch (type) {
-                case T_HANDSHAKE_C2S    -> new Packet.HandshakeC2S(body.readUTF());
+                case T_HANDSHAKE_C2S    -> new Packet.HandshakeC2S(
+                        body.readInt(), boundedUtf(body, MAX_USERNAME_CHARS, "username"));
+                case T_KICK_S2C         -> new Packet.KickS2C(boundedUtf(body, MAX_REASON_CHARS, "reason"));
                 case T_WELCOME_S2C      -> new Packet.WelcomeS2C(
                         body.readInt(), body.readLong(),
                         body.readFloat(), body.readFloat(), body.readFloat());
@@ -191,6 +226,18 @@ public final class PacketCodec {
                         body.readInt(), body.readInt(), body.readInt(), body.readShort());
                 case T_BLOCK_CHANGE_S2C -> new Packet.BlockChangeS2C(
                         body.readInt(), body.readInt(), body.readInt(), body.readShort());
+                case T_MULTI_BLOCK_S2C -> {
+                    int sx = body.readInt();
+                    int sy = body.readInt();
+                    int sz = body.readInt();
+                    int n  = body.readInt();
+                    if (n < 0 || n > MAX_MULTI_BLOCK_ENTRIES) {
+                        throw new IOException("Invalid multi-block-change count: " + n);
+                    }
+                    int[] arr = new int[n];
+                    for (int i = 0; i < n; i++) arr[i] = body.readInt();
+                    yield new Packet.MultiBlockChangeS2C(sx, sy, sz, arr);
+                }
                 case T_PLAYER_STATE_C2S -> new Packet.PlayerStateC2S(
                         body.readFloat(), body.readFloat(), body.readFloat(),
                         body.readFloat(), body.readFloat());
@@ -199,17 +246,19 @@ public final class PacketCodec {
                         body.readFloat(), body.readFloat(), body.readFloat(),
                         body.readFloat(), body.readFloat());
                 case T_PLAYER_JOIN_S2C  -> new Packet.PlayerJoinS2C(
-                        body.readInt(), body.readUTF(),
+                        body.readInt(), boundedUtf(body, MAX_USERNAME_CHARS, "username"),
                         body.readFloat(), body.readFloat(), body.readFloat());
                 case T_PLAYER_LEAVE_S2C -> new Packet.PlayerLeaveS2C(body.readInt());
-                case T_DISCONNECT_C2S   -> new Packet.DisconnectC2S(body.readUTF());
-                case T_CHAT_MESSAGE_C2S -> new Packet.ChatMessageC2S(body.readUTF());
+                case T_DISCONNECT_C2S   -> new Packet.DisconnectC2S(boundedUtf(body, MAX_REASON_CHARS, "reason"));
+                case T_CHAT_MESSAGE_C2S -> new Packet.ChatMessageC2S(boundedUtf(body, MAX_CHAT_CHARS, "chat"));
                 case T_CHAT_MESSAGE_S2C -> new Packet.ChatMessageS2C(
-                        body.readInt(), body.readUTF(), body.readUTF());
+                        body.readInt(),
+                        boundedUtf(body, MAX_USERNAME_CHARS, "senderName"),
+                        boundedUtf(body, MAX_CHAT_CHARS, "chat"));
                 case T_ENTITY_SPAWN_S2C -> new Packet.EntitySpawnS2C(
                         body.readInt(), body.readInt(),
                         body.readFloat(), body.readFloat(), body.readFloat(),
-                        body.readFloat(), body.readUTF());
+                        body.readFloat(), boundedUtf(body, MAX_METADATA_CHARS, "metadata"));
                 case T_ENTITY_DESPAWN_S2C -> new Packet.EntityDespawnS2C(body.readInt());
                 case T_ENTITY_STATE_S2C -> new Packet.EntityStateS2C(
                         body.readInt(),

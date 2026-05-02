@@ -24,18 +24,20 @@ public final class ClientConnection {
     private final DataInputStream in;
     private final DataOutputStream out;
     private final NetworkEventBus eventBus;
-    private final LinkedBlockingQueue<Packet> outbound = new LinkedBlockingQueue<>();
+    private static final int OUTBOUND_CAPACITY = 4096;
+    private final LinkedBlockingQueue<Object> outbound = new LinkedBlockingQueue<>(OUTBOUND_CAPACITY);
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final Thread readerThread;
     private final Thread writerThread;
 
-    private static final Packet POISON = new Packet.DisconnectC2S("__poison__");
+    private static final Object POISON = new Object();
 
     public ClientConnection(String host, int port, NetworkEventBus eventBus) throws IOException {
         this.eventBus = eventBus;
         this.socket = new Socket();
         this.socket.connect(new InetSocketAddress(host, port), 5000);
         this.socket.setTcpNoDelay(true);
+        this.socket.setKeepAlive(true);
         this.in = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
         this.out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
 
@@ -48,8 +50,11 @@ public final class ClientConnection {
     }
 
     public void send(Packet packet) {
-        if (running.get()) {
-            outbound.add(packet);
+        if (!running.get()) return;
+        if (!outbound.offer(packet)) {
+            System.err.println("[NETWORK] Outbound queue full (cap=" + OUTBOUND_CAPACITY
+                    + "); closing connection.");
+            close();
         }
     }
 
@@ -59,7 +64,7 @@ public final class ClientConnection {
 
     public void close() {
         if (!running.compareAndSet(true, false)) return;
-        outbound.add(POISON);
+        outbound.offer(POISON);
         try { socket.close(); } catch (IOException ignored) {}
     }
 
@@ -81,9 +86,9 @@ public final class ClientConnection {
     private void writeLoop() {
         try {
             while (running.get()) {
-                Packet p = outbound.take();
-                if (p == POISON) break;
-                PacketCodec.write(out, p);
+                Object item = outbound.take();
+                if (item == POISON) break;
+                PacketCodec.write(out, (Packet) item);
             }
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();

@@ -7,9 +7,11 @@ package com.stonebreak.network.protocol;
 public sealed interface Packet
         permits Packet.HandshakeC2S,
                 Packet.WelcomeS2C,
+                Packet.KickS2C,
                 Packet.ChunkDataS2C,
                 Packet.BlockChangeC2S,
                 Packet.BlockChangeS2C,
+                Packet.MultiBlockChangeS2C,
                 Packet.PlayerStateC2S,
                 Packet.PlayerStateS2C,
                 Packet.PlayerJoinS2C,
@@ -23,7 +25,13 @@ public sealed interface Packet
                 Packet.EntityMoveS2C,
                 Packet.EntityTeleportS2C {
 
-    record HandshakeC2S(String username) implements Packet {}
+    /** Bump on any wire-format change. Mismatched clients are kicked at handshake. */
+    int PROTOCOL_VERSION = 2;
+
+    record HandshakeC2S(int protocolVersion, String username) implements Packet {}
+
+    /** Server → client refusal (version mismatch, kick, etc.). Client closes after receiving. */
+    record KickS2C(String reason) implements Packet {}
 
     record WelcomeS2C(int playerId, long worldSeed,
                       float spawnX, float spawnY, float spawnZ) implements Packet {}
@@ -33,6 +41,15 @@ public sealed interface Packet
     record BlockChangeC2S(int x, int y, int z, short blockTypeId) implements Packet {}
 
     record BlockChangeS2C(int x, int y, int z, short blockTypeId) implements Packet {}
+
+    /**
+     * Batched block changes within a single 16×16×16 section. Each {@code packed}
+     * entry is {@code (localPos << 16) | (blockId & 0xFFFF)} where
+     * {@code localPos = (lx << 8) | (ly << 4) | lz}, each axis 0-15. Bandwidth
+     * win is ~3-4× over individual {@link BlockChangeS2C} when edits cluster
+     * (explosions, fluid spread, fill tools).
+     */
+    record MultiBlockChangeS2C(int sectionX, int sectionY, int sectionZ, int[] packed) implements Packet {}
 
     record PlayerStateC2S(float x, float y, float z, float yaw, float pitch) implements Packet {}
 

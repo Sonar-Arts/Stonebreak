@@ -3,16 +3,20 @@ package com.stonebreak.network.sync.synchronizers;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.RemotePlayer;
+import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.network.protocol.Packet;
+import com.stonebreak.network.server.IntegratedServer;
+import com.stonebreak.network.server.RemoteClient;
 import com.stonebreak.network.sync.SyncContext;
 import com.stonebreak.network.sync.SyncEvent;
 import com.stonebreak.network.sync.SyncMode;
 import com.stonebreak.network.sync.Synchronizer;
 import com.stonebreak.player.Player;
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Owns:
@@ -22,7 +26,21 @@ import java.util.Map;
  */
 public final class PlayerStateSynchronizer implements Synchronizer {
 
-    private final Map<Integer, RemotePlayer> remotePlayers = new HashMap<>();
+    /**
+     * Server-side movement guard. Maximum allowed teleport per state packet, in
+     * blocks. The fixed 20 Hz tick means a normal walking/sprinting/falling
+     * client moves well under this; anything larger is treated as a desync or
+     * cheat and gets rejected.
+     */
+    private static final float MAX_DELTA_PER_PACKET = 32.0f;
+    private static final float MAX_DELTA_SQ = MAX_DELTA_PER_PACKET * MAX_DELTA_PER_PACKET;
+
+    /**
+     * Concurrent because {@link #onSessionEnd()} can be invoked from the
+     * shutdown thread while the main thread is mid-tick (synchronization on
+     * MultiplayerSession bounds the worst case but the cost of CHM is trivial).
+     */
+    private final Map<Integer, RemotePlayer> remotePlayers = new ConcurrentHashMap<>();
 
     @Override
     public void onSessionStart(SyncContext ctx) {
@@ -51,6 +69,11 @@ public final class PlayerStateSynchronizer implements Synchronizer {
         switch (packet) {
             case Packet.PlayerStateC2S ps -> {
                 if (originId == null) return;
+                if (!validateAndCacheClientState(originId, ps)) {
+                    // Rejected: snap the offender back to their last accepted position.
+                    sendCorrection(originId, ctx);
+                    return;
+                }
                 applyRemoteState(originId, ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch());
                 ctx.broadcastExcept(originId,
                         new Packet.PlayerStateS2C(originId, ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch()));
@@ -112,6 +135,46 @@ public final class PlayerStateSynchronizer implements Synchronizer {
         if (rp != null && Game.getEntityManager() != null) {
             Game.getEntityManager().removeEntity(rp);
         }
+    }
+
+    /**
+     * Server-side guard for client-reported state. Rejects NaN/Inf, out-of-vertical-bounds,
+     * and per-tick movement deltas over {@link #MAX_DELTA_PER_PACKET} blocks. On accept,
+     * caches the new position into the {@link RemoteClient} (used by reach checks for
+     * block edits, etc).
+     */
+    private boolean validateAndCacheClientState(int originId, Packet.PlayerStateC2S ps) {
+        if (!Float.isFinite(ps.x()) || !Float.isFinite(ps.y()) || !Float.isFinite(ps.z())
+                || !Float.isFinite(ps.yaw()) || !Float.isFinite(ps.pitch())) {
+            return false;
+        }
+        if (ps.y() < -64f || ps.y() > WorldConfiguration.WORLD_HEIGHT + 64f) {
+            return false;
+        }
+        IntegratedServer srv = MultiplayerSession.getServer();
+        if (srv == null) return false;
+        RemoteClient rc = srv.getClient(originId);
+        if (rc == null) return false;
+
+        if (rc.getLastStateNs() != 0L) {
+            float dx = ps.x() - rc.getX();
+            float dy = ps.y() - rc.getY();
+            float dz = ps.z() - rc.getZ();
+            if ((dx * dx + dy * dy + dz * dz) > MAX_DELTA_SQ) {
+                return false;
+            }
+        }
+        rc.updateState(ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch());
+        return true;
+    }
+
+    private void sendCorrection(int originId, SyncContext ctx) {
+        IntegratedServer srv = MultiplayerSession.getServer();
+        if (srv == null) return;
+        RemoteClient rc = srv.getClient(originId);
+        if (rc == null || rc.getLastStateNs() == 0L) return;
+        ctx.sendTo(originId, new Packet.PlayerStateS2C(
+                originId, rc.getX(), rc.getY(), rc.getZ(), rc.getYaw(), rc.getPitch()));
     }
 
     private void applyRemoteState(int playerId, float x, float y, float z, float yaw, float pitch) {

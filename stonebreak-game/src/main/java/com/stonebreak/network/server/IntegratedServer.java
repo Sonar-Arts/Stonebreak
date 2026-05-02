@@ -1,6 +1,5 @@
 package com.stonebreak.network.server;
 
-import com.stonebreak.network.client.NetworkEventBus;
 import com.stonebreak.network.protocol.Packet;
 
 import java.io.IOException;
@@ -27,11 +26,8 @@ public final class IntegratedServer {
     private final AtomicInteger nextPlayerId = new AtomicInteger(1);
     private final Map<Integer, RemoteClient> clients = new ConcurrentHashMap<>();
 
-    /** Inbound events from all clients; main thread drains. */
-    private final NetworkEventBus inboundEvents = new NetworkEventBus();
-
-    /** Map from packet -> originating client id, populated on post (best-effort). */
-    private final Map<Packet, Integer> packetOrigin = new ConcurrentHashMap<>();
+    /** Inbound events from all clients; main thread drains. Each entry carries originId. */
+    private final ServerInboundQueue inboundEvents = new ServerInboundQueue();
 
     public IntegratedServer(int port) throws IOException {
         this.port = port;
@@ -44,9 +40,7 @@ public final class IntegratedServer {
 
     public int getPort() { return port; }
 
-    public NetworkEventBus getInboundEvents() { return inboundEvents; }
-
-    public Integer getOrigin(Packet p) { return packetOrigin.remove(p); }
+    public ServerInboundQueue getInboundEvents() { return inboundEvents; }
 
     public Map<Integer, RemoteClient> getClients() { return clients; }
 
@@ -85,13 +79,9 @@ public final class IntegratedServer {
             try {
                 Socket sock = serverSocket.accept();
                 int id = nextPlayerId.getAndIncrement();
-                RemoteClient[] holder = new RemoteClient[1];
                 RemoteClient client = new RemoteClient(
                         id, sock,
-                        (rc, pkt) -> {
-                            packetOrigin.put(pkt, rc.getPlayerId());
-                            inboundEvents.post(pkt);
-                        },
+                        (rc, pkt) -> inboundEvents.post(pkt, rc.getPlayerId()),
                         () -> {
                             RemoteClient removed = clients.remove(id);
                             if (removed != null) {
@@ -99,7 +89,6 @@ public final class IntegratedServer {
                                 System.out.println("[SERVER] Player " + id + " (" + removed.getUsername() + ") left.");
                             }
                         });
-                holder[0] = client;
                 clients.put(id, client);
                 System.out.println("[SERVER] Client connected, assigned id " + id);
             } catch (IOException e) {
