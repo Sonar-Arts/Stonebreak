@@ -27,15 +27,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class PlayerStateSynchronizer implements Synchronizer {
 
     /**
-     * Server-side movement guard. Maximum allowed teleport per state packet, in
-     * blocks. The fixed 20 Hz tick means a normal walking/sprinting/falling
-     * client moves well under this; anything larger is treated as a desync or
-     * cheat and gets rejected.
-     */
-    private static final float MAX_DELTA_PER_PACKET = 32.0f;
-    private static final float MAX_DELTA_SQ = MAX_DELTA_PER_PACKET * MAX_DELTA_PER_PACKET;
-
-    /**
      * Concurrent because {@link #onSessionEnd()} can be invoked from the
      * shutdown thread while the main thread is mid-tick (synchronization on
      * MultiplayerSession bounds the worst case but the cost of CHM is trivial).
@@ -69,11 +60,7 @@ public final class PlayerStateSynchronizer implements Synchronizer {
         switch (packet) {
             case Packet.PlayerStateC2S ps -> {
                 if (originId == null) return;
-                if (!validateAndCacheClientState(originId, ps)) {
-                    // Rejected: snap the offender back to their last accepted position.
-                    sendCorrection(originId, ctx);
-                    return;
-                }
+                if (!validateAndCacheClientState(originId, ps)) return;
                 applyRemoteState(originId, ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch());
                 ctx.broadcastExcept(originId,
                         new Packet.PlayerStateS2C(originId, ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch()));
@@ -138,10 +125,17 @@ public final class PlayerStateSynchronizer implements Synchronizer {
     }
 
     /**
-     * Server-side guard for client-reported state. Rejects NaN/Inf, out-of-vertical-bounds,
-     * and per-tick movement deltas over {@link #MAX_DELTA_PER_PACKET} blocks. On accept,
-     * caches the new position into the {@link RemoteClient} (used by reach checks for
-     * block edits, etc).
+     * Sanity-check inbound client state and update the cached server-side
+     * position. Rejects only NaN/Inf and obviously out-of-world coordinates;
+     * the cache is always updated so reach checks for block edits and the
+     * RemotePlayer view track the client's true position.
+     *
+     * <p>Per-packet velocity / "no-teleport" anti-cheat is intentionally NOT
+     * applied here — naive caps cause permanent desync when a client
+     * legitimately teleports (respawn, world-load completion, /tp). A future
+     * sliding-window velocity check can be layered on top to flag suspicious
+     * movement for kicking, but it must not feed back into the cached state
+     * or every legitimate teleport will freeze the player on the host.
      */
     private boolean validateAndCacheClientState(int originId, Packet.PlayerStateC2S ps) {
         if (!Float.isFinite(ps.x()) || !Float.isFinite(ps.y()) || !Float.isFinite(ps.z())
@@ -155,26 +149,8 @@ public final class PlayerStateSynchronizer implements Synchronizer {
         if (srv == null) return false;
         RemoteClient rc = srv.getClient(originId);
         if (rc == null) return false;
-
-        if (rc.getLastStateNs() != 0L) {
-            float dx = ps.x() - rc.getX();
-            float dy = ps.y() - rc.getY();
-            float dz = ps.z() - rc.getZ();
-            if ((dx * dx + dy * dy + dz * dz) > MAX_DELTA_SQ) {
-                return false;
-            }
-        }
         rc.updateState(ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch());
         return true;
-    }
-
-    private void sendCorrection(int originId, SyncContext ctx) {
-        IntegratedServer srv = MultiplayerSession.getServer();
-        if (srv == null) return;
-        RemoteClient rc = srv.getClient(originId);
-        if (rc == null || rc.getLastStateNs() == 0L) return;
-        ctx.sendTo(originId, new Packet.PlayerStateS2C(
-                originId, rc.getX(), rc.getY(), rc.getZ(), rc.getYaw(), rc.getPitch()));
     }
 
     private void applyRemoteState(int playerId, float x, float y, float z, float yaw, float pitch) {

@@ -49,6 +49,13 @@ public final class MultiplayerSession {
     private static volatile NetworkEventBus clientEventBus;
     private static volatile int localPlayerId = -1;
 
+    /**
+     * Spawn position the host advertised in {@link Packet.WelcomeS2C}, deferred
+     * until the local Player exists (world generation runs on a worker thread).
+     * Cleared on apply.
+     */
+    private static volatile Vector3f pendingSpawnTeleport;
+
     // Fixed 20 Hz server tick (Minecraft's standard rate).
     // Inbound packets are drained every frame for responsiveness; periodic
     // broadcasts (entity state, player state, chunk pushes) only fire on a
@@ -125,6 +132,7 @@ public final class MultiplayerSession {
         clientEventBus = null;
         mode = SyncMode.OFFLINE;
         localPlayerId = -1;
+        pendingSpawnTeleport = null;
     }
 
     // ────────────────────────────────────────────────── World/entity hooks
@@ -179,6 +187,18 @@ public final class MultiplayerSession {
             // Snapshot existing entities into the sync layer.
             for (Entity e : Game.getEntityManager().getAllEntities()) {
                 if (mode == SyncMode.HOST) SYNC.notifyLocal(new SyncEvent.EntitySpawned(e));
+            }
+        }
+
+        // Client: apply the host-advertised spawn once the local Player exists.
+        // World gen is async, so the Player isn't around at handleWelcome time;
+        // we poll here every tick until it appears, then teleport once.
+        if (mode == SyncMode.CLIENT && pendingSpawnTeleport != null) {
+            com.stonebreak.player.Player p = Game.getPlayer();
+            if (p != null) {
+                p.setPosition(pendingSpawnTeleport);
+                System.out.println("[CLIENT] Teleported to host spawn " + pendingSpawnTeleport);
+                pendingSpawnTeleport = null;
             }
         }
 
@@ -273,7 +293,11 @@ public final class MultiplayerSession {
 
     private static void handleWelcome(Packet.WelcomeS2C w) {
         localPlayerId = w.playerId();
-        System.out.println("[CLIENT] Welcomed as id " + w.playerId() + " (seed=" + w.worldSeed() + ")");
+        System.out.println("[CLIENT] Welcomed as id " + w.playerId()
+                + " (seed=" + w.worldSeed() + ", spawn=" + w.spawnX() + "," + w.spawnY() + "," + w.spawnZ() + ")");
+        // Defer applying the host's spawn until the local Player is created
+        // (world gen runs async; tick() polls and applies once available).
+        pendingSpawnTeleport = new Vector3f(w.spawnX(), w.spawnY(), w.spawnZ());
         String name = "mp_" + System.currentTimeMillis();
         Game.getInstance().startWorldGeneration(name, w.worldSeed());
     }
