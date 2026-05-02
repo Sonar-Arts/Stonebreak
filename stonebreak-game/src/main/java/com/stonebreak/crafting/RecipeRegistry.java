@@ -243,6 +243,134 @@ public final class RecipeRegistry {
         ));
         System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICK -> WOODEN_BUCKET");
 
+        // Recipe 19: Snowball
+        List<List<ItemStack>> snowballPattern = List.of(
+            List.of(new ItemStack(BlockType.SNOW.getId(), 1))
+        );
+        craftingManager.registerRecipe(new Recipe(
+            "snowball",
+            snowballPattern,
+            new ItemStack(ItemType.SNOWBALL, 4)
+        ));
+        System.out.println("Registered recipe: SNOW -> SNOWBALL");
+
+        // Recipe 20: Wooden Shovel (Regular Wood Planks)
+        List<List<ItemStack>> woodenShovelPattern = List.of(
+            List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(ItemType.STICK, 1)),
+            List.of(new ItemStack(ItemType.STICK, 1))
+        );
+        craftingManager.registerRecipe(new Recipe(
+            "wooden_shovel",
+            woodenShovelPattern,
+            new ItemStack(ItemType.WOODEN_SHOVEL, 1)
+        ));
+        System.out.println("Registered recipe: WOOD_PLANKS + STICKS -> WOODEN_SHOVEL");
+
+        // Recipe 21: Wooden Shovel (Pine Wood Planks variant)
+        List<List<ItemStack>> pineWoodenShovelPattern = List.of(
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(ItemType.STICK, 1)),
+            List.of(new ItemStack(ItemType.STICK, 1))
+        );
+        craftingManager.registerRecipe(new Recipe(
+            "pine_wooden_shovel",
+            pineWoodenShovelPattern,
+            new ItemStack(ItemType.WOODEN_SHOVEL, 1)
+        ));
+        System.out.println("Registered recipe: PINE_WOOD_PLANKS + STICKS -> WOODEN_SHOVEL");
+
+        // Recipe 22: Wooden Shovel (Elm Wood Planks variant)
+        List<List<ItemStack>> elmWoodenShovelPattern = List.of(
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(ItemType.STICK, 1)),
+            List.of(new ItemStack(ItemType.STICK, 1))
+        );
+        craftingManager.registerRecipe(new Recipe(
+            "elm_wooden_shovel",
+            elmWoodenShovelPattern,
+            new ItemStack(ItemType.WOODEN_SHOVEL, 1)
+        ));
+        System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICKS -> WOODEN_SHOVEL");
+
+        // Recipe 23: Stone Shovel
+        List<List<ItemStack>> stoneShovelPattern = List.of(
+            List.of(new ItemStack(BlockType.COBBLESTONE.getId(), 1)),
+            List.of(new ItemStack(ItemType.STICK, 1)),
+            List.of(new ItemStack(ItemType.STICK, 1))
+        );
+        craftingManager.registerRecipe(new Recipe(
+            "stone_shovel",
+            stoneShovelPattern,
+            new ItemStack(ItemType.STONE_SHOVEL, 1)
+        ));
+        System.out.println("Registered recipe: COBBLESTONE + STICKS -> STONE_SHOVEL");
+
+        // Recipe 24: Sword
+        List<List<ItemStack>> swordPattern = List.of(
+            List.of(new ItemStack(BlockType.COBBLESTONE.getId(), 1)),
+            List.of(new ItemStack(BlockType.COBBLESTONE.getId(), 1)),
+            List.of(new ItemStack(ItemType.STICK, 1))
+        );
+        craftingManager.registerRecipe(new Recipe(
+            "sword",
+            swordPattern,
+            new ItemStack(ItemType.SWORD, 1)
+        ));
+        System.out.println("Registered recipe: COBBLESTONE + STICK -> SWORD");
+
+        // Recipe 25: War Axe
+        List<List<ItemStack>> warAxePattern = Arrays.asList(
+            Arrays.asList(new ItemStack(BlockType.COBBLESTONE.getId(), 1), new ItemStack(BlockType.COBBLESTONE.getId(), 1), new ItemStack(BlockType.COBBLESTONE.getId(), 1)),
+            Arrays.asList(new ItemStack(BlockType.COBBLESTONE.getId(), 1), new ItemStack(ItemType.STICK, 1),               new ItemStack(BlockType.COBBLESTONE.getId(), 1)),
+            Arrays.asList(null,                                             new ItemStack(ItemType.STICK, 1),               null)
+        );
+        craftingManager.registerRecipe(new Recipe(
+            "war_axe",
+            warAxePattern,
+            new ItemStack(ItemType.WAR_AXE, 1)
+        ));
+        System.out.println("Registered recipe: COBBLESTONE + STICKS -> WAR_AXE");
+
+        // Recipe 26: Patty Smacker (Regular Wood Planks)
+        List<List<ItemStack>> pattySmackerPattern = List.of(
+            List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(ItemType.STICK, 1))
+        );
+        craftingManager.registerRecipe(new Recipe(
+            "patty_smacker",
+            pattySmackerPattern,
+            new ItemStack(ItemType.PATTY_SMACKER, 1)
+        ));
+        System.out.println("Registered recipe: WOOD_PLANKS + STICK -> PATTY_SMACKER");
+
+        // Recipe 27: Patty Smacker (Pine Wood Planks variant)
+        List<List<ItemStack>> pinePattySmackerPattern = List.of(
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(ItemType.STICK, 1))
+        );
+        craftingManager.registerRecipe(new Recipe(
+            "pine_patty_smacker",
+            pinePattySmackerPattern,
+            new ItemStack(ItemType.PATTY_SMACKER, 1)
+        ));
+        System.out.println("Registered recipe: PINE_WOOD_PLANKS + STICK -> PATTY_SMACKER");
+
+        // Recipe 28: Patty Smacker (Elm Wood Planks variant)
+        List<List<ItemStack>> elmPattySmackerPattern = List.of(
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(ItemType.STICK, 1))
+        );
+        craftingManager.registerRecipe(new Recipe(
+            "elm_patty_smacker",
+            elmPattySmackerPattern,
+            new ItemStack(ItemType.PATTY_SMACKER, 1)
+        ));
+        System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICK -> PATTY_SMACKER");
+
         System.out.println("All crafting recipes initialized");
     }
 }
