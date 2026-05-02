@@ -80,11 +80,38 @@ public final class BlockSynchronizer implements Synchronizer {
                 BlockType prev = Game.getWorld() != null
                         ? Game.getWorld().getBlockAt(c.x(), c.y(), c.z()) : null;
                 BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
-                applyToWorld(c.x(), c.y(), c.z(), c.blockTypeId());
+                boolean applied = applyToWorld(c.x(), c.y(), c.z(), c.blockTypeId());
+                if (!applied) {
+                    // Host can't apply (chunk not loaded). Don't broadcast
+                    // back — the originator already applied locally; if we
+                    // re-broadcast, other clients diverge from the host.
+                    System.out.println("[SYNC] Dropped client edit at (" + c.x() + ","
+                            + c.y() + "," + c.z() + "): host chunk not loaded.");
+                    return;
+                }
                 if (prev != null && prev != BlockType.AIR && incoming == BlockType.AIR) {
                     org.joml.Vector3f dropPos = new org.joml.Vector3f(
                             c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f);
+                    // Snapshot the entity-id set before the drop spawn so we
+                    // can identify which entities DropUtil added.
+                    com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+                    java.util.Set<com.stonebreak.mobs.entities.Entity> before = em != null
+                            ? new java.util.HashSet<>(em.getAllEntities())
+                            : java.util.Collections.emptySet();
                     com.stonebreak.util.DropUtil.handleBlockBroken(Game.getWorld(), dropPos, prev);
+                    // Force-broadcast the spawn for each new drop. Required
+                    // because we're inside applyInbound — SyncService.notifyLocal
+                    // is suppressed and EntitySynchronizer.emitLocal would
+                    // otherwise miss this addition.
+                    if (em != null) {
+                        com.stonebreak.network.sync.SyncService sync =
+                                com.stonebreak.network.MultiplayerSession.getSyncService();
+                        for (com.stonebreak.mobs.entities.Entity e : em.getAllEntities()) {
+                            if (before.contains(e)) continue;
+                            sync.notifyLocalForced(
+                                    new com.stonebreak.network.sync.SyncEvent.EntitySpawned(e));
+                        }
+                    }
                 }
                 // Track for the chunk-snapshot path: SyncService.notifyLocal
                 // is suppressed during inbound application, so ChunkSynchronizer's
@@ -276,10 +303,16 @@ public final class BlockSynchronizer implements Synchronizer {
         ctx.sendTo(originId, new Packet.BlockChangeS2C(x, y, z, id));
     }
 
-    private void applyToWorld(int x, int y, int z, short blockTypeId) {
-        if (Game.getWorld() == null) return;
+    /**
+     * Apply a block change to the host/local world. Returns true if the world
+     * was actually modified — false means the chunk wasn't loaded (the caller
+     * should not broadcast / mark the chunk modified, since other clients
+     * already applied locally and re-broadcasting would worsen divergence).
+     */
+    private boolean applyToWorld(int x, int y, int z, short blockTypeId) {
+        if (Game.getWorld() == null) return false;
         BlockType type = BlockType.getById(blockTypeId & 0xFFFF);
         if (type == null) type = BlockType.AIR;
-        Game.getWorld().setBlockAt(x, y, z, type, true);
+        return Game.getWorld().setBlockAt(x, y, z, type, true);
     }
 }

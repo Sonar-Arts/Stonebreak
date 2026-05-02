@@ -35,6 +35,12 @@ public class EntitySerializer {
         if (entity == null || !entity.isAlive()) {
             return null;
         }
+        // Network-driven entities aren't part of the world's persistent state;
+        // they're recreated on connect from inbound packets. Skip silently to
+        // avoid the "Unknown entity type" warning at every save.
+        if (entity.isNetworkShadow() || entity.getType() == EntityType.REMOTE_PLAYER) {
+            return null;
+        }
 
         EntityType entityType = entity.getType();
         EntityData.Builder builder = EntityData.builder()

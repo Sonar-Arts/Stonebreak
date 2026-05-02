@@ -72,6 +72,23 @@ public final class SyncService {
     public void notifyLocal(SyncEvent event) {
         if (context == null) return;
         if (applyingInbound.get()) return; // suppress feedback loops
+        dispatchLocal(event);
+    }
+
+    /**
+     * Like {@link #notifyLocal(SyncEvent)} but ignores the
+     * {@code applyingInbound} flag. Used for events that must propagate even
+     * during inbound packet application — e.g. when the host applies an
+     * inbound block-break that spawns a drop entity, the drop spawn must
+     * still be broadcast to clients. Never call this for {@link SyncEvent.BlockChanged}
+     * during inbound block-change application — that would cause re-broadcast loops.
+     */
+    public void notifyLocalForced(SyncEvent event) {
+        if (context == null) return;
+        dispatchLocal(event);
+    }
+
+    private void dispatchLocal(SyncEvent event) {
         for (Synchronizer s : synchronizers) {
             if (s.handlesLocal(event)) {
                 try { s.emitLocal(event, context); }

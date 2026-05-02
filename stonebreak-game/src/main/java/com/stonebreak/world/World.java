@@ -302,6 +302,12 @@ public class World {
         int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
 
         Chunk chunk = getChunkAt(chunkX, chunkZ);
+        if (chunk == null) {
+            // Caller is editing a chunk that isn't currently in the chunk store
+            // (e.g. async generation in flight, multiplayer client edit in an
+            // area the host hasn't loaded). Drop the edit instead of NPE'ing.
+            return false;
+        }
 
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
