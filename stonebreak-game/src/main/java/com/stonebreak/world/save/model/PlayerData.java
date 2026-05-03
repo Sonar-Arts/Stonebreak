@@ -37,6 +37,8 @@ public final class PlayerData {
     private final int remainingCp;
     private final int remainingSp;
     private final int remainingFp;
+    private final int[] abilityScores;  // length 6: STR DEX CON INT WIS CHA
+    private final int remainingAp;
 
     private PlayerData(Builder builder) {
         this.position = new Vector3f(builder.position);
@@ -56,6 +58,8 @@ public final class PlayerData {
         this.remainingCp = builder.remainingCp;
         this.remainingSp = builder.remainingSp;
         this.remainingFp = builder.remainingFp;
+        this.abilityScores = Arrays.copyOf(builder.abilityScores, 6);
+        this.remainingAp = builder.remainingAp;
     }
 
     // Getters - return defensive copies for mutable objects
@@ -76,6 +80,8 @@ public final class PlayerData {
     public int getRemainingCp() { return remainingCp; }
     public int getRemainingSkillPoints() { return remainingSp; }
     public int getRemainingFeatPoints() { return remainingFp; }
+    public int[] getAbilityScores() { return Arrays.copyOf(abilityScores, 6); }
+    public int getRemainingAp() { return remainingAp; }
 
     /**
      * Creates a new PlayerData with updated last saved time.
@@ -117,6 +123,8 @@ public final class PlayerData {
         private int remainingCp = 100;
         private int remainingSp = 100;
         private int remainingFp = 100;
+        private int[] abilityScores = {10, 10, 10, 10, 10, 10};
+        private int remainingAp = 27;
 
         public Builder() {
             // Initialize empty inventory
@@ -143,6 +151,8 @@ public final class PlayerData {
             this.remainingCp = data.remainingCp;
             this.remainingSp = data.remainingSp;
             this.remainingFp = data.remainingFp;
+            this.abilityScores = Arrays.copyOf(data.abilityScores, 6);
+            this.remainingAp = data.remainingAp;
         }
 
         public Builder position(Vector3f position) {
@@ -230,6 +240,18 @@ public final class PlayerData {
 
         public Builder remainingFp(int remainingFp) {
             this.remainingFp = remainingFp;
+            return this;
+        }
+
+        public Builder abilityScores(int[] abilityScores) {
+            if (abilityScores != null && abilityScores.length == 6) {
+                this.abilityScores = Arrays.copyOf(abilityScores, 6);
+            }
+            return this;
+        }
+
+        public Builder remainingAp(int remainingAp) {
+            this.remainingAp = remainingAp;
             return this;
         }
 

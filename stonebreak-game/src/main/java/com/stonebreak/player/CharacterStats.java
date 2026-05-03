@@ -48,14 +48,36 @@ public class CharacterStats {
     this.player = player;
   }
 
-  // ─────────────────────────────────────────────── Ability scores (stubs)
+  // ─────────────────────────────────────────────── Ability scores
 
-  public int getStrength()     { return 10; }
-  public int getDexterity()    { return 10; }
-  public int getConstitution() { return 10; }
-  public int getIntelligence() { return 10; }
-  public int getWisdom()       { return 10; }
-  public int getCharisma()     { return 10; }
+  /** Index order: 0=STR 1=DEX 2=CON 3=INT 4=WIS 5=CHA */
+  private int[] abilityScores = {10, 10, 10, 10, 10, 10};
+  private int remainingAp = 27;
+
+  public int getStrength()     { return abilityScores[0]; }
+  public int getDexterity()    { return abilityScores[1]; }
+  public int getConstitution() { return abilityScores[2]; }
+  public int getIntelligence() { return abilityScores[3]; }
+  public int getWisdom()       { return abilityScores[4]; }
+  public int getCharisma()     { return abilityScores[5]; }
+
+  public int[] getAbilityScores() { return java.util.Arrays.copyOf(abilityScores, 6); }
+
+  public int getRemainingAp() { return remainingAp; }
+
+  /** Spends 1 AP to raise the ability at the given index (0–5). No-op if AP is 0. */
+  public void incrementAbilityScore(int index) {
+    if (remainingAp <= 0 || index < 0 || index >= 6) return;
+    remainingAp--;
+    abilityScores[index]++;
+  }
+
+  /** Refunds 1 AP by lowering the ability at the given index. No-op if score is already 1. */
+  public void decrementAbilityScore(int index) {
+    if (index < 0 || index >= 6 || abilityScores[index] <= 1) return;
+    abilityScores[index]--;
+    remainingAp++;
+  }
 
   /** Standard modifier: floor((score - 10) / 2). */
   public int getModifier(int score) { return Math.floorDiv(score - 10, 2); }
@@ -229,7 +251,8 @@ public class CharacterStats {
                       Map<String, Integer> abilityCp,
                       Map<String, Integer> skills,
                       Set<String> feats,
-                      int cp, int sp, int fp) {
+                      int cp, int sp, int fp,
+                      int[] scores, int ap) {
     this.selectedClassId = classId;
     this.spentAbilityCp.clear();
     this.spentAbilityCp.putAll(abilityCp);
@@ -240,5 +263,9 @@ public class CharacterStats {
     this.remainingCp = cp;
     this.remainingSp = sp;
     this.remainingFp = fp;
+    if (scores != null && scores.length == 6) {
+      this.abilityScores = java.util.Arrays.copyOf(scores, 6);
+    }
+    this.remainingAp = ap;
   }
 }

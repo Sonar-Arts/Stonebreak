@@ -112,7 +112,17 @@ public class JsonPlayerSerializer {
             json.append("\"").append(JsonParsingUtil.escapeJson(featId)).append("\"");
             firstEntry = false;
         }
-        json.append("]\n");
+        json.append("],\n");
+
+        // Ability scores
+        int[] scores = player.getAbilityScores();
+        json.append("  \"abilityScores\": [");
+        for (int i = 0; i < scores.length; i++) {
+            if (i > 0) json.append(", ");
+            json.append(scores[i]);
+        }
+        json.append("],\n");
+        json.append("  \"remainingAp\": ").append(player.getRemainingAp()).append("\n");
 
         json.append("}");
 
@@ -175,6 +185,21 @@ public class JsonPlayerSerializer {
             builder.spentAbilityCp(JsonParsingUtil.extractStringIntMap(json, "spentAbilityCp"));
             builder.skillLevels(JsonParsingUtil.extractStringIntMap(json, "skillLevels"));
             builder.acquiredFeatIds(JsonParsingUtil.extractStringSet(json, "acquiredFeats"));
+
+            // Ability scores (backward-compat: missing → all 10)
+            int[] abilityScores = {10, 10, 10, 10, 10, 10};
+            java.util.regex.Pattern scoresPattern = java.util.regex.Pattern.compile(
+                "\"abilityScores\"\\s*:\\s*\\[([^\\]]+)\\]");
+            java.util.regex.Matcher scoresMatcher = scoresPattern.matcher(json);
+            if (scoresMatcher.find()) {
+                String[] parts = scoresMatcher.group(1).trim().split("\\s*,\\s*");
+                for (int i = 0; i < Math.min(6, parts.length); i++) {
+                    try { abilityScores[i] = Integer.parseInt(parts[i].trim()); }
+                    catch (NumberFormatException ignored) {}
+                }
+            }
+            builder.abilityScores(abilityScores);
+            builder.remainingAp(JsonParsingUtil.extractInt(json, "remainingAp", 27));
 
             return builder.build();
 

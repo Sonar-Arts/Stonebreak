@@ -63,6 +63,8 @@ public final class StateConverter {
             .remainingCp(cs.getRemainingCp())
             .remainingSp(cs.getRemainingSkillPoints())
             .remainingFp(cs.getRemainingFeatPoints())
+            .abilityScores(cs.getAbilityScores())
+            .remainingAp(cs.getRemainingAp())
             .build();
     }
 
@@ -124,7 +126,9 @@ public final class StateConverter {
             new HashSet<>(data.getAcquiredFeatIds()),
             data.getRemainingCp(),
             data.getRemainingSkillPoints(),
-            data.getRemainingFeatPoints()
+            data.getRemainingFeatPoints(),
+            data.getAbilityScores(),
+            data.getRemainingAp()
         );
     }
 

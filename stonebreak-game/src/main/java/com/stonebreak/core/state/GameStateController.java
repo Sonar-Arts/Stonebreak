@@ -213,30 +213,4 @@ public final class GameStateController {
         }
     }
 
-    public void toggleCharacterScreen() {
-        CharacterScreen characterScreen = game.getCharacterScreen();
-        if (characterScreen == null) return;
-
-        characterScreen.toggleVisibility();
-
-        if (characterScreen.isVisible()) {
-            setState(GameState.CHARACTER_SHEET_UI);
-        } else {
-            PauseMenu pauseMenu = game.getPauseMenu();
-            if (pauseMenu == null || !pauseMenu.isVisible()) {
-                setState(GameState.PLAYING);
-            }
-        }
-    }
-
-    public void openCharacterTab(CharacterPanelTab tab) {
-        CharacterScreen characterScreen = game.getCharacterScreen();
-        if (characterScreen == null) return;
-
-        characterScreen.getController().setActiveTab(tab);
-        if (!characterScreen.isVisible()) {
-            characterScreen.toggleVisibility();
-            setState(GameState.CHARACTER_SHEET_UI);
-        }
-    }
 }
