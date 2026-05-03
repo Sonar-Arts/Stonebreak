@@ -1,6 +1,8 @@
 package com.openmason.main;
 
+import com.openmason.main.systems.mcp.McpServerBootstrap;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
+import com.openmason.main.systems.threading.MainThreadExecutor;
 import imgui.ImGui;
 import imgui.ImGuiIO;
 import imgui.flag.ImGuiConfigFlags;
@@ -63,6 +65,7 @@ public class mainOpenMason {
     private TextureCreatorImGui textureCreatorInterface;
     private TextureEditorWindow textureEditorWindow;
     private TexturePreviewPipeline texturePreviewPipeline;
+    private final McpServerBootstrap mcpServer = new McpServerBootstrap();
 
     // State flags
     private boolean showHomeScreen = true;
@@ -76,6 +79,7 @@ public class mainOpenMason {
      */
     public void run() {
         try {
+            MainThreadExecutor.bindToCurrentThread();
             omConfig = new omConfig();
             omLifecycle = new omLifecycle();
 
@@ -85,6 +89,7 @@ public class mainOpenMason {
             initializeUI();
 
             omLifecycle.onApplicationStarted();
+            mcpServer.start(mainInterface);
             runMainLoop();
 
         } catch (Exception e) {
@@ -245,6 +250,7 @@ public class mainOpenMason {
     private void runMainLoop() {
         while (!shouldClose && !glfwWindowShouldClose(window)) {
             glfwPollEvents();
+            MainThreadExecutor.drain();
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             imGuiGlfw.newFrame();
@@ -549,6 +555,8 @@ public class mainOpenMason {
         cleanedUp = true;
 
         try {
+            mcpServer.stop();
+
             if (window != NULL) {
                 glfwMakeContextCurrent(window);
                 cleanupOpenGLResources();
