@@ -14,8 +14,11 @@ public class ItemDrop extends Entity {
     
     private final ItemStack itemStack;
     private float despawnTimer;
+    private float pickupDelay;
     private static final float DESPAWN_TIME = 300.0f; // 5 minutes
     private static final float PICKUP_RANGE = 1.5f;
+    /** See {@link BlockDrop#PICKUP_DELAY} — same multiplayer fix. */
+    private static final float PICKUP_DELAY = 0.5f;
     
     // Visual compression for nearby same-type drops
     private static final float COMPRESSION_RANGE = 2.0f; // Range to compress drops
@@ -37,6 +40,7 @@ public class ItemDrop extends Entity {
         super(world, position);
         this.itemStack = itemStack;
         this.despawnTimer = DESPAWN_TIME;
+        this.pickupDelay = PICKUP_DELAY;
 
         // Set initial stack count from the ItemStack and mark as intentional if > 1
         this.stackCount = itemStack.getCount();
@@ -71,19 +75,21 @@ public class ItemDrop extends Entity {
     @Override
     public void update(float deltaTime) {
         if (!alive) return;
-        
+
         // Update despawn timer
         despawnTimer -= deltaTime;
         if (despawnTimer <= 0) {
             alive = false;
             return;
         }
-        
+
+        if (pickupDelay > 0f) pickupDelay -= deltaTime;
+
         // Apply physics with drop-specific modifications
         applyDropPhysics(deltaTime);
-        
+
         // Check for player pickup
-        checkPlayerPickup();
+        if (pickupDelay <= 0f) checkPlayerPickup();
         
         // Update visual compression with nearby drops
         updateCompression();

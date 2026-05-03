@@ -463,12 +463,17 @@ public class EntityManager {
      */
     private void handleEntityCollisions() {
         List<Entity> livingEntities = new ArrayList<>(entities);
-        
+
         for (int i = 0; i < livingEntities.size(); i++) {
             for (int j = i + 1; j < livingEntities.size(); j++) {
                 Entity entity1 = livingEntities.get(i);
                 Entity entity2 = livingEntities.get(j);
-                
+
+                // Network shadows are positioned by the interpolator from
+                // authoritative state packets; resolving collisions here would
+                // clobber that position and visibly desync the entity.
+                if (entity1.isNetworkShadow() || entity2.isNetworkShadow()) continue;
+
                 if (collision.checkEntityCollision(entity1, entity2)) {
                     collision.resolveEntityCollision(entity1, entity2);
                 }
@@ -540,11 +545,13 @@ public class EntityManager {
         synchronized (entitiesToRemove) {
             for (Entity entity : entities) {
                 if (entity.isAlive()) {
-                    // Network-driven entities are tied to a player id, not a
-                    // chunk — they must survive chunk unloads or they vanish
-                    // for viewers when the owner walks out of view distance
-                    // and never come back without an explicit despawn packet.
+                    // Network-driven entities (remote players + replicated
+                    // shadows) are owned by the host, not the local chunk.
+                    // Removing them on chunk unload silently desyncs them —
+                    // the host never re-broadcasts the spawn, so they vanish
+                    // forever for the local viewer.
                     if (entity.getType() == EntityType.REMOTE_PLAYER) continue;
+                    if (entity.isNetworkShadow()) continue;
                     Vector3f pos = entity.getPosition();
                     // Check if entity is within the chunk bounds
                     if (pos.x >= chunkMinX && pos.x < chunkMaxX &&
@@ -663,5 +670,13 @@ public class EntityManager {
     public World getWorld() { return world; }
     public EntityCollision getCollision() { return collision; }
     public List<Entity> getAllEntities() { return new ArrayList<>(entities); }
+    /** Snapshot of live entities + queued additions. Needed when callers
+     *  inspect what was just queued via {@link #addEntity} before the next
+     *  update tick promotes it into {@code entities}. */
+    public List<Entity> getAllEntitiesIncludingPending() {
+        List<Entity> out = new ArrayList<>(entities);
+        synchronized (entitiesToAdd) { out.addAll(entitiesToAdd); }
+        return out;
+    }
     public float getTotalTime() { return totalTime; }
 }

@@ -125,7 +125,14 @@ public class BlockBreaker {
             world.getSnowLayerManager().removeSnowLayers(pos.x, pos.y, pos.z);
         }
         Vector3f dropPosition = new Vector3f(pos.x + 0.5f, pos.y + 0.5f, pos.z + 0.5f);
-        DropUtil.handleBlockBroken(world, dropPosition, blockType);
+        // Drops are host-authoritative in multiplayer. A client that creates
+        // its own local drop here would end up with two drops (the local one
+        // plus the shadow the host broadcasts back) and would double-collect
+        // because the host also issues a giveItemTo when the client walks
+        // through the host's drop.
+        if (!com.stonebreak.network.MultiplayerSession.isClient()) {
+            DropUtil.handleBlockBroken(world, dropPosition, blockType);
+        }
         world.setBlockAt(pos.x, pos.y, pos.z, BlockType.AIR, true);
         Water.onBlockBroken(pos.x, pos.y, pos.z);
     }

@@ -92,11 +92,12 @@ public final class BlockSynchronizer implements Synchronizer {
                 if (prev != null && prev != BlockType.AIR && incoming == BlockType.AIR) {
                     org.joml.Vector3f dropPos = new org.joml.Vector3f(
                             c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f);
-                    // Snapshot the entity-id set before the drop spawn so we
-                    // can identify which entities DropUtil added.
                     com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+                    // Snapshot before — must include the pending-add buffer because
+                    // DropUtil.handleBlockBroken queues drops there, not into the
+                    // live entity list. Otherwise the diff is always empty.
                     java.util.Set<com.stonebreak.mobs.entities.Entity> before = em != null
-                            ? new java.util.HashSet<>(em.getAllEntities())
+                            ? new java.util.HashSet<>(em.getAllEntitiesIncludingPending())
                             : java.util.Collections.emptySet();
                     com.stonebreak.util.DropUtil.handleBlockBroken(Game.getWorld(), dropPos, prev);
                     // Force-broadcast the spawn for each new drop. Required
@@ -106,7 +107,7 @@ public final class BlockSynchronizer implements Synchronizer {
                     if (em != null) {
                         com.stonebreak.network.sync.SyncService sync =
                                 com.stonebreak.network.MultiplayerSession.getSyncService();
-                        for (com.stonebreak.mobs.entities.Entity e : em.getAllEntities()) {
+                        for (com.stonebreak.mobs.entities.Entity e : em.getAllEntitiesIncludingPending()) {
                             if (before.contains(e)) continue;
                             sync.notifyLocalForced(
                                     new com.stonebreak.network.sync.SyncEvent.EntitySpawned(e));

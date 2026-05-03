@@ -14,8 +14,15 @@ public class BlockDrop extends Entity {
     
     private final BlockType blockType;
     private float despawnTimer;
+    private float pickupDelay;
     private static final float DESPAWN_TIME = 300.0f; // 5 minutes
     private static final float PICKUP_RANGE = 1.5f;
+    /** Lock-out window after spawn before any pickup can fire. Stops the
+     *  spawning player from instantly absorbing their own drop on the same
+     *  tick it spawns — important in multiplayer because spawn + same-tick
+     *  despawn arrive back-to-back at remote clients with no render frame
+     *  between them, making the drop appear to never exist. */
+    private static final float PICKUP_DELAY = 0.5f;
     
     // Visual compression for nearby same-type drops
     private static final float COMPRESSION_RANGE = 2.0f; // Range to compress drops
@@ -37,6 +44,7 @@ public class BlockDrop extends Entity {
         super(world, position);
         this.blockType = blockType;
         this.despawnTimer = DESPAWN_TIME;
+        this.pickupDelay = PICKUP_DELAY;
         
         // Set drop-specific properties from EntityType
         EntityType dropType = EntityType.BLOCK_DROP;
@@ -60,19 +68,21 @@ public class BlockDrop extends Entity {
     @Override
     public void update(float deltaTime) {
         if (!alive) return;
-        
+
         // Update despawn timer
         despawnTimer -= deltaTime;
         if (despawnTimer <= 0) {
             alive = false;
             return;
         }
-        
+
+        if (pickupDelay > 0f) pickupDelay -= deltaTime;
+
         // Apply physics with drop-specific modifications
         applyDropPhysics(deltaTime);
-        
+
         // Check for player pickup
-        checkPlayerPickup();
+        if (pickupDelay <= 0f) checkPlayerPickup();
         
         // Update visual compression with nearby drops
         updateCompression();
