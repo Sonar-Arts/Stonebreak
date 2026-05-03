@@ -36,6 +36,12 @@ public abstract class Entity {
     protected float width;
     protected float height;
     protected float length;
+
+    // Multiplayer replication metadata. networkId < 0 means "not registered with the sync layer";
+    // networkShadow=true means a remote-owned entity that should skip local AI/physics.
+    private int networkId = -1;
+    private boolean networkShadow = false;
+    private com.stonebreak.network.sync.NetworkInterpolator interpolator;
     
     /**
      * Creates a new entity at the specified position.
@@ -201,6 +207,13 @@ public abstract class Entity {
     public void setOnGround(boolean onGround) { this.onGround = onGround; }
     public void setInWater(boolean inWater) { this.inWater = inWater; }
     public void setAlive(boolean alive) { this.alive = alive; }
+
+    public int getNetworkId() { return networkId; }
+    public void setNetworkId(int networkId) { this.networkId = networkId; }
+    public boolean isNetworkShadow() { return networkShadow; }
+    public void setNetworkShadow(boolean shadow) { this.networkShadow = shadow; }
+    public com.stonebreak.network.sync.NetworkInterpolator getInterpolator() { return interpolator; }
+    public void setInterpolator(com.stonebreak.network.sync.NetworkInterpolator interp) { this.interpolator = interp; }
     
     /**
      * Simple bounding box class for collision detection.

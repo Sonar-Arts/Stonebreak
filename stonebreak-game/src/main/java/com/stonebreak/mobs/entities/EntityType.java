@@ -17,6 +17,10 @@ public enum EntityType {
     // Drop entities (small, physics-based items)
     BLOCK_DROP("Block Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false),
     ITEM_DROP("Item Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false),
+
+    // Remote (multiplayer) player; rendered as a cylinder.
+    // height = 1.8 (head-to-foot), width/length = 0.6, no separate legs (legHeight=0).
+    REMOTE_PLAYER("Remote Player", 20.0f, 0.0f, 1.8f, 0.6f, 0.6f, 0.0f, true),
     
     // Future entities can be added here
     // SHEEP("Sheep", 8.0f, 1.5f, 1.3f, 0.9f, 1.3f, true),

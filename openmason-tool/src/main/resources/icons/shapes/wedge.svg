@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Wedge - triangular prism with sloped top -->
+  <polygon points="4,26 4,12 24,26"
+           fill="#5B9BD5" stroke="#3A6FA8" stroke-width="1.5" stroke-linejoin="round"/>
+  <polygon points="4,12 11,8 28,22 24,26"
+           fill="#7AB4E8" stroke="#3A6FA8" stroke-width="1.5" stroke-linejoin="round"/>
+  <polygon points="24,26 28,22 28,8 11,8 4,12"
+           fill="none" stroke="#3A6FA8" stroke-width="1" opacity="0"/>
+  <polygon points="4,26 24,26 28,22"
+           fill="#3A6FA8" stroke="#2E5C9E" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

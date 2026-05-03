@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Torus - donut shape -->
+  <ellipse cx="16" cy="16" rx="13" ry="7"
+           fill="#5B9BD5" stroke="#3A6FA8" stroke-width="1.5"/>
+  <ellipse cx="16" cy="16" rx="5" ry="2.5"
+           fill="#1F2A3A" stroke="#3A6FA8" stroke-width="1.2"/>
+  <path d="M 3 16 A 13 4 0 0 1 29 16"
+        fill="none" stroke="#3A6FA8" stroke-width="1" opacity="0.5"/>
+</svg>

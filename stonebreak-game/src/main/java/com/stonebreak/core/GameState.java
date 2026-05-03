@@ -9,6 +9,9 @@ public enum GameState {
     PLAYING,
     PAUSED,
     SETTINGS,
+    MULTIPLAYER_MENU,    // Multiplayer top-level menu (Host / Join / Back)
+    HOST_WORLD_SELECT,   // Pick a world to host + configure port
+    JOIN_WORLD_SCREEN,   // Enter host:port + username and connect
     WORKBENCH_UI,
     INVENTORY_UI,    // State for when inventory is open
     RECIPE_BOOK_UI,   // State for Recipe Book UI

@@ -1,14 +1,33 @@
 package com.openmason.engine.rendering.model.gmr.parts;
 
 import com.openmason.engine.rendering.model.ModelPart;
+import com.openmason.engine.rendering.model.gmr.parts.shapes.ConeShape;
+import com.openmason.engine.rendering.model.gmr.parts.shapes.CrossShape;
+import com.openmason.engine.rendering.model.gmr.parts.shapes.CubeShape;
+import com.openmason.engine.rendering.model.gmr.parts.shapes.CylinderShape;
+import com.openmason.engine.rendering.model.gmr.parts.shapes.HemisphereShape;
+import com.openmason.engine.rendering.model.gmr.parts.shapes.PaneShape;
+import com.openmason.engine.rendering.model.gmr.parts.shapes.PartShape;
+import com.openmason.engine.rendering.model.gmr.parts.shapes.PyramidShape;
+import com.openmason.engine.rendering.model.gmr.parts.shapes.SphereShape;
+import com.openmason.engine.rendering.model.gmr.parts.shapes.SpriteShape;
+import com.openmason.engine.rendering.model.gmr.parts.shapes.TorusShape;
+import com.openmason.engine.rendering.model.gmr.parts.shapes.WedgeShape;
 import org.joml.Vector3f;
 
 /**
- * Factory for creating standard part shapes.
- * Each shape produces a {@link ModelPart} with proper geometry, UV coordinates,
- * and topology hints ready for registration with the {@link ModelPartManager}.
+ * Facade for creating standard part shapes. Each shape's geometry, UV layout,
+ * and triangle-to-face mapping is encapsulated in its own {@link PartShape}
+ * implementation under the {@code shapes} subpackage. This class merely routes
+ * requests to the correct implementation via the {@link Shape} enum.
  *
- * <p>All shapes are centered at the origin with configurable size.
+ * <p>To add a new shape:
+ * <ol>
+ *   <li>Implement {@link PartShape} in a new class under {@code shapes/}</li>
+ *   <li>Add a corresponding entry to the {@link Shape} enum below</li>
+ * </ol>
+ * No other code changes are required — the MCP tools, ImGui dialog, and
+ * renderer all auto-discover new enum values.
  */
 public final class PartShapeFactory {
 
@@ -17,24 +36,31 @@ public final class PartShapeFactory {
     }
 
     /**
-     * Available primitive shapes for new model parts.
+     * Available primitive shapes for new model parts. Each constant binds to a
+     * {@link PartShape} implementation that owns the geometry definition.
      */
     public enum Shape {
-        CUBE("Cube", "Standard 6-face cube with quad topology"),
-        PYRAMID("Pyramid", "4-sided pyramid with triangular faces and a quad base"),
-        PANE("Pane", "Flat single-face quad for thin surfaces like leaves or signs"),
-        SPRITE("Sprite", "Single-sided flat quad with one universal texture face");
+        CUBE(new CubeShape()),
+        PYRAMID(new PyramidShape()),
+        PANE(new PaneShape()),
+        SPRITE(new SpriteShape()),
+        CYLINDER(new CylinderShape()),
+        CONE(new ConeShape()),
+        SPHERE(new SphereShape()),
+        HEMISPHERE(new HemisphereShape()),
+        WEDGE(new WedgeShape()),
+        TORUS(new TorusShape()),
+        CROSS(new CrossShape());
 
-        private final String displayName;
-        private final String description;
+        private final PartShape impl;
 
-        Shape(String displayName, String description) {
-            this.displayName = displayName;
-            this.description = description;
+        Shape(PartShape impl) {
+            this.impl = impl;
         }
 
-        public String getDisplayName() { return displayName; }
-        public String getDescription() { return description; }
+        public PartShape impl() { return impl; }
+        public String getDisplayName() { return impl.displayName(); }
+        public String getDescription() { return impl.description(); }
     }
 
     /**
@@ -46,335 +72,30 @@ public final class PartShapeFactory {
      * @return A ModelPart with the shape's geometry
      */
     public static ModelPart create(Shape shape, String name, Vector3f size) {
-        return switch (shape) {
-            case CUBE -> createCube(name, size);
-            case PYRAMID -> createPyramid(name, size);
-            case PANE -> createPane(name, size);
-            case SPRITE -> createSprite(name, size);
-        };
+        return shape.impl().create(name, size);
     }
 
     /**
      * Create a unit-sized (1x1x1) model part for the given shape.
-     *
-     * @param shape The primitive shape
-     * @param name  Part name
-     * @return A ModelPart with unit-sized geometry
      */
     public static ModelPart createUnit(Shape shape, String name) {
         return create(shape, name, new Vector3f(1, 1, 1));
     }
 
-    // ========== Cube ==========
-
     /**
-     * Create a cube where the assigned texture appears identically on all 6 faces.
-     * Each face maps the full texture (0..1 in both U and V) with no mirroring,
-     * so a single texture renders the same on every face when viewed from outside.
-     *
-     * <p>24 vertices (4 per face), 36 indices, 6 quad faces. Vertex order per face is
-     * BL, BR, TR, TL with CCW winding when viewed from the face's outward normal.
-     * Face order: Front(+Z), Back(-Z), Left(-X), Right(+X), Top(+Y), Bottom(-Y).
-     */
-    private static ModelPart createCube(String name, Vector3f size) {
-        float hw = size.x / 2.0f;
-        float hh = size.y / 2.0f;
-        float hd = size.z / 2.0f;
-
-        float[] vertices = {
-            // FRONT (+Z): BL, BR, TR, TL viewed from +Z
-            -hw, -hh,  hd,
-             hw, -hh,  hd,
-             hw,  hh,  hd,
-            -hw,  hh,  hd,
-
-            // BACK (-Z): BL, BR, TR, TL viewed from -Z (so +X is BL's left)
-             hw, -hh, -hd,
-            -hw, -hh, -hd,
-            -hw,  hh, -hd,
-             hw,  hh, -hd,
-
-            // LEFT (-X): BL, BR, TR, TL viewed from -X
-            -hw, -hh, -hd,
-            -hw, -hh,  hd,
-            -hw,  hh,  hd,
-            -hw,  hh, -hd,
-
-            // RIGHT (+X): BL, BR, TR, TL viewed from +X
-             hw, -hh,  hd,
-             hw, -hh, -hd,
-             hw,  hh, -hd,
-             hw,  hh,  hd,
-
-            // TOP (+Y): BL, BR, TR, TL viewed from +Y (looking down -Y)
-            -hw,  hh,  hd,
-             hw,  hh,  hd,
-             hw,  hh, -hd,
-            -hw,  hh, -hd,
-
-            // BOTTOM (-Y): BL, BR, TR, TL viewed from -Y (looking up +Y)
-            -hw, -hh, -hd,
-             hw, -hh, -hd,
-             hw, -hh,  hd,
-            -hw, -hh,  hd,
-        };
-
-        // Identical UVs on every face: BL=(0,1), BR=(1,1), TR=(1,0), TL=(0,0).
-        float[] texCoords = new float[6 * 4 * 2];
-        for (int face = 0; face < 6; face++) {
-            int o = face * 8;
-            texCoords[o    ] = 0.0f; texCoords[o + 1] = 1.0f; // BL
-            texCoords[o + 2] = 1.0f; texCoords[o + 3] = 1.0f; // BR
-            texCoords[o + 4] = 1.0f; texCoords[o + 5] = 0.0f; // TR
-            texCoords[o + 6] = 0.0f; texCoords[o + 7] = 0.0f; // TL
-        }
-
-        // 6 faces × 2 triangles = 12 triangles, CCW: (0,1,2) and (2,3,0) per face.
-        int[] indices = new int[36];
-        int idx = 0;
-        for (int face = 0; face < 6; face++) {
-            int base = face * 4;
-            indices[idx++] = base;
-            indices[idx++] = base + 1;
-            indices[idx++] = base + 2;
-            indices[idx++] = base + 2;
-            indices[idx++] = base + 3;
-            indices[idx++] = base;
-        }
-
-        return new ModelPart(name, new Vector3f(0, 0, 0), vertices, texCoords, indices, 2);
-    }
-
-    // ========== Pane ==========
-
-    /**
-     * Create a dual-faced flat pane oriented on the XY plane.
-     * <p>
-     * Geometry: 8 vertices (4 front + 4 back) with a thin offset to prevent
-     * z-fighting. Uses the same vertex layout pattern as the cube (4 verts per face,
-     * CCW winding via index pattern). The same texture appears on both sides.
-     * <ul>
-     *   <li>Face 0: Front (+Z side)</li>
-     *   <li>Face 1: Back (-Z side)</li>
-     *   <li>Total: 8 vertices, 12 indices, 2 logical faces</li>
-     * </ul>
-     */
-    private static ModelPart createPane(String name, Vector3f size) {
-        float hw = size.x / 2.0f;
-        float hh = size.y / 2.0f;
-        float hd = 0.005f; // thin offset to prevent z-fighting
-
-        // 8 vertices: same layout as first 2 faces of a cube
-        float[] vertices = {
-            // Face 0: Front (facing +Z) — vertices 0-3
-            -hw, -hh,  hd,  // 0: bottom-left
-             hw, -hh,  hd,  // 1: bottom-right
-             hw,  hh,  hd,  // 2: top-right
-            -hw,  hh,  hd,  // 3: top-left
-
-            // Face 1: Back (facing -Z) — vertices 4-7
-             hw, -hh, -hd,  // 4: bottom-left (mirrored)
-            -hw, -hh, -hd,  // 5: bottom-right (mirrored)
-            -hw,  hh, -hd,  // 6: top-right (mirrored)
-             hw,  hh, -hd,  // 7: top-left (mirrored)
-        };
-
-        // Same texture on both sides
-        float[] texCoords = {
-            // Front
-            0.0f, 1.0f,
-            1.0f, 1.0f,
-            1.0f, 0.0f,
-            0.0f, 0.0f,
-            // Back (mirrored X so texture reads correctly from behind)
-            0.0f, 1.0f,
-            1.0f, 1.0f,
-            1.0f, 0.0f,
-            0.0f, 0.0f,
-        };
-
-        // Same CCW index pattern as cube faces: base, base+1, base+2, base+2, base+3, base
-        int[] indices = {
-            // Face 0: Front
-            0, 1, 2,
-            2, 3, 0,
-            // Face 1: Back
-            4, 5, 6,
-            6, 7, 4,
-        };
-
-        return new ModelPart(name, new Vector3f(0, 0, 0), vertices, texCoords, indices, null);
-    }
-
-    // ========== Sprite ==========
-
-    /**
-     * Create a single-sided flat quad oriented on the XY plane.
-     * <p>
-     * Unlike the pane which has front and back faces, the sprite is a single face
-     * with one universal texture. Ideal for flat decals, labels, or sprite-style elements.
-     * <ul>
-     *   <li>Face 0: Front (+Z side)</li>
-     *   <li>Total: 4 vertices, 6 indices, 1 logical face</li>
-     * </ul>
-     */
-    private static ModelPart createSprite(String name, Vector3f size) {
-        float hw = size.x / 2.0f;
-        float hh = size.y / 2.0f;
-
-        float[] vertices = {
-            // Face 0: Front (facing +Z) — vertices 0-3
-            -hw, -hh, 0.0f,  // 0: bottom-left
-             hw, -hh, 0.0f,  // 1: bottom-right
-             hw,  hh, 0.0f,  // 2: top-right
-            -hw,  hh, 0.0f,  // 3: top-left
-        };
-
-        float[] texCoords = {
-            0.0f, 1.0f,
-            1.0f, 1.0f,
-            1.0f, 0.0f,
-            0.0f, 0.0f,
-        };
-
-        int[] indices = {
-            0, 1, 2,
-            2, 3, 0,
-        };
-
-        return new ModelPart(name, new Vector3f(0, 0, 0), vertices, texCoords, indices, null);
-    }
-
-    // ========== Pyramid ==========
-
-    /**
-     * Create a 4-sided pyramid with an apex at the top center.
-     * <p>
-     * Geometry: 5 unique positions (4 base corners + 1 apex).
-     * Expanded to 16 vertices for proper per-face normals/UVs.
-     * <ul>
-     *   <li>4 triangular side faces (3 vertices each = 12 vertices)</li>
-     *   <li>1 quad base face (4 vertices = 4 vertices, 2 triangles)</li>
-     *   <li>Total: 16 vertices, 18 indices, 5 logical faces</li>
-     *   <li>Topology: mixed (sides are 1 tri/face, base is 2 tri/face)</li>
-     * </ul>
-     */
-    private static ModelPart createPyramid(String name, Vector3f size) {
-        float hw = size.x / 2.0f;
-        float hh = size.y / 2.0f;
-        float hd = size.z / 2.0f;
-
-        // 5 unique positions
-        // Base corners (y = -hh)
-        float bfl_x = -hw, bfl_y = -hh, bfl_z =  hd; // base front-left
-        float bfr_x =  hw, bfr_y = -hh, bfr_z =  hd; // base front-right
-        float bbr_x =  hw, bbr_y = -hh, bbr_z = -hd; // base back-right
-        float bbl_x = -hw, bbl_y = -hh, bbl_z = -hd; // base back-left
-        // Apex (y = +hh)
-        float ax = 0, ay = hh, az = 0;
-
-        // 16 vertices: 4 side faces (3 verts each) + 1 base face (4 verts)
-        float[] vertices = {
-            // Face 0: Front side (apex, front-left, front-right)
-            ax,    ay,    az,
-            bfl_x, bfl_y, bfl_z,
-            bfr_x, bfr_y, bfr_z,
-
-            // Face 1: Right side (apex, front-right, back-right)
-            ax,    ay,    az,
-            bfr_x, bfr_y, bfr_z,
-            bbr_x, bbr_y, bbr_z,
-
-            // Face 2: Back side (apex, back-right, back-left)
-            ax,    ay,    az,
-            bbr_x, bbr_y, bbr_z,
-            bbl_x, bbl_y, bbl_z,
-
-            // Face 3: Left side (apex, back-left, front-left)
-            ax,    ay,    az,
-            bbl_x, bbl_y, bbl_z,
-            bfl_x, bfl_y, bfl_z,
-
-            // Face 4: Base (quad: front-left, front-right, back-right, back-left)
-            bfl_x, bfl_y, bfl_z,
-            bfr_x, bfr_y, bfr_z,
-            bbr_x, bbr_y, bbr_z,
-            bbl_x, bbl_y, bbl_z,
-        };
-
-        // UV coordinates: simple per-face mapping
-        // Side faces get a triangle region, base gets full quad
-        float[] texCoords = {
-            // Face 0: Front side triangle
-            0.5f, 0.0f,   0.0f, 1.0f,   1.0f, 1.0f,
-            // Face 1: Right side triangle
-            0.5f, 0.0f,   0.0f, 1.0f,   1.0f, 1.0f,
-            // Face 2: Back side triangle
-            0.5f, 0.0f,   0.0f, 1.0f,   1.0f, 1.0f,
-            // Face 3: Left side triangle
-            0.5f, 0.0f,   0.0f, 1.0f,   1.0f, 1.0f,
-            // Face 4: Base quad
-            0.0f, 0.0f,   1.0f, 0.0f,   1.0f, 1.0f,   0.0f, 1.0f,
-        };
-
-        // Indices: 4 side triangles + 2 base triangles = 6 triangles, 18 indices
-        int[] indices = {
-            // Face 0: Front side (1 triangle)
-            0, 1, 2,
-            // Face 1: Right side (1 triangle)
-            3, 4, 5,
-            // Face 2: Back side (1 triangle)
-            6, 7, 8,
-            // Face 3: Left side (1 triangle)
-            9, 10, 11,
-            // Face 4: Base (2 triangles)
-            12, 13, 14,
-            14, 15, 12,
-        };
-
-        // Triangle-to-face mapping: faces 0-3 are 1 triangle each, face 4 is 2 triangles
-        // Cannot use trianglesPerFace hint (mixed topology) — must be explicit
-        // This is null so addPart will use explicit mapping or 1:1 default;
-        // we'll provide it explicitly via PartGeometry instead
-        return new ModelPart(name, new Vector3f(0, 0, 0), vertices, texCoords, indices, null);
-    }
-
-    /**
-     * Create a PartGeometry for the given shape with a proper triangle-to-face mapping.
-     * Use this instead of {@link #create} when adding parts to the ModelPartManager
-     * to preserve the exact face mapping.
+     * Create a PartGeometry for the given shape with a proper triangle-to-face
+     * mapping. Use this instead of {@link #create} when adding parts to the
+     * ModelPartManager to preserve the exact face mapping.
      *
      * @param shape The primitive shape
-     * @param name  Part name (unused in geometry, kept for consistency)
+     * @param name  Part name (unused in geometry, kept for API symmetry)
      * @param size  Size in each axis
      * @return PartGeometry with correct face mapping
      */
     public static PartMeshRebuilder.PartGeometry createGeometry(Shape shape, String name, Vector3f size) {
-        ModelPart part = create(shape, name, size);
-
-        int[] triangleToFaceId = switch (shape) {
-            case CUBE -> {
-                // 12 triangles, 6 faces, 2 triangles per face
-                int[] mapping = new int[12];
-                for (int i = 0; i < 12; i++) {
-                    mapping[i] = i / 2;
-                }
-                yield mapping;
-            }
-            case PYRAMID -> {
-                // 6 triangles: faces 0-3 get 1 triangle each, face 4 gets 2 triangles
-                yield new int[]{0, 1, 2, 3, 4, 4};
-            }
-            case PANE -> {
-                // 4 triangles, 2 faces (front and back)
-                yield new int[]{0, 0, 1, 1};
-            }
-            case SPRITE -> {
-                // 2 triangles, 1 face
-                yield new int[]{0, 0};
-            }
-        };
-
+        PartShape impl = shape.impl();
+        ModelPart part = impl.create(name, size);
+        int[] triangleToFaceId = impl.triangleToFaceId();
         return PartMeshRebuilder.PartGeometry.of(
                 part.vertices(), part.texCoords(), part.indices(), triangleToFaceId
         );

@@ -13,12 +13,13 @@ import java.util.Objects;
  *   <li>1.2 - Added per-face texture persistence (face mappings, material entries, material PNGs)</li>
  *   <li>1.3 - Added model part entries for multi-part models (part transforms, mesh ranges)</li>
  *   <li>1.4 - Added model-level transform (position, rotation, scale)</li>
+ *   <li>1.5 - Added optional part hierarchy (parentId on PartEntry)</li>
  * </ul>
  */
 public final class OMOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.4";
+    public static final String FORMAT_VERSION = "1.5";
 
     /** Minimum supported format version for reading */
     public static final String MIN_SUPPORTED_VERSION = "1.0";
@@ -211,6 +212,7 @@ public final class OMOFormat {
      * @param faceCount   Number of faces this part owns
      * @param visible     Whether this part is rendered
      * @param locked      Whether this part is protected from editing
+     * @param parentId    Optional parent part ID for hierarchical transforms (v1.5+); null = root
      */
     public record PartEntry(
             String id, String name,
@@ -221,8 +223,34 @@ public final class OMOFormat {
             int vertexStart, int vertexCount,
             int indexStart, int indexCount,
             int faceStart, int faceCount,
-            boolean visible, boolean locked
-    ) {}
+            boolean visible, boolean locked,
+            String parentId
+    ) {
+        /**
+         * Backward-compatible constructor for callers that don't supply a parent.
+         * Pre-1.5 readers and call sites get a root part (parentId = null).
+         */
+        public PartEntry(
+                String id, String name,
+                float originX, float originY, float originZ,
+                float posX, float posY, float posZ,
+                float rotX, float rotY, float rotZ,
+                float scaleX, float scaleY, float scaleZ,
+                int vertexStart, int vertexCount,
+                int indexStart, int indexCount,
+                int faceStart, int faceCount,
+                boolean visible, boolean locked
+        ) {
+            this(id, name, originX, originY, originZ,
+                    posX, posY, posZ,
+                    rotX, rotY, rotZ,
+                    scaleX, scaleY, scaleZ,
+                    vertexStart, vertexCount,
+                    indexStart, indexCount,
+                    faceStart, faceCount,
+                    visible, locked, null);
+        }
+    }
 
     /**
      * Model-level transform data (v1.4+).

@@ -55,4 +55,15 @@ public interface IPartChangeListener {
      * Listeners should discard cached part state and re-query the manager.
      */
     void onPartsRebuilt();
+
+    /**
+     * A part was reparented in the hierarchy.
+     * Default no-op so existing listeners don't have to opt in.
+     *
+     * @param partId      The reparented part ID
+     * @param newParentId New parent ID, or null if detached to root
+     */
+    default void onPartParentChanged(String partId, String newParentId) {
+        // optional event
+    }
 }

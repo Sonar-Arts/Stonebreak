@@ -25,6 +25,9 @@ public class RenderingState {
     // Item state
     private ItemType selectedItem = null;
 
+    // SBT texture state — driven by an absolute path supplied by the Model Browser.
+    private java.nio.file.Path selectedSbtPath = null;
+
     /**
      * Create default rendering state (model mode).
      */
@@ -53,6 +56,7 @@ public class RenderingState {
         this.selectedBlock = blockType;
         this.currentModelName = null;
         this.selectedItem = null;
+        this.selectedSbtPath = null;
         logger.debug("Switched to BLOCK rendering mode: {}", blockType.name());
     }
 
@@ -64,6 +68,7 @@ public class RenderingState {
         this.currentModelName = modelName;
         this.selectedBlock = null;
         this.selectedItem = null;
+        this.selectedSbtPath = null;
         logger.debug("Switched to BLOCK_MODEL rendering mode: {}", modelName);
     }
 
@@ -79,7 +84,33 @@ public class RenderingState {
         this.selectedItem = itemType;
         this.currentModelName = null;
         this.selectedBlock = null;
+        this.selectedSbtPath = null;
         logger.debug("Switched to ITEM rendering mode: {}", itemType.name());
+    }
+
+    /**
+     * Switch to SBT-texture rendering mode (voxelized sprite from a .sbt file on disk).
+     */
+    public void setSBTMode(java.nio.file.Path sbtFile) {
+        if (sbtFile == null) {
+            logger.warn("Cannot set null SBT path");
+            return;
+        }
+        this.mode = RenderingMode.SBT_TEXTURE;
+        this.selectedSbtPath = sbtFile;
+        this.currentModelName = null;
+        this.selectedBlock = null;
+        this.selectedItem = null;
+        logger.debug("Switched to SBT_TEXTURE rendering mode: {}", sbtFile);
+    }
+
+    public java.nio.file.Path getSelectedSbtPath() {
+        return selectedSbtPath;
+    }
+
+    /** Whether SBT texture rendering is ready. */
+    public boolean isSBTReady() {
+        return mode == RenderingMode.SBT_TEXTURE && selectedSbtPath != null;
     }
 
     /**
@@ -142,6 +173,7 @@ public class RenderingState {
             case BLOCK_MODEL -> currentModelName != null ? "BlockModel: " + currentModelName : "No block model";
             case BLOCK -> selectedBlock != null ? "Block: " + selectedBlock.name() : "No block";
             case ITEM -> selectedItem != null ? "Item: " + selectedItem.name() : "No item";
+            case SBT_TEXTURE -> selectedSbtPath != null ? "SBT: " + selectedSbtPath.getFileName() : "No SBT";
         };
     }
 

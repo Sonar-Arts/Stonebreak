@@ -33,6 +33,7 @@ public class CanvasPanel {
 
     private final CanvasRenderer renderer;
     private boolean wasMouseDown = false;
+    private boolean strokeActive = false;
 
     // Face-region editing mode state
     private boolean faceEditingMode = false;
@@ -282,10 +283,14 @@ public class CanvasPanel {
             boolean coordsValid = validCoords && (allowOutOfBounds || canvas.isValidCoordinate(canvasCoords[0], canvasCoords[1]));
 
             if (coordsValid) {
-                // Create new draw command when starting a drawing operation
-                if (!wasMouseDown) {
+                // Start a new stroke on the first in-bounds sample, even if the button was
+                // already pressed outside the canvas. Without this, the very first onMouseDrag
+                // would interpolate a line from the tool's stale lastX/lastY (or the previous
+                // in-bounds position) to the canvas-edge entry point, painting a long streak.
+                if (!strokeActive) {
                     currentDrawCommand = new DrawCommand(canvas, currentTool.getName());
                     currentTool.onMouseDown(canvasCoords[0], canvasCoords[1], currentColor, canvas, currentDrawCommand);
+                    strokeActive = true;
                 } else {
                     currentTool.onMouseDrag(canvasCoords[0], canvasCoords[1], currentColor, canvas, currentDrawCommand);
                 }
@@ -299,6 +304,7 @@ public class CanvasPanel {
 
         // Mouse button released
         if (wasMouseDown && !leftMouseDown && currentTool != null) {
+            strokeActive = false;
             currentTool.onMouseUp(currentColor, canvas, currentDrawCommand);
 
             // Handle color picker tool
@@ -356,6 +362,9 @@ public class CanvasPanel {
 
         // Update mouse state
         wasMouseDown = leftMouseDown;
+        if (!leftMouseDown) {
+            strokeActive = false;
+        }
     }
 
     /**

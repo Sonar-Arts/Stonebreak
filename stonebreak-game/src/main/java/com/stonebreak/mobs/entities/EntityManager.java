@@ -36,6 +36,15 @@ public class EntityManager {
     private final ExecutorService entityDeserializationExecutor;
     private final Queue<Entity> pendingEntityAdditions;
     private static final int MAX_ENTITY_ADDITIONS_PER_FRAME = 20;
+
+    /** Lifecycle listener — used by the network sync layer to replicate entities. */
+    public interface Listener {
+        default void onEntityAdded(Entity entity)   {}
+        default void onEntityRemoved(Entity entity) {}
+    }
+    private final List<Listener> listeners = new CopyOnWriteArrayList<>();
+    public void addListener(Listener l) { listeners.add(l); }
+    public void removeListener(Listener l) { listeners.remove(l); }
     
     /**
      * Creates a new entity manager for the specified world.
@@ -70,17 +79,26 @@ public class EntityManager {
         // Add new entities
         synchronized (entitiesToAdd) {
             if (!entitiesToAdd.isEmpty()) {
+                List<Entity> added = new ArrayList<>(entitiesToAdd);
                 entities.addAll(entitiesToAdd);
                 entitiesToAdd.clear();
+                for (Entity e : added) fireAdded(e);
             }
         }
-        
+
         // Update all entities
         for (Entity entity : entities) {
             if (entity.isAlive()) {
-                // Update entity
+                // Network shadows are driven by inbound state packets — skip local
+                // AI/physics. Apply network interpolation each frame so motion is
+                // smooth between snapshots instead of teleporting at tick rate.
+                if (entity.isNetworkShadow()) {
+                    if (entity.getInterpolator() != null) entity.getInterpolator().apply(entity);
+                    continue;
+                }
+
                 entity.update(deltaTime);
-                
+
                 // Apply physics and collision
                 if (entity instanceof LivingEntity livingEntity) {
                     collision.applyLivingEntityPhysics(livingEntity, deltaTime);
@@ -101,8 +119,25 @@ public class EntityManager {
         // Remove dead entities
         synchronized (entitiesToRemove) {
             if (!entitiesToRemove.isEmpty()) {
+                List<Entity> removed = new ArrayList<>(entitiesToRemove);
                 entities.removeAll(entitiesToRemove);
                 entitiesToRemove.clear();
+                for (Entity e : removed) fireRemoved(e);
+            }
+        }
+    }
+
+    private void fireAdded(Entity e) {
+        for (Listener l : listeners) {
+            try { l.onEntityAdded(e); } catch (Exception ex) {
+                System.err.println("[EntityManager] Listener.onEntityAdded threw: " + ex);
+            }
+        }
+    }
+    private void fireRemoved(Entity e) {
+        for (Listener l : listeners) {
+            try { l.onEntityRemoved(e); } catch (Exception ex) {
+                System.err.println("[EntityManager] Listener.onEntityRemoved threw: " + ex);
             }
         }
     }
@@ -428,12 +463,17 @@ public class EntityManager {
      */
     private void handleEntityCollisions() {
         List<Entity> livingEntities = new ArrayList<>(entities);
-        
+
         for (int i = 0; i < livingEntities.size(); i++) {
             for (int j = i + 1; j < livingEntities.size(); j++) {
                 Entity entity1 = livingEntities.get(i);
                 Entity entity2 = livingEntities.get(j);
-                
+
+                // Network shadows are positioned by the interpolator from
+                // authoritative state packets; resolving collisions here would
+                // clobber that position and visibly desync the entity.
+                if (entity1.isNetworkShadow() || entity2.isNetworkShadow()) continue;
+
                 if (collision.checkEntityCollision(entity1, entity2)) {
                     collision.resolveEntityCollision(entity1, entity2);
                 }
@@ -497,17 +537,24 @@ public class EntityManager {
     public void removeEntitiesInChunk(int chunkX, int chunkZ) {
         int chunkMinX = chunkX * 16;
         int chunkMaxX = chunkMinX + 16;
-        int chunkMinZ = chunkZ * 16; 
+        int chunkMinZ = chunkZ * 16;
         int chunkMaxZ = chunkMinZ + 16;
-        
+
         int removedCount = 0;
-        
+
         synchronized (entitiesToRemove) {
             for (Entity entity : entities) {
                 if (entity.isAlive()) {
+                    // Network-driven entities (remote players + replicated
+                    // shadows) are owned by the host, not the local chunk.
+                    // Removing them on chunk unload silently desyncs them —
+                    // the host never re-broadcasts the spawn, so they vanish
+                    // forever for the local viewer.
+                    if (entity.getType() == EntityType.REMOTE_PLAYER) continue;
+                    if (entity.isNetworkShadow()) continue;
                     Vector3f pos = entity.getPosition();
                     // Check if entity is within the chunk bounds
-                    if (pos.x >= chunkMinX && pos.x < chunkMaxX && 
+                    if (pos.x >= chunkMinX && pos.x < chunkMaxX &&
                         pos.z >= chunkMinZ && pos.z < chunkMaxZ) {
                         entitiesToRemove.add(entity);
                         removedCount++;
@@ -623,5 +670,13 @@ public class EntityManager {
     public World getWorld() { return world; }
     public EntityCollision getCollision() { return collision; }
     public List<Entity> getAllEntities() { return new ArrayList<>(entities); }
+    /** Snapshot of live entities + queued additions. Needed when callers
+     *  inspect what was just queued via {@link #addEntity} before the next
+     *  update tick promotes it into {@code entities}. */
+    public List<Entity> getAllEntitiesIncludingPending() {
+        List<Entity> out = new ArrayList<>(entities);
+        synchronized (entitiesToAdd) { out.addAll(entitiesToAdd); }
+        return out;
+    }
     public float getTotalTime() { return totalTime; }
 }

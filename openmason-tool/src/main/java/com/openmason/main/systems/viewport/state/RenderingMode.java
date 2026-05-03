@@ -23,5 +23,10 @@ public enum RenderingMode {
     /**
      * Render voxelized items.
      */
-    ITEM
+    ITEM,
+
+    /**
+     * Render a voxelized .SBT texture loaded from disk.
+     */
+    SBT_TEXTURE
 }

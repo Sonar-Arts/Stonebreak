@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Hemisphere -->
+  <path d="M 4 22 A 12 12 0 0 1 28 22 Z"
+        fill="#5B9BD5" stroke="#3A6FA8" stroke-width="1.5" stroke-linejoin="round"/>
+  <ellipse cx="16" cy="22" rx="12" ry="3.5"
+           fill="#3A6FA8" stroke="#2E5C9E" stroke-width="1.5"/>
+  <path d="M 4 22 A 12 7 0 0 1 28 22"
+        fill="none" stroke="#3A6FA8" stroke-width="1" opacity="0.4"/>
+</svg>

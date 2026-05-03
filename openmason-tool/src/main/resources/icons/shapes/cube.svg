@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Cube - isometric -->
+  <polygon points="16,5 27,11 27,23 16,29 5,23 5,11"
+           fill="none" stroke="#3A6FA8" stroke-width="1.5"/>
+  <polygon points="5,11 16,17 16,29 5,23"
+           fill="#5B9BD5" stroke="#3A6FA8" stroke-width="1.5" stroke-linejoin="round"/>
+  <polygon points="27,11 16,17 16,29 27,23"
+           fill="#3A6FA8" stroke="#2E5C9E" stroke-width="1.5" stroke-linejoin="round"/>
+  <polygon points="5,11 16,5 27,11 16,17"
+           fill="#7AB4E8" stroke="#3A6FA8" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

@@ -40,6 +40,11 @@ public class Settings {
     // limiter is bypassed. Default ON: most users expect tear-free output and
     // ZGC keeps frame pacing stable.
     private boolean vsyncEnabled = true;
+
+    // Multiplayer settings
+    private int multiplayerPort = 25565;
+    private String lastJoinHost = "localhost";
+    private String multiplayerUsername = "Player";
     
     // Available resolutions (ordered smallest to largest by total pixels)
     private static final int[][] RESOLUTIONS = {
@@ -85,7 +90,10 @@ public class Settings {
             json.append("  \"renderDistance\": ").append(renderDistance).append(",\n");
             json.append("  \"lodDistance\": ").append(lodDistance).append(",\n");
             json.append("  \"lodEnabled\": ").append(lodEnabled).append(",\n");
-            json.append("  \"vsyncEnabled\": ").append(vsyncEnabled).append("\n");
+            json.append("  \"vsyncEnabled\": ").append(vsyncEnabled).append(",\n");
+            json.append("  \"multiplayerPort\": ").append(multiplayerPort).append(",\n");
+            json.append("  \"lastJoinHost\": \"").append(lastJoinHost).append("\",\n");
+            json.append("  \"multiplayerUsername\": \"").append(multiplayerUsername).append("\"\n");
             json.append("}");
             
             Files.write(Paths.get(SETTINGS_FILE), json.toString().getBytes());
@@ -274,6 +282,18 @@ public class Settings {
                 if (value != null) {
                     vsyncEnabled = Boolean.parseBoolean(value);
                 }
+            } else if (line.contains("multiplayerPort")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try { multiplayerPort = Integer.parseInt(value); }
+                    catch (NumberFormatException e) { System.err.println("Invalid multiplayerPort: " + value); }
+                }
+            } else if (line.contains("lastJoinHost")) {
+                String value = extractStringValue(line);
+                if (value != null) lastJoinHost = value;
+            } else if (line.contains("multiplayerUsername")) {
+                String value = extractStringValue(line);
+                if (value != null) multiplayerUsername = value;
             }
         }
     }
@@ -326,6 +346,16 @@ public class Settings {
     public int getLodDistance() { return lodDistance; }
     public boolean getLodEnabled() { return lodEnabled; }
     public boolean isVsyncEnabled() { return vsyncEnabled; }
+
+    // Multiplayer getters/setters
+    public int getMultiplayerPort() { return multiplayerPort; }
+    public void setMultiplayerPort(int port) { this.multiplayerPort = port; }
+    public String getLastJoinHost() { return lastJoinHost; }
+    public void setLastJoinHost(String host) { this.lastJoinHost = host == null ? "" : host; }
+    public String getMultiplayerUsername() { return multiplayerUsername; }
+    public void setMultiplayerUsername(String name) {
+        this.multiplayerUsername = (name == null || name.isBlank()) ? "Player" : name;
+    }
     
     // Setters
     public void setResolution(int width, int height) {

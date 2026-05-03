@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Pyramid - isometric -->
+  <polygon points="16,4 27,22 16,17 5,22"
+           fill="#7AB4E8" stroke="#3A6FA8" stroke-width="1.5" stroke-linejoin="round"/>
+  <polygon points="16,4 16,17 5,22"
+           fill="#5B9BD5" stroke="#3A6FA8" stroke-width="1.5" stroke-linejoin="round"/>
+  <polygon points="16,4 16,17 27,22"
+           fill="#3A6FA8" stroke="#2E5C9E" stroke-width="1.5" stroke-linejoin="round"/>
+  <ellipse cx="16" cy="22" rx="11" ry="3.5"
+           fill="none" stroke="#3A6FA8" stroke-width="1.2" stroke-dasharray="2,2" opacity="0.5"/>
+</svg>

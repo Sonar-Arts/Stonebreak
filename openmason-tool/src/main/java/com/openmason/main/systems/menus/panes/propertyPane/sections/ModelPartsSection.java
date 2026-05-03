@@ -30,6 +30,7 @@ import java.util.List;
 public class ModelPartsSection implements IPanelSection {
 
     private static final Logger logger = LoggerFactory.getLogger(ModelPartsSection.class);
+    private static final String DRAG_DROP_PAYLOAD = "OPENMASON_PART_REPARENT";
 
     private ModelPartManager partManager;
     private boolean visible = true;
@@ -77,11 +78,18 @@ public class ModelPartsSection implements IPanelSection {
         ImGuiComponents.renderCompactSectionHeader(headerText);
         ImGui.spacing();
 
-        // Part list
+        // Part list — rendered as a tree so hierarchical (parented) parts indent
+        // under their parents. Flat models with no parentId stay visually identical.
         if (parts.isEmpty()) {
             ImGui.textDisabled("No parts");
         } else {
-            renderPartList(parts);
+            renderRootDropTarget();
+            List<ModelPartDescriptor> roots = parts.stream()
+                    .filter(ModelPartDescriptor::isRoot)
+                    .toList();
+            for (ModelPartDescriptor root : roots) {
+                renderPartTreeNode(root, parts, 0);
+            }
         }
 
         ImGui.spacing();
@@ -161,106 +169,166 @@ public class ModelPartsSection implements IPanelSection {
     // ========== Private Rendering ==========
 
     /**
-     * Render the list of parts with functional buttons and selection.
-     * Uses standard ImGui smallButton widgets so all controls receive clicks.
+     * Render a single part row plus its descendants. Recursive tree walk.
+     *
+     * @param part      The part to render
+     * @param allParts  Full part list (for child lookup)
+     * @param depth     Indentation depth (0 for root rows)
      */
-    private void renderPartList(List<ModelPartDescriptor> parts) {
-        for (int i = 0; i < parts.size(); i++) {
-            ModelPartDescriptor part = parts.get(i);
-            boolean isSelected = partManager.isPartSelected(part.id());
-            boolean isHidden = !part.visible();
+    private void renderPartTreeNode(ModelPartDescriptor part, List<ModelPartDescriptor> allParts, int depth) {
+        boolean isSelected = partManager.isPartSelected(part.id());
+        boolean isHidden = !part.visible();
 
-            ImGui.pushID(i);
+        ImGui.pushID(part.id());
 
-            // --- Row background ---
-            ImDrawList drawList = ImGui.getWindowDrawList();
-            ImVec2 rowStart = ImGui.getCursorScreenPos();
-            float rowWidth = ImGui.getContentRegionAvailX();
-            float rowHeight = ImGui.getFrameHeight();
+        if (depth > 0) {
+            ImGui.indent(depth * 12.0f);
+        }
 
-            if (isSelected) {
-                ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
-                drawList.addRectFilled(rowStart.x, rowStart.y,
-                        rowStart.x + rowWidth, rowStart.y + rowHeight,
-                        ImGui.colorConvertFloat4ToU32(accent.x, accent.y, accent.z, 0.15f), 3.0f);
-                drawList.addRectFilled(rowStart.x, rowStart.y + 3,
-                        rowStart.x + 3, rowStart.y + rowHeight - 3,
-                        ImGui.colorConvertFloat4ToU32(accent.x, accent.y, accent.z, 0.6f), 1.0f);
-            }
+        // --- Row background ---
+        ImDrawList drawList = ImGui.getWindowDrawList();
+        ImVec2 rowStart = ImGui.getCursorScreenPos();
+        float rowWidth = ImGui.getContentRegionAvailX();
+        float rowHeight = ImGui.getFrameHeight();
 
-            // --- Visibility toggle ---
-            if (isHidden) {
-                ImGui.pushStyleColor(ImGuiCol.Text, 0.5f, 0.5f, 0.5f, 0.35f);
-            }
-            if (ImGui.smallButton(isHidden ? " - " : " o ")) {
-                partManager.setPartVisible(part.id(), isHidden);
-                invalidateViewport();
-            }
-            if (isHidden) {
-                ImGui.popStyleColor();
-            }
-            if (ImGui.isItemHovered()) {
-                ImGui.setTooltip(isHidden ? "Show part" : "Hide part");
-            }
+        if (isSelected) {
+            ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+            drawList.addRectFilled(rowStart.x, rowStart.y,
+                    rowStart.x + rowWidth, rowStart.y + rowHeight,
+                    ImGui.colorConvertFloat4ToU32(accent.x, accent.y, accent.z, 0.15f), 3.0f);
+            drawList.addRectFilled(rowStart.x, rowStart.y + 3,
+                    rowStart.x + 3, rowStart.y + rowHeight - 3,
+                    ImGui.colorConvertFloat4ToU32(accent.x, accent.y, accent.z, 0.6f), 1.0f);
+        }
 
-            ImGui.sameLine();
-
-            // --- Lock toggle ---
-            if (part.locked()) {
-                ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 1.0f);
-            } else {
-                ImVec4 dim = ImGui.getStyle().getColor(ImGuiCol.TextDisabled);
-                ImGui.pushStyleColor(ImGuiCol.Text, dim.x, dim.y, dim.z, 0.4f);
-            }
-            if (ImGui.smallButton(part.locked() ? " L " : " U ")) {
-                partManager.setPartLocked(part.id(), !part.locked());
-                invalidateViewport();
-            }
+        // --- Visibility toggle ---
+        if (isHidden) {
+            ImGui.pushStyleColor(ImGuiCol.Text, 0.5f, 0.5f, 0.5f, 0.35f);
+        }
+        if (ImGui.smallButton(isHidden ? " - " : " o ")) {
+            partManager.setPartVisible(part.id(), isHidden);
+            invalidateViewport();
+        }
+        if (isHidden) {
             ImGui.popStyleColor();
-            if (ImGui.isItemHovered()) {
-                ImGui.setTooltip(part.locked() ? "Unlock part" : "Lock part");
-            }
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(isHidden ? "Show part" : "Hide part");
+        }
 
-            ImGui.sameLine();
+        ImGui.sameLine();
 
-            // --- Part name (selectable for selection) ---
-            if (isHidden) {
-                ImGui.pushStyleColor(ImGuiCol.Text, 0.5f, 0.5f, 0.5f, 0.35f);
-            }
-            if (ImGui.selectable(part.name(), isSelected)) {
-                if (ImGui.getIO().getKeyCtrl()) {
-                    partManager.togglePartSelection(part.id());
-                } else {
-                    partManager.deselectAllParts();
-                    partManager.selectPart(part.id());
-                }
-                if (onOpenPartTransformSlideout != null) {
-                    onOpenPartTransformSlideout.run();
-                }
-            }
-            if (isHidden) {
-                ImGui.popStyleColor();
-            }
+        // --- Lock toggle ---
+        if (part.locked()) {
+            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 1.0f);
+        } else {
+            ImVec4 dim = ImGui.getStyle().getColor(ImGuiCol.TextDisabled);
+            ImGui.pushStyleColor(ImGuiCol.Text, dim.x, dim.y, dim.z, 0.4f);
+        }
+        if (ImGui.smallButton(part.locked() ? " L " : " U ")) {
+            partManager.setPartLocked(part.id(), !part.locked());
+            invalidateViewport();
+        }
+        ImGui.popStyleColor();
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(part.locked() ? "Unlock part" : "Lock part");
+        }
 
-            // Right-click context menu
-            if (ImGui.beginPopupContextItem()) {
-                if (ImGui.menuItem("Duplicate")) {
-                    partManager.duplicatePart(part.id());
+        ImGui.sameLine();
+
+        // --- Part name (selectable for selection) ---
+        if (isHidden) {
+            ImGui.pushStyleColor(ImGuiCol.Text, 0.5f, 0.5f, 0.5f, 0.35f);
+        }
+        if (ImGui.selectable(part.name(), isSelected)) {
+            if (ImGui.getIO().getKeyCtrl()) {
+                partManager.togglePartSelection(part.id());
+            } else {
+                partManager.deselectAllParts();
+                partManager.selectPart(part.id());
+            }
+            if (onOpenPartTransformSlideout != null) {
+                onOpenPartTransformSlideout.run();
+            }
+        }
+        if (isHidden) {
+            ImGui.popStyleColor();
+        }
+
+        // Drag source — drag this part onto another to reparent.
+        if (ImGui.beginDragDropSource()) {
+            ImGui.setDragDropPayload(DRAG_DROP_PAYLOAD, part.id(), imgui.flag.ImGuiCond.Once);
+            ImGui.text("Reparent: " + part.name());
+            ImGui.endDragDropSource();
+        }
+        // Drop target — accept a dragged part as a new child of this part.
+        if (ImGui.beginDragDropTarget()) {
+            Object payload = ImGui.acceptDragDropPayload(DRAG_DROP_PAYLOAD);
+            if (payload instanceof String draggedId && !draggedId.equals(part.id())) {
+                if (partManager.setPartParent(draggedId, part.id())) {
                     invalidateViewport();
                 }
-                if (parts.size() > 1) {
-                    if (ImGui.menuItem("Delete")) {
-                        partManager.removePart(part.id());
-                        invalidateViewport();
-                    }
-                } else {
-                    ImGui.textDisabled("Cannot delete last part");
-                }
-                ImGui.endPopup();
             }
-
-            ImGui.popID();
+            ImGui.endDragDropTarget();
         }
+
+        // Right-click context menu
+        if (ImGui.beginPopupContextItem()) {
+            if (ImGui.menuItem("Duplicate")) {
+                partManager.duplicatePart(part.id());
+                invalidateViewport();
+            }
+            if (!part.isRoot()) {
+                if (ImGui.menuItem("Detach to root")) {
+                    partManager.setPartParent(part.id(), null);
+                    invalidateViewport();
+                }
+            }
+            if (allParts.size() > 1) {
+                if (ImGui.menuItem("Delete")) {
+                    partManager.removePart(part.id());
+                    invalidateViewport();
+                }
+            } else {
+                ImGui.textDisabled("Cannot delete last part");
+            }
+            ImGui.endPopup();
+        }
+
+        if (depth > 0) {
+            ImGui.unindent(depth * 12.0f);
+        }
+
+        // Recurse into children.
+        for (ModelPartDescriptor child : allParts) {
+            if (part.id().equals(child.parentId())) {
+                renderPartTreeNode(child, allParts, depth + 1);
+            }
+        }
+
+        ImGui.popID();
+    }
+
+    /**
+     * Render a thin drop zone above the part list that accepts drops to detach a
+     * part to root. Provides a discoverable "drag to root" affordance.
+     */
+    private void renderRootDropTarget() {
+        ImGui.pushID("##part_root_drop");
+        ImVec4 dim = ImGui.getStyle().getColor(ImGuiCol.TextDisabled);
+        ImGui.pushStyleColor(ImGuiCol.Text, dim.x, dim.y, dim.z, 0.5f);
+        ImGui.textUnformatted("(Root)");
+        ImGui.popStyleColor();
+        if (ImGui.beginDragDropTarget()) {
+            Object payload = ImGui.acceptDragDropPayload(DRAG_DROP_PAYLOAD);
+            if (payload instanceof String draggedId) {
+                if (partManager.setPartParent(draggedId, null)) {
+                    invalidateViewport();
+                }
+            }
+            ImGui.endDragDropTarget();
+        }
+        ImGui.popID();
     }
 
     /**

@@ -154,6 +154,89 @@ public class DropRenderer {
     }
     
     /**
+     * Render the held block of every visible remote player as a textured block
+     * at hand position. Reuses the same CBR mesh + atlas-textured shader path
+     * as block drops, just with a different model transform.
+     *
+     * <p>This is intentionally separate from {@link #renderDrops} so callers
+     * can sequence the two passes (drops first, held items second) and so the
+     * remote-player list isn't dragged through the drop iteration.
+     */
+    public void renderHeldBlocks(java.util.List<com.stonebreak.mobs.entities.RemotePlayer> players,
+                                 ShaderProgram shaderProgram,
+                                 Matrix4f projectionMatrix, Matrix4f viewMatrix,
+                                 World world, Vector3f cameraPos) {
+        if (players == null || players.isEmpty() || cbrManager == null) return;
+
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("texture_sampler", 0);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
+        shaderProgram.setUniform("u_underwaterFogDensity", 0.0f);
+        shaderProgram.setUniform("u_underwaterFogColor", new Vector3f(0.1f, 0.3f, 0.5f));
+
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        glEnable(GL_DEPTH_TEST);
+
+        // Hand offset, in player local space (right, up, forward).
+        final float HAND_RIGHT   = 0.35f;
+        final float HAND_UP      = 1.2f;
+        final float HAND_FORWARD = 0.15f;
+        final float HAND_SCALE   = 0.30f;
+
+        for (com.stonebreak.mobs.entities.RemotePlayer rp : players) {
+            if (!rp.isAlive()) continue;
+            int held = rp.getHeldItemId();
+            if (held <= 0) continue;
+            com.stonebreak.blocks.BlockType blockType = com.stonebreak.blocks.BlockType.getById(held);
+            if (blockType == null || blockType == com.stonebreak.blocks.BlockType.AIR) continue;
+
+            Vector3f pos = rp.getPosition();
+            float yawRad = (float) Math.toRadians(rp.getRotation().y);
+            float cos = (float) Math.cos(yawRad);
+            float sin = (float) Math.sin(yawRad);
+            // World vectors: forward = (-sin, 0, -cos), right = (cos, 0, -sin).
+            float worldDx = HAND_RIGHT * cos + HAND_FORWARD * (-sin);
+            float worldDz = HAND_RIGHT * (-sin) + HAND_FORWARD * (-cos);
+
+            dropModelMatrix.identity()
+                    .translate(pos.x + worldDx, pos.y + HAND_UP, pos.z + worldDz)
+                    .rotateY(yawRad)
+                    .scale(HAND_SCALE);
+
+            Matrix4f modelView = new Matrix4f(viewMatrix).mul(dropModelMatrix);
+            shaderProgram.setUniform("viewMatrix", modelView);
+
+            CBRResourceManager.BlockRenderResource resource = cbrManager.getBlockTypeResource(blockType);
+            boolean isTransparent = isTransparentBlock(blockType);
+            if (isTransparent) {
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            } else {
+                glDisable(GL_BLEND);
+            }
+            glDepthMask(!isTransparent);
+            shaderProgram.setUniform("u_useSolidColor", false);
+            shaderProgram.setUniform("u_isUIElement", true);
+            shaderProgram.setUniform("u_transformUVsForItem", false);
+            float alpha = isTransparent ? 0.95f : 1.0f;
+            shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, alpha));
+
+            resource.getMesh().bind();
+            glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
+            glDepthMask(true);
+        }
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        GL30.glBindVertexArray(0);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        shaderProgram.setUniform("u_isUIElement", false);
+    }
+
+    /**
      * Renders a single drop entity.
      */
     private void renderDrop(Entity drop, ShaderProgram shaderProgram, Matrix4f viewMatrix, World world) {

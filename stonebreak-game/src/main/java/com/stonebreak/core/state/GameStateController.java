@@ -60,6 +60,19 @@ public final class GameStateController {
             game.getWorldSelectScreen().refreshWorlds();
         }
 
+        if (state == GameState.HOST_WORLD_SELECT && game.getHostWorldScreen() != null) {
+            game.getHostWorldScreen().onShow();
+        }
+        if (state == GameState.JOIN_WORLD_SCREEN && game.getJoinWorldScreen() != null) {
+            game.getJoinWorldScreen().onShow();
+        }
+
+        // Tear down any active multiplayer session when returning to the main menu.
+        if (state == GameState.MAIN_MENU
+                && com.stonebreak.network.MultiplayerSession.isOnline()) {
+            com.stonebreak.network.MultiplayerSession.shutdown();
+        }
+
         updatePauseState(state);
 
         MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();
@@ -70,7 +83,8 @@ public final class GameStateController {
 
     private void updatePauseState(GameState state) {
         switch (state) {
-            case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI -> paused = true;
+            case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI,
+                 MULTIPLAYER_MENU, HOST_WORLD_SELECT, JOIN_WORLD_SCREEN -> paused = true;
             case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI, CHARACTER_SHEET_UI -> paused = false;
         }
     }
@@ -155,6 +169,38 @@ public final class GameStateController {
             }
             contextDetails += ", CurrentState: " + currentState;
             System.out.println("Cannot open RecipeBook: Not in a valid context (" + contextDetails + ").");
+        }
+    }
+
+    public void toggleCharacterScreen() {
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen == null) return;
+
+        characterScreen.toggleVisibility();
+
+        if (characterScreen.isVisible()) {
+            setState(GameState.CHARACTER_SHEET_UI);
+        } else {
+            PauseMenu pauseMenu = game.getPauseMenu();
+            if (pauseMenu == null || !pauseMenu.isVisible()) {
+                setState(GameState.PLAYING);
+            }
+        }
+    }
+
+    /**
+     * Opens the character screen at the given tab, switching from any current state.
+     * If the character screen is already visible, just switches the active tab.
+     */
+    public void openCharacterTab(CharacterPanelTab tab) {
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen == null) return;
+
+        characterScreen.getController().setActiveTab(tab);
+
+        if (!characterScreen.isVisible()) {
+            characterScreen.toggleVisibility();
+            setState(GameState.CHARACTER_SHEET_UI);
         }
     }
 

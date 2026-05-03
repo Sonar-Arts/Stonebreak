@@ -68,6 +68,13 @@ public class EntitySpawner {
      * Should be called every game tick (20 times per second).
      */
     public void update(float deltaTime) {
+        // Clients defer entity lifecycle to the host — running spawn/despawn
+        // here would create duplicate (locally-owned) cows alongside the
+        // network-shadowed copies broadcast by the server.
+        if (com.stonebreak.network.MultiplayerSession.isClient()) {
+            return;
+        }
+
         tickCounter++;
 
         // Passive mob spawning cycle every 400 ticks (20 seconds)

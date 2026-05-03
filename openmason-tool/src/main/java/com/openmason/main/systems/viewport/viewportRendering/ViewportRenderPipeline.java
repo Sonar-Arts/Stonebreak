@@ -3,6 +3,7 @@ package com.openmason.main.systems.viewport.viewportRendering;
 import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
+import com.openmason.main.systems.rendering.core.SBTRenderer;
 import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
@@ -67,6 +68,7 @@ public class ViewportRenderPipeline {
     // External renderers (blocks, items)
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
+    private final SBTRenderer sbtRenderer = new SBTRenderer();
 
     // Generic Model renderer (.OMO editable models)
     private final GenericModelRenderer modelRenderer;
@@ -109,6 +111,7 @@ public class ViewportRenderPipeline {
         this.modelRenderer = modelRenderer;
         this.gizmoRenderer = gizmoRenderer;
         this.knifePreviewRenderer = new KnifePreviewRenderer();
+        this.sbtRenderer.initialize();
     }
 
     /**
@@ -221,6 +224,8 @@ public class ViewportRenderPipeline {
             renderBlock(renderingState, transformState);
         } else if (renderingState.isItemReady()) {
             renderItem(renderingState, transformState);
+        } else if (renderingState.isSBTReady()) {
+            renderSBT(renderingState, transformState);
         } else {
             // No content to render
             logger.trace("No content ready for rendering");
@@ -287,6 +292,36 @@ public class ViewportRenderPipeline {
 
         } catch (Exception e) {
             logger.error("Error rendering item", e);
+        }
+    }
+
+    /**
+     * Render the selected .SBT texture as a voxelized sprite (mirrors the
+     * geometry that {@code SpriteVoxelizer} produces for in-game items).
+     */
+    private void renderSBT(RenderingState renderingState, TransformState transformState) {
+        try {
+            ShaderProgram matrixShader = shaderManager.getShaderProgram(ShaderType.MATRIX);
+            float[] vpArray = context.getViewProjectionArray();
+
+            matrixShader.use();
+            org.joml.Matrix4f modelViewMatrix = new org.joml.Matrix4f(context.getCamera().getViewMatrix())
+                    .mul(transformState.getTransformMatrix());
+            matrixShader.setMat4("uViewMatrix", modelViewMatrix);
+
+            sbtRenderer.renderSBT(
+                    renderingState.getSelectedSbtPath(),
+                    matrixShader.getProgramId(),
+                    matrixShader.getMvpMatrixLocation(),
+                    matrixShader.getModelMatrixLocation(),
+                    vpArray,
+                    transformState.getTransformMatrix(),
+                    matrixShader.getUseTextureLocation()
+            );
+
+            logger.trace("SBT rendered: {}", renderingState.getSelectedSbtPath());
+        } catch (Exception e) {
+            logger.error("Error rendering SBT", e);
         }
     }
 

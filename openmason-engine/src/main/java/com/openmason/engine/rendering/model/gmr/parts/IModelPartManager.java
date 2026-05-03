@@ -1,6 +1,7 @@
 package com.openmason.engine.rendering.model.gmr.parts;
 
 import com.openmason.engine.rendering.model.ModelPart;
+import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 import java.util.List;
@@ -194,6 +195,37 @@ public interface IModelPartManager {
      * @param scaleFactors Scale multipliers
      */
     void scalePart(String id, Vector3f scaleFactors);
+
+    // ========== Hierarchy ==========
+
+    /**
+     * Reparent a part. Pass {@code null} as parentId to detach to root.
+     *
+     * <p>Rejects the operation if it would introduce a cycle (e.g., reparenting
+     * a part under one of its own descendants) or if either ID is unknown.
+     *
+     * @param id       Part ID to reparent
+     * @param parentId New parent ID, or {@code null} for root
+     * @return true if the parent was changed, false if rejected (cycle, missing, or no-op)
+     */
+    boolean setPartParent(String id, String parentId);
+
+    /**
+     * Get the direct children of a part.
+     *
+     * @param parentId Parent part ID, or {@code null} to list root parts
+     * @return Ordered list of child parts (insertion order); never null
+     */
+    List<ModelPartDescriptor> getChildren(String parentId);
+
+    /**
+     * Compute the effective (world-space) transform matrix for a part by
+     * composing the parent chain: {@code root.toMatrix() * ... * part.toMatrix()}.
+     *
+     * @param id Part ID
+     * @return Effective world matrix (identity if part not found or has no transform)
+     */
+    Matrix4f getEffectiveWorldMatrix(String id);
 
     // ========== Visibility / Locking ==========
 

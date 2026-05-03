@@ -59,10 +59,10 @@ public class ModelBrowserState {
         this.sortOrder = SortOrder.ASCENDING;
         this.sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
 
-        // Navigation defaults
+        // Navigation defaults — start at the .OMO library.
         this.navigationPath = new ArrayList<>();
         this.navigationPath.add("Home");
-        this.selectedCategory = "All Models";
+        this.selectedCategory = "All Assets";
 
         // Selection and recent files
         this.selectedModelInfo = "No model selected";

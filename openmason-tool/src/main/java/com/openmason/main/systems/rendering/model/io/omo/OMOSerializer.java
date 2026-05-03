@@ -495,6 +495,8 @@ public class OMOSerializer {
         public int indexStart, indexCount;
         public int faceStart, faceCount;
         public boolean visible, locked;
+        // v1.5+: parent part ID for skeletal hierarchy. Omitted (null) on root parts.
+        public String parentId;
 
         public PartEntryDTO(OMOFormat.PartEntry entry) {
             this.id = entry.id();
@@ -519,6 +521,7 @@ public class OMOSerializer {
             this.faceCount = entry.faceCount();
             this.visible = entry.visible();
             this.locked = entry.locked();
+            this.parentId = entry.parentId();
         }
     }
 }

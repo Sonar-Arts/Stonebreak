@@ -30,6 +30,10 @@ public class omConfig {
     private static final int DEFAULT_AUTO_SAVE_INTERVAL = 300; // 5 minutes
     private static final boolean DEFAULT_DARK_THEME_ENABLED = true;
     private static final float DEFAULT_VERTEX_POINT_SIZE = 5.0f;
+
+    // Asset library defaults — relative to user.dir, created on demand.
+    private static final String DEFAULT_OMO_FOLDER = "Dev Working/DevTextures/Blocks/OMT/OMOs";
+    private static final String DEFAULT_SBT_FOLDER = "Dev Working/DevTextures/Items/SBTs";
     
     private final Properties properties;
     private Path configFilePath;
@@ -112,6 +116,14 @@ public class omConfig {
 
         // Project settings
         properties.setProperty("project.last.opened.path", "");
+
+        // Asset library paths — where the Model Browser scans for .omo / .sbt files.
+        properties.setProperty("assets.omo.folder", defaultAssetPath(DEFAULT_OMO_FOLDER));
+        properties.setProperty("assets.sbt.folder", defaultAssetPath(DEFAULT_SBT_FOLDER));
+    }
+
+    private static String defaultAssetPath(String relative) {
+        return Paths.get(System.getProperty("user.dir"), relative).toString();
     }
     
     /**
@@ -161,6 +173,33 @@ public class omConfig {
 
     public void setVertexPointSize(float size) {
         properties.setProperty("viewport.vertex.point.size", String.valueOf(size));
+    }
+
+    /**
+     * Returns the configured directory the Model Browser scans for .omo files.
+     * Falls back to a sensible default under the working directory if unset.
+     */
+    public Path getOMOFolder() {
+        String stored = properties.getProperty("assets.omo.folder", defaultAssetPath(DEFAULT_OMO_FOLDER));
+        return Paths.get(stored);
+    }
+
+    public void setOMOFolder(String path) {
+        properties.setProperty("assets.omo.folder",
+                path != null && !path.isBlank() ? path : defaultAssetPath(DEFAULT_OMO_FOLDER));
+    }
+
+    /**
+     * Returns the configured directory the Model Browser scans for .sbt files.
+     */
+    public Path getSBTFolder() {
+        String stored = properties.getProperty("assets.sbt.folder", defaultAssetPath(DEFAULT_SBT_FOLDER));
+        return Paths.get(stored);
+    }
+
+    public void setSBTFolder(String path) {
+        properties.setProperty("assets.sbt.folder",
+                path != null && !path.isBlank() ? path : defaultAssetPath(DEFAULT_SBT_FOLDER));
     }
 
     public String getLastOpenedProjectPath() {

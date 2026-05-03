@@ -302,6 +302,12 @@ public class World {
         int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
 
         Chunk chunk = getChunkAt(chunkX, chunkZ);
+        if (chunk == null) {
+            // Caller is editing a chunk that isn't currently in the chunk store
+            // (e.g. async generation in flight, multiplayer client edit in an
+            // area the host hasn't loaded). Drop the edit instead of NPE'ing.
+            return false;
+        }
 
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
@@ -329,6 +335,13 @@ public class World {
         }
 
         waterSystem.onBlockChanged(x, y, z, previous, blockType);
+
+        // Multiplayer: broadcast locally-driven block changes (player modifications).
+        // Inbound network changes also flow through this path with isPlayerModification=true,
+        // but MultiplayerSession suppresses re-broadcast via its applyingRemote flag.
+        if (isPlayerModification) {
+            com.stonebreak.network.MultiplayerSession.onLocalBlockChange(x, y, z, blockType);
+        }
 
         return true;
     }
@@ -593,6 +606,38 @@ public class World {
         Chunk chunk = chunkStore.getChunk(chunkX, chunkZ);
         if (chunk != null) {
             markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+        }
+    }
+
+    /**
+     * Overwrite a chunk's block contents with a payload received over the
+     * network and trigger a mesh rebuild.
+     *
+     * <p>Used by the multiplayer chunk synchronizer to push the host's
+     * authoritative chunk state onto a joining client so any pre-connection
+     * modifications (player builds, etc.) are reflected exactly. Returns
+     * silently if the world hasn't loaded enough infrastructure yet.
+     */
+    public void installNetworkChunk(int chunkX, int chunkZ, byte[] payload) {
+        if (chunkStore == null) return;
+        Chunk chunk = chunkStore.getOrCreateChunk(chunkX, chunkZ);
+        if (chunk == null) {
+            // Async generation in progress; skip this packet — the host will
+            // re-broadcast modified chunks on a future tick if needed.
+            return;
+        }
+        try {
+            com.stonebreak.network.protocol.NetworkChunkCodec.decodeInto(payload, chunk);
+        } catch (Exception e) {
+            System.err.println("[NETWORK] Failed to decode chunk (" + chunkX + "," + chunkZ + "): " + e.getMessage());
+            return;
+        }
+        if (meshPipeline != null) {
+            markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+            if (neighborCoordinator != null) {
+                neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, 0, 0,
+                        meshPipeline::scheduleConditionalMeshBuild);
+            }
         }
     }
 

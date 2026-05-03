@@ -510,7 +510,10 @@ public class OMODeserializer {
                     p.has("faceStart") ? p.get("faceStart").asInt() : 0,
                     p.has("faceCount") ? p.get("faceCount").asInt() : 0,
                     !p.has("visible") || p.get("visible").asBoolean(true),
-                    p.has("locked") && p.get("locked").asBoolean(false)
+                    p.has("locked") && p.get("locked").asBoolean(false),
+                    // v1.5+: parentId; absent in older files → root part
+                    (p.has("parentId") && !p.get("parentId").isNull())
+                            ? p.get("parentId").asText() : null
             ));
         }
         return entries;

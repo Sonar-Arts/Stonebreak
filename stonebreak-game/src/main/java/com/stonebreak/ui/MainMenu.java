@@ -17,7 +17,9 @@ import com.stonebreak.ui.mainMenu.SplashTextManager;
 
 public class MainMenu {
     private final SkijaMainMenuRenderer skijaRenderer;
-    private int selectedButton = -1; // -1 = no selection, 0 = Singleplayer, 1 = Settings, 2 = Quit Game
+    // -1 = no selection, 0 = Singleplayer, 1 = Multiplayer, 2 = Settings, 3 = Quit Game
+    private int selectedButton = -1;
+    private static final int BUTTON_COUNT = 4;
     private final SplashTextManager splashTextManager;
     private String currentSplashText;
 
@@ -40,7 +42,7 @@ public class MainMenu {
             if (selectedButton == -1) {
                 selectedButton = 0; // Start with first button
             } else {
-                selectedButton = Math.min(2, selectedButton + 1);
+                selectedButton = Math.min(BUTTON_COUNT - 1, selectedButton + 1);
             }
         }
         
@@ -54,32 +56,37 @@ public class MainMenu {
         float centerX = windowWidth / 2.0f;
         float centerY = windowHeight / 2.0f;
         
-        // Check which button mouse is over (updated for new layout)
+        // Check which button mouse is over
         if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY - 20, 400, 40)) {
             selectedButton = 0; // Singleplayer
         } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY + 30, 400, 40)) {
-            selectedButton = 1; // Settings
+            selectedButton = 1; // Multiplayer
         } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY + 80, 400, 40)) {
-            selectedButton = 2; // Quit Game
+            selectedButton = 2; // Settings
+        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY + 130, 400, 40)) {
+            selectedButton = 3; // Quit Game
         } else {
             selectedButton = -1; // No button hovered
         }
-        
+
     }
     
     public void handleMouseClick(double mouseX, double mouseY, int windowWidth, int windowHeight) {
         float centerX = windowWidth / 2.0f;
         float centerY = windowHeight / 2.0f;
         
-        // Only execute action if mouse is actually over a button (updated for new layout)
+        // Only execute action if mouse is actually over a button
         if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY - 20, 400, 40)) {
             selectedButton = 0; // Singleplayer
             executeSelectedAction();
         } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY + 30, 400, 40)) {
-            selectedButton = 1; // Settings
+            selectedButton = 1; // Multiplayer
             executeSelectedAction();
         } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY + 80, 400, 40)) {
-            selectedButton = 2; // Quit Game
+            selectedButton = 2; // Settings
+            executeSelectedAction();
+        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY + 130, 400, 40)) {
+            selectedButton = 3; // Quit Game
             executeSelectedAction();
         }
         // If mouse is not over any button, do nothing
@@ -94,14 +101,16 @@ public class MainMenu {
         switch (selectedButton) {
             case 0 -> // Play - Go to world select screen
                 Game.getInstance().setState(GameState.WORLD_SELECT);
-            case 1 -> { // Settings
+            case 1 -> // Multiplayer
+                Game.getInstance().setState(GameState.MULTIPLAYER_MENU);
+            case 2 -> { // Settings
                 SettingsMenu settingsMenu = Game.getInstance().getSettingsMenu();
                 if (settingsMenu != null) {
                     settingsMenu.setPreviousState(GameState.MAIN_MENU);
                 }
                 Game.getInstance().setState(GameState.SETTINGS);
             }
-            case 2 -> // Exit
+            case 3 -> // Exit
                 System.exit(0);
         }
     }

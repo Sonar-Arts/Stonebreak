@@ -534,7 +534,24 @@ public class ModelOperationService {
         int[] allIndices = meshData.indices();
         int[] allTriToFace = meshData.triangleToFaceId();
 
-        for (OMOFormat.PartEntry entry : entries) {
+        // Hierarchy support (v1.5+): the saved combined buffer has each part's
+        // *effective* (parent-chain * local) transform baked into its vertices.
+        // Build effective matrices from the saved entries, sort parent-first so we
+        // can re-establish parentage in the manager, and inverse-apply the effective
+        // matrix to recover local-space vertices.
+        Map<String, OMOFormat.PartEntry> entryById = new HashMap<>();
+        for (OMOFormat.PartEntry e : entries) {
+            entryById.put(e.id(), e);
+        }
+        Map<String, org.joml.Matrix4f> effectiveBySavedId = new HashMap<>();
+        for (OMOFormat.PartEntry e : entries) {
+            effectiveBySavedId.put(e.id(), computeEffectiveMatrix(e, entryById, new HashSet<>()));
+        }
+        List<OMOFormat.PartEntry> sortedEntries = topologicalSortParentFirst(entries, entryById);
+        // Map saved (file) part IDs to the new UUIDs the manager assigns on add.
+        Map<String, String> savedIdToNewId = new HashMap<>();
+
+        for (OMOFormat.PartEntry entry : sortedEntries) {
             // Slice vertices for this part
             int vStart = entry.vertexStart() * 3;
             int vLen = entry.vertexCount() * 3;
@@ -569,10 +586,9 @@ public class ModelOperationService {
                 }
             }
 
-            // The combined mesh bakes part transforms into vertex positions
-            // (see PartMeshRebuilder.rebuild). Un-transform sliced vertices back
-            // to local space so that addPartFromGeometry + setPartTransform doesn't
-            // double-apply the transform during rebuildCombinedMesh.
+            // The combined mesh bakes the *effective* (parent-chain composed) transform
+            // into each part's vertices. Inverse-apply that effective matrix to recover
+            // local-space vertices so the manager's rebuild won't double-apply.
             PartTransform savedTransform = new PartTransform(
                     new org.joml.Vector3f(entry.originX(), entry.originY(), entry.originZ()),
                     new org.joml.Vector3f(entry.posX(), entry.posY(), entry.posZ()),
@@ -580,8 +596,9 @@ public class ModelOperationService {
                     new org.joml.Vector3f(entry.scaleX(), entry.scaleY(), entry.scaleZ())
             );
 
-            if (!savedTransform.isIdentity()) {
-                org.joml.Matrix4f inverseTransform = savedTransform.toMatrix().invert();
+            org.joml.Matrix4f effective = effectiveBySavedId.getOrDefault(entry.id(), savedTransform.toMatrix());
+            if (!isIdentityMatrix(effective)) {
+                org.joml.Matrix4f inverseTransform = new org.joml.Matrix4f(effective).invert();
                 org.joml.Vector4f v = new org.joml.Vector4f();
                 for (int i = 0; i < partVertices.length / 3; i++) {
                     int idx = i * 3;
@@ -598,13 +615,26 @@ public class ModelOperationService {
                     partVertices, partTexCoords, partIndices, partTriToFace
             );
 
-            // Add part with local-space geometry
+            // Add part with local-space geometry. Reuse the saved UUID so external
+            // references that key by partId (e.g., .omanim animation tracks) keep
+            // binding to the same part across model save/load cycles.
             org.joml.Vector3f origin = new org.joml.Vector3f(entry.originX(), entry.originY(), entry.originZ());
-            ModelPartDescriptor part = partManager.addPartFromGeometry(entry.name(), geo, origin);
+            ModelPartDescriptor part = partManager.addPartFromGeometry(entry.id(), entry.name(), geo, origin);
 
-            // Restore transform (position, rotation, scale) — rebuildCombinedMesh
-            // will re-apply this to the local-space vertices
             if (part != null) {
+                savedIdToNewId.put(entry.id(), part.id());
+
+                // Reparent first so subsequent transform set fires with the correct chain.
+                if (entry.parentId() != null) {
+                    String newParentId = savedIdToNewId.get(entry.parentId());
+                    if (newParentId != null) {
+                        partManager.setPartParent(part.id(), newParentId);
+                    } else {
+                        logger.warn("Parent {} not yet loaded for part {} — leaving as root",
+                                entry.parentId(), entry.name());
+                    }
+                }
+
                 partManager.setPartTransform(part.id(), savedTransform);
                 partManager.setPartVisible(part.id(), entry.visible());
                 partManager.setPartLocked(part.id(), entry.locked());
@@ -612,6 +642,70 @@ public class ModelOperationService {
         }
 
         logger.info("Restored {} parts from .OMO file", entries.size());
+    }
+
+    /**
+     * Compute the effective (parent-chain composed) world matrix for a saved part entry.
+     * Walks {@code parentId} upward through {@code entryById}; cycle-defended via {@code visiting}.
+     */
+    private org.joml.Matrix4f computeEffectiveMatrix(OMOFormat.PartEntry entry,
+                                                     Map<String, OMOFormat.PartEntry> entryById,
+                                                     Set<String> visiting) {
+        org.joml.Matrix4f local = new PartTransform(
+                new org.joml.Vector3f(entry.originX(), entry.originY(), entry.originZ()),
+                new org.joml.Vector3f(entry.posX(), entry.posY(), entry.posZ()),
+                new org.joml.Vector3f(entry.rotX(), entry.rotY(), entry.rotZ()),
+                new org.joml.Vector3f(entry.scaleX(), entry.scaleY(), entry.scaleZ())
+        ).toMatrix();
+
+        if (entry.parentId() == null || !entryById.containsKey(entry.parentId())) {
+            return local;
+        }
+        if (!visiting.add(entry.id())) {
+            logger.warn("Cycle in saved part hierarchy at {} — treating as root", entry.id());
+            return local;
+        }
+        org.joml.Matrix4f parent = computeEffectiveMatrix(entryById.get(entry.parentId()), entryById, visiting);
+        visiting.remove(entry.id());
+        return new org.joml.Matrix4f(parent).mul(local);
+    }
+
+    /**
+     * Sort saved part entries so every parent appears before its children.
+     * Detached entries (parent missing or null) are emitted as roots first.
+     */
+    private List<OMOFormat.PartEntry> topologicalSortParentFirst(List<OMOFormat.PartEntry> entries,
+                                                                 Map<String, OMOFormat.PartEntry> entryById) {
+        List<OMOFormat.PartEntry> ordered = new ArrayList<>(entries.size());
+        Set<String> emitted = new HashSet<>();
+        // Iterate until no progress is made; bounds defend against pathological cycles.
+        int safety = entries.size() * 2 + 1;
+        while (ordered.size() < entries.size() && safety-- > 0) {
+            for (OMOFormat.PartEntry e : entries) {
+                if (emitted.contains(e.id())) continue;
+                String pid = e.parentId();
+                if (pid == null || !entryById.containsKey(pid) || emitted.contains(pid)) {
+                    ordered.add(e);
+                    emitted.add(e.id());
+                }
+            }
+        }
+        // Append any leftovers (cycles) in original order so they still load as roots.
+        if (ordered.size() < entries.size()) {
+            for (OMOFormat.PartEntry e : entries) {
+                if (!emitted.contains(e.id())) ordered.add(e);
+            }
+        }
+        return ordered;
+    }
+
+    private static boolean isIdentityMatrix(org.joml.Matrix4f m) {
+        return m != null
+                && m.m00() == 1 && m.m11() == 1 && m.m22() == 1 && m.m33() == 1
+                && m.m01() == 0 && m.m02() == 0 && m.m03() == 0
+                && m.m10() == 0 && m.m12() == 0 && m.m13() == 0
+                && m.m20() == 0 && m.m21() == 0 && m.m23() == 0
+                && m.m30() == 0 && m.m31() == 0 && m.m32() == 0;
     }
 
     // =========================================================================
@@ -645,7 +739,8 @@ public class ModelOperationService {
                     range != null ? range.indexCount() : 0,
                     range != null ? range.faceStart() : 0,
                     range != null ? range.faceCount() : 0,
-                    part.visible(), part.locked()
+                    part.visible(), part.locked(),
+                    part.parentId()
             ));
         }
 
