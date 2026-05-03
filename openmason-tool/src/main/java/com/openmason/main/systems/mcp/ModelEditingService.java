@@ -1,10 +1,13 @@
 package com.openmason.main.systems.mcp;
 
 import com.openmason.engine.rendering.model.ModelPart;
+import com.openmason.engine.rendering.model.gmr.parts.MeshRange;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
+import com.openmason.engine.rendering.model.gmr.parts.PartMeshRebuilder;
 import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory;
 import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
+import org.joml.Matrix4f;
 import com.openmason.main.systems.MainImGuiInterface;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.services.ModelOperationService;
@@ -55,6 +58,27 @@ public final class ModelEditingService {
 
     public Optional<PartView> getPart(String idOrName) {
         return await(MainThreadExecutor.submit(() -> resolve(idOrName).map(PartView::from)));
+    }
+
+    /**
+     * Deep inspection of a part for debugging: descriptor + mesh range + local bounds
+     * + transform matrix, with raw vertex/index/face-mapping arrays gated by flags
+     * so callers can keep responses small by default.
+     */
+    public Optional<PartDetail> inspectPart(String idOrName,
+                                             boolean includeVertices,
+                                             boolean includeTexCoords,
+                                             boolean includeIndices,
+                                             boolean includeFaceMapping) {
+        return await(MainThreadExecutor.submit(() -> {
+            Optional<ModelPartDescriptor> p = resolve(idOrName);
+            if (p.isEmpty()) return Optional.<PartDetail>empty();
+            ModelPartManager pm = requirePartManager();
+            PartMeshRebuilder.PartGeometry geo = pm.getPartGeometry(p.get().id());
+            return Optional.of(PartDetail.from(
+                    p.get(), geo,
+                    includeVertices, includeTexCoords, includeIndices, includeFaceMapping));
+        }));
     }
 
     public Set<String> getSelection() {
@@ -239,6 +263,75 @@ return pm.getPartById(p.get().id()).map(PartView::from);
     public record Vec3(float x, float y, float z) {
         public static Vec3 from(Vector3f v) {
             return new Vec3(v.x, v.y, v.z);
+        }
+    }
+
+    public record MeshRangeView(int vertexStart, int vertexCount,
+                                 int indexStart, int indexCount,
+                                 int faceStart, int faceCount) {
+        public static MeshRangeView from(MeshRange r) {
+            if (r == null) return null;
+            return new MeshRangeView(
+                    r.vertexStart(), r.vertexCount(),
+                    r.indexStart(), r.indexCount(),
+                    r.faceStart(), r.faceCount());
+        }
+    }
+
+    public record Bounds(Vec3 min, Vec3 max, Vec3 center, Vec3 size) {
+        public static Bounds fromVertices(float[] vertices) {
+            if (vertices == null || vertices.length < 3) return null;
+            float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY, minZ = Float.POSITIVE_INFINITY;
+            float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY, maxZ = Float.NEGATIVE_INFINITY;
+            for (int i = 0; i + 2 < vertices.length; i += 3) {
+                float x = vertices[i], y = vertices[i + 1], z = vertices[i + 2];
+                if (x < minX) minX = x; if (x > maxX) maxX = x;
+                if (y < minY) minY = y; if (y > maxY) maxY = y;
+                if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+            }
+            Vec3 min = new Vec3(minX, minY, minZ);
+            Vec3 max = new Vec3(maxX, maxY, maxZ);
+            Vec3 center = new Vec3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, (minZ + maxZ) * 0.5f);
+            Vec3 size = new Vec3(maxX - minX, maxY - minY, maxZ - minZ);
+            return new Bounds(min, max, center, size);
+        }
+    }
+
+    public record PartDetail(
+            PartView part,
+            MeshRangeView meshRange,
+            Bounds localBounds,
+            float[] transformMatrix,
+            float[] vertices,
+            float[] texCoords,
+            int[] indices,
+            int[] triangleToFaceId,
+            boolean hasGeometry
+    ) {
+        public static PartDetail from(ModelPartDescriptor d,
+                                      PartMeshRebuilder.PartGeometry geo,
+                                      boolean includeVertices,
+                                      boolean includeTexCoords,
+                                      boolean includeIndices,
+                                      boolean includeFaceMapping) {
+            PartView view = PartView.from(d);
+            MeshRangeView range = MeshRangeView.from(d.meshRange());
+            float[] verts = geo != null ? geo.vertices() : null;
+            Bounds bounds = Bounds.fromVertices(verts);
+            Matrix4f m = d.transform().toMatrix();
+            float[] mat = new float[16];
+            m.get(mat);
+            return new PartDetail(
+                    view,
+                    range,
+                    bounds,
+                    mat,
+                    includeVertices ? verts : null,
+                    includeTexCoords && geo != null ? geo.texCoords() : null,
+                    includeIndices && geo != null ? geo.indices() : null,
+                    includeFaceMapping && geo != null ? geo.triangleToFaceId() : null,
+                    geo != null
+            );
         }
     }
 

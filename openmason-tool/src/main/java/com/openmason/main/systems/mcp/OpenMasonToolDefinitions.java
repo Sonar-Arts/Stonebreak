@@ -44,6 +44,26 @@ public final class OpenMasonToolDefinitions {
                 args -> editor.getPart(reqString(args, "id_or_name")).orElse(null)));
 
         registry.register(new McpTool(
+                "inspect_part",
+                "Deep debug inspection of a single part: descriptor, mesh range, local bounding box, "
+                        + "and transform matrix (4x4 row-major, 16 floats). Optional flags include the raw "
+                        + "vertex/texCoord/index/face-mapping arrays — leave them off (default) to keep responses small.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .bool("include_vertices", "Include raw interleaved vertex positions (xyz)")
+                        .bool("include_tex_coords", "Include raw interleaved texture coords (uv)")
+                        .bool("include_indices", "Include raw triangle index buffer")
+                        .bool("include_face_mapping", "Include triangle→face id mapping")
+                        .required("id_or_name")
+                        .build(),
+                args -> editor.inspectPart(
+                        reqString(args, "id_or_name"),
+                        optBool(args, "include_vertices", false),
+                        optBool(args, "include_tex_coords", false),
+                        optBool(args, "include_indices", false),
+                        optBool(args, "include_face_mapping", false)).orElse(null)));
+
+        registry.register(new McpTool(
                 "get_selection",
                 "Get the set of currently selected part ids.",
                 schema().build(),
@@ -255,6 +275,11 @@ public final class OpenMasonToolDefinitions {
     private static float optFloat(JsonNode args, String key, float fallback) {
         JsonNode n = args.get(key);
         return (n == null || n.isNull() || !n.isNumber()) ? fallback : n.floatValue();
+    }
+
+    private static boolean optBool(JsonNode args, String key, boolean fallback) {
+        JsonNode n = args.get(key);
+        return (n == null || n.isNull() || !n.isBoolean()) ? fallback : n.asBoolean();
     }
 
     private static Vector3f optVec3(JsonNode args, String xKey, String yKey, String zKey) {
