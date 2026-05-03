@@ -1,6 +1,7 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory;
+import com.openmason.main.systems.menus.dialogs.icons.PartShapeIconManager;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImInt;
@@ -20,8 +21,9 @@ public class AddPartDialog {
     private static final Logger logger = LoggerFactory.getLogger(AddPartDialog.class);
 
     private static final String POPUP_ID = "Add Model Part";
-    private static final float DIALOG_WIDTH = 380;
-    private static final float DIALOG_HEIGHT = 260;
+    private static final float DIALOG_WIDTH = 420;
+    private static final float DIALOG_HEIGHT = 460;
+    private static final float ICON_SIZE = 24f;
 
     private boolean isOpen = false;
     private final ImInt selectedShape = new ImInt(0);
@@ -70,11 +72,21 @@ public class AddPartDialog {
             ImGui.separator();
             ImGui.spacing();
 
-            // Shape selection
+            // Shape selection (scrollable child so dialog height is fixed)
             ImGui.text("Shape:");
             ImGui.spacing();
 
+            PartShapeIconManager iconManager = PartShapeIconManager.getInstance();
+            ImGui.beginChild("##shape_list", 0, 280, true);
             for (int i = 0; i < shapes.length; i++) {
+                int textureId = iconManager.getIconTexture(shapes[i]);
+                if (textureId != -1) {
+                    ImGui.image(textureId, ICON_SIZE, ICON_SIZE);
+                    ImGui.sameLine();
+                    // Vertically align the radio button with the icon center
+                    float y = ImGui.getCursorPosY();
+                    ImGui.setCursorPosY(y + (ICON_SIZE - ImGui.getTextLineHeight()) * 0.5f);
+                }
                 if (ImGui.radioButton(shapes[i].getDisplayName(), selectedShape.get() == i)) {
                     selectedShape.set(i);
                 }
@@ -86,6 +98,7 @@ public class AddPartDialog {
                     ImGui.spacing();
                 }
             }
+            ImGui.endChild();
 
             ImGui.spacing();
             ImGui.separator();

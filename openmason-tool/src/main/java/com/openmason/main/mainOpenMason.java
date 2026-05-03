@@ -595,6 +595,12 @@ public class mainOpenMason {
         } catch (Exception e) {
             logger.error("Error cleaning up MenuBarIconManager", e);
         }
+
+        try {
+            com.openmason.main.systems.menus.dialogs.icons.PartShapeIconManager.getInstance().dispose();
+        } catch (Exception e) {
+            logger.error("Error cleaning up PartShapeIconManager", e);
+        }
     }
 
     private void cleanupImGui() {

@@ -41,6 +41,7 @@ module openmason.engine {
     exports com.openmason.engine.rendering.model.gmr.extraction;
     exports com.openmason.engine.rendering.model.gmr.notification;
     exports com.openmason.engine.rendering.model.gmr.parts;
+    exports com.openmason.engine.rendering.model.gmr.parts.shapes;
 
     // Export voxel abstractions
     exports com.openmason.engine.voxel;

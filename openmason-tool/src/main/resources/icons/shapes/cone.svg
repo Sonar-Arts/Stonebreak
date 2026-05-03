@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Cone -->
+  <path d="M 16 4 L 6 24 A 10 3.5 0 0 0 26 24 Z"
+        fill="#5B9BD5" stroke="#3A6FA8" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M 6 24 A 10 3.5 0 0 1 26 24"
+        fill="none" stroke="#3A6FA8" stroke-width="1.2" stroke-dasharray="2,2" opacity="0.6"/>
+  <line x1="16" y1="4" x2="16" y2="27.5"
+        stroke="#3A6FA8" stroke-width="0.8" opacity="0.3"/>
+</svg>

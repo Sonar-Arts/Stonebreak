@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Cross - two perpendicular panes (foliage X) -->
+  <polygon points="6,4 10,4 26,28 22,28"
+           fill="#5B9BD5" stroke="#3A6FA8" stroke-width="1.5" stroke-linejoin="round"/>
+  <polygon points="22,4 26,4 10,28 6,28"
+           fill="#3A6FA8" stroke="#2E5C9E" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

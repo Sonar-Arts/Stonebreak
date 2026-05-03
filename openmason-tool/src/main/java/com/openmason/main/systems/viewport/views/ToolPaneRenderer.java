@@ -593,6 +593,88 @@ public class ToolPaneRenderer {
                 dl.addLine(cx - sw, cy - sh * 0.5f, cx + sw, cy + sh * 0.5f, color, thick * 0.5f);
                 dl.addLine(cx + sw, cy - sh * 0.5f, cx - sw, cy + sh * 0.5f, color, thick * 0.5f);
             }
+            case CYLINDER -> {
+                float rw = s * 0.55f, rh = s * 0.18f;
+                float topY = cy - s * 0.5f, botY = cy + s * 0.5f;
+                drawEllipse(dl, cx, topY, rw, rh, color, thick);
+                drawEllipseArc(dl, cx, botY, rw, rh, 0, (float) Math.PI, color, thick);
+                dl.addLine(cx - rw, topY, cx - rw, botY, color, thick);
+                dl.addLine(cx + rw, topY, cx + rw, botY, color, thick);
+            }
+            case CONE -> {
+                float rw = s * 0.6f, rh = s * 0.18f;
+                float baseY = cy + s * 0.45f;
+                float apexY = cy - s * 0.55f;
+                dl.addLine(cx - rw, baseY, cx, apexY, color, thick);
+                dl.addLine(cx + rw, baseY, cx, apexY, color, thick);
+                drawEllipseArc(dl, cx, baseY, rw, rh, 0, (float) Math.PI, color, thick);
+                drawEllipseArc(dl, cx, baseY, rw, rh, (float) Math.PI, (float) (2 * Math.PI), color, (thick * 0.5f));
+            }
+            case SPHERE -> {
+                float r = s * 0.6f;
+                dl.addCircle(cx, cy, r, color, 24, thick);
+                drawEllipse(dl, cx, cy, r, r * 0.35f, color, thick * 0.6f);
+                drawEllipse(dl, cx, cy, r * 0.35f, r, color, thick * 0.6f);
+            }
+            case HEMISPHERE -> {
+                float r = s * 0.6f, rh = s * 0.18f;
+                float baseY = cy + s * 0.25f;
+                drawEllipseArc(dl, cx, baseY, r, r, (float) Math.PI, (float) (2 * Math.PI), color, thick);
+                drawEllipse(dl, cx, baseY, r, rh, color, thick);
+            }
+            case WEDGE -> {
+                float w = s * 0.75f, h = s * 0.7f, dz = s * 0.25f;
+                float fx0 = cx - w * 0.5f, fy0 = cy + h * 0.5f;
+                float fx1 = cx + w * 0.5f, fy1 = cy + h * 0.5f;
+                float fx2 = cx - w * 0.5f, fy2 = cy - h * 0.5f;
+                // Front triangle
+                dl.addLine(fx0, fy0, fx1, fy1, color, thick);
+                dl.addLine(fx0, fy0, fx2, fy2, color, thick);
+                dl.addLine(fx2, fy2, fx1, fy1, color, thick);
+                // Depth offset (back triangle's visible edges)
+                dl.addLine(fx0, fy0, fx0 + dz, fy0 - dz, color, thick);
+                dl.addLine(fx1, fy1, fx1 + dz, fy1 - dz, color, thick);
+                dl.addLine(fx0 + dz, fy0 - dz, fx1 + dz, fy1 - dz, color, thick);
+            }
+            case TORUS -> {
+                float ow = s * 0.7f, oh = s * 0.28f;
+                float iw = s * 0.28f, ih = s * 0.11f;
+                drawEllipse(dl, cx, cy, ow, oh, color, thick);
+                drawEllipse(dl, cx, cy, iw, ih, color, thick);
+            }
+            case CROSS -> {
+                float w = s * 0.7f, h = s * 0.7f;
+                dl.addLine(cx - w, cy - h, cx + w, cy + h, color, thick);
+                dl.addLine(cx + w, cy - h, cx - w, cy + h, color, thick);
+                // Thin perpendicular caps to suggest two panes
+                dl.addLine(cx - w, cy - h, cx - w + 4, cy - h, color, thick * 0.6f);
+                dl.addLine(cx + w, cy + h, cx + w - 4, cy + h, color, thick * 0.6f);
+                dl.addLine(cx + w, cy - h, cx + w - 4, cy - h, color, thick * 0.6f);
+                dl.addLine(cx - w, cy + h, cx - w + 4, cy + h, color, thick * 0.6f);
+            }
+        }
+    }
+
+    /** Draw a full ellipse outline by polyline approximation. */
+    private void drawEllipse(ImDrawList dl, float cx, float cy, float rx, float ry,
+                              int color, float thick) {
+        drawEllipseArc(dl, cx, cy, rx, ry, 0, (float) (2 * Math.PI), color, thick);
+    }
+
+    /** Draw an elliptical arc from {@code start} to {@code end} radians. */
+    private void drawEllipseArc(ImDrawList dl, float cx, float cy, float rx, float ry,
+                                 float start, float end, int color, float thick) {
+        int segments = 24;
+        float step = (end - start) / segments;
+        float px = cx + rx * (float) Math.cos(start);
+        float py = cy + ry * (float) Math.sin(start);
+        for (int i = 1; i <= segments; i++) {
+            float a = start + step * i;
+            float nx = cx + rx * (float) Math.cos(a);
+            float ny = cy + ry * (float) Math.sin(a);
+            dl.addLine(px, py, nx, ny, color, thick);
+            px = nx;
+            py = ny;
         }
     }
 
