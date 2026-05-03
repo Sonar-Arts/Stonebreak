@@ -536,6 +536,14 @@ public class ViewportController {
     }
 
     /**
+     * Switch the viewport to render the .sbt at {@code sbtPath} as a
+     * voxelized sprite (per-pixel cube grid).
+     */
+    public void setSelectedSBT(java.nio.file.Path sbtPath) {
+        contentTypeManager.switchToSBT(sbtPath);
+    }
+
+    /**
      * Set texture variant for current model.
      *
      * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager.

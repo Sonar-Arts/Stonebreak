@@ -1,13 +1,14 @@
 package com.openmason.main.systems.menus.panes.modelBrowser.events;
 
-import com.openmason.main.systems.menus.panes.modelBrowser.events.listeners.BlockSelectionListener;
-import com.openmason.main.systems.menus.panes.modelBrowser.events.listeners.ItemSelectionListener;
+import com.openmason.main.systems.menus.panes.modelBrowser.events.listeners.OMOSelectionListener;
+import com.openmason.main.systems.menus.panes.modelBrowser.events.listeners.SBTSelectionListener;
 
 /**
  * Composite listener interface for all Model Browser events.
- * Supports block and item selection only (legacy model selection removed).
+ * The browser only deals with file-backed assets now — .OMO models and
+ * .SBT textures.
  */
 public interface ModelBrowserListener extends
-        BlockSelectionListener,
-        ItemSelectionListener {
+        OMOSelectionListener,
+        SBTSelectionListener {
 }

@@ -4,9 +4,9 @@ import com.openmason.main.systems.menus.*;
 import com.openmason.main.systems.menus.panes.modelBrowser.ModelBrowserController;
 import com.openmason.main.systems.menus.panes.modelBrowser.ModelBrowserImGui;
 import com.openmason.main.systems.menus.preferences.config.WindowConfig;
-import com.openmason.main.systems.menus.panes.modelBrowser.events.BlockSelectedEvent;
-import com.openmason.main.systems.menus.panes.modelBrowser.events.ItemSelectedEvent;
 import com.openmason.main.systems.menus.panes.modelBrowser.events.ModelBrowserListener;
+import com.openmason.main.systems.menus.panes.modelBrowser.events.OMOSelectedEvent;
+import com.openmason.main.systems.menus.panes.modelBrowser.events.SBTSelectedEvent;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.project.ProjectService;
 import com.openmason.main.systems.services.LayoutService;
@@ -430,35 +430,21 @@ public class MainImGuiInterface implements ModelBrowserListener {
     // ModelBrowserListener Implementation (Observer Pattern)
     // ===========================
 
-    /**
-     * Handle block selection events from the Model Browser.
-     * Forwards the event to the viewport for display.
-     */
+    /** ModelOperationService.loadOMOModel handles the actual viewport load; this hook is for logging/UI sync. */
     @Override
-    public void onBlockSelected(BlockSelectedEvent event) {
-        try {
-            if (viewport3D != null) {
-                viewport3D.setSelectedBlock(event.getBlockType());
-                logger.debug("Block selected via event: {}", event.getBlockType());
-            }
-        } catch (Exception e) {
-            logger.error("Failed to handle block selection event", e);
-        }
+    public void onOMOSelected(OMOSelectedEvent event) {
+        logger.debug(".OMO selected: {}", event.entry().name());
     }
 
-    /**
-     * Handle item selection events from the Model Browser.
-     * Forwards the event to the viewport for display.
-     */
     @Override
-    public void onItemSelected(ItemSelectedEvent event) {
+    public void onSBTSelected(SBTSelectedEvent event) {
         try {
             if (viewport3D != null) {
-                viewport3D.setSelectedItem(event.getItemType());
-                logger.debug("Item selected via event: {}", event.getItemType());
+                viewport3D.setSelectedSBT(event.entry().filePath());
+                logger.debug(".SBT selected: {}", event.entry().name());
             }
         } catch (Exception e) {
-            logger.error("Failed to handle item selection event", e);
+            logger.error("Failed to handle SBT selection event", e);
         }
     }
 

@@ -95,18 +95,10 @@ public class BreadcrumbNavigator {
         ModelBrowserState state = controller.getState();
         List<String> currentPath = state.getNavigationPath();
 
-        // Reconstruct category from path
         if (currentPath.size() == 1) {
-            // Just "Home"
-            state.setSelectedCategory("All Models");
-        } else if (currentPath.size() == 2) {
-            // "Home" > "Blocks" or "Home" > "Items" etc.
-            state.setSelectedCategory(currentPath.get(1));
-        } else if (currentPath.size() >= 3) {
-            // "Home" > "Blocks" > "Terrain"
-            String parent = currentPath.get(1);
-            String category = currentPath.get(2);
-            state.setSelectedCategory(parent + " > " + category);
+            state.setSelectedCategory("All Assets");
+        } else {
+            state.setSelectedCategory(currentPath.get(currentPath.size() - 1));
         }
     }
 }

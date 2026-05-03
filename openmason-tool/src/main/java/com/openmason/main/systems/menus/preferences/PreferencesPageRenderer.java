@@ -86,6 +86,10 @@ public class PreferencesPageRenderer {
     private final ImInt themeIndex = new ImInt();
     private final ImInt densityIndex = new ImInt();
 
+    // Assets ImGui state holders
+    private final imgui.type.ImString omoFolderInput = new imgui.type.ImString("", 512);
+    private final imgui.type.ImString sbtFolderInput = new imgui.type.ImString("", 512);
+
     // Dependencies
     private final PreferencesManager preferencesManager;
     private final ThemeManager themeManager;
@@ -145,6 +149,7 @@ public class PreferencesPageRenderer {
         }
 
         syncCommonState();
+        syncAssetsState();
 
         logger.debug("All preference pages synced from persistence");
     }
@@ -157,6 +162,7 @@ public class PreferencesPageRenderer {
         applyModelEditorSettings();
         applyTextureEditorSettings();
         applyCommonSettings();
+        applyAssetsSettings();
 
         // Migrate the file so it contains every known key.
         // Adds defaults for any missing keys without overwriting existing values.
@@ -183,6 +189,9 @@ public class PreferencesPageRenderer {
                 break;
             case KEYBINDS:
                 renderKeybindsPage();
+                break;
+            case ASSETS:
+                renderAssetsPage();
                 break;
             case COMMON:
                 renderCommonPage();
@@ -643,6 +652,60 @@ public class PreferencesPageRenderer {
 
         DensityManager.UIDensity currentDensity = themeManager.getCurrentDensity();
         densityIndex.set(currentDensity.ordinal());
+    }
+
+    // ========================================
+    // Assets Page (deferred apply)
+    // ========================================
+
+    private void renderAssetsPage() {
+        ImGuiComponents.renderSectionHeader("Asset Library Folders");
+        ImGui.textWrapped("The Model Browser scans these directories for .OMO models and .SBT textures. "
+                + "Changes are applied when you click OK or Apply.");
+        ImGui.spacing();
+
+        ImGui.text(".OMO Folder");
+        ImGui.pushItemWidth(-1);
+        ImGui.inputText("##omoFolder", omoFolderInput);
+        ImGui.popItemWidth();
+        ImGui.spacing();
+
+        ImGui.text(".SBT Folder");
+        ImGui.pushItemWidth(-1);
+        ImGui.inputText("##sbtFolder", sbtFolderInput);
+        ImGui.popItemWidth();
+        ImGui.spacing();
+
+        ImGuiComponents.addSectionSeparator();
+        ImGui.spacing();
+
+        ImGuiComponents.renderButton(
+                "Reset to Defaults",
+                150.0f,
+                0.0f,
+                this::resetAssetsToDefaults
+        );
+    }
+
+    private void syncAssetsState() {
+        com.openmason.main.omConfig config = new com.openmason.main.omConfig();
+        omoFolderInput.set(config.getOMOFolder().toString());
+        sbtFolderInput.set(config.getSBTFolder().toString());
+    }
+
+    private void applyAssetsSettings() {
+        com.openmason.main.omConfig config = new com.openmason.main.omConfig();
+        config.setOMOFolder(omoFolderInput.get());
+        config.setSBTFolder(sbtFolderInput.get());
+        config.saveConfiguration();
+        logger.debug("Asset folders saved: omo={}, sbt={}", omoFolderInput.get(), sbtFolderInput.get());
+    }
+
+    private void resetAssetsToDefaults() {
+        omoFolderInput.set(java.nio.file.Paths.get(System.getProperty("user.dir"),
+                "Dev Working/DevTextures/Blocks/OMT/OMOs").toString());
+        sbtFolderInput.set(java.nio.file.Paths.get(System.getProperty("user.dir"),
+                "Dev Working/DevTextures/Items/SBTs").toString());
     }
 
     // ========================================

@@ -115,25 +115,14 @@ public class ModelBrowserThumbnailCache {
         return textureCache.containsKey(key);
     }
 
-    /**
-     * Generates a cache key for a block thumbnail.
-     */
-    public static String blockKey(String blockName, int size) {
-        return "block_" + blockName + "_" + size;
+    /** Generates a cache key for a .OMO model thumbnail. */
+    public static String omoKey(String filePath, int size) {
+        return "omo_" + filePath + "_" + size;
     }
 
-    /**
-     * Generates a cache key for an item thumbnail.
-     */
-    public static String itemKey(String itemName, int size) {
-        return "item_" + itemName + "_" + size;
-    }
-
-    /**
-     * Generates a cache key for a model thumbnail.
-     */
-    public static String modelKey(String modelName, int size) {
-        return "model_" + modelName + "_" + size;
+    /** Generates a cache key for a .SBT texture thumbnail. */
+    public static String sbtKey(String filePath, int size) {
+        return "sbt_" + filePath + "_" + size;
     }
 
     /**

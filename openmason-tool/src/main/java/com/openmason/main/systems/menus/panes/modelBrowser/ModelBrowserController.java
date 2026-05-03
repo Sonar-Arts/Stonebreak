@@ -1,29 +1,27 @@
 package com.openmason.main.systems.menus.panes.modelBrowser;
 
-import com.openmason.main.systems.rendering.model.block.BlockManager;
-import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.engine.format.omo.OMOFileManager;
-import com.openmason.main.systems.menus.panes.modelBrowser.categorizers.BlockCategorizer;
-import com.openmason.main.systems.menus.panes.modelBrowser.categorizers.ItemCategorizer;
-import com.openmason.main.systems.menus.panes.modelBrowser.events.BlockSelectedEvent;
-import com.openmason.main.systems.menus.panes.modelBrowser.events.ItemSelectedEvent;
+import com.openmason.engine.format.sbt.SBTFileManager;
+import com.openmason.main.omConfig;
 import com.openmason.main.systems.menus.panes.modelBrowser.events.ModelBrowserListener;
-import com.openmason.main.systems.menus.panes.modelBrowser.events.listeners.BlockSelectionListener;
-import com.openmason.main.systems.menus.panes.modelBrowser.events.listeners.ItemSelectionListener;
+import com.openmason.main.systems.menus.panes.modelBrowser.events.OMOSelectedEvent;
+import com.openmason.main.systems.menus.panes.modelBrowser.events.SBTSelectedEvent;
 import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.services.StatusService;
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Consumer;
 
 /**
  * Controller for the Model Browser component.
+ *
+ * <p>The browser exclusively works with file-backed assets discovered on disk:
+ * .OMO models and .SBT textures. Folder paths are sourced from {@link omConfig}
+ * and can be retargeted at runtime via {@link #refreshAssetFolders()} after the
+ * user updates them in Preferences.
  */
 public class ModelBrowserController {
 
@@ -34,28 +32,23 @@ public class ModelBrowserController {
     private final ModelOperationService modelOperationService;
     private final StatusService statusService;
     private final OMOFileManager omoFileManager;
+    private final SBTFileManager sbtFileManager;
 
-    /**
-     * Creates a new Model Browser controller.
-     */
     public ModelBrowserController(ModelOperationService modelOperationService, StatusService statusService) {
         this.state = new ModelBrowserState();
         this.listeners = new ArrayList<>();
         this.modelOperationService = modelOperationService;
         this.statusService = statusService;
-        this.omoFileManager = new OMOFileManager();
+
+        omConfig config = new omConfig();
+        this.omoFileManager = new OMOFileManager(config.getOMOFolder());
+        this.sbtFileManager = new SBTFileManager(config.getSBTFolder());
     }
 
-    /**
-     * Gets the state object.
-     */
     public ModelBrowserState getState() {
         return state;
     }
 
-    /**
-     * Adds a listener to be notified of model browser events.
-     */
     public void addListener(ModelBrowserListener listener) {
         if (listener != null && !listeners.contains(listener)) {
             listeners.add(listener);
@@ -63,160 +56,82 @@ public class ModelBrowserController {
     }
 
     /**
-     * Template method for handling selection events.
+     * Re-reads the OMO/SBT folder paths from {@link omConfig} and forces a
+     * rescan on the next call to {@link #getOMOFiles()} / {@link #getSBTFiles()}.
+     * Call this after the user changes folders in Preferences.
      */
-    private <T> void handleSelection(
-            T item,
-            String itemType,
-            String displayName,
-            String statusMessage,
-            Consumer<T> additionalAction,
-            Consumer<List<ModelBrowserListener>> notifyListeners) {
-        try {
-            // Update state
-            state.setSelectedModelInfo("Selected: " + displayName + " (" + itemType + ")");
-
-            // Execute any additional actions (e.g., add to recent files)
-            if (additionalAction != null) {
-                additionalAction.accept(item);
-            }
-
-            // Update status
-            statusService.updateStatus(statusMessage + ": " + displayName);
-
-            // Notify listeners
-            notifyListeners.accept(listeners);
-
-            logger.debug("{} selected: {}", itemType, item);
-        } catch (Exception e) {
-            logger.error("Failed to select {}: {}", itemType.toLowerCase(), item, e);
-            statusService.updateStatus("Error loading " + itemType.toLowerCase() + ": " + e.getMessage());
-        }
+    public void refreshAssetFolders() {
+        omConfig config = new omConfig();
+        omoFileManager.setSearchDirectory(config.getOMOFolder());
+        sbtFileManager.setSearchDirectory(config.getSBTFolder());
     }
 
-    /**
-     * Handles block selection by the user.
-     *
-     * @param blockType The selected block type
-     */
-    public void selectBlock(BlockType blockType) {
-        handleSelection(
-                blockType,
-                "Block",
-                BlockManager.getDisplayName(blockType),
-                "Loaded block",
-                null, // No additional action needed
-                listenerList -> {
-                    BlockSelectedEvent event = new BlockSelectedEvent(blockType);
-                    for (BlockSelectionListener listener : listenerList) {
-                        listener.onBlockSelected(event);
-                    }
-                }
-        );
+    /** Returns the currently configured OMO folder. */
+    public Path getOMOFolder() {
+        return omoFileManager.getSearchDirectory();
     }
 
-    /**
-     * Handles item selection by the user.
-     *
-     * @param itemType The selected item type
-     */
-    public void selectItem(ItemType itemType) {
-        handleSelection(
-                itemType,
-                "Item",
-                ItemManager.getDisplayName(itemType),
-                "Loaded item",
-                null, // No additional action needed
-                listenerList -> {
-                    ItemSelectedEvent event = new ItemSelectedEvent(itemType);
-                    for (ItemSelectionListener listener : listenerList) {
-                        listener.onItemSelected(event);
-                    }
-                }
-        );
+    /** Returns the currently configured SBT folder. */
+    public Path getSBTFolder() {
+        return sbtFileManager.getSearchDirectory();
     }
 
-    /**
-     * Handles model selection by the user (legacy cow functionality removed).
-     *
-     * @param modelName The selected model name
-     * @deprecated Legacy cow model support has been removed
-     */
-    @Deprecated
-    public void selectModel(String modelName) {
-        handleSelection(
-                modelName,
-                "Model",
-                modelName,
-                "Model selection (legacy)",
-                name -> {
-                    // Legacy model selection - no longer supported
-                    logger.debug("selectModel called but legacy model loading is no longer supported: {}", name);
-                },
-                listenerList -> {
-                    // No listener notification - ModelSelectionListener removed
-                }
-        );
-    }
-
-    /**
-     * Gets all available blocks categorized for display.
-     *
-     * @return Map of categories to lists of blocks
-     */
-    public Map<BlockCategorizer.Category, List<BlockType>> getCategorizedBlocks() {
-        List<BlockType> allBlocks = BlockManager.getAvailableBlocks();
-        return BlockCategorizer.categorizeAll(allBlocks);
-    }
-
-    /**
-     * Gets all available items categorized for display.
-     *
-     * @return Map of categories to lists of items
-     */
-    public Map<ItemCategorizer.Category, List<ItemType>> getCategorizedItems() {
-        List<ItemType> allItems = ItemManager.getVoxelizableItems();
-        return ItemCategorizer.categorizeAll(allItems);
-    }
-
-
-    /**
-     * Gets all available .OMO model files.
-     */
     public List<OMOFileManager.OMOFileEntry> getOMOFiles() {
         return omoFileManager.scanForOMOFiles();
     }
 
-    /**
-     * Handles .OMO file selection by the user.
-     */
+    public List<SBTFileManager.SBTFileEntry> getSBTFiles() {
+        return sbtFileManager.scanForSBTFiles();
+    }
+
+    /** Forces both folder scans to repeat on next access. */
+    public void invalidateScanCaches() {
+        omoFileManager.invalidateCache();
+        sbtFileManager.invalidateCache();
+    }
+
     public void selectOMOFile(OMOFileManager.OMOFileEntry entry) {
         if (entry == null) {
-            logger.warn("Attempted to select null OMO file");
             return;
         }
-
         try {
-            // Update state
             state.setSelectedModelInfo("Selected: " + entry.name() + " (.OMO Model)");
             state.addRecentFile(entry.name());
 
-            // Load the .OMO file using ModelOperationService
             statusService.updateStatus("Loading .OMO model: " + entry.name());
             modelOperationService.loadOMOModel(entry.getFilePathString());
 
-            logger.debug(".OMO file selected: {}", entry.name());
+            OMOSelectedEvent event = new OMOSelectedEvent(entry);
+            for (ModelBrowserListener l : listeners) {
+                l.onOMOSelected(event);
+            }
         } catch (Exception e) {
             logger.error("Failed to load .OMO file: {}", entry.name(), e);
             statusService.updateStatus("Error loading .OMO model: " + e.getMessage());
         }
     }
 
-    /**
-     * Resets the controller state to defaults.
-     */
+    public void selectSBTFile(SBTFileManager.SBTFileEntry entry) {
+        if (entry == null) {
+            return;
+        }
+        try {
+            state.setSelectedModelInfo("Selected: " + entry.name() + " (.SBT Texture)");
+            state.addRecentFile(entry.name());
+
+            statusService.updateStatus("Selected .SBT texture: " + entry.name());
+
+            SBTSelectedEvent event = new SBTSelectedEvent(entry);
+            for (ModelBrowserListener l : listeners) {
+                l.onSBTSelected(event);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to handle .SBT file: {}", entry.name(), e);
+            statusService.updateStatus("Error handling .SBT texture: " + e.getMessage());
+        }
+    }
+
     public void reset() {
         state.reset();
-        logger.debug("Model browser state reset");
     }
 }

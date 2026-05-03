@@ -347,7 +347,7 @@ public class ModelBrowserImGui {
         ImGui.sameLine();
 
         // Highlight active filter
-        if (currentFilter != FilterType.ALL_MODELS) {
+        if (currentFilter != FilterType.ALL) {
             ImGui.pushStyleColor(ImGuiCol.FrameBg, 0.3f, 0.5f, 0.7f, 0.5f);
         }
 
@@ -355,7 +355,7 @@ public class ModelBrowserImGui {
         ImGui.combo("##filter", state.getCurrentFilterIndex(), state.getFilters());
         ImGui.popItemWidth();
 
-        if (currentFilter != FilterType.ALL_MODELS) {
+        if (currentFilter != FilterType.ALL) {
             ImGui.popStyleColor();
         }
     }
