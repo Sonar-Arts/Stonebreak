@@ -208,6 +208,8 @@ public class ItemThumbnailRenderer {
             case WOODEN_AXE -> "wooden_axe";
             case WOODEN_BUCKET -> "wooden_bucket_base";
             case WOODEN_BUCKET_WATER -> "wooden_bucket_water";
+            // SBT-textured items: not present in the texture atlas — fall back.
+            case PATTY_SMACKER, SNOWBALL, STONE_SHOVEL, SWORD, WAR_AXE, WOODEN_SHOVEL -> null;
         };
     }
 
@@ -222,7 +224,12 @@ public class ItemThumbnailRenderer {
             case WOODEN_AXE -> 0xFF6D4C41; // Darker brown
             case WOODEN_BUCKET -> 0xFFA1887F; // Light brown
             case WOODEN_BUCKET_WATER -> 0xFF2196F3; // Blue (water)
-            // Light gray
+            case PATTY_SMACKER -> 0xFFD7A86E; // Tan
+            case SNOWBALL -> 0xFFEEEEEE; // Off-white
+            case STONE_SHOVEL -> 0xFF9E9E9E; // Stone gray
+            case SWORD -> 0xFFB0BEC5; // Steel
+            case WAR_AXE -> 0xFF78909C; // Dark steel
+            case WOODEN_SHOVEL -> 0xFF8D6E63; // Brown
         };
     }
 
