@@ -145,17 +145,35 @@ public class PartMeshRebuilder {
 
     /**
      * Rebuild with explicit per-part face offsets for stable face IDs.
-     * Face IDs for each part are assigned from the provided offset map rather than
-     * auto-incrementing, ensuring face IDs remain stable across hide/show toggles.
-     *
-     * @param parts            Ordered list of visible part descriptors
-     * @param partData         Map of partId → raw geometry data
-     * @param stableFaceOffsets Map of partId → stable face offset for that part
-     * @return RebuildResult with combined buffers using stable face IDs
+     * Backward-compatible overload that bakes each part's local transform.
+     * Use the four-argument form to bake hierarchical (effective) transforms instead.
      */
     public RebuildResult rebuildWithFaceOffsets(List<ModelPartDescriptor> parts,
                                                 Map<String, PartGeometry> partData,
                                                 Map<String, Integer> stableFaceOffsets) {
+        return rebuildWithFaceOffsets(parts, partData, stableFaceOffsets, null);
+    }
+
+    /**
+     * Rebuild with explicit per-part face offsets and optional effective transforms.
+     * Face IDs for each part are assigned from the provided offset map rather than
+     * auto-incrementing, ensuring face IDs remain stable across hide/show toggles.
+     *
+     * <p>If {@code effectiveTransforms} is non-null and contains an entry for a part,
+     * that matrix is used to bake the part's vertices (supports hierarchical chains
+     * computed by {@code IModelPartManager#getEffectiveWorldMatrix}). Otherwise the
+     * part's local transform is used.
+     *
+     * @param parts               Ordered list of visible part descriptors
+     * @param partData            Map of partId → raw geometry data
+     * @param stableFaceOffsets   Map of partId → stable face offset for that part
+     * @param effectiveTransforms Optional map of partId → pre-computed effective world matrix
+     * @return RebuildResult with combined buffers using stable face IDs
+     */
+    public RebuildResult rebuildWithFaceOffsets(List<ModelPartDescriptor> parts,
+                                                Map<String, PartGeometry> partData,
+                                                Map<String, Integer> stableFaceOffsets,
+                                                Map<String, Matrix4f> effectiveTransforms) {
         if (parts.isEmpty()) {
             return RebuildResult.empty();
         }
@@ -189,8 +207,16 @@ public class PartMeshRebuilder {
             // Use stable face offset instead of auto-incrementing
             int partFaceStart = stableFaceOffsets.getOrDefault(part.id(), 0);
 
-            Matrix4f transform = part.transform().toMatrix();
-            boolean hasTransform = !part.transform().isIdentity();
+            // Prefer caller-supplied effective (hierarchical) matrix; fall back to local.
+            Matrix4f transform;
+            boolean hasTransform;
+            if (effectiveTransforms != null && effectiveTransforms.containsKey(part.id())) {
+                transform = effectiveTransforms.get(part.id());
+                hasTransform = !isIdentityMatrix(transform);
+            } else {
+                transform = part.transform().toMatrix();
+                hasTransform = !part.transform().isIdentity();
+            }
 
             for (int i = 0; i < geo.vertexCount(); i++) {
                 int srcPos = i * 3;
@@ -246,6 +272,18 @@ public class PartMeshRebuilder {
                 combinedIndices, triangleToFaceId,
                 partRanges, Map.of()
         );
+    }
+
+    /**
+     * Cheap identity check for a 4x4 matrix to avoid the per-vertex transform when unnecessary.
+     */
+    private static boolean isIdentityMatrix(Matrix4f m) {
+        return m != null
+                && m.m00() == 1 && m.m11() == 1 && m.m22() == 1 && m.m33() == 1
+                && m.m01() == 0 && m.m02() == 0 && m.m03() == 0
+                && m.m10() == 0 && m.m12() == 0 && m.m13() == 0
+                && m.m20() == 0 && m.m21() == 0 && m.m23() == 0
+                && m.m30() == 0 && m.m31() == 0 && m.m32() == 0;
     }
 
     // ========== Data Records ==========

@@ -423,6 +423,31 @@ public class FileDialogService {
     }
 
     /**
+     * Show open OMA (Open Mason Animation) dialog using native file dialog.
+     * @param callback callback to receive selected file path
+     */
+    public void showOpenOMADialog(OpenCallback callback) {
+        showNFDOpenDialog("Opening OMA animation...", "Open Mason Animation", "omanim",
+                "Selected OMA file", callback);
+    }
+
+    /**
+     * Show save OMA (Open Mason Animation) dialog using native file dialog.
+     * @param callback callback to receive selected file path
+     */
+    public void showSaveOMADialog(SaveOMACallback callback) {
+        showNFDSaveDialog("Saving OMA animation...", "Open Mason Animation", "omanim",
+                "animation.omanim", "Save OMA to file", callback::onSave);
+    }
+
+    /**
+     * Callback interface for OMA save operations.
+     */
+    public interface SaveOMACallback {
+        void onSave(String filePath);
+    }
+
+    /**
      * Show save SBO (Stonebreak Object) dialog using native file dialog.
      * @param callback callback to receive selected file path
      */

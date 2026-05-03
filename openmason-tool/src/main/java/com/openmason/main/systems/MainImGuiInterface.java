@@ -488,6 +488,10 @@ public class MainImGuiInterface implements ModelBrowserListener {
         return viewport3D;
     }
 
+    public FileDialogService getFileDialogService() {
+        return fileDialogService;
+    }
+
     public PropertyPanelImGui getPropertyPanel() {
         return propertyPanelImGui;
     }
@@ -539,6 +543,15 @@ public class MainImGuiInterface implements ModelBrowserListener {
     public void setOpenTextureEditorCallback(Runnable callback) {
         if (toolsMenuHandler != null) {
             toolsMenuHandler.setOpenTextureEditorCallback(callback);
+        }
+    }
+
+    /**
+     * Set callback for opening the animation editor.
+     */
+    public void setOpenAnimationEditorCallback(Runnable callback) {
+        if (toolsMenuHandler != null) {
+            toolsMenuHandler.setOpenAnimationEditorCallback(callback);
         }
     }
 

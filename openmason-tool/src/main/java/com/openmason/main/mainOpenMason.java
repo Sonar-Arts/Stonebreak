@@ -14,6 +14,7 @@ import com.openmason.main.systems.menus.mainHub.ProjectHubScreen;
 import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.menus.textureCreator.FaceEditorBridge;
+import com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.textureCreator.TexturePreviewPipeline;
 import com.openmason.main.systems.services.drop.ViewportDropCallbackManager;
@@ -64,6 +65,7 @@ public class mainOpenMason {
     private ViewportImGuiInterface viewportInterface;
     private TextureCreatorImGui textureCreatorInterface;
     private TextureEditorWindow textureEditorWindow;
+    private AnimationEditorImGui animationEditor;
     private TexturePreviewPipeline texturePreviewPipeline;
     private final McpServerBootstrap mcpServer = new McpServerBootstrap();
 
@@ -311,6 +313,8 @@ public class mainOpenMason {
 
             textureCreatorInterface = TextureCreatorImGui.createDefault();
             textureEditorWindow = new TextureEditorWindow(textureCreatorInterface);
+            animationEditor = new AnimationEditorImGui();
+            animationEditor.setFileDialogService(mainInterface.getFileDialogService());
 
             // Load custom keybinds AFTER both viewport and texture editor are initialized
             loadCustomKeybinds();
@@ -382,6 +386,15 @@ public class mainOpenMason {
             showTextureEditor = true;
             textureEditorWindow.show();
         });
+        mainInterface.setOpenAnimationEditorCallback(() -> {
+            if (animationEditor == null) return;
+            // Bind the animation editor to whatever model is currently loaded so
+            // the timeline drives this viewport's parts.
+            if (mainInterface.getViewport3D() != null) {
+                animationEditor.bindViewport(mainInterface.getViewport3D().getPartManager());
+            }
+            animationEditor.show();
+        });
         mainInterface.setTextureCreatorInterface(textureCreatorInterface);
 
         // Reset texture editor when a new/different model is loaded
@@ -438,6 +451,10 @@ public class mainOpenMason {
                 }
                 showTextureEditor = stillVisible;
             }, "Texture Editor");
+        }
+
+        if (animationEditor != null && animationEditor.isVisible()) {
+            safeRender(() -> animationEditor.render(deltaTime), "Animation Editor");
         }
 
         if (mainInterface != null && mainInterface.getUnifiedPreferencesWindow() != null) {
@@ -544,6 +561,9 @@ public class mainOpenMason {
         showTextureEditor = false;
         if (textureEditorWindow != null) {
             textureEditorWindow.hide();
+        }
+        if (animationEditor != null) {
+            animationEditor.hide();
         }
     }
 

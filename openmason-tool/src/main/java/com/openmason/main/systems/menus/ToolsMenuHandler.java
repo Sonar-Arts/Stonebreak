@@ -17,6 +17,7 @@ public class ToolsMenuHandler {
     private static final Logger logger = LoggerFactory.getLogger(ToolsMenuHandler.class);
 
     private Runnable openTextureEditorCallback;
+    private Runnable openAnimationEditorCallback;
     private SBOExportWindow sboExportWindow;
     private SBEExportWindow sbeExportWindow;
     private ModelState modelState;
@@ -28,6 +29,13 @@ public class ToolsMenuHandler {
      */
     public void setOpenTextureEditorCallback(Runnable callback) {
         this.openTextureEditorCallback = callback;
+    }
+
+    /**
+     * Set the callback for opening the animation editor.
+     */
+    public void setOpenAnimationEditorCallback(Runnable callback) {
+        this.openAnimationEditorCallback = callback;
     }
 
     /**
@@ -78,6 +86,12 @@ public class ToolsMenuHandler {
         if (ImGui.menuItem("Texture Editor")) {
             if (openTextureEditorCallback != null) {
                 openTextureEditorCallback.run();
+            }
+        }
+
+        if (ImGui.menuItem("Animation Editor")) {
+            if (openAnimationEditorCallback != null) {
+                openAnimationEditorCallback.run();
             }
         }
 
