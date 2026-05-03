@@ -25,6 +25,7 @@ public class JsonWorldSerializer {
         json.append("    \"y\": ").append(spawn.y).append(",\n");
         json.append("    \"z\": ").append(spawn.z).append("\n");
         json.append("  },\n");
+        json.append("  \"hasExplicitSpawn\": ").append(world.hasExplicitSpawn()).append(",\n");
 
         json.append("  \"creationTime\": \"").append(world.getCreatedTime().format(FORMATTER)).append("\",\n");
         json.append("  \"lastPlayed\": \"").append(world.getLastPlayed().format(FORMATTER)).append("\",\n");
@@ -44,6 +45,7 @@ public class JsonWorldSerializer {
                 .seed(JsonParsingUtil.extractLong(json, "seed"))
                 .worldName(JsonParsingUtil.extractString(json, "worldName"))
                 .spawnPosition(JsonParsingUtil.extractVector3f(json, "spawnPosition"))
+                .hasExplicitSpawn(JsonParsingUtil.extractBoolean(json, "hasExplicitSpawn", false))
                 .createdTime(JsonParsingUtil.extractDateTime(json, "creationTime"))
                 .lastPlayed(JsonParsingUtil.extractDateTime(json, "lastPlayed"))
                 .totalPlayTimeMillis(JsonParsingUtil.extractLong(json, "totalPlayTimeMillis"))

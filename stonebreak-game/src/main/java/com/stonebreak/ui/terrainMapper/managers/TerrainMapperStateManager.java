@@ -32,6 +32,13 @@ public final class TerrainMapperStateManager {
     private final MButton createButton;
     private final MButton simulateSeedButton;
     private final List<MCategoryButton<VisualizerKind>> modeButtons = new ArrayList<>();
+    private final MButton setSpawnButton;
+    private final MButton centerOnSpawnButton;
+
+    // ─────────────────────────────────────────────── Spawn point
+    private boolean spawnSet = false;
+    private int spawnWorldX;
+    private int spawnWorldZ;
 
     // ─────────────────────────────────────────────── Text fields
     private String worldName = "";
@@ -60,7 +67,9 @@ public final class TerrainMapperStateManager {
     private float hoverRawValue;
 
     public TerrainMapperStateManager() {
-        this.visualizers = new VisualizerRegistry(deriveSeed(""));
+        long initialSeed = new java.util.Random().nextLong();
+        this.seedText = Long.toString(initialSeed);
+        this.visualizers = new VisualizerRegistry(initialSeed);
 
         this.backButton = new MButton("Back")
                 .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);
@@ -75,6 +84,14 @@ public final class TerrainMapperStateManager {
                     TerrainMapperConfig.MODE_BUTTON_HEIGHT);
             modeButtons.add(button);
         }
+
+        float btnWidth = TerrainMapperConfig.SIDEBAR_WIDTH - TerrainMapperConfig.SIDEBAR_PADDING * 2f;
+        this.setSpawnButton = new MButton("Click map to set spawn")
+                .enabled(false)
+                .size(btnWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
+        this.centerOnSpawnButton = new MButton("Center on Spawn")
+                .enabled(false)
+                .size(btnWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
     }
 
     // ─────────────────────────────────────────────── Widgets
@@ -83,6 +100,30 @@ public final class TerrainMapperStateManager {
     public MButton getCreateButton() { return createButton; }
     public MButton getSimulateSeedButton() { return simulateSeedButton; }
     public List<MCategoryButton<VisualizerKind>> getModeButtons() { return modeButtons; }
+    public MButton getSetSpawnButton() { return setSpawnButton; }
+    public MButton getCenterOnSpawnButton() { return centerOnSpawnButton; }
+
+    // ─────────────────────────────────────────────── Spawn point
+
+    public boolean hasSpawnPoint() { return spawnSet; }
+    public int spawnWorldX() { return spawnWorldX; }
+    public int spawnWorldZ() { return spawnWorldZ; }
+
+    public void setSpawnPoint(int worldX, int worldZ) {
+        spawnSet = true;
+        spawnWorldX = worldX;
+        spawnWorldZ = worldZ;
+        setSpawnButton.setText("Random Spawn?");
+        setSpawnButton.setEnabled(true);
+        centerOnSpawnButton.setEnabled(true);
+    }
+
+    public void clearSpawnPoint() {
+        spawnSet = false;
+        setSpawnButton.setText("Click map to set spawn");
+        setSpawnButton.setEnabled(false);
+        centerOnSpawnButton.setEnabled(false);
+    }
 
     // ─────────────────────────────────────────────── Text
 
@@ -266,14 +307,16 @@ public final class TerrainMapperStateManager {
 
     public void reset() {
         worldName = "";
-        seedText = "";
         errorMessage = null;
         activeField = ActiveField.WORLD_NAME;
         activeVisualizer = VisualizerKind.HEIGHT;
         dragging = false;
         hasHoverValue = false;
+        clearSpawnPoint();
         viewport.reset();
-        visualizers.rebuild(getResolvedSeed());
+        long newSeed = new java.util.Random().nextLong();
+        seedText = Long.toString(newSeed);
+        visualizers.rebuild(newSeed);
     }
 
     public void dispose() {

@@ -107,21 +107,20 @@ public final class WorldGenerationCoordinator {
                         System.out.println("[SAVE-SYSTEM] ✓ Initialized save system for world '" + currentWorldName + "'");
 
                         SaveService.LoadResult loadResult = saveService.loadWorld().get();
+                        if (loadResult.isSuccess() && loadResult.getWorldData() != null) {
+                            currentWorldData = loadResult.getWorldData();
+                            game.setCurrentWorldData(currentWorldData);
+                        }
                         if (loadResult.isSuccess() && loadResult.getPlayerData() != null) {
                             StateConverter.applyPlayerData(player, loadResult.getPlayerData());
                             playerPosition = new Vector3f(loadResult.getPlayerData().getPosition());
                             System.out.println("[PLAYER-DATA] ✓ Loaded existing player data for world '" + currentWorldName + "': position=" +
                                 playerPosition.x + "," + playerPosition.y + "," + playerPosition.z);
 
-                            if (loadResult.getWorldData() != null) {
-                                currentWorldData = loadResult.getWorldData();
-                                game.setCurrentWorldData(currentWorldData);
-
-                                long savedTimeTicks = currentWorldData.getWorldTimeTicks();
-                                TimeOfDay timeOfDay = new TimeOfDay(savedTimeTicks);
-                                game.setTimeOfDay(timeOfDay);
-                                System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + timeOfDay.getTimeString() + ")");
-                            }
+                            long savedTimeTicks = currentWorldData.getWorldTimeTicks();
+                            TimeOfDay timeOfDay = new TimeOfDay(savedTimeTicks);
+                            game.setTimeOfDay(timeOfDay);
+                            System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + timeOfDay.getTimeString() + ")");
                         } else {
                             isNewPlayer = true;
                             player.giveStartingItems();
@@ -177,12 +176,12 @@ public final class WorldGenerationCoordinator {
      * center on it.
      */
     private Vector3f locateAndApplyNewPlayerSpawn(World world, Player player, SaveService saveService) {
-        Vector3f spawn = new SpawnLocator(world).findSafeSurfaceSpawn();
+        WorldData currentWorldData = game.getCurrentWorldData();
+        Vector3f spawn = resolveInitialSpawn(world, currentWorldData);
 
         player.setPosition(spawn);
         world.setSpawnPosition(spawn);
 
-        WorldData currentWorldData = game.getCurrentWorldData();
         if (currentWorldData != null) {
             WorldData updated = new WorldData.Builder(currentWorldData)
                 .spawnPosition(spawn)
@@ -196,6 +195,26 @@ public final class WorldGenerationCoordinator {
 
         System.out.println("[SPAWN] New player spawn applied: " + spawn);
         return spawn;
+    }
+
+    /**
+     * If the current world data contains a non-origin spawn (set by the terrain
+     * mapper), use that XZ and sample the actual terrain Y. Otherwise fall back
+     * to the seed-based random surface search.
+     */
+    private Vector3f resolveInitialSpawn(World world, WorldData worldData) {
+        if (worldData != null && worldData.hasExplicitSpawn()) {
+            Vector3f saved = worldData.getSpawnPosition();
+            if (saved != null) {
+                int x = Math.round(saved.x);
+                int z = Math.round(saved.z);
+                int height = world.getFinalTerrainHeightAt(x, z);
+                System.out.println("[SPAWN] Using terrain-mapper spawn at (" + x + ", " + (height + 1) + ", " + z
+                        + "), terrain height " + height);
+                return new Vector3f(x, height + 1, z);
+            }
+        }
+        return new SpawnLocator(world).findSafeSurfaceSpawn();
     }
 
     private void generateChunksAroundPosition(World world, LoadingScreen loadingScreen, Vector3f playerPosition) {

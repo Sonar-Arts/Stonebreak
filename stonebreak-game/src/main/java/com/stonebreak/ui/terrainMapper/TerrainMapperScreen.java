@@ -46,6 +46,8 @@ public final class TerrainMapperScreen {
             VisualizerKind tag = button.tag();
             button.onClick(() -> state.setActiveVisualizer(tag));
         }
+        state.getSetSpawnButton().onClick(state::clearSpawnPoint);
+        state.getCenterOnSpawnButton().onClick(actionHandler::centerOnSpawn);
     }
 
     // ─────────────────────────────────────────────── Input

@@ -58,6 +58,12 @@ public final class TerrainMapViewport {
         return panZ + (screenZ - viewportCenterZ) / zoom;
     }
 
+    public void centerOn(float worldX, float worldZ) {
+        this.panX = worldX;
+        this.panZ = worldZ;
+        bumpStamp();
+    }
+
     public void reset() {
         panX = 0f;
         panZ = 0f;

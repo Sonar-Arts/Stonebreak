@@ -1,6 +1,7 @@
 package com.stonebreak.ui.terrainMapper;
 
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
+import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
 
 /**
  * Pure layout math. Given a window size, computes the rectangular regions
@@ -26,6 +27,8 @@ public final class TerrainMapperLayout {
     private final Rect worldNameField;
     private final Rect seedField;
     private final Rect modeListStart;
+    private final Rect spawnButton;
+    private final Rect centerOnSpawnButton;
 
     public TerrainMapperLayout(int windowWidth, int windowHeight) {
         float w = Math.max(1, windowWidth);
@@ -55,6 +58,15 @@ public final class TerrainMapperLayout {
         cursorY = seedField.bottom() + TerrainMapperConfig.SIDEBAR_SECTION_GAP + 16f;
 
         this.modeListStart = new Rect(pad, cursorY, innerWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
+
+        int modeCount = VisualizerKind.values().length;
+        float spawnSectionY = modeListStart.y()
+                + modeCount * (TerrainMapperConfig.MODE_BUTTON_HEIGHT + TerrainMapperConfig.MODE_BUTTON_SPACING)
+                + TerrainMapperConfig.SIDEBAR_SECTION_GAP + 16f;
+        this.spawnButton = new Rect(pad, spawnSectionY, innerWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
+        this.centerOnSpawnButton = new Rect(pad,
+                spawnSectionY + TerrainMapperConfig.MODE_BUTTON_HEIGHT + TerrainMapperConfig.MODE_BUTTON_SPACING,
+                innerWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
     }
 
     public Rect sidebar() { return sidebar; }
@@ -72,4 +84,7 @@ public final class TerrainMapperLayout {
         return modeListStart.y()
                 + index * (TerrainMapperConfig.MODE_BUTTON_HEIGHT + TerrainMapperConfig.MODE_BUTTON_SPACING);
     }
+
+    public Rect spawnButton() { return spawnButton; }
+    public Rect centerOnSpawnButton() { return centerOnSpawnButton; }
 }

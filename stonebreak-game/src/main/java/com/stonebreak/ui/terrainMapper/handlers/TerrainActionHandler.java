@@ -36,6 +36,11 @@ public final class TerrainActionHandler {
         this.discovery = discovery;
     }
 
+    public void centerOnSpawn() {
+        if (!state.hasSpawnPoint()) return;
+        state.getViewport().centerOn(state.spawnWorldX(), state.spawnWorldZ());
+    }
+
     public void goBack() {
         state.reset();
         Game.getInstance().setState(GameState.WORLD_SELECT);
@@ -62,7 +67,12 @@ public final class TerrainActionHandler {
         WorldData worldData = WorldData.builder()
                 .worldName(name)
                 .seed(seed)
-                .spawnPosition(new Vector3f(0f, 100f, 0f))
+                .spawnPosition(new Vector3f(
+                        state.hasSpawnPoint() ? (float) state.spawnWorldX() : 0f,
+                        100f,
+                        state.hasSpawnPoint() ? (float) state.spawnWorldZ() : 0f
+                ))
+                .hasExplicitSpawn(state.hasSpawnPoint())
                 .createdTime(LocalDateTime.now())
                 .lastPlayed(LocalDateTime.now())
                 .totalPlayTimeMillis(0L)
