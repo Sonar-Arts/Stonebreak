@@ -28,6 +28,9 @@ public final class McpServerBootstrap {
             ModelEditingService editor = new ModelEditingService(mainInterface);
             new OpenMasonToolDefinitions(editor, mapper).registerAll(registry);
 
+            TextureEditingService textureEditor = new TextureEditingService(mainInterface);
+            new TextureToolDefinitions(textureEditor, mapper).registerAll(registry);
+
             McpRequestRouter router = new McpRequestRouter(registry, mapper);
             server = new McpHttpServer(PORT, router, mapper);
             server.start();

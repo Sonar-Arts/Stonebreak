@@ -81,6 +81,9 @@ public class MainImGuiInterface implements ModelBrowserListener {
     // Viewport
     private ViewportController viewport3D;
 
+    // Texture editor (set after construction via setTextureCreatorInterface)
+    private TextureCreatorImGui textureCreatorImGui;
+
     // Window Configurations
     private final WindowConfig propertiesConfig = WindowConfig.forProperties();
 
@@ -597,9 +600,17 @@ public class MainImGuiInterface implements ModelBrowserListener {
     }
 
     /**
+     * Get the texture creator interface, or null if not yet wired.
+     */
+    public TextureCreatorImGui getTextureCreator() {
+        return textureCreatorImGui;
+    }
+
+    /**
      * Sets the TextureCreatorImGui instance for unified preferences.
      */
     public void setTextureCreatorInterface(TextureCreatorImGui textureCreatorImGui) {
+        this.textureCreatorImGui = textureCreatorImGui;
         if (preferencesWindow != null) {
             preferencesWindow.setTextureCreatorImGui(textureCreatorImGui);
             logger.debug("TextureCreatorImGui wired up to unified preferences window");
