@@ -92,12 +92,65 @@ public class HotbarRenderer {
             }
         }
 
-        // Render health hearts above the hotbar
+        // Render stamina bar and health hearts above the hotbar
+        renderStaminaBar(screenWidth, screenHeight, layout);
         renderHealthHearts(screenWidth, screenHeight, layout);
     }
 
+    private int calculateNumHeartRows(int hearts, int heartSize, int heartSpacing, int availableWidth) {
+        int maxPerRow = (availableWidth + heartSpacing) / (heartSize + heartSpacing);
+        if (maxPerRow < 1) maxPerRow = 1;
+        return (hearts + maxPerRow - 1) / maxPerRow;
+    }
+
     /**
-     * Renders health hearts above the hotbar.
+     * Renders a horizontal stamina bar above the health hearts, aligned to the hotbar width.
+     */
+    private void renderStaminaBar(int screenWidth, int screenHeight, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = com.stonebreak.core.Game.getInstance().getPlayer();
+        if (player == null) return;
+
+        float maxStamina = player.getMaxStamina();
+        if (maxStamina <= 0) return;
+
+        float fillRatio = Math.max(0, Math.min(1, player.getStamina() / maxStamina));
+
+        int heartSize = 16;
+        int heartSpacing = 8;
+        int hearts = (int) Math.ceil(player.getMaxHealth() / 2.0f);
+        int barHeight = 8;
+
+        int numRows = calculateNumHeartRows(hearts, heartSize, heartSpacing, layout.backgroundWidth);
+        int heartBottomY = layout.backgroundY - 14;
+        int heartTopY = heartBottomY - (numRows * heartSize + (numRows - 1) * 4);
+        int barY = heartTopY - 8 - barHeight;
+
+        int startX = layout.backgroundX;
+        int totalWidth = layout.backgroundWidth;
+
+        try (MemoryStack stack = stackPush()) {
+            nvgBeginPath(vg);
+            nvgRect(vg, startX, barY, totalWidth, barHeight);
+            nvgFillColor(vg, nvgRGBA((byte)60, (byte)60, (byte)60, (byte)200, NVGColor.malloc(stack)));
+            nvgFill(vg);
+
+            if (fillRatio > 0) {
+                nvgBeginPath(vg);
+                nvgRect(vg, startX, barY, totalWidth * fillRatio, barHeight);
+                nvgFillColor(vg, nvgRGBA((byte)80, (byte)200, (byte)80, (byte)220, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+
+            nvgBeginPath(vg);
+            nvgRect(vg, startX, barY, totalWidth, barHeight);
+            nvgStrokeColor(vg, nvgRGBA((byte)0, (byte)0, (byte)0, (byte)255, NVGColor.malloc(stack)));
+            nvgStrokeWidth(vg, 1.0f);
+            nvgStroke(vg);
+        }
+    }
+
+    /**
+     * Renders health hearts above the hotbar, constrained to hotbar width with row wrapping.
      */
     private void renderHealthHearts(int screenWidth, int screenHeight, HotbarLayoutCalculator.HotbarLayout layout) {
         Player player = com.stonebreak.core.Game.getInstance().getPlayer();
@@ -110,14 +163,19 @@ public class HotbarRenderer {
 
         int heartSize = 16;
         int heartSpacing = 8;
-        int totalWidth = hearts * (heartSize + heartSpacing) - heartSpacing;
-        int startX = (screenWidth - totalWidth) / 2;
-        int startY = layout.backgroundY - 30;
+        int maxPerRow = (layout.backgroundWidth + heartSpacing) / (heartSize + heartSpacing);
+        if (maxPerRow < 1) maxPerRow = 1;
+        int numRows = (hearts + maxPerRow - 1) / maxPerRow;
+
+        int heartBottomY = layout.backgroundY - 14;
+        int startX = layout.backgroundX;
 
         try (MemoryStack stack = stackPush()) {
             for (int i = 0; i < hearts; i++) {
-                float x = startX + i * (heartSize + heartSpacing);
-                float y = startY;
+                int row = i / maxPerRow;
+                int col = i % maxPerRow;
+                float x = startX + col * (heartSize + heartSpacing);
+                float y = heartBottomY - heartSize - row * (heartSize + 4);
                 float heartFill = Math.max(0, Math.min(1, filledHearts - i));
 
                 nvgBeginPath(vg);

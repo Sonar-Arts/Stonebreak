@@ -268,12 +268,10 @@ public class InputHandler {
             }
 
             // 4.5 Close Character Screen
-            if (game.getState() == GameState.CHARACTER_SHEET_UI) {
-                com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = game.getCharacterScreen();
-                if (characterScreen != null && characterScreen.isVisible()) {
-                    game.toggleCharacterScreen();
-                    return; // Action taken
-                }
+            com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = game.getCharacterScreen();
+            if (characterScreen != null && characterScreen.isVisible()) {
+                game.toggleCharacterScreen();
+                return; // Action taken
             }
 
             // 5. Toggle Pause Menu (if no other screen was closed by Escape above)

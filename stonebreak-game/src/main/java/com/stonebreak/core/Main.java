@@ -682,19 +682,9 @@ public class Main {
         renderer.getOverlayRenderer().renderUnderwaterOverlay(game, width, height);
 
         renderGameUI(game, renderer);
-        renderCharacterScreen(game);
         renderFullscreenMenus(game);
         renderer.renderOverlay(game, width, height);
         renderPauseMenu(game, renderer);
-    }
-
-    private void renderCharacterScreen(Game game) {
-        if (game.getState() == GameState.CHARACTER_SHEET_UI) {
-            com.stonebreak.ui.characterScreen.CharacterScreen cs = game.getCharacterScreen();
-            if (cs != null && cs.isVisible()) {
-                cs.render(width, height);
-            }
-        }
     }
 
     private void logFirstRender(Game game) {
@@ -840,7 +830,8 @@ public class Main {
         // Check which screen is visible and render accordingly
         if (workbenchScreen != null && workbenchScreen.isVisible()) {
             workbenchScreen.render();
-        } else if (characterScreen != null && characterScreen.isVisible()) {
+        } else if (characterScreen != null && characterScreen.isVisible()
+                && state == GameState.CHARACTER_SHEET_UI) {
             // Character screen is open — render it, but keep the hotbar visible below
             characterScreen.render(width, height);
             if (inventoryScreen != null) {

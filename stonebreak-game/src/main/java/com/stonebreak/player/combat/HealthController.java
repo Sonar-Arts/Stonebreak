@@ -62,6 +62,13 @@ public class HealthController {
 
     public void setHealth(float health) { this.health = health; }
 
+    public void applyNewMaxHealth(float newMax) {
+        float diff = newMax - this.maxHealth;
+        this.maxHealth = newMax;
+        if (diff > 0) health = Math.min(maxHealth, health + diff);
+        else          health = Math.min(health, maxHealth);
+    }
+
     public void enableSpawnProtection() {
         this.spawnProtection = true;
         this.spawnProtectionTimer = 0.0f;

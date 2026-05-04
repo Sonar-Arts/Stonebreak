@@ -48,9 +48,20 @@ public class MHotbarRenderer {
     /** Target heart edge length, in pixels. Snapped at draw time to the
      *  nearest integer multiple of the source texture's native size to avoid
      *  nearest-neighbour sampling asymmetry. */
-    private static final int HEART_SIZE_TARGET = 28;
-    private static final int HEART_SPACING     = 2;
-    private static final int HEART_Y_GAP       = 38; // pixels above hotbar background
+    private static final int   HEART_SIZE_TARGET         = 28;
+    private static final int   HEART_SPACING             = 2;
+    private static final int   HEART_Y_GAP               = 38; // pixels above hotbar background
+    private static final int   HEART_ROW_GAP             = 4;
+    private static final float HEART_MIN_VISIBLE_FRACTION = 0.40f;
+
+    // ── Stamina bar ───────────────────────────────────────────────────────────
+    private static final int STAMINA_BAR_HEIGHT = 8;
+    private static final int STAMINA_BAR_GAP    = 6;    // pixels above top heart row
+    private static final int STAMINA_BG         = 0xC83C3C3C;
+    private static final int STAMINA_FILL       = 0xDC50C850;
+    private static final int STAMINA_BORDER     = 0xFF000000;
+
+    private record HeartLayout(int heartsPerRow, int numRows, float step) {}
 
     private static final String HEART_EMPTY_SBT = "/ui/HUD/Health Icon/SB_Empty_Health_Icon.sbt";
     private static final String HEART_HALF_SBT  = "/ui/HUD/Health Icon/SB_Half_Health_Icon.sbt";
@@ -83,6 +94,7 @@ public class MHotbarRenderer {
             drawSlots(layout, selected);
             drawSbtItemIcons(canvas, slots, layout);
             drawHealthHearts(canvas, layout);
+            drawStaminaBar(canvas, layout);
             ui.renderOverlays();
             ui.endFrame();
         }
@@ -146,38 +158,84 @@ public class MHotbarRenderer {
         Player player = Game.getInstance().getPlayer();
         if (player == null) return;
 
-        float health    = player.getHealth();
-        float maxHealth = player.getMaxHealth();
-        int   hearts    = (int) Math.ceil(maxHealth / 2.0f);
-        float filled    = health / 2.0f;
+        float health      = player.getHealth();
+        float maxHealth   = player.getMaxHealth();
+        int   totalHearts = (int) Math.ceil(maxHealth / 2.0f);
+        float filled      = health / 2.0f;
 
         MTexture empty = MTextureRegistry.get(HEART_EMPTY_SBT);
         MTexture half  = MTextureRegistry.get(HEART_HALF_SBT);
         MTexture full  = MTextureRegistry.get(HEART_FULL_SBT);
 
-        // Snap heart size to an integer multiple of the source texture's
-        // native edge length so nearest-neighbour sampling distributes pixels
-        // evenly. Pick the native size from whichever variant loaded first.
         int nativeSize = nativeHeartSize(empty, half, full);
         int scale      = Math.max(1, Math.round((float) HEART_SIZE_TARGET / nativeSize));
         int heartSize  = nativeSize * scale;
 
-        int startX = layout.backgroundX;
-        int startY = layout.backgroundY - HEART_Y_GAP;
+        HeartLayout hl = computeHeartLayout(totalHearts, heartSize, layout.backgroundWidth);
+        if (hl.heartsPerRow() == 0) return;
 
-        for (int i = 0; i < hearts; i++) {
-            float x    = startX + i * (heartSize + HEART_SPACING);
+        for (int i = 0; i < totalHearts; i++) {
+            int   row  = i / hl.heartsPerRow();
+            int   col  = i % hl.heartsPerRow();
+            float x    = layout.backgroundX + col * hl.step();
+            float y    = layout.backgroundY - HEART_Y_GAP - row * (heartSize + HEART_ROW_GAP);
             float fill = Math.max(0f, Math.min(1f, filled - i));
 
-            MTexture sprite;
-            if (fill >= 0.75f)      sprite = full;
-            else if (fill >= 0.25f) sprite = half;
-            else                    sprite = empty;
-
+            MTexture sprite = fill >= 0.75f ? full : fill >= 0.25f ? half : empty;
             if (sprite != null) {
-                MPainter.drawImage(canvas, sprite.image(), x, startY, heartSize, heartSize);
+                MPainter.drawImage(canvas, sprite.image(), x, y, heartSize, heartSize);
             }
         }
+    }
+
+    private void drawStaminaBar(Canvas canvas,
+                                HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        float maxStamina = player.getMaxStamina();
+        if (maxStamina <= 0) return;
+
+        int totalHearts = (int) Math.ceil(player.getMaxHealth() / 2.0f);
+        MTexture empty = MTextureRegistry.get(HEART_EMPTY_SBT);
+        MTexture half  = MTextureRegistry.get(HEART_HALF_SBT);
+        MTexture full  = MTextureRegistry.get(HEART_FULL_SBT);
+        int nativeSize = nativeHeartSize(empty, half, full);
+        int heartSize  = nativeSize * Math.max(1, Math.round((float) HEART_SIZE_TARGET / nativeSize));
+
+        HeartLayout hl     = computeHeartLayout(totalHearts, heartSize, layout.backgroundWidth);
+        int         rows   = Math.max(1, hl.numRows());
+        float       topRowY = layout.backgroundY - HEART_Y_GAP - (rows - 1) * (heartSize + HEART_ROW_GAP);
+        float       barY    = topRowY - STAMINA_BAR_GAP - STAMINA_BAR_HEIGHT;
+        float       fillW   = layout.backgroundWidth
+                * Math.max(0f, Math.min(1f, player.getStamina() / maxStamina));
+
+        MPainter.fillRect(canvas, layout.backgroundX, barY, layout.backgroundWidth, STAMINA_BAR_HEIGHT, STAMINA_BG);
+        if (fillW > 0) {
+            MPainter.fillRect(canvas, layout.backgroundX, barY, fillW, STAMINA_BAR_HEIGHT, STAMINA_FILL);
+        }
+        MPainter.strokeRect(canvas, layout.backgroundX, barY, layout.backgroundWidth, STAMINA_BAR_HEIGHT, STAMINA_BORDER, 1f);
+    }
+
+    private HeartLayout computeHeartLayout(int totalHearts, int heartSize, int availableWidth) {
+        if (totalHearts <= 0) return new HeartLayout(0, 0, 0f);
+
+        float naturalStep   = heartSize + HEART_SPACING;
+        int   naturalPerRow = Math.max(1, (int) Math.floor((availableWidth + HEART_SPACING) / naturalStep));
+
+        if (totalHearts <= naturalPerRow) {
+            return new HeartLayout(totalHearts, 1, naturalStep);
+        }
+
+        float minStep   = heartSize * HEART_MIN_VISIBLE_FRACTION;
+        int   maxPerRow = availableWidth <= heartSize ? 1
+                : (int) Math.floor((availableWidth - heartSize) / minStep) + 1;
+
+        int numRows      = (int) Math.ceil((float) totalHearts / Math.max(1, maxPerRow));
+        int heartsPerRow = (int) Math.ceil((float) totalHearts / numRows);
+        float step       = heartsPerRow <= 1 ? 0f
+                : (float) (availableWidth - heartSize) / (heartsPerRow - 1);
+
+        return new HeartLayout(heartsPerRow, numRows, Math.min(naturalStep, step));
     }
 
     private void drawSbtItemIcons(Canvas canvas, ItemStack[] slots,

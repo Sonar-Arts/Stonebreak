@@ -54,6 +54,7 @@ public class CharacterStats {
   private int[] abilityScores = {10, 10, 10, 10, 10, 10};
   private int remainingAp = 27;
 
+  // TODO: STR score to scale strength-based weapon damage (weapons not yet implemented)
   public int getStrength()     { return abilityScores[0]; }
   public int getDexterity()    { return abilityScores[1]; }
   public int getConstitution() { return abilityScores[2]; }
@@ -70,6 +71,7 @@ public class CharacterStats {
     if (remainingAp <= 0 || index < 0 || index >= 6) return;
     remainingAp--;
     abilityScores[index]++;
+    if (player != null) player.updateDerivedStats();
   }
 
   /** Refunds 1 AP by lowering the ability at the given index. No-op if score is already 1. */
@@ -77,6 +79,7 @@ public class CharacterStats {
     if (index < 0 || index >= 6 || abilityScores[index] <= 1) return;
     abilityScores[index]--;
     remainingAp++;
+    if (player != null) player.updateDerivedStats();
   }
 
   /** Standard modifier: floor((score - 10) / 2). */
@@ -122,9 +125,19 @@ public class CharacterStats {
   public float getHealth()    { return player != null ? player.getHealth()    : 0f; }
   public float getMaxHealth() { return player != null ? player.getMaxHealth() : 20f; }
 
-  /** Mana — not yet implemented. */
-  public float getMana()    { return 0f; }
-  public float getMaxMana() { return 0f; }
+  // ─────────────────────────────────────────────── Derived resource caps
+
+  /** Each CON point contributes HEALTH_PER_CON_POINT HP. CON 10 = 20 HP. */
+  public float computeMaxHealth()  { return getConstitution() * com.stonebreak.player.PlayerConstants.HEALTH_PER_CON_POINT; }
+  /** Each DEX point contributes STAMINA_PER_DEX_POINT stamina. DEX 10 = 100. */
+  public float computeMaxStamina() { return getDexterity()    * com.stonebreak.player.PlayerConstants.STAMINA_PER_DEX_POINT; }
+  /** Each WIS point contributes MANA_PER_WIS_POINT mana. WIS 10 = 50. */
+  public float computeMaxMana()    { return getWisdom()       * com.stonebreak.player.PlayerConstants.MANA_PER_WIS_POINT; }
+  /** Each WIS point contributes MANA_REGEN_PER_WIS_POINT mana/sec. WIS 10 = 2/sec. */
+  public float computeManaRegen()  { return getWisdom()       * com.stonebreak.player.PlayerConstants.MANA_REGEN_PER_WIS_POINT; }
+
+  public float getMana()    { return player != null ? player.getMana()    : 0f; }
+  public float getMaxMana() { return player != null ? player.getMaxMana() : 0f; }
 
   // ─────────────────────────────────────────────── Class selection
 
@@ -267,5 +280,6 @@ public class CharacterStats {
       this.abilityScores = java.util.Arrays.copyOf(scores, 6);
     }
     this.remainingAp = ap;
+    if (player != null) player.updateDerivedStats();
   }
 }
