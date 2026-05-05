@@ -102,17 +102,15 @@ public abstract class LivingEntity extends Entity {
      */
     @Override
     public void damage(float amount) {
+        damage(amount, DamageSource.UNKNOWN);
+    }
+
+    public void damage(float amount, DamageSource source) {
         if (!alive || invulnerable) return;
-        
-        // Apply damage
         super.damage(amount);
-        
-        // Trigger invulnerability
         invulnerable = true;
         invulnerabilityTimer = INVULNERABILITY_DURATION;
-        
-        // Call damage callback
-        onDamage(amount, DamageSource.UNKNOWN);
+        onDamage(amount, source);
     }
     
     /**

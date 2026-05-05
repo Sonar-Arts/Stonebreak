@@ -16,6 +16,7 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
+import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.PauseMenu;
@@ -768,6 +769,13 @@ public class InputHandler {
                 if (player != null) {
                     if (button == GLFW_MOUSE_BUTTON_LEFT) {
                         player.startAttackAnimation();
+                        EntityManager em = Game.getEntityManager();
+                        if (em != null) {
+                            LivingEntity target = player.getRaycastEngine().raycastEntity(em.getLivingEntities());
+                            if (target != null) {
+                                target.damage(player.getAttackDamage(), LivingEntity.DamageSource.PLAYER);
+                            }
+                        }
                         // Block breaking is now handled continuously in handleInput
                     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
                         player.startAttackAnimation(); // Animate for interaction attempts as well

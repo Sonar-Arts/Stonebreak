@@ -71,6 +71,18 @@ public enum ItemType implements Item {
     }
     
     /**
+     * Returns the base melee damage this item deals when used to attack.
+     */
+    public float getDamage() {
+        return switch (this) {
+            case SWORD -> 6.0f;
+            case STAFF -> 5.0f;
+            case DAGGER, WAR_AXE, WOODEN_AXE -> 4.0f;
+            default -> 1.0f;
+        };
+    }
+
+    /**
      * Checks if this item is a tool.
      * @return True if this item is in the TOOLS category
      */

@@ -1,11 +1,14 @@
 package com.stonebreak.player.interaction;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.mobs.entities.Entity;
+import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.Camera;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
+import java.util.List;
 
 import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
 import static com.stonebreak.player.PlayerConstants.RAY_CAST_DISTANCE;
@@ -80,6 +83,69 @@ public class RaycastEngine {
         Vector3f toPlane = new Vector3f(planePoint).sub(rayOrigin);
         float t = toPlane.dot(planeNormal) / denominator;
         return t > 0.001f ? t : -1;
+    }
+
+    private static final float ENTITY_ATTACK_RANGE = 4.0f;
+
+    /**
+     * Returns the closest living entity along the player's look ray within melee range, or null.
+     */
+    public LivingEntity raycastEntity(List<LivingEntity> entities) {
+        Vector3f origin = eyeOrigin();
+        Vector3f dir = camera.getFront();
+        LivingEntity closest = null;
+        float closestT = ENTITY_ATTACK_RANGE;
+        for (LivingEntity entity : entities) {
+            float t = rayAABBIntersect(origin, dir, entity.getBoundingBox());
+            if (t < closestT) {
+                closestT = t;
+                closest = entity;
+            }
+        }
+        return closest;
+    }
+
+    private float rayAABBIntersect(Vector3f origin, Vector3f dir, Entity.BoundingBox box) {
+        float tMin = 0.0f;
+        float tMax = Float.MAX_VALUE;
+
+        // X slab
+        if (Math.abs(dir.x) < 1e-6f) {
+            if (origin.x < box.minX || origin.x > box.maxX) return Float.MAX_VALUE;
+        } else {
+            float t1 = (box.minX - origin.x) / dir.x;
+            float t2 = (box.maxX - origin.x) / dir.x;
+            if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
+            tMin = Math.max(tMin, t1);
+            tMax = Math.min(tMax, t2);
+            if (tMin > tMax) return Float.MAX_VALUE;
+        }
+
+        // Y slab
+        if (Math.abs(dir.y) < 1e-6f) {
+            if (origin.y < box.minY || origin.y > box.maxY) return Float.MAX_VALUE;
+        } else {
+            float t1 = (box.minY - origin.y) / dir.y;
+            float t2 = (box.maxY - origin.y) / dir.y;
+            if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
+            tMin = Math.max(tMin, t1);
+            tMax = Math.min(tMax, t2);
+            if (tMin > tMax) return Float.MAX_VALUE;
+        }
+
+        // Z slab
+        if (Math.abs(dir.z) < 1e-6f) {
+            if (origin.z < box.minZ || origin.z > box.maxZ) return Float.MAX_VALUE;
+        } else {
+            float t1 = (box.minZ - origin.z) / dir.z;
+            float t2 = (box.maxZ - origin.z) / dir.z;
+            if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
+            tMin = Math.max(tMin, t1);
+            tMax = Math.min(tMax, t2);
+            if (tMin > tMax) return Float.MAX_VALUE;
+        }
+
+        return tMin >= 0.0f ? tMin : Float.MAX_VALUE;
     }
 
     private Vector3i marchToFirstSolid() {

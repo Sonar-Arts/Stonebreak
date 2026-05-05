@@ -363,13 +363,28 @@ public class CowAI {
     }
     
     /**
-     * Called when the cow takes damage (for future flee behavior).
+     * Called when the cow takes damage — triggers a flee response.
      */
     public void onDamaged(float damage) {
-        // For now, just change to idle state regardless of damage amount
-        // In the future, damage amount could affect flee behavior intensity
-        setState(CowBehaviorState.IDLE);
-        stateChangeTimer = 2.0f; // Stay in current state for 2 seconds
+        setState(CowBehaviorState.WANDERING);
+        stateChangeTimer = 4.0f;
+
+        // Pick a flee target away from the player
+        Player player = Game.getPlayer();
+        if (player != null) {
+            Vector3f cowPos = cow.getPosition();
+            Vector3f fleeDir = new Vector3f(cowPos).sub(player.getPosition());
+            fleeDir.y = 0;
+            if (fleeDir.length() > 0.1f) {
+                fleeDir.normalize();
+                float targetX = cowPos.x + fleeDir.x * 10.0f;
+                float targetZ = cowPos.z + fleeDir.z * 10.0f;
+                float groundY = findGroundLevel(targetX, targetZ, cowPos.y);
+                if (groundY != Float.NEGATIVE_INFINITY) {
+                    setWanderTarget(new Vector3f(targetX, groundY, targetZ));
+                }
+            }
+        }
     }
     
     /**

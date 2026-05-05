@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.cow;
 
 import org.joml.Vector3f;
+import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
@@ -217,7 +218,22 @@ public class Cow extends LivingEntity {
      */
     @Override
     public void onDamage(float damage, DamageSource source) {
-        // Add visual damage indicators or particles here
+        if (source == DamageSource.PLAYER) {
+            Player player = Game.getPlayer();
+            if (player != null) {
+                Vector3f knockbackDir = new Vector3f(position).sub(player.getPosition());
+                knockbackDir.y = 0;
+                if (knockbackDir.length() > 0.01f) {
+                    knockbackDir.normalize();
+                    velocity.x += knockbackDir.x * 6.0f;
+                    velocity.z += knockbackDir.z * 6.0f;
+                    velocity.y += 0.6f;
+                }
+            }
+        }
+        if (cowAI != null) {
+            cowAI.onDamaged(damage);
+        }
     }
     
     /**

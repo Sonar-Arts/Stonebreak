@@ -3,6 +3,7 @@ package com.stonebreak.player;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
 import com.stonebreak.player.combat.AttackController;
 import com.stonebreak.player.combat.DeathHandler;
 import com.stonebreak.player.combat.FallDamageHandler;
@@ -234,6 +235,17 @@ public class Player {
 
     // Water
     public boolean isInWater() { return swimming.isInWater(); }
+
+    public RaycastEngine getRaycastEngine() { return raycastEngine; }
+
+    /** Returns the melee damage for the player's currently held item (1.0 for bare fist). */
+    public float getAttackDamage() {
+        ItemStack held = inventory.getSelectedHotbarSlot();
+        if (!held.isEmpty() && held.getItem() instanceof ItemType itemType) {
+            return itemType.getDamage();
+        }
+        return 1.0f;
+    }
 
     // Block interaction
     public Vector3i raycast() { return raycastEngine.raycast(); }
