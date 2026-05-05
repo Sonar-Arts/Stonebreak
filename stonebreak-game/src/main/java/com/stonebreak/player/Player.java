@@ -157,6 +157,7 @@ public class Player {
                             && !state.isPhysicallyInWater()
                             && stamina.hasStamina();
         stamina.setSprinting(sprinting);
+        jumpHandler.setCanDoubleJump(characterStats.hasFeat("double_jump"));
         movement.processMovement(forward, backward, left, right, jump, shift, sprinting);
     }
 

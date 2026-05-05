@@ -450,13 +450,14 @@ public class World {
 
         if (fastLodManager != null) {
             fastLodManager.shutdown();
-            // Drain the final cleanup queue on the GL thread.
-            fastLodManager.applyGLUpdates();
+            final com.stonebreak.world.fastlod.FastLodManager lod = fastLodManager;
+            com.stonebreak.core.Game.getInstance().runOnMainThread(lod::applyGLUpdates);
         }
 
         if (meshPipeline != null) {
             meshPipeline.shutdown();
-            meshPipeline.processGpuCleanupQueue();
+            final MmsMeshPipeline mp = meshPipeline;
+            com.stonebreak.core.Game.getInstance().runOnMainThread(mp::processGpuCleanupQueue);
         }
         chunkStore.cleanup();
     }

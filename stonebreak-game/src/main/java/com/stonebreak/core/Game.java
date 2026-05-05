@@ -71,6 +71,8 @@ public class Game {
     private String currentWorldName; // Current world name for save system initialization
     private long currentWorldSeed; // Current world seed for save system initialization
     private final ExecutorService worldUpdateExecutor = Executors.newSingleThreadExecutor();
+    private final Thread mainThread = Thread.currentThread();
+    private final java.util.Queue<Runnable> mainThreadTasks = new java.util.concurrent.ConcurrentLinkedQueue<>();
     
     // Entity system components
     private com.stonebreak.mobs.entities.EntityManager entityManager; // Entity management system
@@ -117,6 +119,19 @@ public class Game {
             instance = new Game();
         }
         return instance;
+    }
+
+    /**
+     * Runs {@code task} immediately if called from the main thread, or queues
+     * it to execute at the start of the next {@link #update()} call otherwise.
+     * Use this to defer OpenGL operations that originate on background threads.
+     */
+    public void runOnMainThread(Runnable task) {
+        if (Thread.currentThread() == mainThread) {
+            task.run();
+        } else {
+            mainThreadTasks.offer(task);
+        }
     }
 
     /**
@@ -272,6 +287,11 @@ public class Game {
         }
 
         totalTimeElapsed += deltaTime;
+
+        Runnable task;
+        while ((task = mainThreadTasks.poll()) != null) {
+            task.run();
+        }
 
         gameLoop.tick(deltaTime);
     }
