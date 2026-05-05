@@ -20,7 +20,9 @@ public enum ItemType implements Item {
     STONE_SHOVEL(1008, "Stone Shovel", 0, 0, ItemCategory.TOOLS, 1),
     SWORD(1009, "Sword", 0, 0, ItemCategory.TOOLS, 1),
     WAR_AXE(1010, "War Axe", 0, 0, ItemCategory.TOOLS, 1),
-    WOODEN_SHOVEL(1011, "Wooden Shovel", 0, 0, ItemCategory.TOOLS, 1);
+    WOODEN_SHOVEL(1011, "Wooden Shovel", 0, 0, ItemCategory.TOOLS, 1),
+    DAGGER(1012, "Dagger", 0, 0, ItemCategory.TOOLS, 1),
+    STAFF(1013, "Staff", 0, 0, ItemCategory.TOOLS, 1);
     
     private final int id;
     private final String name;

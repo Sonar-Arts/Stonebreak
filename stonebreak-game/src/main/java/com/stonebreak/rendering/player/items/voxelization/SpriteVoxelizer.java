@@ -259,6 +259,10 @@ public class SpriteVoxelizer {
                 return "Items/Textures/SBT/Stone_Shovel.sbt";
             case WOODEN_SHOVEL:
                 return "Items/Textures/SBT/Wooden_Shovel.sbt";
+            case DAGGER:
+                return "Items/Textures/SBT/Dagger.sbt";
+            case STAFF:
+                return "Items/Textures/SBT/Staff.sbt";
             default:
                 return null;
         }
