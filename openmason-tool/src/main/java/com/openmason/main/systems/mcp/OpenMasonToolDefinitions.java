@@ -186,6 +186,103 @@ public final class OpenMasonToolDefinitions {
                 "Select a part as the camera focus target. (Camera-framing follows whatever the editor's selection-focus binding does.)",
                 idOrNameSchema(),
                 args -> editor.focusCameraOn(reqString(args, "id_or_name"))));
+
+        // ---------- Mutate: mesh elements ----------
+
+        registry.register(new McpTool(
+                "list_part_vertices",
+                "List the vertices of a part with part-local indices and positions. "
+                        + "Local indices are stable across structural edits; use them with move_vertex.",
+                idOrNameSchema(),
+                args -> editor.listPartVertices(reqString(args, "id_or_name")).orElse(null)));
+
+        registry.register(new McpTool(
+                "list_part_edges",
+                "List the unique edges of a part as (edge_index, vertex_a, vertex_b) using part-local vertex indices. "
+                        + "Edges are derived from triangle indices; ordering is stable for a given mesh topology.",
+                idOrNameSchema(),
+                args -> editor.listPartEdges(reqString(args, "id_or_name")).orElse(null)));
+
+        registry.register(new McpTool(
+                "list_part_faces",
+                "List the logical faces of a part with their vertex indices (part-local). "
+                        + "A face groups one or more triangles sharing a face id.",
+                idOrNameSchema(),
+                args -> editor.listPartFaces(reqString(args, "id_or_name")).orElse(null)));
+
+        registry.register(new McpTool(
+                "move_vertex",
+                "Move a single vertex by part-local index. Pass dx/dy/dz for a delta move (default), "
+                        + "or set absolute=true and dx/dy/dz are taken as the new position.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .num("local_index", "Part-local vertex index from list_part_vertices")
+                        .num("dx", "Delta or absolute X")
+                        .num("dy", "Delta or absolute Y")
+                        .num("dz", "Delta or absolute Z")
+                        .bool("absolute", "If true, dx/dy/dz are taken as the new position (default false: delta)")
+                        .required("id_or_name", "local_index", "dx", "dy", "dz")
+                        .build(),
+                args -> editor.moveVertex(
+                        reqString(args, "id_or_name"),
+                        (int) reqFloat(args, "local_index"),
+                        new Vector3f(reqFloat(args, "dx"), reqFloat(args, "dy"), reqFloat(args, "dz")),
+                        optBool(args, "absolute", false)).orElse(null)));
+
+        registry.register(new McpTool(
+                "move_edge",
+                "Translate both endpoints of an edge by a delta. Edge index comes from list_part_edges.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .num("edge_index", "Edge index from list_part_edges")
+                        .num("dx", "Delta X")
+                        .num("dy", "Delta Y")
+                        .num("dz", "Delta Z")
+                        .required("id_or_name", "edge_index", "dx", "dy", "dz")
+                        .build(),
+                args -> editor.moveEdge(
+                        reqString(args, "id_or_name"),
+                        (int) reqFloat(args, "edge_index"),
+                        new Vector3f(reqFloat(args, "dx"), reqFloat(args, "dy"), reqFloat(args, "dz"))).orElse(null)));
+
+        registry.register(new McpTool(
+                "set_part_geometry",
+                "Replace a part's geometry wholesale with caller-supplied vertex/index/face data. "
+                        + "Topology, vertex count, and face count may all change; the part's transform is preserved. "
+                        + "Positions are part-local. vertices is a flat [x,y,z, x,y,z, ...] array. "
+                        + "indices is a flat triangle index array (length divisible by 3). "
+                        + "tex_coords (optional) is [u,v, u,v, ...] matching vertex count; defaults to zeros. "
+                        + "triangle_to_face_id (optional) gives one face id per triangle; defaults to one face per triangle.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .arr("vertices", "number", "Flat [x,y,z, x,y,z, ...] vertex positions in part-local space")
+                        .arr("indices", "number", "Flat triangle index array; length must be divisible by 3")
+                        .arr("tex_coords", "number", "Optional flat [u,v, u,v, ...] UVs; length must be 2 × vertex count if supplied")
+                        .arr("triangle_to_face_id", "number", "Optional one face id per triangle; length must equal triangle count if supplied")
+                        .required("id_or_name", "vertices", "indices")
+                        .build(),
+                args -> editor.setPartGeometry(
+                        reqString(args, "id_or_name"),
+                        optFloatArray(args, "vertices"),
+                        optIntArray(args, "indices"),
+                        optFloatArray(args, "tex_coords"),
+                        optIntArray(args, "triangle_to_face_id")).orElse(null)));
+
+        registry.register(new McpTool(
+                "move_face",
+                "Translate every unique vertex of a face by a delta. Face id comes from list_part_faces.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .num("local_face_id", "Local face id from list_part_faces")
+                        .num("dx", "Delta X")
+                        .num("dy", "Delta Y")
+                        .num("dz", "Delta Z")
+                        .required("id_or_name", "local_face_id", "dx", "dy", "dz")
+                        .build(),
+                args -> editor.moveFace(
+                        reqString(args, "id_or_name"),
+                        (int) reqFloat(args, "local_face_id"),
+                        new Vector3f(reqFloat(args, "dx"), reqFloat(args, "dy"), reqFloat(args, "dz"))).orElse(null)));
     }
 
     // ===================== Schema builder =====================
@@ -231,6 +328,17 @@ public final class OpenMasonToolDefinitions {
 
         SchemaBuilder bool(String name, String description) {
             return prop(name, "boolean", description);
+        }
+
+        SchemaBuilder arr(String name, String itemType, String description) {
+            ObjectNode def = mapper.createObjectNode();
+            def.put("type", "array");
+            def.put("description", description);
+            ObjectNode items = mapper.createObjectNode();
+            items.put("type", itemType);
+            def.set("items", items);
+            properties.set(name, def);
+            return this;
         }
 
         SchemaBuilder prop(String name, String type, String description) {
@@ -280,6 +388,34 @@ public final class OpenMasonToolDefinitions {
     private static boolean optBool(JsonNode args, String key, boolean fallback) {
         JsonNode n = args.get(key);
         return (n == null || n.isNull() || !n.isBoolean()) ? fallback : n.asBoolean();
+    }
+
+    private static float[] optFloatArray(JsonNode args, String key) {
+        JsonNode n = args.get(key);
+        if (n == null || n.isNull() || !n.isArray()) return null;
+        float[] out = new float[n.size()];
+        for (int i = 0; i < n.size(); i++) {
+            JsonNode item = n.get(i);
+            if (item == null || !item.isNumber()) {
+                throw new IllegalArgumentException(key + "[" + i + "] is not a number");
+            }
+            out[i] = item.floatValue();
+        }
+        return out;
+    }
+
+    private static int[] optIntArray(JsonNode args, String key) {
+        JsonNode n = args.get(key);
+        if (n == null || n.isNull() || !n.isArray()) return null;
+        int[] out = new int[n.size()];
+        for (int i = 0; i < n.size(); i++) {
+            JsonNode item = n.get(i);
+            if (item == null || !item.isNumber()) {
+                throw new IllegalArgumentException(key + "[" + i + "] is not a number");
+            }
+            out[i] = item.intValue();
+        }
+        return out;
     }
 
     private static Vector3f optVec3(JsonNode args, String xKey, String yKey, String zKey) {

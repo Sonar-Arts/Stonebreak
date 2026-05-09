@@ -14,9 +14,13 @@ import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.threading.MainThreadExecutor;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -206,6 +210,228 @@ return pm.getPartById(p.get().id()).map(PartView::from);
         }));
     }
 
+    // ===================== Mutate: mesh elements =====================
+
+    public Optional<List<VertexView>> listPartVertices(String idOrName) {
+        return await(MainThreadExecutor.submit(() -> {
+            Optional<ModelPartDescriptor> p = resolve(idOrName);
+            if (p.isEmpty()) return Optional.<List<VertexView>>empty();
+            PartMeshRebuilder.PartGeometry geo = requirePartManager().getPartGeometry(p.get().id());
+            if (geo == null || geo.vertices() == null) return Optional.of(List.<VertexView>of());
+            float[] verts = geo.vertices();
+            int count = verts.length / 3;
+            List<VertexView> out = new ArrayList<>(count);
+            for (int i = 0; i < count; i++) {
+                int o = i * 3;
+                out.add(new VertexView(i, new Vec3(verts[o], verts[o + 1], verts[o + 2])));
+            }
+            return Optional.of(out);
+        }));
+    }
+
+    public Optional<List<EdgeView>> listPartEdges(String idOrName) {
+        return await(MainThreadExecutor.submit(() -> {
+            Optional<ModelPartDescriptor> p = resolve(idOrName);
+            if (p.isEmpty()) return Optional.<List<EdgeView>>empty();
+            PartMeshRebuilder.PartGeometry geo = requirePartManager().getPartGeometry(p.get().id());
+            if (geo == null || geo.indices() == null) return Optional.of(List.<EdgeView>of());
+            int[] indices = geo.indices();
+            int triCount = indices.length / 3;
+            LinkedHashSet<Long> seen = new LinkedHashSet<>();
+            for (int t = 0; t < triCount; t++) {
+                int v0 = indices[t * 3], v1 = indices[t * 3 + 1], v2 = indices[t * 3 + 2];
+                seen.add(edgeKey(v0, v1));
+                seen.add(edgeKey(v1, v2));
+                seen.add(edgeKey(v2, v0));
+            }
+            List<EdgeView> out = new ArrayList<>(seen.size());
+            int idx = 0;
+            for (long key : seen) {
+                int a = (int) (key >> 32);
+                int b = (int) (key & 0xFFFFFFFFL);
+                out.add(new EdgeView(idx++, a, b));
+            }
+            return Optional.of(out);
+        }));
+    }
+
+    public Optional<List<FaceView>> listPartFaces(String idOrName) {
+        return await(MainThreadExecutor.submit(() -> {
+            Optional<ModelPartDescriptor> p = resolve(idOrName);
+            if (p.isEmpty()) return Optional.<List<FaceView>>empty();
+            PartMeshRebuilder.PartGeometry geo = requirePartManager().getPartGeometry(p.get().id());
+            if (geo == null || geo.indices() == null || geo.triangleToFaceId() == null) {
+                return Optional.of(List.<FaceView>of());
+            }
+            int[] indices = geo.indices();
+            int[] triFace = geo.triangleToFaceId();
+            Map<Integer, LinkedHashSet<Integer>> faceVerts = new TreeMap<>();
+            for (int t = 0; t < triFace.length; t++) {
+                int faceId = triFace[t];
+                LinkedHashSet<Integer> set = faceVerts.computeIfAbsent(faceId, k -> new LinkedHashSet<>());
+                set.add(indices[t * 3]);
+                set.add(indices[t * 3 + 1]);
+                set.add(indices[t * 3 + 2]);
+            }
+            List<FaceView> out = new ArrayList<>(faceVerts.size());
+            for (Map.Entry<Integer, LinkedHashSet<Integer>> e : faceVerts.entrySet()) {
+                int[] arr = new int[e.getValue().size()];
+                int i = 0;
+                for (int v : e.getValue()) arr[i++] = v;
+                out.add(new FaceView(e.getKey(), arr));
+            }
+            return Optional.of(out);
+        }));
+    }
+
+    public Optional<PartView> moveVertex(String idOrName, int localIndex, Vector3f vec, boolean absolute) {
+        return await(MainThreadExecutor.submit(() -> {
+            Optional<ModelPartDescriptor> p = resolve(idOrName);
+            if (p.isEmpty()) return Optional.<PartView>empty();
+            applyVertexMove(p.get(), new int[] {localIndex}, vec, absolute);
+            return requirePartManager().getPartById(p.get().id()).map(PartView::from);
+        }));
+    }
+
+    public Optional<PartView> moveEdge(String idOrName, int edgeIndex, Vector3f delta) {
+        return await(MainThreadExecutor.submit(() -> {
+            Optional<ModelPartDescriptor> p = resolve(idOrName);
+            if (p.isEmpty()) return Optional.<PartView>empty();
+            int[] verts = edgeVertexIndices(p.get(), edgeIndex);
+            applyVertexMove(p.get(), verts, delta, false);
+            return requirePartManager().getPartById(p.get().id()).map(PartView::from);
+        }));
+    }
+
+    public Optional<PartView> setPartGeometry(String idOrName,
+                                               float[] vertices,
+                                               int[] indices,
+                                               float[] texCoords,
+                                               int[] triangleToFaceId) {
+        return await(MainThreadExecutor.submit(() -> {
+            Optional<ModelPartDescriptor> p = resolve(idOrName);
+            if (p.isEmpty()) return Optional.<PartView>empty();
+            if (vertices == null || vertices.length < 3 || vertices.length % 3 != 0) {
+                throw new IllegalArgumentException("vertices must be a non-empty array with length divisible by 3");
+            }
+            if (indices == null || indices.length < 3 || indices.length % 3 != 0) {
+                throw new IllegalArgumentException("indices must be a non-empty array with length divisible by 3");
+            }
+            int vertexCount = vertices.length / 3;
+            int triangleCount = indices.length / 3;
+            for (int idx : indices) {
+                if (idx < 0 || idx >= vertexCount) {
+                    throw new IllegalArgumentException("index " + idx + " out of bounds (vertex count " + vertexCount + ")");
+                }
+            }
+            float[] uvs = (texCoords != null && texCoords.length == vertexCount * 2)
+                    ? texCoords
+                    : new float[vertexCount * 2];
+            int[] triFace;
+            if (triangleToFaceId != null && triangleToFaceId.length == triangleCount) {
+                triFace = triangleToFaceId;
+            } else {
+                triFace = new int[triangleCount];
+                for (int i = 0; i < triangleCount; i++) triFace[i] = i;
+            }
+            PartMeshRebuilder.PartGeometry geo = PartMeshRebuilder.PartGeometry.of(
+                    vertices, uvs, indices, triFace);
+            ModelPartManager pm = requirePartManager();
+            if (!pm.replacePartGeometry(p.get().id(), geo)) return Optional.<PartView>empty();
+            return pm.getPartById(p.get().id()).map(PartView::from);
+        }));
+    }
+
+    public Optional<PartView> moveFace(String idOrName, int localFaceId, Vector3f delta) {
+        return await(MainThreadExecutor.submit(() -> {
+            Optional<ModelPartDescriptor> p = resolve(idOrName);
+            if (p.isEmpty()) return Optional.<PartView>empty();
+            int[] verts = faceVertexIndices(p.get(), localFaceId);
+            applyVertexMove(p.get(), verts, delta, false);
+            return requirePartManager().getPartById(p.get().id()).map(PartView::from);
+        }));
+    }
+
+    private void applyVertexMove(ModelPartDescriptor part, int[] localIndices, Vector3f vec, boolean absolute) {
+        MeshRange range = part.meshRange();
+        if (range == null) throw new IllegalStateException("Part has no mesh range: " + part.id());
+        ModelPartManager pm = requirePartManager();
+        PartMeshRebuilder.PartGeometry geo = pm.getPartGeometry(part.id());
+        if (geo == null || geo.vertices() == null) {
+            throw new IllegalStateException("Part has no geometry: " + part.id());
+        }
+        float[] verts = geo.vertices();
+        for (int local : localIndices) {
+            if (local < 0 || local >= range.vertexCount()) {
+                throw new IllegalArgumentException("Local vertex index out of bounds: " + local
+                        + " (part has " + range.vertexCount() + " vertices)");
+            }
+            Vector3f next;
+            if (absolute) {
+                next = new Vector3f(vec);
+            } else {
+                int o = local * 3;
+                next = new Vector3f(verts[o], verts[o + 1], verts[o + 2]).add(vec);
+            }
+            pm.updatePartVertex(part.id(), local, next.x, next.y, next.z);
+        }
+    }
+
+    private int[] edgeVertexIndices(ModelPartDescriptor part, int edgeIndex) {
+        PartMeshRebuilder.PartGeometry geo = requirePartManager().getPartGeometry(part.id());
+        if (geo == null || geo.indices() == null) {
+            throw new IllegalStateException("Part has no geometry: " + part.id());
+        }
+        int[] indices = geo.indices();
+        int triCount = indices.length / 3;
+        LinkedHashSet<Long> seen = new LinkedHashSet<>();
+        for (int t = 0; t < triCount; t++) {
+            int v0 = indices[t * 3], v1 = indices[t * 3 + 1], v2 = indices[t * 3 + 2];
+            seen.add(edgeKey(v0, v1));
+            seen.add(edgeKey(v1, v2));
+            seen.add(edgeKey(v2, v0));
+        }
+        if (edgeIndex < 0 || edgeIndex >= seen.size()) {
+            throw new IllegalArgumentException("Edge index out of bounds: " + edgeIndex
+                    + " (part has " + seen.size() + " edges)");
+        }
+        int i = 0;
+        for (long key : seen) {
+            if (i++ == edgeIndex) {
+                return new int[] {(int) (key >> 32), (int) (key & 0xFFFFFFFFL)};
+            }
+        }
+        throw new IllegalStateException("unreachable");
+    }
+
+    private int[] faceVertexIndices(ModelPartDescriptor part, int localFaceId) {
+        PartMeshRebuilder.PartGeometry geo = requirePartManager().getPartGeometry(part.id());
+        if (geo == null || geo.indices() == null || geo.triangleToFaceId() == null) {
+            throw new IllegalStateException("Part has no face geometry: " + part.id());
+        }
+        int[] indices = geo.indices();
+        int[] triFace = geo.triangleToFaceId();
+        LinkedHashSet<Integer> verts = new LinkedHashSet<>();
+        for (int t = 0; t < triFace.length; t++) {
+            if (triFace[t] != localFaceId) continue;
+            verts.add(indices[t * 3]);
+            verts.add(indices[t * 3 + 1]);
+            verts.add(indices[t * 3 + 2]);
+        }
+        if (verts.isEmpty()) {
+            throw new IllegalArgumentException("Face id not found in part: " + localFaceId);
+        }
+        int[] out = new int[verts.size()];
+        int i = 0;
+        for (int v : verts) out[i++] = v;
+        return out;
+    }
+
+    private static long edgeKey(int a, int b) {
+        int lo = Math.min(a, b), hi = Math.max(a, b);
+        return ((long) lo << 32) | (hi & 0xFFFFFFFFL);
+    }
+
     // ===================== Helpers =====================
 
     private void ensureModelLoaded() {
@@ -334,6 +560,12 @@ return pm.getPartById(p.get().id()).map(PartView::from);
             );
         }
     }
+
+    public record VertexView(int localIndex, Vec3 position) {}
+
+    public record EdgeView(int edgeIndex, int vertexA, int vertexB) {}
+
+    public record FaceView(int localFaceId, int[] vertexIndices) {}
 
     public record PartView(String id, String name, boolean visible, boolean locked,
                            Vec3 origin, Vec3 position, Vec3 rotation, Vec3 scale,
