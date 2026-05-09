@@ -2,7 +2,8 @@
 
 An open source work-in-progress 3D voxel-based sandbox RPG game created with Java and LWJGL. Inspired by games like Minecraft, Neverwinter Nights, and Dwarf Fortress.
 
-<img width="3433" height="1350" alt="image" src="https://github.com/user-attachments/assets/850ccdef-322d-4a10-9ce4-4cc3fd2854b0" />
+<img width="3422" height="1355" alt="image" src="https://github.com/user-attachments/assets/2310d8a6-f1b8-4744-951e-41e07ad2a3fa" />
+
 
 
 ## What is Open Mason?

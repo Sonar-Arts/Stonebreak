@@ -138,3 +138,6 @@ chunk_gl_errors.txt
 # Open Mason Theme
 theme.ini
 Theme.ini
+
+# Open Mason MCP
+.mcp.json
