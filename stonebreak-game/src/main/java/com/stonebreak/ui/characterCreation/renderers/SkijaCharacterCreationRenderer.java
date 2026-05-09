@@ -47,8 +47,8 @@ public final class SkijaCharacterCreationRenderer {
     // One MButton per tab for hover tracking and click detection
     private final MButton[] tabButtons = new MButton[CharacterCreationTab.values().length];
 
-    // Dirt texture shader — lazily built, null until the backend is ready
-    private Shader dirtShader;
+    // Wood planks texture shader — lazily built, null until the backend is ready
+    private Shader woodPlanksShader;
 
     public SkijaCharacterCreationRenderer(MasonryUI ui,
                                           CharacterCreationStateManager state,
@@ -116,14 +116,14 @@ public final class SkijaCharacterCreationRenderer {
     // ─────────────────────────────────────────────── Left panel
 
     private void drawLeftPanelContent(Canvas canvas, Rect leftPanel, float mx, float my) {
-        // Tile dirt texture inside the panel, clipped to its rounded rect
-        ensureDirtShader();
-        if (dirtShader != null) {
+        // Tile wood planks texture inside the panel, clipped to its rounded rect
+        ensureWoodPlanksShader();
+        if (woodPlanksShader != null) {
             int save = canvas.save();
             canvas.clipRRect(RRect.makeXYWH(
                 leftPanel.x(), leftPanel.y(), leftPanel.width(), leftPanel.height(),
                 MStyle.PANEL_RADIUS), true);
-            try (Paint p = new Paint().setShader(dirtShader)) {
+            try (Paint p = new Paint().setShader(woodPlanksShader)) {
                 canvas.save();
                 canvas.translate(leftPanel.x(), leftPanel.y());
                 canvas.scale(4f, 4f);
@@ -151,12 +151,12 @@ public final class SkijaCharacterCreationRenderer {
             state.getCharacterStats());
     }
 
-    private void ensureDirtShader() {
-        if (dirtShader != null) return;
+    private void ensureWoodPlanksShader() {
+        if (woodPlanksShader != null) return;
         if (ui.backend() == null) return;
-        Image dirt = ui.backend().getDirtTexture();
-        if (dirt == null) return;
-        dirtShader = dirt.makeShader(FilterTileMode.REPEAT, FilterTileMode.REPEAT, SamplingMode.DEFAULT, null);
+        Image planks = ui.backend().getWoodPlanksTexture();
+        if (planks == null) return;
+        woodPlanksShader = planks.makeShader(FilterTileMode.REPEAT, FilterTileMode.REPEAT, SamplingMode.DEFAULT, null);
     }
 
     // ─────────────────────────────────────────────── Tab bar
@@ -254,6 +254,6 @@ public final class SkijaCharacterCreationRenderer {
     }
 
     public void dispose() {
-        if (dirtShader != null) { dirtShader.close(); dirtShader = null; }
+        if (woodPlanksShader != null) { woodPlanksShader.close(); woodPlanksShader = null; }
     }
 }

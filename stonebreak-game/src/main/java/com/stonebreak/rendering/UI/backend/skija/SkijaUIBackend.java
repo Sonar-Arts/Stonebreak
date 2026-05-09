@@ -5,6 +5,7 @@ import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Data;
 import io.github.humbleui.skija.FontMgr;
 import io.github.humbleui.skija.Image;
+import io.github.humbleui.skija.Surface;
 import io.github.humbleui.skija.Typeface;
 
 import java.io.IOException;
@@ -21,6 +22,7 @@ public final class SkijaUIBackend implements UIBackend {
 
     private Typeface minecraftTypeface;
     private Image dirtTexture;
+    private Image woodPlanksTexture;
 
     private boolean inFrame;
     private Canvas currentCanvas;
@@ -33,6 +35,7 @@ public final class SkijaUIBackend implements UIBackend {
     private void loadAssets() {
         minecraftTypeface = loadTypeface("/fonts/Minecraft.ttf");
         dirtTexture = loadImage("/ui/mainMenu/Dirt.png");
+        woodPlanksTexture = loadWoodPlanksFace("/blocks/Textures/wood_planks_custom_texture.png");
     }
 
     private Typeface loadTypeface(String resourcePath) {
@@ -63,6 +66,27 @@ public final class SkijaUIBackend implements UIBackend {
         }
     }
 
+    // The cube-net PNG is 64x48 with 16x16 faces arranged in a cross.
+    // Front face sits at col=1, row=1 → pixel origin (16, 16).
+    // We blit just that tile into a fresh 16x16 surface so the repeating
+    // shader has no blank regions from the unused corners of the net.
+    private Image loadWoodPlanksFace(String resourcePath) {
+        Image full = loadImage(resourcePath);
+        if (full == null) return null;
+        int faceSize = 16;
+        int faceX = 16, faceY = 16;
+        try (Surface surface = Surface.makeRasterN32Premul(faceSize, faceSize)) {
+            Canvas c = surface.getCanvas();
+            c.save();
+            c.translate(-faceX, -faceY);
+            c.drawImage(full, 0, 0);
+            c.restore();
+            Image face = surface.makeImageSnapshot();
+            full.close();
+            return face;
+        }
+    }
+
     @Override
     public void beginFrame(int width, int height, float pixelRatio) {
         if (!context.isInitialized()) return;
@@ -89,6 +113,7 @@ public final class SkijaUIBackend implements UIBackend {
     @Override
     public void dispose() {
         if (dirtTexture != null) { dirtTexture.close(); dirtTexture = null; }
+        if (woodPlanksTexture != null) { woodPlanksTexture.close(); woodPlanksTexture = null; }
         if (minecraftTypeface != null) { minecraftTypeface.close(); minecraftTypeface = null; }
         context.dispose();
     }
@@ -111,4 +136,6 @@ public final class SkijaUIBackend implements UIBackend {
     public Typeface getMinecraftTypeface() { return minecraftTypeface; }
 
     public Image getDirtTexture() { return dirtTexture; }
+
+    public Image getWoodPlanksTexture() { return woodPlanksTexture; }
 }
