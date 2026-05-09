@@ -66,6 +66,22 @@ public class ChatSystem {
         return isOpen;
     }
 
+    /**
+     * Reset chat to a pristine state. Clears all messages, history, input,
+     * scroll position, and tab selection. Used when leaving a world session
+     * (e.g. returning to the main menu) so chat does not leak across sessions.
+     */
+    public void clear() {
+        isOpen = false;
+        messageManager.clear();
+        inputHandler.clear();
+        cursorState.reset();
+        scrollOffset = 0;
+        commandScrollOffset = 0;
+        currentTab = ChatTab.CHAT;
+        updateMouseCapture();
+    }
+
     private void updateMouseCapture() {
         MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
         if (mouseCaptureManager != null) {
