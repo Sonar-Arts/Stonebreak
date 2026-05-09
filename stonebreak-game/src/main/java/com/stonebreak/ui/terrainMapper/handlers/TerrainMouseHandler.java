@@ -87,6 +87,7 @@ public final class TerrainMouseHandler {
         TerrainMapperLayout layout = new TerrainMapperLayout(windowWidth, windowHeight);
 
         if (state.getBackButton().handleClick(mx, my)) return;
+        if (state.getCharacterButton().handleClick(mx, my)) return;
         if (state.getCreateButton().handleClick(mx, my)) return;
         if (state.getSimulateSeedButton().handleClick(mx, my)) return;
 
@@ -140,6 +141,7 @@ public final class TerrainMouseHandler {
 
     private void updateHoverStates(float mx, float my) {
         state.getBackButton().updateHover(mx, my);
+        state.getCharacterButton().updateHover(mx, my);
         state.getCreateButton().updateHover(mx, my);
         state.getSimulateSeedButton().updateHover(mx, my);
         for (MCategoryButton<VisualizerKind> mode : state.getModeButtons()) {

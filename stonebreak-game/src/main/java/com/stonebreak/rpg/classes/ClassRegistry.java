@@ -13,29 +13,14 @@ public final class ClassRegistry {
 
   private ClassRegistry() {}
 
-  /** All 21 available player classes. */
+  /** The 6 available player classes. */
   public static final List<PlayerClassDefinition> ALL = List.of(
-      PlayerClassDefinition.placeholder("artificer",     "Artificer",     5),
-      PlayerClassDefinition.placeholder("barbarian",     "Barbarian",     5),
-      PlayerClassDefinition.placeholder("bard",          "Bard",          5),
-      PlayerClassDefinition.placeholder("berserker",     "Berserker",     5),
-      PlayerClassDefinition.placeholder("bloodhunter",   "Blood Hunter",  5),
-      PlayerClassDefinition.placeholder("cleric",        "Cleric",        5),
-      PlayerClassDefinition.placeholder("druid",         "Druid",         5),
-      PlayerClassDefinition.placeholder("elementalmage", "Elemental Mage", 5),
-      PlayerClassDefinition.placeholder("fighter",       "Fighter",       5),
-      PlayerClassDefinition.placeholder("mage",          "Mage",          5),
-      PlayerClassDefinition.placeholder("monk",          "Monk",          5),
-      PlayerClassDefinition.placeholder("necromancer",   "Necromancer",   5),
-      PlayerClassDefinition.placeholder("paladin",       "Paladin",       5),
-      PlayerClassDefinition.placeholder("ranger",        "Ranger",        5),
-      PlayerClassDefinition.placeholder("rogue",         "Rogue",         5),
-      PlayerClassDefinition.placeholder("shadowdancer",  "Shadow Dancer", 5),
-      PlayerClassDefinition.placeholder("sorcerer",      "Sorcerer",      5),
-      PlayerClassDefinition.placeholder("templar",       "Templar",       5),
-      PlayerClassDefinition.placeholder("warlock",       "Warlock",       5),
-      PlayerClassDefinition.placeholder("warrior",       "Warrior",       5),
-      PlayerClassDefinition.placeholder("wizard",        "Wizard",        5)
+      PlayerClassDefinition.placeholder("berserker",  "Berserker",  5),
+      PlayerClassDefinition.placeholder("rogue",      "Rogue",      5),
+      PlayerClassDefinition.placeholder("monk",       "Monk",       5),
+      PlayerClassDefinition.placeholder("arcanist",   "Arcanist",   5),
+      PlayerClassDefinition.placeholder("ranger",     "Ranger",     5),
+      PlayerClassDefinition.placeholder("illusionist","Illusionist", 5)
   );
 
   /** Returns the class with the given id, or empty if not found. */

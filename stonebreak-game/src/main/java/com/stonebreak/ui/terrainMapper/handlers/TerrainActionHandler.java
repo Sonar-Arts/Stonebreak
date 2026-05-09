@@ -46,6 +46,10 @@ public final class TerrainActionHandler {
         Game.getInstance().setState(GameState.WORLD_SELECT);
     }
 
+    public void goToCharacterCreation() {
+        Game.getInstance().setState(GameState.CHARACTER_CREATION);
+    }
+
     public void simulateSeed() {
         state.randomizeSeed();
     }

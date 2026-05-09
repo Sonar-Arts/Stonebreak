@@ -29,6 +29,7 @@ public final class TerrainMapperStateManager {
 
     // ─────────────────────────────────────────────── Widgets
     private final MButton backButton;
+    private final MButton characterButton;
     private final MButton createButton;
     private final MButton simulateSeedButton;
     private final List<MCategoryButton<VisualizerKind>> modeButtons = new ArrayList<>();
@@ -73,6 +74,8 @@ public final class TerrainMapperStateManager {
 
         this.backButton = new MButton("Back")
                 .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);
+        this.characterButton = new MButton("← Character")
+                .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);
         this.createButton = new MButton("Create World")
                 .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);
         this.simulateSeedButton = new MButton("Simulate Seed")
@@ -97,6 +100,7 @@ public final class TerrainMapperStateManager {
     // ─────────────────────────────────────────────── Widgets
 
     public MButton getBackButton() { return backButton; }
+    public MButton getCharacterButton() { return characterButton; }
     public MButton getCreateButton() { return createButton; }
     public MButton getSimulateSeedButton() { return simulateSeedButton; }
     public List<MCategoryButton<VisualizerKind>> getModeButtons() { return modeButtons; }

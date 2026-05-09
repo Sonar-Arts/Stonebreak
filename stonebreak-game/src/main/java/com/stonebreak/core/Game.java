@@ -20,6 +20,7 @@ import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.ui.characterCreation.CharacterCreationScreen;
 import com.stonebreak.ui.startupIntro.SonarArtsIntroScreen;
 import com.stonebreak.ui.terrainMapper.TerrainMapperScreen;
 import com.stonebreak.ui.worldSelect.WorldSelectScreen;
@@ -64,6 +65,7 @@ public class Game {
     private DebugOverlay debugOverlay; // Debug overlay (F3)
     private LoadingScreen loadingScreen; // Loading screen for world generation
     private WorldSelectScreen worldSelectScreen; // World selection screen
+    private CharacterCreationScreen characterCreationScreen; // Character creation before terrain mapper
     private TerrainMapperScreen terrainMapperScreen; // Terrain preview + world creation screen
     private SonarArtsIntroScreen startupIntroScreen; // Boot-time Sonar Arts animation
     private SaveService saveService; // World save/load system
@@ -159,6 +161,7 @@ public class Game {
         this.joinWorldScreen = new com.stonebreak.ui.multiplayerMenu.JoinWorldScreen(this.renderer.getSkijaBackend());
         this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
         this.worldSelectScreen = new WorldSelectScreen(this.renderer.getSkijaBackend());
+        this.characterCreationScreen = new CharacterCreationScreen(this.renderer.getSkijaBackend());
         this.terrainMapperScreen = new TerrainMapperScreen(this.renderer.getSkijaBackend());
         this.startupIntroScreen = new SonarArtsIntroScreen(this.renderer.getSkijaBackend());
 
@@ -193,6 +196,24 @@ public class Game {
 
         com.stonebreak.core.bootstrap.GameBootstrap.ensureMmsApiInitialized(textureAtlas, world);
         com.stonebreak.core.bootstrap.GameBootstrap.reinitializeSaveService(saveService, currentWorldData, player, world);
+
+        // Apply character creation stats to the new player if a creation session was active.
+        if (characterCreationScreen != null) {
+            com.stonebreak.player.CharacterStats pending = characterCreationScreen.getCharacterStats();
+            com.stonebreak.player.CharacterStats live = player.getCharacterStats();
+            live.restore(
+                pending.getSelectedClassId(),
+                new java.util.HashMap<>(pending.getSpentAbilityCp()),
+                new java.util.HashMap<>(pending.getSkillLevels()),
+                new java.util.HashSet<>(pending.getAcquiredFeatIds()),
+                pending.getRemainingCp(),
+                pending.getRemainingSkillPoints(),
+                pending.getRemainingFeatPoints(),
+                pending.getAbilityScores(),
+                pending.getRemainingAp()
+            );
+            live.setSelectedBackground(pending.getSelectedBackground());
+        }
 
         // Set camera for mouse capture system
         if (mouseCaptureManager != null && player != null) {
@@ -689,6 +710,13 @@ public class Game {
      */
     public WorldSelectScreen getWorldSelectScreen() {
         return worldSelectScreen;
+    }
+
+    /**
+     * Gets the character creation screen.
+     */
+    public CharacterCreationScreen getCharacterCreationScreen() {
+        return characterCreationScreen;
     }
 
     /**

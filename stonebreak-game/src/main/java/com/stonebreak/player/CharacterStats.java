@@ -22,6 +22,13 @@ public class CharacterStats {
 
   private final Player player;
 
+  // ─────────────────────────────────────────────── Background
+
+  private String selectedBackground = null;
+
+  public String getSelectedBackground() { return selectedBackground; }
+  public void setSelectedBackground(String id) { this.selectedBackground = id; }
+
   // ─────────────────────────────────────────────── Classes
 
   private String selectedClassId = null;
