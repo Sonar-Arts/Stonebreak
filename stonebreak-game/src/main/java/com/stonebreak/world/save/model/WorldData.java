@@ -19,6 +19,7 @@ public final class WorldData {
     private final LocalDateTime lastPlayed;
     private final long totalPlayTimeMillis;
     private final long worldTimeTicks;
+    private final boolean cheatsEnabled;
     private final int formatVersion;
 
     @JsonCreator
@@ -30,6 +31,7 @@ public final class WorldData {
             @JsonProperty("lastPlayed") LocalDateTime lastPlayed,
             @JsonProperty("totalPlayTimeMillis") long totalPlayTimeMillis,
             @JsonProperty("worldTimeTicks") long worldTimeTicks,
+            @JsonProperty("cheatsEnabled") boolean cheatsEnabled,
             @JsonProperty("formatVersion") int formatVersion) {
         this.seed = seed;
         this.worldName = worldName;
@@ -38,13 +40,14 @@ public final class WorldData {
         this.lastPlayed = lastPlayed;
         this.totalPlayTimeMillis = totalPlayTimeMillis;
         this.worldTimeTicks = worldTimeTicks;
+        this.cheatsEnabled = cheatsEnabled;
         this.formatVersion = formatVersion;
     }
 
     private WorldData(Builder builder) {
         this(builder.seed, builder.worldName, builder.spawnPosition,
              builder.createdTime, builder.lastPlayed, builder.totalPlayTimeMillis,
-             builder.worldTimeTicks, builder.formatVersion);
+             builder.worldTimeTicks, builder.cheatsEnabled, builder.formatVersion);
     }
 
     // Getters
@@ -55,6 +58,7 @@ public final class WorldData {
     public LocalDateTime getLastPlayed() { return lastPlayed; }
     public long getTotalPlayTimeMillis() { return totalPlayTimeMillis; }
     public long getWorldTimeTicks() { return worldTimeTicks; }
+    public boolean isCheatsEnabled() { return cheatsEnabled; }
     public int getFormatVersion() { return formatVersion; }
 
     /**
@@ -85,6 +89,15 @@ public final class WorldData {
             .build();
     }
 
+    /**
+     * Creates a new WorldData with updated cheats flag.
+     */
+    public WorldData withCheatsEnabled(boolean cheatsEnabled) {
+        return new Builder(this)
+            .cheatsEnabled(cheatsEnabled)
+            .build();
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -97,6 +110,7 @@ public final class WorldData {
         private LocalDateTime lastPlayed = LocalDateTime.now();
         private long totalPlayTimeMillis = 0;
         private long worldTimeTicks = 6000; // Default to NOON
+        private boolean cheatsEnabled = false;
         private int formatVersion = 1;
 
         public Builder() {}
@@ -109,6 +123,7 @@ public final class WorldData {
             this.lastPlayed = data.lastPlayed;
             this.totalPlayTimeMillis = data.totalPlayTimeMillis;
             this.worldTimeTicks = data.worldTimeTicks;
+            this.cheatsEnabled = data.cheatsEnabled;
             this.formatVersion = data.formatVersion;
         }
 
@@ -144,6 +159,11 @@ public final class WorldData {
 
         public Builder worldTimeTicks(long worldTimeTicks) {
             this.worldTimeTicks = worldTimeTicks;
+            return this;
+        }
+
+        public Builder cheatsEnabled(boolean cheatsEnabled) {
+            this.cheatsEnabled = cheatsEnabled;
             return this;
         }
 

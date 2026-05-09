@@ -121,6 +121,9 @@ public final class WorldGenerationCoordinator {
                                 TimeOfDay timeOfDay = new TimeOfDay(savedTimeTicks);
                                 game.setTimeOfDay(timeOfDay);
                                 System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + timeOfDay.getTimeString() + ")");
+
+                                game.setCheatsEnabled(currentWorldData.isCheatsEnabled());
+                                System.out.println("[CHEATS] ✓ Loaded cheats flag from world: " + currentWorldData.isCheatsEnabled());
                             }
                         } else {
                             isNewPlayer = true;
@@ -287,6 +290,9 @@ public final class WorldGenerationCoordinator {
                                 TimeOfDay timeOfDay = new TimeOfDay(savedTimeTicks);
                                 game.setTimeOfDay(timeOfDay);
                                 System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + timeOfDay.getTimeString() + ")");
+
+                                game.setCheatsEnabled(worldData.isCheatsEnabled());
+                                System.out.println("[CHEATS] ✓ Loaded cheats flag from world: " + worldData.isCheatsEnabled());
 
                                 if (result.getPlayerData() != null) {
                                     StateConverter.applyPlayerData(freshPlayer, result.getPlayerData());

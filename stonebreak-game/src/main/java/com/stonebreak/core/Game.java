@@ -620,12 +620,30 @@ public class Game {
     }
     
     /**
-     * Sets whether cheats are enabled.
+     * Sets the runtime cheats flag. Does not modify any world's persisted
+     * cheats state — use {@link #applyCheatsToCurrentWorld(boolean)} when
+     * the user toggles cheats from inside a world session.
      */
     public void setCheatsEnabled(boolean enabled) {
         this.cheatsEnabled = enabled;
     }
-    
+
+    /**
+     * Toggles cheats for the active world: updates the runtime flag, the
+     * in-memory {@link WorldData}, and the {@link com.stonebreak.world.save.SaveService}
+     * so the change persists on the next save. No-op when no world is loaded.
+     */
+    public void applyCheatsToCurrentWorld(boolean enabled) {
+        this.cheatsEnabled = enabled;
+        if (currentWorldData != null) {
+            WorldData updated = currentWorldData.withCheatsEnabled(enabled);
+            this.currentWorldData = updated;
+            if (saveService != null && player != null && world != null) {
+                saveService.initialize(updated, player, world);
+            }
+        }
+    }
+
     /**
      * Returns whether cheats are enabled.
      */
