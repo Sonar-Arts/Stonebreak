@@ -94,11 +94,35 @@ public final class RecipeLoader {
         int height = shaped.height();
         List<String> flat = shaped.pattern();
 
-        List<List<ItemStack>> rows = new ArrayList<>(height);
+        // Trim the declared pattern to the bounding box of its non-empty cells.
+        // CraftingManager.craftItem compacts the player's input the same way and
+        // demands exact dimension equality, so leading/trailing empty rows or
+        // columns in the SBO would otherwise make the recipe unmatchable.
+        int minR = height, maxR = -1, minC = width, maxC = -1;
         for (int r = 0; r < height; r++) {
-            List<ItemStack> row = new ArrayList<>(width);
             for (int c = 0; c < width; c++) {
-                String slotId = flat.get(r * width + c);
+                String slot = flat.get(r * width + c);
+                if (slot != null && !slot.isBlank()) {
+                    if (r < minR) minR = r;
+                    if (r > maxR) maxR = r;
+                    if (c < minC) minC = c;
+                    if (c > maxC) maxC = c;
+                }
+            }
+        }
+        if (maxR < 0) {
+            logger.warn("Recipe for {} #{} has an empty pattern — skipping",
+                    outputObjectId, recipeIndex);
+            return null;
+        }
+        int trimmedHeight = maxR - minR + 1;
+        int trimmedWidth = maxC - minC + 1;
+
+        List<List<ItemStack>> rows = new ArrayList<>(trimmedHeight);
+        for (int r = 0; r < trimmedHeight; r++) {
+            List<ItemStack> row = new ArrayList<>(trimmedWidth);
+            for (int c = 0; c < trimmedWidth; c++) {
+                String slotId = flat.get((minR + r) * width + (minC + c));
                 if (slotId == null || slotId.isBlank()) {
                     row.add(null);
                     continue;
