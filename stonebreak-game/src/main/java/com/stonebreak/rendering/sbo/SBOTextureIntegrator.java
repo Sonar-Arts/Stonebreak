@@ -183,15 +183,13 @@ public class SBOTextureIntegrator {
      * hand it the base name that actually exists.
      */
     private String getBlockTextureName(BlockType blockType) {
-        return switch (blockType) {
-            case DIRT -> "dirt_block";
-            case GRASS -> "grass_block";
-            case WOOD_PLANKS -> "wood_planks_custom";
-            case PINE_WOOD_PLANKS -> "pine_wood_planks_custom";
-            case ELM_WOOD_PLANKS -> "elm_wood_planks_custom";
-            case WORKBENCH -> "workbench_custom";
-            default -> blockType.name().toLowerCase();
-        };
+        if (blockType == BlockType.DIRT) return "dirt_block";
+        if (blockType == BlockType.GRASS) return "grass_block";
+        if (blockType == BlockType.WOOD_PLANKS) return "wood_planks_custom";
+        if (blockType == BlockType.PINE_WOOD_PLANKS) return "pine_wood_planks_custom";
+        if (blockType == BlockType.ELM_WOOD_PLANKS) return "elm_wood_planks_custom";
+        if (blockType == BlockType.WORKBENCH) return "workbench_custom";
+        return blockType.name().toLowerCase();
     }
 
     private BufferedImage scaleTo(BufferedImage source, int width, int height) {

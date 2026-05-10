@@ -7,7 +7,7 @@ import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefini
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -62,7 +62,7 @@ public class SBOBlockBridge {
             Map.entry("stonebreak:workbench", BlockType.WORKBENCH)
     );
 
-    private final EnumMap<BlockType, SBOParseResult> sboByBlockType = new EnumMap<>(BlockType.class);
+    private final Map<BlockType, SBOParseResult> sboByBlockType = new HashMap<>();
 
     /**
      * Initialize the bridge from a populated registry.

@@ -254,7 +254,7 @@ public class CBRResourceManager implements AutoCloseable {
             // Create temporary definition for legacy block
             BlockDefinition tempDefinition = new BlockDefinition.Builder()
                 .resourceId(resourceId)
-                .numericId(blockType.ordinal())
+                .numericId(blockType.getId())
                 .renderType(BlockDefinition.RenderType.CUBE_ALL)
                 .build();
             

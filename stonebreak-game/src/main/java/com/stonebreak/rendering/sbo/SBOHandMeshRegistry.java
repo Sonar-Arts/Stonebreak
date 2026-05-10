@@ -9,7 +9,7 @@ import com.stonebreak.rendering.textures.TextureAtlas;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -36,8 +36,7 @@ public class SBOHandMeshRegistry {
 
     private final CBRResourceManager cbrManager;
     private final TextureAtlas textureAtlas;
-    private final Map<BlockType, MeshManager.MeshResource> meshesByBlock =
-            new EnumMap<>(BlockType.class);
+    private final Map<BlockType, MeshManager.MeshResource> meshesByBlock = new HashMap<>();
 
     public SBOHandMeshRegistry(CBRResourceManager cbrManager, TextureAtlas textureAtlas) {
         this.cbrManager = cbrManager;

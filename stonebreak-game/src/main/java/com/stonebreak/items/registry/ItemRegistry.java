@@ -3,6 +3,8 @@ package com.stonebreak.items.registry;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.openmason.engine.format.sbo.SBOParser;
+import com.stonebreak.items.ItemCategory;
+import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,6 +82,21 @@ public final class ItemRegistry {
                     continue;
                 }
 
+                // Promote SBO-only items into ItemType so inventory / hotbar
+                // / icon paths can see them. For existing hardcoded ItemType
+                // constants this is a no-op.
+                String enumName = sboNameToEnumName(result.getObjectId());
+                ItemCategory category = parseCategoryOrDefault(gp.categoryOrDefault());
+                ItemType.register(
+                        enumName,
+                        gp.numericId(),
+                        result.getObjectName(),
+                        gp.atlasX(),
+                        gp.atlasY(),
+                        category,
+                        gp.maxStackSize()
+                );
+
                 ItemEntry entry = new ItemEntry(result.getObjectId(), result.getObjectName(), gp, result);
                 ItemEntry prev = byObjectId.put(entry.objectId(), entry);
                 if (prev != null) {
@@ -133,6 +150,29 @@ public final class ItemRegistry {
     public int size() {
         ensureLoaded();
         return byObjectId.size();
+    }
+
+    /**
+     * Drop the namespace prefix and uppercase the local part:
+     * {@code "stonebreak:sword"} → {@code "SWORD"}.
+     */
+    private static String sboNameToEnumName(String objectId) {
+        int colon = objectId.indexOf(':');
+        String local = colon >= 0 ? objectId.substring(colon + 1) : objectId;
+        return local.toUpperCase();
+    }
+
+    /**
+     * Parse the SBO {@code gameProperties.category} string into the game's
+     * {@link ItemCategory}. Falls back to {@code TOOLS} for unknown values.
+     */
+    private static ItemCategory parseCategoryOrDefault(String raw) {
+        if (raw == null || raw.isBlank()) return ItemCategory.TOOLS;
+        try {
+            return ItemCategory.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ItemCategory.TOOLS;
+        }
     }
 
     private java.util.List<Path> discoverSBOFiles() {

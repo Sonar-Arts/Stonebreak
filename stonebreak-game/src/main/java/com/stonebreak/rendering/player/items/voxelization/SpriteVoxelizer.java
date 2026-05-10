@@ -248,20 +248,12 @@ public class SpriteVoxelizer {
      * {@link #loadSpriteFromSboItem(ItemType)}.
      */
     private static String getSpritePathForItem(ItemType itemType) {
-        switch (itemType) {
-            case WOODEN_PICKAXE:
-                return "Items/Textures/wooden_pickaxe_texture.png";
-            case WOODEN_AXE:
-                return "Items/Textures/wooden_axe_texture.png";
-            case STICK:
-                return "Items/Textures/stick_texture.png";
-            case WOODEN_BUCKET:
-                return "Items/Textures/wooden_bucket_base.png";
-            case WOODEN_BUCKET_WATER:
-                return "Items/Textures/wooden_bucket_water.png";
-            default:
-                return null;
-        }
+        if (itemType == ItemType.WOODEN_PICKAXE) return "Items/Textures/wooden_pickaxe_texture.png";
+        if (itemType == ItemType.WOODEN_AXE) return "Items/Textures/wooden_axe_texture.png";
+        if (itemType == ItemType.STICK) return "Items/Textures/stick_texture.png";
+        if (itemType == ItemType.WOODEN_BUCKET) return "Items/Textures/wooden_bucket_base.png";
+        if (itemType == ItemType.WOODEN_BUCKET_WATER) return "Items/Textures/wooden_bucket_water.png";
+        return null;
     }
 
 

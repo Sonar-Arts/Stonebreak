@@ -2,6 +2,7 @@ package com.stonebreak.blocks.registry;
 
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParseResult;
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,6 +71,23 @@ public final class BlockRegistry {
                 continue;
             }
 
+            // Promote SBO-only blocks into BlockType so the rest of the game
+            // (chunk codec, hotbar, world gen via lookups) can see them. For
+            // existing hardcoded BlockType constants this is a no-op — the
+            // static field already exists and register() returns the existing
+            // instance.
+            String enumName = sboNameToEnumName(result.getObjectId());
+            BlockType.register(
+                    enumName,
+                    gp.numericId(),
+                    result.getObjectName(),
+                    gp.solid(),
+                    gp.breakable(),
+                    gp.atlasX(),
+                    gp.atlasY(),
+                    gp.hardness()
+            );
+
             BlockEntry entry = new BlockEntry(
                     result.getObjectId(),
                     result.getObjectName(),
@@ -132,6 +150,18 @@ public final class BlockRegistry {
      */
     public int size() {
         return byObjectId.size();
+    }
+
+    /**
+     * Convert a namespaced SBO objectId (e.g. {@code "stonebreak:red_sand"})
+     * to the SCREAMING_CASE name used as the BlockType registry key
+     * ({@code "RED_SAND"}). Drops the namespace prefix and uppercases the
+     * remainder.
+     */
+    private static String sboNameToEnumName(String objectId) {
+        int colon = objectId.indexOf(':');
+        String local = colon >= 0 ? objectId.substring(colon + 1) : objectId;
+        return local.toUpperCase();
     }
 
     /**

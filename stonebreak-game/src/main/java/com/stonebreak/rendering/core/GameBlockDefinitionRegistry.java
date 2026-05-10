@@ -81,7 +81,7 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
         
         return new BlockDefinition.Builder()
                 .resourceId(resourceId)
-                .numericId(blockType.ordinal())
+                .numericId(blockType.getId())
                 .renderType(renderType)
                 .renderLayer(renderLayer)
                 .build();
@@ -96,18 +96,16 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
         if (blockType.isFlower()) {
             return BlockDefinition.RenderType.CROSS;
         }
-        switch (blockType) {
-            case GRASS, SNOWY_DIRT:
-                return BlockDefinition.RenderType.CUBE_DIRECTIONAL;
-            case WOOD, PINE, ELM_WOOD_LOG:
-                return BlockDefinition.RenderType.CUBE_DIRECTIONAL; // Wood logs have different top/side textures
-            case SANDSTONE, RED_SANDSTONE:
-                return BlockDefinition.RenderType.CUBE_DIRECTIONAL; // Different top/side textures
-            case WORKBENCH:
-                return BlockDefinition.RenderType.CUBE_DIRECTIONAL; // Has unique faces
-            default:
-                return BlockDefinition.RenderType.CUBE_ALL;
+        // Reference equality on the static-final instances. Directional blocks
+        // have different top/side/bottom textures and need per-face mesh data.
+        if (blockType == BlockType.GRASS || blockType == BlockType.SNOWY_DIRT
+                || blockType == BlockType.WOOD || blockType == BlockType.PINE
+                || blockType == BlockType.ELM_WOOD_LOG
+                || blockType == BlockType.SANDSTONE || blockType == BlockType.RED_SANDSTONE
+                || blockType == BlockType.WORKBENCH) {
+            return BlockDefinition.RenderType.CUBE_DIRECTIONAL;
         }
+        return BlockDefinition.RenderType.CUBE_ALL;
     }
     
     /**
@@ -128,23 +126,22 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
         if (blockType.isFlower()) {
             return BlockDefinition.RenderLayer.CUTOUT;
         }
-        switch (blockType) {
-            case ICE:
-                // Ice has partial-alpha textures that must alpha-blend, not
-                // alpha-test. Marked here as a fallback when the SBO does not
-                // declare a render layer explicitly.
-                return BlockDefinition.RenderLayer.TRANSLUCENT;
-            case LEAVES, PINE_LEAVES, ELM_LEAVES:
-                // Leaf blocks use cutout only when transparency is enabled
-                // When disabled, use opaque to show the black spots
-                try {
-                    return blockType.isTransparent() ? BlockDefinition.RenderLayer.CUTOUT : BlockDefinition.RenderLayer.OPAQUE;
-                } catch (Exception e) {
-                    return BlockDefinition.RenderLayer.CUTOUT; // Default to cutout for leaves
-                }
-            default:
-                return BlockDefinition.RenderLayer.OPAQUE;
+        if (blockType == BlockType.ICE) {
+            // Ice has partial-alpha textures that must alpha-blend, not
+            // alpha-test. Fallback when the SBO does not declare explicitly.
+            return BlockDefinition.RenderLayer.TRANSLUCENT;
         }
+        if (blockType == BlockType.LEAVES || blockType == BlockType.PINE_LEAVES
+                || blockType == BlockType.ELM_LEAVES) {
+            // Leaf blocks use cutout only when transparency is enabled;
+            // when disabled, use opaque to show the black spots.
+            try {
+                return blockType.isTransparent() ? BlockDefinition.RenderLayer.CUTOUT : BlockDefinition.RenderLayer.OPAQUE;
+            } catch (Exception e) {
+                return BlockDefinition.RenderLayer.CUTOUT;
+            }
+        }
+        return BlockDefinition.RenderLayer.OPAQUE;
     }
     
     /**

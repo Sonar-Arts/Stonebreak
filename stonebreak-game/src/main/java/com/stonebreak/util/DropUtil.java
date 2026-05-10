@@ -237,29 +237,15 @@ public class DropUtil {
             return null;
         }
         
-        // For now, most blocks drop themselves
-        // This can be expanded later for blocks that drop different items
-        switch (brokenBlock) {
-            case STONE:
-                // Stone drops cobblestone when mined
-                return BlockType.COBBLESTONE;
-            case RED_SANDSTONE:
-                // Red sandstone drops red sand cobblestone when mined
-                return BlockType.RED_SAND_COBBLESTONE;
-            case SANDSTONE:
-                // Sandstone drops sand cobblestone when mined
-                return BlockType.SAND_COBBLESTONE;
-            case GRASS:
-                return BlockType.DIRT;
-            case IRON_ORE:
-                // In future, this should drop iron items instead of the block
-                return BlockType.IRON_ORE;
-            case COAL_ORE:
-                // In future, this should drop coal items instead of the block
-                return BlockType.COAL_ORE;
-            default:
-                return brokenBlock; // Most blocks drop themselves
-        }
+        // Mining substitutions: a few blocks drop something other than
+        // themselves. Most fall through to the brokenBlock itself.
+        if (brokenBlock == BlockType.STONE) return BlockType.COBBLESTONE;
+        if (brokenBlock == BlockType.RED_SANDSTONE) return BlockType.RED_SAND_COBBLESTONE;
+        if (brokenBlock == BlockType.SANDSTONE) return BlockType.SAND_COBBLESTONE;
+        if (brokenBlock == BlockType.GRASS) return BlockType.DIRT;
+        // Future: IRON_ORE / COAL_ORE should drop ingot/coal items here once
+        // those items exist. Currently they drop themselves via the fallthrough.
+        return brokenBlock;
     }
     
     /**
