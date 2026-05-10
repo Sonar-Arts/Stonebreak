@@ -37,6 +37,11 @@ public final class CcoSerializableSnapshot {
     private final boolean hasEntitiesGenerated;  // Whether entities were spawned for this chunk
     private final Map<String, ChunkData.WaterBlockData> waterMetadata;  // Water flow levels (non-source only)
     private final List<EntityData> entities;  // Entity data for this chunk
+    /**
+     * Sparse per-block SBO state map (1.3+). Same {@code "x,y,z"} keying as
+     * {@link #waterMetadata}; only blocks with non-default state appear here.
+     */
+    private final Map<String, String> blockStates;
 
     /**
      * Creates a serializable snapshot.
@@ -49,7 +54,7 @@ public final class CcoSerializableSnapshot {
      */
     public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
                                    LocalDateTime lastModified, boolean featuresPopulated) {
-        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, false, new HashMap<>(), new ArrayList<>());
+        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, false, new HashMap<>(), new ArrayList<>(), new HashMap<>());
     }
 
     /**
@@ -65,7 +70,7 @@ public final class CcoSerializableSnapshot {
     public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
                                    LocalDateTime lastModified, boolean featuresPopulated,
                                    Map<String, ChunkData.WaterBlockData> waterMetadata) {
-        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, false, waterMetadata, new ArrayList<>());
+        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, false, waterMetadata, new ArrayList<>(), new HashMap<>());
     }
 
     /**
@@ -85,6 +90,19 @@ public final class CcoSerializableSnapshot {
                                    boolean hasEntitiesGenerated,
                                    Map<String, ChunkData.WaterBlockData> waterMetadata,
                                    List<EntityData> entities) {
+        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, hasEntitiesGenerated,
+                waterMetadata, entities, new HashMap<>());
+    }
+
+    /**
+     * Full constructor including SBO 1.3 per-block state map.
+     */
+    public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
+                                   LocalDateTime lastModified, boolean featuresPopulated,
+                                   boolean hasEntitiesGenerated,
+                                   Map<String, ChunkData.WaterBlockData> waterMetadata,
+                                   List<EntityData> entities,
+                                   Map<String, String> blockStates) {
         this.chunkX = chunkX;
         this.chunkZ = chunkZ;
         this.blocks = Objects.requireNonNull(blocks, "blocks cannot be null");
@@ -93,6 +111,7 @@ public final class CcoSerializableSnapshot {
         this.hasEntitiesGenerated = hasEntitiesGenerated;
         this.waterMetadata = waterMetadata != null ? new HashMap<>(waterMetadata) : new HashMap<>();
         this.entities = entities != null ? new ArrayList<>(entities) : new ArrayList<>();
+        this.blockStates = blockStates != null ? new HashMap<>(blockStates) : new HashMap<>();
     }
 
     /**
@@ -132,6 +151,7 @@ public final class CcoSerializableSnapshot {
                 .hasEntitiesGenerated(hasEntitiesGenerated)  // Include entity generation flag
                 .waterMetadata(waterMetadata)  // CCO-integrated water metadata
                 .entities(entities)  // CCO-integrated entity data
+                .blockStates(blockStates)  // SBO 1.3 per-block states
                 .build();
     }
 
@@ -161,6 +181,11 @@ public final class CcoSerializableSnapshot {
 
     public List<EntityData> getEntities() {
         return new ArrayList<>(entities);  // Defensive copy
+    }
+
+    /** Per-block SBO state map (1.3+). Defensive copy. */
+    public Map<String, String> getBlockStates() {
+        return new HashMap<>(blockStates);
     }
 
     @Override

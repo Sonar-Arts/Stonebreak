@@ -95,10 +95,11 @@ public class ChatMessageManager {
     }
 
     /**
-     * Clear all messages
+     * Clear all messages and chat history
      */
     public void clear() {
         messages.clear();
+        chatHistory.clear();
     }
 
     /**

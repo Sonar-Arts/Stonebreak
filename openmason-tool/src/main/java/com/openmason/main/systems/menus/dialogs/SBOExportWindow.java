@@ -38,7 +38,7 @@ public class SBOExportWindow {
 
     private static final String WINDOW_TITLE = "Export SBO";
     private static final float MIN_WINDOW_WIDTH = 560.0f;
-    private static final float MIN_WINDOW_HEIGHT = 530.0f;
+    private static final float MIN_WINDOW_HEIGHT = 720.0f;
     private static final float FOOTER_HEIGHT = 44.0f;
     private static final float CONTENT_PADDING_Y = 22.0f;
     private static final float LABEL_WIDTH = 100.0f;
@@ -58,6 +58,7 @@ public class SBOExportWindow {
     private final FileDialogService fileDialogService;
     private final SBOSerializer serializer;
     private final WindowTitleBar titleBar;
+    private final SBOStatesSection statesSection;
 
     // Input field buffers
     private final ImString objectId = new ImString(256);
@@ -100,6 +101,11 @@ public class SBOExportWindow {
         this.fileDialogService = fileDialogService;
         this.serializer = new SBOSerializer();
         this.titleBar = new WindowTitleBar(WINDOW_TITLE, true, false);
+        this.statesSection = new SBOStatesSection(
+                /* modelKind */ true,
+                callback -> fileDialogService.showOpenOMODialog(callback::accept),
+                modelState::getCurrentOMOFilePath
+        );
 
         // Default pack name
         objectPack.set("default");
@@ -111,6 +117,7 @@ public class SBOExportWindow {
     public void show() {
         visible.set(true);
         prepopulateFromModel();
+        statesSection.reset();
         validationMessage = "";
         logger.debug("SBO export window shown");
     }
@@ -246,6 +253,9 @@ public class SBOExportWindow {
         ImGui.inputTextMultiline("##sbo_desc", description, INPUT_WIDTH, DESCRIPTION_HEIGHT,
                 ImGuiInputTextFlags.AllowTabInput);
         ImGui.popItemWidth();
+
+        ImGui.dummy(0, ROW_SPACING);
+        statesSection.render(formOffsetX, LABEL_WIDTH, INPUT_WIDTH, ROW_SPACING);
 
         // Validation message
         if (!validationMessage.isEmpty()) {
@@ -454,8 +464,18 @@ public class SBOExportWindow {
         }
         validationMessage = "";
 
-        // Resolve the OMO file path
-        String omoPathStr = modelState.getCurrentOMOFilePath();
+        // Resolve the OMO file path. When states are enabled, the default
+        // state's path is the legacy/default asset; otherwise we use the
+        // currently loaded model's OMO path.
+        String omoPathStr;
+        if (statesSection.isEnabled()) {
+            omoPathStr = params.getStates().stream()
+                    .filter(s -> s.name().equals(params.getDefaultStateName()))
+                    .map(SBOFormat.StateSpec::sourcePath)
+                    .findFirst().orElse("");
+        } else {
+            omoPathStr = modelState.getCurrentOMOFilePath();
+        }
         if (omoPathStr == null || omoPathStr.isBlank()) {
             validationMessage = "Model must be saved as .OMO before exporting to .SBO";
             statusService.updateStatus("Export failed: model not saved as .OMO");
@@ -489,6 +509,11 @@ public class SBOExportWindow {
         params.setObjectPack(objectPack.get().trim());
         params.setAuthor(author.get().trim());
         params.setDescription(description.get().trim());
+        if (statesSection.isEnabled()) {
+            params.setStatesEnabled(true);
+            params.setStates(statesSection.toStateSpecs());
+            params.setDefaultStateName(statesSection.getDefaultStateName());
+        }
         return params;
     }
 

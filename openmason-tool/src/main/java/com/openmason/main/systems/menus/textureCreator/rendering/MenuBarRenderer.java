@@ -40,6 +40,7 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     private Runnable onLayersPanelToggle;
     private Runnable onColorPanelToggle;
     private Runnable onExportSBT;
+    private Runnable onExportSBO;
     private java.util.function.Supplier<String> sbtOmtPathSupplier = () -> null;
     private ImBoolean showLayersPanel;
     private ImBoolean showColorPanel;
@@ -133,8 +134,15 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     }
 
     /**
+     * Set callback invoked when the user triggers Export SBO from the Tools menu.
+     */
+    public void setOnExportSBO(Runnable callback) {
+        this.onExportSBO = callback;
+    }
+
+    /**
      * Wire a supplier providing the current OMT file path on disk. Pulled at
-     * menu render time to gate the Export SBT entry's enable state.
+     * menu render time to gate the Export SBT/SBO entries' enable state.
      */
     public void setSBTOMTPathSupplier(java.util.function.Supplier<String> supplier) {
         this.sbtOmtPathSupplier = supplier != null ? supplier : (() -> null);
@@ -307,11 +315,17 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     private void renderToolsMenu() {
         if (ImGui.beginMenu("Tools")) {
             String omtPath = sbtOmtPathSupplier.get();
-            boolean canExportSBT = omtPath != null && !omtPath.isBlank();
+            boolean canExport = omtPath != null && !omtPath.isBlank();
 
-            if (ImGui.menuItem("Export SBT...", "", false, canExportSBT)) {
+            if (ImGui.menuItem("Export SBT...", "", false, canExport)) {
                 if (onExportSBT != null) {
                     onExportSBT.run();
+                }
+            }
+
+            if (ImGui.menuItem("Export SBO...", "", false, canExport)) {
+                if (onExportSBO != null) {
+                    onExportSBO.run();
                 }
             }
 

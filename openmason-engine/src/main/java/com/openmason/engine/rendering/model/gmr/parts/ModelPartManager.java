@@ -488,6 +488,79 @@ public class ModelPartManager implements IModelPartManager {
         notifyTransformChanged(id, newTransform);
     }
 
+    // ========== Geometry replacement ==========
+
+    /**
+     * Replace a part's geometry wholesale with caller-supplied vertex/index/face
+     * data. Topology, vertex count, and face count may all change. The part's
+     * transform is preserved.
+     *
+     * <p>Triggers a combined-mesh rebuild so the new geometry shows immediately.
+     *
+     * @param partId            Part ID
+     * @param geometry          New {@link PartMeshRebuilder.PartGeometry}; positions are part-local
+     * @return true if the part was found and updated; false if not found or locked
+     */
+    public boolean replacePartGeometry(String partId, PartMeshRebuilder.PartGeometry geometry) {
+        ModelPartDescriptor existing = parts.get(partId);
+        if (existing == null || existing.locked()) return false;
+        if (geometry == null) return false;
+        partGeometry.put(partId, geometry);
+        rebuildCombinedMesh();
+        return true;
+    }
+
+    // ========== Vertex edits ==========
+
+    /**
+     * Move a part-local vertex to a new local position. All co-located vertices
+     * (split-UV duplicates that share the same spatial position within an
+     * epsilon) are moved together so the mesh stays watertight.
+     *
+     * <p>Mutates the per-part {@link PartMeshRebuilder.PartGeometry} in place
+     * and rebuilds the combined mesh so the change survives subsequent
+     * transform/topology rebuilds.
+     *
+     * @param partId            Part ID
+     * @param localVertexIndex  Part-local vertex index (0-based)
+     * @param x                 New local X
+     * @param y                 New local Y
+     * @param z                 New local Z
+     * @return Number of vertex slots actually updated (1 if no duplicates,
+     *         3 for a typical cube corner). Returns 0 if the part was not
+     *         found, locked, or had no geometry.
+     */
+    public int updatePartVertex(String partId, int localVertexIndex, float x, float y, float z) {
+        ModelPartDescriptor part = parts.get(partId);
+        if (part == null || part.locked()) return 0;
+        PartMeshRebuilder.PartGeometry geo = partGeometry.get(partId);
+        if (geo == null || geo.vertices() == null) return 0;
+        float[] verts = geo.vertices();
+        if (localVertexIndex < 0 || localVertexIndex * 3 + 2 >= verts.length) return 0;
+
+        final float oldX = verts[localVertexIndex * 3];
+        final float oldY = verts[localVertexIndex * 3 + 1];
+        final float oldZ = verts[localVertexIndex * 3 + 2];
+        final float epsSq = 1e-8f;
+        int updated = 0;
+        int count = verts.length / 3;
+        for (int i = 0; i < count; i++) {
+            float dx = verts[i * 3] - oldX;
+            float dy = verts[i * 3 + 1] - oldY;
+            float dz = verts[i * 3 + 2] - oldZ;
+            if (dx * dx + dy * dy + dz * dz < epsSq) {
+                verts[i * 3] = x;
+                verts[i * 3 + 1] = y;
+                verts[i * 3 + 2] = z;
+                updated++;
+            }
+        }
+        if (updated > 0) {
+            rebuildCombinedMesh();
+        }
+        return updated;
+    }
+
     // ========== Hierarchy ==========
 
     @Override

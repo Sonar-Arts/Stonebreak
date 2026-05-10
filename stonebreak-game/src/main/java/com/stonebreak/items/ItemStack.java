@@ -5,6 +5,13 @@ import com.stonebreak.blocks.BlockType;
 public class ItemStack {
     private Item item;
     private int count;
+    /**
+     * Optional named state for SBO 1.3+ items with multiple visual variants
+     * (e.g. {@code "empty"}, {@code "water"}, {@code "milk"} for a wooden
+     * bucket). {@code null} means "use the default state" — and is the only
+     * legal value for items that don't declare any states.
+     */
+    private String state;
 
     /**
      * Creates an ItemStack with the given item and count.
@@ -12,6 +19,13 @@ public class ItemStack {
      * @param count The quantity
      */
     public ItemStack(Item item, int count) {
+        this(item, count, null);
+    }
+
+    /**
+     * Creates an ItemStack with an explicit named state (SBO 1.3+).
+     */
+    public ItemStack(Item item, int count, String state) {
         if (item == null || count < 0) {
             this.item = BlockType.AIR;
             this.count = 0;
@@ -19,6 +33,7 @@ public class ItemStack {
             this.item = item;
             this.count = count;
         }
+        this.state = (state != null && !state.isBlank()) ? state : null;
     }
 
     /**
@@ -148,15 +163,18 @@ public class ItemStack {
     }
 
     /**
-     * Checks if this ItemStack can be stacked with another ItemStack.
-     * @param other The other ItemStack to check against
-     * @return True if they can stack, false otherwise
+     * Checks if this ItemStack can be stacked with another ItemStack. Two
+     * stacks may only merge if they share both the item type AND the state
+     * — empty buckets and water buckets do not stack even though both are
+     * the same item.
      */
     public boolean canStackWith(ItemStack other) {
         if (other == null || other.isEmpty() || this.isEmpty()) {
             return false;
         }
-        return this.item.isSameType(other.item) && this.count < getMaxStackSize();
+        return this.item.isSameType(other.item)
+                && java.util.Objects.equals(this.state, other.state)
+                && this.count < getMaxStackSize();
     }
 
     /**
@@ -167,7 +185,7 @@ public class ItemStack {
         if (isEmpty()) {
             return null;
         }
-        return new ItemStack(this.item, this.count);
+        return new ItemStack(this.item, this.count, this.state);
     }
 
     /**
@@ -176,6 +194,30 @@ public class ItemStack {
     public void clear() {
         this.item = BlockType.AIR;
         this.count = 0;
+        this.state = null;
+    }
+
+    /**
+     * Returns the SBO state name for this stack, or {@code null} if the
+     * default state (or the item has no states).
+     */
+    public String getState() {
+        return state;
+    }
+
+    /** Sets the SBO state name. Pass null/blank to clear (use default). */
+    public void setState(String state) {
+        this.state = (state != null && !state.isBlank()) ? state : null;
+    }
+
+    /**
+     * Returns a copy of this stack with the given state. The original stack
+     * is unchanged. Use this when transitioning between states (e.g. empty
+     * bucket → water bucket).
+     */
+    public ItemStack withState(String newState) {
+        if (isEmpty()) return null;
+        return new ItemStack(this.item, this.count, newState);
     }
 
     /**
@@ -239,12 +281,14 @@ public class ItemStack {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
         ItemStack itemStack = (ItemStack) obj;
-        return count == itemStack.count && item.equals(itemStack.item);
+        return count == itemStack.count
+                && item.equals(itemStack.item)
+                && java.util.Objects.equals(state, itemStack.state);
     }
 
     @Override
     public int hashCode() {
-        return item.hashCode() * 31 + count;
+        return java.util.Objects.hash(item, count, state);
     }
 
     @Override
@@ -252,6 +296,7 @@ public class ItemStack {
         return "ItemStack{" +
                 "item=" + item.getName() +
                 ", count=" + count +
+                (state != null ? ", state=" + state : "") +
                 '}';
     }
 }

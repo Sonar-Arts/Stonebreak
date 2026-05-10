@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.player.items.voxelization;
 
 import com.stonebreak.items.ItemType;
-import com.openmason.engine.format.sbt.SBTParser;
+import com.stonebreak.items.registry.ItemRegistry;
 import com.openmason.engine.format.omt.OMTReader;
 import com.openmason.engine.format.omt.OMTArchive;
 import org.joml.Vector3f;
@@ -14,7 +14,6 @@ import java.awt.AlphaComposite;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -28,8 +27,20 @@ import java.util.Map;
  */
 public class SpriteVoxelizer {
 
-    // Cache for loaded sprite images
-    private static final Map<ItemType, BufferedImage> spriteCache = new HashMap<>();
+    /**
+     * Composite cache key: an item type plus an optional SBO state name.
+     * Different states render with different OMT bytes and so must cache
+     * independently. {@code state == null} keys the default state.
+     */
+    public record SpriteKey(ItemType itemType, String state) {
+        public static SpriteKey of(ItemType type) { return new SpriteKey(type, null); }
+        public static SpriteKey of(ItemType type, String state) {
+            return new SpriteKey(type, (state == null || state.isBlank()) ? null : state);
+        }
+    }
+
+    // Cache for loaded sprite images, keyed by (itemType, state).
+    private static final Map<SpriteKey, BufferedImage> spriteCache = new HashMap<>();
 
     // Voxel size in world units (each pixel becomes a cube this size)
     private static final float DEFAULT_VOXEL_SIZE = 0.02f; // Original size
@@ -51,8 +62,14 @@ public class SpriteVoxelizer {
      * @return List of voxel data representing the 3D sprite
      */
     public static List<VoxelData> voxelizeSprite(ItemType itemType, ColorPalette colorPalette) {
-        // System.out.println("Starting voxelization for " + itemType.getName()); // Debug only
-        BufferedImage sprite = loadSprite(itemType);
+        return voxelizeSprite(itemType, null, colorPalette);
+    }
+
+    /**
+     * State-aware variant of {@link #voxelizeSprite(ItemType, ColorPalette)}.
+     */
+    public static List<VoxelData> voxelizeSprite(ItemType itemType, String state, ColorPalette colorPalette) {
+        BufferedImage sprite = loadSprite(itemType, state);
         if (sprite == null) {
             System.err.println("Failed to load sprite for " + itemType.getName() + ", returning empty voxel list");
             return new ArrayList<>(); // Return empty list if sprite can't be loaded
@@ -127,13 +144,20 @@ public class SpriteVoxelizer {
      * @return VoxelizationResult containing both the palette and voxel data
      */
     public static VoxelizationResult voxelizeSpriteWithPalette(ItemType itemType) {
-        BufferedImage sprite = loadSprite(itemType);
+        return voxelizeSpriteWithPalette(itemType, null);
+    }
+
+    /**
+     * State-aware variant of {@link #voxelizeSpriteWithPalette(ItemType)}.
+     */
+    public static VoxelizationResult voxelizeSpriteWithPalette(ItemType itemType, String state) {
+        BufferedImage sprite = loadSprite(itemType, state);
         if (sprite == null) {
             return new VoxelizationResult(null, new ArrayList<>());
         }
 
         ColorPalette palette = new ColorPalette(itemType, sprite);
-        List<VoxelData> voxels = voxelizeSprite(itemType, palette);
+        List<VoxelData> voxels = voxelizeSprite(itemType, state, palette);
 
         return new VoxelizationResult(palette, voxels);
     }
@@ -166,22 +190,42 @@ public class SpriteVoxelizer {
     /**
      * Loads a sprite image for the given item type.
      * Uses caching to avoid reloading the same sprite multiple times.
+     *
+     * <p>Resolution order:
+     * <ol>
+     *   <li>{@link ItemRegistry} lookup by namespaced ID — texture-only SBOs
+     *       under {@code sbo/items/} are auto-discovered. Sprite is composited
+     *       from the embedded OMT.</li>
+     *   <li>Hardcoded PNG path for legacy items (sticks, picks, axes,
+     *       buckets) that haven't been migrated to SBO yet.</li>
+     * </ol>
+     * Items that previously routed through .sbt files now flow through the
+     * SBO branch via {@link #loadSpriteFromSboItem(ItemType)}.
      */
     private static BufferedImage loadSprite(ItemType itemType) {
-        if (spriteCache.containsKey(itemType)) {
-            return spriteCache.get(itemType);
+        return loadSprite(itemType, null);
+    }
+
+    /**
+     * State-aware variant. The cache key is keyed on (itemType, state) so
+     * different states keep independent images.
+     */
+    private static BufferedImage loadSprite(ItemType itemType, String state) {
+        SpriteKey key = SpriteKey.of(itemType, state);
+        if (spriteCache.containsKey(key)) {
+            return spriteCache.get(key);
+        }
+
+        BufferedImage sboImage = loadSpriteFromSboItem(itemType, state);
+        if (sboImage != null) {
+            spriteCache.put(key, sboImage);
+            return sboImage;
         }
 
         String spritePath = getSpritePathForItem(itemType);
         if (spritePath == null) {
-            System.err.println("No sprite path defined for item: " + itemType.getName());
+            System.err.println("No sprite path or item SBO defined for: " + itemType.getName());
             return null;
-        }
-
-        if (spritePath.endsWith(".sbt")) {
-            BufferedImage image = loadSpriteFromSbt(spritePath);
-            if (image != null) spriteCache.put(itemType, image);
-            return image;
         }
 
         try {
@@ -219,7 +263,7 @@ public class SpriteVoxelizer {
             g2d.drawImage(rawImage, 0, 0, null);
             g2d.dispose();
 
-            spriteCache.put(itemType, image);
+            spriteCache.put(SpriteKey.of(itemType, state), image);
             inputStream.close();
 
             // System.out.println("Successfully loaded sprite for " + itemType.getName() + " (" + image.getWidth() + "x" + image.getHeight() + ", type=" + image.getType() + ")"); // Debug only
@@ -233,9 +277,23 @@ public class SpriteVoxelizer {
     }
 
     /**
-     * Gets the resource path for a sprite based on item type.
+     * Gets the PNG resource path for a sprite based on item type. Only legacy
+     * PNG-backed items remain here; SBO-backed items resolve via
+     * {@link #loadSpriteFromSboItem(ItemType)}.
      */
     private static String getSpritePathForItem(ItemType itemType) {
+        return null;
+    }
+
+
+    /**
+     * True if this item has an SBO entry in the item registry (i.e. the
+     * voxelizer will pull its sprite from {@code sbo/items/}). Used by UI
+     * code that needs to gate SBO-vs-PNG rendering paths without forcing a
+     * full sprite load.
+     */
+    public static boolean isSboBackedItem(ItemType itemType) {
+        return ItemRegistry.getInstance().get(sboItemId(itemType)).isPresent();
         switch (itemType) {
             case WOODEN_PICKAXE:
                 return "Items/Textures/wooden_pickaxe_texture.png";
@@ -268,31 +326,52 @@ public class SpriteVoxelizer {
         }
     }
 
-
     /**
-     * Returns the SBT classpath resource path (with leading {@code /}) for items whose
-     * texture is an SBT archive, or {@code null} for PNG-backed or unknown items.
-     * Suitable for use with {@link com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry}.
+     * Compose and return the BufferedImage for an SBO-backed item, or null if
+     * the item isn't registered as an SBO. Used by UI renderers that need a
+     * raster image (NanoVG/Skija) rather than the voxelized form.
      */
-    public static String getSbtTexturePath(ItemType itemType) {
-        String path = getSpritePathForItem(itemType);
-        return (path != null && path.endsWith(".sbt")) ? "/" + path : null;
+    public static BufferedImage loadSpriteFromSboItem(ItemType itemType) {
+        return loadSpriteFromSboItem(itemType, null);
     }
 
-    public static BufferedImage loadSpriteFromSbt(String resourcePath) {
-        byte[] sbtBytes = readResourceBytes(resourcePath);
-        if (sbtBytes == null) {
-            System.err.println("Could not find SBT resource: " + resourcePath);
+    /**
+     * State-aware variant — when the SBO declares states (1.3+), pulls the
+     * OMT for the requested state. Falls back to the default state for
+     * unknown/null state names.
+     */
+    public static BufferedImage loadSpriteFromSboItem(ItemType itemType, String state) {
+        var entry = ItemRegistry.getInstance().get(sboItemId(itemType)).orElse(null);
+        if (entry == null) return null;
+        byte[] omtBytes = entry.omtBytesFor(state);
+        if (omtBytes == null || omtBytes.length == 0) {
+            System.err.println("SBO item has empty OMT payload: " + entry.objectId()
+                    + (state != null ? " (state=" + state + ")" : ""));
             return null;
         }
         try {
-            SBTParser.Result sbt = new SBTParser().read(sbtBytes);
-            OMTArchive archive = new OMTReader().read(sbt.omtBytes());
+            OMTArchive archive = new OMTReader().read(omtBytes);
             return compositeLayers(archive);
         } catch (IOException e) {
-            System.err.println("Failed to load SBT sprite " + resourcePath + ": " + e.getMessage());
+            System.err.println("Failed to decode SBO item OMT for " + entry.objectId() + ": " + e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * The namespaced object ID convention used by the migration utility:
+     * {@code stonebreak:<itemtype_name_lowercased>}. Kept in sync with
+     * {@code SBTToSBOItemMigration.convertOne}.
+     */
+    public static String sboItemId(ItemType itemType) {
+        if (itemType == null) return null;
+        // Prefer the explicit objectId registered when the ItemType was
+        // created from the SBO registry (handles cases where the SBO's
+        // objectId doesn't match the default "stonebreak:<enum>" convention,
+        // e.g. WOODEN_BUCKET → stonebreak:sb_wooden_bucket).
+        String explicit = ItemType.objectIdFor(itemType);
+        if (explicit != null) return explicit;
+        return "stonebreak:" + itemType.name().toLowerCase();
     }
 
     private static BufferedImage compositeLayers(OMTArchive archive) throws IOException {
@@ -314,22 +393,6 @@ public class SpriteVoxelizer {
         return result;
     }
 
-    private static byte[] readResourceBytes(String resourcePath) {
-        InputStream candidate = SpriteVoxelizer.class.getClassLoader().getResourceAsStream(resourcePath);
-        if (candidate == null) candidate = SpriteVoxelizer.class.getResourceAsStream("/" + resourcePath);
-        if (candidate == null) candidate = Thread.currentThread().getContextClassLoader().getResourceAsStream(resourcePath);
-        if (candidate == null) return null;
-        try (InputStream in = candidate) {
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) != -1) baos.write(buf, 0, n);
-            return baos.toByteArray();
-        } catch (IOException e) {
-            return null;
-        }
-    }
-
     /**
      * Gets the default voxel size for rendering.
      */
@@ -341,7 +404,7 @@ public class SpriteVoxelizer {
      * Checks if an item type supports voxelized rendering.
      */
     public static boolean isVoxelizable(ItemType itemType) {
-        return getSpritePathForItem(itemType) != null;
+        return getSpritePathForItem(itemType) != null || isSboBackedItem(itemType);
     }
 
     /**

@@ -561,44 +561,19 @@ public class TextureAtlas {
      */
     private String getBlockTextureName(BlockType blockType) {
         if (blockType == null) return null;
-        
-        switch (blockType) {
-            case GRASS: return "grass_block";
-            case DIRT: return "dirt_block"; // Fixed: atlas has dirt_block_* textures
-            case STONE: return "stone";
-            case COBBLESTONE: return "cobblestone";
-            case WOOD: return "wood";
-            case SAND: return "sand";
-            case WATER: return "water_temp"; // Fixed: atlas has water_temp_* textures
-            case COAL_ORE: return "coal_ore";
-            case IRON_ORE: return "iron_ore";
-            case LEAVES: return "leaves";
-            case BEDROCK: return "bedrock";
-            case ICE: return "ice";
-            case SNOW: return "snow";
-            case DANDELION: return "dandelion";
-            case WILDGRASS: return "wildgrass";
-            case ROSE: return "rose"; // Fixed: atlas has rose_* textures
-            case ELM_WOOD_LOG: return "elm_wood_log";
-            case MAGMA: return "magma";
-            case WORKBENCH: return "workbench_custom"; // Fixed: atlas has workbench_custom_* textures
-            case PINE: return "pine_wood";
-            case WOOD_PLANKS: return "wood_planks_custom"; // Added missing mapping
-            case PINE_WOOD_PLANKS: return "pine_wood_planks_custom"; // Added missing mapping
-            case ELM_WOOD_PLANKS: return "elm_wood_planks_custom"; // Added missing mapping
-            case SNOWY_DIRT: return "snowy_dirt";
-            case PINE_LEAVES: return "pine_leaves";
-            case RED_SAND: return "red_sand";
-            case CRYSTAL: return "crystal";
-            case SANDSTONE: return "sandstone";
-            case RED_SANDSTONE: return "red_sandstone";
-            case ELM_LEAVES: return "elm_leaves";
-            case GRAVEL: return "gravel";
-            case CLAY: return "clay";
-            case RED_SAND_COBBLESTONE: return "red_sand_cobblestone";
-            case SAND_COBBLESTONE: return "sand_cobblestone";
-            default: return blockType.name().toLowerCase();
-        }
+
+        // Atlas-name overrides where the texture file isn't a simple
+        // lowercased enum name. Anything not listed falls through to the
+        // default name() convention, which is what SBO-only blocks will use.
+        if (blockType == BlockType.GRASS) return "grass_block";
+        if (blockType == BlockType.DIRT) return "dirt_block";
+        if (blockType == BlockType.WATER) return "water_temp";
+        if (blockType == BlockType.WORKBENCH) return "workbench_custom";
+        if (blockType == BlockType.PINE) return "pine_wood";
+        if (blockType == BlockType.WOOD_PLANKS) return "wood_planks_custom";
+        if (blockType == BlockType.PINE_WOOD_PLANKS) return "pine_wood_planks_custom";
+        if (blockType == BlockType.ELM_WOOD_PLANKS) return "elm_wood_planks_custom";
+        return blockType.name().toLowerCase();
     }
     
     /**
@@ -716,15 +691,7 @@ public class TextureAtlas {
      */
     private String getItemTextureName(ItemType itemType) {
         if (itemType == null) return null;
-
-        switch (itemType) {
-            case STICK: return "stick";
-            case WOODEN_PICKAXE: return "wooden_pickaxe";
-            case WOODEN_AXE: return "wooden_axe";
-            case WOODEN_BUCKET: return "wooden_bucket_base";
-            case WOODEN_BUCKET_WATER: return "wooden_bucket_water";
-            default: return itemType.name().toLowerCase();
-        }
+        return itemType.name().toLowerCase();
     }
     
     /**

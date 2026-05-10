@@ -117,6 +117,18 @@ public final class WorldGenerationCoordinator {
                             System.out.println("[PLAYER-DATA] ✓ Loaded existing player data for world '" + currentWorldName + "': position=" +
                                 playerPosition.x + "," + playerPosition.y + "," + playerPosition.z);
 
+                            if (loadResult.getWorldData() != null) {
+                                currentWorldData = loadResult.getWorldData();
+                                game.setCurrentWorldData(currentWorldData);
+
+                                long savedTimeTicks = currentWorldData.getWorldTimeTicks();
+                                TimeOfDay timeOfDay = new TimeOfDay(savedTimeTicks);
+                                game.setTimeOfDay(timeOfDay);
+                                System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + timeOfDay.getTimeString() + ")");
+
+                                game.setCheatsEnabled(currentWorldData.isCheatsEnabled());
+                                System.out.println("[CHEATS] ✓ Loaded cheats flag from world: " + currentWorldData.isCheatsEnabled());
+                            }
                             long savedTimeTicks = currentWorldData.getWorldTimeTicks();
                             TimeOfDay timeOfDay = new TimeOfDay(savedTimeTicks);
                             game.setTimeOfDay(timeOfDay);
@@ -182,6 +194,7 @@ public final class WorldGenerationCoordinator {
         player.setPosition(spawn);
         world.setSpawnPosition(spawn);
 
+        WorldData currentWorldData = game.getCurrentWorldData();
         if (currentWorldData != null) {
             WorldData updated = new WorldData.Builder(currentWorldData)
                 .spawnPosition(spawn)

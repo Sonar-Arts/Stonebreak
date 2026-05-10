@@ -46,11 +46,14 @@ public class BlockPlacer {
         if (selectedItem.isTool()) {
             ItemType itemType = selectedItem.asItemType();
             if (itemType == ItemType.WOODEN_BUCKET) {
-                handleEmptyBucket(selectedItem);
-                return;
-            }
-            if (itemType == ItemType.WOODEN_BUCKET_WATER) {
-                handleWaterBucket(selectedItem);
+                // The wooden bucket carries its full/empty status as an SBO
+                // state (1.3+). Water-state buckets pick up water sources;
+                // any other state (empty/default) places water.
+                if (ItemType.BUCKET_STATE_WATER.equals(selectedItem.getState())) {
+                    handleWaterBucket(selectedItem);
+                } else {
+                    handleEmptyBucket(selectedItem);
+                }
                 return;
             }
         }
@@ -126,10 +129,14 @@ public class BlockPlacer {
         int currentSlot = inventory.getSelectedHotbarSlotIndex();
         int currentCount = selectedItem.getCount();
         if (currentCount == 1) {
-            inventory.setHotbarSlot(currentSlot, new ItemStack(ItemType.WOODEN_BUCKET_WATER, 1));
+            inventory.setHotbarSlot(currentSlot,
+                    new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_WATER));
         } else {
-            inventory.setHotbarSlot(currentSlot, new ItemStack(ItemType.WOODEN_BUCKET, currentCount - 1));
-            inventory.addItem(ItemType.WOODEN_BUCKET_WATER, 1);
+            inventory.setHotbarSlot(currentSlot,
+                    new ItemStack(ItemType.WOODEN_BUCKET, currentCount - 1, ItemType.BUCKET_STATE_EMPTY));
+            // addItem doesn't carry state; place a water bucket directly into
+            // the inventory by stacking via the explicit-state ItemStack path.
+            inventory.addItem(new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_WATER));
         }
     }
 
@@ -157,10 +164,12 @@ public class BlockPlacer {
         int currentSlot = inventory.getSelectedHotbarSlotIndex();
         int currentCount = selectedItem.getCount();
         if (currentCount == 1) {
-            inventory.setHotbarSlot(currentSlot, new ItemStack(ItemType.WOODEN_BUCKET, 1));
+            inventory.setHotbarSlot(currentSlot,
+                    new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_EMPTY));
         } else {
-            inventory.setHotbarSlot(currentSlot, new ItemStack(ItemType.WOODEN_BUCKET_WATER, currentCount - 1));
-            inventory.addItem(ItemType.WOODEN_BUCKET, 1);
+            inventory.setHotbarSlot(currentSlot,
+                    new ItemStack(ItemType.WOODEN_BUCKET, currentCount - 1, ItemType.BUCKET_STATE_WATER));
+            inventory.addItem(new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_EMPTY));
         }
     }
 

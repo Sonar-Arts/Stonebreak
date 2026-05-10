@@ -20,7 +20,18 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 
 public class ItemIconRenderer extends BaseRenderer {
 
-    private final Map<ItemType, Integer> sbtImageCache = new HashMap<>();
+    /**
+     * Cache key for an SBO item icon: an item type plus optional state name
+     * so each state caches its own composited NanoVG image (e.g. empty vs
+     * water bucket icons render independently).
+     */
+    private record SboIconKey(ItemType itemType, String state) {
+        static SboIconKey of(ItemType type, String state) {
+            return new SboIconKey(type, (state == null || state.isBlank()) ? null : state);
+        }
+    }
+
+    private final Map<SboIconKey, Integer> sboItemImageCache = new HashMap<>();
 
     public ItemIconRenderer(long vg) {
         super(vg);
@@ -48,6 +59,16 @@ public class ItemIconRenderer extends BaseRenderer {
     }
     
     public void renderItemIcon(float x, float y, float w, float h, Item item, TextureAtlas textureAtlas) {
+        renderItemIcon(x, y, w, h, item, null, textureAtlas);
+    }
+
+    /**
+     * State-aware variant — renders an SBO item with a specific state's
+     * texture (1.3+). Pass {@code null} for the default state. Block items
+     * ignore the state parameter (block-state rendering goes through the
+     * world renderer, not icons).
+     */
+    public void renderItemIcon(float x, float y, float w, float h, Item item, String state, TextureAtlas textureAtlas) {
         if (vg == 0 || textureAtlas == null || item == null) return;
 
         if (item == BlockType.AIR) return;
@@ -56,9 +77,8 @@ public class ItemIconRenderer extends BaseRenderer {
         if (item instanceof BlockType blockType) {
             texCoords = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.TOP);
         } else if (item instanceof ItemType itemType) {
-            String sbtPath = SpriteVoxelizer.getSbtTexturePath(itemType);
-            if (sbtPath != null) {
-                renderSbtItemIcon(x, y, w, h, itemType, sbtPath);
+            if (SpriteVoxelizer.isSboBackedItem(itemType)) {
+                renderSboItemIcon(x, y, w, h, itemType, state);
                 return;
             }
             texCoords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
@@ -152,9 +172,8 @@ public class ItemIconRenderer extends BaseRenderer {
         }
     }
     
-    private void renderSbtItemIcon(float x, float y, float w, float h,
-                                   ItemType itemType, String sbtPath) {
-        int imageId = getSbtNvgImage(itemType, sbtPath);
+    private void renderSboItemIcon(float x, float y, float w, float h, ItemType itemType, String state) {
+        int imageId = getSboItemNvgImage(itemType, state);
         if (imageId < 0) return;
         try (MemoryStack stack = stackPush()) {
             NVGPaint paint = NVGPaint.malloc(stack);
@@ -166,14 +185,14 @@ public class ItemIconRenderer extends BaseRenderer {
         }
     }
 
-    private int getSbtNvgImage(ItemType itemType, String sbtPath) {
-        Integer cached = sbtImageCache.get(itemType);
+    private int getSboItemNvgImage(ItemType itemType, String state) {
+        SboIconKey key = SboIconKey.of(itemType, state);
+        Integer cached = sboItemImageCache.get(key);
         if (cached != null) return cached;
 
-        String resourcePath = sbtPath.startsWith("/") ? sbtPath.substring(1) : sbtPath;
-        BufferedImage img = SpriteVoxelizer.loadSpriteFromSbt(resourcePath);
+        BufferedImage img = SpriteVoxelizer.loadSpriteFromSboItem(itemType, state);
         if (img == null) {
-            sbtImageCache.put(itemType, -1);
+            sboItemImageCache.put(key, -1);
             return -1;
         }
 
@@ -192,7 +211,7 @@ public class ItemIconRenderer extends BaseRenderer {
         rgba.flip();
 
         int imageId = nvgCreateImageRGBA(vg, imgW, imgH, 0, rgba);
-        sbtImageCache.put(itemType, imageId);
+        sboItemImageCache.put(key, imageId);
         return imageId;
     }
 

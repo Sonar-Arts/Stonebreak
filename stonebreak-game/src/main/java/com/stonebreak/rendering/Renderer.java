@@ -163,6 +163,12 @@ public class Renderer {
             int loaded = registry.scanAndLoad();
 
             if (loaded > 0) {
+                int registered = com.stonebreak.blocks.registry.BlockRegistry.getInstance().loadFrom(registry);
+                System.out.println("[Renderer] BlockRegistry: " + registered + " blocks auto-populated from SBOs");
+
+                int items = com.stonebreak.items.registry.ItemRegistry.getInstance().scanAndLoad();
+                System.out.println("[Renderer] ItemRegistry: " + items + " items auto-populated from SBOs");
+
                 SBOBlockBridge bridge = new SBOBlockBridge();
                 bridge.initialize(registry);
                 this.sboBlockBridge = bridge;
@@ -214,6 +220,14 @@ public class Renderer {
                         // adjacent).
                         sboCullingService.setCrossBlockPolicy(block ->
                                 block instanceof com.stonebreak.blocks.BlockType bt && bt.isFlower());
+
+                        // Snow layers are partial-height: adjacent snow blocks
+                        // can have different layer counts, leaving the taller
+                        // block's side face partially exposed above the shorter
+                        // neighbor. Skip same-type side-face culling for these.
+                        sboCullingService.setPartialHeightPolicy(block ->
+                                block instanceof com.stonebreak.blocks.BlockType bt
+                                        && bt == com.stonebreak.blocks.BlockType.SNOW);
 
                         pendingSBOEmitter = sboRendererAPI.createEmitter(sboCullingService, translucencyPolicy);
 

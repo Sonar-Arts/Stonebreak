@@ -20,6 +20,7 @@ import com.openmason.main.systems.menus.dialogs.AboutDialog;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.menus.dialogs.SBEExportWindow;
 import com.openmason.main.systems.menus.dialogs.SBOExportWindow;
+import com.openmason.main.systems.menus.dialogs.SBOTextureExportWindow;
 import com.openmason.main.systems.menus.dialogs.SBTExportWindow;
 import com.openmason.main.systems.menus.preferences.PreferencesWindow;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
@@ -65,6 +66,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private SBOExportWindow sboExportWindow; // Initialized after components
     private SBEExportWindow sbeExportWindow; // Initialized after components
     private SBTExportWindow sbtExportWindow; // Initialized after components
+    private SBOTextureExportWindow sboTextureExportWindow; // Initialized after components
     private final AboutDialog aboutDialog;
 
     // Menu System
@@ -235,10 +237,19 @@ public class MainImGuiInterface implements ModelBrowserListener {
                     fileDialogService
             );
 
+            // Texture-only SBO export (sprite items). Same OMT-path lifecycle
+            // as the SBT window; wired in setTextureCreatorImGui().
+            this.sboTextureExportWindow = new SBOTextureExportWindow(
+                    uiVisibilityState.getShowSBOTextureExportWindow(),
+                    themeManager,
+                    statusService,
+                    fileDialogService
+            );
+
             toolsMenuHandler.setModelState(modelState);
             toolsMenuHandler.setStatusService(statusService);
             toolsMenuHandler.setModelOperations(modelOperations);
-            logger.debug("SBO, SBE, and SBT export windows initialized");
+            logger.debug("SBO, SBE, SBT, and SBO-texture export windows initialized");
         } catch (Exception e) {
             logger.error("Failed to initialize components", e);
         }
@@ -595,6 +606,10 @@ public class MainImGuiInterface implements ModelBrowserListener {
     /**
      * Gets the SBT export window for external rendering.
      */
+    public SBOTextureExportWindow getSBOTextureExportWindow() {
+        return sboTextureExportWindow;
+    }
+
     public SBTExportWindow getSBTExportWindow() {
         return sbtExportWindow;
     }
@@ -631,8 +646,14 @@ public class MainImGuiInterface implements ModelBrowserListener {
         if (sbtExportWindow != null) {
             sbtExportWindow.setOMTPathSupplier(omtPathSupplier);
         }
+        if (sboTextureExportWindow != null) {
+            sboTextureExportWindow.setOMTPathSupplier(omtPathSupplier);
+        }
         if (textureCreatorImGui != null && sbtExportWindow != null) {
             textureCreatorImGui.setSBTExportTrigger(sbtExportWindow::show, omtPathSupplier);
+        }
+        if (textureCreatorImGui != null && sboTextureExportWindow != null) {
+            textureCreatorImGui.setSBOExportTrigger(sboTextureExportWindow::show);
         }
     }
 

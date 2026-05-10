@@ -33,11 +33,11 @@ public class CheatsCommand implements ChatCommand {
             int value = Integer.parseInt(args[0]);
             switch (value) {
                 case 1 -> {
-                    Game.getInstance().setCheatsEnabled(true);
+                    Game.getInstance().applyCheatsToCurrentWorld(true);
                     messageManager.addMessage("Cheats enabled!", ChatColors.GREEN);
                 }
                 case 0 -> {
-                    Game.getInstance().setCheatsEnabled(false);
+                    Game.getInstance().applyCheatsToCurrentWorld(false);
                     messageManager.addMessage("Cheats disabled!", ChatColors.ORANGE);
                 }
                 default -> showUsage(messageManager);
@@ -49,7 +49,7 @@ public class CheatsCommand implements ChatCommand {
 
     private void handleToggleMode(ChatMessageManager messageManager) {
         boolean currentState = Game.getInstance().isCheatsEnabled();
-        Game.getInstance().setCheatsEnabled(!currentState);
+        Game.getInstance().applyCheatsToCurrentWorld(!currentState);
 
         if (!currentState) {
             messageManager.addMessage("Cheats enabled!", ChatColors.GREEN);

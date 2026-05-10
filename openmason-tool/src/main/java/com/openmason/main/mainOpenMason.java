@@ -473,6 +473,10 @@ public class mainOpenMason {
             safeRender(() -> mainInterface.getSBTExportWindow().render(), "SBT Export Window");
         }
 
+        if (mainInterface != null && mainInterface.getSBOTextureExportWindow() != null) {
+            safeRender(() -> mainInterface.getSBOTextureExportWindow().render(), "SBO Texture Export Window");
+        }
+
         // Render unsaved changes dialog (must be rendered outside other windows for modal to work)
         if (mainInterface != null && mainInterface.getFileMenuHandler() != null) {
             safeRender(() -> mainInterface.getFileMenuHandler().getUnsavedChangesDialog().render(),

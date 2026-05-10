@@ -91,6 +91,32 @@ public final class MTexture implements AutoCloseable {
     }
 
     /**
+     * Build an MTexture from raw OMT bytes (e.g. unwrapped from a texture-only
+     * SBO). Used by SBO-backed item icons. The {@code cacheKey} is the
+     * synthetic identifier used for cache lookup and debugging only — there is
+     * no on-disk resource at that path.
+     *
+     * @return a ready-to-draw texture, or {@code null} if decoding failed
+     */
+    public static MTexture loadFromOmtBytes(String cacheKey, byte[] omtBytes) {
+        if (omtBytes == null || omtBytes.length == 0) return null;
+        try {
+            OMTArchive archive = new OMTReader().read(omtBytes);
+            Image composited = compositeLayers(archive);
+            if (composited == null) {
+                System.err.println("[MTexture] Compositing produced no image for: " + cacheKey);
+                return null;
+            }
+            return new MTexture(cacheKey, composited,
+                    archive.canvasSize().width(), archive.canvasSize().height());
+        } catch (IOException e) {
+            System.err.println("[MTexture] Failed to decode OMT bytes for " + cacheKey
+                    + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Composite all visible layers of an OMT archive bottom-up into a single
      * {@link Image}. Returns {@code null} if no layers contributed pixels.
      */

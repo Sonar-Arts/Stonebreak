@@ -73,6 +73,16 @@ public final class GameStateController {
             com.stonebreak.network.MultiplayerSession.shutdown();
         }
 
+        // Flush per-session world state when returning to the main menu so chat
+        // history and cheat flags do not leak into the next world load.
+        if (state == GameState.MAIN_MENU) {
+            com.stonebreak.ui.chat.ChatSystem chatSystem = game.getChatSystem();
+            if (chatSystem != null) {
+                chatSystem.clear();
+            }
+            game.setCheatsEnabled(false);
+        }
+
         updatePauseState(state);
 
         MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();

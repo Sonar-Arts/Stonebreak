@@ -1,70 +1,143 @@
 package com.stonebreak.blocks;
 
+import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.voxel.IBlockType;
+import com.stonebreak.blocks.registry.BlockRegistry;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemCategory;
 import com.stonebreak.config.Settings;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Defines all block types in the game.
- * These are items that can be placed in the world as blocks.
+ *
+ * <p><strong>Registry-backed.</strong> The 33 SBO-backed blocks
+ * (STONE, GRASS, ...) pull all their data — id, hardness, atlas coords,
+ * solid/breakable flags — from {@link BlockRegistry} at class-init time.
+ * The SBO files under {@code sbo/blocks/} are the single source of truth.
+ *
+ * <p>{@code AIR} and {@code WATER} are hardcoded sentinels: AIR has no SBO
+ * (it's the empty-space null), and WATER has engine-side physics that
+ * references the constant directly. Both must exist regardless of what's on
+ * disk.
+ *
+ * <p>SBO files dropped into {@code sbo/blocks/} are auto-registered as
+ * {@link BlockType} instances accessible via {@link #getById(int)},
+ * {@link #getByName(String)}, {@link #valueOf(String)}, and {@link #values()}
+ * — no enum / static-field declaration needed.
+ *
+ * <p>API mirrors {@link Enum}: {@link #values()}, {@link #valueOf(String)},
+ * {@link #name()} all behave as the original enum did.
  */
-public enum BlockType implements Item, IBlockType {
-    // Added atlasX, atlasY for inventory/hotbar display.
-    // These are the primary texture coordinates for the block.
-    // For blocks like GRASS with multiple textures, this will be the "icon" texture (e.g., grass top).
-    AIR(0, "Air", false, false, -1, -1, 0.0f), // No texture for air
-    GRASS(1, "Grass", true, true, 0, 0, 1.0f),     // Grass Top
-    DIRT(2, "Dirt", true, true, 2, 0, 2.0f),
-    STONE(3, "Stone", true, true, 3, 0, 4.0f),
-    BEDROCK(4, "Bedrock", true, false, 4, 0, Float.POSITIVE_INFINITY),
-    WOOD(5, "Wood", true, true, 5, 0, 3.0f),       // Wood Side (or could be Wood Top: 5,1)
-    LEAVES(6, "Leaves", true, true, 7, 0, 0.5f), // Atlas X changed from 6 to 7
-    SAND(7, "Sand", true, true, 8, 0, 1.5f),       // Atlas X changed from 7 to 8
-    WATER(8, "Water", false, false, 9, 0, 0.0f),    // Atlas X changed from 8 to 9
-    COAL_ORE(9, "Coal Ore", true, true, 0, 1, 6.0f),
-    IRON_ORE(10, "Iron Ore", true, true, 1, 1, 8.0f),
-    RED_SAND(11, "Red Sand", true, true, 2, 1, 1.5f), // Was Obsidian, now red sand at old obsidian atlas coords
-    MAGMA(12, "Magma", true, true, 3, 1, 10.0f),       // Placeholder atlas coords
-    CRYSTAL(13, "Crystal", true, true, 4, 1, 12.0f),   // Placeholder atlas coords
-    SANDSTONE(14, "Sandstone", true, true, 5, 1, 5.0f), // Top texture for icon
-    RED_SANDSTONE(15, "Red Sandstone", true, true, 6, 1, 5.0f), // Top texture for icon
-    ROSE(16, "Rose", false, true, 10, 1, 0.1f), // Moved from 7,1
-    DANDELION(17, "Dandelion", false, true, 11, 1, 0.1f), // Moved from 8,1
-    SNOWY_DIRT(18, "Snowy Dirt", true, true, 0, 2, 1.0f), // Snow Top (clone of grass)
-    PINE_LEAVES(19, "Pine Leaves", true, true, 3, 4, 0.5f),
-    PINE(20, "Pine", true, true, 2, 2, 3.0f), // Darker wood variant
-    ICE(21, "Ice", true, true, 3, 2, 2.0f),
-    SNOW(22, "Snow", false, true, 5, 2, 0.1f), // Layered snow block
-    WORKBENCH(23, "Workbench", true, true, 6, 2, 3.0f), // Placeholder atlas coords (6,2)
-    WOOD_PLANKS(24, "Wood Planks", true, true, 0, 3, 3.0f), // Atlas coords (0,3) placeholder
-    PINE_WOOD_PLANKS(25, "Pine Wood Planks", true, true, 2, 3, 3.0f), // Atlas coords (2,3)
-    ELM_WOOD_LOG(26, "Elm Wood Log", true, true, 4, 3, 3.0f), // Atlas coords (4,3) - ID updated from 28 to 26
-    ELM_WOOD_PLANKS(27, "Elm Wood Planks", true, true, 5, 3, 3.0f), // Atlas coords (5,3) - ID updated from 29 to 27
-    ELM_LEAVES(28, "Elm Leaves", true, true, 6, 3, 0.5f), // Atlas coords (6,3) - ID updated from 30 to 28
-    COBBLESTONE(29, "Cobblestone", true, true, 7, 3, 4.0f),
-    GRAVEL(30, "Gravel", true, true, 8, 3, 1.5f),
-    CLAY(31, "Clay", true, true, 0, 4, 2.0f),
-    RED_SAND_COBBLESTONE(32, "Red Sand Cobblestone", true, true, 1, 4, 4.0f),
-    SAND_COBBLESTONE(33, "Sand Cobblestone", true, true, 2, 4, 4.0f),
-    WILDGRASS(34, "Wildgrass", false, true, 6, 12, 0.1f);
+public final class BlockType implements Item, IBlockType {
 
+    // ----- Registry storage. Initialized FIRST so the static initializer
+    //       blocks below can populate them. ---------------------------------
+
+    private static final Map<String, BlockType> BY_NAME = new LinkedHashMap<>();
+    private static final Map<Integer, BlockType> BY_ID = new LinkedHashMap<>();
+
+    // Eagerly load the SBO registry before any static-final assignments
+    // below. Idempotent — if BlockRegistry was already loaded by another
+    // path, this is a no-op.
+    static {
+        BlockRegistry.getInstance().ensureLoaded();
+    }
+
+    // ----- Hardcoded sentinels (no SBO exists for these). -----------------
+
+    public static final BlockType AIR = createSentinel("AIR", 0, "Air", false, false, -1, -1, 0.0f);
+    public static final BlockType WATER = createSentinel("WATER", 8, "Water", false, false, 9, 0, 0.0f);
+
+    // ----- SBO-backed blocks. Data comes from the gameProperties block of
+    //       each SBO under sbo/blocks/. The objectId arg below is what's
+    //       embedded in the SBO manifest; the second arg is the constant's
+    //       SCREAMING_CASE name used by valueOf/name(). ---------------------
+
+    public static final BlockType GRASS = fromRegistry("stonebreak:grass", "GRASS");
+    public static final BlockType DIRT = fromRegistry("stonebreak:dirt", "DIRT");
+    public static final BlockType STONE = fromRegistry("stonebreak:stone", "STONE");
+    public static final BlockType BEDROCK = fromRegistry("stonebreak:bedrock", "BEDROCK");
+    public static final BlockType WOOD = fromRegistry("stonebreak:wood", "WOOD");
+    public static final BlockType LEAVES = fromRegistry("stonebreak:leaves", "LEAVES");
+    public static final BlockType SAND = fromRegistry("stonebreak:sand", "SAND");
+    public static final BlockType COAL_ORE = fromRegistry("stonebreak:coal_ore", "COAL_ORE");
+    public static final BlockType IRON_ORE = fromRegistry("stonebreak:iron_ore", "IRON_ORE");
+    public static final BlockType RED_SAND = fromRegistry("stonebreak:red_sand", "RED_SAND");
+    public static final BlockType MAGMA = fromRegistry("stonebreak:magma", "MAGMA");
+    public static final BlockType CRYSTAL = fromRegistry("stonebreak:crystal", "CRYSTAL");
+    // SBO objectId historically uses "sand_stone" / "red_sand_stone" but the
+    // game-side constant name is SANDSTONE / RED_SANDSTONE — explicit mapping.
+    public static final BlockType SANDSTONE = fromRegistry("stonebreak:sand_stone", "SANDSTONE");
+    public static final BlockType RED_SANDSTONE = fromRegistry("stonebreak:red_sand_stone", "RED_SANDSTONE");
+    public static final BlockType ROSE = fromRegistry("stonebreak:rose", "ROSE");
+    public static final BlockType DANDELION = fromRegistry("stonebreak:dandelion", "DANDELION");
+    public static final BlockType SNOWY_DIRT = fromRegistry("stonebreak:snowy_dirt", "SNOWY_DIRT");
+    public static final BlockType PINE_LEAVES = fromRegistry("stonebreak:pine_leaves", "PINE_LEAVES");
+    // SBO objectId is "pine_wood_log" but the constant is PINE.
+    public static final BlockType PINE = fromRegistry("stonebreak:pine_wood_log", "PINE");
+    public static final BlockType ICE = fromRegistry("stonebreak:ice", "ICE");
+    public static final BlockType SNOW = fromRegistry("stonebreak:snow", "SNOW");
+    public static final BlockType WORKBENCH = fromRegistry("stonebreak:workbench", "WORKBENCH");
+    public static final BlockType WOOD_PLANKS = fromRegistry("stonebreak:wood_planks", "WOOD_PLANKS");
+    public static final BlockType PINE_WOOD_PLANKS = fromRegistry("stonebreak:pine_wood_planks", "PINE_WOOD_PLANKS");
+    public static final BlockType ELM_WOOD_LOG = fromRegistry("stonebreak:elm_wood_log", "ELM_WOOD_LOG");
+    public static final BlockType ELM_WOOD_PLANKS = fromRegistry("stonebreak:elm_wood_planks", "ELM_WOOD_PLANKS");
+    public static final BlockType ELM_LEAVES = fromRegistry("stonebreak:elm_leaves", "ELM_LEAVES");
+    public static final BlockType COBBLESTONE = fromRegistry("stonebreak:cobblestone", "COBBLESTONE");
+    public static final BlockType GRAVEL = fromRegistry("stonebreak:gravel", "GRAVEL");
+    public static final BlockType CLAY = fromRegistry("stonebreak:clay", "CLAY");
+    public static final BlockType RED_SAND_COBBLESTONE = fromRegistry("stonebreak:red_sand_cobblestone", "RED_SAND_COBBLESTONE");
+    public static final BlockType SAND_COBBLESTONE = fromRegistry("stonebreak:sand_cobblestone", "SAND_COBBLESTONE");
+    public static final BlockType WILDGRASS = fromRegistry("stonebreak:wildgrass", "WILDGRASS");
+
+    // ----- Promote any SBO entries that didn't match a static-final field
+    //       above. New SBOs dropped into sbo/blocks/ become BlockType
+    //       instances here, so getById/values()/getByName see them. --------
+
+    static {
+        for (BlockRegistry.BlockEntry entry : BlockRegistry.getInstance().all()) {
+            String enumName = BlockRegistry.sboNameToEnumName(entry.objectId());
+            if (BY_NAME.containsKey(enumName) || BY_ID.containsKey(entry.numericId())) {
+                continue; // already represented by a sentinel or a static-final field
+            }
+            SBOFormat.GameProperties gp = entry.properties();
+            registerInternal(new BlockType(
+                    enumName, gp.numericId(), entry.displayName(),
+                    gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.hardness()));
+        }
+    }
+
+    /**
+     * Face identifier for per-face texture lookups. Stays an enum because it
+     * is small, closed, and used in switch expressions throughout the
+     * rendering pipeline.
+     */
     public enum Face {
         TOP(0), BOTTOM(1), SIDE_NORTH(2), SIDE_SOUTH(3), SIDE_EAST(4), SIDE_WEST(5);
         private final int index;
         Face(int index) { this.index = index; }
         public int getIndex() { return index; }
     }
-    
+
+    // ----- Instance fields (immutable) -----
+
+    private final String enumName;
     private final int id;
     private final String name;
     private final boolean solid;
     private final boolean breakable;
-    private final int atlasX; // Texture atlas X coordinate for UI
-    private final int atlasY; // Texture atlas Y coordinate for UI
-    private final float hardness; // Time in seconds to break with bare hands
-    
-    BlockType(int id, String name, boolean solid, boolean breakable, int atlasX, int atlasY, float hardness) {
+    private final int atlasX;
+    private final int atlasY;
+    private final float hardness;
+
+    private BlockType(String enumName, int id, String name, boolean solid, boolean breakable,
+                      int atlasX, int atlasY, float hardness) {
+        this.enumName = enumName;
         this.id = id;
         this.name = name;
         this.solid = solid;
@@ -73,21 +146,111 @@ public enum BlockType implements Item, IBlockType {
         this.atlasY = atlasY;
         this.hardness = hardness;
     }
-    
+
+    /**
+     * Build a sentinel BlockType (no backing SBO). Used for AIR and WATER —
+     * blocks whose data is engine-defined rather than asset-defined.
+     */
+    private static BlockType createSentinel(String enumName, int id, String name, boolean solid, boolean breakable,
+                                            int atlasX, int atlasY, float hardness) {
+        BlockType bt = new BlockType(enumName, id, name, solid, breakable, atlasX, atlasY, hardness);
+        registerInternal(bt);
+        return bt;
+    }
+
+    /**
+     * Build a BlockType by reading data from a registered SBO. Throws if the
+     * SBO is missing — startup fails loudly rather than silently using stale
+     * defaults.
+     */
+    private static BlockType fromRegistry(String objectId, String enumName) {
+        BlockRegistry.BlockEntry entry = BlockRegistry.getInstance().get(objectId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "BlockType." + enumName + " requires SBO '" + objectId
+                                + "' but none is registered. Check sbo/blocks/."));
+        SBOFormat.GameProperties gp = entry.properties();
+        BlockType bt = new BlockType(
+                enumName, gp.numericId(), entry.displayName(),
+                gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.hardness());
+        registerInternal(bt);
+        return bt;
+    }
+
+    /**
+     * Externally-callable register hook. Most SBO promotion happens in the
+     * BlockType static initializer; this remains for future paths (e.g.
+     * runtime mod loading) that need to add a block after class-init.
+     * Idempotent — returns the existing instance if name or id collides.
+     */
+    public static synchronized BlockType register(String enumName, int id, String name,
+                                                  boolean solid, boolean breakable,
+                                                  int atlasX, int atlasY, float hardness) {
+        BlockType existing = BY_NAME.get(enumName);
+        if (existing != null) return existing;
+        BlockType byIdExisting = BY_ID.get(id);
+        if (byIdExisting != null) return byIdExisting;
+        BlockType bt = new BlockType(enumName, id, name, solid, breakable, atlasX, atlasY, hardness);
+        registerInternal(bt);
+        return bt;
+    }
+
+    private static void registerInternal(BlockType bt) {
+        BY_NAME.put(bt.enumName, bt);
+        BY_ID.put(bt.id, bt);
+    }
+
+    // ----- Enum-compat static API -----
+
+    public static BlockType[] values() {
+        return BY_NAME.values().toArray(new BlockType[0]);
+    }
+
+    public static Collection<BlockType> all() {
+        return Collections.unmodifiableCollection(BY_NAME.values());
+    }
+
+    public static BlockType valueOf(String name) {
+        BlockType bt = BY_NAME.get(name);
+        if (bt == null) {
+            throw new IllegalArgumentException("No BlockType named " + name);
+        }
+        return bt;
+    }
+
+    public static BlockType getById(int id) {
+        return BY_ID.get(id);
+    }
+
+    public static BlockType getByName(String name) {
+        if (name == null) return null;
+        for (BlockType type : BY_NAME.values()) {
+            if (type.name.equalsIgnoreCase(name)) {
+                return type;
+            }
+        }
+        return null;
+    }
+
+    // ----- Instance accessors -----
+
+    public String name() {
+        return enumName;
+    }
+
     @Override
     public int getId() {
         return id;
     }
-    
+
     @Override
     public String getName() {
         return name;
     }
-    
+
     public boolean isSolid() {
         return solid;
     }
-    
+
     public boolean isBreakable() {
         return breakable;
     }
@@ -96,25 +259,17 @@ public enum BlockType implements Item, IBlockType {
     public boolean isAir() {
         return this == AIR;
     }
-    
-    /**
-     * Determines if the block is transparent (allows rendering of faces behind it)
-     * @return true if the block is transparent (like air or water)
-     */
+
     public boolean isTransparent() {
-        // Check if this is a leaf block
         if (this == LEAVES || this == PINE_LEAVES || this == ELM_LEAVES) {
-            // For leaf blocks, check the transparency setting
             try {
                 return Settings.getInstance().getLeafTransparency();
             } catch (Exception e) {
-                // Fallback to true if settings can't be accessed
                 return true;
             }
         }
-
-        // For non-leaf blocks, use the original logic
-        return this == AIR || this == WATER || this == ROSE || this == DANDELION || this == WILDGRASS || this == ICE || this == SNOW;
+        return this == AIR || this == WATER || this == ROSE || this == DANDELION
+                || this == WILDGRASS || this == ICE || this == SNOW;
     }
 
     @Override
@@ -126,184 +281,101 @@ public enum BlockType implements Item, IBlockType {
     public int getAtlasY() {
         return atlasY;
     }
-    
+
     public float getHardness() {
         return hardness;
     }
-    
-    // Item interface implementation
+
     @Override
     public int getMaxStackSize() {
-        return 64; // Default stack size for blocks
+        return 64;
     }
-    
+
     @Override
     public ItemCategory getCategory() {
         return ItemCategory.BLOCKS;
     }
-    
-    /**
-     * Gets the visual height of the block (0.0 to 1.0 where 1.0 is full block height)
-     * For snow blocks, this can be less than 1.0 to represent layers
-     * @param layerCount Number of snow layers (1-8 for snow blocks)
-     */
+
     public float getVisualHeight(int layerCount) {
         if (this == SNOW) {
-            return Math.min(1.0f, Math.max(0.125f, layerCount * 0.125f)); // 1-8 layers
+            return Math.min(1.0f, Math.max(0.125f, layerCount * 0.125f));
         }
-        return 1.0f; // Full block height for all other blocks
+        return 1.0f;
     }
-    
-    /**
-     * Gets the visual height of the block with default layer count
-     */
+
     public float getVisualHeight() {
         return getVisualHeight(1);
     }
-    
-    /**
-     * Gets the collision height of the block (0.0 to 1.0 where 1.0 is full block height)
-     * This determines what portion of the block has collision
-     * @param layerCount Number of snow layers (1-8 for snow blocks)
-     */
+
     public float getCollisionHeight(int layerCount) {
         if (this == SNOW) {
-            return Math.min(1.0f, Math.max(0.125f, layerCount * 0.125f)); // Only the snow portion has collision
+            return Math.min(1.0f, Math.max(0.125f, layerCount * 0.125f));
         }
-        return solid ? 1.0f : 0.0f; // Full collision for solid blocks, none for non-solid
+        return solid ? 1.0f : 0.0f;
     }
-    
-    /**
-     * Gets the collision height of the block with default layer count
-     */
+
     public float getCollisionHeight() {
         return getCollisionHeight(1);
     }
-    
-    /**
-     * Determines if this block type can be stacked (like snow layers)
-     */
+
     public boolean isStackable() {
         return this == SNOW;
     }
-    
-    /**
-     * Determines if this item can be placed as a block in the world
-     * All BlockType items are placeable by definition
-     */
+
     public boolean isPlaceable() {
         return true;
     }
-    
-    /**
-     * Get block type by ID.
-     */
-    public static BlockType getById(int id) {
-        for (BlockType type : values()) {
-            if (type.id == id) {
-                return type;
-            }
-        }
-        return null; // Return null to allow fallback to ItemType lookup
-    }
 
-    /**
-     * Gets block type by name (case-insensitive).
-     * @param name The block name to look up
-     * @return The BlockType with the given name, or null if not found
-     */
-    public static BlockType getByName(String name) {
-        if (name == null) return null;
-        for (BlockType type : values()) {
-            if (type.name.equalsIgnoreCase(name)) {
-                return type;
-            }
-        }
-        return null;
-    }
-    
-    /**
-     * Determines if this block type is a flower that can be broken by water flow.
-     * @return true if this is a flower block
-     */
     public boolean isFlower() {
         return this == ROSE || this == DANDELION || this == WILDGRASS;
     }
 
     /**
-     * Get texture coordinates for the block type.
-     * @param face The face of the block (0=top, 1=bottom, 2-5=sides)
-     * @return Array with [x, y] coordinates in the texture atlas
+     * Texture atlas coordinates for the given face. Hardcoded for the legacy
+     * 35 blocks; returns the default atlas coords for SBO-only blocks (the
+     * SBO/CBR system handles per-face texturing for those).
      */
     public float[] getTextureCoords(Face face) {
-        return switch (this) {
-            case GRASS -> {
-                if (face == Face.TOP) yield new float[]{0, 0}; // Top - grass
-                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - dirt
-                yield new float[]{1, 0}; // Sides - grass side
-            }
-            case DIRT -> new float[]{2, 0};
-            case STONE -> new float[]{3, 0};
-            case BEDROCK -> new float[]{4, 0};
-            case WOOD -> {
-                if (face == Face.TOP) yield new float[]{6, 0}; // Top - wood top texture (concentric rings)
-                if (face == Face.BOTTOM) yield new float[]{6, 0}; // Bottom - same as top (tree rings)
-                yield new float[]{5, 0}; // Sides - wood side texture (vertical grain)
-            }
-            case LEAVES -> new float[]{7, 0}; // Atlas X changed from 6 to 7
-            case SAND -> new float[]{8, 0}; // Atlas X changed from 7 to 8
-            case WATER -> new float[]{9, 0}; // Atlas X changed from 8 to 9
-            case COAL_ORE -> new float[]{0, 1};
-            case IRON_ORE -> new float[]{1, 1};
-            case RED_SAND -> new float[]{2, 1}; // Use its unique atlas coordinates
-            case MAGMA -> new float[]{3, 1}; // Placeholder atlas coords
-            case CRYSTAL -> new float[]{4, 1}; // Placeholder atlas coords
-            case SANDSTONE -> {
-                if (face == Face.TOP) yield new float[]{5, 1}; // Top
-                if (face == Face.BOTTOM) yield new float[]{5, 1}; // Bottom (same as top)
-                yield new float[]{7, 1}; // Sides
-            }
-            case RED_SANDSTONE -> {
-                if (face == Face.TOP) yield new float[]{6, 1}; // Top
-                if (face == Face.BOTTOM) yield new float[]{6, 1}; // Bottom (same as top)
-                yield new float[]{8, 1}; // Sides
-            }
-            case ROSE -> new float[]{10, 1}; // Moved from 7,1
-            case DANDELION -> new float[]{11, 1}; // Moved from 8,1
-            case SNOWY_DIRT -> {
-                if (face == Face.TOP) yield new float[]{0, 2}; // Top - snow
-                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - dirt
-                yield new float[]{1, 2}; // Sides - snow side
-            }
-            case SNOW -> new float[]{5, 2}; // Pure snow texture for layers
-            case PINE_LEAVES -> new float[]{3, 4};
-            case PINE -> {
-                if (face == Face.TOP) yield new float[]{2, 2}; // Top
-                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - dirt
-                yield new float[]{2, 2}; // Sides
-            }
-            case ICE -> new float[]{3, 2};
-            case WORKBENCH -> {
-                if (face == Face.TOP) yield new float[]{6, 2}; // Top - main texture
-                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - Dirt texture (like wood)
-                yield new float[]{7, 2}; // Sides - placeholder side texture
-            }
-            case WOOD_PLANKS -> new float[]{0, 3}; // All faces use (0,3)
-            case PINE_WOOD_PLANKS -> new float[]{2, 3}; // All faces use (2,3)
-            case ELM_WOOD_LOG -> {
-                if (face == Face.TOP) yield new float[]{4, 3}; // Top - elm wood ring pattern
-                if (face == Face.BOTTOM) yield new float[]{4, 3}; // Bottom - same as top
-                yield new float[]{7, 3}; // Sides - elm bark texture
-            }
-            case ELM_WOOD_PLANKS -> new float[]{5, 3}; // All faces use (5,3)
-            case ELM_LEAVES -> new float[]{6, 3}; // All faces use (6,3)
-            case COBBLESTONE -> new float[]{7, 3}; // All faces use (7,3)
-            case GRAVEL -> new float[]{8, 3}; // All faces use (8,3)
-            case CLAY -> new float[]{0, 4}; // All faces use (0,4)
-            case RED_SAND_COBBLESTONE -> new float[]{1, 4}; // All faces use (1,4)
-            case SAND_COBBLESTONE -> new float[]{2, 4}; // All faces use (2,4)
-            case WILDGRASS -> new float[]{6, 12};
-            default -> new float[]{0, 0};
-        };
+        if (this == GRASS) {
+            if (face == Face.TOP) return new float[]{0, 0};
+            if (face == Face.BOTTOM) return new float[]{2, 0};
+            return new float[]{1, 0};
+        }
+        if (this == WOOD) {
+            if (face == Face.TOP || face == Face.BOTTOM) return new float[]{6, 0};
+            return new float[]{5, 0};
+        }
+        if (this == SANDSTONE) {
+            if (face == Face.TOP || face == Face.BOTTOM) return new float[]{5, 1};
+            return new float[]{7, 1};
+        }
+        if (this == RED_SANDSTONE) {
+            if (face == Face.TOP || face == Face.BOTTOM) return new float[]{6, 1};
+            return new float[]{8, 1};
+        }
+        if (this == SNOWY_DIRT) {
+            if (face == Face.TOP) return new float[]{0, 2};
+            if (face == Face.BOTTOM) return new float[]{2, 0};
+            return new float[]{1, 2};
+        }
+        if (this == PINE) {
+            if (face == Face.BOTTOM) return new float[]{2, 0};
+            return new float[]{2, 2};
+        }
+        if (this == WORKBENCH) {
+            if (face == Face.TOP) return new float[]{6, 2};
+            if (face == Face.BOTTOM) return new float[]{2, 0};
+            return new float[]{7, 2};
+        }
+        if (this == ELM_WOOD_LOG) {
+            if (face == Face.TOP || face == Face.BOTTOM) return new float[]{4, 3};
+            return new float[]{7, 3};
+        }
+        return new float[]{atlasX, atlasY};
+    }
+
+    @Override
+    public String toString() {
+        return enumName;
     }
 }

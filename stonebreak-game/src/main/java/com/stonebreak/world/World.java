@@ -269,6 +269,36 @@ public class World {
     }
 
     /**
+     * Returns the SBO state name at the given world position, or
+     * {@code null} if the block carries no non-default state (1.3+).
+     */
+    public String getBlockStateAt(int x, int y, int z) {
+        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) return null;
+        int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
+        Chunk chunk = getChunkAt(chunkX, chunkZ);
+        if (chunk == null) return null;
+        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
+        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
+        return chunk.getBlockState(localX, y, localZ);
+    }
+
+    /**
+     * Sets the SBO state name for a block at the given world position. Pass
+     * {@code null} to clear (1.3+). No-op when the chunk isn't loaded.
+     */
+    public void setBlockStateAt(int x, int y, int z, String state) {
+        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) return;
+        int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
+        Chunk chunk = getChunkAt(chunkX, chunkZ);
+        if (chunk == null) return;
+        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
+        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
+        chunk.setBlockState(localX, y, localZ, state);
+    }
+
+    /**
      * Checks if the specified world position is underwater (contains a water block).
      * @param x World X coordinate
      * @param y World Y coordinate

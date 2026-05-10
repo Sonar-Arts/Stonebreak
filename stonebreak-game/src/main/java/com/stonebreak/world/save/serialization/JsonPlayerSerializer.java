@@ -55,15 +55,21 @@ public class JsonPlayerSerializer {
             ItemStack stack = inv[i];
             int id = (stack == null) ? BlockType.AIR.getId() : stack.getBlockTypeId();
             int count = (stack == null) ? 0 : stack.getCount();
+            String state = (stack == null) ? null : stack.getState();
 
             // DIAGNOSTIC LOGGING:
             if (stack != null && id > 0) {
                 System.out.println("[SAVE-DEBUG] Slot " + i + ": " +
                     stack.getName() + " (ID=" + id + " count=" + count +
+                    (state != null ? " state=" + state : "") +
                     " item=" + stack.getItem().getClass().getSimpleName() + ")");
             }
 
-            json.append("    {\"id\": ").append(id).append(", \"count\": ").append(count).append("}");
+            json.append("    {\"id\": ").append(id).append(", \"count\": ").append(count);
+            if (state != null) {
+                json.append(", \"state\": \"").append(JsonParsingUtil.escapeJson(state)).append("\"");
+            }
+            json.append("}");
             if (i < 35) json.append(",");
             json.append("\n");
         }
@@ -161,7 +167,12 @@ public class JsonPlayerSerializer {
                     String item = items[i];
                     int id = JsonParsingUtil.extractIntFromObject(item, "id", BlockType.AIR.getId());
                     int count = JsonParsingUtil.extractIntFromObject(item, "count", 0);
-                    inventory[i] = new ItemStack(id, count);
+                    ItemStack stack = new ItemStack(id, count);
+                    String state = extractStateFromItem(item);
+                    if (state != null) {
+                        stack.setState(state);
+                    }
+                    inventory[i] = stack;
                 }
             }
 
@@ -206,5 +217,20 @@ public class JsonPlayerSerializer {
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialize PlayerData: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Extract an inventory item's optional {@code "state"} field. Returns
+     * {@code null} when the field is absent or empty (default state).
+     * Inline regex avoids broadening {@link JsonParsingUtil} for one caller.
+     */
+    private static String extractStateFromItem(String itemJson) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\"state\"\\s*:\\s*\"([^\"]*)\"").matcher(itemJson);
+        if (m.find()) {
+            String s = m.group(1);
+            return s.isBlank() ? null : s;
+        }
+        return null;
     }
 }

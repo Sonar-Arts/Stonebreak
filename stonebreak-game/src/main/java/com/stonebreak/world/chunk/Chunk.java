@@ -70,6 +70,15 @@ public class Chunk {
     private final ColumnOpacityProbe opacityProbe = WorldLightingContext.probeFor(this);
 
     /**
+     * Sparse per-block SBO state map (1.3+). Keys are encoded as
+     * {@code "localX,y,localZ"} (matching the water metadata convention).
+     * Only blocks with a non-default state are stored — clearing or setting
+     * a block to its default state removes the entry to keep memory and save
+     * footprint minimal.
+     */
+    private final java.util.Map<String, String> blockStates = new java.util.HashMap<>();
+
+    /**
      * Creates a new chunk at the specified position using CCO API.
      */
     public Chunk(int x, int z) {
@@ -121,14 +130,53 @@ public class Chunk {
         boolean changed = writer.set(x, y, z, blockType);
         if (changed) {
             metadata = metadata.withUpdatedTimestamp();
-            // Keep the sky-shadow heightmap in sync. Single hook point that
-            // covers both World.setBlockAt and direct chunk.setBlock callers
-            // (terrain gen, feature population).
+            // Drop any stale per-block state when the block type itself changes —
+            // states are scoped to the block instance, not the cell. Without
+            // this, breaking a water-bucket-placed block and replacing it with
+            // a different block would leak the bucket's "water" state.
+            blockStates.remove(stateKey(x, y, z));
             heightMap.onBlockChanged(x, y, z,
                     BlockOpacity.isOpaque(blockType),
                     BlockOpacity.isOpaque(previous),
                     opacityProbe);
         }
+    }
+
+    // ===== Per-block SBO State Operations (1.3+) =====
+
+    /**
+     * Returns the SBO state name at the given local cell, or {@code null}
+     * if the block carries no non-default state.
+     */
+    public String getBlockState(int x, int y, int z) {
+        return blockStates.get(stateKey(x, y, z));
+    }
+
+    /**
+     * Sets the SBO state name for a block. Pass {@code null} (or empty) to
+     * clear back to the default state. Marks chunk dirty for save & remesh.
+     */
+    public void setBlockState(int x, int y, int z, String state) {
+        String key = stateKey(x, y, z);
+        String previous;
+        if (state == null || state.isBlank()) {
+            previous = blockStates.remove(key);
+        } else {
+            previous = blockStates.put(key, state);
+        }
+        if (!java.util.Objects.equals(previous, state)) {
+            metadata = metadata.withUpdatedTimestamp();
+            dirtyTracker.markBlockChanged();
+        }
+    }
+
+    /** Read-only view of the per-block state map. */
+    public java.util.Map<String, String> getBlockStates() {
+        return java.util.Collections.unmodifiableMap(blockStates);
+    }
+
+    private static String stateKey(int x, int y, int z) {
+        return x + "," + y + "," + z;
     }
 
     /** Returns the engine opacity probe bound to this chunk — used by recomputeAll callers. */
@@ -448,16 +496,18 @@ public class Chunk {
             }
         }
 
-        // Create snapshot with deep-copied blocks, water metadata, entities, and entity generation flag
+        // Create snapshot with deep-copied blocks, water metadata, entities,
+        // entity generation flag, and per-block SBO state map.
         return new CcoSerializableSnapshot(
             metadata.getChunkX(),
             metadata.getChunkZ(),
-            blocksCopy,  // Use deep copy instead of reference
+            blocksCopy,
             metadata.getLastModified(),
             metadata.isFeaturesPopulated(),
-            metadata.hasEntities(),  // Preserve entity generation flag
+            metadata.hasEntities(),
             waterMetadata,
-            entities
+            entities,
+            new java.util.HashMap<>(blockStates)
         );
     }
 
@@ -494,6 +544,10 @@ public class Chunk {
                 System.arraycopy(snapshotBlocks[ix][iy], 0, currentBlocks[ix][iy], 0, 16);
             }
         }
+
+        // Restore per-block SBO state map (1.3+). Empty for v1 saves.
+        blockStates.clear();
+        blockStates.putAll(snapshot.getBlockStates());
 
         // Apply water metadata to WaterSystem BEFORE onChunkLoaded is called
         if (world != null && world.getWaterSystem() != null && !snapshot.getWaterMetadata().isEmpty()) {

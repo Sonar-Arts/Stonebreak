@@ -164,6 +164,7 @@ public class PlayerArmRenderer {
         ItemDisplayInfo info = new ItemDisplayInfo();
         
         if (selectedItem != null && !selectedItem.isEmpty()) {
+            info.selectedState = selectedItem.getState();
             if (selectedItem.isPlaceable()) {
                 info.selectedBlockType = selectedItem.asBlockType();
                 info.isDisplayingBlock = (info.selectedBlockType != null && 
@@ -173,9 +174,13 @@ public class PlayerArmRenderer {
                 info.displayingItem = info.isDisplayingBlock;
             } else if (selectedItem.isTool() || selectedItem.isMaterial()) {
                 info.selectedItemType = selectedItem.asItemType();
-                info.isDisplayingTool = (info.selectedItemType != null &&
-                                        info.selectedItemType.getAtlasX() >= 0 && 
-                                        info.selectedItemType.getAtlasY() >= 0);
+                // Render the item in hand when it has either legacy atlas
+                // coords OR is voxelizable (SBO-backed items declare
+                // atlasX/Y = -1 and pull pixels from their OMT instead).
+                info.isDisplayingTool = info.selectedItemType != null
+                        && ((info.selectedItemType.getAtlasX() >= 0 && info.selectedItemType.getAtlasY() >= 0)
+                            || com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer
+                                    .isVoxelizable(info.selectedItemType));
                 info.displayingItem = info.isDisplayingTool;
             }
         }
@@ -190,7 +195,7 @@ public class PlayerArmRenderer {
         if (displayInfo.isDisplayingBlock && displayInfo.selectedBlockType != null) {
             handItemRenderer.renderBlockInHand(displayInfo.selectedBlockType);
         } else if (displayInfo.isDisplayingTool && displayInfo.selectedItemType != null) {
-            handItemRenderer.renderToolInHand(displayInfo.selectedItemType);
+            handItemRenderer.renderToolInHand(displayInfo.selectedItemType, displayInfo.selectedState);
         }
     }
     
@@ -235,6 +240,8 @@ public class PlayerArmRenderer {
         boolean isDisplayingTool = false;
         BlockType selectedBlockType = null;
         ItemType selectedItemType = null;
+        /** SBO state name for the selected stack (1.3+); null = default. */
+        String selectedState = null;
     }
     
     

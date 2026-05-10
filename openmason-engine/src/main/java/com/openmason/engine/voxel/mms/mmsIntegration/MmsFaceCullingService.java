@@ -18,9 +18,26 @@ import java.util.function.Predicate;
  */
 public class MmsFaceCullingService implements SBOCullingPolicy {
 
+    /**
+     * Sentinel returned for face-culling lookups into chunks that haven't
+     * been loaded yet. Treated as opaque so boundary faces are culled
+     * rather than baked into the mesh as exposed walls — when the real
+     * neighbor chunk loads, the chunk listener marks this chunk's mesh
+     * dirty and the boundary faces re-evaluate against actual data.
+     */
+    private static final IBlockType UNLOADED_NEIGHBOR_SENTINEL = new IBlockType() {
+        @Override public int getId() { return -1; }
+        @Override public String getName() { return "<unloaded>"; }
+        @Override public boolean isSolid() { return true; }
+        @Override public boolean isBreakable() { return false; }
+        @Override public boolean isTransparent() { return false; }
+        @Override public boolean isAir() { return false; }
+    };
+
     private IVoxelWorld world;
     private Predicate<IBlockType> translucencyPolicy = block -> false;
     private Predicate<IBlockType> crossBlockPolicy = block -> false;
+    private Predicate<IBlockType> partialHeightPolicy = block -> false;
 
     public MmsFaceCullingService() {
     }
@@ -55,6 +72,20 @@ public class MmsFaceCullingService implements SBOCullingPolicy {
     }
 
     /**
+     * Configure the predicate that identifies partial-height blocks (snow
+     * layers and similar). When two adjacent blocks both match this policy,
+     * their shared side faces (north/south/east/west) bypass neighbor
+     * culling — the per-instance heights may differ, leaving a portion of
+     * the side face exposed that culling would otherwise hide. Top/bottom
+     * faces still respect normal culling rules.
+     *
+     * @param policy predicate returning true for partial-height blocks
+     */
+    public void setPartialHeightPolicy(Predicate<IBlockType> policy) {
+        this.partialHeightPolicy = policy != null ? policy : block -> false;
+    }
+
+    /**
      * Set the world reference for cross-chunk neighbor lookups.
      *
      * @param world the voxel world
@@ -81,6 +112,18 @@ public class MmsFaceCullingService implements SBOCullingPolicy {
         int adjZ = lz + getFaceOffsetZ(face);
 
         IBlockType adjacentBlock = getAdjacentBlock(adjX, adjY, adjZ, chunkData);
+
+        // Partial-height blocks (snow layers) may have differing per-instance
+        // heights, exposing part of the shared side face the standard
+        // same-type cull would hide. Always render side faces between two
+        // partial-height blocks; the emitter scales geometry to each
+        // instance's own height, so coplanar overdraw at matched heights is
+        // bounded to the shared edge.
+        if (face >= 2 && partialHeightPolicy.test(blockType)
+                && adjacentBlock != null && partialHeightPolicy.test(adjacentBlock)) {
+            return true;
+        }
+
         return shouldRenderAgainst(blockType, adjacentBlock);
     }
 
@@ -160,9 +203,16 @@ public class MmsFaceCullingService implements SBOCullingPolicy {
                 IBlockType adjacentBlock = world.getBlockAt(worldX, adjY, worldZ);
                 return adjacentBlock;
             }
+
+            // Neighbor chunk isn't loaded yet. Returning null (treated as air)
+            // would bake the boundary face into the mesh as exposed, leaving a
+            // phantom wall when flying past the load front in spectator. The
+            // chunk-load listener marks meshed neighbors dirty, so once the
+            // real chunk arrives this mesh rebuilds against actual blocks.
+            return UNLOADED_NEIGHBOR_SENTINEL;
         }
 
-        return null; // Out of bounds = treat as air
+        return null; // True world boundary (above/below world height) = air
     }
 
     // Face offset helpers

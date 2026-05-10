@@ -20,20 +20,15 @@ public final class BlockOpacity {
     /** Returns true if the block occludes sky light (raises column heightmap). */
     public static boolean isOpaque(BlockType type) {
         if (type == null) return false;
-        switch (type) {
-            case AIR:
-            case WATER:
-            case ICE:
-            case ROSE:
-            case DANDELION:
-            case WILDGRASS:
-            case SNOW:
-            case LEAVES:
-            case PINE_LEAVES:
-            case ELM_LEAVES:
-                return false;
-            default:
-                return true;
-        }
+        return type != BlockType.AIR
+                && type != BlockType.WATER
+                && type != BlockType.ICE
+                && type != BlockType.ROSE
+                && type != BlockType.DANDELION
+                && type != BlockType.WILDGRASS
+                && type != BlockType.SNOW
+                && type != BlockType.LEAVES
+                && type != BlockType.PINE_LEAVES
+                && type != BlockType.ELM_LEAVES;
     }
 }

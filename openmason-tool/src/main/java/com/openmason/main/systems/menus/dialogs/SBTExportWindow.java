@@ -69,8 +69,20 @@ public class SBTExportWindow {
     private final ImString author = new ImString(256);
     private final ImString description = new ImString(1024);
 
+    /**
+     * SBT-valid texture types. ITEM was removed when sprite items migrated
+     * to texture-only SBOs (format 1.2+). Combo indices map to
+     * {@link #TEXTURE_TYPE_VALUES} so the SBTFormat.TextureType round-trips
+     * correctly even though the indices no longer match the enum's ordinals.
+     */
     private static final String[] TEXTURE_TYPE_LABELS = {
-            "Block", "Item", "Entity", "UI", "Other"
+            "Block", "Entity", "UI", "Other"
+    };
+    private static final SBTFormat.TextureType[] TEXTURE_TYPE_VALUES = {
+            SBTFormat.TextureType.BLOCK,
+            SBTFormat.TextureType.ENTITY,
+            SBTFormat.TextureType.UI,
+            SBTFormat.TextureType.OTHER
     };
 
     private String validationMessage = "";
@@ -405,7 +417,7 @@ public class SBTExportWindow {
         SBTFormat.ExportParameters params = new SBTFormat.ExportParameters();
         params.setTextureId(textureId.get().trim());
         params.setTextureName(textureName.get().trim());
-        params.setTextureType(SBTFormat.TextureType.values()[textureTypeIndex.get()]);
+        params.setTextureType(TEXTURE_TYPE_VALUES[textureTypeIndex.get()]);
         params.setTexturePack(texturePack.get().trim());
         params.setAuthor(author.get().trim());
         params.setDescription(description.get().trim());
