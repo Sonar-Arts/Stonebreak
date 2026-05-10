@@ -4,6 +4,7 @@ import com.openmason.main.systems.themes.core.ThemeDefinition;
 import imgui.ImGui;
 import imgui.ImGuiIO;
 import imgui.ImVec4;
+import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiStyleVar;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,7 +46,12 @@ public class StyleApplicator {
 
             // Apply Vec2 style variables (padding, spacing, alignment)
             applyStyleVariablesVec2(theme);
-            
+
+            // Refine the docking drop overlays — softer than ImGui's stock bright blue.
+            // Both the small drop-target hints and the on-hover preview rectangle share
+            // ImGuiCol.DockingPreview, so this tunes them together.
+            refineDockingOverlays();
+
             logger.info("Successfully applied theme: {}", theme.getName());
             
         } catch (Exception e) {
@@ -250,6 +256,27 @@ public class StyleApplicator {
         }
     }
     
+    /**
+     * Apply a refined visual treatment to the docking drop overlays so the
+     * drag-time hint rectangles and on-hover preview look elegant instead of
+     * Dear ImGui's stock saturated bright blue.
+     *
+     * <p>Stock ImGui draws both the small "where can I drop" placement hints
+     * <em>and</em> the larger on-hover preview using {@link ImGuiCol#DockingPreview}.
+     * The colors picked here keep the hover preview clearly visible while
+     * letting the resting placement hints recede into the UI.
+     */
+    private static void refineDockingOverlays() {
+        try {
+            // Soft, low-alpha cool blue — readable on dark themes, not jarring.
+            ImGui.getStyle().setColor(ImGuiCol.DockingPreview, 0.45f, 0.62f, 0.88f, 0.30f);
+            // Slightly darker than the dockspace background so empty regions read as panes.
+            ImGui.getStyle().setColor(ImGuiCol.DockingEmptyBg, 0.10f, 0.11f, 0.13f, 1.00f);
+        } catch (Exception e) {
+            logger.warn("Failed to refine docking overlay colors: {}", e.getMessage());
+        }
+    }
+
     /**
      * Reset ImGui style to default (extracted from resetImGuiStyle)
      */
