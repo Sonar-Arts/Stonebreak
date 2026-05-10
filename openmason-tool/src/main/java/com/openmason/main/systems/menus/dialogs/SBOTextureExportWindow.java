@@ -1,8 +1,8 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.main.systems.menus.windows.WindowTitleBar;
-import com.openmason.engine.format.sbt.SBTFormat;
-import com.openmason.engine.format.sbt.SBTSerializer;
+import com.openmason.engine.format.sbo.SBOFormat;
+import com.openmason.engine.format.sbo.SBOSerializer;
 import com.openmason.main.systems.services.StatusService;
 import com.openmason.main.systems.themes.core.ThemeDefinition;
 import com.openmason.main.systems.themes.core.ThemeManager;
@@ -26,19 +26,23 @@ import java.nio.file.Path;
 import java.util.function.Supplier;
 
 /**
- * Export window for creating Stonebreak Texture (.SBT) files.
+ * Texture-editor variant of the SBO export window.
  *
- * <p>Provides a form-based UI for entering SBT metadata (Texture ID, Name,
- * Texture Type, Pack, Author, Description) and triggering the export. Styled
- * consistently with the SBO/SBE export windows.
+ * <p>Exports a texture-only Stonebreak Object (.SBO, format 1.2+) wrapping the
+ * current OMT file. Used for sprite items and other texture-only assets that
+ * have no 3D model — replaces the SBT-as-item flow.
+ *
+ * <p>Distinct from {@code SBOExportWindow} (model editor side), which exports
+ * model-bearing SBOs from an OMO. Both target the SBO format but feed different
+ * payload kinds.
  */
-public class SBTExportWindow {
+public class SBOTextureExportWindow {
 
-    private static final Logger logger = LoggerFactory.getLogger(SBTExportWindow.class);
+    private static final Logger logger = LoggerFactory.getLogger(SBOTextureExportWindow.class);
 
-    private static final String WINDOW_TITLE = "Export SBT";
+    private static final String WINDOW_TITLE = "Export SBO (Texture)";
     private static final float MIN_WINDOW_WIDTH = 560.0f;
-    private static final float MIN_WINDOW_HEIGHT = 530.0f;
+    private static final float MIN_WINDOW_HEIGHT = 720.0f;
     private static final float FOOTER_HEIGHT = 44.0f;
     private static final float CONTENT_PADDING_Y = 22.0f;
     private static final float LABEL_WIDTH = 100.0f;
@@ -53,36 +57,54 @@ public class SBTExportWindow {
     private final ThemeManager themeManager;
     private final StatusService statusService;
     private final FileDialogService fileDialogService;
-    private final SBTSerializer serializer;
+    private final SBOSerializer serializer;
     private final WindowTitleBar titleBar;
 
-    /**
-     * Supplier for the current OMT file path. Pulled lazily so the window can
-     * be constructed before the texture editor is available.
-     */
     private Supplier<String> omtPathSupplier = () -> null;
 
-    private final ImString textureId = new ImString(256);
-    private final ImString textureName = new ImString(256);
-    private final ImInt textureTypeIndex = new ImInt(0);
-    private final ImString texturePack = new ImString(256);
+    private final ImString objectId = new ImString(256);
+    private final ImString objectName = new ImString(256);
+    private final ImInt objectTypeIndex = new ImInt(0); // default ITEM (first entry)
+    private final ImString objectPack = new ImString(256);
     private final ImString author = new ImString(256);
     private final ImString description = new ImString(1024);
 
+    // Game properties (populated into SBOFormat.GameProperties on export).
+    // Numeric ID is required for ItemRegistry to register the SBO; the other
+    // fields have item-friendly defaults but can be overridden here.
+    private final ImInt numericId = new ImInt(0);
+    private final ImInt maxStackSize = new ImInt(64);
+    private final ImInt categoryIndex = new ImInt(1); // TOOLS
+    private final ImInt atlasX = new ImInt(-1);
+    private final ImInt atlasY = new ImInt(-1);
+    private final ImInt renderLayerIndex = new ImInt(1); // CUTOUT
+    private final imgui.type.ImFloat hardness = new imgui.type.ImFloat(0.0f);
+
     /**
-     * SBT-valid texture types. ITEM was removed when sprite items migrated
-     * to texture-only SBOs (format 1.2+). Combo indices map to
-     * {@link #TEXTURE_TYPE_VALUES} so the SBTFormat.TextureType round-trips
-     * correctly even though the indices no longer match the enum's ordinals.
+     * Category labels mirror {@code com.stonebreak.items.ItemCategory} enum
+     * names. Values stored in GameProperties as the enum name (e.g. "TOOLS").
      */
-    private static final String[] TEXTURE_TYPE_LABELS = {
-            "Block", "Entity", "UI", "Other"
+    private static final String[] CATEGORY_LABELS = {
+            "BLOCKS", "TOOLS", "MATERIALS", "FOOD", "DECORATIVE"
     };
-    private static final SBTFormat.TextureType[] TEXTURE_TYPE_VALUES = {
-            SBTFormat.TextureType.BLOCK,
-            SBTFormat.TextureType.ENTITY,
-            SBTFormat.TextureType.UI,
-            SBTFormat.TextureType.OTHER
+    private static final String[] RENDER_LAYER_LABELS = {
+            "OPAQUE", "CUTOUT", "TRANSLUCENT"
+    };
+
+    /**
+     * Object types valid for a texture-only SBO. Indices map directly to
+     * SBOFormat.ObjectType so the combo selection round-trips cleanly.
+     * BLOCK is excluded — model-bearing blocks go through the model editor's
+     * SBO export, not this dialog.
+     */
+    private static final SBOFormat.ObjectType[] OBJECT_TYPE_VALUES = {
+            SBOFormat.ObjectType.ITEM,
+            SBOFormat.ObjectType.DECORATION,
+            SBOFormat.ObjectType.PARTICLE,
+            SBOFormat.ObjectType.OTHER
+    };
+    private static final String[] OBJECT_TYPE_LABELS = {
+            "Item", "Decoration", "Particle", "Other"
     };
 
     private String validationMessage = "";
@@ -90,24 +112,19 @@ public class SBTExportWindow {
 
     private float formOffsetX = MIN_SIDE_PADDING;
 
-    public SBTExportWindow(ImBoolean visible,
-                           ThemeManager themeManager,
-                           StatusService statusService,
-                           FileDialogService fileDialogService) {
+    public SBOTextureExportWindow(ImBoolean visible,
+                                  ThemeManager themeManager,
+                                  StatusService statusService,
+                                  FileDialogService fileDialogService) {
         this.visible = visible;
         this.themeManager = themeManager;
         this.statusService = statusService;
         this.fileDialogService = fileDialogService;
-        this.serializer = new SBTSerializer();
+        this.serializer = new SBOSerializer();
         this.titleBar = new WindowTitleBar(WINDOW_TITLE, true, false);
-
-        texturePack.set("default");
+        objectPack.set("default");
     }
 
-    /**
-     * Wire a supplier that returns the current OMT file path on disk, or null
-     * if no OMT is loaded/saved. Pulled at export time.
-     */
     public void setOMTPathSupplier(Supplier<String> supplier) {
         this.omtPathSupplier = supplier != null ? supplier : (() -> null);
     }
@@ -116,31 +133,20 @@ public class SBTExportWindow {
         visible.set(true);
         prepopulateFromTexture();
         validationMessage = "";
-        logger.debug("SBT export window shown");
+        logger.debug("SBO texture export window shown");
     }
 
-    public void hide() {
-        visible.set(false);
-    }
-
-    public boolean isVisible() {
-        return visible.get();
-    }
+    public void hide() { visible.set(false); }
+    public boolean isVisible() { return visible.get(); }
 
     public void render() {
-        if (!visible.get()) {
-            return;
-        }
+        if (!visible.get()) return;
 
         if (!iniFileSet) {
             ImGui.setNextWindowSize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT);
-
             float screenW = ImGui.getMainViewport().getSizeX();
             float screenH = ImGui.getMainViewport().getSizeY();
-            ImGui.setNextWindowPos(
-                    (screenW - MIN_WINDOW_WIDTH) * 0.5f,
-                    (screenH - MIN_WINDOW_HEIGHT) * 0.5f
-            );
+            ImGui.setNextWindowPos((screenW - MIN_WINDOW_WIDTH) * 0.5f, (screenH - MIN_WINDOW_HEIGHT) * 0.5f);
             iniFileSet = true;
         }
 
@@ -153,16 +159,13 @@ public class SBTExportWindow {
                 | ImGuiWindowFlags.NoScrollbar;
 
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
-
         if (ImGui.begin(WINDOW_TITLE, visible, windowFlags)) {
             try {
                 WindowTitleBar.Result result = titleBar.render();
-                if (result.minimizeClicked() || result.closeClicked()) {
-                    visible.set(false);
-                }
+                if (result.minimizeClicked() || result.closeClicked()) visible.set(false);
                 renderContent();
             } catch (Exception e) {
-                logger.error("Error rendering SBT export window", e);
+                logger.error("Error rendering SBO texture export window", e);
                 ImGui.textColored(1.0f, 0.0f, 0.0f, 1.0f, "Error rendering export window");
             }
         }
@@ -178,7 +181,7 @@ public class SBTExportWindow {
         formOffsetX = Math.max(MIN_SIDE_PADDING, (windowWidth - FORM_WIDTH) * 0.5f);
 
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 8.0f, CONTENT_PADDING_Y);
-        ImGui.beginChild("##SBTContent", windowWidth, contentHeight, false);
+        ImGui.beginChild("##SBOTexContent", windowWidth, contentHeight, false);
 
         renderFormFields();
 
@@ -190,20 +193,20 @@ public class SBTExportWindow {
 
     private void renderFormFields() {
         ImGui.setCursorPosX(formOffsetX);
-        ImGuiComponents.renderCompactSectionHeader("Texture Identity");
+        ImGuiComponents.renderCompactSectionHeader("Object Identity");
         ImGui.spacing();
 
-        renderLabeledInput("Texture ID", "sbt_tex_id", textureId, "e.g. stonebreak:cow_default");
-        renderLabeledInput("Texture Name", "sbt_tex_name", textureName, "e.g. Cow Default");
+        renderLabeledInput("Object ID", "sbo_tex_obj_id", objectId, "e.g. stonebreak:sword");
+        renderLabeledInput("Object Name", "sbo_tex_obj_name", objectName, "e.g. Sword");
 
         ImGui.dummy(0, ROW_SPACING);
 
         ImGui.setCursorPosX(formOffsetX);
-        ImGuiComponents.renderCompactSectionHeader("Texture Classification");
+        ImGuiComponents.renderCompactSectionHeader("Classification");
         ImGui.spacing();
 
-        renderLabeledCombo("Texture Type", "sbt_tex_type", textureTypeIndex, TEXTURE_TYPE_LABELS);
-        renderLabeledInput("Texture Pack", "sbt_tex_pack", texturePack, "e.g. default, expansion_1");
+        renderLabeledCombo("Object Type", "sbo_tex_obj_type", objectTypeIndex, OBJECT_TYPE_LABELS);
+        renderLabeledInput("Object Pack", "sbo_tex_obj_pack", objectPack, "e.g. default, expansion_1");
 
         ImGui.dummy(0, ROW_SPACING);
 
@@ -211,7 +214,7 @@ public class SBTExportWindow {
         ImGuiComponents.renderCompactSectionHeader("Attribution");
         ImGui.spacing();
 
-        renderLabeledInput("Author", "sbt_author", author, "Creator name or studio");
+        renderLabeledInput("Author", "sbo_tex_author", author, "Creator name or studio");
 
         ImGui.dummy(0, 2);
 
@@ -220,9 +223,31 @@ public class SBTExportWindow {
         ImGui.dummy(0, 2);
         ImGui.setCursorPosX(formOffsetX);
         ImGui.pushItemWidth(INPUT_WIDTH);
-        ImGui.inputTextMultiline("##sbt_desc", description, INPUT_WIDTH, DESCRIPTION_HEIGHT,
+        ImGui.inputTextMultiline("##sbo_tex_desc", description, INPUT_WIDTH, DESCRIPTION_HEIGHT,
                 ImGuiInputTextFlags.AllowTabInput);
         ImGui.popItemWidth();
+
+        ImGui.dummy(0, ROW_SPACING);
+
+        ImGui.setCursorPosX(formOffsetX);
+        ImGuiComponents.renderCompactSectionHeader("Game Properties");
+        ImGui.spacing();
+
+        renderLabeledIntInput("Numeric ID", "sbo_tex_num_id", numericId,
+                "required — unique across items (e.g. 1012)");
+        renderLabeledIntInput("Max Stack", "sbo_tex_stack", maxStackSize, "1–64");
+        renderLabeledCombo("Category", "sbo_tex_cat", categoryIndex, CATEGORY_LABELS);
+
+        ImGui.dummy(0, ROW_SPACING);
+
+        ImGui.setCursorPosX(formOffsetX);
+        ImGui.textDisabled("Advanced (defaults are sensible for sprite items)");
+        ImGui.dummy(0, 2);
+
+        renderLabeledIntInput("Atlas X", "sbo_tex_atlasx", atlasX, "-1 = none");
+        renderLabeledIntInput("Atlas Y", "sbo_tex_atlasy", atlasY, "-1 = none");
+        renderLabeledCombo("Render Layer", "sbo_tex_rl", renderLayerIndex, RENDER_LAYER_LABELS);
+        renderLabeledFloatInput("Hardness", "sbo_tex_hard", hardness, "seconds to break");
 
         if (!validationMessage.isEmpty()) {
             ImGui.dummy(0, ROW_SPACING);
@@ -237,7 +262,34 @@ public class SBTExportWindow {
         ImGui.pushItemWidth(INPUT_WIDTH);
         ImGui.inputTextWithHint("##" + id, hint, buffer);
         ImGui.popItemWidth();
+        ImGui.dummy(0, ROW_SPACING);
+    }
 
+    private void renderLabeledIntInput(String label, String id, ImInt value, String hint) {
+        ImGui.setCursorPosX(formOffsetX);
+        ImGui.textDisabled(label);
+        ImGui.sameLine(formOffsetX + LABEL_WIDTH);
+        ImGui.pushItemWidth(INPUT_WIDTH);
+        ImGui.inputInt("##" + id, value);
+        ImGui.popItemWidth();
+        if (hint != null && !hint.isBlank()) {
+            ImGui.setCursorPosX(formOffsetX + LABEL_WIDTH);
+            ImGui.textDisabled(hint);
+        }
+        ImGui.dummy(0, ROW_SPACING);
+    }
+
+    private void renderLabeledFloatInput(String label, String id, imgui.type.ImFloat value, String hint) {
+        ImGui.setCursorPosX(formOffsetX);
+        ImGui.textDisabled(label);
+        ImGui.sameLine(formOffsetX + LABEL_WIDTH);
+        ImGui.pushItemWidth(INPUT_WIDTH);
+        ImGui.inputFloat("##" + id, value);
+        ImGui.popItemWidth();
+        if (hint != null && !hint.isBlank()) {
+            ImGui.setCursorPosX(formOffsetX + LABEL_WIDTH);
+            ImGui.textDisabled(hint);
+        }
         ImGui.dummy(0, ROW_SPACING);
     }
 
@@ -248,7 +300,6 @@ public class SBTExportWindow {
         ImGui.pushItemWidth(INPUT_WIDTH);
         ImGui.combo("##" + id, selected, items);
         ImGui.popItemWidth();
-
         ImGui.dummy(0, ROW_SPACING);
     }
 
@@ -256,21 +307,14 @@ public class SBTExportWindow {
         ImDrawList drawList = ImGui.getWindowDrawList();
         ImVec2 pos = ImGui.getCursorScreenPos();
         float bannerWidth = LABEL_WIDTH + INPUT_WIDTH;
-
         float padding = 8.0f;
         ImVec2 textSize = ImGui.calcTextSize(message);
         float bannerHeight = textSize.y + padding * 2;
 
-        drawList.addRectFilled(
-                pos.x, pos.y,
-                pos.x + bannerWidth, pos.y + bannerHeight,
-                ImColor.rgba(0.8f, 0.2f, 0.2f, 0.15f), 4.0f
-        );
-        drawList.addRectFilled(
-                pos.x, pos.y,
-                pos.x + 3.0f, pos.y + bannerHeight,
-                ImColor.rgba(0.9f, 0.3f, 0.3f, 0.8f), 2.0f
-        );
+        drawList.addRectFilled(pos.x, pos.y, pos.x + bannerWidth, pos.y + bannerHeight,
+                ImColor.rgba(0.8f, 0.2f, 0.2f, 0.15f), 4.0f);
+        drawList.addRectFilled(pos.x, pos.y, pos.x + 3.0f, pos.y + bannerHeight,
+                ImColor.rgba(0.9f, 0.3f, 0.3f, 0.8f), 2.0f);
 
         ImGui.setCursorScreenPos(pos.x + padding + 3.0f, pos.y + padding);
         ImGui.textColored(1.0f, 0.45f, 0.4f, 1.0f, message);
@@ -296,7 +340,6 @@ public class SBTExportWindow {
         float sepCenter = (footerLeft + footerRight) * 0.5f;
         int sepBright = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.25f);
         int sepFade = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.0f);
-
         drawList.addRectFilledMultiColor(footerLeft, footerTop, sepCenter, footerTop + 1.0f,
                 sepFade, sepBright, sepBright, sepFade);
         drawList.addRectFilledMultiColor(sepCenter, footerTop, footerRight, footerTop + 1.0f,
@@ -307,23 +350,20 @@ public class SBTExportWindow {
         float cancelX = footerRight - rightMargin - totalButtonsWidth;
         float exportX = cancelX + buttonWidth + buttonSpacing;
 
-        renderFooterButton(drawList, "Cancel", "sbt_cancel", cancelX, buttonY,
+        renderFooterButton(drawList, "Cancel", "sbo_tex_cancel", cancelX, buttonY,
                 buttonWidth, buttonHeight, false, theme, accentBase, () -> visible.set(false));
-
-        renderFooterButton(drawList, "Export", "sbt_export", exportX, buttonY,
+        renderFooterButton(drawList, "Export", "sbo_tex_export", exportX, buttonY,
                 buttonWidth, buttonHeight, true, theme, accentBase, this::performExport);
     }
 
     private void renderFooterButton(ImDrawList drawList, String label, String id,
-                                     float x, float y, float width, float height,
-                                     boolean primary, ThemeDefinition theme,
-                                     ImVec4 accentBase, Runnable onClick) {
+                                    float x, float y, float width, float height,
+                                    boolean primary, ThemeDefinition theme,
+                                    ImVec4 accentBase, Runnable onClick) {
         ImGui.setCursorScreenPos(x, y);
         ImGui.invisibleButton("##" + id, width, height);
         boolean isHovered = ImGui.isItemHovered();
-        if (ImGui.isItemClicked()) {
-            onClick.run();
-        }
+        if (ImGui.isItemClicked()) onClick.run();
 
         float x2 = x + width;
         float y2 = y + height;
@@ -375,15 +415,19 @@ public class SBTExportWindow {
             String nameWithoutExt = fileName.contains(".")
                     ? fileName.substring(0, fileName.lastIndexOf('.'))
                     : fileName;
-            textureName.set(nameWithoutExt);
-
+            objectName.set(nameWithoutExt);
             String idCandidate = nameWithoutExt.toLowerCase().replace(' ', '_');
-            textureId.set("stonebreak:" + idCandidate);
+            objectId.set("stonebreak:" + idCandidate);
         }
     }
 
     private void performExport() {
-        SBTFormat.ExportParameters params = buildParameters();
+        if (numericId.get() <= 0) {
+            validationMessage = "Numeric ID must be > 0 (required for ItemRegistry to load this SBO)";
+            return;
+        }
+
+        SBOFormat.ExportParameters params = buildParameters();
 
         if (!params.isValid()) {
             validationMessage = params.getValidationError();
@@ -393,35 +437,59 @@ public class SBTExportWindow {
 
         String omtPathStr = omtPathSupplier.get();
         if (omtPathStr == null || omtPathStr.isBlank()) {
-            validationMessage = "Texture must be saved as .OMT before exporting to .SBT";
+            validationMessage = "Texture must be saved as .OMT before exporting to .SBO";
             statusService.updateStatus("Export failed: texture not saved as .OMT");
             return;
         }
 
         Path omtPath = Path.of(omtPathStr);
 
-        fileDialogService.showSaveSBTDialog(filePath -> {
-            boolean success = serializer.export(params, omtPath, filePath);
+        fileDialogService.showSaveSBODialog(filePath -> {
+            boolean success = serializer.exportTexture(params, omtPath, filePath);
             if (success) {
-                statusService.updateStatus("Exported SBT: " + Path.of(filePath).getFileName());
+                statusService.updateStatus("Exported SBO: " + Path.of(filePath).getFileName());
                 visible.set(false);
-                logger.info("SBT export successful: {}", filePath);
+                logger.info("SBO texture export successful: {}", filePath);
             } else {
                 validationMessage = "Export failed. Check logs for details.";
-                statusService.updateStatus("SBT export failed");
+                statusService.updateStatus("SBO texture export failed");
             }
         });
     }
 
-    private SBTFormat.ExportParameters buildParameters() {
-        SBTFormat.ExportParameters params = new SBTFormat.ExportParameters();
-        params.setTextureId(textureId.get().trim());
-        params.setTextureName(textureName.get().trim());
-        params.setTextureType(TEXTURE_TYPE_VALUES[textureTypeIndex.get()]);
-        params.setTexturePack(texturePack.get().trim());
+    private SBOFormat.ExportParameters buildParameters() {
+        SBOFormat.ExportParameters params = new SBOFormat.ExportParameters();
+        params.setObjectId(objectId.get().trim());
+        params.setObjectName(objectName.get().trim());
+        params.setObjectType(OBJECT_TYPE_VALUES[objectTypeIndex.get()]);
+        params.setObjectPack(objectPack.get().trim());
         params.setAuthor(author.get().trim());
         params.setDescription(description.get().trim());
+        params.setGameProperties(buildGameProperties());
         return params;
+    }
+
+    /**
+     * Build a GameProperties block from the form. Defaults match the values
+     * the SBT-to-SBO migration emits for sprite items: not solid, breakable,
+     * not transparent (CUTOUT layer handles alpha), not placeable.
+     */
+    private SBOFormat.GameProperties buildGameProperties() {
+        return new SBOFormat.GameProperties(
+                numericId.get(),
+                hardness.get(),
+                false,                              // solid
+                true,                               // breakable
+                atlasX.get(),
+                atlasY.get(),
+                RENDER_LAYER_LABELS[renderLayerIndex.get()],
+                true,                               // transparent
+                false,                              // flower
+                false,                              // stackable
+                Math.max(1, maxStackSize.get()),
+                CATEGORY_LABELS[categoryIndex.get()],
+                false                               // placeable
+        );
     }
 
     private ImVec4 getAccentColor(ThemeDefinition theme) {

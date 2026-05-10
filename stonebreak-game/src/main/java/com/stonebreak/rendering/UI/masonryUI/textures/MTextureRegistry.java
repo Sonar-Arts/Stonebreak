@@ -26,6 +26,36 @@ public final class MTextureRegistry {
      * Return a cached MTexture for {@code classpathResource}, loading it on
      * the first call. Returns {@code null} if the resource cannot be loaded.
      */
+    /**
+     * Return a cached MTexture for an SBO-backed item, loading it from the
+     * item registry on first call. Cache key is the item's namespaced object
+     * ID (e.g. {@code "sbo:stonebreak:sword"}). Returns {@code null} if the
+     * item isn't registered or its OMT cannot be decoded.
+     */
+    public static MTexture getForSboItem(com.stonebreak.items.ItemType itemType) {
+        if (itemType == null) return null;
+        String key = "sbo:" + com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer.sboItemId(itemType);
+
+        MTexture cached = CACHE.get(key);
+        if (cached != null) return cached;
+        if (FAILED.contains(key)) return null;
+
+        var entry = com.stonebreak.items.registry.ItemRegistry.getInstance()
+                .get(com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer.sboItemId(itemType))
+                .orElse(null);
+        if (entry == null) {
+            FAILED.add(key);
+            return null;
+        }
+        MTexture loaded = MTexture.loadFromOmtBytes(key, entry.omtBytes());
+        if (loaded != null) {
+            CACHE.put(key, loaded);
+        } else {
+            FAILED.add(key);
+        }
+        return loaded;
+    }
+
     public static MTexture get(String classpathResource) {
         if (classpathResource == null || classpathResource.isBlank()) return null;
 

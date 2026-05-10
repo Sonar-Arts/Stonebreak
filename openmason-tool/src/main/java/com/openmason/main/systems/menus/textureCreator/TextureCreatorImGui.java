@@ -447,6 +447,16 @@ public class TextureCreatorImGui {
         windowedMenuBarRenderer.setSBTOMTPathSupplier(omtPathSupplier);
     }
 
+    /**
+     * Wire the Tools → Export SBO menu entry. The OMT path supplier is shared
+     * with the SBT trigger (both formats wrap the same OMT source); only the
+     * action callback differs.
+     */
+    public void setSBOExportTrigger(Runnable onExportSBO) {
+        menuBarRenderer.setOnExportSBO(onExportSBO);
+        windowedMenuBarRenderer.setOnExportSBO(onExportSBO);
+    }
+
     public TextureCreatorController getController() {
         return controller;
     }

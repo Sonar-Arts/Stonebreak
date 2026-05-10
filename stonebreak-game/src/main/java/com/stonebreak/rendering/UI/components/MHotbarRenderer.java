@@ -191,10 +191,9 @@ public class MHotbarRenderer {
             Item item = stack.getItem();
             if (!(item instanceof ItemType itemType)) continue;
 
-            String sbtPath = SpriteVoxelizer.getSbtTexturePath(itemType);
-            if (sbtPath == null) continue;
+            if (!SpriteVoxelizer.isSboBackedItem(itemType)) continue;
 
-            MTexture tex = MTextureRegistry.get(sbtPath);
+            MTexture tex = MTextureRegistry.getForSboItem(itemType);
             if (tex == null) continue;
 
             HotbarLayoutCalculator.SlotPosition pos =
@@ -238,7 +237,7 @@ public class MHotbarRenderer {
             if (item instanceof BlockType bt) {
                 uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt,
                         iconX, iconY, iconSize, iconSize, renderer.getTextureAtlas());
-            } else if (!(item instanceof ItemType it && SpriteVoxelizer.getSbtTexturePath(it) != null)) {
+            } else if (!(item instanceof ItemType it && SpriteVoxelizer.isSboBackedItem(it))) {
                 uiRenderer.renderItemIcon(iconX, iconY, iconSize, iconSize,
                         item, renderer.getTextureAtlas());
             }

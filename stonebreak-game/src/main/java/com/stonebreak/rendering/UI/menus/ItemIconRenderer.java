@@ -20,7 +20,7 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 
 public class ItemIconRenderer extends BaseRenderer {
 
-    private final Map<ItemType, Integer> sbtImageCache = new HashMap<>();
+    private final Map<ItemType, Integer> sboItemImageCache = new HashMap<>();
 
     public ItemIconRenderer(long vg) {
         super(vg);
@@ -56,9 +56,8 @@ public class ItemIconRenderer extends BaseRenderer {
         if (item instanceof BlockType blockType) {
             texCoords = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.TOP);
         } else if (item instanceof ItemType itemType) {
-            String sbtPath = SpriteVoxelizer.getSbtTexturePath(itemType);
-            if (sbtPath != null) {
-                renderSbtItemIcon(x, y, w, h, itemType, sbtPath);
+            if (SpriteVoxelizer.isSboBackedItem(itemType)) {
+                renderSboItemIcon(x, y, w, h, itemType);
                 return;
             }
             texCoords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
@@ -152,9 +151,8 @@ public class ItemIconRenderer extends BaseRenderer {
         }
     }
     
-    private void renderSbtItemIcon(float x, float y, float w, float h,
-                                   ItemType itemType, String sbtPath) {
-        int imageId = getSbtNvgImage(itemType, sbtPath);
+    private void renderSboItemIcon(float x, float y, float w, float h, ItemType itemType) {
+        int imageId = getSboItemNvgImage(itemType);
         if (imageId < 0) return;
         try (MemoryStack stack = stackPush()) {
             NVGPaint paint = NVGPaint.malloc(stack);
@@ -166,14 +164,13 @@ public class ItemIconRenderer extends BaseRenderer {
         }
     }
 
-    private int getSbtNvgImage(ItemType itemType, String sbtPath) {
-        Integer cached = sbtImageCache.get(itemType);
+    private int getSboItemNvgImage(ItemType itemType) {
+        Integer cached = sboItemImageCache.get(itemType);
         if (cached != null) return cached;
 
-        String resourcePath = sbtPath.startsWith("/") ? sbtPath.substring(1) : sbtPath;
-        BufferedImage img = SpriteVoxelizer.loadSpriteFromSbt(resourcePath);
+        BufferedImage img = SpriteVoxelizer.loadSpriteFromSboItem(itemType);
         if (img == null) {
-            sbtImageCache.put(itemType, -1);
+            sboItemImageCache.put(itemType, -1);
             return -1;
         }
 
@@ -192,7 +189,7 @@ public class ItemIconRenderer extends BaseRenderer {
         rgba.flip();
 
         int imageId = nvgCreateImageRGBA(vg, imgW, imgH, 0, rgba);
-        sbtImageCache.put(itemType, imageId);
+        sboItemImageCache.put(itemType, imageId);
         return imageId;
     }
 

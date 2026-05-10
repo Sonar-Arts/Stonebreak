@@ -40,6 +40,7 @@ public class WindowedMenuBarRenderer {
     private Runnable onLayersPanelToggle;
     private Runnable onColorPanelToggle;
     private Runnable onExportSBT;
+    private Runnable onExportSBO;
     private java.util.function.Supplier<String> sbtOmtPathSupplier = () -> null;
     private ImBoolean showLayersPanel;
     private ImBoolean showColorPanel;
@@ -96,6 +97,13 @@ public class WindowedMenuBarRenderer {
      */
     public void setOnExportSBT(Runnable callback) {
         this.onExportSBT = callback;
+    }
+
+    /**
+     * Set callback invoked when the user triggers Export SBO from the Tools menu.
+     */
+    public void setOnExportSBO(Runnable callback) {
+        this.onExportSBO = callback;
     }
 
     /**
@@ -292,11 +300,17 @@ public class WindowedMenuBarRenderer {
     private void renderToolsMenu() {
         if (ImGui.beginMenu("Tools")) {
             String omtPath = sbtOmtPathSupplier.get();
-            boolean canExportSBT = omtPath != null && !omtPath.isBlank();
+            boolean canExport = omtPath != null && !omtPath.isBlank();
 
-            if (ImGui.menuItem("Export SBT...", "", false, canExportSBT)) {
+            if (ImGui.menuItem("Export SBT...", "", false, canExport)) {
                 if (onExportSBT != null) {
                     onExportSBT.run();
+                }
+            }
+
+            if (ImGui.menuItem("Export SBO...", "", false, canExport)) {
+                if (onExportSBO != null) {
+                    onExportSBO.run();
                 }
             }
 

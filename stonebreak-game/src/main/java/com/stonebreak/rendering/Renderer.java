@@ -163,6 +163,12 @@ public class Renderer {
             int loaded = registry.scanAndLoad();
 
             if (loaded > 0) {
+                int registered = com.stonebreak.blocks.registry.BlockRegistry.getInstance().loadFrom(registry);
+                System.out.println("[Renderer] BlockRegistry: " + registered + " blocks auto-populated from SBOs");
+
+                int items = com.stonebreak.items.registry.ItemRegistry.getInstance().scanAndLoad();
+                System.out.println("[Renderer] ItemRegistry: " + items + " items auto-populated from SBOs");
+
                 SBOBlockBridge bridge = new SBOBlockBridge();
                 bridge.initialize(registry);
                 this.sboBlockBridge = bridge;

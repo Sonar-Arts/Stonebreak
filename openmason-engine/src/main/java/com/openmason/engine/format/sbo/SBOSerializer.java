@@ -90,7 +90,9 @@ public class SBOSerializer {
                     params.getAuthor(),
                     params.getDescription().isBlank() ? null : params.getDescription(),
                     Instant.now().toString(),
-                    SBOFormat.EMBEDDED_OMO_FILENAME
+                    SBOFormat.EMBEDDED_OMO_FILENAME,
+                    null,
+                    params.getGameProperties()
             );
 
             Path tempFile = Files.createTempFile("sbo_export_", ".tmp");
@@ -110,6 +112,129 @@ public class SBOSerializer {
 
         } catch (IOException e) {
             logger.error("Error exporting .SBO file: {}", outputPath, e);
+            return false;
+        }
+    }
+
+    /**
+     * Exports a texture-only SBO (1.2+) wrapping an existing .OMT file.
+     *
+     * <p>Used for sprite items and other assets that have no 3D model. The
+     * resulting SBO carries {@code textureFile=texture.omt} (no {@code omoFile})
+     * and is consumed game-side by the item voxelizer.
+     *
+     * @param params     export parameters; objectType is typically ITEM
+     * @param omtPath    path to the source .OMT file
+     * @param outputPath output file path for the .SBO file
+     * @return true if export succeeded
+     */
+    public boolean exportTexture(SBOFormat.ExportParameters params, Path omtPath, String outputPath) {
+        if (params == null || !params.isValid()) {
+            logger.error("Invalid export parameters: {}",
+                    params != null ? params.getValidationError() : "null");
+            return false;
+        }
+
+        if (omtPath == null || !Files.exists(omtPath)) {
+            logger.error("OMT file does not exist: {}", omtPath);
+            return false;
+        }
+
+        outputPath = SBOFormat.ensureExtension(outputPath);
+
+        try {
+            byte[] omtBytes = Files.readAllBytes(omtPath);
+            String checksum = computeChecksum(omtBytes);
+
+            SBOFormat.Document document = new SBOFormat.Document(
+                    SBOFormat.FORMAT_VERSION,
+                    params.getObjectId(),
+                    params.getObjectName(),
+                    params.getObjectType().getId(),
+                    params.getObjectPack(),
+                    checksum,
+                    params.getAuthor(),
+                    params.getDescription().isBlank() ? null : params.getDescription(),
+                    Instant.now().toString(),
+                    null,
+                    SBOFormat.EMBEDDED_OMT_FILENAME,
+                    params.getGameProperties()
+            );
+
+            Path tempFile = Files.createTempFile("sbo_tex_export_", ".tmp");
+
+            try (FileOutputStream fos = new FileOutputStream(tempFile.toFile());
+                 ZipOutputStream zos = new ZipOutputStream(fos)) {
+
+                writeManifest(zos, document);
+                writeEntry(zos, SBOFormat.EMBEDDED_OMT_FILENAME, omtBytes);
+            }
+
+            Path finalPath = Path.of(outputPath);
+            Files.move(tempFile, finalPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+            logger.info("Exported texture-only .SBO file: {} (checksum={})",
+                    outputPath, checksum.substring(0, 12) + "...");
+            return true;
+
+        } catch (IOException e) {
+            logger.error("Error exporting texture-only .SBO file: {}", outputPath, e);
+            return false;
+        }
+    }
+
+    /**
+     * Variant of {@link #exportTexture(SBOFormat.ExportParameters, Path, String)} that
+     * accepts raw OMT bytes (for in-memory generation, no temp file required).
+     *
+     * @param params    export parameters
+     * @param omtBytes  raw OMT archive bytes to embed
+     * @param outputPath output file path for the .SBO file
+     * @return true if export succeeded
+     */
+    public boolean exportTextureBytes(SBOFormat.ExportParameters params, byte[] omtBytes, String outputPath) {
+        if (params == null || !params.isValid()) {
+            logger.error("Invalid export parameters: {}",
+                    params != null ? params.getValidationError() : "null");
+            return false;
+        }
+        if (omtBytes == null || omtBytes.length == 0) {
+            logger.error("OMT bytes are empty");
+            return false;
+        }
+
+        outputPath = SBOFormat.ensureExtension(outputPath);
+
+        try {
+            String checksum = computeChecksum(omtBytes);
+
+            SBOFormat.Document document = new SBOFormat.Document(
+                    SBOFormat.FORMAT_VERSION,
+                    params.getObjectId(),
+                    params.getObjectName(),
+                    params.getObjectType().getId(),
+                    params.getObjectPack(),
+                    checksum,
+                    params.getAuthor(),
+                    params.getDescription().isBlank() ? null : params.getDescription(),
+                    Instant.now().toString(),
+                    null,
+                    SBOFormat.EMBEDDED_OMT_FILENAME,
+                    params.getGameProperties()
+            );
+
+            Path tempFile = Files.createTempFile("sbo_tex_export_", ".tmp");
+            try (FileOutputStream fos = new FileOutputStream(tempFile.toFile());
+                 ZipOutputStream zos = new ZipOutputStream(fos)) {
+                writeManifest(zos, document);
+                writeEntry(zos, SBOFormat.EMBEDDED_OMT_FILENAME, omtBytes);
+            }
+
+            Files.move(tempFile, Path.of(outputPath), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            logger.info("Exported texture-only .SBO (in-memory): {}", outputPath);
+            return true;
+        } catch (IOException e) {
+            logger.error("Error exporting texture-only .SBO file: {}", outputPath, e);
             return false;
         }
     }
@@ -178,6 +303,8 @@ public class SBOSerializer {
         public String description;
         public String createdAt;
         public String omoFile;
+        public String textureFile;
+        public GamePropertiesDTO gameProperties;
 
         public ManifestDTO(SBOFormat.Document doc) {
             this.version = doc.version();
@@ -191,6 +318,47 @@ public class SBOSerializer {
             this.description = doc.description();
             this.createdAt = doc.createdAt();
             this.omoFile = doc.omoFilename();
+            this.textureFile = doc.textureFilename();
+            this.gameProperties = doc.gameProperties() != null
+                    ? new GamePropertiesDTO(doc.gameProperties())
+                    : null;
+        }
+    }
+
+    /**
+     * DTO mirror of {@link SBOFormat.GameProperties} for Jackson serialization.
+     * Float.POSITIVE_INFINITY hardness serializes as the string "Infinity" via
+     * Jackson; the parser reads it back via {@code asDouble()} which handles it.
+     */
+    private static class GamePropertiesDTO {
+        public int numericId;
+        public float hardness;
+        public boolean solid;
+        public boolean breakable;
+        public int atlasX;
+        public int atlasY;
+        public String renderLayer;
+        public boolean transparent;
+        public boolean flower;
+        public boolean stackable;
+        public int maxStackSize;
+        public String category;
+        public boolean placeable;
+
+        public GamePropertiesDTO(SBOFormat.GameProperties gp) {
+            this.numericId = gp.numericId();
+            this.hardness = gp.hardness();
+            this.solid = gp.solid();
+            this.breakable = gp.breakable();
+            this.atlasX = gp.atlasX();
+            this.atlasY = gp.atlasY();
+            this.renderLayer = gp.renderLayer();
+            this.transparent = gp.transparent();
+            this.flower = gp.flower();
+            this.stackable = gp.stackable();
+            this.maxStackSize = gp.maxStackSize();
+            this.category = gp.category();
+            this.placeable = gp.placeable();
         }
     }
 }

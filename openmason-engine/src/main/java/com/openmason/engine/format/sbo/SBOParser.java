@@ -42,8 +42,9 @@ public class SBOParser {
 
         SBOFormat.Document manifest = null;
         byte[] omoBytes = null;
+        byte[] omtBytes = null;
 
-        // First pass: extract manifest and OMO bytes from SBO ZIP
+        // First pass: extract manifest and embedded asset (OMO XOR OMT) from the SBO ZIP
         try (InputStream fis = Files.newInputStream(sboPath);
              ZipInputStream zis = new ZipInputStream(fis)) {
 
@@ -59,6 +60,10 @@ public class SBOParser {
                 } else if (SBOFormat.EMBEDDED_OMO_FILENAME.equals(entryName)) {
                     omoBytes = readBytes(zis);
                     logger.debug("Extracted embedded OMO: {} bytes", omoBytes.length);
+
+                } else if (SBOFormat.EMBEDDED_OMT_FILENAME.equals(entryName)) {
+                    omtBytes = readBytes(zis);
+                    logger.debug("Extracted embedded OMT: {} bytes", omtBytes.length);
                 }
 
                 zis.closeEntry();
@@ -68,14 +73,30 @@ public class SBOParser {
         if (manifest == null) {
             throw new IOException("Missing manifest.json in SBO file: " + sboPath);
         }
-        if (omoBytes == null) {
-            throw new IOException("Missing model.omo in SBO file: " + sboPath);
+
+        if (manifest.isModelBearing()) {
+            if (omoBytes == null) {
+                throw new IOException("Manifest declares omoFile but model.omo missing: " + sboPath);
+            }
+            return parseModelBearing(manifest, omoBytes, sboPath);
         }
 
-        // Validate checksum
+        if (manifest.isTextureOnly()) {
+            if (omtBytes == null) {
+                throw new IOException("Manifest declares textureFile but texture.omt missing: " + sboPath);
+            }
+            validateChecksum(manifest, omtBytes, sboPath);
+            logger.info("Parsed texture-only SBO: {} ({}) - {} OMT bytes",
+                    manifest.objectName(), manifest.objectId(), omtBytes.length);
+            return new SBOParseResult(manifest, null, null, null, null, null, omtBytes);
+        }
+
+        throw new IOException("SBO manifest declares neither omoFile nor textureFile: " + sboPath);
+    }
+
+    private SBOParseResult parseModelBearing(SBOFormat.Document manifest, byte[] omoBytes, Path sboPath) throws IOException {
         validateChecksum(manifest, omoBytes, sboPath);
 
-        // Parse embedded OMO
         OMOReader.ReadResult omoResult;
         try (ByteArrayInputStream bais = new ByteArrayInputStream(omoBytes)) {
             omoResult = omoReader.read(bais);
@@ -92,13 +113,39 @@ public class SBOParser {
                 omoResult.meshData(),
                 omoResult.faceMappings(),
                 omoResult.materials(),
-                omoResult.defaultTextureBytes()
+                omoResult.defaultTextureBytes(),
+                null
         );
     }
 
     private SBOFormat.Document parseManifest(byte[] jsonBytes) throws IOException {
         String json = new String(jsonBytes, StandardCharsets.UTF_8);
         var root = objectMapper.readTree(json);
+
+        SBOFormat.GameProperties gameProperties = null;
+        if (root.has("gameProperties") && !root.get("gameProperties").isNull()) {
+            var gp = root.get("gameProperties");
+            gameProperties = new SBOFormat.GameProperties(
+                    gp.has("numericId") ? gp.get("numericId").asInt() : -1,
+                    gp.has("hardness") ? (float) gp.get("hardness").asDouble() : 1.0f,
+                    !gp.has("solid") || gp.get("solid").asBoolean(),
+                    !gp.has("breakable") || gp.get("breakable").asBoolean(),
+                    gp.has("atlasX") ? gp.get("atlasX").asInt() : -1,
+                    gp.has("atlasY") ? gp.get("atlasY").asInt() : -1,
+                    gp.has("renderLayer") ? gp.get("renderLayer").asText() : null,
+                    gp.has("transparent") && gp.get("transparent").asBoolean(),
+                    gp.has("flower") && gp.get("flower").asBoolean(),
+                    gp.has("stackable") && gp.get("stackable").asBoolean(),
+                    gp.has("maxStackSize") ? gp.get("maxStackSize").asInt() : 64,
+                    gp.has("category") ? gp.get("category").asText() : null,
+                    !gp.has("placeable") || gp.get("placeable").asBoolean()
+            );
+        }
+
+        String omoFile = root.has("omoFile") && !root.get("omoFile").isNull()
+                ? nullIfBlank(root.get("omoFile").asText()) : null;
+        String textureFile = root.has("textureFile") && !root.get("textureFile").isNull()
+                ? nullIfBlank(root.get("textureFile").asText()) : null;
 
         return new SBOFormat.Document(
                 root.get("version").asText(),
@@ -110,8 +157,14 @@ public class SBOParser {
                 root.get("author").asText(),
                 root.has("description") ? root.get("description").asText() : null,
                 root.has("createdAt") ? root.get("createdAt").asText() : null,
-                root.get("omoFile").asText()
+                omoFile,
+                textureFile,
+                gameProperties
         );
+    }
+
+    private static String nullIfBlank(String s) {
+        return s == null || s.isBlank() ? null : s;
     }
 
     private void validateChecksum(SBOFormat.Document manifest, byte[] omoBytes, Path sboPath) throws IOException {
