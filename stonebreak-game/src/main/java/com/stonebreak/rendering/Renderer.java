@@ -215,6 +215,14 @@ public class Renderer {
                         sboCullingService.setCrossBlockPolicy(block ->
                                 block instanceof com.stonebreak.blocks.BlockType bt && bt.isFlower());
 
+                        // Snow layers are partial-height: adjacent snow blocks
+                        // can have different layer counts, leaving the taller
+                        // block's side face partially exposed above the shorter
+                        // neighbor. Skip same-type side-face culling for these.
+                        sboCullingService.setPartialHeightPolicy(block ->
+                                block instanceof com.stonebreak.blocks.BlockType bt
+                                        && bt == com.stonebreak.blocks.BlockType.SNOW);
+
                         pendingSBOEmitter = sboRendererAPI.createEmitter(sboCullingService, translucencyPolicy);
 
                         MmsFaceCullingService cullingForNeighborLookup = sboCullingService;
