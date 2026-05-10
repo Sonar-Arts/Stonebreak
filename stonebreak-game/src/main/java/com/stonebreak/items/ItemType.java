@@ -1,5 +1,8 @@
 package com.stonebreak.items;
 
+import com.openmason.engine.format.sbo.SBOFormat;
+import com.stonebreak.items.registry.ItemRegistry;
+
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -8,41 +11,60 @@ import java.util.Map;
 /**
  * Defines non-placeable items in the game (tools, materials, consumables, etc.).
  *
- * <p><strong>This was originally an enum.</strong> It is now a final class so
- * that new items can be added at runtime from SBO files via
- * {@link #register(String, int, String, int, int, ItemCategory, int)} without
- * requiring a Java constant. The 11 hardcoded constants remain as
- * {@code public static final} fields so existing call sites
- * ({@code ItemType.STICK} etc.) keep working unchanged.
+ * <p><strong>Registry-backed.</strong> The 6 SBO-backed items
+ * (SWORD, WAR_AXE, ...) pull their data from {@link ItemRegistry} at
+ * class-init time. The SBO files under {@code sbo/items/} are the source of
+ * truth for those.
  *
- * <p>API mirrors {@link Enum}: {@link #values()}, {@link #valueOf(String)},
- * {@link #name()} all behave as they did before.
+ * <p>The 5 PNG-backed items (STICK, WOODEN_PICKAXE, WOODEN_AXE, WOODEN_BUCKET,
+ * WOODEN_BUCKET_WATER) remain hardcoded — they don't have SBOs yet, just
+ * flat PNG sprites under {@code Items/Textures/}. Migrate them to SBO and
+ * they'll move to the registry-backed list.
+ *
+ * <p>SBO files dropped into {@code sbo/items/} are auto-registered via the
+ * promotion block at the end of class init.
  */
 public final class ItemType implements Item {
 
     private static final Map<String, ItemType> BY_NAME = new LinkedHashMap<>();
     private static final Map<Integer, ItemType> BY_ID = new LinkedHashMap<>();
 
-    // ----- Hardcoded constants. IDs are the values persisted in inventory
-    //       save data and MUST stay stable. ----------------------------------
+    static {
+        ItemRegistry.getInstance().scanAndLoad();
+    }
 
-    // Materials
-    public static final ItemType STICK = create("STICK", 1001, "Stick", 1, 3, ItemCategory.MATERIALS, 64);
+    // ----- Hardcoded items (PNG-backed, no SBO yet). --------------------
 
-    // Tools
-    public static final ItemType WOODEN_PICKAXE = create("WOODEN_PICKAXE", 1002, "Wooden Pickaxe", 3, 3, ItemCategory.TOOLS, 1);
-    public static final ItemType WOODEN_AXE = create("WOODEN_AXE", 1003, "Wooden Axe", 8, 3, ItemCategory.TOOLS, 1);
-    public static final ItemType WOODEN_BUCKET = create("WOODEN_BUCKET", 1004, "Wooden Bucket", 0, 4, ItemCategory.TOOLS, 16);
-    public static final ItemType WOODEN_BUCKET_WATER = create("WOODEN_BUCKET_WATER", 1005, "Wooden Water Bucket", 1, 4, ItemCategory.TOOLS, 1);
+    public static final ItemType STICK = createSentinel("STICK", 1001, "Stick", 1, 3, ItemCategory.MATERIALS, 64);
+    public static final ItemType WOODEN_PICKAXE = createSentinel("WOODEN_PICKAXE", 1002, "Wooden Pickaxe", 3, 3, ItemCategory.TOOLS, 1);
+    public static final ItemType WOODEN_AXE = createSentinel("WOODEN_AXE", 1003, "Wooden Axe", 8, 3, ItemCategory.TOOLS, 1);
+    public static final ItemType WOODEN_BUCKET = createSentinel("WOODEN_BUCKET", 1004, "Wooden Bucket", 0, 4, ItemCategory.TOOLS, 16);
+    public static final ItemType WOODEN_BUCKET_WATER = createSentinel("WOODEN_BUCKET_WATER", 1005, "Wooden Water Bucket", 1, 4, ItemCategory.TOOLS, 1);
 
-    // Items previously sourced from SBT files; now sourced from SBOs under sbo/items/
-    // (the hardcoded entries here remain so existing inventory references keep working).
-    public static final ItemType PATTY_SMACKER = create("PATTY_SMACKER", 1006, "Patty Smacker", 0, 0, ItemCategory.TOOLS, 1);
-    public static final ItemType SNOWBALL = create("SNOWBALL", 1007, "Snowball", 0, 0, ItemCategory.MATERIALS, 16);
-    public static final ItemType STONE_SHOVEL = create("STONE_SHOVEL", 1008, "Stone Shovel", 0, 0, ItemCategory.TOOLS, 1);
-    public static final ItemType SWORD = create("SWORD", 1009, "Sword", 0, 0, ItemCategory.TOOLS, 1);
-    public static final ItemType WAR_AXE = create("WAR_AXE", 1010, "War Axe", 0, 0, ItemCategory.TOOLS, 1);
-    public static final ItemType WOODEN_SHOVEL = create("WOODEN_SHOVEL", 1011, "Wooden Shovel", 0, 0, ItemCategory.TOOLS, 1);
+    // ----- SBO-backed items. Data comes from sbo/items/ gameProperties. ---
+
+    public static final ItemType PATTY_SMACKER = fromRegistry("stonebreak:patty_smacker", "PATTY_SMACKER");
+    public static final ItemType SNOWBALL = fromRegistry("stonebreak:snowball", "SNOWBALL");
+    public static final ItemType STONE_SHOVEL = fromRegistry("stonebreak:stone_shovel", "STONE_SHOVEL");
+    public static final ItemType SWORD = fromRegistry("stonebreak:sword", "SWORD");
+    public static final ItemType WAR_AXE = fromRegistry("stonebreak:war_axe", "WAR_AXE");
+    public static final ItemType WOODEN_SHOVEL = fromRegistry("stonebreak:wooden_shovel", "WOODEN_SHOVEL");
+
+    // ----- Promote SBO entries that don't match a static-final field above.
+
+    static {
+        for (ItemRegistry.ItemEntry entry : ItemRegistry.getInstance().all()) {
+            String enumName = ItemRegistry.sboNameToEnumName(entry.objectId());
+            if (BY_NAME.containsKey(enumName) || BY_ID.containsKey(entry.numericId())) {
+                continue;
+            }
+            SBOFormat.GameProperties gp = entry.properties();
+            ItemCategory category = ItemRegistry.parseCategoryOrDefault(gp.categoryOrDefault());
+            registerInternal(new ItemType(
+                    enumName, gp.numericId(), entry.displayName(),
+                    gp.atlasX(), gp.atlasY(), category, gp.maxStackSize()));
+        }
+    }
 
     // ----- Instance fields (immutable) -----
 
@@ -65,18 +87,29 @@ public final class ItemType implements Item {
         this.maxStackSize = maxStackSize;
     }
 
-    private static ItemType create(String enumName, int id, String name, int atlasX, int atlasY,
-                                   ItemCategory category, int maxStackSize) {
+    private static ItemType createSentinel(String enumName, int id, String name, int atlasX, int atlasY,
+                                           ItemCategory category, int maxStackSize) {
         ItemType it = new ItemType(enumName, id, name, atlasX, atlasY, category, maxStackSize);
         registerInternal(it);
         return it;
     }
 
+    private static ItemType fromRegistry(String objectId, String enumName) {
+        ItemRegistry.ItemEntry entry = ItemRegistry.getInstance().get(objectId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "ItemType." + enumName + " requires SBO '" + objectId
+                                + "' but none is registered. Check sbo/items/."));
+        SBOFormat.GameProperties gp = entry.properties();
+        ItemCategory category = ItemRegistry.parseCategoryOrDefault(gp.categoryOrDefault());
+        ItemType it = new ItemType(
+                enumName, gp.numericId(), entry.displayName(),
+                gp.atlasX(), gp.atlasY(), category, gp.maxStackSize());
+        registerInternal(it);
+        return it;
+    }
+
     /**
-     * Register a new ItemType discovered at runtime (from SBO loading).
-     * Returns the existing instance if one with this name or ID is already
-     * registered — duplicate registration is a no-op, so reloading the
-     * registry is idempotent.
+     * External register hook for runtime additions (e.g. mods). Idempotent.
      */
     public static synchronized ItemType register(String enumName, int id, String name,
                                                  int atlasX, int atlasY,
@@ -85,7 +118,6 @@ public final class ItemType implements Item {
         if (existing != null) return existing;
         ItemType byIdExisting = BY_ID.get(id);
         if (byIdExisting != null) return byIdExisting;
-
         ItemType it = new ItemType(enumName, id, name, atlasX, atlasY, category, maxStackSize);
         registerInternal(it);
         return it;

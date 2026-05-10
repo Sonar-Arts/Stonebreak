@@ -2,7 +2,6 @@ package com.stonebreak.blocks.registry;
 
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParseResult;
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,8 +44,25 @@ public final class BlockRegistry {
 
     private final Map<String, BlockEntry> byObjectId = new LinkedHashMap<>();
     private final Map<Integer, BlockEntry> byNumericId = new LinkedHashMap<>();
+    private boolean loaded = false;
 
     private BlockRegistry() {}
+
+    /**
+     * Idempotent self-loader. First call triggers an SBO scan from the
+     * classpath / dev filesystem; subsequent calls are no-ops. Safe to call
+     * from any class initializer that needs registry contents.
+     *
+     * <p>This is what {@link com.stonebreak.blocks.BlockType}'s static
+     * initializer calls so that the static fields can resolve their data
+     * from the SBO files instead of hardcoded values.
+     */
+    public synchronized void ensureLoaded() {
+        if (loaded) return;
+        SBOBlockRegistry sbo = new SBOBlockRegistry();
+        sbo.scanAndLoad();
+        loadFrom(sbo);
+    }
 
     /**
      * Populate the registry from a loaded {@link SBOBlockRegistry}. Any prior
@@ -59,6 +75,7 @@ public final class BlockRegistry {
         Objects.requireNonNull(sboRegistry, "sboRegistry");
         byObjectId.clear();
         byNumericId.clear();
+        loaded = true;
 
         int loaded = 0;
         int skipped = 0;
@@ -71,23 +88,11 @@ public final class BlockRegistry {
                 continue;
             }
 
-            // Promote SBO-only blocks into BlockType so the rest of the game
-            // (chunk codec, hotbar, world gen via lookups) can see them. For
-            // existing hardcoded BlockType constants this is a no-op — the
-            // static field already exists and register() returns the existing
-            // instance.
-            String enumName = sboNameToEnumName(result.getObjectId());
-            BlockType.register(
-                    enumName,
-                    gp.numericId(),
-                    result.getObjectName(),
-                    gp.solid(),
-                    gp.breakable(),
-                    gp.atlasX(),
-                    gp.atlasY(),
-                    gp.hardness()
-            );
-
+            // Note: we don't promote into BlockType here. BlockType's own
+            // static initializer reads from this registry to create instances
+            // for both hardcoded constants (STONE, GRASS, ...) and SBO-only
+            // blocks. Calling BlockType.register() from this loop would race
+            // with that static-init flow.
             BlockEntry entry = new BlockEntry(
                     result.getObjectId(),
                     result.getObjectName(),
@@ -158,7 +163,7 @@ public final class BlockRegistry {
      * ({@code "RED_SAND"}). Drops the namespace prefix and uppercases the
      * remainder.
      */
-    private static String sboNameToEnumName(String objectId) {
+    public static String sboNameToEnumName(String objectId) {
         int colon = objectId.indexOf(':');
         String local = colon >= 0 ? objectId.substring(colon + 1) : objectId;
         return local.toUpperCase();
