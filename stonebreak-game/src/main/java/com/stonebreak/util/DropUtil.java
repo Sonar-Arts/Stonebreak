@@ -177,18 +177,11 @@ public class DropUtil {
             return;
         }
         
-        // Create a copy with count 1 for dropping
-        ItemStack dropStack;
-        if (selectedSlot.isPlaceable()) {
-            BlockType blockType = selectedSlot.asBlockType();
-            dropStack = new ItemStack(blockType, 1);
-        } else {
-            ItemType itemType = selectedSlot.asItemType();
-            if (itemType != null) {
-                dropStack = new ItemStack(itemType, 1);
-            } else {
-                return; // Can't drop unknown item type
-            }
+        // Create a copy with count 1 for dropping (preserve SBO state, e.g. filled bucket)
+        ItemStack dropStack = selectedSlot.copy();
+        dropStack.setCount(1);
+        if (!selectedSlot.isPlaceable() && selectedSlot.asItemType() == null) {
+            return; // Can't drop unknown item type
         }
         
         // Drop the item

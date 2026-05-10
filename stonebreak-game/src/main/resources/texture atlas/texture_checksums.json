@@ -43,14 +43,6 @@
       "lastModified" : 1762189968035,
       "checksumDate" : "2025-11-03T17:12:48.035957300Z"
     },
-    "wooden_axe_texture.png" : {
-      "fileName" : "wooden_axe_texture.png",
-      "filePath" : "runtime",
-      "md5Hash" : "0aee6906b5abe6c88e83c05d95bc2151",
-      "fileSize" : 1024,
-      "lastModified" : 1762189968035,
-      "checksumDate" : "2025-11-03T17:12:48.035957300Z"
-    },
     "wooden_bucket_water.png" : {
       "fileName" : "wooden_bucket_water.png",
       "filePath" : "runtime",
@@ -107,14 +99,6 @@
       "lastModified" : 1762189968036,
       "checksumDate" : "2025-11-03T17:12:48.036461800Z"
     },
-    "wooden_pickaxe_texture.png" : {
-      "fileName" : "wooden_pickaxe_texture.png",
-      "filePath" : "runtime",
-      "md5Hash" : "42dfd65d3c22cecc4018219654083980",
-      "fileSize" : 1024,
-      "lastModified" : 1762189968036,
-      "checksumDate" : "2025-11-03T17:12:48.036964600Z"
-    },
     "cobblestone_texture.png" : {
       "fileName" : "cobblestone_texture.png",
       "filePath" : "runtime",
@@ -152,14 +136,6 @@
       "filePath" : "runtime",
       "md5Hash" : "e6eac18e8f0038dea191c5913a8e4f9d",
       "fileSize" : 12288,
-      "lastModified" : 1762189968036,
-      "checksumDate" : "2025-11-03T17:12:48.036964600Z"
-    },
-    "stick_texture.png" : {
-      "fileName" : "stick_texture.png",
-      "filePath" : "runtime",
-      "md5Hash" : "7dfab6eee66f1ce329f641e70b0da412",
-      "fileSize" : 1024,
       "lastModified" : 1762189968036,
       "checksumDate" : "2025-11-03T17:12:48.036964600Z"
     },

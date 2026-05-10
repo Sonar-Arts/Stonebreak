@@ -346,10 +346,18 @@ public class DropRenderer {
             return;
         }
 
+        // Pull SBO state from the drop's stack so multi-state items (e.g. filled
+        // wooden bucket) render the correct variant instead of the default.
+        String state = null;
+        if (drop instanceof com.stonebreak.mobs.entities.ItemDrop itemDrop) {
+            com.stonebreak.items.ItemStack stack = itemDrop.getItemStack();
+            if (stack != null) state = stack.getState();
+        }
+
         // Check if this item can be rendered using the voxelization system
         if (SpriteVoxelizer.isVoxelizable(itemType)) {
             // Use the voxelized sprite renderer for 3D representation with drop-specific settings
-            renderVoxelizedItemDrop(itemType);
+            renderVoxelizedItemDrop(itemType, state);
         } else {
             // Fallback to 2D billboard sprite for items without voxelization support
             renderFallback2DItemDrop(drop, shaderProgram, itemType);
@@ -360,7 +368,7 @@ public class DropRenderer {
      * Renders a voxelized item drop with proper positioning for world drops.
      * Uses instance-specific transform adjustments to avoid interfering with hand-held item rendering.
      */
-    private void renderVoxelizedItemDrop(ItemType itemType) {
+    private void renderVoxelizedItemDrop(ItemType itemType, String state) {
         // Save current instance transform settings
         Vector3f originalTranslation = voxelizedSpriteRenderer.getInstanceTranslationAdjustment();
         Vector3f originalRotation = voxelizedSpriteRenderer.getInstanceRotationAdjustment();
@@ -378,7 +386,7 @@ public class DropRenderer {
 
         try {
             // Render with drop-specific settings
-            voxelizedSpriteRenderer.renderVoxelizedSprite(itemType);
+            voxelizedSpriteRenderer.renderVoxelizedSprite(itemType, state);
         } finally {
             // Always restore original settings - this now only affects this instance
             voxelizedSpriteRenderer.adjustInstanceTransform(

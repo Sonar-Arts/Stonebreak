@@ -282,9 +282,6 @@ public class SpriteVoxelizer {
      * {@link #loadSpriteFromSboItem(ItemType)}.
      */
     private static String getSpritePathForItem(ItemType itemType) {
-        if (itemType == ItemType.WOODEN_PICKAXE) return "Items/Textures/wooden_pickaxe_texture.png";
-        if (itemType == ItemType.WOODEN_AXE) return "Items/Textures/wooden_axe_texture.png";
-        if (itemType == ItemType.STICK) return "Items/Textures/stick_texture.png";
         return null;
     }
 

@@ -202,9 +202,9 @@ public class ItemDrop extends Entity {
             // Try to add item(s) to player inventory
             com.stonebreak.items.Inventory inventory = player.getInventory();
             if (inventory != null) {
-                // Create ItemStack using the original item (preserves ItemType/BlockType distinction)
-                com.stonebreak.items.ItemStack itemStack = new com.stonebreak.items.ItemStack(this.itemStack.getItem(), stackCount);
-                
+                // Create ItemStack using the original item (preserves ItemType/BlockType distinction + SBO state)
+                com.stonebreak.items.ItemStack itemStack = new com.stonebreak.items.ItemStack(this.itemStack.getItem(), stackCount, this.itemStack.getState());
+
                 // Try to add to inventory
                 if (inventory.addItem(itemStack)) {
                     // Successfully picked up - play sound and mark as dead
@@ -217,7 +217,7 @@ public class ItemDrop extends Entity {
                     // Try to add as many as possible
                     int addedCount = 0;
                     for (int i = 0; i < stackCount; i++) {
-                        com.stonebreak.items.ItemStack singleItem = new com.stonebreak.items.ItemStack(this.itemStack.getItem(), 1);
+                        com.stonebreak.items.ItemStack singleItem = new com.stonebreak.items.ItemStack(this.itemStack.getItem(), 1, this.itemStack.getState());
                         if (inventory.addItem(singleItem)) {
                             addedCount++;
                         } else {
@@ -306,9 +306,9 @@ public class ItemDrop extends Entity {
             return false;
         }
         
-        // Create ItemStack using the original item (preserves ItemType/BlockType distinction)
-        com.stonebreak.items.ItemStack itemStack = new com.stonebreak.items.ItemStack(this.itemStack.getItem(), stackCount);
-        
+        // Create ItemStack using the original item (preserves ItemType/BlockType distinction + SBO state)
+        com.stonebreak.items.ItemStack itemStack = new com.stonebreak.items.ItemStack(this.itemStack.getItem(), stackCount, this.itemStack.getState());
+
         // Try to add to inventory
         if (inventory.addItem(itemStack)) {
             // Successfully picked up - play sound and mark as dead
