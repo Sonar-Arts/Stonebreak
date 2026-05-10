@@ -47,7 +47,9 @@ module stonebreak.game {
     exports com.stonebreak.textures.atlas;
     exports com.stonebreak.textures.mobs;
     exports com.stonebreak.blocks;
+    exports com.stonebreak.blocks.registry;
     exports com.stonebreak.items;
+    exports com.stonebreak.items.registry;
 
     // Export rendering packages for OpenMason CBR API integration
     exports com.stonebreak.rendering.textures;

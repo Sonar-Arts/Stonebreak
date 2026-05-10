@@ -3,6 +3,9 @@ package com.openmason.main.systems.menus.dialogs;
 import com.openmason.main.systems.menus.windows.WindowTitleBar;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOSerializer;
+import com.openmason.main.systems.menus.dialogs.validation.NumericIdConflictPopup;
+import com.openmason.main.systems.menus.dialogs.validation.NumericIdValidator;
+import com.openmason.main.systems.menus.dialogs.validation.TakenIdsPopup;
 import com.openmason.main.systems.services.StatusService;
 import com.openmason.main.systems.themes.core.ThemeDefinition;
 import com.openmason.main.systems.themes.core.ThemeManager;
@@ -113,6 +116,9 @@ public class SBOTextureExportWindow {
 
     private float formOffsetX = MIN_SIDE_PADDING;
 
+    private final NumericIdConflictPopup conflictPopup = new NumericIdConflictPopup();
+    private final TakenIdsPopup takenIdsPopup = new TakenIdsPopup();
+
     public SBOTextureExportWindow(ImBoolean visible,
                                   ThemeManager themeManager,
                                   StatusService statusService,
@@ -138,6 +144,9 @@ public class SBOTextureExportWindow {
     public void show() {
         visible.set(true);
         prepopulateFromTexture();
+        if (numericId.get() <= 0) {
+            numericId.set(NumericIdValidator.suggestNextFreeId(NumericIdValidator.Domain.ITEM));
+        }
         statesSection.reset();
         validationMessage = "";
         logger.debug("SBO texture export window shown");
@@ -171,6 +180,8 @@ public class SBOTextureExportWindow {
                 WindowTitleBar.Result result = titleBar.render();
                 if (result.minimizeClicked() || result.closeClicked()) visible.set(false);
                 renderContent();
+                conflictPopup.render();
+                takenIdsPopup.render();
             } catch (Exception e) {
                 logger.error("Error rendering SBO texture export window", e);
                 ImGui.textColored(1.0f, 0.0f, 0.0f, 1.0f, "Error rendering export window");
@@ -240,8 +251,11 @@ public class SBOTextureExportWindow {
         ImGuiComponents.renderCompactSectionHeader("Game Properties");
         ImGui.spacing();
 
-        renderLabeledIntInput("Numeric ID", "sbo_tex_num_id", numericId,
-                "required — unique across items (e.g. 1012)");
+        renderLabeledIntInputWithButton("Numeric ID", "sbo_tex_num_id", numericId,
+                "required — unique across items (e.g. 1012)",
+                "Taken IDs...##tex_taken",
+                () -> takenIdsPopup.open(currentDomain()));
+        renderConflictHint();
         renderLabeledIntInput("Max Stack", "sbo_tex_stack", maxStackSize, "1–64");
         renderLabeledCombo("Category", "sbo_tex_cat", categoryIndex, CATEGORY_LABELS);
 
@@ -287,6 +301,44 @@ public class SBOTextureExportWindow {
             ImGui.textDisabled(hint);
         }
         ImGui.dummy(0, ROW_SPACING);
+    }
+
+    private void renderLabeledIntInputWithButton(String label, String id, ImInt value, String hint,
+                                                 String buttonLabel, Runnable onClick) {
+        ImGui.setCursorPosX(formOffsetX);
+        ImGui.textDisabled(label);
+        ImGui.sameLine(formOffsetX + LABEL_WIDTH);
+        ImGui.pushItemWidth(INPUT_WIDTH - 110.0f);
+        ImGui.inputInt("##" + id, value);
+        ImGui.popItemWidth();
+        ImGui.sameLine();
+        if (ImGui.button(buttonLabel, 100.0f, 0)) {
+            onClick.run();
+        }
+        if (hint != null && !hint.isBlank()) {
+            ImGui.setCursorPosX(formOffsetX + LABEL_WIDTH);
+            ImGui.textDisabled(hint);
+        }
+        ImGui.dummy(0, ROW_SPACING);
+    }
+
+    private void renderConflictHint() {
+        NumericIdValidator.Domain domain = currentDomain();
+        if (domain == NumericIdValidator.Domain.NONE) return;
+        NumericIdValidator.Result result = NumericIdValidator.validate(
+                domain, numericId.get(), objectId.get().trim());
+        if (result instanceof NumericIdValidator.Result.Conflict c) {
+            ImGui.setCursorPosX(formOffsetX + LABEL_WIDTH);
+            ImGui.textColored(1.0f, 0.55f, 0.45f, 1.0f,
+                    "ID " + c.numericId() + " taken by " + c.existingObjectId());
+        }
+    }
+
+    private NumericIdValidator.Domain currentDomain() {
+        SBOFormat.ObjectType t = OBJECT_TYPE_VALUES[objectTypeIndex.get()];
+        return (t == SBOFormat.ObjectType.ITEM)
+                ? NumericIdValidator.Domain.ITEM
+                : NumericIdValidator.Domain.NONE;
     }
 
     private void renderLabeledFloatInput(String label, String id, imgui.type.ImFloat value, String hint) {
@@ -437,6 +489,16 @@ public class SBOTextureExportWindow {
             return;
         }
 
+        NumericIdValidator.Result result = NumericIdValidator.validate(
+                currentDomain(), numericId.get(), objectId.get().trim());
+        if (result instanceof NumericIdValidator.Result.Conflict c) {
+            conflictPopup.open(c, this::performExportConfirmed);
+            return;
+        }
+        performExportConfirmed();
+    }
+
+    private void performExportConfirmed() {
         SBOFormat.ExportParameters params = buildParameters();
 
         if (!params.isValid()) {

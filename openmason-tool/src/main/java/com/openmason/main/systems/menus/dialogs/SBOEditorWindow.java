@@ -3,6 +3,9 @@ package com.openmason.main.systems.menus.dialogs;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParser;
 import com.openmason.engine.format.sbo.SBOSerializer;
+import com.openmason.main.systems.menus.dialogs.validation.NumericIdConflictPopup;
+import com.openmason.main.systems.menus.dialogs.validation.NumericIdValidator;
+import com.openmason.main.systems.menus.dialogs.validation.TakenIdsPopup;
 import com.openmason.main.systems.services.StatusService;
 import imgui.ImGui;
 import imgui.flag.ImGuiTabBarFlags;
@@ -37,6 +40,8 @@ public class SBOEditorWindow {
     private final SBOParser parser = new SBOParser();
     private final SBOSerializer serializer = new SBOSerializer();
     private final SBORecipeSection recipeSection;
+    private final NumericIdConflictPopup conflictPopup = new NumericIdConflictPopup();
+    private final TakenIdsPopup takenIdsPopup = new TakenIdsPopup();
 
     // Loaded document state
     private Path currentPath;
@@ -167,6 +172,8 @@ public class SBOEditorWindow {
             } else {
                 renderTabs();
             }
+            conflictPopup.render();
+            takenIdsPopup.render();
         }
         ImGui.end();
     }
@@ -230,6 +237,11 @@ public class SBOEditorWindow {
             return;
         }
         if (ImGui.inputInt("Numeric ID", numericId))         dirty = true;
+        ImGui.sameLine();
+        if (ImGui.smallButton("Taken IDs...##editor_taken")) {
+            takenIdsPopup.open(currentDomain());
+        }
+        renderConflictHint();
         if (ImGui.inputFloat("Hardness", hardness))          dirty = true;
         if (ImGui.checkbox("Solid", solid))                  dirty = true;
         if (ImGui.checkbox("Breakable", breakable))          dirty = true;
@@ -276,6 +288,18 @@ public class SBOEditorWindow {
 
     private void writeTo(String pathStr) {
         if (loadedManifest == null) return;
+        if (hasGameProperties) {
+            NumericIdValidator.Result result = NumericIdValidator.validate(
+                    currentDomain(), numericId.get(), objectId.get().trim());
+            if (result instanceof NumericIdValidator.Result.Conflict c) {
+                conflictPopup.open(c, () -> performWrite(pathStr));
+                return;
+            }
+        }
+        performWrite(pathStr);
+    }
+
+    private void performWrite(String pathStr) {
         SBOFormat.Document edited = buildEditedDocument();
         boolean ok = serializer.exportFromDocument(edited, loadedDefaultBytes, loadedStateBytes, pathStr);
         if (ok) {
@@ -316,6 +340,21 @@ public class SBOEditorWindow {
                 loadedManifest.defaultStateName(),
                 recipeSection.toRecipeData()
         );
+    }
+
+    private NumericIdValidator.Domain currentDomain() {
+        return NumericIdValidator.domainFor(OBJECT_TYPE_LABELS[objectTypeIndex.get()]);
+    }
+
+    private void renderConflictHint() {
+        NumericIdValidator.Domain domain = currentDomain();
+        if (domain == NumericIdValidator.Domain.NONE) return;
+        NumericIdValidator.Result result = NumericIdValidator.validate(
+                domain, numericId.get(), objectId.get().trim());
+        if (result instanceof NumericIdValidator.Result.Conflict c) {
+            ImGui.textColored(1.0f, 0.55f, 0.45f, 1.0f,
+                    "ID " + c.numericId() + " taken by " + c.existingObjectId());
+        }
     }
 
     private static int indexOf(String[] arr, String value) {
