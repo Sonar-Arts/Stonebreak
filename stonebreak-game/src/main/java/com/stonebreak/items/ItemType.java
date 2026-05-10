@@ -60,19 +60,10 @@ public final class ItemType implements Item {
      * WOODEN_BUCKET_WATER pair — water-vs-empty is now an ItemStack state
      * rather than a separate item type.
      */
+    public static final ItemType BANANA = fromRegistry("stonebreak:banana", "BANANA");
     public static final ItemType WOODEN_BUCKET = fromRegistry("stonebreak:sb_wooden_bucket", "WOODEN_BUCKET");
 
     // ----- SBO state name constants for the wooden bucket. ----------------
-
-    // SBT-textured items
-    PATTY_SMACKER(1006, "Patty Smacker", 0, 0, ItemCategory.TOOLS, 1),
-    SNOWBALL(1007, "Snowball", 0, 0, ItemCategory.MATERIALS, 16),
-    STONE_SHOVEL(1008, "Stone Shovel", 0, 0, ItemCategory.TOOLS, 1),
-    SWORD(1009, "Sword", 0, 0, ItemCategory.TOOLS, 1),
-    WAR_AXE(1010, "War Axe", 0, 0, ItemCategory.TOOLS, 1),
-    WOODEN_SHOVEL(1011, "Wooden Shovel", 0, 0, ItemCategory.TOOLS, 1),
-    DAGGER(1012, "Dagger", 0, 0, ItemCategory.TOOLS, 1),
-    STAFF(1013, "Staff", 0, 0, ItemCategory.TOOLS, 1);
     
     public static final String BUCKET_STATE_EMPTY = "sb_wooden_bucket_empty";
     public static final String BUCKET_STATE_WATER = "sb_wooden_bucket_water";
@@ -237,16 +228,18 @@ public final class ItemType implements Item {
     }
 
 
+    public float getHealAmount() {
+        if (this == BANANA) return 4.0f;
+        return 0.0f;
+    }
+
     /**
      * Returns the base melee damage this item deals when used to attack.
      */
     public float getDamage() {
-        return switch (this) {
-            case SWORD -> 6.0f;
-            case STAFF -> 5.0f;
-            case DAGGER, WAR_AXE, WOODEN_AXE -> 4.0f;
-            default -> 1.0f;
-        };
+        if (this == SWORD) return 6.0f;
+        if (this == WAR_AXE || this == WOODEN_AXE) return 4.0f;
+        return 1.0f;
     }
 
     /**
@@ -259,6 +252,10 @@ public final class ItemType implements Item {
 
     public boolean isMaterial() {
         return category == ItemCategory.MATERIALS;
+    }
+
+    public boolean isFood() {
+        return category == ItemCategory.FOOD;
     }
 
     @Override

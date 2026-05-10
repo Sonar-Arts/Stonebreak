@@ -172,7 +172,7 @@ public class PlayerArmRenderer {
                                          info.selectedBlockType.getAtlasX() >= 0 && 
                                          info.selectedBlockType.getAtlasY() >= 0);
                 info.displayingItem = info.isDisplayingBlock;
-            } else if (selectedItem.isTool() || selectedItem.isMaterial()) {
+            } else if (selectedItem.isTool() || selectedItem.isMaterial() || selectedItem.isFood()) {
                 info.selectedItemType = selectedItem.asItemType();
                 // Render the item in hand when it has either legacy atlas
                 // coords OR is voxelizable (SBO-backed items declare

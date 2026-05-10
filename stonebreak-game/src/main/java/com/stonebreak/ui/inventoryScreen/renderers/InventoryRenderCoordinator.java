@@ -6,6 +6,7 @@ import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.components.MHotbarRenderer;
@@ -368,7 +369,10 @@ public class InventoryRenderCoordinator {
     private void drawItemIcon(ItemStack itemStack, int x, int y, int size) {
         if (itemStack == null || itemStack.isEmpty()) return;
         Item item = itemStack.getItem();
-        if (item == null || item.getAtlasX() == -1 || item.getAtlasY() == -1) return;
+        if (item == null) return;
+        boolean isSboItem = item instanceof ItemType it
+                && com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer.isSboBackedItem(it);
+        if (!isSboItem && (item.getAtlasX() == -1 || item.getAtlasY() == -1)) return;
 
         if (item instanceof BlockType bt) {
             uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt, x, y, size, size,

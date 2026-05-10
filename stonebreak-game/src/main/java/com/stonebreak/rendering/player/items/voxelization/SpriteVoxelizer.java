@@ -294,36 +294,6 @@ public class SpriteVoxelizer {
      */
     public static boolean isSboBackedItem(ItemType itemType) {
         return ItemRegistry.getInstance().get(sboItemId(itemType)).isPresent();
-        switch (itemType) {
-            case WOODEN_PICKAXE:
-                return "Items/Textures/wooden_pickaxe_texture.png";
-            case WOODEN_AXE:
-                return "Items/Textures/wooden_axe_texture.png";
-            case STICK:
-                return "Items/Textures/stick_texture.png";
-            case WOODEN_BUCKET:
-                return "Items/Textures/wooden_bucket_base.png";
-            case WOODEN_BUCKET_WATER:
-                return "Items/Textures/wooden_bucket_water.png";
-            case SWORD:
-                return "Items/Textures/SBT/Sword.sbt";
-            case WAR_AXE:
-                return "Items/Textures/SBT/WarAxe.sbt";
-            case PATTY_SMACKER:
-                return "Items/Textures/SBT/Patty Smacker.sbt";
-            case SNOWBALL:
-                return "Items/Textures/SBT/Snowball.sbt";
-            case STONE_SHOVEL:
-                return "Items/Textures/SBT/Stone_Shovel.sbt";
-            case WOODEN_SHOVEL:
-                return "Items/Textures/SBT/Wooden_Shovel.sbt";
-            case DAGGER:
-                return "Items/Textures/SBT/Dagger.sbt";
-            case STAFF:
-                return "Items/Textures/SBT/Staff.sbt";
-            default:
-                return null;
-        }
     }
 
     /**

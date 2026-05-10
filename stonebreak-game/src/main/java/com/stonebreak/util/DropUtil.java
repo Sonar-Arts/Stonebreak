@@ -20,6 +20,7 @@ public class DropUtil {
     
     // Constants for drop physics
     private static final float DROP_SPREAD_RADIUS = 0.5f;
+    private static final float LEAF_BANANA_DROP_CHANCE = 0.05f;
     private static final float DROP_VELOCITY_MIN = 1.0f;
     private static final float DROP_VELOCITY_MAX = 3.0f;
     private static final float DROP_HEIGHT_OFFSET = 0.5f;
@@ -264,6 +265,15 @@ public class DropUtil {
         BlockType dropType = getBlockDrop(brokenBlock);
         if (dropType != null) {
             createBlockDrop(world, position, dropType);
+        }
+
+        // Small chance to drop a banana from any leaf block
+        if (brokenBlock == BlockType.LEAVES
+                || brokenBlock == BlockType.PINE_LEAVES
+                || brokenBlock == BlockType.ELM_LEAVES) {
+            if (Math.random() < LEAF_BANANA_DROP_CHANCE) {
+                createItemDrop(world, position, ItemType.BANANA, 1);
+            }
         }
     }
 }

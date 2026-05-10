@@ -49,10 +49,8 @@ public final class WorldData {
 
     private WorldData(Builder builder) {
         this(builder.seed, builder.worldName, builder.spawnPosition,
-             builder.createdTime, builder.lastPlayed, builder.totalPlayTimeMillis,
-             builder.worldTimeTicks, builder.cheatsEnabled, builder.formatVersion);
              builder.hasExplicitSpawn, builder.createdTime, builder.lastPlayed,
-             builder.totalPlayTimeMillis, builder.worldTimeTicks, builder.formatVersion);
+             builder.totalPlayTimeMillis, builder.worldTimeTicks, builder.cheatsEnabled, builder.formatVersion);
     }
 
     // Getters

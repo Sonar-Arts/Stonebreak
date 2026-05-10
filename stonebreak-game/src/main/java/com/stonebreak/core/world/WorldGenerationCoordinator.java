@@ -194,7 +194,6 @@ public final class WorldGenerationCoordinator {
         player.setPosition(spawn);
         world.setSpawnPosition(spawn);
 
-        WorldData currentWorldData = game.getCurrentWorldData();
         if (currentWorldData != null) {
             WorldData updated = new WorldData.Builder(currentWorldData)
                 .spawnPosition(spawn)

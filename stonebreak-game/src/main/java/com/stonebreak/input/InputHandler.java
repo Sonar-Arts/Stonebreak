@@ -780,6 +780,18 @@ public class InputHandler {
                     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
                         player.startAttackAnimation(); // Animate for interaction attempts as well
 
+                        // Food consumption takes priority over block placement
+                        com.stonebreak.items.ItemStack heldItem = player.getInventory().getSelectedHotbarSlot();
+                        if (!heldItem.isEmpty() && heldItem.isFood()) {
+                            com.stonebreak.items.ItemType foodType = heldItem.asItemType();
+                            if (foodType != null && foodType.getHealAmount() > 0) {
+                                player.heal(foodType.getHealAmount());
+                                heldItem.decrementCount(1);
+                                if (heldItem.getCount() <= 0) heldItem.clear();
+                                return;
+                            }
+                        }
+
                         // Raycast to see what block is being targeted
                         Vector3i targetedBlockPos = player.raycast();
                         if (targetedBlockPos != null) {
