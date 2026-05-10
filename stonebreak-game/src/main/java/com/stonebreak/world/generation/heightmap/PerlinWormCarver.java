@@ -73,8 +73,14 @@ public final class PerlinWormCarver {
 
     /** Probability that a spawn chunk fires a connector carver toward its nearest worm-bearing neighbor. */
     private static final float CONNECTOR_CHANCE = 0.95f;
+    /** Probability that a spawn chunk also fires a connector carver toward its nearest cavern. */
+    private static final float CAVERN_CONNECTOR_CHANCE = 1.0f;
     /** Chunk radius to scan when searching for a connection target. */
     private static final int CONNECTOR_SEARCH_RADIUS = 4;
+    /** Chunk radius to scan when searching for a cavern to feed into. */
+    private static final int CAVERN_CONNECTOR_RADIUS = 5;
+    /** Step budget for a cavern connector — caverns may sit further out than worm-chunk neighbors. */
+    private static final int CAVERN_CONNECTOR_MAX_STEPS = 110;
     /** Per-step lerp factor steering the connector toward its target (dominates noise drift). */
     private static final float CONNECTOR_BIAS = 0.55f;
     /** Step budget for a connector — enough to bridge {@link #CONNECTOR_SEARCH_RADIUS} chunks plus slack. */
@@ -108,12 +114,21 @@ public final class PerlinWormCarver {
     private final NoiseGenerator headingNoise;
     private final NoiseGenerator radiusNoise;
     private final HeightMapGenerator heightMapGenerator;
+    private CavernCarver cavernCarver;
 
     public PerlinWormCarver(long seed, HeightMapGenerator heightMapGenerator) {
         this.seed = seed;
         this.headingNoise = new NoiseGenerator(seed + 41, 1, 0.5, 2.0);
         this.radiusNoise = new NoiseGenerator(seed + 113, 1, 0.5, 2.0);
         this.heightMapGenerator = heightMapGenerator;
+    }
+
+    /**
+     * Wires in the cavern carver so worm-bearing chunks can fire connector tunnels
+     * toward nearby caverns. Optional — without it, worms still link to other worms.
+     */
+    public void setCavernCarver(CavernCarver cavernCarver) {
+        this.cavernCarver = cavernCarver;
     }
 
     /**
@@ -211,6 +226,8 @@ public final class PerlinWormCarver {
         long twinSeed = rng.nextLong();
         boolean spawnConnector = rng.nextFloat() < CONNECTOR_CHANCE;
         long connectorSeed = rng.nextLong();
+        boolean spawnCavernConnector = rng.nextFloat() < CAVERN_CONNECTOR_CHANCE;
+        long cavernConnectorSeed = rng.nextLong();
 
         Deque<CarverSegment> queue = new ArrayDeque<>();
         queue.push(new CarverSegment(ox, oy, oz, yaw, pitch, MAX_STEPS, MAX_BRANCHES, primarySeed, null));
@@ -223,6 +240,9 @@ public final class PerlinWormCarver {
         }
         if (spawnConnector) {
             queueConnector(srcCx, srcCz, ox, oy, oz, connectorSeed, queue);
+        }
+        if (spawnCavernConnector) {
+            queueCavernConnector(srcCx, srcCz, ox, oy, oz, cavernConnectorSeed, queue);
         }
 
         while (!queue.isEmpty()) {
@@ -253,6 +273,32 @@ public final class PerlinWormCarver {
         else if (pitch > PITCH_MAX) pitch = PITCH_MAX;
         queue.push(new CarverSegment(ox, oy, oz, yaw, pitch,
                 CONNECTOR_MAX_STEPS, 0, connectorSeed, target));
+    }
+
+    /**
+     * Queues a connector carver from this worm's origin to the nearest cavern center
+     * within {@link #CAVERN_CONNECTOR_RADIUS}. Cavern blob radius easily eclipses
+     * {@link #CONNECTOR_REACHED_DIST}, so terminating the connector that close to the
+     * cavern origin guarantees the tunnel breaks into the cavern rather than stopping
+     * just shy of the wall.
+     */
+    private void queueCavernConnector(int srcCx, int srcCz, float ox, float oy, float oz,
+                                      long connectorSeed, Deque<CarverSegment> queue) {
+        if (cavernCarver == null) return;
+        int[] neighbor = cavernCarver.nearestCavernChunk(srcCx, srcCz, CAVERN_CONNECTOR_RADIUS);
+        if (neighbor == null) return;
+        float[] target = cavernCarver.computeCavernOrigin(neighbor[0], neighbor[1]);
+        if (target == null) return;
+        float dx = target[0] - ox;
+        float dy = target[1] - oy;
+        float dz = target[2] - oz;
+        float horiz = (float) Math.sqrt(dx * dx + dz * dz);
+        float yaw = (float) Math.atan2(dz, dx);
+        float pitch = horiz > 0.001f ? (float) Math.atan2(dy, horiz) : 0f;
+        if (pitch < PITCH_MIN) pitch = PITCH_MIN;
+        else if (pitch > PITCH_MAX) pitch = PITCH_MAX;
+        queue.push(new CarverSegment(ox, oy, oz, yaw, pitch,
+                CAVERN_CONNECTOR_MAX_STEPS, 0, connectorSeed, target));
     }
 
     private void walkCarver(CarverSegment seg, Deque<CarverSegment> queue,

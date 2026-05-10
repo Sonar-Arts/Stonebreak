@@ -13,6 +13,7 @@ import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
 import com.stonebreak.world.generation.heightmap.Density3D;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
+import com.stonebreak.world.generation.heightmap.CavernCarver;
 import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 
@@ -40,6 +41,7 @@ public class TerrainGenerationSystem {
     private final DeterministicRandom deterministicRandom;
     private final Density3D density3D;
     private final PerlinWormCarver wormCarver;
+    private final CavernCarver cavernCarver;
 
     private final Random animalRandom = new Random();
     private final Object animalRandomLock = new Object();
@@ -55,6 +57,8 @@ public class TerrainGenerationSystem {
         this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, seed);
         this.density3D = new Density3D(seed);
         this.wormCarver = new PerlinWormCarver(seed, heightMapGenerator);
+        this.cavernCarver = new CavernCarver(seed, heightMapGenerator);
+        this.wormCarver.setCavernCarver(cavernCarver);
     }
 
     public long getSeed() {
@@ -151,6 +155,10 @@ public class TerrainGenerationSystem {
 
         updateLoadingProgress("Applying Biome Materials");
         BitSet wormMask = wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
+        CavernCarver.Result cavernResult = cavernCarver.buildForChunk(chunkX, chunkZ, heights);
+        BitSet caveMask = wormMask;
+        caveMask.or(cavernResult.carveMask);
+        BitSet formationMask = cavernResult.formationMask;
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -161,7 +169,10 @@ public class TerrainGenerationSystem {
                 int worldX = baseX + x;
                 int worldZ = baseZ + z;
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
-                    if (y > 0 && y < height && wormMask.get((x << 12) | (y << 4) | z)) {
+                    int bit = (x << 12) | (y << 4) | z;
+                    if (y > 0 && y < height && formationMask.get(bit)) {
+                        chunk.setBlock(x, y, z, BlockType.STONE);
+                    } else if (y > 0 && y < height && caveMask.get(bit)) {
                         chunk.setBlock(x, y, z, BlockType.AIR);
                     } else {
                         chunk.setBlock(x, y, z, determineBlockType(worldX, y, worldZ, height, biome));
