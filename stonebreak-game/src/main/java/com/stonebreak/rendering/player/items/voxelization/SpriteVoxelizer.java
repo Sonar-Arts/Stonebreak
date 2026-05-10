@@ -27,8 +27,20 @@ import java.util.Map;
  */
 public class SpriteVoxelizer {
 
-    // Cache for loaded sprite images
-    private static final Map<ItemType, BufferedImage> spriteCache = new HashMap<>();
+    /**
+     * Composite cache key: an item type plus an optional SBO state name.
+     * Different states render with different OMT bytes and so must cache
+     * independently. {@code state == null} keys the default state.
+     */
+    public record SpriteKey(ItemType itemType, String state) {
+        public static SpriteKey of(ItemType type) { return new SpriteKey(type, null); }
+        public static SpriteKey of(ItemType type, String state) {
+            return new SpriteKey(type, (state == null || state.isBlank()) ? null : state);
+        }
+    }
+
+    // Cache for loaded sprite images, keyed by (itemType, state).
+    private static final Map<SpriteKey, BufferedImage> spriteCache = new HashMap<>();
 
     // Voxel size in world units (each pixel becomes a cube this size)
     private static final float DEFAULT_VOXEL_SIZE = 0.02f; // Original size
@@ -50,8 +62,14 @@ public class SpriteVoxelizer {
      * @return List of voxel data representing the 3D sprite
      */
     public static List<VoxelData> voxelizeSprite(ItemType itemType, ColorPalette colorPalette) {
-        // System.out.println("Starting voxelization for " + itemType.getName()); // Debug only
-        BufferedImage sprite = loadSprite(itemType);
+        return voxelizeSprite(itemType, null, colorPalette);
+    }
+
+    /**
+     * State-aware variant of {@link #voxelizeSprite(ItemType, ColorPalette)}.
+     */
+    public static List<VoxelData> voxelizeSprite(ItemType itemType, String state, ColorPalette colorPalette) {
+        BufferedImage sprite = loadSprite(itemType, state);
         if (sprite == null) {
             System.err.println("Failed to load sprite for " + itemType.getName() + ", returning empty voxel list");
             return new ArrayList<>(); // Return empty list if sprite can't be loaded
@@ -126,13 +144,20 @@ public class SpriteVoxelizer {
      * @return VoxelizationResult containing both the palette and voxel data
      */
     public static VoxelizationResult voxelizeSpriteWithPalette(ItemType itemType) {
-        BufferedImage sprite = loadSprite(itemType);
+        return voxelizeSpriteWithPalette(itemType, null);
+    }
+
+    /**
+     * State-aware variant of {@link #voxelizeSpriteWithPalette(ItemType)}.
+     */
+    public static VoxelizationResult voxelizeSpriteWithPalette(ItemType itemType, String state) {
+        BufferedImage sprite = loadSprite(itemType, state);
         if (sprite == null) {
             return new VoxelizationResult(null, new ArrayList<>());
         }
 
         ColorPalette palette = new ColorPalette(itemType, sprite);
-        List<VoxelData> voxels = voxelizeSprite(itemType, palette);
+        List<VoxelData> voxels = voxelizeSprite(itemType, state, palette);
 
         return new VoxelizationResult(palette, voxels);
     }
@@ -178,13 +203,22 @@ public class SpriteVoxelizer {
      * SBO branch via {@link #loadSpriteFromSboItem(ItemType)}.
      */
     private static BufferedImage loadSprite(ItemType itemType) {
-        if (spriteCache.containsKey(itemType)) {
-            return spriteCache.get(itemType);
+        return loadSprite(itemType, null);
+    }
+
+    /**
+     * State-aware variant. The cache key is keyed on (itemType, state) so
+     * different states keep independent images.
+     */
+    private static BufferedImage loadSprite(ItemType itemType, String state) {
+        SpriteKey key = SpriteKey.of(itemType, state);
+        if (spriteCache.containsKey(key)) {
+            return spriteCache.get(key);
         }
 
-        BufferedImage sboImage = loadSpriteFromSboItem(itemType);
+        BufferedImage sboImage = loadSpriteFromSboItem(itemType, state);
         if (sboImage != null) {
-            spriteCache.put(itemType, sboImage);
+            spriteCache.put(key, sboImage);
             return sboImage;
         }
 
@@ -229,7 +263,7 @@ public class SpriteVoxelizer {
             g2d.drawImage(rawImage, 0, 0, null);
             g2d.dispose();
 
-            spriteCache.put(itemType, image);
+            spriteCache.put(SpriteKey.of(itemType, state), image);
             inputStream.close();
 
             // System.out.println("Successfully loaded sprite for " + itemType.getName() + " (" + image.getWidth() + "x" + image.getHeight() + ", type=" + image.getType() + ")"); // Debug only
@@ -251,8 +285,6 @@ public class SpriteVoxelizer {
         if (itemType == ItemType.WOODEN_PICKAXE) return "Items/Textures/wooden_pickaxe_texture.png";
         if (itemType == ItemType.WOODEN_AXE) return "Items/Textures/wooden_axe_texture.png";
         if (itemType == ItemType.STICK) return "Items/Textures/stick_texture.png";
-        if (itemType == ItemType.WOODEN_BUCKET) return "Items/Textures/wooden_bucket_base.png";
-        if (itemType == ItemType.WOODEN_BUCKET_WATER) return "Items/Textures/wooden_bucket_water.png";
         return null;
     }
 
@@ -273,11 +305,21 @@ public class SpriteVoxelizer {
      * raster image (NanoVG/Skija) rather than the voxelized form.
      */
     public static BufferedImage loadSpriteFromSboItem(ItemType itemType) {
+        return loadSpriteFromSboItem(itemType, null);
+    }
+
+    /**
+     * State-aware variant — when the SBO declares states (1.3+), pulls the
+     * OMT for the requested state. Falls back to the default state for
+     * unknown/null state names.
+     */
+    public static BufferedImage loadSpriteFromSboItem(ItemType itemType, String state) {
         var entry = ItemRegistry.getInstance().get(sboItemId(itemType)).orElse(null);
         if (entry == null) return null;
-        byte[] omtBytes = entry.omtBytes();
+        byte[] omtBytes = entry.omtBytesFor(state);
         if (omtBytes == null || omtBytes.length == 0) {
-            System.err.println("SBO item has empty OMT payload: " + entry.objectId());
+            System.err.println("SBO item has empty OMT payload: " + entry.objectId()
+                    + (state != null ? " (state=" + state + ")" : ""));
             return null;
         }
         try {
@@ -295,6 +337,13 @@ public class SpriteVoxelizer {
      * {@code SBTToSBOItemMigration.convertOne}.
      */
     public static String sboItemId(ItemType itemType) {
+        if (itemType == null) return null;
+        // Prefer the explicit objectId registered when the ItemType was
+        // created from the SBO registry (handles cases where the SBO's
+        // objectId doesn't match the default "stonebreak:<enum>" convention,
+        // e.g. WOODEN_BUCKET → stonebreak:sb_wooden_bucket).
+        String explicit = ItemType.objectIdFor(itemType);
+        if (explicit != null) return explicit;
         return "stonebreak:" + itemType.name().toLowerCase();
     }
 

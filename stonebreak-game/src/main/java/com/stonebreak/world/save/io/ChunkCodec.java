@@ -43,12 +43,28 @@ import java.util.zip.InflaterInputStream;
  *               level (unsigned byte), falling (boolean)
  *   entityCount (int)
  *     repeated: payloadLength (int), jsonPayload (utf-8 bytes)
+ *
+ *   v2+ only (SBO 1.3 block states):
+ *   blockStateCount (int)
+ *     repeated: localX (unsigned byte), y (unsigned short), localZ (unsigned byte),
+ *               stateNameLen (unsigned short), stateNameBytes (utf-8)
  * </pre>
+ *
+ * <p>Version history:
+ * <ul>
+ *   <li>1 — original format with blocks, water, entities</li>
+ *   <li>2 — adds optional per-block SBO state map at the end of the body.
+ *       v1 chunks load without states; v2 writers always emit the section
+ *       (count=0 when no block carries a non-default state).</li>
+ * </ul>
  */
 public final class ChunkCodec {
 
     private static final int MAGIC = 0x5342434B; // 'SBCK'
-    private static final int VERSION = 1;
+    /** Current write version. */
+    private static final int VERSION = 2;
+    /** Earliest readable version. */
+    private static final int MIN_READ_VERSION = 1;
     private static final int CHUNK_WIDTH = 16;
     private static final int CHUNK_HEIGHT = 256;
     private static final int BLOCK_COUNT = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_HEIGHT;
@@ -76,6 +92,7 @@ public final class ChunkCodec {
 
             writeWaterMetadata(out, chunk.getWaterMetadata());
             writeEntities(out, chunk.getEntities());
+            writeBlockStates(out, chunk.getBlockStates());
         }
         return buffer.toByteArray();
     }
@@ -90,7 +107,7 @@ public final class ChunkCodec {
             }
 
             int version = in.readUnsignedShort();
-            if (version != VERSION) {
+            if (version < MIN_READ_VERSION || version > VERSION) {
                 throw new IOException("Unsupported chunk payload version: " + version);
             }
 
@@ -114,6 +131,10 @@ public final class ChunkCodec {
             Map<String, ChunkData.WaterBlockData> waterMeta = readWaterMetadata(in);
             List<EntityData> entities = readEntities(in);
 
+            // v2+: per-block SBO state map. Older saves omit this section
+            // and load with an empty map (everything renders as default).
+            Map<String, String> blockStates = (version >= 2) ? readBlockStates(in) : new HashMap<>();
+
             return ChunkData.builder()
                 .chunkX(chunkX)
                 .chunkZ(chunkZ)
@@ -125,8 +146,40 @@ public final class ChunkCodec {
                 .hasEntitiesGenerated(hasEntitiesGenerated)
                 .waterMetadata(waterMeta)
                 .entities(entities)
+                .blockStates(blockStates)
                 .build();
         }
+    }
+
+    private static void writeBlockStates(DataOutputStream out, Map<String, String> blockStates) throws IOException {
+        out.writeInt(blockStates.size());
+        for (Map.Entry<String, String> entry : blockStates.entrySet()) {
+            int[] coords = parseKey(entry.getKey());
+            out.writeByte(coords[0]);
+            out.writeShort(coords[1]);
+            out.writeByte(coords[2]);
+            byte[] nameBytes = entry.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            out.writeShort(nameBytes.length);
+            out.write(nameBytes);
+        }
+    }
+
+    private static Map<String, String> readBlockStates(DataInputStream in) throws IOException {
+        int count = in.readInt();
+        Map<String, String> result = new HashMap<>(Math.max(count, 0));
+        for (int i = 0; i < count; i++) {
+            int localX = Byte.toUnsignedInt(in.readByte());
+            int y = Short.toUnsignedInt(in.readShort());
+            int localZ = Byte.toUnsignedInt(in.readByte());
+            int len = Short.toUnsignedInt(in.readShort());
+            byte[] nameBytes = in.readNBytes(len);
+            if (nameBytes.length != len) {
+                throw new IOException("Incomplete block-state name: expected " + len + " bytes");
+            }
+            String state = new String(nameBytes, java.nio.charset.StandardCharsets.UTF_8);
+            result.put(localX + "," + y + "," + localZ, state);
+        }
+        return result;
     }
 
     private static void writeWaterMetadata(DataOutputStream out,

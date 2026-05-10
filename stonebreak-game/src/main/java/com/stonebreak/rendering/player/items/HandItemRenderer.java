@@ -235,9 +235,15 @@ public class HandItemRenderer {
      * Uses 3D voxelized rendering for supported items, falls back to 2D sprites.
      */
     public void renderToolInHand(ItemType itemType) {
-        // Check if this item can be rendered as a voxelized 3D sprite
+        renderToolInHand(itemType, null);
+    }
+
+    /**
+     * State-aware variant — picks the OMT for the given SBO state name.
+     */
+    public void renderToolInHand(ItemType itemType, String state) {
         if (SpriteVoxelizer.isVoxelizable(itemType)) {
-            renderVoxelizedToolInHand(itemType);
+            renderVoxelizedToolInHand(itemType, state);
         } else {
             render2DToolInHand(itemType);
         }
@@ -246,8 +252,8 @@ public class HandItemRenderer {
     /**
      * Renders tools as 3D voxelized sprites in the player's hand.
      */
-    private void renderVoxelizedToolInHand(ItemType itemType) {
-        voxelizedSpriteRenderer.renderVoxelizedSprite(itemType);
+    private void renderVoxelizedToolInHand(ItemType itemType, String state) {
+        voxelizedSpriteRenderer.renderVoxelizedSprite(itemType, state);
     }
 
     /**

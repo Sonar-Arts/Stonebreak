@@ -691,8 +691,6 @@ public class TextureAtlas {
      */
     private String getItemTextureName(ItemType itemType) {
         if (itemType == null) return null;
-        if (itemType == ItemType.WOODEN_BUCKET) return "wooden_bucket_base";
-        if (itemType == ItemType.WOODEN_BUCKET_WATER) return "wooden_bucket_water";
         return itemType.name().toLowerCase();
     }
     

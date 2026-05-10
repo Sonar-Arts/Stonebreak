@@ -42,7 +42,7 @@ public class SBOTextureExportWindow {
 
     private static final String WINDOW_TITLE = "Export SBO (Texture)";
     private static final float MIN_WINDOW_WIDTH = 560.0f;
-    private static final float MIN_WINDOW_HEIGHT = 720.0f;
+    private static final float MIN_WINDOW_HEIGHT = 880.0f;
     private static final float FOOTER_HEIGHT = 44.0f;
     private static final float CONTENT_PADDING_Y = 22.0f;
     private static final float LABEL_WIDTH = 100.0f;
@@ -59,6 +59,7 @@ public class SBOTextureExportWindow {
     private final FileDialogService fileDialogService;
     private final SBOSerializer serializer;
     private final WindowTitleBar titleBar;
+    private final SBOStatesSection statesSection;
 
     private Supplier<String> omtPathSupplier = () -> null;
 
@@ -122,6 +123,11 @@ public class SBOTextureExportWindow {
         this.fileDialogService = fileDialogService;
         this.serializer = new SBOSerializer();
         this.titleBar = new WindowTitleBar(WINDOW_TITLE, true, false);
+        this.statesSection = new SBOStatesSection(
+                /* modelKind */ false,
+                callback -> fileDialogService.showOpenOMTDialog(callback::accept),
+                () -> omtPathSupplier.get()
+        );
         objectPack.set("default");
     }
 
@@ -132,6 +138,7 @@ public class SBOTextureExportWindow {
     public void show() {
         visible.set(true);
         prepopulateFromTexture();
+        statesSection.reset();
         validationMessage = "";
         logger.debug("SBO texture export window shown");
     }
@@ -248,6 +255,9 @@ public class SBOTextureExportWindow {
         renderLabeledIntInput("Atlas Y", "sbo_tex_atlasy", atlasY, "-1 = none");
         renderLabeledCombo("Render Layer", "sbo_tex_rl", renderLayerIndex, RENDER_LAYER_LABELS);
         renderLabeledFloatInput("Hardness", "sbo_tex_hard", hardness, "seconds to break");
+
+        ImGui.dummy(0, ROW_SPACING);
+        statesSection.render(formOffsetX, LABEL_WIDTH, INPUT_WIDTH, ROW_SPACING);
 
         if (!validationMessage.isEmpty()) {
             ImGui.dummy(0, ROW_SPACING);
@@ -435,7 +445,15 @@ public class SBOTextureExportWindow {
         }
         validationMessage = "";
 
-        String omtPathStr = omtPathSupplier.get();
+        String omtPathStr;
+        if (statesSection.isEnabled()) {
+            omtPathStr = params.getStates().stream()
+                    .filter(s -> s.name().equals(params.getDefaultStateName()))
+                    .map(SBOFormat.StateSpec::sourcePath)
+                    .findFirst().orElse("");
+        } else {
+            omtPathStr = omtPathSupplier.get();
+        }
         if (omtPathStr == null || omtPathStr.isBlank()) {
             validationMessage = "Texture must be saved as .OMT before exporting to .SBO";
             statusService.updateStatus("Export failed: texture not saved as .OMT");
@@ -466,6 +484,11 @@ public class SBOTextureExportWindow {
         params.setAuthor(author.get().trim());
         params.setDescription(description.get().trim());
         params.setGameProperties(buildGameProperties());
+        if (statesSection.isEnabled()) {
+            params.setStatesEnabled(true);
+            params.setStates(statesSection.toStateSpecs());
+            params.setDefaultStateName(statesSection.getDefaultStateName());
+        }
         return params;
     }
 

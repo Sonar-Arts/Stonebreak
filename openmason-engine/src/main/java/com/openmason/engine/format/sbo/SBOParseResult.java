@@ -4,8 +4,11 @@ import com.openmason.engine.format.mesh.ParsedFaceMapping;
 import com.openmason.engine.format.mesh.ParsedMaterialData;
 import com.openmason.engine.format.mesh.ParsedMeshData;
 import com.openmason.engine.format.omo.OMOFormat;
+import com.openmason.engine.format.omo.OMOReader;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Complete result of parsing an SBO file.
@@ -33,8 +36,17 @@ public record SBOParseResult(
         List<ParsedFaceMapping> faceMappings,
         List<ParsedMaterialData> materials,
         byte[] defaultTexturePng,
-        byte[] embeddedOmtBytes
+        byte[] embeddedOmtBytes,
+        Map<String, byte[]> stateOmoBytes,
+        Map<String, byte[]> stateOmtBytes,
+        Map<String, OMOReader.ReadResult> stateOmoData
 ) {
+    public SBOParseResult {
+        stateOmoBytes = stateOmoBytes == null ? Collections.emptyMap() : Map.copyOf(stateOmoBytes);
+        stateOmtBytes = stateOmtBytes == null ? Collections.emptyMap() : Map.copyOf(stateOmtBytes);
+        stateOmoData = stateOmoData == null ? Collections.emptyMap() : Map.copyOf(stateOmoData);
+    }
+
     public String getObjectId() { return manifest.objectId(); }
     public String getObjectName() { return manifest.objectName(); }
     public String getObjectType() { return manifest.objectType(); }
@@ -44,4 +56,10 @@ public record SBOParseResult(
 
     /** True when this SBO carries only a texture (sprite items, 1.2+). */
     public boolean isTextureOnly() { return manifest.isTextureOnly(); }
+
+    /** True when this SBO declares one or more named states (1.3+). */
+    public boolean hasStates() { return manifest.hasStates(); }
+
+    /** Default state name (1.3+); null when {@link #hasStates()} is false. */
+    public String defaultStateName() { return manifest.defaultStateName(); }
 }

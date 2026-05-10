@@ -13,7 +13,10 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -77,39 +80,8 @@ public class SBOSerializer {
         outputPath = SBOFormat.ensureExtension(outputPath);
 
         try {
-            byte[] omoBytes = Files.readAllBytes(omoPath);
-            String checksum = computeChecksum(omoBytes);
-
-            SBOFormat.Document document = new SBOFormat.Document(
-                    SBOFormat.FORMAT_VERSION,
-                    params.getObjectId(),
-                    params.getObjectName(),
-                    params.getObjectType().getId(),
-                    params.getObjectPack(),
-                    checksum,
-                    params.getAuthor(),
-                    params.getDescription().isBlank() ? null : params.getDescription(),
-                    Instant.now().toString(),
-                    SBOFormat.EMBEDDED_OMO_FILENAME,
-                    null,
-                    params.getGameProperties()
-            );
-
-            Path tempFile = Files.createTempFile("sbo_export_", ".tmp");
-
-            try (FileOutputStream fos = new FileOutputStream(tempFile.toFile());
-                 ZipOutputStream zos = new ZipOutputStream(fos)) {
-
-                writeManifest(zos, document);
-                writeEntry(zos, SBOFormat.EMBEDDED_OMO_FILENAME, omoBytes);
-            }
-
-            Path finalPath = Path.of(outputPath);
-            Files.move(tempFile, finalPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-
-            logger.info("Exported .SBO file: {} (checksum={})", outputPath, checksum.substring(0, 12) + "...");
-            return true;
-
+            byte[] defaultBytes = Files.readAllBytes(omoPath);
+            return writeSbo(params, outputPath, defaultBytes, /* model */ true);
         } catch (IOException e) {
             logger.error("Error exporting .SBO file: {}", outputPath, e);
             return false;
@@ -143,40 +115,8 @@ public class SBOSerializer {
         outputPath = SBOFormat.ensureExtension(outputPath);
 
         try {
-            byte[] omtBytes = Files.readAllBytes(omtPath);
-            String checksum = computeChecksum(omtBytes);
-
-            SBOFormat.Document document = new SBOFormat.Document(
-                    SBOFormat.FORMAT_VERSION,
-                    params.getObjectId(),
-                    params.getObjectName(),
-                    params.getObjectType().getId(),
-                    params.getObjectPack(),
-                    checksum,
-                    params.getAuthor(),
-                    params.getDescription().isBlank() ? null : params.getDescription(),
-                    Instant.now().toString(),
-                    null,
-                    SBOFormat.EMBEDDED_OMT_FILENAME,
-                    params.getGameProperties()
-            );
-
-            Path tempFile = Files.createTempFile("sbo_tex_export_", ".tmp");
-
-            try (FileOutputStream fos = new FileOutputStream(tempFile.toFile());
-                 ZipOutputStream zos = new ZipOutputStream(fos)) {
-
-                writeManifest(zos, document);
-                writeEntry(zos, SBOFormat.EMBEDDED_OMT_FILENAME, omtBytes);
-            }
-
-            Path finalPath = Path.of(outputPath);
-            Files.move(tempFile, finalPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-
-            logger.info("Exported texture-only .SBO file: {} (checksum={})",
-                    outputPath, checksum.substring(0, 12) + "...");
-            return true;
-
+            byte[] defaultBytes = Files.readAllBytes(omtPath);
+            return writeSbo(params, outputPath, defaultBytes, /* model */ false);
         } catch (IOException e) {
             logger.error("Error exporting texture-only .SBO file: {}", outputPath, e);
             return false;
@@ -206,37 +146,101 @@ public class SBOSerializer {
         outputPath = SBOFormat.ensureExtension(outputPath);
 
         try {
-            String checksum = computeChecksum(omtBytes);
-
-            SBOFormat.Document document = new SBOFormat.Document(
-                    SBOFormat.FORMAT_VERSION,
-                    params.getObjectId(),
-                    params.getObjectName(),
-                    params.getObjectType().getId(),
-                    params.getObjectPack(),
-                    checksum,
-                    params.getAuthor(),
-                    params.getDescription().isBlank() ? null : params.getDescription(),
-                    Instant.now().toString(),
-                    null,
-                    SBOFormat.EMBEDDED_OMT_FILENAME,
-                    params.getGameProperties()
-            );
-
-            Path tempFile = Files.createTempFile("sbo_tex_export_", ".tmp");
-            try (FileOutputStream fos = new FileOutputStream(tempFile.toFile());
-                 ZipOutputStream zos = new ZipOutputStream(fos)) {
-                writeManifest(zos, document);
-                writeEntry(zos, SBOFormat.EMBEDDED_OMT_FILENAME, omtBytes);
-            }
-
-            Files.move(tempFile, Path.of(outputPath), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            logger.info("Exported texture-only .SBO (in-memory): {}", outputPath);
-            return true;
+            return writeSbo(params, outputPath, omtBytes, /* model */ false);
         } catch (IOException e) {
             logger.error("Error exporting texture-only .SBO file: {}", outputPath, e);
             return false;
         }
+    }
+
+    /**
+     * Unified write path. When {@code params.isStatesEnabled()} is false,
+     * writes a single-asset SBO (1.2-style: just the legacy entry). When
+     * states are enabled, writes the legacy entry from the default state's
+     * source (so 1.2 readers still load) plus per-state entries under
+     * {@code states/<name>/}, and records the full {@code states[]} list in
+     * the manifest.
+     *
+     * @param params       export parameters
+     * @param outputPath   final SBO path
+     * @param defaultBytes bytes of the default-state asset (already loaded)
+     * @param model        true for OMO payload, false for OMT payload
+     */
+    private boolean writeSbo(SBOFormat.ExportParameters params,
+                             String outputPath,
+                             byte[] defaultBytes,
+                             boolean model) throws IOException {
+        String legacyEntry = model ? SBOFormat.EMBEDDED_OMO_FILENAME : SBOFormat.EMBEDDED_OMT_FILENAME;
+        String legacyChecksum = computeChecksum(defaultBytes);
+
+        List<SBOFormat.StateEntry> stateEntries;
+        List<byte[]> stateBytes;
+        String defaultStateName = null;
+
+        if (params.isStatesEnabled()) {
+            // Resolve all state assets to (entry, bytes, checksum). The default
+            // state's bytes must equal defaultBytes; if a separate file is given
+            // we trust the caller's path and re-read.
+            defaultStateName = params.getDefaultStateName();
+            stateEntries = new ArrayList<>(params.getStates().size());
+            stateBytes = new ArrayList<>(params.getStates().size());
+
+            for (SBOFormat.StateSpec spec : params.getStates()) {
+                String entryName = SBOFormat.STATES_DIR_PREFIX + spec.name() + "/" + legacyEntry;
+                byte[] bytes;
+                if (spec.name().equals(defaultStateName)) {
+                    bytes = defaultBytes;
+                } else {
+                    Path src = Path.of(spec.sourcePath());
+                    if (!Files.exists(src)) {
+                        logger.error("State '{}' source file does not exist: {}", spec.name(), src);
+                        return false;
+                    }
+                    bytes = Files.readAllBytes(src);
+                }
+                stateEntries.add(new SBOFormat.StateEntry(spec.name(), entryName, model, computeChecksum(bytes)));
+                stateBytes.add(bytes);
+            }
+        } else {
+            stateEntries = Collections.emptyList();
+            stateBytes = Collections.emptyList();
+        }
+
+        SBOFormat.Document document = new SBOFormat.Document(
+                SBOFormat.FORMAT_VERSION,
+                params.getObjectId(),
+                params.getObjectName(),
+                params.getObjectType().getId(),
+                params.getObjectPack(),
+                legacyChecksum,
+                params.getAuthor(),
+                params.getDescription().isBlank() ? null : params.getDescription(),
+                Instant.now().toString(),
+                model ? legacyEntry : null,
+                model ? null : legacyEntry,
+                params.getGameProperties(),
+                stateEntries,
+                defaultStateName
+        );
+
+        Path tempFile = Files.createTempFile("sbo_export_", ".tmp");
+        try (FileOutputStream fos = new FileOutputStream(tempFile.toFile());
+             ZipOutputStream zos = new ZipOutputStream(fos)) {
+
+            writeManifest(zos, document);
+            writeEntry(zos, legacyEntry, defaultBytes);
+
+            for (int i = 0; i < stateEntries.size(); i++) {
+                SBOFormat.StateEntry e = stateEntries.get(i);
+                if (e.name().equals(defaultStateName)) continue; // legacy entry already written
+                writeEntry(zos, e.filename(), stateBytes.get(i));
+            }
+        }
+
+        Files.move(tempFile, Path.of(outputPath), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        logger.info("Exported .SBO file: {} (states={}, payload={})",
+                outputPath, stateEntries.size(), model ? "OMO" : "OMT");
+        return true;
     }
 
     /**
@@ -305,6 +309,8 @@ public class SBOSerializer {
         public String omoFile;
         public String textureFile;
         public GamePropertiesDTO gameProperties;
+        public List<StateEntryDTO> states;
+        public String defaultState;
 
         public ManifestDTO(SBOFormat.Document doc) {
             this.version = doc.version();
@@ -322,6 +328,30 @@ public class SBOSerializer {
             this.gameProperties = doc.gameProperties() != null
                     ? new GamePropertiesDTO(doc.gameProperties())
                     : null;
+            if (doc.hasStates()) {
+                this.states = new ArrayList<>();
+                for (SBOFormat.StateEntry e : doc.states()) {
+                    this.states.add(new StateEntryDTO(e));
+                }
+                this.defaultState = doc.defaultStateName();
+            } else {
+                this.states = null;
+                this.defaultState = null;
+            }
+        }
+    }
+
+    private static class StateEntryDTO {
+        public String name;
+        public String file;
+        public boolean model;
+        public String checksum;
+
+        public StateEntryDTO(SBOFormat.StateEntry e) {
+            this.name = e.name();
+            this.file = e.filename();
+            this.model = e.model();
+            this.checksum = e.checksum();
         }
     }
 

@@ -213,7 +213,29 @@ public final class ItemRegistry {
         public int maxStackSize() { return properties.maxStackSize(); }
         public String category() { return properties.categoryOrDefault(); }
 
-        /** Raw OMT bytes for the item's texture (decode with OMTReader). */
+        /** Raw OMT bytes for the item's default texture (decode with OMTReader). */
         public byte[] omtBytes() { return sboData.embeddedOmtBytes(); }
+
+        /** True when this item declares one or more named states (1.3+). */
+        public boolean hasStates() { return sboData.hasStates(); }
+
+        /** Default state name (1.3+); null when {@link #hasStates()} is false. */
+        public String defaultState() { return sboData.defaultStateName(); }
+
+        /** All declared state names in author-defined order; empty when no states. */
+        public java.util.Set<String> stateNames() {
+            return java.util.Collections.unmodifiableSet(sboData.stateOmtBytes().keySet());
+        }
+
+        /**
+         * OMT bytes for a specific state, or the default OMT when {@code state}
+         * is null/blank/unknown. Falls back to the legacy texture for items
+         * without states.
+         */
+        public byte[] omtBytesFor(String state) {
+            if (!hasStates() || state == null || state.isBlank()) return omtBytes();
+            byte[] specific = sboData.stateOmtBytes().get(state);
+            return specific != null ? specific : omtBytes();
+        }
     }
 }

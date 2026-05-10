@@ -10,7 +10,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -43,27 +49,25 @@ public class SBOParser {
         SBOFormat.Document manifest = null;
         byte[] omoBytes = null;
         byte[] omtBytes = null;
+        Map<String, byte[]> rawEntries = new HashMap<>();
 
-        // First pass: extract manifest and embedded asset (OMO XOR OMT) from the SBO ZIP
         try (InputStream fis = Files.newInputStream(sboPath);
              ZipInputStream zis = new ZipInputStream(fis)) {
 
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
                 String entryName = entry.getName();
+                byte[] bytes = readBytes(zis);
 
                 if (SBOFormat.MANIFEST_FILENAME.equals(entryName)) {
-                    byte[] jsonBytes = readBytes(zis);
-                    manifest = parseManifest(jsonBytes);
+                    manifest = parseManifest(bytes);
                     logger.debug("Parsed SBO manifest: {} ({})", manifest.objectName(), manifest.objectId());
-
                 } else if (SBOFormat.EMBEDDED_OMO_FILENAME.equals(entryName)) {
-                    omoBytes = readBytes(zis);
-                    logger.debug("Extracted embedded OMO: {} bytes", omoBytes.length);
-
+                    omoBytes = bytes;
                 } else if (SBOFormat.EMBEDDED_OMT_FILENAME.equals(entryName)) {
-                    omtBytes = readBytes(zis);
-                    logger.debug("Extracted embedded OMT: {} bytes", omtBytes.length);
+                    omtBytes = bytes;
+                } else if (entryName.startsWith(SBOFormat.STATES_DIR_PREFIX)) {
+                    rawEntries.put(entryName, bytes);
                 }
 
                 zis.closeEntry();
@@ -74,11 +78,39 @@ public class SBOParser {
             throw new IOException("Missing manifest.json in SBO file: " + sboPath);
         }
 
+        Map<String, byte[]> stateOmoBytes = new LinkedHashMap<>();
+        Map<String, byte[]> stateOmtBytes = new LinkedHashMap<>();
+        Map<String, OMOReader.ReadResult> stateOmoData = new LinkedHashMap<>();
+
+        if (manifest.hasStates()) {
+            for (SBOFormat.StateEntry e : manifest.states()) {
+                byte[] data;
+                if (e.name().equals(manifest.defaultStateName())) {
+                    data = e.model() ? omoBytes : omtBytes;
+                } else {
+                    data = rawEntries.get(e.filename());
+                }
+                if (data == null) {
+                    throw new IOException("State '" + e.name() + "' missing entry "
+                            + e.filename() + " in SBO: " + sboPath);
+                }
+                validateNamedChecksum(e.name(), e.checksum(), data, sboPath);
+                if (e.model()) {
+                    stateOmoBytes.put(e.name(), data);
+                    try (ByteArrayInputStream bais = new ByteArrayInputStream(data)) {
+                        stateOmoData.put(e.name(), omoReader.read(bais));
+                    }
+                } else {
+                    stateOmtBytes.put(e.name(), data);
+                }
+            }
+        }
+
         if (manifest.isModelBearing()) {
             if (omoBytes == null) {
                 throw new IOException("Manifest declares omoFile but model.omo missing: " + sboPath);
             }
-            return parseModelBearing(manifest, omoBytes, sboPath);
+            return parseModelBearing(manifest, omoBytes, sboPath, stateOmoBytes, stateOmtBytes, stateOmoData);
         }
 
         if (manifest.isTextureOnly()) {
@@ -86,15 +118,19 @@ public class SBOParser {
                 throw new IOException("Manifest declares textureFile but texture.omt missing: " + sboPath);
             }
             validateChecksum(manifest, omtBytes, sboPath);
-            logger.info("Parsed texture-only SBO: {} ({}) - {} OMT bytes",
-                    manifest.objectName(), manifest.objectId(), omtBytes.length);
-            return new SBOParseResult(manifest, null, null, null, null, null, omtBytes);
+            logger.info("Parsed texture-only SBO: {} ({}) - {} OMT bytes, states={}",
+                    manifest.objectName(), manifest.objectId(), omtBytes.length, stateOmtBytes.size());
+            return new SBOParseResult(manifest, null, null, null, null, null, omtBytes,
+                    stateOmoBytes, stateOmtBytes, stateOmoData);
         }
 
         throw new IOException("SBO manifest declares neither omoFile nor textureFile: " + sboPath);
     }
 
-    private SBOParseResult parseModelBearing(SBOFormat.Document manifest, byte[] omoBytes, Path sboPath) throws IOException {
+    private SBOParseResult parseModelBearing(SBOFormat.Document manifest, byte[] omoBytes, Path sboPath,
+                                              Map<String, byte[]> stateOmoBytes,
+                                              Map<String, byte[]> stateOmtBytes,
+                                              Map<String, OMOReader.ReadResult> stateOmoData) throws IOException {
         validateChecksum(manifest, omoBytes, sboPath);
 
         OMOReader.ReadResult omoResult;
@@ -102,10 +138,11 @@ public class SBOParser {
             omoResult = omoReader.read(bais);
         }
 
-        logger.info("Parsed SBO: {} ({}) - {} vertices, {} materials",
+        logger.info("Parsed SBO: {} ({}) - {} vertices, {} materials, states={}",
                 manifest.objectName(), manifest.objectId(),
                 omoResult.meshData() != null ? omoResult.meshData().getVertexCount() : 0,
-                omoResult.materials().size());
+                omoResult.materials().size(),
+                stateOmoBytes.size());
 
         return new SBOParseResult(
                 manifest,
@@ -114,8 +151,25 @@ public class SBOParser {
                 omoResult.faceMappings(),
                 omoResult.materials(),
                 omoResult.defaultTextureBytes(),
-                null
+                null,
+                stateOmoBytes,
+                stateOmtBytes,
+                stateOmoData
         );
+    }
+
+    private void validateNamedChecksum(String label, String expected, byte[] data, Path sboPath) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance(SBOFormat.CHECKSUM_ALGORITHM);
+            String computed = HexFormat.of().formatHex(digest.digest(data));
+            if (!computed.equalsIgnoreCase(expected)) {
+                logger.warn("SBO state '{}' checksum mismatch in {}: expected={}, computed={}",
+                        label, sboPath.getFileName(), expected, computed);
+            }
+        } catch (java.security.NoSuchAlgorithmException e) {
+            logger.warn("Cannot validate checksum for state '{}': {} not available",
+                    label, SBOFormat.CHECKSUM_ALGORITHM);
+        }
     }
 
     private SBOFormat.Document parseManifest(byte[] jsonBytes) throws IOException {
@@ -147,6 +201,21 @@ public class SBOParser {
         String textureFile = root.has("textureFile") && !root.get("textureFile").isNull()
                 ? nullIfBlank(root.get("textureFile").asText()) : null;
 
+        List<SBOFormat.StateEntry> states = Collections.emptyList();
+        String defaultState = null;
+        if (root.has("states") && root.get("states").isArray() && !root.get("states").isEmpty()) {
+            states = new ArrayList<>();
+            for (var node : root.get("states")) {
+                String name = node.get("name").asText();
+                String file = node.get("file").asText();
+                boolean model = node.has("model") && node.get("model").asBoolean();
+                String stateChecksum = node.has("checksum") ? node.get("checksum").asText() : "";
+                states.add(new SBOFormat.StateEntry(name, file, model, stateChecksum));
+            }
+            defaultState = root.has("defaultState") && !root.get("defaultState").isNull()
+                    ? root.get("defaultState").asText() : null;
+        }
+
         return new SBOFormat.Document(
                 root.get("version").asText(),
                 root.get("objectId").asText(),
@@ -159,7 +228,9 @@ public class SBOParser {
                 root.has("createdAt") ? root.get("createdAt").asText() : null,
                 omoFile,
                 textureFile,
-                gameProperties
+                gameProperties,
+                states,
+                defaultState
         );
     }
 

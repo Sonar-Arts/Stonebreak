@@ -193,7 +193,7 @@ public class MHotbarRenderer {
 
             if (!SpriteVoxelizer.isSboBackedItem(itemType)) continue;
 
-            MTexture tex = MTextureRegistry.getForSboItem(itemType);
+            MTexture tex = MTextureRegistry.getForSboItem(itemType, stack.getState());
             if (tex == null) continue;
 
             HotbarLayoutCalculator.SlotPosition pos =

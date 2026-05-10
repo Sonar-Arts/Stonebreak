@@ -11,15 +11,14 @@ import java.util.Map;
 /**
  * Defines non-placeable items in the game (tools, materials, consumables, etc.).
  *
- * <p><strong>Registry-backed.</strong> The 6 SBO-backed items
- * (SWORD, WAR_AXE, ...) pull their data from {@link ItemRegistry} at
- * class-init time. The SBO files under {@code sbo/items/} are the source of
- * truth for those.
+ * <p><strong>Registry-backed.</strong> SBO-backed items pull their data from
+ * {@link ItemRegistry} at class-init time. The SBO files under
+ * {@code sbo/items/} are the source of truth for those.
  *
- * <p>The 5 PNG-backed items (STICK, WOODEN_PICKAXE, WOODEN_AXE, WOODEN_BUCKET,
- * WOODEN_BUCKET_WATER) remain hardcoded — they don't have SBOs yet, just
- * flat PNG sprites under {@code Items/Textures/}. Migrate them to SBO and
- * they'll move to the registry-backed list.
+ * <p>The 3 remaining PNG-backed items (STICK, WOODEN_PICKAXE, WOODEN_AXE)
+ * are hardcoded — they don't have SBOs yet, just flat PNG sprites under
+ * {@code Items/Textures/}. Migrate them to SBO and they'll move to the
+ * registry-backed list.
  *
  * <p>SBO files dropped into {@code sbo/items/} are auto-registered via the
  * promotion block at the end of class init.
@@ -28,6 +27,13 @@ public final class ItemType implements Item {
 
     private static final Map<String, ItemType> BY_NAME = new LinkedHashMap<>();
     private static final Map<Integer, ItemType> BY_ID = new LinkedHashMap<>();
+    /**
+     * Maps an ItemType's enum name to the SBO objectId that backs it, when
+     * the enum name doesn't match the default {@code "stonebreak:" + name}
+     * convention. Lets {@code WOODEN_BUCKET} resolve to
+     * {@code stonebreak:sb_wooden_bucket}, etc.
+     */
+    private static final Map<String, String> OBJECT_ID_BY_ENUM_NAME = new LinkedHashMap<>();
 
     static {
         ItemRegistry.getInstance().scanAndLoad();
@@ -38,8 +44,6 @@ public final class ItemType implements Item {
     public static final ItemType STICK = createSentinel("STICK", 1001, "Stick", 1, 3, ItemCategory.MATERIALS, 64);
     public static final ItemType WOODEN_PICKAXE = createSentinel("WOODEN_PICKAXE", 1002, "Wooden Pickaxe", 3, 3, ItemCategory.TOOLS, 1);
     public static final ItemType WOODEN_AXE = createSentinel("WOODEN_AXE", 1003, "Wooden Axe", 8, 3, ItemCategory.TOOLS, 1);
-    public static final ItemType WOODEN_BUCKET = createSentinel("WOODEN_BUCKET", 1004, "Wooden Bucket", 0, 4, ItemCategory.TOOLS, 16);
-    public static final ItemType WOODEN_BUCKET_WATER = createSentinel("WOODEN_BUCKET_WATER", 1005, "Wooden Water Bucket", 1, 4, ItemCategory.TOOLS, 1);
 
     // ----- SBO-backed items. Data comes from sbo/items/ gameProperties. ---
 
@@ -49,6 +53,19 @@ public final class ItemType implements Item {
     public static final ItemType SWORD = fromRegistry("stonebreak:sword", "SWORD");
     public static final ItemType WAR_AXE = fromRegistry("stonebreak:war_axe", "WAR_AXE");
     public static final ItemType WOODEN_SHOVEL = fromRegistry("stonebreak:wooden_shovel", "WOODEN_SHOVEL");
+
+    /**
+     * Wooden bucket (SBO 1.3, two states: "sb_wooden_bucket_empty" default
+     * and "sb_wooden_bucket_water"). Replaces the legacy WOODEN_BUCKET +
+     * WOODEN_BUCKET_WATER pair — water-vs-empty is now an ItemStack state
+     * rather than a separate item type.
+     */
+    public static final ItemType WOODEN_BUCKET = fromRegistry("stonebreak:sb_wooden_bucket", "WOODEN_BUCKET");
+
+    // ----- SBO state name constants for the wooden bucket. ----------------
+
+    public static final String BUCKET_STATE_EMPTY = "sb_wooden_bucket_empty";
+    public static final String BUCKET_STATE_WATER = "sb_wooden_bucket_water";
 
     // ----- Promote SBO entries that don't match a static-final field above.
 
@@ -63,6 +80,7 @@ public final class ItemType implements Item {
             registerInternal(new ItemType(
                     enumName, gp.numericId(), entry.displayName(),
                     gp.atlasX(), gp.atlasY(), category, gp.maxStackSize()));
+            OBJECT_ID_BY_ENUM_NAME.put(enumName, entry.objectId());
         }
     }
 
@@ -105,7 +123,19 @@ public final class ItemType implements Item {
                 enumName, gp.numericId(), entry.displayName(),
                 gp.atlasX(), gp.atlasY(), category, gp.maxStackSize());
         registerInternal(it);
+        // Remember the explicit objectId so it can be resolved later even
+        // when it doesn't match the default "stonebreak:<enum>" convention.
+        OBJECT_ID_BY_ENUM_NAME.put(enumName, objectId);
         return it;
+    }
+
+    /**
+     * Returns the SBO objectId backing this ItemType, or {@code null} if
+     * it isn't SBO-backed. Used by {@code SpriteVoxelizer.sboItemId} to
+     * resolve item textures via {@link ItemRegistry}.
+     */
+    public static String objectIdFor(ItemType type) {
+        return type == null ? null : OBJECT_ID_BY_ENUM_NAME.get(type.enumName);
     }
 
     /**

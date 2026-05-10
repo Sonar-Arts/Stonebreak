@@ -23,11 +23,13 @@ public class VoxelizedSpriteRenderer {
     private final ShaderProgram shaderProgram;
     private final TextureAtlas textureAtlas;
 
-    // Cache for voxel meshes to avoid regenerating them every frame
-    private final Map<ItemType, VoxelMesh> meshCache = new HashMap<>();
+    // Cache for voxel meshes — keyed by (itemType, state) so SBO 1.3+ items
+    // with multiple states (e.g. empty/water/milk bucket) cache one mesh per
+    // visual variant rather than overwriting the previous one.
+    private final Map<SpriteVoxelizer.SpriteKey, VoxelMesh> meshCache = new HashMap<>();
 
-    // Cache for voxelization results (palette + voxel data)
-    private final Map<ItemType, SpriteVoxelizer.VoxelizationResult> voxelizationCache = new HashMap<>();
+    // Cache for voxelization results (palette + voxel data), same keying.
+    private final Map<SpriteVoxelizer.SpriteKey, SpriteVoxelizer.VoxelizationResult> voxelizationCache = new HashMap<>();
 
     // OpenGL state tracking for proper restoration
     private boolean previousCullFaceEnabled = false;
@@ -70,72 +72,71 @@ public class VoxelizedSpriteRenderer {
      * @param itemType The item type to render
      */
     public void renderVoxelizedSprite(ItemType itemType) {
+        renderVoxelizedSprite(itemType, null);
+    }
+
+    /**
+     * State-aware variant — renders the voxelized sprite for a specific
+     * SBO state. Falls back to the default state when {@code state} is null
+     * or unknown.
+     */
+    public void renderVoxelizedSprite(ItemType itemType, String state) {
         if (!SpriteVoxelizer.isVoxelizable(itemType)) {
             System.err.println("Item type " + itemType.getName() + " is not voxelizable");
             return;
         }
 
+        SpriteVoxelizer.SpriteKey key = SpriteVoxelizer.SpriteKey.of(itemType, state);
+
         // Get or create voxel mesh
-        VoxelMesh mesh = getOrCreateMesh(itemType);
+        VoxelMesh mesh = getOrCreateMesh(key);
         if (mesh == null || !mesh.isCreated()) {
             System.err.println("Failed to create mesh for " + itemType.getName());
             return;
         }
 
-        // Set up shader uniforms
         setupShaderUniforms();
 
-        // Apply sprite transformation (2x scale, -40° diagonal rotation)
         Matrix4f originalTransform = getCurrentModelMatrix();
         Matrix4f spriteTransform = createSpriteTransform();
         applyTransformMatrix(spriteTransform);
 
-        // Set up OpenGL state for voxel rendering
         setupRenderState();
 
-        // Bind texture atlas (though we won't use it in solid color mode)
         bindColorPaletteTexture(itemType);
 
-        // Render each voxel with its individual color
-        renderVoxelsWithColors(itemType, mesh);
+        renderVoxelsWithColors(key, mesh);
 
-        // Restore transformation matrix
         applyTransformMatrix(originalTransform);
 
-        // Restore OpenGL state
         restoreRenderState();
     }
 
     /**
      * Gets or creates a voxel mesh for the given item type.
      */
-    private VoxelMesh getOrCreateMesh(ItemType itemType) {
-        if (meshCache.containsKey(itemType)) {
-            return meshCache.get(itemType);
+    private VoxelMesh getOrCreateMesh(SpriteVoxelizer.SpriteKey key) {
+        if (meshCache.containsKey(key)) {
+            return meshCache.get(key);
         }
 
-        // Generate voxelization result if not cached
         SpriteVoxelizer.VoxelizationResult result;
-        if (voxelizationCache.containsKey(itemType)) {
-            result = voxelizationCache.get(itemType);
-            // System.out.println("Using cached voxelization for " + itemType.getName()); // Debug only
+        if (voxelizationCache.containsKey(key)) {
+            result = voxelizationCache.get(key);
         } else {
-            result = SpriteVoxelizer.voxelizeSpriteWithPalette(itemType);
-            voxelizationCache.put(itemType, result);
-            // System.out.println("Generated voxelization for " + itemType.getName() + ": " + result.getVoxels().size() + " voxels, " + result.getColorPalette().getColorCount() + " colors"); // Debug only
+            result = SpriteVoxelizer.voxelizeSpriteWithPalette(key.itemType(), key.state());
+            voxelizationCache.put(key, result);
         }
 
         if (!result.isValid()) {
-            System.err.println("No valid voxelization data available for " + itemType.getName() + " - cannot create mesh");
+            System.err.println("No valid voxelization data available for "
+                    + key.itemType().getName() + " - cannot create mesh");
             return null;
         }
 
-        // Create mesh from voxel data
         VoxelMesh mesh = new VoxelMesh();
         mesh.createMesh(result.getVoxels(), SpriteVoxelizer.getDefaultVoxelSize());
-        meshCache.put(itemType, mesh);
-
-        // System.out.println("Created voxel mesh for " + itemType.getName() + " with " + mesh.getIndexCount() + " indices"); // Debug only
+        meshCache.put(key, mesh);
         return mesh;
     }
 
@@ -178,8 +179,8 @@ public class VoxelizedSpriteRenderer {
     /**
      * Renders each voxel with its individual color using solid color mode.
      */
-    private void renderVoxelsWithColors(ItemType itemType, VoxelMesh mesh) {
-        SpriteVoxelizer.VoxelizationResult result = voxelizationCache.get(itemType);
+    private void renderVoxelsWithColors(SpriteVoxelizer.SpriteKey key, VoxelMesh mesh) {
+        SpriteVoxelizer.VoxelizationResult result = voxelizationCache.get(key);
         if (result == null || result.getVoxels().isEmpty()) {
             return;
         }
@@ -298,7 +299,7 @@ public class VoxelizedSpriteRenderer {
 
         for (ItemType itemType : ItemType.values()) {
             if (SpriteVoxelizer.isVoxelizable(itemType)) {
-                getOrCreateMesh(itemType);
+                getOrCreateMesh(SpriteVoxelizer.SpriteKey.of(itemType));
             }
         }
 
@@ -313,7 +314,7 @@ public class VoxelizedSpriteRenderer {
         int totalIndices = 0;
         int totalColors = 0;
 
-        for (Map.Entry<ItemType, SpriteVoxelizer.VoxelizationResult> entry : voxelizationCache.entrySet()) {
+        for (Map.Entry<SpriteVoxelizer.SpriteKey, SpriteVoxelizer.VoxelizationResult> entry : voxelizationCache.entrySet()) {
             SpriteVoxelizer.VoxelizationResult result = entry.getValue();
             totalVoxels += result.getVoxels().size();
             if (result.getColorPalette() != null) {
@@ -321,7 +322,7 @@ public class VoxelizedSpriteRenderer {
             }
         }
 
-        for (Map.Entry<ItemType, VoxelMesh> entry : meshCache.entrySet()) {
+        for (Map.Entry<SpriteVoxelizer.SpriteKey, VoxelMesh> entry : meshCache.entrySet()) {
             if (entry.getValue().isCreated()) {
                 totalIndices += entry.getValue().getIndexCount();
             }
@@ -335,7 +336,12 @@ public class VoxelizedSpriteRenderer {
      * Checks if an item type has a cached mesh.
      */
     public boolean hasCachedMesh(ItemType itemType) {
-        return meshCache.containsKey(itemType) && meshCache.get(itemType).isCreated();
+        return hasCachedMesh(itemType, null);
+    }
+
+    public boolean hasCachedMesh(ItemType itemType, String state) {
+        SpriteVoxelizer.SpriteKey key = SpriteVoxelizer.SpriteKey.of(itemType, state);
+        return meshCache.containsKey(key) && meshCache.get(key).isCreated();
     }
 
     /**
