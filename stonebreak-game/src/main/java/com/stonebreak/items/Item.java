@@ -50,4 +50,22 @@ public interface Item {
     default boolean isSameType(Item other) {
         return other != null && this.getId() == other.getId();
     }
+
+    /**
+     * True when this item can be drawn as a 2D icon in the UI — either it has
+     * legacy texture-atlas coordinates, or it's an SBO-backed sprite item
+     * (atlas coords {@code -1, -1} but registered under {@code sbo/items/}).
+     *
+     * <p>Centralised here so that every inventory / hotbar / recipe / workbench
+     * slot renderer agrees on the rule. Without this, items like the wooden
+     * bucket — which intentionally have no atlas slot — get filtered out.
+     */
+    default boolean hasIcon() {
+        if (getAtlasX() != -1 && getAtlasY() != -1) return true;
+        if (this instanceof ItemType itemType) {
+            return com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer
+                    .isSboBackedItem(itemType);
+        }
+        return false;
+    }
 }

@@ -19,6 +19,7 @@ import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.dialogs.AboutDialog;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.menus.dialogs.SBEExportWindow;
+import com.openmason.main.systems.menus.dialogs.SBOEditorWindow;
 import com.openmason.main.systems.menus.dialogs.SBOExportWindow;
 import com.openmason.main.systems.menus.dialogs.SBOTextureExportWindow;
 import com.openmason.main.systems.menus.dialogs.SBTExportWindow;
@@ -67,6 +68,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private SBEExportWindow sbeExportWindow; // Initialized after components
     private SBTExportWindow sbtExportWindow; // Initialized after components
     private SBOTextureExportWindow sboTextureExportWindow; // Initialized after components
+    private SBOEditorWindow sboEditorWindow; // Initialized after components
     private final AboutDialog aboutDialog;
 
     // Menu System
@@ -246,10 +248,14 @@ public class MainImGuiInterface implements ModelBrowserListener {
                     fileDialogService
             );
 
+            // SBO editor — for opening and editing existing .sbo files
+            this.sboEditorWindow = new SBOEditorWindow(fileDialogService, statusService);
+            toolsMenuHandler.setSBOEditorWindow(sboEditorWindow);
+
             toolsMenuHandler.setModelState(modelState);
             toolsMenuHandler.setStatusService(statusService);
             toolsMenuHandler.setModelOperations(modelOperations);
-            logger.debug("SBO, SBE, SBT, and SBO-texture export windows initialized");
+            logger.debug("SBO, SBE, SBT, SBO-texture export windows and SBO editor initialized");
         } catch (Exception e) {
             logger.error("Failed to initialize components", e);
         }
@@ -604,6 +610,13 @@ public class MainImGuiInterface implements ModelBrowserListener {
     }
 
     /**
+     * Gets the SBO editor window for external rendering.
+     */
+    public SBOEditorWindow getSBOEditorWindow() {
+        return sboEditorWindow;
+    }
+
+    /**
      * Gets the SBT export window for external rendering.
      */
     public SBOTextureExportWindow getSBOTextureExportWindow() {
@@ -654,6 +667,9 @@ public class MainImGuiInterface implements ModelBrowserListener {
         }
         if (textureCreatorImGui != null && sboTextureExportWindow != null) {
             textureCreatorImGui.setSBOExportTrigger(sboTextureExportWindow::show);
+        }
+        if (textureCreatorImGui != null && sboEditorWindow != null) {
+            textureCreatorImGui.setSBOEditorTrigger(sboEditorWindow::openWithDialog);
         }
     }
 

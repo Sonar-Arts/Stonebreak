@@ -55,7 +55,7 @@ public class InventorySlotRenderer {
                     Item item = itemStack.getItem();
                     int count = itemStack.getCount();
 
-                    if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
+                    if (item != null && item.hasIcon()) {
                         renderItemInSlot(item, slotX, slotY, uiRenderer, renderer);
 
                         // Draw count text with modern styling
@@ -108,7 +108,7 @@ public class InventorySlotRenderer {
                     Item item = itemStack.getItem();
                     int count = itemStack.getCount();
 
-                    if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
+                    if (item != null && item.hasIcon()) {
                         renderItemInSlot(item, slotX, slotY, uiRenderer, renderer);
 
                         if (count > 1) {

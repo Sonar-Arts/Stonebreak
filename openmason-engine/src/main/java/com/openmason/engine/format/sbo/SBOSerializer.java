@@ -220,7 +220,8 @@ public class SBOSerializer {
                 model ? null : legacyEntry,
                 params.getGameProperties(),
                 stateEntries,
-                defaultStateName
+                defaultStateName,
+                params.getRecipes()
         );
 
         Path tempFile = Files.createTempFile("sbo_export_", ".tmp");
@@ -241,6 +242,110 @@ public class SBOSerializer {
         logger.info("Exported .SBO file: {} (states={}, payload={})",
                 outputPath, stateEntries.size(), model ? "OMO" : "OMT");
         return true;
+    }
+
+    /**
+     * Re-pack an SBO from a fully-built {@link SBOFormat.Document} plus the
+     * already-extracted embedded asset bytes. Used by the in-app SBO editor
+     * to save edits to an existing file without re-encoding the OMO/OMT.
+     *
+     * <p>The default-state bytes are re-checksummed; the manifest's checksum
+     * field on the supplied document is replaced with the recomputed value
+     * before writing.
+     *
+     * @param document        edited manifest (any field except payload kind may differ)
+     * @param defaultBytes    bytes of the default-state asset (omo or omt)
+     * @param stateBytesByName per-state asset bytes keyed by state name; used when
+     *                        {@code document.hasStates()}. Each non-default state
+     *                        must have an entry; the default state's bytes are taken
+     *                        from {@code defaultBytes}. May be empty/null for stateless SBOs.
+     * @param outputPath      destination .sbo path (overwrites if exists)
+     * @return true on success
+     */
+    public boolean exportFromDocument(SBOFormat.Document document,
+                                       byte[] defaultBytes,
+                                       java.util.Map<String, byte[]> stateBytesByName,
+                                       String outputPath) {
+        if (document == null) {
+            logger.error("exportFromDocument: document is null");
+            return false;
+        }
+        if (defaultBytes == null || defaultBytes.length == 0) {
+            logger.error("exportFromDocument: defaultBytes is empty");
+            return false;
+        }
+
+        boolean model = document.isModelBearing();
+        String legacyEntry = model ? SBOFormat.EMBEDDED_OMO_FILENAME : SBOFormat.EMBEDDED_OMT_FILENAME;
+        String legacyChecksum = computeChecksum(defaultBytes);
+
+        // Rebuild state entries with recomputed checksums (state filenames preserved).
+        java.util.List<SBOFormat.StateEntry> rebuiltStates = Collections.emptyList();
+        java.util.Map<String, byte[]> resolvedStateBytes = new java.util.LinkedHashMap<>();
+        if (document.hasStates()) {
+            rebuiltStates = new ArrayList<>(document.states().size());
+            for (SBOFormat.StateEntry e : document.states()) {
+                byte[] bytes;
+                if (e.name().equals(document.defaultStateName())) {
+                    bytes = defaultBytes;
+                } else {
+                    bytes = stateBytesByName != null ? stateBytesByName.get(e.name()) : null;
+                    if (bytes == null) {
+                        logger.error("exportFromDocument: missing bytes for state '{}'", e.name());
+                        return false;
+                    }
+                }
+                resolvedStateBytes.put(e.name(), bytes);
+                rebuiltStates.add(new SBOFormat.StateEntry(
+                        e.name(),
+                        SBOFormat.STATES_DIR_PREFIX + e.name() + "/" + legacyEntry,
+                        model,
+                        computeChecksum(bytes)
+                ));
+            }
+        }
+
+        SBOFormat.Document finalDoc = new SBOFormat.Document(
+                SBOFormat.FORMAT_VERSION,
+                document.objectId(),
+                document.objectName(),
+                document.objectType(),
+                document.objectPack(),
+                legacyChecksum,
+                document.author(),
+                document.description(),
+                document.createdAt() != null ? document.createdAt() : Instant.now().toString(),
+                model ? legacyEntry : null,
+                model ? null : legacyEntry,
+                document.gameProperties(),
+                rebuiltStates,
+                rebuiltStates.isEmpty() ? null : document.defaultStateName(),
+                document.recipes()
+        );
+
+        outputPath = SBOFormat.ensureExtension(outputPath);
+        try {
+            Path tempFile = Files.createTempFile("sbo_save_", ".tmp");
+            try (FileOutputStream fos = new FileOutputStream(tempFile.toFile());
+                 ZipOutputStream zos = new ZipOutputStream(fos)) {
+
+                writeManifest(zos, finalDoc);
+                writeEntry(zos, legacyEntry, defaultBytes);
+
+                for (SBOFormat.StateEntry e : rebuiltStates) {
+                    if (e.name().equals(finalDoc.defaultStateName())) continue;
+                    writeEntry(zos, e.filename(), resolvedStateBytes.get(e.name()));
+                }
+            }
+            Files.move(tempFile, Path.of(outputPath), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            logger.info("Saved .SBO file: {} (states={}, recipes={})",
+                    outputPath, rebuiltStates.size(),
+                    finalDoc.hasRecipes() ? finalDoc.recipes().shaped().size() : 0);
+            return true;
+        } catch (IOException e) {
+            logger.error("Error saving .SBO file: {}", outputPath, e);
+            return false;
+        }
     }
 
     /**
@@ -311,6 +416,7 @@ public class SBOSerializer {
         public GamePropertiesDTO gameProperties;
         public List<StateEntryDTO> states;
         public String defaultState;
+        public RecipeDataDTO recipes;
 
         public ManifestDTO(SBOFormat.Document doc) {
             this.version = doc.version();
@@ -338,6 +444,32 @@ public class SBOSerializer {
                 this.states = null;
                 this.defaultState = null;
             }
+            this.recipes = doc.hasRecipes() ? new RecipeDataDTO(doc.recipes()) : null;
+        }
+    }
+
+    private static class RecipeDataDTO {
+        public List<ShapedRecipeDTO> shaped;
+
+        public RecipeDataDTO(SBOFormat.RecipeData data) {
+            this.shaped = new ArrayList<>(data.shaped().size());
+            for (SBOFormat.ShapedRecipe r : data.shaped()) {
+                this.shaped.add(new ShapedRecipeDTO(r));
+            }
+        }
+    }
+
+    private static class ShapedRecipeDTO {
+        public int width;
+        public int height;
+        public List<String> pattern;
+        public int outputCount;
+
+        public ShapedRecipeDTO(SBOFormat.ShapedRecipe r) {
+            this.width = r.width();
+            this.height = r.height();
+            this.pattern = r.pattern();
+            this.outputCount = r.outputCount();
         }
     }
 

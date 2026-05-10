@@ -41,6 +41,7 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     private Runnable onColorPanelToggle;
     private Runnable onExportSBT;
     private Runnable onExportSBO;
+    private Runnable onOpenSBOEditor;
     private java.util.function.Supplier<String> sbtOmtPathSupplier = () -> null;
     private ImBoolean showLayersPanel;
     private ImBoolean showColorPanel;
@@ -138,6 +139,13 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
      */
     public void setOnExportSBO(Runnable callback) {
         this.onExportSBO = callback;
+    }
+
+    /**
+     * Set callback invoked when the user opens the SBO editor from the Tools menu.
+     */
+    public void setOnOpenSBOEditor(Runnable callback) {
+        this.onOpenSBOEditor = callback;
     }
 
     /**
@@ -326,6 +334,14 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
             if (ImGui.menuItem("Export SBO...", "", false, canExport)) {
                 if (onExportSBO != null) {
                     onExportSBO.run();
+                }
+            }
+
+            ImGui.separator();
+
+            if (ImGui.menuItem("SBO Editor...")) {
+                if (onOpenSBOEditor != null) {
+                    onOpenSBOEditor.run();
                 }
             }
 

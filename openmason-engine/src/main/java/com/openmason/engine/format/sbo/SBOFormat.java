@@ -38,12 +38,17 @@ import java.util.Objects;
  *       {@code model.omo}/{@code texture.omt} entry so 1.2 readers still load.
  *       Used at runtime to switch between visual variants of one logical
  *       object (e.g. empty/water/milk wooden bucket).</li>
+ *   <li>1.4 - Optional crafting {@link RecipeData} block. Each SBO may declare the
+ *       shaped recipes that produce its own item, removing the need for a
+ *       hardcoded recipe registry on the game side. Older readers ignore the
+ *       field; the game scans all SBOs at startup and harvests recipes whose
+ *       output is the SBO's own object.</li>
  * </ul>
  */
 public final class SBOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.3";
+    public static final String FORMAT_VERSION = "1.4";
 
     /** File extension for SBO files */
     public static final String FILE_EXTENSION = ".sbo";
@@ -191,6 +196,8 @@ public final class SBOFormat {
      *                         exactly one entry's name must equal {@code defaultStateName}.
      * @param defaultStateName name of the default state (1.3+); null when {@code states}
      *                         is empty.
+     * @param recipes          optional crafting recipes (1.4+) whose output is this SBO's
+     *                         own object. {@code null} or empty list means no recipes.
      */
     public record Document(
             String version,
@@ -206,7 +213,8 @@ public final class SBOFormat {
             String textureFilename,
             GameProperties gameProperties,
             List<StateEntry> states,
-            String defaultStateName
+            String defaultStateName,
+            RecipeData recipes
     ) {
         public Document {
             Objects.requireNonNull(version, "version cannot be null");
@@ -259,6 +267,78 @@ public final class SBOFormat {
         /** True when this SBO declares one or more named states (1.3+). */
         public boolean hasStates() {
             return states != null && !states.isEmpty();
+        }
+
+        /** True when this SBO declares one or more crafting recipes (1.4+). */
+        public boolean hasRecipes() {
+            return recipes != null && recipes.shaped() != null && !recipes.shaped().isEmpty();
+        }
+    }
+
+    /**
+     * Optional crafting recipe block embedded in an SBO manifest (format version 1.4+).
+     *
+     * <p>Recipes declared here produce the SBO's own object as output. The game
+     * scans every SBO at startup, reads this block (when present), and registers
+     * the resulting {@code Recipe} entries with its {@code CraftingManager}.
+     *
+     * <p>Currently only shaped recipes are supported. Field is forward-compatible:
+     * future shapeless / smelting / etc. variants would be added as additional
+     * sibling lists, leaving {@code shaped} alone.
+     *
+     * @param shaped list of shaped recipes; never null but may be empty
+     */
+    public record RecipeData(List<ShapedRecipe> shaped) {
+        public RecipeData {
+            shaped = shaped == null ? Collections.emptyList() : List.copyOf(shaped);
+        }
+    }
+
+    /**
+     * One shaped crafting recipe (1.4+).
+     *
+     * <p>The output is implicit: the SBO that owns this recipe. {@code outputCount}
+     * specifies how many copies of that output are produced.
+     *
+     * <p>{@code pattern} is a row-major flat list of length {@code width * height}.
+     * Each slot is either an SBO {@code objectId} (e.g. {@code "stonebreak:oak_log"})
+     * or an empty string for an empty cell. The game resolves these to
+     * {@code ItemStack} instances at recipe-load time.
+     *
+     * @param width       horizontal extent of the pattern (1..3)
+     * @param height      vertical extent of the pattern (1..3)
+     * @param pattern     row-major slot list of length {@code width * height};
+     *                    each entry is an objectId or {@code ""} for empty
+     * @param outputCount number of output items produced per craft (>= 1)
+     */
+    public record ShapedRecipe(
+            int width,
+            int height,
+            List<String> pattern,
+            int outputCount
+    ) {
+        public ShapedRecipe {
+            if (width < 1 || width > 3) {
+                throw new IllegalArgumentException("recipe width must be 1..3, got " + width);
+            }
+            if (height < 1 || height > 3) {
+                throw new IllegalArgumentException("recipe height must be 1..3, got " + height);
+            }
+            Objects.requireNonNull(pattern, "pattern cannot be null");
+            if (pattern.size() != width * height) {
+                throw new IllegalArgumentException(
+                        "pattern size " + pattern.size() + " does not match "
+                                + width + "x" + height + " (= " + (width * height) + ")");
+            }
+            if (outputCount < 1) {
+                throw new IllegalArgumentException("outputCount must be >= 1, got " + outputCount);
+            }
+            // Normalize null entries to empty strings for safety; copy for immutability.
+            List<String> normalized = new ArrayList<>(pattern.size());
+            for (String slot : pattern) {
+                normalized.add(slot == null ? "" : slot);
+            }
+            pattern = List.copyOf(normalized);
         }
     }
 
@@ -352,6 +432,7 @@ public final class SBOFormat {
         private boolean statesEnabled = false;
         private final List<StateSpec> states = new ArrayList<>();
         private String defaultStateName = "";
+        private RecipeData recipes;
 
         public ExportParameters() {}
 
@@ -387,6 +468,9 @@ public final class SBOFormat {
 
         public String getDefaultStateName() { return defaultStateName; }
         public void setDefaultStateName(String name) { this.defaultStateName = name != null ? name : ""; }
+
+        public RecipeData getRecipes() { return recipes; }
+        public void setRecipes(RecipeData recipes) { this.recipes = recipes; }
 
         /**
          * Validates that all required fields are populated.

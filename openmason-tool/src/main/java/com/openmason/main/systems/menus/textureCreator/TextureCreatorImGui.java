@@ -457,6 +457,15 @@ public class TextureCreatorImGui {
         windowedMenuBarRenderer.setOnExportSBO(onExportSBO);
     }
 
+    /**
+     * Wire the Tools → SBO Editor menu entry. Invoked when the user wants to
+     * open and edit an existing .sbo file from the texture editor.
+     */
+    public void setSBOEditorTrigger(Runnable onOpenSBOEditor) {
+        menuBarRenderer.setOnOpenSBOEditor(onOpenSBOEditor);
+        windowedMenuBarRenderer.setOnOpenSBOEditor(onOpenSBOEditor);
+    }
+
     public TextureCreatorController getController() {
         return controller;
     }

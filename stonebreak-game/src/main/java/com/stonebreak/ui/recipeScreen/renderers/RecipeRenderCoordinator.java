@@ -594,7 +594,7 @@ public class RecipeRenderCoordinator {
     private void drawItemIcon(ItemStack itemStack, int x, int y, int size) {
         if (itemStack == null || itemStack.isEmpty()) return;
         Item item = itemStack.getItem();
-        if (item == null || item.getAtlasX() == -1 || item.getAtlasY() == -1) return;
+        if (item == null || !item.hasIcon()) return;
 
         if (item instanceof BlockType bt) {
             uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt, x, y, size, size,

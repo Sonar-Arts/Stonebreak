@@ -40,6 +40,13 @@ public final class BlockType implements Item, IBlockType {
 
     private static final Map<String, BlockType> BY_NAME = new LinkedHashMap<>();
     private static final Map<Integer, BlockType> BY_ID = new LinkedHashMap<>();
+    /**
+     * Stable lookup from SBO {@code objectId} (e.g. {@code "stonebreak:dirt"})
+     * to the corresponding {@link BlockType}. Populated whenever a block is
+     * registered from an SBO source. Used by recipe loading and any other
+     * caller that holds an objectId rather than a numericId.
+     */
+    private static final Map<String, BlockType> BY_OBJECT_ID = new LinkedHashMap<>();
 
     // Eagerly load the SBO registry before any static-final assignments
     // below. Idempotent — if BlockRegistry was already loaded by another
@@ -106,9 +113,11 @@ public final class BlockType implements Item, IBlockType {
                 continue; // already represented by a sentinel or a static-final field
             }
             SBOFormat.GameProperties gp = entry.properties();
-            registerInternal(new BlockType(
+            BlockType bt = new BlockType(
                     enumName, gp.numericId(), entry.displayName(),
-                    gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.hardness()));
+                    gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.hardness());
+            registerInternal(bt);
+            BY_OBJECT_ID.put(entry.objectId(), bt);
         }
     }
 
@@ -173,6 +182,7 @@ public final class BlockType implements Item, IBlockType {
                 enumName, gp.numericId(), entry.displayName(),
                 gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.hardness());
         registerInternal(bt);
+        BY_OBJECT_ID.put(objectId, bt);
         return bt;
     }
 
@@ -215,6 +225,14 @@ public final class BlockType implements Item, IBlockType {
             throw new IllegalArgumentException("No BlockType named " + name);
         }
         return bt;
+    }
+
+    /**
+     * Look up a BlockType by its SBO {@code objectId} (e.g. {@code "stonebreak:dirt"}).
+     * Returns {@code null} if no SBO-backed block has that id.
+     */
+    public static BlockType getByObjectId(String objectId) {
+        return objectId == null ? null : BY_OBJECT_ID.get(objectId);
     }
 
     public static BlockType getById(int id) {

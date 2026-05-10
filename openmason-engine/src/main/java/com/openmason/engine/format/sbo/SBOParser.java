@@ -216,6 +216,33 @@ public class SBOParser {
                     ? root.get("defaultState").asText() : null;
         }
 
+        SBOFormat.RecipeData recipes = null;
+        if (root.has("recipes") && !root.get("recipes").isNull()) {
+            var recipesNode = root.get("recipes");
+            List<SBOFormat.ShapedRecipe> shaped = new ArrayList<>();
+            if (recipesNode.has("shaped") && recipesNode.get("shaped").isArray()) {
+                for (var rNode : recipesNode.get("shaped")) {
+                    int width = rNode.has("width") ? rNode.get("width").asInt() : 0;
+                    int height = rNode.has("height") ? rNode.get("height").asInt() : 0;
+                    int outputCount = rNode.has("outputCount") ? rNode.get("outputCount").asInt() : 1;
+                    List<String> pattern = new ArrayList<>();
+                    if (rNode.has("pattern") && rNode.get("pattern").isArray()) {
+                        for (var slot : rNode.get("pattern")) {
+                            pattern.add(slot.isNull() ? "" : slot.asText());
+                        }
+                    }
+                    try {
+                        shaped.add(new SBOFormat.ShapedRecipe(width, height, pattern, outputCount));
+                    } catch (IllegalArgumentException ex) {
+                        logger.warn("Skipping invalid shaped recipe in manifest: {}", ex.getMessage());
+                    }
+                }
+            }
+            if (!shaped.isEmpty()) {
+                recipes = new SBOFormat.RecipeData(shaped);
+            }
+        }
+
         return new SBOFormat.Document(
                 root.get("version").asText(),
                 root.get("objectId").asText(),
@@ -230,7 +257,8 @@ public class SBOParser {
                 textureFile,
                 gameProperties,
                 states,
-                defaultState
+                defaultState,
+                recipes
         );
     }
 
@@ -249,6 +277,80 @@ public class SBOParser {
         } catch (java.security.NoSuchAlgorithmException e) {
             logger.warn("Cannot validate SBO checksum: {} not available", SBOFormat.CHECKSUM_ALGORITHM);
         }
+    }
+
+    /**
+     * Result of {@link #parseRaw(Path)} — manifest plus raw embedded asset bytes,
+     * suitable for re-packing via {@link SBOSerializer#exportFromDocument}.
+     *
+     * @param manifest      parsed manifest (includes recipes, gameProperties, states)
+     * @param defaultBytes  bytes of the legacy {@code model.omo} or {@code texture.omt} entry
+     * @param stateBytes    per-state asset bytes keyed by state name; empty when no states
+     */
+    public record RawParse(
+            SBOFormat.Document manifest,
+            byte[] defaultBytes,
+            java.util.Map<String, byte[]> stateBytes
+    ) {}
+
+    /**
+     * Lightweight parse that returns the manifest and raw asset bytes only.
+     * Used by tools that need to round-trip an SBO without decoding the OMO/OMT
+     * (e.g. the SBO editor's save flow, the recipe migrator).
+     */
+    public RawParse parseRaw(Path sboPath) throws IOException {
+        if (!Files.exists(sboPath)) {
+            throw new IOException("SBO file does not exist: " + sboPath);
+        }
+
+        SBOFormat.Document manifest = null;
+        byte[] omoBytes = null;
+        byte[] omtBytes = null;
+        Map<String, byte[]> rawEntries = new HashMap<>();
+
+        try (InputStream fis = Files.newInputStream(sboPath);
+             ZipInputStream zis = new ZipInputStream(fis)) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                String name = entry.getName();
+                byte[] bytes = readBytes(zis);
+                if (SBOFormat.MANIFEST_FILENAME.equals(name)) {
+                    manifest = parseManifest(bytes);
+                } else if (SBOFormat.EMBEDDED_OMO_FILENAME.equals(name)) {
+                    omoBytes = bytes;
+                } else if (SBOFormat.EMBEDDED_OMT_FILENAME.equals(name)) {
+                    omtBytes = bytes;
+                } else if (name.startsWith(SBOFormat.STATES_DIR_PREFIX)) {
+                    rawEntries.put(name, bytes);
+                }
+                zis.closeEntry();
+            }
+        }
+        if (manifest == null) {
+            throw new IOException("Missing manifest.json in SBO file: " + sboPath);
+        }
+
+        byte[] defaultBytes = manifest.isModelBearing() ? omoBytes : omtBytes;
+        if (defaultBytes == null) {
+            throw new IOException("Missing default asset entry in SBO: " + sboPath);
+        }
+
+        Map<String, byte[]> stateBytes = new LinkedHashMap<>();
+        if (manifest.hasStates()) {
+            for (SBOFormat.StateEntry e : manifest.states()) {
+                if (e.name().equals(manifest.defaultStateName())) {
+                    stateBytes.put(e.name(), defaultBytes);
+                } else {
+                    byte[] data = rawEntries.get(e.filename());
+                    if (data == null) {
+                        throw new IOException("State '" + e.name() + "' missing entry " + e.filename());
+                    }
+                    stateBytes.put(e.name(), data);
+                }
+            }
+        }
+
+        return new RawParse(manifest, defaultBytes, stateBytes);
     }
 
     private byte[] readBytes(ZipInputStream zis) throws IOException {

@@ -151,16 +151,15 @@ public class Recipe {
                     return false; // Recipe expects an item, but grid slot is empty
                 }
                 if (recipeItem != null && gridItem != null && !gridItem.isEmpty()) {
-                    // Basic check: item types must match.
-                    // A more robust check would involve ItemType.equals() or similar.
-                    // For now, if we're using string identifiers in ItemStack (as placeholder), this will work.
-                    // If using proper ItemType objects, a conversion from blockTypeId to ItemType and then .equals() would be needed.
-                    if (recipeItem.getBlockTypeId() != gridItem.getBlockTypeId()) {
+                    // Match by Item singleton identity. ItemType and BlockType
+                    // each maintain a single instance per registered objectId,
+                    // so reference equality is the canonical "same kind" test
+                    // and immune to the numericId collisions that plague the
+                    // SBO data (e.g. stick and wooden_axe both declaring 1013).
+                    if (recipeItem.getItem() != gridItem.getItem()) {
                         return false;
                     }
-                    // Potentially check stack sizes if recipes require specific counts per slot,
-                    // for now, assume 1 item from recipe means >=1 item in grid.
-                    if (gridItem.getCount() < recipeItem.getCount()) { // Recipe needs more than available
+                    if (gridItem.getCount() < recipeItem.getCount()) {
                         return false;
                     }
                 }
