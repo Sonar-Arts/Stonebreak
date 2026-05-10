@@ -9,7 +9,7 @@ import com.stonebreak.world.World;
  * Example usage:
  * <pre>
  * FeaturePlacer treePlacer = (world) -> {
- *     TreeGenerator.generateElmTree(world, queue, chunk, x, surfaceHeight, z, random, lock);
+ *     TreeGenerator.generateElmTree(world, queue, chunk, x, surfaceHeight, z);
  * };
  * </pre>
  */

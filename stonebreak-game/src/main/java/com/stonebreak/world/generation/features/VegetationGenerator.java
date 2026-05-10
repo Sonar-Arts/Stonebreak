@@ -14,7 +14,6 @@ import com.stonebreak.world.operations.WorldConfiguration;
 public class VegetationGenerator {
     public static final int MIN_SURFACE_Y = 64;
     public static final float TREE_CHANCE = 0.01f;
-    public static final float ELM_TREE_CHANCE = 0.4f;
     public static final float PINE_TREE_CHANCE = 0.015f;
     public static final float TAIGA_PINE_CHANCE = 0.03f;
     public static final float TUNDRA_PINE_CHANCE = 0.003f;
@@ -45,32 +44,43 @@ public class VegetationGenerator {
      */
     public static TreeSample probeTree(int worldX, int worldZ, BiomeType biome,
                                        BlockType surfaceBlock, DeterministicRandom rng) {
+        float forest = ForestDensityField.forestMultiplier(worldX, worldZ, rng);
+        if (forest <= 0f) return null;
+
         if (biome == BiomeType.PLAINS && surfaceBlock == BlockType.GRASS &&
-                rng.shouldGenerate(worldX, worldZ, "tree", TREE_CHANCE)) {
-            if (rng.shouldGenerate(worldX, worldZ, "tree_type", ELM_TREE_CHANCE)) {
+                rolls(rng, worldX, worldZ, "tree", TREE_CHANCE * forest)) {
+            float elmProb = ForestDensityField.elmProbability(worldX, worldZ, rng);
+            if (elmProb > 0f && rolls(rng, worldX, worldZ, "tree_type", elmProb)) {
                 int h = 8 + rng.getRandomForPosition(worldX, worldZ, "elm_tree").nextInt(5);
                 return new TreeSample(TreeKind.ELM, h);
             }
             return new TreeSample(TreeKind.OAK, 5);
         }
         if (biome == BiomeType.SNOWY_PLAINS && surfaceBlock == BlockType.SNOWY_DIRT &&
-                rng.shouldGenerate(worldX, worldZ, "pine_tree", PINE_TREE_CHANCE)) {
+                rolls(rng, worldX, worldZ, "pine_tree", PINE_TREE_CHANCE * forest)) {
             return new TreeSample(TreeKind.PINE, 7);
         }
         if (biome == BiomeType.TAIGA && surfaceBlock == BlockType.SNOWY_DIRT &&
-                rng.shouldGenerate(worldX, worldZ, "taiga_pine_tree", TAIGA_PINE_CHANCE)) {
+                rolls(rng, worldX, worldZ, "taiga_pine_tree", TAIGA_PINE_CHANCE * forest)) {
             return new TreeSample(TreeKind.PINE, 7);
         }
         if (biome == BiomeType.MEADOW && surfaceBlock == BlockType.GRASS &&
-                rng.shouldGenerate(worldX, worldZ, "meadow_tree", MEADOW_TREE_CHANCE)) {
+                rolls(rng, worldX, worldZ, "meadow_tree", MEADOW_TREE_CHANCE * forest)) {
             int h = 8 + rng.getRandomForPosition(worldX, worldZ, "meadow_elm").nextInt(5);
             return new TreeSample(TreeKind.ELM, h);
         }
         return null;
     }
 
+    /** Probability roll that accepts values >1 (saturating to always-true). */
+    private static boolean rolls(DeterministicRandom rng, int worldX, int worldZ,
+                                 String feature, float probability) {
+        if (probability <= 0f) return false;
+        if (probability >= 1f) return true;
+        return rng.getFloat(worldX, worldZ, feature) < probability;
+    }
+
     private final DeterministicRandom rng;
-    private final Object treeRandomLock = new Object();
 
     public VegetationGenerator(DeterministicRandom rng) {
         this.rng = rng;
@@ -97,29 +107,37 @@ public class VegetationGenerator {
 
     private void placeTree(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
                            int surface, BiomeType biome, BlockType surfaceBlock) {
+        float forest = ForestDensityField.forestMultiplier(worldX, worldZ, rng);
+        if (forest <= 0f) return;
+
         FeatureQueue queue = ctx.world.getFeatureQueue();
         if (biome == BiomeType.PLAINS && surfaceBlock == BlockType.GRASS &&
-            rng.shouldGenerate(worldX, worldZ, "tree", TREE_CHANCE)) {
-            if (rng.shouldGenerate(worldX, worldZ, "tree_type", ELM_TREE_CHANCE)) {
-                TreeGenerator.generateElmTree(ctx.world, queue, ctx.chunk, x, surface, z,
-                    rng.getRandomForPosition(worldX, worldZ, "elm_tree"), treeRandomLock);
+            rolls(worldX, worldZ, "tree", TREE_CHANCE * forest)) {
+            float elmProb = ForestDensityField.elmProbability(worldX, worldZ, rng);
+            if (elmProb > 0f && rolls(worldX, worldZ, "tree_type", elmProb)) {
+                TreeGenerator.generateElmTree(ctx.world, queue, ctx.chunk, x, surface, z);
             } else {
                 TreeGenerator.generateTree(ctx.world, queue, ctx.chunk, x, surface, z);
             }
         } else if (biome == BiomeType.SNOWY_PLAINS && surfaceBlock == BlockType.SNOWY_DIRT &&
-                   rng.shouldGenerate(worldX, worldZ, "pine_tree", PINE_TREE_CHANCE)) {
+                   rolls(worldX, worldZ, "pine_tree", PINE_TREE_CHANCE * forest)) {
             TreeGenerator.generatePineTree(ctx.world, queue, ctx.chunk, x, surface, z);
         } else if (biome == BiomeType.TAIGA && surfaceBlock == BlockType.SNOWY_DIRT &&
-                   rng.shouldGenerate(worldX, worldZ, "taiga_pine_tree", TAIGA_PINE_CHANCE)) {
+                   rolls(worldX, worldZ, "taiga_pine_tree", TAIGA_PINE_CHANCE * forest)) {
             TreeGenerator.generatePineTree(ctx.world, queue, ctx.chunk, x, surface, z);
         } else if (biome == BiomeType.TUNDRA && surfaceBlock == BlockType.GRAVEL &&
-                   rng.shouldGenerate(worldX, worldZ, "tundra_pine_tree", TUNDRA_PINE_CHANCE)) {
+                   rolls(worldX, worldZ, "tundra_pine_tree", TUNDRA_PINE_CHANCE * forest)) {
             TreeGenerator.generatePineTree(ctx.world, queue, ctx.chunk, x, surface, z);
         } else if (biome == BiomeType.MEADOW && surfaceBlock == BlockType.GRASS &&
-                   rng.shouldGenerate(worldX, worldZ, "meadow_tree", MEADOW_TREE_CHANCE)) {
-            TreeGenerator.generateElmTree(ctx.world, queue, ctx.chunk, x, surface, z,
-                rng.getRandomForPosition(worldX, worldZ, "meadow_elm"), treeRandomLock);
+                   rolls(worldX, worldZ, "meadow_tree", MEADOW_TREE_CHANCE * forest)) {
+            TreeGenerator.generateElmTree(ctx.world, queue, ctx.chunk, x, surface, z);
         }
+    }
+
+    private boolean rolls(int worldX, int worldZ, String feature, float probability) {
+        if (probability <= 0f) return false;
+        if (probability >= 1f) return true;
+        return rng.getFloat(worldX, worldZ, feature) < probability;
     }
 
     private void placeFlower(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
