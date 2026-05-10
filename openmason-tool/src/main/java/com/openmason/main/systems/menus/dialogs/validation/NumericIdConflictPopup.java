@@ -71,7 +71,7 @@ public final class NumericIdConflictPopup {
                   + "load the wrong block where this ID was placed.");
 
             ImGui.dummy(0, 8);
-            ImGui.checkbox("I understand — override anyway", acknowledged);
+            ImGui.checkbox("I understand - override anyway", acknowledged);
             ImGui.dummy(0, 8);
 
             boolean enabled = acknowledged.get();

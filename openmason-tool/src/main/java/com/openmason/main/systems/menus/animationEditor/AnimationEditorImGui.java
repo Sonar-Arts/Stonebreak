@@ -164,7 +164,7 @@ public final class AnimationEditorImGui {
         ImGui.textDisabled(controller.state().dirty() ? "[modified]" : "[saved]");
         if (controller.state().filePath() != null) {
             ImGui.sameLine();
-            ImGui.textDisabled("— " + controller.state().filePath());
+            ImGui.textDisabled("- " + controller.state().filePath());
         }
     }
 

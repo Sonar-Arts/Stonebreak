@@ -278,7 +278,7 @@ public class SBOExportWindow {
 
         renderLabeledIntInputWithButton("Numeric ID", "sbo_num_id", numericId,
                 blockSelected()
-                        ? "required for blocks — unique across all blocks"
+                        ? "required for blocks - unique across all blocks"
                         : "optional for non-blocks (-1 to skip GameProperties)",
                 "Taken IDs...##exp_taken",
                 () -> takenIdsPopup.open(currentDomain()));

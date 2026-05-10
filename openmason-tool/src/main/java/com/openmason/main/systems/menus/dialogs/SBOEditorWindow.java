@@ -40,6 +40,7 @@ public class SBOEditorWindow {
     private final SBOParser parser = new SBOParser();
     private final SBOSerializer serializer = new SBOSerializer();
     private final SBORecipeSection recipeSection;
+    private final SBOStatesEditor statesEditor;
     private final NumericIdConflictPopup conflictPopup = new NumericIdConflictPopup();
     private final TakenIdsPopup takenIdsPopup = new TakenIdsPopup();
 
@@ -84,6 +85,10 @@ public class SBOEditorWindow {
         this.fileDialogService = fileDialogService;
         this.statusService = statusService;
         this.recipeSection = new SBORecipeSection(() -> dirty = true);
+        this.statesEditor = new SBOStatesEditor(
+                () -> dirty = true,
+                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMODialog(cb::accept); },
+                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMTDialog(cb::accept); });
     }
 
     /**
@@ -153,6 +158,7 @@ public class SBOEditorWindow {
         }
 
         recipeSection.setFromRecipeData(doc.recipes());
+        statesEditor.load(doc, loadedStateBytes, loadedDefaultBytes);
     }
 
     public void render() {
@@ -161,7 +167,7 @@ public class SBOEditorWindow {
         ImGui.setNextWindowSize(720, 640, imgui.flag.ImGuiCond.FirstUseEver);
         int flags = ImGuiWindowFlags.NoCollapse;
         String title = WINDOW_TITLE
-                + (currentPath != null ? " — " + currentPath.getFileName() : "")
+                + (currentPath != null ? " - " + currentPath.getFileName() : "")
                 + (dirty ? " *" : "")
                 + "###sbo_editor";
         if (ImGui.begin(title, visible, flags)) {
@@ -257,20 +263,7 @@ public class SBOEditorWindow {
     }
 
     private void renderStatesTab() {
-        // States editing is complex (requires per-state asset paths); this
-        // editor preserves states unchanged but does not yet expose adding /
-        // removing them. Use the export window for new state authoring.
-        if (loadedManifest.hasStates()) {
-            ImGui.text("This SBO declares " + loadedManifest.states().size() + " state(s):");
-            for (SBOFormat.StateEntry e : loadedManifest.states()) {
-                String marker = e.name().equals(loadedManifest.defaultStateName()) ? " (default)" : "";
-                ImGui.bulletText(e.name() + marker);
-            }
-        } else {
-            ImGui.textDisabled("No states declared.");
-        }
-        ImGui.dummy(0, 8);
-        ImGui.textDisabled("State editing is read-only here. Re-author via the export flow.");
+        statesEditor.render();
     }
 
     private void saveInPlace() {
@@ -288,6 +281,11 @@ public class SBOEditorWindow {
 
     private void writeTo(String pathStr) {
         if (loadedManifest == null) return;
+        String stateError = statesEditor.validate();
+        if (stateError != null) {
+            if (statusService != null) statusService.updateStatus("Cannot save: " + stateError);
+            return;
+        }
         if (hasGameProperties) {
             NumericIdValidator.Result result = NumericIdValidator.validate(
                     currentDomain(), numericId.get(), objectId.get().trim());
@@ -301,10 +299,16 @@ public class SBOEditorWindow {
 
     private void performWrite(String pathStr) {
         SBOFormat.Document edited = buildEditedDocument();
-        boolean ok = serializer.exportFromDocument(edited, loadedDefaultBytes, loadedStateBytes, pathStr);
+        byte[] effectiveDefaultBytes = statesEditor.defaultBytes(loadedDefaultBytes);
+        java.util.Map<String, byte[]> effectiveStateBytes = statesEditor.hasStates()
+                ? statesEditor.stateBytesByName()
+                : loadedStateBytes;
+        boolean ok = serializer.exportFromDocument(edited, effectiveDefaultBytes, effectiveStateBytes, pathStr);
         if (ok) {
             currentPath = Path.of(pathStr);
             loadedManifest = edited;
+            loadedDefaultBytes = effectiveDefaultBytes;
+            loadedStateBytes = effectiveStateBytes;
             dirty = false;
             if (statusService != null) {
                 statusService.updateStatus("Saved SBO: " + currentPath.getFileName());
@@ -336,8 +340,8 @@ public class SBOEditorWindow {
                 loadedManifest.omoFilename(),
                 loadedManifest.textureFilename(),
                 gp,
-                loadedManifest.states(),
-                loadedManifest.defaultStateName(),
+                statesEditor.toStateEntries(),
+                statesEditor.defaultStateName(),
                 recipeSection.toRecipeData()
         );
     }

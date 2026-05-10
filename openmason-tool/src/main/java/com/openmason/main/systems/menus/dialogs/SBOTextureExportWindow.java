@@ -252,11 +252,11 @@ public class SBOTextureExportWindow {
         ImGui.spacing();
 
         renderLabeledIntInputWithButton("Numeric ID", "sbo_tex_num_id", numericId,
-                "required — unique across items (e.g. 1012)",
+                "required - unique across items (e.g. 1012)",
                 "Taken IDs...##tex_taken",
                 () -> takenIdsPopup.open(currentDomain()));
         renderConflictHint();
-        renderLabeledIntInput("Max Stack", "sbo_tex_stack", maxStackSize, "1–64");
+        renderLabeledIntInput("Max Stack", "sbo_tex_stack", maxStackSize, "1-64");
         renderLabeledCombo("Category", "sbo_tex_cat", categoryIndex, CATEGORY_LABELS);
 
         ImGui.dummy(0, ROW_SPACING);

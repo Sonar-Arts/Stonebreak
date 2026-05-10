@@ -101,7 +101,7 @@ public class SBORecipeSection {
 
         if (recipes.isEmpty()) {
             ImGui.sameLine();
-            ImGui.textDisabled("No recipes — click + Add Recipe to create one.");
+            ImGui.textDisabled("No recipes - click + Add Recipe to create one.");
             picker.render();
             return;
         }
@@ -150,18 +150,27 @@ public class SBORecipeSection {
             r.height = clamp(h.get(), 1, 3);
             onDirty.run();
         }
-        ImGui.sameLine();
+        ImGui.popItemWidth();
+
+        ImGui.pushItemWidth(60);
         if (ImGui.inputInt("Output count", count)) {
             r.outputCount = Math.max(1, count.get());
             onDirty.run();
         }
         ImGui.popItemWidth();
 
-        ImGui.dummy(0, 8);
-        ImGui.text("Pattern (left-click cell to pick, right-click to clear):");
+        ImGui.dummy(0, 6);
+        ImGui.separator();
         ImGui.dummy(0, 4);
+        ImGui.text("Pattern");
+        ImGui.sameLine();
+        ImGui.textDisabled("(left-click to pick, right-click to clear)");
+        ImGui.dummy(0, 6);
 
         final float cellSize = 64.0f;
+        final float cellSpacing = 6.0f;
+        imgui.ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.ItemSpacing, cellSpacing, cellSpacing);
+        imgui.ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.FrameRounding, 4.0f);
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 3; col++) {
                 boolean active = row < r.height && col < r.width;
@@ -170,14 +179,12 @@ public class SBORecipeSection {
 
                 ImGui.pushID("cell_" + idx);
                 if (!active) {
-                    // Greyed-out slot outside the recipe bounds.
                     ImGui.beginDisabled();
-                    ImGui.button("", cellSize, cellSize);
+                    ImGui.button("##inactive", cellSize, cellSize);
                     ImGui.endDisabled();
                 } else {
-                    String label = slot == null || slot.isEmpty()
-                            ? "+"
-                            : shortLabel(slot);
+                    boolean filled = slot != null && !slot.isEmpty();
+                    String label = filled ? shortLabel(slot) : "+";
                     if (ImGui.button(label, cellSize, cellSize)) {
                         final int captured = idx;
                         picker.open(picked -> {
@@ -185,10 +192,10 @@ public class SBORecipeSection {
                             onDirty.run();
                         });
                     }
-                    if (ImGui.isItemHovered() && slot != null && !slot.isEmpty()) {
+                    if (ImGui.isItemHovered() && filled) {
                         ImGui.setTooltip(slot);
                     }
-                    if (ImGui.isItemClicked(1)) { // right-click
+                    if (ImGui.isItemClicked(1)) {
                         r.slots[idx] = "";
                         onDirty.run();
                     }
@@ -197,13 +204,14 @@ public class SBORecipeSection {
                 if (col < 2) ImGui.sameLine();
             }
         }
+        imgui.ImGui.popStyleVar(2);
     }
 
     /** Render a slot's objectId compactly (drop namespace, truncate). */
     private static String shortLabel(String objectId) {
         int colon = objectId.indexOf(':');
         String local = colon >= 0 ? objectId.substring(colon + 1) : objectId;
-        if (local.length() > 8) local = local.substring(0, 7) + "…";
+        if (local.length() > 9) local = local.substring(0, 8) + "..";
         return local;
     }
 
