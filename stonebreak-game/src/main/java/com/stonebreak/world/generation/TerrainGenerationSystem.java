@@ -14,6 +14,7 @@ import com.stonebreak.world.generation.features.VegetationGenerator;
 import com.stonebreak.world.generation.heightmap.Density3D;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.heightmap.CavernCarver;
+import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
 import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 
@@ -42,6 +43,7 @@ public class TerrainGenerationSystem {
     private final Density3D density3D;
     private final PerlinWormCarver wormCarver;
     private final CavernCarver cavernCarver;
+    private final MegaCavernCarver megaCavernCarver;
 
     private final Random animalRandom = new Random();
     private final Object animalRandomLock = new Object();
@@ -58,7 +60,9 @@ public class TerrainGenerationSystem {
         this.density3D = new Density3D(seed);
         this.wormCarver = new PerlinWormCarver(seed, heightMapGenerator);
         this.cavernCarver = new CavernCarver(seed, heightMapGenerator);
+        this.megaCavernCarver = new MegaCavernCarver(seed, heightMapGenerator);
         this.wormCarver.setCavernCarver(cavernCarver);
+        this.wormCarver.setMegaCavernCarver(megaCavernCarver);
     }
 
     public long getSeed() {
@@ -156,9 +160,12 @@ public class TerrainGenerationSystem {
         updateLoadingProgress("Applying Biome Materials");
         BitSet wormMask = wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
         CavernCarver.Result cavernResult = cavernCarver.buildForChunk(chunkX, chunkZ, heights);
+        MegaCavernCarver.Result megaCavernResult = megaCavernCarver.buildForChunk(chunkX, chunkZ, heights);
         BitSet caveMask = wormMask;
         caveMask.or(cavernResult.carveMask);
+        caveMask.or(megaCavernResult.carveMask);
         BitSet formationMask = cavernResult.formationMask;
+        formationMask.or(megaCavernResult.formationMask);
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         for (int x = 0; x < CHUNK_SIZE; x++) {

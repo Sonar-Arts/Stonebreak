@@ -115,6 +115,7 @@ public final class PerlinWormCarver {
     private final NoiseGenerator radiusNoise;
     private final HeightMapGenerator heightMapGenerator;
     private CavernCarver cavernCarver;
+    private MegaCavernCarver megaCavernCarver;
 
     public PerlinWormCarver(long seed, HeightMapGenerator heightMapGenerator) {
         this.seed = seed;
@@ -129,6 +130,15 @@ public final class PerlinWormCarver {
      */
     public void setCavernCarver(CavernCarver cavernCarver) {
         this.cavernCarver = cavernCarver;
+    }
+
+    /**
+     * Wires in the megacavern carver so worm-bearing chunks can also fire connectors
+     * toward nearby megacaverns. When both a normal cavern and a megacavern are in
+     * range, the connector targets whichever anchor is geometrically closer.
+     */
+    public void setMegaCavernCarver(MegaCavernCarver megaCavernCarver) {
+        this.megaCavernCarver = megaCavernCarver;
     }
 
     /**
@@ -284,10 +294,7 @@ public final class PerlinWormCarver {
      */
     private void queueCavernConnector(int srcCx, int srcCz, float ox, float oy, float oz,
                                       long connectorSeed, Deque<CarverSegment> queue) {
-        if (cavernCarver == null) return;
-        int[] neighbor = cavernCarver.nearestCavernChunk(srcCx, srcCz, CAVERN_CONNECTOR_RADIUS);
-        if (neighbor == null) return;
-        float[] target = cavernCarver.computeCavernOrigin(neighbor[0], neighbor[1]);
+        float[] target = nearestCavernAnchor(srcCx, srcCz, ox, oy, oz);
         if (target == null) return;
         float dx = target[0] - ox;
         float dy = target[1] - oy;
@@ -299,6 +306,45 @@ public final class PerlinWormCarver {
         else if (pitch > PITCH_MAX) pitch = PITCH_MAX;
         queue.push(new CarverSegment(ox, oy, oz, yaw, pitch,
                 CAVERN_CONNECTOR_MAX_STEPS, 0, connectorSeed, target));
+    }
+
+    /**
+     * Returns the closer of (nearest normal cavern anchor, nearest megacavern anchor)
+     * within {@link #CAVERN_CONNECTOR_RADIUS} of the worm origin, or {@code null} if
+     * neither is in range. Distance is measured in world space from the worm origin
+     * so connector length — not just chunk-grid distance — drives the choice.
+     */
+    private float[] nearestCavernAnchor(int srcCx, int srcCz, float ox, float oy, float oz) {
+        float[] best = null;
+        float bestDistSq = Float.MAX_VALUE;
+        if (cavernCarver != null) {
+            int[] neighbor = cavernCarver.nearestCavernChunk(srcCx, srcCz, CAVERN_CONNECTOR_RADIUS);
+            if (neighbor != null) {
+                float[] anchor = cavernCarver.computeCavernOrigin(neighbor[0], neighbor[1]);
+                if (anchor != null) {
+                    float d = distSq(anchor, ox, oy, oz);
+                    if (d < bestDistSq) { bestDistSq = d; best = anchor; }
+                }
+            }
+        }
+        if (megaCavernCarver != null) {
+            int[] neighbor = megaCavernCarver.nearestCavernChunk(srcCx, srcCz, CAVERN_CONNECTOR_RADIUS);
+            if (neighbor != null) {
+                float[] anchor = megaCavernCarver.computeCavernOrigin(neighbor[0], neighbor[1]);
+                if (anchor != null) {
+                    float d = distSq(anchor, ox, oy, oz);
+                    if (d < bestDistSq) { bestDistSq = d; best = anchor; }
+                }
+            }
+        }
+        return best;
+    }
+
+    private static float distSq(float[] p, float ox, float oy, float oz) {
+        float dx = p[0] - ox;
+        float dy = p[1] - oy;
+        float dz = p[2] - oz;
+        return dx * dx + dy * dy + dz * dz;
     }
 
     private void walkCarver(CarverSegment seg, Deque<CarverSegment> queue,
