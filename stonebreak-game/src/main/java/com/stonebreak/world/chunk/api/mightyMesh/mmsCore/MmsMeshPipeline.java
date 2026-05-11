@@ -247,6 +247,21 @@ public final class MmsMeshPipeline {
     private void processMeshGenerationTask(World world, Chunk chunk) {
         boolean success = false;
         MmsMeshData meshData = null;
+        // Snapshot which of the 4 cardinal neighbors are UNLOADED at build
+        // start. MmsFaceCullingService treats unloaded neighbors as opaque
+        // (sentinel), culling boundary faces — so if any of these neighbors
+        // load by the time this mesh hits GPU upload, the boundary face
+        // toward it was sentinel-culled with stale data and we must rebuild.
+        // We only reschedule when *that specific* race fires, not on every
+        // markMeshDirty call (which would avalanche during world load).
+        int cx = chunk.getChunkX();
+        int cz = chunk.getChunkZ();
+        boolean neighborUnloadedNorth = world != null && !world.hasChunkAt(cx, cz - 1);
+        boolean neighborUnloadedSouth = world != null && !world.hasChunkAt(cx, cz + 1);
+        boolean neighborUnloadedEast  = world != null && !world.hasChunkAt(cx + 1, cz);
+        boolean neighborUnloadedWest  = world != null && !world.hasChunkAt(cx - 1, cz);
+        boolean anyNeighborUnloaded = neighborUnloadedNorth || neighborUnloadedSouth
+                || neighborUnloadedEast || neighborUnloadedWest;
 
         try {
             // Use MMS API to generate mesh
@@ -266,10 +281,16 @@ public final class MmsMeshPipeline {
                 int priority = chunkPriorityMap.getOrDefault(chunk, PRIORITY_WORLD_GENERATION);
 
                 // Queue for GL upload with priority
-                meshesReadyForGLUpload.offer(new MeshUploadTask(chunk, meshData, priority));
+                MeshUploadTask uploadTask = new MeshUploadTask(chunk, meshData, priority,
+                        anyNeighborUnloaded,
+                        neighborUnloadedNorth, neighborUnloadedSouth,
+                        neighborUnloadedEast, neighborUnloadedWest);
+                meshesReadyForGLUpload.offer(uploadTask);
                 chunksInUploadQueue.add(chunk);
 
-                // Mark chunk state as CPU ready
+                // Mark chunk state as CPU ready and clear dirty. If a neighbor
+                // that was unloaded at build start has since loaded by the
+                // time of GPU upload, the upload step rechecks and reschedules.
                 synchronized (chunk) {
                     chunk.getCcoStateManager().addState(CcoChunkState.MESH_CPU_READY);
                     chunk.getCcoDirtyTracker().clearMeshDirty();
@@ -405,6 +426,18 @@ public final class MmsMeshPipeline {
                     task.chunk.getCcoStateManager().removeState(CcoChunkState.MESH_CPU_READY);
                     task.chunk.getCcoStateManager().addState(CcoChunkState.MESH_GPU_UPLOADED);
                     task.chunk.getCcoDirtyTracker().clearMeshDirty();
+                }
+
+                // If a neighbor was unloaded at build start AND is now loaded,
+                // the boundary face toward it was sentinel-culled with stale
+                // data — reschedule one rebuild. Narrowly scoped to this
+                // exact race; does not fire for general markMeshDirty calls.
+                if (task.anyNeighborUnloadedAtBuildStart) {
+                    World gw = Game.getInstance() != null ? Game.getInstance().getWorld() : null;
+                    if (gw != null && neighborFlipped(gw, task)) {
+                        task.chunk.getCcoDirtyTracker().markMeshDirtyOnly();
+                        scheduleConditionalMeshBuild(task.chunk);
+                    }
                 }
 
                 updatesThisFrame++;
@@ -554,6 +587,22 @@ public final class MmsMeshPipeline {
     }
 
     /**
+     * Returns true if any neighbor recorded as unloaded at build start is
+     * now loaded — meaning the corresponding boundary face was sentinel-
+     * culled with stale data and the chunk must rebuild against the now-
+     * loaded neighbor.
+     */
+    private static boolean neighborFlipped(World world, MeshUploadTask task) {
+        int cx = task.chunk.getChunkX();
+        int cz = task.chunk.getChunkZ();
+        if (task.neighborUnloadedNorth && world.hasChunkAt(cx, cz - 1)) return true;
+        if (task.neighborUnloadedSouth && world.hasChunkAt(cx, cz + 1)) return true;
+        if (task.neighborUnloadedEast  && world.hasChunkAt(cx + 1, cz)) return true;
+        if (task.neighborUnloadedWest  && world.hasChunkAt(cx - 1, cz)) return true;
+        return false;
+    }
+
+    /**
      * Resets chunk mesh generation state for retry.
      *
      * @param chunk Chunk to reset
@@ -690,12 +739,27 @@ public final class MmsMeshPipeline {
         MmsMeshData meshData; // Non-final to allow explicit cleanup after GPU upload
         final int priority;
         final long timestamp;
+        // Snapshot of which neighbors were unloaded when the build started;
+        // used to detect the sentinel-cull race at GPU-upload time.
+        final boolean anyNeighborUnloadedAtBuildStart;
+        final boolean neighborUnloadedNorth;
+        final boolean neighborUnloadedSouth;
+        final boolean neighborUnloadedEast;
+        final boolean neighborUnloadedWest;
 
-        MeshUploadTask(Chunk chunk, MmsMeshData meshData, int priority) {
+        MeshUploadTask(Chunk chunk, MmsMeshData meshData, int priority,
+                       boolean anyNeighborUnloadedAtBuildStart,
+                       boolean neighborUnloadedNorth, boolean neighborUnloadedSouth,
+                       boolean neighborUnloadedEast, boolean neighborUnloadedWest) {
             this.chunk = chunk;
             this.meshData = meshData;
             this.priority = priority;
             this.timestamp = System.nanoTime();
+            this.anyNeighborUnloadedAtBuildStart = anyNeighborUnloadedAtBuildStart;
+            this.neighborUnloadedNorth = neighborUnloadedNorth;
+            this.neighborUnloadedSouth = neighborUnloadedSouth;
+            this.neighborUnloadedEast = neighborUnloadedEast;
+            this.neighborUnloadedWest = neighborUnloadedWest;
         }
 
         @Override

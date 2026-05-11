@@ -337,8 +337,7 @@ public class SpriteVoxelizer {
         if (itemType == null) return null;
         // Prefer the explicit objectId registered when the ItemType was
         // created from the SBO registry (handles cases where the SBO's
-        // objectId doesn't match the default "stonebreak:<enum>" convention,
-        // e.g. WOODEN_BUCKET → stonebreak:sb_wooden_bucket).
+        // objectId doesn't match the default "stonebreak:<enum>" convention).
         String explicit = ItemType.objectIdFor(itemType);
         if (explicit != null) return explicit;
         return "stonebreak:" + itemType.name().toLowerCase();

@@ -285,7 +285,7 @@ public class MHotbarRenderer {
             ItemStack stack = slots[i];
             if (stack == null || stack.isEmpty()) continue;
             Item item = stack.getItem();
-            if (item == null || item.getAtlasX() == -1 || item.getAtlasY() == -1) continue;
+            if (item == null || !item.hasIcon()) continue;
 
             HotbarLayoutCalculator.SlotPosition pos =
                     HotbarLayoutCalculator.calculateSlotPosition(i, layout);

@@ -183,7 +183,7 @@ public class CraftingManager {
      */
     public List<Recipe> getRecipesForItem(Item item) {
         return recipes.stream()
-            .filter(recipe -> recipe.getOutput().getItem().isSameType(item))
+            .filter(recipe -> recipe.getOutput().getItem() == item)
             .toList();
     }
 

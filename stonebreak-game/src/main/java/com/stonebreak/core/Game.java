@@ -278,10 +278,10 @@ public class Game {
     }
 
     /**
-     * Initializes all crafting recipes. Delegates to {@link com.stonebreak.crafting.RecipeRegistry}.
+     * Initializes all crafting recipes by harvesting them from registered SBO files.
      */
     private void initializeCraftingRecipes() {
-        com.stonebreak.crafting.RecipeRegistry.registerAll(this.craftingManager);
+        com.stonebreak.crafting.RecipeLoader.loadFromSBOs(this.craftingManager);
     }
 
 

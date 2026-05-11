@@ -457,6 +457,14 @@ public class FileDialogService {
     }
 
     /**
+     * Show open SBO (Stonebreak Object) dialog using native file dialog.
+     */
+    public void showOpenSBODialog(OpenCallback callback) {
+        showNFDOpenDialog("Opening SBO file...", "Stonebreak Object", "sbo",
+                "Selected SBO file", callback);
+    }
+
+    /**
      * Callback interface for SBO save operations.
      */
     public interface SaveSBOCallback {

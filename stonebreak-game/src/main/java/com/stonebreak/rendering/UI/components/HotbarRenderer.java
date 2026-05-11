@@ -233,7 +233,7 @@ public class HotbarRenderer {
 
         // Get the item and check if it's renderable
         Item item = itemStack.getItem();
-        if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
+        if (item != null && item.hasIcon()) {
             try {
                 // End NanoVG frame temporarily to draw 3D item
                 uiRenderer.endFrame();
@@ -278,4 +278,5 @@ public class HotbarRenderer {
         // They only use NanoVG which is managed by the parent renderer
         initialized = false;
     }
+
 }

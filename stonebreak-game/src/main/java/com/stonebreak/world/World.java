@@ -755,14 +755,21 @@ public class World {
     }
 
     /**
-     * Marks an existing, meshed neighbor chunk dirty and schedules a rebuild so
-     * its border faces (water seams in particular) recompute with correct data.
-     * No-op if the neighbor isn't loaded or hasn't been meshed yet.
+     * Marks an existing neighbor chunk dirty and schedules a rebuild so its
+     * border faces (water seams, sentinel-culled boundaries) recompute with
+     * correct data once this chunk is available.
+     *
+     * <p>Do NOT skip when the neighbor hasn't finished its first mesh build:
+     * if the neighbor was scheduled before this chunk loaded, its in-flight
+     * build is racing against the sentinel-opaque path in MmsFaceCullingService
+     * and may have already baked culled boundary faces. Dropping the signal
+     * here leaves those faces missing until the player edits the chunk. The
+     * mesh pipeline coalesces duplicate schedule requests, so re-scheduling a
+     * pending build is cheap.
      */
     private void markMeshedNeighborDirty(int chunkX, int chunkZ) {
         Chunk neighbor = chunkStore.getChunk(chunkX, chunkZ);
         if (neighbor == null) return;
-        if (!neighbor.isMeshGenerated()) return;
         neighbor.getCcoDirtyTracker().markMeshDirtyOnly();
         meshPipeline.scheduleConditionalMeshBuild(neighbor);
     }

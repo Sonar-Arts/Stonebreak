@@ -3,6 +3,9 @@ package com.openmason.main.systems.menus.dialogs;
 import com.openmason.main.systems.menus.windows.WindowTitleBar;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOSerializer;
+import com.openmason.main.systems.menus.dialogs.validation.NumericIdConflictPopup;
+import com.openmason.main.systems.menus.dialogs.validation.NumericIdValidator;
+import com.openmason.main.systems.menus.dialogs.validation.TakenIdsPopup;
 import com.openmason.main.systems.services.StatusService;
 import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.themes.core.ThemeDefinition;
@@ -38,7 +41,7 @@ public class SBOExportWindow {
 
     private static final String WINDOW_TITLE = "Export SBO";
     private static final float MIN_WINDOW_WIDTH = 560.0f;
-    private static final float MIN_WINDOW_HEIGHT = 720.0f;
+    private static final float MIN_WINDOW_HEIGHT = 800.0f;
     private static final float FOOTER_HEIGHT = 44.0f;
     private static final float CONTENT_PADDING_Y = 22.0f;
     private static final float LABEL_WIDTH = 100.0f;
@@ -67,6 +70,13 @@ public class SBOExportWindow {
     private final ImString objectPack = new ImString(256);
     private final ImString author = new ImString(256);
     private final ImString description = new ImString(1024);
+
+    // Numeric ID for blocks — required for chunk save references. Other object
+    // types may leave it at -1 (no GameProperties block emitted).
+    private final ImInt numericId = new ImInt(-1);
+
+    private final NumericIdConflictPopup conflictPopup = new NumericIdConflictPopup();
+    private final TakenIdsPopup takenIdsPopup = new TakenIdsPopup();
 
     // Object type labels for the combo box
     private static final String[] OBJECT_TYPE_LABELS = {
@@ -117,6 +127,9 @@ public class SBOExportWindow {
     public void show() {
         visible.set(true);
         prepopulateFromModel();
+        if (numericId.get() < 0) {
+            numericId.set(NumericIdValidator.suggestNextFreeId(NumericIdValidator.Domain.BLOCK));
+        }
         statesSection.reset();
         validationMessage = "";
         logger.debug("SBO export window shown");
@@ -175,6 +188,8 @@ public class SBOExportWindow {
                     visible.set(false);
                 }
                 renderContent();
+                conflictPopup.render();
+                takenIdsPopup.render();
             } catch (Exception e) {
                 logger.error("Error rendering SBO export window", e);
                 ImGui.textColored(1.0f, 0.0f, 0.0f, 1.0f, "Error rendering export window");
@@ -255,6 +270,21 @@ public class SBOExportWindow {
         ImGui.popItemWidth();
 
         ImGui.dummy(0, ROW_SPACING);
+
+        // Section: Game Properties (numericId for blocks; other types may skip)
+        ImGui.setCursorPosX(formOffsetX);
+        ImGuiComponents.renderCompactSectionHeader("Game Properties");
+        ImGui.spacing();
+
+        renderLabeledIntInputWithButton("Numeric ID", "sbo_num_id", numericId,
+                blockSelected()
+                        ? "required for blocks - unique across all blocks"
+                        : "optional for non-blocks (-1 to skip GameProperties)",
+                "Taken IDs...##exp_taken",
+                () -> takenIdsPopup.open(currentDomain()));
+        renderConflictHint();
+
+        ImGui.dummy(0, ROW_SPACING);
         statesSection.render(formOffsetX, LABEL_WIDTH, INPUT_WIDTH, ROW_SPACING);
 
         // Validation message
@@ -281,6 +311,45 @@ public class SBOExportWindow {
     /**
      * Renders a label + combo box pair with fixed-width combo.
      */
+    private void renderLabeledIntInputWithButton(String label, String id, ImInt value, String hint,
+                                                 String buttonLabel, Runnable onClick) {
+        ImGui.setCursorPosX(formOffsetX);
+        ImGui.textDisabled(label);
+        ImGui.sameLine(formOffsetX + LABEL_WIDTH);
+        ImGui.pushItemWidth(INPUT_WIDTH - 110.0f);
+        ImGui.inputInt("##" + id, value);
+        ImGui.popItemWidth();
+        ImGui.sameLine();
+        if (ImGui.button(buttonLabel, 100.0f, 0)) {
+            onClick.run();
+        }
+        if (hint != null && !hint.isBlank()) {
+            ImGui.setCursorPosX(formOffsetX + LABEL_WIDTH);
+            ImGui.textDisabled(hint);
+        }
+        ImGui.dummy(0, ROW_SPACING);
+    }
+
+    private void renderConflictHint() {
+        NumericIdValidator.Domain domain = currentDomain();
+        if (domain == NumericIdValidator.Domain.NONE) return;
+        NumericIdValidator.Result result = NumericIdValidator.validate(
+                domain, numericId.get(), objectId.get().trim());
+        if (result instanceof NumericIdValidator.Result.Conflict c) {
+            ImGui.setCursorPosX(formOffsetX + LABEL_WIDTH);
+            ImGui.textColored(1.0f, 0.55f, 0.45f, 1.0f,
+                    "ID " + c.numericId() + " taken by " + c.existingObjectId());
+        }
+    }
+
+    private NumericIdValidator.Domain currentDomain() {
+        return NumericIdValidator.domainFor(OBJECT_TYPE_LABELS[objectTypeIndex.get()]);
+    }
+
+    private boolean blockSelected() {
+        return currentDomain() == NumericIdValidator.Domain.BLOCK;
+    }
+
     private void renderLabeledCombo(String label, String id, ImInt selected, String[] items) {
         ImGui.setCursorPosX(formOffsetX);
         ImGui.textDisabled(label);
@@ -456,6 +525,21 @@ public class SBOExportWindow {
      * Validates fields and performs the SBO export via file dialog.
      */
     private void performExport() {
+        if (blockSelected() && numericId.get() <= 0) {
+            validationMessage = "Numeric ID must be > 0 for blocks (required for chunk save references)";
+            return;
+        }
+
+        NumericIdValidator.Result vr = NumericIdValidator.validate(
+                currentDomain(), numericId.get(), objectId.get().trim());
+        if (vr instanceof NumericIdValidator.Result.Conflict c) {
+            conflictPopup.open(c, this::performExportConfirmed);
+            return;
+        }
+        performExportConfirmed();
+    }
+
+    private void performExportConfirmed() {
         SBOFormat.ExportParameters params = buildParameters();
 
         if (!params.isValid()) {
@@ -514,7 +598,35 @@ public class SBOExportWindow {
             params.setStates(statesSection.toStateSpecs());
             params.setDefaultStateName(statesSection.getDefaultStateName());
         }
+        if (numericId.get() >= 0) {
+            params.setGameProperties(buildDefaultGameProperties());
+        }
         return params;
+    }
+
+    /**
+     * Minimal {@code GameProperties} populated from the form's Numeric ID and
+     * sensible defaults for the selected object type. The full set of
+     * properties (atlas coords, hardness, render layer, etc.) is authored
+     * later via the SBO Editor.
+     */
+    private SBOFormat.GameProperties buildDefaultGameProperties() {
+        boolean isBlock = blockSelected();
+        return new SBOFormat.GameProperties(
+                numericId.get(),
+                /* hardness    */ 1.0f,
+                /* solid       */ isBlock,
+                /* breakable   */ true,
+                /* atlasX      */ -1,
+                /* atlasY      */ -1,
+                /* renderLayer */ "OPAQUE",
+                /* transparent */ false,
+                /* flower      */ false,
+                /* stackable   */ true,
+                /* maxStack    */ 64,
+                /* category    */ isBlock ? "BLOCKS" : "MATERIALS",
+                /* placeable   */ isBlock
+        );
     }
 
     /**
