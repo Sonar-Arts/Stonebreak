@@ -5,6 +5,8 @@ import java.util.List;
 import com.stonebreak.core.Game;
 import com.stonebreak.input.MouseCaptureManager;
 import com.stonebreak.ui.chat.chatSystem.*;
+import com.stonebreak.ui.chat.emoji.ChatEmojiSystem;
+import com.stonebreak.ui.chat.emoji.EmojiType;
 
 /**
  * Main chat system coordinator.
@@ -17,6 +19,7 @@ public class ChatSystem {
     private final ChatInputHandler inputHandler;
     private final ChatCursorState cursorState;
     private final ChatCommandExecutor commandExecutor;
+    private final ChatEmojiSystem emojiSystem = new ChatEmojiSystem();
     private boolean isOpen;
     private int scrollOffset = 0; // Number of messages scrolled up from bottom
     private int commandScrollOffset = 0; // Number of commands scrolled down from top
@@ -57,6 +60,7 @@ public class ChatSystem {
 
     public void closeChat() {
         isOpen = false;
+        emojiSystem.close();
         inputHandler.clear();
         scrollOffset = 0; // Reset scroll when closing chat
         updateMouseCapture();
@@ -73,6 +77,7 @@ public class ChatSystem {
      */
     public void clear() {
         isOpen = false;
+        emojiSystem.close();
         messageManager.clear();
         inputHandler.clear();
         cursorState.reset();
@@ -300,5 +305,20 @@ public class ChatSystem {
         int currentIndex = currentTab.ordinal();
         int previousIndex = (currentIndex - 1 + tabs.length) % tabs.length;
         setCurrentTab(tabs[previousIndex]);
+    }
+
+    // ─────────────────────────────────────────────── Emoji system
+
+    public ChatEmojiSystem getEmojiSystem() { return emojiSystem; }
+
+    public void toggleEmojiPicker() { emojiSystem.toggle(); }
+
+    public void closeEmojiPicker() { emojiSystem.close(); }
+
+    public boolean isEmojiPickerOpen() { return emojiSystem.isOpen(); }
+
+    public void insertEmoji(EmojiType type) {
+        inputHandler.insertToken(type.token);
+        emojiSystem.onEmojiUsed(type);
     }
 }

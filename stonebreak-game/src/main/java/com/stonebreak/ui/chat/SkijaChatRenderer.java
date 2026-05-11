@@ -6,7 +6,12 @@ import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.ui.chat.chatSystem.ChatCommandExecutor;
 import com.stonebreak.ui.chat.chatSystem.commands.ChatCommand;
+import com.stonebreak.ui.chat.emoji.ChatEmojiSystem;
+import com.stonebreak.ui.chat.emoji.EmojiImageCache;
+import com.stonebreak.ui.chat.emoji.EmojiPickerRenderer;
+import com.stonebreak.ui.chat.emoji.EmojiType;
 import io.github.humbleui.skija.Canvas;
+import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.ClipMode;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Paint;
@@ -32,6 +37,7 @@ public final class SkijaChatRenderer {
 
     private final SkijaUIBackend backend;
     private final MFonts fonts;
+    private final EmojiPickerRenderer emojiPickerRenderer;
 
     private float lastMouseX;
     private float lastMouseY;
@@ -43,6 +49,7 @@ public final class SkijaChatRenderer {
     public SkijaChatRenderer(SkijaUIBackend backend) {
         this.backend = backend;
         this.fonts = new MFonts(backend);
+        this.emojiPickerRenderer = new EmojiPickerRenderer(this.fonts);
     }
 
     // ─────────────────────────────────────────────────────────── Layout
@@ -50,7 +57,7 @@ public final class SkijaChatRenderer {
     /**
      * Single source of truth for chat geometry. All hit-test methods and the
      * render path call {@link #compute(int, int)} so the panel, viewports,
-     * tabs, scrollbars, and input box agree on a frame.
+     * tabs, scrollbars, input box, and emoji button agree on a frame.
      */
     private record Layout(
             float chatX, float lineHeight, float maxChatWidth,
@@ -60,6 +67,7 @@ public final class SkijaChatRenderer {
             float tabX, float tabY, float tabWidth, float tabHeight, float tabSpacing,
             float viewportX, float viewportY, float viewportWidth, float viewportHeight,
             float scrollbarX, float scrollbarY, float scrollbarWidth, float scrollbarHeight,
+            float emojiButtonX, float emojiButtonY, float emojiButtonSize,
             int windowWidth, int windowHeight
     ) {
         static Layout compute(int sw, int sh) {
@@ -81,9 +89,17 @@ public final class SkijaChatRenderer {
             float tabX = panelX + 5f;
             float tabY = panelY - tabHeight - tabSpacing;
 
-            float inputX = chatX;
-            float inputY = sh - inputBoxHeight - inputBoxMargin;
-            float inputWidth = maxChatWidth;
+            // Emoji button — square, sits at the right of the panel inside its padding,
+            // vertically centred on the input box.
+            float emojiButtonSize = inputBoxHeight;
+            float emojiButtonX    = panelX + panelWidth - padding - emojiButtonSize;
+            float emojiButtonY    = sh - inputBoxHeight - inputBoxMargin;
+
+            // Shrink the input field so it doesn't overlap the emoji button.
+            // inputX - 5 (box x offset) + inputWidth + 10 (box w offset) + 4 gap = emojiButtonX
+            float inputX     = chatX;
+            float inputY     = sh - inputBoxHeight - inputBoxMargin;
+            float inputWidth = emojiButtonX - inputX - 5f - 4f;
 
             float viewportX = panelX + padding;
             float viewportY = panelY + padding;
@@ -102,6 +118,7 @@ public final class SkijaChatRenderer {
                     tabX, tabY, tabWidth, tabHeight, tabSpacing,
                     viewportX, viewportY, viewportWidth, viewportHeight,
                     scrollbarX, scrollbarY, scrollbarWidth, scrollbarHeight,
+                    emojiButtonX, emojiButtonY, emojiButtonSize,
                     sw, sh
             );
         }
@@ -135,6 +152,10 @@ public final class SkijaChatRenderer {
                     drawCommandScrollbar(canvas, L, chat);
                 }
                 drawInputField(canvas, L, chat);
+                drawEmojiButton(canvas, L, chat.isEmojiPickerOpen());
+                if (chat.isEmojiPickerOpen()) {
+                    drawEmojiPicker(canvas, L, chat.getEmojiSystem());
+                }
             } else {
                 // Closed chat: floating fading messages, no panel, no input.
                 drawMessages(canvas, L, chat, visible, false);
@@ -238,14 +259,14 @@ public final class SkijaChatRenderer {
 
                 int color = argb(msg.getColor(), alpha);
                 float baseline = currentY - L.lineHeight / 2f + MStyle.FONT_META * 0.35f;
-                MPainter.drawString(canvas, msg.getText(), L.chatX, baseline, font, color);
+
                 if (!open) {
                     // Subtle shadow when floating without the panel — keeps text
                     // readable over varied world backgrounds.
                     int shadow = withAlpha(MStyle.TEXT_SHADOW, alpha * 0.6f);
-                    MPainter.drawString(canvas, msg.getText(), L.chatX + 1f, baseline + 1f, font, shadow);
-                    MPainter.drawString(canvas, msg.getText(), L.chatX, baseline, font, color);
+                    drawMixedLine(canvas, msg.getText(), L.chatX + 1f, baseline + 1f, font, shadow, false);
                 }
+                drawMixedLine(canvas, msg.getText(), L.chatX, baseline, font, color, true);
 
                 previousId = msg.getMessageId();
                 currentY -= L.lineHeight;
@@ -254,6 +275,63 @@ public final class SkijaChatRenderer {
             if (save >= 0) canvas.restoreToCount(save);
         }
     }
+
+    /**
+     * Render one line of text that may contain emoji tokens such as {@code [banana]}.
+     * Text segments are drawn at {@code (x, y)} with the given font and colour;
+     * emoji tokens are replaced with the item sprite at inline size.
+     *
+     * @param spritesEnabled when {@code false} the emoji slot width is still
+     *                       reserved so shadow and main passes align, but no
+     *                       sprite image is drawn (shadow pass only needs text).
+     */
+    private void drawMixedLine(Canvas canvas, String text, float x, float y,
+                               Font font, int color, boolean spritesEnabled) {
+        float spriteSize = L_LINE_HEIGHT - 4f; // fits neatly in the 20px line
+        float xCursor = x;
+        int pos = 0;
+
+        while (pos < text.length()) {
+            // Find the nearest emoji token starting at pos.
+            int nextStart = -1;
+            EmojiType nextEmoji = null;
+            for (EmojiType e : EmojiType.values()) {
+                int idx = text.indexOf(e.token, pos);
+                if (idx >= 0 && (nextStart < 0 || idx < nextStart)) {
+                    nextStart = idx;
+                    nextEmoji = e;
+                }
+            }
+
+            if (nextStart < 0) {
+                // No more tokens — draw remaining text and stop.
+                MPainter.drawString(canvas, text.substring(pos), xCursor, y, font, color);
+                break;
+            }
+
+            // Draw text segment before the token.
+            if (nextStart > pos) {
+                String segment = text.substring(pos, nextStart);
+                MPainter.drawString(canvas, segment, xCursor, y, font, color);
+                xCursor += MPainter.measureWidth(font, segment);
+            }
+
+            // Draw (or skip) the emoji sprite.
+            if (spritesEnabled) {
+                Image img = EmojiImageCache.get(nextEmoji);
+                if (img != null) {
+                    float spriteY = y - spriteSize + 2f; // align with text baseline
+                    MPainter.drawImage(canvas, img, xCursor, spriteY, spriteSize, spriteSize);
+                }
+            }
+            xCursor += spriteSize + 1f; // advance cursor by sprite width + 1px gap
+
+            pos = nextStart + nextEmoji.token.length();
+        }
+    }
+
+    // Line height constant referenced in drawMixedLine without a Layout instance.
+    private static final float L_LINE_HEIGHT = 20f;
 
     // ─────────────────────────────────────────────────────────── Input field
 
@@ -307,6 +385,59 @@ public final class SkijaChatRenderer {
         } finally {
             canvas.restoreToCount(save);
         }
+    }
+
+    // ─────────────────────────────────────────────────────────── Emoji button
+
+    private void drawEmojiButton(Canvas canvas, Layout L, boolean pickerOpen) {
+        float bx = L.emojiButtonX;
+        float by = L.emojiButtonY;
+        float bs = L.emojiButtonSize;
+
+        int fill = pickerOpen ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
+        MPainter.stoneSurface(canvas, bx, by, bs, bs, MStyle.BUTTON_RADIUS,
+                fill, MStyle.BUTTON_BORDER,
+                MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, MStyle.BUTTON_DROP_SHADOW,
+                MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
+
+        // Draw a minimal smiley: two dot eyes + arc mouth using canvas primitives.
+        float cx = bx + bs / 2f;
+        float cy = by + bs / 2f;
+        float fr = bs / 2f - 4f; // face radius
+
+        int faceColor = pickerOpen ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
+
+        // Face outline
+        try (Paint p = new Paint().setColor(faceColor).setMode(PaintMode.STROKE)
+                .setStrokeWidth(1.5f).setAntiAlias(true)) {
+            canvas.drawCircle(cx, cy, fr, p);
+        }
+
+        // Eyes — two small filled circles
+        try (Paint p = new Paint().setColor(faceColor).setAntiAlias(true)) {
+            canvas.drawCircle(cx - fr * 0.28f, cy - fr * 0.22f, 1.3f, p);
+            canvas.drawCircle(cx + fr * 0.28f, cy - fr * 0.22f, 1.3f, p);
+        }
+
+        // Smile — bottom arc of a small oval placed below face centre.
+        // sweepAngle 180° starting from 0° (3-o'clock) traces the bottom semicircle.
+        float smileW    = fr * 0.75f;
+        float smileH    = fr * 0.4f;
+        float smileL    = cx - smileW / 2f;
+        float smileT    = cy + fr * 0.1f;
+        float smileR    = smileL + smileW;
+        float smileB    = smileT + smileH;
+        try (Paint p = new Paint().setColor(faceColor).setMode(PaintMode.STROKE)
+                .setStrokeWidth(1.5f).setAntiAlias(true)) {
+            canvas.drawArc(smileL, smileT, smileR, smileB, 0f, 180f, false, p);
+        }
+    }
+
+    private void drawEmojiPicker(Canvas canvas, Layout L, ChatEmojiSystem emojiSystem) {
+        float anchorRight = L.emojiButtonX + L.emojiButtonSize;
+        float anchorTop   = L.emojiButtonY;
+        emojiPickerRenderer.draw(canvas, emojiSystem, anchorRight, anchorTop,
+                lastMouseX, lastMouseY);
     }
 
     // ─────────────────────────────────────────────────────────── Commands tab
@@ -404,12 +535,41 @@ public final class SkijaChatRenderer {
     }
 
     // ─────────────────────────────────────────────────────────── Hit-tests
-    // These preserve the old ChatRenderer surface so InputHandler edits stay
-    // mechanical (just rename getChatRenderer → getSkijaChatRenderer).
 
     public void updateMousePosition(float mouseX, float mouseY) {
         this.lastMouseX = mouseX;
         this.lastMouseY = mouseY;
+    }
+
+    /** Returns true if the emoji button was clicked. */
+    public boolean isEmojiButtonClicked(float mx, float my, int sw, int sh) {
+        Layout L = Layout.compute(sw, sh);
+        return mx >= L.emojiButtonX && mx <= L.emojiButtonX + L.emojiButtonSize
+                && my >= L.emojiButtonY && my <= L.emojiButtonY + L.emojiButtonSize;
+    }
+
+    /**
+     * Returns the emoji clicked inside the picker, or {@code null}.
+     * Call {@link #getPickerFavoriteStarClick} first to resolve star vs. emoji ambiguity.
+     */
+    public EmojiType getPickerEmojiClick(ChatSystem chat, float mx, float my, int sw, int sh) {
+        Layout L = Layout.compute(sw, sh);
+        float anchorRight = L.emojiButtonX + L.emojiButtonSize;
+        return emojiPickerRenderer.getClickedEmoji(chat.getEmojiSystem(), mx, my, anchorRight, L.emojiButtonY);
+    }
+
+    /** Returns the emoji whose favourite-star was clicked, or {@code null}. */
+    public EmojiType getPickerFavoriteStarClick(ChatSystem chat, float mx, float my, int sw, int sh) {
+        Layout L = Layout.compute(sw, sh);
+        float anchorRight = L.emojiButtonX + L.emojiButtonSize;
+        return emojiPickerRenderer.getClickedFavoriteStar(chat.getEmojiSystem(), mx, my, anchorRight, L.emojiButtonY);
+    }
+
+    /** Returns true if {@code (mx,my)} is anywhere inside the picker panel. */
+    public boolean isPickerClick(ChatSystem chat, float mx, float my, int sw, int sh) {
+        Layout L = Layout.compute(sw, sh);
+        float anchorRight = L.emojiButtonX + L.emojiButtonSize;
+        return emojiPickerRenderer.containsPoint(mx, my, anchorRight, L.emojiButtonY, chat.getEmojiSystem());
     }
 
     public String getClickedCommand(ChatSystem chat, float mx, float my, int sw, int sh) {

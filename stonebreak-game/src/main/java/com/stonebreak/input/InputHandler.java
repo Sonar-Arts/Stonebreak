@@ -10,6 +10,8 @@ import org.joml.Vector3i;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.ui.chat.ChatSystem;
+import com.stonebreak.ui.chat.emoji.EmojiType;
+import com.stonebreak.ui.chat.SkijaChatRenderer;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.items.Inventory;
@@ -952,11 +954,45 @@ public class InputHandler {
     }
 
     /**
-     * Handle chat click interactions (tab switching and command buttons)
+     * Handle chat click interactions (tab switching, emoji picker, and command buttons)
      */
     private void handleChatClick(ChatSystem chatSystem) {
         int windowWidth = Game.getWindowWidth();
         int windowHeight = Game.getWindowHeight();
+
+        // ── Emoji button / picker ─────────────────────────────────────────
+        UIRenderer uiRendererEmoji = Game.getInstance().getUIRenderer();
+        if (uiRendererEmoji != null && uiRendererEmoji.getSkijaChatRenderer() != null) {
+            SkijaChatRenderer renderer = uiRendererEmoji.getSkijaChatRenderer();
+
+            // Toggle picker on emoji button click.
+            if (renderer.isEmojiButtonClicked(currentMouseX, currentMouseY, windowWidth, windowHeight)) {
+                chatSystem.toggleEmojiPicker();
+                return;
+            }
+
+            if (chatSystem.isEmojiPickerOpen()) {
+                // Star click → toggle favourite; emoji click → insert.
+                EmojiType starTarget = renderer.getPickerFavoriteStarClick(
+                        chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
+                if (starTarget != null) {
+                    chatSystem.getEmojiSystem().toggleFavorite(starTarget);
+                    return;
+                }
+
+                EmojiType emojiTarget = renderer.getPickerEmojiClick(
+                        chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
+                if (emojiTarget != null) {
+                    chatSystem.insertEmoji(emojiTarget);
+                    return;
+                }
+
+                // Click outside picker closes it and consumes the click.
+                chatSystem.closeEmojiPicker();
+                return;
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────
 
         // Calculate tab button areas (matching ChatRenderer folder-style tabs)
         float backgroundPadding = 10;
