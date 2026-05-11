@@ -26,6 +26,7 @@ import com.openmason.main.systems.menus.dialogs.SBTExportWindow;
 import com.openmason.main.systems.menus.preferences.PreferencesWindow;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
+import com.openmason.main.systems.menus.panes.riggingPane.RiggingPaneImGui;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.themes.utils.ImGuiHelpers;
 import com.openmason.main.systems.themes.core.ThemeManager;
@@ -61,6 +62,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private final ThemeManager themeManager;
     private final PreferencesManager preferencesManager;
     private PropertyPanelImGui propertyPanelImGui;
+    private RiggingPaneImGui riggingPaneImGui;
     private ModelBrowserImGui modelBrowserImGui;
 
     private PreferencesWindow preferencesWindow; // Initialized after components
@@ -195,6 +197,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         try {
             setupViewport();
             setupPropertiesPanel();
+            setupRiggingPane();
             setupModelBrowser();
 
             // Initialize unified preferences window after components are created
@@ -297,6 +300,18 @@ public class MainImGuiInterface implements ModelBrowserListener {
     }
 
     /**
+     * Setup rigging pane (parts + bones tabs).
+     */
+    private void setupRiggingPane() {
+        try {
+            riggingPaneImGui = new RiggingPaneImGui();
+            riggingPaneImGui.setViewport(viewport3D);
+        } catch (Exception e) {
+            logger.error("Failed to setup rigging pane", e);
+        }
+    }
+
+    /**
      * Setup model browser component.
      */
     private void setupModelBrowser() {
@@ -333,6 +348,10 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
         if (uiVisibilityState.getShowPropertyPanel().get()) {
             renderPropertyPanel();
+        }
+
+        if (uiVisibilityState.getShowRiggingPane().get()) {
+            renderRiggingPane();
         }
 
         // Note: Unified preferences window is rendered at app level in OpenMasonApp
@@ -429,6 +448,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
         // Dock windows into their respective nodes
         imgui.internal.ImGui.dockBuilderDockWindow("Model Properties", dockLeft.get());
+        imgui.internal.ImGui.dockBuilderDockWindow(RiggingPaneImGui.WINDOW_TITLE, dockLeft.get());
         imgui.internal.ImGui.dockBuilderDockWindow("3D Viewport", dockCenter.get());
         imgui.internal.ImGui.dockBuilderDockWindow("Model Browser", dockBottom.get());
 
@@ -481,6 +501,15 @@ public class MainImGuiInterface implements ModelBrowserListener {
     }
 
     /**
+     * Render the rigging pane (parts + bones).
+     */
+    private void renderRiggingPane() {
+        if (riggingPaneImGui != null) {
+            riggingPaneImGui.render();
+        }
+    }
+
+    /**
      * Render property panel fallback if not initialized.
      */
     private void renderPropertyPanelFallback() {
@@ -514,6 +543,10 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
     public PropertyPanelImGui getPropertyPanel() {
         return propertyPanelImGui;
+    }
+
+    public RiggingPaneImGui getRiggingPane() {
+        return riggingPaneImGui;
     }
 
     public ThemeManager getThemeManager() {

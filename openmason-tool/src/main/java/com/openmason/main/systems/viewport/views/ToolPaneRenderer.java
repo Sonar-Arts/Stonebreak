@@ -6,6 +6,7 @@ import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory;
 import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.viewport.ViewportActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
+import com.openmason.main.systems.themes.utils.TransformGroupWidget;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
 import imgui.ImDrawList;
 import imgui.ImGui;
@@ -49,6 +50,9 @@ public class ToolPaneRenderer {
     private final PartShapeFactory.Shape[] shapes = PartShapeFactory.Shape.values();
     private ViewportUIState.ActiveToolPane previousPane = ViewportUIState.ActiveToolPane.NONE;
 
+    // Add Bone form state
+    private final ImString addBoneName = new ImString(64);
+
     // Part Transform form state
     private final ImFloat posX = new ImFloat(), posY = new ImFloat(), posZ = new ImFloat();
     private final ImFloat rotX = new ImFloat(), rotY = new ImFloat(), rotZ = new ImFloat();
@@ -76,6 +80,10 @@ public class ToolPaneRenderer {
         if (pane == ViewportUIState.ActiveToolPane.ADD_PART && previousPane != ViewportUIState.ActiveToolPane.ADD_PART) {
             addPartName.set("");
             selectedShapeIndex.set(0);
+        }
+        // Reset Add Bone form when opening the pane fresh
+        if (pane == ViewportUIState.ActiveToolPane.ADD_BONE && previousPane != ViewportUIState.ActiveToolPane.ADD_BONE) {
+            addBoneName.set("");
         }
         previousPane = pane;
 
@@ -107,6 +115,7 @@ public class ToolPaneRenderer {
                 case TRANSFORM -> renderTransformPane();
                 case ADD_PART -> renderAddPartPane();
                 case PART_TRANSFORM -> renderPartTransformPane();
+                case ADD_BONE -> renderAddBonePane();
                 default -> {}
             }
         }
@@ -124,6 +133,7 @@ public class ToolPaneRenderer {
             case RENDERING -> "Rendering";
             case TRANSFORM -> "Transform";
             case ADD_PART -> "Add Part";
+            case ADD_BONE -> "Add Bone";
             case PART_TRANSFORM -> {
                 var supplier = state.getSelectedPartSupplier();
                 ModelPartDescriptor sel = supplier != null ? supplier.get() : null;
@@ -292,13 +302,13 @@ public class ToolPaneRenderer {
 
         boolean changed = false;
 
-        changed |= renderTransformGroup("Position", "pos", posX, posY, posZ, 0.01f, "%.3f");
+        changed |= TransformGroupWidget.render("Position", "pos", posX, posY, posZ, 0.01f, "%.3f");
         ImGui.spacing();
         ImGui.spacing();
-        changed |= renderTransformGroup("Rotation", "rot", rotX, rotY, rotZ, 0.5f, "%.1f");
+        changed |= TransformGroupWidget.render("Rotation", "rot", rotX, rotY, rotZ, 0.5f, "%.1f");
         ImGui.spacing();
         ImGui.spacing();
-        changed |= renderTransformGroup("Scale", "scl", sclX, sclY, sclZ, 0.01f, "%.3f");
+        changed |= TransformGroupWidget.render("Scale", "scl", sclX, sclY, sclZ, 0.01f, "%.3f");
 
         ImGui.spacing();
         ImGui.spacing();
@@ -338,63 +348,45 @@ public class ToolPaneRenderer {
         }
     }
 
-    /**
-     * Render a labeled transform group (label + 3 axis rows stacked vertically).
-     * Each axis gets its own row with colored label pill + full-width drag float.
-     */
-    private boolean renderTransformGroup(String groupLabel, String id,
-                                          ImFloat x, ImFloat y, ImFloat z,
-                                          float speed, String format) {
-        boolean changed = false;
-        label(groupLabel);
 
-        changed |= renderAxisField("X", id + "x", x, speed, format, 0.85f, 0.25f, 0.25f);
-        changed |= renderAxisField("Y", id + "y", y, speed, format, 0.25f, 0.72f, 0.25f);
-        changed |= renderAxisField("Z", id + "z", z, speed, format, 0.25f, 0.45f, 0.90f);
+    // ========== Add Bone ==========
 
-        return changed;
-    }
+    private void renderAddBonePane() {
+        ImVec4 dim = ImGui.getStyle().getColor(ImGuiCol.TextDisabled);
+        ImGui.pushStyleColor(ImGuiCol.Text, dim.x, dim.y, dim.z, dim.w);
+        ImGui.textWrapped("Creates a root bone. Drag the new bone onto a part or bone in the hierarchy to reparent it.");
+        ImGui.popStyleColor();
 
-    /**
-     * Render a single axis field: colored label pill + drag float filling remaining width.
-     */
-    private boolean renderAxisField(String axisLabel, String id, ImFloat value,
-                                     float speed, String format,
-                                     float colorR, float colorG, float colorB) {
-        boolean changed = false;
-        float pillWidth = 18.0f;
-        float pillHeight = ImGui.getFrameHeight();
-        float spacing = 4.0f;
-        float fieldWidth = ImGui.getContentRegionAvailX() - pillWidth - spacing;
+        ImGui.spacing();
+        ImGui.spacing();
 
-        ImDrawList drawList = ImGui.getWindowDrawList();
-        ImVec2 cursor = ImGui.getCursorScreenPos();
-
-        // Draw colored pill background
-        int pillColor = ImGui.colorConvertFloat4ToU32(colorR, colorG, colorB, 0.25f);
-        int textColor = ImGui.colorConvertFloat4ToU32(colorR, colorG, colorB, 1.0f);
-        drawList.addRectFilled(cursor.x, cursor.y,
-                cursor.x + pillWidth, cursor.y + pillHeight, pillColor, 3.0f);
-
-        // Center axis letter in pill
-        ImVec2 textSize = new ImVec2();
-        ImGui.calcTextSize(textSize, axisLabel);
-        float textX = cursor.x + (pillWidth - textSize.x) * 0.5f;
-        float textY = cursor.y + (pillHeight - textSize.y) * 0.5f;
-        drawList.addText(textX, textY, textColor, axisLabel);
-
-        // Advance past pill
-        ImGui.dummy(pillWidth, pillHeight);
-        ImGui.sameLine(0, spacing);
-
-        // Drag float
-        ImGui.pushItemWidth(fieldWidth);
-        if (ImGui.dragFloat("##pt_" + id, value.getData(), speed, 0, 0, format)) {
-            changed = true;
+        label("Name");
+        ImGui.setNextItemWidth(-1);
+        ImGui.inputText("##add_bone_name", addBoneName);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Leave blank to auto-name");
         }
-        ImGui.popItemWidth();
 
-        return changed;
+        ImGui.spacing();
+        ImGui.spacing();
+
+        ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+        ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 0.65f);
+        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.85f);
+        ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 1.0f);
+        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 4.0f);
+
+        if (ImGui.button("Add Bone", -1, 30)) {
+            String name = addBoneName.get().trim();
+            BiConsumer<String, String> cb = state.getAddBoneCallback();
+            if (cb != null) {
+                cb.accept(name, null);
+            }
+            state.closeToolPane();
+        }
+
+        ImGui.popStyleVar();
+        ImGui.popStyleColor(3);
     }
 
     // ========== Add Part ==========

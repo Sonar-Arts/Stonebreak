@@ -305,9 +305,9 @@ public class mainOpenMason {
             viewportInterface = new ViewportImGuiInterface(themeManager, new PreferencesManager());
             viewportInterface.setViewport3D(mainInterface.getViewport3D());
 
-            // Wire slideouts: property panel ↔ viewport tool pane (Add Part, Part Transform)
-            if (mainInterface.getPropertyPanel() != null) {
-                mainInterface.getPropertyPanel().wireSlideouts(
+            // Wire slideouts: rigging pane ↔ viewport tool pane (Add Part, Part Transform)
+            if (mainInterface.getRiggingPane() != null) {
+                mainInterface.getRiggingPane().wireSlideouts(
                         viewportInterface.getViewportUIState(), mainInterface.getViewport3D());
             }
 
