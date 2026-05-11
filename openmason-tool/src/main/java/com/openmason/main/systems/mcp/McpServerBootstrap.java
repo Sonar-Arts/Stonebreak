@@ -31,6 +31,12 @@ public final class McpServerBootstrap {
             TextureEditingService textureEditor = new TextureEditingService(mainInterface);
             new TextureToolDefinitions(textureEditor, mapper).registerAll(registry);
 
+            BoneEditingService boneEditor = new BoneEditingService(mainInterface);
+            new BoneToolDefinitions(boneEditor, mapper).registerAll(registry);
+
+            AnimationEditingService animationEditor = new AnimationEditingService(mainInterface);
+            new AnimationToolDefinitions(animationEditor, mapper).registerAll(registry);
+
             McpRequestRouter router = new McpRequestRouter(registry, mapper);
             server = new McpHttpServer(PORT, router, mapper);
             server.start();

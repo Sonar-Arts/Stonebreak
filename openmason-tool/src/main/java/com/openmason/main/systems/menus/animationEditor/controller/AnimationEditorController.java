@@ -92,6 +92,15 @@ public final class AnimationEditorController {
 
     // ====================== Editing ======================
 
+    /**
+     * Insert (or upsert) an arbitrary keyframe on the given part's track.
+     * Used by external drivers (MCP, scripting) that supply their own pose.
+     */
+    public void insertKeyframe(String partId, Keyframe keyframe) {
+        if (keyframe == null) return;
+        execute(KeyframeCommands.insert(state.clip(), partId, keyframe));
+    }
+
     public void insertKeyframeAtPlayhead(String partId) {
         if (partManager == null) return;
         ModelPartDescriptor part = partManager.getPartById(partId).orElse(null);

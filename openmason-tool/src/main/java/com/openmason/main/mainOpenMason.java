@@ -315,6 +315,7 @@ public class mainOpenMason {
             textureEditorWindow = new TextureEditorWindow(textureCreatorInterface);
             animationEditor = new AnimationEditorImGui();
             animationEditor.setFileDialogService(mainInterface.getFileDialogService());
+            mainInterface.setAnimationEditorInterface(animationEditor);
 
             // Load custom keybinds AFTER both viewport and texture editor are initialized
             loadCustomKeybinds();

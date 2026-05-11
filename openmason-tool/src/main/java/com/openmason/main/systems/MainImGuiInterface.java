@@ -90,6 +90,9 @@ public class MainImGuiInterface implements ModelBrowserListener {
     // Texture editor (set after construction via setTextureCreatorInterface)
     private TextureCreatorImGui textureCreatorImGui;
 
+    // Animation editor (set after construction via setAnimationEditorInterface)
+    private com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui animationEditorImGui;
+
     // Window Configurations
     private final WindowConfig propertiesConfig = WindowConfig.forProperties();
 
@@ -665,6 +668,22 @@ public class MainImGuiInterface implements ModelBrowserListener {
      */
     public TextureCreatorImGui getTextureCreator() {
         return textureCreatorImGui;
+    }
+
+    /**
+     * Get the animation editor interface, or null if not yet wired.
+     */
+    public com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui getAnimationEditor() {
+        return animationEditorImGui;
+    }
+
+    /**
+     * Sets the AnimationEditorImGui instance so external systems (e.g. the MCP
+     * server) can query and drive the animation editor.
+     */
+    public void setAnimationEditorInterface(
+            com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui animationEditorImGui) {
+        this.animationEditorImGui = animationEditorImGui;
     }
 
     /**
