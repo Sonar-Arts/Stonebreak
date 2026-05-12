@@ -15,6 +15,7 @@ import com.stonebreak.rendering.gameWorld.WorldRenderer;
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
+import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 import com.stonebreak.rendering.UI.components.OverlayRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
@@ -131,6 +132,7 @@ public class Renderer {
         // Skija-backed UI renderers (chat panel) need the backend; init now
         // that it exists. UIRenderer.init() ran earlier and only set up NanoVG.
         uiRenderer.initializeSkijaRenderers(skijaBackend);
+        DamageNumberRenderer.getInstance().setBackend(skijaBackend);
 
         debugRenderer = new DebugRenderer(resourceManager.getShaderProgram(), configManager.getProjectionMatrix());
         

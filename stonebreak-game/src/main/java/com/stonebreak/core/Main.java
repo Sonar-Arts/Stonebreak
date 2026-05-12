@@ -10,6 +10,7 @@ import com.stonebreak.input.MouseCaptureManager;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 import com.stonebreak.ui.DebugOverlay;
 import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
@@ -821,6 +822,17 @@ public class Main {
             renderCrosshair(game, renderer);
             renderInventoryAndHotbar(game);
             renderChat(game, renderer);
+        }
+
+        if (game.getState() == GameState.PLAYING) {
+            com.stonebreak.player.Player player = Game.getPlayer();
+            if (player != null) {
+                DamageNumberRenderer dmg = DamageNumberRenderer.getInstance();
+                dmg.update(Game.getDeltaTime());
+                dmg.render(renderer.getProjectionMatrix(),
+                           player.getViewMatrix(),
+                           width, height);
+            }
         }
 
         // Render recipe book as overlay, not fullscreen
