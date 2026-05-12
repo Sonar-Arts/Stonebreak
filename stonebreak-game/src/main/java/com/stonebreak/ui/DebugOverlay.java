@@ -1,7 +1,6 @@
 package com.stonebreak.ui;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
-import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.masonryUI.MStatPanel;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import java.lang.management.BufferPoolMXBean;
@@ -62,7 +61,7 @@ public class DebugOverlay {
     private VramSource vramSource = null;
     private long vramTotalKB = 0; // 0 if unknown
 
-    // MasonryUI for the left-side resource panels. Lazily built once a Renderer exists.
+    // MasonryUI for the right-side debug panel and left-side resource panel. Lazily built once a Renderer exists.
     private MasonryUI masonryUI = null;
 
     // Cached panels — rebuilt periodically rather than every frame. Reading
@@ -73,6 +72,7 @@ public class DebugOverlay {
     private long lastPanelRebuildMs = 0L;
     private MStatPanel cachedRamPanel = null;
     private MStatPanel cachedVramPanel = null;
+    private MStatPanel cachedDebugPanel = null;
 
     public DebugOverlay() {
     }
@@ -342,48 +342,13 @@ public class DebugOverlay {
         return String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
     }
 
-    /**
-     * Renders the debug overlay using the provided renderer.
-     */
-    public void render(UIRenderer uiRenderer) {
-        if (!visible) {
-            return;
-        }
-
-        String debugText = getDebugText();
-        if (debugText.isEmpty()) {
-            return;
-        }
-
-        // Get window dimensions from Game instance to calculate right side position
-        int windowWidth = Game.getWindowWidth();
-
-        String[] lines = debugText.split("\n");
-        float rightMargin = 10; // Distance from right edge
-        float y = 10; // Start position
-        float lineHeight = 18;
-
-        for (String line : lines) {
-            if (line.contains("Stonebreak Debug")) {
-                // Calculate text width and position from right side
-                float textWidth = uiRenderer.getTextWidth(line, 20, "sans-bold");
-                float x = windowWidth - rightMargin - textWidth;
-                // Render title in yellow
-                uiRenderer.drawText(line, x, y, "sans-bold", 20, 1.0f, 1.0f, 0.0f, 1.0f);
-            } else {
-                // Calculate text width and position from right side
-                float textWidth = uiRenderer.getTextWidth(line, 16, "sans");
-                float x = windowWidth - rightMargin - textWidth;
-                // Render regular text
-                uiRenderer.drawText(line, x, y, "sans", 16, 1.0f, 1.0f, 1.0f, 1.0f);
-            }
-            y += lineHeight;
-        }
-
+    private static String truncate(String s, int maxLen) {
+        if (s == null || s.length() <= maxLen) return s != null ? s : "";
+        return s.substring(0, maxLen - 3) + "...";
     }
 
     /**
-     * Renders the RAM and VRAM resource cards using MasonryUI/Skija.
+     * Renders the RAM, VRAM, and debug info cards using MasonryUI/Skija.
      *
      * <p>Called from the main render loop <em>outside</em> the NanoVG UI frame,
      * because Skija has its own GL state bracketing.
@@ -398,16 +363,18 @@ public class DebugOverlay {
         // Refresh the panel data on a fixed cadence; render the cached panels
         // on every frame in between.
         long now = System.currentTimeMillis();
-        if (cachedRamPanel == null || cachedVramPanel == null
+        if (cachedRamPanel == null || cachedVramPanel == null || cachedDebugPanel == null
                 || now - lastPanelRebuildMs >= PANEL_REBUILD_INTERVAL_MS) {
             cachedRamPanel = buildRamPanel();
             cachedVramPanel = buildVramPanel();
+            cachedDebugPanel = buildDebugPanel();
             lastPanelRebuildMs = now;
         }
 
         if (!masonryUI.beginFrame(sw, sh, 1.0f)) return;
         try {
             float leftMargin = 10f;
+            float rightMargin = 10f;
             float panelWidth = 280f;
             float gap = 8f;
             float y = 10f;
@@ -416,6 +383,11 @@ public class DebugOverlay {
             y += ramHeight + gap;
 
             cachedVramPanel.render(masonryUI, leftMargin, y, panelWidth);
+
+            // Right-side debug info panel
+            float rightX = sw - rightMargin - panelWidth;
+            float rightY = 10f;
+            cachedDebugPanel.render(masonryUI, rightX, rightY, panelWidth);
 
             masonryUI.renderOverlays();
         } finally {
@@ -561,7 +533,62 @@ public class DebugOverlay {
             return "N/A";
         }
     }
-    
+
+    /**
+     * Builds the right-side debug info card with player position, chunk coords,
+     * facing direction, block/biome info, FPS, and GPU details — rendered in the
+     * same stone-surface style as the RAM/VRAM panels.
+     */
+    private MStatPanel buildDebugPanel() {
+        Player player = Game.getPlayer();
+        World world = Game.getWorld();
+
+        if (player == null || world == null) {
+            return new MStatPanel("Debug").row("Player or World unavailable", "");
+        }
+
+        Vector3f pos = player.getPosition();
+        int x = (int) Math.floor(pos.x);
+        int y = (int) Math.floor(pos.y);
+        int z = (int) Math.floor(pos.z);
+        int chunkX = x >> 4;
+        int chunkZ = z >> 4;
+        updateAverageFPS();
+
+        BiomeType biome = world.getBiomeAt(x, z);
+        String facing = getCardinalDirection(player.getCamera().getFront());
+        BlockType blockBelow = world.getBlockAt(x, y - 1, z);
+        String blockName = blockBelow != null ? blockBelow.name() : "Unknown";
+
+        MStatPanel panel = new MStatPanel("Debug Info")
+            .row("XYZ", String.format("%d / %d / %d", x, y, z))
+            .row("Chunk", String.format("%d %d in %d %d", x & 15, z & 15, chunkX, chunkZ))
+            .row("Facing", facing);
+
+        panel.section("Terrain");
+        panel.row("Block Below", blockName);
+        panel.row("Biome", biome.name());
+        panel.row("Temperature", String.format("%.3f", world.getTemperatureAt(x, z)));
+        panel.row("Moisture", String.format("%.3f", world.getMoistureAt(x, z)));
+
+        panel.section("World");
+        panel.row("FPS", String.format("%.0f (avg)", averageFPS));
+        panel.row("Chunks", String.format("%d loaded", world.getLoadedChunkCount()));
+        panel.row("Pending Mesh", String.valueOf(world.getPendingMeshBuildCount()));
+        panel.row("Pending GL", String.valueOf(world.getPendingGLUploadCount()));
+
+        panel.section("Graphics");
+        queryGPUInfo();
+        panel.row("GPU", truncate(gpuRenderer != null ? gpuRenderer : "Unknown", 30));
+        panel.row("Vendor", truncate(gpuVendor != null ? gpuVendor : "Unknown", 25));
+        panel.row("OpenGL", gpuVersion != null ? gpuVersion : "Unknown");
+
+        panel.section("Debug");
+        panel.row("Path Visual", "ON");
+
+        return panel;
+    }
+
     /**
      * Renders debug wireframes for entities (called after UI rendering).
      */
