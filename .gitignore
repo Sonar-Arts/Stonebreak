@@ -141,3 +141,6 @@ Theme.ini
 
 # Open Mason MCP
 .mcp.json
+
+# Qwen
+/.qwen/

@@ -1,6 +1,7 @@
 package com.stonebreak.ui.inventoryScreen.core;
 
 import com.stonebreak.items.Inventory;
+import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
@@ -180,6 +181,149 @@ public class InventorySlotManager {
             }
         }
         return false;
+    }
+
+    /**
+     * Shift-click on a main inventory slot: move item from main inventory to hotbar.
+     * Consolidates with existing stacks first, then fills empty slots.
+     */
+    public boolean tryShiftClickMainInventoryToHotbar(float mouseX, float mouseY,
+                                                       InventoryLayoutCalculator.InventoryLayout layout) {
+        // Calculate main inventory centering within the panel (same as rendering)
+        int inventoryWidth = Inventory.MAIN_INVENTORY_COLS * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) - InventoryLayoutCalculator.getSlotPadding();
+        int inventoryStartX = layout.panelStartX + (layout.inventoryPanelWidth - inventoryWidth) / 2;
+
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
+            int row = i / Inventory.MAIN_INVENTORY_COLS;
+            int col = i % Inventory.MAIN_INVENTORY_COLS;
+            int slotX = inventoryStartX + col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            int slotY = layout.mainInvContentStartY + InventoryLayoutCalculator.getSlotPadding() +
+                       row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+
+            if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
+                ItemStack currentStack = inventory.getMainInventorySlot(i);
+                if (currentStack != null && !currentStack.isEmpty()) {
+                    // Try to move this item to hotbar (consolidate first, then empty slots)
+                    ItemStack itemToMove = currentStack.copy();
+                    int moved = addToHotbar(itemToMove);
+                    
+                    if (moved > 0) {
+                        currentStack.decrementCount(moved);
+                        if (currentStack.isEmpty()) {
+                            inventory.setMainInventorySlot(i, new ItemStack(BlockType.AIR.getId(), 0));
+                        }
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Shift-click on a hotbar slot: move item from hotbar to main inventory.
+     * Consolidates with existing stacks first, then fills empty slots.
+     */
+    public boolean tryShiftClickHotbarToMainInventory(float mouseX, float mouseY,
+                                                       InventoryLayoutCalculator.InventoryLayout layout) {
+        // Calculate hotbar centering within the panel (same as rendering)
+        int hotbarWidth = Inventory.HOTBAR_SIZE * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) - InventoryLayoutCalculator.getSlotPadding();
+        int hotbarStartX = layout.panelStartX + (layout.inventoryPanelWidth - hotbarWidth) / 2;
+
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            int slotX = hotbarStartX + i * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            int slotY = layout.hotbarRowY;
+
+            if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
+                ItemStack currentStack = inventory.getHotbarSlot(i);
+                if (currentStack != null && !currentStack.isEmpty()) {
+                    // Try to move this item to main inventory (consolidate first, then empty slots)
+                    ItemStack itemToMove = currentStack.copy();
+                    int moved = addToMainInventory(itemToMove);
+                    
+                    if (moved > 0) {
+                        currentStack.decrementCount(moved);
+                        if (currentStack.isEmpty()) {
+                            inventory.setHotbarSlot(i, new ItemStack(BlockType.AIR.getId(), 0));
+                        }
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Adds an item to the hotbar, consolidating with existing stacks first, then filling empty slots.
+     * Returns the number of items actually added.
+     */
+    private int addToHotbar(ItemStack itemStack) {
+        if (itemStack.isEmpty()) return 0;
+        
+        int remaining = itemStack.getCount();
+        Item item = itemStack.getItem();
+        String state = itemStack.getState();
+        
+        // First pass: consolidate with existing stacks
+        for (int i = 0; i < Inventory.HOTBAR_SIZE && remaining > 0; i++) {
+            ItemStack slot = inventory.getHotbarSlot(i);
+            if (!slot.isEmpty() && slot.getItem().isSameType(item) 
+                    && java.util.Objects.equals(slot.getState(), state)
+                    && slot.getCount() < slot.getMaxStackSize()) {
+                int canAdd = Math.min(remaining, slot.getMaxStackSize() - slot.getCount());
+                slot.incrementCount(canAdd);
+                remaining -= canAdd;
+            }
+        }
+        
+        // Second pass: fill empty slots
+        for (int i = 0; i < Inventory.HOTBAR_SIZE && remaining > 0; i++) {
+            if (inventory.getHotbarSlot(i).isEmpty()) {
+                int canAdd = Math.min(remaining, itemStack.getMaxStackSize());
+                inventory.setHotbarSlot(i, new ItemStack(item, canAdd, state));
+                remaining -= canAdd;
+            }
+        }
+        
+        return itemStack.getCount() - remaining;
+    }
+
+    /**
+     * Adds an item to the main inventory, consolidating with existing stacks first, then filling empty slots.
+     * Returns the number of items actually added.
+     */
+    private int addToMainInventory(ItemStack itemStack) {
+        if (itemStack.isEmpty()) return 0;
+        
+        int remaining = itemStack.getCount();
+        Item item = itemStack.getItem();
+        String state = itemStack.getState();
+        
+        // First pass: consolidate with existing stacks
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE && remaining > 0; i++) {
+            ItemStack slot = inventory.getMainInventorySlot(i);
+            if (!slot.isEmpty() && slot.getItem().isSameType(item) 
+                    && java.util.Objects.equals(slot.getState(), state)
+                    && slot.getCount() < slot.getMaxStackSize()) {
+                int canAdd = Math.min(remaining, slot.getMaxStackSize() - slot.getCount());
+                slot.incrementCount(canAdd);
+                remaining -= canAdd;
+            }
+        }
+        
+        // Second pass: fill empty slots
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE && remaining > 0; i++) {
+            if (inventory.getMainInventorySlot(i).isEmpty()) {
+                int canAdd = Math.min(remaining, itemStack.getMaxStackSize());
+                inventory.setMainInventorySlot(i, new ItemStack(item, canAdd, state));
+                remaining -= canAdd;
+            }
+        }
+        
+        return itemStack.getCount() - remaining;
     }
 
     public boolean tryDropOneToMainInventory(float mouseX, float mouseY,
