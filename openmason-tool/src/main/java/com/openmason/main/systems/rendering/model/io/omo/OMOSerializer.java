@@ -445,6 +445,7 @@ public class OMOSerializer {
         public float u1;
         public float v1;
         public int uvRotationDegrees;
+        public boolean autoResize;
 
         public FaceMappingEntryDTO(OMOFormat.FaceMappingEntry entry) {
             this.faceId = entry.faceId();
@@ -454,6 +455,7 @@ public class OMOSerializer {
             this.u1 = entry.u1();
             this.v1 = entry.v1();
             this.uvRotationDegrees = entry.uvRotationDegrees();
+            this.autoResize = entry.autoResize();
         }
     }
 

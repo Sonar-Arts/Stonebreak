@@ -15,6 +15,7 @@ import com.openmason.main.systems.themes.utils.ImGuiComponents;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import imgui.ImGui;
 import imgui.flag.ImGuiHoveredFlags;
+import imgui.type.ImBoolean;
 import imgui.type.ImInt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -126,6 +127,7 @@ public class FaceMaterialSection implements IPanelSection {
         // Render layer selector (only for non-default materials)
         if (!materialName.equals("Default")) {
             renderRenderLayerSelector(firstFaceId);
+            renderAutoResizeCheckbox(selectedFaces);
         }
 
         ImGui.spacing();
@@ -239,6 +241,42 @@ public class FaceMaterialSection implements IPanelSection {
     }
 
     /**
+     * Render an Auto-resize checkbox that lets the user toggle whether the
+     * editor may rescale a face's texture when its geometry changes.
+     *
+     * <p>Reflects the {@code autoResize} flag of the first selected face's
+     * mapping. Toggling applies the new value to every selected face that has
+     * a mapping, so multi-selection edits stay coherent.
+     *
+     * @param selectedFaces faces whose mappings should receive the toggle
+     */
+    private void renderAutoResizeCheckbox(Set<Integer> selectedFaces) {
+        FaceTextureManager ftm = viewportConnector.getFaceTextureManager();
+        if (ftm == null || selectedFaces.isEmpty()) return;
+
+        int firstFaceId = selectedFaces.iterator().next();
+        FaceTextureMapping firstMapping = ftm.getFaceMapping(firstFaceId);
+        if (firstMapping == null) return;
+
+        ImBoolean state = new ImBoolean(firstMapping.autoResize());
+        if (ImGui.checkbox("Auto-resize", state)) {
+            boolean newValue = state.get();
+            for (int faceId : selectedFaces) {
+                FaceTextureMapping mapping = ftm.getFaceMapping(faceId);
+                if (mapping != null && mapping.autoResize() != newValue) {
+                    ftm.setFaceMapping(mapping.withAutoResize(newValue));
+                }
+            }
+            logger.info("Set auto-resize to {} for {} face(s)", newValue, selectedFaces.size());
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("When enabled, the editor rescales this face's texture\n"
+                    + "to match geometry-derived dimensions on the next edit.\n"
+                    + "Disable to preserve a manually chosen texture size.");
+        }
+    }
+
+    /**
      * Open the selected face in the texture editor.
      * For faces with an assigned material, opens zoomed to the face's UV region.
      * For faces with the default material, opens with the full canvas.
@@ -311,6 +349,15 @@ public class FaceMaterialSection implements IPanelSection {
 
                     boolean dimensionsChanged = existingDims != null && currentDims != null
                             && (existingDims[0] != currentDims[0] || existingDims[1] != currentDims[1]);
+
+                    // Honor per-face autoResize opt-out: MCP tools that explicitly sized
+                    // the texture set autoResize=false so the user's chosen dimensions
+                    // survive geometry edits.
+                    if (dimensionsChanged && !mapping.autoResize()) {
+                        logger.debug("Skipping auto-resize for face {} (autoResize=false): geometry suggests {}x{}, keeping {}x{}",
+                                faceId, currentDims[0], currentDims[1], existingDims[0], existingDims[1]);
+                        dimensionsChanged = false;
+                    }
 
                     if (dimensionsChanged) {
                         // Face geometry changed — rescale existing painted pixels

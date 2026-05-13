@@ -466,7 +466,8 @@ public class ModelOperationService {
                     mapping.materialId(),
                     mapping.uvRegion().u0(), mapping.uvRegion().v0(),
                     mapping.uvRegion().u1(), mapping.uvRegion().v1(),
-                    mapping.uvRotation().degrees()
+                    mapping.uvRotation().degrees(),
+                    mapping.autoResize()
             ));
         }
 
@@ -915,7 +916,8 @@ public class ModelOperationService {
             FaceTextureMapping.UVRotation uvRotation = FaceTextureMapping.UVRotation.fromDegrees(
                     mapEntry.uvRotationDegrees());
             FaceTextureMapping mapping = new FaceTextureMapping(
-                    mapEntry.faceId(), mapEntry.materialId(), uvRegion, uvRotation);
+                    mapEntry.faceId(), mapEntry.materialId(), uvRegion, uvRotation,
+                    mapEntry.autoResize());
             ftm.setFaceMapping(mapping);
         }
 

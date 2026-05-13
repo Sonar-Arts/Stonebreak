@@ -3,6 +3,7 @@ package com.openmason.main.systems.mcp;
 import com.openmason.engine.rendering.model.gmr.extraction.GMRFaceExtractor;
 import com.openmason.engine.rendering.model.gmr.uv.FaceTextureManager;
 import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureSizer;
 import com.openmason.engine.rendering.model.gmr.uv.MaterialDefinition;
 import com.openmason.main.systems.MainImGuiInterface;
 import com.openmason.main.systems.ViewportController;
@@ -142,9 +143,18 @@ public final class FaceTextureEditingService {
             ftm.registerMaterial(material);
             connector.setFaceTexture(faceId, newMaterialId);
 
-            logger.info("Created face texture: face={} material={} gpuTex={} {}x{}",
-                    faceId, newMaterialId, gpuTextureId, width, height);
-            return new CreateResult(faceId, newMaterialId, gpuTextureId, width, height);
+            // MCP explicitly chose the dimensions — opt this face out of auto-resize
+            // so subsequent geometry edits don't silently rescale the texture.
+            disableAutoResize(ftm, faceId);
+
+            int[] suggested = connector.computeFaceTextureDimensions(
+                    faceId, FaceTextureSizer.DEFAULT_PIXELS_PER_UNIT);
+            int sw = suggested != null ? suggested[0] : 0;
+            int sh = suggested != null ? suggested[1] : 0;
+
+            logger.info("Created face texture: face={} material={} gpuTex={} {}x{} (geometry suggested {}x{})",
+                    faceId, newMaterialId, gpuTextureId, width, height, sw, sh);
+            return new CreateResult(faceId, newMaterialId, gpuTextureId, width, height, sw, sh);
                 })));
     }
 
@@ -355,6 +365,9 @@ public final class FaceTextureEditingService {
                         "Failed to read GPU texture for material " + material.materialId());
             }
             if (dims[0] == newWidth && dims[1] == newHeight) {
+                // Dimensions already match, but caller's intent to lock the size still
+                // applies — disable auto-resize so future geometry edits don't fight it.
+                disableAutoResize(ftm, faceId);
                 return new ResizeResult(faceId, material.materialId(),
                         material.textureId(), dims[0], dims[1], false);
             }
@@ -371,6 +384,10 @@ public final class FaceTextureEditingService {
             ftm.registerMaterial(updated);
             connector.setFaceTexture(faceId, material.materialId());
 
+            // MCP explicitly chose the new dimensions — opt out of auto-resize so
+            // the editor will not silently rescale this face when geometry changes.
+            disableAutoResize(ftm, faceId);
+
             // Drop any session bound to the old GPU texture — including sessions
             // on other faces sharing this material, since the material's textureId
             // has been swapped.
@@ -382,6 +399,24 @@ public final class FaceTextureEditingService {
             return new ResizeResult(faceId, material.materialId(),
                     newTexId, newWidth, newHeight, true);
                 })));
+    }
+
+    // ===================== Mapping helpers =====================
+
+    /**
+     * Mark the given face as opt-out from the editor's geometry-driven auto-resize.
+     * Used after MCP tools explicitly size a face's texture: the caller's chosen
+     * dimensions should not be silently rewritten by the UI auto-resizer.
+     *
+     * <p>No-op when the face has no mapping (e.g. faces still on the default
+     * material that haven't been allocated a per-face texture).
+     */
+    private static void disableAutoResize(FaceTextureManager ftm, int faceId) {
+        FaceTextureMapping current = ftm.getFaceMapping(faceId);
+        if (current == null || !current.autoResize()) {
+            return;
+        }
+        ftm.setFaceMapping(current.withAutoResize(false));
     }
 
     // ===================== Internal helpers =====================
@@ -474,6 +509,10 @@ public final class FaceTextureEditingService {
         String orientation = orientationLabel(normal);
         int vertexCount = vertexCountFor(faceData, faceId);
         String partName = connector.getPartNameForFace(faceId);
+        int[] suggested = connector.computeFaceTextureDimensions(
+                faceId, FaceTextureSizer.DEFAULT_PIXELS_PER_UNIT);
+        int sw = suggested != null ? suggested[0] : 0;
+        int sh = suggested != null ? suggested[1] : 0;
         return new FaceTextureInfo(
                 faceId,
                 0, "Default (no per-face mapping)",
@@ -483,7 +522,9 @@ public final class FaceTextureEditingService {
                 0,
                 new float[]{0.0f, 0.0f, 1.0f, 1.0f},
                 partName,
-                false);
+                false,
+                sw, sh,
+                true);
     }
 
     private FaceTextureInfo buildInfoFromMapping(IViewportConnector connector,
@@ -505,6 +546,10 @@ public final class FaceTextureEditingService {
         String partName = connector.getPartNameForFace(mapping.faceId());
 
         FaceTextureMapping.UVRegion uv = mapping.uvRegion();
+        int[] suggested = connector.computeFaceTextureDimensions(
+                mapping.faceId(), FaceTextureSizer.DEFAULT_PIXELS_PER_UNIT);
+        int sw = suggested != null ? suggested[0] : 0;
+        int sh = suggested != null ? suggested[1] : 0;
         return new FaceTextureInfo(
                 mapping.faceId(),
                 mapping.materialId(),
@@ -517,7 +562,9 @@ public final class FaceTextureEditingService {
                 mapping.uvRotation().degrees(),
                 new float[]{uv.u0(), uv.v0(), uv.u1(), uv.v1()},
                 partName,
-                true);
+                true,
+                sw, sh,
+                mapping.autoResize());
     }
 
     private static float[] computeFaceNormal(GMRFaceExtractor.FaceExtractionResult faceData, int faceId) {
@@ -640,15 +687,34 @@ public final class FaceTextureEditingService {
 
     // ===================== DTOs =====================
 
+    /**
+     * @param suggestedWidth  geometry-derived width (pixels) for this face at the
+     *                        default pixels-per-unit. Useful as a reference even
+     *                        when no per-face texture is allocated yet.
+     * @param suggestedHeight geometry-derived height (pixels)
+     * @param autoResize      whether the editor may auto-rescale this face's
+     *                        texture if geometry changes. False after MCP has
+     *                        explicitly sized the texture.
+     */
     public record FaceTextureInfo(
             int faceId, int materialId, String materialName,
             int gpuTextureId, int textureWidth, int textureHeight,
             int vertexCount, float[] normal, String orientation,
             int uvRotationDegrees, float[] uvRegion, String partName,
-            boolean hasMapping) {}
+            boolean hasMapping,
+            int suggestedWidth, int suggestedHeight,
+            boolean autoResize) {}
 
+    /**
+     * @param suggestedWidth  geometry-derived width (pixels) that the editor would
+     *                        have picked for this face. Returned so the caller can
+     *                        detect when its chosen size diverged from what the
+     *                        geometry naturally wants.
+     * @param suggestedHeight geometry-derived height (pixels)
+     */
     public record CreateResult(int faceId, int materialId, int gpuTextureId,
-                                int width, int height) {}
+                                int width, int height,
+                                int suggestedWidth, int suggestedHeight) {}
 
     public record SessionInfo(int faceId, int width, int height,
                                int materialId, int gpuTextureId, boolean alreadyOpen) {}

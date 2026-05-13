@@ -149,7 +149,8 @@ public class OMOReader {
                             (float) m.get("v0").asDouble(),
                             (float) m.get("u1").asDouble(),
                             (float) m.get("v1").asDouble(),
-                            m.get("uvRotationDegrees").asInt()
+                            m.get("uvRotationDegrees").asInt(),
+                            !m.has("autoResize") || m.get("autoResize").asBoolean()
                     ));
                 }
             }

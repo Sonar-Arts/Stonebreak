@@ -210,7 +210,8 @@ public final class FaceTextureManager implements IFaceTextureManager {
             FaceTextureMapping existing = faceMappings.remove(oldId);
             if (existing != null) {
                 remapped.put(newId, new FaceTextureMapping(
-                        newId, existing.materialId(), existing.uvRegion(), existing.uvRotation()));
+                        newId, existing.materialId(), existing.uvRegion(), existing.uvRotation(),
+                        existing.autoResize()));
             }
         }
 

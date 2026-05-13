@@ -156,10 +156,22 @@ public final class OMOFormat {
      * @param u1               UV region right
      * @param v1               UV region bottom
      * @param uvRotationDegrees rotation in degrees (0, 90, 180, 270)
+     * @param autoResize       whether the editor may auto-rescale this face's texture
+     *                         when geometry changes. Defaults to true on read for
+     *                         files written before this field existed.
      */
     public record FaceMappingEntry(int faceId, int materialId,
                                    float u0, float v0, float u1, float v1,
-                                   int uvRotationDegrees) {}
+                                   int uvRotationDegrees,
+                                   boolean autoResize) {
+
+        /** Backward-compatible constructor: defaults {@code autoResize} to true. */
+        public FaceMappingEntry(int faceId, int materialId,
+                                float u0, float v0, float u1, float v1,
+                                int uvRotationDegrees) {
+            this(faceId, materialId, u0, v0, u1, v1, uvRotationDegrees, true);
+        }
+    }
 
     /**
      * Material definition entry for serialization (v1.2+).
