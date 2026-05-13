@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus;
 
+import com.openmason.main.systems.menus.dialogs.SBEEditorWindow;
 import com.openmason.main.systems.menus.dialogs.SBEExportWindow;
 import com.openmason.main.systems.menus.dialogs.SBOEditorWindow;
 import com.openmason.main.systems.menus.dialogs.SBOExportWindow;
@@ -22,6 +23,7 @@ public class ToolsMenuHandler {
     private SBOExportWindow sboExportWindow;
     private SBEExportWindow sbeExportWindow;
     private SBOEditorWindow sboEditorWindow;
+    private SBEEditorWindow sbeEditorWindow;
     private ModelState modelState;
     private StatusService statusService;
     private ModelOperationService modelOperations;
@@ -60,6 +62,14 @@ public class ToolsMenuHandler {
      */
     public void setSBOEditorWindow(SBOEditorWindow sboEditorWindow) {
         this.sboEditorWindow = sboEditorWindow;
+    }
+
+    /**
+     * Set the SBE editor window reference. The Tools menu's "SBE Editor..."
+     * entry opens a file dialog and routes the selection here.
+     */
+    public void setSBEEditorWindow(SBEEditorWindow sbeEditorWindow) {
+        this.sbeEditorWindow = sbeEditorWindow;
     }
 
     /**
@@ -129,6 +139,15 @@ public class ToolsMenuHandler {
             } else {
                 logger.warn("SBO editor window not initialized");
                 if (statusService != null) statusService.updateStatus("SBO editor not available");
+            }
+        }
+
+        if (ImGui.menuItem("SBE Editor...")) {
+            if (sbeEditorWindow != null) {
+                sbeEditorWindow.openWithDialog();
+            } else {
+                logger.warn("SBE editor window not initialized");
+                if (statusService != null) statusService.updateStatus("SBE editor not available");
             }
         }
 

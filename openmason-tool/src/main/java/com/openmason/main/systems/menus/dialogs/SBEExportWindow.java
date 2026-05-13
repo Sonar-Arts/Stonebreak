@@ -1,6 +1,7 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.main.systems.menus.windows.WindowTitleBar;
+import com.openmason.engine.format.sbe.AnimationCompatibility;
 import com.openmason.engine.format.sbe.SBEFormat;
 import com.openmason.engine.format.sbe.SBESerializer;
 import com.openmason.main.systems.services.StatusService;
@@ -24,6 +25,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Export window for creating Stonebreak Entity (.SBE) files.
@@ -64,6 +67,23 @@ public class SBEExportWindow {
     private final ImString objectPack = new ImString(256);
     private final ImString author = new ImString(256);
     private final ImString description = new ImString(1024);
+
+    /** State rows the user has staged for embedding. */
+    private final List<StateBindingRow> stateBindings = new ArrayList<>();
+
+    /**
+     * One row in the state bindings list. A state may declare an optional
+     * model override and an optional animation clip — neither, either, or both.
+     */
+    private static final class StateBindingRow {
+        final ImString state = new ImString(64);
+        Path modelOverridePath;
+        Path clipPath;
+
+        StateBindingRow(String initialState) {
+            this.state.set(initialState != null ? initialState : "");
+        }
+    }
 
     // Entity type labels for the combo box
     private static final String[] ENTITY_TYPE_LABELS = {
@@ -214,9 +234,128 @@ public class SBEExportWindow {
                 ImGuiInputTextFlags.AllowTabInput);
         ImGui.popItemWidth();
 
+        ImGui.dummy(0, ROW_SPACING);
+
+        // Section: States (Optional)
+        ImGui.setCursorPosX(formOffsetX);
+        ImGuiComponents.renderCompactSectionHeader("States (Optional)");
+        ImGui.spacing();
+
+        renderStateList();
+
         if (!validationMessage.isEmpty()) {
             ImGui.dummy(0, ROW_SPACING);
             renderValidationBanner(validationMessage);
+        }
+    }
+
+    private void renderStateList() {
+        float fullWidth = LABEL_WIDTH + INPUT_WIDTH;
+        float stateInputWidth = 160.0f;
+        float removeBtnWidth = 22.0f;
+        float indent = 20.0f;
+        float slotLabelWidth = 50.0f;
+        float slotButtonWidth = 70.0f;
+
+        if (stateBindings.isEmpty()) {
+            ImGui.setCursorPosX(formOffsetX);
+            ImGui.textDisabled("No states declared.");
+            ImGui.dummy(0, ROW_SPACING);
+        } else {
+            int removeIndex = -1;
+            for (int i = 0; i < stateBindings.size(); i++) {
+                StateBindingRow row = stateBindings.get(i);
+                ImGui.pushID("sbe_state_row_" + i);
+
+                ImGui.setCursorPosX(formOffsetX);
+                ImGui.pushItemWidth(stateInputWidth);
+                ImGui.inputTextWithHint("##state_name", "e.g. idle", row.state);
+                ImGui.popItemWidth();
+
+                ImGui.sameLine(formOffsetX + fullWidth - removeBtnWidth);
+                if (ImGui.button("x##remove", removeBtnWidth, 0)) {
+                    removeIndex = i;
+                }
+
+                // Slot 1: model override
+                ImGui.setCursorPosX(formOffsetX + indent);
+                ImGui.textDisabled("Model:");
+                ImGui.sameLine(formOffsetX + indent + slotLabelWidth);
+                renderAssetSlot(
+                        row.modelOverridePath,
+                        "(use base OMO)",
+                        slotButtonWidth,
+                        () -> fileDialogService.showOpenOMODialog(p -> {
+                            if (p != null && !p.isBlank()) row.modelOverridePath = Path.of(p);
+                        }),
+                        () -> row.modelOverridePath = null
+                );
+
+                // Slot 2: animation clip
+                ImGui.setCursorPosX(formOffsetX + indent);
+                ImGui.textDisabled("Clip:");
+                ImGui.sameLine(formOffsetX + indent + slotLabelWidth);
+                renderAssetSlot(
+                        row.clipPath,
+                        "(no animation)",
+                        slotButtonWidth,
+                        () -> fileDialogService.showOpenOMADialog(p -> {
+                            if (p != null && !p.isBlank()) row.clipPath = Path.of(p);
+                        }),
+                        () -> row.clipPath = null
+                );
+
+                ImGui.dummy(0, 4);
+                ImGui.popID();
+            }
+            if (removeIndex >= 0) {
+                stateBindings.remove(removeIndex);
+            }
+        }
+
+        // Suggestion strip — clicking a chip adds a row pre-filled with that
+        // state name (or seeds the most recent blank row).
+        ImGui.setCursorPosX(formOffsetX);
+        ImGui.textDisabled("Common states:");
+        ImGui.sameLine();
+        for (int i = 0; i < SBEFormat.WELL_KNOWN_STATES.length; i++) {
+            if (i > 0) ImGui.sameLine();
+            String name = SBEFormat.WELL_KNOWN_STATES[i];
+            if (ImGui.smallButton(name + "##sbe_state_preset_" + i)) {
+                StateBindingRow last = stateBindings.isEmpty()
+                        ? null
+                        : stateBindings.get(stateBindings.size() - 1);
+                if (last != null && last.state.get().isBlank()) {
+                    last.state.set(name);
+                } else {
+                    stateBindings.add(new StateBindingRow(name));
+                }
+            }
+        }
+
+        ImGui.dummy(0, ROW_SPACING);
+
+        ImGui.setCursorPosX(formOffsetX);
+        if (ImGui.button("+ Add State##sbe_state_add", 120.0f, 0)) {
+            stateBindings.add(new StateBindingRow(""));
+        }
+
+        ImGui.dummy(0, ROW_SPACING);
+    }
+
+    private void renderAssetSlot(Path current, String emptyHint, float buttonWidth,
+                                  Runnable onPick, Runnable onClear) {
+        if (current != null) {
+            ImGui.text(current.getFileName().toString());
+            if (ImGui.isItemHovered()) ImGui.setTooltip(current.toString());
+            ImGui.sameLine();
+            if (ImGui.smallButton("Replace...")) onPick.run();
+            ImGui.sameLine();
+            if (ImGui.smallButton("Clear")) onClear.run();
+        } else {
+            ImGui.textDisabled(emptyHint);
+            ImGui.sameLine();
+            if (ImGui.button("Set...", buttonWidth, 0)) onPick.run();
         }
     }
 
@@ -387,6 +526,12 @@ public class SBEExportWindow {
             validationMessage = params.getValidationError();
             return;
         }
+
+        String stateError = validateStates();
+        if (stateError != null) {
+            validationMessage = stateError;
+            return;
+        }
         validationMessage = "";
 
         String omoPathStr = modelState.getCurrentOMOFilePath();
@@ -397,6 +542,13 @@ public class SBEExportWindow {
         }
 
         Path omoPath = Path.of(omoPathStr);
+
+        String compatError = validateAnimationCompatibility(omoPath);
+        if (compatError != null) {
+            validationMessage = compatError;
+            statusService.updateStatus("SBE export blocked: incompatible animation");
+            return;
+        }
 
         fileDialogService.showSaveSBEDialog(filePath -> {
             boolean success = serializer.export(params, omoPath, filePath);
@@ -411,6 +563,79 @@ public class SBEExportWindow {
         });
     }
 
+    /**
+     * Cross-check each staged clip's {@code requiredParts} against the OMO
+     * being exported. Returns a UI-ready error message, or null when every
+     * clip is compatible. Falls open (allows the export) if either side's
+     * part list cannot be read — a hard disk error here should not block
+     * the user from exporting; the per-clip read is best-effort.
+     */
+    /**
+     * Validate each clip's required parts against the relevant model:
+     * a state with a model override is checked against its override OMO,
+     * otherwise against the base OMO. Returns null when all bindings are
+     * compatible. Falls open on read errors.
+     */
+    private String validateAnimationCompatibility(Path baseOmoPath) {
+        if (stateBindings.isEmpty()) return null;
+
+        List<String> baseParts;
+        try {
+            baseParts = AnimationCompatibility.readOMOPartIds(baseOmoPath);
+        } catch (java.io.IOException e) {
+            logger.warn("Could not read model parts from {}: {}", baseOmoPath, e.getMessage());
+            return null;
+        }
+        if (baseParts.isEmpty()) return null;
+
+        for (StateBindingRow row : stateBindings) {
+            if (row.clipPath == null) continue;
+
+            List<String> targetParts = baseParts;
+            if (row.modelOverridePath != null) {
+                try {
+                    List<String> overrideParts = AnimationCompatibility.readOMOPartIds(row.modelOverridePath);
+                    if (!overrideParts.isEmpty()) targetParts = overrideParts;
+                } catch (java.io.IOException e) {
+                    logger.warn("Could not read override parts from {}: {}",
+                            row.modelOverridePath, e.getMessage());
+                    continue;
+                }
+            }
+
+            List<String> requiredParts;
+            try {
+                requiredParts = AnimationCompatibility.readOMARequiredParts(row.clipPath);
+            } catch (java.io.IOException e) {
+                logger.warn("Could not read required parts from {}: {}", row.clipPath, e.getMessage());
+                continue;
+            }
+
+            AnimationCompatibility.Result result =
+                    AnimationCompatibility.check(requiredParts, targetParts);
+            if (!result.isCompatible()) {
+                return "State '" + row.state.get().trim()
+                        + "' clip references parts missing from its model: "
+                        + result.describeMissing();
+            }
+        }
+        return null;
+    }
+
+    private String validateStates() {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (StateBindingRow row : stateBindings) {
+            String state = row.state.get().trim();
+            if (state.isBlank()) {
+                return "State name cannot be blank";
+            }
+            if (!seen.add(state)) {
+                return "Duplicate state: '" + state + "'";
+            }
+        }
+        return null;
+    }
+
     private SBEFormat.ExportParameters buildParameters() {
         SBEFormat.ExportParameters params = new SBEFormat.ExportParameters();
         params.setObjectId(objectId.get().trim());
@@ -419,6 +644,9 @@ public class SBEExportWindow {
         params.setObjectPack(objectPack.get().trim());
         params.setAuthor(author.get().trim());
         params.setDescription(description.get().trim());
+        for (StateBindingRow row : stateBindings) {
+            params.addState(row.state.get().trim(), row.modelOverridePath, row.clipPath);
+        }
         return params;
     }
 

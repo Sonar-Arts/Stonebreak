@@ -526,6 +526,10 @@ public class mainOpenMason {
             safeRender(() -> mainInterface.getSBOEditorWindow().render(), "SBO Editor Window");
         }
 
+        if (mainInterface != null && mainInterface.getSBEEditorWindow() != null) {
+            safeRender(() -> mainInterface.getSBEEditorWindow().render(), "SBE Editor Window");
+        }
+
         // Render unsaved changes dialog (must be rendered outside other windows for modal to work)
         if (mainInterface != null && mainInterface.getFileMenuHandler() != null) {
             safeRender(() -> mainInterface.getFileMenuHandler().getUnsavedChangesDialog().render(),

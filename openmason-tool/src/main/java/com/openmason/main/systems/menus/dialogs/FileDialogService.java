@@ -481,6 +481,14 @@ public class FileDialogService {
     }
 
     /**
+     * Show open SBE (Stonebreak Entity) dialog using native file dialog.
+     */
+    public void showOpenSBEDialog(OpenCallback callback) {
+        showNFDOpenDialog("Opening SBE file...", "Stonebreak Entity", "sbe",
+                "Selected SBE file", callback);
+    }
+
+    /**
      * Callback interface for SBE save operations.
      */
     public interface SaveSBECallback {
