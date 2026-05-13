@@ -42,6 +42,8 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     private Runnable onExportSBT;
     private Runnable onExportSBO;
     private Runnable onOpenSBOEditor;
+    private Runnable onResizeFaceTextureRequested;
+    private java.util.function.BooleanSupplier resizeFaceTextureEnabled = () -> false;
     private java.util.function.Supplier<String> sbtOmtPathSupplier = () -> null;
     private ImBoolean showLayersPanel;
     private ImBoolean showColorPanel;
@@ -146,6 +148,17 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
      */
     public void setOnOpenSBOEditor(Runnable callback) {
         this.onOpenSBOEditor = callback;
+    }
+
+    /**
+     * Set callback invoked when the user triggers "Resize Face Texture..." from
+     * the Edit menu while a face is open in the editor.
+     */
+    public void setOnResizeFaceTextureRequested(Runnable callback,
+                                                java.util.function.BooleanSupplier enabledSupplier) {
+        this.onResizeFaceTextureRequested = callback;
+        this.resizeFaceTextureEnabled =
+                enabledSupplier != null ? enabledSupplier : () -> false;
     }
 
     /**
@@ -263,6 +276,15 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
 
             if (ImGui.menuItem("Delete Selection", "Del", false, hasSelection)) {
                 controller.deleteSelection();
+            }
+
+            ImGui.separator();
+
+            boolean canResizeFace = resizeFaceTextureEnabled.getAsBoolean();
+            if (ImGui.menuItem("Resize Face Texture...", "", false, canResizeFace)) {
+                if (onResizeFaceTextureRequested != null) {
+                    onResizeFaceTextureRequested.run();
+                }
             }
 
             ImGui.separator();

@@ -216,6 +216,14 @@ public class PropertyPanelImGui {
     }
 
     /**
+     * @return the viewport connector wired into this panel, or {@code null} if
+     * {@link #setViewport3D} has not yet been called.
+     */
+    public IViewportConnector getViewportConnector() {
+        return viewportConnector;
+    }
+
+    /**
      * Set a callback on the face material section for when the user requests to edit a texture.
      *
      * @param callback action to run when the texture editor should be shown

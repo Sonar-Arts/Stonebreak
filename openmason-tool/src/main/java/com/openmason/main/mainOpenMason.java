@@ -14,9 +14,12 @@ import com.openmason.main.systems.menus.mainHub.ProjectHubScreen;
 import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.menus.textureCreator.FaceEditorBridge;
+import com.openmason.main.systems.menus.textureCreator.FaceTextureResizeDialog;
+import com.openmason.main.systems.menus.textureCreator.IFaceTextureGPUService;
 import com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.textureCreator.TexturePreviewPipeline;
+import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.services.drop.ViewportDropCallbackManager;
 import com.openmason.main.systems.menus.windows.TextureEditorWindow;
 import org.lwjgl.glfw.*;
@@ -336,6 +339,47 @@ public class mainOpenMason {
                 showTextureEditor = true;
                 textureEditorWindow.show();
             });
+
+            // Wire per-face texture resize dialog into texture editor's Edit menu.
+            // The dialog reads/writes GPU textures via the viewport connector and
+            // uploads new textures via OMTTextureLoader. Both are accessed through
+            // the property panel's existing viewport adapter.
+            OMTTextureLoader resizeTextureLoader = new OMTTextureLoader();
+            IFaceTextureGPUService gpuService = new IFaceTextureGPUService() {
+                @Override
+                public int[] getTextureDimensions(int gpuTextureId) {
+                    var c = mainInterface.getPropertyPanel().getViewportConnector();
+                    return c != null ? c.getTextureDimensions(gpuTextureId) : null;
+                }
+                @Override
+                public byte[] readTexturePixels(int gpuTextureId) {
+                    var c = mainInterface.getPropertyPanel().getViewportConnector();
+                    return c != null ? c.readTexturePixels(gpuTextureId) : null;
+                }
+                @Override
+                public void setFaceTexture(int faceId, int materialId) {
+                    var c = mainInterface.getPropertyPanel().getViewportConnector();
+                    if (c != null) c.setFaceTexture(faceId, materialId);
+                }
+                @Override
+                public float[][] computeFacePolygon2D(int faceId) {
+                    var c = mainInterface.getPropertyPanel().getViewportConnector();
+                    return c != null ? c.computeFacePolygon2D(faceId) : null;
+                }
+                @Override
+                public int uploadPixelCanvasToGPU(
+                        com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas canvas) {
+                    return resizeTextureLoader.uploadPixelCanvasToGPU(canvas);
+                }
+            };
+            FaceTextureResizeDialog resizeDialog = new FaceTextureResizeDialog(
+                    () -> {
+                        var c = mainInterface.getPropertyPanel().getViewportConnector();
+                        return c != null ? c.getFaceTextureManager() : null;
+                    },
+                    gpuService,
+                    faceEditorBridge);
+            textureCreatorInterface.setFaceTextureResizeDialog(resizeDialog);
 
         } catch (Exception e) {
             logger.error("Failed to initialize UI interfaces", e);
