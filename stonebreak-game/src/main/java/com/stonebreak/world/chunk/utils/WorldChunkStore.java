@@ -154,6 +154,12 @@ public class WorldChunkStore {
         return chunks.containsKey(positionCache.get(x, z));
     }
 
+    public CompletableFuture<Void> awaitPendingLoads() {
+        Collection<CompletableFuture<Chunk>> pending = new ArrayList<>(pendingChunkLoads.values());
+        if (pending.isEmpty()) return CompletableFuture.completedFuture(null);
+        return CompletableFuture.allOf(pending.toArray(new CompletableFuture[0]));
+    }
+
     public void ensureChunkExists(int x, int z) {
         getOrCreateChunk(x, z);
     }

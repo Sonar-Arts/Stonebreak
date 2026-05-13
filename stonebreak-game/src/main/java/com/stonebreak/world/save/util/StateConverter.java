@@ -77,7 +77,7 @@ public final class StateConverter {
         player.setLoadedFromSave(true);
 
         // Apply position and rotation
-        player.getPosition().set(data.getPosition());
+        player.setPosition(data.getPosition());
         player.getCamera().setYaw(data.getRotation().x);
         player.getCamera().setPitch(data.getRotation().y);
 

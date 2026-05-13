@@ -425,6 +425,10 @@ public class World {
         return terrainSystem.getFinalTerrainHeightAt(x, z);
     }
 
+    public java.util.concurrent.CompletableFuture<Void> awaitPendingChunkLoads() {
+        return chunkStore != null ? chunkStore.awaitPendingLoads() : java.util.concurrent.CompletableFuture.completedFuture(null);
+    }
+
     /**
      * Gets a cached chunk position for coordinate lookup.
      */

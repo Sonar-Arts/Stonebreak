@@ -292,7 +292,7 @@ public final class WorldGenerationCoordinator {
                 System.out.println("Loading existing world: " + worldName);
 
                 saveService.loadWorld()
-                    .thenAccept(result -> {
+                    .thenCompose(result -> {
                         try {
                             if (result.isSuccess() && result.getWorldData() != null) {
                                 WorldData worldData = result.getWorldData();
@@ -342,12 +342,6 @@ public final class WorldGenerationCoordinator {
                                             }
                                         }
                                     }
-
-                                    try {
-                                        Thread.sleep(300);
-                                    } catch (InterruptedException e) {
-                                        Thread.currentThread().interrupt();
-                                    }
                                 } else {
                                     freshPlayer.giveStartingItems();
                                     if (Game.getTimeOfDay() == null) {
@@ -369,23 +363,27 @@ public final class WorldGenerationCoordinator {
                                             }
                                         }
                                     }
-                                    try {
-                                        Thread.sleep(300);
-                                    } catch (InterruptedException e) {
-                                        Thread.currentThread().interrupt();
-                                    }
                                 }
 
                                 saveService.startAutoSave();
-
                                 System.out.println("Successfully loaded complete world state for: " + worldName);
+
+                                // Wait for all async chunk loads to finish before transitioning to PLAYING.
+                                // The chunk loads were queued on saveService.ioExecutor; returning this future
+                                // releases that thread so the queued loads can run, and the chain continues
+                                // only after they complete.
+                                return freshWorld.awaitPendingChunkLoads()
+                                    .orTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                                    .exceptionally(t -> null);
                             } else {
                                 System.out.println("World load incomplete or invalid; generating new world.");
                                 createNewWorldWithGeneration(worldName, seed);
+                                return java.util.concurrent.CompletableFuture.completedFuture(null);
                             }
                         } catch (Exception e) {
                             System.err.println("Error applying loaded world state: " + e.getMessage());
                             e.printStackTrace();
+                            return java.util.concurrent.CompletableFuture.completedFuture(null);
                         }
                     })
                     .exceptionally(throwable -> {
