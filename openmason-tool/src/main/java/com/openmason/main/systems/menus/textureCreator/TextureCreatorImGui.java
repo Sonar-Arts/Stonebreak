@@ -319,6 +319,10 @@ public class TextureCreatorImGui {
      *
      * @param dialog the resize dialog (must already have its dependencies injected)
      */
+    public FaceTextureResizeDialog getFaceTextureResizeDialog() {
+        return faceTextureResizeDialog;
+    }
+
     public void setFaceTextureResizeDialog(FaceTextureResizeDialog dialog) {
         this.faceTextureResizeDialog = dialog;
         if (dialog == null) {

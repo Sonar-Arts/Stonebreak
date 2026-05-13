@@ -141,6 +141,34 @@ public final class FaceTextureResizeDialog {
         }
     }
 
+    /**
+     * Headless resize of the face currently open in the texture editor.
+     * Same path as the dialog's Apply button — used by the MCP tool surface.
+     *
+     * @return true if the resize was applied
+     */
+    public boolean resizeCurrentFace(int newWidth, int newHeight) {
+        if (!canOpen()) {
+            logger.warn("Cannot resize: no face region is active");
+            return false;
+        }
+        FaceTextureManager ftm = ftmSupplier.get();
+        if (ftm == null) {
+            logger.warn("Cannot resize: FaceTextureManager is unavailable");
+            return false;
+        }
+        int materialId = faceEditorBridge.getActiveFaceRegionMaterialId();
+        int faceId = findFaceForMaterial(ftm, materialId);
+        if (faceId < 0) {
+            logger.warn("Cannot resize: no face found for material {}", materialId);
+            return false;
+        }
+        int w = Math.clamp(newWidth, RESIZE_MIN, RESIZE_MAX);
+        int h = Math.clamp(newHeight, RESIZE_MIN, RESIZE_MAX);
+        apply(faceId, materialId, w, h);
+        return true;
+    }
+
     private int findFaceForMaterial(FaceTextureManager ftm, int materialId) {
         for (FaceTextureMapping m : ftm.getAllMappings()) {
             if (m.materialId() == materialId) {

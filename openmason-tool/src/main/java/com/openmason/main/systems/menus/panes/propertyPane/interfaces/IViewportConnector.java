@@ -198,6 +198,36 @@ public interface IViewportConnector {
     int[] computeFaceTextureDimensions(int faceId, int pixelsPerUnit);
 
     /**
+     * Upload a rectangular pixel region into an existing GPU texture via glTexSubImage2D.
+     * Used by headless per-face texture editing to commit edits without
+     * allocating a new GL texture or rebuilding draw batches.
+     *
+     * @param gpuTextureId OpenGL texture ID
+     * @param x            Region origin X in texture pixels
+     * @param y            Region origin Y in texture pixels
+     * @param width        Region width in pixels
+     * @param height       Region height in pixels
+     * @param rgbaBytes    RGBA byte data (4 bytes per pixel, row-major, length == w*h*4)
+     */
+    void updateTextureRegion(int gpuTextureId, int x, int y, int width, int height, byte[] rgbaBytes);
+
+    /**
+     * Extract face geometry (positions, offsets, vertex counts, face count).
+     * Used to compute face normals and report orientation for per-face MCP tools.
+     *
+     * @return face extraction result, or null if unavailable
+     */
+    com.openmason.engine.rendering.model.gmr.extraction.GMRFaceExtractor.FaceExtractionResult extractFaceData();
+
+    /**
+     * Resolve which model part a face belongs to, by name.
+     *
+     * @param faceId face identifier
+     * @return part display name, or null if the face has no part mapping
+     */
+    String getPartNameForFace(int faceId);
+
+    /**
      * Compute the 2D polygon outline for a face, projected into normalized local space.
      *
      * <p>Projects the face's 3D vertices onto its tangent frame and normalizes

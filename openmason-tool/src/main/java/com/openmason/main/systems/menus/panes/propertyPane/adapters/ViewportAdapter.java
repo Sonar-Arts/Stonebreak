@@ -247,6 +247,34 @@ public class ViewportAdapter implements IViewportConnector {
     }
 
     @Override
+    public void updateTextureRegion(int gpuTextureId, int x, int y, int width, int height, byte[] rgbaBytes) {
+        if (viewport == null) return;
+        var renderer = viewport.getModelRenderer();
+        if (renderer != null) {
+            renderer.updateTextureRegion(gpuTextureId, x, y, width, height, rgbaBytes);
+        }
+    }
+
+    @Override
+    public com.openmason.engine.rendering.model.gmr.extraction.GMRFaceExtractor.FaceExtractionResult extractFaceData() {
+        if (viewport == null) return null;
+        var renderer = viewport.getModelRenderer();
+        return renderer != null ? renderer.extractFaceData() : null;
+    }
+
+    @Override
+    public String getPartNameForFace(int faceId) {
+        if (viewport == null) return null;
+        var renderer = viewport.getModelRenderer();
+        if (renderer == null) return null;
+        var partManager = renderer.getPartManager();
+        if (partManager == null) return null;
+        return partManager.getPartForFace(faceId)
+                .map(com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor::name)
+                .orElse(null);
+    }
+
+    @Override
     public float[][] computeFacePolygon2D(int faceId) {
         if (viewport == null) {
             return null;

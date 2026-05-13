@@ -31,6 +31,9 @@ public final class McpServerBootstrap {
             TextureEditingService textureEditor = new TextureEditingService(mainInterface);
             new TextureToolDefinitions(textureEditor, mapper).registerAll(registry);
 
+            FaceTextureEditingService faceTextureEditor = new FaceTextureEditingService(mainInterface);
+            new FaceTextureToolDefinitions(faceTextureEditor, mapper).registerAll(registry);
+
             BoneEditingService boneEditor = new BoneEditingService(mainInterface);
             new BoneToolDefinitions(boneEditor, mapper).registerAll(registry);
 

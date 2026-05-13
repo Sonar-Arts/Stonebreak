@@ -246,6 +246,49 @@ public final class TextureEditingService {
         }));
     }
 
+    // ===================== Resize =====================
+
+    /**
+     * Resize the GPU texture of the face currently open in the texture editor,
+     * nearest-neighbor rescale. UVs are unaffected (normalized within material).
+     *
+     * @return new canvas info after resize
+     */
+    public CanvasInfo resizeFaceTexture(int width, int height) {
+        return await(MainThreadExecutor.submit(() -> {
+            TextureCreatorImGui ui = mainInterface.getTextureCreator();
+            if (ui == null) throw new IllegalStateException("Texture editor not initialized");
+            var dialog = ui.getFaceTextureResizeDialog();
+            if (dialog == null) {
+                throw new IllegalStateException("Face texture resize dialog not wired");
+            }
+            if (!dialog.canOpen()) {
+                throw new IllegalStateException(
+                        "No face region is active — open a face in the texture editor first");
+            }
+            if (width <= 0 || height <= 0) {
+                throw new IllegalArgumentException("Dimensions must be positive: " + width + "x" + height);
+            }
+            boolean ok = dialog.resizeCurrentFace(width, height);
+            if (!ok) {
+                throw new IllegalStateException("Face texture resize failed");
+            }
+            return getCanvasInfoUnsafe();
+        }));
+    }
+
+    private CanvasInfo getCanvasInfoUnsafe() {
+        TextureCreatorController c = requireController();
+        LayerManager lm = c.getLayerManager();
+        int active = lm.getActiveLayerIndex();
+        String activeName = active >= 0 ? lm.getLayer(active).getName() : null;
+        CommandHistory hist = c.getCommandHistory();
+        return new CanvasInfo(
+                lm.getCanvasWidth(), lm.getCanvasHeight(),
+                lm.getLayerCount(), active, activeName,
+                hist.canUndo(), hist.canRedo());
+    }
+
     // ===================== Export =====================
 
     public boolean exportPng(String filePath) {
