@@ -50,7 +50,8 @@ public class SBEParser {
             SBEFormat.Document document,
             byte[] omoBytes,
             Map<String, byte[]> stateModelBytes,
-            Map<String, byte[]> stateClipBytes
+            Map<String, byte[]> stateClipBytes,
+            Map<String, byte[]> variantModelBytes
     ) {
         public ParsedSBE {
             stateModelBytes = stateModelBytes == null
@@ -59,10 +60,14 @@ public class SBEParser {
             stateClipBytes = stateClipBytes == null
                     ? Collections.emptyMap()
                     : Collections.unmodifiableMap(stateClipBytes);
+            variantModelBytes = variantModelBytes == null
+                    ? Collections.emptyMap()
+                    : Collections.unmodifiableMap(variantModelBytes);
         }
 
         public byte[] modelFor(String state) { return stateModelBytes.get(state); }
         public byte[] clipFor(String state) { return stateClipBytes.get(state); }
+        public byte[] variantModelFor(String variant) { return variantModelBytes.get(variant); }
     }
 
     /**
@@ -138,9 +143,23 @@ public class SBEParser {
             }
         }
 
-        logger.info("Parsed SBE: objectId={} states={}",
-                document.objectId(), document.states().size());
-        return new ParsedSBE(document, omoBytes, modelBytes, clipBytes);
+        Map<String, byte[]> variantBytes = new LinkedHashMap<>();
+        for (SBEFormat.VariantEntry variant : document.variants()) {
+            if (variant.hasModelOverride()) {
+                byte[] bytes = archive.entries.get(variant.modelOverride().filename());
+                if (bytes == null) {
+                    throw new SBEParseException("Missing variant model entry: "
+                            + variant.modelOverride().filename());
+                }
+                verifyChecksum(variant.modelOverride().filename(), bytes,
+                        variant.modelOverride().checksum());
+                variantBytes.put(variant.name(), bytes);
+            }
+        }
+
+        logger.info("Parsed SBE: objectId={} states={} variants={}",
+                document.objectId(), document.states().size(), document.variants().size());
+        return new ParsedSBE(document, omoBytes, modelBytes, clipBytes, variantBytes);
     }
 
     /**
@@ -172,6 +191,13 @@ public class SBEParser {
                 }
                 if (state.hasAnimation()) {
                     String filename = state.animation().filename();
+                    byte[] bytes = archive.entries.get(filename);
+                    if (bytes != null) stateAssets.put(filename, bytes);
+                }
+            }
+            for (SBEFormat.VariantEntry variant : document.variants()) {
+                if (variant.hasModelOverride()) {
+                    String filename = variant.modelOverride().filename();
                     byte[] bytes = archive.entries.get(filename);
                     if (bytes != null) stateAssets.put(filename, bytes);
                 }
@@ -233,6 +259,7 @@ public class SBEParser {
         if (omoFile == null) omoFile = SBEFormat.EMBEDDED_OMO_FILENAME;
 
         List<SBEFormat.StateEntry> states = parseStates(root);
+        List<SBEFormat.VariantEntry> variants = parseVariants(root);
 
         try {
             return new SBEFormat.Document(
@@ -240,11 +267,27 @@ public class SBEParser {
                     objectId, objectName,
                     entityType != null ? entityType : SBEFormat.EntityType.OTHER.getId(),
                     objectPack, checksum, author, description, createdAt,
-                    omoFile, states
+                    omoFile, states, variants
             );
         } catch (NullPointerException e) {
             throw new SBEParseException("Manifest is missing a required field: " + e.getMessage(), e);
         }
+    }
+
+    private List<SBEFormat.VariantEntry> parseVariants(JsonNode root) throws SBEParseException {
+        List<SBEFormat.VariantEntry> variants = new ArrayList<>();
+        JsonNode variantsNode = root.get("variants");
+        if (variantsNode != null && variantsNode.isArray()) {
+            for (JsonNode node : variantsNode) {
+                String name = textOrNull(node, "name");
+                if (name == null || name.isBlank()) {
+                    throw new SBEParseException("Variant entry missing 'name'");
+                }
+                SBEFormat.AssetRef model = parseAssetRef(node.get("model"));
+                variants.add(new SBEFormat.VariantEntry(name, model));
+            }
+        }
+        return variants;
     }
 
     private List<SBEFormat.StateEntry> parseStates(JsonNode root) throws SBEParseException {

@@ -43,6 +43,7 @@ public class SBEEditorWindow {
     private final SBEParser parser = new SBEParser();
     private final SBESerializer serializer = new SBESerializer();
     private final SBEStatesEditor statesEditor;
+    private final SBEVariantsEditor variantsEditor;
 
     // Loaded document state
     private Path currentPath;
@@ -65,6 +66,9 @@ public class SBEEditorWindow {
                 () -> dirty = true,
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenOMODialog(cb::accept); },
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenOMADialog(cb::accept); });
+        this.variantsEditor = new SBEVariantsEditor(
+                () -> dirty = true,
+                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMODialog(cb::accept); });
     }
 
     // ========================================================================
@@ -116,6 +120,7 @@ public class SBEEditorWindow {
         description.set(doc.description() != null ? doc.description() : "");
         entityTypeIndex.set(indexOf(ENTITY_TYPE_LABELS, doc.entityType()));
         statesEditor.load(doc, stateAssetBytes);
+        variantsEditor.load(doc, stateAssetBytes);
     }
 
     // ========================================================================
@@ -170,6 +175,10 @@ public class SBEEditorWindow {
                 statesEditor.render();
                 ImGui.endTabItem();
             }
+            if (ImGui.beginTabItem("Variants")) {
+                variantsEditor.render();
+                ImGui.endTabItem();
+            }
             ImGui.endTabBar();
         }
     }
@@ -209,9 +218,16 @@ public class SBEEditorWindow {
             if (statusService != null) statusService.updateStatus("Cannot save: " + stateError);
             return;
         }
+        String variantError = variantsEditor.validate();
+        if (variantError != null) {
+            if (statusService != null) statusService.updateStatus("Cannot save: " + variantError);
+            return;
+        }
 
         SBEFormat.Document edited = buildEditedDocument();
-        java.util.Map<String, byte[]> assetBytes = statesEditor.stateAssetBytesByFilename();
+        java.util.Map<String, byte[]> assetBytes = new java.util.LinkedHashMap<>();
+        assetBytes.putAll(statesEditor.stateAssetBytesByFilename());
+        assetBytes.putAll(variantsEditor.variantAssetBytesByFilename());
 
         boolean ok = serializer.exportFromDocument(edited, loadedOmoBytes, assetBytes, pathStr);
         if (ok) {
@@ -238,7 +254,8 @@ public class SBEEditorWindow {
                 description.get().isBlank() ? null : description.get(),
                 loadedManifest.createdAt(),
                 loadedManifest.omoFilename(),
-                statesEditor.toStateEntries()
+                statesEditor.toStateEntries(),
+                variantsEditor.toVariantEntries()
         );
     }
 

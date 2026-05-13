@@ -74,13 +74,19 @@ public class SBESerializer {
             byte[] omoBytes = Files.readAllBytes(omoPath);
             String checksum = computeChecksum(omoBytes);
 
-            // Read all per-state inputs into memory so we can build the
-            // manifest before opening the output stream.
+            // Read all per-state and per-variant inputs into memory so we can
+            // build the manifest before opening the output stream.
             List<ResolvedState> resolved = resolveStates(params.getStates());
+            List<ResolvedVariant> resolvedVariants = resolveVariants(params.getVariants());
 
             List<SBEFormat.StateEntry> stateEntries = new ArrayList<>(resolved.size());
             for (ResolvedState r : resolved) {
                 stateEntries.add(r.toEntry());
+            }
+
+            List<SBEFormat.VariantEntry> variantEntries = new ArrayList<>(resolvedVariants.size());
+            for (ResolvedVariant v : resolvedVariants) {
+                variantEntries.add(v.toEntry());
             }
 
             SBEFormat.Document document = new SBEFormat.Document(
@@ -94,12 +100,14 @@ public class SBESerializer {
                     params.getDescription().isBlank() ? null : params.getDescription(),
                     Instant.now().toString(),
                     SBEFormat.EMBEDDED_OMO_FILENAME,
-                    stateEntries
+                    stateEntries,
+                    variantEntries
             );
 
-            writeArchive(outputPath, document, omoBytes, resolved);
-            logger.info("Exported .SBE file: {} (checksum={}, states={})",
-                    outputPath, checksum.substring(0, 12) + "...", stateEntries.size());
+            writeArchive(outputPath, document, omoBytes, resolved, resolvedVariants);
+            logger.info("Exported .SBE file: {} (checksum={}, states={}, variants={})",
+                    outputPath, checksum.substring(0, 12) + "...",
+                    stateEntries.size(), variantEntries.size());
             return true;
 
         } catch (IOException e) {
@@ -115,8 +123,9 @@ public class SBESerializer {
      * @param document         manifest skeleton; checksums are recomputed
      * @param omoBytes         base OMO bytes
      * @param stateAssetBytes  map keyed by ZIP entry filename
-     *                         ({@code states/<name>/model.omo} or
-     *                         {@code states/<name>/clip.omanim}); every
+     *                         ({@code states/<name>/model.omo},
+     *                         {@code states/<name>/clip.omanim}, or
+     *                         {@code variants/<name>/model.omo}); every
      *                         non-null asset in the document must have an entry
      * @param outputPath       destination .sbe path
      */
@@ -170,9 +179,31 @@ public class SBESerializer {
                 resolved.add(r);
             }
 
+            List<ResolvedVariant> resolvedVariants = new ArrayList<>(document.variants().size());
+            for (SBEFormat.VariantEntry entry : document.variants()) {
+                ResolvedVariant v = new ResolvedVariant(entry.name());
+                if (entry.hasModelOverride()) {
+                    String filename = SBEFormat.variantModelPath(entry.name());
+                    byte[] bytes = stateAssetBytes != null ? stateAssetBytes.get(filename) : null;
+                    if (bytes == null) {
+                        logger.error("exportFromDocument: missing model bytes for variant '{}'", entry.name());
+                        return false;
+                    }
+                    v.modelBytes = bytes;
+                    v.modelFilename = filename;
+                    v.modelChecksum = computeChecksum(bytes);
+                }
+                resolvedVariants.add(v);
+            }
+
             List<SBEFormat.StateEntry> rebuilt = new ArrayList<>(resolved.size());
             for (ResolvedState r : resolved) {
                 rebuilt.add(r.toEntry());
+            }
+
+            List<SBEFormat.VariantEntry> rebuiltVariants = new ArrayList<>(resolvedVariants.size());
+            for (ResolvedVariant v : resolvedVariants) {
+                rebuiltVariants.add(v.toEntry());
             }
 
             SBEFormat.Document finalDoc = new SBEFormat.Document(
@@ -186,11 +217,13 @@ public class SBESerializer {
                     document.description(),
                     document.createdAt() != null ? document.createdAt() : Instant.now().toString(),
                     SBEFormat.EMBEDDED_OMO_FILENAME,
-                    rebuilt
+                    rebuilt,
+                    rebuiltVariants
             );
 
-            writeArchive(outputPath, finalDoc, omoBytes, resolved);
-            logger.info("Re-bundled .SBE file: {} ({} states)", outputPath, rebuilt.size());
+            writeArchive(outputPath, finalDoc, omoBytes, resolved, resolvedVariants);
+            logger.info("Re-bundled .SBE file: {} ({} states, {} variants)",
+                    outputPath, rebuilt.size(), rebuiltVariants.size());
             return true;
         } catch (IOException e) {
             logger.error("Error re-bundling .SBE file: {}", outputPath, e);
@@ -240,6 +273,65 @@ public class SBESerializer {
             }
             return new SBEFormat.StateEntry(name, model, anim);
         }
+    }
+
+    /**
+     * One variant's resolved bytes + metadata, ready to be serialized.
+     * Model slot is optional — a variant may declare itself with no override
+     * (resolves to the base OMO at runtime).
+     */
+    private static final class ResolvedVariant {
+        final String name;
+        byte[] modelBytes;
+        String modelFilename;
+        String modelChecksum;
+
+        ResolvedVariant(String name) { this.name = name; }
+
+        boolean hasModel() { return modelBytes != null; }
+
+        SBEFormat.VariantEntry toEntry() {
+            SBEFormat.AssetRef model = hasModel()
+                    ? new SBEFormat.AssetRef(modelFilename, modelChecksum)
+                    : null;
+            return new SBEFormat.VariantEntry(name, model);
+        }
+    }
+
+    private List<ResolvedVariant> resolveVariants(List<SBEFormat.VariantBinding> bindings) throws IOException {
+        List<ResolvedVariant> result = new ArrayList<>();
+        if (bindings == null || bindings.isEmpty()) return result;
+
+        Set<String> used = new HashSet<>();
+
+        for (SBEFormat.VariantBinding binding : bindings) {
+            String rawName = binding.name();
+            if (rawName == null || rawName.isBlank()) {
+                throw new SBEExportException("Variant name cannot be blank");
+            }
+            String name = rawName.trim();
+            if (!used.add(name)) {
+                throw new SBEExportException("Duplicate variant '" + name
+                        + "'. Each variant must appear exactly once.");
+            }
+
+            ResolvedVariant v = new ResolvedVariant(name);
+
+            Path modelSource = binding.modelOverrideSource();
+            if (modelSource != null) {
+                if (!Files.exists(modelSource)) {
+                    throw new SBEExportException("Model override file missing for variant '"
+                            + name + "': " + modelSource);
+                }
+                v.modelBytes = Files.readAllBytes(modelSource);
+                v.modelFilename = SBEFormat.variantModelPath(name);
+                v.modelChecksum = computeChecksum(v.modelBytes);
+            }
+
+            result.add(v);
+        }
+
+        return result;
     }
 
     private List<ResolvedState> resolveStates(List<SBEFormat.StateBinding> bindings) throws IOException {
@@ -293,7 +385,8 @@ public class SBESerializer {
     private void writeArchive(String outputPath,
                               SBEFormat.Document document,
                               byte[] omoBytes,
-                              List<ResolvedState> resolved) throws IOException {
+                              List<ResolvedState> resolved,
+                              List<ResolvedVariant> resolvedVariants) throws IOException {
         Path tempFile = Files.createTempFile("sbe_export_", ".tmp");
         try (FileOutputStream fos = new FileOutputStream(tempFile.toFile());
              ZipOutputStream zos = new ZipOutputStream(fos)) {
@@ -304,6 +397,9 @@ public class SBESerializer {
             for (ResolvedState r : resolved) {
                 if (r.hasModel()) writeEntry(zos, r.modelFilename, r.modelBytes);
                 if (r.hasClip()) writeEntry(zos, r.clipFilename, r.clipBytes);
+            }
+            for (ResolvedVariant v : resolvedVariants) {
+                if (v.hasModel()) writeEntry(zos, v.modelFilename, v.modelBytes);
             }
         }
         Files.move(tempFile, Path.of(outputPath), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -417,6 +513,7 @@ public class SBESerializer {
         public String createdAt;
         public String omoFile;
         public List<StateEntryDTO> states;
+        public List<VariantEntryDTO> variants;
 
         public ManifestDTO(SBEFormat.Document doc) {
             this.version = doc.version();
@@ -434,6 +531,10 @@ public class SBESerializer {
             for (SBEFormat.StateEntry e : doc.states()) {
                 this.states.add(new StateEntryDTO(e));
             }
+            this.variants = new ArrayList<>(doc.variants().size());
+            for (SBEFormat.VariantEntry e : doc.variants()) {
+                this.variants.add(new VariantEntryDTO(e));
+            }
         }
     }
 
@@ -446,6 +547,16 @@ public class SBESerializer {
             this.name = e.name();
             this.model = e.hasModelOverride() ? new AssetRefDTO(e.modelOverride()) : null;
             this.animation = e.hasAnimation() ? new AnimationRefDTO(e.animation()) : null;
+        }
+    }
+
+    private static class VariantEntryDTO {
+        public String name;
+        public AssetRefDTO model;
+
+        public VariantEntryDTO(SBEFormat.VariantEntry e) {
+            this.name = e.name();
+            this.model = e.hasModelOverride() ? new AssetRefDTO(e.modelOverride()) : null;
         }
     }
 

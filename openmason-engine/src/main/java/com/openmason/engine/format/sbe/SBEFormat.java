@@ -17,23 +17,31 @@ import java.util.Objects;
  *
  * <p>ZIP Structure:
  * <ul>
- *   <li>{@code manifest.json} - SBE metadata (identity, entity type, pack, author, checksum, state index)</li>
+ *   <li>{@code manifest.json} - SBE metadata (identity, entity type, pack, author, checksum, state/variant indexes)</li>
  *   <li>{@code model.omo} - Embedded base Open Mason Object file (always present)</li>
  *   <li>{@code states/<name>/model.omo} - Optional per-state model override</li>
  *   <li>{@code states/<name>/clip.omanim} - Optional per-state animation clip</li>
+ *   <li>{@code variants/<name>/model.omo} - Optional per-variant model override</li>
  * </ul>
+ *
+ * <p>States and variants are orthogonal axes. <em>States</em> are behavioral
+ * (idle/walk/graze...) and bind animation clips. <em>Variants</em> are identity
+ * (default/angus/highland/jersey...) and bind alternate OMOs (geometry +
+ * embedded textures). At spawn time the runtime picks a variant; at tick time
+ * the controller cycles states on top of it.
  *
  * <p>Version History:
  * <ul>
  *   <li>1.0 - Initial format with entity type, object identity, pack, checksum, and author signage</li>
  *   <li>1.1 - Added flat animations index (replaced in 1.2)</li>
  *   <li>1.2 - Replaced animations index with a state-based index (per-state model + clip)</li>
+ *   <li>1.3 - Added a variants index (per-variant model override) orthogonal to states</li>
  * </ul>
  */
 public final class SBEFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.2";
+    public static final String FORMAT_VERSION = "1.3";
 
     /** File extension for SBE files */
     public static final String FILE_EXTENSION = ".sbe";
@@ -53,20 +61,17 @@ public final class SBEFormat {
     /** Filename used for per-state animation clips (under {@code states/<name>/}) */
     public static final String STATE_CLIP_FILENAME = "clip.omanim";
 
+    /** Directory prefix for embedded per-variant assets inside the ZIP archive */
+    public static final String VARIANTS_DIR_PREFIX = "variants/";
+
+    /** Filename used for per-variant model overrides (under {@code variants/<name>/}) */
+    public static final String VARIANT_MODEL_FILENAME = "model.omo";
+
     /** File extension for source animation clips (input only) */
     public static final String ANIMATION_EXTENSION = ".omanim";
 
     /** Checksum algorithm used for integrity verification */
     public static final String CHECKSUM_ALGORITHM = "SHA-256";
-
-    /**
-     * Suggested state names that the in-engine animation controller knows how
-     * to map to entity behaviour. The format itself does <em>not</em> validate
-     * against this list — packs may declare custom states.
-     */
-    public static final String[] WELL_KNOWN_STATES = {
-            "idle", "walk", "run", "attack", "hurt", "death", "graze", "sleep"
-    };
 
     private SBEFormat() {
         throw new UnsupportedOperationException("Utility class");
@@ -92,6 +97,11 @@ public final class SBEFormat {
     /** Returns the conventional ZIP entry path for a state's animation clip. */
     public static String stateClipPath(String stateName) {
         return STATES_DIR_PREFIX + stateName + "/" + STATE_CLIP_FILENAME;
+    }
+
+    /** Returns the conventional ZIP entry path for a variant's model override. */
+    public static String variantModelPath(String variantName) {
+        return VARIANTS_DIR_PREFIX + variantName + "/" + VARIANT_MODEL_FILENAME;
     }
 
     /** Entity type classification used by the Stonebreak engine. */
@@ -189,6 +199,31 @@ public final class SBEFormat {
     }
 
     /**
+     * A declared entity variant. Variants are the identity axis (e.g. the four
+     * cow texture variants). A variant may carry its own OMO override to swap
+     * geometry/textures; if absent, the variant resolves to the base OMO.
+     *
+     * <p>Variants are orthogonal to {@link StateEntry states} — at spawn time
+     * the runtime picks a variant; at tick time it cycles states on top of it.
+     *
+     * @param name          unique variant identifier (e.g. "default", "angus")
+     * @param modelOverride per-variant OMO override, or null
+     */
+    public record VariantEntry(
+            String name,
+            AssetRef modelOverride
+    ) {
+        public VariantEntry {
+            Objects.requireNonNull(name, "variant name cannot be null");
+            if (name.isBlank()) {
+                throw new IllegalArgumentException("variant name cannot be blank");
+            }
+        }
+
+        public boolean hasModelOverride() { return modelOverride != null; }
+    }
+
+    /**
      * Complete SBE document.
      *
      * @param version      format version string
@@ -202,6 +237,7 @@ public final class SBEFormat {
      * @param createdAt    ISO-8601 timestamp of creation
      * @param omoFilename  filename of the embedded base OMO file
      * @param states       declared states; never null, may be empty
+     * @param variants     declared variants; never null, may be empty
      */
     public record Document(
             String version,
@@ -214,7 +250,8 @@ public final class SBEFormat {
             String description,
             String createdAt,
             String omoFilename,
-            List<StateEntry> states
+            List<StateEntry> states,
+            List<VariantEntry> variants
     ) {
         public Document {
             Objects.requireNonNull(version, "version cannot be null");
@@ -228,9 +265,13 @@ public final class SBEFormat {
             states = states == null
                     ? Collections.emptyList()
                     : List.copyOf(states);
+            variants = variants == null
+                    ? Collections.emptyList()
+                    : List.copyOf(variants);
         }
 
         public boolean hasStates() { return !states.isEmpty(); }
+        public boolean hasVariants() { return !variants.isEmpty(); }
     }
 
     /**
@@ -241,6 +282,17 @@ public final class SBEFormat {
     public record StateBinding(String name, Path modelOverrideSource, Path clipSource) {
         public StateBinding {
             Objects.requireNonNull(name, "state name cannot be null");
+        }
+    }
+
+    /**
+     * Per-variant input the export window passes to the serializer. The source
+     * path is optional — declaring a variant without an override means
+     * "use the base OMO for this identity slot".
+     */
+    public record VariantBinding(String name, Path modelOverrideSource) {
+        public VariantBinding {
+            Objects.requireNonNull(name, "variant name cannot be null");
         }
     }
 
@@ -257,6 +309,7 @@ public final class SBEFormat {
         private String author = "";
         private String description = "";
         private final List<StateBinding> states = new ArrayList<>();
+        private final List<VariantBinding> variants = new ArrayList<>();
 
         public ExportParameters() {}
 
@@ -286,6 +339,15 @@ public final class SBEFormat {
         }
 
         public void clearStates() { states.clear(); }
+
+        public List<VariantBinding> getVariants() { return variants; }
+
+        public void addVariant(String name, Path modelOverrideSource) {
+            if (name == null) return;
+            variants.add(new VariantBinding(name, modelOverrideSource));
+        }
+
+        public void clearVariants() { variants.clear(); }
 
         public boolean isValid() {
             return !objectId.isBlank()

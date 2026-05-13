@@ -71,6 +71,9 @@ public class SBEExportWindow {
     /** State rows the user has staged for embedding. */
     private final List<StateBindingRow> stateBindings = new ArrayList<>();
 
+    /** Variant rows the user has staged for embedding. */
+    private final List<VariantBindingRow> variantBindings = new ArrayList<>();
+
     /**
      * One row in the state bindings list. A state may declare an optional
      * model override and an optional animation clip — neither, either, or both.
@@ -82,6 +85,19 @@ public class SBEExportWindow {
 
         StateBindingRow(String initialState) {
             this.state.set(initialState != null ? initialState : "");
+        }
+    }
+
+    /**
+     * One row in the variant bindings list. A variant may declare an optional
+     * OMO override; without one the variant resolves to the base OMO at runtime.
+     */
+    private static final class VariantBindingRow {
+        final ImString variant = new ImString(64);
+        Path modelOverridePath;
+
+        VariantBindingRow(String initialName) {
+            this.variant.set(initialName != null ? initialName : "");
         }
     }
 
@@ -243,6 +259,15 @@ public class SBEExportWindow {
 
         renderStateList();
 
+        ImGui.dummy(0, ROW_SPACING);
+
+        // Section: Variants (Optional)
+        ImGui.setCursorPosX(formOffsetX);
+        ImGuiComponents.renderCompactSectionHeader("Texture Variants (Optional)");
+        ImGui.spacing();
+
+        renderVariantList();
+
         if (!validationMessage.isEmpty()) {
             ImGui.dummy(0, ROW_SPACING);
             renderValidationBanner(validationMessage);
@@ -313,31 +338,66 @@ public class SBEExportWindow {
             }
         }
 
-        // Suggestion strip — clicking a chip adds a row pre-filled with that
-        // state name (or seeds the most recent blank row).
-        ImGui.setCursorPosX(formOffsetX);
-        ImGui.textDisabled("Common states:");
-        ImGui.sameLine();
-        for (int i = 0; i < SBEFormat.WELL_KNOWN_STATES.length; i++) {
-            if (i > 0) ImGui.sameLine();
-            String name = SBEFormat.WELL_KNOWN_STATES[i];
-            if (ImGui.smallButton(name + "##sbe_state_preset_" + i)) {
-                StateBindingRow last = stateBindings.isEmpty()
-                        ? null
-                        : stateBindings.get(stateBindings.size() - 1);
-                if (last != null && last.state.get().isBlank()) {
-                    last.state.set(name);
-                } else {
-                    stateBindings.add(new StateBindingRow(name));
-                }
-            }
-        }
-
-        ImGui.dummy(0, ROW_SPACING);
-
         ImGui.setCursorPosX(formOffsetX);
         if (ImGui.button("+ Add State##sbe_state_add", 120.0f, 0)) {
             stateBindings.add(new StateBindingRow(""));
+        }
+
+        ImGui.dummy(0, ROW_SPACING);
+    }
+
+    private void renderVariantList() {
+        float fullWidth = LABEL_WIDTH + INPUT_WIDTH;
+        float variantInputWidth = 160.0f;
+        float removeBtnWidth = 22.0f;
+        float indent = 20.0f;
+        float slotLabelWidth = 50.0f;
+        float slotButtonWidth = 70.0f;
+
+        if (variantBindings.isEmpty()) {
+            ImGui.setCursorPosX(formOffsetX);
+            ImGui.textDisabled("No variants declared.");
+            ImGui.dummy(0, ROW_SPACING);
+        } else {
+            int removeIndex = -1;
+            for (int i = 0; i < variantBindings.size(); i++) {
+                VariantBindingRow row = variantBindings.get(i);
+                ImGui.pushID("sbe_variant_row_" + i);
+
+                ImGui.setCursorPosX(formOffsetX);
+                ImGui.pushItemWidth(variantInputWidth);
+                ImGui.inputTextWithHint("##variant_name", "e.g. angus", row.variant);
+                ImGui.popItemWidth();
+
+                ImGui.sameLine(formOffsetX + fullWidth - removeBtnWidth);
+                if (ImGui.button("x##remove_variant", removeBtnWidth, 0)) {
+                    removeIndex = i;
+                }
+
+                ImGui.setCursorPosX(formOffsetX + indent);
+                ImGui.textDisabled("Model:");
+                ImGui.sameLine(formOffsetX + indent + slotLabelWidth);
+                renderAssetSlot(
+                        row.modelOverridePath,
+                        "(use base OMO)",
+                        slotButtonWidth,
+                        () -> fileDialogService.showOpenOMODialog(p -> {
+                            if (p != null && !p.isBlank()) row.modelOverridePath = Path.of(p);
+                        }),
+                        () -> row.modelOverridePath = null
+                );
+
+                ImGui.dummy(0, 4);
+                ImGui.popID();
+            }
+            if (removeIndex >= 0) {
+                variantBindings.remove(removeIndex);
+            }
+        }
+
+        ImGui.setCursorPosX(formOffsetX);
+        if (ImGui.button("+ Add Variant##sbe_variant_add", 120.0f, 0)) {
+            variantBindings.add(new VariantBindingRow(""));
         }
 
         ImGui.dummy(0, ROW_SPACING);
@@ -532,6 +592,11 @@ public class SBEExportWindow {
             validationMessage = stateError;
             return;
         }
+        String variantError = validateVariants();
+        if (variantError != null) {
+            validationMessage = variantError;
+            return;
+        }
         validationMessage = "";
 
         String omoPathStr = modelState.getCurrentOMOFilePath();
@@ -636,6 +701,20 @@ public class SBEExportWindow {
         return null;
     }
 
+    private String validateVariants() {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (VariantBindingRow row : variantBindings) {
+            String name = row.variant.get().trim();
+            if (name.isBlank()) {
+                return "Variant name cannot be blank";
+            }
+            if (!seen.add(name)) {
+                return "Duplicate variant: '" + name + "'";
+            }
+        }
+        return null;
+    }
+
     private SBEFormat.ExportParameters buildParameters() {
         SBEFormat.ExportParameters params = new SBEFormat.ExportParameters();
         params.setObjectId(objectId.get().trim());
@@ -646,6 +725,9 @@ public class SBEExportWindow {
         params.setDescription(description.get().trim());
         for (StateBindingRow row : stateBindings) {
             params.addState(row.state.get().trim(), row.modelOverridePath, row.clipPath);
+        }
+        for (VariantBindingRow row : variantBindings) {
+            params.addVariant(row.variant.get().trim(), row.modelOverridePath);
         }
         return params;
     }
