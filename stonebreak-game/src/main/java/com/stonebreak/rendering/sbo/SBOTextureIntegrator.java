@@ -13,7 +13,9 @@ import org.slf4j.LoggerFactory;
 import java.awt.image.BufferedImage;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Integrates SBO textures into the game's texture atlas at runtime.
@@ -32,10 +34,18 @@ public class SBOTextureIntegrator {
     private final TextureAtlas textureAtlas;
     private final SBOBlockBridge bridge;
     private final SBOTextureExtractor extractor = new SBOTextureExtractor();
+    private DynamicSlotAllocator allocator;
 
     public SBOTextureIntegrator(TextureAtlas textureAtlas, SBOBlockBridge bridge) {
         this.textureAtlas = textureAtlas;
         this.bridge = bridge;
+    }
+
+    private DynamicSlotAllocator allocator() {
+        if (allocator == null) {
+            allocator = new DynamicSlotAllocator(textureAtlas.getAtlasMetadata());
+        }
+        return allocator;
     }
 
     /**
@@ -125,7 +135,13 @@ public class SBOTextureIntegrator {
         for (int atlasIdx = 0; atlasIdx < faces.length; atlasIdx++) {
             String faceName = faces[atlasIdx];
             AtlasMetadata.TextureEntry entry = findAtlasEntry(blockType, faceName);
-            if (entry == null) continue;
+            if (entry == null) {
+                // No pre-baked atlas slot for this block (new SBO drop-in).
+                // Allocate a fresh slot from the spare region of the atlas
+                // and register it so future lookups resolve correctly.
+                entry = allocateAtlasEntry(blockType, faceName);
+                if (entry == null) continue;
+            }
 
             // Determine the GMR face ID that corresponds to this atlas face name
             int gmrFaceId = SBOFaceConventions.atlasNameToGmr(faceName);
@@ -171,6 +187,36 @@ public class SBOTextureIntegrator {
         if (blockName == null) return null;
 
         return metadata.findBlockTexture(blockName, face);
+    }
+
+    /**
+     * Allocate a fresh atlas slot for an SBO block that has no pre-baked
+     * entry in {@code atlas_metadata.json}. The slot is registered under
+     * {@code "<blockname>_<face>"} so subsequent {@link
+     * AtlasMetadata#findBlockTexture} calls resolve it without falling back
+     * to the error texture.
+     *
+     * <p>Returns {@code null} if the atlas is full or has no metadata.
+     */
+    private AtlasMetadata.TextureEntry allocateAtlasEntry(BlockType blockType, String face) {
+        AtlasMetadata metadata = textureAtlas.getAtlasMetadata();
+        if (metadata == null) return null;
+        String blockName = getBlockTextureName(blockType);
+        if (blockName == null) return null;
+
+        int[] xy = allocator().allocate();
+        if (xy == null) {
+            logger.warn("Atlas full — cannot allocate slot for SBO block {} face {}", blockType, face);
+            return null;
+        }
+
+        int tileSize = metadata.getTextureSize();
+        AtlasMetadata.TextureEntry entry = new AtlasMetadata.TextureEntry(
+                xy[0], xy[1], tileSize, tileSize, "block_cube");
+        metadata.registerRuntimeTexture(blockName + "_" + face, entry);
+        logger.info("Allocated atlas slot for {} face {} at ({}, {})",
+                blockType, face, xy[0], xy[1]);
+        return entry;
     }
 
     /**
@@ -227,5 +273,75 @@ public class SBOTextureIntegrator {
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
 
         logger.debug("Overlaid SBO texture at atlas position ({}, {}) size {}x{}", x, y, w, h);
+    }
+
+    /**
+     * Scans the atlas for occupied tile-grid cells once at construction,
+     * then doles out free cells in row-major order. Atlas tiles are
+     * assumed to be aligned to {@code textureSize} (16px in the stock
+     * atlas). Off-grid entries are conservatively rounded to the
+     * surrounding tile so they're never overwritten.
+     */
+    private static final class DynamicSlotAllocator {
+
+        private final int tileSize;
+        private final int cols;
+        private final int rows;
+        private final Set<Long> occupied;
+        private int cursor; // linear (row * cols + col) of next slot to try
+
+        DynamicSlotAllocator(AtlasMetadata metadata) {
+            if (metadata == null) {
+                this.tileSize = 16;
+                this.cols = 0;
+                this.rows = 0;
+                this.occupied = new HashSet<>();
+                this.cursor = 0;
+                return;
+            }
+            this.tileSize = Math.max(1, metadata.getTextureSize());
+            int[] dims = metadata.getAtlasDimensions();
+            this.cols = Math.max(1, dims[0] / tileSize);
+            this.rows = Math.max(1, dims[1] / tileSize);
+            this.occupied = new HashSet<>();
+            this.cursor = 0;
+
+            if (metadata.getTextures() != null) {
+                for (AtlasMetadata.TextureEntry e : metadata.getTextures().values()) {
+                    int colStart = e.getX() / tileSize;
+                    int rowStart = e.getY() / tileSize;
+                    int colEnd = (e.getX() + Math.max(1, e.getWidth()) - 1) / tileSize;
+                    int rowEnd = (e.getY() + Math.max(1, e.getHeight()) - 1) / tileSize;
+                    for (int r = rowStart; r <= rowEnd && r < rows; r++) {
+                        for (int c = colStart; c <= colEnd && c < cols; c++) {
+                            occupied.add(key(c, r));
+                        }
+                    }
+                }
+            }
+        }
+
+        /**
+         * @return pixel coordinates {@code [x, y]} of a freshly reserved
+         *         tile, or {@code null} if the atlas has no free slots.
+         */
+        int[] allocate() {
+            int total = cols * rows;
+            while (cursor < total) {
+                int c = cursor % cols;
+                int r = cursor / cols;
+                cursor++;
+                long k = key(c, r);
+                if (!occupied.contains(k)) {
+                    occupied.add(k);
+                    return new int[]{c * tileSize, r * tileSize};
+                }
+            }
+            return null;
+        }
+
+        private static long key(int col, int row) {
+            return (((long) row) << 32) | (col & 0xFFFFFFFFL);
+        }
     }
 }

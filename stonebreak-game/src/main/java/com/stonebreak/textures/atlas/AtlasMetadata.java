@@ -73,6 +73,16 @@ public class AtlasMetadata {
         @JsonProperty("type")
         private String type;
         
+        public TextureEntry() {}
+
+        public TextureEntry(int x, int y, int width, int height, String type) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.type = type;
+        }
+
         public int getX() { return x; }
         public int getY() { return y; }
         public int getWidth() { return width; }
@@ -125,6 +135,33 @@ public class AtlasMetadata {
         }
     }
     
+    /**
+     * Register a texture entry at runtime (e.g. for SBO blocks dropped into
+     * {@code sbo/blocks/} that don't have a pre-baked atlas slot). The entry
+     * is added to both the master {@code textures} map and the appropriate
+     * lookup map so {@link #findBlockTexture}/{@link #findItemTexture}
+     * resolve it immediately.
+     *
+     * @param name unique texture key (e.g. {@code "sponge_top"} or {@code "sponge"})
+     * @param entry the texture slot — caller is responsible for ensuring the
+     *              backing atlas pixels have been uploaded
+     */
+    public void registerRuntimeTexture(String name, TextureEntry entry) {
+        if (textures == null) {
+            textures = new HashMap<>();
+        }
+        if (blockTextureMap == null || itemTextureMap == null) {
+            initializeLookupMaps();
+        }
+        textures.put(name, entry);
+        String type = entry.getType();
+        if (type != null && type.startsWith("block")) {
+            blockTextureMap.put(name, entry);
+        } else if ("item".equals(type)) {
+            itemTextureMap.put(name, entry);
+        }
+    }
+
     /**
      * Find texture by name (direct lookup).
      * @param textureName The texture name

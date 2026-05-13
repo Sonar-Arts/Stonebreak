@@ -261,61 +261,19 @@ public class TextureResourceManager implements AutoCloseable {
     }
     
     /**
-     * Maps resource ID to legacy BlockType for compatibility.
+     * Maps resource ID to legacy BlockType. The resourceId is built by
+     * {@code GameBlockDefinitionRegistry} as {@code "stonebreak:" + blockType.name().toLowerCase()},
+     * so the reverse is a straight enum-name lookup — covers every block in the
+     * registry, including SBO drop-ins like {@code stonebreak:sponge}, without
+     * a hardcoded switch.
      */
     private BlockType mapResourceIdToBlockType(String resourceId) {
         String blockName = extractBlockName(resourceId);
-        
-        // Map common block names to BlockType enum
-        switch (blockName.toLowerCase()) {
-            // Basic terrain blocks
-            case "grass": return BlockType.GRASS;
-            case "dirt": return BlockType.DIRT;
-            case "stone": return BlockType.STONE;
-            case "cobblestone": return BlockType.COBBLESTONE;
-            case "red_sand_cobblestone": return BlockType.RED_SAND_COBBLESTONE;
-            case "sand_cobblestone": return BlockType.SAND_COBBLESTONE;
-            case "gravel": return BlockType.GRAVEL;
-            case "clay": return BlockType.CLAY;
-            case "bedrock": return BlockType.BEDROCK;
-            case "sand": return BlockType.SAND;
-            case "red_sand": return BlockType.RED_SAND;
-            case "sandstone": return BlockType.SANDSTONE;
-            case "red_sandstone": return BlockType.RED_SANDSTONE;
-            case "snowy_dirt": return BlockType.SNOWY_DIRT;
-            
-            // Ores and minerals
-            case "coal_ore": return BlockType.COAL_ORE;
-            case "iron_ore": return BlockType.IRON_ORE;
-            case "magma": return BlockType.MAGMA;
-            case "crystal": return BlockType.CRYSTAL;
-            
-            // Wood and plant blocks
-            case "wood": return BlockType.WOOD;
-            case "pine": return BlockType.PINE;
-            case "elm_wood_log": return BlockType.ELM_WOOD_LOG;
-            case "wood_planks": return BlockType.WOOD_PLANKS;
-            case "pine_wood_planks": return BlockType.PINE_WOOD_PLANKS;
-            case "elm_wood_planks": return BlockType.ELM_WOOD_PLANKS;
-            case "leaves": return BlockType.LEAVES;
-            case "pine_leaves": return BlockType.PINE_LEAVES;
-            case "elm_leaves": return BlockType.ELM_LEAVES;
-            
-            // Flowers
-            case "dandelion": return BlockType.DANDELION;
-            case "rose": return BlockType.ROSE;
-            case "wildgrass": return BlockType.WILDGRASS;
-            
-            // Utility blocks
-            case "workbench": return BlockType.WORKBENCH;
-            
-            // Environmental blocks
-            case "water": return BlockType.WATER;
-            case "ice": return BlockType.ICE;
-            case "snow": return BlockType.SNOW;
-            
-            // Add more mappings as needed
-            default: return null;
+        if (blockName == null || blockName.isEmpty()) return null;
+        try {
+            return BlockType.valueOf(blockName.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
     

@@ -57,8 +57,8 @@ public final class BlockType implements Item, IBlockType {
 
     // ----- Hardcoded sentinels (no SBO exists for these). -----------------
 
-    public static final BlockType AIR = createSentinel("AIR", 0, "Air", false, false, -1, -1, 0.0f);
-    public static final BlockType WATER = createSentinel("WATER", 8, "Water", false, false, 9, 0, 0.0f);
+    public static final BlockType AIR = createSentinel("AIR", 0, "Air", false, false, -1, -1, 0.0f, null);
+    public static final BlockType WATER = createSentinel("WATER", 8, "Water", false, false, 9, 0, 0.0f, "stonebreak:water");
 
     // ----- SBO-backed blocks. Data comes from the gameProperties block of
     //       each SBO under sbo/blocks/. The objectId arg below is what's
@@ -161,9 +161,12 @@ public final class BlockType implements Item, IBlockType {
      * blocks whose data is engine-defined rather than asset-defined.
      */
     private static BlockType createSentinel(String enumName, int id, String name, boolean solid, boolean breakable,
-                                            int atlasX, int atlasY, float hardness) {
+                                            int atlasX, int atlasY, float hardness, String objectId) {
         BlockType bt = new BlockType(enumName, id, name, solid, breakable, atlasX, atlasY, hardness);
         registerInternal(bt);
+        if (objectId != null) {
+            BY_OBJECT_ID.put(objectId, bt);
+        }
         return bt;
     }
 

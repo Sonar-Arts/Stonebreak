@@ -11,62 +11,25 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Bridges SBO object IDs to BlockType enum values.
+ * Bridges SBO object IDs to BlockType instances.
  * When an SBO block is registered, its texture data overrides
  * the legacy atlas coordinates for that BlockType.
  *
- * <p>Mapping is based on the SBO manifest's {@code objectId} field,
- * which follows the format {@code "stonebreak:blockname"}.
+ * <p>Mapping is resolved dynamically via {@link BlockType#getByObjectId(String)} —
+ * any SBO whose objectId resolves to a registered BlockType is bridged
+ * automatically. Drop a new {@code .sbo} into {@code sbo/blocks/} and it
+ * will be picked up here without code changes.
  */
 public class SBOBlockBridge {
 
     private static final Logger logger = LoggerFactory.getLogger(SBOBlockBridge.class);
 
-    /**
-     * Maps objectId suffixes to BlockType.
-     * e.g., "stonebreak:dirt" -> BlockType.DIRT
-     */
-    private static final Map<String, BlockType> OBJECT_ID_TO_BLOCK_TYPE = Map.ofEntries(
-            Map.entry("stonebreak:dirt", BlockType.DIRT),
-            Map.entry("stonebreak:stone", BlockType.STONE),
-            Map.entry("stonebreak:grass", BlockType.GRASS),
-            Map.entry("stonebreak:sand", BlockType.SAND),
-            Map.entry("stonebreak:red_sand", BlockType.RED_SAND),
-            Map.entry("stonebreak:gravel", BlockType.GRAVEL),
-            Map.entry("stonebreak:cobblestone", BlockType.COBBLESTONE),
-            Map.entry("stonebreak:coal_ore", BlockType.COAL_ORE),
-            Map.entry("stonebreak:wood", BlockType.WOOD),
-            Map.entry("stonebreak:pine_wood_log", BlockType.PINE),
-            Map.entry("stonebreak:elm_wood_log", BlockType.ELM_WOOD_LOG),
-            Map.entry("stonebreak:leaves", BlockType.LEAVES),
-            Map.entry("stonebreak:pine_leaves", BlockType.PINE_LEAVES),
-            Map.entry("stonebreak:elm_leaves", BlockType.ELM_LEAVES),
-            Map.entry("stonebreak:wood_planks", BlockType.WOOD_PLANKS),
-            Map.entry("stonebreak:pine_wood_planks", BlockType.PINE_WOOD_PLANKS),
-            Map.entry("stonebreak:elm_wood_planks", BlockType.ELM_WOOD_PLANKS),
-            Map.entry("stonebreak:water", BlockType.WATER),
-            Map.entry("stonebreak:sand_stone", BlockType.SANDSTONE),
-            Map.entry("stonebreak:red_sand_stone", BlockType.RED_SANDSTONE),
-            Map.entry("stonebreak:sand_cobblestone", BlockType.SAND_COBBLESTONE),
-            Map.entry("stonebreak:red_sand_cobblestone", BlockType.RED_SAND_COBBLESTONE),
-            Map.entry("stonebreak:rose", BlockType.ROSE),
-            Map.entry("stonebreak:dandelion", BlockType.DANDELION),
-            Map.entry("stonebreak:wildgrass", BlockType.WILDGRASS),
-            Map.entry("stonebreak:clay", BlockType.CLAY),
-            Map.entry("stonebreak:snow", BlockType.SNOW),
-            Map.entry("stonebreak:ice", BlockType.ICE),
-            Map.entry("stonebreak:bedrock", BlockType.BEDROCK),
-            Map.entry("stonebreak:crystal", BlockType.CRYSTAL),
-            Map.entry("stonebreak:iron_ore", BlockType.IRON_ORE),
-            Map.entry("stonebreak:magma", BlockType.MAGMA),
-            Map.entry("stonebreak:workbench", BlockType.WORKBENCH)
-    );
-
     private final Map<BlockType, SBOParseResult> sboByBlockType = new HashMap<>();
 
     /**
      * Initialize the bridge from a populated registry.
-     * Maps each SBO's objectId to the corresponding BlockType.
+     * Maps each SBO's objectId to the corresponding BlockType via
+     * {@link BlockType#getByObjectId(String)}.
      *
      * @param registry the loaded SBO block registry
      */
@@ -75,12 +38,12 @@ public class SBOBlockBridge {
 
         for (SBOParseResult result : registry.getAll()) {
             String objectId = result.getObjectId();
-            BlockType blockType = OBJECT_ID_TO_BLOCK_TYPE.get(objectId);
+            BlockType blockType = BlockType.getByObjectId(objectId);
             if (blockType != null) {
                 sboByBlockType.put(blockType, result);
                 logger.info("Bridged SBO {} -> BlockType.{}", objectId, blockType.name());
             } else {
-                logger.debug("No BlockType mapping for SBO objectId: {}", objectId);
+                logger.debug("No BlockType registered for SBO objectId: {}", objectId);
             }
         }
 
