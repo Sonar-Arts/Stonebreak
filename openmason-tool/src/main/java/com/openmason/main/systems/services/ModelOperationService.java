@@ -117,6 +117,7 @@ public class ModelOperationService {
 
             // Load into viewport if available
             if (viewport != null) {
+                viewport.getBoneStore().clear();
                 viewport.loadModel(currentEditableModel);
                 statusService.updateStatus("Blank model created and loaded: " + currentEditableModel.getName());
             } else {
@@ -247,6 +248,15 @@ public class ModelOperationService {
                 omoSerializer.setModelTransform(modelTransform);
             }
 
+            // Extract and set bone skeleton (v1.6+)
+            if (viewport != null) {
+                com.openmason.main.systems.skeleton.BoneStore boneStore = viewport.getBoneStore();
+                if (boneStore != null && !boneStore.isEmpty()) {
+                    omoSerializer.setBoneEntries(boneStore.getBones());
+                    logger.info("Saving {} bone entries", boneStore.size());
+                }
+            }
+
             // Save with mesh data (required for self-contained .omo files)
             boolean success = omoSerializer.save(currentEditableModel, filePath, meshData);
 
@@ -348,8 +358,11 @@ public class ModelOperationService {
                         // Check for multi-part model (v1.3+)
                         List<OMOFormat.PartEntry> partEntries = omoDeserializer.getLastLoadedPartEntries();
                         if (partEntries != null && !partEntries.isEmpty()) {
-                            // MULTI-PART: Reconstruct individual parts from combined mesh + part entries
-                            restorePartsFromEntries(meshData, partEntries);
+                            // MULTI-PART: Reconstruct individual parts from combined mesh + part entries.
+                            // Pass the bone entries so the inverse-bake walks cross-type parents
+                            // (parts can be children of bones in a unified rigging hierarchy).
+                            List<OMOFormat.BoneEntry> bonesForRestore = omoDeserializer.getLastLoadedBoneEntries();
+                            restorePartsFromEntries(meshData, partEntries, bonesForRestore);
                             logger.info("Loaded multi-part .omo: {} parts, {} vertices",
                                     partEntries.size(), meshData.getVertexCount());
                         } else {
@@ -394,6 +407,15 @@ public class ModelOperationService {
                     ts.setRotation(modelTransform.rotX(), modelTransform.rotY(), modelTransform.rotZ());
                     ts.setScale(modelTransform.scaleX(), modelTransform.scaleY(), modelTransform.scaleZ());
                     logger.debug("Restored model-level transform from .OMO");
+                }
+
+                // Restore bone skeleton (v1.6+) — empty/null wipes any prior session skeleton
+                if (viewport != null) {
+                    List<OMOFormat.BoneEntry> boneEntries = omoDeserializer.getLastLoadedBoneEntries();
+                    viewport.getBoneStore().setBones(boneEntries);
+                    if (boneEntries != null && !boneEntries.isEmpty()) {
+                        logger.info("Loaded {} bone entries", boneEntries.size());
+                    }
                 }
 
                 // Update properties panel with loaded model
@@ -522,6 +544,12 @@ public class ModelOperationService {
      * and registers them in the ModelPartManager.
      */
     private void restorePartsFromEntries(OMOFormat.MeshData meshData, List<OMOFormat.PartEntry> entries) {
+        restorePartsFromEntries(meshData, entries, null);
+    }
+
+    private void restorePartsFromEntries(OMOFormat.MeshData meshData,
+                                          List<OMOFormat.PartEntry> entries,
+                                          List<OMOFormat.BoneEntry> boneEntries) {
         if (viewport == null) {
             return;
         }
@@ -543,9 +571,15 @@ public class ModelOperationService {
         for (OMOFormat.PartEntry e : entries) {
             entryById.put(e.id(), e);
         }
+        Map<String, OMOFormat.BoneEntry> bonesById = new HashMap<>();
+        if (boneEntries != null) {
+            for (OMOFormat.BoneEntry b : boneEntries) {
+                if (b != null) bonesById.put(b.id(), b);
+            }
+        }
         Map<String, org.joml.Matrix4f> effectiveBySavedId = new HashMap<>();
         for (OMOFormat.PartEntry e : entries) {
-            effectiveBySavedId.put(e.id(), computeEffectiveMatrix(e, entryById, new HashSet<>()));
+            effectiveBySavedId.put(e.id(), computeEffectiveMatrix(e, entryById, bonesById, new HashSet<>()));
         }
         List<OMOFormat.PartEntry> sortedEntries = topologicalSortParentFirst(entries, entryById);
         // Map saved (file) part IDs to the new UUIDs the manager assigns on add.
@@ -625,14 +659,13 @@ public class ModelOperationService {
                 savedIdToNewId.put(entry.id(), part.id());
 
                 // Reparent first so subsequent transform set fires with the correct chain.
+                // A parent ID that is not in savedIdToNewId is allowed — it likely refers to
+                // a bone (loaded after parts via BoneStore.setBones). Passing the saved ID
+                // through preserves the unified-hierarchy link; the engine accepts unknown
+                // parents and treats them as roots for matrix composition.
                 if (entry.parentId() != null) {
-                    String newParentId = savedIdToNewId.get(entry.parentId());
-                    if (newParentId != null) {
-                        partManager.setPartParent(part.id(), newParentId);
-                    } else {
-                        logger.warn("Parent {} not yet loaded for part {} — leaving as root",
-                                entry.parentId(), entry.name());
-                    }
+                    String newParentId = savedIdToNewId.getOrDefault(entry.parentId(), entry.parentId());
+                    partManager.setPartParent(part.id(), newParentId);
                 }
 
                 partManager.setPartTransform(part.id(), savedTransform);
@@ -646,10 +679,19 @@ public class ModelOperationService {
 
     /**
      * Compute the effective (parent-chain composed) world matrix for a saved part entry.
-     * Walks {@code parentId} upward through {@code entryById}; cycle-defended via {@code visiting}.
+     * Walks {@code parentId} upward through {@code entryById} and {@code bonesById} —
+     * the unified hierarchy allows parts to be parented to bones and vice-versa, so the
+     * walk crosses between the two maps as needed. Cycle-defended via {@code visiting}.
+     *
+     * <p>The matrix this returns must match the runtime engine's view exactly so the
+     * load-time inverse-bake recovers true local vertices. The runtime engine has
+     * children inherit from the parent bone's <b>tail</b> frame (see
+     * {@link com.openmason.main.systems.skeleton.BoneStore#getTailWorldTransform}),
+     * so the bone walk here also returns the tail matrix.
      */
     private org.joml.Matrix4f computeEffectiveMatrix(OMOFormat.PartEntry entry,
                                                      Map<String, OMOFormat.PartEntry> entryById,
+                                                     Map<String, OMOFormat.BoneEntry> bonesById,
                                                      Set<String> visiting) {
         org.joml.Matrix4f local = new PartTransform(
                 new org.joml.Vector3f(entry.originX(), entry.originY(), entry.originZ()),
@@ -658,16 +700,75 @@ public class ModelOperationService {
                 new org.joml.Vector3f(entry.scaleX(), entry.scaleY(), entry.scaleZ())
         ).toMatrix();
 
-        if (entry.parentId() == null || !entryById.containsKey(entry.parentId())) {
-            return local;
-        }
+        String parentId = entry.parentId();
+        if (parentId == null) return local;
         if (!visiting.add(entry.id())) {
-            logger.warn("Cycle in saved part hierarchy at {} — treating as root", entry.id());
+            logger.warn("Cycle in saved hierarchy at {} — treating as root", entry.id());
             return local;
         }
-        org.joml.Matrix4f parent = computeEffectiveMatrix(entryById.get(entry.parentId()), entryById, visiting);
+        org.joml.Matrix4f parentMatrix = parentFrameMatrix(parentId, entryById, bonesById, visiting);
         visiting.remove(entry.id());
-        return new org.joml.Matrix4f(parent).mul(local);
+        return new org.joml.Matrix4f(parentMatrix).mul(local);
+    }
+
+    /**
+     * Compute the bone's <b>head</b> world matrix. The head is at
+     * {@code parent_tail × T(origin) × T(pos) × R(rot)}. Used as the base for the
+     * bone's own tail and (transitively) for any walk that needs its frame.
+     */
+    private org.joml.Matrix4f computeBoneHeadMatrix(OMOFormat.BoneEntry bone,
+                                                     Map<String, OMOFormat.PartEntry> entryById,
+                                                     Map<String, OMOFormat.BoneEntry> bonesById,
+                                                     Set<String> visiting) {
+        org.joml.Matrix4f local = new org.joml.Matrix4f()
+                .translate(bone.originX(), bone.originY(), bone.originZ())
+                .translate(bone.posX(), bone.posY(), bone.posZ())
+                .rotateXYZ(
+                        (float) Math.toRadians(bone.rotX()),
+                        (float) Math.toRadians(bone.rotY()),
+                        (float) Math.toRadians(bone.rotZ())
+                );
+
+        String parentId = bone.parentBoneId();
+        if (parentId == null) return local;
+        if (!visiting.add(bone.id())) {
+            logger.warn("Cycle in saved hierarchy at bone {} — treating as root", bone.id());
+            return local;
+        }
+        org.joml.Matrix4f parentMatrix = parentFrameMatrix(parentId, entryById, bonesById, visiting);
+        visiting.remove(bone.id());
+        return new org.joml.Matrix4f(parentMatrix).mul(local);
+    }
+
+    /**
+     * Compute the bone's <b>tail</b> world matrix — head matrix translated by the
+     * bone-local-space endpoint. This is the frame children of this bone inherit
+     * from, matching {@code BoneStore.getTailWorldTransform} at runtime.
+     */
+    private org.joml.Matrix4f computeBoneTailMatrix(OMOFormat.BoneEntry bone,
+                                                     Map<String, OMOFormat.PartEntry> entryById,
+                                                     Map<String, OMOFormat.BoneEntry> bonesById,
+                                                     Set<String> visiting) {
+        org.joml.Matrix4f head = computeBoneHeadMatrix(bone, entryById, bonesById, visiting);
+        return new org.joml.Matrix4f(head)
+                .translate(bone.endpointX(), bone.endpointY(), bone.endpointZ());
+    }
+
+    /**
+     * Resolve the frame that a node with parent {@code parentId} inherits from —
+     * part parent → part's effective matrix; bone parent → bone's tail matrix.
+     */
+    private org.joml.Matrix4f parentFrameMatrix(String parentId,
+                                                 Map<String, OMOFormat.PartEntry> entryById,
+                                                 Map<String, OMOFormat.BoneEntry> bonesById,
+                                                 Set<String> visiting) {
+        if (entryById.containsKey(parentId)) {
+            return computeEffectiveMatrix(entryById.get(parentId), entryById, bonesById, visiting);
+        }
+        if (bonesById != null && bonesById.containsKey(parentId)) {
+            return computeBoneTailMatrix(bonesById.get(parentId), entryById, bonesById, visiting);
+        }
+        return new org.joml.Matrix4f();
     }
 
     /**

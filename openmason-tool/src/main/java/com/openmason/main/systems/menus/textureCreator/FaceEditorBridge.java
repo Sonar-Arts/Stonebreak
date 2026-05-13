@@ -171,4 +171,18 @@ public class FaceEditorBridge {
     public void closeFaceEditing() {
         controller.closeFaceRegion();
     }
+
+    /**
+     * @return true if the texture editor is currently focused on a face region
+     */
+    public boolean isFaceRegionActive() {
+        return controller.isFaceRegionActive();
+    }
+
+    /**
+     * @return material ID of the face currently being edited, or -1 if no face region is active
+     */
+    public int getActiveFaceRegionMaterialId() {
+        return controller.getFaceRegionMaterialId();
+    }
 }

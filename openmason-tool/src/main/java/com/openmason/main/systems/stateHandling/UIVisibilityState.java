@@ -11,6 +11,7 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
 
     private final ImBoolean showModelBrowser = new ImBoolean(true);
     private final ImBoolean showPropertyPanel = new ImBoolean(true);
+    private final ImBoolean showRiggingPane = new ImBoolean(true);
     private final ImBoolean showToolbar = new ImBoolean(true);
     private final ImBoolean showPreferencesWindow = new ImBoolean(false);
     private final ImBoolean showAboutWindow = new ImBoolean(false);
@@ -31,6 +32,10 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
 
     public ImBoolean getShowToolbar() {
         return showToolbar;
+    }
+
+    public ImBoolean getShowRiggingPane() {
+        return showRiggingPane;
     }
 
     public ImBoolean getShowPreferencesWindow() {
@@ -67,6 +72,10 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
         showPropertyPanel.set(!showPropertyPanel.get());
     }
 
+    public void toggleRiggingPane() {
+        showRiggingPane.set(!showRiggingPane.get());
+    }
+
     public void toggleToolbar() {
         showToolbar.set(!showToolbar.get());
     }
@@ -91,6 +100,7 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
     public void resetToDefault() {
         showModelBrowser.set(true);
         showPropertyPanel.set(true);
+        showRiggingPane.set(true);
         showToolbar.set(true);
         showPreferencesWindow.set(false);
         showAboutWindow.set(false);
@@ -104,15 +114,17 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
      * Toggle fullscreen viewport mode (hide/show all panels).
      */
     public void toggleFullscreenViewport() {
-        if (showModelBrowser.get() || showPropertyPanel.get()) {
+        if (showModelBrowser.get() || showPropertyPanel.get() || showRiggingPane.get()) {
             // Hide panels for fullscreen
             showModelBrowser.set(false);
             showPropertyPanel.set(false);
+            showRiggingPane.set(false);
             showToolbar.set(false);
         } else {
             // Restore panels
             showModelBrowser.set(true);
             showPropertyPanel.set(true);
+            showRiggingPane.set(true);
             showToolbar.set(true);
         }
     }

@@ -211,6 +211,21 @@ public final class TextureToolDefinitions {
                         .build(),
                 args -> editor.renameLayer(reqInt(args, "index"), reqString(args, "name"))));
 
+        // ---------- Resize ----------
+
+        registry.register(new McpTool(
+                "tex_resize_face_texture",
+                "Resize the GPU texture of the face currently open in the texture editor. "
+                        + "Nearest-neighbor rescale, UVs unchanged (normalized within material). "
+                        + "Requires a face region to be active (open a face for editing first). "
+                        + "Width/height clamped to [1, 1024].",
+                schema()
+                        .intg("width", "New texture width in pixels")
+                        .intg("height", "New texture height in pixels")
+                        .required("width", "height")
+                        .build(),
+                args -> editor.resizeFaceTexture(reqInt(args, "width"), reqInt(args, "height"))));
+
         // ---------- Export ----------
 
         registry.register(new McpTool(

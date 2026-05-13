@@ -96,7 +96,7 @@ public final class GameLoop {
                 }
                 return false;
             }
-            case INVENTORY_UI -> {
+            case INVENTORY_UI, CHARACTER_SHEET_UI -> {
                 if (inventoryScreen != null && inventoryScreen.isVisible()) {
                     inventoryScreen.update(deltaTime);
                 }

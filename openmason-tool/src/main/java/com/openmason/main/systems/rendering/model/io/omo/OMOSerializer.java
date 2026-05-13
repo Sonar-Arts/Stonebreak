@@ -72,6 +72,9 @@ public class OMOSerializer {
     // Optional model-level transform (v1.4+)
     private OMOFormat.ModelTransform pendingModelTransform;
 
+    // Optional bone skeleton entries (v1.6+)
+    private List<OMOFormat.BoneEntry> pendingBones;
+
     /**
      * Creates a new .OMO serializer with JSON support.
      */
@@ -129,6 +132,14 @@ public class OMOSerializer {
      */
     public void setModelTransform(OMOFormat.ModelTransform transform) {
         this.pendingModelTransform = transform;
+    }
+
+    /**
+     * Set the bone skeleton entries to be saved with the next model (v1.6+).
+     * Null or empty means the file carries no skeleton (backward-compatible).
+     */
+    public void setBoneEntries(List<OMOFormat.BoneEntry> bones) {
+        this.pendingBones = bones;
     }
 
     /**
@@ -202,6 +213,7 @@ public class OMOSerializer {
             pendingMaterialTexturePNGs = null;
             pendingParts = null;
             pendingModelTransform = null;
+            pendingBones = null;
 
             // Move temp file to final location (atomic on most filesystems)
             Path finalPath = Path.of(filePath);
@@ -238,7 +250,7 @@ public class OMOSerializer {
 
         // Serialize to JSON (pass pending data explicitly since DTO is static)
         String json = objectMapper.writeValueAsString(
-                new ExtendedManifestDTO(document, pendingParts, pendingModelTransform));
+                new ExtendedManifestDTO(document, pendingParts, pendingModelTransform, pendingBones));
         byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8);
 
         // Write JSON to ZIP
@@ -339,10 +351,12 @@ public class OMOSerializer {
         public FaceTextureDataDTO faceTextures; // Optional, null for pre-1.2 files
         public List<PartEntryDTO> parts; // Optional, null for single-part models
         public ModelTransformDTO modelTransform; // Optional, null for identity (v1.4+)
+        public List<BoneEntryDTO> bones; // Optional, null or empty for files without a skeleton (v1.6+)
 
         public ExtendedManifestDTO(OMOFormat.ExtendedDocument document,
                                    List<OMOFormat.PartEntry> partEntries,
-                                   OMOFormat.ModelTransform modelTransform) {
+                                   OMOFormat.ModelTransform modelTransform,
+                                   List<OMOFormat.BoneEntry> boneEntries) {
             this.version = document.version();
             this.objectName = document.objectName();
             this.modelType = document.modelType();
@@ -355,6 +369,8 @@ public class OMOSerializer {
                     ? partEntries.stream().map(PartEntryDTO::new).toList() : null;
             this.modelTransform = modelTransform != null && !modelTransform.isIdentity()
                     ? new ModelTransformDTO(modelTransform) : null;
+            this.bones = boneEntries != null && !boneEntries.isEmpty()
+                    ? boneEntries.stream().map(BoneEntryDTO::new).toList() : null;
         }
     }
 
@@ -522,6 +538,44 @@ public class OMOSerializer {
             this.visible = entry.visible();
             this.locked = entry.locked();
             this.parentId = entry.parentId();
+            this.boneId = entry.boneId();
+        }
+
+        // v1.6+: bone this part is attached to. Omitted (null) when the part is unbound.
+        public String boneId;
+    }
+
+    /**
+     * DTO for bone entries (v1.6+).
+     * Bones are pure transform nodes; mesh attachment happens via {@link PartEntryDTO#boneId}.
+     */
+    private static class BoneEntryDTO {
+        public String id;
+        public String name;
+        public String parentBoneId;
+        public float originX, originY, originZ;
+        public float posX, posY, posZ;
+        public float rotX, rotY, rotZ;
+        // Tail offset in bone-local space (post-rotation). Absent in pre-endpoint files;
+        // the deserializer defaults missing values to 0 for backward compatibility.
+        public float endpointX, endpointY, endpointZ;
+
+        public BoneEntryDTO(OMOFormat.BoneEntry entry) {
+            this.id = entry.id();
+            this.name = entry.name();
+            this.parentBoneId = entry.parentBoneId();
+            this.originX = entry.originX();
+            this.originY = entry.originY();
+            this.originZ = entry.originZ();
+            this.posX = entry.posX();
+            this.posY = entry.posY();
+            this.posZ = entry.posZ();
+            this.rotX = entry.rotX();
+            this.rotY = entry.rotY();
+            this.rotZ = entry.rotZ();
+            this.endpointX = entry.endpointX();
+            this.endpointY = entry.endpointY();
+            this.endpointZ = entry.endpointZ();
         }
     }
 }

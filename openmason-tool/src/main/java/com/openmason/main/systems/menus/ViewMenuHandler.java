@@ -64,6 +64,10 @@ public class ViewMenuHandler {
             viewportOperations.toggleUnrendered(viewport);
         }
 
+        if (ImGui.menuItem("Show Bones", "Ctrl+B", viewportState.getShowBones().get())) {
+            viewportState.toggleBones();
+        }
+
         ImGui.separator();
 
         ImGui.menuItem("Show 3D Viewport", "Ctrl+1", true);// Viewport always visible in current implementation
@@ -74,6 +78,10 @@ public class ViewMenuHandler {
 
         if (ImGui.menuItem("Show Model Properties", "Ctrl+3", uiState.getShowPropertyPanel().get())) {
             uiState.togglePropertyPanel();
+        }
+
+        if (ImGui.menuItem("Show Rigging", "Ctrl+4", uiState.getShowRiggingPane().get())) {
+            uiState.toggleRiggingPane();
         }
 
         if (ImGui.menuItem("Show Toolbar", "Ctrl+5", uiState.getShowToolbar().get())) {

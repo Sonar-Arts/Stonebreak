@@ -28,6 +28,7 @@ public class ViewportUIState {
     private final ImBoolean unrenderedMode = new ImBoolean(false);
     private final ImBoolean showVertices = new ImBoolean(false);
     private final ImBoolean showGizmo = new ImBoolean(true);
+    private final ImBoolean showBones = new ImBoolean(true);
 
     // Window visibility state (legacy — kept for backward compat, superseded by ActiveToolPane)
     private final ImBoolean showCameraControls = new ImBoolean(false);
@@ -75,7 +76,8 @@ public class ViewportUIState {
         RENDERING,
         TRANSFORM,
         ADD_PART,
-        PART_TRANSFORM
+        PART_TRANSFORM,
+        ADD_BONE
     }
 
     private ActiveToolPane activeToolPane = ActiveToolPane.NONE;
@@ -83,10 +85,16 @@ public class ViewportUIState {
     /** Callback invoked when user confirms adding a part from the slideout. Args: (shapeName, partName) */
     private BiConsumer<String, String> addPartCallback;
 
+    /** Callback invoked when user confirms adding a bone from the slideout. Args: (boneName, parentNodeId-or-null) */
+    private BiConsumer<String, String> addBoneCallback;
+
     public ActiveToolPane getActiveToolPane() { return activeToolPane; }
 
     public void setAddPartCallback(BiConsumer<String, String> callback) { this.addPartCallback = callback; }
     public BiConsumer<String, String> getAddPartCallback() { return addPartCallback; }
+
+    public void setAddBoneCallback(BiConsumer<String, String> callback) { this.addBoneCallback = callback; }
+    public BiConsumer<String, String> getAddBoneCallback() { return addBoneCallback; }
 
     /** Supplier for the currently selected part (for the Part Transform slideout). */
     private Supplier<ModelPartDescriptor> selectedPartSupplier;
@@ -135,6 +143,7 @@ public class ViewportUIState {
     public ImBoolean getUnrenderedMode() { return unrenderedMode; }
     public ImBoolean getShowVertices() { return showVertices; }
     public ImBoolean getShowGizmo() { return showGizmo; }
+    public ImBoolean getShowBones() { return showBones; }
 
     // Getters for window visibility (legacy)
     public ImBoolean getShowCameraControls() { return showCameraControls; }
@@ -232,6 +241,10 @@ public class ViewportUIState {
 
     public void toggleGizmo() {
         showGizmo.set(!showGizmo.get());
+    }
+
+    public void toggleBones() {
+        showBones.set(!showBones.get());
     }
 
     public void toggleGridSnapping() {

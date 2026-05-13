@@ -1,7 +1,6 @@
 package com.stonebreak.ui;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
-import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.masonryUI.MStatPanel;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import java.lang.management.BufferPoolMXBean;
@@ -11,21 +10,20 @@ import java.lang.management.MemoryPoolMXBean;
 import java.lang.management.MemoryType;
 import java.lang.management.MemoryUsage;
 import org.joml.Vector3f;
-import org.joml.Vector3i;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.blocks.Water;
-import com.stonebreak.blocks.waterSystem.WaterBlock;
-import com.stonebreak.blocks.waterSystem.WaterSystem;
+import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.Camera;
 import com.stonebreak.world.World;
+import com.stonebreak.blocks.Water;
+import com.stonebreak.blocks.waterSystem.WaterBlock;
+import com.stonebreak.blocks.waterSystem.WaterSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.mobs.cow.Cow;
 import com.stonebreak.mobs.cow.CowAI;
 import java.util.List;
@@ -62,17 +60,21 @@ public class DebugOverlay {
     private VramSource vramSource = null;
     private long vramTotalKB = 0; // 0 if unknown
 
-    // MasonryUI for the left-side resource panels. Lazily built once a Renderer exists.
+    // MasonryUI for the right-side debug panel and left-side resource panel. Lazily built once a Renderer exists.
     private MasonryUI masonryUI = null;
 
     // Cached panels — rebuilt periodically rather than every frame. Reading
     // MXBeans + GPU snapshot + building MStatPanel structures every frame
     // generates measurable churn while F3 is open; values change slowly enough
-    // that 4 Hz is plenty.
-    private static final long PANEL_REBUILD_INTERVAL_MS = 250L;
-    private long lastPanelRebuildMs = 0L;
+    // that 4 Hz is plenty for the resource panels. The debug panel gets a
+    // faster cadence (20 Hz) so player position feels responsive.
+    private static final long RESOURCE_PANEL_REBUILD_INTERVAL_MS = 250L;
+    private static final long DEBUG_PANEL_REBUILD_INTERVAL_MS    =  50L;
+    private long lastResourcePanelRebuildMs = 0L;
+    private long lastDebugPanelRebuildMs    = 0L;
     private MStatPanel cachedRamPanel = null;
     private MStatPanel cachedVramPanel = null;
+    private MStatPanel cachedDebugPanel = null;
 
     public DebugOverlay() {
     }
@@ -85,103 +87,78 @@ public class DebugOverlay {
         visible = !visible;
     }
 
-    public String getDebugText() {
-        if (!visible) {
-            return "";
-        }
-
-        Player player = Game.getPlayer();
+    /**
+     * Returns a one-line summary of the block the player is looking at.
+     * Used by the compact debug panel (MStatPanel). Returns null when nothing
+     * is targeted.
+     */
+    private String getTargetedBlockSummary(Player player) {
+        Camera camera = player.getCamera();
         World world = Game.getWorld();
 
-        if (player == null || world == null) {
-            return "Player or World not available";
+        if (camera == null || world == null) return null;
+
+        Vector3f position = player.getPosition();
+        Vector3f rayOrigin = new Vector3f(position.x, position.y + 1.6f, position.z);
+        Vector3f rayDirection = camera.getFront();
+
+        for (float d = 0; d < 6.0f; d += 0.05f) {
+            Vector3f point = new Vector3f(rayDirection).mul(d).add(rayOrigin);
+            int bx = (int) Math.floor(point.x);
+            int by = (int) Math.floor(point.y);
+            int bz = (int) Math.floor(point.z);
+
+            BlockType bt = world.getBlockAt(bx, by, bz);
+            if (bt != null && bt != BlockType.AIR) {
+                Renderer renderer = Game.getRenderer();
+                SBOBlockBridge bridge = renderer != null ? renderer.getSBOBlockBridge() : null;
+                String model = (bridge != null && bridge.isSBOBlock(bt)) ? "SBO" : "Mesh";
+                return String.format("%s [%s] ~ (%d,%d,%d)", bt.name(), model, bx, by, bz);
+            }
         }
+        return null;
+    }
 
-        Vector3f pos = player.getPosition();
-        int x = (int) Math.floor(pos.x);
-        int y = (int) Math.floor(pos.y);
-        int z = (int) Math.floor(pos.z);
+    /**
+     * Returns a one-line summary of the water block the player is looking at.
+     * Returns null when not looking at water.
+     */
+    private String getWaterStateSummary(Player player) {
+        Camera camera = player.getCamera();
+        World world = Game.getWorld();
 
-        // Get chunk coordinates
-        int chunkX = x >> 4; // Divide by 16
-        int chunkZ = z >> 4; // Divide by 16
+        if (camera == null || world == null) return null;
 
-        // Get FPS
-        updateAverageFPS();
+        Vector3f position = player.getPosition();
+        Vector3f rayOrigin = new Vector3f(position.x, position.y + 1.6f, position.z);
+        Vector3f rayDirection = camera.getFront();
 
-        // Get world information
-        int loadedChunks = world.getLoadedChunkCount();
-        
-        // Get block at player position
-        BlockType blockBelow = world.getBlockAt(x, y - 1, z);
-        String blockBelowName = blockBelow != null ? blockBelow.name() : "Unknown";
+        for (float d = 0; d < 5.0f; d += 0.05f) {
+            Vector3f point = new Vector3f(rayDirection).mul(d).add(rayOrigin);
+            int bx = (int) Math.floor(point.x);
+            int by = (int) Math.floor(point.y);
+            int bz = (int) Math.floor(point.z);
 
-        // Get biome information at player position
-        BiomeType biome = world.getBiomeAt(x, z);
-        float temperature = world.getTemperatureAt(x, z);
-        float moisture = world.getMoistureAt(x, z);
+            BlockType bt = world.getBlockAt(bx, by, bz);
+            if (bt == BlockType.WATER) {
+                WaterBlock wb = Water.getWaterBlock(bx, by, bz);
+                float fill = Water.getWaterLevel(bx, by, bz);
+                String type = (wb != null && wb.isSource()) ? "Source" : "Flowing";
 
-        // Noise channels driving terrain shape
-        float continentalness = world.getContinentalnessAt(x, z);
-        float erosion = world.getErosionAt(x, z);
-        float peaksValleys = world.getPeaksValleysAt(x, z);
-        int baseHeight = world.getBaseHeightAt(x, z);
-        int shapedHeight = world.getShapedHeightAt(x, z);
-        int finalHeight = world.getFinalTerrainHeightAt(x, z);
+                WaterSystem ws = world.getWaterSystem();
+                String tracked = (ws != null)
+                        ? String.format(" (%d tracked)", ws.getTrackedWaterCount())
+                        : "";
 
-        // Calculate facing direction from camera's front vector
-        Vector3f front = player.getCamera().getFront();
-        String facing = getCardinalDirection(front);
-
-        // Build debug text
-        StringBuilder debug = new StringBuilder();
-        debug.append("Stonebreak Debug (F3)\n");
-        debug.append("─────────────────────\n");
-        debug.append(String.format("XYZ: %d / %d / %d\n", x, y, z));
-        debug.append(String.format("Chunk: %d %d in %d %d\n", x & 15, z & 15, chunkX, chunkZ));
-        debug.append(String.format("Facing: %s\n", facing));
-        debug.append(String.format("Block Below: %s\n", blockBelowName));
-        debug.append(String.format("Biome: %s\n", biome.name()));
-        debug.append(String.format("Temperature: %.3f\n", temperature));
-        debug.append(String.format("Moisture: %.3f\n", moisture));
-        debug.append(String.format("Continentalness: %.3f\n", continentalness));
-        debug.append(String.format("Erosion: %.3f\n", erosion));
-        debug.append(String.format("Peaks/Valleys: %.3f\n", peaksValleys));
-        debug.append(String.format("Height: %d base / %d shaped (%+d) / %d final (%+d detail)\n",
-                baseHeight, shapedHeight, shapedHeight - baseHeight,
-                finalHeight, finalHeight - shapedHeight));
-        debug.append("\n");
-
-        // Targeted block info (what the player is looking at)
-        String targetedBlockInfo = getTargetedBlockInfo(player);
-        if (targetedBlockInfo != null) {
-            debug.append(targetedBlockInfo);
-            debug.append("\n");
+                if (wb != null) {
+                    return String.format("Water %s [%.3f]%s ~ (%d,%d,%d)",
+                            type, fill, tracked, bx, by, bz);
+                }
+                return String.format("Water [%.3f]%s ~ (%d,%d,%d)", fill, tracked, bx, by, bz);
+            }
+            if (bt != null && bt != BlockType.AIR) break;
         }
-        debug.append(String.format("FPS: %.0f (avg)\n", averageFPS));
-        debug.append(String.format("Chunks: %d loaded\n", loadedChunks));
-        debug.append(String.format("Pending Mesh: %d\n", world.getPendingMeshBuildCount()));
-        debug.append(String.format("Pending GL: %d\n", world.getPendingGLUploadCount()));
-        debug.append("\n");
-
-        // Add GPU information
-        queryGPUInfo(); // Query GPU info if not already done
-        debug.append("─── Graphics Card ───\n");
-        debug.append(String.format("GPU: %s\n", gpuRenderer != null ? gpuRenderer : "Unknown"));
-        debug.append(String.format("Vendor: %s\n", gpuVendor != null ? gpuVendor : "Unknown"));
-        debug.append(String.format("OpenGL: %s\n", gpuVersion != null ? gpuVersion : "Unknown"));
-        debug.append("\n");
-
-        debug.append("Path Visualization: ON\n");
-
-        // Add water state monitoring
-        String waterInfo = getWaterStateInfo(player);
-        if (waterInfo != null) {
-            debug.append("\n");
-            debug.append(waterInfo);
-        }
-
-        return debug.toString();
+        return null;
     }
 
     /**
@@ -342,48 +319,14 @@ public class DebugOverlay {
         return String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
     }
 
-    /**
-     * Renders the debug overlay using the provided renderer.
-     */
-    public void render(UIRenderer uiRenderer) {
-        if (!visible) {
-            return;
-        }
-
-        String debugText = getDebugText();
-        if (debugText.isEmpty()) {
-            return;
-        }
-
-        // Get window dimensions from Game instance to calculate right side position
-        int windowWidth = Game.getWindowWidth();
-
-        String[] lines = debugText.split("\n");
-        float rightMargin = 10; // Distance from right edge
-        float y = 10; // Start position
-        float lineHeight = 18;
-
-        for (String line : lines) {
-            if (line.contains("Stonebreak Debug")) {
-                // Calculate text width and position from right side
-                float textWidth = uiRenderer.getTextWidth(line, 20, "sans-bold");
-                float x = windowWidth - rightMargin - textWidth;
-                // Render title in yellow
-                uiRenderer.drawText(line, x, y, "sans-bold", 20, 1.0f, 1.0f, 0.0f, 1.0f);
-            } else {
-                // Calculate text width and position from right side
-                float textWidth = uiRenderer.getTextWidth(line, 16, "sans");
-                float x = windowWidth - rightMargin - textWidth;
-                // Render regular text
-                uiRenderer.drawText(line, x, y, "sans", 16, 1.0f, 1.0f, 1.0f, 1.0f);
-            }
-            y += lineHeight;
-        }
-
+    private static String truncate(String s, int maxLen) {
+        if (s == null || s.length() <= maxLen) return s != null ? s : "";
+        if (maxLen <= 3) return "...";
+        return s.substring(0, maxLen - 3) + "...";
     }
 
     /**
-     * Renders the RAM and VRAM resource cards using MasonryUI/Skija.
+     * Renders the RAM, VRAM, and debug info cards using MasonryUI/Skija.
      *
      * <p>Called from the main render loop <em>outside</em> the NanoVG UI frame,
      * because Skija has its own GL state bracketing.
@@ -395,14 +338,23 @@ public class DebugOverlay {
         }
         if (!masonryUI.isAvailable()) return;
 
-        // Refresh the panel data on a fixed cadence; render the cached panels
-        // on every frame in between.
+        // Update FPS average every frame (not gated by cache interval).
+        updateAverageFPS();
+
+        // Refresh resource panels on a slower cadence; they only change slowly.
         long now = System.currentTimeMillis();
         if (cachedRamPanel == null || cachedVramPanel == null
-                || now - lastPanelRebuildMs >= PANEL_REBUILD_INTERVAL_MS) {
+                || now - lastResourcePanelRebuildMs >= RESOURCE_PANEL_REBUILD_INTERVAL_MS) {
             cachedRamPanel = buildRamPanel();
             cachedVramPanel = buildVramPanel();
-            lastPanelRebuildMs = now;
+            lastResourcePanelRebuildMs = now;
+        }
+
+        // Refresh the debug panel on a faster cadence so player position feels responsive.
+        if (cachedDebugPanel == null
+                || now - lastDebugPanelRebuildMs >= DEBUG_PANEL_REBUILD_INTERVAL_MS) {
+            cachedDebugPanel = buildDebugPanel();
+            lastDebugPanelRebuildMs = now;
         }
 
         if (!masonryUI.beginFrame(sw, sh, 1.0f)) return;
@@ -416,6 +368,10 @@ public class DebugOverlay {
             y += ramHeight + gap;
 
             cachedVramPanel.render(masonryUI, leftMargin, y, panelWidth);
+
+            // Right-side debug info panel
+            float rightX = sw - leftMargin - panelWidth;
+            cachedDebugPanel.render(masonryUI, rightX, 10f, panelWidth);
 
             masonryUI.renderOverlays();
         } finally {
@@ -561,7 +517,89 @@ public class DebugOverlay {
             return "N/A";
         }
     }
-    
+
+    /**
+     * Builds the right-side debug info card with player position, chunk coords,
+     * facing direction, block/biome info, FPS, and GPU details — rendered in the
+     * same stone-surface style as the RAM/VRAM panels.
+     */
+    private MStatPanel buildDebugPanel() {
+        Player player = Game.getPlayer();
+        World world = Game.getWorld();
+
+        if (player == null || world == null) {
+            return new MStatPanel("Debug").row("Player or World unavailable", "");
+        }
+
+        Vector3f pos = player.getPosition();
+        int x = (int) Math.floor(pos.x);
+        int y = (int) Math.floor(pos.y);
+        int z = (int) Math.floor(pos.z);
+        int chunkX = x >> 4;
+        int chunkZ = z >> 4;
+
+        BiomeType biome = world.getBiomeAt(x, z);
+        String facing = getCardinalDirection(player.getCamera().getFront());
+        BlockType blockBelow = world.getBlockAt(x, y - 1, z);
+        String blockName = blockBelow != null ? blockBelow.name() : "Unknown";
+
+        // Noise channels driving terrain shape
+        float continentalness = world.getContinentalnessAt(x, z);
+        float erosion = world.getErosionAt(x, z);
+        float peaksValleys = world.getPeaksValleysAt(x, z);
+        int baseHeight = world.getBaseHeightAt(x, z);
+        int shapedHeight = world.getShapedHeightAt(x, z);
+        int finalHeight = world.getFinalTerrainHeightAt(x, z);
+
+        // Targeted block info
+        String targetedLine = getTargetedBlockSummary(player);
+
+        MStatPanel panel = new MStatPanel("Debug Info")
+            .row("XYZ", String.format("%d / %d / %d", x, y, z))
+            .row("Chunk", String.format("%d %d in %d %d", x & 15, z & 15, chunkX, chunkZ))
+            .row("Facing", facing);
+
+        panel.section("Terrain");
+        panel.row("Block Below", blockName);
+        panel.row("Biome", biome.name());
+        panel.row("Temperature", String.format("%.3f", world.getTemperatureAt(x, z)));
+        panel.row("Moisture", String.format("%.3f", world.getMoistureAt(x, z)));
+        panel.row("Continentalness", String.format("%.3f", continentalness));
+        panel.row("Erosion", String.format("%.3f", erosion));
+        panel.row("Peaks/Valleys", String.format("%.3f", peaksValleys));
+        panel.row("Height", String.format("%d base / %d shaped (%+d) / %d final (%+d detail)",
+                baseHeight, shapedHeight, shapedHeight - baseHeight,
+                finalHeight, finalHeight - shapedHeight));
+
+        // Targeted block + water (conditionally shown)
+        if (targetedLine != null) {
+            panel.section("Target");
+            panel.row("Looking At", targetedLine);
+        }
+        String waterLine = getWaterStateSummary(player);
+        if (waterLine != null) {
+            panel.section("Water");
+            panel.row("Looking At", waterLine);
+        }
+
+        panel.section("World");
+        panel.row("FPS", String.format("%.0f (avg)", averageFPS));
+        panel.row("Chunks", String.format("%d loaded", world.getLoadedChunkCount()));
+        panel.row("Pending Mesh", String.valueOf(world.getPendingMeshBuildCount()));
+        panel.row("Pending GL", String.valueOf(world.getPendingGLUploadCount()));
+
+        panel.section("Graphics");
+        queryGPUInfo();
+        panel.row("GPU", truncate(gpuRenderer != null ? gpuRenderer : "Unknown", 30));
+        panel.row("Vendor", truncate(gpuVendor != null ? gpuVendor : "Unknown", 25));
+        panel.row("OpenGL", gpuVersion != null ? gpuVersion : "Unknown");
+
+        panel.section("Debug");
+        panel.row("Path Visual", "ON");
+
+        return panel;
+    }
+
     /**
      * Renders debug wireframes for entities (called after UI rendering).
      */
@@ -629,55 +667,6 @@ public class DebugOverlay {
         renderer.renderWireframePath(pathPoints, blue);
     }
 
-    /**
-     * Gets information about the block the player is looking at,
-     * including whether it uses an SBO model or the legacy mesh system.
-     */
-    private String getTargetedBlockInfo(Player player) {
-        Vector3f position = player.getPosition();
-        Camera camera = player.getCamera();
-        World world = Game.getWorld();
-
-        if (camera == null || world == null) {
-            return null;
-        }
-
-        Vector3f rayOrigin = new Vector3f(position.x, position.y + 1.6f, position.z);
-        Vector3f rayDirection = camera.getFront();
-
-        float maxDistance = 6.0f;
-        float stepSize = 0.05f;
-
-        for (float distance = 0; distance < maxDistance; distance += stepSize) {
-            Vector3f point = new Vector3f(rayDirection).mul(distance).add(rayOrigin);
-
-            int blockX = (int) Math.floor(point.x);
-            int blockY = (int) Math.floor(point.y);
-            int blockZ = (int) Math.floor(point.z);
-
-            BlockType blockType = world.getBlockAt(blockX, blockY, blockZ);
-
-            if (blockType != null && blockType != BlockType.AIR) {
-                StringBuilder info = new StringBuilder();
-                info.append("─── Targeted Block ───\n");
-                info.append(String.format("Block: %s (%d, %d, %d)\n", blockType.name(), blockX, blockY, blockZ));
-
-                Renderer renderer = Game.getRenderer();
-                SBOBlockBridge bridge = renderer != null ? renderer.getSBOBlockBridge() : null;
-
-                if (bridge != null && bridge.isSBOBlock(blockType)) {
-                    info.append("Model: SBO\n");
-                } else {
-                    info.append("Model: Legacy Mesh\n");
-                }
-
-                return info.toString();
-            }
-        }
-
-        return null;
-    }
-
     private String getCardinalDirection(Vector3f front) {
         // Calculate yaw from front vector
         // In OpenGL, -Z is forward, so we need to use atan2(-front.z, front.x)
@@ -706,93 +695,5 @@ public class DebugOverlay {
         } else {
             return "Southeast";
         }
-    }
-
-    /**
-     * Gets information about the water block the player is looking at.
-     * @param player The player instance
-     * @return Water state information string, or null if not looking at water
-     */
-    private String getWaterStateInfo(Player player) {
-        Vector3i waterBlockPos = raycastForWater(player);
-        if (waterBlockPos == null) {
-            return null;
-        }
-
-        World world = Game.getWorld();
-        if (world == null) {
-            return null;
-        }
-
-        // Get water block data through the Water class
-        WaterBlock waterBlock = Water.getWaterBlock(waterBlockPos.x, waterBlockPos.y, waterBlockPos.z);
-        if (waterBlock == null) {
-            return "Water State: No tracked water";
-        }
-
-        float fill = Water.getWaterLevel(waterBlockPos.x, waterBlockPos.y, waterBlockPos.z);
-        float visualHeight = Water.getWaterVisualHeight(waterBlockPos.x, waterBlockPos.y, waterBlockPos.z);
-
-        StringBuilder waterInfo = new StringBuilder();
-        waterInfo.append("─── Water State Monitor ───\n");
-        waterInfo.append(String.format("Looking at: Water (%d, %d, %d)\n",
-            waterBlockPos.x, waterBlockPos.y, waterBlockPos.z));
-        waterInfo.append(String.format("Level: %d (%s)\n",
-            waterBlock.level(), waterBlock.isSource() ? "Source" : "Flowing"));
-        waterInfo.append(String.format("Falling: %s\n", waterBlock.falling() ? "Yes" : "No"));
-        waterInfo.append(String.format("Fill: %.3f\n", fill));
-        waterInfo.append(String.format("Visual Height: %.3f\n", visualHeight));
-
-        WaterSystem system = world.getWaterSystem();
-        if (system != null) {
-            waterInfo.append(String.format("Tracked Water Blocks: %d\n", system.getTrackedWaterCount()));
-        }
-
-        return waterInfo.toString();
-    }
-
-    /**
-     * Performs a raycast specifically looking for water blocks.
-     * @param player The player instance
-     * @return Position of the first water block hit, or null if none found
-     */
-    private Vector3i raycastForWater(Player player) {
-        Vector3f position = player.getPosition();
-        Camera camera = player.getCamera();
-        World world = Game.getWorld();
-
-        if (camera == null || world == null) {
-            return null;
-        }
-
-        // Start ray from player's eye level
-        Vector3f rayOrigin = new Vector3f(position.x, position.y + 1.6f, position.z);
-        Vector3f rayDirection = camera.getFront();
-
-        float maxDistance = 5.0f;
-        float stepSize = 0.05f;
-
-        // Perform ray marching
-        for (float distance = 0; distance < maxDistance; distance += stepSize) {
-            Vector3f point = new Vector3f(rayDirection).mul(distance).add(rayOrigin);
-
-            int blockX = (int) Math.floor(point.x);
-            int blockY = (int) Math.floor(point.y);
-            int blockZ = (int) Math.floor(point.z);
-
-            BlockType blockType = world.getBlockAt(blockX, blockY, blockZ);
-
-            // Look specifically for water blocks
-            if (blockType == BlockType.WATER) {
-                return new Vector3i(blockX, blockY, blockZ);
-            }
-
-            // Stop at solid blocks
-            if (blockType != BlockType.AIR) {
-                break;
-            }
-        }
-
-        return null;
     }
 }

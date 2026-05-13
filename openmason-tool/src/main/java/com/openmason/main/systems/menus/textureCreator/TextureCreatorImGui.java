@@ -74,6 +74,9 @@ public class TextureCreatorImGui {
     // Drag-and-drop handler for processing dropped files
     private final DragDropHandler dragDropHandler;
 
+    // Face texture resize dialog (wired in after viewport is available)
+    private FaceTextureResizeDialog faceTextureResizeDialog;
+
     /**
      * Create texture creator UI with dependency injection.
      * Follows SOLID: Dependency Inversion Principle.
@@ -310,6 +313,28 @@ public class TextureCreatorImGui {
     }
 
     /**
+     * Wire the per-face texture resize dialog. Once set, the dialog is rendered
+     * every frame (so its modal popup can stay alive while open) and the
+     * "Edit → Resize Face Texture..." menu entry triggers it.
+     *
+     * @param dialog the resize dialog (must already have its dependencies injected)
+     */
+    public FaceTextureResizeDialog getFaceTextureResizeDialog() {
+        return faceTextureResizeDialog;
+    }
+
+    public void setFaceTextureResizeDialog(FaceTextureResizeDialog dialog) {
+        this.faceTextureResizeDialog = dialog;
+        if (dialog == null) {
+            return;
+        }
+        menuBarRenderer.setOnResizeFaceTextureRequested(
+                dialog::openForCurrentFace, dialog::canOpen);
+        windowedMenuBarRenderer.setOnResizeFaceTextureRequested(
+                dialog::openForCurrentFace, dialog::canOpen);
+    }
+
+    /**
      * Process dropped files (PNG and OMT).
      * Called from TextureEditorWindow when processing pending file drops.
      *
@@ -384,6 +409,10 @@ public class TextureCreatorImGui {
         panelRenderer.renderNoiseFilterWindow();
         panelRenderer.renderSymmetryWindow();
 
+        if (faceTextureResizeDialog != null) {
+            faceTextureResizeDialog.render();
+        }
+
         dialogProcessor.processAll();
     }
 
@@ -412,6 +441,10 @@ public class TextureCreatorImGui {
         panelRenderer.renderPreferencesWindow();
         panelRenderer.renderNoiseFilterWindow();
         panelRenderer.renderSymmetryWindow();
+
+        if (faceTextureResizeDialog != null) {
+            faceTextureResizeDialog.render();
+        }
 
         dialogProcessor.processAll();
     }

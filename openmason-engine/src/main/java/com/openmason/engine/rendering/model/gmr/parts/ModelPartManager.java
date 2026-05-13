@@ -61,6 +61,22 @@ public class ModelPartManager implements IModelPartManager {
     private final Map<String, Matrix4f> effectiveMatrixCache = new HashMap<>();
 
     /**
+     * Resolver for parent IDs that are not known parts (e.g. bones in a unified rigging
+     * hierarchy). When a part's parent is not in the {@link #parts} map, the resolver
+     * is consulted to obtain its world matrix so part rendering composes with it.
+     * Returning {@code null} treats the parent as a root.
+     */
+    private java.util.function.Function<String, Matrix4f> externalParentResolver;
+
+    /**
+     * Re-entrancy guard for {@link #getEffectiveWorldMatrix(String)}. Cross-store
+     * recursion (parts ↔ bones) can cycle through pathological data; if a recursive
+     * call re-enters with the same id, we break the chain by returning identity for
+     * that branch instead of stack-overflowing.
+     */
+    private final Set<String> matrixVisiting = new HashSet<>();
+
+    /**
      * Functional interface for receiving rebuilt mesh data.
      * Decouples the manager from specific renderer implementations.
      */
@@ -574,10 +590,11 @@ public class ModelPartManager implements IModelPartManager {
             logger.warn("Cannot reparent part to itself (id={})", id);
             return false;
         }
-        if (parentId != null && !parts.containsKey(parentId)) {
-            logger.warn("Cannot reparent: parent not found (parentId={})", parentId);
-            return false;
-        }
+        // parentId may reference a non-part node (e.g. a bone in a unified rigging hierarchy).
+        // Such parents are treated as roots for matrix composition — getEffectiveWorldMatrix
+        // already falls back to the part's local transform when parents.containsKey is false —
+        // but the parent ID is still recorded so external systems (UI tree, file format) can
+        // rebuild the unified hierarchy.
         if (Objects.equals(existing.parentId(), parentId)) {
             return false; // no-op
         }
@@ -616,15 +633,52 @@ public class ModelPartManager implements IModelPartManager {
             return new Matrix4f();
         }
 
-        Matrix4f local = part.transform().toMatrix();
-        Matrix4f effective;
-        if (part.parentId() == null) {
-            effective = local;
-        } else {
-            effective = new Matrix4f(getEffectiveWorldMatrix(part.parentId())).mul(local);
+        if (!matrixVisiting.add(id)) {
+            logger.warn("Cycle detected at part {} during effective-matrix walk — returning identity", id);
+            return new Matrix4f();
         }
-        effectiveMatrixCache.put(id, new Matrix4f(effective));
-        return effective;
+        try {
+            Matrix4f local = part.transform().toMatrix();
+            Matrix4f effective;
+            String parentId = part.parentId();
+            if (parentId == null) {
+                effective = local;
+            } else if (parts.containsKey(parentId)) {
+                effective = new Matrix4f(getEffectiveWorldMatrix(parentId)).mul(local);
+            } else if (externalParentResolver != null) {
+                // Parent isn't a part — it might be a bone or other external node.
+                // Compose with the external matrix when available; otherwise treat as root.
+                Matrix4f external = externalParentResolver.apply(parentId);
+                effective = external != null ? new Matrix4f(external).mul(local) : local;
+            } else {
+                effective = local;
+            }
+            effectiveMatrixCache.put(id, new Matrix4f(effective));
+            return effective;
+        } finally {
+            matrixVisiting.remove(id);
+        }
+    }
+
+    /**
+     * Wire a resolver for parent IDs that are not known parts. Used by the editor to
+     * compose part transforms with bone matrices in a unified parts+bones hierarchy.
+     * The resolver may return {@code null} to indicate the parent has no transform
+     * (effectively treating the part as a root for matrix composition).
+     */
+    public void setExternalParentResolver(java.util.function.Function<String, Matrix4f> resolver) {
+        this.externalParentResolver = resolver;
+        invalidateEffectiveMatrixCache();
+    }
+
+    /**
+     * Notify the manager that the external hierarchy (bones, etc.) has changed.
+     * Invalidates the effective-matrix cache and rebuilds the combined mesh so the
+     * vertex buffer reflects the new world transforms.
+     */
+    public void notifyExternalHierarchyChanged() {
+        invalidateEffectiveMatrixCache();
+        rebuildCombinedMesh();
     }
 
     /**

@@ -70,6 +70,14 @@ public class ViewportController {
     private final GizmoState gizmoState;
     private final GizmoRenderer gizmoRenderer;
 
+    // ========== Skeleton ==========
+    private final com.openmason.main.systems.skeleton.BoneStore boneStore =
+            new com.openmason.main.systems.skeleton.BoneStore();
+
+    // ========== Gizmo Targets ==========
+    private com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.PartTransformTarget partTransformTarget;
+    private com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.BoneTransformTarget boneTransformTarget;
+
     // ========== Input & UI ==========
     private final ViewportInputHandler inputHandler;
 
@@ -77,6 +85,7 @@ public class ViewportController {
 
     // ========== Undo/Redo ==========
     private final ModelCommandHistory commandHistory;
+    private RendererSynchronizer rendererSynchronizer;
 
     // ========== Services ==========
     private com.openmason.main.systems.services.EdgeOperationService edgeOperationService;
@@ -123,20 +132,32 @@ public class ViewportController {
         // Wire part transform target to gizmo — when parts are selected in the
         // ModelPartManager, the gizmo automatically positions at and transforms the part.
         // TransformState is passed so the gizmo accounts for model-level transforms.
-        com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.PartTransformTarget partTarget =
+        this.partTransformTarget =
                 new com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.PartTransformTarget(
                         modelRenderer.getPartManager(), transformState
                 );
-        gizmoRenderer.setTransformTarget(partTarget);
+        // Bone target — same gizmo, but writes into BoneStore for a selected bone.
+        this.boneTransformTarget =
+                new com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.BoneTransformTarget(
+                        boneStore, transformState
+                );
+        gizmoRenderer.setTransformTarget(partTransformTarget);
 
-        // Wire auto-show gizmo on part selection change
+        // Wire auto-show gizmo on part selection change, and invalidate the bone
+        // skeleton cache whenever parts move (bones nested under parts inherit their world transform).
         modelRenderer.getPartManager().addPartChangeListener(
                 new com.openmason.engine.rendering.model.gmr.parts.IPartChangeListener() {
-                    @Override public void onPartAdded(com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor part) {}
-                    @Override public void onPartRemoved(String partId) {}
-                    @Override public void onPartTransformChanged(String partId, com.openmason.engine.rendering.model.gmr.parts.PartTransform t) {}
-                    @Override public void onPartsMerged(java.util.List<String> sourceIds, com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor merged) {}
-                    @Override public void onPartsRebuilt() {}
+                    @Override public void onPartAdded(com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor part) {
+                        boneStore.invalidate();
+                    }
+                    @Override public void onPartRemoved(String partId) { boneStore.invalidate(); }
+                    @Override public void onPartTransformChanged(String partId, com.openmason.engine.rendering.model.gmr.parts.PartTransform t) {
+                        boneStore.invalidate();
+                    }
+                    @Override public void onPartsMerged(java.util.List<String> sourceIds, com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor merged) {
+                        boneStore.invalidate();
+                    }
+                    @Override public void onPartsRebuilt() { boneStore.invalidate(); }
 
                     @Override
                     public void onPartSelectionChanged(java.util.Set<String> selectedIds) {
@@ -144,6 +165,26 @@ public class ViewportController {
                     }
                 }
         );
+
+        // Resolve cross-type bone parents (bone parented to a part) by consulting the
+        // part manager's effective world matrix cache.
+        boneStore.setExternalParentResolver(
+                nodeId -> modelRenderer.getPartManager().getPartById(nodeId).isPresent()
+                        ? modelRenderer.getPartManager().getEffectiveWorldMatrix(nodeId)
+                        : null
+        );
+
+        // Reverse direction: parts can be parented to bones. The part manager consults
+        // BoneStore for the parent's TAIL world matrix when its parentId isn't a known
+        // part — children attach at the bone's tail so rotating the bone rotates them.
+        // The skeleton notifies the part manager whenever bone data changes so the
+        // baked vertex buffer rebuilds.
+        modelRenderer.getPartManager().setExternalParentResolver(
+                nodeId -> boneStore.getById(nodeId) != null
+                        ? boneStore.getTailWorldTransform(nodeId)
+                        : null
+        );
+        boneStore.setOnChange(modelRenderer.getPartManager()::notifyExternalHierarchyChanged);
 
         // Load display mode from preferences
         com.openmason.main.systems.menus.preferences.PreferencesManager prefs =
@@ -194,6 +235,7 @@ public class ViewportController {
                 blockRenderer, itemRenderer,
                     modelRenderer, gizmoRenderer
             );
+            this.viewportRenderPipeline.setBoneStore(boneStore);
 
             // Initialize EdgeOperationService after ViewportRenderPipeline is ready
             this.edgeOperationService = new com.openmason.main.systems.services.EdgeOperationService(
@@ -316,6 +358,7 @@ public class ViewportController {
                     edgeSelectionState,
                     faceSelectionState
                 );
+                this.rendererSynchronizer = synchronizer;
                 vertexTranslationHandler.setCommandHistory(commandHistory, synchronizer);
                 edgeTranslationHandler.setCommandHistory(commandHistory, synchronizer);
                 faceTranslationHandler.setCommandHistory(commandHistory, synchronizer);
@@ -684,6 +727,29 @@ public class ViewportController {
     public RenderingState getRenderingState() { return renderingState; }
     public TransformState getTransformState() { return transformState; }
 
+    /** Session-level skeleton owned by this viewport. */
+    public com.openmason.main.systems.skeleton.BoneStore getBoneStore() { return boneStore; }
+
+    /**
+     * Hook called by the rigging hierarchy when the user picks a bone in the tree.
+     * Swaps the gizmo's transform target to a bone target (so drags edit the bone's
+     * joint pos/rot) and brings the gizmo on-screen when in auto-show mode. Passing
+     * {@code null} reverts to the part transform target.
+     */
+    public void onBoneSelectionChanged(String boneId) {
+        boneStore.setSelectedBoneId(boneId);
+        if (boneId != null) {
+            modelRenderer.getPartManager().deselectAllParts();
+            gizmoRenderer.setTransformTarget(boneTransformTarget);
+            updateGizmoVisibilityForSelection(true);
+        } else {
+            gizmoRenderer.setTransformTarget(partTransformTarget);
+            updateGizmoVisibilityForSelection(
+                    !modelRenderer.getPartManager().getSelectedPartIds().isEmpty()
+            );
+        }
+    }
+
     /**
      * Set the face being edited in the texture editor.
      * Switches the overlay from a filled highlight to an outline for that face.
@@ -696,6 +762,7 @@ public class ViewportController {
         }
     }
     public ModelCommandHistory getCommandHistory() { return commandHistory; }
+    public RendererSynchronizer getRendererSynchronizer() { return rendererSynchronizer; }
 
     /**
      * Toggle the knife tool from keybind (K key).

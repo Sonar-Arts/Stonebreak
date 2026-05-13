@@ -946,11 +946,8 @@ public class Main {
             debugOverlay.renderWireframes(renderer);
 
             if (renderer != null) {
-                // Right-side text overlay uses NanoVG.
-                renderer.beginUIFrame(width, height, 1.0f);
-                debugOverlay.render(renderer.getUIRenderer());
-                renderer.endUIFrame();
-                // Left-side resource cards use MasonryUI/Skija (separate GL bracket).
+                // All debug panels (left RAM/VRAM + right debug info) use
+                // MasonryUI/Skija — single GL bracket covers them.
                 debugOverlay.renderResourcePanels(renderer, width, height);
             }
         }

@@ -283,6 +283,34 @@ public final class OpenMasonToolDefinitions {
                         reqString(args, "id_or_name"),
                         (int) reqFloat(args, "local_face_id"),
                         new Vector3f(reqFloat(args, "dx"), reqFloat(args, "dy"), reqFloat(args, "dz"))).orElse(null)));
+
+        // ---------- Undo / redo (model + face-texture share this history) ----------
+
+        registry.register(new McpTool(
+                "model_undo",
+                "Undo the most recent model or face-texture mutation. Covers part/geometry "
+                        + "operations and per-face texture commits/creates/resizes from the MCP "
+                        + "surface plus interactive UI edits in the viewport.",
+                schema().build(),
+                args -> editor.undo()));
+
+        registry.register(new McpTool(
+                "model_redo",
+                "Redo the most recently undone model or face-texture mutation.",
+                schema().build(),
+                args -> editor.redo()));
+
+        registry.register(new McpTool(
+                "model_can_undo",
+                "Returns true if there is at least one model/face-texture command in the undo stack.",
+                schema().build(),
+                args -> editor.canUndo()));
+
+        registry.register(new McpTool(
+                "model_can_redo",
+                "Returns true if there is at least one model/face-texture command in the redo stack.",
+                schema().build(),
+                args -> editor.canRedo()));
     }
 
     // ===================== Schema builder =====================

@@ -90,4 +90,15 @@ public final class SnapshotCommand implements ModelCommand {
                                               GenericModelRenderer gmr, RendererSynchronizer sync) {
         return new SnapshotCommand(before, after, "Move + Merge Vertices", gmr, sync);
     }
+
+    /**
+     * Generic factory for arbitrary mesh mutations — used by the MCP services
+     * which expose a wide variety of part/face/geometry ops that all reduce to
+     * "snapshot before, run mutation, snapshot after".
+     */
+    public static SnapshotCommand custom(String description,
+                                          MeshSnapshot before, MeshSnapshot after,
+                                          GenericModelRenderer gmr, RendererSynchronizer sync) {
+        return new SnapshotCommand(before, after, description, gmr, sync);
+    }
 }

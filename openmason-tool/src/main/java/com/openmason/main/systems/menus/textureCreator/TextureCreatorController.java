@@ -123,6 +123,7 @@ public class TextureCreatorController {
      * @param fillColor RGBA fill color (use {@link PixelCanvas#packRGBA})
      */
     public void prepareBlankCanvas(int width, int height, int fillColor) {
+        state.setCurrentCanvasSize(new TextureCreatorState.CanvasSize(width, height));
         state.setCurrentFilePath(null);
         state.setUnsavedChanges(false);
 
@@ -152,6 +153,7 @@ public class TextureCreatorController {
      * @param rgbaPixels RGBA byte array (4 bytes per pixel, row-major)
      */
     public void prepareCanvasFromPixels(int width, int height, byte[] rgbaPixels) {
+        state.setCurrentCanvasSize(new TextureCreatorState.CanvasSize(width, height));
         state.setCurrentFilePath(null);
         state.setUnsavedChanges(false);
 
@@ -216,6 +218,8 @@ public class TextureCreatorController {
         this.layerManager = loadedManager;
 
         // Update state
+        state.setCurrentCanvasSize(new TextureCreatorState.CanvasSize(
+                loadedManager.getCanvasWidth(), loadedManager.getCanvasHeight()));
         state.setCurrentFilePath(filePath);
         state.setIsProjectFile(true);
         state.markAsSaved();

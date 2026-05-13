@@ -6,6 +6,8 @@ import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.rendering.core.SBTRenderer;
 import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.bones.BoneGizmoRenderer;
+import com.openmason.main.systems.skeleton.BoneStore;
 import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
 import com.openmason.engine.rendering.shaders.ShaderManager;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
@@ -79,6 +81,10 @@ public class ViewportRenderPipeline {
     // Knife tool preview renderer
     private final KnifePreviewRenderer knifePreviewRenderer;
 
+    // Bone gizmo overlay (Maya-style joints + shafts, x-ray)
+    private final BoneGizmoRenderer boneGizmoRenderer = new BoneGizmoRenderer();
+    private BoneStore boneStore;
+
     // Diagnostic throttling
     private long lastDiagnosticLogTime = 0;
     private static final long DIAGNOSTIC_LOG_INTERVAL_MS = 2000;
@@ -119,6 +125,18 @@ public class ViewportRenderPipeline {
      * Call this when mesh data has been modified externally (e.g., after loading from file).
      * This forces the renderers to rebuild from the model on next render.
      */
+    /**
+     * Inject the active session's skeleton. The pipeline reads this each frame when
+     * the user has bone visualization enabled; null disables bone rendering.
+     */
+    public void setBoneStore(BoneStore store) {
+        this.boneStore = store;
+    }
+
+    public BoneStore getBoneStore() {
+        return boneStore;
+    }
+
     public void invalidateMeshData() {
         vertexDataNeedsUpdate = true;
         edgeDataNeedsUpdate = true;
@@ -177,6 +195,13 @@ public class ViewportRenderPipeline {
             // PASS 4: Render gizmo (after content, always in fill mode)
             if (gizmoRenderer != null && gizmoRenderer.isInitialized()) {
                 renderGizmo();
+            }
+
+            // PASS 5: Bone gizmos (editor-only overlay, x-ray)
+            if (viewportState.getShowBones().get()
+                    && renderingState.getMode() == RenderingMode.BLOCK_MODEL
+                    && boneStore != null && !boneStore.isEmpty()) {
+                renderBoneGizmos(transformState);
             }
 
             // Unbind framebuffer
@@ -385,6 +410,54 @@ public class ViewportRenderPipeline {
         } catch (Exception e) {
             logger.error("Error rendering gizmo", e);
         }
+    }
+
+    /**
+     * Render the bone skeleton overlay using the gizmo shader. Drawn after the model
+     * gizmo so it composites on top, with depth-test disabled inside the renderer for
+     * Maya-style x-ray display.
+     */
+    private void renderBoneGizmos(TransformState transformState) {
+        try {
+            if (!boneGizmoRenderer.isInitialized()) {
+                boneGizmoRenderer.initialize();
+            }
+            ShaderProgram gizmoShader = shaderManager.getShaderProgram(ShaderType.GIZMO);
+            boneGizmoRenderer.render(
+                    gizmoShader,
+                    context.getCamera().getViewMatrix(),
+                    context.getCamera().getProjectionMatrix(),
+                    transformState.getTransformMatrix(),
+                    boneStore,
+                    collectBoneChildPartPivots()
+            );
+        } catch (Exception e) {
+            logger.error("Error rendering bone gizmos", e);
+        }
+    }
+
+    /**
+     * Build a map of bone id → world pivots of parts that are direct children of that bone.
+     * Used by {@link BoneGizmoRenderer} to draw the connecting shafts that emanate from a
+     * bone's tail toward the parts it visually anchors. (The bone gizmo draws the shaft
+     * from the bone's tail position to each part pivot.)
+     */
+    private java.util.Map<String, java.util.List<org.joml.Vector3f>> collectBoneChildPartPivots() {
+        java.util.Map<String, java.util.List<org.joml.Vector3f>> result = new java.util.HashMap<>();
+        if (boneStore == null || boneStore.isEmpty() || modelRenderer == null) {
+            return result;
+        }
+        var partManager = modelRenderer.getPartManager();
+        if (partManager == null) return result;
+
+        for (var part : partManager.getAllParts()) {
+            String parentId = part.parentId();
+            if (parentId == null || boneStore.getById(parentId) == null) continue;
+            org.joml.Vector3f pivot = partManager.getEffectiveWorldMatrix(part.id())
+                    .transformPosition(new org.joml.Vector3f());
+            result.computeIfAbsent(parentId, k -> new java.util.ArrayList<>()).add(pivot);
+        }
+        return result;
     }
 
     /**
@@ -649,6 +722,9 @@ public class ViewportRenderPipeline {
         }
         if (knifePreviewRenderer != null && knifePreviewRenderer.isInitialized()) {
             knifePreviewRenderer.cleanup();
+        }
+        if (boneGizmoRenderer.isInitialized()) {
+            boneGizmoRenderer.cleanup();
         }
         logger.debug("ViewportRenderPipeline cleanup complete");
     }

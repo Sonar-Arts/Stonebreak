@@ -14,12 +14,13 @@ import java.util.Objects;
  *   <li>1.3 - Added model part entries for multi-part models (part transforms, mesh ranges)</li>
  *   <li>1.4 - Added model-level transform (position, rotation, scale)</li>
  *   <li>1.5 - Added optional part hierarchy (parentId on PartEntry)</li>
+ *   <li>1.6 - Added optional bone skeleton (BoneEntry list, boneId on PartEntry)</li>
  * </ul>
  */
 public final class OMOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.5";
+    public static final String FORMAT_VERSION = "1.6";
 
     /** Minimum supported format version for reading */
     public static final String MIN_SUPPORTED_VERSION = "1.0";
@@ -213,6 +214,7 @@ public final class OMOFormat {
      * @param visible     Whether this part is rendered
      * @param locked      Whether this part is protected from editing
      * @param parentId    Optional parent part ID for hierarchical transforms (v1.5+); null = root
+     * @param boneId      Optional bone ID this part is attached to (v1.6+); null = unbound
      */
     public record PartEntry(
             String id, String name,
@@ -224,11 +226,12 @@ public final class OMOFormat {
             int indexStart, int indexCount,
             int faceStart, int faceCount,
             boolean visible, boolean locked,
-            String parentId
+            String parentId,
+            String boneId
     ) {
         /**
-         * Backward-compatible constructor for callers that don't supply a parent.
-         * Pre-1.5 readers and call sites get a root part (parentId = null).
+         * Backward-compatible constructor for callers that don't supply a parent or bone.
+         * Pre-1.5 readers and call sites get a root part (parentId = null, boneId = null).
          */
         public PartEntry(
                 String id, String name,
@@ -248,7 +251,84 @@ public final class OMOFormat {
                     vertexStart, vertexCount,
                     indexStart, indexCount,
                     faceStart, faceCount,
-                    visible, locked, null);
+                    visible, locked, null, null);
+        }
+
+        /**
+         * Backward-compatible constructor for v1.5 callers that supply parentId but no bone.
+         */
+        public PartEntry(
+                String id, String name,
+                float originX, float originY, float originZ,
+                float posX, float posY, float posZ,
+                float rotX, float rotY, float rotZ,
+                float scaleX, float scaleY, float scaleZ,
+                int vertexStart, int vertexCount,
+                int indexStart, int indexCount,
+                int faceStart, int faceCount,
+                boolean visible, boolean locked,
+                String parentId
+        ) {
+            this(id, name, originX, originY, originZ,
+                    posX, posY, posZ,
+                    rotX, rotY, rotZ,
+                    scaleX, scaleY, scaleZ,
+                    vertexStart, vertexCount,
+                    indexStart, indexCount,
+                    faceStart, faceCount,
+                    visible, locked, parentId, null);
+        }
+    }
+
+    /**
+     * Bone entry for skeletal models (v1.6+).
+     *
+     * <p>Bones are pure transform data; they carry no mesh. Mesh parts opt-in by
+     * setting {@link PartEntry#boneId()} to reference a bone. The skeleton is a
+     * tree formed by each bone's {@code parentBoneId} (null = root). Bone-space
+     * transforms are local to the parent (or model space for roots), and the
+     * recorded values represent the bind / rest pose.
+     *
+     * <p>Each bone is a directional segment from a <b>head</b> (joint at
+     * {@code origin + pos}, rotated by {@code rot}) to a <b>tail</b> (offset
+     * {@code endpoint} in the bone's local frame after rotation). Children
+     * (other bones or parts) inherit from the tail frame, mirroring how Maya /
+     * Blender rigs propagate rotation down the chain.
+     *
+     * <p>Bones are only rendered as gizmos inside Open Mason when the user enables
+     * bone visualization; at runtime they contribute transforms only.
+     *
+     * @param id            Stable unique identifier (UUID string)
+     * @param name          User-facing display name (e.g. "head", "leg_front_left")
+     * @param parentBoneId  Parent bone id, or {@code null} for a root bone
+     * @param originX       Local pivot X (head joint position in parent's tail space)
+     * @param originY       Local pivot Y
+     * @param originZ       Local pivot Z
+     * @param posX          Rest-pose translation X applied at the head joint
+     * @param posY          Rest-pose translation Y
+     * @param posZ          Rest-pose translation Z
+     * @param rotX          Rest-pose Euler rotation X in degrees (XYZ order, applied at head)
+     * @param rotY          Rest-pose Euler rotation Y in degrees
+     * @param rotZ          Rest-pose Euler rotation Z in degrees
+     * @param endpointX     Tail offset X in the bone's local frame (post-rotation)
+     * @param endpointY     Tail offset Y in the bone's local frame
+     * @param endpointZ     Tail offset Z in the bone's local frame
+     */
+    public record BoneEntry(
+            String id, String name, String parentBoneId,
+            float originX, float originY, float originZ,
+            float posX, float posY, float posZ,
+            float rotX, float rotY, float rotZ,
+            float endpointX, float endpointY, float endpointZ
+    ) {
+        public BoneEntry {
+            Objects.requireNonNull(id, "bone id cannot be null");
+            Objects.requireNonNull(name, "bone name cannot be null");
+        }
+
+        /** True if this bone has no parent (i.e. it is a skeleton root). */
+        public boolean isRoot() {
+            return parentBoneId == null || parentBoneId.isBlank();
         }
     }
 

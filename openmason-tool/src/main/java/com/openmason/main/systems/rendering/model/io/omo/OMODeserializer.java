@@ -74,6 +74,9 @@ public class OMODeserializer {
     // Last loaded model transform (v1.4+)
     private OMOFormat.ModelTransform lastLoadedModelTransform;
 
+    // Last loaded bone skeleton (v1.6+)
+    private List<OMOFormat.BoneEntry> lastLoadedBoneEntries;
+
     // Last loaded face texture data (v1.2+, accessible after load())
     private OMOFormat.FaceTextureData lastLoadedFaceTextureData;
     private Map<String, byte[]> lastLoadedMaterialTextures;
@@ -136,6 +139,14 @@ public class OMODeserializer {
     }
 
     /**
+     * Get bone skeleton entries from the last successful load() call (v1.6+).
+     * Returns null for pre-1.6 files or files without a skeleton.
+     */
+    public List<OMOFormat.BoneEntry> getLastLoadedBoneEntries() {
+        return lastLoadedBoneEntries;
+    }
+
+    /**
      * Loads a BlockModel from a .OMO file.
      * After loading, call getLastLoadedMeshData() to retrieve any custom mesh data.
      *
@@ -149,6 +160,7 @@ public class OMODeserializer {
         lastLoadedMaterialTextures = null;
         lastLoadedPartEntries = null;
         lastLoadedModelTransform = null;
+        lastLoadedBoneEntries = null;
 
         if (filePath == null || filePath.trim().isEmpty()) {
             logger.error("Invalid file path");
@@ -175,6 +187,7 @@ public class OMODeserializer {
             lastLoadedMaterialTextures = loadedData.materialTextures();
             lastLoadedPartEntries = loadedData.partEntries();
             lastLoadedModelTransform = loadedData.modelTransform();
+            lastLoadedBoneEntries = loadedData.boneEntries();
 
             // Build BlockModel from loaded data
             BlockModel model = buildModel(loadedData);
@@ -206,6 +219,7 @@ public class OMODeserializer {
         OMOFormat.FaceTextureData faceTextureData = null;
         List<OMOFormat.PartEntry> partEntries = null;
         OMOFormat.ModelTransform modelTransform = null;
+        List<OMOFormat.BoneEntry> boneEntries = null;
         Path texturePath = null;
         Map<String, byte[]> materialTextures = new HashMap<>();
 
@@ -224,6 +238,7 @@ public class OMODeserializer {
                     faceTextureData = result.faceTextureData;
                     partEntries = result.partEntries;
                     modelTransform = result.modelTransform;
+                    boneEntries = result.boneEntries;
                     logger.debug("Loaded manifest.json (version={})", document.version());
 
                 } else if (OMOFormat.DEFAULT_TEXTURE_FILENAME.equals(entryName)) {
@@ -252,7 +267,7 @@ public class OMODeserializer {
 
         return new LoadedData(document, texturePath, meshData, faceTextureData,
                               materialTextures.isEmpty() ? null : materialTextures,
-                              partEntries, modelTransform);
+                              partEntries, modelTransform, boneEntries);
     }
 
     /**
@@ -261,7 +276,8 @@ public class OMODeserializer {
     private record ManifestParseResult(OMOFormat.Document document, OMOFormat.MeshData meshData,
                                        OMOFormat.FaceTextureData faceTextureData,
                                        List<OMOFormat.PartEntry> partEntries,
-                                       OMOFormat.ModelTransform modelTransform) {}
+                                       OMOFormat.ModelTransform modelTransform,
+                                       List<OMOFormat.BoneEntry> boneEntries) {}
 
     /**
      * Reads and parses manifest.json from ZIP stream.
@@ -358,7 +374,50 @@ public class OMODeserializer {
                     modelTransform.scaleX(), modelTransform.scaleY(), modelTransform.scaleZ());
         }
 
-        return new ManifestParseResult(document, meshData, faceTextureData, partEntries, modelTransform);
+        // Parse bone entries if present (v1.6+)
+        List<OMOFormat.BoneEntry> boneEntries = null;
+        JsonNode bonesNode = root.get("bones");
+        if (bonesNode != null && bonesNode.isArray() && !bonesNode.isEmpty()) {
+            boneEntries = parseBoneEntries(bonesNode);
+            logger.debug("Loaded {} bone entries", boneEntries.size());
+        }
+
+        return new ManifestParseResult(document, meshData, faceTextureData, partEntries, modelTransform, boneEntries);
+    }
+
+    /**
+     * Parse bone entries from JSON array (v1.6+).
+     * Skips entries that are missing a stable id.
+     */
+    private List<OMOFormat.BoneEntry> parseBoneEntries(JsonNode bonesNode) {
+        List<OMOFormat.BoneEntry> entries = new ArrayList<>();
+        for (JsonNode b : bonesNode) {
+            String id = b.has("id") ? b.get("id").asText() : null;
+            if (id == null || id.isBlank()) {
+                continue;
+            }
+            // Endpoint defaults to (0,0,0) when absent — pre-endpoint files round-trip
+            // as zero-length bones (tail == head), matching their original visual.
+            entries.add(new OMOFormat.BoneEntry(
+                    id,
+                    b.has("name") ? b.get("name").asText() : "Unnamed Bone",
+                    (b.has("parentBoneId") && !b.get("parentBoneId").isNull())
+                            ? b.get("parentBoneId").asText() : null,
+                    b.has("originX") ? (float) b.get("originX").asDouble() : 0,
+                    b.has("originY") ? (float) b.get("originY").asDouble() : 0,
+                    b.has("originZ") ? (float) b.get("originZ").asDouble() : 0,
+                    b.has("posX") ? (float) b.get("posX").asDouble() : 0,
+                    b.has("posY") ? (float) b.get("posY").asDouble() : 0,
+                    b.has("posZ") ? (float) b.get("posZ").asDouble() : 0,
+                    b.has("rotX") ? (float) b.get("rotX").asDouble() : 0,
+                    b.has("rotY") ? (float) b.get("rotY").asDouble() : 0,
+                    b.has("rotZ") ? (float) b.get("rotZ").asDouble() : 0,
+                    b.has("endpointX") ? (float) b.get("endpointX").asDouble() : 0,
+                    b.has("endpointY") ? (float) b.get("endpointY").asDouble() : 0,
+                    b.has("endpointZ") ? (float) b.get("endpointZ").asDouble() : 0
+            ));
+        }
+        return entries;
     }
 
     /**
@@ -513,7 +572,10 @@ public class OMODeserializer {
                     p.has("locked") && p.get("locked").asBoolean(false),
                     // v1.5+: parentId; absent in older files → root part
                     (p.has("parentId") && !p.get("parentId").isNull())
-                            ? p.get("parentId").asText() : null
+                            ? p.get("parentId").asText() : null,
+                    // v1.6+: boneId; absent in older files → part is unbound
+                    (p.has("boneId") && !p.get("boneId").isNull())
+                            ? p.get("boneId").asText() : null
             ));
         }
         return entries;
@@ -605,6 +667,7 @@ public class OMODeserializer {
                               OMOFormat.FaceTextureData faceTextureData,
                               Map<String, byte[]> materialTextures,
                               List<OMOFormat.PartEntry> partEntries,
-                              OMOFormat.ModelTransform modelTransform) {
+                              OMOFormat.ModelTransform modelTransform,
+                              List<OMOFormat.BoneEntry> boneEntries) {
     }
 }
