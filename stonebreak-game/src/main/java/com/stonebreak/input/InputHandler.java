@@ -180,6 +180,16 @@ public class InputHandler {
                 inventoryScreen.handleMouseInput(windowWidth, windowHeight);
             }
 
+            // Handle character sheet screen input when in CHARACTER_SHEET_UI state
+            if (currentGameState == GameState.CHARACTER_SHEET_UI) {
+                com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = gameInstance.getCharacterScreen();
+                if (characterScreen != null && characterScreen.isVisible()) {
+                    int windowWidth = Game.getWindowWidth();
+                    int windowHeight = Game.getWindowHeight();
+                    characterScreen.handleMouseInput(windowWidth, windowHeight);
+                }
+            }
+
             // Only process movement in PLAYING state
             // Block movement in UI states (PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, etc.)
             if (currentGameState == GameState.PLAYING) {
