@@ -5,9 +5,11 @@ import com.openmason.engine.rendering.model.gmr.uv.FaceTextureManager;
 import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping;
 import com.openmason.engine.rendering.model.gmr.uv.MaterialDefinition;
 import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
+import com.openmason.main.systems.services.commands.FaceTextureRegionCommand;
 import com.openmason.main.systems.threading.MainThreadExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -97,7 +99,9 @@ public final class FaceTextureEditingService {
      */
     public CreateResult createFaceTexture(int faceId, int width, int height,
                                            int r, int g, int b, int a) {
-        return await(MainThreadExecutor.submit(() -> {
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Create Face Texture (face " + faceId + ")",
+                () -> {
             if (width <= 0 || height <= 0 || width > 1024 || height > 1024) {
                 throw new IllegalArgumentException(
                         "Dimensions must be in [1,1024]: " + width + "x" + height);
@@ -141,7 +145,7 @@ public final class FaceTextureEditingService {
             logger.info("Created face texture: face={} material={} gpuTex={} {}x{}",
                     faceId, newMaterialId, gpuTextureId, width, height);
             return new CreateResult(faceId, newMaterialId, gpuTextureId, width, height);
-        }));
+                })));
     }
 
     // ===================== Session lifecycle =====================
@@ -193,13 +197,52 @@ public final class FaceTextureEditingService {
             int y = session.dirtyMinY;
             int w = session.dirtyMaxX - x + 1;
             int h = session.dirtyMaxY - y + 1;
-            byte[] sub = session.canvas.getPixelsAsRGBABytes(x, y, w, h);
-            connector.updateTextureRegion(session.gpuTextureId, x, y, w, h, sub);
+
+            // Read the pre-commit pixels back from the GPU before mutating so we
+            // can later restore them via the undo system. The session canvas
+            // already holds the post-commit pixels.
+            byte[] beforeBytes = readSubRegion(connector, session.gpuTextureId, x, y, w, h);
+            byte[] afterBytes = session.canvas.getPixelsAsRGBABytes(x, y, w, h);
+
+            connector.updateTextureRegion(session.gpuTextureId, x, y, w, h, afterBytes);
             sessions.remove(faceId);
+
+            // Push undo entry if we captured a meaningful before-state.
+            ViewportController vp = mainInterface.getViewport3D();
+            if (vp != null && vp.getCommandHistory() != null
+                    && vp.getModelRenderer() != null && beforeBytes != null) {
+                vp.getCommandHistory().pushCompleted(new FaceTextureRegionCommand(
+                        vp.getModelRenderer(),
+                        session.gpuTextureId, x, y, w, h,
+                        beforeBytes, afterBytes,
+                        "Face " + faceId + " Texture Edit"));
+            }
+
             logger.debug("Committed face {} session: dirty region {}x{} at ({},{})",
                     faceId, w, h, x, y);
             return new CommitResult(faceId, x, y, w, h, w * h, true);
         }));
+    }
+
+    /**
+     * Read RGBA bytes for the given sub-region by reading the entire texture
+     * and slicing — {@code glTexSubImage2D} has no read counterpart, and the
+     * existing GPU service exposes only a full-texture readback.
+     */
+    private byte[] readSubRegion(IViewportConnector connector,
+                                  int gpuTextureId,
+                                  int x, int y, int w, int h) {
+        int[] dims = connector.getTextureDimensions(gpuTextureId);
+        byte[] full = connector.readTexturePixels(gpuTextureId);
+        if (dims == null || full == null) return null;
+        int texW = dims[0];
+        byte[] out = new byte[w * h * 4];
+        for (int row = 0; row < h; row++) {
+            int srcOff = ((y + row) * texW + x) * 4;
+            int dstOff = row * w * 4;
+            System.arraycopy(full, srcOff, out, dstOff, w * 4);
+        }
+        return out;
     }
 
     public boolean discardSession(int faceId) {
@@ -287,7 +330,9 @@ public final class FaceTextureEditingService {
     // ===================== Resize =====================
 
     public ResizeResult resize(int faceId, int newWidth, int newHeight) {
-        return await(MainThreadExecutor.submit(() -> {
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Resize Face Texture (face " + faceId + ")",
+                () -> {
             if (newWidth <= 0 || newHeight <= 0 || newWidth > 1024 || newHeight > 1024) {
                 throw new IllegalArgumentException(
                         "Dimensions must be in [1,1024]: " + newWidth + "x" + newHeight);
@@ -336,7 +381,7 @@ public final class FaceTextureEditingService {
                     faceId, dims[0], dims[1], newWidth, newHeight);
             return new ResizeResult(faceId, material.materialId(),
                     newTexId, newWidth, newHeight, true);
-        }));
+                })));
     }
 
     // ===================== Internal helpers =====================

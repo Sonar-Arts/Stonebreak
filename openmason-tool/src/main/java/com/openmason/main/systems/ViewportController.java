@@ -85,6 +85,7 @@ public class ViewportController {
 
     // ========== Undo/Redo ==========
     private final ModelCommandHistory commandHistory;
+    private RendererSynchronizer rendererSynchronizer;
 
     // ========== Services ==========
     private com.openmason.main.systems.services.EdgeOperationService edgeOperationService;
@@ -357,6 +358,7 @@ public class ViewportController {
                     edgeSelectionState,
                     faceSelectionState
                 );
+                this.rendererSynchronizer = synchronizer;
                 vertexTranslationHandler.setCommandHistory(commandHistory, synchronizer);
                 edgeTranslationHandler.setCommandHistory(commandHistory, synchronizer);
                 faceTranslationHandler.setCommandHistory(commandHistory, synchronizer);
@@ -760,6 +762,7 @@ public class ViewportController {
         }
     }
     public ModelCommandHistory getCommandHistory() { return commandHistory; }
+    public RendererSynchronizer getRendererSynchronizer() { return rendererSynchronizer; }
 
     /**
      * Toggle the knife tool from keybind (K key).

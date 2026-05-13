@@ -3,17 +3,22 @@ package com.openmason.main.systems.mcp;
 import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.main.systems.MainImGuiInterface;
 import com.openmason.main.systems.ViewportController;
+import com.openmason.main.systems.skeleton.BoneCommandHistory;
+import com.openmason.main.systems.skeleton.BoneSnapshot;
 import com.openmason.main.systems.skeleton.BoneStore;
 import com.openmason.main.systems.threading.MainThreadExecutor;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 /**
  * Thread-safe facade over Open Mason's skeleton/bone editing surface.
@@ -27,9 +32,37 @@ public final class BoneEditingService {
     private static final long DEFAULT_TIMEOUT_MS = 5000;
 
     private final MainImGuiInterface mainInterface;
+    /**
+     * BoneCommandHistory is per-BoneStore. Keyed by identity so a fresh store
+     * (model reload) gets a fresh history without ever holding the previous
+     * store's lifetime.
+     */
+    private final Map<BoneStore, BoneCommandHistory> historyByStore = new IdentityHashMap<>();
 
     public BoneEditingService(MainImGuiInterface mainInterface) {
         this.mainInterface = mainInterface;
+    }
+
+    /**
+     * Lazily fetch (or create) the undo history for the active bone store.
+     * Returns {@code null} if no store is loaded.
+     */
+    public BoneCommandHistory getHistory() {
+        BoneStore store = optStore();
+        if (store == null) return null;
+        return historyByStore.computeIfAbsent(store, BoneCommandHistory::new);
+    }
+
+    /** Common before/after capture wrapper for bone mutations. */
+    private <T> T recorded(String description, Supplier<T> mutation) {
+        BoneStore store = optStore();
+        BoneCommandHistory history = getHistory();
+        if (store == null || history == null) return mutation.get();
+        BoneSnapshot before = BoneSnapshot.capture(store);
+        T result = mutation.get();
+        BoneSnapshot after = BoneSnapshot.capture(store);
+        history.push(before, after, description);
+        return result;
     }
 
     // ===================== Read =====================
@@ -74,7 +107,7 @@ public final class BoneEditingService {
     public BoneView createBone(String name, String parentBoneId,
                                 Vector3f origin, Vector3f position,
                                 Vector3f rotation, Vector3f endpoint) {
-        return await(MainThreadExecutor.submit(() -> {
+        return await(MainThreadExecutor.submit(() -> recorded("Create Bone: " + name, () -> {
             BoneStore store = requireStore();
             String id = UUID.randomUUID().toString();
             String parent = (parentBoneId == null || parentBoneId.isBlank()) ? null : resolveId(store, parentBoneId);
@@ -90,20 +123,20 @@ public final class BoneEditingService {
                     e.x, e.y, e.z);
             store.put(entry);
             return BoneView.from(entry, store);
-        }));
+        })));
     }
 
     public boolean deleteBone(String idOrName) {
-        return await(MainThreadExecutor.submit(() -> {
+        return await(MainThreadExecutor.submit(() -> recorded("Delete Bone", () -> {
             BoneStore store = requireStore();
             OMOFormat.BoneEntry bone = resolve(store, idOrName);
             if (bone == null) return false;
             return store.remove(bone.id());
-        }));
+        })));
     }
 
     public Optional<BoneView> renameBone(String idOrName, String newName) {
-        return await(MainThreadExecutor.submit(() -> {
+        return await(MainThreadExecutor.submit(() -> recorded("Rename Bone", () -> {
             BoneStore store = requireStore();
             OMOFormat.BoneEntry b = resolve(store, idOrName);
             if (b == null) return Optional.<BoneView>empty();
@@ -115,13 +148,13 @@ public final class BoneEditingService {
                     b.endpointX(), b.endpointY(), b.endpointZ());
             store.put(updated);
             return Optional.of(BoneView.from(updated, store));
-        }));
+        })));
     }
 
     public Optional<BoneView> setBoneTransform(String idOrName,
                                                 Vector3f origin, Vector3f position,
                                                 Vector3f rotation, Vector3f endpoint) {
-        return await(MainThreadExecutor.submit(() -> {
+        return await(MainThreadExecutor.submit(() -> recorded("Set Bone Transform", () -> {
             BoneStore store = requireStore();
             OMOFormat.BoneEntry b = resolve(store, idOrName);
             if (b == null) return Optional.<BoneView>empty();
@@ -142,11 +175,11 @@ public final class BoneEditingService {
                     ox, oy, oz, px, py, pz, rx, ry, rz, ex, ey, ez);
             store.put(updated);
             return Optional.of(BoneView.from(updated, store));
-        }));
+        })));
     }
 
     public Optional<BoneView> setBoneParent(String idOrName, String parentIdOrName) {
-        return await(MainThreadExecutor.submit(() -> {
+        return await(MainThreadExecutor.submit(() -> recorded("Set Bone Parent", () -> {
             BoneStore store = requireStore();
             OMOFormat.BoneEntry b = resolve(store, idOrName);
             if (b == null) return Optional.<BoneView>empty();
@@ -163,6 +196,36 @@ public final class BoneEditingService {
                     b.endpointX(), b.endpointY(), b.endpointZ());
             store.put(updated);
             return Optional.of(BoneView.from(updated, store));
+        })));
+    }
+
+    // ===================== Undo / redo =====================
+
+    public boolean undo() {
+        return await(MainThreadExecutor.submit(() -> {
+            BoneCommandHistory h = getHistory();
+            return h != null && h.undo();
+        }));
+    }
+
+    public boolean redo() {
+        return await(MainThreadExecutor.submit(() -> {
+            BoneCommandHistory h = getHistory();
+            return h != null && h.redo();
+        }));
+    }
+
+    public boolean canUndo() {
+        return await(MainThreadExecutor.submit(() -> {
+            BoneCommandHistory h = getHistory();
+            return h != null && h.canUndo();
+        }));
+    }
+
+    public boolean canRedo() {
+        return await(MainThreadExecutor.submit(() -> {
+            BoneCommandHistory h = getHistory();
+            return h != null && h.canRedo();
         }));
     }
 
@@ -181,12 +244,12 @@ public final class BoneEditingService {
     }
 
     public boolean clearBones() {
-        return await(MainThreadExecutor.submit(() -> {
+        return await(MainThreadExecutor.submit(() -> recorded("Clear Bones", () -> {
             BoneStore store = requireStore();
             store.clear();
             store.setSelectedBoneId(null);
             return true;
-        }));
+        })));
     }
 
     public Optional<Vec3> getBoneHeadWorld(String idOrName) {

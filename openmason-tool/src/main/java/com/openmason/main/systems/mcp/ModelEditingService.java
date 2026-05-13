@@ -93,99 +93,107 @@ public final class ModelEditingService {
 
     public PartView createPart(String shapeName, String name, Vector3f size) {
         PartShapeFactory.Shape shape = parseShape(shapeName);
-        return await(MainThreadExecutor.submit(() -> {
-            ensureModelLoaded();
-            ModelPartManager pm = requirePartManager();
-            ModelPart geometry = PartShapeFactory.create(shape, name, size);
-            ModelPartDescriptor created = pm.addPart(name, geometry);
-return PartView.from(created);
-        }));
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Create Part: " + name, () -> {
+                    ensureModelLoaded();
+                    ModelPartManager pm = requirePartManager();
+                    ModelPart geometry = PartShapeFactory.create(shape, name, size);
+                    ModelPartDescriptor created = pm.addPart(name, geometry);
+                    return PartView.from(created);
+                })));
     }
 
     public boolean deletePart(String idOrName) {
-        return await(MainThreadExecutor.submit(() -> {
-            Optional<ModelPartDescriptor> p = resolve(idOrName);
-            if (p.isEmpty()) return false;
-            boolean removed = requirePartManager().removePart(p.get().id());
-            return removed;
-        }));
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Delete Part", () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return false;
+                    return requirePartManager().removePart(p.get().id());
+                })));
     }
 
     public Optional<PartView> duplicatePart(String idOrName) {
-        return await(MainThreadExecutor.submit(() -> {
-            Optional<ModelPartDescriptor> source = resolve(idOrName);
-            if (source.isEmpty()) return Optional.<PartView>empty();
-            Optional<ModelPartDescriptor> dup = requirePartManager().duplicatePart(source.get().id());
-            return dup.map(PartView::from);
-        }));
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Duplicate Part", () -> {
+                    Optional<ModelPartDescriptor> source = resolve(idOrName);
+                    if (source.isEmpty()) return Optional.<PartView>empty();
+                    Optional<ModelPartDescriptor> dup = requirePartManager().duplicatePart(source.get().id());
+                    return dup.map(PartView::from);
+                })));
     }
 
     public Optional<PartView> renamePart(String idOrName, String newName) {
-        return await(MainThreadExecutor.submit(() -> {
-            Optional<ModelPartDescriptor> p = resolve(idOrName);
-            if (p.isEmpty()) return Optional.<PartView>empty();
-            Optional<ModelPartDescriptor> renamed = requirePartManager().renamePart(p.get().id(), newName);
-            return renamed.map(PartView::from);
-        }));
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Rename Part", () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return Optional.<PartView>empty();
+                    Optional<ModelPartDescriptor> renamed = requirePartManager().renamePart(p.get().id(), newName);
+                    return renamed.map(PartView::from);
+                })));
     }
 
     public Optional<PartView> setPartTransform(String idOrName,
                                                Vector3f origin, Vector3f position,
                                                Vector3f rotation, Vector3f scale) {
-        return await(MainThreadExecutor.submit(() -> {
-            Optional<ModelPartDescriptor> p = resolve(idOrName);
-            if (p.isEmpty()) return Optional.<PartView>empty();
-            ModelPartManager pm = requirePartManager();
-            PartTransform current = p.get().transform();
-            PartTransform next = new PartTransform(
-                    origin != null ? new Vector3f(origin) : new Vector3f(current.origin()),
-                    position != null ? new Vector3f(position) : new Vector3f(current.position()),
-                    rotation != null ? new Vector3f(rotation) : new Vector3f(current.rotation()),
-                    scale != null ? new Vector3f(scale) : new Vector3f(current.scale())
-            );
-            pm.setPartTransform(p.get().id(), next);
-return pm.getPartById(p.get().id()).map(PartView::from);
-        }));
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Set Part Transform", () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return Optional.<PartView>empty();
+                    ModelPartManager pm = requirePartManager();
+                    PartTransform current = p.get().transform();
+                    PartTransform next = new PartTransform(
+                            origin != null ? new Vector3f(origin) : new Vector3f(current.origin()),
+                            position != null ? new Vector3f(position) : new Vector3f(current.position()),
+                            rotation != null ? new Vector3f(rotation) : new Vector3f(current.rotation()),
+                            scale != null ? new Vector3f(scale) : new Vector3f(current.scale())
+                    );
+                    pm.setPartTransform(p.get().id(), next);
+                    return pm.getPartById(p.get().id()).map(PartView::from);
+                })));
     }
 
     public Optional<PartView> translatePart(String idOrName, Vector3f delta) {
-        return await(MainThreadExecutor.submit(() -> {
-            Optional<ModelPartDescriptor> p = resolve(idOrName);
-            if (p.isEmpty()) return Optional.<PartView>empty();
-            ModelPartManager pm = requirePartManager();
-            pm.translatePart(p.get().id(), delta);
-return pm.getPartById(p.get().id()).map(PartView::from);
-        }));
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Translate Part", () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return Optional.<PartView>empty();
+                    ModelPartManager pm = requirePartManager();
+                    pm.translatePart(p.get().id(), delta);
+                    return pm.getPartById(p.get().id()).map(PartView::from);
+                })));
     }
 
     public Optional<PartView> rotatePart(String idOrName, Vector3f eulerDeltaDegrees) {
-        return await(MainThreadExecutor.submit(() -> {
-            Optional<ModelPartDescriptor> p = resolve(idOrName);
-            if (p.isEmpty()) return Optional.<PartView>empty();
-            ModelPartManager pm = requirePartManager();
-            pm.rotatePart(p.get().id(), eulerDeltaDegrees);
-return pm.getPartById(p.get().id()).map(PartView::from);
-        }));
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Rotate Part", () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return Optional.<PartView>empty();
+                    ModelPartManager pm = requirePartManager();
+                    pm.rotatePart(p.get().id(), eulerDeltaDegrees);
+                    return pm.getPartById(p.get().id()).map(PartView::from);
+                })));
     }
 
     public Optional<PartView> scalePart(String idOrName, Vector3f factors) {
-        return await(MainThreadExecutor.submit(() -> {
-            Optional<ModelPartDescriptor> p = resolve(idOrName);
-            if (p.isEmpty()) return Optional.<PartView>empty();
-            ModelPartManager pm = requirePartManager();
-            pm.scalePart(p.get().id(), factors);
-return pm.getPartById(p.get().id()).map(PartView::from);
-        }));
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Scale Part", () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return Optional.<PartView>empty();
+                    ModelPartManager pm = requirePartManager();
+                    pm.scalePart(p.get().id(), factors);
+                    return pm.getPartById(p.get().id()).map(PartView::from);
+                })));
     }
 
     public Optional<PartView> setPartVisibility(String idOrName, boolean visible) {
-        return await(MainThreadExecutor.submit(() -> {
-            Optional<ModelPartDescriptor> p = resolve(idOrName);
-            if (p.isEmpty()) return Optional.<PartView>empty();
-            ModelPartManager pm = requirePartManager();
-            pm.setPartVisible(p.get().id(), visible);
-return pm.getPartById(p.get().id()).map(PartView::from);
-        }));
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Set Part Visibility", () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return Optional.<PartView>empty();
+                    ModelPartManager pm = requirePartManager();
+                    pm.setPartVisible(p.get().id(), visible);
+                    return pm.getPartById(p.get().id()).map(PartView::from);
+                })));
     }
 
     public boolean selectPart(String idOrName, boolean additive) {
@@ -285,22 +293,24 @@ return pm.getPartById(p.get().id()).map(PartView::from);
     }
 
     public Optional<PartView> moveVertex(String idOrName, int localIndex, Vector3f vec, boolean absolute) {
-        return await(MainThreadExecutor.submit(() -> {
-            Optional<ModelPartDescriptor> p = resolve(idOrName);
-            if (p.isEmpty()) return Optional.<PartView>empty();
-            applyVertexMove(p.get(), new int[] {localIndex}, vec, absolute);
-            return requirePartManager().getPartById(p.get().id()).map(PartView::from);
-        }));
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Move Vertex", () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return Optional.<PartView>empty();
+                    applyVertexMove(p.get(), new int[] {localIndex}, vec, absolute);
+                    return requirePartManager().getPartById(p.get().id()).map(PartView::from);
+                })));
     }
 
     public Optional<PartView> moveEdge(String idOrName, int edgeIndex, Vector3f delta) {
-        return await(MainThreadExecutor.submit(() -> {
-            Optional<ModelPartDescriptor> p = resolve(idOrName);
-            if (p.isEmpty()) return Optional.<PartView>empty();
-            int[] verts = edgeVertexIndices(p.get(), edgeIndex);
-            applyVertexMove(p.get(), verts, delta, false);
-            return requirePartManager().getPartById(p.get().id()).map(PartView::from);
-        }));
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Move Edge", () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return Optional.<PartView>empty();
+                    int[] verts = edgeVertexIndices(p.get(), edgeIndex);
+                    applyVertexMove(p.get(), verts, delta, false);
+                    return requirePartManager().getPartById(p.get().id()).map(PartView::from);
+                })));
     }
 
     public Optional<PartView> setPartGeometry(String idOrName,
@@ -308,7 +318,8 @@ return pm.getPartById(p.get().id()).map(PartView::from);
                                                int[] indices,
                                                float[] texCoords,
                                                int[] triangleToFaceId) {
-        return await(MainThreadExecutor.submit(() -> {
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Set Part Geometry", () -> {
             Optional<ModelPartDescriptor> p = resolve(idOrName);
             if (p.isEmpty()) return Optional.<PartView>empty();
             if (vertices == null || vertices.length < 3 || vertices.length % 3 != 0) {
@@ -339,17 +350,54 @@ return pm.getPartById(p.get().id()).map(PartView::from);
             ModelPartManager pm = requirePartManager();
             if (!pm.replacePartGeometry(p.get().id(), geo)) return Optional.<PartView>empty();
             return pm.getPartById(p.get().id()).map(PartView::from);
+                })));
+    }
+
+    // ===================== Undo / redo =====================
+
+    public boolean undo() {
+        return await(MainThreadExecutor.submit(() -> {
+            ViewportController vp = mainInterface.getViewport3D();
+            if (vp == null || vp.getCommandHistory() == null) return false;
+            if (!vp.getCommandHistory().canUndo()) return false;
+            vp.getCommandHistory().undo();
+            return true;
+        }));
+    }
+
+    public boolean redo() {
+        return await(MainThreadExecutor.submit(() -> {
+            ViewportController vp = mainInterface.getViewport3D();
+            if (vp == null || vp.getCommandHistory() == null) return false;
+            if (!vp.getCommandHistory().canRedo()) return false;
+            vp.getCommandHistory().redo();
+            return true;
+        }));
+    }
+
+    public boolean canUndo() {
+        return await(MainThreadExecutor.submit(() -> {
+            ViewportController vp = mainInterface.getViewport3D();
+            return vp != null && vp.getCommandHistory() != null && vp.getCommandHistory().canUndo();
+        }));
+    }
+
+    public boolean canRedo() {
+        return await(MainThreadExecutor.submit(() -> {
+            ViewportController vp = mainInterface.getViewport3D();
+            return vp != null && vp.getCommandHistory() != null && vp.getCommandHistory().canRedo();
         }));
     }
 
     public Optional<PartView> moveFace(String idOrName, int localFaceId, Vector3f delta) {
-        return await(MainThreadExecutor.submit(() -> {
-            Optional<ModelPartDescriptor> p = resolve(idOrName);
-            if (p.isEmpty()) return Optional.<PartView>empty();
-            int[] verts = faceVertexIndices(p.get(), localFaceId);
-            applyVertexMove(p.get(), verts, delta, false);
-            return requirePartManager().getPartById(p.get().id()).map(PartView::from);
-        }));
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Move Face", () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return Optional.<PartView>empty();
+                    int[] verts = faceVertexIndices(p.get(), localFaceId);
+                    applyVertexMove(p.get(), verts, delta, false);
+                    return requirePartManager().getPartById(p.get().id()).map(PartView::from);
+                })));
     }
 
     private void applyVertexMove(ModelPartDescriptor part, int[] localIndices, Vector3f vec, boolean absolute) {

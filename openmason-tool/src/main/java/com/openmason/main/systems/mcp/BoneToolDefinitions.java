@@ -148,6 +148,32 @@ public final class BoneToolDefinitions {
                 "Remove every bone from the skeleton.",
                 schema().build(),
                 args -> editor.clearBones()));
+
+        // ---------- Undo / redo ----------
+
+        registry.register(new McpTool(
+                "bone_undo",
+                "Undo the most recent bone create/delete/rename/transform/parent/clear operation.",
+                schema().build(),
+                args -> editor.undo()));
+
+        registry.register(new McpTool(
+                "bone_redo",
+                "Redo the most recently undone bone operation.",
+                schema().build(),
+                args -> editor.redo()));
+
+        registry.register(new McpTool(
+                "bone_can_undo",
+                "Returns true if there is at least one bone command in the undo stack.",
+                schema().build(),
+                args -> editor.canUndo()));
+
+        registry.register(new McpTool(
+                "bone_can_redo",
+                "Returns true if there is at least one bone command in the redo stack.",
+                schema().build(),
+                args -> editor.canRedo()));
     }
 
     // ===================== Schema helpers =====================
