@@ -396,6 +396,124 @@ public class InventorySlotManager {
         return false;
     }
 
+    public boolean tryRightDragDepositToSlot(float mouseX, float mouseY,
+                                              InventoryLayoutCalculator.InventoryLayout layout,
+                                              InventoryDragDropHandler.DragState dragState,
+                                              java.util.Set<Integer> visitedSlots) {
+        if (!dragState.isDragging()) return false;
+
+        // Main inventory (slot IDs 0..MAIN_INVENTORY_SIZE-1)
+        int inventoryWidth = Inventory.MAIN_INVENTORY_COLS
+                * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding())
+                - InventoryLayoutCalculator.getSlotPadding();
+        int inventoryStartX = layout.panelStartX + (layout.inventoryPanelWidth - inventoryWidth) / 2;
+
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
+            int row = i / Inventory.MAIN_INVENTORY_COLS;
+            int col = i % Inventory.MAIN_INVENTORY_COLS;
+            int slotX = inventoryStartX + col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            int slotY = layout.mainInvContentStartY + InventoryLayoutCalculator.getSlotPadding()
+                      + row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
+                int slotId = i;
+                if (visitedSlots.contains(slotId)) return false;
+                final int idx = i;
+                boolean placed = attemptDropOneToSlot(
+                        inventory.getMainInventorySlot(idx),
+                        stack -> inventory.setMainInventorySlot(idx, stack),
+                        false, dragState);
+                if (placed) visitedSlots.add(slotId);
+                return placed;
+            }
+        }
+
+        // Hotbar (slot IDs 27..35)
+        int hotbarWidth = Inventory.HOTBAR_SIZE
+                * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding())
+                - InventoryLayoutCalculator.getSlotPadding();
+        int hotbarStartX = layout.panelStartX + (layout.inventoryPanelWidth - hotbarWidth) / 2;
+
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            int slotX = hotbarStartX + i * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            int slotY = layout.hotbarRowY;
+            if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
+                int slotId = Inventory.MAIN_INVENTORY_SIZE + i;
+                if (visitedSlots.contains(slotId)) return false;
+                final int idx = i;
+                boolean placed = attemptDropOneToSlot(
+                        inventory.getHotbarSlot(idx),
+                        stack -> inventory.setHotbarSlot(idx, stack),
+                        false, dragState);
+                if (placed) visitedSlots.add(slotId);
+                return placed;
+            }
+        }
+
+        // Crafting input (slot IDs 36..39)
+        ItemStack[] craftingInputSlots = craftingManager.getCraftingInputSlots();
+        int craftingGridSize = craftingManager.getCraftingGridSize();
+        int craftingInputSlotsCount = craftingGridSize * craftingGridSize;
+
+        for (int i = 0; i < craftingInputSlotsCount; i++) {
+            int r = i / craftingGridSize;
+            int c = i % craftingGridSize;
+            int slotX = layout.craftingElementsStartX
+                      + c * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            int slotY = layout.craftingGridStartY
+                      + r * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
+                int slotId = Inventory.MAIN_INVENTORY_SIZE + Inventory.HOTBAR_SIZE + i;
+                if (visitedSlots.contains(slotId)) return false;
+                final int idx = i;
+                boolean placed = attemptDropOneToSlot(
+                        craftingInputSlots[idx],
+                        stack -> craftingInputSlots[idx] = stack,
+                        true, dragState);
+                if (placed) visitedSlots.add(slotId);
+                return placed;
+            }
+        }
+
+        return false;
+    }
+
+    public void gatherMatchingItemsToStack(InventoryDragDropHandler.DragState dragState) {
+        if (dragState.draggedItemStack == null || dragState.draggedItemStack.isEmpty()) return;
+
+        ItemStack dragged = dragState.draggedItemStack;
+        int maxStack = dragged.getMaxStackSize();
+        if (dragged.getCount() >= maxStack) return;
+
+        Item draggedItem = dragged.getItem();
+        String draggedState = dragged.getState();
+
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE && dragged.getCount() < maxStack; i++) {
+            ItemStack slot = inventory.getMainInventorySlot(i);
+            if (!slot.isEmpty() && slot.getItem().isSameType(draggedItem)
+                    && java.util.Objects.equals(slot.getState(), draggedState)) {
+                int canTake = Math.min(slot.getCount(), maxStack - dragged.getCount());
+                dragged.incrementCount(canTake);
+                slot.decrementCount(canTake);
+                if (slot.isEmpty()) {
+                    inventory.setMainInventorySlot(i, new ItemStack(BlockType.AIR.getId(), 0));
+                }
+            }
+        }
+
+        for (int i = 0; i < Inventory.HOTBAR_SIZE && dragged.getCount() < maxStack; i++) {
+            ItemStack slot = inventory.getHotbarSlot(i);
+            if (!slot.isEmpty() && slot.getItem().isSameType(draggedItem)
+                    && java.util.Objects.equals(slot.getState(), draggedState)) {
+                int canTake = Math.min(slot.getCount(), maxStack - dragged.getCount());
+                dragged.incrementCount(canTake);
+                slot.decrementCount(canTake);
+                if (slot.isEmpty()) {
+                    inventory.setHotbarSlot(i, new ItemStack(BlockType.AIR.getId(), 0));
+                }
+            }
+        }
+    }
+
     private boolean isMouseOverSlot(float mouseX, float mouseY, int slotX, int slotY) {
         return mouseX >= slotX && mouseX <= slotX + InventoryLayoutCalculator.getSlotSize() &&
                mouseY >= slotY && mouseY <= slotY + InventoryLayoutCalculator.getSlotSize();
