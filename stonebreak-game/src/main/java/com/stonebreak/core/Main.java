@@ -663,11 +663,9 @@ public class Main {
     private void renderUIState(Renderer renderer, Object screen) {
         if (renderer == null || screen == null) return;
 
-        renderer.beginUIFrame(width, height, 1.0f);
         if (screen instanceof com.stonebreak.ui.LoadingScreen loadingScreen) {
             loadingScreen.render(width, height);
         }
-        renderer.endUIFrame();
     }
 
     private void render3DGameState(Game game, Renderer renderer) {

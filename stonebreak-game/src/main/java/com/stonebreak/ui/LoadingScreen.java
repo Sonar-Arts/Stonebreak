@@ -3,30 +3,21 @@ package com.stonebreak.ui;
 import java.util.Arrays;
 import java.util.List;
 import java.util.ArrayList;
+import org.lwjgl.glfw.GLFW;
 
-import com.stonebreak.rendering.UI.UIRenderer;
-import org.lwjgl.nanovg.NVGColor;
-import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_CENTER;
-import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_MIDDLE;
-import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_LEFT;
-import static org.lwjgl.nanovg.NanoVG.nvgBeginPath;
-import static org.lwjgl.nanovg.NanoVG.nvgFill;
-import static org.lwjgl.nanovg.NanoVG.nvgFillColor;
-import static org.lwjgl.nanovg.NanoVG.nvgFontFace;
-import static org.lwjgl.nanovg.NanoVG.nvgFontSize;
-import static org.lwjgl.nanovg.NanoVG.nvgRect;
-import static org.lwjgl.nanovg.NanoVG.nvgStroke;
-import static org.lwjgl.nanovg.NanoVG.nvgStrokeColor;
-import static org.lwjgl.nanovg.NanoVG.nvgStrokeWidth;
-import static org.lwjgl.nanovg.NanoVG.nvgText;
-import static org.lwjgl.nanovg.NanoVG.nvgTextAlign;
-import org.lwjgl.system.MemoryStack;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
-import static org.lwjgl.glfw.GLFW.*;
+import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
+import com.stonebreak.rendering.UI.masonryUI.MPainter;
+import io.github.humbleui.skija.Canvas;
+import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.Paint;
+import io.github.humbleui.skija.PaintMode;
+import io.github.humbleui.skija.Typeface;
+import io.github.humbleui.types.Rect;
 
 public class LoadingScreen {
-    private final UIRenderer uiRenderer;
+    private final SkijaUIBackend backend;
     private boolean visible = false;
     private String currentStageName = "Initializing...";
     private int currentStageIndex = 0;
@@ -45,7 +36,7 @@ public class LoadingScreen {
             "Meshing Chunk"
     );
     private final int totalStages = stages.size();
-    
+
     // Enhanced error reporting fields
     private ErrorSeverity errorSeverity = ErrorSeverity.INFO;
     private String errorCode = null;
@@ -56,7 +47,13 @@ public class LoadingScreen {
     private int totalSubStages = 1;
     private long stageStartTime = 0;
     private String estimatedTimeRemaining = "Calculating...";
-    
+
+    // Lazily built fonts
+    private Font fontTitle;
+    private Font fontBody;
+    private Font fontSmall;
+    private Font fontTiny;
+
     /**
      * Error severity levels for enhanced error reporting.
      */
@@ -67,8 +64,17 @@ public class LoadingScreen {
         CRITICAL
     }
 
-    public LoadingScreen(UIRenderer uiRenderer) {
-        this.uiRenderer = uiRenderer;
+    public LoadingScreen(SkijaUIBackend backend) {
+        this.backend = backend;
+    }
+
+    private void ensureFonts() {
+        if (fontTitle != null) return;
+        Typeface tf = backend.getMinecraftTypeface();
+        fontTitle = new Font(tf, 48f);
+        fontBody  = new Font(tf, 24f);
+        fontSmall = new Font(tf, 16f);
+        fontTiny  = new Font(tf, 12f);
     }
 
     public void show() {
@@ -81,57 +87,38 @@ public class LoadingScreen {
         } else {
             this.currentStageName = "Loading...";
         }
-        // Potentially reset or set initial game state here if needed
         Game.getInstance().setState(GameState.LOADING);
     }
 
     public void hide() {
         this.visible = false;
-        
-        // Transition to PLAYING state
         Game gameInstance = Game.getInstance();
         gameInstance.setState(GameState.PLAYING);
     }
 
     public void updateProgress(String stageName) {
         this.currentStageName = stageName;
-        // Update currentStageIndex based on stageName
-        int stageIndex = stages.indexOf(stageName); // Check if stageName exists in the list
-        if (stageIndex != -1) { // If stageName is found
-          this.currentStageIndex = stageIndex; // Update the currentStageIndex
-        } else { // If stageName is not found in the predefined list
-          // Heuristic: if the stageName is not in the list, maybe it's a custom sub-stage
-          // For simplicity, we'll keep the progress bar based on known stages,
-          // but display the custom name.
-          // Or, if it's one of the "alternative" names, try to match it.
+        int stageIndex = stages.indexOf(stageName);
+        if (stageIndex != -1) {
+          this.currentStageIndex = stageIndex;
+        } else {
           switch (stageName) {
               case "Calculating Terrain Density" -> this.currentStageIndex = stages.indexOf("Generating Base Terrain Shape");
               case "Materializing Chunk" -> this.currentStageIndex = stages.indexOf("Applying Biome Materials");
-              default -> {
-                  // If truly unknown, we might decide not to advance the progress bar visually
-                  // based on index, but the text will still update.
-                  // For now, let's not change currentStageIndex for unknown stages not matched.
-              }
+              default -> { }
           }
         }
     }
-
 
     public boolean isVisible() {
         return visible;
     }
 
-    /**
-     * Reports an error during world loading and displays it on the loading screen.
-     */
     public void reportError(String error) {
         reportDetailedError(error, ErrorSeverity.ERROR, null, null, null);
     }
-    
-    /**
-     * Reports a detailed error with severity, error code, recovery actions, and diagnostic info.
-     */
-    public void reportDetailedError(String error, ErrorSeverity severity, String errorCode, 
+
+    public void reportDetailedError(String error, ErrorSeverity severity, String errorCode,
                                    List<String> recoveryActions, List<String> diagnosticInfo) {
         this.errorMessage = error;
         this.hasError = true;
@@ -139,341 +126,261 @@ public class LoadingScreen {
         this.errorCode = errorCode;
         this.recoveryActions = recoveryActions != null ? new ArrayList<>(recoveryActions) : new ArrayList<>();
         this.diagnosticInfo = diagnosticInfo != null ? new ArrayList<>(diagnosticInfo) : new ArrayList<>();
-        
+
         System.err.println("LoadingScreen: Reported " + severity + " error - " + error);
         if (errorCode != null) {
             System.err.println("LoadingScreen: Error code - " + errorCode);
         }
     }
-    
-    /**
-     * Updates progress with detailed sub-stage information.
-     */
-    public void updateDetailedProgress(String stageName, String subStage, int subProgress, 
+
+    public void updateDetailedProgress(String stageName, String subStage, int subProgress,
                                      int totalSubStages, String timeRemaining) {
         updateProgress(stageName);
         this.currentSubStage = subStage;
         this.subStageProgress = subProgress;
         this.totalSubStages = totalSubStages;
         this.estimatedTimeRemaining = timeRemaining != null ? timeRemaining : "Calculating...";
-        
-        // Update stage start time if this is a new stage
+
         if (!stageName.equals(this.currentStageName)) {
             this.stageStartTime = System.currentTimeMillis();
         }
     }
 
-    /**
-     * Checks if there is currently an error being displayed.
-     */
     public boolean hasError() {
         return hasError;
     }
 
-    /**
-     * Gets the current error message, if any.
-     */
     public String getErrorMessage() {
         return errorMessage;
     }
-    
-    /**
-     * Gets the current error severity.
-     */
+
     public ErrorSeverity getErrorSeverity() {
         return errorSeverity;
     }
-    
-    /**
-     * Gets the current error code.
-     */
+
     public String getErrorCode() {
         return errorCode;
     }
-    
-    /**
-     * Gets recovery actions for the current error.
-     */
+
     public List<String> getRecoveryActions() {
         return new ArrayList<>(recoveryActions);
     }
-    
-    /**
-     * Gets diagnostic information for the current error.
-     */
+
     public List<String> getDiagnosticInfo() {
         return new ArrayList<>(diagnosticInfo);
     }
 
     public void render(int windowWidth, int windowHeight) {
-        if (!visible || uiRenderer == null) {
+        if (!visible || backend == null || !backend.isAvailable()) {
             return;
         }
 
-        long vg = uiRenderer.getVG();
-        float centerX = windowWidth / 2.0f;
-        float centerY = windowHeight / 2.0f;
+        ensureFonts();
 
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            // Full screen semi-transparent black background
-            uiRenderer.renderQuad(0, 0, windowWidth, windowHeight, 0.0f, 0.0f, 0.0f, 0.85f);
+        backend.beginFrame(windowWidth, windowHeight, 1.0f);
+        try {
+            Canvas canvas = backend.getCanvas();
+            float centerX = windowWidth / 2.0f;
+            float centerY = windowHeight / 2.0f;
 
-            // "Loading..." Text (Optional, can be game title)
-            String loadingTitle = "STONEBREAK"; // Or "Loading World..."
-            float titleFontSize = 48;
-            String titleFont = (uiRenderer.getTextWidth("Test", titleFontSize, "minecraft") > 0) ? "minecraft" : "sans-bold";
-            
-            nvgFontSize(vg, titleFontSize);
-            nvgFontFace(vg, titleFont);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            
-            // Simple 3D effect for title
-            nvgFillColor(vg, uiRenderer.nvgRGBA(80, 80, 80, 255, NVGColor.malloc(stack)));
-            nvgText(vg, centerX + 2, centerY - 100 + 2, loadingTitle);
-            nvgFillColor(vg, uiRenderer.nvgRGBA(220, 220, 220, 255, NVGColor.malloc(stack)));
-            nvgText(vg, centerX, centerY - 100, loadingTitle);
+            // Full screen semi-transparent black background (~85% alpha)
+            MPainter.fillRect(canvas, 0, 0, windowWidth, windowHeight, 0xD9000000);
 
+            // "STONEBREAK" Title with 3D shadow effect
+            String loadingTitle = "STONEBREAK";
+            float titleY = centerY - 100;
 
-            // Current Stage Name Text
-            float stageFontSize = 24;
-            String stageFont = (uiRenderer.getTextWidth("Test", stageFontSize, "sans") > 0) ? "sans" : "minecraft";
-            
-            nvgFontSize(vg, stageFontSize);
-            nvgFontFace(vg, stageFont);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, uiRenderer.nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
-            nvgText(vg, centerX, centerY - 10, currentStageName);
-            
+            // Shadow layer (dark grey, offset +2/+2)
+            MPainter.drawCenteredString(canvas, loadingTitle, centerX + 2, titleY + 2, fontTitle, 0xFF505050);
+            // Main layer (light grey, centered)
+            MPainter.drawCenteredString(canvas, loadingTitle, centerX, titleY, fontTitle, 0xFFDCDCDC);
+
+            // Current stage name text
+            MPainter.drawCenteredString(canvas, currentStageName, centerX, centerY - 10, fontBody, 0xFFC8C8C8);
+
             // Sub-stage information (if available)
             if (currentSubStage != null && !currentSubStage.trim().isEmpty()) {
-                float subStageFontSize = 16;
-                nvgFontSize(vg, subStageFontSize);
-                nvgFillColor(vg, uiRenderer.nvgRGBA(160, 160, 160, 255, NVGColor.malloc(stack)));
-                
                 String subStageText = currentSubStage;
                 if (totalSubStages > 1) {
                     subStageText += String.format(" (%d/%d)", subStageProgress + 1, totalSubStages);
                 }
-                nvgText(vg, centerX, centerY + 15, subStageText);
-            }
-            
-            // Estimated time remaining
-            if (!estimatedTimeRemaining.equals("Calculating...") && !estimatedTimeRemaining.isEmpty()) {
-                float timeFontSize = 14;
-                nvgFontSize(vg, timeFontSize);
-                nvgFillColor(vg, uiRenderer.nvgRGBA(140, 140, 140, 255, NVGColor.malloc(stack)));
-                nvgText(vg, centerX, centerY + 35, "Time remaining: " + estimatedTimeRemaining);
+                MPainter.drawCenteredString(canvas, subStageText, centerX, centerY + 15, fontSmall, 0xFFA0A0A0);
             }
 
-            // Progress Bar
-            float barWidth = 400;
-            float barHeight = 30;
-            float barX = centerX - barWidth / 2;
-            float barY = centerY + 50;
-            float progress = totalStages > 0 ? (float) (currentStageIndex +1) / totalStages : 0;
+            // Estimated time remaining
+            if (!estimatedTimeRemaining.equals("Calculating...") && !estimatedTimeRemaining.isEmpty()) {
+                MPainter.drawCenteredString(canvas, "Time remaining: " + estimatedTimeRemaining,
+                        centerX, centerY + 35, fontTiny, 0xFF8C8C8C);
+            }
+
+            // Progress bar
+            float barWidth = 400f;
+            float barHeight = 30f;
+            float barX = centerX - barWidth / 2f;
+            float barY = centerY + 50f;
+            float progress = totalStages > 0 ? (float) (currentStageIndex + 1) / totalStages : 0f;
             float filledWidth = barWidth * progress;
 
             // Background of the progress bar
-            nvgBeginPath(vg);
-            nvgRect(vg, barX, barY, barWidth, barHeight);
-            nvgFillColor(vg, uiRenderer.nvgRGBA(50, 50, 50, 255, NVGColor.malloc(stack)));
-            nvgFill(vg);
+            MPainter.fillRect(canvas, barX, barY, barWidth, barHeight, 0xFF323232);
 
-            // Filled part of the progress bar
+            // Filled part of the progress bar (blue-ish)
             if (filledWidth > 0) {
-                nvgBeginPath(vg);
-                nvgRect(vg, barX + 2, barY + 2, filledWidth - 4, barHeight - 4); // Small inner padding
-                nvgFillColor(vg, uiRenderer.nvgRGBA(80, 120, 200, 255, NVGColor.malloc(stack))); // Blueish progress
-                nvgFill(vg);
+                MPainter.fillRect(canvas, barX + 2, barY + 2, filledWidth - 4, barHeight - 4,
+                        0xFF5078C8);
             }
 
             // Border of the progress bar
-            nvgBeginPath(vg);
-            nvgRect(vg, barX, barY, barWidth, barHeight);
-            nvgStrokeWidth(vg, 2.0f);
-            nvgStrokeColor(vg, uiRenderer.nvgRGBA(150, 150, 150, 255, NVGColor.malloc(stack)));
-            nvgStroke(vg);
+            drawStrokeRect(canvas, barX, barY, barWidth, barHeight, 0xFF969696, 2.0f);
 
-            // Progress percentage text (optional)
+            // Progress percentage text (centered on top of bar)
             String progressText = String.format("%d%%", (int)(progress * 100));
-            float percentFontSize = 16;
-            String percentFont = (uiRenderer.getTextWidth("Test", percentFontSize, "sans") > 0) ? "sans" : "minecraft";
-
-            nvgFontSize(vg, percentFontSize);
-            nvgFontFace(vg, percentFont);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, uiRenderer.nvgRGBA(220, 220, 220, 255, NVGColor.malloc(stack)));
-            nvgText(vg, centerX, barY + barHeight / 2, progressText);
+            MPainter.drawCenteredString(canvas, progressText, centerX, barY + barHeight / 2f,
+                    fontSmall, 0xFFDCDCDC);
 
             // Enhanced error message display (if there's an error)
             if (hasError && errorMessage != null) {
-                renderDetailedError(vg, stack, centerX, centerY, windowWidth, windowHeight);
+                renderDetailedError(canvas, centerX, centerY, windowWidth, windowHeight);
             }
-
         } catch (Exception e) {
             System.err.println("Error rendering loading screen: " + e.getMessage());
-            // Log the exception rather than printing stack trace directly
+        } finally {
+            backend.endFrame();
         }
     }
-    
-    /**
-     * Renders detailed error information including severity, error code, recovery actions, and diagnostics.
-     */
-    private void renderDetailedError(long vg, MemoryStack stack, float centerX, float centerY, 
+
+    private void drawStrokeRect(Canvas canvas, float x, float y, float w, float h, int color, float strokeWidth) {
+        try (Paint paint = new Paint()) {
+            paint.setMode(PaintMode.STROKE);
+            paint.setColor(color);
+            paint.setStrokeWidth(strokeWidth);
+            canvas.drawRect(Rect.makeXYWH(x, y, w, h), paint);
+        }
+    }
+
+    private void renderDetailedError(Canvas canvas, float centerX, float centerY,
                                    int windowWidth, int windowHeight) {
         float errorBoxWidth = Math.min(700, windowWidth - 100);
-        float baseErrorBoxHeight = 120;
-        
+        float baseErrorBoxHeight = 120f;
+
         // Calculate additional height needed for recovery actions and diagnostics
         float additionalHeight = 0;
         if (!recoveryActions.isEmpty()) {
             additionalHeight += 20 + (recoveryActions.size() * 18);
         }
         if (!diagnosticInfo.isEmpty()) {
-            additionalHeight += 20 + Math.min(diagnosticInfo.size() * 16, 80); // Limit diagnostic display
+            additionalHeight += 20 + Math.min(diagnosticInfo.size() * 16, 80);
         }
-        
+
         float errorBoxHeight = baseErrorBoxHeight + additionalHeight;
         float errorBoxX = centerX - errorBoxWidth / 2;
         float errorBoxY = centerY + 120;
-        
+
         // Determine colors based on severity
-        NVGColor bgColor, borderColor, titleColor, textColor;
+        int bgColor, borderColor, titleColor, textColor;
         String severityText;
-        
+
         switch (errorSeverity) {
             case CRITICAL:
-                bgColor = uiRenderer.nvgRGBA(140, 20, 20, 220, NVGColor.malloc(stack));
-                borderColor = uiRenderer.nvgRGBA(220, 50, 50, 255, NVGColor.malloc(stack));
-                titleColor = uiRenderer.nvgRGBA(255, 180, 180, 255, NVGColor.malloc(stack));
-                textColor = uiRenderer.nvgRGBA(255, 200, 200, 255, NVGColor.malloc(stack));
+                bgColor     = 0xDC8C1414;
+                borderColor = 0xFFDC3232;
+                titleColor  = 0xFFFFB4B4;
+                textColor   = 0xFFFFC8C8;
                 severityText = "CRITICAL ERROR";
                 break;
             case ERROR:
-                bgColor = uiRenderer.nvgRGBA(120, 20, 20, 200, NVGColor.malloc(stack));
-                borderColor = uiRenderer.nvgRGBA(200, 50, 50, 255, NVGColor.malloc(stack));
-                titleColor = uiRenderer.nvgRGBA(255, 180, 180, 255, NVGColor.malloc(stack));
-                textColor = uiRenderer.nvgRGBA(255, 200, 200, 255, NVGColor.malloc(stack));
+                bgColor     = 0xC8782C14;
+                borderColor = 0xFFC83232;
+                titleColor  = 0xFFFFB4B4;
+                textColor   = 0xFFFFC8C8;
                 severityText = "ERROR";
                 break;
             case WARNING:
-                bgColor = uiRenderer.nvgRGBA(120, 80, 20, 200, NVGColor.malloc(stack));
-                borderColor = uiRenderer.nvgRGBA(200, 150, 50, 255, NVGColor.malloc(stack));
-                titleColor = uiRenderer.nvgRGBA(255, 220, 140, 255, NVGColor.malloc(stack));
-                textColor = uiRenderer.nvgRGBA(255, 230, 180, 255, NVGColor.malloc(stack));
+                bgColor     = 0xC8785014;
+                borderColor = 0xFFC89632;
+                titleColor  = 0xFFFFDC8C;
+                textColor   = 0xFFEEE6B4;
                 severityText = "WARNING";
                 break;
             default: // INFO
-                bgColor = uiRenderer.nvgRGBA(20, 80, 120, 200, NVGColor.malloc(stack));
-                borderColor = uiRenderer.nvgRGBA(50, 150, 200, 255, NVGColor.malloc(stack));
-                titleColor = uiRenderer.nvgRGBA(180, 220, 255, 255, NVGColor.malloc(stack));
-                textColor = uiRenderer.nvgRGBA(200, 230, 255, 255, NVGColor.malloc(stack));
+                bgColor     = 0xC8145078;
+                borderColor = 0xFF3296C8;
+                titleColor  = 0xFFB4DCFF;
+                textColor   = 0xFFC8E6FF;
                 severityText = "INFO";
                 break;
         }
-        
+
         // Error background
-        nvgBeginPath(vg);
-        nvgRect(vg, errorBoxX, errorBoxY, errorBoxWidth, errorBoxHeight);
-        nvgFillColor(vg, bgColor);
-        nvgFill(vg);
-        
+        MPainter.fillRect(canvas, errorBoxX, errorBoxY, errorBoxWidth, errorBoxHeight, bgColor);
+
         // Error border
-        nvgBeginPath(vg);
-        nvgRect(vg, errorBoxX, errorBoxY, errorBoxWidth, errorBoxHeight);
-        nvgStrokeWidth(vg, 2.0f);
-        nvgStrokeColor(vg, borderColor);
-        nvgStroke(vg);
-        
+        drawStrokeRect(canvas, errorBoxX, errorBoxY, errorBoxWidth, errorBoxHeight, borderColor, 2.0f);
+
         float currentY = errorBoxY + 15;
-        
+
         // Severity and error code header
-        nvgFontSize(vg, 16);
-        nvgFontFace(vg, "sans");
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgFillColor(vg, titleColor);
-        
         String headerText = severityText;
         if (errorCode != null) {
             headerText += " [" + errorCode + "]";
         }
-        nvgText(vg, centerX, currentY, headerText);
+        MPainter.drawCenteredString(canvas, headerText, centerX, currentY, fontSmall, titleColor);
         currentY += 25;
-        
+
         // Main error message
-        nvgFontSize(vg, 14);
-        nvgFillColor(vg, textColor);
-        nvgText(vg, centerX, currentY, errorMessage);
+        MPainter.drawCenteredString(canvas, errorMessage, centerX, currentY, fontTiny, textColor);
         currentY += 25;
-        
+
         // Recovery actions
         if (!recoveryActions.isEmpty()) {
-            nvgFontSize(vg, 13);
-            nvgFillColor(vg, titleColor);
-            nvgText(vg, centerX, currentY, "Suggested Actions:");
+            MPainter.drawCenteredString(canvas, "Suggested Actions:", centerX, currentY, fontTiny, titleColor);
             currentY += 20;
-            
-            nvgFontSize(vg, 12);
-            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, textColor);
-            
+
             for (int i = 0; i < Math.min(recoveryActions.size(), 4); i++) {
-                String action = "• " + recoveryActions.get(i);
-                nvgText(vg, errorBoxX + 20, currentY, action);
+                String action = "\u2022 " + recoveryActions.get(i);
+                MPainter.drawString(canvas, action, errorBoxX + 20, currentY, fontTiny, textColor);
                 currentY += 18;
             }
-            
+
             if (recoveryActions.size() > 4) {
-                nvgText(vg, errorBoxX + 20, currentY, "• ... and " + (recoveryActions.size() - 4) + " more actions");
+                String more = "\u2022 ... and " + (recoveryActions.size() - 4) + " more actions";
+                MPainter.drawString(canvas, more, errorBoxX + 20, currentY, fontTiny, textColor);
                 currentY += 18;
             }
         }
-        
+
         // Diagnostic information
         if (!diagnosticInfo.isEmpty()) {
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFontSize(vg, 13);
-            nvgFillColor(vg, titleColor);
-            nvgText(vg, centerX, currentY, "Technical Details:");
+            MPainter.drawCenteredString(canvas, "Technical Details:", centerX, currentY, fontTiny, titleColor);
             currentY += 20;
-            
-            nvgFontSize(vg, 11);
-            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, uiRenderer.nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
-            
+
             for (int i = 0; i < Math.min(diagnosticInfo.size(), 5); i++) {
                 String diagnostic = diagnosticInfo.get(i);
-                // Truncate long diagnostic messages
                 if (diagnostic.length() > 80) {
                     diagnostic = diagnostic.substring(0, 77) + "...";
                 }
-                nvgText(vg, errorBoxX + 20, currentY, diagnostic);
+                MPainter.drawString(canvas, diagnostic, errorBoxX + 20, currentY,
+                        fontTiny, 0xFFB4B4B4);
                 currentY += 16;
             }
         }
-        
+
         // Instructions
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgFontSize(vg, 14);
-        nvgFillColor(vg, uiRenderer.nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
-        
         String instructionText = "Press ESC to return to main menu";
         if (errorSeverity == ErrorSeverity.WARNING || errorSeverity == ErrorSeverity.INFO) {
             instructionText += " or wait for auto-recovery";
         }
-        
-        nvgText(vg, centerX, errorBoxY + errorBoxHeight + 25, instructionText);
+        MPainter.drawCenteredString(canvas, instructionText, centerX, errorBoxY + errorBoxHeight + 25,
+                fontTiny, 0xFFB4B4B4);
     }
 
     /**
      * Handles input for the loading screen, primarily for error recovery.
      */
     public void handleInput(long window) {
-        // Only handle input if there's an error displayed
         if (hasError) {
-            boolean escPressed = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+            boolean escPressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_ESCAPE) == GLFW.GLFW_PRESS;
             if (escPressed) {
-                // Return to main menu when ESC is pressed during error
                 System.out.println("LoadingScreen: ESC pressed during error, returning to main menu");
                 Game.getInstance().setState(GameState.MAIN_MENU);
             }
