@@ -245,21 +245,32 @@ public class DropUtil {
      * Handles block breaking and creates appropriate drops.
      */
     public static void handleBlockBroken(World world, Vector3f position, BlockType brokenBlock) {
+        handleBlockBroken(world, position, brokenBlock, null);
+    }
+
+    /**
+     * Handles block breaking and creates appropriate drops.
+     * @param toolItem the item type used to break the block (may be null)
+     */
+    public static void handleBlockBroken(World world, Vector3f position, BlockType brokenBlock, ItemType toolItem) {
         if (world == null || brokenBlock == null || brokenBlock == BlockType.AIR) {
             return;
         }
-        
-        // Special handling for snow blocks (multiple layers)
+
+        // Special handling for snow blocks
         if (brokenBlock == BlockType.SNOW) {
-            // Get snow layer count from world
-            int snowLayers = world.getSnowLayers((int)position.x, (int)position.y, (int)position.z);
-            if (snowLayers > 0) {
-                // Create multiple snow ball drops based on layer count
-                createBlockDrops(world, position, BlockType.SNOW, snowLayers);
+            // Shovel drops snowballs, otherwise drop snow blocks
+            if (toolItem == ItemType.STONE_SHOVEL || toolItem == ItemType.WOODEN_SHOVEL) {
+                createItemDrop(world, position, ItemType.SNOWBALL, 1);
+            } else {
+                int snowLayers = world.getSnowLayers((int)position.x, (int)position.y, (int)position.z);
+                if (snowLayers > 0) {
+                    createBlockDrops(world, position, BlockType.SNOW, snowLayers);
+                }
             }
             return;
         }
-        
+
         // Get the appropriate drop for this block
         BlockType dropType = getBlockDrop(brokenBlock);
         if (dropType != null) {
