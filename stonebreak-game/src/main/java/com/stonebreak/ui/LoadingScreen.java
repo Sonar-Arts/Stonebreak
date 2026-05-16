@@ -1,4 +1,4 @@
-﻿package com.stonebreak.ui;
+package com.stonebreak.ui;
 
 import java.util.Arrays;
 import java.util.List;
