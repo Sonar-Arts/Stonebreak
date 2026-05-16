@@ -57,6 +57,8 @@ public class CollisionHandler {
                         if (stepUpNeeded > 0.0f && stepUpNeeded <= 1.0f && canStepUp &&
                                 yi == (int) Math.floor(playerFootY) && position.y >= yi) {
                             stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
+                        } else if (yi > (int) Math.floor(playerFootY) && blockHeight <= 0.125f && stepUpHeight > 0.0f) {
+                            // Single-layer snow on upper row during step-up — skip wall collision
                         } else if (position.y < blockTop && position.y + PLAYER_HEIGHT > yi) {
                             float potentialNewX = (float) (blockToCheckX + 1) + halfWidth;
                             if (!collisionOccurred || potentialNewX > correctedPositionX) {
@@ -79,6 +81,8 @@ public class CollisionHandler {
                         if (stepUpNeeded > 0.0f && stepUpNeeded <= 1.0f && canStepUp &&
                                 yi == (int) Math.floor(playerFootY) && position.y >= yi) {
                             stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
+                        } else if (yi > (int) Math.floor(playerFootY) && blockHeight <= 0.125f && stepUpHeight > 0.0f) {
+                            // Single-layer snow on upper row during step-up — skip wall collision
                         } else if (position.y < blockTop && position.y + PLAYER_HEIGHT > yi) {
                             float potentialNewX = (float) blockToCheckX - halfWidth;
                             if (!collisionOccurred || potentialNewX < correctedPositionX) {
@@ -181,6 +185,8 @@ public class CollisionHandler {
                         if (stepUpNeeded > 0.0f && stepUpNeeded <= 1.0f && canStepUp &&
                                 yi == (int) Math.floor(playerFootY) && position.y >= yi) {
                             stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
+                        } else if (yi > (int) Math.floor(playerFootY) && blockHeight <= 0.125f && stepUpHeight > 0.0f) {
+                            // Single-layer snow on upper row during step-up — skip wall collision
                         } else if (position.y < blockTop && position.y + PLAYER_HEIGHT > yi) {
                             float potentialNewZ = (float) (blockToCheckZ + 1) + halfWidth;
                             if (!collisionOccurred || potentialNewZ > correctedPositionZ) {
@@ -203,6 +209,8 @@ public class CollisionHandler {
                         if (stepUpNeeded > 0.0f && stepUpNeeded <= 1.0f && canStepUp &&
                                 yi == (int) Math.floor(playerFootY) && position.y >= yi) {
                             stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
+                        } else if (yi > (int) Math.floor(playerFootY) && blockHeight <= 0.125f && stepUpHeight > 0.0f) {
+                            // Single-layer snow on upper row during step-up — skip wall collision
                         } else if (position.y < blockTop && position.y + PLAYER_HEIGHT > yi) {
                             float potentialNewZ = (float) blockToCheckZ - halfWidth;
                             if (!collisionOccurred || potentialNewZ < correctedPositionZ) {
