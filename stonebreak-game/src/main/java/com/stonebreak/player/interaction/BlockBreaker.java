@@ -131,10 +131,19 @@ public class BlockBreaker {
         // because the host also issues a giveItemTo when the client walks
         // through the host's drop.
         if (!com.stonebreak.network.MultiplayerSession.isClient()) {
-            DropUtil.handleBlockBroken(world, dropPosition, blockType);
+            ItemType toolItem = getHeldToolType();
+            DropUtil.handleBlockBroken(world, dropPosition, blockType, toolItem);
         }
         world.setBlockAt(pos.x, pos.y, pos.z, BlockType.AIR, true);
         Water.onBlockBroken(pos.x, pos.y, pos.z);
+    }
+
+    private ItemType getHeldToolType() {
+        ItemStack selectedItem = inventory.getSelectedHotbarSlot();
+        if (selectedItem != null && selectedItem.isTool()) {
+            return selectedItem.asItemType();
+        }
+        return null;
     }
 
     private static boolean isWoodenBlock(BlockType blockType) {
