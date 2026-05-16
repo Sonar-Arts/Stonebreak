@@ -1,4 +1,4 @@
-package com.stonebreak.ui;
+﻿package com.stonebreak.ui;
 
 import java.util.Arrays;
 import java.util.List;
@@ -37,7 +37,9 @@ public class LoadingScreen {
     );
     private final int totalStages = stages.size();
 
-    // Enhanced error reporting fields
+    // TODO: Enhanced error-reporting feature - implemented but not yet wired up to any caller.
+    // Hook reportError/reportDetailedError/updateDetailedProgress into world generation
+    // failure paths, or remove this feature if it stays unused.
     private ErrorSeverity errorSeverity = ErrorSeverity.INFO;
     private String errorCode = null;
     private List<String> recoveryActions = new ArrayList<>();
@@ -83,7 +85,7 @@ public class LoadingScreen {
         this.errorMessage = null;
         this.hasError = false;
         if (!stages.isEmpty()) {
-            this.currentStageName = stages.get(0);
+            this.currentStageName = stages.getFirst();
         } else {
             this.currentStageName = "Loading...";
         }
@@ -144,30 +146,6 @@ public class LoadingScreen {
         if (!stageName.equals(this.currentStageName)) {
             this.stageStartTime = System.currentTimeMillis();
         }
-    }
-
-    public boolean hasError() {
-        return hasError;
-    }
-
-    public String getErrorMessage() {
-        return errorMessage;
-    }
-
-    public ErrorSeverity getErrorSeverity() {
-        return errorSeverity;
-    }
-
-    public String getErrorCode() {
-        return errorCode;
-    }
-
-    public List<String> getRecoveryActions() {
-        return new ArrayList<>(recoveryActions);
-    }
-
-    public List<String> getDiagnosticInfo() {
-        return new ArrayList<>(diagnosticInfo);
     }
 
     public void render(int windowWidth, int windowHeight) {
@@ -231,7 +209,7 @@ public class LoadingScreen {
             }
 
             // Border of the progress bar
-            drawStrokeRect(canvas, barX, barY, barWidth, barHeight, 0xFF969696, 2.0f);
+            drawStrokeRect(canvas, barX, barY, barWidth, barHeight, 0xFF969696);
 
             // Progress percentage text (centered on top of bar)
             String progressText = String.format("%d%%", (int)(progress * 100));
@@ -240,7 +218,7 @@ public class LoadingScreen {
 
             // Enhanced error message display (if there's an error)
             if (hasError && errorMessage != null) {
-                renderDetailedError(canvas, centerX, centerY, windowWidth, windowHeight);
+                renderDetailedError(canvas, centerX, centerY, windowWidth);
             }
         } catch (Exception e) {
             System.err.println("Error rendering loading screen: " + e.getMessage());
@@ -249,17 +227,16 @@ public class LoadingScreen {
         }
     }
 
-    private void drawStrokeRect(Canvas canvas, float x, float y, float w, float h, int color, float strokeWidth) {
+    private void drawStrokeRect(Canvas canvas, float x, float y, float w, float h, int color) {
         try (Paint paint = new Paint()) {
             paint.setMode(PaintMode.STROKE);
             paint.setColor(color);
-            paint.setStrokeWidth(strokeWidth);
+            paint.setStrokeWidth(2.0f);
             canvas.drawRect(Rect.makeXYWH(x, y, w, h), paint);
         }
     }
 
-    private void renderDetailedError(Canvas canvas, float centerX, float centerY,
-                                   int windowWidth, int windowHeight) {
+    private void renderDetailedError(Canvas canvas, float centerX, float centerY, int windowWidth) {
         float errorBoxWidth = Math.min(700, windowWidth - 100);
         float baseErrorBoxHeight = 120f;
 
@@ -315,7 +292,7 @@ public class LoadingScreen {
         MPainter.fillRect(canvas, errorBoxX, errorBoxY, errorBoxWidth, errorBoxHeight, bgColor);
 
         // Error border
-        drawStrokeRect(canvas, errorBoxX, errorBoxY, errorBoxWidth, errorBoxHeight, borderColor, 2.0f);
+        drawStrokeRect(canvas, errorBoxX, errorBoxY, errorBoxWidth, errorBoxHeight, borderColor);
 
         float currentY = errorBoxY + 15;
 
@@ -337,13 +314,13 @@ public class LoadingScreen {
             currentY += 20;
 
             for (int i = 0; i < Math.min(recoveryActions.size(), 4); i++) {
-                String action = "\u2022 " + recoveryActions.get(i);
+                String action = "• " + recoveryActions.get(i);
                 MPainter.drawString(canvas, action, errorBoxX + 20, currentY, fontTiny, textColor);
                 currentY += 18;
             }
 
             if (recoveryActions.size() > 4) {
-                String more = "\u2022 ... and " + (recoveryActions.size() - 4) + " more actions";
+                String more = "• ... and " + (recoveryActions.size() - 4) + " more actions";
                 MPainter.drawString(canvas, more, errorBoxX + 20, currentY, fontTiny, textColor);
                 currentY += 18;
             }
