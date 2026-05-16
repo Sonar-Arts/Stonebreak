@@ -19,6 +19,7 @@ import com.stonebreak.ui.characterScreen.CharacterScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
+import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.characterCreation.CharacterCreationScreen;
 import com.stonebreak.ui.startupIntro.SonarArtsIntroScreen;
@@ -48,6 +49,7 @@ public class Game {
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private CharacterScreen characterScreen; // Character stats screen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
+    private FurnaceScreen furnaceScreen; // Furnace smelting GUI
     private RecipeScreen recipeScreen; // Added RecipeBookScreen
     private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
@@ -60,6 +62,7 @@ public class Game {
     private SoundSystem soundSystem; // Sound system
     private ChatSystem chatSystem; // Chat system
     private CraftingManager craftingManager; // Crafting manager
+    private SmeltingManager smeltingManager; // Smelting manager for furnace
     private com.stonebreak.audio.emitters.SoundEmitterManager soundEmitterManager; // Sound emitter management
     private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
     private DebugOverlay debugOverlay; // Debug overlay (F3)
@@ -168,6 +171,8 @@ public class Game {
         initializeCrosshairSettings();
 
         this.craftingManager = new CraftingManager();
+        this.smeltingManager = new SmeltingManager();
+        initializeSmeltingRecipes();
         initializeCraftingRecipes();
 
         this.chatSystem = new ChatSystem();
@@ -261,6 +266,13 @@ public class Game {
             System.err.println("Failed to initialize WorkbenchScreen due to null components.");
         }
 
+        // Initialize FurnaceScreen
+        if (this.renderer.getUIRenderer() != null) {
+            this.furnaceScreen = new FurnaceScreen(this, player.getInventory(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.smeltingManager);
+        } else {
+            System.err.println("Failed to initialize FurnaceScreen due to null components.");
+        }
+
         // Initialize RecipeBookScreen
         if (this.renderer.getUIRenderer() != null && this.craftingManager != null && getFont() != null) {
             this.recipeScreen = new RecipeScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
@@ -282,6 +294,23 @@ public class Game {
      */
     private void initializeCraftingRecipes() {
         com.stonebreak.crafting.RecipeLoader.loadFromSBOs(this.craftingManager);
+    }
+
+    /**
+     * Registers smelting recipes and fuel sources.
+     */
+    private void initializeSmeltingRecipes() {
+        // Cobblestone → Stone (demo recipe)
+        smeltingManager.registerRecipe(
+                new SmeltingRecipe(
+                        "stonebreak:cobblestone_to_stone",
+                        new ItemStack(BlockType.COBBLESTONE, 1),
+                        new ItemStack(BlockType.STONE, 1),
+                        0.1f
+                ));
+
+        // Coal ore is the canonical fuel (1600 ticks = 80 seconds per stack)
+        smeltingManager.registerFuel(BlockType.COAL_ORE, 1600);
     }
 
 
@@ -461,6 +490,20 @@ public class Game {
     public WorkbenchScreen getWorkbenchScreen() {
         return workbenchScreen;
     }
+
+    /**
+     * Gets the furnace screen.
+     */
+    public FurnaceScreen getFurnaceScreen() {
+        return furnaceScreen;
+    }
+
+    /**
+     * Gets the smelting manager.
+     */
+    public SmeltingManager getSmeltingManager() {
+        return smeltingManager;
+    }
     
     /**
      * Gets the input handler.
@@ -620,6 +663,16 @@ public class Game {
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#closeWorkbenchScreen()}. */
     public void closeWorkbenchScreen() {
         stateController.closeWorkbenchScreen();
+    }
+
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#openFurnaceScreen()}. */
+    public void openFurnaceScreen() {
+        stateController.openFurnaceScreen();
+    }
+
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#closeFurnaceScreen()}. */
+    public void closeFurnaceScreen() {
+        stateController.closeFurnaceScreen();
     }
     
     /**

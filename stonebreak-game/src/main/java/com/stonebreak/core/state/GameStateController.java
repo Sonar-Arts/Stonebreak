@@ -10,6 +10,7 @@ import com.stonebreak.ui.characterScreen.CharacterScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
+import com.stonebreak.ui.furnace.FurnaceScreen;
 
 /**
  * Owns game state transitions, the pause flag, and UI toggles. Extracted
@@ -93,7 +94,7 @@ public final class GameStateController {
 
     private void updatePauseState(GameState state) {
         switch (state) {
-            case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI,
+            case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI, FURNACE_UI,
                  MULTIPLAYER_MENU, HOST_WORLD_SELECT, JOIN_WORLD_SCREEN,
                  WORLD_SELECT, CHARACTER_CREATION, TERRAIN_MAPPER -> paused = true;
             case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI, CHARACTER_SHEET_UI -> paused = false;
@@ -149,6 +150,28 @@ public final class GameStateController {
                 setState(GameState.PLAYING);
             }
             System.out.println("Closed Workbench Screen.");
+        }
+    }
+
+    public void openFurnaceScreen() {
+        FurnaceScreen furnaceScreen = game.getFurnaceScreen();
+        if (furnaceScreen != null && currentState == GameState.PLAYING && !paused) {
+            setState(GameState.FURNACE_UI);
+            furnaceScreen.open();
+            System.out.println("Opened Furnace Screen.");
+        } else {
+            System.out.println("Cannot open furnace: Not in PLAYING state, or game paused by menu, or furnaceScreen is null.");
+        }
+    }
+
+    public void closeFurnaceScreen() {
+        FurnaceScreen furnaceScreen = game.getFurnaceScreen();
+        if (furnaceScreen != null && furnaceScreen.isVisible()) {
+            furnaceScreen.close();
+            if (currentState == GameState.FURNACE_UI) {
+                setState(GameState.PLAYING);
+            }
+            System.out.println("Closed Furnace Screen.");
         }
     }
 

@@ -13,6 +13,7 @@ import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
+import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.world.TimeOfDay;
 import com.stonebreak.world.World;
 
@@ -104,6 +105,15 @@ public final class GameLoop {
             case RECIPE_BOOK_UI -> {
                 if (recipeScreen != null) {
                     recipeScreen.update(deltaTime);
+                }
+            }
+            case FURNACE_UI -> {
+                FurnaceScreen furnaceScreen = game.getFurnaceScreen();
+                if (furnaceScreen != null && furnaceScreen.isVisible()) {
+                    furnaceScreen.update(deltaTime);
+                }
+                if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                    inventoryScreen.update(deltaTime);
                 }
             }
             // No per-frame character screen update needed; world continues to run.

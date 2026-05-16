@@ -19,6 +19,7 @@ import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import org.lwjgl.*;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
+import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.World;
 import org.lwjgl.Version;
@@ -587,7 +588,7 @@ public class Main {
                 case JOIN_WORLD_SCREEN -> {
                     if (game.getJoinWorldScreen() != null) game.getJoinWorldScreen().handleInput(window);
                 }
-                case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, CHARACTER_SHEET_UI -> {
+                case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, CHARACTER_SHEET_UI, FURNACE_UI -> {
                     // Handle in-game input if not a purely modal UI like MainMenu
                     // Game.update() will also check its internal state for what to update (e.g. player/world if not paused)
                     if (inputHandler != null) {
@@ -816,7 +817,7 @@ public class Main {
 
         renderer.beginUIFrame(width, height, 1.0f);
 
-        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI || game.getState() == GameState.RECIPE_BOOK_UI || game.getState() == GameState.CHARACTER_SHEET_UI) {
+        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI || game.getState() == GameState.RECIPE_BOOK_UI || game.getState() == GameState.CHARACTER_SHEET_UI || game.getState() == GameState.FURNACE_UI || game.getState() == GameState.WORKBENCH_UI) {
             renderCrosshair(game, renderer);
             renderInventoryAndHotbar(game);
             renderChat(game, renderer);
@@ -849,10 +850,12 @@ public class Main {
         if (game.getState() == GameState.PLAYING) {
             InventoryScreen inventoryScreen = game.getInventoryScreen();
             WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+            FurnaceScreen furnaceScreen = game.getFurnaceScreen();
 
             // Don't render crosshair if any UI screen is open
             boolean anyUIVisible = (inventoryScreen != null && inventoryScreen.isVisible()) ||
-                                   (workbenchScreen != null && workbenchScreen.isVisible());
+                                   (workbenchScreen != null && workbenchScreen.isVisible()) ||
+                                   (furnaceScreen != null && furnaceScreen.isVisible());
 
             if (!anyUIVisible) {
                 renderer.getUIRenderer().renderCrosshair(width, height);
@@ -862,7 +865,6 @@ public class Main {
 
     private void renderInventoryAndHotbar(Game game) {
         InventoryScreen inventoryScreen = game.getInventoryScreen();
-        WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
         com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = game.getCharacterScreen();
         GameState state = game.getState();
 
@@ -875,10 +877,14 @@ public class Main {
             return;
         }
 
-        // Check which screen is visible and render accordingly
-        if (workbenchScreen != null && workbenchScreen.isVisible()) {
-            workbenchScreen.render();
-        } else if (characterScreen != null && characterScreen.isVisible()
+        // Furnace and Workbench are rendered exclusively by renderFullscreenMenus
+        // (outside the UIFrame bracket). Rendering them here too causes a double-render
+        // where the second Skija pass covers the GL block-texture icons from the first.
+        if (state == GameState.FURNACE_UI || state == GameState.WORKBENCH_UI) {
+            return;
+        }
+
+        if (characterScreen != null && characterScreen.isVisible()
                 && state == GameState.CHARACTER_SHEET_UI) {
             // Character screen is open — render it, but keep the hotbar visible below
             characterScreen.render(width, height);
@@ -914,6 +920,12 @@ public class Main {
             WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
             if (workbenchScreen != null && workbenchScreen.isVisible()) {
                 workbenchScreen.render();
+            }
+        }
+        if (game.getState() == GameState.FURNACE_UI) {
+            FurnaceScreen furnaceScreen = game.getFurnaceScreen();
+            if (furnaceScreen != null && furnaceScreen.isVisible()) {
+                furnaceScreen.render();
             }
         }
     }

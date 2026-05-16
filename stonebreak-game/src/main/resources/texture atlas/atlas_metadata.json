@@ -1437,6 +1437,48 @@
       "y" : 192,
       "type" : "block_cube_cross",
       "height" : 16
+    },
+    "furnace_top" : {
+      "x" : 0,
+      "width" : 16,
+      "y" : 208,
+      "type" : "block_cube_cross",
+      "height" : 16
+    },
+    "furnace_bottom" : {
+      "x" : 16,
+      "width" : 16,
+      "y" : 208,
+      "type" : "block_cube_cross",
+      "height" : 16
+    },
+    "furnace_north" : {
+      "x" : 32,
+      "width" : 16,
+      "y" : 208,
+      "type" : "block_cube_cross",
+      "height" : 16
+    },
+    "furnace_south" : {
+      "x" : 48,
+      "width" : 16,
+      "y" : 208,
+      "type" : "block_cube_cross",
+      "height" : 16
+    },
+    "furnace_east" : {
+      "x" : 64,
+      "width" : 16,
+      "y" : 208,
+      "type" : "block_cube_cross",
+      "height" : 16
+    },
+    "furnace_west" : {
+      "x" : 80,
+      "width" : 16,
+      "y" : 208,
+      "type" : "block_cube_cross",
+      "height" : 16
     }
   }
 }

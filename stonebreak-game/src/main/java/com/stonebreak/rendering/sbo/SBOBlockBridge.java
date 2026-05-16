@@ -59,7 +59,8 @@ public class SBOBlockBridge {
             Map.entry("stonebreak:crystal", BlockType.CRYSTAL),
             Map.entry("stonebreak:iron_ore", BlockType.IRON_ORE),
             Map.entry("stonebreak:magma", BlockType.MAGMA),
-            Map.entry("stonebreak:workbench", BlockType.WORKBENCH)
+            Map.entry("stonebreak:workbench", BlockType.WORKBENCH),
+            Map.entry("stonebreak:furnace", BlockType.FURNACE)
     );
 
     private final Map<BlockType, SBOParseResult> sboByBlockType = new HashMap<>();

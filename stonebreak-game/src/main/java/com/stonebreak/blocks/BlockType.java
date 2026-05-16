@@ -90,6 +90,7 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType ICE = fromRegistry("stonebreak:ice", "ICE");
     public static final BlockType SNOW = fromRegistry("stonebreak:snow", "SNOW");
     public static final BlockType WORKBENCH = fromRegistry("stonebreak:workbench", "WORKBENCH");
+    public static final BlockType FURNACE = fromRegistry("stonebreak:furnace", "FURNACE");
     public static final BlockType WOOD_PLANKS = fromRegistry("stonebreak:wood_planks", "WOOD_PLANKS");
     public static final BlockType PINE_WOOD_PLANKS = fromRegistry("stonebreak:pine_wood_planks", "PINE_WOOD_PLANKS");
     public static final BlockType ELM_WOOD_LOG = fromRegistry("stonebreak:elm_wood_log", "ELM_WOOD_LOG");

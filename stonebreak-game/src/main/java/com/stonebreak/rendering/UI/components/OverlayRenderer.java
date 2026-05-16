@@ -11,6 +11,7 @@ import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
+import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 
 /**
@@ -114,6 +115,13 @@ public class OverlayRenderer {
             WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
             if (workbenchScreen != null && workbenchScreen.isVisible()) {
                 workbenchScreen.renderDraggedItemOnly(windowWidth, windowHeight);
+            }
+        }
+
+        if (state == GameState.FURNACE_UI) {
+            FurnaceScreen furnaceScreen = game.getFurnaceScreen();
+            if (furnaceScreen != null && furnaceScreen.isVisible()) {
+                furnaceScreen.renderDraggedItemOnly(windowWidth, windowHeight);
             }
         }
     }

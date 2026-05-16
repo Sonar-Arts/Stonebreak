@@ -1,0 +1,32 @@
+{
+  "version" : "1.4",
+  "objectId" : "stonebreak:untitled_block",
+  "objectName" : "Furnace",
+  "objectType" : "block",
+  "objectPack" : "default",
+  "checksum" : "4b3fb805e5b29272e2466bd817ae5d75d0b59b8ceae11f9834e6fe2f26dc37a8",
+  "checksumAlgorithm" : "SHA-256",
+  "author" : "Johnny-SonarArts",
+  "description" : "Temp Furnace",
+  "createdAt" : "2026-05-13T20:33:03.142167800Z",
+  "omoFile" : "model.omo",
+  "textureFile" : null,
+  "gameProperties" : {
+    "numericId" : 36,
+    "hardness" : 1.0,
+    "solid" : true,
+    "breakable" : true,
+    "atlasX" : 0,
+    "atlasY" : 14,
+    "renderLayer" : "OPAQUE",
+    "transparent" : false,
+    "flower" : false,
+    "stackable" : true,
+    "maxStackSize" : 64,
+    "category" : "BLOCKS",
+    "placeable" : true
+  },
+  "states" : null,
+  "defaultState" : null,
+  "recipes" : null
+}

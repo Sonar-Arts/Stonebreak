@@ -26,6 +26,7 @@ import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
+import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.World;
 
@@ -172,6 +173,13 @@ public class InputHandler {
                 workbenchScreen.handleInput(this);
                 return; // Workbench UI has full input control
             }
+            if (currentGameState == GameState.FURNACE_UI) {
+                FurnaceScreen furnaceScreen = Game.getInstance().getFurnaceScreen();
+                if (furnaceScreen != null && furnaceScreen.isVisible()) {
+                    furnaceScreen.handleInput(this);
+                    return; // Furnace UI has full input control
+                }
+            }
             // Handle inventory screen input when in INVENTORY_UI state
             if (currentGameState == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
                 // Cache window dimensions to avoid repeated calls
@@ -273,6 +281,13 @@ public class InputHandler {
                 return; // Action taken
             }
 
+            // 3.5 Close Furnace
+            FurnaceScreen furnaceScreen = game.getFurnaceScreen();
+            if (furnaceScreen != null && furnaceScreen.isVisible() && game.getState() == GameState.FURNACE_UI) {
+                furnaceScreen.handleCloseRequest();
+                return; // Action taken
+            }
+
             // 4. Close Inventory
             if (game.getState() == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
                 // This covers case where Inventory is open directly, or under Recipe Book if Recipe Book was closed in a prior step this frame
@@ -329,6 +344,11 @@ public class InputHandler {
                 return;
             }
 
+            // Don't open inventory if furnace is open
+            if (Game.getInstance().getState() == GameState.FURNACE_UI) {
+                return;
+            }
+
             Game.getInstance().toggleInventoryScreen();
             // Cursor state is handled by Game.toggleInventoryScreen()
         } else if (!isInventoryKeyPressed) {
@@ -359,6 +379,9 @@ public class InputHandler {
             // Don't open if recipe book is open
             RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
             if (recipeScreen != null && recipeScreen.isVisible()) return;
+
+            // Don't open if furnace is open
+            if (Game.getInstance().getState() == GameState.FURNACE_UI) return;
 
             // Don't open if in a non-game state
             GameState state = Game.getInstance().getState();
@@ -699,6 +722,12 @@ public class InputHandler {
             return;
         }
 
+        FurnaceScreen furnaceScreen = Game.getInstance().getFurnaceScreen();
+        if (furnaceScreen != null && furnaceScreen.isVisible() && Game.getInstance().getState() == GameState.FURNACE_UI) {
+            // FurnaceScreen.handleInput should manage its clicks. This prevents world clicks.
+            return;
+        }
+
         InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
             // InventoryScreen.handleMouseInput manages its clicks. This prevents world clicks.
@@ -812,6 +841,9 @@ public class InputHandler {
                                 // Interacted with a Workbench
                                 System.out.println("Player right-clicked on a Workbench block."); // Keep for clarity
                                 Game.getInstance().openWorkbenchScreen();
+                            } else if (targetedBlockType == BlockType.FURNACE) {
+                                // Interacted with a Furnace
+                                Game.getInstance().openFurnaceScreen();
                             } else {
                                 // Not a workbench, proceed with normal block placement
                                 player.placeBlock();
