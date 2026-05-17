@@ -29,8 +29,8 @@ public final class WorldLightingContext implements LightingContext {
     public int getColumnHeight(int worldX, int worldZ) {
         int cx = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
         int cz = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
-        if (world == null || !world.hasChunkAt(cx, cz)) return -1;
-        Chunk chunk = world.getChunkAt(cx, cz);
+        if (world == null) return -1;
+        Chunk chunk = world.getChunkIfLoaded(cx, cz);
         if (chunk == null) return -1;
         ChunkHeightMap hm = chunk.getHeightMap();
         if (!hm.isPopulated()) {
@@ -48,8 +48,8 @@ public final class WorldLightingContext implements LightingContext {
         if (worldY < 0 || worldY >= WorldConfiguration.WORLD_HEIGHT) return false;
         int cx = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
         int cz = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
-        if (world == null || !world.hasChunkAt(cx, cz)) return false;
-        Chunk chunk = world.getChunkAt(cx, cz);
+        if (world == null) return false;
+        Chunk chunk = world.getChunkIfLoaded(cx, cz);
         if (chunk == null) return false;
         int lx = Math.floorMod(worldX, WorldConfiguration.CHUNK_SIZE);
         int lz = Math.floorMod(worldZ, WorldConfiguration.CHUNK_SIZE);

@@ -48,7 +48,7 @@ public final class FlowBlockInteraction {
         // Use CCO API for optimized block access
         int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-        Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+        Chunk chunk = world.getChunkIfLoaded(chunkX, chunkZ);
 
         if (chunk == null) {
             return false;
