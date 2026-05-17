@@ -880,9 +880,7 @@ public class Main {
         // Render death menu if player is dead
         com.stonebreak.ui.DeathMenu deathMenu = game.getDeathMenu();
         if (deathMenu != null && deathMenu.isVisible() && renderer != null) {
-            renderer.beginUIFrame(width, height, 1.0f);
-            deathMenu.render(renderer.getUIRenderer(), width, height);
-            renderer.endUIFrame();
+            deathMenu.render(width, height);
         }
     }
 

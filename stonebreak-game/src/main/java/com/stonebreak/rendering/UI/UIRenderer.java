@@ -159,14 +159,6 @@ public class UIRenderer {
         return menuRenderer.isPauseQuitClicked(mouseX, mouseY, windowWidth, windowHeight);
     }
 
-    public void renderDeathMenu(int windowWidth, int windowHeight, boolean isRespawnButtonHovered) {
-        menuRenderer.renderDeathMenu(windowWidth, windowHeight, isRespawnButtonHovered);
-    }
-
-    public boolean isDeathRespawnClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        return menuRenderer.isDeathRespawnClicked(mouseX, mouseY, windowWidth, windowHeight);
-    }
-    
     // ===== Chat Rendering Delegation =====
     
     public void renderChat(ChatSystem chatSystem, int windowWidth, int windowHeight) {

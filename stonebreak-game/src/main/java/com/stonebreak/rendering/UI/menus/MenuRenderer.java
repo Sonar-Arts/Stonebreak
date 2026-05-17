@@ -132,40 +132,6 @@ public class MenuRenderer extends BaseRenderer {
         drawMinecraftButton("Quit to Main Menu", centerX - buttonWidth/2, quitY, buttonWidth, buttonHeight, isQuitButtonHovered);
     }
 
-    public void renderDeathMenu(int windowWidth, int windowHeight, boolean isRespawnButtonHovered) {
-        float centerX = windowWidth / 2.0f;
-        float centerY = windowHeight / 2.0f;
-
-        // Dark overlay
-        try (MemoryStack stack = stackPush()) {
-            nvgBeginPath(vg);
-            nvgRect(vg, 0, 0, windowWidth, windowHeight);
-            nvgFillColor(vg, nvgRGBA(80, 0, 0, 180, NVGColor.malloc(stack)));
-            nvgFill(vg);
-        }
-
-        // "You Died!" text in red
-        try (MemoryStack stack = stackPush()) {
-            nvgFontSize(vg, 96);
-            nvgFontFace(vg, "minecraft");
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-
-            // Shadow
-            nvgFillColor(vg, nvgRGBA(40, 0, 0, 255, NVGColor.malloc(stack)));
-            nvgText(vg, centerX + 4, centerY - 100 + 4, "You Died!");
-
-            // Main text
-            nvgFillColor(vg, nvgRGBA(255, 50, 50, 255, NVGColor.malloc(stack)));
-            nvgText(vg, centerX, centerY - 100, "You Died!");
-        }
-
-        // Respawn button
-        float buttonWidth = 360;
-        float buttonHeight = 50;
-        float respawnY = centerY + 20;
-        drawMinecraftButton("Respawn", centerX - buttonWidth/2, respawnY, buttonWidth, buttonHeight, isRespawnButtonHovered);
-    }
-    
     public void renderSettingsMenu(int windowWidth, int windowHeight) {
         float centerX = windowWidth / 2.0f;
         float centerY = windowHeight / 2.0f;
@@ -651,16 +617,6 @@ public class MenuRenderer extends BaseRenderer {
         return isButtonClicked(mouseX, mouseY, centerX - buttonWidth/2, quitY, buttonWidth, buttonHeight);
     }
 
-    public boolean isDeathRespawnClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        float centerX = windowWidth / 2.0f;
-        float centerY = windowHeight / 2.0f;
-        float buttonWidth = 360;
-        float buttonHeight = 50;
-        float respawnY = centerY + 20;
-
-        return isButtonClicked(mouseX, mouseY, centerX - buttonWidth/2, respawnY, buttonWidth, buttonHeight);
-    }
-    
     /**
      * Draws a horizontal separator line for visual organization.
      * @param centerX Center X position
