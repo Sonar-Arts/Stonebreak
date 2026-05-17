@@ -9,7 +9,6 @@ module stonebreak.game {
     requires org.lwjgl.opengl;
     requires org.lwjgl.glfw;
     requires org.lwjgl.openal;
-    requires org.lwjgl.nanovg;
     requires org.lwjgl.stb;
 
     // Skija (Skia bindings). Maven coords: io.github.humbleui:skija-windows-x64,

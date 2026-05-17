@@ -4,6 +4,9 @@ import java.nio.ByteBuffer;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import com.stonebreak.rendering.WaterEffects;
+import io.github.humbleui.skija.ColorAlphaType;
+import io.github.humbleui.skija.Image;
+import io.github.humbleui.skija.ImageInfo;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -29,11 +32,10 @@ public class TextureAtlas {
     private final int textureSize;
     private final int texturePixelSize = 16; // Size of each tile in pixels
     private final ByteBuffer waterTileUpdateBuffer; // Buffer for updating water tile
-    private ByteBuffer atlasPixelBuffer_cached; // Cached buffer for NanoVG
-    
-    // NanoVG image caching
-    private int nvgImageId = -1;
-    private long lastVgContext = 0;
+    private ByteBuffer atlasPixelBuffer_cached; // Cached pixel data for GL texture upload
+
+    // Skija image caching
+    private volatile Image skijaImage;
     
     // Atlas metadata system
     private AtlasMetadata atlasMetadata;
@@ -302,26 +304,49 @@ public class TextureAtlas {
     }
     
     /**
-     * Cache pixel buffer from atlas image for NanoVG usage.
+     * Cache pixel buffer from atlas image for legacy NanoVG usage and Skija
+     * rendering. Builds both the {@link #atlasPixelBuffer_cached} (ByteBuffer)
+     * and the {@link #skijaImage} from the same pixel data.
      */
     private void cachePixelBuffer(BufferedImage image) {
         try {
             int width = image.getWidth();
             int height = image.getHeight();
-            
-            // Extract pixel data for NanoVG (RGBA format)
+
+            // Extract pixel data
             int[] pixels = new int[width * height];
             image.getRGB(0, 0, width, height, pixels, 0, width);
-            
+
+            // Legacy ByteBuffer for NanoVG
             this.atlasPixelBuffer_cached = BufferUtils.createByteBuffer(width * height * 4);
-            for (int pixel : pixels) {
-                atlasPixelBuffer_cached.put((byte) ((pixel >> 16) & 0xFF)); // Red
-                atlasPixelBuffer_cached.put((byte) ((pixel >> 8) & 0xFF));  // Green
-                atlasPixelBuffer_cached.put((byte) (pixel & 0xFF));         // Blue
-                atlasPixelBuffer_cached.put((byte) ((pixel >> 24) & 0xFF)); // Alpha
+            // Skija raster bytes (BGRA — N32 is 0xAABBGGRR in memory)
+            byte[] skijaBytes = new byte[width * height * 4];
+            for (int i = 0; i < pixels.length; i++) {
+                int pixel = pixels[i];
+                int off = i * 4;
+                byte r = (byte) ((pixel >> 16) & 0xFF);
+                byte g = (byte) ((pixel >> 8) & 0xFF);
+                byte b = (byte) (pixel & 0xFF);
+                byte a = (byte) ((pixel >> 24) & 0xFF);
+                atlasPixelBuffer_cached.put(r).put(g).put(b).put(a); // RGBA for GL/NanoVG
+                skijaBytes[off]     = b;   // BGRA for Skija N32
+                skijaBytes[off + 1] = g;
+                skijaBytes[off + 2] = r;
+                skijaBytes[off + 3] = a;
             }
             atlasPixelBuffer_cached.flip();
-            
+
+            // Build Skija Image
+            try {
+                if (this.skijaImage != null) {
+                    this.skijaImage.close();
+                }
+                ImageInfo info = ImageInfo.makeN32(width, height, ColorAlphaType.OPAQUE);
+                this.skijaImage = Image.makeRasterFromBytes(info, skijaBytes, width * 4);
+            } catch (Exception e2) {
+                System.err.println("[TextureAtlas] Failed to create Skija image: " + e2.getMessage());
+            }
+
         } catch (Exception e) {
             System.err.println("Failed to cache pixel buffer: " + e.getMessage());
         }
@@ -496,6 +521,15 @@ public class TextureAtlas {
     public void bind() {
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
     }
+
+    /**
+     * Gets a Skija {@link Image} wrapping the atlas pixel data.
+     * Returns {@code null} if the atlas was generated as a placeholder or
+     * if Skija image creation failed.
+     */
+    public Image getSkijaImage() {
+        return skijaImage;
+    }
     
     /**
      * Cleanup OpenGL resources.
@@ -507,9 +541,9 @@ public class TextureAtlas {
             GpuMemoryTracker.getInstance()
                 .untrack(GpuMemoryTracker.Category.TEXTURE_ATLAS, bytes);
         }
-        if (nvgImageId != -1 && lastVgContext != 0) {
-            // Clean up NanoVG image if it exists
-            org.lwjgl.nanovg.NanoVG.nvgDeleteImage(lastVgContext, nvgImageId);
+        if (skijaImage != null) {
+            try { skijaImage.close(); } catch (Exception ignored) {}
+            skijaImage = null;
         }
     }
     
@@ -753,48 +787,6 @@ public class TextureAtlas {
             case SIDE_WEST: return "west";
             default: return "top"; // fallback
         }
-    }
-    
-    // =================================================================
-    // NANOLVG INTEGRATION (kept from legacy for UI compatibility)
-    // =================================================================
-    
-    /**
-     * Gets or creates a NanoVG image ID for this texture atlas.
-     * Used by UI rendering systems.
-     */
-    public int getNanoVGImageId(long vg) {
-        if (nvgImageId == -1 || lastVgContext != vg) {
-            ByteBuffer atlasBuffer = getAtlasPixelData();
-            if(atlasBuffer != null && vg != 0) {
-                int imageFlags = 0; // Default flags
-                this.nvgImageId = org.lwjgl.nanovg.NanoVG.nvgCreateImageRGBA(vg, getTextureWidth(), getTextureHeight(), imageFlags, atlasBuffer);
-                this.lastVgContext = vg;
-                if(this.nvgImageId == -1){
-                     System.err.println("TextureAtlas: Failed to create NanoVG image from pixel data.");
-                }
-            } else {
-                System.err.println("TextureAtlas: Cannot create NanoVG image - invalid parameters");
-            }
-        }
-        return nvgImageId;
-    }
-    
-    /**
-     * Gets the atlas pixel data for NanoVG usage.
-     */
-    private ByteBuffer getAtlasPixelData() {
-        if (this.atlasPixelBuffer_cached == null) {
-            System.err.println("TextureAtlas: Error - atlasPixelBuffer_cached is null");
-            return null;
-        }
-        if (this.atlasPixelBuffer_cached.limit() <= 0) {
-            System.err.println("TextureAtlas: Error - atlasPixelBuffer_cached.limit() is " + this.atlasPixelBuffer_cached.limit());
-            return null;
-        }
-        // NanoVG needs the buffer positioned at the beginning for reading.
-        this.atlasPixelBuffer_cached.rewind();
-        return this.atlasPixelBuffer_cached;
     }
 
     /**

@@ -352,62 +352,6 @@ public class Renderer {
     }
     
     /**
-     * Begin a UI frame for NanoVG rendering.
-     * @param width Window width
-     * @param height Window height
-     * @param pixelRatio Pixel ratio (typically 1.0f)
-     */
-    public void beginUIFrame(int width, int height, float pixelRatio) {
-        if (uiRenderer != null) {
-            uiRenderer.beginFrame(width, height, pixelRatio);
-        }
-    }
-    
-    /**
-     * End the current UI frame.
-     */
-    public void endUIFrame() {
-        if (uiRenderer != null) {
-            uiRenderer.endFrame();
-        }
-    }
-    
-    /**
-     * Render the main menu.
-     * @param windowWidth Window width
-     * @param windowHeight Window height
-     */
-    public void renderMainMenu(int windowWidth, int windowHeight) {
-        if (uiRenderer != null) {
-            uiRenderer.renderMainMenu(windowWidth, windowHeight);
-        }
-    }
-    
-    /**
-     * Render the pause menu.
-     * @param windowWidth Window width
-     * @param windowHeight Window height
-     * @param isQuitButtonHovered Whether quit button is hovered
-     * @param isSettingsButtonHovered Whether settings button is hovered
-     */
-    public void renderPauseMenu(int windowWidth, int windowHeight, boolean isQuitButtonHovered, boolean isSettingsButtonHovered) {
-        if (uiRenderer != null) {
-            uiRenderer.renderPauseMenu(windowWidth, windowHeight, isQuitButtonHovered, isSettingsButtonHovered);
-        }
-    }
-    
-    /**
-     * Render the settings menu.
-     * @param windowWidth Window width
-     * @param windowHeight Window height
-     */
-    public void renderSettingsMenu(int windowWidth, int windowHeight) {
-        if (uiRenderer != null) {
-            uiRenderer.renderSettingsMenu(windowWidth, windowHeight);
-        }
-    }
-    
-    /**
      * Render chat system.
      * @param chatSystem Chat system instance
      * @param windowWidth Window width
@@ -417,130 +361,6 @@ public class Renderer {
         if (uiRenderer != null) {
             uiRenderer.renderChat(chatSystem, windowWidth, windowHeight);
         }
-    }
-    
-    /**
-     * Draw a button using the UI renderer.
-     * @param text Button text
-     * @param x X position
-     * @param y Y position
-     * @param w Width
-     * @param h Height
-     * @param highlighted Whether button is highlighted
-     */
-    public void drawButton(String text, float x, float y, float w, float h, boolean highlighted) {
-        if (uiRenderer != null) {
-            uiRenderer.drawButton(text, x, y, w, h, highlighted);
-        }
-    }
-    
-    /**
-     * Draw a dropdown button using the UI renderer.
-     * @param text Button text
-     * @param x X position
-     * @param y Y position
-     * @param w Width
-     * @param h Height
-     * @param highlighted Whether button is highlighted
-     * @param isOpen Whether dropdown is open
-     */
-    public void drawDropdownButton(String text, float x, float y, float w, float h, boolean highlighted, boolean isOpen) {
-        if (uiRenderer != null) {
-            uiRenderer.drawDropdownButton(text, x, y, w, h, highlighted, isOpen);
-        }
-    }
-    
-    /**
-     * Draw a dropdown menu using the UI renderer.
-     * @param options Menu options
-     * @param selectedIndex Selected index
-     * @param x X position
-     * @param y Y position
-     * @param w Width
-     * @param itemHeight Height per item
-     */
-    public void drawDropdownMenu(String[] options, int selectedIndex, float x, float y, float w, float itemHeight) {
-        if (uiRenderer != null) {
-            uiRenderer.drawDropdownMenu(options, selectedIndex, x, y, w, itemHeight);
-        }
-    }
-    
-    /**
-     * Draw a volume slider using the UI renderer.
-     * @param label Slider label
-     * @param centerX Center X position
-     * @param centerY Center Y position
-     * @param sliderWidth Slider width
-     * @param sliderHeight Slider height
-     * @param value Slider value (0.0-1.0)
-     * @param highlighted Whether slider is highlighted
-     */
-    public void drawVolumeSlider(String label, float centerX, float centerY, float sliderWidth, float sliderHeight, float value, boolean highlighted) {
-        if (uiRenderer != null) {
-            uiRenderer.drawVolumeSlider(label, centerX, centerY, sliderWidth, sliderHeight, value, highlighted);
-        }
-    }
-    
-    /**
-     * Check if a button was clicked using the UI renderer.
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     * @param buttonX Button X position
-     * @param buttonY Button Y position
-     * @param buttonW Button width
-     * @param buttonH Button height
-     * @return True if button was clicked
-     */
-    public boolean isButtonClicked(float mouseX, float mouseY, float buttonX, float buttonY, float buttonW, float buttonH) {
-        if (uiRenderer != null) {
-            return uiRenderer.isButtonClicked(mouseX, mouseY, buttonX, buttonY, buttonW, buttonH);
-        }
-        return false;
-    }
-    
-    /**
-     * Check if pause resume button was clicked.
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     * @param windowWidth Window width
-     * @param windowHeight Window height
-     * @return True if resume button was clicked
-     */
-    public boolean isPauseResumeClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        if (uiRenderer != null) {
-            return uiRenderer.isPauseResumeClicked(mouseX, mouseY, windowWidth, windowHeight);
-        }
-        return false;
-    }
-    
-    /**
-     * Check if pause settings button was clicked.
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     * @param windowWidth Window width
-     * @param windowHeight Window height
-     * @return True if settings button was clicked
-     */
-    public boolean isPauseSettingsClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        if (uiRenderer != null) {
-            return uiRenderer.isPauseSettingsClicked(mouseX, mouseY, windowWidth, windowHeight);
-        }
-        return false;
-    }
-    
-    /**
-     * Check if pause quit button was clicked.
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     * @param windowWidth Window width
-     * @param windowHeight Window height
-     * @return True if quit button was clicked
-     */
-    public boolean isPauseQuitClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        if (uiRenderer != null) {
-            return uiRenderer.isPauseQuitClicked(mouseX, mouseY, windowWidth, windowHeight);
-        }
-        return false;
     }
     
     // ============ END UI RENDERER PROXY METHODS ============
@@ -553,9 +373,7 @@ public class Renderer {
      */
     public void renderOverlay(Game game, int windowWidth, int windowHeight) {
         if (overlayRenderer != null) {
-            beginUIFrame(windowWidth, windowHeight, 1.0f);
             overlayRenderer.renderOverlay(game, windowWidth, windowHeight);
-            endUIFrame();
         }
     }
     

@@ -41,34 +41,34 @@ public class SettingsManager {
     public void applyCrosshairSettings() {
         Game game = Game.getInstance();
         if (game != null && game.getRenderer() != null && game.getRenderer().getUIRenderer() != null) {
-            var crosshairRenderer = game.getRenderer().getUIRenderer().getCrosshairRenderer();
+            var crosshairRenderer = game.getRenderer().getUIRenderer().getMCrosshairRenderer();
             if (crosshairRenderer != null) {
                 applyCrosshairStyle(crosshairRenderer);
                 applyCrosshairProperties(crosshairRenderer);
-                
-                System.out.println("Applied crosshair settings: style=" + settings.getCrosshairStyle() + 
+
+                System.out.println("Applied crosshair settings: style=" + settings.getCrosshairStyle() +
                                  ", size=" + settings.getCrosshairSize());
             }
         }
     }
-    
+
     /**
      * Applies the crosshair style to the renderer.
      */
-    private void applyCrosshairStyle(com.stonebreak.rendering.UI.components.CrosshairRenderer crosshairRenderer) {
+    private void applyCrosshairStyle(com.stonebreak.rendering.UI.components.MCrosshairRenderer crosshairRenderer) {
         try {
-            var styleEnum = com.stonebreak.rendering.UI.components.CrosshairRenderer.CrosshairStyle
+            var styleEnum = com.stonebreak.rendering.UI.components.MCrosshairRenderer.CrosshairStyle
                 .valueOf(settings.getCrosshairStyle());
             crosshairRenderer.setStyle(styleEnum);
         } catch (IllegalArgumentException e) {
             System.err.println("Invalid crosshair style: " + settings.getCrosshairStyle());
         }
     }
-    
+
     /**
      * Applies crosshair visual properties to the renderer.
      */
-    private void applyCrosshairProperties(com.stonebreak.rendering.UI.components.CrosshairRenderer crosshairRenderer) {
+    private void applyCrosshairProperties(com.stonebreak.rendering.UI.components.MCrosshairRenderer crosshairRenderer) {
         crosshairRenderer.setSize(settings.getCrosshairSize());
         crosshairRenderer.setThickness(settings.getCrosshairThickness());
         crosshairRenderer.setGap(settings.getCrosshairGap());

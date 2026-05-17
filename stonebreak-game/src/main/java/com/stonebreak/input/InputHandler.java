@@ -704,26 +704,23 @@ public class InputHandler {
         com.stonebreak.ui.DeathMenu deathMenu = Game.getInstance().getDeathMenu();
         if (deathMenu != null && deathMenu.isVisible()) {
             if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-                UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-                if (uiRenderer != null) {
-                    int windowWidth = Game.getWindowWidth();
-                    int windowHeight = Game.getWindowHeight();
+                int windowWidth = Game.getWindowWidth();
+                int windowHeight = Game.getWindowHeight();
 
-                    if (deathMenu.isRespawnButtonClicked(currentMouseX, currentMouseY, uiRenderer, windowWidth, windowHeight)) {
-                        // Respawn the player
-                        Player player = Game.getInstance().getPlayer();
-                        if (player != null) {
-                            player.respawn();
-                        }
+                if (deathMenu.isRespawnButtonClicked(currentMouseX, currentMouseY, windowWidth, windowHeight)) {
+                    // Respawn the player
+                    Player player = Game.getInstance().getPlayer();
+                    if (player != null) {
+                        player.respawn();
+                    }
 
-                        // Hide death menu
-                        deathMenu.setVisible(false);
+                    // Hide death menu
+                    deathMenu.setVisible(false);
 
-                        // Update mouse capture state (will recapture since death menu is now hidden)
-                        MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
-                        if (mouseCaptureManager != null) {
-                            mouseCaptureManager.updateCaptureState();
-                        }
+                    // Update mouse capture state (will recapture since death menu is now hidden)
+                    MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
+                    if (mouseCaptureManager != null) {
+                        mouseCaptureManager.updateCaptureState();
                     }
                 }
             }
@@ -907,10 +904,7 @@ public class InputHandler {
         // Update UI hover states
         com.stonebreak.ui.DeathMenu deathMenu = Game.getInstance().getDeathMenu();
         if (deathMenu != null && deathMenu.isVisible()) {
-            UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-            if (uiRenderer != null) {
-                deathMenu.updateHover(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight());
-            }
+            deathMenu.updateHover(currentMouseX, currentMouseY, Game.getWindowWidth(), Game.getWindowHeight());
         }
 
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
