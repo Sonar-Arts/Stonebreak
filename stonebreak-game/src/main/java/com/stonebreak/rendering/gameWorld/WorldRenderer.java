@@ -50,9 +50,11 @@ public class WorldRenderer {
     private final SkyRenderer skyRenderer;
     private final CloudRenderer cloudRenderer;
     private final FastLodRenderPass lodRenderPass;
-    
+    private final ChunkFrustumCuller frustumCuller = new ChunkFrustumCuller();
+
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
+    private final List<Chunk> reusableVisibleChunks = new ArrayList<>();
     
     /**
      * Creates a WorldRenderer with the required dependencies.
@@ -123,12 +125,14 @@ public class WorldRenderer {
         updateAnimatedTextures(totalTime, player);
         checkGLError("After updateAnimatedWater");
         
-        // Get visible chunks
-        Map<ChunkPosition, Chunk> visibleChunks = getVisibleChunks(world, player);
+        // Get chunks around the player, then cull those outside the view frustum
+        Map<ChunkPosition, Chunk> nearbyChunks = getVisibleChunks(world, player);
+        List<Chunk> visibleChunks = cullChunksToFrustum(nearbyChunks, player);
 
         // Debug: Log chunk count
         if (debugVisibleChunksCount < 1) {
-            System.out.println("[WorldRenderer] Got " + visibleChunks.size() + " visible chunks");
+            System.out.println("[WorldRenderer] Got " + visibleChunks.size() + " visible chunks (of "
+                + nearbyChunks.size() + " nearby) after frustum culling");
             debugVisibleChunksCount++;
         }
 
@@ -249,9 +253,24 @@ public class WorldRenderer {
     }
 
     /**
+     * Filters the nearby chunks down to those intersecting the camera view frustum.
+     * Returns a reused list to avoid per-frame allocations.
+     */
+    private List<Chunk> cullChunksToFrustum(Map<ChunkPosition, Chunk> nearbyChunks, Player player) {
+        frustumCuller.update(projectionMatrix, player.getViewMatrix());
+        reusableVisibleChunks.clear();
+        for (Chunk chunk : nearbyChunks.values()) {
+            if (frustumCuller.isChunkVisible(chunk)) {
+                reusableVisibleChunks.add(chunk);
+            }
+        }
+        return reusableVisibleChunks;
+    }
+
+    /**
      * Render opaque pass (non-water parts of chunks).
      */
-    private void renderOpaquePass(Map<ChunkPosition, Chunk> visibleChunks) {
+    private void renderOpaquePass(List<Chunk> visibleChunks) {
         shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
         shaderProgram.setUniform("u_waterDepthOffset", 0.0f); // No depth offset for opaque pass
         glDepthMask(true);  // Enable depth writing for opaque objects
@@ -263,7 +282,7 @@ public class WorldRenderer {
             debugOpaquePassCount++;
         }
 
-        for (Chunk chunk : visibleChunks.values()) {
+        for (Chunk chunk : visibleChunks) {
             chunk.render(); // Shader will discard water fragments
         }
     }
@@ -274,9 +293,9 @@ public class WorldRenderer {
      * Render SBO blocks from all visible chunks.
      * Each face binds its own SBO texture before drawing.
      */
-    private void renderSBOPass(Map<ChunkPosition, Chunk> visibleChunks) {
+    private void renderSBOPass(List<Chunk> visibleChunks) {
         int sboCount = 0;
-        for (Chunk chunk : visibleChunks.values()) {
+        for (Chunk chunk : visibleChunks) {
             java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> sboList = chunk.getSBORenderDataList();
             if (sboList != null && !sboList.isEmpty()) {
                 sboCount++;
@@ -296,7 +315,7 @@ public class WorldRenderer {
     /**
      * Render transparent pass (water parts of chunks).
      */
-    private void renderTransparentPass(Map<ChunkPosition, Chunk> visibleChunks, Player player) {
+    private void renderTransparentPass(List<Chunk> visibleChunks, Player player) {
         shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
         shaderProgram.setUniform("u_waterDepthOffset", -0.0001f); // Negative offset to pull water slightly closer
         glEnable(GL_BLEND); // Enable blending
@@ -332,9 +351,9 @@ public class WorldRenderer {
     /**
      * Sort chunks from back to front for proper transparent rendering.
      */
-    private void sortChunksBackToFront(Map<ChunkPosition, Chunk> visibleChunks, Player player) {
+    private void sortChunksBackToFront(List<Chunk> visibleChunks, Player player) {
         reusableSortedChunks.clear();
-        reusableSortedChunks.addAll(visibleChunks.values());
+        reusableSortedChunks.addAll(visibleChunks);
         Vector3f playerPos = player.getPosition();
         
         Collections.sort(reusableSortedChunks, (c1, c2) -> {
