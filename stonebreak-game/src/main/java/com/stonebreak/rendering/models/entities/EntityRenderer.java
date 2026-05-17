@@ -20,7 +20,7 @@ import static org.lwjgl.system.MemoryUtil.*;
 /**
  * Specialized entity renderer managed by the main Renderer.
  *
- * <p>Cows are rendered from the {@code SB_Cow.sbe} asset via {@link SbeCowRenderer};
+ * <p>Cows are rendered from the {@code SB_Cow.sbe} asset via {@link SbeEntityRenderer};
  * remote players use {@link RemotePlayerRenderer}; any other entity type falls
  * back to a simple textured cube.
  */
@@ -36,8 +36,8 @@ public class EntityRenderer {
     // 1x1 white texture for the fallback cube.
     private int fallbackTexture;
 
-    // Cow rendering from the SBE asset.
-    private final SbeCowRenderer sbeCowRenderer = new SbeCowRenderer();
+    // Entity-blind renderer for SBE-driven mobs.
+    private final SbeEntityRenderer sbeEntityRenderer = new SbeEntityRenderer();
 
     // Renderer for multiplayer remote players (cylinder).
     private final RemotePlayerRenderer remotePlayerRenderer = new RemotePlayerRenderer();
@@ -51,7 +51,7 @@ public class EntityRenderer {
         createShader();
         createFallbackTexture();
         createSimpleCubeModel();
-        sbeCowRenderer.initialize();
+        sbeEntityRenderer.initialize();
         remotePlayerRenderer.initialize();
         initialized = true;
     }
@@ -215,7 +215,18 @@ public class EntityRenderer {
         }
 
         if (entityType == EntityType.COW && entity instanceof com.stonebreak.mobs.cow.Cow cow) {
-            sbeCowRenderer.renderCow(cow, viewMatrix, projectionMatrix, world, cameraPos);
+            // The SBE asset comes from the registry by the entity type's object
+            // id; only the variant and AI-state → animation-state mapping are
+            // cow-specific. The renderer itself stays entity-blind.
+            sbeEntityRenderer.render(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
+                    cow.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.CowStateMapping.sbeState(cow.getAI().getCurrentState()),
+                    cow.getAnimationController().getTotalAnimationTime(),
+                    cow.getPosition(),
+                    cow.getRotation().y,
+                    cow.getScale(),
+                    viewMatrix, projectionMatrix, world, cameraPos);
             return;
         }
 
@@ -282,7 +293,7 @@ public class EntityRenderer {
             GL11.glDeleteTextures(fallbackTexture);
         }
 
-        sbeCowRenderer.cleanup();
+        sbeEntityRenderer.cleanup();
         remotePlayerRenderer.cleanup();
         initialized = false;
     }

@@ -24,51 +24,46 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Loads and caches the cow asset from {@code /sbe/Mobs/SB_Cow.sbe}.
+ * Generic, entity-blind loader for SBE entity assets.
  *
- * <p>The SBE archive is the single source of truth for the cow's mesh,
- * appearance variants and behavioural animation clips. This loader decodes it
- * once — using the engine's {@link SBEParser}, {@link OMOReader} and
- * {@link OMAReader} — into a render-ready {@link SbeCowAsset}.
+ * <p>Decodes any {@code .sbe} classpath resource — using the engine's
+ * {@link SBEParser}, {@link OMOReader} and {@link OMAReader} — into a
+ * render-ready {@link SbeEntityAsset}, and caches the result by resource path so
+ * each file is decoded only once. The loader has no knowledge of which entity an
+ * SBE describes; entity-specific glue (which path to load, AI-state → clip-state
+ * mapping) lives with the entity.
  *
  * <p>Decoding is GL-free (textures are decoded to {@code byte[]}), so
- * {@link #get()} may be called from any thread; the renderer performs GPU
+ * {@link #load(String)} may be called from any thread; the renderer performs GPU
  * upload separately.
  */
-public final class SbeCowLoader {
+public final class SbeEntityLoader {
 
-    private static final Logger logger = LoggerFactory.getLogger(SbeCowLoader.class);
+    private static final Logger logger = LoggerFactory.getLogger(SbeEntityLoader.class);
 
-    private static final String SBE_RESOURCE = "/sbe/Mobs/SB_Cow.sbe";
+    private static final Map<String, SbeEntityAsset> CACHE = new ConcurrentHashMap<>();
 
-    private static volatile SbeCowAsset cached;
-
-    private SbeCowLoader() {
+    private SbeEntityLoader() {
         throw new UnsupportedOperationException("Utility class");
     }
 
     /**
-     * Returns the shared cow asset, loading it on first call.
+     * Loads (or returns the cached) SBE entity asset for a classpath resource.
      *
-     * @throws IllegalStateException if the SBE file cannot be found or decoded
+     * @param resourcePath absolute classpath path, e.g. {@code /sbe/Mobs/SB_Cow.sbe}
+     * @throws IllegalStateException if the resource is missing or cannot be decoded
      */
-    public static SbeCowAsset get() {
-        SbeCowAsset local = cached;
-        if (local != null) return local;
-        synchronized (SbeCowLoader.class) {
-            if (cached == null) {
-                cached = load();
-            }
-            return cached;
-        }
+    public static SbeEntityAsset load(String resourcePath) {
+        return CACHE.computeIfAbsent(resourcePath, SbeEntityLoader::decode);
     }
 
-    private static SbeCowAsset load() {
-        try (InputStream in = SbeCowLoader.class.getResourceAsStream(SBE_RESOURCE)) {
+    private static SbeEntityAsset decode(String resourcePath) {
+        try (InputStream in = SbeEntityLoader.class.getResourceAsStream(resourcePath)) {
             if (in == null) {
-                throw new IllegalStateException("SBE resource not found: " + SBE_RESOURCE);
+                throw new IllegalStateException("SBE resource not found: " + resourcePath);
             }
             SBEParser.ParsedSBE parsed = new SBEParser().parse(in);
             SBEFormat.Document doc = parsed.document();
@@ -78,7 +73,7 @@ public final class SbeCowLoader {
             // Variants: the base OMO is the Default appearance; each manifest
             // variant supplies its own retextured OMO.
             Map<String, SbeModelGeometry> variants = new LinkedHashMap<>();
-            variants.put(SbeCowAsset.DEFAULT_VARIANT, buildGeometry(omoReader, parsed.omoBytes()));
+            variants.put(SbeEntityAsset.DEFAULT_VARIANT, buildGeometry(omoReader, parsed.omoBytes()));
             for (SBEFormat.VariantEntry variant : doc.variants()) {
                 byte[] bytes = parsed.variantModelFor(variant.name());
                 if (bytes != null) {
@@ -90,7 +85,7 @@ public final class SbeCowLoader {
             // pose snapshot of the same skeleton and is intentionally ignored —
             // clips are played against the variant geometry.
             OMAReader omaReader = new OMAReader();
-            List<String> basePartIds = partIds(variants.get(SbeCowAsset.DEFAULT_VARIANT));
+            List<String> basePartIds = partIds(variants.get(SbeEntityAsset.DEFAULT_VARIANT));
             Map<String, ParsedAnimClip> clips = new LinkedHashMap<>();
             for (SBEFormat.StateEntry state : doc.states()) {
                 byte[] clipBytes = parsed.clipFor(state.name());
@@ -101,16 +96,16 @@ public final class SbeCowLoader {
                 AnimationCompatibility.Result compat =
                         AnimationCompatibility.check(clip.requiredParts(), basePartIds);
                 if (!compat.isCompatible()) {
-                    logger.warn("SBE cow state '{}' clip animates parts missing from the model: {}",
-                            state.name(), compat.describeMissing());
+                    logger.warn("SBE '{}' state '{}' clip animates parts missing from the model: {}",
+                            doc.objectName(), state.name(), compat.describeMissing());
                 }
             }
 
-            logger.info("Loaded SBE cow: {} variant(s), {} animation state(s)",
-                    variants.size(), clips.size());
-            return new SbeCowAsset(variants, clips);
+            logger.info("Loaded SBE '{}' ({}) from {}: {} variant(s), {} animation state(s)",
+                    doc.objectName(), doc.objectId(), resourcePath, variants.size(), clips.size());
+            return new SbeEntityAsset(doc.objectId(), variants, clips);
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to load SBE cow asset", e);
+            throw new IllegalStateException("Failed to load SBE asset: " + resourcePath, e);
         }
     }
 

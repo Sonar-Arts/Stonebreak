@@ -6,28 +6,22 @@ package com.stonebreak.mobs.entities;
  */
 public enum EntityType {
     // Living creatures (adjusted to match new model proportions)
-    // Parameters: name, maxHealth, moveSpeed, height, width, length, legHeight, isLiving
-    // Values match the JSON cow model geometry (standard_cow.json):
-    // Body: 1.1f × 0.8f × 1.3f (center at Y=0, extends from Y=-0.4 to Y=+0.4)
-    // Legs: extend from body bottom (Y=0) down to feet (Y=-0.62f)
-    // Entity position.y = body bottom (model Y=0), legHeight = 0.62f
-    // Entity height = distance from body bottom to body top = 0.4f
-    COW("Cow", 10.0f, 1.2f, 0.4f, 1.1f, 1.3f, 0.62f, true),
+    // Parameters: name, maxHealth, moveSpeed, height, width, length, legHeight, isLiving, sbeObjectId
+    // sbeObjectId references an SBE asset in the SbeEntityRegistry, or null when
+    // the entity is not SBE-driven.
+    COW("Cow", 10.0f, 1.2f, 0.4f, 1.1f, 1.3f, 0.62f, true, "stonebreak:cow"),
 
     // Drop entities (small, physics-based items)
-    BLOCK_DROP("Block Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false),
-    ITEM_DROP("Item Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false),
+    BLOCK_DROP("Block Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false, null),
+    ITEM_DROP("Item Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false, null),
 
     // Remote (multiplayer) player; rendered as a cylinder.
     // height = 1.8 (head-to-foot), width/length = 0.6, no separate legs (legHeight=0).
-    REMOTE_PLAYER("Remote Player", 20.0f, 0.0f, 1.8f, 0.6f, 0.6f, 0.0f, true),
-    
+    REMOTE_PLAYER("Remote Player", 20.0f, 0.0f, 1.8f, 0.6f, 0.6f, 0.0f, true, null),
+
     // Future entities can be added here
-    // SHEEP("Sheep", 8.0f, 1.5f, 1.3f, 0.9f, 1.3f, true),
-    // PIG("Pig", 10.0f, 1.0f, 0.9f, 0.9f, 1.3f, true),
-    // CHICKEN("Chicken", 4.0f, 2.5f, 0.7f, 0.4f, 0.8f, true);
     ;
-    
+
     private final String displayName;
     private final float maxHealth;
     private final float moveSpeed;
@@ -36,12 +30,14 @@ public enum EntityType {
     private final float length;
     private final float legHeight; // Height from ground to bottom of body (leg length)
     private final boolean isLiving;
-    
+    private final String sbeObjectId; // SBE asset object id, or null if not SBE-driven
+
     /**
      * Creates a new entity type with the specified properties.
      */
-    EntityType(String displayName, float maxHealth, float moveSpeed, 
-               float height, float width, float length, float legHeight, boolean isLiving) {
+    EntityType(String displayName, float maxHealth, float moveSpeed,
+               float height, float width, float length, float legHeight, boolean isLiving,
+               String sbeObjectId) {
         this.displayName = displayName;
         this.maxHealth = maxHealth;
         this.moveSpeed = moveSpeed;
@@ -50,6 +46,7 @@ public enum EntityType {
         this.length = length;
         this.legHeight = legHeight;
         this.isLiving = isLiving;
+        this.sbeObjectId = sbeObjectId;
     }
     
     /**
@@ -106,6 +103,14 @@ public enum EntityType {
      */
     public boolean isLiving() {
         return isLiving;
+    }
+
+    /**
+     * The SBE asset object id this entity renders from (e.g. {@code stonebreak:cow}),
+     * or {@code null} if the entity is not SBE-driven.
+     */
+    public String getSbeObjectId() {
+        return sbeObjectId;
     }
     
     /**

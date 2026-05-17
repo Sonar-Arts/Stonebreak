@@ -4,11 +4,8 @@ import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import com.openmason.engine.format.oma.AnimSampler;
 import com.openmason.engine.format.oma.ParsedAnimClip;
 import com.openmason.engine.format.oma.ParsedAnimTrack;
-import com.stonebreak.mobs.cow.Cow;
-import com.stonebreak.mobs.sbe.CowStateMapping;
 import com.stonebreak.mobs.sbe.MaterialImage;
-import com.stonebreak.mobs.sbe.SbeCowAsset;
-import com.stonebreak.mobs.sbe.SbeCowLoader;
+import com.stonebreak.mobs.sbe.SbeEntityAsset;
 import com.stonebreak.mobs.sbe.SbeFace;
 import com.stonebreak.mobs.sbe.SbeModelGeometry;
 import com.stonebreak.mobs.sbe.SbePart;
@@ -26,6 +23,7 @@ import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 
 import static org.lwjgl.system.MemoryUtil.memAllocFloat;
@@ -34,23 +32,25 @@ import static org.lwjgl.system.MemoryUtil.memAlloc;
 import static org.lwjgl.system.MemoryUtil.memFree;
 
 /**
- * Renders cows from the {@code SB_Cow.sbe} asset.
+ * Entity-blind renderer for SBE-driven mobs.
  *
- * <p>Each appearance variant gets one VAO holding the whole OMO mesh and one
- * GL texture per material. At render time the cow's AI state selects an
- * animation clip; the clip's keyframe tracks are sampled per part to build
- * local transforms, and each face is drawn with its own material texture.
+ * <p>Given a decoded {@link SbeEntityAsset} plus a variant name, a state name,
+ * an animation time and a world transform, it renders the model — selecting the
+ * variant geometry, sampling the state's animation clip per part, and drawing
+ * each face with its own material texture. It knows nothing about cows or any
+ * specific entity type; callers supply the entity-specific bindings.
  *
- * <p>Owned and driven by {@link EntityRenderer}.
+ * <p>GPU resources are uploaded lazily, per asset, on first render (on the GL
+ * thread). Owned and driven by {@link EntityRenderer}.
  */
-public final class SbeCowRenderer {
+public final class SbeEntityRenderer {
 
     private ShaderProgram shader;
     private boolean initialized;
     private long trackedMeshBytes;
     private long trackedTextureBytes;
 
-    /** GPU resources for one cow variant. */
+    /** GPU resources for one variant of one asset. */
     private static final class VariantGpu {
         int vao;
         int vbo;
@@ -59,18 +59,13 @@ public final class SbeCowRenderer {
         final Map<Integer, Integer> materialTextures = new HashMap<>();
     }
 
-    private final Map<String, VariantGpu> variantGpu = new HashMap<>();
+    /** Per-asset GPU resources, keyed by asset identity (assets are cached singletons). */
+    private final Map<SbeEntityAsset, Map<String, VariantGpu>> assetGpu = new IdentityHashMap<>();
 
-    /** Initialize GPU resources. Must run on the GL thread. */
+    /** Initialize the shared shader. Must run on the GL thread. */
     public void initialize() {
         if (initialized) return;
-
         createShader();
-
-        SbeCowAsset asset = SbeCowLoader.get();
-        for (Map.Entry<String, SbeModelGeometry> entry : asset.variants().entrySet()) {
-            variantGpu.put(entry.getKey(), uploadVariant(entry.getValue()));
-        }
         initialized = true;
     }
 
@@ -134,8 +129,149 @@ public final class SbeCowRenderer {
             shader.createUniform("underwaterFogDensity");
             shader.createUniform("underwaterFogColor");
         } catch (Exception e) {
-            System.err.println("Failed to create SBE cow shader: " + e.getMessage());
+            System.err.println("Failed to create SBE entity shader: " + e.getMessage());
         }
+    }
+
+    /**
+     * Render one SBE entity.
+     *
+     * @param asset         decoded SBE asset
+     * @param variantName   appearance variant (case-insensitive; unknown → default)
+     * @param stateName     SBE animation-state name (unknown/null → rest pose)
+     * @param animationTime elapsed clip time in seconds
+     * @param position      world position the model origin is placed at
+     * @param yawDegrees    Y-axis rotation in degrees
+     * @param scale         world scale
+     * @param viewMatrix    camera view matrix
+     * @param projectionMatrix camera projection matrix
+     * @param world         world, for underwater fog detection (may be null)
+     * @param cameraPos     camera position, for fog distance (may be null)
+     */
+    public void render(SbeEntityAsset asset, String variantName, String stateName,
+                       float animationTime, Vector3f position, float yawDegrees,
+                       Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                       com.stonebreak.world.World world, Vector3f cameraPos) {
+        if (!initialized || asset == null) return;
+
+        SbeModelGeometry geometry = asset.geometryFor(variantName);
+        VariantGpu gpu = resolveVariantGpu(asset, variantName);
+        if (geometry == null || gpu == null) return;
+
+        ParsedAnimClip clip = asset.clipFor(stateName);
+        float clipTime = 0f;
+        Map<String, ParsedAnimTrack> tracksById = Map.of();
+        if (clip != null) {
+            clipTime = AnimSampler.wrapTime(animationTime, clip.duration(), clip.loop());
+            tracksById = clip.trackByPartId();
+        }
+
+        // Save GL state.
+        int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        int previousTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        int previousVertexArray = GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
+        boolean wasCullFaceEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
+
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthFunc(GL11.GL_LESS);
+        GL11.glDisable(GL11.GL_CULL_FACE);
+
+        shader.bind();
+        shader.setUniform("view", viewMatrix);
+        shader.setUniform("projection", projectionMatrix);
+        shader.setUniform("textureSampler", 0);
+
+        float fogDensity = 0.0f;
+        Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f);
+        if (world != null && cameraPos != null
+                && world.isPositionUnderwater((int) Math.floor(cameraPos.x),
+                        (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z))) {
+            fogDensity = 0.15f;
+        }
+        shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f());
+        shader.setUniform("underwaterFogDensity", fogDensity);
+        shader.setUniform("underwaterFogColor", fogColor);
+
+        // Base transform: the OMO model is placed exactly as authored in the
+        // SBE — its model-space origin sits at the entity position, with no
+        // re-anchoring. Part transforms come straight from the OMO/animation.
+        Matrix4f base = new Matrix4f()
+                .translate(position.x, position.y, position.z)
+                .rotateY((float) Math.toRadians(yawDegrees))
+                .scale(scale);
+
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        GL30.glBindVertexArray(gpu.vao);
+
+        // The OMO mesh vertices are baked in model space — each part already
+        // sits at its rest pose. So an un-animated part draws with the base
+        // matrix alone; an animated part applies only the delta from its rest
+        // pose: base * M_anim * M_rest^-1.
+        Matrix4f partMatrix = new Matrix4f();
+        Matrix4f restInverse = new Matrix4f();
+        for (SbePart part : geometry.parts()) {
+            // Parts are model-root parts; the base matrix is the parent.
+            ParsedAnimTrack track = tracksById.get(part.id());
+            if (track == null) {
+                track = trackByName(clip, part.name());
+            }
+
+            if (track == null) {
+                partMatrix.set(base);
+            } else {
+                AnimSampler.PartPose pose = AnimSampler.sample(track, clipTime);
+                Vector3f origin = part.restOrigin();
+
+                // M_rest^-1
+                partTransform(restInverse.identity(),
+                        part.restPos(), part.restRot(), part.restScale(), origin)
+                        .invert();
+                // base * M_anim * M_rest^-1
+                partTransform(partMatrix.set(base),
+                        pose.position(), pose.rotationDeg(), pose.scale(), origin)
+                        .mul(restInverse);
+            }
+            shader.setUniform("model", partMatrix);
+
+            for (SbeFace face : part.faces()) {
+                Integer textureId = gpu.materialTextures.get(face.materialId());
+                if (textureId == null) continue;
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
+                GL11.glDrawElements(GL11.GL_TRIANGLES, face.indexCount(),
+                        GL11.GL_UNSIGNED_INT, (long) face.indexStart() * Integer.BYTES);
+            }
+        }
+
+        GL30.glBindVertexArray(0);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        shader.unbind();
+
+        if (wasCullFaceEnabled) {
+            GL11.glEnable(GL11.GL_CULL_FACE);
+        }
+        GL20.glUseProgram(previousProgram);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture);
+        GL30.glBindVertexArray(previousVertexArray);
+    }
+
+    /** Returns the variant's GPU resources, uploading the asset on first use. */
+    private VariantGpu resolveVariantGpu(SbeEntityAsset asset, String variantName) {
+        Map<String, VariantGpu> variants = assetGpu.get(asset);
+        if (variants == null) {
+            variants = new HashMap<>();
+            for (Map.Entry<String, SbeModelGeometry> e : asset.variants().entrySet()) {
+                variants.put(e.getKey(), uploadVariant(e.getValue()));
+            }
+            assetGpu.put(asset, variants);
+        }
+        if (variantName != null) {
+            for (Map.Entry<String, VariantGpu> e : variants.entrySet()) {
+                if (e.getKey().equalsIgnoreCase(variantName)) {
+                    return e.getValue();
+                }
+            }
+        }
+        return variants.get(SbeEntityAsset.DEFAULT_VARIANT);
     }
 
     private VariantGpu uploadVariant(SbeModelGeometry geometry) {
@@ -210,129 +346,6 @@ public final class SbeCowRenderer {
     }
 
     /**
-     * Render a cow. Selects the variant geometry, samples the AI-state
-     * animation clip and draws each part face by face.
-     */
-    public void renderCow(Cow cow, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                          com.stonebreak.world.World world, Vector3f cameraPos) {
-        if (!initialized) return;
-
-        SbeCowAsset asset = SbeCowLoader.get();
-        SbeModelGeometry geometry = asset.geometryFor(cow.getTextureVariant());
-        VariantGpu gpu = resolveVariantGpu(cow.getTextureVariant());
-        if (geometry == null || gpu == null) return;
-
-        ParsedAnimClip clip = asset.clipFor(CowStateMapping.sbeState(cow.getAI().getCurrentState()));
-        float clipTime = 0f;
-        Map<String, ParsedAnimTrack> tracksById = Map.of();
-        if (clip != null) {
-            clipTime = AnimSampler.wrapTime(
-                    cow.getAnimationController().getTotalAnimationTime(),
-                    clip.duration(), clip.loop());
-            tracksById = clip.trackByPartId();
-        }
-
-        // Save GL state.
-        int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
-        int previousTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-        int previousVertexArray = GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
-        boolean wasCullFaceEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
-
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthFunc(GL11.GL_LESS);
-        GL11.glDisable(GL11.GL_CULL_FACE);
-
-        shader.bind();
-        shader.setUniform("view", viewMatrix);
-        shader.setUniform("projection", projectionMatrix);
-        shader.setUniform("textureSampler", 0);
-
-        float fogDensity = 0.0f;
-        Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f);
-        if (world != null && cameraPos != null
-                && world.isPositionUnderwater((int) Math.floor(cameraPos.x),
-                        (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z))) {
-            fogDensity = 0.15f;
-        }
-        shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f());
-        shader.setUniform("underwaterFogDensity", fogDensity);
-        shader.setUniform("underwaterFogColor", fogColor);
-
-        // Base transform: the OMO model is placed exactly as authored in the
-        // SBE — its model-space origin sits at the entity position, with no
-        // re-anchoring. Part transforms come straight from the OMO/animation.
-        Vector3f pos = cow.getPosition();
-        Matrix4f base = new Matrix4f()
-                .translate(pos.x, pos.y, pos.z)
-                .rotateY((float) Math.toRadians(cow.getRotation().y))
-                .scale(cow.getScale());
-
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        GL30.glBindVertexArray(gpu.vao);
-
-        // The OMO mesh vertices are baked in model space — each part already
-        // sits at its rest pose. So an un-animated part draws with the base
-        // matrix alone; an animated part applies only the delta from its rest
-        // pose: base * M_anim * M_rest^-1.
-        Matrix4f partMatrix = new Matrix4f();
-        Matrix4f restInverse = new Matrix4f();
-        for (SbePart part : geometry.parts()) {
-            // All cow parts are model-root parts; the base matrix is the parent.
-            ParsedAnimTrack track = tracksById.get(part.id());
-            if (track == null) {
-                track = trackByName(clip, part.name());
-            }
-
-            if (track == null) {
-                partMatrix.set(base);
-            } else {
-                AnimSampler.PartPose pose = AnimSampler.sample(track, clipTime);
-                Vector3f origin = part.restOrigin();
-
-                // M_rest^-1
-                partTransform(restInverse.identity(),
-                        part.restPos(), part.restRot(), part.restScale(), origin)
-                        .invert();
-                // base * M_anim * M_rest^-1
-                partTransform(partMatrix.set(base),
-                        pose.position(), pose.rotationDeg(), pose.scale(), origin)
-                        .mul(restInverse);
-            }
-            shader.setUniform("model", partMatrix);
-
-            for (SbeFace face : part.faces()) {
-                Integer textureId = gpu.materialTextures.get(face.materialId());
-                if (textureId == null) continue;
-                GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
-                GL11.glDrawElements(GL11.GL_TRIANGLES, face.indexCount(),
-                        GL11.GL_UNSIGNED_INT, (long) face.indexStart() * Integer.BYTES);
-            }
-        }
-
-        GL30.glBindVertexArray(0);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-        shader.unbind();
-
-        if (wasCullFaceEnabled) {
-            GL11.glEnable(GL11.GL_CULL_FACE);
-        }
-        GL20.glUseProgram(previousProgram);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture);
-        GL30.glBindVertexArray(previousVertexArray);
-    }
-
-    private VariantGpu resolveVariantGpu(String variantName) {
-        if (variantName != null) {
-            for (Map.Entry<String, VariantGpu> e : variantGpu.entrySet()) {
-                if (e.getKey().equalsIgnoreCase(variantName)) {
-                    return e.getValue();
-                }
-            }
-        }
-        return variantGpu.get(SbeCowAsset.DEFAULT_VARIANT);
-    }
-
-    /**
      * Post-multiplies a part's local TRS transform onto {@code dest}:
      * {@code T(pos) * T(origin) * R(rot) * S(scale) * T(-origin)}, where
      * {@code rot} is Euler degrees and {@code origin} is the rotation pivot.
@@ -360,22 +373,24 @@ public final class SbeCowRenderer {
         return null;
     }
 
-    /** Release GPU resources. */
+    /** Release all GPU resources. */
     public void cleanup() {
         if (!initialized) return;
         if (shader != null) {
             shader.cleanup();
         }
-        for (VariantGpu gpu : variantGpu.values()) {
-            GL30.glDeleteVertexArrays(gpu.vao);
-            GL15.glDeleteBuffers(gpu.vbo);
-            GL15.glDeleteBuffers(gpu.uvVbo);
-            GL15.glDeleteBuffers(gpu.ebo);
-            for (int textureId : gpu.materialTextures.values()) {
-                GL11.glDeleteTextures(textureId);
+        for (Map<String, VariantGpu> variants : assetGpu.values()) {
+            for (VariantGpu gpu : variants.values()) {
+                GL30.glDeleteVertexArrays(gpu.vao);
+                GL15.glDeleteBuffers(gpu.vbo);
+                GL15.glDeleteBuffers(gpu.uvVbo);
+                GL15.glDeleteBuffers(gpu.ebo);
+                for (int textureId : gpu.materialTextures.values()) {
+                    GL11.glDeleteTextures(textureId);
+                }
             }
         }
-        variantGpu.clear();
+        assetGpu.clear();
 
         if (trackedMeshBytes > 0) {
             GpuMemoryTracker.getInstance()

@@ -3,7 +3,7 @@ package com.stonebreak.core.bootstrap;
 import com.stonebreak.audio.SoundSystem;
 import com.stonebreak.config.Settings;
 import com.stonebreak.player.Player;
-import com.stonebreak.mobs.sbe.SbeCowLoader;
+import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.DebugOverlay;
@@ -60,12 +60,12 @@ public final class GameBootstrap {
     }
 
     /**
-     * Primes the SBE cow asset (mesh, variants and animation clips) so the
-     * decode cost is paid up front rather than on the first cow spawn.
+     * Discovers and decodes every SBE entity asset under {@code sbe/Mobs/} so
+     * the cost is paid up front rather than on the first entity spawn.
      */
-    public static void initializeCowAsset() {
-        SbeCowLoader.get();
-        System.out.println("SBE cow asset loaded");
+    public static void initializeEntityAssets() {
+        int count = SbeEntityRegistry.scanAndLoad();
+        System.out.println("SBE entity registry loaded " + count + " entit(ies)");
     }
 
     /**

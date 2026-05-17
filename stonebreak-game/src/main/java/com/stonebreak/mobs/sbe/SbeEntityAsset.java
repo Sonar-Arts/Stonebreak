@@ -5,23 +5,27 @@ import com.openmason.engine.format.oma.ParsedAnimClip;
 import java.util.Map;
 
 /**
- * Fully resolved, immutable cow asset decoded from {@code SB_Cow.sbe}.
+ * A fully resolved, immutable entity asset decoded from an {@code .sbe} file.
  *
  * <p>Holds one {@link SbeModelGeometry} per appearance variant and one
- * {@link ParsedAnimClip} per behaviour state. Built once by {@link SbeCowLoader}
- * and shared by every cow in the world.
+ * {@link ParsedAnimClip} per behaviour state, plus the SBE's {@code objectId}
+ * by which the registry indexes it. The asset carries no behavioural knowledge
+ * of which entity it represents — variant and state names are plain strings
+ * keyed by whatever the SBE author chose — so it can back any SBE-driven mob.
  *
+ * @param objectId the SBE manifest object id (e.g. {@code stonebreak:cow})
  * @param variants variant name (e.g. {@code Default}) → resolved geometry
  * @param clips    SBE state name (e.g. {@code Idle}) → animation clip
  */
-public record SbeCowAsset(
+public record SbeEntityAsset(
+        String objectId,
         Map<String, SbeModelGeometry> variants,
         Map<String, ParsedAnimClip> clips
 ) {
     /** The variant used when a requested name is unknown. */
     public static final String DEFAULT_VARIANT = "Default";
 
-    public SbeCowAsset {
+    public SbeEntityAsset {
         variants = variants == null ? Map.of() : Map.copyOf(variants);
         clips = clips == null ? Map.of() : Map.copyOf(clips);
     }

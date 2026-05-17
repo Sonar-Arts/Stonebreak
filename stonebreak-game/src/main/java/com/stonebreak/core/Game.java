@@ -158,7 +158,7 @@ public class Game {
 
         this.memoryLeakDetector = com.stonebreak.core.bootstrap.GameBootstrap.startMemoryLeakDetection();
         this.debugOverlay = com.stonebreak.core.bootstrap.GameBootstrap.createDebugOverlay();
-        com.stonebreak.core.bootstrap.GameBootstrap.initializeCowAsset();
+        com.stonebreak.core.bootstrap.GameBootstrap.initializeEntityAssets();
         com.stonebreak.core.bootstrap.GameBootstrap.configureEngine(textureAtlas, renderer);
 
         System.out.println("[STARTUP] Core components initialized (no world/player yet)");
