@@ -88,20 +88,6 @@
                 <scope>runtime</scope>
             </dependency>
             
-            <!-- LWJGL NanoVG for UI rendering -->
-            <dependency>
-                <groupId>org.lwjgl</groupId>
-                <artifactId>lwjgl-nanovg</artifactId>
-                <version>${lwjgl.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.lwjgl</groupId>
-                <artifactId>lwjgl-nanovg</artifactId>
-                <version>${lwjgl.version}</version>
-                <classifier>${lwjgl.natives}</classifier>
-                <scope>runtime</scope>
-            </dependency>
-            
             <!-- Skija (HumbleUI fork) — Skia bindings for next-gen UI rendering.
                  Platform jar is self-contained; switch classifier when targeting
                  other OSes (skija-linux-x64, skija-macos-arm64, etc.). -->
