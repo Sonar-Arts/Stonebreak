@@ -1,8 +1,8 @@
 package com.stonebreak.ui.hotbar.renderers;
 
 import com.stonebreak.ui.hotbar.core.HotbarLayoutCalculator;
+import com.stonebreak.ui.hotbar.core.HotbarFonts;
 import com.stonebreak.ui.hotbar.styling.HotbarTheme;
-import com.stonebreak.ui.recipeScreen.renderers.RecipeUIStyleRenderer;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
 
@@ -32,8 +32,8 @@ public class HotbarItemCountRenderer {
         try (MemoryStack stack = stackPush()) {
             String countText = String.valueOf(count);
 
-            // Set up font using consistent recipe font system
-            RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_SMALL);
+            // Set up font using consistent hotbar font system
+            HotbarFonts.setBodyFont(vg, HotbarFonts.BODY_SMALL);
             nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
 
             // Calculate position (bottom-right corner with padding)
@@ -61,7 +61,7 @@ public class HotbarItemCountRenderer {
             String countText = String.valueOf(count);
 
             // Measure text to create background using consistent font
-            RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_SMALL);
+            HotbarFonts.setBodyFont(vg, HotbarFonts.BODY_SMALL);
 
             float[] bounds = new float[4];
             nvgTextBounds(vg, 0, 0, countText, bounds);
@@ -116,8 +116,8 @@ public class HotbarItemCountRenderer {
             nvgScale(vg, scale, scale);
             nvgTranslate(vg, -baseX, -baseY);
 
-            // Set up font using consistent recipe font system with scaling
-            RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_SMALL * scale);
+            // Set up font using consistent hotbar font system with scaling
+            HotbarFonts.setBodyFont(vg, HotbarFonts.BODY_SMALL * scale);
             nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
 
             // Calculate alpha based on animation progress
@@ -190,8 +190,8 @@ public class HotbarItemCountRenderer {
         try (MemoryStack stack = stackPush()) {
             String countText = String.valueOf(count);
 
-            // Set up font using consistent recipe font system
-            RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_SMALL);
+            // Set up font using consistent hotbar font system
+            HotbarFonts.setBodyFont(vg, HotbarFonts.BODY_SMALL);
             nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
 
             // Calculate position

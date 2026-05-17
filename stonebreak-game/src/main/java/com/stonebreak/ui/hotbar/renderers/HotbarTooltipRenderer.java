@@ -1,8 +1,8 @@
 package com.stonebreak.ui.hotbar.renderers;
 
 import com.stonebreak.ui.hotbar.core.HotbarLayoutCalculator;
+import com.stonebreak.ui.hotbar.core.HotbarFonts;
 import com.stonebreak.ui.hotbar.styling.HotbarTheme;
-import com.stonebreak.ui.recipeScreen.renderers.RecipeUIStyleRenderer;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.nanovg.NVGPaint;
 import org.lwjgl.system.MemoryStack;
@@ -55,8 +55,8 @@ public class HotbarTooltipRenderer {
             return new HotbarLayoutCalculator.TooltipPosition(0, 0, 0, 0);
         }
 
-        // Set up font for measurement using consistent recipe font system
-        RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_LARGE);
+        // Set up font for measurement using consistent hotbar font system
+        HotbarFonts.setBodyFont(vg, HotbarFonts.BODY_LARGE);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         // Measure text bounds
@@ -137,8 +137,8 @@ public class HotbarTooltipRenderer {
      * Renders the tooltip text.
      */
     private void renderTooltipText(String text, HotbarLayoutCalculator.TooltipPosition position, float alpha, MemoryStack stack) {
-        // Set up font using consistent recipe font system
-        RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_LARGE);
+        // Set up font using consistent hotbar font system
+        HotbarFonts.setBodyFont(vg, HotbarFonts.BODY_LARGE);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         float textX = position.x + position.width / 2.0f;
@@ -184,7 +184,7 @@ public class HotbarTooltipRenderer {
      */
     private void renderTooltipTitle(String title, HotbarLayoutCalculator.TooltipPosition position, float alpha, MemoryStack stack) {
         // Use title font for rich tooltip titles
-        RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, RecipeUIStyleRenderer.RecipeFonts.TITLE_SMALL);
+        HotbarFonts.setTitleFont(vg, HotbarFonts.TITLE_SMALL);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
 
         float textX = position.x + position.width / 2.0f;
@@ -206,7 +206,7 @@ public class HotbarTooltipRenderer {
      */
     private void renderTooltipDescriptions(String[] descriptions, HotbarLayoutCalculator.TooltipPosition position, float alpha, MemoryStack stack) {
         // Use body font for description lines
-        RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_SMALL);
+        HotbarFonts.setBodyFont(vg, HotbarFonts.BODY_SMALL);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
 
         float textX = position.x + position.width / 2.0f;
