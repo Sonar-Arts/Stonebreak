@@ -205,8 +205,8 @@ public class BlockIconRenderer {
     private void setupViewportAndScissor(int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
         // Set viewport to the slot area and use scissor for clipping
         int currentWindowHeight = com.stonebreak.core.Game.getWindowHeight();
-        
-        // Convert coordinates from top-left origin (NanoVG) to bottom-left origin (OpenGL)
+
+        // Convert coordinates from UI top-left origin to OpenGL bottom-left origin
         int viewportX = screenSlotX;
         int viewportY = currentWindowHeight - (screenSlotY + screenSlotHeight);
         
