@@ -2,11 +2,11 @@ package com.stonebreak.core.bootstrap;
 
 import com.stonebreak.config.Settings;
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.UI.components.CrosshairRenderer;
+import com.stonebreak.rendering.UI.components.MCrosshairRenderer;
 
 /**
  * Applies saved crosshair settings (style, size, thickness, gap, opacity,
- * color, outline) to the active {@link CrosshairRenderer}. Extracted from
+ * color, outline) to the active {@link MCrosshairRenderer}. Extracted from
  * {@code Game.initializeCrosshairSettings()}.
  */
 public final class CrosshairConfigurator {
@@ -23,21 +23,21 @@ public final class CrosshairConfigurator {
             return;
         }
 
-        CrosshairRenderer crosshairRenderer = renderer.getUIRenderer().getCrosshairRenderer();
+        MCrosshairRenderer crosshairRenderer = renderer.getUIRenderer().getMCrosshairRenderer();
         if (crosshairRenderer == null) {
-            System.err.println("Warning: CrosshairRenderer not available during initialization");
+            System.err.println("Warning: MCrosshairRenderer not available during initialization");
             return;
         }
 
         Settings settings = Settings.getInstance();
 
         try {
-            CrosshairRenderer.CrosshairStyle styleEnum =
-                CrosshairRenderer.CrosshairStyle.valueOf(settings.getCrosshairStyle());
+            MCrosshairRenderer.CrosshairStyle styleEnum =
+                MCrosshairRenderer.CrosshairStyle.valueOf(settings.getCrosshairStyle());
             crosshairRenderer.setStyle(styleEnum);
         } catch (IllegalArgumentException e) {
             System.err.println("Invalid crosshair style in settings: " + settings.getCrosshairStyle() + ", using default");
-            crosshairRenderer.setStyle(CrosshairRenderer.CrosshairStyle.SIMPLE_CROSS);
+            crosshairRenderer.setStyle(MCrosshairRenderer.CrosshairStyle.SIMPLE_CROSS);
         }
 
         crosshairRenderer.setSize(settings.getCrosshairSize());

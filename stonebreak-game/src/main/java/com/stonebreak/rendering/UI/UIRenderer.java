@@ -9,7 +9,7 @@ import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.components.CrosshairRenderer;
+import com.stonebreak.rendering.UI.components.MCrosshairRenderer;
 import com.stonebreak.ui.chat.SkijaChatRenderer;
 import com.stonebreak.rendering.UI.components.OpenGLQuadRenderer;
 import com.stonebreak.rendering.UI.components.HotbarRenderer;
@@ -39,7 +39,7 @@ public class UIRenderer {
     private VolumeSliderRenderer volumeSliderRenderer;
     private ItemIconRenderer itemIconRenderer;
     private BlockIconRenderer blockIconRenderer;
-    private CrosshairRenderer crosshairRenderer;
+    private MCrosshairRenderer mCrosshairRenderer;
     private OpenGLQuadRenderer openGLQuadRenderer;
     private HotbarRenderer hotbarRenderer;
     
@@ -57,7 +57,6 @@ public class UIRenderer {
         menuRenderer = new MenuRenderer(vg);
         volumeSliderRenderer = new VolumeSliderRenderer(vg);
         itemIconRenderer = new ItemIconRenderer(vg);
-        crosshairRenderer = new CrosshairRenderer(vg);
         hotbarRenderer = new HotbarRenderer(vg);
         openGLQuadRenderer.initialize();
     }
@@ -88,12 +87,13 @@ public class UIRenderer {
 
     /**
      * Wires the Skija backend into UIRenderer so renderers that draw via Skija
-     * (currently the chat panel) can be constructed. Called by Renderer after
+     * (chat panel, crosshair) can be constructed. Called by Renderer after
      * the backend is initialized — UIRenderer.init() runs before the backend
      * exists, so chat construction happens here instead.
      */
     public void initializeSkijaRenderers(SkijaUIBackend skijaBackend) {
         this.skijaChatRenderer = new SkijaChatRenderer(skijaBackend);
+        this.mCrosshairRenderer = new MCrosshairRenderer(skijaBackend);
     }
     
     public void beginFrame(int width, int height, float pixelRatio) {
@@ -309,17 +309,17 @@ public class UIRenderer {
      * @param windowHeight Current window height
      */
     public void renderCrosshair(int windowWidth, int windowHeight) {
-        if (crosshairRenderer != null) {
-            crosshairRenderer.renderCrosshair(windowWidth, windowHeight);
+        if (mCrosshairRenderer != null) {
+            mCrosshairRenderer.renderCrosshair(windowWidth, windowHeight);
         }
     }
-    
+
     /**
-     * Gets the crosshair renderer for configuration.
-     * @return CrosshairRenderer instance for customization
+     * Gets the Skija/MasonryUI crosshair renderer for configuration.
+     * @return MCrosshairRenderer instance for customization
      */
-    public CrosshairRenderer getCrosshairRenderer() {
-        return crosshairRenderer;
+    public MCrosshairRenderer getMCrosshairRenderer() {
+        return mCrosshairRenderer;
     }
     
     // ===== Hotbar Rendering Delegation =====
