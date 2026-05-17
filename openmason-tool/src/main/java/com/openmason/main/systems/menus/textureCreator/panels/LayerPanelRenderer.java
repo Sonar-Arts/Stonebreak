@@ -4,6 +4,7 @@ import com.openmason.main.systems.menus.textureCreator.commands.CommandHistory;
 import com.openmason.main.systems.menus.textureCreator.commands.LayerCommand;
 import com.openmason.main.systems.menus.textureCreator.layers.Layer;
 import com.openmason.main.systems.menus.textureCreator.layers.LayerManager;
+import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.flag.ImGuiCol;
@@ -202,7 +203,7 @@ public class LayerPanelRenderer {
             ImGui.popItemWidth();
 
             // Cancel rename on escape
-            if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+            if (KeyCodeTranslator.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
                 renamingLayerIndex = -1;
             }
         } else {

@@ -213,9 +213,7 @@ public class CanvasRenderer {
         // Render texture as image on top of everything rendered so far
         // Note: cursor is already at correct position from setCursorPos above
         ImGui.image(textureId, displayWidth, displayHeight,
-                   0, 0, 1, 1, // UV coordinates (normal)
-                   1, 1, 1, 1, // Tint color (white = no tint)
-                   0, 0, 0, 0);// Border color (none)
+                   0, 0, 1, 1); // UV coordinates (normal)
 
         // Render polygon outline for polygon-based shape masks
         PolygonShapeMask polygonMask = extractPolygonMask(shapeMask);

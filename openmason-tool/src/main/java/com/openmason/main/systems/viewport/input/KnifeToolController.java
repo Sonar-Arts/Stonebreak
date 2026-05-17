@@ -13,6 +13,7 @@ import com.openmason.main.systems.services.commands.SnapshotCommand;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.util.SnappingUtil;
+import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
 import imgui.ImGui;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -152,7 +153,7 @@ public class KnifeToolController {
         }
 
         // Check for Esc to cancel
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+        if (KeyCodeTranslator.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             deactivate();
             return true;
         }

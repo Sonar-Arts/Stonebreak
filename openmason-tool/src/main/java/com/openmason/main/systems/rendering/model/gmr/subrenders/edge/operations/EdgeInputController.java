@@ -7,6 +7,7 @@ import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeHoverD
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
+import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
 import imgui.ImGui;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -103,7 +104,7 @@ public class EdgeInputController {
         updateEdgeHover(context);
 
         // Handle ESC key to cancel drag or deselect edge
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+        if (KeyCodeTranslator.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             if (translationCoordinator != null && translationCoordinator.isDragging()) {
                 // Cancel active drag (coordinator handles all translation types)
                 translationCoordinator.cancelDrag();
