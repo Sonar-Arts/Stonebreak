@@ -159,7 +159,7 @@ public class Game {
         this.memoryLeakDetector = com.stonebreak.core.bootstrap.GameBootstrap.startMemoryLeakDetection();
         this.debugOverlay = com.stonebreak.core.bootstrap.GameBootstrap.createDebugOverlay();
         com.stonebreak.core.bootstrap.GameBootstrap.initializeEntityAssets();
-        com.stonebreak.core.bootstrap.GameBootstrap.configureEngine(textureAtlas, renderer);
+        com.stonebreak.core.bootstrap.GameBootstrap.configureEngine(renderer.getBlockTextureArray(), renderer);
 
         System.out.println("[STARTUP] Core components initialized (no world/player yet)");
     }
@@ -175,7 +175,7 @@ public class Game {
         this.world = world;
         this.player = player;
 
-        com.stonebreak.core.bootstrap.GameBootstrap.ensureMmsApiInitialized(textureAtlas, world);
+        com.stonebreak.core.bootstrap.GameBootstrap.ensureMmsApiInitialized(renderer.getBlockTextureArray(), world);
         com.stonebreak.core.bootstrap.GameBootstrap.reinitializeSaveService(saveService, currentWorldData, player, world);
 
         // Set camera for mouse capture system

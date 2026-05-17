@@ -15,6 +15,7 @@ import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.components.OverlayRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
 import com.stonebreak.rendering.sbo.SBOHandMeshRegistry;
@@ -52,6 +53,9 @@ public class Renderer {
 
     // SBO bridge for debug/query access
     private SBOBlockBridge sboBlockBridge;
+
+    // SBO-driven block texture array (replaces the texture atlas for block rendering)
+    private BlockTextureArray blockTextureArray;
 
     // SBO-derived hand-rendering meshes (ensures in-hand geometry matches in-world)
     private SBOHandMeshRegistry sboHandMeshRegistry;
@@ -135,15 +139,16 @@ public class Renderer {
         entityRenderer = new EntityRenderer();
         entityRenderer.initialize();
         
-        dropRenderer = new DropRenderer(blockRenderer, resourceManager.getTextureAtlas(), resourceManager.getShaderProgram());
+        dropRenderer = new DropRenderer(blockRenderer, resourceManager.getTextureAtlas(), blockTextureArray, resourceManager.getShaderProgram());
 
         // Test the new voxelized item drop system
         System.out.println("[Renderer] Testing voxelized item drop system...");
         dropRenderer.testDropRendering();
         System.out.println("[Renderer] Voxelized item drop system test complete.");
 
-        worldRenderer = new WorldRenderer(resourceManager.getShaderProgram(), 
-                                         resourceManager.getTextureAtlas(), 
+        worldRenderer = new WorldRenderer(resourceManager.getShaderProgram(),
+                                         resourceManager.getTextureAtlas(),
+                                         blockTextureArray,
                                          configManager.getProjectionMatrix(),
                                          blockRenderer, playerArmRenderer, entityRenderer, dropRenderer);
         
@@ -177,6 +182,12 @@ public class Renderer {
                     System.out.println("[Renderer] SBO integration: " + integrated + " block textures updated");
                 }
 
+                // Build the SBO-driven block texture array (texture-array
+                // rendering path — runs alongside the atlas during migration).
+                this.blockTextureArray = new BlockTextureArray(bridge);
+                System.out.println("[Renderer] BlockTextureArray: "
+                        + blockTextureArray.getLayerCount() + " layers built");
+
                 // Build SBO block map for the renderer API
                 java.util.Map<com.stonebreak.blocks.BlockType, SBOParseResult> sboBlockMap = new java.util.LinkedHashMap<>();
                 for (com.stonebreak.blocks.BlockType blockType : com.stonebreak.blocks.BlockType.values()) {
@@ -187,9 +198,9 @@ public class Renderer {
 
                 if (!sboBlockMap.isEmpty()) {
                     // Initialize the SBO Renderer API — processes all SBO meshes into stamps
-                    var uvProvider = new com.stonebreak.world.chunk.api.voxel.TextureAtlasAdapter(textureAtlas);
+                    var arrayAdapter = new com.stonebreak.world.chunk.api.voxel.TextureArrayAdapter(blockTextureArray);
                     sboRendererAPI = new SBORendererAPI();
-                    int processed = sboRendererAPI.initialize(sboBlockMap, uvProvider);
+                    int processed = sboRendererAPI.initialize(sboBlockMap, arrayAdapter, arrayAdapter);
 
                     if (processed > 0) {
                         // Create deferred emitter with face culling (world set later in applySBODispatcher)
@@ -260,6 +271,13 @@ public class Renderer {
      */
     public SBOBlockBridge getSBOBlockBridge() {
         return sboBlockBridge;
+    }
+
+    /**
+     * Returns the SBO-driven block texture array, or null if SBO initialization failed.
+     */
+    public BlockTextureArray getBlockTextureArray() {
+        return blockTextureArray;
     }
 
     /**

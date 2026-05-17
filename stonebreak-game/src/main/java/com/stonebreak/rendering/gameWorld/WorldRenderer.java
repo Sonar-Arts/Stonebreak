@@ -25,6 +25,7 @@ import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.models.entities.DropRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.gameWorld.sky.SkyRenderer;
 import com.stonebreak.rendering.gameWorld.sky.clouds.CloudRenderer;
 import com.stonebreak.rendering.gameWorld.fastlod.FastLodRenderPass;
@@ -42,6 +43,7 @@ public class WorldRenderer {
     // Dependencies
     private final ShaderProgram shaderProgram;
     private final TextureAtlas textureAtlas;
+    private final BlockTextureArray blockTextureArray;
     private final Matrix4f projectionMatrix;
     private final BlockRenderer blockRenderer;
     private final PlayerArmRenderer playerArmRenderer;
@@ -59,11 +61,13 @@ public class WorldRenderer {
     /**
      * Creates a WorldRenderer with the required dependencies.
      */
-    public WorldRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, Matrix4f projectionMatrix,
+    public WorldRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, BlockTextureArray blockTextureArray,
+                        Matrix4f projectionMatrix,
                         BlockRenderer blockRenderer, PlayerArmRenderer playerArmRenderer, EntityRenderer entityRenderer,
                         DropRenderer dropRenderer) {
         this.shaderProgram = shaderProgram;
         this.textureAtlas = textureAtlas;
+        this.blockTextureArray = blockTextureArray;
         this.projectionMatrix = projectionMatrix;
         this.blockRenderer = blockRenderer;
         this.playerArmRenderer = playerArmRenderer;
@@ -199,10 +203,13 @@ public class WorldRenderer {
         shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
         shaderProgram.setUniform("modelMatrix", new Matrix4f()); // Identity for world chunks
         shaderProgram.setUniform("texture_sampler", 0);
+        shaderProgram.setUniform("block_sampler", 1); // Keep the array sampler off unit 0
         shaderProgram.setUniform("u_useSolidColor", false); // World objects are textured
         shaderProgram.setUniform("u_isText", false);        // World objects are not text
         shaderProgram.setUniform("u_isUIElement", false);   // World objects are not UI elements
-        shaderProgram.setUniform("u_transformUVsForItem", false); // Chunks use atlas UVs directly
+        shaderProgram.setUniform("u_transformUVsForItem", false); // Chunks use tile-local UVs directly
+        // World chunks/SBO geometry sample the block texture array (unit 1).
+        shaderProgram.setUniform("u_useTextureArray", true);
 
         // Set lighting uniforms from TimeOfDay system
         com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
@@ -228,19 +235,19 @@ public class WorldRenderer {
      * Bind the texture atlas for world rendering.
      */
     private void bindTextureAtlas() {
+        // Block texture array on unit 1 — world/voxel geometry samples this.
+        GL13.glActiveTexture(GL13.GL_TEXTURE1);
+        blockTextureArray.bind();
+        // Legacy 2D atlas still on unit 0 for any 2D-sampling shared-shader path.
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        // Ensure texture filtering is set (NEAREST for blocky style)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
-    
+
     /**
      * Update animated textures.
      */
     private void updateAnimatedTextures(float totalTime, Player player) {
-        WaterEffects waterEffects = Game.getWaterEffects();
-        textureAtlas.updateAnimatedWater(totalTime, waterEffects, player.getPosition().x, player.getPosition().z);
+        blockTextureArray.updateAnimatedWater(totalTime);
     }
     
     /**
@@ -379,6 +386,8 @@ public class WorldRenderer {
     private void restoreGLStateAfterPasses() {
         glDepthMask(true);  // Restore depth writing
         glDisable(GL_BLEND); // Restore blending state
+        // Downstream passes (overlays, drops, particles) sample 2D textures.
+        shaderProgram.setUniform("u_useTextureArray", false);
     }
     
     /**

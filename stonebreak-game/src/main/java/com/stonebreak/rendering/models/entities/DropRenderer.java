@@ -5,10 +5,12 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
+import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManager;
 import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.world.World;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
@@ -34,8 +36,12 @@ public class DropRenderer {
     
     private final BlockRenderer blockRenderer;
     private final TextureAtlas textureAtlas;
+    private final BlockTextureArray blockTextureArray;
     private CBRResourceManager cbrManager;
     private final VoxelizedSpriteRenderer voxelizedSpriteRenderer;
+
+    /** Per-block-type cube meshes for drops, textured from the block texture array. */
+    private final java.util.Map<BlockType, MeshManager.MeshResource> dropCubeMeshes = new java.util.HashMap<>();
 
     private boolean initialized = false;
     
@@ -46,9 +52,11 @@ public class DropRenderer {
     /**
      * Creates a DropRenderer with the required dependencies.
      */
-    public DropRenderer(BlockRenderer blockRenderer, TextureAtlas textureAtlas, ShaderProgram shaderProgram) {
+    public DropRenderer(BlockRenderer blockRenderer, TextureAtlas textureAtlas,
+                        BlockTextureArray blockTextureArray, ShaderProgram shaderProgram) {
         this.blockRenderer = blockRenderer;
         this.textureAtlas = textureAtlas;
+        this.blockTextureArray = blockTextureArray;
         this.cbrManager = blockRenderer.getCBRResourceManager();
         this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram, textureAtlas);
         initialize();
@@ -94,6 +102,9 @@ public class DropRenderer {
         // Set common uniforms
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("texture_sampler", 0);
+        // Block-drop CBR meshes carry legacy atlas UVs (no texture-array layer),
+        // so they sample the 2D atlas, not the block texture array.
+        shaderProgram.setUniform("u_useTextureArray", false);
         shaderProgram.setUniform("u_isText", false);
 
         // Calculate underwater fog parameters once for all drops
@@ -117,9 +128,13 @@ public class DropRenderer {
         shaderProgram.setUniform("u_underwaterFogDensity", fogDensity);
         shaderProgram.setUniform("u_underwaterFogColor", fogColor);
 
-        // Bind texture atlas
+        // Bind legacy 2D atlas (unit 0, for 2D item fallback) and the block
+        // texture array (unit 1, for block-drop cubes).
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        GL13.glActiveTexture(GL13.GL_TEXTURE1);
+        blockTextureArray.bind();
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
 
         // Enable depth testing for proper rendering
         glEnable(GL_DEPTH_TEST);
@@ -171,6 +186,7 @@ public class DropRenderer {
         shaderProgram.bind();
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("texture_sampler", 0);
+        shaderProgram.setUniform("u_useTextureArray", false); // CBR meshes use the 2D atlas
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
         shaderProgram.setUniform("u_underwaterFogDensity", 0.0f);
@@ -178,6 +194,9 @@ public class DropRenderer {
 
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        GL13.glActiveTexture(GL13.GL_TEXTURE1);
+        blockTextureArray.bind();
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glEnable(GL_DEPTH_TEST);
 
         // Hand offset, in player local space (right, up, forward).
@@ -209,7 +228,7 @@ public class DropRenderer {
             Matrix4f modelView = new Matrix4f(viewMatrix).mul(dropModelMatrix);
             shaderProgram.setUniform("viewMatrix", modelView);
 
-            CBRResourceManager.BlockRenderResource resource = cbrManager.getBlockTypeResource(blockType);
+            MeshManager.MeshResource mesh = getDropCubeMesh(blockType);
             boolean isTransparent = isTransparentBlock(blockType);
             if (isTransparent) {
                 glEnable(GL_BLEND);
@@ -221,11 +240,12 @@ public class DropRenderer {
             shaderProgram.setUniform("u_useSolidColor", false);
             shaderProgram.setUniform("u_isUIElement", true);
             shaderProgram.setUniform("u_transformUVsForItem", false);
+            shaderProgram.setUniform("u_useTextureArray", true);
             float alpha = isTransparent ? 0.95f : 1.0f;
             shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, alpha));
 
-            resource.getMesh().bind();
-            glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
+            mesh.bind();
+            glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
             glDepthMask(true);
         }
 
@@ -292,14 +312,14 @@ public class DropRenderer {
             return;
         }
         
-        // Use CBR API to get block render resource
         if (cbrManager == null) {
             System.err.println("[DropRenderer] CBR not available for block drop " + blockType);
             return;
         }
-        
-        CBRResourceManager.BlockRenderResource resource = cbrManager.getBlockTypeResource(blockType);
-        
+
+        // Block-texture-array cube mesh for this block type (per-face layers).
+        MeshManager.MeshResource mesh = getDropCubeMesh(blockType);
+
         // Handle transparency and blending based on block type and settings
         boolean isTransparent = isTransparentBlock(blockType);
 
@@ -322,19 +342,41 @@ public class DropRenderer {
         // Enable UI element mode for consistent lighting with hotbar icons
         shaderProgram.setUniform("u_isUIElement", true);
         
-        // CBR meshes already have texture coordinates baked in, so don't transform them
+        // Cube mesh carries tile-local UVs; layers select the array texture.
         shaderProgram.setUniform("u_transformUVsForItem", false);
-        
+        shaderProgram.setUniform("u_useTextureArray", true);
+
         // Set color - full opacity for opaque blocks, slight transparency for transparent blocks
         float alpha = isTransparent ? 0.95f : 1.0f;
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, alpha));
-        
-        // Render the block mesh -- SBO textures are already overlaid onto the atlas
-        resource.getMesh().bind();
-        glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
+
+        // Render the block mesh from the block texture array.
+        mesh.bind();
+        glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
 
         // Restore depth writes for subsequent rendering
         glDepthMask(true);
+    }
+
+    /**
+     * Returns a cached cube mesh for the block type, textured from the block
+     * texture array. Built lazily on first use.
+     */
+    private MeshManager.MeshResource getDropCubeMesh(BlockType blockType) {
+        return dropCubeMeshes.computeIfAbsent(blockType, bt -> {
+            // CBR cube face order: front(+Z), back(-Z), left(-X), right(+X), top(+Y), bottom(-Y)
+            // mapped to MMS face ids: south(3), north(2), west(5), east(4), top(0), bottom(1).
+            float[] faceLayers = {
+                blockTextureArray.getBlockFaceLayer(bt, 3),
+                blockTextureArray.getBlockFaceLayer(bt, 2),
+                blockTextureArray.getBlockFaceLayer(bt, 5),
+                blockTextureArray.getBlockFaceLayer(bt, 4),
+                blockTextureArray.getBlockFaceLayer(bt, 0),
+                blockTextureArray.getBlockFaceLayer(bt, 1)
+            };
+            return cbrManager.getMeshManager()
+                    .createCubeMeshWithLayers("drop_cube_" + bt.name(), faceLayers);
+        });
     }
     
     /**
@@ -408,6 +450,7 @@ public class DropRenderer {
         shaderProgram.setUniform("u_isUIElement", true);
 
         shaderProgram.setUniform("u_transformUVsForItem", true);
+        shaderProgram.setUniform("u_useTextureArray", false); // 2D atlas sprite
 
         // Get texture coordinates from item type using TextureAtlas
         // This matches how the 2D item rendering works in hotbars

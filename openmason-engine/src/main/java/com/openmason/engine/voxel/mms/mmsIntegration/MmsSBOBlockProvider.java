@@ -171,6 +171,7 @@ public class MmsSBOBlockProvider implements MmsBlockGeometryProvider {
             float[] pos = faceStamp.positions();
             float[] nrm = faceStamp.normals();
             float[] uv = faceStamp.atlasUVs();
+            float[] layers = faceStamp.layers();
             int triCount = faceStamp.vertexCount() / 3;
 
             for (int b = 0; b < blockCount; b++) {
@@ -202,7 +203,7 @@ public class MmsSBOBlockProvider implements MmsBlockGeometryProvider {
                                 pos[pOff + 2] + worldZ,
                                 uv[tOff], uv[tOff + 1],
                                 nrm[pOff], nrm[pOff + 1], nrm[pOff + 2],
-                                0.0f, 0.0f
+                                0.0f, 0.0f, 0.0f, 1.0f, layers[vi]
                         );
                     }
 

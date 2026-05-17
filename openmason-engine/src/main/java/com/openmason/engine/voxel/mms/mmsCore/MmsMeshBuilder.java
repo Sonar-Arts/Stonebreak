@@ -38,6 +38,7 @@ public final class MmsMeshBuilder {
     private float[] alphaFlags;
     private float[] translucentFlags;
     private float[] lightValues;
+    private float[] layerIndices;
     private int[] indices;
 
     // Current sizes (logical length, not capacity)
@@ -48,6 +49,7 @@ public final class MmsMeshBuilder {
     private int alphaSize;
     private int translucentSize;
     private int lightSize;
+    private int layerSize;
     private int indexSize;
 
     // Face building state
@@ -77,6 +79,7 @@ public final class MmsMeshBuilder {
         this.alphaFlags = new float[initialCapacity];
         this.translucentFlags = new float[initialCapacity];
         this.lightValues = new float[initialCapacity];
+        this.layerIndices = new float[initialCapacity];
         this.indices = new int[initialCapacity * 2]; // Estimate ~1.5 indices per vertex
         this.currentFaceVertexStart = -1;
         this.totalVertices = 0;
@@ -168,6 +171,19 @@ public final class MmsMeshBuilder {
                                      float nx, float ny, float nz,
                                      float waterFlag, float alphaFlag,
                                      float translucentFlag, float light) {
+        return addVertex(x, y, z, u, v, nx, ny, nz, waterFlag, alphaFlag, translucentFlag, light, 0.0f);
+    }
+
+    /**
+     * Adds a vertex with all attributes including the texture-array layer index.
+     *
+     * @param layer Texture-array layer index selecting the 16x16 texture
+     */
+    public MmsMeshBuilder addVertex(float x, float y, float z,
+                                     float u, float v,
+                                     float nx, float ny, float nz,
+                                     float waterFlag, float alphaFlag,
+                                     float translucentFlag, float light, float layer) {
 
         // Ensure capacity for positions (3 floats)
         int posRequired = posSize + 3;
@@ -215,6 +231,11 @@ public final class MmsMeshBuilder {
             lightValues = Arrays.copyOf(lightValues, grow(lightValues.length, lightSize + 1));
         }
         lightValues[lightSize++] = light;
+
+        if (layerSize >= layerIndices.length) {
+            layerIndices = Arrays.copyOf(layerIndices, grow(layerIndices.length, layerSize + 1));
+        }
+        layerIndices[layerSize++] = layer;
 
         totalVertices++;
         return this;
@@ -289,6 +310,7 @@ public final class MmsMeshBuilder {
         alphaSize = 0;
         translucentSize = 0;
         lightSize = 0;
+        layerSize = 0;
         indexSize = 0;
         currentFaceVertexStart = -1;
         totalVertices = 0;
@@ -348,12 +370,13 @@ public final class MmsMeshBuilder {
         float[] alphaArray = Arrays.copyOf(alphaFlags, alphaSize);
         float[] translucentArray = Arrays.copyOf(translucentFlags, translucentSize);
         float[] lightArray = Arrays.copyOf(lightValues, lightSize);
+        float[] layerArray = Arrays.copyOf(layerIndices, layerSize);
         int[] indexArray = Arrays.copyOf(indices, indexSize);
 
         // Create mesh data
         MmsMeshData meshData = new MmsMeshData(
             posArray, texArray, normArray, waterArray, alphaArray, translucentArray, lightArray,
-            indexArray, indexArray.length
+            layerArray, indexArray, indexArray.length
         );
 
         // Validate if enabled

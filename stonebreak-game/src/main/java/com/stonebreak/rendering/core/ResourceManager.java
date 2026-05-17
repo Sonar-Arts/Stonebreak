@@ -27,10 +27,23 @@ public class ResourceManager {
     }
     
     private void createShaderUniforms() {
+        // Bind the program before any setUniform call below — glUniform* operates
+        // on the *currently bound* program, and nothing has bound it since link().
+        // Without this, sampler assignments (e.g. block_sampler -> unit 1) silently
+        // fail, leaving block_sampler and texture_sampler both on unit 0. Two
+        // different sampler types on one unit make every draw call a no-op
+        // (GL_INVALID_OPERATION).
+        shaderProgram.bind();
         shaderProgram.createUniform("projectionMatrix");
         shaderProgram.createUniform("viewMatrix");
         shaderProgram.createUniform("modelMatrix");
         shaderProgram.createUniform("texture_sampler");
+        // Block texture array sampler (texture unit 1). World/voxel geometry
+        // samples this; text/UI keep using the 2D texture_sampler on unit 0.
+        shaderProgram.createUniform("block_sampler");
+        shaderProgram.setUniform("block_sampler", 1);
+        shaderProgram.createUniform("u_useTextureArray");
+        shaderProgram.setUniform("u_useTextureArray", false);
         shaderProgram.createUniform("u_color");
         shaderProgram.createUniform("u_useSolidColor");
         shaderProgram.createUniform("u_isText");
@@ -67,6 +80,8 @@ public class ResourceManager {
                // GL provides this as a normalized [0,1] vec4 from 4 unsigned bytes — saves
                // 12 bytes per vertex compared to 4 separate float attributes.
                layout (location=3) in vec4 aFlags;
+               // Texture-array layer index. Unbound VAOs (text/UI) read 0 — harmless.
+               layout (location=4) in float aLayer;
                out vec2 outTexCoord;
                out vec3 outNormal;
                out vec3 fragPos;
@@ -74,6 +89,7 @@ public class ResourceManager {
                out float v_isAlphaTested;
                out float v_isTranslucent;
                out float v_light;
+               out float v_layer;
                uniform mat4 projectionMatrix;
                uniform mat4 viewMatrix;
                uniform mat4 modelMatrix;
@@ -150,6 +166,7 @@ public class ResourceManager {
                    v_isAlphaTested = isAlphaTested;
                    v_isTranslucent = isTranslucent;
                    v_light = aLight;
+                   v_layer = aLayer;
                }""";
     }
     
@@ -163,8 +180,12 @@ public class ResourceManager {
                in float v_isAlphaTested;
                in float v_isTranslucent;
                in float v_light;
+               in float v_layer;
                out vec4 fragColor;
                uniform sampler2D texture_sampler;
+               // Block texture array — sampled when u_useTextureArray is true.
+               uniform sampler2DArray block_sampler;
+               uniform bool u_useTextureArray;
                uniform vec4 u_color;
                uniform bool u_useSolidColor;
                uniform bool u_isText;
@@ -195,7 +216,9 @@ public class ResourceManager {
                            : 1.0;
                        fragColor = vec4(u_color.rgb * playerFactor, u_color.a);
                    } else {
-                       vec4 textureColor = texture(texture_sampler, outTexCoord);
+                       vec4 textureColor = u_useTextureArray
+                           ? texture(block_sampler, vec3(outTexCoord, v_layer))
+                           : texture(texture_sampler, outTexCoord);
                        float sampledAlpha = textureColor.a;
 
                        // UI elements get simple flat lighting. When u_playerLight is set

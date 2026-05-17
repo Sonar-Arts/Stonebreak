@@ -35,6 +35,23 @@ public interface MmsTextureMapper {
     float[] generateCrossTextureCoordinates(IBlockType blockType);
 
     /**
+     * Generates texture-array layer indices for a standard block face.
+     *
+     * @param blockType Type of block
+     * @param face Face index (0=top, 1=bottom, 2=north, 3=south, 4=east, 5=west)
+     * @return Array of 4 layer indices (one per vertex)
+     */
+    float[] generateFaceLayers(IBlockType blockType, int face);
+
+    /**
+     * Generates texture-array layer indices for a cross-section block.
+     *
+     * @param blockType Type of block (must be cross-section type)
+     * @return Array of 8 layer indices (one per vertex)
+     */
+    float[] generateCrossLayers(IBlockType blockType);
+
+    /**
      * Generates alpha test flags for vertices.
      *
      * @param blockType Type of block

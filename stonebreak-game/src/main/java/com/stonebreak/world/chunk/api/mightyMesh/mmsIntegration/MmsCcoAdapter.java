@@ -233,6 +233,9 @@ public class MmsCcoAdapter {
         // Generate texture coordinates (8 vertices)
         float[] texCoords = textureMapper.generateCrossTextureCoordinates(blockType);
 
+        // Generate texture-array layer indices (8 vertices)
+        float[] crossLayers = textureMapper.generateCrossLayers(blockType);
+
         // Generate alpha flags (cross blocks always use alpha testing)
         float[] alphaFlags = new float[MmsBufferLayout.VERTICES_PER_CROSS];
         for (int i = 0; i < MmsBufferLayout.VERTICES_PER_CROSS; i++) {
@@ -248,7 +251,7 @@ public class MmsCcoAdapter {
                 vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
                 texCoords[tIdx], texCoords[tIdx + 1],
                 normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                0.0f, alphaFlags[i] // No water flags needed
+                0.0f, alphaFlags[i], 0.0f, 1.0f, crossLayers[i] // No water flags needed
             );
         }
 
@@ -294,6 +297,7 @@ public class MmsCcoAdapter {
             // Generate texture coordinates with water height adjustment
             float[] baseTexCoords = textureMapper.generateFaceTextureCoordinates(BlockType.WATER, face);
             float[] texCoords = waterGenerator.generateWaterTextureCoordinates(face, blockX, blockY, blockZ, baseTexCoords);
+            float[] waterLayers = textureMapper.generateFaceLayers(BlockType.WATER, face);
 
             // generateWaterFlags ignores its blockHeight parameter; one call is sufficient.
             // Returns a per-thread scratch array — read it before the next call.
@@ -309,7 +313,7 @@ public class MmsCcoAdapter {
                     vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
                     texCoords[tIdx], texCoords[tIdx + 1],
                     normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                    waterFlags[i], WATER_ALPHA_FLAGS[i] // Water flags encode height
+                    waterFlags[i], WATER_ALPHA_FLAGS[i], 0.0f, 1.0f, waterLayers[i] // Water flags encode height
                 );
             }
             builder.endFace();
@@ -343,6 +347,9 @@ public class MmsCcoAdapter {
             // Generate alpha flags
             float[] alphaFlags = textureMapper.generateAlphaFlags(blockType);
 
+            // Generate texture-array layer indices
+            float[] layers = textureMapper.generateFaceLayers(blockType, face);
+
             // Per-vertex smooth lighting — each vertex averages the 4 air-side
             // cells it touches. Gives gradient shadow transitions across faces.
             builder.beginFace();
@@ -358,7 +365,7 @@ public class MmsCcoAdapter {
                     vx, vy, vz,
                     texCoords[tIdx], texCoords[tIdx + 1],
                     normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                    0.0f, alphaFlags[i], 0.0f, vertexLight
+                    0.0f, alphaFlags[i], 0.0f, vertexLight, layers[i]
                 );
             }
             builder.endFace();

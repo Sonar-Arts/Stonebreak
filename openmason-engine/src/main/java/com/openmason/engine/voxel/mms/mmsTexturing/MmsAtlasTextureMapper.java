@@ -116,6 +116,18 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
         return texCoords;
     }
 
+    /** Atlas mapper does not use texture-array layers — stub returns layer 0. */
+    @Override
+    public float[] generateFaceLayers(IBlockType blockType, int face) {
+        return new float[MmsBufferLayout.VERTICES_PER_QUAD];
+    }
+
+    /** Atlas mapper does not use texture-array layers — stub returns layer 0. */
+    @Override
+    public float[] generateCrossLayers(IBlockType blockType) {
+        return new float[MmsBufferLayout.VERTICES_PER_CROSS];
+    }
+
     @Override
     public float[] generateAlphaFlags(IBlockType blockType) {
         float[] flags = SCRATCH_QUAD_ALPHA.get();
