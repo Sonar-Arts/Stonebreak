@@ -772,8 +772,6 @@ public class Main {
     private void renderGameUI(Game game, Renderer renderer) {
         if (renderer == null) return;
 
-        renderer.beginUIFrame(width, height, 1.0f);
-
         if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI || game.getState() == GameState.RECIPE_BOOK_UI || game.getState() == GameState.CHARACTER_SHEET_UI) {
             renderCrosshair(game, renderer);
             renderInventoryAndHotbar(game);
@@ -789,7 +787,6 @@ public class Main {
         }
 
         renderActivePauseMenu(game, renderer);
-        renderer.endUIFrame();
     }
 
     private void renderCrosshair(Game game, Renderer renderer) {

@@ -354,27 +354,6 @@ public class Renderer {
     }
     
     /**
-     * Begin a UI frame for NanoVG rendering.
-     * @param width Window width
-     * @param height Window height
-     * @param pixelRatio Pixel ratio (typically 1.0f)
-     */
-    public void beginUIFrame(int width, int height, float pixelRatio) {
-        if (uiRenderer != null) {
-            uiRenderer.beginFrame(width, height, pixelRatio);
-        }
-    }
-    
-    /**
-     * End the current UI frame.
-     */
-    public void endUIFrame() {
-        if (uiRenderer != null) {
-            uiRenderer.endFrame();
-        }
-    }
-    
-    /**
      * Render chat system.
      * @param chatSystem Chat system instance
      * @param windowWidth Window width
@@ -396,9 +375,7 @@ public class Renderer {
      */
     public void renderOverlay(Game game, int windowWidth, int windowHeight) {
         if (overlayRenderer != null) {
-            beginUIFrame(windowWidth, windowHeight, 1.0f);
             overlayRenderer.renderOverlay(game, windowWidth, windowHeight);
-            endUIFrame();
         }
     }
     
