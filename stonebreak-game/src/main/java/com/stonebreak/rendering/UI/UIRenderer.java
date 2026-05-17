@@ -1,13 +1,13 @@
 package com.stonebreak.rendering.UI;
 
 import java.nio.FloatBuffer;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.items.Item;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.components.MCrosshairRenderer;
 import com.stonebreak.ui.chat.SkijaChatRenderer;
@@ -85,11 +85,11 @@ public class UIRenderer {
 
     // ===== Item Icon Rendering Delegation =====
 
-    public void renderItemIcon(float x, float y, float w, float h, Item item, TextureAtlas textureAtlas) {
+    public void renderItemIcon(float x, float y, float w, float h, Item item, BlockTextureArray textureAtlas) {
         itemIconRenderer.renderItemIcon(x, y, w, h, item, textureAtlas);
     }
 
-    public void renderItemIcon(float x, float y, float w, float h, int blockTypeId, TextureAtlas textureAtlas) {
+    public void renderItemIcon(float x, float y, float w, float h, int blockTypeId, BlockTextureArray textureAtlas) {
         itemIconRenderer.renderItemIcon(x, y, w, h, blockTypeId, textureAtlas);
     }
 
@@ -134,7 +134,7 @@ public class UIRenderer {
      * @param textureAtlas The texture atlas containing block textures
      */
     public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
-                                int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas) {
+                                int screenSlotWidth, int screenSlotHeight, BlockTextureArray textureAtlas) {
         if (blockIconRenderer == null) {
             throw new IllegalStateException("BlockIconRenderer not initialized. Call initializeBlockIconRenderer() first.");
         }
@@ -155,7 +155,7 @@ public class UIRenderer {
      * @param isDraggedItem If true, renders closer to camera to avoid z-fighting
      */
     public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
-                                int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas, boolean isDraggedItem) {
+                                int screenSlotWidth, int screenSlotHeight, BlockTextureArray textureAtlas, boolean isDraggedItem) {
         if (blockIconRenderer == null) {
             throw new IllegalStateException("BlockIconRenderer not initialized. Call initializeBlockIconRenderer() first.");
         }

@@ -42,7 +42,6 @@ module stonebreak.game {
 
     
     // Export packages for OpenMason tool access
-    exports com.stonebreak.textures.atlas;
     exports com.stonebreak.blocks;
     exports com.stonebreak.blocks.registry;
     exports com.stonebreak.items;
@@ -60,7 +59,6 @@ module stonebreak.game {
     exports com.stonebreak.rendering.player.items.voxelization;
 
     // Open packages for Jackson JSON processing
-    opens com.stonebreak.textures.atlas to com.fasterxml.jackson.databind;
     opens com.stonebreak.blocks to com.fasterxml.jackson.databind;
     opens com.stonebreak.items to com.fasterxml.jackson.databind;
     opens com.stonebreak.mobs.cow to com.fasterxml.jackson.databind;

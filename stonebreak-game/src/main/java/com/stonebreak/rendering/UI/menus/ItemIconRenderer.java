@@ -3,10 +3,10 @@ package com.stonebreak.rendering.UI.menus;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemType;
-import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.ColorAlphaType;
 import io.github.humbleui.skija.Image;
@@ -46,6 +46,8 @@ public class ItemIconRenderer {
     private final SkijaUIBackend skijaBackend;
     private final Map<SboIconKey, Image> sboItemImageCache = new HashMap<>();
     private final Map<SboIconKey, Boolean> sboItemLoadFailed = new HashMap<>();
+    /** Cached Skija images for block-texture-array layers, keyed by layer index. */
+    private final Map<Integer, Image> blockLayerImageCache = new HashMap<>();
 
     public ItemIconRenderer(SkijaUIBackend skijaBackend) {
         this.skijaBackend = skijaBackend;
@@ -97,8 +99,8 @@ public class ItemIconRenderer {
 
     // ===== Main entry points =====
 
-    public void renderItemIcon(float x, float y, float w, float h, Item item, TextureAtlas textureAtlas) {
-        renderItemIcon(x, y, w, h, item, null, textureAtlas);
+    public void renderItemIcon(float x, float y, float w, float h, Item item, BlockTextureArray blockTextureArray) {
+        renderItemIcon(x, y, w, h, item, null, blockTextureArray);
     }
 
     /**
@@ -106,98 +108,58 @@ public class ItemIconRenderer {
      * texture (1.3+). Pass {@code null} for the default state. Block items
      * ignore the state parameter.
      */
-    public void renderItemIcon(float x, float y, float w, float h, Item item, String state, TextureAtlas textureAtlas) {
-        if (textureAtlas == null || item == null) return;
-        if (item == BlockType.AIR) return;
+    public void renderItemIcon(float x, float y, float w, float h, Item item, String state, BlockTextureArray blockTextureArray) {
+        if (item == null || item == BlockType.AIR) return;
 
-        float[] texCoords;
-        if (item instanceof BlockType blockType) {
-            texCoords = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.TOP);
-        } else if (item instanceof ItemType itemType) {
-            if (SpriteVoxelizer.isSboBackedItem(itemType)) {
-                renderSboItemIcon(x, y, w, h, itemType, state);
+        // SBO-backed items render from their composited sprite.
+        if (item instanceof ItemType itemType && SpriteVoxelizer.isSboBackedItem(itemType)) {
+            renderSboItemIcon(x, y, w, h, itemType, state);
+            return;
+        }
+
+        // Block items draw the block's top-face texture from the block array.
+        if (item instanceof BlockType blockType && blockTextureArray != null) {
+            int layer = blockTextureArray.getBlockFaceLayer(blockType, BlockType.Face.TOP.getIndex());
+            Image img = getBlockLayerImage(blockTextureArray, layer);
+            if (img == null) {
+                renderQuad(x, y, w, h, 0.2f, 0.8f, 0.2f, 1f);
                 return;
             }
-            texCoords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
-        } else {
-            float atlasSize = 16.0f;
-            float uvSize = 1.0f / atlasSize;
-            float texX = item.getAtlasX() / atlasSize;
-            float texY = item.getAtlasY() / atlasSize;
-            texCoords = new float[]{texX, texY, texX + uvSize, texY + uvSize};
-        }
-
-        // Validate texture coordinates
-        if (texCoords == null || texCoords.length < 4) {
-            renderQuad(x, y, w, h, 0.5f, 0.2f, 0.8f, 1f);
-            System.err.println("ItemIconRenderer: Invalid texCoords for item " + (item != null ? item.getClass().getSimpleName() : "null"));
+            int windowWidth = com.stonebreak.core.Game.getWindowWidth();
+            int windowHeight = com.stonebreak.core.Game.getWindowHeight();
+            try (CanvasInFrame cif = acquireCanvas(windowWidth, windowHeight)) {
+                MPainter.drawImage(cif.canvas, img, x, y, w, h);
+            }
             return;
         }
 
-        if (texCoords[0] < 0 || texCoords[0] > 1 || texCoords[1] < 0 || texCoords[1] > 1 ||
-            texCoords[2] < 0 || texCoords[2] > 1 || texCoords[3] < 0 || texCoords[3] > 1) {
-            System.err.println("ItemIconRenderer: Warning - UV coordinates out of range for item " + (item != null ? item.getClass().getSimpleName() : "null") +
-                              ": [" + texCoords[0] + ", " + texCoords[1] + ", " + texCoords[2] + ", " + texCoords[3] + "]");
-        }
-
-        // Get Skija atlas image
-        Image atlasImage = textureAtlas.getSkijaImage();
-        if (atlasImage == null) {
-            System.err.println("ItemIconRenderer: Skija atlas image is null, cannot render item icon");
-            renderQuad(x, y, w, h, 0.2f, 0.8f, 0.2f, 1f);
-            return;
-        }
-
-        int atlasPixelWidth = atlasImage.getWidth();
-        int atlasPixelHeight = atlasImage.getHeight();
-
-        if (atlasPixelWidth <= 0 || atlasPixelHeight <= 0) {
-            System.err.println("ItemIconRenderer: Invalid atlas dimensions: " + atlasPixelWidth + "x" + atlasPixelHeight);
-            renderQuad(x, y, w, h, 0.8f, 0.8f, 0.2f, 1f);
-            return;
-        }
-
-        float u1 = texCoords[0];
-        float v1 = texCoords[1];
-        float u2 = texCoords[2];
-        float v2 = texCoords[3];
-
-        float uv_w = u2 - u1;
-        float uv_h = v2 - v1;
-
-        if (uv_w <= 0 || uv_h <= 0) {
-            System.err.println("ItemIconRenderer: Invalid UV dimensions: " + uv_w + "x" + uv_h + " for item " +
-                              (item != null ? item.getClass().getSimpleName() : "null"));
-            renderQuad(x, y, w, h, 0.2f, 0.2f, 0.8f, 1f);
-            return;
-        }
-
-        // Convert normalized UV to pixel-space source rectangle
-        float srcX = u1 * atlasPixelWidth;
-        float srcY = v1 * atlasPixelHeight;
-        float srcW = uv_w * atlasPixelWidth;
-        float srcH = uv_h * atlasPixelHeight;
-
-        // Determine window dimensions from Game class
-        int windowWidth = com.stonebreak.core.Game.getWindowWidth();
-        int windowHeight = com.stonebreak.core.Game.getWindowHeight();
-
-        try (CanvasInFrame cif = acquireCanvas(windowWidth, windowHeight)) {
-            drawAtlasSubRect(cif.canvas, atlasImage, srcX, srcY, srcW, srcH, x, y, w, h);
-        }
+        // Unknown / textureless item — error swatch.
+        renderQuad(x, y, w, h, 0.5f, 0.2f, 0.8f, 1f);
     }
 
     /**
-     * Draw a sub-region of the atlas image into the destination rectangle.
+     * Builds (and caches) a Skija image for one block-texture-array layer.
      */
-    private void drawAtlasSubRect(Canvas canvas, Image atlasImage,
-                                  float srcX, float srcY, float srcW, float srcH,
-                                  float dstX, float dstY, float dstW, float dstH) {
-        try (Paint paint = new Paint()) {
-            Rect src = Rect.makeXYWH(srcX, srcY, srcW, srcH);
-            Rect dst = Rect.makeXYWH(dstX, dstY, dstW, dstH);
-            canvas.drawImageRect(atlasImage, src, dst, SamplingMode.LINEAR, paint, true);
+    private Image getBlockLayerImage(BlockTextureArray array, int layer) {
+        Image cached = blockLayerImageCache.get(layer);
+        if (cached != null) return cached;
+
+        int[] argb = array.getLayerPixels(layer);
+        if (argb == null) return null;
+
+        final int size = BlockTextureArray.TILE;
+        byte[] bytes = new byte[size * size * 4];
+        for (int i = 0, off = 0; i < argb.length; i++, off += 4) {
+            int px = argb[i];
+            bytes[off]     = (byte) (px         & 0xFF); // B
+            bytes[off + 1] = (byte) ((px >> 8)  & 0xFF); // G
+            bytes[off + 2] = (byte) ((px >> 16) & 0xFF); // R
+            bytes[off + 3] = (byte) ((px >> 24) & 0xFF); // A
         }
+        ImageInfo info = ImageInfo.makeN32(size, size, ColorAlphaType.UNPREMUL);
+        Image img = Image.makeRasterFromBytes(info, bytes, size * 4);
+        blockLayerImageCache.put(layer, img);
+        return img;
     }
 
     // ===== SBO item rendering =====
@@ -260,16 +222,16 @@ public class ItemIconRenderer {
     /**
      * Renders an item icon by ID (block type or item type lookup).
      */
-    public void renderItemIcon(float x, float y, float w, float h, int blockTypeId, TextureAtlas textureAtlas) {
+    public void renderItemIcon(float x, float y, float w, float h, int blockTypeId, BlockTextureArray blockTextureArray) {
         BlockType blockType = BlockType.getById(blockTypeId);
         if (blockType != null) {
-            renderItemIcon(x, y, w, h, blockType, textureAtlas);
+            renderItemIcon(x, y, w, h, blockType, blockTextureArray);
             return;
         }
 
         ItemType itemType = ItemType.getById(blockTypeId);
         if (itemType != null) {
-            renderItemIcon(x, y, w, h, itemType, textureAtlas);
+            renderItemIcon(x, y, w, h, itemType, blockTextureArray);
             return;
         }
 

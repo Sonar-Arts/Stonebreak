@@ -24,7 +24,6 @@ import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.models.entities.DropRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
-import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.gameWorld.sky.SkyRenderer;
 import com.stonebreak.rendering.gameWorld.sky.clouds.CloudRenderer;
@@ -32,7 +31,6 @@ import com.stonebreak.rendering.gameWorld.fastlod.FastLodRenderPass;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
 import com.stonebreak.world.World;
-import com.openmason.engine.voxel.sbo.SBORenderData;
 
 /**
  * Specialized renderer for 3D world elements including chunks, entities, and world-specific effects.
@@ -42,7 +40,6 @@ public class WorldRenderer {
     
     // Dependencies
     private final ShaderProgram shaderProgram;
-    private final TextureAtlas textureAtlas;
     private final BlockTextureArray blockTextureArray;
     private final Matrix4f projectionMatrix;
     private final BlockRenderer blockRenderer;
@@ -61,12 +58,11 @@ public class WorldRenderer {
     /**
      * Creates a WorldRenderer with the required dependencies.
      */
-    public WorldRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, BlockTextureArray blockTextureArray,
+    public WorldRenderer(ShaderProgram shaderProgram, BlockTextureArray blockTextureArray,
                         Matrix4f projectionMatrix,
                         BlockRenderer blockRenderer, PlayerArmRenderer playerArmRenderer, EntityRenderer entityRenderer,
                         DropRenderer dropRenderer) {
         this.shaderProgram = shaderProgram;
-        this.textureAtlas = textureAtlas;
         this.blockTextureArray = blockTextureArray;
         this.projectionMatrix = projectionMatrix;
         this.blockRenderer = blockRenderer;
@@ -238,9 +234,7 @@ public class WorldRenderer {
         // Block texture array on unit 1 — world/voxel geometry samples this.
         GL13.glActiveTexture(GL13.GL_TEXTURE1);
         blockTextureArray.bind();
-        // Legacy 2D atlas still on unit 0 for any 2D-sampling shared-shader path.
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
     }
 
     /**

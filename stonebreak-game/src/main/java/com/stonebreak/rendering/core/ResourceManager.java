@@ -2,18 +2,15 @@ package com.stonebreak.rendering.core;
 
 import com.stonebreak.ui.Font;
 import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.rendering.textures.TextureAtlas;
 
 public class ResourceManager {
     private ShaderProgram shaderProgram;
-    private TextureAtlas textureAtlas;
     private Font font;
-    
+
     public ResourceManager() {
     }
-    
+
     public void initialize(int textureAtlasSize) {
-        textureAtlas = new TextureAtlas(textureAtlasSize);
         font = new Font("fonts/Roboto-VariableFont_wdth,wght.ttf", 24f);
     }
     
@@ -349,10 +346,6 @@ public class ResourceManager {
         return shaderProgram;
     }
     
-    public TextureAtlas getTextureAtlas() {
-        return textureAtlas;
-    }
-    
     public Font getFont() {
         return font;
     }
@@ -360,9 +353,6 @@ public class ResourceManager {
     public void cleanup() {
         if (shaderProgram != null) {
             shaderProgram.cleanup();
-        }
-        if (textureAtlas != null) {
-            textureAtlas.cleanup();
         }
         if (font != null) {
             font.cleanup();

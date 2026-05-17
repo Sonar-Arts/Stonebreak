@@ -2,15 +2,14 @@ package com.stonebreak.core;
 
 import java.util.concurrent.*;
 
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.audio.*;
 import com.stonebreak.blocks.*;
-import com.stonebreak.config.*;
 import com.stonebreak.crafting.*;
 import com.stonebreak.input.*;
 import com.stonebreak.items.*;
 import com.stonebreak.player.*;
 import com.stonebreak.rendering.*;
-import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.*;
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.ui.DeathMenu;
@@ -40,7 +39,7 @@ public class Game {
     private World world;
     private Player player;
     private Renderer renderer;
-    private TextureAtlas textureAtlas;
+    private BlockTextureArray textureAtlas;
     private PauseMenu pauseMenu;
     private DeathMenu deathMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
@@ -122,7 +121,7 @@ public class Game {
      * Initializes core game components that don't require a world or player.
      * This includes renderer, sound system, UI components, and basic systems.
      */
-    public void initCoreComponents(Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler, long window) {
+    public void initCoreComponents(Renderer renderer, BlockTextureArray textureAtlas, InputHandler inputHandler, long window) {
         this.window = window;
         this.renderer = renderer;
         this.textureAtlas = textureAtlas;
@@ -198,7 +197,7 @@ public class Game {
         // For existing worlds: Loaded from save data in performWorldLoadingOrGeneration()
         // This ensures default time is only applied to NEW worlds, not existing ones
 
-        // Initialize InventoryScreen - requires Player, Renderer, TextureAtlas, and InputHandler
+        // Initialize InventoryScreen - requires Player, Renderer, BlockTextureArray, and InputHandler
         if (renderer.getFont() != null && textureAtlas != null) {
             this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
             // Now that inventoryScreen is created, give the inventory a reference to it.
@@ -211,7 +210,7 @@ public class Game {
                 }
             }
         } else {
-            System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, TextureAtlas, InputHandler, or CraftingManager).");
+            System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, BlockTextureArray, InputHandler, or CraftingManager).");
         }
 
         // Initialize CharacterScreen
@@ -554,9 +553,9 @@ public class Game {
     /**
      * Gets the game's texture atlas.
      * This assumes the texture atlas is loaded and available via the Renderer.
-     * @return The TextureAtlas object, or null if not available.
+     * @return The BlockTextureArray object, or null if not available.
      */
-    public TextureAtlas getTextureAtlas() {
+    public BlockTextureArray getBlockTextureArray() {
         return this.textureAtlas;
     }
 

@@ -9,7 +9,6 @@ import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManage
 import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.world.World;
 import org.joml.Matrix4f;
@@ -35,7 +34,6 @@ import static org.lwjgl.opengl.GL20.*;
 public class DropRenderer {
     
     private final BlockRenderer blockRenderer;
-    private final TextureAtlas textureAtlas;
     private final BlockTextureArray blockTextureArray;
     private CBRResourceManager cbrManager;
     private final VoxelizedSpriteRenderer voxelizedSpriteRenderer;
@@ -52,10 +50,9 @@ public class DropRenderer {
     /**
      * Creates a DropRenderer with the required dependencies.
      */
-    public DropRenderer(BlockRenderer blockRenderer, TextureAtlas textureAtlas,
+    public DropRenderer(BlockRenderer blockRenderer,
                         BlockTextureArray blockTextureArray, ShaderProgram shaderProgram) {
         this.blockRenderer = blockRenderer;
-        this.textureAtlas = textureAtlas;
         this.blockTextureArray = blockTextureArray;
         this.cbrManager = blockRenderer.getCBRResourceManager();
         this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram);
@@ -128,10 +125,7 @@ public class DropRenderer {
         shaderProgram.setUniform("u_underwaterFogDensity", fogDensity);
         shaderProgram.setUniform("u_underwaterFogColor", fogColor);
 
-        // Bind legacy 2D atlas (unit 0, for 2D item fallback) and the block
-        // texture array (unit 1, for block-drop cubes).
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        // Bind the block texture array on unit 1 for block-drop cubes.
         GL13.glActiveTexture(GL13.GL_TEXTURE1);
         blockTextureArray.bind();
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -192,8 +186,6 @@ public class DropRenderer {
         shaderProgram.setUniform("u_underwaterFogDensity", 0.0f);
         shaderProgram.setUniform("u_underwaterFogColor", new Vector3f(0.1f, 0.3f, 0.5f));
 
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
         GL13.glActiveTexture(GL13.GL_TEXTURE1);
         blockTextureArray.bind();
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -396,13 +388,9 @@ public class DropRenderer {
             if (stack != null) state = stack.getState();
         }
 
-        // Check if this item can be rendered using the voxelization system
+        // All items are SBO-backed and render via the voxelization system.
         if (SpriteVoxelizer.isVoxelizable(itemType)) {
-            // Use the voxelized sprite renderer for 3D representation with drop-specific settings
             renderVoxelizedItemDrop(itemType, state);
-        } else {
-            // Fallback to 2D billboard sprite for items without voxelization support
-            renderFallback2DItemDrop(drop, shaderProgram, itemType);
         }
     }
 
@@ -439,96 +427,6 @@ public class DropRenderer {
         }
     }
 
-    /**
-     * Fallback method to render item drops as 2D billboard sprites for items without voxelization support.
-     */
-    private void renderFallback2DItemDrop(Entity drop, ShaderProgram shaderProgram, ItemType itemType) {
-        // Set shader uniforms for item sprite rendering
-        shaderProgram.setUniform("u_useSolidColor", false);
-
-        // Enable UI element mode for consistent lighting with hotbar icons
-        shaderProgram.setUniform("u_isUIElement", true);
-
-        shaderProgram.setUniform("u_transformUVsForItem", true);
-        shaderProgram.setUniform("u_useTextureArray", false); // 2D atlas sprite
-
-        // Get texture coordinates from item type using TextureAtlas
-        // This matches how the 2D item rendering works in hotbars
-        float[] texCoords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
-        if (texCoords == null || texCoords.length < 4) {
-            System.err.println("[DropRenderer] Failed to get texture coordinates for item: " + itemType.getName());
-            return;
-        }
-
-        // Convert from [u1, v1, u2, v2] format to offset + scale format
-        float atlasU = texCoords[0];
-        float atlasV = texCoords[1];
-        float atlasW = texCoords[2] - texCoords[0];
-        float atlasH = texCoords[3] - texCoords[1];
-
-        shaderProgram.setUniform("u_atlasUVOffset", new Vector2f(atlasU, atlasV));
-        shaderProgram.setUniform("u_atlasUVScale", new Vector2f(atlasW, atlasH));
-
-        // Set color with slight transparency
-        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 0.95f));
-
-        // Create a simple billboard quad for fallback rendering
-        renderFallbackBillboardQuad();
-    }
-
-    /**
-     * Renders a simple billboard quad for fallback item rendering.
-     */
-    private void renderFallbackBillboardQuad() {
-        // Create a simple quad for 2D sprite rendering (billboard style)
-        float[] vertices = {
-            // Quad vertices (camera-facing billboard)
-            -0.5f, -0.5f, 0.0f,  0.0f, 1.0f, // Bottom-left
-             0.5f, -0.5f, 0.0f,  1.0f, 1.0f, // Bottom-right
-             0.5f,  0.5f, 0.0f,  1.0f, 0.0f, // Top-right
-            -0.5f,  0.5f, 0.0f,  0.0f, 0.0f  // Top-left
-        };
-
-        int[] indices = {
-            // Single quad
-            0, 1, 2, 2, 3, 0
-        };
-
-        // Create temporary VAO for rendering (cleaned up automatically)
-        int vao = GL30.glGenVertexArrays();
-        GL30.glBindVertexArray(vao);
-
-        int vbo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
-        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
-        vertexBuffer.put(vertices).flip();
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
-
-        // Position attribute (location 0)
-        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 5 * Float.BYTES, 0);
-        GL20.glEnableVertexAttribArray(0);
-
-        // Texture coordinate attribute (location 1)
-        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, 5 * Float.BYTES, 3 * Float.BYTES);
-        GL20.glEnableVertexAttribArray(1);
-
-        int ibo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
-        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
-        indexBuffer.put(indices).flip();
-        GL20.glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
-
-        // Render the quad
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-        // Clean up temporary resources
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
-        GL30.glDeleteVertexArrays(vao);
-        GL20.glDeleteBuffers(vbo);
-        GL20.glDeleteBuffers(ibo);
-    }
-    
     /**
      * Helper methods to determine drop entity types and extract data.
      * These would need to be implemented based on the actual drop entity structure.

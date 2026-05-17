@@ -14,12 +14,10 @@ import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.components.OverlayRenderer;
-import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
 import com.stonebreak.rendering.sbo.SBOHandMeshRegistry;
-import com.stonebreak.rendering.sbo.SBOTextureIntegrator;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsFaceCullingService;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBORendererAPI;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
@@ -81,8 +79,8 @@ public class Renderer {
         resourceManager.initialize(16); // 16x16 texture atlas
         resourceManager.initializeShaderProgram();
 
-        // Initialize SBO block system — scan, parse, and overlay textures onto atlas
-        initializeSBOBlocks(resourceManager.getTextureAtlas());
+        // Initialize SBO block system — scan, parse, build the block texture array
+        initializeSBOBlocks();
 
         configManager = new RenderingConfigurationManager(width, height);
 
@@ -93,7 +91,7 @@ public class Renderer {
         
         
         // Initialize specialized renderers with CBR support
-        blockRenderer = new BlockRenderer(resourceManager.getTextureAtlas(), blockRegistry);
+        blockRenderer = new BlockRenderer(blockRegistry);
 
         // Build SBO hand-mesh registry now that CBR's MeshManager is available.
         // Runs after the SBO bridge and texture integration (initializeSBOBlocks
@@ -139,7 +137,7 @@ public class Renderer {
         entityRenderer = new EntityRenderer();
         entityRenderer.initialize();
         
-        dropRenderer = new DropRenderer(blockRenderer, resourceManager.getTextureAtlas(), blockTextureArray, resourceManager.getShaderProgram());
+        dropRenderer = new DropRenderer(blockRenderer, blockTextureArray, resourceManager.getShaderProgram());
 
         // Test the new voxelized item drop system
         System.out.println("[Renderer] Testing voxelized item drop system...");
@@ -147,7 +145,6 @@ public class Renderer {
         System.out.println("[Renderer] Voxelized item drop system test complete.");
 
         worldRenderer = new WorldRenderer(resourceManager.getShaderProgram(),
-                                         resourceManager.getTextureAtlas(),
                                          blockTextureArray,
                                          configManager.getProjectionMatrix(),
                                          blockRenderer, playerArmRenderer, entityRenderer, dropRenderer);
@@ -158,9 +155,9 @@ public class Renderer {
     
     /**
      * Initializes the SBO block system.
-     * Scans for .sbo files, parses them, and overlays their textures onto the atlas.
+     * Scans for .sbo files, parses them, and builds the block texture array.
      */
-    private void initializeSBOBlocks(TextureAtlas textureAtlas) {
+    private void initializeSBOBlocks() {
         try {
             SBOBlockRegistry registry = new SBOBlockRegistry();
             int loaded = registry.scanAndLoad();
@@ -176,14 +173,7 @@ public class Renderer {
                 bridge.initialize(registry);
                 this.sboBlockBridge = bridge;
 
-                if (bridge.size() > 0) {
-                    SBOTextureIntegrator integrator = new SBOTextureIntegrator(textureAtlas, bridge);
-                    int integrated = integrator.integrateAll();
-                    System.out.println("[Renderer] SBO integration: " + integrated + " block textures updated");
-                }
-
-                // Build the SBO-driven block texture array (texture-array
-                // rendering path — runs alongside the atlas during migration).
+                // Build the SBO-driven block texture array.
                 this.blockTextureArray = new BlockTextureArray(bridge);
                 System.out.println("[Renderer] BlockTextureArray: "
                         + blockTextureArray.getLayerCount() + " layers built");
@@ -319,10 +309,6 @@ public class Renderer {
         return resourceManager.getShaderProgram();
     }
 
-    public TextureAtlas getTextureAtlas() {
-        return resourceManager.getTextureAtlas();
-    }
-    
     public Matrix4f getProjectionMatrix() {
         return configManager.getProjectionMatrix();
     }
@@ -409,7 +395,7 @@ public class Renderer {
      */
     public void renderOverlayItemIcon(float x, float y, float w, float h, com.stonebreak.items.Item item) {
         if (overlayRenderer != null) {
-            overlayRenderer.renderItemIcon(x, y, w, h, item, resourceManager.getTextureAtlas());
+            overlayRenderer.renderItemIcon(x, y, w, h, item, blockTextureArray);
         }
     }
     
@@ -419,7 +405,7 @@ public class Renderer {
      */
     public void renderOverlayItemIcon(float x, float y, float w, float h, int blockTypeId) {
         if (overlayRenderer != null) {
-            overlayRenderer.renderItemIcon(x, y, w, h, blockTypeId, resourceManager.getTextureAtlas());
+            overlayRenderer.renderItemIcon(x, y, w, h, blockTypeId, blockTextureArray);
         }
     }
     
@@ -429,8 +415,8 @@ public class Renderer {
      */
     public void renderOverlayBlockIcon(com.stonebreak.blocks.BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
         if (overlayRenderer != null) {
-            overlayRenderer.renderBlockIcon(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, 
-                                          resourceManager.getShaderProgram(), resourceManager.getTextureAtlas());
+            overlayRenderer.renderBlockIcon(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight,
+                                          resourceManager.getShaderProgram(), blockTextureArray);
         }
     }
     

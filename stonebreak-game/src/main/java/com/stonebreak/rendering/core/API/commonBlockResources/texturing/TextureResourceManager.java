@@ -4,7 +4,6 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
-import com.stonebreak.rendering.textures.TextureAtlas;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
@@ -23,19 +22,20 @@ import java.util.Map;
  */
 public class TextureResourceManager implements AutoCloseable {
     
-    private final TextureAtlas textureAtlas;
     private final BlockDefinitionRegistry registry;
     private final Map<String, TextureCoordinateCache> coordinateCache;
     private boolean disposed = false;
-    
+
     /**
      * Creates a texture resource manager.
-     * 
-     * @param textureAtlas The existing texture atlas system
+     *
+     * <p>Block textures now come from the {@code BlockTextureArray}; this
+     * legacy CBR resolver returns unit-square placeholder coordinates and is
+     * retained only for the dormant {@code BlockRenderResource} API.
+     *
      * @param registry The block definition registry
      */
-    public TextureResourceManager(TextureAtlas textureAtlas, BlockDefinitionRegistry registry) {
-        this.textureAtlas = textureAtlas;
+    public TextureResourceManager(BlockDefinitionRegistry registry) {
         this.registry = registry;
         this.coordinateCache = new ConcurrentHashMap<>();
     }
@@ -109,9 +109,7 @@ public class TextureResourceManager implements AutoCloseable {
             throw new IllegalStateException("TextureResourceManager has been disposed");
         }
         
-        // Use existing TextureAtlas method directly for compatibility
-        float[] coords = textureAtlas.getTextureCoordinatesForBlock(blockType);
-        return new TextureCoordinates(coords[0], coords[1], coords[2], coords[3]);
+        return getErrorTextureCoordinates();
     }
     
     /**
@@ -125,23 +123,9 @@ public class TextureResourceManager implements AutoCloseable {
             throw new IllegalStateException("TextureResourceManager has been disposed");
         }
         
-        // Use existing TextureAtlas method directly for compatibility
-        float[] coords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
-        return new TextureCoordinates(coords[0], coords[1], coords[2], coords[3]);
+        return getErrorTextureCoordinates();
     }
-    
-    /**
-     * Gets the underlying texture atlas for direct access when needed.
-     * 
-     * @return The texture atlas instance
-     */
-    public TextureAtlas getTextureAtlas() {
-        if (disposed) {
-            throw new IllegalStateException("TextureResourceManager has been disposed");
-        }
-        return textureAtlas;
-    }
-    
+
     /**
      * Clears the texture coordinate cache.
      */
@@ -188,12 +172,6 @@ public class TextureResourceManager implements AutoCloseable {
      */
     private TextureCoordinates resolveUniformBlock(BlockDefinition definition) {
         // Map to legacy BlockType for existing atlas lookup
-        BlockType legacyType = mapResourceIdToBlockType(definition.getResourceId());
-        if (legacyType != null) {
-            float[] coords = textureAtlas.getTextureCoordinatesForBlock(legacyType);
-            return new TextureCoordinates(coords[0], coords[1], coords[2], coords[3]);
-        }
-        
         return getErrorTextureCoordinates();
     }
     
@@ -209,13 +187,6 @@ public class TextureResourceManager implements AutoCloseable {
      * Resolves specific face of directional blocks.
      */
     private TextureCoordinates resolveDirectionalBlockFace(BlockDefinition definition, String face) {
-        BlockType legacyType = mapResourceIdToBlockType(definition.getResourceId());
-        if (legacyType != null) {
-            BlockType.Face legacyFace = mapStringToFace(face);
-            float[] coords = textureAtlas.getBlockFaceUVs(legacyType, legacyFace);
-            return new TextureCoordinates(coords[0], coords[1], coords[2], coords[3]);
-        }
-        
         return getErrorTextureCoordinates();
     }
     
@@ -250,13 +221,6 @@ public class TextureResourceManager implements AutoCloseable {
      * Resolves 2D sprite items.
      */
     private TextureCoordinates resolveSprite(BlockDefinition definition) {
-        // For items, try to map to ItemType
-        ItemType itemType = mapResourceIdToItemType(definition.getResourceId());
-        if (itemType != null) {
-            float[] coords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
-            return new TextureCoordinates(coords[0], coords[1], coords[2], coords[3]);
-        }
-        
         return getErrorTextureCoordinates();
     }
     

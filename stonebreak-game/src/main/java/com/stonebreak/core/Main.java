@@ -2,6 +2,7 @@ package com.stonebreak.core;
 
 
 import java.nio.IntBuffer;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.config.Settings;
@@ -9,7 +10,6 @@ import com.stonebreak.input.InputHandler;
 import com.stonebreak.input.MouseCaptureManager;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.DebugOverlay;
 import com.stonebreak.ui.LoadingScreen;
 import com.stonebreak.ui.PauseMenu;
@@ -17,7 +17,6 @@ import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.worldSelect.WorldSelectScreen;
-import org.lwjgl.*;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.World;
@@ -460,8 +459,8 @@ public class Main {
           // Initialize the input handler
           inputHandler = new InputHandler(window);
 
-          // Initialize TextureAtlas (used by Renderer and potentially UI)
-          TextureAtlas textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
+          // Initialize BlockTextureArray (used by Renderer and potentially UI)
+          BlockTextureArray textureAtlas = renderer.getBlockTextureArray(); // Get it from renderer after it's created
 
           // Initialize the Game singleton with core components only (no world/player)
           Game.getInstance().initCoreComponents(renderer, textureAtlas, inputHandler, window);

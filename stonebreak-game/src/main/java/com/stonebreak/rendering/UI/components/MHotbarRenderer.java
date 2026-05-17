@@ -1,6 +1,7 @@
 package com.stonebreak.rendering.UI.components;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
@@ -236,10 +237,10 @@ public class MHotbarRenderer {
 
             if (item instanceof BlockType bt) {
                 uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt,
-                        iconX, iconY, iconSize, iconSize, renderer.getTextureAtlas());
+                        iconX, iconY, iconSize, iconSize, renderer.getBlockTextureArray());
             } else if (!(item instanceof ItemType it && SpriteVoxelizer.isSboBackedItem(it))) {
                 uiRenderer.renderItemIcon(iconX, iconY, iconSize, iconSize,
-                        item, renderer.getTextureAtlas());
+                        item, renderer.getBlockTextureArray());
             }
         }
     }

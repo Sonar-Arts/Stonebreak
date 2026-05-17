@@ -2,11 +2,8 @@ package com.stonebreak.rendering.UI.menus;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
-import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
 import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManager;
 import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.UI.UIRenderer;
 import org.joml.Matrix4f;
@@ -77,7 +74,7 @@ public class BlockIconRenderer {
      * @param textureAtlas The texture atlas containing block textures
      */
     public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
-                                int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas) {
+                                int screenSlotWidth, int screenSlotHeight, BlockTextureArray textureAtlas) {
         draw3DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas, false);
     }
 
@@ -95,7 +92,7 @@ public class BlockIconRenderer {
      * @param isDraggedItem If true, renders the item closer to camera to avoid z-fighting
      */
     public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
-                                int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas, boolean isDraggedItem) {
+                                int screenSlotWidth, int screenSlotHeight, BlockTextureArray textureAtlas, boolean isDraggedItem) {
         if (type == null || type.getAtlasX() == -1) {
             return; // Nothing to draw
         }
@@ -115,7 +112,7 @@ public class BlockIconRenderer {
      * Renders flower blocks as flat 2D textures by delegating to UI renderer.
      */
     private void renderFlowerIcon(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
-                                 int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas) {
+                                 int screenSlotWidth, int screenSlotHeight, BlockTextureArray textureAtlas) {
         // Get current matrices from shader for restoration after UI rendering
         float[] projArray = new float[16];
         float[] viewArray = new float[16];
@@ -145,7 +142,7 @@ public class BlockIconRenderer {
      * Renders 3D cube blocks with proper viewport isolation and state management.
      */
     private void render3DBlockIcon(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
-                                  int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas, boolean isDraggedItem) {
+                                  int screenSlotWidth, int screenSlotHeight, BlockTextureArray textureAtlas, boolean isDraggedItem) {
 
         // --- Save current GL state ---
         GLState originalState = saveGLState();
@@ -270,7 +267,7 @@ public class BlockIconRenderer {
     /**
      * Configures the shader program and matrices for 3D item rendering.
      */
-    private void configureShaderForItem(ShaderProgram shaderProgram, TextureAtlas textureAtlas,
+    private void configureShaderForItem(ShaderProgram shaderProgram, BlockTextureArray textureAtlas,
                                        int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight, boolean isDraggedItem) {
         shaderProgram.bind();
         shaderProgram.setUniform("u_useSolidColor", false);
@@ -317,7 +314,7 @@ public class BlockIconRenderer {
     /**
      * Renders the actual block cube geometry.
      */
-    private void renderBlockCube(BlockType type, TextureAtlas textureAtlas) {
+    private void renderBlockCube(BlockType type, BlockTextureArray textureAtlas) {
         if (!blockRenderer.hasCBRSupport()) {
             throw new IllegalStateException("BlockIconRenderer requires CBR support. BlockRenderer must be initialized with BlockDefinitionRegistry.");
         }

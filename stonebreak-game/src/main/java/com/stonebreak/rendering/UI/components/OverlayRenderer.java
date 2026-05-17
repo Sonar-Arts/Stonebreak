@@ -1,13 +1,13 @@
 package com.stonebreak.rendering.UI.components;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.items.Item;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.UI.menus.BlockIconRenderer;
 import com.stonebreak.rendering.UI.menus.ItemIconRenderer;
-import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
@@ -150,7 +150,7 @@ public class OverlayRenderer {
     /**
      * Renders an item icon on the overlay layer (above all other UI).
      */
-    public void renderItemIcon(float x, float y, float w, float h, Item item, TextureAtlas textureAtlas) {
+    public void renderItemIcon(float x, float y, float w, float h, Item item, BlockTextureArray textureAtlas) {
         if (itemIconRenderer != null) {
             itemIconRenderer.renderItemIcon(x, y, w, h, item, textureAtlas);
         }
@@ -159,7 +159,7 @@ public class OverlayRenderer {
     /**
      * Renders an item icon for a block type on the overlay layer (above all other UI).
      */
-    public void renderItemIcon(float x, float y, float w, float h, int blockTypeId, TextureAtlas textureAtlas) {
+    public void renderItemIcon(float x, float y, float w, float h, int blockTypeId, BlockTextureArray textureAtlas) {
         if (itemIconRenderer != null) {
             itemIconRenderer.renderItemIcon(x, y, w, h, blockTypeId, textureAtlas);
         }
@@ -168,7 +168,7 @@ public class OverlayRenderer {
     /**
      * Renders a 3D block icon on the overlay layer (above all other UI).
      */
-    public void renderBlockIcon(BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight, ShaderProgram shaderProgram, TextureAtlas textureAtlas) {
+    public void renderBlockIcon(BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight, ShaderProgram shaderProgram, BlockTextureArray textureAtlas) {
         if (blockIconRenderer != null) {
             blockIconRenderer.draw3DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas);
         }

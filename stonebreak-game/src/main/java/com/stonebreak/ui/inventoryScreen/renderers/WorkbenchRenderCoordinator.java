@@ -142,9 +142,9 @@ public class WorkbenchRenderCoordinator {
 
         if (item instanceof BlockType bt) {
             uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt, iconX, iconY,
-                    iconSize, iconSize, renderer.getTextureAtlas(), true);
+                    iconSize, iconSize, renderer.getBlockTextureArray(), true);
         } else {
-            uiRenderer.renderItemIcon(iconX, iconY, iconSize, iconSize, item, renderer.getTextureAtlas());
+            uiRenderer.renderItemIcon(iconX, iconY, iconSize, iconSize, item, renderer.getBlockTextureArray());
         }
 
         int count = dragged.getCount();
@@ -316,9 +316,9 @@ public class WorkbenchRenderCoordinator {
 
         if (item instanceof BlockType bt) {
             uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt, x, y, size, size,
-                    renderer.getTextureAtlas());
+                    renderer.getBlockTextureArray());
         } else {
-            uiRenderer.renderItemIcon(x, y, size, size, item, renderer.getTextureAtlas());
+            uiRenderer.renderItemIcon(x, y, size, size, item, renderer.getBlockTextureArray());
         }
     }
 

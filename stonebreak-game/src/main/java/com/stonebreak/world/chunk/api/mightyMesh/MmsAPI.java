@@ -19,7 +19,6 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsLodLevel;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.MmsCcoAdapter;
 import com.openmason.engine.voxel.mms.mmsMetrics.MmsStatistics;
-import com.openmason.engine.voxel.mms.mmsTexturing.MmsAtlasTextureMapper;
 import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
 
 /**
