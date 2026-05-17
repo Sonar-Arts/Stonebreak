@@ -26,6 +26,7 @@ import com.stonebreak.rendering.models.entities.DropRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.gameWorld.sky.SkyRenderer;
+import com.stonebreak.rendering.gameWorld.sky.clouds.CloudRenderer;
 import com.stonebreak.rendering.gameWorld.fastlod.FastLodRenderPass;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
@@ -47,6 +48,7 @@ public class WorldRenderer {
     private final EntityRenderer entityRenderer;
     private final DropRenderer dropRenderer;
     private final SkyRenderer skyRenderer;
+    private final CloudRenderer cloudRenderer;
     private final FastLodRenderPass lodRenderPass;
     
     // Reusable lists to avoid allocations during rendering
@@ -66,6 +68,7 @@ public class WorldRenderer {
         this.entityRenderer = entityRenderer;
         this.dropRenderer = dropRenderer;
         this.skyRenderer = new SkyRenderer();
+        this.cloudRenderer = new CloudRenderer();
         this.lodRenderPass = new FastLodRenderPass();
     }
     
@@ -88,6 +91,10 @@ public class WorldRenderer {
         // Render sky first (before world geometry for proper depth testing)
         skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, timeOfDay);
         checkGLError("After sky rendering");
+
+        // Render the voxel cloud layer just after the sky dome, before world geometry.
+        cloudRenderer.renderClouds(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, timeOfDay);
+        checkGLError("After cloud rendering");
         
         // Ensure proper depth function for world geometry
         glDepthFunc(GL_LESS);
@@ -532,6 +539,9 @@ public class WorldRenderer {
     public void cleanup() {
         if (skyRenderer != null) {
             skyRenderer.cleanup();
+        }
+        if (cloudRenderer != null) {
+            cloudRenderer.cleanup();
         }
     }
 }
