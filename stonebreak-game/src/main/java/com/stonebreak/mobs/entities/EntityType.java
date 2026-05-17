@@ -10,6 +10,10 @@ public enum EntityType {
     // sbeObjectId references an SBE asset in the SbeEntityRegistry, or null when
     // the entity is not SBE-driven.
     COW("Cow", 10.0f, 1.2f, 0.4f, 1.1f, 1.3f, 0.62f, true, "stonebreak:cow"),
+    // legHeight is 0: the SB_Chicken.sbe model's origin sits at the feet, so the
+    // entity position (placed at groundSurface + legHeight) must rest on the
+    // ground itself. height covers the body+head bulk for collision.
+    CHICKEN("Chicken", 4.0f, 1.5f, 0.7f, 0.45f, 0.6f, 0.0f, true, "stonebreak:chicken"),
 
     // Drop entities (small, physics-based items)
     BLOCK_DROP("Block Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false, null),

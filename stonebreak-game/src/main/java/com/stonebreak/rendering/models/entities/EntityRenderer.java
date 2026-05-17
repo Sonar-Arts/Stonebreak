@@ -230,6 +230,31 @@ public class EntityRenderer {
             return;
         }
 
+        if (entityType == EntityType.CHICKEN && entity instanceof com.stonebreak.mobs.chicken.Chicken chicken) {
+            com.stonebreak.mobs.chicken.ChickenAI chickenAI = chicken.getAI();
+            // The Wingflap clip is one-shot: feed it flap-relative time (the AI
+            // state timer, reset when the flap starts) so it plays through once
+            // instead of freezing on its last frame. Looping states use the
+            // continuously advancing animation clock.
+            boolean flapping = chickenAI.getCurrentState()
+                    == com.stonebreak.mobs.chicken.ChickenAI.ChickenBehaviorState.WING_FLAP;
+            float animationTime = flapping
+                    ? chickenAI.getStateTimer()
+                    : chicken.getAnimationController().getTotalAnimationTime();
+
+            // Chicken has no appearance variants — render the default geometry.
+            sbeEntityRenderer.render(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
+                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                    com.stonebreak.mobs.sbe.ChickenStateMapping.sbeState(chickenAI.getCurrentState()),
+                    animationTime,
+                    chicken.getPosition(),
+                    chicken.getRotation().y,
+                    chicken.getScale(),
+                    viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
+
         renderSimpleEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
     }
 

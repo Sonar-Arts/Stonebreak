@@ -3,6 +3,7 @@ package com.stonebreak.world.save.serialization;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
+import com.stonebreak.mobs.chicken.Chicken;
 import com.stonebreak.mobs.cow.Cow;
 import com.stonebreak.mobs.cow.CowAI;
 import com.stonebreak.mobs.entities.BlockDrop;
@@ -58,6 +59,7 @@ public class EntitySerializer {
             case BLOCK_DROP -> serializeBlockDrop((BlockDrop) entity, builder);
             case ITEM_DROP -> serializeItemDrop((ItemDrop) entity, builder);
             case COW -> serializeCow((Cow) entity, builder);
+            case CHICKEN -> serializeChicken((Chicken) entity, builder);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for serialization: " + entityType);
                 return null;
@@ -83,6 +85,7 @@ public class EntitySerializer {
             case BLOCK_DROP -> deserializeBlockDrop(entityData, world);
             case ITEM_DROP -> deserializeItemDrop(entityData, world);
             case COW -> deserializeCow(entityData, world);
+            case CHICKEN -> deserializeChicken(entityData, world);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for deserialization: " + entityType);
                 yield null;
@@ -329,6 +332,42 @@ public class EntitySerializer {
             return cow;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to deserialize Cow", e);
+            return null;
+        }
+    }
+
+    // ===== Chicken Serialization =====
+
+    private static void serializeChicken(Chicken chicken, EntityData.Builder builder) {
+        String aiState = chicken.getAI() != null
+                ? chicken.getAI().getCurrentState().name()
+                : "IDLE";
+        builder.addCustomData("aiState", aiState);
+    }
+
+    private static Entity deserializeChicken(EntityData entityData, World world) {
+        try {
+            Vector3f position = entityData.getPosition();
+
+            Chicken chicken = new Chicken(world, position);
+
+            // Restore basic state.
+            chicken.setPosition(position);
+            chicken.setVelocity(entityData.getVelocity());
+            chicken.setRotation(entityData.getRotation());
+            chicken.setHealth(entityData.getHealth());
+            chicken.setMaxHealth(entityData.getMaxHealth());
+            chicken.setAlive(entityData.isAlive());
+
+            // Restore age via reflection.
+            Field ageField = Entity.class.getDeclaredField("age");
+            ageField.setAccessible(true);
+            ageField.setFloat(chicken, entityData.getAge());
+
+            // AI resumes from its natural starting state on the next update tick.
+            return chicken;
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Failed to deserialize Chicken", e);
             return null;
         }
     }
