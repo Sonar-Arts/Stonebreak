@@ -2,7 +2,7 @@ package com.stonebreak.world.fastlod;
 
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
-import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -71,11 +71,11 @@ public final class FastLodManager {
 
     public FastLodManager(WorldConfiguration config,
                           TerrainGenerationSystem terrain,
-                          TextureAtlas atlas,
+                          BlockTextureArray textureArray,
                           FastLodStore store) {
         this.config  = config;
         this.sampler = new FastLodSampler(terrain);
-        this.mesher  = new FastLodMesher(atlas);
+        this.mesher  = new FastLodMesher(textureArray);
         this.store   = store;
         this.executor = Executors.newFixedThreadPool(config.getChunkBuildThreads(),
             new ThreadFactory() {

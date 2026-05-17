@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.UI.components;
 
 import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.pipeline.DepthCurtainRenderer;
 import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
@@ -130,7 +130,7 @@ public class OpenGLQuadRenderer {
                                      com.stonebreak.blocks.BlockType type,
                                      int screenSlotX, int screenSlotY,
                                      int screenSlotWidth, int screenSlotHeight,
-                                     TextureAtlas textureAtlas,
+                                     BlockTextureArray blockTextureArray,
                                      FloatBuffer projectionMatrixBuffer,
                                      FloatBuffer viewMatrixBuffer) {
         
@@ -150,24 +150,29 @@ public class OpenGLQuadRenderer {
         shaderProgram.setUniform("viewMatrix", identityView);
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("texture_sampler", 0);
+        // Sample the block texture array (unit 1); the flat quad has no
+        // per-vertex layer, so the layer is supplied via u_layerOverride.
+        shaderProgram.setUniform("block_sampler", 1);
+        shaderProgram.setUniform("u_useTextureArray", true);
+        shaderProgram.setUniform("u_layerOverride",
+                (float) blockTextureArray.getBlockFaceLayer(type, com.stonebreak.blocks.BlockType.Face.TOP.getIndex()));
 
-        float[] uvCoords = textureAtlas.getBlockFaceUVs(type, com.stonebreak.blocks.BlockType.Face.TOP);
-        
         int padding = 6;
         float textureX = screenSlotX + padding;
         float textureY = screenSlotY + padding;
         float textureWidth = screenSlotWidth - (padding * 2);
         float textureHeight = screenSlotHeight - (padding * 2);
-        
+
+        glActiveTexture(GL_TEXTURE1);
+        blockTextureArray.bind();
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        
+
+        // Unit-square UVs — the layer covers the whole quad.
         float[] vertices = {
-            textureX,              textureY,               0.0f, uvCoords[0], uvCoords[1],
-            textureX + textureWidth, textureY,              0.0f, uvCoords[2], uvCoords[1],
-            textureX + textureWidth, textureY + textureHeight, 0.0f, uvCoords[2], uvCoords[3],
-            textureX,              textureY + textureHeight, 0.0f, uvCoords[0], uvCoords[3]
+            textureX,              textureY,               0.0f, 0.0f, 0.0f,
+            textureX + textureWidth, textureY,              0.0f, 1.0f, 0.0f,
+            textureX + textureWidth, textureY + textureHeight, 0.0f, 1.0f, 1.0f,
+            textureX,              textureY + textureHeight, 0.0f, 0.0f, 1.0f
         };
 
         FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
@@ -180,7 +185,11 @@ public class OpenGLQuadRenderer {
 
         uiQuadRenderer.unbind();
         glBindTexture(GL_TEXTURE_2D, 0);
-        
+
+        // Restore default sampling state for other UI quads.
+        shaderProgram.setUniform("u_useTextureArray", false);
+        shaderProgram.setUniform("u_layerOverride", -1.0f);
+
         org.joml.Matrix4f originalProjection = new org.joml.Matrix4f();
         originalProjection.set(projectionMatrixBuffer);
         org.joml.Matrix4f originalView = new org.joml.Matrix4f();

@@ -518,12 +518,12 @@ public class World {
      * world's save directory when one is available; otherwise runs without
      * persistence. Idempotent; safe to call each frame.
      */
-    public void ensureFastLodManager(com.stonebreak.rendering.textures.TextureAtlas atlas) {
-        if (fastLodManager != null || atlas == null || terrainSystem == null) return;
+    public void ensureFastLodManager(com.stonebreak.rendering.textures.BlockTextureArray textureArray) {
+        if (fastLodManager != null || textureArray == null || terrainSystem == null) return;
         synchronized (this) {
             if (fastLodManager != null) return;
             FastLodStore store = openFastLodStoreIfPossible();
-            fastLodManager = new FastLodManager(config, terrainSystem, atlas, store);
+            fastLodManager = new FastLodManager(config, terrainSystem, textureArray, store);
         }
     }
 

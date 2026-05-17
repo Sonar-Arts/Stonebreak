@@ -4,8 +4,10 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
+import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManager;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.UI.UIRenderer;
 import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
@@ -28,13 +30,38 @@ import static org.lwjgl.opengl.GL30.*;
 public class BlockIconRenderer {
     
     private final BlockRenderer blockRenderer;
+    private final BlockTextureArray blockTextureArray;
     private final UIRenderer uiRenderer;
     private final int windowHeight;
-    
-    public BlockIconRenderer(BlockRenderer blockRenderer, UIRenderer uiRenderer, int windowHeight) {
+
+    /** Per-block-type cube meshes for 3D icons, textured from the block texture array. */
+    private final java.util.Map<BlockType, MeshManager.MeshResource> iconCubeMeshes = new java.util.HashMap<>();
+
+    public BlockIconRenderer(BlockRenderer blockRenderer, BlockTextureArray blockTextureArray,
+                             UIRenderer uiRenderer, int windowHeight) {
         this.blockRenderer = blockRenderer;
+        this.blockTextureArray = blockTextureArray;
         this.uiRenderer = uiRenderer;
         this.windowHeight = windowHeight;
+    }
+
+    /**
+     * Returns a cached cube mesh for the block type, textured from the block
+     * texture array (CBR face order mapped to MMS face ids).
+     */
+    private MeshManager.MeshResource getIconCubeMesh(BlockType blockType) {
+        return iconCubeMeshes.computeIfAbsent(blockType, bt -> {
+            float[] faceLayers = {
+                blockTextureArray.getBlockFaceLayer(bt, 3), // front +Z
+                blockTextureArray.getBlockFaceLayer(bt, 2), // back -Z
+                blockTextureArray.getBlockFaceLayer(bt, 5), // left -X
+                blockTextureArray.getBlockFaceLayer(bt, 4), // right +X
+                blockTextureArray.getBlockFaceLayer(bt, 0), // top +Y
+                blockTextureArray.getBlockFaceLayer(bt, 1)  // bottom -Y
+            };
+            return blockRenderer.getCBRResourceManager().getMeshManager()
+                    .createCubeMeshWithLayers("icon_cube_" + bt.name(), faceLayers);
+        });
     }
     
     /**
@@ -110,8 +137,8 @@ public class BlockIconRenderer {
         viewBuffer.put(viewArray).flip();
         
         // Delegate to UI renderer's flat 2D item drawing functionality
-        uiRenderer.drawFlat2DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, 
-                                      textureAtlas, projBuffer, viewBuffer);
+        uiRenderer.drawFlat2DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight,
+                                      blockTextureArray, projBuffer, viewBuffer);
     }
     
     /**
@@ -278,28 +305,28 @@ public class BlockIconRenderer {
         itemViewMatrix.scale(0.8f);
         shaderProgram.setUniform("viewMatrix", itemViewMatrix);
 
-        // --- Bind texture atlas with defensive state reset ---
+        // --- Bind the block texture array on unit 1 for the 3D cube icon ---
+        glActiveTexture(GL_TEXTURE1);
+        blockTextureArray.bind();
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        // Force correct texture parameters to prevent corruption from block drops
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         shaderProgram.setUniform("texture_sampler", 0);
+        shaderProgram.setUniform("block_sampler", 1);
+        shaderProgram.setUniform("u_useTextureArray", true);
     }
     
     /**
      * Renders the actual block cube geometry.
      */
     private void renderBlockCube(BlockType type, TextureAtlas textureAtlas) {
-        // Use CBR system -- SBO textures are already overlaid onto the atlas
         if (!blockRenderer.hasCBRSupport()) {
             throw new IllegalStateException("BlockIconRenderer requires CBR support. BlockRenderer must be initialized with BlockDefinitionRegistry.");
         }
 
-        CBRResourceManager.BlockRenderResource resource = blockRenderer.getBlockRenderResource(type);
-        resource.getMesh().bind();
-        glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
-        resource.getMesh().unbind();
+        // Cube mesh textured from the block texture array (per-face layers).
+        MeshManager.MeshResource mesh = getIconCubeMesh(type);
+        mesh.bind();
+        glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
+        mesh.unbind();
     }
     
 
@@ -311,6 +338,7 @@ public class BlockIconRenderer {
         // Reset shader specific to this method's item drawing
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_useTextureArray", false);
 
         // Restore viewport and scissor
         glViewport(originalState.originalViewport[0], originalState.originalViewport[1], 

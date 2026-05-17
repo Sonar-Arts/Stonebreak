@@ -44,6 +44,10 @@ public class ResourceManager {
         shaderProgram.setUniform("block_sampler", 1);
         shaderProgram.createUniform("u_useTextureArray");
         shaderProgram.setUniform("u_useTextureArray", false);
+        // Layer override for geometry without a per-vertex layer attribute
+        // (e.g. flat UI quads). -1 = use the per-vertex v_layer.
+        shaderProgram.createUniform("u_layerOverride");
+        shaderProgram.setUniform("u_layerOverride", -1.0f);
         shaderProgram.createUniform("u_color");
         shaderProgram.createUniform("u_useSolidColor");
         shaderProgram.createUniform("u_isText");
@@ -186,6 +190,8 @@ public class ResourceManager {
                // Block texture array — sampled when u_useTextureArray is true.
                uniform sampler2DArray block_sampler;
                uniform bool u_useTextureArray;
+               // >=0 overrides the per-vertex layer (used by flat UI quads).
+               uniform float u_layerOverride;
                uniform vec4 u_color;
                uniform bool u_useSolidColor;
                uniform bool u_isText;
@@ -216,8 +222,9 @@ public class ResourceManager {
                            : 1.0;
                        fragColor = vec4(u_color.rgb * playerFactor, u_color.a);
                    } else {
+                       float arrayLayer = (u_layerOverride >= 0.0) ? u_layerOverride : v_layer;
                        vec4 textureColor = u_useTextureArray
-                           ? texture(block_sampler, vec3(outTexCoord, v_layer))
+                           ? texture(block_sampler, vec3(outTexCoord, arrayLayer))
                            : texture(texture_sampler, outTexCoord);
                        float sampledAlpha = textureColor.a;
 

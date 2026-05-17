@@ -2,237 +2,150 @@ package com.stonebreak.rendering.player.items;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
-import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
-import com.stonebreak.rendering.player.geometry.ArmGeometry;
-import com.stonebreak.rendering.player.geometry.HandBlockGeometry;
+import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManager;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer;
 import com.stonebreak.rendering.sbo.SBOHandMeshRegistry;
 import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.rendering.textures.TextureAtlas;
-import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManager;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
+
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.lwjgl.opengl.GL11.*;
 
 /**
  * Handles rendering of items (blocks, tools, materials) in the player's hand.
- * Supports different rendering approaches for different item types.
+ *
+ * <p>Blocks render as cube meshes textured from the {@link BlockTextureArray};
+ * flowers use the SBO's own hand mesh for in-hand/in-world parity; tools render
+ * as 3D voxelized sprites.
  */
 public class HandItemRenderer {
-    
+
     private final ShaderProgram shaderProgram;
-    private final TextureAtlas textureAtlas;
-    private final HandBlockGeometry handBlockGeometry;
-    private final BlockRenderer blockRenderer;
+    private final BlockTextureArray blockTextureArray;
     private final VoxelizedSpriteRenderer voxelizedSpriteRenderer;
-    // Optional — when present, held flowers (and future SBO-custom blocks)
-    // render using the SBO's own geometry for in-hand/in-world parity.
+    // Optional — held flowers render using the SBO's own geometry for
+    // in-hand/in-world parity.
     private final SBOHandMeshRegistry sboHandMeshRegistry;
 
-    public HandItemRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas) {
-        this(shaderProgram, textureAtlas, null, null);
-    }
+    /** Per-block-type cube meshes for held blocks, textured from the array. */
+    private final Map<BlockType, MeshManager.MeshResource> handCubeMeshes = new HashMap<>();
 
-    public HandItemRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, BlockDefinitionRegistry blockRegistry) {
-        this(shaderProgram, textureAtlas, blockRegistry, null);
-    }
-
-    public HandItemRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas,
-                            BlockDefinitionRegistry blockRegistry,
+    public HandItemRenderer(ShaderProgram shaderProgram, BlockTextureArray blockTextureArray,
                             SBOHandMeshRegistry sboHandMeshRegistry) {
         this.shaderProgram = shaderProgram;
-        this.textureAtlas = textureAtlas;
-        this.handBlockGeometry = new HandBlockGeometry(textureAtlas);
-        this.blockRenderer = blockRegistry != null
-                ? new BlockRenderer(textureAtlas, blockRegistry)
-                : new BlockRenderer();
-        this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram, textureAtlas);
+        this.blockTextureArray = blockTextureArray;
+        this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram);
         this.sboHandMeshRegistry = sboHandMeshRegistry;
     }
-    
+
     /**
      * Renders a block in the player's hand using appropriate rendering method.
      */
     public void renderBlockInHand(BlockType blockType) {
-        // Delegate cross-plane rendering decisions to BlockType.isFlower() so
-        // any future flower added to that registry automatically gets the
-        // correct hand geometry — no switch-statement babysitting here.
         if (blockType != null && blockType.isFlower()) {
             renderFlowerInHand(blockType);
         } else {
             renderCubeBlockInHand(blockType);
         }
     }
-    
+
+    /**
+     * Returns a cached cube mesh for the block, textured from the block texture
+     * array (CBR cube face order mapped to MMS face ids).
+     */
+    private MeshManager.MeshResource getHandCubeMesh(BlockType blockType) {
+        return handCubeMeshes.computeIfAbsent(blockType, bt -> {
+            float[] faceLayers = {
+                blockTextureArray.getBlockFaceLayer(bt, 3), // front +Z
+                blockTextureArray.getBlockFaceLayer(bt, 2), // back -Z
+                blockTextureArray.getBlockFaceLayer(bt, 5), // left -X
+                blockTextureArray.getBlockFaceLayer(bt, 4), // right +X
+                blockTextureArray.getBlockFaceLayer(bt, 0), // top +Y
+                blockTextureArray.getBlockFaceLayer(bt, 1)  // bottom -Y
+            };
+            return CBRResourceManager.getInstance().getMeshManager()
+                    .createCubeMeshWithLayers("hand_cube_" + bt.name(), faceLayers);
+        });
+    }
+
+    /** Binds the block texture array on unit 1 for array-textured hand geometry. */
+    private void bindArray() {
+        GL13.glActiveTexture(GL13.GL_TEXTURE1);
+        blockTextureArray.bind();
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        shaderProgram.setUniform("block_sampler", 1);
+        shaderProgram.setUniform("u_useTextureArray", true);
+    }
+
     /**
      * Renders a regular block as a 3D cube in the hand.
      */
     private void renderCubeBlockInHand(BlockType blockType) {
-        // Set up shader uniforms
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
-        // Enable UI element mode to disable water waves for held blocks
         shaderProgram.setUniform("u_isUIElement", true);
-        
-        // Bind texture
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        shaderProgram.setUniform("texture_sampler", 0);
-        
-        // No tint for block texture
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+        bindArray();
 
-        // Handle leaf transparency - enable blending only for transparent leaf blocks
         boolean isLeafBlock = (blockType == BlockType.LEAVES || blockType == BlockType.PINE_LEAVES || blockType == BlockType.ELM_LEAVES);
         if (isLeafBlock && blockType.isTransparent()) {
-            // Enable blending for transparent leaves
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         } else {
-            // Disable blending for opaque blocks (including opaque leaves)
             glDisable(GL_BLEND);
         }
-        
-        // Get or create block-specific cube with proper face textures
-        int blockSpecificVao = handBlockGeometry.getHandBlockVao(blockType);
-        GL30.glBindVertexArray(blockSpecificVao);
-        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0); // 36 indices for a cube
-        
-        // Re-enable blending for other elements (restore standard UI blending)
+
+        MeshManager.MeshResource mesh = getHandCubeMesh(blockType);
+        mesh.bind();
+        glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
+        mesh.unbind();
+
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        // Restore world rendering state
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_useTextureArray", false);
     }
-    
+
     /**
-     * Renders flowers as a cross pattern in the player's hand.
+     * Renders flowers as a cross pattern in the player's hand, using the SBO's
+     * own geometry so in-hand matches in-world.
      */
     private void renderFlowerInHand(BlockType flowerType) {
-        // Set up shader for flower rendering
-        shaderProgram.setUniform("u_useSolidColor", false);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_transformUVsForItem", false);
-        // Enable UI element mode to disable water waves for held blocks
-        shaderProgram.setUniform("u_isUIElement", true);
-        
-        // Bind texture
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        shaderProgram.setUniform("texture_sampler", 0);
-        
-        // Enable blending for transparency
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        
-        // No tint - use pure white
-        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        
-        // Prefer the SBO's own mesh so in-hand geometry matches the in-world
-        // SBO model. Falls back to CBR's hard-coded CROSS mesh when no SBO is
-        // registered for this flower (e.g. vanilla-only install).
         MeshManager.MeshResource sboMesh = sboHandMeshRegistry != null
                 ? sboHandMeshRegistry.getMesh(flowerType)
                 : null;
-        if (sboMesh != null) {
-            sboMesh.bind();
-            glDrawElements(GL_TRIANGLES, sboMesh.getIndexCount(), GL_UNSIGNED_INT, 0);
-        } else {
-            if (!blockRenderer.hasCBRSupport()) {
-                throw new IllegalStateException("HandItemRenderer requires CBR support. Use constructor with BlockDefinitionRegistry.");
-            }
-            CBRResourceManager.BlockRenderResource resource = blockRenderer.getFlowerCrossResource(flowerType);
-            resource.getMesh().bind();
-            glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
+        if (sboMesh == null) {
+            return; // No SBO hand mesh — nothing to draw.
         }
 
-        // Restore world rendering state
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        shaderProgram.setUniform("u_isUIElement", true);
+        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+        bindArray();
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        sboMesh.bind();
+        glDrawElements(GL_TRIANGLES, sboMesh.getIndexCount(), GL_UNSIGNED_INT, 0);
+        sboMesh.unbind();
+
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_useTextureArray", false);
     }
-    
+
     /**
-     * Fallback method to render flower cross when CBR is not available.
-     * @deprecated CBR support is now required
-     */
-    /*
-    private void createAndRenderFlowerCross(BlockType flowerType) {
-        // Get UV coordinates for the flower using modern texture atlas system
-        float[] uvCoords = textureAtlas.getBlockFaceUVs(flowerType, BlockType.Face.TOP);
-        
-        // Create vertices for two intersecting quads forming a cross
-        float[] vertices1 = {
-            // Quad 1: Front-back cross section
-            -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Bottom-left
-             0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Bottom-right
-             0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Top-right
-            -0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Top-left
-        };
-        
-        // Second quad (X-aligned, rotated 90 degrees)
-        float[] vertices2 = {
-            0.0f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[3], // Bottom-left
-            0.0f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[3], // Bottom-right
-            0.0f,  0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[1], // Top-right
-            0.0f,  0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[1]  // Top-left
-        };
-        
-        // Combine both quads
-        float[] vertices = new float[vertices1.length + vertices2.length];
-        System.arraycopy(vertices1, 0, vertices, 0, vertices1.length);
-        System.arraycopy(vertices2, 0, vertices, vertices1.length, vertices2.length);
-        
-        int[] indices = {
-            0, 1, 2, 0, 2, 3,  // First quad
-            4, 5, 6, 4, 6, 7   // Second quad
-        };
-        
-        // Create temporary buffers and render
-        int vao = GL30.glGenVertexArrays();
-        GL30.glBindVertexArray(vao);
-        
-        int vbo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
-        java.nio.FloatBuffer vertexBuffer = org.lwjgl.BufferUtils.createFloatBuffer(vertices.length);
-        vertexBuffer.put(vertices).flip();
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
-        
-        int stride = 8 * Float.BYTES; // 3 pos, 3 normal, 2 texCoord
-        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, stride, 0);
-        GL20.glEnableVertexAttribArray(0);
-        GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, stride, 3 * Float.BYTES);
-        GL20.glEnableVertexAttribArray(2);
-        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, stride, 6 * Float.BYTES);
-        GL20.glEnableVertexAttribArray(1);
-        
-        int ibo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ibo);
-        java.nio.IntBuffer indexBuffer = org.lwjgl.BufferUtils.createIntBuffer(indices.length);
-        indexBuffer.put(indices).flip();
-        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
-        
-        // Render
-        glDrawElements(GL_TRIANGLES, indices.length, GL_UNSIGNED_INT, 0);
-        
-        // Cleanup
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
-        GL30.glDeleteVertexArrays(vao);
-        GL20.glDeleteBuffers(vbo);
-        GL20.glDeleteBuffers(ibo);
-    }
-    */
-    
-    /**
-     * Renders tools in the player's hand using appropriate rendering method.
-     * Uses 3D voxelized rendering for supported items, falls back to 2D sprites.
+     * Renders tools in the player's hand as 3D voxelized sprites.
      */
     public void renderToolInHand(ItemType itemType) {
         renderToolInHand(itemType, null);
@@ -242,71 +155,11 @@ public class HandItemRenderer {
      * State-aware variant — picks the OMT for the given SBO state name.
      */
     public void renderToolInHand(ItemType itemType, String state) {
-        if (SpriteVoxelizer.isVoxelizable(itemType)) {
-            renderVoxelizedToolInHand(itemType, state);
-        } else {
-            render2DToolInHand(itemType);
-        }
-    }
-
-    /**
-     * Renders tools as 3D voxelized sprites in the player's hand.
-     */
-    private void renderVoxelizedToolInHand(ItemType itemType, String state) {
         voxelizedSpriteRenderer.renderVoxelizedSprite(itemType, state);
     }
 
     /**
-     * Renders tools as 2D sprites in the player's hand (fallback method).
-     */
-    private void render2DToolInHand(ItemType itemType) {
-        // Get UV coordinates for the item
-        float[] uvCoords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
-        
-        // Set up shader uniforms (keeping existing projection/view matrices)
-        shaderProgram.setUniform("u_useSolidColor", false);
-        shaderProgram.setUniform("u_isText", false); 
-        shaderProgram.setUniform("u_transformUVsForItem", false);
-        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        // Enable UI element mode to disable water waves for held tools
-        shaderProgram.setUniform("u_isUIElement", true);
-        
-        // Bind texture
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        shaderProgram.setUniform("texture_sampler", 0);
-        
-        // Set up OpenGL state for item rendering
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDisable(GL_CULL_FACE);
-        
-        // Create a simple 2D quad for the item - positioned higher up in the hand
-        float size = 0.3f;
-        float yOffset = 0.4f; // Move the item up in the hand
-        float[] vertices = {
-            // Position                        UV coordinates
-            -size, -size + yOffset, 0.0f,   uvCoords[0], uvCoords[3], // Bottom-left
-             size, -size + yOffset, 0.0f,   uvCoords[2], uvCoords[3], // Bottom-right
-             size,  size + yOffset, 0.0f,   uvCoords[2], uvCoords[1], // Top-right
-            -size,  size + yOffset, 0.0f,   uvCoords[0], uvCoords[1]  // Top-left
-        };
-        
-        int[] indices = { 0, 1, 2, 0, 2, 3 };
-        
-        // Create temporary VAO for the item quad
-        ArmGeometry.createTemporaryQuad(vertices, indices);
-        
-        // Restore OpenGL state
-        glEnable(GL_CULL_FACE);
-
-        // Restore world rendering state
-        shaderProgram.setUniform("u_isUIElement", false);
-    }
-    
-    /**
      * Preloads voxel meshes for all supported items.
-     * Call this during initialization to reduce hitches during gameplay.
      */
     public void preloadVoxelMeshes() {
         voxelizedSpriteRenderer.preloadAllVoxelMeshes();
@@ -327,34 +180,9 @@ public class HandItemRenderer {
     }
 
     /**
-     * Tests the complete hand item rendering system including voxelization.
-     * This verifies that sprites can be loaded, voxelized, and prepared for rendering.
-     */
-    public void testHandItemRendering() {
-        System.out.println("=== Hand Item Renderer Test ===");
-
-        // Test voxelization system
-        voxelizedSpriteRenderer.testVoxelizedRendering();
-
-        // Report which items use which rendering method
-        System.out.println("\nItem Rendering Methods:");
-        for (ItemType itemType : ItemType.values()) {
-            if (usesVoxelizedRendering(itemType)) {
-                System.out.println("  " + itemType.getName() + ": 3D Voxelized");
-            } else {
-                System.out.println("  " + itemType.getName() + ": 2D Sprite");
-            }
-        }
-
-        System.out.println("=== Hand Item Renderer Test Complete ===");
-    }
-
-    /**
      * Cleanup resources when the renderer is destroyed.
      */
     public void cleanup() {
-        handBlockGeometry.cleanup();
-        blockRenderer.cleanup();
         voxelizedSpriteRenderer.cleanup();
     }
 }

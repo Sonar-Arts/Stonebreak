@@ -18,7 +18,7 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 
 // Specialized Player Rendering Components
 import com.stonebreak.rendering.player.animation.PlayerArmAnimator;
@@ -34,7 +34,7 @@ public class PlayerArmRenderer {
     
     // Core dependencies
     private final ShaderProgram shaderProgram;
-    private final TextureAtlas textureAtlas;
+    private final BlockTextureArray blockTextureArray;
     private final Matrix4f projectionMatrix;
     
     // Specialized components
@@ -49,17 +49,17 @@ public class PlayerArmRenderer {
     /**
      * Creates and initializes the player arm renderer with specialized components.
      */
-    public PlayerArmRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, Matrix4f projectionMatrix,
+    public PlayerArmRenderer(ShaderProgram shaderProgram, BlockTextureArray blockTextureArray, Matrix4f projectionMatrix,
                              com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry blockRegistry,
                              com.stonebreak.rendering.sbo.SBOHandMeshRegistry sboHandMeshRegistry) {
         this.shaderProgram = shaderProgram;
-        this.textureAtlas = textureAtlas;
+        this.blockTextureArray = blockTextureArray;
         this.projectionMatrix = projectionMatrix;
 
         // Initialize specialized components
         this.animator = new PlayerArmAnimator();
         this.armGeometry = new ArmGeometry();
-        this.handItemRenderer = new HandItemRenderer(shaderProgram, textureAtlas, blockRegistry, sboHandMeshRegistry);
+        this.handItemRenderer = new HandItemRenderer(shaderProgram, blockTextureArray, sboHandMeshRegistry);
         this.armTexture = new PlayerArmTexture();
 
         initialize();

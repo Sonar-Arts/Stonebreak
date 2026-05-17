@@ -144,7 +144,7 @@ public class WorldRenderer {
         renderOpaquePass(visibleChunks);
 
         // Render distant-terrain LOD between detail opaque and SBO; shares shader/atlas state.
-        world.ensureFastLodManager(textureAtlas);
+        world.ensureFastLodManager(blockTextureArray);
         int lodPlayerCx = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int lodPlayerCz = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
         lodRenderPass.render(shaderProgram, world.getFastLodManager(), lodPlayerCx, lodPlayerCz);

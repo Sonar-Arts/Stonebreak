@@ -57,8 +57,10 @@ public class UIRenderer {
      * @param blockRenderer The block renderer for creating block geometry
      * @param windowHeight Current window height for viewport calculations
      */
-    public void initializeBlockIconRenderer(BlockRenderer blockRenderer, int windowHeight) {
-        this.blockIconRenderer = new BlockIconRenderer(blockRenderer, this, windowHeight);
+    public void initializeBlockIconRenderer(BlockRenderer blockRenderer,
+                                            com.stonebreak.rendering.textures.BlockTextureArray blockTextureArray,
+                                            int windowHeight) {
+        this.blockIconRenderer = new BlockIconRenderer(blockRenderer, blockTextureArray, this, windowHeight);
     }
 
     /**
@@ -113,10 +115,10 @@ public class UIRenderer {
                                      com.stonebreak.blocks.BlockType type,
                                      int screenSlotX, int screenSlotY,
                                      int screenSlotWidth, int screenSlotHeight,
-                                     TextureAtlas textureAtlas,
+                                     com.stonebreak.rendering.textures.BlockTextureArray blockTextureArray,
                                      FloatBuffer projectionMatrixBuffer,
                                      FloatBuffer viewMatrixBuffer) {
-        openGLQuadRenderer.drawFlat2DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas, projectionMatrixBuffer, viewMatrixBuffer);
+        openGLQuadRenderer.drawFlat2DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, blockTextureArray, projectionMatrixBuffer, viewMatrixBuffer);
     }
 
     /**

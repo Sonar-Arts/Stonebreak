@@ -224,6 +224,27 @@ public class MeshManager implements AutoCloseable {
     }
 
     /**
+     * Creates and registers a custom mesh from {@code x,y,z,u,v,layer} vertex
+     * data for the block texture array (attributes 0, 1, 4).
+     *
+     * @param name     custom mesh name
+     * @param vertices interleaved {@code x,y,z,u,v,layer} (6 floats per vertex)
+     * @param indices  triangle indices
+     */
+    public MeshResource createCustomLayeredMesh(String name, float[] vertices, int[] indices) {
+        if (disposed) {
+            throw new IllegalStateException("MeshManager has been disposed");
+        }
+        MeshResource existing = customMeshes.get(name);
+        if (existing != null) {
+            existing.cleanup();
+        }
+        MeshResource mesh = createLayeredMeshFromData(vertices, indices, name);
+        customMeshes.put(name, mesh);
+        return mesh;
+    }
+
+    /**
      * Creates a cross mesh with full texture coordinates from texture atlas.
      * Uses the complete texture height for normal flower textures.
      * 

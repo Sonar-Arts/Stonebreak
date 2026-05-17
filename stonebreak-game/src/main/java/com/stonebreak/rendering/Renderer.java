@@ -101,13 +101,13 @@ public class Renderer {
         if (sboBlockBridge != null && sboBlockBridge.size() > 0) {
             sboHandMeshRegistry = new SBOHandMeshRegistry(
                     blockRenderer.getCBRResourceManager(),
-                    resourceManager.getTextureAtlas());
+                    blockTextureArray);
             int built = sboHandMeshRegistry.buildFlowerMeshes(sboBlockBridge);
             System.out.println("[Renderer] SBO hand-mesh registry: built " + built + " flower meshes");
         }
 
         playerArmRenderer = new PlayerArmRenderer(resourceManager.getShaderProgram(),
-                                                 resourceManager.getTextureAtlas(),
+                                                 blockTextureArray,
                                                  configManager.getProjectionMatrix(),
                                                  blockRegistry,
                                                  sboHandMeshRegistry);
@@ -118,7 +118,7 @@ public class Renderer {
                                                  configManager.getWindowWidth(), 
                                                  configManager.getWindowHeight(), 
                                                  configManager.getProjectionMatrix());
-        uiRenderer.initializeBlockIconRenderer(blockRenderer, configManager.getWindowHeight());
+        uiRenderer.initializeBlockIconRenderer(blockRenderer, blockTextureArray, configManager.getWindowHeight());
 
         skijaBackend = new SkijaUIBackend();
         try {

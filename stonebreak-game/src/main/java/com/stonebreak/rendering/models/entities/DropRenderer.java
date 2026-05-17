@@ -58,7 +58,7 @@ public class DropRenderer {
         this.textureAtlas = textureAtlas;
         this.blockTextureArray = blockTextureArray;
         this.cbrManager = blockRenderer.getCBRResourceManager();
-        this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram, textureAtlas);
+        this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram);
         initialize();
     }
     

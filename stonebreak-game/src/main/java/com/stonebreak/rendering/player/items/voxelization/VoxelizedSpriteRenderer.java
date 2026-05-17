@@ -2,7 +2,6 @@ package com.stonebreak.rendering.player.items.voxelization;
 
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.rendering.textures.TextureAtlas;
 import org.joml.Vector4f;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -21,7 +20,6 @@ import java.util.Map;
 public class VoxelizedSpriteRenderer {
 
     private final ShaderProgram shaderProgram;
-    private final TextureAtlas textureAtlas;
 
     // Cache for voxel meshes — keyed by (itemType, state) so SBO 1.3+ items
     // with multiple states (e.g. empty/water/milk bucket) cache one mesh per
@@ -59,11 +57,9 @@ public class VoxelizedSpriteRenderer {
      * Creates a new voxelized sprite renderer.
      *
      * @param shaderProgram The shader program to use for rendering
-     * @param textureAtlas The texture atlas (for consistent texture binding)
      */
-    public VoxelizedSpriteRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas) {
+    public VoxelizedSpriteRenderer(ShaderProgram shaderProgram) {
         this.shaderProgram = shaderProgram;
-        this.textureAtlas = textureAtlas;
     }
 
     /**
@@ -214,13 +210,11 @@ public class VoxelizedSpriteRenderer {
     }
 
     /**
-     * Binds the main texture atlas instead of a separate color palette texture.
+     * Voxelized sprites draw per-voxel solid colors (u_useSolidColor) and
+     * sample no texture, so no texture bind is needed — this just keeps the
+     * sampler uniform pointing at unit 0.
      */
     private void bindColorPaletteTexture(ItemType itemType) {
-        // Use the main texture atlas instead of a separate 1D palette texture
-        // This makes the voxelizer compatible with the existing shader system
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureAtlas.getTextureId());
         shaderProgram.setUniform("texture_sampler", 0);
     }
 
