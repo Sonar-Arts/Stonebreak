@@ -121,7 +121,10 @@ public class BlockBreaker {
         if (blockType == BlockType.WATER) {
             Water.removeWaterSource(pos.x, pos.y, pos.z);
         }
+        // Capture snow layer count before removing the data, so drops can use it
+        int snowLayers = 0;
         if (blockType == BlockType.SNOW) {
+            snowLayers = world.getSnowLayers(pos.x, pos.y, pos.z);
             world.getSnowLayerManager().removeSnowLayers(pos.x, pos.y, pos.z);
         }
         Vector3f dropPosition = new Vector3f(pos.x + 0.5f, pos.y + 0.5f, pos.z + 0.5f);
@@ -132,7 +135,7 @@ public class BlockBreaker {
         // through the host's drop.
         if (!com.stonebreak.network.MultiplayerSession.isClient()) {
             ItemType toolItem = getHeldToolType();
-            DropUtil.handleBlockBroken(world, dropPosition, blockType, toolItem);
+            DropUtil.handleBlockBroken(world, dropPosition, blockType, toolItem, snowLayers);
         }
         world.setBlockAt(pos.x, pos.y, pos.z, BlockType.AIR, true);
         Water.onBlockBroken(pos.x, pos.y, pos.z);
