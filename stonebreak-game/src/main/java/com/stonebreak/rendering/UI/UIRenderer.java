@@ -361,32 +361,6 @@ public class UIRenderer {
         org.lwjgl.nanovg.NanoVG.nvgStrokeWidth(vg, 1f);
         org.lwjgl.nanovg.NanoVG.nvgStroke(vg);
     }
-    
-    // ===== Text Input Rendering Delegation =====
-
-    public void drawTextInputBackground(float x, float y, float width, float height, boolean focused, org.lwjgl.system.MemoryStack stack) {
-        menuRenderer.drawTextInputBackground(x, y, width, height, focused, stack);
-    }
-
-    public void drawTextInputBorder(float x, float y, float width, float height, boolean focused, org.lwjgl.system.MemoryStack stack) {
-        menuRenderer.drawTextInputBorder(x, y, width, height, focused, stack);
-    }
-
-    public void drawTextInputIcon(float x, float y, float size, String iconType, org.lwjgl.system.MemoryStack stack) {
-        menuRenderer.drawTextInputIcon(x, y, size, iconType, stack);
-    }
-
-    public void drawTextInputText(float x, float y, String text, boolean isPlaceholder, org.lwjgl.system.MemoryStack stack) {
-        menuRenderer.drawTextInputText(x, y, text, isPlaceholder, stack);
-    }
-
-    public void drawTextInputCursor(float x, float y1, float y2, org.lwjgl.system.MemoryStack stack) {
-        menuRenderer.drawTextInputCursor(x, y1, y2, stack);
-    }
-
-    public void drawValidationIndicator(float x, float y, float size, boolean isValid, org.lwjgl.system.MemoryStack stack) {
-        menuRenderer.drawValidationIndicator(x, y, size, isValid, stack);
-    }
 
     // Helper method for backward compatibility - delegates to MenuRenderer
     public org.lwjgl.nanovg.NVGColor nvgRGBA(int r, int g, int b, int a, org.lwjgl.nanovg.NVGColor color) {
