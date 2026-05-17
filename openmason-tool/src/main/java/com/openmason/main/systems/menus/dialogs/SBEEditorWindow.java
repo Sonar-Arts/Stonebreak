@@ -45,6 +45,9 @@ public class SBEEditorWindow {
     private final SBEStatesEditor statesEditor;
     private final SBEVariantsEditor variantsEditor;
 
+    /** Popup listing already-registered SBE object ids. */
+    private final SBEObjectIndexPopup objectIndexPopup = new SBEObjectIndexPopup();
+
     // Loaded document state
     private Path currentPath;
     private SBEFormat.Document loadedManifest;
@@ -144,6 +147,7 @@ public class SBEEditorWindow {
             } else {
                 renderTabs();
             }
+            objectIndexPopup.render();
         }
         ImGui.end();
     }
@@ -185,6 +189,8 @@ public class SBEEditorWindow {
 
     private void renderMetadataTab() {
         if (ImGui.inputText("Object ID", objectId))    dirty = true;
+        ImGui.sameLine();
+        if (ImGui.smallButton("Registered IDs...")) objectIndexPopup.open();
         if (ImGui.inputText("Object Name", objectName)) dirty = true;
         if (ImGui.combo("Entity Type", entityTypeIndex, ENTITY_TYPE_LABELS)) dirty = true;
         if (ImGui.inputText("Pack", objectPack))        dirty = true;

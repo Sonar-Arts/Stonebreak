@@ -106,6 +106,9 @@ public class SBEExportWindow {
             "Mob", "NPC", "Projectile", "Vehicle", "Other"
     };
 
+    /** Popup listing already-registered SBE object ids. */
+    private final SBEObjectIndexPopup objectIndexPopup = new SBEObjectIndexPopup();
+
     private String validationMessage = "";
     private boolean iniFileSet = false;
 
@@ -180,6 +183,7 @@ public class SBEExportWindow {
                     visible.set(false);
                 }
                 renderContent();
+                objectIndexPopup.render();
             } catch (Exception e) {
                 logger.error("Error rendering SBE export window", e);
                 ImGui.textColored(1.0f, 0.0f, 0.0f, 1.0f, "Error rendering export window");
@@ -218,6 +222,11 @@ public class SBEExportWindow {
         ImGui.spacing();
 
         renderLabeledInput("Object ID", "sbe_obj_id", objectId, "e.g. stonebreak:cow");
+        ImGui.setCursorPosX(formOffsetX + LABEL_WIDTH);
+        if (ImGui.smallButton("Registered IDs...##sbe_show_ids")) {
+            objectIndexPopup.open();
+        }
+        ImGui.dummy(0, ROW_SPACING);
         renderLabeledInput("Object Name", "sbe_obj_name", objectName, "e.g. Cow");
 
         ImGui.dummy(0, ROW_SPACING);
