@@ -48,11 +48,12 @@ public class UIRenderer {
         if (vg == 0) {
             throw new RuntimeException("Could not init NanoVG.");
         }
-        
-        // Initialize specialized renderers
-        itemIconRenderer = new ItemIconRenderer(vg);
+
+        // Initialize specialized renderers that still need NanoVG
         hotbarRenderer = new HotbarRenderer(vg);
         openGLQuadRenderer.initialize();
+
+        // ItemIconRenderer is now Skija-backed — initialized in initializeSkijaRenderers()
     }
     
     /**
@@ -81,13 +82,14 @@ public class UIRenderer {
 
     /**
      * Wires the Skija backend into UIRenderer so renderers that draw via Skija
-     * (chat panel, crosshair) can be constructed. Called by Renderer after
+     * (chat panel, crosshair, item icons) can be constructed. Called by Renderer after
      * the backend is initialized — UIRenderer.init() runs before the backend
      * exists, so chat construction happens here instead.
      */
     public void initializeSkijaRenderers(SkijaUIBackend skijaBackend) {
         this.skijaChatRenderer = new SkijaChatRenderer(skijaBackend);
         this.mCrosshairRenderer = new MCrosshairRenderer(skijaBackend);
+        this.itemIconRenderer = new ItemIconRenderer(skijaBackend);
     }
     
     public void beginFrame(int width, int height, float pixelRatio) {
