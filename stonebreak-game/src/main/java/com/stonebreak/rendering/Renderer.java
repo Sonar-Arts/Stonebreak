@@ -468,22 +468,6 @@ public class Renderer {
     }
     
     /**
-     * Draw a volume slider using the UI renderer.
-     * @param label Slider label
-     * @param centerX Center X position
-     * @param centerY Center Y position
-     * @param sliderWidth Slider width
-     * @param sliderHeight Slider height
-     * @param value Slider value (0.0-1.0)
-     * @param highlighted Whether slider is highlighted
-     */
-    public void drawVolumeSlider(String label, float centerX, float centerY, float sliderWidth, float sliderHeight, float value, boolean highlighted) {
-        if (uiRenderer != null) {
-            uiRenderer.drawVolumeSlider(label, centerX, centerY, sliderWidth, sliderHeight, value, highlighted);
-        }
-    }
-    
-    /**
      * Check if a button was clicked using the UI renderer.
      * @param mouseX Mouse X position
      * @param mouseY Mouse Y position

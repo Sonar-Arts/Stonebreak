@@ -16,7 +16,6 @@ import com.stonebreak.rendering.UI.components.HotbarRenderer;
 import com.stonebreak.rendering.UI.menus.BlockIconRenderer;
 import com.stonebreak.rendering.UI.menus.ItemIconRenderer;
 import com.stonebreak.rendering.UI.menus.MenuRenderer;
-import com.stonebreak.rendering.UI.menus.VolumeSliderRenderer;
 
 import static org.lwjgl.nanovg.NanoVGGL3.NVG_ANTIALIAS;
 import static org.lwjgl.nanovg.NanoVGGL3.NVG_STENCIL_STROKES;
@@ -36,7 +35,6 @@ public class UIRenderer {
     // Specialized renderers
     private MenuRenderer menuRenderer;
     private SkijaChatRenderer skijaChatRenderer;
-    private VolumeSliderRenderer volumeSliderRenderer;
     private ItemIconRenderer itemIconRenderer;
     private BlockIconRenderer blockIconRenderer;
     private MCrosshairRenderer mCrosshairRenderer;
@@ -55,7 +53,6 @@ public class UIRenderer {
         
         // Initialize specialized renderers
         menuRenderer = new MenuRenderer(vg);
-        volumeSliderRenderer = new VolumeSliderRenderer(vg);
         itemIconRenderer = new ItemIconRenderer(vg);
         hotbarRenderer = new HotbarRenderer(vg);
         openGLQuadRenderer.initialize();
@@ -176,12 +173,6 @@ public class UIRenderer {
         if (skijaChatRenderer != null) {
             skijaChatRenderer.render(chatSystem, windowWidth, windowHeight);
         }
-    }
-    
-    // ===== Volume Slider Rendering Delegation =====
-    
-    public void drawVolumeSlider(String label, float centerX, float centerY, float sliderWidth, float sliderHeight, float value, boolean highlighted) {
-        volumeSliderRenderer.drawVolumeSlider(label, centerX, centerY, sliderWidth, sliderHeight, value, highlighted);
     }
     
     // ===== Item Icon Rendering Delegation =====
