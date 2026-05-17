@@ -103,7 +103,6 @@ public class BlockRenderer implements AutoCloseable {
      * @param modelLocation Location of model matrix uniform
      * @param vpMatrix View-projection matrix from camera
      * @param modelMatrix Model transformation matrix
-     * @param textureAtlas The texture atlas to bind
      * @param textureLocation Location of texture sampler uniform
      * @param useTextureLocation Location of useTexture flag uniform
      */
