@@ -19,27 +19,11 @@ updates:
       - "Cheese_yacht"
     assignees:
       - "Cheese_yacht"
-    # Group related dependency updates
+    # Batch all dependency updates for this POM into a single branch/PR
     groups:
-      lwjgl:
+      parent-pom:
         patterns:
-          - "org.lwjgl:*"
-        update-types:
-          - "minor"
-          - "patch"
-      jackson:
-        patterns:
-          - "com.fasterxml.jackson.*:*"
-        update-types:
-          - "minor"
-          - "patch"
-      logging:
-        patterns:
-          - "org.slf4j:*"
-          - "ch.qos.logback:*"
-        update-types:
-          - "minor"
-          - "patch"
+          - "*"
 
   # Monitor stonebreak-game module
   - package-ecosystem: "maven"
@@ -61,26 +45,11 @@ updates:
       - "Cheese_yacht"
     assignees:
       - "Cheese_yacht"
+    # Batch all dependency updates for this POM into a single branch/PR
     groups:
-      lwjgl:
+      stonebreak-game:
         patterns:
-          - "org.lwjgl:*"
-        update-types:
-          - "minor"
-          - "patch"
-      jackson:
-        patterns:
-          - "com.fasterxml.jackson.*:*"
-        update-types:
-          - "minor"
-          - "patch"
-      logging:
-        patterns:
-          - "org.slf4j:*"
-          - "ch.qos.logback:*"
-        update-types:
-          - "minor"
-          - "patch"
+          - "*"
 
   # Monitor openmason-tool module
   - package-ecosystem: "maven"
@@ -102,19 +71,11 @@ updates:
       - "Cheese_yacht"
     assignees:
       - "Cheese_yacht"
+    # Batch all dependency updates for this POM into a single branch/PR
     groups:
-      imgui:
+      openmason-tool:
         patterns:
-          - "io.github.spair:imgui-java-*"
-        update-types:
-          - "minor"
-          - "patch"
-      lwjgl:
-        patterns:
-          - "org.lwjgl:*"
-        update-types:
-          - "minor"
-          - "patch"
+          - "*"
 
   # Monitor GitHub Actions if present
   - package-ecosystem: "github-actions"
