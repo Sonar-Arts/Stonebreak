@@ -205,6 +205,7 @@ public final class SkijaSettingsRenderer {
             case CROSSHAIR_SIZE   -> state.getCrosshairSizeSlider();
             case LEAF_TRANSPARENCY -> state.getLeafTransparencyButton();
             case WATER_SHADER     -> state.getWaterShaderButton();
+            case CLOUDS_ENABLED   -> state.getCloudsButton();
             case RENDER_DISTANCE  -> state.getRenderDistanceSlider();
             case LOD_DISTANCE     -> state.getLodDistanceSlider();
             case LOD_ENABLED      -> state.getLodEnabledButton();

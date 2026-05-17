@@ -56,6 +56,7 @@ public final class SettingsMenu {
                 actionHandler::onCrosshairSizeChange,
                 actionHandler::toggleLeafTransparency,
                 actionHandler::toggleWaterShader,
+                actionHandler::toggleClouds,
                 actionHandler::onRenderDistanceChange,
                 actionHandler::onLodDistanceChange,
                 actionHandler::toggleLodEnabled,

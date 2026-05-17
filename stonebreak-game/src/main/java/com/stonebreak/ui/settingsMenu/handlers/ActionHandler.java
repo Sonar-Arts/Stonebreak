@@ -51,6 +51,7 @@ public class ActionHandler {
             case CROSSHAIR_SIZE -> {} // Crosshair size handled by mouse/keyboard interaction
             case LEAF_TRANSPARENCY -> toggleLeafTransparency();
             case WATER_SHADER -> toggleWaterShader();
+            case CLOUDS_ENABLED -> toggleClouds();
             case LOD_ENABLED -> toggleLodEnabled();
             case VSYNC -> toggleVsync();
             case APPLY -> applySettings();
@@ -226,5 +227,14 @@ public class ActionHandler {
         boolean currentValue = settings.getWaterShaderEnabled();
         settings.setWaterShaderEnabled(!currentValue);
         System.out.println("Water animation toggled to: " + (!currentValue ? "ON" : "OFF"));
+    }
+
+    /**
+     * Toggles the cloud layer rendering setting.
+     */
+    public void toggleClouds() {
+        boolean currentValue = settings.getCloudsEnabled();
+        settings.setCloudsEnabled(!currentValue);
+        System.out.println("Clouds toggled to: " + (!currentValue ? "ON" : "OFF"));
     }
 }

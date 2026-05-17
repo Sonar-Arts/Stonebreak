@@ -35,6 +35,7 @@ public final class StateManager {
     private MSlider crosshairSizeSlider;
     private MButton leafTransparencyButton;
     private MButton waterShaderButton;
+    private MButton cloudsButton;
     private MSlider renderDistanceSlider;
     private MSlider lodDistanceSlider;
     private MButton lodEnabledButton;
@@ -130,6 +131,8 @@ public final class StateManager {
                 .size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
         waterShaderButton = new MButton(waterShaderLabel())
                 .size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        cloudsButton = new MButton(cloudsLabel())
+                .size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
 
         renderDistanceSlider = new MSlider(renderDistanceLabel(),
                 SettingsConfig.MIN_RENDER_DISTANCE, SettingsConfig.MAX_RENDER_DISTANCE,
@@ -159,6 +162,7 @@ public final class StateManager {
                              java.util.function.Consumer<Float> volumeAction,
                              java.util.function.Consumer<Float> crosshairSizeAction,
                              Runnable leafTransparencyAction, Runnable waterShaderAction,
+                             Runnable cloudsAction,
                              java.util.function.Consumer<Float> renderDistanceAction,
                              java.util.function.Consumer<Float> lodDistanceAction,
                              Runnable lodEnabledAction,
@@ -172,6 +176,7 @@ public final class StateManager {
         crosshairSizeSlider.setOnChange(crosshairSizeAction);
         leafTransparencyButton.setOnClick(leafTransparencyAction);
         waterShaderButton.setOnClick(waterShaderAction);
+        cloudsButton.setOnClick(cloudsAction);
         renderDistanceSlider.setOnChange(renderDistanceAction);
         lodDistanceSlider.setOnChange(lodDistanceAction);
         lodEnabledButton.setOnClick(lodEnabledAction);
@@ -207,6 +212,7 @@ public final class StateManager {
         backButton.setSelected(false);
         leafTransparencyButton.setSelected(false);
         waterShaderButton.setSelected(false);
+        cloudsButton.setSelected(false);
         renderDistanceSlider.setSelected(false);
         lodDistanceSlider.setSelected(false);
         lodEnabledButton.setSelected(false);
@@ -259,6 +265,7 @@ public final class StateManager {
         crosshairStyleButton.setText("Crosshair: " + SettingsConfig.CROSSHAIR_STYLE_NAMES[selectedCrosshairStyleIndex]);
         leafTransparencyButton.setText(leafTransparencyLabel());
         waterShaderButton.setText(waterShaderLabel());
+        cloudsButton.setText(cloudsLabel());
         renderDistanceSlider.setLabel(renderDistanceLabel());
         lodDistanceSlider.setLabel(lodDistanceLabel());
         lodEnabledButton.setText(lodEnabledLabel());
@@ -271,6 +278,10 @@ public final class StateManager {
 
     private String waterShaderLabel() {
         return "Water Animation: " + (settings.getWaterShaderEnabled() ? "ON" : "OFF");
+    }
+
+    private String cloudsLabel() {
+        return "Clouds: " + (settings.getCloudsEnabled() ? "ON" : "OFF");
     }
 
     private String renderDistanceLabel() {
@@ -318,6 +329,7 @@ public final class StateManager {
     public MSlider getCrosshairSizeSlider() { return crosshairSizeSlider; }
     public MButton getLeafTransparencyButton() { return leafTransparencyButton; }
     public MButton getWaterShaderButton() { return waterShaderButton; }
+    public MButton getCloudsButton() { return cloudsButton; }
     public MSlider getRenderDistanceSlider() { return renderDistanceSlider; }
     public MSlider getLodDistanceSlider() { return lodDistanceSlider; }
     public MButton getLodEnabledButton() { return lodEnabledButton; }

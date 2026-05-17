@@ -93,8 +93,10 @@ public class WorldRenderer {
         checkGLError("After sky rendering");
 
         // Render the voxel cloud layer just after the sky dome, before world geometry.
-        cloudRenderer.renderClouds(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, timeOfDay);
-        checkGLError("After cloud rendering");
+        if (com.stonebreak.config.Settings.getInstance().getCloudsEnabled()) {
+            cloudRenderer.renderClouds(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, timeOfDay);
+            checkGLError("After cloud rendering");
+        }
         
         // Ensure proper depth function for world geometry
         glDepthFunc(GL_LESS);

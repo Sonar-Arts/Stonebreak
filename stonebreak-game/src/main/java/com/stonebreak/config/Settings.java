@@ -30,6 +30,7 @@ public class Settings {
     // Quality settings
     private boolean leafTransparency = true;
     private boolean waterShaderEnabled = true;
+    private boolean cloudsEnabled = true;
 
     // Performance + advanced settings — defaults sourced from WorldConfiguration to avoid drift.
     private int renderDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_RENDER_DISTANCE;
@@ -87,6 +88,7 @@ public class Settings {
             json.append("  \"crosshairOutline\": ").append(crosshairOutline).append(",\n");
             json.append("  \"leafTransparency\": ").append(leafTransparency).append(",\n");
             json.append("  \"waterShaderEnabled\": ").append(waterShaderEnabled).append(",\n");
+            json.append("  \"cloudsEnabled\": ").append(cloudsEnabled).append(",\n");
             json.append("  \"renderDistance\": ").append(renderDistance).append(",\n");
             json.append("  \"lodDistance\": ").append(lodDistance).append(",\n");
             json.append("  \"lodEnabled\": ").append(lodEnabled).append(",\n");
@@ -254,6 +256,11 @@ public class Settings {
                         System.err.println("Invalid waterShaderEnabled value: " + value);
                     }
                 }
+            } else if (line.contains("cloudsEnabled")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    cloudsEnabled = Boolean.parseBoolean(value);
+                }
             } else if (line.contains("renderDistance")) {
                 String value = extractValue(line);
                 if (value != null) {
@@ -340,6 +347,7 @@ public class Settings {
     // Quality getters
     public boolean getLeafTransparency() { return leafTransparency; }
     public boolean getWaterShaderEnabled() { return waterShaderEnabled; }
+    public boolean getCloudsEnabled() { return cloudsEnabled; }
 
     // Performance / advanced getters
     public int getRenderDistance() { return renderDistance; }
@@ -419,6 +427,10 @@ public class Settings {
 
     public void setWaterShaderEnabled(boolean waterShaderEnabled) {
         this.waterShaderEnabled = waterShaderEnabled;
+    }
+
+    public void setCloudsEnabled(boolean cloudsEnabled) {
+        this.cloudsEnabled = cloudsEnabled;
     }
 
     public void setRenderDistance(int value) {
