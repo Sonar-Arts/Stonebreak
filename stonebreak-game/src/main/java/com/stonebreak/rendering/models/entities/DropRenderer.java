@@ -66,9 +66,139 @@ public class DropRenderer {
     }
     
     /**
+     * Renders opaque block/item drops. Call this BEFORE the transparent water pass
+     * so that drops write depth values and can be occluded by water.
+     */
+    public void renderOpaqueDrops(List<Entity> drops, ShaderProgram shaderProgram, Matrix4f projectionMatrix, Matrix4f viewMatrix,
+                                  World world, Vector3f cameraPos) {
+        if (drops == null || drops.isEmpty()) return;
+
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("u_renderPass", 0);
+        shaderProgram.setUniform("u_translucentLayer", -1);
+        shaderProgram.setUniform("u_waterDepthOffset", 0.0f);
+        shaderProgram.setUniform("texture_sampler", 0);
+        shaderProgram.setUniform("u_isText", false);
+
+        // Underwater fog
+        float fogDensity = 0.0f;
+        Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f);
+        if (world != null && cameraPos != null) {
+            int camX = (int) Math.floor(cameraPos.x);
+            int camY = (int) Math.floor(cameraPos.y);
+            int camZ = (int) Math.floor(cameraPos.z);
+            if (world.isPositionUnderwater(camX, camY, camZ)) fogDensity = 0.15f;
+        }
+        shaderProgram.setUniform("u_cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
+        shaderProgram.setUniform("u_underwaterFogDensity", fogDensity);
+        shaderProgram.setUniform("u_underwaterFogColor", fogColor);
+
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(true);  // Write depth so water can occlude drops
+
+        for (Entity drop : drops) {
+            if (!drop.isAlive()) continue;
+            boolean shouldRender = true;
+            if (drop instanceof com.stonebreak.mobs.entities.BlockDrop bd) shouldRender = bd.shouldRender();
+            else if (drop instanceof com.stonebreak.mobs.entities.ItemDrop id) shouldRender = id.shouldRender();
+            if (!shouldRender) continue;
+
+            // Opaque block drops + all item drops go in this pass
+            if (drop instanceof com.stonebreak.mobs.entities.BlockDrop bd) {
+                BlockType bt = bd.getBlockType();
+                if (bt != null && isTransparentBlock(bt)) continue; // skip transparent, handled by renderTransparentDrops
+                glDisable(GL_BLEND);
+                renderDrop(drop, shaderProgram, viewMatrix, world);
+            } else if (drop instanceof com.stonebreak.mobs.entities.ItemDrop) {
+                // Item drops: voxelized uses u_useSolidColor (ignores render pass), fallback uses u_isUIElement
+                glDisable(GL_BLEND);
+                renderDrop(drop, shaderProgram, viewMatrix, world);
+            }
+        }
+
+        // Restore view matrix (renderDrop overwrites it with view*model per drop)
+        shaderProgram.setUniform("viewMatrix", viewMatrix);
+
+        // Restore state
+        glDepthMask(true);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        GL30.glBindVertexArray(0);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+
+    /**
+     * Renders transparent block drops. Call this AFTER the transparent water pass.
+     */
+    public void renderTransparentDrops(List<Entity> drops, ShaderProgram shaderProgram, Matrix4f projectionMatrix, Matrix4f viewMatrix,
+                                       World world, Vector3f cameraPos) {
+        if (drops == null || drops.isEmpty()) return;
+
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("u_renderPass", 0);
+        shaderProgram.setUniform("u_translucentLayer", -1);
+        shaderProgram.setUniform("u_waterDepthOffset", 0.0f);
+        shaderProgram.setUniform("texture_sampler", 0);
+        shaderProgram.setUniform("u_isText", false);
+
+        // Underwater fog
+        float fogDensity = 0.0f;
+        Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f);
+        if (world != null && cameraPos != null) {
+            int camX = (int) Math.floor(cameraPos.x);
+            int camY = (int) Math.floor(cameraPos.y);
+            int camZ = (int) Math.floor(cameraPos.z);
+            if (world.isPositionUnderwater(camX, camY, camZ)) fogDensity = 0.15f;
+        }
+        shaderProgram.setUniform("u_cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
+        shaderProgram.setUniform("u_underwaterFogDensity", fogDensity);
+        shaderProgram.setUniform("u_underwaterFogColor", fogColor);
+
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(false);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        for (Entity drop : drops) {
+            if (!(drop instanceof com.stonebreak.mobs.entities.BlockDrop bd)) continue;
+            if (!drop.isAlive() || !bd.shouldRender()) continue;
+            BlockType bt = bd.getBlockType();
+            if (bt == null || !isTransparentBlock(bt)) continue; // only transparent blocks
+
+            renderDrop(drop, shaderProgram, viewMatrix, world);
+        }
+
+        // Restore view matrix (renderDrop overwrites it with view*model per drop)
+        shaderProgram.setUniform("viewMatrix", viewMatrix);
+
+        // Restore state
+        glDepthMask(true);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        GL30.glBindVertexArray(0);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+
+    /**
      * Renders all drops in the world. This method should be called before UI rendering
      * to ensure drops render underneath the UI.
+     *
+     * @deprecated Use {@link #renderOpaqueDrops} and {@link #renderTransparentDrops} instead
+     * to ensure proper depth-buffer interaction with water rendering.
      */
+    @Deprecated
     public void renderDrops(List<Entity> drops, ShaderProgram shaderProgram, Matrix4f projectionMatrix, Matrix4f viewMatrix) {
         renderDrops(drops, shaderProgram, projectionMatrix, viewMatrix, null, null);
     }
@@ -170,6 +300,8 @@ public class DropRenderer {
 
         shaderProgram.bind();
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("u_renderPass", 0);
+        shaderProgram.setUniform("u_translucentLayer", -1);
         shaderProgram.setUniform("texture_sampler", 0);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
@@ -285,56 +417,41 @@ public class DropRenderer {
     
     /**
      * Renders a block drop using the CBR API and BlockRenderer.
+     * Depth mask and blending are controlled by the caller (renderOpaqueDrops/renderTransparentDrops).
      */
     private void renderBlockDrop(Entity drop, ShaderProgram shaderProgram) {
         BlockType blockType = getBlockTypeFromDrop(drop);
         if (blockType == null || blockType == BlockType.AIR) {
             return;
         }
-        
+
         // Use CBR API to get block render resource
         if (cbrManager == null) {
             System.err.println("[DropRenderer] CBR not available for block drop " + blockType);
             return;
         }
-        
+
         CBRResourceManager.BlockRenderResource resource = cbrManager.getBlockTypeResource(blockType);
-        
-        // Handle transparency and blending based on block type and settings
-        boolean isTransparent = isTransparentBlock(blockType);
 
-        // Handle blending - enable only for transparent blocks
-        if (isTransparent) {
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        } else {
-            glDisable(GL_BLEND);
-        }
+        // Note: blending and depth mask are now controlled by the caller
+        // (renderOpaqueDrops sets glDepthMask(true)/blend OFF, renderTransparentDrops sets glDepthMask(false)/blend ON)
 
-        // Handle depth writing based on block transparency
-        // For transparent blocks (like glass), disable depth writes to prevent occlusion issues
-        // For solid blocks, enable depth writes to ensure all faces render properly
-        glDepthMask(!isTransparent);
-        
         // Set shader uniforms for block rendering
         shaderProgram.setUniform("u_useSolidColor", false);
-        
+
         // Enable UI element mode for consistent lighting with hotbar icons
         shaderProgram.setUniform("u_isUIElement", true);
-        
+
         // CBR meshes already have texture coordinates baked in, so don't transform them
         shaderProgram.setUniform("u_transformUVsForItem", false);
-        
+
         // Set color - full opacity for opaque blocks, slight transparency for transparent blocks
-        float alpha = isTransparent ? 0.95f : 1.0f;
+        float alpha = isTransparentBlock(blockType) ? 0.95f : 1.0f;
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, alpha));
-        
+
         // Render the block mesh -- SBO textures are already overlaid onto the atlas
         resource.getMesh().bind();
         glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
-
-        // Restore depth writes for subsequent rendering
-        glDepthMask(true);
     }
     
     /**
