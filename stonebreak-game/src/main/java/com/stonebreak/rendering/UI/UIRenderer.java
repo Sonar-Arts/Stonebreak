@@ -15,7 +15,6 @@ import com.stonebreak.rendering.UI.components.OpenGLQuadRenderer;
 import com.stonebreak.rendering.UI.components.HotbarRenderer;
 import com.stonebreak.rendering.UI.menus.BlockIconRenderer;
 import com.stonebreak.rendering.UI.menus.ItemIconRenderer;
-import com.stonebreak.rendering.UI.menus.MenuRenderer;
 
 import static org.lwjgl.nanovg.NanoVGGL3.NVG_ANTIALIAS;
 import static org.lwjgl.nanovg.NanoVGGL3.NVG_STENCIL_STROKES;
@@ -33,7 +32,6 @@ public class UIRenderer {
     private long vg;
     
     // Specialized renderers
-    private MenuRenderer menuRenderer;
     private SkijaChatRenderer skijaChatRenderer;
     private ItemIconRenderer itemIconRenderer;
     private BlockIconRenderer blockIconRenderer;
@@ -52,7 +50,6 @@ public class UIRenderer {
         }
         
         // Initialize specialized renderers
-        menuRenderer = new MenuRenderer(vg);
         itemIconRenderer = new ItemIconRenderer(vg);
         hotbarRenderer = new HotbarRenderer(vg);
         openGLQuadRenderer.initialize();
@@ -108,57 +105,6 @@ public class UIRenderer {
         }
     }
     
-    // ===== Menu Rendering Delegation =====
-    
-    public void renderMainMenu(int windowWidth, int windowHeight) {
-        menuRenderer.renderMainMenu(windowWidth, windowHeight);
-    }
-    
-    public void renderPauseMenu(int windowWidth, int windowHeight, boolean isQuitButtonHovered, boolean isSettingsButtonHovered) {
-        menuRenderer.renderPauseMenu(windowWidth, windowHeight, isQuitButtonHovered, isSettingsButtonHovered);
-    }
-    
-    public void renderSettingsMenu(int windowWidth, int windowHeight) {
-        menuRenderer.renderSettingsMenu(windowWidth, windowHeight);
-    }
-
-    public void renderWorldSelectScreen(int width, int height, java.util.List<String> worldList, int selectedIndex,
-                                       boolean showCreateDialog, int scrollOffset, int visibleItems, boolean createButtonSelected) {
-        menuRenderer.renderWorldSelectScreen(width, height, worldList, selectedIndex, showCreateDialog, scrollOffset, visibleItems, createButtonSelected);
-    }
-
-    public void renderCreateDialogContainer(int width, int height) {
-        menuRenderer.renderCreateDialogContainer(width, height);
-    }
-    
-    public void drawButton(String text, float x, float y, float w, float h, boolean highlighted) {
-        menuRenderer.drawButton(text, x, y, w, h, highlighted);
-    }
-    
-    public void drawDropdownButton(String text, float x, float y, float w, float h, boolean highlighted, boolean isOpen) {
-        menuRenderer.drawDropdownButton(text, x, y, w, h, highlighted, isOpen);
-    }
-    
-    public void drawDropdownMenu(String[] options, int selectedIndex, float x, float y, float w, float itemHeight) {
-        menuRenderer.drawDropdownMenu(options, selectedIndex, x, y, w, itemHeight);
-    }
-    
-    public boolean isButtonClicked(float mouseX, float mouseY, float buttonX, float buttonY, float buttonW, float buttonH) {
-        return menuRenderer.isButtonClicked(mouseX, mouseY, buttonX, buttonY, buttonW, buttonH);
-    }
-    
-    public boolean isPauseResumeClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        return menuRenderer.isPauseResumeClicked(mouseX, mouseY, windowWidth, windowHeight);
-    }
-    
-    public boolean isPauseSettingsClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        return menuRenderer.isPauseSettingsClicked(mouseX, mouseY, windowWidth, windowHeight);
-    }
-    
-    public boolean isPauseQuitClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        return menuRenderer.isPauseQuitClicked(mouseX, mouseY, windowWidth, windowHeight);
-    }
-
     // ===== Chat Rendering Delegation =====
     
     public void renderChat(ChatSystem chatSystem, int windowWidth, int windowHeight) {
@@ -183,16 +129,6 @@ public class UIRenderer {
     
     public void renderOutline(float x, float y, float w, float h, float strokeWidth, float[] color) {
         itemIconRenderer.renderOutline(x, y, w, h, strokeWidth, color);
-    }
-    
-    // ===== Text Rendering Delegation =====
-    
-    public float getTextWidth(String text, float fontSize, String fontFaceName) {
-        return menuRenderer.getTextWidth(text, fontSize, fontFaceName);
-    }
-    
-    public void drawText(String text, float x, float y, String fontFaceName, float fontSize, float r, float g, float b, float a) {
-        menuRenderer.drawText(text, x, y, fontFaceName, fontSize, r, g, b, a);
     }
     
     // ===== OpenGL Quad Rendering Delegation =====
@@ -328,18 +264,6 @@ public class UIRenderer {
     }
     
     /**
-     * Draws a horizontal separator line for UI organization using NanoVG.
-     * @param centerX Center X position
-     * @param y Y position for the line
-     * @param width Width of the separator line
-     */
-    public void drawSeparator(float centerX, float y, float width) {
-        if (menuRenderer != null) {
-            menuRenderer.drawSeparatorLine(centerX, y, width);
-        }
-    }
-
-    /**
      * Draws a translucent rounded panel for debug HUD groups.
      * Uses NanoVG so it composites correctly with the existing text overlay.
      */
@@ -362,11 +286,6 @@ public class UIRenderer {
         org.lwjgl.nanovg.NanoVG.nvgStroke(vg);
     }
 
-    // Helper method for backward compatibility - delegates to MenuRenderer
-    public org.lwjgl.nanovg.NVGColor nvgRGBA(int r, int g, int b, int a, org.lwjgl.nanovg.NVGColor color) {
-        return menuRenderer.nvgRGBA(r, g, b, a, color);
-    }
-    
     /**
      * Get the block icon renderer for rendering block icons in tooltip layer.
      */
