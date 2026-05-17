@@ -152,11 +152,15 @@ public class WorldRenderer {
         // This allows water to blend over entities when viewing through water
         renderEntities(player);
 
+        // Render opaque drops BEFORE the transparent pass so they write depth
+        // Water can then occlude them properly (water renders with glDepthMask(false))
+        renderOpaqueDrops(player);
+
         // Render transparent pass (water blends over entities correctly)
         renderTransparentPass(visibleChunks, player);
 
-        // Render drops after transparent water (drops are semi-transparent)
-        renderDrops(player);
+        // Render transparent drops AFTER the transparent pass
+        renderTransparentDrops(player);
 
         // Restore OpenGL state after passes
         restoreGLStateAfterPasses();
@@ -465,10 +469,13 @@ public class WorldRenderer {
     /**
      * Render all drops using the drop sub-renderer.
      * Drops are rendered before entities to appear underneath everything but above world geometry.
+     *
+     * @deprecated Replaced by {@link #renderOpaqueDrops} and {@link #renderTransparentDrops}
      */
+    @Deprecated
     private void renderDrops(Player player) {
         com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
-        
+
         if (entityManager != null && dropRenderer != null) {
             // Get all entities and filter for drops + collect remote players for held-item rendering.
             List<com.stonebreak.mobs.entities.Entity> allEntities = entityManager.getAllEntities();
@@ -493,6 +500,65 @@ public class WorldRenderer {
             if (!remotePlayers.isEmpty()) {
                 dropRenderer.renderHeldBlocks(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
             }
+        }
+    }
+
+    /**
+     * Collect drop entities and remote players from the entity manager.
+     */
+    private void collectDrops(java.util.List<com.stonebreak.mobs.entities.Entity> drops,
+                              java.util.List<com.stonebreak.mobs.entities.RemotePlayer> remotePlayers) {
+        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        if (entityManager == null) return;
+
+        for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
+            if (!entity.isAlive()) continue;
+            if (isDropEntity(entity)) {
+                drops.add(entity);
+            } else if (entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
+                remotePlayers.add(rp);
+            }
+        }
+    }
+
+    /**
+     * Render opaque block/item drops before the transparent water pass.
+     * Writing depth here allows water to occlude drops behind it.
+     */
+    private void renderOpaqueDrops(Player player) {
+        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        if (entityManager == null || dropRenderer == null) return;
+
+        java.util.List<com.stonebreak.mobs.entities.Entity> drops = new java.util.ArrayList<>();
+        java.util.List<com.stonebreak.mobs.entities.RemotePlayer> remotePlayers = new java.util.ArrayList<>();
+        collectDrops(drops, remotePlayers);
+
+        World world = Game.getWorld();
+        Vector3f cameraPos = player.getCamera().getPosition();
+
+        if (!drops.isEmpty()) {
+            dropRenderer.renderOpaqueDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
+        }
+        if (!remotePlayers.isEmpty()) {
+            dropRenderer.renderHeldBlocks(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
+        }
+    }
+
+    /**
+     * Render transparent block drops after the transparent water pass.
+     */
+    private void renderTransparentDrops(Player player) {
+        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        if (entityManager == null || dropRenderer == null) return;
+
+        java.util.List<com.stonebreak.mobs.entities.Entity> drops = new java.util.ArrayList<>();
+        collectDrops(drops, new java.util.ArrayList<>());
+
+        World world = Game.getWorld();
+        Vector3f cameraPos = player.getCamera().getPosition();
+
+        if (!drops.isEmpty()) {
+            dropRenderer.renderTransparentDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
         }
     }
 
