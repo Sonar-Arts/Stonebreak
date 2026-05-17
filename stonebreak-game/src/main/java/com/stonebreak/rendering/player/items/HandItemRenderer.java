@@ -132,6 +132,8 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_isUIElement", true);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
         bindArray();
+        // Flower cross meshes have no per-vertex alpha flag — force alpha test.
+        shaderProgram.setUniform("u_forceAlphaTest", true);
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -140,6 +142,7 @@ public class HandItemRenderer {
         glDrawElements(GL_TRIANGLES, sboMesh.getIndexCount(), GL_UNSIGNED_INT, 0);
         sboMesh.unbind();
 
+        shaderProgram.setUniform("u_forceAlphaTest", false);
         shaderProgram.setUniform("u_isUIElement", false);
         shaderProgram.setUniform("u_useTextureArray", false);
     }

@@ -10,6 +10,7 @@ import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRendere
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.BlockTextureArray;
+import com.stonebreak.rendering.sbo.SBOHandMeshRegistry;
 import com.stonebreak.world.World;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
@@ -35,6 +36,7 @@ public class DropRenderer {
     
     private final BlockRenderer blockRenderer;
     private final BlockTextureArray blockTextureArray;
+    private final SBOHandMeshRegistry sboHandMeshRegistry;
     private CBRResourceManager cbrManager;
     private final VoxelizedSpriteRenderer voxelizedSpriteRenderer;
 
@@ -50,10 +52,11 @@ public class DropRenderer {
     /**
      * Creates a DropRenderer with the required dependencies.
      */
-    public DropRenderer(BlockRenderer blockRenderer,
-                        BlockTextureArray blockTextureArray, ShaderProgram shaderProgram) {
+    public DropRenderer(BlockRenderer blockRenderer, BlockTextureArray blockTextureArray,
+                        SBOHandMeshRegistry sboHandMeshRegistry, ShaderProgram shaderProgram) {
         this.blockRenderer = blockRenderer;
         this.blockTextureArray = blockTextureArray;
+        this.sboHandMeshRegistry = sboHandMeshRegistry;
         this.cbrManager = blockRenderer.getCBRResourceManager();
         this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram);
         initialize();
@@ -309,8 +312,12 @@ public class DropRenderer {
             return;
         }
 
-        // Block-texture-array cube mesh for this block type (per-face layers).
-        MeshManager.MeshResource mesh = getDropCubeMesh(blockType);
+        // Flowers render as their SBO cross geometry; other blocks as cubes.
+        boolean isFlowerMesh = blockType.isFlower() && sboHandMeshRegistry != null
+                && sboHandMeshRegistry.getMesh(blockType) != null;
+        MeshManager.MeshResource mesh = isFlowerMesh
+                ? sboHandMeshRegistry.getMesh(blockType)
+                : getDropCubeMesh(blockType);
 
         // Handle transparency and blending based on block type and settings
         boolean isTransparent = isTransparentBlock(blockType);
@@ -334,9 +341,11 @@ public class DropRenderer {
         // Enable UI element mode for consistent lighting with hotbar icons
         shaderProgram.setUniform("u_isUIElement", true);
         
-        // Cube mesh carries tile-local UVs; layers select the array texture.
+        // Mesh carries tile-local UVs; layers select the array texture.
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_useTextureArray", true);
+        // Flower cross meshes have no per-vertex alpha flag — force alpha test.
+        shaderProgram.setUniform("u_forceAlphaTest", isFlowerMesh);
 
         // Set color - full opacity for opaque blocks, slight transparency for transparent blocks
         float alpha = isTransparent ? 0.95f : 1.0f;
@@ -345,7 +354,9 @@ public class DropRenderer {
         // Render the block mesh from the block texture array.
         mesh.bind();
         glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
+        mesh.unbind();
 
+        shaderProgram.setUniform("u_forceAlphaTest", false);
         // Restore depth writes for subsequent rendering
         glDepthMask(true);
     }

@@ -116,7 +116,7 @@ public class Renderer {
                                                  configManager.getWindowWidth(), 
                                                  configManager.getWindowHeight(), 
                                                  configManager.getProjectionMatrix());
-        uiRenderer.initializeBlockIconRenderer(blockRenderer, blockTextureArray, configManager.getWindowHeight());
+        uiRenderer.initializeBlockIconRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, configManager.getWindowHeight());
 
         skijaBackend = new SkijaUIBackend();
         try {
@@ -137,7 +137,7 @@ public class Renderer {
         entityRenderer = new EntityRenderer();
         entityRenderer.initialize();
         
-        dropRenderer = new DropRenderer(blockRenderer, blockTextureArray, resourceManager.getShaderProgram());
+        dropRenderer = new DropRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, resourceManager.getShaderProgram());
 
         // Test the new voxelized item drop system
         System.out.println("[Renderer] Testing voxelized item drop system...");

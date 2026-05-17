@@ -59,8 +59,9 @@ public class UIRenderer {
      */
     public void initializeBlockIconRenderer(BlockRenderer blockRenderer,
                                             com.stonebreak.rendering.textures.BlockTextureArray blockTextureArray,
+                                            com.stonebreak.rendering.sbo.SBOHandMeshRegistry sboHandMeshRegistry,
                                             int windowHeight) {
-        this.blockIconRenderer = new BlockIconRenderer(blockRenderer, blockTextureArray, this, windowHeight);
+        this.blockIconRenderer = new BlockIconRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, this, windowHeight);
     }
 
     /**

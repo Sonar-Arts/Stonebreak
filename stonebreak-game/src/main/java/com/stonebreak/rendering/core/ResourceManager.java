@@ -45,6 +45,10 @@ public class ResourceManager {
         // (e.g. flat UI quads). -1 = use the per-vertex v_layer.
         shaderProgram.createUniform("u_layerOverride");
         shaderProgram.setUniform("u_layerOverride", -1.0f);
+        // Forces alpha-test discard for geometry without a per-vertex alpha
+        // flag (e.g. flower cross meshes used for drops/icons).
+        shaderProgram.createUniform("u_forceAlphaTest");
+        shaderProgram.setUniform("u_forceAlphaTest", false);
         shaderProgram.createUniform("u_color");
         shaderProgram.createUniform("u_useSolidColor");
         shaderProgram.createUniform("u_isText");
@@ -189,6 +193,8 @@ public class ResourceManager {
                uniform bool u_useTextureArray;
                // >=0 overrides the per-vertex layer (used by flat UI quads).
                uniform float u_layerOverride;
+               // Forces alpha-test discard regardless of the per-vertex flag.
+               uniform bool u_forceAlphaTest;
                uniform vec4 u_color;
                uniform bool u_useSolidColor;
                uniform bool u_isText;
@@ -234,7 +240,7 @@ public class ResourceManager {
                                : 1.0;
                            float brightness = 0.9 * playerWorldFactor;
 
-                           if (v_isAlphaTested > 0.5) {
+                           if (v_isAlphaTested > 0.5 || u_forceAlphaTest) {
                                if (sampledAlpha < 0.1) discard;
                                fragColor = vec4(textureColor.rgb * brightness, 1.0);
                            } else if (v_isTranslucent > 0.5) {

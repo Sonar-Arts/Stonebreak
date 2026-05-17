@@ -28,6 +28,7 @@ public class BlockIconRenderer {
     
     private final BlockRenderer blockRenderer;
     private final BlockTextureArray blockTextureArray;
+    private final com.stonebreak.rendering.sbo.SBOHandMeshRegistry sboHandMeshRegistry;
     private final UIRenderer uiRenderer;
     private final int windowHeight;
 
@@ -35,9 +36,11 @@ public class BlockIconRenderer {
     private final java.util.Map<BlockType, MeshManager.MeshResource> iconCubeMeshes = new java.util.HashMap<>();
 
     public BlockIconRenderer(BlockRenderer blockRenderer, BlockTextureArray blockTextureArray,
+                             com.stonebreak.rendering.sbo.SBOHandMeshRegistry sboHandMeshRegistry,
                              UIRenderer uiRenderer, int windowHeight) {
         this.blockRenderer = blockRenderer;
         this.blockTextureArray = blockTextureArray;
+        this.sboHandMeshRegistry = sboHandMeshRegistry;
         this.uiRenderer = uiRenderer;
         this.windowHeight = windowHeight;
     }
@@ -97,14 +100,8 @@ public class BlockIconRenderer {
             return; // Nothing to draw
         }
 
-        // Check if this is a flower block - render as flat 2D texture instead of 3D cube
-        // Note: Items (STICK, WOODEN_PICKAXE) are now in ItemType enum and handled separately
-        if (type == BlockType.ROSE || type == BlockType.DANDELION || type == BlockType.WILDGRASS) {
-            renderFlowerIcon(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas);
-            return;
-        }
-
-        // Render 3D cube block
+        // Render the 3D block — flowers use their SBO cross geometry, cubes
+        // use the cube mesh; both handled inside render3DBlockIcon.
         render3DBlockIcon(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas, isDraggedItem);
     }
     
@@ -155,8 +152,8 @@ public class BlockIconRenderer {
             // --- Shader setup for 3D item ---
             configureShaderForItem(shaderProgram, textureAtlas, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, isDraggedItem);
 
-            // --- Create and draw cube with proper face textures ---
-            renderBlockCube(type, textureAtlas);
+            // --- Create and draw the block (cube, or flower cross) ---
+            renderBlockCube(shaderProgram, type);
 
         } finally {
             // --- Restore previous GL state ---
@@ -314,16 +311,24 @@ public class BlockIconRenderer {
     /**
      * Renders the actual block cube geometry.
      */
-    private void renderBlockCube(BlockType type, BlockTextureArray textureAtlas) {
+    private void renderBlockCube(ShaderProgram shaderProgram, BlockType type) {
         if (!blockRenderer.hasCBRSupport()) {
             throw new IllegalStateException("BlockIconRenderer requires CBR support. BlockRenderer must be initialized with BlockDefinitionRegistry.");
         }
 
-        // Cube mesh textured from the block texture array (per-face layers).
-        MeshManager.MeshResource mesh = getIconCubeMesh(type);
+        // Flowers render as their SBO cross geometry; other blocks as cubes.
+        boolean isFlower = type.isFlower() && sboHandMeshRegistry != null
+                && sboHandMeshRegistry.getMesh(type) != null;
+        MeshManager.MeshResource mesh = isFlower
+                ? sboHandMeshRegistry.getMesh(type)
+                : getIconCubeMesh(type);
+
+        // Flower cross meshes carry no per-vertex alpha flag — force alpha test.
+        shaderProgram.setUniform("u_forceAlphaTest", isFlower);
         mesh.bind();
         glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
         mesh.unbind();
+        shaderProgram.setUniform("u_forceAlphaTest", false);
     }
     
 
