@@ -142,7 +142,7 @@ public class Game {
         this.multiplayerMenu = new com.stonebreak.ui.multiplayerMenu.MultiplayerMenu(this.renderer.getSkijaBackend());
         this.hostWorldScreen = new com.stonebreak.ui.multiplayerMenu.HostWorldScreen(this.renderer.getSkijaBackend());
         this.joinWorldScreen = new com.stonebreak.ui.multiplayerMenu.JoinWorldScreen(this.renderer.getSkijaBackend());
-        this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
+        this.loadingScreen = new LoadingScreen(this.renderer.getSkijaBackend());
         this.worldSelectScreen = new WorldSelectScreen(this.renderer.getSkijaBackend());
         this.terrainMapperScreen = new TerrainMapperScreen(this.renderer.getSkijaBackend());
         this.startupIntroScreen = new SonarArtsIntroScreen(this.renderer.getSkijaBackend());

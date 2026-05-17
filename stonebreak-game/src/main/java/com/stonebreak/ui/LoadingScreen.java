@@ -4,29 +4,14 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.ArrayList;
 
-import com.stonebreak.rendering.UI.UIRenderer;
-import org.lwjgl.nanovg.NVGColor;
-import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_CENTER;
-import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_MIDDLE;
-import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_LEFT;
-import static org.lwjgl.nanovg.NanoVG.nvgBeginPath;
-import static org.lwjgl.nanovg.NanoVG.nvgFill;
-import static org.lwjgl.nanovg.NanoVG.nvgFillColor;
-import static org.lwjgl.nanovg.NanoVG.nvgFontFace;
-import static org.lwjgl.nanovg.NanoVG.nvgFontSize;
-import static org.lwjgl.nanovg.NanoVG.nvgRect;
-import static org.lwjgl.nanovg.NanoVG.nvgStroke;
-import static org.lwjgl.nanovg.NanoVG.nvgStrokeColor;
-import static org.lwjgl.nanovg.NanoVG.nvgStrokeWidth;
-import static org.lwjgl.nanovg.NanoVG.nvgText;
-import static org.lwjgl.nanovg.NanoVG.nvgTextAlign;
-import org.lwjgl.system.MemoryStack;
+import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import static org.lwjgl.glfw.GLFW.*;
 
 public class LoadingScreen {
-    private final UIRenderer uiRenderer;
+    private final SkijaUIBackend backend;
+    private final SkijaLoadingScreenRenderer renderer;
     private boolean visible = false;
     private String currentStageName = "Initializing...";
     private int currentStageIndex = 0;
@@ -67,8 +52,9 @@ public class LoadingScreen {
         CRITICAL
     }
 
-    public LoadingScreen(UIRenderer uiRenderer) {
-        this.uiRenderer = uiRenderer;
+    public LoadingScreen(SkijaUIBackend backend) {
+        this.backend = backend;
+        this.renderer = new SkijaLoadingScreenRenderer(backend);
     }
 
     public void show() {
@@ -205,266 +191,55 @@ public class LoadingScreen {
         return new ArrayList<>(diagnosticInfo);
     }
 
+    /**
+     * Returns the current stage name (package-private for the Skija renderer).
+     */
+    String getCurrentStageName() {
+        return currentStageName;
+    }
+
+    /**
+     * Returns the current sub-stage description.
+     */
+    String getCurrentSubStage() {
+        return currentSubStage;
+    }
+
+    /**
+     * Returns the current sub-stage progress index.
+     */
+    int getSubStageProgress() {
+        return subStageProgress;
+    }
+
+    /**
+     * Returns the total number of sub-stages.
+     */
+    int getTotalSubStages() {
+        return totalSubStages;
+    }
+
+    /**
+     * Returns the estimated time remaining string.
+     */
+    String getEstimatedTimeRemaining() {
+        return estimatedTimeRemaining;
+    }
+
+    /**
+     * Returns the normalized progress value (0-1) for the progress bar.
+     */
+    float getProgress() {
+        return totalStages > 0 ? (float) (currentStageIndex + 1) / totalStages : 0f;
+    }
+
+    /**
+     * Renders this loading screen using the Skija backend.
+     */
     public void render(int windowWidth, int windowHeight) {
-        if (!visible || uiRenderer == null) {
-            return;
-        }
-
-        long vg = uiRenderer.getVG();
-        float centerX = windowWidth / 2.0f;
-        float centerY = windowHeight / 2.0f;
-
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            // Full screen semi-transparent black background
-            uiRenderer.renderQuad(0, 0, windowWidth, windowHeight, 0.0f, 0.0f, 0.0f, 0.85f);
-
-            // "Loading..." Text (Optional, can be game title)
-            String loadingTitle = "STONEBREAK"; // Or "Loading World..."
-            float titleFontSize = 48;
-            String titleFont = (uiRenderer.getTextWidth("Test", titleFontSize, "minecraft") > 0) ? "minecraft" : "sans-bold";
-            
-            nvgFontSize(vg, titleFontSize);
-            nvgFontFace(vg, titleFont);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            
-            // Simple 3D effect for title
-            nvgFillColor(vg, uiRenderer.nvgRGBA(80, 80, 80, 255, NVGColor.malloc(stack)));
-            nvgText(vg, centerX + 2, centerY - 100 + 2, loadingTitle);
-            nvgFillColor(vg, uiRenderer.nvgRGBA(220, 220, 220, 255, NVGColor.malloc(stack)));
-            nvgText(vg, centerX, centerY - 100, loadingTitle);
-
-
-            // Current Stage Name Text
-            float stageFontSize = 24;
-            String stageFont = (uiRenderer.getTextWidth("Test", stageFontSize, "sans") > 0) ? "sans" : "minecraft";
-            
-            nvgFontSize(vg, stageFontSize);
-            nvgFontFace(vg, stageFont);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, uiRenderer.nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
-            nvgText(vg, centerX, centerY - 10, currentStageName);
-            
-            // Sub-stage information (if available)
-            if (currentSubStage != null && !currentSubStage.trim().isEmpty()) {
-                float subStageFontSize = 16;
-                nvgFontSize(vg, subStageFontSize);
-                nvgFillColor(vg, uiRenderer.nvgRGBA(160, 160, 160, 255, NVGColor.malloc(stack)));
-                
-                String subStageText = currentSubStage;
-                if (totalSubStages > 1) {
-                    subStageText += String.format(" (%d/%d)", subStageProgress + 1, totalSubStages);
-                }
-                nvgText(vg, centerX, centerY + 15, subStageText);
-            }
-            
-            // Estimated time remaining
-            if (!estimatedTimeRemaining.equals("Calculating...") && !estimatedTimeRemaining.isEmpty()) {
-                float timeFontSize = 14;
-                nvgFontSize(vg, timeFontSize);
-                nvgFillColor(vg, uiRenderer.nvgRGBA(140, 140, 140, 255, NVGColor.malloc(stack)));
-                nvgText(vg, centerX, centerY + 35, "Time remaining: " + estimatedTimeRemaining);
-            }
-
-            // Progress Bar
-            float barWidth = 400;
-            float barHeight = 30;
-            float barX = centerX - barWidth / 2;
-            float barY = centerY + 50;
-            float progress = totalStages > 0 ? (float) (currentStageIndex +1) / totalStages : 0;
-            float filledWidth = barWidth * progress;
-
-            // Background of the progress bar
-            nvgBeginPath(vg);
-            nvgRect(vg, barX, barY, barWidth, barHeight);
-            nvgFillColor(vg, uiRenderer.nvgRGBA(50, 50, 50, 255, NVGColor.malloc(stack)));
-            nvgFill(vg);
-
-            // Filled part of the progress bar
-            if (filledWidth > 0) {
-                nvgBeginPath(vg);
-                nvgRect(vg, barX + 2, barY + 2, filledWidth - 4, barHeight - 4); // Small inner padding
-                nvgFillColor(vg, uiRenderer.nvgRGBA(80, 120, 200, 255, NVGColor.malloc(stack))); // Blueish progress
-                nvgFill(vg);
-            }
-
-            // Border of the progress bar
-            nvgBeginPath(vg);
-            nvgRect(vg, barX, barY, barWidth, barHeight);
-            nvgStrokeWidth(vg, 2.0f);
-            nvgStrokeColor(vg, uiRenderer.nvgRGBA(150, 150, 150, 255, NVGColor.malloc(stack)));
-            nvgStroke(vg);
-
-            // Progress percentage text (optional)
-            String progressText = String.format("%d%%", (int)(progress * 100));
-            float percentFontSize = 16;
-            String percentFont = (uiRenderer.getTextWidth("Test", percentFontSize, "sans") > 0) ? "sans" : "minecraft";
-
-            nvgFontSize(vg, percentFontSize);
-            nvgFontFace(vg, percentFont);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, uiRenderer.nvgRGBA(220, 220, 220, 255, NVGColor.malloc(stack)));
-            nvgText(vg, centerX, barY + barHeight / 2, progressText);
-
-            // Enhanced error message display (if there's an error)
-            if (hasError && errorMessage != null) {
-                renderDetailedError(vg, stack, centerX, centerY, windowWidth, windowHeight);
-            }
-
-        } catch (Exception e) {
-            System.err.println("Error rendering loading screen: " + e.getMessage());
-            // Log the exception rather than printing stack trace directly
-        }
+        renderer.render(this, windowWidth, windowHeight);
     }
     
-    /**
-     * Renders detailed error information including severity, error code, recovery actions, and diagnostics.
-     */
-    private void renderDetailedError(long vg, MemoryStack stack, float centerX, float centerY, 
-                                   int windowWidth, int windowHeight) {
-        float errorBoxWidth = Math.min(700, windowWidth - 100);
-        float baseErrorBoxHeight = 120;
-        
-        // Calculate additional height needed for recovery actions and diagnostics
-        float additionalHeight = 0;
-        if (!recoveryActions.isEmpty()) {
-            additionalHeight += 20 + (recoveryActions.size() * 18);
-        }
-        if (!diagnosticInfo.isEmpty()) {
-            additionalHeight += 20 + Math.min(diagnosticInfo.size() * 16, 80); // Limit diagnostic display
-        }
-        
-        float errorBoxHeight = baseErrorBoxHeight + additionalHeight;
-        float errorBoxX = centerX - errorBoxWidth / 2;
-        float errorBoxY = centerY + 120;
-        
-        // Determine colors based on severity
-        NVGColor bgColor, borderColor, titleColor, textColor;
-        String severityText;
-        
-        switch (errorSeverity) {
-            case CRITICAL:
-                bgColor = uiRenderer.nvgRGBA(140, 20, 20, 220, NVGColor.malloc(stack));
-                borderColor = uiRenderer.nvgRGBA(220, 50, 50, 255, NVGColor.malloc(stack));
-                titleColor = uiRenderer.nvgRGBA(255, 180, 180, 255, NVGColor.malloc(stack));
-                textColor = uiRenderer.nvgRGBA(255, 200, 200, 255, NVGColor.malloc(stack));
-                severityText = "CRITICAL ERROR";
-                break;
-            case ERROR:
-                bgColor = uiRenderer.nvgRGBA(120, 20, 20, 200, NVGColor.malloc(stack));
-                borderColor = uiRenderer.nvgRGBA(200, 50, 50, 255, NVGColor.malloc(stack));
-                titleColor = uiRenderer.nvgRGBA(255, 180, 180, 255, NVGColor.malloc(stack));
-                textColor = uiRenderer.nvgRGBA(255, 200, 200, 255, NVGColor.malloc(stack));
-                severityText = "ERROR";
-                break;
-            case WARNING:
-                bgColor = uiRenderer.nvgRGBA(120, 80, 20, 200, NVGColor.malloc(stack));
-                borderColor = uiRenderer.nvgRGBA(200, 150, 50, 255, NVGColor.malloc(stack));
-                titleColor = uiRenderer.nvgRGBA(255, 220, 140, 255, NVGColor.malloc(stack));
-                textColor = uiRenderer.nvgRGBA(255, 230, 180, 255, NVGColor.malloc(stack));
-                severityText = "WARNING";
-                break;
-            default: // INFO
-                bgColor = uiRenderer.nvgRGBA(20, 80, 120, 200, NVGColor.malloc(stack));
-                borderColor = uiRenderer.nvgRGBA(50, 150, 200, 255, NVGColor.malloc(stack));
-                titleColor = uiRenderer.nvgRGBA(180, 220, 255, 255, NVGColor.malloc(stack));
-                textColor = uiRenderer.nvgRGBA(200, 230, 255, 255, NVGColor.malloc(stack));
-                severityText = "INFO";
-                break;
-        }
-        
-        // Error background
-        nvgBeginPath(vg);
-        nvgRect(vg, errorBoxX, errorBoxY, errorBoxWidth, errorBoxHeight);
-        nvgFillColor(vg, bgColor);
-        nvgFill(vg);
-        
-        // Error border
-        nvgBeginPath(vg);
-        nvgRect(vg, errorBoxX, errorBoxY, errorBoxWidth, errorBoxHeight);
-        nvgStrokeWidth(vg, 2.0f);
-        nvgStrokeColor(vg, borderColor);
-        nvgStroke(vg);
-        
-        float currentY = errorBoxY + 15;
-        
-        // Severity and error code header
-        nvgFontSize(vg, 16);
-        nvgFontFace(vg, "sans");
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgFillColor(vg, titleColor);
-        
-        String headerText = severityText;
-        if (errorCode != null) {
-            headerText += " [" + errorCode + "]";
-        }
-        nvgText(vg, centerX, currentY, headerText);
-        currentY += 25;
-        
-        // Main error message
-        nvgFontSize(vg, 14);
-        nvgFillColor(vg, textColor);
-        nvgText(vg, centerX, currentY, errorMessage);
-        currentY += 25;
-        
-        // Recovery actions
-        if (!recoveryActions.isEmpty()) {
-            nvgFontSize(vg, 13);
-            nvgFillColor(vg, titleColor);
-            nvgText(vg, centerX, currentY, "Suggested Actions:");
-            currentY += 20;
-            
-            nvgFontSize(vg, 12);
-            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, textColor);
-            
-            for (int i = 0; i < Math.min(recoveryActions.size(), 4); i++) {
-                String action = "• " + recoveryActions.get(i);
-                nvgText(vg, errorBoxX + 20, currentY, action);
-                currentY += 18;
-            }
-            
-            if (recoveryActions.size() > 4) {
-                nvgText(vg, errorBoxX + 20, currentY, "• ... and " + (recoveryActions.size() - 4) + " more actions");
-                currentY += 18;
-            }
-        }
-        
-        // Diagnostic information
-        if (!diagnosticInfo.isEmpty()) {
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFontSize(vg, 13);
-            nvgFillColor(vg, titleColor);
-            nvgText(vg, centerX, currentY, "Technical Details:");
-            currentY += 20;
-            
-            nvgFontSize(vg, 11);
-            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, uiRenderer.nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
-            
-            for (int i = 0; i < Math.min(diagnosticInfo.size(), 5); i++) {
-                String diagnostic = diagnosticInfo.get(i);
-                // Truncate long diagnostic messages
-                if (diagnostic.length() > 80) {
-                    diagnostic = diagnostic.substring(0, 77) + "...";
-                }
-                nvgText(vg, errorBoxX + 20, currentY, diagnostic);
-                currentY += 16;
-            }
-        }
-        
-        // Instructions
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgFontSize(vg, 14);
-        nvgFillColor(vg, uiRenderer.nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
-        
-        String instructionText = "Press ESC to return to main menu";
-        if (errorSeverity == ErrorSeverity.WARNING || errorSeverity == ErrorSeverity.INFO) {
-            instructionText += " or wait for auto-recovery";
-        }
-        
-        nvgText(vg, centerX, errorBoxY + errorBoxHeight + 25, instructionText);
-    }
-
     /**
      * Handles input for the loading screen, primarily for error recovery.
      */

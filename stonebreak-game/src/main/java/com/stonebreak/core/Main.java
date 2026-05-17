@@ -11,6 +11,7 @@ import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.DebugOverlay;
+import com.stonebreak.ui.LoadingScreen;
 import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
@@ -639,7 +640,11 @@ public class Main {
                 com.stonebreak.ui.terrainMapper.TerrainMapperScreen tms = game.getTerrainMapperScreen();
                 if (tms != null) tms.render(width, height);
             }
-            case LOADING -> renderUIState(renderer, game.getLoadingScreen());
+            case LOADING -> {
+                // Skija-backed; brackets GL itself.
+                LoadingScreen ls = game.getLoadingScreen();
+                if (ls != null) ls.render(width, height);
+            }
             case SETTINGS -> {
                 // Skija-backed MasonryUI; brackets GL itself.
                 SettingsMenu sm = game.getSettingsMenu();
@@ -658,16 +663,6 @@ public class Main {
         }
         
         renderDebugOverlay(renderer);
-    }
-
-    private void renderUIState(Renderer renderer, Object screen) {
-        if (renderer == null || screen == null) return;
-
-        renderer.beginUIFrame(width, height, 1.0f);
-        if (screen instanceof com.stonebreak.ui.LoadingScreen loadingScreen) {
-            loadingScreen.render(width, height);
-        }
-        renderer.endUIFrame();
     }
 
     private void render3DGameState(Game game, Renderer renderer) {
