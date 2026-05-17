@@ -1,8 +1,5 @@
 package com.stonebreak.mobs.entities;
 
-import org.joml.Vector3f;
-import com.stonebreak.mobs.cow.Cow;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -47,11 +44,6 @@ public class AnimationController {
         // Update active animation states
         for (AnimationState state : activeAnimations.values()) {
             state.update(deltaTime);
-        }
-        
-        // Apply entity-specific animations
-        if (entity instanceof Cow cow) {
-            updateCowAnimations(cow, deltaTime);
         }
     }
     
@@ -105,56 +97,6 @@ public class AnimationController {
             playAnimation(toAnimation, true);
         } else {
             playAnimation(fromAnimation, true);
-        }
-    }
-    
-    /**
-     * Updates cow-specific animations.
-     */
-    public void updateCowAnimations(Cow cow, float deltaTime) {
-        // Determine current animation based on cow's behavior state
-        String targetAnimation = getCowAnimationName(cow);
-        
-        // Play appropriate animation
-        playAnimation(targetAnimation, true);
-        
-        // Apply animation effects
-        applyCowAnimationEffects(cow, targetAnimation, totalAnimationTime);
-    }
-    
-    /**
-     * Gets the animation name for a cow's current state.
-     */
-    private String getCowAnimationName(Cow cow) {
-        return switch (cow.getAI().getCurrentState()) {
-            case WANDERING -> "walking";
-            case GRAZING -> "grazing";
-            case IDLE -> "idle";
-        };
-    }
-    
-    /**
-     * Applies visual effects based on cow animation.
-     */
-    private void applyCowAnimationEffects(Cow cow, String animationName, float time) {
-        switch (animationName) {
-            case "walking" -> {
-                // Create subtle bouncing effect during walking
-                float walkBounce = (float) Math.sin(time * 6.0f) * 0.02f;
-                Vector3f currentPos = cow.getPosition();
-                currentPos.y += walkBounce;
-            }
-            case "grazing" -> {
-                // Lower the cow slightly when grazing
-                Vector3f grazingPos = cow.getPosition();
-                grazingPos.y -= 0.05f;
-            }
-            case "idle" -> {
-                // Subtle breathing effect
-                float breathingEffect = (float) Math.sin(time * 2.0f) * 0.01f;
-                Vector3f idlePos = cow.getPosition();
-                idlePos.y += breathingEffect;
-            }
         }
     }
     

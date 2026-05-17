@@ -172,7 +172,7 @@ public class ToolsMenuHandler {
      * Open the SBE export window.
      */
     private void exportSBE() {
-        if (!prepareForExport("SBE")) return;
+        if (!prepareForExport("sbe")) return;
 
         if (sbeExportWindow != null) {
             sbeExportWindow.show();

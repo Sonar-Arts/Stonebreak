@@ -3,7 +3,7 @@ package com.stonebreak.core.bootstrap;
 import com.stonebreak.audio.SoundSystem;
 import com.stonebreak.config.Settings;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.CowTextureAtlas;
+import com.stonebreak.mobs.sbe.SbeCowLoader;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.DebugOverlay;
@@ -60,11 +60,12 @@ public final class GameBootstrap {
     }
 
     /**
-     * Primes the cow texture atlas used by entity renderers.
+     * Primes the SBE cow asset (mesh, variants and animation clips) so the
+     * decode cost is paid up front rather than on the first cow spawn.
      */
-    public static void initializeCowTextureAtlas() {
-        CowTextureAtlas.initialize();
-        System.out.println("Cow texture atlas initialized");
+    public static void initializeCowAsset() {
+        SbeCowLoader.get();
+        System.out.println("SBE cow asset loaded");
     }
 
     /**

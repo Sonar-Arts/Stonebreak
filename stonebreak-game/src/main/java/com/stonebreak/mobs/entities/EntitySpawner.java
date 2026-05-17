@@ -48,8 +48,8 @@ public class EntitySpawner {
     private static final int MIN_SPAWN_HEIGHT = 60;
     private static final int MAX_SPAWN_HEIGHT = 120;
 
-    // Cow texture variants
-    private static final String[] COW_TEXTURE_VARIANTS = {"default", "angus", "highland", "jersey"};
+    // Cow appearance variants — must match the variant names in SB_Cow.sbe.
+    private static final String[] COW_TEXTURE_VARIANTS = {"Default", "Angus", "Highland"};
 
     // Tick counter for spawning cycle
     private int tickCounter = 0;

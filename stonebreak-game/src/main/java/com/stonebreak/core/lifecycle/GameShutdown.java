@@ -10,7 +10,7 @@ import com.stonebreak.core.Game;
 /**
  * Orchestrates {@link Game} shutdown: cleans up per-instance subsystems,
  * flushes the save service, terminates the world-update executor, and
- * tears down static resources (MMS API, ModelLoader, CowTextureAtlas).
+ * tears down static resources (MMS API).
  * Extracted from {@code Game.cleanup()} / {@code Game.cleanupStaticResources()}.
  */
 public final class GameShutdown {
@@ -90,18 +90,5 @@ public final class GameShutdown {
             System.err.println("Error shutting down MMS API: " + e.getMessage());
         }
 
-        try {
-            System.out.println("Shutting down ModelLoader executor...");
-            com.stonebreak.model.ModelLoader.shutdown();
-        } catch (Exception e) {
-            System.err.println("Error shutting down ModelLoader: " + e.getMessage());
-        }
-
-        try {
-            System.out.println("Cleaning up CowTextureAtlas...");
-            com.stonebreak.rendering.CowTextureAtlas.cleanup();
-        } catch (Exception e) {
-            System.err.println("Error cleaning up CowTextureAtlas: " + e.getMessage());
-        }
     }
 }

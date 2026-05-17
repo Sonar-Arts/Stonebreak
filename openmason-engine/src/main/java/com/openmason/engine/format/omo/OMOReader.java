@@ -35,7 +35,8 @@ public class OMOReader {
             ParsedMeshData meshData,
             List<ParsedFaceMapping> faceMappings,
             List<ParsedMaterialData> materials,
-            byte[] defaultTextureBytes
+            byte[] defaultTextureBytes,
+            List<OMOFormat.PartEntry> parts
     ) {}
 
     /**
@@ -50,6 +51,7 @@ public class OMOReader {
         ParsedMeshData meshData = null;
         List<ParsedFaceMapping> faceMappings = new ArrayList<>();
         List<OMOFormat.MaterialEntry> materialEntries = new ArrayList<>();
+        List<OMOFormat.PartEntry> parts = new ArrayList<>();
         Map<String, byte[]> materialTextures = new HashMap<>();
         byte[] defaultTextureBytes = null;
 
@@ -65,6 +67,7 @@ public class OMOReader {
                     meshData = result.meshData;
                     faceMappings = result.faceMappings;
                     materialEntries = result.materialEntries;
+                    parts = result.parts;
 
                 } else if (OMOFormat.DEFAULT_TEXTURE_FILENAME.equals(entryName)) {
                     defaultTextureBytes = readBytes(zis);
@@ -91,14 +94,15 @@ public class OMOReader {
             ));
         }
 
-        return new ReadResult(document, meshData, faceMappings, materials, defaultTextureBytes);
+        return new ReadResult(document, meshData, faceMappings, materials, defaultTextureBytes, parts);
     }
 
     private record ManifestResult(
             OMOFormat.Document document,
             ParsedMeshData meshData,
             List<ParsedFaceMapping> faceMappings,
-            List<OMOFormat.MaterialEntry> materialEntries
+            List<OMOFormat.MaterialEntry> materialEntries,
+            List<OMOFormat.PartEntry> parts
     ) {}
 
     private ManifestResult parseManifest(byte[] jsonBytes) throws IOException {
@@ -169,7 +173,47 @@ public class OMOReader {
             }
         }
 
-        return new ManifestResult(document, meshData, faceMappings, materialEntries);
+        // Parse model parts (v1.3+)
+        List<OMOFormat.PartEntry> parts = new ArrayList<>();
+        JsonNode partsNode = root.get("parts");
+        if (partsNode != null && partsNode.isArray()) {
+            for (JsonNode p : partsNode) {
+                parts.add(new OMOFormat.PartEntry(
+                        p.get("id").asText(),
+                        p.get("name").asText(),
+                        (float) p.get("originX").asDouble(),
+                        (float) p.get("originY").asDouble(),
+                        (float) p.get("originZ").asDouble(),
+                        (float) p.get("posX").asDouble(),
+                        (float) p.get("posY").asDouble(),
+                        (float) p.get("posZ").asDouble(),
+                        (float) p.get("rotX").asDouble(),
+                        (float) p.get("rotY").asDouble(),
+                        (float) p.get("rotZ").asDouble(),
+                        (float) p.get("scaleX").asDouble(),
+                        (float) p.get("scaleY").asDouble(),
+                        (float) p.get("scaleZ").asDouble(),
+                        p.get("vertexStart").asInt(),
+                        p.get("vertexCount").asInt(),
+                        p.get("indexStart").asInt(),
+                        p.get("indexCount").asInt(),
+                        p.get("faceStart").asInt(),
+                        p.get("faceCount").asInt(),
+                        !p.has("visible") || p.get("visible").asBoolean(),
+                        p.has("locked") && p.get("locked").asBoolean(),
+                        textOrNull(p, "parentId"),
+                        textOrNull(p, "boneId")
+                ));
+            }
+        }
+
+        return new ManifestResult(document, meshData, faceMappings, materialEntries, parts);
+    }
+
+    private static String textOrNull(JsonNode parent, String field) {
+        JsonNode node = parent.get(field);
+        if (node == null || node.isNull()) return null;
+        return node.asText();
     }
 
     private ParsedMeshData parseMeshData(JsonNode meshNode) {

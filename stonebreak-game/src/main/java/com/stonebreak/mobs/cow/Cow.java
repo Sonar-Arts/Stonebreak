@@ -35,10 +35,7 @@ public class Cow extends LivingEntity {
     // Texture variant system
     private final String textureVariant;
     
-    // Animation system
-    private String currentAnimation;
-    private float animationTransitionTime;
-    private static final float ANIMATION_TRANSITION_DURATION = 0.5f;
+    // Animation system — drives the clip clock for the SBE cow renderer.
     private final AnimationController animationController;
 
     // Sound system
@@ -75,8 +72,6 @@ public class Cow extends LivingEntity {
         this.cowAI = new CowAI(this);
         
         // Initialize animation system
-        this.currentAnimation = "IDLE";
-        this.animationTransitionTime = 0.0f;
         this.animationController = new AnimationController(this);
 
         // Initialize sound system
@@ -106,8 +101,7 @@ public class Cow extends LivingEntity {
             cowAI.update(deltaTime);
         }
         
-        // Update animation system
-        updateAnimationState(deltaTime);
+        // Advance the animation clock; the SBE cow renderer samples clips from it.
         animationController.updateAnimations(deltaTime);
 
         // Update cow sounds
@@ -141,49 +135,6 @@ public class Cow extends LivingEntity {
             grazingTimer += deltaTime;
         }
     }
-    
-    /**
-     * Updates the cow's animation state based on behavior.
-     */
-    private void updateAnimationState(float deltaTime) {
-        // Determine target animation based on AI state
-        String targetAnimation = getAnimationForBehavior(cowAI.getCurrentState());
-        
-        // Check if animation should change
-        if (!targetAnimation.equals(currentAnimation)) {
-            // Start animation transition
-            currentAnimation = targetAnimation;
-            animationTransitionTime = 0.0f;
-        }
-        
-        // Update transition timer
-        if (animationTransitionTime < ANIMATION_TRANSITION_DURATION) {
-            animationTransitionTime += deltaTime;
-        }
-    }
-    
-    /**
-     * Gets the appropriate animation for a cow behavior state.
-     */
-    private String getAnimationForBehavior(CowAI.CowBehaviorState behaviorState) {
-        return switch (behaviorState) {
-            case WANDERING -> "WALKING";
-            case GRAZING -> "GRAZING";
-            case IDLE -> "IDLE";
-        };
-    }
-    
-    /**
-     * Gets the current animation with transition blending.
-     */
-    public String getCurrentAnimation() {
-        // If we're still transitioning, we might want to blend animations
-        // For simplicity, we'll just return the current animation
-        return currentAnimation;
-    }
-    
-    
-    
     
     /**
      * Renders the cow using a basic model (placeholder implementation).
