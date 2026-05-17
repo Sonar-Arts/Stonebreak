@@ -4,6 +4,7 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
@@ -256,6 +257,59 @@ public class EntityRenderer {
         }
 
         renderSimpleEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
+    }
+
+    /**
+     * Draws a debug wireframe overlay of an entity's actual model.
+     *
+     * <p>Unlike a bounding box, this re-draws the model's own mesh through the
+     * same animated transform pipeline used by {@link #renderEntity}, so the
+     * overlay always tracks the rendered entity exactly. Supported for SBE-driven
+     * mobs (cows, chickens); other entity types are ignored.
+     *
+     * @param color RGBA line colour for the wireframe
+     */
+    public void renderEntityWireframe(Entity entity, Matrix4f viewMatrix,
+                                      Matrix4f projectionMatrix, Vector4f color) {
+        if (!initialized || !entity.isAlive()) return;
+
+        EntityType entityType = entity.getType();
+
+        if (entityType == EntityType.COW && entity instanceof com.stonebreak.mobs.cow.Cow cow) {
+            sbeEntityRenderer.renderWireframe(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
+                    cow.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.CowStateMapping.sbeState(cow.getAI().getCurrentState()),
+                    cow.getAnimationController().getTotalAnimationTime(),
+                    cow.getPosition(),
+                    cow.getRotation().y,
+                    cow.getScale(),
+                    viewMatrix, projectionMatrix, color);
+            return;
+        }
+
+        if (entityType == EntityType.CHICKEN
+                && entity instanceof com.stonebreak.mobs.chicken.Chicken chicken) {
+            com.stonebreak.mobs.chicken.ChickenAI chickenAI = chicken.getAI();
+            // Match renderEntity()'s clip timing: the one-shot Wingflap clip is
+            // fed flap-relative time so the wireframe animates in step with the
+            // rendered model.
+            boolean flapping = chickenAI.getCurrentState()
+                    == com.stonebreak.mobs.chicken.ChickenAI.ChickenBehaviorState.WING_FLAP;
+            float animationTime = flapping
+                    ? chickenAI.getStateTimer()
+                    : chicken.getAnimationController().getTotalAnimationTime();
+
+            sbeEntityRenderer.renderWireframe(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
+                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                    com.stonebreak.mobs.sbe.ChickenStateMapping.sbeState(chickenAI.getCurrentState()),
+                    animationTime,
+                    chicken.getPosition(),
+                    chicken.getRotation().y,
+                    chicken.getScale(),
+                    viewMatrix, projectionMatrix, color);
+        }
     }
 
     private void renderSimpleEntity(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,

@@ -1,7 +1,5 @@
 package com.stonebreak.rendering;
 
-import java.util.List;
-
 import com.stonebreak.rendering.core.OpenGLErrorHandler;
 import com.stonebreak.rendering.core.RenderingConfigurationManager;
 import com.stonebreak.rendering.core.ResourceManager;
@@ -29,7 +27,7 @@ import com.stonebreak.ui.Font;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.chat.ChatSystem;
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
@@ -686,21 +684,28 @@ public class Renderer {
     }
 
     /**
-     * Renders a wireframe bounding box for debug purposes.
-     * @param boundingBox The bounding box to render
-     * @param color The color of the wireframe (RGB, each component 0.0-1.0)
+     * Exposes the debug renderer for batched debug-line drawing (model-fitted
+     * bounding boxes and AI paths).
+     * @return the DebugRenderer instance
      */
-    public void renderWireframeBoundingBox(com.stonebreak.mobs.entities.Entity.BoundingBox boundingBox, Vector3f color) {
-        debugRenderer.renderWireframeBoundingBox(boundingBox, color);
+    public DebugRenderer getDebugRenderer() {
+        return debugRenderer;
     }
-    
+
     /**
-     * Renders a wireframe path as connected line segments.
-     * @param pathPoints The list of points forming the path
-     * @param color The color of the path wireframe (RGB, each component 0.0-1.0)
+     * Draws a debug wireframe overlay of an entity's model, using the live
+     * camera matrices. The overlay re-draws the animated model mesh, so it
+     * tracks the entity exactly rather than approximating it with a box.
+     * @param entity the entity to outline
+     * @param color  RGBA line colour
      */
-    public void renderWireframePath(List<Vector3f> pathPoints, Vector3f color) {
-        debugRenderer.renderWireframePath(pathPoints, color);
+    public void renderEntityWireframe(com.stonebreak.mobs.entities.Entity entity, Vector4f color) {
+        com.stonebreak.player.Player player = Game.getPlayer();
+        if (player == null) {
+            return;
+        }
+        entityRenderer.renderEntityWireframe(entity, player.getViewMatrix(),
+                configManager.getProjectionMatrix(), color);
     }
 
     /**

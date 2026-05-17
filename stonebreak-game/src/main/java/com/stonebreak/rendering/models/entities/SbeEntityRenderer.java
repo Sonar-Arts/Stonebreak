@@ -12,6 +12,7 @@ import com.stonebreak.mobs.sbe.SbePart;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
@@ -46,6 +47,7 @@ import static org.lwjgl.system.MemoryUtil.memFree;
 public final class SbeEntityRenderer {
 
     private ShaderProgram shader;
+    private ShaderProgram wireShader;
     private boolean initialized;
     private long trackedMeshBytes;
     private long trackedTextureBytes;
@@ -62,10 +64,11 @@ public final class SbeEntityRenderer {
     /** Per-asset GPU resources, keyed by asset identity (assets are cached singletons). */
     private final Map<SbeEntityAsset, Map<String, VariantGpu>> assetGpu = new IdentityHashMap<>();
 
-    /** Initialize the shared shader. Must run on the GL thread. */
+    /** Initialize the shared shaders. Must run on the GL thread. */
     public void initialize() {
         if (initialized) return;
         createShader();
+        createWireShader();
         initialized = true;
     }
 
@@ -130,6 +133,46 @@ public final class SbeEntityRenderer {
             shader.createUniform("underwaterFogColor");
         } catch (Exception e) {
             System.err.println("Failed to create SBE entity shader: " + e.getMessage());
+        }
+    }
+
+    /** Flat-colour shader used by the debug wireframe overlay. */
+    private void createWireShader() {
+        String vertexShader = """
+            #version 330 core
+            layout (location = 0) in vec3 aPos;
+
+            uniform mat4 model;
+            uniform mat4 view;
+            uniform mat4 projection;
+
+            void main() {
+                gl_Position = projection * view * model * vec4(aPos, 1.0);
+            }
+            """;
+
+        String fragmentShader = """
+            #version 330 core
+            out vec4 FragColor;
+
+            uniform vec4 color;
+
+            void main() {
+                FragColor = color;
+            }
+            """;
+
+        try {
+            wireShader = new ShaderProgram();
+            wireShader.createVertexShader(vertexShader);
+            wireShader.createFragmentShader(fragmentShader);
+            wireShader.link();
+            wireShader.createUniform("model");
+            wireShader.createUniform("view");
+            wireShader.createUniform("projection");
+            wireShader.createUniform("color");
+        } catch (Exception e) {
+            System.err.println("Failed to create SBE wireframe shader: " + e.getMessage());
         }
     }
 
@@ -251,6 +294,108 @@ public final class SbeEntityRenderer {
         }
         GL20.glUseProgram(previousProgram);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture);
+        GL30.glBindVertexArray(previousVertexArray);
+    }
+
+    /**
+     * Draws an SBE entity as a flat-coloured, see-through wireframe overlay.
+     *
+     * <p>This is the debug visualisation: instead of approximating the entity
+     * with a bounding box, it re-draws the model's own triangles in line mode,
+     * reusing the exact per-part transform pipeline of {@link #render} — the
+     * same {@code base}, animation sampling and {@code M_rest^-1} delta. The
+     * overlay therefore tracks the animated model perfectly by construction.
+     * Depth testing is disabled so the wireframe is visible through geometry,
+     * which makes it usable as an entity locator.
+     *
+     * @param color RGBA line colour
+     */
+    public void renderWireframe(SbeEntityAsset asset, String variantName, String stateName,
+                                float animationTime, Vector3f position, float yawDegrees,
+                                Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                Vector4f color) {
+        if (!initialized || asset == null || wireShader == null) return;
+
+        SbeModelGeometry geometry = asset.geometryFor(variantName);
+        VariantGpu gpu = resolveVariantGpu(asset, variantName);
+        if (geometry == null || gpu == null) return;
+
+        ParsedAnimClip clip = asset.clipFor(stateName);
+        float clipTime = 0f;
+        Map<String, ParsedAnimTrack> tracksById = Map.of();
+        if (clip != null) {
+            clipTime = AnimSampler.wrapTime(animationTime, clip.duration(), clip.loop());
+            tracksById = clip.trackByPartId();
+        }
+
+        // Save GL state.
+        int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        int previousVertexArray = GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
+        boolean wasCullFaceEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
+        boolean wasDepthTestEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        int[] previousPolygonMode = new int[2];
+        GL11.glGetIntegerv(GL11.GL_POLYGON_MODE, previousPolygonMode);
+        float previousLineWidth = GL11.glGetFloat(GL11.GL_LINE_WIDTH);
+
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        GL11.glDisable(GL11.GL_CULL_FACE);
+        GL11.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_LINE);
+        GL11.glLineWidth(1.5f);
+
+        wireShader.bind();
+        wireShader.setUniform("view", viewMatrix);
+        wireShader.setUniform("projection", projectionMatrix);
+        wireShader.setUniform("color", color);
+
+        // Same base transform as render(): no re-anchoring of the model origin.
+        Matrix4f base = new Matrix4f()
+                .translate(position.x, position.y, position.z)
+                .rotateY((float) Math.toRadians(yawDegrees))
+                .scale(scale);
+
+        GL30.glBindVertexArray(gpu.vao);
+
+        Matrix4f partMatrix = new Matrix4f();
+        Matrix4f restInverse = new Matrix4f();
+        for (SbePart part : geometry.parts()) {
+            ParsedAnimTrack track = tracksById.get(part.id());
+            if (track == null) {
+                track = trackByName(clip, part.name());
+            }
+
+            if (track == null) {
+                partMatrix.set(base);
+            } else {
+                AnimSampler.PartPose pose = AnimSampler.sample(track, clipTime);
+                Vector3f origin = part.restOrigin();
+                partTransform(restInverse.identity(),
+                        part.restPos(), part.restRot(), part.restScale(), origin)
+                        .invert();
+                partTransform(partMatrix.set(base),
+                        pose.position(), pose.rotationDeg(), pose.scale(), origin)
+                        .mul(restInverse);
+            }
+            wireShader.setUniform("model", partMatrix);
+
+            for (SbeFace face : part.faces()) {
+                GL11.glDrawElements(GL11.GL_TRIANGLES, face.indexCount(),
+                        GL11.GL_UNSIGNED_INT, (long) face.indexStart() * Integer.BYTES);
+            }
+        }
+
+        GL30.glBindVertexArray(0);
+        wireShader.unbind();
+
+        // Restore GL state.
+        GL11.glPolygonMode(GL11.GL_FRONT_AND_BACK, previousPolygonMode[0]);
+        GL11.glLineWidth(previousLineWidth);
+        if (wasCullFaceEnabled) {
+            GL11.glEnable(GL11.GL_CULL_FACE);
+        }
+        if (wasDepthTestEnabled) {
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
+        }
+        GL20.glUseProgram(previousProgram);
         GL30.glBindVertexArray(previousVertexArray);
     }
 
@@ -378,6 +523,9 @@ public final class SbeEntityRenderer {
         if (!initialized) return;
         if (shader != null) {
             shader.cleanup();
+        }
+        if (wireShader != null) {
+            wireShader.cleanup();
         }
         for (Map<String, VariantGpu> variants : assetGpu.values()) {
             for (VariantGpu gpu : variants.values()) {

@@ -13,6 +13,7 @@ import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
 
 // LWJGL OpenGL Classes
+import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 
@@ -21,216 +22,155 @@ import static org.lwjgl.opengl.GL11.*;
 
 // Stonebreak Game Components
 import com.stonebreak.core.Game;
-import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.emitters.SoundEmitterRenderer;
 import com.stonebreak.audio.emitters.SoundEmitter;
 
 /**
- * Specialized renderer for debug visualizations including wireframe bounding boxes and paths.
- * This renderer handles all debug-related rendering tasks that are separate from the main game rendering pipeline.
+ * Renderer for debug line visualisations: entity AI path trails.
+ *
+ * <p>Drawing is batched. A caller wraps any number of {@link #drawPath} calls
+ * between {@link #beginBatch()} and {@link #endBatch()}; the shader is bound and
+ * the camera matrices uploaded once for the whole batch, and GL state is saved
+ * and restored exactly once. The path vertex buffer is allocated up front and
+ * reused every frame — nothing is generated or freed per entity.
+ *
+ * <p>Entity model outlines are drawn separately as see-through wireframes of the
+ * actual model mesh (see {@code SbeEntityRenderer.renderWireframe}), not by this
+ * class.
  */
 public class DebugRenderer {
-    private ShaderProgram shaderProgram;
-    private Matrix4f projectionMatrix;
-    private int wireframeVao;
-    private SoundEmitterRenderer soundEmitterRenderer;
+
+    /** Capacity of the reusable path buffer, in points. */
+    private static final int MAX_PATH_POINTS = 64;
+
+    /** Line thickness for debug geometry. */
+    private static final float LINE_WIDTH = 2.0f;
+
+    private final ShaderProgram shaderProgram;
+    private final Matrix4f projectionMatrix;
+    private final SoundEmitterRenderer soundEmitterRenderer;
+
+    // Reusable dynamic buffer for path line segments.
+    private int pathVao;
+    private int pathVbo;
+    private final FloatBuffer pathScratch =
+            BufferUtils.createFloatBuffer(MAX_PATH_POINTS * 2 * 3);
+
+    // Batch state, valid only between beginBatch() and endBatch().
+    private boolean batchActive;
+    private boolean savedDepthTest;
+    private float savedLineWidth;
 
     public DebugRenderer(ShaderProgram shaderProgram, Matrix4f projectionMatrix) {
         this.shaderProgram = shaderProgram;
         this.projectionMatrix = projectionMatrix;
-        createWireframe();
-
-        // Initialize sound emitter renderer
         this.soundEmitterRenderer = new SoundEmitterRenderer(shaderProgram, projectionMatrix);
+        createPathGeometry();
     }
-    
-    /**
-     * Creates the wireframe VAO for debug bounding box rendering.
-     */
-    private void createWireframe() {
-        // Create vertices for a unit cube wireframe (12 edges, 24 vertices)
-        float[] vertices = {
-            // Bottom face edges
-            -0.5f, -0.5f, -0.5f,  0.5f, -0.5f, -0.5f, // Front edge
-             0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f, // Right edge  
-             0.5f, -0.5f,  0.5f, -0.5f, -0.5f,  0.5f, // Back edge
-            -0.5f, -0.5f,  0.5f, -0.5f, -0.5f, -0.5f, // Left edge
-            
-            // Top face edges
-            -0.5f,  0.5f, -0.5f,  0.5f,  0.5f, -0.5f, // Front edge
-             0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f, // Right edge
-             0.5f,  0.5f,  0.5f, -0.5f,  0.5f,  0.5f, // Back edge
-            -0.5f,  0.5f,  0.5f, -0.5f,  0.5f, -0.5f, // Left edge
-            
-            // Vertical edges
-            -0.5f, -0.5f, -0.5f, -0.5f,  0.5f, -0.5f, // Front-left
-             0.5f, -0.5f, -0.5f,  0.5f,  0.5f, -0.5f, // Front-right
-             0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f, // Back-right
-            -0.5f, -0.5f,  0.5f, -0.5f,  0.5f,  0.5f  // Back-left
-        };
-        
-        // Create VAO
-        wireframeVao = GL30.glGenVertexArrays();
-        GL30.glBindVertexArray(wireframeVao);
-        
-        // Create VBO
-        int vbo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
-        
-        FloatBuffer buffer = BufferUtils.createFloatBuffer(vertices.length);
-        buffer.put(vertices).flip();
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, buffer, GL20.GL_STATIC_DRAW);
-        
-        // Define vertex attributes
-        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 0, 0);
+
+    /** Builds the reusable dynamic VAO/VBO used to stream path line segments. */
+    private void createPathGeometry() {
+        pathVao = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(pathVao);
+
+        pathVbo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, pathVbo);
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER,
+                (long) pathScratch.capacity() * Float.BYTES, GL15.GL_DYNAMIC_DRAW);
+
+        GL20.glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
         GL20.glEnableVertexAttribArray(0);
-        
-        // Unbind
+
         GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
     }
 
     /**
-     * Renders a wireframe bounding box for debug purposes.
-     * @param boundingBox The bounding box to render
-     * @param color The color of the wireframe (RGB, each component 0.0-1.0)
+     * Begins a debug-line batch: binds the shader, uploads the camera matrices
+     * once, and configures GL state. Must be paired with {@link #endBatch()}.
      */
-    public void renderWireframeBoundingBox(Entity.BoundingBox boundingBox, Vector3f color) {
-        // Save current OpenGL state
-        boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
-        
-        // Set up OpenGL state for wireframe rendering
+    public void beginBatch() {
+        if (batchActive) {
+            return;
+        }
+        batchActive = true;
+
+        savedDepthTest = glIsEnabled(GL_DEPTH_TEST);
+        savedLineWidth = glGetFloat(GL_LINE_WIDTH);
+
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
-        
-        // Use shader program
+        glLineWidth(LINE_WIDTH);
+
         shaderProgram.bind();
-        
-        // Set view and projection matrices
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+
         Player player = Game.getPlayer();
         if (player != null) {
             shaderProgram.setUniform("viewMatrix", player.getCamera().getViewMatrix());
-            shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         }
-        
-        // Calculate model matrix for the bounding box
-        Matrix4f modelMatrix = new Matrix4f();
-        float centerX = (boundingBox.minX + boundingBox.maxX) / 2.0f;
-        float centerY = (boundingBox.minY + boundingBox.maxY) / 2.0f;
-        float centerZ = (boundingBox.minZ + boundingBox.maxZ) / 2.0f;
-        float scaleX = boundingBox.maxX - boundingBox.minX;
-        float scaleY = boundingBox.maxY - boundingBox.minY;
-        float scaleZ = boundingBox.maxZ - boundingBox.minZ;
-        
-        modelMatrix.translation(centerX, centerY, centerZ);
-        modelMatrix.scale(scaleX, scaleY, scaleZ);
-        
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
-        
-        // Set shader uniforms for solid color rendering
-        shaderProgram.setUniform("u_useSolidColor", true);
+
         shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_color", new Vector4f(color.x, color.y, color.z, 1.0f));
-        
-        // Render the wireframe
-        GL30.glBindVertexArray(wireframeVao);
-        glDrawArrays(GL_LINES, 0, 24); // 24 vertices for 12 edges
-        GL30.glBindVertexArray(0);
-        
-        // Restore OpenGL state
-        if (!depthTestEnabled) {
-            glDisable(GL_DEPTH_TEST);
-        }
-        
-        // Unbind shader
-        shaderProgram.unbind();
+        shaderProgram.setUniform("u_useSolidColor", true);
     }
-    
-    /**
-     * Renders a wireframe path as connected line segments.
-     * @param pathPoints The list of points forming the path
-     * @param color The color of the path wireframe (RGB, each component 0.0-1.0)
-     */
-    public void renderWireframePath(List<Vector3f> pathPoints, Vector3f color) {
-        if (pathPoints == null || pathPoints.size() < 2) {
-            return; // Need at least 2 points to draw a line
+
+    /** Ends the batch, restoring shader and GL state saved by {@link #beginBatch()}. */
+    public void endBatch() {
+        if (!batchActive) {
+            return;
         }
-        
-        // Save current OpenGL state
-        boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
-        
-        // Set up OpenGL state for wireframe rendering
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LESS);
-        
-        // Use shader program
-        shaderProgram.bind();
-        
-        // Set view and projection matrices
-        Player player = Game.getPlayer();
-        if (player != null) {
-            shaderProgram.setUniform("viewMatrix", player.getCamera().getViewMatrix());
-            shaderProgram.setUniform("projectionMatrix", projectionMatrix);
-        }
-        
-        // Set identity model matrix
-        Matrix4f modelMatrix = new Matrix4f().identity();
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
-        
-        // Set shader uniforms for solid color rendering
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_color", new Vector4f(color.x, color.y, color.z, 1.0f));
-        
-        // Create vertices for the path lines
-        int vertexCount = (pathPoints.size() - 1) * 2; // Each line segment needs 2 vertices
-        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertexCount * 3);
-        
-        for (int i = 0; i < pathPoints.size() - 1; i++) {
-            Vector3f start = pathPoints.get(i);
-            Vector3f end = pathPoints.get(i + 1);
-            
-            // Add start point
-            vertexBuffer.put(start.x).put(start.y).put(start.z);
-            // Add end point
-            vertexBuffer.put(end.x).put(end.y).put(end.z);
-        }
-        vertexBuffer.flip();
-        
-        // Create temporary VAO and VBO for path rendering
-        int vao = GL30.glGenVertexArrays();
-        int vbo = GL30.glGenBuffers();
-        
-        GL30.glBindVertexArray(vao);
-        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vbo);
-        GL30.glBufferData(GL30.GL_ARRAY_BUFFER, vertexBuffer, GL30.GL_DYNAMIC_DRAW);
-        
-        // Set vertex attributes (position)
-        GL30.glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
-        GL30.glEnableVertexAttribArray(0);
-        
-        // Render the path lines
-        glDrawArrays(GL_LINES, 0, vertexCount);
-        
-        // Cleanup
-        GL30.glBindVertexArray(0);
-        GL30.glDeleteVertexArrays(vao);
-        GL30.glDeleteBuffers(vbo);
-        
-        // Restore OpenGL state
-        if (!depthTestEnabled) {
+        batchActive = false;
+
+        shaderProgram.unbind();
+        glLineWidth(savedLineWidth);
+        if (!savedDepthTest) {
             glDisable(GL_DEPTH_TEST);
         }
-        
-        // Unbind shader
-        shaderProgram.unbind();
     }
 
     /**
-     * Renders all sound emitters as yellow triangle wireframes when debug mode is enabled.
-     * @param debugMode Whether debug mode is currently enabled
+     * Draws a path as connected world-space line segments using the reusable
+     * dynamic buffer. Points beyond the buffer capacity are dropped.
+     *
+     * @param pathPoints ordered world-space path points
+     * @param color      RGBA line colour
+     */
+    public void drawPath(List<Vector3f> pathPoints, Vector4f color) {
+        if (!batchActive || pathPoints == null || pathPoints.size() < 2) {
+            return;
+        }
+
+        int points = Math.min(pathPoints.size(), MAX_PATH_POINTS);
+        int segments = points - 1;
+
+        pathScratch.clear();
+        for (int i = 0; i < segments; i++) {
+            Vector3f start = pathPoints.get(i);
+            Vector3f end = pathPoints.get(i + 1);
+            pathScratch.put(start.x).put(start.y).put(start.z);
+            pathScratch.put(end.x).put(end.y).put(end.z);
+        }
+        pathScratch.flip();
+
+        shaderProgram.setUniform("modelMatrix", new Matrix4f());
+        shaderProgram.setUniform("u_color", color);
+
+        GL30.glBindVertexArray(pathVao);
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, pathVbo);
+        // Orphan the buffer, then upload only the segments used this frame.
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER,
+                (long) pathScratch.capacity() * Float.BYTES, GL15.GL_DYNAMIC_DRAW);
+        GL20.glBufferSubData(GL20.GL_ARRAY_BUFFER, 0, pathScratch);
+        glDrawArrays(GL_LINES, 0, segments * 2);
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+    }
+
+    /**
+     * Renders all sound emitters as yellow triangle wireframes when debug mode
+     * is enabled. Manages its own shader state, so call it outside a batch.
      */
     public void renderSoundEmitters(boolean debugMode) {
         if (!debugMode) {
@@ -261,11 +201,14 @@ public class DebugRenderer {
      * Should be called when the renderer is no longer needed.
      */
     public void cleanup() {
-        if (wireframeVao != 0) {
-            GL30.glDeleteVertexArrays(wireframeVao);
-            wireframeVao = 0;
+        if (pathVao != 0) {
+            GL30.glDeleteVertexArrays(pathVao);
+            pathVao = 0;
         }
-
+        if (pathVbo != 0) {
+            GL20.glDeleteBuffers(pathVbo);
+            pathVbo = 0;
+        }
         if (soundEmitterRenderer != null) {
             soundEmitterRenderer.cleanup();
         }
