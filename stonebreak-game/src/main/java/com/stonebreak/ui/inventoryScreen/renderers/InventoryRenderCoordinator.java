@@ -6,6 +6,7 @@ import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.components.MHotbarRenderer;

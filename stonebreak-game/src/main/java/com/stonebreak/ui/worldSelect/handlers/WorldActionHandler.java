@@ -97,12 +97,13 @@ public class WorldActionHandler {
     // ===== WORLD CREATION ACTIONS =====
 
     /**
-     * Transitions to the terrain mapper screen for world creation. Replaces
-     * the legacy in-place create-world dialog; the mapper owns its own name
-     * and seed entry plus a live terrain preview.
+     * Transitions to character creation first, then the player proceeds to terrain mapper.
      */
     public void openCreateWorldDialog() {
-        Game.getInstance().setState(GameState.TERRAIN_MAPPER);
+        com.stonebreak.ui.characterCreation.CharacterCreationScreen ccs =
+                Game.getInstance().getCharacterCreationScreen();
+        if (ccs != null) ccs.reset();
+        Game.getInstance().setState(GameState.CHARACTER_CREATION);
     }
 
     /**

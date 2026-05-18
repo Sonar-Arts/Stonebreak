@@ -13,6 +13,7 @@ import static com.stonebreak.player.PlayerConstants.FLY_SPEED;
 import static com.stonebreak.player.PlayerConstants.GRAVITY;
 import static com.stonebreak.player.PlayerConstants.MOVE_SPEED;
 import static com.stonebreak.player.PlayerConstants.NORMAL_JUMP_GRACE_PERIOD;
+import static com.stonebreak.player.PlayerConstants.SPRINT_MULTIPLIER;
 import static com.stonebreak.player.PlayerConstants.SWIM_SPEED;
 import static com.stonebreak.player.PlayerConstants.WATER_GRAVITY;
 
@@ -92,7 +93,7 @@ public class MovementController {
             return;
         }
 
-        float friction = 5.0f;
+        float friction = (state.isOnGround() || state.isPhysicallyInWater()) ? 5.0f : 2.5f;
         float frictionFactor = (float) Math.exp(-friction * dt);
         velocity.x *= frictionFactor;
         velocity.z *= frictionFactor;
@@ -113,7 +114,7 @@ public class MovementController {
      * {@link FlightController} (toggle) and {@link JumpHandler} (ground/water jump).
      */
     public void processMovement(boolean forward, boolean backward, boolean left, boolean right,
-                                boolean jump, boolean shift) {
+                                boolean jump, boolean shift, boolean sprinting) {
         Vector3f velocity = state.getVelocity();
         Vector3f front = camera.getFront();
         Vector3f rightVec = camera.getRight();
@@ -123,10 +124,11 @@ public class MovementController {
         float speed;
         if (flight.isFlying()) {
             speed = shift ? FLY_SPEED * 2.0f : FLY_SPEED;
+        } else if (state.isOnGround()) {
+            float base = state.isPhysicallyInWater() ? SWIM_SPEED : MOVE_SPEED;
+            speed = sprinting ? base * SPRINT_MULTIPLIER : base;
         } else {
-            speed = state.isOnGround()
-                    ? (state.isPhysicallyInWater() ? SWIM_SPEED : MOVE_SPEED)
-                    : MOVE_SPEED * 0.85f;
+            speed = sprinting ? MOVE_SPEED * SPRINT_MULTIPLIER : MOVE_SPEED * 0.85f;
         }
 
         float dt = Game.getDeltaTime();

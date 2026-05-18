@@ -3,10 +3,13 @@ package com.stonebreak.player;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
 import com.stonebreak.player.combat.AttackController;
 import com.stonebreak.player.combat.DeathHandler;
 import com.stonebreak.player.combat.FallDamageHandler;
 import com.stonebreak.player.combat.HealthController;
+import com.stonebreak.player.combat.ManaController;
+import com.stonebreak.player.combat.StaminaController;
 import com.stonebreak.player.interaction.BlockBreaker;
 import com.stonebreak.player.interaction.BlockPlacer;
 import com.stonebreak.player.interaction.ItemDropInteraction;
@@ -56,6 +59,8 @@ public class Player {
     // Combat
     private final AttackController attack;
     private final HealthController health;
+    private final StaminaController stamina;
+    private final ManaController mana;
     private final FallDamageHandler fallDamage;
     private final DeathHandler deathHandler;
 
@@ -87,6 +92,8 @@ public class Player {
 
         this.attack = new AttackController();
         this.health = new HealthController();
+        this.stamina = new StaminaController(0);
+        this.mana = new ManaController(0, 0);
         this.spectator = new SpectatorController(state, flight, health);
         this.movement = new MovementController(state, camera, collisionHandler, flight, swimming, jumpHandler, spectator);
         this.fallDamage = new FallDamageHandler(state, health);
@@ -101,6 +108,7 @@ public class Player {
                 blockBreaker, flight, jumpHandler, swimming);
 
         this.characterStats = new CharacterStats(this);
+        updateDerivedStats();
     }
 
     public void update() {
@@ -130,6 +138,8 @@ public class Player {
         camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
 
         attack.update(dt);
+        stamina.update(dt);
+        mana.update(dt);
         blockBreaker.update();
 
         Game.getSoundSystem().updatePlayerSounds(p, state.getVelocity(), state.isOnGround(), state.isPhysicallyInWater());
@@ -143,7 +153,20 @@ public class Player {
 
     public void processMovement(boolean forward, boolean backward, boolean left, boolean right,
                                 boolean jump, boolean shift) {
-        movement.processMovement(forward, backward, left, right, jump, shift);
+        boolean moving = forward || backward || left || right;
+        boolean sprinting = shift && moving && !flight.isFlying()
+                            && !state.isPhysicallyInWater()
+                            && stamina.hasStamina();
+        stamina.setSprinting(sprinting);
+        jumpHandler.setCanDoubleJump(characterStats.hasFeat("double_jump"));
+        movement.processMovement(forward, backward, left, right, jump, shift, sprinting);
+    }
+
+    public void updateDerivedStats() {
+        health.applyNewMaxHealth(characterStats.computeMaxHealth());
+        stamina.setMaxStamina(characterStats.computeMaxStamina());
+        mana.setMaxMana(characterStats.computeMaxMana());
+        mana.setRegenRate(characterStats.computeManaRegen());
     }
 
     public void processMouseLook(float xOffset, float yOffset) {
@@ -177,6 +200,12 @@ public class Player {
     // RPG
     public CharacterStats getCharacterStats() { return characterStats; }
 
+    // Stamina / mana
+    public float getStamina()    { return stamina.getStamina(); }
+    public float getMaxStamina() { return stamina.getMaxStamina(); }
+    public float getMana()       { return mana.getMana(); }
+    public float getMaxMana()    { return mana.getMaxMana(); }
+
     // Health / death
     public float getHealth() { return health.getHealth(); }
     public float getMaxHealth() { return health.getMaxHealth(); }
@@ -206,6 +235,17 @@ public class Player {
 
     // Water
     public boolean isInWater() { return swimming.isInWater(); }
+
+    public RaycastEngine getRaycastEngine() { return raycastEngine; }
+
+    /** Returns the melee damage for the player's currently held item (1.0 for bare fist). */
+    public float getAttackDamage() {
+        ItemStack held = inventory.getSelectedHotbarSlot();
+        if (!held.isEmpty() && held.getItem() instanceof ItemType itemType) {
+            return itemType.getDamage();
+        }
+        return 1.0f;
+    }
 
     // Block interaction
     public Vector3i raycast() { return raycastEngine.raycast(); }

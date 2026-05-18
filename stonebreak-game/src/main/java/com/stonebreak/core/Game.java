@@ -18,7 +18,9 @@ import com.stonebreak.ui.characterScreen.CharacterScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
+import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.ui.characterCreation.CharacterCreationScreen;
 import com.stonebreak.ui.startupIntro.SonarArtsIntroScreen;
 import com.stonebreak.ui.terrainMapper.TerrainMapperScreen;
 import com.stonebreak.ui.worldSelect.WorldSelectScreen;
@@ -45,6 +47,7 @@ public class Game {
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private CharacterScreen characterScreen; // Character stats screen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
+    private FurnaceScreen furnaceScreen; // Furnace smelting GUI
     private RecipeScreen recipeScreen; // Added RecipeBookScreen
     private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
@@ -57,11 +60,13 @@ public class Game {
     private SoundSystem soundSystem; // Sound system
     private ChatSystem chatSystem; // Chat system
     private CraftingManager craftingManager; // Crafting manager
+    private SmeltingManager smeltingManager; // Smelting manager for furnace
     private com.stonebreak.audio.emitters.SoundEmitterManager soundEmitterManager; // Sound emitter management
     private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
     private DebugOverlay debugOverlay; // Debug overlay (F3)
     private LoadingScreen loadingScreen; // Loading screen for world generation
     private WorldSelectScreen worldSelectScreen; // World selection screen
+    private CharacterCreationScreen characterCreationScreen; // Character creation before terrain mapper
     private TerrainMapperScreen terrainMapperScreen; // Terrain preview + world creation screen
     private SonarArtsIntroScreen startupIntroScreen; // Boot-time Sonar Arts animation
     private SaveService saveService; // World save/load system
@@ -69,6 +74,8 @@ public class Game {
     private String currentWorldName; // Current world name for save system initialization
     private long currentWorldSeed; // Current world seed for save system initialization
     private final ExecutorService worldUpdateExecutor = Executors.newSingleThreadExecutor();
+    private final Thread mainThread = Thread.currentThread();
+    private final java.util.Queue<Runnable> mainThreadTasks = new java.util.concurrent.ConcurrentLinkedQueue<>();
     
     // Entity system components
     private com.stonebreak.mobs.entities.EntityManager entityManager; // Entity management system
@@ -118,6 +125,19 @@ public class Game {
     }
 
     /**
+     * Runs {@code task} immediately if called from the main thread, or queues
+     * it to execute at the start of the next {@link #update()} call otherwise.
+     * Use this to defer OpenGL operations that originate on background threads.
+     */
+    public void runOnMainThread(Runnable task) {
+        if (Thread.currentThread() == mainThread) {
+            task.run();
+        } else {
+            mainThreadTasks.offer(task);
+        }
+    }
+
+    /**
      * Initializes core game components that don't require a world or player.
      * This includes renderer, sound system, UI components, and basic systems.
      */
@@ -142,12 +162,15 @@ public class Game {
         this.joinWorldScreen = new com.stonebreak.ui.multiplayerMenu.JoinWorldScreen(this.renderer.getSkijaBackend());
         this.loadingScreen = new LoadingScreen(this.renderer.getSkijaBackend());
         this.worldSelectScreen = new WorldSelectScreen(this.renderer.getSkijaBackend());
+        this.characterCreationScreen = new CharacterCreationScreen(this.renderer.getSkijaBackend());
         this.terrainMapperScreen = new TerrainMapperScreen(this.renderer.getSkijaBackend());
         this.startupIntroScreen = new SonarArtsIntroScreen(this.renderer.getSkijaBackend());
 
         initializeCrosshairSettings();
 
         this.craftingManager = new CraftingManager();
+        this.smeltingManager = new SmeltingManager();
+        initializeSmeltingRecipes();
         initializeCraftingRecipes();
 
         this.chatSystem = new ChatSystem();
@@ -176,6 +199,24 @@ public class Game {
 
         com.stonebreak.core.bootstrap.GameBootstrap.ensureMmsApiInitialized(renderer.getBlockTextureArray(), world);
         com.stonebreak.core.bootstrap.GameBootstrap.reinitializeSaveService(saveService, currentWorldData, player, world);
+
+        // Apply character creation stats to the new player if a creation session was active.
+        if (characterCreationScreen != null) {
+            com.stonebreak.player.CharacterStats pending = characterCreationScreen.getCharacterStats();
+            com.stonebreak.player.CharacterStats live = player.getCharacterStats();
+            live.restore(
+                pending.getSelectedClassId(),
+                new java.util.HashMap<>(pending.getSpentAbilityCp()),
+                new java.util.HashMap<>(pending.getSkillLevels()),
+                new java.util.HashSet<>(pending.getAcquiredFeatIds()),
+                pending.getRemainingCp(),
+                pending.getRemainingSkillPoints(),
+                pending.getRemainingFeatPoints(),
+                pending.getAbilityScores(),
+                pending.getRemainingAp()
+            );
+            live.setSelectedBackground(pending.getSelectedBackground());
+        }
 
         // Set camera for mouse capture system
         if (mouseCaptureManager != null && player != null) {
@@ -223,6 +264,13 @@ public class Game {
             System.err.println("Failed to initialize WorkbenchScreen due to null components.");
         }
 
+        // Initialize FurnaceScreen
+        if (this.renderer.getUIRenderer() != null) {
+            this.furnaceScreen = new FurnaceScreen(this, player.getInventory(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.smeltingManager);
+        } else {
+            System.err.println("Failed to initialize FurnaceScreen due to null components.");
+        }
+
         // Initialize RecipeBookScreen
         if (this.renderer.getUIRenderer() != null && this.craftingManager != null && getFont() != null) {
             this.recipeScreen = new RecipeScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
@@ -244,6 +292,23 @@ public class Game {
      */
     private void initializeCraftingRecipes() {
         com.stonebreak.crafting.RecipeLoader.loadFromSBOs(this.craftingManager);
+    }
+
+    /**
+     * Registers smelting recipes and fuel sources.
+     */
+    private void initializeSmeltingRecipes() {
+        // Cobblestone → Stone (demo recipe)
+        smeltingManager.registerRecipe(
+                new SmeltingRecipe(
+                        "stonebreak:cobblestone_to_stone",
+                        new ItemStack(BlockType.COBBLESTONE, 1),
+                        new ItemStack(BlockType.STONE, 1),
+                        0.1f
+                ));
+
+        // Coal ore is the canonical fuel (1600 ticks = 80 seconds per stack)
+        smeltingManager.registerFuel(BlockType.COAL_ORE, 1600);
     }
 
 
@@ -270,6 +335,11 @@ public class Game {
         }
 
         totalTimeElapsed += deltaTime;
+
+        Runnable task;
+        while ((task = mainThreadTasks.poll()) != null) {
+            task.run();
+        }
 
         gameLoop.tick(deltaTime);
     }
@@ -417,6 +487,20 @@ public class Game {
      */
     public WorkbenchScreen getWorkbenchScreen() {
         return workbenchScreen;
+    }
+
+    /**
+     * Gets the furnace screen.
+     */
+    public FurnaceScreen getFurnaceScreen() {
+        return furnaceScreen;
+    }
+
+    /**
+     * Gets the smelting manager.
+     */
+    public SmeltingManager getSmeltingManager() {
+        return smeltingManager;
     }
     
     /**
@@ -578,6 +662,16 @@ public class Game {
     public void closeWorkbenchScreen() {
         stateController.closeWorkbenchScreen();
     }
+
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#openFurnaceScreen()}. */
+    public void openFurnaceScreen() {
+        stateController.openFurnaceScreen();
+    }
+
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#closeFurnaceScreen()}. */
+    public void closeFurnaceScreen() {
+        stateController.closeFurnaceScreen();
+    }
     
     /**
      * Cleanup game resources. Delegates to
@@ -685,6 +779,13 @@ public class Game {
      */
     public WorldSelectScreen getWorldSelectScreen() {
         return worldSelectScreen;
+    }
+
+    /**
+     * Gets the character creation screen.
+     */
+    public CharacterCreationScreen getCharacterCreationScreen() {
+        return characterCreationScreen;
     }
 
     /**

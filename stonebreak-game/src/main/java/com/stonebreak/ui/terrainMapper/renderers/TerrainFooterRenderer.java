@@ -32,6 +32,7 @@ public final class TerrainFooterRenderer {
 
         positionButtons(footer);
         state.getBackButton().render(ui);
+        state.getCharacterButton().render(ui);
         state.getSimulateSeedButton().render(ui);
         state.getCreateButton().render(ui);
 
@@ -46,8 +47,10 @@ public final class TerrainFooterRenderer {
         right -= TerrainMapperConfig.FOOTER_BUTTON_WIDTH + TerrainMapperConfig.FOOTER_BUTTON_GAP;
         state.getSimulateSeedButton()
                 .position(right - TerrainMapperConfig.FOOTER_BUTTON_WIDTH, y);
-        state.getBackButton()
-                .position(footer.x() + TerrainMapperConfig.FOOTER_BUTTON_GAP, y);
+        float left = footer.x() + TerrainMapperConfig.FOOTER_BUTTON_GAP;
+        state.getBackButton().position(left, y);
+        left += TerrainMapperConfig.FOOTER_BUTTON_WIDTH + TerrainMapperConfig.FOOTER_BUTTON_GAP;
+        state.getCharacterButton().position(left, y);
     }
 
     private void drawStatusText(Canvas canvas, MasonryUI ui, Rect footer) {

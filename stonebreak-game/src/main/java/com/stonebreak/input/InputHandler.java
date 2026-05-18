@@ -10,12 +10,15 @@ import org.joml.Vector3i;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.ui.chat.ChatSystem;
+import com.stonebreak.ui.chat.emoji.EmojiType;
+import com.stonebreak.ui.chat.SkijaChatRenderer;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
+import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.PauseMenu;
@@ -23,6 +26,7 @@ import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
+import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.World;
 
@@ -169,12 +173,29 @@ public class InputHandler {
                 workbenchScreen.handleInput(this);
                 return; // Workbench UI has full input control
             }
+            if (currentGameState == GameState.FURNACE_UI) {
+                FurnaceScreen furnaceScreen = Game.getInstance().getFurnaceScreen();
+                if (furnaceScreen != null && furnaceScreen.isVisible()) {
+                    furnaceScreen.handleInput(this);
+                    return; // Furnace UI has full input control
+                }
+            }
             // Handle inventory screen input when in INVENTORY_UI state
             if (currentGameState == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
                 // Cache window dimensions to avoid repeated calls
                 int windowWidth = Game.getWindowWidth();
                 int windowHeight = Game.getWindowHeight();
                 inventoryScreen.handleMouseInput(windowWidth, windowHeight);
+            }
+
+            // Handle character sheet screen input when in CHARACTER_SHEET_UI state
+            if (currentGameState == GameState.CHARACTER_SHEET_UI) {
+                com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = gameInstance.getCharacterScreen();
+                if (characterScreen != null && characterScreen.isVisible()) {
+                    int windowWidth = Game.getWindowWidth();
+                    int windowHeight = Game.getWindowHeight();
+                    characterScreen.handleMouseInput(windowWidth, windowHeight);
+                }
             }
 
             // Only process movement in PLAYING state
@@ -260,6 +281,13 @@ public class InputHandler {
                 return; // Action taken
             }
 
+            // 3.5 Close Furnace
+            FurnaceScreen furnaceScreen = game.getFurnaceScreen();
+            if (furnaceScreen != null && furnaceScreen.isVisible() && game.getState() == GameState.FURNACE_UI) {
+                furnaceScreen.handleCloseRequest();
+                return; // Action taken
+            }
+
             // 4. Close Inventory
             if (game.getState() == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
                 // This covers case where Inventory is open directly, or under Recipe Book if Recipe Book was closed in a prior step this frame
@@ -268,12 +296,10 @@ public class InputHandler {
             }
 
             // 4.5 Close Character Screen
-            if (game.getState() == GameState.CHARACTER_SHEET_UI) {
-                com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = game.getCharacterScreen();
-                if (characterScreen != null && characterScreen.isVisible()) {
-                    game.toggleCharacterScreen();
-                    return; // Action taken
-                }
+            com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = game.getCharacterScreen();
+            if (characterScreen != null && characterScreen.isVisible()) {
+                game.toggleCharacterScreen();
+                return; // Action taken
             }
 
             // 5. Toggle Pause Menu (if no other screen was closed by Escape above)
@@ -318,6 +344,11 @@ public class InputHandler {
                 return;
             }
 
+            // Don't open inventory if furnace is open
+            if (Game.getInstance().getState() == GameState.FURNACE_UI) {
+                return;
+            }
+
             Game.getInstance().toggleInventoryScreen();
             // Cursor state is handled by Game.toggleInventoryScreen()
         } else if (!isInventoryKeyPressed) {
@@ -348,6 +379,9 @@ public class InputHandler {
             // Don't open if recipe book is open
             RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
             if (recipeScreen != null && recipeScreen.isVisible()) return;
+
+            // Don't open if furnace is open
+            if (Game.getInstance().getState() == GameState.FURNACE_UI) return;
 
             // Don't open if in a non-game state
             GameState state = Game.getInstance().getState();
@@ -688,6 +722,12 @@ public class InputHandler {
             return;
         }
 
+        FurnaceScreen furnaceScreen = Game.getInstance().getFurnaceScreen();
+        if (furnaceScreen != null && furnaceScreen.isVisible() && Game.getInstance().getState() == GameState.FURNACE_UI) {
+            // FurnaceScreen.handleInput should manage its clicks. This prevents world clicks.
+            return;
+        }
+
         InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
             // InventoryScreen.handleMouseInput manages its clicks. This prevents world clicks.
@@ -767,6 +807,13 @@ public class InputHandler {
                 if (player != null) {
                     if (button == GLFW_MOUSE_BUTTON_LEFT) {
                         player.startAttackAnimation();
+                        EntityManager em = Game.getEntityManager();
+                        if (em != null) {
+                            LivingEntity target = player.getRaycastEngine().raycastEntity(em.getLivingEntities());
+                            if (target != null) {
+                                target.damage(player.getAttackDamage(), LivingEntity.DamageSource.PLAYER);
+                            }
+                        }
                         // Block breaking is now handled continuously in handleInput
                     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
                         player.startAttackAnimation(); // Animate for interaction attempts as well
@@ -791,6 +838,9 @@ public class InputHandler {
                                 // Interacted with a Workbench
                                 System.out.println("Player right-clicked on a Workbench block."); // Keep for clarity
                                 Game.getInstance().openWorkbenchScreen();
+                            } else if (targetedBlockType == BlockType.FURNACE) {
+                                // Interacted with a Furnace
+                                Game.getInstance().openFurnaceScreen();
                             } else {
                                 // Not a workbench, proceed with normal block placement
                                 player.placeBlock();
@@ -940,11 +990,45 @@ public class InputHandler {
     }
 
     /**
-     * Handle chat click interactions (tab switching and command buttons)
+     * Handle chat click interactions (tab switching, emoji picker, and command buttons)
      */
     private void handleChatClick(ChatSystem chatSystem) {
         int windowWidth = Game.getWindowWidth();
         int windowHeight = Game.getWindowHeight();
+
+        // ── Emoji button / picker ─────────────────────────────────────────
+        UIRenderer uiRendererEmoji = Game.getInstance().getUIRenderer();
+        if (uiRendererEmoji != null && uiRendererEmoji.getSkijaChatRenderer() != null) {
+            SkijaChatRenderer renderer = uiRendererEmoji.getSkijaChatRenderer();
+
+            // Toggle picker on emoji button click.
+            if (renderer.isEmojiButtonClicked(currentMouseX, currentMouseY, windowWidth, windowHeight)) {
+                chatSystem.toggleEmojiPicker();
+                return;
+            }
+
+            if (chatSystem.isEmojiPickerOpen()) {
+                // Star click → toggle favourite; emoji click → insert.
+                EmojiType starTarget = renderer.getPickerFavoriteStarClick(
+                        chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
+                if (starTarget != null) {
+                    chatSystem.getEmojiSystem().toggleFavorite(starTarget);
+                    return;
+                }
+
+                EmojiType emojiTarget = renderer.getPickerEmojiClick(
+                        chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
+                if (emojiTarget != null) {
+                    chatSystem.insertEmoji(emojiTarget);
+                    return;
+                }
+
+                // Click outside picker closes it and consumes the click.
+                chatSystem.closeEmojiPicker();
+                return;
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────
 
         // Calculate tab button areas (matching ChatRenderer folder-style tabs)
         float backgroundPadding = 10;

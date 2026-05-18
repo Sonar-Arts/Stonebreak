@@ -15,6 +15,7 @@ public final class WorldData {
     private final long seed;
     private final String worldName;
     private final Vector3f spawnPosition;
+    private final boolean hasExplicitSpawn;
     private final LocalDateTime createdTime;
     private final LocalDateTime lastPlayed;
     private final long totalPlayTimeMillis;
@@ -27,6 +28,7 @@ public final class WorldData {
             @JsonProperty("seed") long seed,
             @JsonProperty("worldName") String worldName,
             @JsonProperty("spawnPosition") Vector3f spawnPosition,
+            @JsonProperty("hasExplicitSpawn") boolean hasExplicitSpawn,
             @JsonProperty("createdTime") @JsonAlias("creationTime") LocalDateTime createdTime,
             @JsonProperty("lastPlayed") LocalDateTime lastPlayed,
             @JsonProperty("totalPlayTimeMillis") long totalPlayTimeMillis,
@@ -36,6 +38,7 @@ public final class WorldData {
         this.seed = seed;
         this.worldName = worldName;
         this.spawnPosition = new Vector3f(spawnPosition);
+        this.hasExplicitSpawn = hasExplicitSpawn;
         this.createdTime = createdTime;
         this.lastPlayed = lastPlayed;
         this.totalPlayTimeMillis = totalPlayTimeMillis;
@@ -46,14 +49,15 @@ public final class WorldData {
 
     private WorldData(Builder builder) {
         this(builder.seed, builder.worldName, builder.spawnPosition,
-             builder.createdTime, builder.lastPlayed, builder.totalPlayTimeMillis,
-             builder.worldTimeTicks, builder.cheatsEnabled, builder.formatVersion);
+             builder.hasExplicitSpawn, builder.createdTime, builder.lastPlayed,
+             builder.totalPlayTimeMillis, builder.worldTimeTicks, builder.cheatsEnabled, builder.formatVersion);
     }
 
     // Getters
     public long getSeed() { return seed; }
     public String getWorldName() { return worldName; }
     public Vector3f getSpawnPosition() { return new Vector3f(spawnPosition); }
+    public boolean hasExplicitSpawn() { return hasExplicitSpawn; }
     public LocalDateTime getCreatedTime() { return createdTime; }
     public LocalDateTime getLastPlayed() { return lastPlayed; }
     public long getTotalPlayTimeMillis() { return totalPlayTimeMillis; }
@@ -106,6 +110,7 @@ public final class WorldData {
         private long seed;
         private String worldName;
         private Vector3f spawnPosition = new Vector3f(0, 100, 0);
+        private boolean hasExplicitSpawn = false;
         private LocalDateTime createdTime = LocalDateTime.now();
         private LocalDateTime lastPlayed = LocalDateTime.now();
         private long totalPlayTimeMillis = 0;
@@ -119,6 +124,7 @@ public final class WorldData {
             this.seed = data.seed;
             this.worldName = data.worldName;
             this.spawnPosition = new Vector3f(data.spawnPosition);
+            this.hasExplicitSpawn = data.hasExplicitSpawn;
             this.createdTime = data.createdTime;
             this.lastPlayed = data.lastPlayed;
             this.totalPlayTimeMillis = data.totalPlayTimeMillis;
@@ -139,6 +145,11 @@ public final class WorldData {
 
         public Builder spawnPosition(Vector3f spawnPosition) {
             this.spawnPosition = new Vector3f(spawnPosition);
+            return this;
+        }
+
+        public Builder hasExplicitSpawn(boolean value) {
+            this.hasExplicitSpawn = value;
             return this;
         }
 

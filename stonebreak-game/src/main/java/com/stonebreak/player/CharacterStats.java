@@ -22,6 +22,13 @@ public class CharacterStats {
 
   private final Player player;
 
+  // ─────────────────────────────────────────────── Background
+
+  private String selectedBackground = null;
+
+  public String getSelectedBackground() { return selectedBackground; }
+  public void setSelectedBackground(String id) { this.selectedBackground = id; }
+
   // ─────────────────────────────────────────────── Classes
 
   private String selectedClassId = null;
@@ -48,14 +55,39 @@ public class CharacterStats {
     this.player = player;
   }
 
-  // ─────────────────────────────────────────────── Ability scores (stubs)
+  // ─────────────────────────────────────────────── Ability scores
 
-  public int getStrength()     { return 10; }
-  public int getDexterity()    { return 10; }
-  public int getConstitution() { return 10; }
-  public int getIntelligence() { return 10; }
-  public int getWisdom()       { return 10; }
-  public int getCharisma()     { return 10; }
+  /** Index order: 0=STR 1=DEX 2=CON 3=INT 4=WIS 5=CHA */
+  private int[] abilityScores = {10, 10, 10, 10, 10, 10};
+  private int remainingAp = 27;
+
+  // TODO: STR score to scale strength-based weapon damage (weapons not yet implemented)
+  public int getStrength()     { return abilityScores[0]; }
+  public int getDexterity()    { return abilityScores[1]; }
+  public int getConstitution() { return abilityScores[2]; }
+  public int getIntelligence() { return abilityScores[3]; }
+  public int getWisdom()       { return abilityScores[4]; }
+  public int getCharisma()     { return abilityScores[5]; }
+
+  public int[] getAbilityScores() { return java.util.Arrays.copyOf(abilityScores, 6); }
+
+  public int getRemainingAp() { return remainingAp; }
+
+  /** Spends 1 AP to raise the ability at the given index (0–5). No-op if AP is 0. */
+  public void incrementAbilityScore(int index) {
+    if (remainingAp <= 0 || index < 0 || index >= 6) return;
+    remainingAp--;
+    abilityScores[index]++;
+    if (player != null) player.updateDerivedStats();
+  }
+
+  /** Refunds 1 AP by lowering the ability at the given index. No-op if score is already 1. */
+  public void decrementAbilityScore(int index) {
+    if (index < 0 || index >= 6 || abilityScores[index] <= 1) return;
+    abilityScores[index]--;
+    remainingAp++;
+    if (player != null) player.updateDerivedStats();
+  }
 
   /** Standard modifier: floor((score - 10) / 2). */
   public int getModifier(int score) { return Math.floorDiv(score - 10, 2); }
@@ -100,9 +132,19 @@ public class CharacterStats {
   public float getHealth()    { return player != null ? player.getHealth()    : 0f; }
   public float getMaxHealth() { return player != null ? player.getMaxHealth() : 20f; }
 
-  /** Mana — not yet implemented. */
-  public float getMana()    { return 0f; }
-  public float getMaxMana() { return 0f; }
+  // ─────────────────────────────────────────────── Derived resource caps
+
+  /** Each CON point contributes HEALTH_PER_CON_POINT HP. CON 10 = 20 HP. */
+  public float computeMaxHealth()  { return getConstitution() * com.stonebreak.player.PlayerConstants.HEALTH_PER_CON_POINT; }
+  /** Each DEX point contributes STAMINA_PER_DEX_POINT stamina. DEX 10 = 100. */
+  public float computeMaxStamina() { return getDexterity()    * com.stonebreak.player.PlayerConstants.STAMINA_PER_DEX_POINT; }
+  /** Each WIS point contributes MANA_PER_WIS_POINT mana. WIS 10 = 50. */
+  public float computeMaxMana()    { return getWisdom()       * com.stonebreak.player.PlayerConstants.MANA_PER_WIS_POINT; }
+  /** Each WIS point contributes MANA_REGEN_PER_WIS_POINT mana/sec. WIS 10 = 2/sec. */
+  public float computeManaRegen()  { return getWisdom()       * com.stonebreak.player.PlayerConstants.MANA_REGEN_PER_WIS_POINT; }
+
+  public float getMana()    { return player != null ? player.getMana()    : 0f; }
+  public float getMaxMana() { return player != null ? player.getMaxMana() : 0f; }
 
   // ─────────────────────────────────────────────── Class selection
 
@@ -229,7 +271,8 @@ public class CharacterStats {
                       Map<String, Integer> abilityCp,
                       Map<String, Integer> skills,
                       Set<String> feats,
-                      int cp, int sp, int fp) {
+                      int cp, int sp, int fp,
+                      int[] scores, int ap) {
     this.selectedClassId = classId;
     this.spentAbilityCp.clear();
     this.spentAbilityCp.putAll(abilityCp);
@@ -240,5 +283,10 @@ public class CharacterStats {
     this.remainingCp = cp;
     this.remainingSp = sp;
     this.remainingFp = fp;
+    if (scores != null && scores.length == 6) {
+      this.abilityScores = java.util.Arrays.copyOf(scores, 6);
+    }
+    this.remainingAp = ap;
+    if (player != null) player.updateDerivedStats();
   }
 }

@@ -329,6 +329,14 @@ public class ChatInputHandler {
     }
 
     /**
+     * Append a pre-validated token (e.g. "[banana]") to the current input.
+     * Bypasses character-level filtering because token chars are all valid ASCII.
+     */
+    public void insertToken(String token) {
+        appendWithLimit(token);
+    }
+
+    /**
      * Reset autocomplete state
      */
     private void resetAutocomplete() {

@@ -1,5 +1,6 @@
 package com.stonebreak.ui.terrainMapper.renderers;
 
+import com.stonebreak.rendering.UI.masonryUI.MButton;
 import com.stonebreak.rendering.UI.masonryUI.MCategoryButton;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
@@ -42,6 +43,7 @@ public final class TerrainSidebarRenderer {
                 state.getActiveField() == ActiveField.SEED);
 
         drawModeButtons(ui, layout);
+        drawSpawnSection(ui, layout);
         drawError(canvas, ui, sidebar);
     }
 
@@ -85,6 +87,22 @@ public final class TerrainSidebarRenderer {
             button.position(first.x(), layout.modeButtonY(i++));
             button.render(ui);
         }
+    }
+
+    private void drawSpawnSection(MasonryUI ui, TerrainMapperLayout layout) {
+        Canvas canvas = ui.canvas();
+        Rect btn = layout.spawnButton();
+        Font labelFont = ui.fonts().get(MStyle.FONT_META);
+        MPainter.drawString(canvas, "Player Spawn", btn.x(), btn.y() - 6f, labelFont, MStyle.TEXT_SECONDARY);
+
+        MButton setSpawnBtn = state.getSetSpawnButton();
+        setSpawnBtn.position(btn.x(), btn.y());
+        setSpawnBtn.render(ui);
+
+        Rect cBtn = layout.centerOnSpawnButton();
+        MButton centerBtn = state.getCenterOnSpawnButton();
+        centerBtn.position(cBtn.x(), cBtn.y());
+        centerBtn.render(ui);
     }
 
     private void drawError(Canvas canvas, MasonryUI ui, Rect sidebar) {

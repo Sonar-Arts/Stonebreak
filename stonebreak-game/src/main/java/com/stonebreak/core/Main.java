@@ -3,6 +3,7 @@ package com.stonebreak.core;
 
 import java.nio.IntBuffer;
 import com.stonebreak.rendering.textures.BlockTextureArray;
+import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.config.Settings;
@@ -17,7 +18,9 @@ import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.worldSelect.WorldSelectScreen;
+import org.lwjgl.*;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
+import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.World;
 import org.lwjgl.Version;
@@ -277,6 +280,16 @@ public class Main {
                         game.getSettingsMenu().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
                 }
+            } else if (game != null && game.getState() == GameState.CHARACTER_CREATION) {
+                // Handle character creation clicks
+                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
+                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
+                    glfwGetCursorPos(window, xpos, ypos);
+                    if (game.getCharacterCreationScreen() != null) {
+                        game.getCharacterCreationScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
+                    }
+                }
             } else if (game != null && game.getState() == GameState.TERRAIN_MAPPER) {
                 // Handle terrain mapper clicks
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
@@ -333,6 +346,10 @@ public class Main {
             else if (game.getState() == GameState.SETTINGS && game.getSettingsMenu() != null) {
                 game.getSettingsMenu().handleMouseMove(xpos, ypos, width, height);
             }
+            // Handle character creation hover events
+            else if (game.getState() == GameState.CHARACTER_CREATION && game.getCharacterCreationScreen() != null) {
+                game.getCharacterCreationScreen().handleMouseMove(xpos, ypos, width, height);
+            }
             // Handle terrain mapper hover events
             else if (game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
                 game.getTerrainMapperScreen().handleMouseMove(xpos, ypos, width, height);
@@ -353,6 +370,13 @@ public class Main {
             Game game = Game.getInstance();
             if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
                 game.getWorldSelectScreen().handleMouseWheel(yoffset);
+            } else if (game != null && game.getState() == GameState.CHARACTER_CREATION && game.getCharacterCreationScreen() != null) {
+                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
+                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
+                    glfwGetCursorPos(window, xpos, ypos);
+                    game.getCharacterCreationScreen().handleMouseWheel(xpos.get(), ypos.get(), yoffset);
+                }
             } else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
@@ -525,6 +549,11 @@ public class Main {
                         game.getWorldSelectScreen().handleInput(window);
                     }
                 }
+                case CHARACTER_CREATION -> {
+                    if (game.getCharacterCreationScreen() != null) {
+                        game.getCharacterCreationScreen().handleInput(window);
+                    }
+                }
                 case TERRAIN_MAPPER -> {
                     // Handle terrain mapper input
                     if (game.getTerrainMapperScreen() != null) {
@@ -552,19 +581,17 @@ public class Main {
                 case JOIN_WORLD_SCREEN -> {
                     if (game.getJoinWorldScreen() != null) game.getJoinWorldScreen().handleInput(window);
                 }
-                case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, CHARACTER_SHEET_UI -> {
+                case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, CHARACTER_SHEET_UI, FURNACE_UI -> {
                     // Handle in-game input if not a purely modal UI like MainMenu
                     // Game.update() will also check its internal state for what to update (e.g. player/world if not paused)
                     if (inputHandler != null) {
                         // Pass input to screens that might need it, even if game world is paused
+                        // Note: InventoryScreen & CharacterScreen input is handled inside InputHandler.handleInput()
+                        // below — do NOT call handleMouseInput here (duplicate call broke single-click drag)
                         if (game.getRecipeBookScreen() != null && game.getRecipeBookScreen().isVisible()) {
                              game.getRecipeBookScreen().handleInput();
                         } else if (game.getWorkbenchScreen() != null && game.getWorkbenchScreen().isVisible()) {
                              game.getWorkbenchScreen().handleInput(inputHandler);
-                        } else if (game.getInventoryScreen() != null && game.getInventoryScreen().isVisible()){
-                             game.getInventoryScreen().handleMouseInput(width, height); // InventoryScreen has specific mouse handling for drag/drop
-                        } else if (game.getCharacterScreen() != null && game.getCharacterScreen().isVisible()) {
-                             game.getCharacterScreen().handleMouseInput(width, height);
                         }
                         // General player input handling (movement, interaction) happens if not paused for UI.
                         // InputHandler's own logic + Game.update() decides if player/world updates proceed.
@@ -633,6 +660,10 @@ public class Main {
                 // Skija backend brackets its own GL state; do not wrap in a NanoVG frame.
                 WorldSelectScreen wss = game.getWorldSelectScreen();
                 if (wss != null) wss.render(width, height);
+            }
+            case CHARACTER_CREATION -> {
+                com.stonebreak.ui.characterCreation.CharacterCreationScreen ccs = game.getCharacterCreationScreen();
+                if (ccs != null) ccs.render(width, height);
             }
             case TERRAIN_MAPPER -> {
                 // Skija-backed MasonryUI; brackets GL itself.
@@ -771,10 +802,21 @@ public class Main {
     private void renderGameUI(Game game, Renderer renderer) {
         if (renderer == null) return;
 
-        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI || game.getState() == GameState.RECIPE_BOOK_UI || game.getState() == GameState.CHARACTER_SHEET_UI) {
+        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI || game.getState() == GameState.RECIPE_BOOK_UI || game.getState() == GameState.CHARACTER_SHEET_UI || game.getState() == GameState.FURNACE_UI || game.getState() == GameState.WORKBENCH_UI) {
             renderCrosshair(game, renderer);
             renderInventoryAndHotbar(game);
             renderChat(game, renderer);
+        }
+
+        if (game.getState() == GameState.PLAYING) {
+            com.stonebreak.player.Player player = Game.getPlayer();
+            if (player != null) {
+                DamageNumberRenderer dmg = DamageNumberRenderer.getInstance();
+                dmg.update(Game.getDeltaTime());
+                dmg.render(renderer.getProjectionMatrix(),
+                           player.getViewMatrix(),
+                           width, height);
+            }
         }
 
         // Render recipe book as overlay, not fullscreen
@@ -792,10 +834,12 @@ public class Main {
         if (game.getState() == GameState.PLAYING) {
             InventoryScreen inventoryScreen = game.getInventoryScreen();
             WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+            FurnaceScreen furnaceScreen = game.getFurnaceScreen();
 
             // Don't render crosshair if any UI screen is open
             boolean anyUIVisible = (inventoryScreen != null && inventoryScreen.isVisible()) ||
-                                   (workbenchScreen != null && workbenchScreen.isVisible());
+                                   (workbenchScreen != null && workbenchScreen.isVisible()) ||
+                                   (furnaceScreen != null && furnaceScreen.isVisible());
 
             if (!anyUIVisible) {
                 renderer.getUIRenderer().renderCrosshair(width, height);
@@ -805,7 +849,6 @@ public class Main {
 
     private void renderInventoryAndHotbar(Game game) {
         InventoryScreen inventoryScreen = game.getInventoryScreen();
-        WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
         com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = game.getCharacterScreen();
         GameState state = game.getState();
 
@@ -818,10 +861,15 @@ public class Main {
             return;
         }
 
-        // Check which screen is visible and render accordingly
-        if (workbenchScreen != null && workbenchScreen.isVisible()) {
-            workbenchScreen.render();
-        } else if (characterScreen != null && characterScreen.isVisible()) {
+        // Furnace and Workbench are rendered exclusively by renderFullscreenMenus
+        // (outside the UIFrame bracket). Rendering them here too causes a double-render
+        // where the second Skija pass covers the GL block-texture icons from the first.
+        if (state == GameState.FURNACE_UI || state == GameState.WORKBENCH_UI) {
+            return;
+        }
+
+        if (characterScreen != null && characterScreen.isVisible()
+                && state == GameState.CHARACTER_SHEET_UI) {
             // Character screen is open — render it, but keep the hotbar visible below
             characterScreen.render(width, height);
             if (inventoryScreen != null) {
@@ -856,6 +904,12 @@ public class Main {
             WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
             if (workbenchScreen != null && workbenchScreen.isVisible()) {
                 workbenchScreen.render();
+            }
+        }
+        if (game.getState() == GameState.FURNACE_UI) {
+            FurnaceScreen furnaceScreen = game.getFurnaceScreen();
+            if (furnaceScreen != null && furnaceScreen.isVisible()) {
+                furnaceScreen.render();
             }
         }
     }

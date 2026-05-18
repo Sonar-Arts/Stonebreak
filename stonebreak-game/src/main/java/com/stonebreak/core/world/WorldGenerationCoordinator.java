@@ -107,6 +107,10 @@ public final class WorldGenerationCoordinator {
                         System.out.println("[SAVE-SYSTEM] ✓ Initialized save system for world '" + currentWorldName + "'");
 
                         SaveService.LoadResult loadResult = saveService.loadWorld().get();
+                        if (loadResult.isSuccess() && loadResult.getWorldData() != null) {
+                            currentWorldData = loadResult.getWorldData();
+                            game.setCurrentWorldData(currentWorldData);
+                        }
                         if (loadResult.isSuccess() && loadResult.getPlayerData() != null) {
                             StateConverter.applyPlayerData(player, loadResult.getPlayerData());
                             playerPosition = new Vector3f(loadResult.getPlayerData().getPosition());
@@ -125,6 +129,10 @@ public final class WorldGenerationCoordinator {
                                 game.setCheatsEnabled(currentWorldData.isCheatsEnabled());
                                 System.out.println("[CHEATS] ✓ Loaded cheats flag from world: " + currentWorldData.isCheatsEnabled());
                             }
+                            long savedTimeTicks = currentWorldData.getWorldTimeTicks();
+                            TimeOfDay timeOfDay = new TimeOfDay(savedTimeTicks);
+                            game.setTimeOfDay(timeOfDay);
+                            System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + timeOfDay.getTimeString() + ")");
                         } else {
                             isNewPlayer = true;
                             player.giveStartingItems();
@@ -180,12 +188,12 @@ public final class WorldGenerationCoordinator {
      * center on it.
      */
     private Vector3f locateAndApplyNewPlayerSpawn(World world, Player player, SaveService saveService) {
-        Vector3f spawn = new SpawnLocator(world).findSafeSurfaceSpawn();
+        WorldData currentWorldData = game.getCurrentWorldData();
+        Vector3f spawn = resolveInitialSpawn(world, currentWorldData);
 
         player.setPosition(spawn);
         world.setSpawnPosition(spawn);
 
-        WorldData currentWorldData = game.getCurrentWorldData();
         if (currentWorldData != null) {
             WorldData updated = new WorldData.Builder(currentWorldData)
                 .spawnPosition(spawn)
@@ -199,6 +207,26 @@ public final class WorldGenerationCoordinator {
 
         System.out.println("[SPAWN] New player spawn applied: " + spawn);
         return spawn;
+    }
+
+    /**
+     * If the current world data contains a non-origin spawn (set by the terrain
+     * mapper), use that XZ and sample the actual terrain Y. Otherwise fall back
+     * to the seed-based random surface search.
+     */
+    private Vector3f resolveInitialSpawn(World world, WorldData worldData) {
+        if (worldData != null && worldData.hasExplicitSpawn()) {
+            Vector3f saved = worldData.getSpawnPosition();
+            if (saved != null) {
+                int x = Math.round(saved.x);
+                int z = Math.round(saved.z);
+                int height = world.getFinalTerrainHeightAt(x, z);
+                System.out.println("[SPAWN] Using terrain-mapper spawn at (" + x + ", " + (height + 1) + ", " + z
+                        + "), terrain height " + height);
+                return new Vector3f(x, height + 1, z);
+            }
+        }
+        return new SpawnLocator(world).findSafeSurfaceSpawn();
     }
 
     private void generateChunksAroundPosition(World world, LoadingScreen loadingScreen, Vector3f playerPosition) {
@@ -264,7 +292,7 @@ public final class WorldGenerationCoordinator {
                 System.out.println("Loading existing world: " + worldName);
 
                 saveService.loadWorld()
-                    .thenAccept(result -> {
+                    .thenCompose(result -> {
                         try {
                             if (result.isSuccess() && result.getWorldData() != null) {
                                 WorldData worldData = result.getWorldData();
@@ -291,9 +319,6 @@ public final class WorldGenerationCoordinator {
                                 game.setTimeOfDay(timeOfDay);
                                 System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + timeOfDay.getTimeString() + ")");
 
-                                game.setCheatsEnabled(worldData.isCheatsEnabled());
-                                System.out.println("[CHEATS] ✓ Loaded cheats flag from world: " + worldData.isCheatsEnabled());
-
                                 if (result.getPlayerData() != null) {
                                     StateConverter.applyPlayerData(freshPlayer, result.getPlayerData());
                                     System.out.println("[PLAYER-DATA] Applied loaded player data to position: " +
@@ -317,12 +342,6 @@ public final class WorldGenerationCoordinator {
                                             }
                                         }
                                     }
-
-                                    try {
-                                        Thread.sleep(300);
-                                    } catch (InterruptedException e) {
-                                        Thread.currentThread().interrupt();
-                                    }
                                 } else {
                                     freshPlayer.giveStartingItems();
                                     if (Game.getTimeOfDay() == null) {
@@ -344,23 +363,27 @@ public final class WorldGenerationCoordinator {
                                             }
                                         }
                                     }
-                                    try {
-                                        Thread.sleep(300);
-                                    } catch (InterruptedException e) {
-                                        Thread.currentThread().interrupt();
-                                    }
                                 }
 
                                 saveService.startAutoSave();
-
                                 System.out.println("Successfully loaded complete world state for: " + worldName);
+
+                                // Wait for all async chunk loads to finish before transitioning to PLAYING.
+                                // The chunk loads were queued on saveService.ioExecutor; returning this future
+                                // releases that thread so the queued loads can run, and the chain continues
+                                // only after they complete.
+                                return freshWorld.awaitPendingChunkLoads()
+                                    .orTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                                    .exceptionally(t -> null);
                             } else {
                                 System.out.println("World load incomplete or invalid; generating new world.");
                                 createNewWorldWithGeneration(worldName, seed);
+                                return java.util.concurrent.CompletableFuture.completedFuture(null);
                             }
                         } catch (Exception e) {
                             System.err.println("Error applying loaded world state: " + e.getMessage());
                             e.printStackTrace();
+                            return java.util.concurrent.CompletableFuture.completedFuture(null);
                         }
                     })
                     .exceptionally(throwable -> {

@@ -102,7 +102,8 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
                 || blockType == BlockType.WOOD || blockType == BlockType.PINE
                 || blockType == BlockType.ELM_WOOD_LOG
                 || blockType == BlockType.SANDSTONE || blockType == BlockType.RED_SANDSTONE
-                || blockType == BlockType.WORKBENCH) {
+                || blockType == BlockType.WORKBENCH
+                || blockType == BlockType.FURNACE) {
             return BlockDefinition.RenderType.CUBE_DIRECTIONAL;
         }
         return BlockDefinition.RenderType.CUBE_ALL;

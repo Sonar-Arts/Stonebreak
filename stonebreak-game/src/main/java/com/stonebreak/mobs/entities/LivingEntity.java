@@ -7,6 +7,7 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.Water;
 import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
+import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 
 /**
  * Base class for all living entities that can move, interact, and have AI behavior.
@@ -102,17 +103,17 @@ public abstract class LivingEntity extends Entity {
      */
     @Override
     public void damage(float amount) {
+        damage(amount, DamageSource.UNKNOWN);
+    }
+
+    public void damage(float amount, DamageSource source) {
         if (!alive || invulnerable) return;
-        
-        // Apply damage
         super.damage(amount);
-        
-        // Trigger invulnerability
         invulnerable = true;
         invulnerabilityTimer = INVULNERABILITY_DURATION;
-        
-        // Call damage callback
-        onDamage(amount, DamageSource.UNKNOWN);
+        DamageNumberRenderer.getInstance().spawn(
+            position.x, position.y + height * 0.9f, position.z, amount);
+        onDamage(amount, source);
     }
     
     /**

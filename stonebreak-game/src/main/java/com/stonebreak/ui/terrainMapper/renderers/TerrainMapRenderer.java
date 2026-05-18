@@ -57,12 +57,29 @@ public final class TerrainMapRenderer {
             canvas.restoreToCount(save);
         }
 
+        if (state.hasSpawnPoint()) {
+            drawSpawnWaypoint(canvas, mapRect);
+        }
+
         if (state.hasHoverValue()) {
             drawHoverCrosshair(canvas, mapRect);
         }
 
         MPainter.strokeRect(canvas, mapRect.x(), mapRect.y(), mapRect.width(), mapRect.height(),
                 MStyle.PANEL_BORDER, 2f);
+    }
+
+    private void drawSpawnWaypoint(Canvas canvas, TerrainMapperLayout.Rect map) {
+        float cx = map.centerX();
+        float cz = map.y() + map.height() / 2f;
+        float sx = cx + (state.spawnWorldX() - state.getViewport().panX()) * state.getViewport().zoom();
+        float sz = cz + (state.spawnWorldZ() - state.getViewport().panZ()) * state.getViewport().zoom();
+        if (sx < map.x() || sx > map.right() || sz < map.y() || sz > map.bottom()) return;
+
+        float r = 7f;
+        MPainter.fillRoundedRect(canvas, sx - r - 1.5f, sz - r - 1.5f, (r + 1.5f) * 2f, (r + 1.5f) * 2f, r + 1.5f, 0xFF004400);
+        MPainter.fillRoundedRect(canvas, sx - r, sz - r, r * 2f, r * 2f, r, 0xFF32CD32);
+        MPainter.fillRoundedRect(canvas, sx - 2f, sz - 2f, 4f, 4f, 2f, 0xFFFFFFFF);
     }
 
     private void drawHoverCrosshair(Canvas canvas, TerrainMapperLayout.Rect map) {

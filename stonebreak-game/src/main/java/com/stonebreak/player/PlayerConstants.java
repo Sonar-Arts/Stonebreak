@@ -10,10 +10,10 @@ public final class PlayerConstants {
     public static final float PLAYER_HEIGHT = 1.8f;
     public static final float PLAYER_WIDTH = 0.6f;
 
-    public static final float MOVE_SPEED = 31.0f;
+    public static final float MOVE_SPEED = 20.0f;
     public static final float SWIM_SPEED = 11.5f;
     public static final float JUMP_FORCE = 8.5f;
-    public static final float GRAVITY = 40.0f;
+    public static final float GRAVITY = 35.0f;
     public static final float WATER_GRAVITY = 12.0f;
     public static final float WATER_BUOYANCY = 25.0f;
     public static final float WATER_JUMP_BOOST = 5.0f;
@@ -24,6 +24,15 @@ public final class PlayerConstants {
     public static final float HEALTH_PER_HEART = 2.0f;
     public static final int MAX_HEARTS = 10;
     public static final float MAX_HEALTH = MAX_HEARTS * HEALTH_PER_HEART;
+
+    public static final float SPRINT_MULTIPLIER       = 1.5f;
+
+    public static final float HEALTH_PER_CON_POINT     = 2f;   // CON 10 → 20 HP
+    public static final float STAMINA_PER_DEX_POINT    = 10f;  // DEX 10 → 100 stamina
+    public static final float STAMINA_DRAIN_RATE       = 10f;  // per sec while sprinting
+    public static final float STAMINA_REGEN_RATE       = 15f;  // per sec while not sprinting
+    public static final float MANA_PER_WIS_POINT       = 5f;   // WIS 10 → 50 mana
+    public static final float MANA_REGEN_PER_WIS_POINT = 0.2f; // WIS 10 → 2/sec regen
 
     public static final float SPAWN_PROTECTION_DURATION = 2.0f;
 

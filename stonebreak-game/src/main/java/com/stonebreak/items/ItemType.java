@@ -76,10 +76,11 @@ public final class ItemType implements Item {
      * WOODEN_BUCKET_WATER pair — water-vs-empty is now an ItemStack state
      * rather than a separate item type.
      */
+    public static final ItemType BANANA = fromRegistry("stonebreak:banana", "BANANA");
     public static final ItemType WOODEN_BUCKET = fromRegistry("stonebreak:wooden_bucket", "WOODEN_BUCKET");
 
     // ----- SBO state name constants for the wooden bucket. ----------------
-
+    
     public static final String BUCKET_STATE_EMPTY = "sb_wooden_bucket_empty";
     public static final String BUCKET_STATE_WATER = "sb_wooden_bucket_water";
 
@@ -254,6 +255,25 @@ public final class ItemType implements Item {
         return category;
     }
 
+
+    public float getHealAmount() {
+        if (this == BANANA) return 4.0f;
+        return 0.0f;
+    }
+
+    /**
+     * Returns the base melee damage this item deals when used to attack.
+     */
+    public float getDamage() {
+        if (this == SWORD) return 6.0f;
+        if (this == WAR_AXE || this == WOODEN_AXE) return 4.0f;
+        return 1.0f;
+    }
+
+    /**
+     * Checks if this item is a tool.
+     * @return True if this item is in the TOOLS category
+     */
     public boolean isTool() {
         return category == ItemCategory.TOOLS;
     }
@@ -264,15 +284,6 @@ public final class ItemType implements Item {
 
     public boolean isFood() {
         return category == ItemCategory.FOOD;
-    }
-
-    /**
-     * Returns how much health this item restores when consumed.
-     * Non-food items return 0.
-     */
-    public float getHealAmount() {
-        if (this == BANANA) return 4.0f;
-        return 0.0f;
     }
 
     @Override

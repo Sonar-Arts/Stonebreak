@@ -20,6 +20,19 @@ public class InventoryInputManager {
     protected final InventoryDragDropHandler.DragState dragState;
     protected final InventoryCraftingManager craftingManager;
 
+    // Screen dimensions (updated each frame for drag release)
+    protected int lastScreenWidth, lastScreenHeight;
+
+    // Double-click detection
+    private static final long DOUBLE_CLICK_THRESHOLD_MS = 350L;
+    private static final float DOUBLE_CLICK_RADIUS = 40f;
+    private long lastClickTimeMs = 0L;
+    private float lastClickX = 0f, lastClickY = 0f;
+
+    // Right-click drag state
+    private boolean rightDragActive = false;
+    private final java.util.Set<Integer> rightDragVisitedSlots = new java.util.HashSet<>();
+
     // Recipe button properties
     private float recipeButtonX, recipeButtonY, recipeButtonWidth, recipeButtonHeight;
 
@@ -47,18 +60,27 @@ public class InventoryInputManager {
         Vector2f mousePos = inputHandler.getMousePosition();
         float mouseX = mousePos.x;
         float mouseY = mousePos.y;
+        this.lastScreenWidth = screenWidth;
+        this.lastScreenHeight = screenHeight;
         boolean shiftDown = inputHandler.isKeyDown(GLFW.GLFW_KEY_LEFT_SHIFT) ||
                            inputHandler.isKeyDown(GLFW.GLFW_KEY_RIGHT_SHIFT);
 
         boolean leftMouseButtonPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
         boolean rightMouseButtonPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+        boolean rightMouseButtonDown = inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
 
         if (leftMouseButtonPressed) {
             handleLeftClick(mouseX, mouseY, shiftDown, layout);
+        } else if (rightMouseButtonDown && dragState.isDragging()) {
+            handleRightDrag(mouseX, mouseY, layout);
         } else if (rightMouseButtonPressed) {
             handleRightClick(mouseX, mouseY, layout);
         } else {
             handleDragRelease(screenWidth, screenHeight);
+        }
+
+        if (!rightMouseButtonDown) {
+            clearRightDrag();
         }
     }
 
@@ -66,6 +88,19 @@ public class InventoryInputManager {
                                   InventoryLayoutCalculator.InventoryLayout layout) {
         if (shiftDown) {
             handleShiftClickTransfer(mouseX, mouseY, layout);
+            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            return;
+        }
+
+        // If dragging, check for double-click gather before placing
+        if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
+            if (isDoubleClick(mouseX, mouseY)) {
+                handleDoubleClickGather();
+                recordClick(mouseX, mouseY);
+                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                return;
+            }
+            placeDraggedItem(lastScreenWidth, lastScreenHeight);
             inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             return;
         }
@@ -112,12 +147,16 @@ public class InventoryInputManager {
             }
 
             // Try to pick up item
-            tryPickUpItem(mouseX, mouseY, layout);
+            if (tryPickUpItem(mouseX, mouseY, layout)) {
+                recordClick(mouseX, mouseY);
+                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            }
         }
     }
 
     protected void handleRightClick(float mouseX, float mouseY,
                                    InventoryLayoutCalculator.InventoryLayout layout) {
+        // Single right-click just drops one item when dragging (old behavior)
         if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
             boolean placedOne = tryHandleRightClickDropSingle(mouseX, mouseY, layout);
             if (placedOne) {
@@ -127,16 +166,10 @@ public class InventoryInputManager {
     }
 
     protected void handleDragRelease(int screenWidth, int screenHeight) {
-        if (dragState.draggedItemStack != null &&
-            !inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
-            placeDraggedItem(screenWidth, screenHeight);
-        } else if (dragState.draggedItemStack != null &&
-                   !inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_LEFT) &&
-                   !inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
-            handleFailedDrop();
-        } else if (dragState.draggedItemStack == null) {
+        if (dragState.draggedItemStack == null || dragState.draggedItemStack.isEmpty()) {
             clearDraggedItemState();
         }
+        // Otherwise: dragging in progress — wait for the second left-click (handled in handleLeftClick)
     }
 
     private boolean isRecipeButtonClicked(float mouseX, float mouseY,
@@ -260,25 +293,28 @@ public class InventoryInputManager {
         }
     }
 
-    private void tryPickUpItem(float mouseX, float mouseY,
+    private boolean tryPickUpItem(float mouseX, float mouseY,
                               InventoryLayoutCalculator.InventoryLayout layout) {
         // Try main inventory slots
-        if (slotManager.tryPickUpFromMainInventory(mouseX, mouseY, layout, dragState)) return;
+        if (slotManager.tryPickUpFromMainInventory(mouseX, mouseY, layout, dragState)) return true;
 
         // Try hotbar slots
-        if (slotManager.tryPickUpFromHotbar(mouseX, mouseY, layout, dragState)) return;
+        if (slotManager.tryPickUpFromHotbar(mouseX, mouseY, layout, dragState)) return true;
 
         // Try crafting input slots
         if (slotManager.tryPickUpFromCraftingInput(mouseX, mouseY, layout, dragState)) {
             craftingManager.updateCraftingOutput();
-            return;
+            return true;
         }
 
         // Try crafting output slot
         if (slotManager.tryPickUpFromCraftingOutput(mouseX, mouseY, layout, dragState)) {
             craftingManager.consumeCraftingIngredients();
             craftingManager.updateCraftingOutput();
+            return true;
         }
+
+        return false;
     }
 
     private void handleShiftClickTransfer(float mouseX, float mouseY,
@@ -293,7 +329,14 @@ public class InventoryInputManager {
         // Check crafting input slots
         if (slotManager.tryShiftClickCraftingInput(mouseX, mouseY, layout)) {
             craftingManager.updateCraftingOutput();
+            return;
         }
+
+        // Check main inventory -> hotbar transfer
+        if (slotManager.tryShiftClickMainInventoryToHotbar(mouseX, mouseY, layout)) return;
+
+        // Check hotbar -> main inventory transfer
+        if (slotManager.tryShiftClickHotbarToMainInventory(mouseX, mouseY, layout)) return;
     }
 
     private boolean tryHandleRightClickDropSingle(float mouseX, float mouseY,
@@ -315,6 +358,39 @@ public class InventoryInputManager {
         }
 
         return false;
+    }
+
+    private boolean isDoubleClick(float mouseX, float mouseY) {
+        long now = System.currentTimeMillis();
+        if (now - lastClickTimeMs > DOUBLE_CLICK_THRESHOLD_MS) return false;
+        float dx = mouseX - lastClickX;
+        float dy = mouseY - lastClickY;
+        return dx * dx + dy * dy <= DOUBLE_CLICK_RADIUS * DOUBLE_CLICK_RADIUS;
+    }
+
+    private void recordClick(float mouseX, float mouseY) {
+        lastClickTimeMs = System.currentTimeMillis();
+        lastClickX = mouseX;
+        lastClickY = mouseY;
+    }
+
+    private void handleDoubleClickGather() {
+        slotManager.gatherMatchingItemsToStack(dragState);
+    }
+
+    private void handleRightDrag(float mouseX, float mouseY,
+                                 InventoryLayoutCalculator.InventoryLayout layout) {
+        rightDragActive = true;
+        boolean placed = slotManager.tryRightDragDepositToSlot(
+                mouseX, mouseY, layout, dragState, rightDragVisitedSlots);
+        if (placed) {
+            craftingManager.updateCraftingOutput();
+        }
+    }
+
+    private void clearRightDrag() {
+        rightDragActive = false;
+        rightDragVisitedSlots.clear();
     }
 
     private void placeDraggedItem(int screenWidth, int screenHeight) {

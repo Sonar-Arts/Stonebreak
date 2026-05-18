@@ -63,6 +63,8 @@ public final class StateConverter {
             .remainingCp(cs.getRemainingCp())
             .remainingSp(cs.getRemainingSkillPoints())
             .remainingFp(cs.getRemainingFeatPoints())
+            .abilityScores(cs.getAbilityScores())
+            .remainingAp(cs.getRemainingAp())
             .build();
     }
 
@@ -75,7 +77,7 @@ public final class StateConverter {
         player.setLoadedFromSave(true);
 
         // Apply position and rotation
-        player.getPosition().set(data.getPosition());
+        player.setPosition(data.getPosition());
         player.getCamera().setYaw(data.getRotation().x);
         player.getCamera().setPitch(data.getRotation().y);
 
@@ -124,7 +126,9 @@ public final class StateConverter {
             new HashSet<>(data.getAcquiredFeatIds()),
             data.getRemainingCp(),
             data.getRemainingSkillPoints(),
-            data.getRemainingFeatPoints()
+            data.getRemainingFeatPoints(),
+            data.getAbilityScores(),
+            data.getRemainingAp()
         );
     }
 

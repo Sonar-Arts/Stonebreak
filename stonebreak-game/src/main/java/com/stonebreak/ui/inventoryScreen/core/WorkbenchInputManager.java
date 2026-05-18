@@ -28,6 +28,8 @@ public class WorkbenchInputManager extends InventoryInputManager {
         Vector2f mousePos = super.inputHandler.getMousePosition();
         float mouseX = mousePos.x;
         float mouseY = mousePos.y;
+        this.lastScreenWidth = screenWidth;
+        this.lastScreenHeight = screenHeight;
         boolean shiftDown = super.inputHandler.isKeyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) ||
                            super.inputHandler.isKeyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT);
 
@@ -35,7 +37,13 @@ public class WorkbenchInputManager extends InventoryInputManager {
         boolean rightMouseButtonPressed = super.inputHandler.isMouseButtonPressed(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_RIGHT);
 
         if (leftMouseButtonPressed) {
-            handleLeftClick(mouseX, mouseY, shiftDown, layout);
+            // Single-click drag: if dragging, place the item (use workbench handler, not parent)
+            if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
+                placeWorkbenchDraggedItem(lastScreenWidth, lastScreenHeight, layout);
+                super.inputHandler.consumeMouseButtonPress(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            } else {
+                handleLeftClick(mouseX, mouseY, shiftDown, layout);
+            }
         } else if (rightMouseButtonPressed) {
             handleRightClick(mouseX, mouseY, layout);
         } else {
@@ -47,16 +55,10 @@ public class WorkbenchInputManager extends InventoryInputManager {
      * Handles drag release for workbench with correct 3x3 layout.
      */
     private void handleWorkbenchDragRelease(int screenWidth, int screenHeight, InventoryLayoutCalculator.InventoryLayout layout) {
-        if (super.dragState.draggedItemStack != null &&
-            !super.inputHandler.isMouseButtonDown(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
-            placeWorkbenchDraggedItem(screenWidth, screenHeight, layout);
-        } else if (super.dragState.draggedItemStack != null &&
-                   !super.inputHandler.isMouseButtonDown(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT) &&
-                   !super.inputHandler.isMouseButtonDown(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
-            handleWorkbenchFailedDrop(layout);
-        } else if (super.dragState.draggedItemStack == null) {
+        if (super.dragState.draggedItemStack == null || super.dragState.draggedItemStack.isEmpty()) {
             super.getDragState().clear();
         }
+        // Otherwise: dragging in progress — wait for the second left-click
     }
 
     /**

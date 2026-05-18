@@ -40,12 +40,15 @@ public final class TerrainMapperScreen {
 
     private void wireCallbacks() {
         state.getBackButton().onClick(actionHandler::goBack);
+        state.getCharacterButton().onClick(actionHandler::goToCharacterCreation);
         state.getSimulateSeedButton().onClick(actionHandler::simulateSeed);
         state.getCreateButton().onClick(actionHandler::createWorld);
         for (var button : state.getModeButtons()) {
             VisualizerKind tag = button.tag();
             button.onClick(() -> state.setActiveVisualizer(tag));
         }
+        state.getSetSpawnButton().onClick(state::clearSpawnPoint);
+        state.getCenterOnSpawnButton().onClick(actionHandler::centerOnSpawn);
     }
 
     // ─────────────────────────────────────────────── Input

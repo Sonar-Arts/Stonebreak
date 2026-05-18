@@ -19,9 +19,15 @@ public class JumpHandler {
     private final PhysicsState state;
     private boolean wasJumpPressed;
     private float lastNormalJumpTime;
+    private boolean canDoubleJump;
+    private boolean doubleJumpUsed;
 
     public JumpHandler(PhysicsState state) {
         this.state = state;
+    }
+
+    public void setCanDoubleJump(boolean canDoubleJump) {
+        this.canDoubleJump = canDoubleJump;
     }
 
     /**
@@ -33,12 +39,26 @@ public class JumpHandler {
      * @param flying whether player is currently flying
      */
     public void processJumpInput(boolean jump, boolean flightConsumedToggle, boolean flying) {
+        boolean wasOnGround = state.isOnGround();
+
+        if (wasOnGround) {
+            doubleJumpUsed = false;
+        }
+
         boolean jumpPressed = jump && !wasJumpPressed;
 
-        if (jumpPressed && !flying && state.isOnGround() && !state.isPhysicallyInWater()) {
+        if (jumpPressed && !flying && wasOnGround && !state.isPhysicallyInWater()) {
             state.getVelocity().y = JUMP_FORCE;
             state.setOnGround(false);
             lastNormalJumpTime = Game.getInstance().getTotalTimeElapsed();
+        }
+
+        if (jumpPressed && !flying && !wasOnGround && !state.isPhysicallyInWater()
+                && canDoubleJump && !doubleJumpUsed) {
+            state.getVelocity().y = JUMP_FORCE;
+            doubleJumpUsed = true;
+            lastNormalJumpTime = Game.getInstance().getTotalTimeElapsed();
+            state.setPreviousY(state.getPosition().y);
         }
 
         if (jumpPressed && !flying && state.isPhysicallyInWater()) {
@@ -51,7 +71,7 @@ public class JumpHandler {
 
         // Release-damping for floating out of water
         boolean jumpReleased = !jump && wasJumpPressed;
-        if (jumpReleased && !flying && !state.isOnGround() && state.getVelocity().y > 0 &&
+        if (jumpReleased && !flying && !wasOnGround && state.getVelocity().y > 0 &&
                 (state.isPhysicallyInWater() || state.wasInWaterLastFrame())) {
             state.getVelocity().y *= 0.3f;
         }
@@ -66,5 +86,6 @@ public class JumpHandler {
     public void reset() {
         wasJumpPressed = false;
         lastNormalJumpTime = 0.0f;
+        doubleJumpUsed = false;
     }
 }

@@ -78,6 +78,10 @@ public class CharacterRenderCoordinator {
   private final SkillsTabRenderer  skillsRenderer  = new SkillsTabRenderer();
   private final FeatsTabRenderer   featsRenderer   = new FeatsTabRenderer();
 
+  // Ability score +/- buttons (one pair per stat, index 0–5: STR DEX CON INT WIS CHA)
+  private final MButton[] scorePlusButtons  = new MButton[6];
+  private final MButton[] scoreMinusButtons = new MButton[6];
+
   // ─────────────────────────────────────────────────────────────────────────
 
   public CharacterRenderCoordinator(Renderer renderer, InputHandler inputHandler,
@@ -87,6 +91,10 @@ public class CharacterRenderCoordinator {
     this.stats        = stats;
     this.controller   = controller;
     this.ui           = new MasonryUI(renderer.getSkijaBackend());
+    for (int i = 0; i < 6; i++) {
+      scorePlusButtons[i]  = new MButton("+").fontSize(MStyle.FONT_META);
+      scoreMinusButtons[i] = new MButton("−").fontSize(MStyle.FONT_META);
+    }
   }
 
   // ─────────────────────────────────────────────── Public entry points
@@ -176,10 +184,10 @@ public class CharacterRenderCoordinator {
       }
 
       boolean consumed = switch (controller.getActiveTab()) {
-        case CLASSES -> classesRenderer.handleClick(mx, my, stats, px, py);
-        case SKILLS  -> skillsRenderer.handleClick(mx, my, stats);
-        case FEATS   -> featsRenderer.handleClick(mx, my, stats, px, py);
-        default      -> false;
+        case OVERVIEW -> handleOverviewClick(mx, my, px, py);
+        case CLASSES  -> classesRenderer.handleClick(mx, my, stats, px, py);
+        case SKILLS   -> skillsRenderer.handleClick(mx, my, stats);
+        case FEATS    -> featsRenderer.handleClick(mx, my, stats, px, py);
       };
       if (consumed) {
         inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
@@ -195,6 +203,20 @@ public class CharacterRenderCoordinator {
         inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_RIGHT);
       }
     }
+  }
+
+  private boolean handleOverviewClick(float mx, float my, float px, float py) {
+    for (int i = 0; i < 6; i++) {
+      if (scorePlusButtons[i].contains(mx, my)) {
+        stats.incrementAbilityScore(i);
+        return true;
+      }
+      if (scoreMinusButtons[i].contains(mx, my)) {
+        stats.decrementAbilityScore(i);
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Forwards scroll wheel events to the active tab renderer. */
@@ -380,6 +402,7 @@ public class CharacterRenderCoordinator {
         new Entry("CP", stats.getClassPoints()),
         new Entry("SP", stats.getSkillPoints()),
         new Entry("FP", stats.getFeatPoints()),
+        new Entry("AP", stats.getRemainingAp()),
     };
     for (Entry e : entries) {
       MPainter.drawStringWithShadow(canvas, e.label() + ": " + e.value(),
@@ -400,10 +423,13 @@ public class CharacterRenderCoordinator {
     final float tileW   = 64f;
     final float tileH   = 80f;
     final float tileGap = 8f;
+    final float btnW    = 16f;
+    final float btnH    = 14f;
 
     Font abbrevFont = ui.fonts().get(MStyle.FONT_META);
     Font valueFont  = ui.fonts().get(MStyle.FONT_BUTTON);
     Font modFont    = ui.fonts().get(MStyle.FONT_META);
+    Font btnFont    = ui.fonts().get(MStyle.FONT_META);
 
     for (int i = 0; i < 6; i++) {
       int col = i % 3;
@@ -423,15 +449,50 @@ public class CharacterRenderCoordinator {
 
       float tileCX = tx + tileW / 2f;
 
+      // Abbreviation
       MPainter.drawCenteredStringWithShadow(canvas, ABILITY_ABBREV[i],
-          tileCX, ty + 15f, abbrevFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-      MPainter.drawCenteredStringWithShadow(canvas, String.valueOf(scores[i]),
-          tileCX, ty + tileH / 2f + 10f, valueFont, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+          tileCX, ty + 14f, abbrevFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
 
+      // Score value
+      MPainter.drawCenteredStringWithShadow(canvas, String.valueOf(scores[i]),
+          tileCX, ty + 50f, valueFont, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+
+      // [-] button (left side, vertically centered on score)
+      float btnY = ty + 34f;
+      scoreMinusButtons[i].bounds(tx + 2f, btnY, btnW, btnH);
+      scoreMinusButtons[i].updateHover(mx, my);
+      boolean minusHovered = scoreMinusButtons[i].isHovered();
+      boolean minusEnabled = scores[i] > 1;
+      int minusFill = !minusEnabled ? MStyle.BUTTON_FILL_DIS
+          : minusHovered ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
+      MPainter.stoneSurface(canvas, tx + 2f, btnY, btnW, btnH, 2f,
+          minusFill, MStyle.BUTTON_BORDER,
+          MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
+          MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
+      int minusTextColor = minusEnabled ? MStyle.TEXT_PRIMARY : MStyle.TEXT_DISABLED;
+      MPainter.drawCenteredStringWithShadow(canvas, "−",
+          tx + 2f + btnW / 2f, btnY + btnH * 0.72f, btnFont, minusTextColor, MStyle.TEXT_SHADOW);
+
+      // [+] button (right side)
+      scorePlusButtons[i].bounds(tx + tileW - btnW - 2f, btnY, btnW, btnH);
+      scorePlusButtons[i].updateHover(mx, my);
+      boolean plusHovered = scorePlusButtons[i].isHovered();
+      boolean plusEnabled = stats.getRemainingAp() > 0;
+      int plusFill = !plusEnabled ? MStyle.BUTTON_FILL_DIS
+          : plusHovered ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
+      MPainter.stoneSurface(canvas, tx + tileW - btnW - 2f, btnY, btnW, btnH, 2f,
+          plusFill, MStyle.BUTTON_BORDER,
+          MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
+          MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
+      int plusTextColor = plusEnabled ? MStyle.TEXT_PRIMARY : MStyle.TEXT_DISABLED;
+      MPainter.drawCenteredStringWithShadow(canvas, "+",
+          tx + tileW - btnW - 2f + btnW / 2f, btnY + btnH * 0.72f, btnFont, plusTextColor, MStyle.TEXT_SHADOW);
+
+      // Modifier
       int mod = stats.getModifier(scores[i]);
       String modStr = (mod >= 0 ? "+" : "") + mod;
       MPainter.drawCenteredStringWithShadow(canvas, modStr,
-          tileCX, ty + tileH - 8f, modFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+          tileCX, ty + tileH - 10f, modFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
     }
   }
 

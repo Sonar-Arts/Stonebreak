@@ -446,6 +446,10 @@ public class World {
         return terrainSystem.getFinalTerrainHeightAt(x, z);
     }
 
+    public java.util.concurrent.CompletableFuture<Void> awaitPendingChunkLoads() {
+        return chunkStore != null ? chunkStore.awaitPendingLoads() : java.util.concurrent.CompletableFuture.completedFuture(null);
+    }
+
     /**
      * Gets a cached chunk position for coordinate lookup.
      */
@@ -501,13 +505,14 @@ public class World {
 
         if (fastLodManager != null) {
             fastLodManager.shutdown();
-            // Drain the final cleanup queue on the GL thread.
-            fastLodManager.applyGLUpdates();
+            final com.stonebreak.world.fastlod.FastLodManager lod = fastLodManager;
+            com.stonebreak.core.Game.getInstance().runOnMainThread(lod::applyGLUpdates);
         }
 
         if (meshPipeline != null) {
             meshPipeline.shutdown();
-            meshPipeline.processGpuCleanupQueue();
+            final MmsMeshPipeline mp = meshPipeline;
+            com.stonebreak.core.Game.getInstance().runOnMainThread(mp::processGpuCleanupQueue);
         }
         chunkStore.cleanup();
     }
