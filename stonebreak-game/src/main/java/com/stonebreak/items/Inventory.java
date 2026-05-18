@@ -318,8 +318,16 @@ public class Inventory {
 
         int remainingToRemove = count;
 
-        // Try removing from selected hotbar slot first if it matches
+        // Capture pre-removal state of selected slot — needed for auto-switch after depletion
+        Item depletedItem = null;
+        String depletedState = null;
         ItemStack selectedStack = hotbarSlots[selectedHotbarSlotIndex];
+        if (selectedStack.getBlockTypeId() == blockTypeId && !selectedStack.isEmpty()) {
+            depletedItem = selectedStack.getItem();
+            depletedState = selectedStack.getState();
+        }
+
+        // Try removing from selected hotbar slot first if it matches
         if (selectedStack.getBlockTypeId() == blockTypeId && !selectedStack.isEmpty()) {
             int canRemove = Math.min(remainingToRemove, selectedStack.getCount());
             selectedStack.decrementCount(canRemove);
@@ -355,6 +363,38 @@ public class Inventory {
                 }
             }
         }
+
+        // Auto-switch: if the selected slot was depleted, move the next matching
+        // stack into it (other hotbar slots first, then main inventory).
+        if (depletedItem != null && selectedStack.isEmpty()) {
+            boolean switched = false;
+            // Search other hotbar slots first
+            for (int i = 0; i < HOTBAR_SIZE && !switched; i++) {
+                if (i == selectedHotbarSlotIndex) continue;
+                ItemStack other = hotbarSlots[i];
+                if (other.getItem().isSameType(depletedItem)
+                        && java.util.Objects.equals(other.getState(), depletedState)
+                        && !other.isEmpty()) {
+                    hotbarSlots[selectedHotbarSlotIndex] = other;
+                    hotbarSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
+                    switched = true;
+                }
+            }
+            // Fall back to main inventory if no hotbar match
+            if (!switched) {
+                for (int i = 0; i < MAIN_INVENTORY_SIZE && !switched; i++) {
+                    ItemStack mainStack = mainInventorySlots[i];
+                    if (mainStack.getItem().isSameType(depletedItem)
+                            && java.util.Objects.equals(mainStack.getState(), depletedState)
+                            && !mainStack.isEmpty()) {
+                        hotbarSlots[selectedHotbarSlotIndex] = mainStack;
+                        mainInventorySlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
+                        switched = true;
+                    }
+                }
+            }
+        }
+
         return remainingToRemove == 0;
     }
 
