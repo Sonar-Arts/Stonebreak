@@ -1,7 +1,7 @@
 package com.stonebreak.ui.chat.emoji;
 
 import java.util.Collections;
-import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
@@ -9,30 +9,30 @@ import java.util.Set;
 public class ChatEmojiSystem {
 
     private boolean open = false;
-    private final LinkedList<EmojiType> recentlyUsed = new LinkedList<>();
-    private final Set<EmojiType> favorites = EnumSet.noneOf(EmojiType.class);
+    private final LinkedList<ChatEmoji> recentlyUsed = new LinkedList<>();
+    private final Set<ChatEmoji> favorites = new LinkedHashSet<>();
 
     public void toggle() { open = !open; }
     public void close()  { open = false; }
     public boolean isOpen() { return open; }
 
-    public void onEmojiUsed(EmojiType type) {
-        recentlyUsed.remove(type);
-        recentlyUsed.addFirst(type);
+    public void onEmojiUsed(ChatEmoji emoji) {
+        recentlyUsed.remove(emoji);
+        recentlyUsed.addFirst(emoji);
         close();
     }
 
-    public void toggleFavorite(EmojiType type) {
-        if (!favorites.remove(type)) {
-            favorites.add(type);
+    public void toggleFavorite(ChatEmoji emoji) {
+        if (!favorites.remove(emoji)) {
+            favorites.add(emoji);
         }
     }
 
-    public List<EmojiType> getRecentlyUsed() {
+    public List<ChatEmoji> getRecentlyUsed() {
         return Collections.unmodifiableList(recentlyUsed);
     }
 
-    public Set<EmojiType> getFavorites() {
+    public Set<ChatEmoji> getFavorites() {
         return Collections.unmodifiableSet(favorites);
     }
 }

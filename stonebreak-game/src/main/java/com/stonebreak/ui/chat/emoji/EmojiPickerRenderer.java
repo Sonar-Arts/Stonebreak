@@ -11,7 +11,7 @@ import io.github.humbleui.skija.PaintMode;
 import io.github.humbleui.types.RRect;
 
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -41,12 +41,12 @@ public final class EmojiPickerRenderer {
 
     // ─────────────────────────────────────────── Layout computation
 
-    private record SectionLayout(float headerY, float contentY, float contentH, List<EmojiType> emojis) {}
+    private record SectionLayout(float headerY, float contentY, float contentH, List<ChatEmoji> emojis) {}
 
     private record PickerLayout(float panelX, float panelY, float panelH,
                                 SectionLayout favs, SectionLayout recent, SectionLayout all) {}
 
-    private static float contentH(List<EmojiType> emojis) {
+    private static float contentH(List<ChatEmoji> emojis) {
         return emojis.isEmpty() ? EMPTY_ROW_H : CELL_SIZE + 4f;
     }
 
@@ -55,10 +55,12 @@ public final class EmojiPickerRenderer {
      * @param anchorTop   top edge of the emoji button
      */
     private PickerLayout computeLayout(ChatEmojiSystem state, float anchorRight, float anchorTop) {
-        List<EmojiType> favs = new ArrayList<>(state.getFavorites());
-        favs.sort(Comparator.comparingInt(EmojiType::ordinal));
-        List<EmojiType> recent = state.getRecentlyUsed();
-        List<EmojiType> all = List.of(EmojiType.values());
+        List<ChatEmoji> favs = new ArrayList<>(state.getFavorites());
+        List<ChatEmoji> recent = state.getRecentlyUsed();
+
+        List<ChatEmoji> all = new ArrayList<>();
+        Collections.addAll(all, EmojiType.values());
+        Collections.addAll(all, GifEmojiType.values());
 
         float favH    = contentH(favs);
         float recentH = contentH(recent);
@@ -135,13 +137,13 @@ public final class EmojiPickerRenderer {
 
         float cellY = sec.contentY() + 2f;
         for (int i = 0; i < sec.emojis().size(); i++) {
-            EmojiType emoji = sec.emojis().get(i);
+            ChatEmoji emoji = sec.emojis().get(i);
             float cellX = panelX + PADDING + i * (CELL_SIZE + CELL_GAP);
             drawEmojiCell(canvas, emoji, cellX, cellY, state, mx, my);
         }
     }
 
-    private void drawEmojiCell(Canvas canvas, EmojiType emoji,
+    private void drawEmojiCell(Canvas canvas, ChatEmoji emoji,
                                 float cx, float cy,
                                 ChatEmojiSystem state,
                                 float mx, float my) {
@@ -162,7 +164,7 @@ public final class EmojiPickerRenderer {
         }
 
         // Sprite — centered at 22×22 inside the 32×32 cell
-        Image img = EmojiImageCache.get(emoji);
+        Image img = resolveFrame(emoji);
         if (img != null) {
             float spriteSize = CELL_SIZE - 10f; // 22px
             float spriteX = cx + (CELL_SIZE - spriteSize) / 2f;
@@ -187,6 +189,13 @@ public final class EmojiPickerRenderer {
         }
     }
 
+    private static Image resolveFrame(ChatEmoji emoji) {
+        if (emoji instanceof GifEmojiType g) {
+            return GifAnimationCache.getCurrentFrame(g);
+        }
+        return EmojiImageCache.get((EmojiType) emoji);
+    }
+
     private static void drawSectionSeparator(Canvas canvas, float panelX, float y) {
         float sepY = y + SECTION_GAP / 2f;
         MPainter.fillRect(canvas, panelX + PADDING, sepY, PANEL_W - PADDING * 2f, 1f,
@@ -207,10 +216,10 @@ public final class EmojiPickerRenderer {
      * Prioritises star detection — call {@link #getClickedFavoriteStar} first
      * to avoid ambiguity.
      */
-    public EmojiType getClickedEmoji(ChatEmojiSystem state, float mx, float my,
+    public ChatEmoji getClickedEmoji(ChatEmojiSystem state, float mx, float my,
                                      float anchorRight, float anchorTop) {
         PickerLayout L = computeLayout(state, anchorRight, anchorTop);
-        EmojiType hit = emojiAtPoint(L.favs,   mx, my, L.panelX);
+        ChatEmoji hit = emojiAtPoint(L.favs,   mx, my, L.panelX);
         if (hit == null) hit = emojiAtPoint(L.recent, mx, my, L.panelX);
         if (hit == null) hit = emojiAtPoint(L.all,    mx, my, L.panelX);
         return hit;
@@ -219,16 +228,16 @@ public final class EmojiPickerRenderer {
     /**
      * Returns the emoji whose favourite-star area was clicked, or {@code null}.
      */
-    public EmojiType getClickedFavoriteStar(ChatEmojiSystem state, float mx, float my,
+    public ChatEmoji getClickedFavoriteStar(ChatEmojiSystem state, float mx, float my,
                                             float anchorRight, float anchorTop) {
         PickerLayout L = computeLayout(state, anchorRight, anchorTop);
-        EmojiType hit = starAtPoint(L.favs,   mx, my, L.panelX);
+        ChatEmoji hit = starAtPoint(L.favs,   mx, my, L.panelX);
         if (hit == null) hit = starAtPoint(L.recent, mx, my, L.panelX);
         if (hit == null) hit = starAtPoint(L.all,    mx, my, L.panelX);
         return hit;
     }
 
-    private static EmojiType emojiAtPoint(SectionLayout sec, float mx, float my, float panelX) {
+    private static ChatEmoji emojiAtPoint(SectionLayout sec, float mx, float my, float panelX) {
         if (sec.emojis().isEmpty()) return null;
         float cellY = sec.contentY() + 2f;
         for (int i = 0; i < sec.emojis().size(); i++) {
@@ -241,7 +250,7 @@ public final class EmojiPickerRenderer {
         return null;
     }
 
-    private static EmojiType starAtPoint(SectionLayout sec, float mx, float my, float panelX) {
+    private static ChatEmoji starAtPoint(SectionLayout sec, float mx, float my, float panelX) {
         if (sec.emojis().isEmpty()) return null;
         float cellY = sec.contentY() + 2f;
         for (int i = 0; i < sec.emojis().size(); i++) {
