@@ -261,6 +261,14 @@ public class ItemStack {
     }
 
     /**
+     * Checks if this item is a food item.
+     * @return True if it's an ItemType food
+     */
+    public boolean isFood() {
+        return item instanceof ItemType && ((ItemType) item).isFood();
+    }
+
+    /**
      * Gets the item's category.
      * @return The item category
      */

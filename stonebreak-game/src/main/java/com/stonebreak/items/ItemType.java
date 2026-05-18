@@ -68,6 +68,7 @@ public final class ItemType implements Item {
     public static final ItemType SWORD = fromRegistry("stonebreak:sword", "SWORD");
     public static final ItemType WAR_AXE = fromRegistry("stonebreak:war_axe", "WAR_AXE");
     public static final ItemType WOODEN_SHOVEL = fromRegistry("stonebreak:wooden_shovel", "WOODEN_SHOVEL");
+    public static final ItemType BANANA = fromRegistry("stonebreak:banana", "BANANA");
 
     /**
      * Wooden bucket (SBO 1.3, two states: "sb_wooden_bucket_empty" default
@@ -259,6 +260,19 @@ public final class ItemType implements Item {
 
     public boolean isMaterial() {
         return category == ItemCategory.MATERIALS;
+    }
+
+    public boolean isFood() {
+        return category == ItemCategory.FOOD;
+    }
+
+    /**
+     * Returns how much health this item restores when consumed.
+     * Non-food items return 0.
+     */
+    public float getHealAmount() {
+        if (this == BANANA) return 4.0f;
+        return 0.0f;
     }
 
     @Override
