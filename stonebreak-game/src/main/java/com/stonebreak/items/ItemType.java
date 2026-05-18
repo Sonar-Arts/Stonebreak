@@ -76,7 +76,6 @@ public final class ItemType implements Item {
      * WOODEN_BUCKET_WATER pair — water-vs-empty is now an ItemStack state
      * rather than a separate item type.
      */
-    public static final ItemType BANANA = fromRegistry("stonebreak:banana", "BANANA");
     public static final ItemType WOODEN_BUCKET = fromRegistry("stonebreak:wooden_bucket", "WOODEN_BUCKET");
 
     // ----- SBO state name constants for the wooden bucket. ----------------
