@@ -112,7 +112,14 @@ public class ChunkManager {
     }
 
     private void unloadExitedChunks(Set<ChunkPosition> requiredChunks) {
-        Set<ChunkPosition> chunksToUnload = new HashSet<>(activeChunkPositions);
+        // Consider EVERY chunk resident in the world, not just the ones this
+        // manager explicitly loaded. Chunks are also created as a side effect
+        // of world.getChunkAt() during feature generation (trees crossing
+        // chunk borders), water flow physics, and mob AI. Those chunks are
+        // never added to activeChunkPositions, so deriving the unload set from
+        // activeChunkPositions alone leaked them permanently - the loaded
+        // chunk count grew unbounded (1600+ at render distance 8).
+        Set<ChunkPosition> chunksToUnload = world.getLoadedChunkPositions();
         chunksToUnload.removeAll(requiredChunks);
 
         if (!chunksToUnload.isEmpty()) {

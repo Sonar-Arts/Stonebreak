@@ -74,6 +74,11 @@ public class TemplatesPanel {
                 ImGui.sameLine(0, CARD_SPACING);
             }
         }
+
+        // Submit an item so imgui registers the boundary growth caused by the
+        // setCursorScreenPos() calls in renderTemplateCard(). Required by
+        // imgui 1.92+, otherwise the enclosing child window asserts on endChild().
+        ImGui.dummy(1, 1);
     }
 
     /**

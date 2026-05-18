@@ -167,8 +167,8 @@ public final class MmsRenderableHandle implements AutoCloseable {
      * packed into a single 4-byte word that GL reads as a normalized
      * {@code GL_UNSIGNED_BYTE} vec4.
      *
-     * Layout per vertex (36 bytes):
-     *   pos(3 floats) | tex(2 floats) | normal(3 floats) | flags(4 bytes)
+     * Layout per vertex (40 bytes):
+     *   pos(3 floats) | tex(2 floats) | normal(3 floats) | flags(4 bytes) | layer(1 float)
      *
      * @param meshData Source mesh data
      * @return direct ByteBuffer positioned at 0, limit = vertexCount * stride
@@ -185,6 +185,7 @@ public final class MmsRenderableHandle implements AutoCloseable {
         float[] alpha = meshData.getAlphaTestFlags();
         float[] translucent = meshData.getTranslucentFlags();
         float[] light = meshData.getLightValues();
+        float[] layer = meshData.getLayerIndices();
 
         for (int i = 0; i < vertexCount; i++) {
             // Position (3 floats)
@@ -204,6 +205,9 @@ public final class MmsRenderableHandle implements AutoCloseable {
             // Packed flags (4 unsigned bytes)
             int packed = MmsBufferLayout.packFlags(water[i], alpha[i], translucent[i], light[i]);
             buffer.putInt(packed);
+
+            // Texture-array layer index (1 float)
+            buffer.putFloat(layer[i]);
         }
 
         buffer.flip();
@@ -262,6 +266,17 @@ public final class MmsRenderableHandle implements AutoCloseable {
             true, // normalized → shader sees [0,1]
             stride,
             MmsBufferLayout.FLAGS_OFFSET
+        );
+
+        // Texture-array layer index (location 4) — 1 float
+        GL30.glEnableVertexAttribArray(MmsBufferLayout.LAYER_LOCATION);
+        GL30.glVertexAttribPointer(
+            MmsBufferLayout.LAYER_LOCATION,
+            MmsBufferLayout.LAYER_SIZE,
+            GL15.GL_FLOAT,
+            false,
+            stride,
+            MmsBufferLayout.LAYER_OFFSET
         );
     }
 

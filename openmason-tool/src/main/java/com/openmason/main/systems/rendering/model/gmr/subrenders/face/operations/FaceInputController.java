@@ -12,6 +12,7 @@ import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRender
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
+import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
 import imgui.ImGui;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -140,7 +141,7 @@ public class FaceInputController {
         updateFaceHover(context);
 
         // Handle ESC key to cancel drag or deselect face
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+        if (KeyCodeTranslator.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             if (translationCoordinator != null && translationCoordinator.isDragging()) {
                 // Cancel active drag (coordinator handles all translation types)
                 translationCoordinator.cancelDrag();
@@ -156,7 +157,7 @@ public class FaceInputController {
         }
 
         // Handle X key to delete selected face
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_X) && !ImGui.getIO().getKeyCtrl()) {
+        if (KeyCodeTranslator.isKeyPressed(GLFW.GLFW_KEY_X) && !ImGui.getIO().getKeyCtrl()) {
             if (faceSelectionState.getSelectionCount() == 1 && modelRenderer != null) {
                 int faceId = faceSelectionState.getSelectedFaceIndices().iterator().next();
 

@@ -60,8 +60,9 @@ public class ShortcutKey {
      * @return true if the exact combination is pressed
      */
     public boolean isPressed() {
-        // Check if key is pressed
-        if (!ImGui.isKeyPressed(keyCode)) {
+        // imgui 1.92 dropped user key indices: isKeyPressed() requires an
+        // ImGuiKey value, not a raw GLFW key code. Translate before querying.
+        if (!KeyCodeTranslator.isKeyPressed(keyCode)) {
             return false;
         }
 

@@ -2,6 +2,7 @@ package com.stonebreak.core;
 
 
 import java.nio.IntBuffer;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.config.Settings;
@@ -9,9 +10,8 @@ import com.stonebreak.input.InputHandler;
 import com.stonebreak.input.MouseCaptureManager;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.textures.TextureAtlas;
-import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 import com.stonebreak.ui.DebugOverlay;
+import com.stonebreak.ui.LoadingScreen;
 import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
@@ -175,10 +175,6 @@ public class Main {
             if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
                 game.getWorldSelectScreen().handleKeyInput(key, action, mods);
             }
-            // Handle character creation key input
-            else if (game != null && game.getState() == GameState.CHARACTER_CREATION && game.getCharacterCreationScreen() != null) {
-                game.getCharacterCreationScreen().handleKeyInput(key, action, mods);
-            }
             // Handle terrain mapper key input
             else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
                 game.getTerrainMapperScreen().handleKeyInput(key, action, mods);
@@ -211,10 +207,6 @@ public class Main {
             // Handle world select screen character input
             if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
                 game.getWorldSelectScreen().handleCharacterInput(character);
-            }
-            // Handle character creation character input
-            else if (game != null && game.getState() == GameState.CHARACTER_CREATION && game.getCharacterCreationScreen() != null) {
-                game.getCharacterCreationScreen().handleCharacterInput(character);
             }
             // Handle terrain mapper character input
             else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
@@ -490,8 +482,8 @@ public class Main {
           // Initialize the input handler
           inputHandler = new InputHandler(window);
 
-          // Initialize TextureAtlas (used by Renderer and potentially UI)
-          TextureAtlas textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
+          // Initialize BlockTextureArray (used by Renderer and potentially UI)
+          BlockTextureArray textureAtlas = renderer.getBlockTextureArray(); // Get it from renderer after it's created
 
           // Initialize the Game singleton with core components only (no world/player)
           Game.getInstance().initCoreComponents(renderer, textureAtlas, inputHandler, window);
@@ -677,7 +669,11 @@ public class Main {
                 com.stonebreak.ui.terrainMapper.TerrainMapperScreen tms = game.getTerrainMapperScreen();
                 if (tms != null) tms.render(width, height);
             }
-            case LOADING -> renderUIState(renderer, game.getLoadingScreen());
+            case LOADING -> {
+                // Skija-backed; brackets GL itself.
+                LoadingScreen ls = game.getLoadingScreen();
+                if (ls != null) ls.render(width, height);
+            }
             case SETTINGS -> {
                 // Skija-backed MasonryUI; brackets GL itself.
                 SettingsMenu sm = game.getSettingsMenu();
@@ -696,16 +692,6 @@ public class Main {
         }
         
         renderDebugOverlay(renderer);
-    }
-
-    private void renderUIState(Renderer renderer, Object screen) {
-        if (renderer == null || screen == null) return;
-
-        renderer.beginUIFrame(width, height, 1.0f);
-        if (screen instanceof com.stonebreak.ui.LoadingScreen loadingScreen) {
-            loadingScreen.render(width, height);
-        }
-        renderer.endUIFrame();
     }
 
     private void render3DGameState(Game game, Renderer renderer) {
@@ -815,8 +801,6 @@ public class Main {
     private void renderGameUI(Game game, Renderer renderer) {
         if (renderer == null) return;
 
-        renderer.beginUIFrame(width, height, 1.0f);
-
         if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI || game.getState() == GameState.RECIPE_BOOK_UI || game.getState() == GameState.CHARACTER_SHEET_UI || game.getState() == GameState.FURNACE_UI || game.getState() == GameState.WORKBENCH_UI) {
             renderCrosshair(game, renderer);
             renderInventoryAndHotbar(game);
@@ -843,7 +827,6 @@ public class Main {
         }
 
         renderActivePauseMenu(game, renderer);
-        renderer.endUIFrame();
     }
 
     private void renderCrosshair(Game game, Renderer renderer) {
@@ -946,9 +929,7 @@ public class Main {
         // Render death menu if player is dead
         com.stonebreak.ui.DeathMenu deathMenu = game.getDeathMenu();
         if (deathMenu != null && deathMenu.isVisible() && renderer != null) {
-            renderer.beginUIFrame(width, height, 1.0f);
-            deathMenu.render(renderer.getUIRenderer(), width, height);
-            renderer.endUIFrame();
+            deathMenu.render(width, height);
         }
     }
 

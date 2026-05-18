@@ -2,6 +2,7 @@ package com.stonebreak.world;
 
 import java.util.Map;
 import java.util.List;
+import java.util.Set;
 import java.util.Collection;
 import java.util.function.Consumer;
 
@@ -229,11 +230,31 @@ public class World {
     /**
      * Gets the chunk at the specified position.
      * If the chunk doesn't exist, it will be generated.
+     *
+     * <p>Reserved for the chunk-loading pipeline (ChunkManager, world
+     * generation, network sync). Runtime queries from water, mob AI, trees,
+     * etc. must use {@link #getChunkIfLoaded} instead — generating a chunk as
+     * a side effect of a block read produces orphaned chunks outside the
+     * render band that the manager then has to unload, causing load/unload
+     * churn.
      */
     public Chunk getChunkAt(int x, int z) {
         if (chunkStore == null) return null; // Test mode - no chunk store
 
         return chunkStore.getOrCreateChunk(x, z);
+    }
+
+    /**
+     * Gets the chunk at the specified position without ever generating it.
+     * Returns {@code null} when the chunk is not currently resident.
+     *
+     * <p>This is the correct accessor for any runtime query (block reads,
+     * water flow, mob AI) that must not trigger chunk generation.
+     */
+    public Chunk getChunkIfLoaded(int x, int z) {
+        if (chunkStore == null) return null; // Test mode - no chunk store
+
+        return chunkStore.getChunk(x, z);
     }
 
     /**
@@ -256,7 +277,7 @@ public class World {
         int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
 
-        Chunk chunk = getChunkAt(chunkX, chunkZ);
+        Chunk chunk = getChunkIfLoaded(chunkX, chunkZ);
 
         if (chunk == null) {
             return BlockType.AIR;
@@ -276,7 +297,7 @@ public class World {
         if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) return null;
         int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-        Chunk chunk = getChunkAt(chunkX, chunkZ);
+        Chunk chunk = getChunkIfLoaded(chunkX, chunkZ);
         if (chunk == null) return null;
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
@@ -291,7 +312,7 @@ public class World {
         if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) return;
         int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-        Chunk chunk = getChunkAt(chunkX, chunkZ);
+        Chunk chunk = getChunkIfLoaded(chunkX, chunkZ);
         if (chunk == null) return;
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
@@ -331,7 +352,7 @@ public class World {
         int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
 
-        Chunk chunk = getChunkAt(chunkX, chunkZ);
+        Chunk chunk = getChunkIfLoaded(chunkX, chunkZ);
         if (chunk == null) {
             // Caller is editing a chunk that isn't currently in the chunk store
             // (e.g. async generation in flight, multiplayer client edit in an
@@ -502,12 +523,12 @@ public class World {
      * world's save directory when one is available; otherwise runs without
      * persistence. Idempotent; safe to call each frame.
      */
-    public void ensureFastLodManager(com.stonebreak.rendering.textures.TextureAtlas atlas) {
-        if (fastLodManager != null || atlas == null || terrainSystem == null) return;
+    public void ensureFastLodManager(com.stonebreak.rendering.textures.BlockTextureArray textureArray) {
+        if (fastLodManager != null || textureArray == null || terrainSystem == null) return;
         synchronized (this) {
             if (fastLodManager != null) return;
             FastLodStore store = openFastLodStoreIfPossible();
-            fastLodManager = new FastLodManager(config, terrainSystem, atlas, store);
+            fastLodManager = new FastLodManager(config, terrainSystem, textureArray, store);
         }
     }
 
@@ -584,6 +605,17 @@ public class World {
      */
     public Collection<Chunk> getAllChunks() {
         return chunkStore.getAllChunks();
+    }
+
+    /**
+     * Returns the positions of every chunk currently resident in the chunk store.
+     * Unlike {@code ChunkManager}'s tracked set, this includes chunks created as a
+     * side effect of generation (trees crossing chunk borders), water flow, and
+     * mob AI via {@link #getChunkAt}. The chunk manager uses this to unload
+     * orphaned chunks that it never explicitly loaded.
+     */
+    public Set<ChunkPosition> getLoadedChunkPositions() {
+        return chunkStore.getAllChunkPositions();
     }
 
     /**

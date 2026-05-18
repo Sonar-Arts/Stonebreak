@@ -6,12 +6,13 @@ package com.openmason.engine.voxel.mms.mmsCore;
  * Defines the standard vertex attribute layout used by MMS.
  * This ensures consistency across all mesh generation and rendering operations.
  *
- * Interleaved Layout (36 bytes per vertex):
+ * Interleaved Layout (40 bytes per vertex):
  * - Position (3 floats = 12 bytes): x, y, z
- * - Texture Coordinates (2 floats = 8 bytes): u, v
+ * - Texture Coordinates (2 floats = 8 bytes): u, v (tile-local [0,1] for the texture array)
  * - Normal (3 floats = 12 bytes): nx, ny, nz
  * - Flags (4 unsigned bytes normalized = 4 bytes):
  *     .x water-height (0..1), .y alpha-test (0/1), .z translucent (0/1), .w light (0..1)
+ * - Layer (1 float = 4 bytes): texture-array layer index selecting the 16x16 texture
  *
  * The four flag fields were previously four separate float attributes (48-byte
  * vertex). Packing them into a single RGBA byte attribute saves 12 bytes per
@@ -42,16 +43,21 @@ public final class MmsBufferLayout {
     /** Number of bytes in the packed flags attribute (water, alpha, translucent, light). */
     public static final int FLAGS_COMPONENTS = 4;
 
+    /** Number of floats per texture-array layer index (1). */
+    public static final int LAYER_SIZE = 1;
+
     // === Vertex Attribute Sizes (in bytes) ===
 
     public static final int POSITION_SIZE_BYTES = POSITION_SIZE * Float.BYTES; // 12
     public static final int TEXTURE_SIZE_BYTES = TEXTURE_SIZE * Float.BYTES;   // 8
     public static final int NORMAL_SIZE_BYTES = NORMAL_SIZE * Float.BYTES;     // 12
     public static final int FLAGS_SIZE_BYTES = FLAGS_COMPONENTS;               // 4
+    public static final int LAYER_SIZE_BYTES = LAYER_SIZE * Float.BYTES;       // 4
 
     /** Total size of one vertex in bytes (stride). */
     public static final int VERTEX_STRIDE_BYTES =
-            POSITION_SIZE_BYTES + TEXTURE_SIZE_BYTES + NORMAL_SIZE_BYTES + FLAGS_SIZE_BYTES; // 36
+            POSITION_SIZE_BYTES + TEXTURE_SIZE_BYTES + NORMAL_SIZE_BYTES
+            + FLAGS_SIZE_BYTES + LAYER_SIZE_BYTES; // 40
 
     // === Vertex Attribute Offsets (in bytes) ===
 
@@ -59,6 +65,7 @@ public final class MmsBufferLayout {
     public static final long TEXTURE_OFFSET = POSITION_SIZE_BYTES;                         // 12
     public static final long NORMAL_OFFSET = TEXTURE_OFFSET + TEXTURE_SIZE_BYTES;          // 20
     public static final long FLAGS_OFFSET = NORMAL_OFFSET + NORMAL_SIZE_BYTES;             // 32
+    public static final long LAYER_OFFSET = FLAGS_OFFSET + FLAGS_SIZE_BYTES;               // 36
 
     // === Vertex Attribute Locations (OpenGL shader locations) ===
 
@@ -67,6 +74,8 @@ public final class MmsBufferLayout {
     public static final int NORMAL_LOCATION = 2;
     /** Packed flags: vec4 of unsigned bytes normalized to [0,1]. Read as aFlags.xyzw in shaders. */
     public static final int FLAGS_LOCATION = 3;
+    /** Texture-array layer index: single float. Read as aLayer in shaders. */
+    public static final int LAYER_LOCATION = 4;
 
     // === Standard Geometry Constants ===
 

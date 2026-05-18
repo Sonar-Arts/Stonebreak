@@ -2,10 +2,9 @@ package com.stonebreak.rendering.UI.menus;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
-import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
+import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManager;
 import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.UI.UIRenderer;
 import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
@@ -28,13 +27,41 @@ import static org.lwjgl.opengl.GL30.*;
 public class BlockIconRenderer {
     
     private final BlockRenderer blockRenderer;
+    private final BlockTextureArray blockTextureArray;
+    private final com.stonebreak.rendering.sbo.SBOHandMeshRegistry sboHandMeshRegistry;
     private final UIRenderer uiRenderer;
     private final int windowHeight;
-    
-    public BlockIconRenderer(BlockRenderer blockRenderer, UIRenderer uiRenderer, int windowHeight) {
+
+    /** Per-block-type cube meshes for 3D icons, textured from the block texture array. */
+    private final java.util.Map<BlockType, MeshManager.MeshResource> iconCubeMeshes = new java.util.HashMap<>();
+
+    public BlockIconRenderer(BlockRenderer blockRenderer, BlockTextureArray blockTextureArray,
+                             com.stonebreak.rendering.sbo.SBOHandMeshRegistry sboHandMeshRegistry,
+                             UIRenderer uiRenderer, int windowHeight) {
         this.blockRenderer = blockRenderer;
+        this.blockTextureArray = blockTextureArray;
+        this.sboHandMeshRegistry = sboHandMeshRegistry;
         this.uiRenderer = uiRenderer;
         this.windowHeight = windowHeight;
+    }
+
+    /**
+     * Returns a cached cube mesh for the block type, textured from the block
+     * texture array (CBR face order mapped to MMS face ids).
+     */
+    private MeshManager.MeshResource getIconCubeMesh(BlockType blockType) {
+        return iconCubeMeshes.computeIfAbsent(blockType, bt -> {
+            float[] faceLayers = {
+                blockTextureArray.getBlockFaceLayer(bt, 3), // front +Z
+                blockTextureArray.getBlockFaceLayer(bt, 2), // back -Z
+                blockTextureArray.getBlockFaceLayer(bt, 5), // left -X
+                blockTextureArray.getBlockFaceLayer(bt, 4), // right +X
+                blockTextureArray.getBlockFaceLayer(bt, 0), // top +Y
+                blockTextureArray.getBlockFaceLayer(bt, 1)  // bottom -Y
+            };
+            return blockRenderer.getCBRResourceManager().getMeshManager()
+                    .createCubeMeshWithLayers("icon_cube_" + bt.name(), faceLayers);
+        });
     }
     
     /**
@@ -50,7 +77,7 @@ public class BlockIconRenderer {
      * @param textureAtlas The texture atlas containing block textures
      */
     public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
-                                int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas) {
+                                int screenSlotWidth, int screenSlotHeight, BlockTextureArray textureAtlas) {
         draw3DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas, false);
     }
 
@@ -68,19 +95,13 @@ public class BlockIconRenderer {
      * @param isDraggedItem If true, renders the item closer to camera to avoid z-fighting
      */
     public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
-                                int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas, boolean isDraggedItem) {
+                                int screenSlotWidth, int screenSlotHeight, BlockTextureArray textureAtlas, boolean isDraggedItem) {
         if (type == null || type.getAtlasX() == -1) {
             return; // Nothing to draw
         }
 
-        // Check if this is a flower block - render as flat 2D texture instead of 3D cube
-        // Note: Items (STICK, WOODEN_PICKAXE) are now in ItemType enum and handled separately
-        if (type == BlockType.ROSE || type == BlockType.DANDELION || type == BlockType.WILDGRASS) {
-            renderFlowerIcon(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas);
-            return;
-        }
-
-        // Render 3D cube block
+        // Render the 3D block — flowers use their SBO cross geometry, cubes
+        // use the cube mesh; both handled inside render3DBlockIcon.
         render3DBlockIcon(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas, isDraggedItem);
     }
     
@@ -88,7 +109,7 @@ public class BlockIconRenderer {
      * Renders flower blocks as flat 2D textures by delegating to UI renderer.
      */
     private void renderFlowerIcon(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
-                                 int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas) {
+                                 int screenSlotWidth, int screenSlotHeight, BlockTextureArray textureAtlas) {
         // Get current matrices from shader for restoration after UI rendering
         float[] projArray = new float[16];
         float[] viewArray = new float[16];
@@ -110,15 +131,15 @@ public class BlockIconRenderer {
         viewBuffer.put(viewArray).flip();
         
         // Delegate to UI renderer's flat 2D item drawing functionality
-        uiRenderer.drawFlat2DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, 
-                                      textureAtlas, projBuffer, viewBuffer);
+        uiRenderer.drawFlat2DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight,
+                                      blockTextureArray, projBuffer, viewBuffer);
     }
     
     /**
      * Renders 3D cube blocks with proper viewport isolation and state management.
      */
     private void render3DBlockIcon(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
-                                  int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas, boolean isDraggedItem) {
+                                  int screenSlotWidth, int screenSlotHeight, BlockTextureArray textureAtlas, boolean isDraggedItem) {
 
         // --- Save current GL state ---
         GLState originalState = saveGLState();
@@ -131,8 +152,8 @@ public class BlockIconRenderer {
             // --- Shader setup for 3D item ---
             configureShaderForItem(shaderProgram, textureAtlas, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, isDraggedItem);
 
-            // --- Create and draw cube with proper face textures ---
-            renderBlockCube(type, textureAtlas);
+            // --- Create and draw the block (cube, or flower cross) ---
+            renderBlockCube(shaderProgram, type);
 
         } finally {
             // --- Restore previous GL state ---
@@ -205,8 +226,8 @@ public class BlockIconRenderer {
     private void setupViewportAndScissor(int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
         // Set viewport to the slot area and use scissor for clipping
         int currentWindowHeight = com.stonebreak.core.Game.getWindowHeight();
-        
-        // Convert coordinates from top-left origin (NanoVG) to bottom-left origin (OpenGL)
+
+        // Convert coordinates from UI top-left origin to OpenGL bottom-left origin
         int viewportX = screenSlotX;
         int viewportY = currentWindowHeight - (screenSlotY + screenSlotHeight);
         
@@ -243,7 +264,7 @@ public class BlockIconRenderer {
     /**
      * Configures the shader program and matrices for 3D item rendering.
      */
-    private void configureShaderForItem(ShaderProgram shaderProgram, TextureAtlas textureAtlas,
+    private void configureShaderForItem(ShaderProgram shaderProgram, BlockTextureArray textureAtlas,
                                        int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight, boolean isDraggedItem) {
         shaderProgram.bind();
         shaderProgram.setUniform("u_useSolidColor", false);
@@ -278,28 +299,36 @@ public class BlockIconRenderer {
         itemViewMatrix.scale(0.8f);
         shaderProgram.setUniform("viewMatrix", itemViewMatrix);
 
-        // --- Bind texture atlas with defensive state reset ---
+        // --- Bind the block texture array on unit 1 for the 3D cube icon ---
+        glActiveTexture(GL_TEXTURE1);
+        blockTextureArray.bind();
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        // Force correct texture parameters to prevent corruption from block drops
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         shaderProgram.setUniform("texture_sampler", 0);
+        shaderProgram.setUniform("block_sampler", 1);
+        shaderProgram.setUniform("u_useTextureArray", true);
     }
     
     /**
      * Renders the actual block cube geometry.
      */
-    private void renderBlockCube(BlockType type, TextureAtlas textureAtlas) {
-        // Use CBR system -- SBO textures are already overlaid onto the atlas
+    private void renderBlockCube(ShaderProgram shaderProgram, BlockType type) {
         if (!blockRenderer.hasCBRSupport()) {
             throw new IllegalStateException("BlockIconRenderer requires CBR support. BlockRenderer must be initialized with BlockDefinitionRegistry.");
         }
 
-        CBRResourceManager.BlockRenderResource resource = blockRenderer.getBlockRenderResource(type);
-        resource.getMesh().bind();
-        glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
-        resource.getMesh().unbind();
+        // Flowers render as their SBO cross geometry; other blocks as cubes.
+        boolean isFlower = type.isFlower() && sboHandMeshRegistry != null
+                && sboHandMeshRegistry.getMesh(type) != null;
+        MeshManager.MeshResource mesh = isFlower
+                ? sboHandMeshRegistry.getMesh(type)
+                : getIconCubeMesh(type);
+
+        // Flower cross meshes carry no per-vertex alpha flag — force alpha test.
+        shaderProgram.setUniform("u_forceAlphaTest", isFlower);
+        mesh.bind();
+        glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
+        mesh.unbind();
+        shaderProgram.setUniform("u_forceAlphaTest", false);
     }
     
 
@@ -311,6 +340,7 @@ public class BlockIconRenderer {
         // Reset shader specific to this method's item drawing
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_useTextureArray", false);
 
         // Restore viewport and scissor
         glViewport(originalState.originalViewport[0], originalState.originalViewport[1], 

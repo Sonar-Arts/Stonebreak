@@ -84,12 +84,9 @@ public class BlockRenderer implements AutoCloseable {
                 return;
             }
 
-            // Get the texture atlas from BlockManager
-            com.stonebreak.rendering.textures.TextureAtlas blockAtlas = manager.getTextureAtlas();
-
             // Render the block resource with proper shader setup
             renderBlockResource(resource, shaderProgram, mvpLocation, modelLocation,
-                              vpMatrix, modelMatrix, blockAtlas, textureLocation, useTextureLocation);
+                              vpMatrix, modelMatrix, textureLocation, useTextureLocation);
 
         } catch (Exception e) {
             System.err.println("[" + debugPrefix + "] Error rendering block " + blockType + ": " + e.getMessage());
@@ -106,7 +103,6 @@ public class BlockRenderer implements AutoCloseable {
      * @param modelLocation Location of model matrix uniform
      * @param vpMatrix View-projection matrix from camera
      * @param modelMatrix Model transformation matrix
-     * @param textureAtlas The texture atlas to bind
      * @param textureLocation Location of texture sampler uniform
      * @param useTextureLocation Location of useTexture flag uniform
      */
@@ -114,7 +110,6 @@ public class BlockRenderer implements AutoCloseable {
                                     int shaderProgram,
                                     int mvpLocation, int modelLocation,
                                     float[] vpMatrix, Matrix4f modelMatrix,
-                                    com.stonebreak.rendering.textures.TextureAtlas textureAtlas,
                                     int textureLocation, int useTextureLocation) {
         if (!initialized) {
             throw new IllegalStateException("BlockRenderer not initialized");
@@ -139,25 +134,10 @@ public class BlockRenderer implements AutoCloseable {
                 glUniformMatrix4fv(modelLocation, false, matrixBuffer);
             }
 
-            // Bind texture atlas and set texture uniforms
-            if (textureAtlas != null) {
-                // Bind the texture atlas
-                textureAtlas.bind();
-
-                // Set texture sampler uniform (texture unit 0)
-                if (textureLocation != -1) {
-                    glUniform1i(textureLocation, 0);
-                }
-
-                // Enable texturing
-                if (useTextureLocation != -1) {
-                    glUniform1i(useTextureLocation, 1);
-                }
-            } else {
-                // Disable texturing if no atlas provided
-                if (useTextureLocation != -1) {
-                    glUniform1i(useTextureLocation, 0);
-                }
+            // Texturing disabled — the Open Mason block preview renders
+            // untextured pending a texture-array migration of this renderer.
+            if (useTextureLocation != -1) {
+                glUniform1i(useTextureLocation, 0);
             }
 
             // Handle transparency based on render layer

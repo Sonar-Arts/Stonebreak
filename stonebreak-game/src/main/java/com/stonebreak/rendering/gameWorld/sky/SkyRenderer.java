@@ -120,7 +120,6 @@ public class SkyRenderer {
             skyShaderProgram.createUniform("projectionMatrix");
             skyShaderProgram.createUniform("viewMatrix");
             skyShaderProgram.createUniform("cameraPosition");
-            skyShaderProgram.createUniform("time");
             skyShaderProgram.createUniform("sunDirection");
             skyShaderProgram.createUniform("skyColor");
             
@@ -187,7 +186,6 @@ public class SkyRenderer {
         skyShaderProgram.setUniform("projectionMatrix", projectionMatrix);
         skyShaderProgram.setUniform("viewMatrix", viewMatrix);
         skyShaderProgram.setUniform("cameraPosition", cameraPosition);
-        skyShaderProgram.setUniform("time", totalTime);
         skyShaderProgram.setUniform("sunDirection", sunDirection);
         skyShaderProgram.setUniform("skyColor", skyColor);
         

@@ -191,6 +191,7 @@ public class SBOStampEmitter {
         float[] pos = faceStamp.positions();
         float[] nrm = faceStamp.normals();
         float[] uv = faceStamp.atlasUVs();
+        float[] layers = faceStamp.layers();
         int triCount = faceStamp.vertexCount() / 3;
         boolean scaleY = blockHeight < 1.0f;
 
@@ -216,7 +217,7 @@ public class SBOStampEmitter {
                         wx, wyAbs, wz,
                         uv[tOff], uv[tOff + 1],
                         nrm[pOff], nrm[pOff + 1], nrm[pOff + 2],
-                        0.0f, alphaFlag, translucentFlag, vertexLight
+                        0.0f, alphaFlag, translucentFlag, vertexLight, layers[vi]
                 );
             }
 

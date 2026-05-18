@@ -2,15 +2,14 @@ package com.stonebreak.core;
 
 import java.util.concurrent.*;
 
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.audio.*;
 import com.stonebreak.blocks.*;
-import com.stonebreak.config.*;
 import com.stonebreak.crafting.*;
 import com.stonebreak.input.*;
 import com.stonebreak.items.*;
 import com.stonebreak.player.*;
 import com.stonebreak.rendering.*;
-import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.*;
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.ui.DeathMenu;
@@ -42,8 +41,7 @@ public class Game {
     private World world;
     private Player player;
     private Renderer renderer;
-    private TextureAtlas textureAtlas;
-    // Note: Using static CowTextureAtlas instead of instance variable
+    private BlockTextureArray textureAtlas;
     private PauseMenu pauseMenu;
     private DeathMenu deathMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
@@ -143,7 +141,7 @@ public class Game {
      * Initializes core game components that don't require a world or player.
      * This includes renderer, sound system, UI components, and basic systems.
      */
-    public void initCoreComponents(Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler, long window) {
+    public void initCoreComponents(Renderer renderer, BlockTextureArray textureAtlas, InputHandler inputHandler, long window) {
         this.window = window;
         this.renderer = renderer;
         this.textureAtlas = textureAtlas;
@@ -151,7 +149,7 @@ public class Game {
 
         this.mouseCaptureManager = new MouseCaptureManager(window);
         this.pauseMenu = new PauseMenu(this.renderer.getSkijaBackend());
-        this.deathMenu = new DeathMenu();
+        this.deathMenu = new DeathMenu(this.renderer.getSkijaBackend());
         this.waterEffects = new WaterEffects();
 
         this.soundSystem = SoundSystem.getInstance();
@@ -162,7 +160,7 @@ public class Game {
         this.multiplayerMenu = new com.stonebreak.ui.multiplayerMenu.MultiplayerMenu(this.renderer.getSkijaBackend());
         this.hostWorldScreen = new com.stonebreak.ui.multiplayerMenu.HostWorldScreen(this.renderer.getSkijaBackend());
         this.joinWorldScreen = new com.stonebreak.ui.multiplayerMenu.JoinWorldScreen(this.renderer.getSkijaBackend());
-        this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
+        this.loadingScreen = new LoadingScreen(this.renderer.getSkijaBackend());
         this.worldSelectScreen = new WorldSelectScreen(this.renderer.getSkijaBackend());
         this.characterCreationScreen = new CharacterCreationScreen(this.renderer.getSkijaBackend());
         this.terrainMapperScreen = new TerrainMapperScreen(this.renderer.getSkijaBackend());
@@ -182,8 +180,8 @@ public class Game {
 
         this.memoryLeakDetector = com.stonebreak.core.bootstrap.GameBootstrap.startMemoryLeakDetection();
         this.debugOverlay = com.stonebreak.core.bootstrap.GameBootstrap.createDebugOverlay();
-        com.stonebreak.core.bootstrap.GameBootstrap.initializeCowTextureAtlas();
-        com.stonebreak.core.bootstrap.GameBootstrap.configureEngine(textureAtlas, renderer);
+        com.stonebreak.core.bootstrap.GameBootstrap.initializeEntityAssets();
+        com.stonebreak.core.bootstrap.GameBootstrap.configureEngine(renderer.getBlockTextureArray(), renderer);
 
         System.out.println("[STARTUP] Core components initialized (no world/player yet)");
     }
@@ -199,7 +197,7 @@ public class Game {
         this.world = world;
         this.player = player;
 
-        com.stonebreak.core.bootstrap.GameBootstrap.ensureMmsApiInitialized(textureAtlas, world);
+        com.stonebreak.core.bootstrap.GameBootstrap.ensureMmsApiInitialized(renderer.getBlockTextureArray(), world);
         com.stonebreak.core.bootstrap.GameBootstrap.reinitializeSaveService(saveService, currentWorldData, player, world);
 
         // Apply character creation stats to the new player if a creation session was active.
@@ -240,7 +238,7 @@ public class Game {
         // For existing worlds: Loaded from save data in performWorldLoadingOrGeneration()
         // This ensures default time is only applied to NEW worlds, not existing ones
 
-        // Initialize InventoryScreen - requires Player, Renderer, TextureAtlas, and InputHandler
+        // Initialize InventoryScreen - requires Player, Renderer, BlockTextureArray, and InputHandler
         if (renderer.getFont() != null && textureAtlas != null) {
             this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
             // Now that inventoryScreen is created, give the inventory a reference to it.
@@ -253,7 +251,7 @@ public class Game {
                 }
             }
         } else {
-            System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, TextureAtlas, InputHandler, or CraftingManager).");
+            System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, BlockTextureArray, InputHandler, or CraftingManager).");
         }
 
         // Initialize CharacterScreen
@@ -639,9 +637,9 @@ public class Game {
     /**
      * Gets the game's texture atlas.
      * This assumes the texture atlas is loaded and available via the Renderer.
-     * @return The TextureAtlas object, or null if not available.
+     * @return The BlockTextureArray object, or null if not available.
      */
-    public TextureAtlas getTextureAtlas() {
+    public BlockTextureArray getBlockTextureArray() {
         return this.textureAtlas;
     }
 

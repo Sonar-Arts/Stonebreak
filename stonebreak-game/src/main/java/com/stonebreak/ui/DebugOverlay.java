@@ -10,6 +10,7 @@ import java.lang.management.MemoryPoolMXBean;
 import java.lang.management.MemoryType;
 import java.lang.management.MemoryUsage;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
@@ -24,8 +25,11 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.rendering.Renderer;
+import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.mobs.cow.Cow;
 import com.stonebreak.mobs.cow.CowAI;
+import com.stonebreak.mobs.chicken.Chicken;
+import com.stonebreak.mobs.chicken.ChickenAI;
 import java.util.List;
 import java.util.ArrayDeque;
 
@@ -600,71 +604,97 @@ public class DebugOverlay {
         return panel;
     }
 
+    /** AI-path line colour, shared across cows. */
+    private static final Vector4f PATH_COLOR = new Vector4f(0.2f, 0.6f, 1.0f, 1.0f);
+
     /**
      * Renders debug wireframes for entities (called after UI rendering).
+     *
+     * <p>Each cow and chicken is outlined by re-drawing its actual model mesh as
+     * a see-through wireframe, so the overlay tracks the animated model exactly.
+     * AI path trails are drawn afterwards in a single batched line pass.
      */
     public void renderWireframes(Renderer renderer) {
         if (!visible) {
             return;
         }
-        
+
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) {
             return;
         }
-        
-        // Get all cow entities
-        List<Entity> cowEntities = entityManager.getEntitiesByType(EntityType.COW);
-        
-        
-        // Render green wireframe bounding boxes for each cow
-        for (Entity cow : cowEntities) {
-            if (cow.isAlive()) {
-                renderEntityBoundingBox(cow, renderer);
 
-                // Render path wireframe if entity is a Cow
-                if (cow instanceof Cow) {
-                    renderCowPathWireframe((Cow) cow, renderer);
-                }
+        List<Entity> cowEntities = entityManager.getEntitiesByType(EntityType.COW);
+        List<Entity> chickenEntities = entityManager.getEntitiesByType(EntityType.CHICKEN);
+
+        // Model wireframe overlays — each call manages its own GL state.
+        for (Entity entity : cowEntities) {
+            if (entity.isAlive() && entity instanceof Cow cow) {
+                renderer.renderEntityWireframe(cow, colorForState(cow));
+            }
+        }
+        for (Entity entity : chickenEntities) {
+            if (entity.isAlive() && entity instanceof Chicken chicken) {
+                renderer.renderEntityWireframe(chicken, colorForState(chicken));
             }
         }
 
-        // Render sound emitters as yellow triangle wireframes
-        renderer.renderSoundEmitters(true); // Debug mode is always true when in debug overlay
+        // AI path trails — batched line drawing (cows track a path; chickens do not).
+        DebugRenderer debug = renderer.getDebugRenderer();
+        debug.beginBatch();
+        try {
+            for (Entity entity : cowEntities) {
+                if (entity.isAlive() && entity instanceof Cow cow) {
+                    renderCowPath(cow, debug);
+                }
+            }
+        } finally {
+            debug.endBatch();
+        }
+
+        // Sound emitters manage their own shader state — draw outside the batch.
+        renderer.renderSoundEmitters(true);
     }
-    
+
     /**
-     * Renders a green wireframe bounding box for an entity.
+     * Picks the wireframe colour for a cow's current AI state, so the overlay
+     * doubles as an at-a-glance behaviour readout.
      */
-    private void renderEntityBoundingBox(Entity entity, Renderer renderer) {
-        Entity.BoundingBox boundingBox = entity.getBoundingBox();
-        
-        // Use green color for cow bounding boxes
-        Vector3f green = new Vector3f(0.0f, 1.0f, 0.0f);
-        
-        // Use the renderer's modern wireframe rendering method
-        renderer.renderWireframeBoundingBox(boundingBox, green);
+    private Vector4f colorForState(Cow cow) {
+        CowAI ai = cow.getAI();
+        CowAI.CowBehaviorState state =
+                ai != null ? ai.getCurrentState() : CowAI.CowBehaviorState.IDLE;
+        return switch (state) {
+            case IDLE      -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
+            case WANDERING -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
+            case GRAZING   -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
+        };
     }
-    
+
     /**
-     * Renders a blue wireframe path for a cow's AI pathfinding.
+     * Picks the wireframe colour for a chicken's current AI state, sharing the
+     * cow palette so behaviour reads consistently across mob types.
      */
-    private void renderCowPathWireframe(Cow cow, Renderer renderer) {
+    private Vector4f colorForState(Chicken chicken) {
+        ChickenAI ai = chicken.getAI();
+        ChickenAI.ChickenBehaviorState state =
+                ai != null ? ai.getCurrentState() : ChickenAI.ChickenBehaviorState.IDLE;
+        return switch (state) {
+            case IDLE      -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
+            case WANDERING -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
+            case WING_FLAP -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
+        };
+    }
+
+    /**
+     * Draws the cow's AI pathfinding trail as connected line segments.
+     */
+    private void renderCowPath(Cow cow, DebugRenderer debug) {
         CowAI cowAI = cow.getAI();
         if (cowAI == null) {
             return;
         }
-        
-        List<Vector3f> pathPoints = cowAI.getPathPoints();
-        if (pathPoints == null || pathPoints.size() < 2) {
-            return;
-        }
-        
-        // Use blue color for path visualization
-        Vector3f blue = new Vector3f(0.0f, 0.5f, 1.0f);
-        
-        // Use the renderer's path wireframe rendering method
-        renderer.renderWireframePath(pathPoints, blue);
+        debug.drawPath(cowAI.getPathPoints(), PATH_COLOR);
     }
 
     private String getCardinalDirection(Vector3f front) {

@@ -6,7 +6,7 @@ import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManage
 import com.stonebreak.rendering.core.API.commonBlockResources.texturing.TextureResourceManager;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
-import com.stonebreak.rendering.textures.TextureAtlas;
+
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -44,10 +44,10 @@ public class CBRResourceManager implements AutoCloseable {
     /**
      * Private constructor for singleton pattern.
      */
-    private CBRResourceManager(TextureAtlas textureAtlas, BlockDefinitionRegistry registry) {
+    private CBRResourceManager(BlockDefinitionRegistry registry) {
         this.blockRegistry = registry;
         this.meshManager = new MeshManager();
-        this.textureManager = new TextureResourceManager(textureAtlas, registry);
+        this.textureManager = new TextureResourceManager(registry);
         
         initialized.set(true);
         System.out.println("[CBRResourceManager] Initialized with mesh and texture managers");
@@ -56,15 +56,14 @@ public class CBRResourceManager implements AutoCloseable {
     /**
      * Gets or creates the singleton instance.
      * 
-     * @param textureAtlas The texture atlas system
      * @param registry The block definition registry
      * @return The CBR resource manager instance
      */
-    public static CBRResourceManager getInstance(TextureAtlas textureAtlas, BlockDefinitionRegistry registry) {
+    public static CBRResourceManager getInstance(BlockDefinitionRegistry registry) {
         if (instance == null) {
             synchronized (LOCK) {
                 if (instance == null) {
-                    instance = new CBRResourceManager(textureAtlas, registry);
+                    instance = new CBRResourceManager(registry);
                 }
             }
         }
@@ -399,7 +398,6 @@ public class CBRResourceManager implements AutoCloseable {
             if (current != null && current.initialized.get()) {
                 try {
                     // Store references before disposal
-                    TextureAtlas atlas = current.textureManager.getTextureAtlas();
                     BlockDefinitionRegistry registry = current.blockRegistry;
 
                     // Dispose current instance
@@ -409,7 +407,7 @@ public class CBRResourceManager implements AutoCloseable {
                     instance = null;
 
                     // Create new instance with same parameters
-                    CBRResourceManager newInstance = getInstance(atlas, registry);
+                    CBRResourceManager newInstance = getInstance(registry);
 
                     System.out.println("[CBRResourceManager] Forced reinitialization completed");
                 } catch (Exception e) {

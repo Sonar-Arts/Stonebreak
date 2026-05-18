@@ -516,7 +516,7 @@ public final class WaterSystem {
             int chunkX = (int) (chunkKey >> 32);
             int chunkZ = (int) (chunkKey & 0xFFFFFFFFL);
 
-            Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+            Chunk chunk = world.getChunkIfLoaded(chunkX, chunkZ);
             if (chunk != null) {
                 // ONLY trigger mesh rebuild - do NOT mark chunk dirty for saving
                 // Water metadata is saved when actual blocks change (via CCO in setBlockViaCco)
@@ -668,7 +668,7 @@ public final class WaterSystem {
         long key = chunkKey(chunkX, chunkZ);
         CcoBlockReader reader = readerCache.get(key);
         if (reader == null) {
-            Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+            Chunk chunk = world.getChunkIfLoaded(chunkX, chunkZ);
             if (chunk != null) {
                 reader = chunk.getBlockReader();
                 readerCache.put(key, reader);
@@ -716,7 +716,7 @@ public final class WaterSystem {
         int posZ = unpackZ(posKey);
         int chunkX = Math.floorDiv(posX, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(posZ, WorldConfiguration.CHUNK_SIZE);
-        Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+        Chunk chunk = world.getChunkIfLoaded(chunkX, chunkZ);
 
         if (chunk == null) {
             return;

@@ -16,7 +16,8 @@ import com.stonebreak.world.World;
  */
 public class CowAnimal implements Animal {
     
-    private static final String[] COW_VARIANTS = {"default", "angus", "highland", "jersey"};
+    // Cow appearance variants — must match the variant names in SB_Cow.sbe.
+    private static final String[] COW_VARIANTS = {"Default", "Angus", "Highland"};
     
     @Override
     public String getName() {

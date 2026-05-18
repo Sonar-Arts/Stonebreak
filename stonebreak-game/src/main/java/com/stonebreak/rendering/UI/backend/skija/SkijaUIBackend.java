@@ -25,6 +25,7 @@ public final class SkijaUIBackend implements UIBackend {
     private Image woodPlanksTexture;
 
     private boolean inFrame;
+    private int frameDepth;  // nesting depth for nested begin/end pairs
     private Canvas currentCanvas;
 
     public void initialize(int width, int height) {
@@ -93,16 +94,22 @@ public final class SkijaUIBackend implements UIBackend {
         if (width != context.getWidth() || height != context.getHeight()) {
             context.resize(width, height);
         }
-        currentCanvas = context.beginPaint();
+        frameDepth++;
+        if (frameDepth == 1) {
+            currentCanvas = context.beginPaint();
+        }
         inFrame = true;
     }
 
     @Override
     public void endFrame() {
-        if (!inFrame) return;
-        context.endPaint();
-        currentCanvas = null;
-        inFrame = false;
+        if (!inFrame || frameDepth == 0) return;
+        frameDepth--;
+        if (frameDepth == 0) {
+            context.endPaint();
+            currentCanvas = null;
+            inFrame = false;
+        }
     }
 
     @Override

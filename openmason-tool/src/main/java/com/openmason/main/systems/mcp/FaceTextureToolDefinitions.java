@@ -35,7 +35,12 @@ public final class FaceTextureToolDefinitions {
                 "List every face of the loaded model with its texture metadata: faceId, "
                         + "materialId, material name, GPU texture id and dimensions, vertex count, "
                         + "face normal (x,y,z), orientation label (+X/-X/+Y/-Y/+Z/-Z/OBLIQUE), "
-                        + "UV rotation degrees, UV region (u0,v0,u1,v1), and owning part name.",
+                        + "UV rotation degrees, UV region (u0,v0,u1,v1), owning part name, "
+                        + "suggestedWidth/suggestedHeight (geometry-derived size at the editor's "
+                        + "default pixels-per-unit — use this as a reference for sizing new "
+                        + "per-face textures), and autoResize (whether the editor may rescale "
+                        + "this face's texture on geometry changes; set to false after "
+                        + "model_face_resize_texture or model_face_create_texture).",
                 schema().build(),
                 args -> editor.listFaceTextures()));
 
@@ -183,7 +188,11 @@ public final class FaceTextureToolDefinitions {
                 "Allocate a new material + GPU texture for a face that currently has no explicit "
                         + "per-face mapping (uses default material). Creates a blank canvas filled with "
                         + "the given RGBA color and assigns it to the face, making the face addressable "
-                        + "via model_face_open and friends. Width/height in [1,1024].",
+                        + "via model_face_open and friends. Width/height in [1,1024]. Sets autoResize "
+                        + "to false for this face — the caller's chosen size is preserved across "
+                        + "geometry edits. The response includes suggestedWidth/suggestedHeight so the "
+                        + "caller can compare its chosen size against the geometry-derived size; query "
+                        + "model_face_get_info first if unsure what dimensions to use.",
                 rgbaSchema()
                         .intg("face_id", "Face identifier")
                         .intg("width", "Initial texture width in pixels")
@@ -201,7 +210,9 @@ public final class FaceTextureToolDefinitions {
                 "model_face_resize_texture",
                 "Resize a face's GPU texture (nearest-neighbor). Allocates a new GL texture and "
                         + "swaps it into the face's material — any other face sharing the material is "
-                        + "also affected. Drops any open session for this face. Width/height in [1,1024].",
+                        + "also affected. Drops any open session for this face. Width/height in [1,1024]. "
+                        + "Sets autoResize to false for this face so the editor will not silently "
+                        + "rescale the texture when face geometry later changes.",
                 schema()
                         .intg("face_id", "Face identifier")
                         .intg("width", "New width in pixels")

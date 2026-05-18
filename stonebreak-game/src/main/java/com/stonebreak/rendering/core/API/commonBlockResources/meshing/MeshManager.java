@@ -162,6 +162,89 @@ public class MeshManager implements AutoCloseable {
     }
     
     /**
+     * Creates a cube mesh for the block texture array.
+     *
+     * <p>Vertex format is {@code x,y,z,u,v,layer} (24 bytes): tile-local UVs
+     * span the unit square and a per-face layer index selects the texture in
+     * the {@code GL_TEXTURE_2D_ARRAY}. Attributes 0 (position), 1 (texcoord)
+     * and 4 (layer) are enabled — matching the world shader's array path.
+     *
+     * @param name       custom mesh name
+     * @param faceLayers six layer indices in CBR face order:
+     *                   front(+Z), back(-Z), left(-X), right(+X), top(+Y), bottom(-Y)
+     * @return the created layered cube mesh
+     */
+    public MeshResource createCubeMeshWithLayers(String name, float[] faceLayers) {
+        if (disposed) {
+            throw new IllegalStateException("MeshManager has been disposed");
+        }
+
+        // Unit-cube face positions in CBR order (front,back,left,right,top,bottom).
+        float[][] facePositions = {
+            {-0.5f,-0.5f, 0.5f,  0.5f,-0.5f, 0.5f,  0.5f, 0.5f, 0.5f, -0.5f, 0.5f, 0.5f}, // front +Z
+            { 0.5f,-0.5f,-0.5f, -0.5f,-0.5f,-0.5f, -0.5f, 0.5f,-0.5f,  0.5f, 0.5f,-0.5f}, // back -Z
+            {-0.5f,-0.5f,-0.5f, -0.5f,-0.5f, 0.5f, -0.5f, 0.5f, 0.5f, -0.5f, 0.5f,-0.5f}, // left -X
+            { 0.5f,-0.5f, 0.5f,  0.5f,-0.5f,-0.5f,  0.5f, 0.5f,-0.5f,  0.5f, 0.5f, 0.5f}, // right +X
+            {-0.5f, 0.5f, 0.5f,  0.5f, 0.5f, 0.5f,  0.5f, 0.5f,-0.5f, -0.5f, 0.5f,-0.5f}, // top +Y
+            {-0.5f,-0.5f,-0.5f,  0.5f,-0.5f,-0.5f,  0.5f,-0.5f, 0.5f, -0.5f,-0.5f, 0.5f}  // bottom -Y
+        };
+        // Per-vertex UV corners (bl, br, tr, tl). V is flipped so the texture
+        // is upright — array layers are uploaded top-row-first.
+        float[] uv = {0f,1f, 1f,1f, 1f,0f, 0f,0f};
+
+        float[] vertices = new float[6 * 4 * 6]; // 6 faces * 4 verts * 6 floats
+        int v = 0;
+        for (int f = 0; f < 6; f++) {
+            float layer = faceLayers[f];
+            for (int i = 0; i < 4; i++) {
+                vertices[v++] = facePositions[f][i * 3];
+                vertices[v++] = facePositions[f][i * 3 + 1];
+                vertices[v++] = facePositions[f][i * 3 + 2];
+                vertices[v++] = uv[i * 2];
+                vertices[v++] = uv[i * 2 + 1];
+                vertices[v++] = layer;
+            }
+        }
+
+        int[] indices = new int[36];
+        for (int f = 0; f < 6; f++) {
+            int b = f * 4;
+            int o = f * 6;
+            indices[o]   = b;     indices[o+1] = b + 1; indices[o+2] = b + 2;
+            indices[o+3] = b + 2; indices[o+4] = b + 3; indices[o+5] = b;
+        }
+
+        MeshResource existing = customMeshes.get(name);
+        if (existing != null) {
+            existing.cleanup();
+        }
+        MeshResource mesh = createLayeredMeshFromData(vertices, indices, name);
+        customMeshes.put(name, mesh);
+        return mesh;
+    }
+
+    /**
+     * Creates and registers a custom mesh from {@code x,y,z,u,v,layer} vertex
+     * data for the block texture array (attributes 0, 1, 4).
+     *
+     * @param name     custom mesh name
+     * @param vertices interleaved {@code x,y,z,u,v,layer} (6 floats per vertex)
+     * @param indices  triangle indices
+     */
+    public MeshResource createCustomLayeredMesh(String name, float[] vertices, int[] indices) {
+        if (disposed) {
+            throw new IllegalStateException("MeshManager has been disposed");
+        }
+        MeshResource existing = customMeshes.get(name);
+        if (existing != null) {
+            existing.cleanup();
+        }
+        MeshResource mesh = createLayeredMeshFromData(vertices, indices, name);
+        customMeshes.put(name, mesh);
+        return mesh;
+    }
+
+    /**
      * Creates a cross mesh with full texture coordinates from texture atlas.
      * Uses the complete texture height for normal flower textures.
      * 
@@ -696,7 +779,42 @@ public class MeshManager implements AutoCloseable {
         
         return new MeshResource(vao, vbo, ebo, indices.length, vertices.length / 5, name);
     }
-    
+
+    /**
+     * Creates a mesh resource from {@code x,y,z,u,v,layer} vertex data.
+     * Enables attributes 0 (position), 1 (texcoord) and 4 (texture-array layer).
+     */
+    private MeshResource createLayeredMeshFromData(float[] vertices, int[] indices, String name) {
+        int vao = glGenVertexArrays();
+        glBindVertexArray(vao);
+
+        int vbo = glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+        glBufferData(GL_ARRAY_BUFFER, vertexBuffer, GL_STATIC_DRAW);
+
+        int ebo = glGenBuffers();
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
+        indexBuffer.put(indices).flip();
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL_STATIC_DRAW);
+
+        int stride = 6 * Float.BYTES;
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, false, stride, 3 * Float.BYTES);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(4, 1, GL_FLOAT, false, stride, 5 * Float.BYTES);
+        glEnableVertexAttribArray(4);
+
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+        return new MeshResource(vao, vbo, ebo, indices.length, vertices.length / 6, name);
+    }
+
     @Override
     public void close() {
         if (!disposed) {

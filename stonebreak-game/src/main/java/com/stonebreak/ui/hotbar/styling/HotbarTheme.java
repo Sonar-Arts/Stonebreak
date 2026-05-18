@@ -1,8 +1,5 @@
 package com.stonebreak.ui.hotbar.styling;
 
-import org.lwjgl.nanovg.NVGColor;
-import org.lwjgl.system.MemoryStack;
-
 /**
  * Consistent visual theme for the hotbar UI system.
  * Maintains visual consistency with the inventory theme using neutral gray colors.
@@ -107,13 +104,6 @@ public final class HotbarTheme {
         }
 
         /**
-         * Creates an NVG color with the given memory stack
-         */
-        public NVGColor toNVG(MemoryStack stack) {
-            return org.lwjgl.nanovg.NanoVG.nvgRGBA((byte)r, (byte)g, (byte)b, (byte)a, NVGColor.malloc(stack));
-        }
-
-        /**
          * Creates a modified color with different alpha
          */
         public ColorRGBA withAlpha(int alpha) {
@@ -143,32 +133,5 @@ public final class HotbarTheme {
                 a
             );
         }
-    }
-
-    /**
-     * Utility method to create gradients between two colors
-     */
-    public static NVGColor interpolateColor(ColorRGBA color1, ColorRGBA color2, float t, MemoryStack stack) {
-        t = Math.max(0.0f, Math.min(1.0f, t)); // Clamp t between 0 and 1
-        int r = (int)(color1.r + (color2.r - color1.r) * t);
-        int g = (int)(color1.g + (color2.g - color1.g) * t);
-        int b = (int)(color1.b + (color2.b - color1.b) * t);
-        int a = (int)(color1.a + (color2.a - color1.a) * t);
-        return org.lwjgl.nanovg.NanoVG.nvgRGBA((byte)r, (byte)g, (byte)b, (byte)a, NVGColor.malloc(stack));
-    }
-
-    /**
-     * Helper method to create NVGColor with proper byte casting.
-     */
-    public static NVGColor createNVGColor(int r, int g, int b, int a, MemoryStack stack) {
-        return org.lwjgl.nanovg.NanoVG.nvgRGBA((byte)r, (byte)g, (byte)b, (byte)a, NVGColor.malloc(stack));
-    }
-
-    /**
-     * Helper method to create NVGColor from ColorRGBA with alpha override.
-     */
-    public static NVGColor createNVGColor(ColorRGBA color, float alphaMultiplier, MemoryStack stack) {
-        int alpha = (int)(color.a * alphaMultiplier);
-        return createNVGColor(color.r, color.g, color.b, alpha, stack);
     }
 }

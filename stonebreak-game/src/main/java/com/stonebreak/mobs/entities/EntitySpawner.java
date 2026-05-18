@@ -48,8 +48,8 @@ public class EntitySpawner {
     private static final int MIN_SPAWN_HEIGHT = 60;
     private static final int MAX_SPAWN_HEIGHT = 120;
 
-    // Cow texture variants
-    private static final String[] COW_TEXTURE_VARIANTS = {"default", "angus", "highland", "jersey"};
+    // Cow appearance variants — must match the variant names in SB_Cow.sbe.
+    private static final String[] COW_TEXTURE_VARIANTS = {"Default", "Angus", "Highland"};
 
     // Tick counter for spawning cycle
     private int tickCounter = 0;
@@ -87,30 +87,54 @@ public class EntitySpawner {
         checkDespawning();
     }
 
+    // Passive mob types spawned by this spawner, each rolled independently so
+    // chickens appear with the same frequency as cows.
+    private static final EntityType[] PASSIVE_SPAWN_TYPES = {EntityType.COW, EntityType.CHICKEN};
+
     /**
      * Initial spawning when a chunk is generated.
      * "Most animals spawn within chunks when they are generated"
+     *
+     * <p>Each passive mob type rolls its own independent spawn chance.
      */
     public void initialChunkSpawn(Chunk chunk) {
-        // Roll for spawn chance
+        for (EntityType type : PASSIVE_SPAWN_TYPES) {
+            spawnInitialHerd(chunk, type);
+        }
+    }
+
+    /**
+     * Rolls the initial spawn chance for one mob type and, on success, spawns a
+     * small herd of that type within the chunk.
+     */
+    private void spawnInitialHerd(Chunk chunk, EntityType type) {
         if (random.nextFloat() > INITIAL_SPAWN_CHANCE) {
-            return; // This chunk won't have initial cows
+            return; // This chunk won't have this mob type.
         }
 
-        int cowsToSpawn = MIN_INITIAL_COWS + random.nextInt(MAX_INITIAL_COWS - MIN_INITIAL_COWS + 1);
-        int cowsSpawned = 0;
+        int toSpawn = MIN_INITIAL_COWS + random.nextInt(MAX_INITIAL_COWS - MIN_INITIAL_COWS + 1);
+        int spawned = 0;
         int maxAttempts = 20;
 
-        for (int attempt = 0; attempt < maxAttempts && cowsSpawned < cowsToSpawn; attempt++) {
+        for (int attempt = 0; attempt < maxAttempts && spawned < toSpawn; attempt++) {
             Vector3f spawnPos = findSpawnLocationInChunk(chunk);
-            if (spawnPos != null && isValidSpawnLocation(spawnPos, EntityType.COW)) {
-                String variant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
-                Entity cow = entityManager.spawnCowWithVariant(spawnPos, variant);
-                if (cow != null) {
-                    cowsSpawned++;
-                }
+            if (spawnPos != null && isValidSpawnLocation(spawnPos, type)
+                    && spawnPassiveMob(type, spawnPos) != null) {
+                spawned++;
             }
         }
+    }
+
+    /**
+     * Spawns one passive mob of the given type, applying type-specific creation
+     * (cows pick a random texture variant).
+     */
+    private Entity spawnPassiveMob(EntityType type, Vector3f position) {
+        if (type == EntityType.COW) {
+            String variant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
+            return entityManager.spawnCowWithVariant(position, variant);
+        }
+        return entityManager.spawnEntity(type, position);
     }
 
     /**
@@ -123,25 +147,32 @@ public class EntitySpawner {
             return;
         }
 
-        // Check mob cap for this player
+        // Each passive mob type gets its own set of spawn attempts, so chickens
+        // spawn as often as cows. The shared mob cap bounds the total.
+        for (EntityType type : PASSIVE_SPAWN_TYPES) {
+            spawnContinuousType(player, type);
+        }
+    }
+
+    /**
+     * Runs a cycle of continuous spawn attempts for one mob type near a player,
+     * respecting the shared passive-mob cap.
+     */
+    private void spawnContinuousType(Player player, EntityType type) {
         int passiveMobCount = countPassiveMobsNearPlayer(player);
         if (passiveMobCount >= MAX_PASSIVE_MOBS_PER_PLAYER) {
             return; // Mob cap reached
         }
 
-        // Attempt to spawn mobs near player
         for (int attempt = 0; attempt < SPAWN_ATTEMPTS_PER_CYCLE; attempt++) {
             if (passiveMobCount >= MAX_PASSIVE_MOBS_PER_PLAYER) {
                 break; // Mob cap reached during spawning
             }
 
             Vector3f spawnPos = findSpawnLocationNearPlayer(player);
-            if (spawnPos != null && isValidSpawnLocation(spawnPos, EntityType.COW)) {
-                String variant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
-                Entity cow = entityManager.spawnCowWithVariant(spawnPos, variant);
-                if (cow != null) {
-                    passiveMobCount++;
-                }
+            if (spawnPos != null && isValidSpawnLocation(spawnPos, type)
+                    && spawnPassiveMob(type, spawnPos) != null) {
+                passiveMobCount++;
             }
         }
     }
@@ -155,11 +186,12 @@ public class EntitySpawner {
             return;
         }
 
-        List<Entity> cows = entityManager.getEntitiesByType(EntityType.COW);
-        for (Entity cow : cows) {
-            float distance = cow.getPosition().distance(player.getPosition());
-            if (distance > DESPAWN_RADIUS) {
-                entityManager.removeEntity(cow);
+        for (EntityType type : PASSIVE_SPAWN_TYPES) {
+            for (Entity mob : entityManager.getEntitiesByType(type)) {
+                float distance = mob.getPosition().distance(player.getPosition());
+                if (distance > DESPAWN_RADIUS) {
+                    entityManager.removeEntity(mob);
+                }
             }
         }
     }
@@ -236,15 +268,16 @@ public class EntitySpawner {
         int z = (int) Math.floor(position.z);
 
         return switch (type) {
-            case COW -> isValidCowSpawnLocation(x, y, z);
+            case COW, CHICKEN -> isValidGroundSpawnLocation(x, y, z);
             default -> false;
         };
     }
 
     /**
-     * Checks if a location is suitable for cow spawning.
+     * Checks if a location is suitable for passive ground-mob spawning
+     * (solid non-water ground, two blocks of clear space, not overcrowded).
      */
-    private boolean isValidCowSpawnLocation(int x, int y, int z) {
+    private boolean isValidGroundSpawnLocation(int x, int y, int z) {
         // Check ground block
         BlockType groundBlock = world.getBlockAt(x, y - 1, z);
         if (groundBlock == null || groundBlock == BlockType.AIR || groundBlock == BlockType.WATER) {
@@ -278,8 +311,10 @@ public class EntitySpawner {
      */
     private int countPassiveMobsNearPlayer(Player player) {
         Vector3f playerPos = player.getPosition();
-        List<Entity> cows = entityManager.getEntitiesInRange(playerPos, SPAWN_RADIUS);
-        return (int) cows.stream().filter(e -> e.getType() == EntityType.COW).count();
+        List<Entity> nearby = entityManager.getEntitiesInRange(playerPos, SPAWN_RADIUS);
+        return (int) nearby.stream()
+                .filter(e -> e.getType() == EntityType.COW || e.getType() == EntityType.CHICKEN)
+                .count();
     }
 
     /**

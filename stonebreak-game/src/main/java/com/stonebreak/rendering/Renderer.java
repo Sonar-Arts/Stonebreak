@@ -1,7 +1,5 @@
 package com.stonebreak.rendering;
 
-import java.util.List;
-
 import com.stonebreak.rendering.core.OpenGLErrorHandler;
 import com.stonebreak.rendering.core.RenderingConfigurationManager;
 import com.stonebreak.rendering.core.ResourceManager;
@@ -17,11 +15,10 @@ import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 import com.stonebreak.rendering.UI.components.OverlayRenderer;
-import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
 import com.stonebreak.rendering.sbo.SBOHandMeshRegistry;
-import com.stonebreak.rendering.sbo.SBOTextureIntegrator;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsFaceCullingService;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBORendererAPI;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
@@ -30,7 +27,7 @@ import com.stonebreak.ui.Font;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.chat.ChatSystem;
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
@@ -56,6 +53,9 @@ public class Renderer {
     // SBO bridge for debug/query access
     private SBOBlockBridge sboBlockBridge;
 
+    // SBO-driven block texture array (replaces the texture atlas for block rendering)
+    private BlockTextureArray blockTextureArray;
+
     // SBO-derived hand-rendering meshes (ensures in-hand geometry matches in-world)
     private SBOHandMeshRegistry sboHandMeshRegistry;
 
@@ -80,8 +80,8 @@ public class Renderer {
         resourceManager.initialize(16); // 16x16 texture atlas
         resourceManager.initializeShaderProgram();
 
-        // Initialize SBO block system — scan, parse, and overlay textures onto atlas
-        initializeSBOBlocks(resourceManager.getTextureAtlas());
+        // Initialize SBO block system — scan, parse, build the block texture array
+        initializeSBOBlocks();
 
         configManager = new RenderingConfigurationManager(width, height);
 
@@ -92,7 +92,7 @@ public class Renderer {
         
         
         // Initialize specialized renderers with CBR support
-        blockRenderer = new BlockRenderer(resourceManager.getTextureAtlas(), blockRegistry);
+        blockRenderer = new BlockRenderer(blockRegistry);
 
         // Build SBO hand-mesh registry now that CBR's MeshManager is available.
         // Runs after the SBO bridge and texture integration (initializeSBOBlocks
@@ -100,13 +100,13 @@ public class Renderer {
         if (sboBlockBridge != null && sboBlockBridge.size() > 0) {
             sboHandMeshRegistry = new SBOHandMeshRegistry(
                     blockRenderer.getCBRResourceManager(),
-                    resourceManager.getTextureAtlas());
+                    blockTextureArray);
             int built = sboHandMeshRegistry.buildFlowerMeshes(sboBlockBridge);
             System.out.println("[Renderer] SBO hand-mesh registry: built " + built + " flower meshes");
         }
 
         playerArmRenderer = new PlayerArmRenderer(resourceManager.getShaderProgram(),
-                                                 resourceManager.getTextureAtlas(),
+                                                 blockTextureArray,
                                                  configManager.getProjectionMatrix(),
                                                  blockRegistry,
                                                  sboHandMeshRegistry);
@@ -117,7 +117,7 @@ public class Renderer {
                                                  configManager.getWindowWidth(), 
                                                  configManager.getWindowHeight(), 
                                                  configManager.getProjectionMatrix());
-        uiRenderer.initializeBlockIconRenderer(blockRenderer, configManager.getWindowHeight());
+        uiRenderer.initializeBlockIconRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, configManager.getWindowHeight());
 
         skijaBackend = new SkijaUIBackend();
         try {
@@ -139,15 +139,15 @@ public class Renderer {
         entityRenderer = new EntityRenderer();
         entityRenderer.initialize();
         
-        dropRenderer = new DropRenderer(blockRenderer, resourceManager.getTextureAtlas(), resourceManager.getShaderProgram());
+        dropRenderer = new DropRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, resourceManager.getShaderProgram());
 
         // Test the new voxelized item drop system
         System.out.println("[Renderer] Testing voxelized item drop system...");
         dropRenderer.testDropRendering();
         System.out.println("[Renderer] Voxelized item drop system test complete.");
 
-        worldRenderer = new WorldRenderer(resourceManager.getShaderProgram(), 
-                                         resourceManager.getTextureAtlas(), 
+        worldRenderer = new WorldRenderer(resourceManager.getShaderProgram(),
+                                         blockTextureArray,
                                          configManager.getProjectionMatrix(),
                                          blockRenderer, playerArmRenderer, entityRenderer, dropRenderer);
         
@@ -157,9 +157,9 @@ public class Renderer {
     
     /**
      * Initializes the SBO block system.
-     * Scans for .sbo files, parses them, and overlays their textures onto the atlas.
+     * Scans for .sbo files, parses them, and builds the block texture array.
      */
-    private void initializeSBOBlocks(TextureAtlas textureAtlas) {
+    private void initializeSBOBlocks() {
         try {
             SBOBlockRegistry registry = new SBOBlockRegistry();
             int loaded = registry.scanAndLoad();
@@ -175,11 +175,10 @@ public class Renderer {
                 bridge.initialize(registry);
                 this.sboBlockBridge = bridge;
 
-                if (bridge.size() > 0) {
-                    SBOTextureIntegrator integrator = new SBOTextureIntegrator(textureAtlas, bridge);
-                    int integrated = integrator.integrateAll();
-                    System.out.println("[Renderer] SBO integration: " + integrated + " block textures updated");
-                }
+                // Build the SBO-driven block texture array.
+                this.blockTextureArray = new BlockTextureArray(bridge);
+                System.out.println("[Renderer] BlockTextureArray: "
+                        + blockTextureArray.getLayerCount() + " layers built");
 
                 // Build SBO block map for the renderer API
                 java.util.Map<com.stonebreak.blocks.BlockType, SBOParseResult> sboBlockMap = new java.util.LinkedHashMap<>();
@@ -191,9 +190,9 @@ public class Renderer {
 
                 if (!sboBlockMap.isEmpty()) {
                     // Initialize the SBO Renderer API — processes all SBO meshes into stamps
-                    var uvProvider = new com.stonebreak.world.chunk.api.voxel.TextureAtlasAdapter(textureAtlas);
+                    var arrayAdapter = new com.stonebreak.world.chunk.api.voxel.TextureArrayAdapter(blockTextureArray);
                     sboRendererAPI = new SBORendererAPI();
-                    int processed = sboRendererAPI.initialize(sboBlockMap, uvProvider);
+                    int processed = sboRendererAPI.initialize(sboBlockMap, arrayAdapter, arrayAdapter);
 
                     if (processed > 0) {
                         // Create deferred emitter with face culling (world set later in applySBODispatcher)
@@ -267,6 +266,13 @@ public class Renderer {
     }
 
     /**
+     * Returns the SBO-driven block texture array, or null if SBO initialization failed.
+     */
+    public BlockTextureArray getBlockTextureArray() {
+        return blockTextureArray;
+    }
+
+    /**
      * Updates the projection matrix when the window is resized.
      */
     public void updateProjectionMatrix(int width, int height) {
@@ -305,10 +311,6 @@ public class Renderer {
         return resourceManager.getShaderProgram();
     }
 
-    public TextureAtlas getTextureAtlas() {
-        return resourceManager.getTextureAtlas();
-    }
-    
     public Matrix4f getProjectionMatrix() {
         return configManager.getProjectionMatrix();
     }
@@ -356,62 +358,6 @@ public class Renderer {
     }
     
     /**
-     * Begin a UI frame for NanoVG rendering.
-     * @param width Window width
-     * @param height Window height
-     * @param pixelRatio Pixel ratio (typically 1.0f)
-     */
-    public void beginUIFrame(int width, int height, float pixelRatio) {
-        if (uiRenderer != null) {
-            uiRenderer.beginFrame(width, height, pixelRatio);
-        }
-    }
-    
-    /**
-     * End the current UI frame.
-     */
-    public void endUIFrame() {
-        if (uiRenderer != null) {
-            uiRenderer.endFrame();
-        }
-    }
-    
-    /**
-     * Render the main menu.
-     * @param windowWidth Window width
-     * @param windowHeight Window height
-     */
-    public void renderMainMenu(int windowWidth, int windowHeight) {
-        if (uiRenderer != null) {
-            uiRenderer.renderMainMenu(windowWidth, windowHeight);
-        }
-    }
-    
-    /**
-     * Render the pause menu.
-     * @param windowWidth Window width
-     * @param windowHeight Window height
-     * @param isQuitButtonHovered Whether quit button is hovered
-     * @param isSettingsButtonHovered Whether settings button is hovered
-     */
-    public void renderPauseMenu(int windowWidth, int windowHeight, boolean isQuitButtonHovered, boolean isSettingsButtonHovered) {
-        if (uiRenderer != null) {
-            uiRenderer.renderPauseMenu(windowWidth, windowHeight, isQuitButtonHovered, isSettingsButtonHovered);
-        }
-    }
-    
-    /**
-     * Render the settings menu.
-     * @param windowWidth Window width
-     * @param windowHeight Window height
-     */
-    public void renderSettingsMenu(int windowWidth, int windowHeight) {
-        if (uiRenderer != null) {
-            uiRenderer.renderSettingsMenu(windowWidth, windowHeight);
-        }
-    }
-    
-    /**
      * Render chat system.
      * @param chatSystem Chat system instance
      * @param windowWidth Window width
@@ -421,130 +367,6 @@ public class Renderer {
         if (uiRenderer != null) {
             uiRenderer.renderChat(chatSystem, windowWidth, windowHeight);
         }
-    }
-    
-    /**
-     * Draw a button using the UI renderer.
-     * @param text Button text
-     * @param x X position
-     * @param y Y position
-     * @param w Width
-     * @param h Height
-     * @param highlighted Whether button is highlighted
-     */
-    public void drawButton(String text, float x, float y, float w, float h, boolean highlighted) {
-        if (uiRenderer != null) {
-            uiRenderer.drawButton(text, x, y, w, h, highlighted);
-        }
-    }
-    
-    /**
-     * Draw a dropdown button using the UI renderer.
-     * @param text Button text
-     * @param x X position
-     * @param y Y position
-     * @param w Width
-     * @param h Height
-     * @param highlighted Whether button is highlighted
-     * @param isOpen Whether dropdown is open
-     */
-    public void drawDropdownButton(String text, float x, float y, float w, float h, boolean highlighted, boolean isOpen) {
-        if (uiRenderer != null) {
-            uiRenderer.drawDropdownButton(text, x, y, w, h, highlighted, isOpen);
-        }
-    }
-    
-    /**
-     * Draw a dropdown menu using the UI renderer.
-     * @param options Menu options
-     * @param selectedIndex Selected index
-     * @param x X position
-     * @param y Y position
-     * @param w Width
-     * @param itemHeight Height per item
-     */
-    public void drawDropdownMenu(String[] options, int selectedIndex, float x, float y, float w, float itemHeight) {
-        if (uiRenderer != null) {
-            uiRenderer.drawDropdownMenu(options, selectedIndex, x, y, w, itemHeight);
-        }
-    }
-    
-    /**
-     * Draw a volume slider using the UI renderer.
-     * @param label Slider label
-     * @param centerX Center X position
-     * @param centerY Center Y position
-     * @param sliderWidth Slider width
-     * @param sliderHeight Slider height
-     * @param value Slider value (0.0-1.0)
-     * @param highlighted Whether slider is highlighted
-     */
-    public void drawVolumeSlider(String label, float centerX, float centerY, float sliderWidth, float sliderHeight, float value, boolean highlighted) {
-        if (uiRenderer != null) {
-            uiRenderer.drawVolumeSlider(label, centerX, centerY, sliderWidth, sliderHeight, value, highlighted);
-        }
-    }
-    
-    /**
-     * Check if a button was clicked using the UI renderer.
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     * @param buttonX Button X position
-     * @param buttonY Button Y position
-     * @param buttonW Button width
-     * @param buttonH Button height
-     * @return True if button was clicked
-     */
-    public boolean isButtonClicked(float mouseX, float mouseY, float buttonX, float buttonY, float buttonW, float buttonH) {
-        if (uiRenderer != null) {
-            return uiRenderer.isButtonClicked(mouseX, mouseY, buttonX, buttonY, buttonW, buttonH);
-        }
-        return false;
-    }
-    
-    /**
-     * Check if pause resume button was clicked.
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     * @param windowWidth Window width
-     * @param windowHeight Window height
-     * @return True if resume button was clicked
-     */
-    public boolean isPauseResumeClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        if (uiRenderer != null) {
-            return uiRenderer.isPauseResumeClicked(mouseX, mouseY, windowWidth, windowHeight);
-        }
-        return false;
-    }
-    
-    /**
-     * Check if pause settings button was clicked.
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     * @param windowWidth Window width
-     * @param windowHeight Window height
-     * @return True if settings button was clicked
-     */
-    public boolean isPauseSettingsClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        if (uiRenderer != null) {
-            return uiRenderer.isPauseSettingsClicked(mouseX, mouseY, windowWidth, windowHeight);
-        }
-        return false;
-    }
-    
-    /**
-     * Check if pause quit button was clicked.
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     * @param windowWidth Window width
-     * @param windowHeight Window height
-     * @return True if quit button was clicked
-     */
-    public boolean isPauseQuitClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        if (uiRenderer != null) {
-            return uiRenderer.isPauseQuitClicked(mouseX, mouseY, windowWidth, windowHeight);
-        }
-        return false;
     }
     
     // ============ END UI RENDERER PROXY METHODS ============
@@ -557,9 +379,7 @@ public class Renderer {
      */
     public void renderOverlay(Game game, int windowWidth, int windowHeight) {
         if (overlayRenderer != null) {
-            beginUIFrame(windowWidth, windowHeight, 1.0f);
             overlayRenderer.renderOverlay(game, windowWidth, windowHeight);
-            endUIFrame();
         }
     }
     
@@ -577,7 +397,7 @@ public class Renderer {
      */
     public void renderOverlayItemIcon(float x, float y, float w, float h, com.stonebreak.items.Item item) {
         if (overlayRenderer != null) {
-            overlayRenderer.renderItemIcon(x, y, w, h, item, resourceManager.getTextureAtlas());
+            overlayRenderer.renderItemIcon(x, y, w, h, item, blockTextureArray);
         }
     }
     
@@ -587,7 +407,7 @@ public class Renderer {
      */
     public void renderOverlayItemIcon(float x, float y, float w, float h, int blockTypeId) {
         if (overlayRenderer != null) {
-            overlayRenderer.renderItemIcon(x, y, w, h, blockTypeId, resourceManager.getTextureAtlas());
+            overlayRenderer.renderItemIcon(x, y, w, h, blockTypeId, blockTextureArray);
         }
     }
     
@@ -597,8 +417,8 @@ public class Renderer {
      */
     public void renderOverlayBlockIcon(com.stonebreak.blocks.BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
         if (overlayRenderer != null) {
-            overlayRenderer.renderBlockIcon(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, 
-                                          resourceManager.getShaderProgram(), resourceManager.getTextureAtlas());
+            overlayRenderer.renderBlockIcon(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight,
+                                          resourceManager.getShaderProgram(), blockTextureArray);
         }
     }
     
@@ -688,21 +508,28 @@ public class Renderer {
     }
 
     /**
-     * Renders a wireframe bounding box for debug purposes.
-     * @param boundingBox The bounding box to render
-     * @param color The color of the wireframe (RGB, each component 0.0-1.0)
+     * Exposes the debug renderer for batched debug-line drawing (model-fitted
+     * bounding boxes and AI paths).
+     * @return the DebugRenderer instance
      */
-    public void renderWireframeBoundingBox(com.stonebreak.mobs.entities.Entity.BoundingBox boundingBox, Vector3f color) {
-        debugRenderer.renderWireframeBoundingBox(boundingBox, color);
+    public DebugRenderer getDebugRenderer() {
+        return debugRenderer;
     }
-    
+
     /**
-     * Renders a wireframe path as connected line segments.
-     * @param pathPoints The list of points forming the path
-     * @param color The color of the path wireframe (RGB, each component 0.0-1.0)
+     * Draws a debug wireframe overlay of an entity's model, using the live
+     * camera matrices. The overlay re-draws the animated model mesh, so it
+     * tracks the entity exactly rather than approximating it with a box.
+     * @param entity the entity to outline
+     * @param color  RGBA line colour
      */
-    public void renderWireframePath(List<Vector3f> pathPoints, Vector3f color) {
-        debugRenderer.renderWireframePath(pathPoints, color);
+    public void renderEntityWireframe(com.stonebreak.mobs.entities.Entity entity, Vector4f color) {
+        com.stonebreak.player.Player player = Game.getPlayer();
+        if (player == null) {
+            return;
+        }
+        entityRenderer.renderEntityWireframe(entity, player.getViewMatrix(),
+                configManager.getProjectionMatrix(), color);
     }
 
     /**

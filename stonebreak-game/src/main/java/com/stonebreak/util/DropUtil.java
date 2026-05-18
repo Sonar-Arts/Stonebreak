@@ -246,21 +246,40 @@ public class DropUtil {
      * Handles block breaking and creates appropriate drops.
      */
     public static void handleBlockBroken(World world, Vector3f position, BlockType brokenBlock) {
+        handleBlockBroken(world, position, brokenBlock, null, 0);
+    }
+
+    /**
+     * Handles block breaking and creates appropriate drops.
+     * @param toolItem the item type used to break the block (may be null)
+     */
+    public static void handleBlockBroken(World world, Vector3f position, BlockType brokenBlock, ItemType toolItem) {
+        handleBlockBroken(world, position, brokenBlock, toolItem, 0);
+    }
+
+    /**
+     * Handles block breaking and creates appropriate drops.
+     * @param toolItem the item type used to break the block (may be null)
+     * @param snowLayers the number of snow layers when breaking snow (0 when not snow or unknown)
+     */
+    public static void handleBlockBroken(World world, Vector3f position, BlockType brokenBlock, ItemType toolItem, int snowLayers) {
         if (world == null || brokenBlock == null || brokenBlock == BlockType.AIR) {
             return;
         }
-        
-        // Special handling for snow blocks (multiple layers)
+
+        // Special handling for snow blocks
         if (brokenBlock == BlockType.SNOW) {
-            // Get snow layer count from world
-            int snowLayers = world.getSnowLayers((int)position.x, (int)position.y, (int)position.z);
-            if (snowLayers > 0) {
-                // Create multiple snow ball drops based on layer count
-                createBlockDrops(world, position, BlockType.SNOW, snowLayers);
+            int layers = snowLayers > 0 ? snowLayers : world.getSnowLayers((int)position.x, (int)position.y, (int)position.z);
+            if (toolItem == ItemType.STONE_SHOVEL || toolItem == ItemType.WOODEN_SHOVEL) {
+                createItemDrop(world, position, ItemType.SNOWBALL, layers);
+            } else {
+                if (layers > 0) {
+                    createBlockDrops(world, position, BlockType.SNOW, layers);
+                }
             }
             return;
         }
-        
+
         // Get the appropriate drop for this block
         BlockType dropType = getBlockDrop(brokenBlock);
         if (dropType != null) {

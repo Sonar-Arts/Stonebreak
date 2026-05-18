@@ -31,7 +31,7 @@ public final class TreeBlockPlacer {
 
         int chunkX = Math.floorDiv(worldX, CHUNK_SIZE);
         int chunkZ = Math.floorDiv(worldZ, CHUNK_SIZE);
-        Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+        Chunk chunk = world.getChunkIfLoaded(chunkX, chunkZ);
         if (chunk == null) return; // Defensive: scheduling should guarantee this
 
         int localX = Math.floorMod(worldX, CHUNK_SIZE);

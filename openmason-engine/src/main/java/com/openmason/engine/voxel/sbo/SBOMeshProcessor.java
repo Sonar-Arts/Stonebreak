@@ -5,6 +5,7 @@ import com.openmason.engine.format.mesh.ParsedMaterialData;
 import com.openmason.engine.format.mesh.ParsedMeshData;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.openmason.engine.voxel.IBlockType;
+import com.openmason.engine.voxel.ILayerIndexProvider;
 import com.openmason.engine.voxel.ITextureCoordProvider;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache;
@@ -38,10 +39,12 @@ public class SBOMeshProcessor {
      *
      * @param positions  vertex positions (x,y,z interleaved), relative to origin
      * @param normals    flat normals (nx,ny,nz interleaved)
-     * @param atlasUVs   atlas-remapped UVs (u,v interleaved)
+     * @param atlasUVs   tile-local UVs (u,v interleaved) — full unit square per face
+     * @param layers     texture-array layer index per vertex
      * @param vertexCount number of vertices (positions.length / 3)
      */
-    public record FaceStamp(float[] positions, float[] normals, float[] atlasUVs, int vertexCount) {}
+    public record FaceStamp(float[] positions, float[] normals, float[] atlasUVs,
+                            float[] layers, int vertexCount) {}
 
     /**
      * All 6 face stamps for one SBO block type. faces[0..5] indexed by MMS face ID.
@@ -63,8 +66,9 @@ public class SBOMeshProcessor {
      * @param uvProvider   texture coordinate provider for atlas UV lookups
      * @return true if successfully processed
      */
-    public boolean process(IBlockType blockType, SBOParseResult sbo, ITextureCoordProvider uvProvider) {
-        return process(blockType, sbo, uvProvider, null);
+    public boolean process(IBlockType blockType, SBOParseResult sbo,
+                           ITextureCoordProvider uvProvider, ILayerIndexProvider layerProvider) {
+        return process(blockType, sbo, uvProvider, layerProvider, null);
     }
 
     /**
@@ -78,7 +82,8 @@ public class SBOMeshProcessor {
      * @return true if successfully processed
      */
     public boolean process(IBlockType blockType, SBOParseResult sbo,
-                           ITextureCoordProvider uvProvider, SBOStampCache externalCache) {
+                           ITextureCoordProvider uvProvider, ILayerIndexProvider layerProvider,
+                           SBOStampCache externalCache) {
         ParsedMeshData meshData = sbo.meshData();
         if (meshData == null || !meshData.hasGeometry()) {
             logger.warn("SBO for {} has no mesh data", blockType.getName());
@@ -103,7 +108,7 @@ public class SBOMeshProcessor {
         }
 
         // Build per-face atlas-remapped stamps
-        BlockStamp stamp = buildBlockStamp(blockType, processed, remappedFaceIds, uvProvider);
+        BlockStamp stamp = buildBlockStamp(blockType, processed, remappedFaceIds, uvProvider, layerProvider);
         stampCache.put(blockType.getId(), stamp);
         processedTypes.add(blockType.getId());
 
@@ -127,7 +132,8 @@ public class SBOMeshProcessor {
      * Build a BlockStamp by bucketing triangles per face and remapping UVs to atlas space.
      */
     private BlockStamp buildBlockStamp(IBlockType blockType, SBONormalComputer.ProcessedMesh mesh,
-                                        int[] faceIds, ITextureCoordProvider uvProvider) {
+                                        int[] faceIds, ITextureCoordProvider uvProvider,
+                                        ILayerIndexProvider layerProvider) {
         float[] verts = mesh.vertices();
         float[] norms = mesh.normals();
         float[] uvs = mesh.texCoords();
@@ -145,6 +151,7 @@ public class SBOMeshProcessor {
         float[][] facePositions = new float[6][];
         float[][] faceNormals = new float[6][];
         float[][] faceUVs = new float[6][];
+        float[][] faceLayers = new float[6][];
         int[] faceInsert = new int[6]; // insertion cursor per face
 
         for (int f = 0; f < 6; f++) {
@@ -152,6 +159,10 @@ public class SBOMeshProcessor {
             facePositions[f] = new float[vertCount * 3];
             faceNormals[f] = new float[vertCount * 3];
             faceUVs[f] = new float[vertCount * 2];
+            faceLayers[f] = new float[vertCount];
+            // Every vertex of a face shares the same texture-array layer.
+            float layer = layerProvider.getBlockFaceLayer(blockType, f);
+            java.util.Arrays.fill(faceLayers[f], layer);
         }
 
         // Get atlas UV bounds per face: [u1, v1, u2, v2]
@@ -207,7 +218,8 @@ public class SBOMeshProcessor {
         // Build FaceStamp records
         FaceStamp[] stamps = new FaceStamp[6];
         for (int f = 0; f < 6; f++) {
-            stamps[f] = new FaceStamp(facePositions[f], faceNormals[f], faceUVs[f], faceCounts[f] * 3);
+            stamps[f] = new FaceStamp(facePositions[f], faceNormals[f], faceUVs[f],
+                    faceLayers[f], faceCounts[f] * 3);
         }
 
         return new BlockStamp(stamps);

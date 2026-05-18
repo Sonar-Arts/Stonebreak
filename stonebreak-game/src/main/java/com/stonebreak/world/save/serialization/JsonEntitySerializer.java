@@ -147,6 +147,11 @@ public class JsonEntitySerializer {
                 customData.put("milkRegenTimer", milkRegenTimer);
                 customData.put("aiState", aiState);
             }
+            case CHICKEN -> {
+                String aiState = JsonParsingUtil.extractStringFromObject(json, "customData", "aiState");
+                customData.put("aiState", aiState);
+            }
+            default -> { /* no entity-specific custom data */ }
         }
 
         return customData;

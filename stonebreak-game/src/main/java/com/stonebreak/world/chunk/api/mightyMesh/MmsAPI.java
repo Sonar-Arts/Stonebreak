@@ -1,8 +1,9 @@
 package com.stonebreak.world.chunk.api.mightyMesh;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.rendering.textures.TextureAtlas;
-import com.stonebreak.world.chunk.api.voxel.TextureAtlasAdapter;
+import com.stonebreak.rendering.textures.BlockTextureArray;
+import com.stonebreak.world.chunk.api.voxel.TextureArrayAdapter;
+import com.openmason.engine.voxel.mms.mmsTexturing.MmsArrayTextureMapper;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
@@ -18,7 +19,6 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsLodLevel;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.MmsCcoAdapter;
 import com.openmason.engine.voxel.mms.mmsMetrics.MmsStatistics;
-import com.openmason.engine.voxel.mms.mmsTexturing.MmsAtlasTextureMapper;
 import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
 
 /**
@@ -86,16 +86,17 @@ public final class MmsAPI {
     /**
      * Private constructor for singleton pattern.
      *
-     * @param textureAtlas Texture atlas for coordinate lookups
+     * @param blockTextureArray Block texture array for layer lookups
      * @param world World instance for neighbor queries (can be null initially, set later)
      */
-    private MmsAPI(TextureAtlas textureAtlas, World world) {
-        if (textureAtlas == null) {
-            throw new IllegalArgumentException("Texture atlas cannot be null");
+    private MmsAPI(BlockTextureArray blockTextureArray, World world) {
+        if (blockTextureArray == null) {
+            throw new IllegalArgumentException("Block texture array cannot be null");
         }
 
         this.world = world; // Can be null initially
-        this.textureMapper = new MmsAtlasTextureMapper(new TextureAtlasAdapter(textureAtlas));
+        TextureArrayAdapter adapter = new TextureArrayAdapter(blockTextureArray);
+        this.textureMapper = new MmsArrayTextureMapper(adapter, adapter);
         this.ccoAdapter = new MmsCcoAdapter(textureMapper, world);
         this.statistics = new MmsStatistics();
 
@@ -118,15 +119,15 @@ public final class MmsAPI {
      * Initializes the MMS API with required dependencies.
      * Must be called before using getInstance().
      *
-     * @param textureAtlas Texture atlas
+     * @param blockTextureArray Block texture array
      * @param world World instance
      * @return MMS API instance
      */
-    public static MmsAPI initialize(TextureAtlas textureAtlas, World world) {
+    public static MmsAPI initialize(BlockTextureArray blockTextureArray, World world) {
         if (instance == null) {
             synchronized (LOCK) {
                 if (instance == null) {
-                    instance = new MmsAPI(textureAtlas, world);
+                    instance = new MmsAPI(blockTextureArray, world);
                 }
             }
         }

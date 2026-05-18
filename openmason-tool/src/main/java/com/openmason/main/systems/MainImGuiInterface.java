@@ -19,6 +19,7 @@ import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.dialogs.AboutDialog;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.menus.dialogs.SBEExportWindow;
+import com.openmason.main.systems.menus.dialogs.SBEEditorWindow;
 import com.openmason.main.systems.menus.dialogs.SBOEditorWindow;
 import com.openmason.main.systems.menus.dialogs.SBOExportWindow;
 import com.openmason.main.systems.menus.dialogs.SBOTextureExportWindow;
@@ -71,6 +72,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private SBTExportWindow sbtExportWindow; // Initialized after components
     private SBOTextureExportWindow sboTextureExportWindow; // Initialized after components
     private SBOEditorWindow sboEditorWindow; // Initialized after components
+    private SBEEditorWindow sbeEditorWindow; // Initialized after components
     private final AboutDialog aboutDialog;
 
     // Menu System
@@ -258,10 +260,14 @@ public class MainImGuiInterface implements ModelBrowserListener {
             this.sboEditorWindow = new SBOEditorWindow(fileDialogService, statusService);
             toolsMenuHandler.setSBOEditorWindow(sboEditorWindow);
 
+            // SBE editor — for opening and editing existing .sbe files
+            this.sbeEditorWindow = new SBEEditorWindow(fileDialogService, statusService);
+            toolsMenuHandler.setSBEEditorWindow(sbeEditorWindow);
+
             toolsMenuHandler.setModelState(modelState);
             toolsMenuHandler.setStatusService(statusService);
             toolsMenuHandler.setModelOperations(modelOperations);
-            logger.debug("SBO, SBE, SBT, SBO-texture export windows and SBO editor initialized");
+            logger.debug("SBO, SBE, SBT, SBO-texture export windows and SBO/SBE editors initialized");
         } catch (Exception e) {
             logger.error("Failed to initialize components", e);
         }
@@ -650,6 +656,13 @@ public class MainImGuiInterface implements ModelBrowserListener {
      */
     public SBOEditorWindow getSBOEditorWindow() {
         return sboEditorWindow;
+    }
+
+    /**
+     * Gets the SBE editor window for external rendering.
+     */
+    public SBEEditorWindow getSBEEditorWindow() {
+        return sbeEditorWindow;
     }
 
     /**

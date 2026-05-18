@@ -24,13 +24,13 @@ import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.models.entities.DropRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
-import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.gameWorld.sky.SkyRenderer;
+import com.stonebreak.rendering.gameWorld.sky.clouds.CloudRenderer;
 import com.stonebreak.rendering.gameWorld.fastlod.FastLodRenderPass;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
 import com.stonebreak.world.World;
-import com.openmason.engine.voxel.sbo.SBORenderData;
 
 /**
  * Specialized renderer for 3D world elements including chunks, entities, and world-specific effects.
@@ -40,32 +40,37 @@ public class WorldRenderer {
     
     // Dependencies
     private final ShaderProgram shaderProgram;
-    private final TextureAtlas textureAtlas;
+    private final BlockTextureArray blockTextureArray;
     private final Matrix4f projectionMatrix;
     private final BlockRenderer blockRenderer;
     private final PlayerArmRenderer playerArmRenderer;
     private final EntityRenderer entityRenderer;
     private final DropRenderer dropRenderer;
     private final SkyRenderer skyRenderer;
+    private final CloudRenderer cloudRenderer;
     private final FastLodRenderPass lodRenderPass;
-    
+    private final ChunkFrustumCuller frustumCuller = new ChunkFrustumCuller();
+
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
+    private final List<Chunk> reusableVisibleChunks = new ArrayList<>();
     
     /**
      * Creates a WorldRenderer with the required dependencies.
      */
-    public WorldRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, Matrix4f projectionMatrix,
+    public WorldRenderer(ShaderProgram shaderProgram, BlockTextureArray blockTextureArray,
+                        Matrix4f projectionMatrix,
                         BlockRenderer blockRenderer, PlayerArmRenderer playerArmRenderer, EntityRenderer entityRenderer,
                         DropRenderer dropRenderer) {
         this.shaderProgram = shaderProgram;
-        this.textureAtlas = textureAtlas;
+        this.blockTextureArray = blockTextureArray;
         this.projectionMatrix = projectionMatrix;
         this.blockRenderer = blockRenderer;
         this.playerArmRenderer = playerArmRenderer;
         this.entityRenderer = entityRenderer;
         this.dropRenderer = dropRenderer;
         this.skyRenderer = new SkyRenderer();
+        this.cloudRenderer = new CloudRenderer();
         this.lodRenderPass = new FastLodRenderPass();
     }
     
@@ -88,6 +93,12 @@ public class WorldRenderer {
         // Render sky first (before world geometry for proper depth testing)
         skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, timeOfDay);
         checkGLError("After sky rendering");
+
+        // Render the voxel cloud layer just after the sky dome, before world geometry.
+        if (com.stonebreak.config.Settings.getInstance().getCloudsEnabled()) {
+            cloudRenderer.renderClouds(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, timeOfDay);
+            checkGLError("After cloud rendering");
+        }
         
         // Ensure proper depth function for world geometry
         glDepthFunc(GL_LESS);
@@ -114,12 +125,14 @@ public class WorldRenderer {
         updateAnimatedTextures(totalTime, player);
         checkGLError("After updateAnimatedWater");
         
-        // Get visible chunks
-        Map<ChunkPosition, Chunk> visibleChunks = getVisibleChunks(world, player);
+        // Get chunks around the player, then cull those outside the view frustum
+        Map<ChunkPosition, Chunk> nearbyChunks = getVisibleChunks(world, player);
+        List<Chunk> visibleChunks = cullChunksToFrustum(nearbyChunks, player);
 
         // Debug: Log chunk count
         if (debugVisibleChunksCount < 1) {
-            System.out.println("[WorldRenderer] Got " + visibleChunks.size() + " visible chunks");
+            System.out.println("[WorldRenderer] Got " + visibleChunks.size() + " visible chunks (of "
+                + nearbyChunks.size() + " nearby) after frustum culling");
             debugVisibleChunksCount++;
         }
 
@@ -127,7 +140,7 @@ public class WorldRenderer {
         renderOpaquePass(visibleChunks);
 
         // Render distant-terrain LOD between detail opaque and SBO; shares shader/atlas state.
-        world.ensureFastLodManager(textureAtlas);
+        world.ensureFastLodManager(blockTextureArray);
         int lodPlayerCx = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int lodPlayerCz = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
         lodRenderPass.render(shaderProgram, world.getFastLodManager(), lodPlayerCx, lodPlayerCz);
@@ -139,11 +152,15 @@ public class WorldRenderer {
         // This allows water to blend over entities when viewing through water
         renderEntities(player);
 
+        // Render opaque drops BEFORE the transparent pass so they write depth
+        // Water can then occlude them properly (water renders with glDepthMask(false))
+        renderOpaqueDrops(player);
+
         // Render transparent pass (water blends over entities correctly)
         renderTransparentPass(visibleChunks, player);
 
-        // Render drops after transparent water (drops are semi-transparent)
-        renderDrops(player);
+        // Render transparent drops AFTER the transparent pass
+        renderTransparentDrops(player);
 
         // Restore OpenGL state after passes
         restoreGLStateAfterPasses();
@@ -186,10 +203,13 @@ public class WorldRenderer {
         shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
         shaderProgram.setUniform("modelMatrix", new Matrix4f()); // Identity for world chunks
         shaderProgram.setUniform("texture_sampler", 0);
+        shaderProgram.setUniform("block_sampler", 1); // Keep the array sampler off unit 0
         shaderProgram.setUniform("u_useSolidColor", false); // World objects are textured
         shaderProgram.setUniform("u_isText", false);        // World objects are not text
         shaderProgram.setUniform("u_isUIElement", false);   // World objects are not UI elements
-        shaderProgram.setUniform("u_transformUVsForItem", false); // Chunks use atlas UVs directly
+        shaderProgram.setUniform("u_transformUVsForItem", false); // Chunks use tile-local UVs directly
+        // World chunks/SBO geometry sample the block texture array (unit 1).
+        shaderProgram.setUniform("u_useTextureArray", true);
 
         // Set lighting uniforms from TimeOfDay system
         com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
@@ -215,19 +235,17 @@ public class WorldRenderer {
      * Bind the texture atlas for world rendering.
      */
     private void bindTextureAtlas() {
+        // Block texture array on unit 1 — world/voxel geometry samples this.
+        GL13.glActiveTexture(GL13.GL_TEXTURE1);
+        blockTextureArray.bind();
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        // Ensure texture filtering is set (NEAREST for blocky style)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
-    
+
     /**
      * Update animated textures.
      */
     private void updateAnimatedTextures(float totalTime, Player player) {
-        WaterEffects waterEffects = Game.getWaterEffects();
-        textureAtlas.updateAnimatedWater(totalTime, waterEffects, player.getPosition().x, player.getPosition().z);
+        blockTextureArray.updateAnimatedWater(totalTime);
     }
     
     /**
@@ -240,9 +258,24 @@ public class WorldRenderer {
     }
 
     /**
+     * Filters the nearby chunks down to those intersecting the camera view frustum.
+     * Returns a reused list to avoid per-frame allocations.
+     */
+    private List<Chunk> cullChunksToFrustum(Map<ChunkPosition, Chunk> nearbyChunks, Player player) {
+        frustumCuller.update(projectionMatrix, player.getViewMatrix());
+        reusableVisibleChunks.clear();
+        for (Chunk chunk : nearbyChunks.values()) {
+            if (frustumCuller.isChunkVisible(chunk)) {
+                reusableVisibleChunks.add(chunk);
+            }
+        }
+        return reusableVisibleChunks;
+    }
+
+    /**
      * Render opaque pass (non-water parts of chunks).
      */
-    private void renderOpaquePass(Map<ChunkPosition, Chunk> visibleChunks) {
+    private void renderOpaquePass(List<Chunk> visibleChunks) {
         shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
         shaderProgram.setUniform("u_waterDepthOffset", 0.0f); // No depth offset for opaque pass
         glDepthMask(true);  // Enable depth writing for opaque objects
@@ -254,7 +287,7 @@ public class WorldRenderer {
             debugOpaquePassCount++;
         }
 
-        for (Chunk chunk : visibleChunks.values()) {
+        for (Chunk chunk : visibleChunks) {
             chunk.render(); // Shader will discard water fragments
         }
     }
@@ -265,9 +298,9 @@ public class WorldRenderer {
      * Render SBO blocks from all visible chunks.
      * Each face binds its own SBO texture before drawing.
      */
-    private void renderSBOPass(Map<ChunkPosition, Chunk> visibleChunks) {
+    private void renderSBOPass(List<Chunk> visibleChunks) {
         int sboCount = 0;
-        for (Chunk chunk : visibleChunks.values()) {
+        for (Chunk chunk : visibleChunks) {
             java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> sboList = chunk.getSBORenderDataList();
             if (sboList != null && !sboList.isEmpty()) {
                 sboCount++;
@@ -287,7 +320,7 @@ public class WorldRenderer {
     /**
      * Render transparent pass (water parts of chunks).
      */
-    private void renderTransparentPass(Map<ChunkPosition, Chunk> visibleChunks, Player player) {
+    private void renderTransparentPass(List<Chunk> visibleChunks, Player player) {
         shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
         shaderProgram.setUniform("u_waterDepthOffset", -0.0001f); // Negative offset to pull water slightly closer
         glEnable(GL_BLEND); // Enable blending
@@ -323,9 +356,9 @@ public class WorldRenderer {
     /**
      * Sort chunks from back to front for proper transparent rendering.
      */
-    private void sortChunksBackToFront(Map<ChunkPosition, Chunk> visibleChunks, Player player) {
+    private void sortChunksBackToFront(List<Chunk> visibleChunks, Player player) {
         reusableSortedChunks.clear();
-        reusableSortedChunks.addAll(visibleChunks.values());
+        reusableSortedChunks.addAll(visibleChunks);
         Vector3f playerPos = player.getPosition();
         
         Collections.sort(reusableSortedChunks, (c1, c2) -> {
@@ -351,6 +384,8 @@ public class WorldRenderer {
     private void restoreGLStateAfterPasses() {
         glDepthMask(true);  // Restore depth writing
         glDisable(GL_BLEND); // Restore blending state
+        // Downstream passes (overlays, drops, particles) sample 2D textures.
+        shaderProgram.setUniform("u_useTextureArray", false);
     }
     
     /**
@@ -437,10 +472,13 @@ public class WorldRenderer {
     /**
      * Render all drops using the drop sub-renderer.
      * Drops are rendered before entities to appear underneath everything but above world geometry.
+     *
+     * @deprecated Replaced by {@link #renderOpaqueDrops} and {@link #renderTransparentDrops}
      */
+    @Deprecated
     private void renderDrops(Player player) {
         com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
-        
+
         if (entityManager != null && dropRenderer != null) {
             // Get all entities and filter for drops + collect remote players for held-item rendering.
             List<com.stonebreak.mobs.entities.Entity> allEntities = entityManager.getAllEntities();
@@ -465,6 +503,65 @@ public class WorldRenderer {
             if (!remotePlayers.isEmpty()) {
                 dropRenderer.renderHeldBlocks(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
             }
+        }
+    }
+
+    /**
+     * Collect drop entities and remote players from the entity manager.
+     */
+    private void collectDrops(java.util.List<com.stonebreak.mobs.entities.Entity> drops,
+                              java.util.List<com.stonebreak.mobs.entities.RemotePlayer> remotePlayers) {
+        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        if (entityManager == null) return;
+
+        for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
+            if (!entity.isAlive()) continue;
+            if (isDropEntity(entity)) {
+                drops.add(entity);
+            } else if (entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
+                remotePlayers.add(rp);
+            }
+        }
+    }
+
+    /**
+     * Render opaque block/item drops before the transparent water pass.
+     * Writing depth here allows water to occlude drops behind it.
+     */
+    private void renderOpaqueDrops(Player player) {
+        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        if (entityManager == null || dropRenderer == null) return;
+
+        java.util.List<com.stonebreak.mobs.entities.Entity> drops = new java.util.ArrayList<>();
+        java.util.List<com.stonebreak.mobs.entities.RemotePlayer> remotePlayers = new java.util.ArrayList<>();
+        collectDrops(drops, remotePlayers);
+
+        World world = Game.getWorld();
+        Vector3f cameraPos = player.getCamera().getPosition();
+
+        if (!drops.isEmpty()) {
+            dropRenderer.renderOpaqueDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
+        }
+        if (!remotePlayers.isEmpty()) {
+            dropRenderer.renderHeldBlocks(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
+        }
+    }
+
+    /**
+     * Render transparent block drops after the transparent water pass.
+     */
+    private void renderTransparentDrops(Player player) {
+        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        if (entityManager == null || dropRenderer == null) return;
+
+        java.util.List<com.stonebreak.mobs.entities.Entity> drops = new java.util.ArrayList<>();
+        collectDrops(drops, new java.util.ArrayList<>());
+
+        World world = Game.getWorld();
+        Vector3f cameraPos = player.getCamera().getPosition();
+
+        if (!drops.isEmpty()) {
+            dropRenderer.renderTransparentDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
         }
     }
 
@@ -532,6 +629,9 @@ public class WorldRenderer {
     public void cleanup() {
         if (skyRenderer != null) {
             skyRenderer.cleanup();
+        }
+        if (cloudRenderer != null) {
+            cloudRenderer.cleanup();
         }
     }
 }

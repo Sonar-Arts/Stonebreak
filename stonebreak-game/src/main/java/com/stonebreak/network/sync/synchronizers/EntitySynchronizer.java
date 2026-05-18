@@ -216,6 +216,7 @@ public final class EntitySynchronizer implements Synchronizer {
         if (e == null || e instanceof RemotePlayer) return false;
         EntityType t = e.getType();
         return t == EntityType.COW
+            || t == EntityType.CHICKEN
             || t == EntityType.BLOCK_DROP
             || t == EntityType.ITEM_DROP;
     }
@@ -302,6 +303,7 @@ public final class EntitySynchronizer implements Synchronizer {
                 String variant = (metadata == null || metadata.isBlank()) ? "default" : metadata;
                 yield new Cow(Game.getWorld(), pos, variant);
             }
+            case CHICKEN -> new com.stonebreak.mobs.chicken.Chicken(Game.getWorld(), pos);
             case BLOCK_DROP -> {
                 int blockId = parseInt(metadata, 0);
                 com.stonebreak.blocks.BlockType bt = com.stonebreak.blocks.BlockType.getById(blockId);

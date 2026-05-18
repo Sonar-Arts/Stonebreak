@@ -598,9 +598,9 @@ public class RecipeRenderCoordinator {
 
         if (item instanceof BlockType bt) {
             uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt, x, y, size, size,
-                    renderer.getTextureAtlas());
+                    renderer.getBlockTextureArray());
         } else {
-            uiRenderer.renderItemIcon(x, y, size, size, item, renderer.getTextureAtlas());
+            uiRenderer.renderItemIcon(x, y, size, size, item, renderer.getBlockTextureArray());
         }
     }
 

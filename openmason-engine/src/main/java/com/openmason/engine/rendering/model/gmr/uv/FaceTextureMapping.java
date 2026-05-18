@@ -11,13 +11,33 @@ package com.openmason.engine.rendering.model.gmr.uv;
  * @param materialId  Material this face is assigned to
  * @param uvRegion    Rectangular region within the material's texture (normalized 0..1)
  * @param uvRotation  Rotation applied to the UV mapping
+ * @param autoResize  When true, the face material editor automatically rescales the
+ *                    texture if face geometry changes. Tools that explicitly size a
+ *                    texture (MCP resize/create) set this to false so the user's
+ *                    chosen size is preserved across subsequent geometry edits.
  */
 public record FaceTextureMapping(
     int faceId,
     int materialId,
     UVRegion uvRegion,
-    UVRotation uvRotation
+    UVRotation uvRotation,
+    boolean autoResize
 ) {
+
+    /**
+     * Backward-compatible constructor: defaults {@code autoResize} to {@code true},
+     * preserving prior behavior at call sites that predate the flag.
+     */
+    public FaceTextureMapping(int faceId, int materialId, UVRegion uvRegion, UVRotation uvRotation) {
+        this(faceId, materialId, uvRegion, uvRotation, true);
+    }
+
+    /**
+     * @return copy of this mapping with the {@code autoResize} flag set to the given value
+     */
+    public FaceTextureMapping withAutoResize(boolean autoResize) {
+        return new FaceTextureMapping(faceId, materialId, uvRegion, uvRotation, autoResize);
+    }
 
     /** Full texture region covering the entire 0..1 UV space. */
     public static final UVRegion FULL_REGION = new UVRegion(0.0f, 0.0f, 1.0f, 1.0f);
@@ -127,7 +147,7 @@ public record FaceTextureMapping(
      * @return Mapping covering the full (0,0)→(1,1) region
      */
     public static FaceTextureMapping defaultMapping(int faceId, int materialId) {
-        return new FaceTextureMapping(faceId, materialId, FULL_REGION, UVRotation.NONE);
+        return new FaceTextureMapping(faceId, materialId, FULL_REGION, UVRotation.NONE, true);
     }
 
     /**
@@ -155,6 +175,6 @@ public record FaceTextureMapping(
             childRegion = parentRegion.subRegion(0.0f, tStart, 1.0f, tEnd);
         }
 
-        return new FaceTextureMapping(faceId, parent.materialId(), childRegion, parent.uvRotation());
+        return new FaceTextureMapping(faceId, parent.materialId(), childRegion, parent.uvRotation(), parent.autoResize());
     }
 }

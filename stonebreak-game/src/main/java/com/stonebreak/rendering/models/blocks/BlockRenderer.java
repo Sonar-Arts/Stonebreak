@@ -1,36 +1,23 @@
 package com.stonebreak.rendering.models.blocks;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
-import com.stonebreak.items.Item;
-import com.stonebreak.items.ItemType;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
-import com.stonebreak.world.World;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
-import org.joml.Vector3f;
 import org.joml.Vector3i;
 import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.*;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
-
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.List;
 
 import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL13.*;
 import static org.lwjgl.opengl.GL20.*;
-import static org.lwjgl.opengl.GL30.*;
 
 /**
  * Specialized renderer for block-related rendering operations.
@@ -46,8 +33,8 @@ public class BlockRenderer {
         initialize();
     }
     
-    public BlockRenderer(TextureAtlas textureAtlas, BlockDefinitionRegistry blockRegistry) {
-        this.cbrManager = CBRResourceManager.getInstance(textureAtlas, blockRegistry);
+    public BlockRenderer(BlockDefinitionRegistry blockRegistry) {
+        this.cbrManager = CBRResourceManager.getInstance(blockRegistry);
         initialize();
     }
     
@@ -440,7 +427,7 @@ public class BlockRenderer {
      */
     public CBRResourceManager.BlockRenderResource getBlockRenderResource(BlockType type) {
         if (cbrManager == null) {
-            throw new IllegalStateException("BlockRenderer not initialized with CBRResourceManager. Use constructor with TextureAtlas and BlockDefinitionRegistry.");
+            throw new IllegalStateException("BlockRenderer not initialized with CBRResourceManager. Use constructor with BlockDefinitionRegistry.");
         }
         return cbrManager.getBlockTypeResource(type);
     }
@@ -453,7 +440,7 @@ public class BlockRenderer {
      */
     public CBRResourceManager.BlockRenderResource getFlowerCrossResource(BlockType type) {
         if (cbrManager == null) {
-            throw new IllegalStateException("BlockRenderer not initialized with CBRResourceManager. Use constructor with TextureAtlas and BlockDefinitionRegistry.");
+            throw new IllegalStateException("BlockRenderer not initialized with CBRResourceManager. Use constructor with BlockDefinitionRegistry.");
         }
         return cbrManager.getBlockTypeResource(type);
     }

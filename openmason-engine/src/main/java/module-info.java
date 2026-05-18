@@ -76,6 +76,7 @@ module openmason.engine {
     exports com.openmason.engine.format.sbt;
     exports com.openmason.engine.format.omo;
     exports com.openmason.engine.format.omt;
+    exports com.openmason.engine.format.oma;
     exports com.openmason.engine.format.mesh;
 
     // Open format packages for Jackson JSON processing

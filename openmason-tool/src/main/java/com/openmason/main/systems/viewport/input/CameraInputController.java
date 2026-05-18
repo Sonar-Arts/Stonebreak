@@ -1,6 +1,7 @@
 package com.openmason.main.systems.viewport.input;
 
 import com.openmason.main.systems.viewport.ViewportCamera;
+import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
 import imgui.ImGui;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
@@ -102,27 +103,27 @@ public class CameraInputController {
         // First-person movement controls
         boolean moved = false;
 
-        if (ImGui.isKeyDown(GLFW.GLFW_KEY_W)) {
+        if (KeyCodeTranslator.isKeyDown(GLFW.GLFW_KEY_W)) {
             viewportCamera.moveForward(deltaTime);
             moved = true;
         }
-        if (ImGui.isKeyDown(GLFW.GLFW_KEY_S)) {
+        if (KeyCodeTranslator.isKeyDown(GLFW.GLFW_KEY_S)) {
             viewportCamera.moveForward(-deltaTime);
             moved = true;
         }
-        if (ImGui.isKeyDown(GLFW.GLFW_KEY_A)) {
+        if (KeyCodeTranslator.isKeyDown(GLFW.GLFW_KEY_A)) {
             viewportCamera.moveRight(-deltaTime);
             moved = true;
         }
-        if (ImGui.isKeyDown(GLFW.GLFW_KEY_D)) {
+        if (KeyCodeTranslator.isKeyDown(GLFW.GLFW_KEY_D)) {
             viewportCamera.moveRight(deltaTime);
             moved = true;
         }
-        if (ImGui.isKeyDown(GLFW.GLFW_KEY_SPACE)) {
+        if (KeyCodeTranslator.isKeyDown(GLFW.GLFW_KEY_SPACE)) {
             viewportCamera.moveUp(deltaTime);
             moved = true;
         }
-        if (ImGui.isKeyDown(GLFW.GLFW_KEY_LEFT_CONTROL) || ImGui.isKeyDown(GLFW.GLFW_KEY_RIGHT_CONTROL)) {
+        if (KeyCodeTranslator.isKeyDown(GLFW.GLFW_KEY_LEFT_CONTROL) || KeyCodeTranslator.isKeyDown(GLFW.GLFW_KEY_RIGHT_CONTROL)) {
             viewportCamera.moveUp(-deltaTime);
             moved = true;
         }

@@ -6,6 +6,7 @@ import java.util.Random;
 
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
+import com.stonebreak.world.generation.terrain.animals.animalRegistry.ChickenAnimal;
 import com.stonebreak.world.generation.terrain.animals.animalRegistry.CowAnimal;
 
 /**
@@ -19,6 +20,7 @@ public class AnimalGenerator {
     static {
         // Register all available animal types
         registerAnimal(new CowAnimal());
+        registerAnimal(new ChickenAnimal());
         // Future animals can be added here:
         // registerAnimal(new SheepAnimal());
         // registerAnimal(new PigAnimal());

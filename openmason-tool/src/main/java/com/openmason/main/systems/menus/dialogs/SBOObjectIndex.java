@@ -69,7 +69,14 @@ public final class SBOObjectIndex {
         return Collections.unmodifiableList(out);
     }
 
-    private static List<Path> discover(String resourceDir) {
+    /**
+     * Locate every {@code .sbo} file reachable under the given resource
+     * subdirectory (e.g. {@code "sbo/blocks"}). Prefers the dev filesystem
+     * (so freshly-exported files are seen without rebuilding), falls back to
+     * the classpath. Package-private so other dialog utilities can reuse the
+     * same discovery strategy.
+     */
+    static List<Path> discover(String resourceDir) {
         List<Path> paths = new ArrayList<>();
 
         // Dev-launch from project root: scan source tree directly.

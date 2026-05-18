@@ -8,6 +8,7 @@ import com.openmason.main.systems.services.commands.SnapshotCommand;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
+import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
 import imgui.ImGui;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -113,7 +114,7 @@ public class VertexInputController {
         updateVertexHover(context);
 
         // Handle ESC key to cancel drag or deselect vertex
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+        if (KeyCodeTranslator.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             if (translationCoordinator != null && translationCoordinator.isDragging()) {
                 // Cancel active drag (coordinator handles all translation types)
                 translationCoordinator.cancelDrag();
@@ -129,7 +130,7 @@ public class VertexInputController {
         }
 
         // Handle J key to insert edge between 2 selected vertices (face split)
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_J)) {
+        if (KeyCodeTranslator.isKeyPressed(GLFW.GLFW_KEY_J)) {
             if (vertexSelectionState.getSelectionCount() == 2 && modelRenderer != null) {
                 Set<Integer> selected = vertexSelectionState.getSelectedVertexIndices();
                 Iterator<Integer> it = selected.iterator();
@@ -157,7 +158,7 @@ public class VertexInputController {
         }
 
         // Handle F key to create face from 3+ selected vertices
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_F) && !ImGui.getIO().getKeyCtrl()) {
+        if (KeyCodeTranslator.isKeyPressed(GLFW.GLFW_KEY_F) && !ImGui.getIO().getKeyCtrl()) {
             if (vertexSelectionState.getSelectionCount() >= 3 && modelRenderer != null) {
                 Set<Integer> selected = vertexSelectionState.getSelectedVertexIndices();
                 int[] vertices = selected.stream().mapToInt(Integer::intValue).toArray();

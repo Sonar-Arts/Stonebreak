@@ -4,43 +4,10 @@ in vec3 worldPos;
 in vec3 viewDirection;
 in vec3 cameraPos;
 
-uniform float time;
 uniform vec3 sunDirection;
 uniform vec3 skyColor; // Base sky color from TimeOfDay system
 
 out vec4 FragColor;
-
-// Noise functions for procedural clouds
-float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
-
-float noise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    
-    float a = hash(i);
-    float b = hash(i + vec2(1.0, 0.0));
-    float c = hash(i + vec2(0.0, 1.0));
-    float d = hash(i + vec2(1.0, 1.0));
-    
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
-}
-
-float fbm(vec2 p) {
-    float value = 0.0;
-    float amplitude = 0.5;
-    float frequency = 1.0;
-    
-    for (int i = 0; i < 4; i++) {
-        value += amplitude * noise(frequency * p);
-        frequency *= 2.0;
-        amplitude *= 0.5;
-    }
-    
-    return value;
-}
 
 vec3 getTimedSkyColor(vec3 direction) {
     // Use full range of elevation (-1 to 1) for smoother transitions
@@ -90,65 +57,6 @@ vec3 getSunContribution(vec3 direction) {
     return sunColor * sunIntensity + glowColor * glowIntensity;
 }
 
-vec3 getCloudContribution(vec3 direction) {
-    // Only render clouds in upper hemisphere with some margin
-    if (direction.y < -0.1) {
-        return vec3(0.0);
-    }
-    
-    // Project direction onto cloud plane at fixed altitude
-    float cloudAltitude = 0.3;  // Clouds appear at this elevation angle
-    
-    // Calculate cloud plane intersection
-    vec2 cloudPos;
-    if (direction.y > 0.01) {
-        // Above horizon - project ray to cloud plane
-        float t = cloudAltitude / direction.y;
-        cloudPos = vec2(direction.x, direction.z) * t;
-    } else {
-        // Near horizon - use horizontal projection
-        cloudPos = vec2(direction.x, direction.z) / max(0.01, abs(direction.y));
-    }
-    
-    // Add time-based movement for animation
-    vec2 cloudOffset = vec2(time * 0.02, time * 0.01);
-    cloudPos += cloudOffset;
-    
-    // Scale for cloud detail
-    cloudPos *= 0.8;
-    
-    // Generate cloud density using fractal noise
-    float cloudDensity = fbm(cloudPos * 2.0);
-    
-    // Add larger cloud formations
-    cloudDensity += fbm(cloudPos * 0.5) * 0.7;
-    
-    // Create cloud threshold and softness
-    float cloudThreshold = 0.6;
-    float cloudSoftness = 0.3;
-    
-    float cloudMask = smoothstep(cloudThreshold - cloudSoftness, 
-                                cloudThreshold + cloudSoftness, 
-                                cloudDensity);
-    
-    // Fade clouds near horizon
-    float horizonFade = smoothstep(-0.1, 0.2, direction.y);
-    cloudMask *= horizonFade;
-    
-    // Cloud lighting based on sun position
-    float cloudLighting = max(0.3, dot(vec3(0.0, 1.0, 0.0), sunDirection)) * 0.7 + 0.3;
-    
-    // Cloud colors
-    vec3 cloudColor = vec3(0.9, 0.9, 0.95) * cloudLighting;
-    vec3 cloudShadow = vec3(0.4, 0.4, 0.5) * cloudLighting;
-    
-    // Vary cloud brightness
-    float brightnesVariation = noise(cloudPos * 4.0) * 0.3 + 0.7;
-    vec3 finalCloudColor = mix(cloudShadow, cloudColor, brightnesVariation);
-    
-    return finalCloudColor * cloudMask;
-}
-
 void main() {
     vec3 direction = normalize(viewDirection);
 
@@ -157,16 +65,10 @@ void main() {
     
     // Add sun contribution
     vec3 sunContribution = getSunContribution(direction);
-    
-    // Add cloud contribution
-    vec3 cloudContribution = getCloudContribution(direction);
 
-    // Combine all contributions
+    // Combine all contributions (clouds are now a separate voxel cloud layer)
     vec3 finalColor = baseSkyColor + sunContribution;
-    
-    // Blend clouds on top with proper alpha compositing
-    finalColor = mix(finalColor, cloudContribution, min(1.0, length(cloudContribution)));
-    
+
     // Apply atmospheric perspective with enhanced horizon softening
     float distance = length(worldPos - cameraPos);
     float haze = exp(-distance * 0.00001);

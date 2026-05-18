@@ -2,6 +2,7 @@ package com.openmason.engine.voxel.sbo.sboRenderer;
 
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.openmason.engine.voxel.IBlockType;
+import com.openmason.engine.voxel.ILayerIndexProvider;
 import com.openmason.engine.voxel.ITextureCoordProvider;
 import com.openmason.engine.voxel.sbo.SBOMeshProcessor;
 import org.slf4j.Logger;
@@ -49,19 +50,21 @@ public class SBORendererAPI {
      * <p>For each SBO block, computes flat normals, de-indexes geometry, remaps UVs
      * to atlas coordinates, and caches the result as a {@link com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp}.
      *
-     * @param sboBlocks  map of block types to their parsed SBO definitions
-     * @param uvProvider texture coordinate provider for atlas UV lookups
+     * @param sboBlocks     map of block types to their parsed SBO definitions
+     * @param uvProvider    texture coordinate provider for tile-local UV lookups
+     * @param layerProvider texture-array layer index provider
      * @return number of block types successfully processed
      */
     public int initialize(Map<? extends IBlockType, SBOParseResult> sboBlocks,
-                          ITextureCoordProvider uvProvider) {
+                          ITextureCoordProvider uvProvider,
+                          ILayerIndexProvider layerProvider) {
         int processed = 0;
 
         for (var entry : sboBlocks.entrySet()) {
             IBlockType blockType = entry.getKey();
             SBOParseResult sbo = entry.getValue();
 
-            if (meshProcessor.process(blockType, sbo, uvProvider, stampCache)) {
+            if (meshProcessor.process(blockType, sbo, uvProvider, layerProvider, stampCache)) {
                 processed++;
             }
         }

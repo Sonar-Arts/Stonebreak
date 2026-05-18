@@ -3,9 +3,9 @@ package com.stonebreak.core.bootstrap;
 import com.stonebreak.audio.SoundSystem;
 import com.stonebreak.config.Settings;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.CowTextureAtlas;
+import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.ui.DebugOverlay;
 import com.stonebreak.util.MemoryLeakDetector;
 import com.stonebreak.world.World;
@@ -60,11 +60,12 @@ public final class GameBootstrap {
     }
 
     /**
-     * Primes the cow texture atlas used by entity renderers.
+     * Discovers and decodes every SBE entity asset under {@code sbe/Mobs/} so
+     * the cost is paid up front rather than on the first entity spawn.
      */
-    public static void initializeCowTextureAtlas() {
-        CowTextureAtlas.initialize();
-        System.out.println("Cow texture atlas initialized");
+    public static void initializeEntityAssets() {
+        int count = SbeEntityRegistry.scanAndLoad();
+        System.out.println("SBE entity registry loaded " + count + " entit(ies)");
     }
 
     /**
@@ -72,14 +73,14 @@ public final class GameBootstrap {
      * {@link World} construction can hand meshes off immediately.
      * The world reference is filled in later by {@link World} itself.
      */
-    public static void configureEngine(TextureAtlas textureAtlas, Renderer renderer) {
+    public static void configureEngine(BlockTextureArray blockTextureArray, Renderer renderer) {
         com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(
                 new com.openmason.engine.voxel.VoxelWorldConfig(
                         WorldConfiguration.CHUNK_SIZE,
                         WorldConfiguration.WORLD_HEIGHT,
                         WorldConfiguration.SEA_LEVEL));
 
-        com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, null);
+        com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(blockTextureArray, null);
         System.out.println("[MMS-API] Mighty Mesh System pre-initialized (World will be set later)");
 
         if (renderer != null) {
@@ -92,13 +93,13 @@ public final class GameBootstrap {
      * at world-component setup time. Normally a no-op because
      * {@link World}'s constructor registers itself with the API.
      */
-    public static void ensureMmsApiInitialized(TextureAtlas textureAtlas, World world) {
+    public static void ensureMmsApiInitialized(BlockTextureArray blockTextureArray, World world) {
         if (com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.isInitialized()) {
             return;
         }
         System.err.println("[MMS-API] WARNING: MmsAPI not initialized - this should not happen!");
-        if (textureAtlas != null && world != null) {
-            com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, world);
+        if (blockTextureArray != null && world != null) {
+            com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(blockTextureArray, world);
             System.out.println("[MMS-API] Emergency initialization performed");
         }
     }

@@ -79,6 +79,12 @@ public final class OMASerializer {
     }
 
     private void writeManifest(ZipOutputStream zos, AnimationClip clip, List<TrackRef> trackRefs) throws IOException {
+        // Derived snapshot of every partId this clip animates. The runtime uses
+        // this to verify a clip is compatible with a model without unpacking
+        // every track file. Source of truth is still the tracks themselves —
+        // this list is regenerated on every save.
+        List<String> requiredParts = new ArrayList<>(clip.tracks().keySet());
+
         ManifestDTO manifest = new ManifestDTO(
                 OMAFormat.FORMAT_VERSION,
                 clip.name(),
@@ -86,7 +92,8 @@ public final class OMASerializer {
                 clip.duration(),
                 clip.loop(),
                 clip.modelRef(),
-                trackRefs
+                trackRefs,
+                requiredParts
         );
         byte[] json = objectMapper.writeValueAsBytes(manifest);
         ZipEntry entry = new ZipEntry(OMAFormat.MANIFEST_FILENAME);
@@ -124,11 +131,14 @@ public final class OMASerializer {
         public boolean loop;
         public String modelRef;
         public List<TrackRef> tracks;
+        /** Distinct partIds animated by this clip; derived snapshot used for compatibility checks. */
+        public List<String> requiredParts;
 
         public ManifestDTO() {}
 
         public ManifestDTO(String version, String name, float fps, float duration,
-                           boolean loop, String modelRef, List<TrackRef> tracks) {
+                           boolean loop, String modelRef, List<TrackRef> tracks,
+                           List<String> requiredParts) {
             this.version = version;
             this.name = name;
             this.fps = fps;
@@ -136,6 +146,7 @@ public final class OMASerializer {
             this.loop = loop;
             this.modelRef = modelRef;
             this.tracks = tracks;
+            this.requiredParts = requiredParts;
         }
     }
 

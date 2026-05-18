@@ -1,7 +1,6 @@
 package com.stonebreak.ui.inventoryScreen.core;
 
 import com.stonebreak.items.Inventory;
-import com.stonebreak.ui.inventoryScreen.styling.InventoryTheme;
 
 /**
  * Enhanced layout calculator for modern inventory UI with improved spacing and proportions.
@@ -168,13 +167,6 @@ public class InventoryLayoutCalculator {
         float widthScale = (float) screenWidth / getMinimumRecommendedWidth();
         float heightScale = (float) screenHeight / getMinimumRecommendedHeight();
         return Math.max(0.7f, Math.min(widthScale, heightScale)); // Don't scale below 70%
-    }
-
-    /**
-     * Gets the visual theme-compatible corner radius for panels.
-     */
-    public static float getPanelCornerRadius() {
-        return InventoryTheme.Measurements.CORNER_RADIUS_LARGE;
     }
 
     /**

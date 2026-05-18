@@ -4,7 +4,6 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
 import com.stonebreak.rendering.core.GameBlockDefinitionRegistry;
-import com.stonebreak.rendering.textures.TextureAtlas;
 
 import java.util.Arrays;
 import java.util.List;
@@ -24,7 +23,6 @@ public class BlockManager {
     private static final AtomicBoolean initialized = new AtomicBoolean(false);
 
     // CBR system components
-    private TextureAtlas blockTextureAtlas;
     private BlockDefinitionRegistry blockRegistry;
     private CBRResourceManager cbrManager;
 
@@ -90,20 +88,13 @@ public class BlockManager {
 
                 BlockManager manager = instance;
 
-                // Create texture atlas for blocks (16x16 grid = 256 tiles)
-                System.out.println("[BlockManager] Creating block texture atlas...");
-                manager.blockTextureAtlas = new TextureAtlas(16);
-
                 // Create block definition registry
                 System.out.println("[BlockManager] Creating block definition registry...");
                 manager.blockRegistry = new GameBlockDefinitionRegistry();
 
                 // Initialize CBR resource manager
                 System.out.println("[BlockManager] Initializing CBR resource manager...");
-                manager.cbrManager = CBRResourceManager.getInstance(
-                    manager.blockTextureAtlas,
-                    manager.blockRegistry
-                );
+                manager.cbrManager = CBRResourceManager.getInstance(manager.blockRegistry);
 
                 initialized.set(true);
                 System.out.println("[BlockManager] Initialization complete. Ready to render blocks.");
@@ -146,16 +137,6 @@ public class BlockManager {
         return Arrays.asList(BlockType.values());
     }
 
-
-    /**
-     * Gets the texture atlas used for blocks.
-     *
-     * @return The block texture atlas
-     */
-    public TextureAtlas getTextureAtlas() {
-        ensureInitialized();
-        return blockTextureAtlas;
-    }
 
     /**
      * Gets statistics about block resources.

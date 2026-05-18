@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.preferences.keybinds;
 
+import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
 import com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
@@ -133,7 +134,7 @@ public class KeyCaptureDialog {
      */
     private ShortcutKey captureKeyPress() {
         // Check for ESC to cancel
-        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+        if (KeyCodeTranslator.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             cancelCapture();
             return null;
         }
@@ -146,21 +147,21 @@ public class KeyCaptureDialog {
         // Check all common keys for presses
         // A-Z keys
         for (int key = GLFW.GLFW_KEY_A; key <= GLFW.GLFW_KEY_Z; key++) {
-            if (ImGui.isKeyPressed(key)) {
+            if (KeyCodeTranslator.isKeyPressed(key)) {
                 return new ShortcutKey(key, ctrlPressed, shiftPressed, altPressed);
             }
         }
 
         // 0-9 keys
         for (int key = GLFW.GLFW_KEY_0; key <= GLFW.GLFW_KEY_9; key++) {
-            if (ImGui.isKeyPressed(key)) {
+            if (KeyCodeTranslator.isKeyPressed(key)) {
                 return new ShortcutKey(key, ctrlPressed, shiftPressed, altPressed);
             }
         }
 
         // Function keys
         for (int key = GLFW.GLFW_KEY_F1; key <= GLFW.GLFW_KEY_F12; key++) {
-            if (ImGui.isKeyPressed(key)) {
+            if (KeyCodeTranslator.isKeyPressed(key)) {
                 return new ShortcutKey(key, ctrlPressed, shiftPressed, altPressed);
             }
         }
@@ -184,7 +185,7 @@ public class KeyCaptureDialog {
         };
 
         for (int key : specialKeys) {
-            if (ImGui.isKeyPressed(key)) {
+            if (KeyCodeTranslator.isKeyPressed(key)) {
                 return new ShortcutKey(key, ctrlPressed, shiftPressed, altPressed);
             }
         }
