@@ -260,10 +260,6 @@ public class ItemStack {
         return item instanceof ItemType && ((ItemType) item).isMaterial();
     }
 
-    public boolean isFood() {
-        return item instanceof ItemType && ((ItemType) item).isFood();
-    }
-
     /**
      * Checks if this item is a food item.
      * @return True if it's an ItemType food
