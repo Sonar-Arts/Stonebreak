@@ -3,6 +3,7 @@ package com.stonebreak.core;
 
 import java.nio.IntBuffer;
 import com.stonebreak.rendering.textures.BlockTextureArray;
+import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.config.Settings;
