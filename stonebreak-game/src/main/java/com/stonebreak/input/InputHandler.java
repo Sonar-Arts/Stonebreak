@@ -10,7 +10,7 @@ import org.joml.Vector3i;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.ui.chat.ChatSystem;
-import com.stonebreak.ui.chat.emoji.EmojiType;
+import com.stonebreak.ui.chat.emoji.ChatEmoji;
 import com.stonebreak.ui.chat.SkijaChatRenderer;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
@@ -1009,14 +1009,14 @@ public class InputHandler {
 
             if (chatSystem.isEmojiPickerOpen()) {
                 // Star click → toggle favourite; emoji click → insert.
-                EmojiType starTarget = renderer.getPickerFavoriteStarClick(
+                ChatEmoji starTarget = renderer.getPickerFavoriteStarClick(
                         chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
                 if (starTarget != null) {
                     chatSystem.getEmojiSystem().toggleFavorite(starTarget);
                     return;
                 }
 
-                EmojiType emojiTarget = renderer.getPickerEmojiClick(
+                ChatEmoji emojiTarget = renderer.getPickerEmojiClick(
                         chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
                 if (emojiTarget != null) {
                     chatSystem.insertEmoji(emojiTarget);

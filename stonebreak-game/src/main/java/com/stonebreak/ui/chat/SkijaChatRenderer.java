@@ -6,10 +6,13 @@ import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.ui.chat.chatSystem.ChatCommandExecutor;
 import com.stonebreak.ui.chat.chatSystem.commands.ChatCommand;
+import com.stonebreak.ui.chat.emoji.ChatEmoji;
 import com.stonebreak.ui.chat.emoji.ChatEmojiSystem;
 import com.stonebreak.ui.chat.emoji.EmojiImageCache;
 import com.stonebreak.ui.chat.emoji.EmojiPickerRenderer;
 import com.stonebreak.ui.chat.emoji.EmojiType;
+import com.stonebreak.ui.chat.emoji.GifAnimationCache;
+import com.stonebreak.ui.chat.emoji.GifEmojiType;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.ClipMode;
@@ -292,14 +295,21 @@ public final class SkijaChatRenderer {
         int pos = 0;
 
         while (pos < text.length()) {
-            // Find the nearest emoji token starting at pos.
+            // Find the nearest emoji token (static or animated) starting at pos.
             int nextStart = -1;
-            EmojiType nextEmoji = null;
+            ChatEmoji nextEmoji = null;
             for (EmojiType e : EmojiType.values()) {
                 int idx = text.indexOf(e.token, pos);
                 if (idx >= 0 && (nextStart < 0 || idx < nextStart)) {
                     nextStart = idx;
                     nextEmoji = e;
+                }
+            }
+            for (GifEmojiType g : GifEmojiType.values()) {
+                int idx = text.indexOf(g.token, pos);
+                if (idx >= 0 && (nextStart < 0 || idx < nextStart)) {
+                    nextStart = idx;
+                    nextEmoji = g;
                 }
             }
 
@@ -318,7 +328,9 @@ public final class SkijaChatRenderer {
 
             // Draw (or skip) the emoji sprite.
             if (spritesEnabled) {
-                Image img = EmojiImageCache.get(nextEmoji);
+                Image img = nextEmoji instanceof GifEmojiType g
+                        ? GifAnimationCache.getCurrentFrame(g)
+                        : EmojiImageCache.get((EmojiType) nextEmoji);
                 if (img != null) {
                     float spriteY = y - spriteSize + 2f; // align with text baseline
                     MPainter.drawImage(canvas, img, xCursor, spriteY, spriteSize, spriteSize);
@@ -326,7 +338,7 @@ public final class SkijaChatRenderer {
             }
             xCursor += spriteSize + 1f; // advance cursor by sprite width + 1px gap
 
-            pos = nextStart + nextEmoji.token.length();
+            pos = nextStart + nextEmoji.getToken().length();
         }
     }
 
@@ -552,14 +564,14 @@ public final class SkijaChatRenderer {
      * Returns the emoji clicked inside the picker, or {@code null}.
      * Call {@link #getPickerFavoriteStarClick} first to resolve star vs. emoji ambiguity.
      */
-    public EmojiType getPickerEmojiClick(ChatSystem chat, float mx, float my, int sw, int sh) {
+    public ChatEmoji getPickerEmojiClick(ChatSystem chat, float mx, float my, int sw, int sh) {
         Layout L = Layout.compute(sw, sh);
         float anchorRight = L.emojiButtonX + L.emojiButtonSize;
         return emojiPickerRenderer.getClickedEmoji(chat.getEmojiSystem(), mx, my, anchorRight, L.emojiButtonY);
     }
 
     /** Returns the emoji whose favourite-star was clicked, or {@code null}. */
-    public EmojiType getPickerFavoriteStarClick(ChatSystem chat, float mx, float my, int sw, int sh) {
+    public ChatEmoji getPickerFavoriteStarClick(ChatSystem chat, float mx, float my, int sw, int sh) {
         Layout L = Layout.compute(sw, sh);
         float anchorRight = L.emojiButtonX + L.emojiButtonSize;
         return emojiPickerRenderer.getClickedFavoriteStar(chat.getEmojiSystem(), mx, my, anchorRight, L.emojiButtonY);

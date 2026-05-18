@@ -5,8 +5,8 @@ import java.util.List;
 import com.stonebreak.core.Game;
 import com.stonebreak.input.MouseCaptureManager;
 import com.stonebreak.ui.chat.chatSystem.*;
+import com.stonebreak.ui.chat.emoji.ChatEmoji;
 import com.stonebreak.ui.chat.emoji.ChatEmojiSystem;
-import com.stonebreak.ui.chat.emoji.EmojiType;
 
 /**
  * Main chat system coordinator.
@@ -317,8 +317,8 @@ public class ChatSystem {
 
     public boolean isEmojiPickerOpen() { return emojiSystem.isOpen(); }
 
-    public void insertEmoji(EmojiType type) {
-        inputHandler.insertToken(type.token);
-        emojiSystem.onEmojiUsed(type);
+    public void insertEmoji(ChatEmoji emoji) {
+        inputHandler.insertToken(emoji.getToken());
+        emojiSystem.onEmojiUsed(emoji);
     }
 }
