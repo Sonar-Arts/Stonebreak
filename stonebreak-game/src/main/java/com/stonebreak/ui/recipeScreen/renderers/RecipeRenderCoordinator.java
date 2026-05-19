@@ -172,9 +172,25 @@ public class RecipeRenderCoordinator {
             ui.endFrame();
         }
 
-        // Phase B — GL item icons (recipe outputs in grid + detail inputs/output)
-        renderRecipeIconsInGrid();
-        renderDetailIcons(selectedPattern, selectedOutput);
+        // Phase B — GL block icons (recipe outputs in grid + detail inputs/output)
+        renderBlockIconsInGrid();
+        renderDetailBlockIcons(selectedPattern, selectedOutput);
+
+        // Phase B2 — Skija item-sprite icons in ONE shared frame.
+        // ItemIconRenderer self-frames on every call; left interleaved with the
+        // Phase-B GL rendering that meant dozens of beginPaint/endPaint cycles
+        // (each resetAll + flushAndSubmit + restoreGLDefaults) per frame, which
+        // intermittently corrupted Skija's AA state and made the panel chrome
+        // render sharp-cornered. Wrapping the icons in an outer frame collapses
+        // those nested begin/endFrame calls into no-ops sharing this canvas.
+        if (ui.beginFrame(sw, sh, 1.0f)) {
+            Canvas canvas = ui.canvas();
+            if (canvas != null) {
+                renderItemSpriteIconsInGrid(canvas);
+                renderDetailItemSpriteIcons(selectedPattern, selectedOutput);
+            }
+            ui.endFrame();
+        }
 
         // Phase C — Skija count text + grid output count
         if (ui.beginFrame(sw, sh, 1.0f)) {
@@ -542,27 +558,24 @@ public class RecipeRenderCoordinator {
         }
     }
 
-    // ─────────────────────────────────────────────── Phase B — GL item icons
+    // ─────────────────────────────────────────────── Phase B — block icons (GL)
 
-    private void renderRecipeIconsInGrid() {
+    private void renderBlockIconsInGrid() {
         if (visibleSlots.isEmpty()) return;
 
         // Scissor the framebuffer to the grid viewport so partial rows clip.
         int sh = com.stonebreak.core.Game.getWindowHeight();
         int sx = layout.gridX;
         int sy = sh - (layout.gridY + layout.gridH);
-        int sw = layout.gridW;
-        int swh = layout.gridH;
         glEnable(GL_SCISSOR_TEST);
         try {
-            glScissor(sx, sy, sw, swh);
+            glScissor(sx, sy, layout.gridW, layout.gridH);
             int slot = RecipeBookConstants.SLOT_SIZE;
             int inset = 3;
             int icon = slot - inset * 2;
             for (int i = 0; i < visibleSlots.size(); i++) {
                 MItemSlot s = visibleSlots.get(i);
-                Recipe r = visibleRecipes.get(i);
-                drawItemIcon(r.getOutput(),
+                drawBlockIcon(visibleRecipes.get(i).getOutput(),
                         (int)(s.x() + inset), (int)(s.y() + inset), icon);
             }
         } finally {
@@ -570,7 +583,7 @@ public class RecipeRenderCoordinator {
         }
     }
 
-    private void renderDetailIcons(ItemStack[][] pattern, ItemStack output) {
+    private void renderDetailBlockIcons(ItemStack[][] pattern, ItemStack output) {
         int slot = RecipeBookConstants.SLOT_SIZE;
         int inset = 3;
         int icon = slot - inset * 2;
@@ -578,30 +591,78 @@ public class RecipeRenderCoordinator {
             for (int r = 0; r < detailInputs.length; r++) {
                 for (int c = 0; c < detailInputs[r].length; c++) {
                     ItemStack s = (r < pattern.length && c < pattern[r].length) ? pattern[r][c] : null;
-                    drawItemIcon(s,
+                    drawBlockIcon(s,
                             (int)(detailInputs[r][c].x() + inset),
                             (int)(detailInputs[r][c].y() + inset), icon);
                 }
             }
         }
         if (output != null) {
-            drawItemIcon(output,
+            drawBlockIcon(output,
                     (int)(detailOutput.x() + inset),
                     (int)(detailOutput.y() + inset), icon);
         }
     }
 
-    private void drawItemIcon(ItemStack itemStack, int x, int y, int size) {
+    // ─────────────────────────────────────────────── Phase B2 — item icons (Skija)
+
+    private void renderItemSpriteIconsInGrid(Canvas canvas) {
+        if (visibleSlots.isEmpty()) return;
+        int slot = RecipeBookConstants.SLOT_SIZE;
+        int inset = 3;
+        int icon = slot - inset * 2;
+        // Clip to the grid viewport so partial rows clip — the Skija analogue
+        // of the glScissor used for the GL block-icon pass.
+        int save = canvas.save();
+        try {
+            canvas.clipRect(Rect.makeXYWH(layout.gridX, layout.gridY, layout.gridW, layout.gridH));
+            for (int i = 0; i < visibleSlots.size(); i++) {
+                MItemSlot s = visibleSlots.get(i);
+                drawItemSpriteIcon(visibleRecipes.get(i).getOutput(),
+                        (int)(s.x() + inset), (int)(s.y() + inset), icon);
+            }
+        } finally {
+            canvas.restoreToCount(save);
+        }
+    }
+
+    private void renderDetailItemSpriteIcons(ItemStack[][] pattern, ItemStack output) {
+        int slot = RecipeBookConstants.SLOT_SIZE;
+        int inset = 3;
+        int icon = slot - inset * 2;
+        if (pattern != null) {
+            for (int r = 0; r < detailInputs.length; r++) {
+                for (int c = 0; c < detailInputs[r].length; c++) {
+                    ItemStack s = (r < pattern.length && c < pattern[r].length) ? pattern[r][c] : null;
+                    drawItemSpriteIcon(s,
+                            (int)(detailInputs[r][c].x() + inset),
+                            (int)(detailInputs[r][c].y() + inset), icon);
+                }
+            }
+        }
+        if (output != null) {
+            drawItemSpriteIcon(output,
+                    (int)(detailOutput.x() + inset),
+                    (int)(detailOutput.y() + inset), icon);
+        }
+    }
+
+    /** Draws only block-type icons (3D GL rendering); skips non-block items. */
+    private void drawBlockIcon(ItemStack itemStack, int x, int y, int size) {
         if (itemStack == null || itemStack.isEmpty()) return;
         Item item = itemStack.getItem();
-        if (item == null || !item.hasIcon()) return;
-
-        if (item instanceof BlockType bt) {
+        if (item instanceof BlockType bt && bt.hasIcon()) {
             uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt, x, y, size, size,
                     renderer.getBlockTextureArray());
-        } else {
-            uiRenderer.renderItemIcon(x, y, size, size, item, renderer.getBlockTextureArray());
         }
+    }
+
+    /** Draws only non-block item icons (Skija sprites); skips block types. */
+    private void drawItemSpriteIcon(ItemStack itemStack, int x, int y, int size) {
+        if (itemStack == null || itemStack.isEmpty()) return;
+        Item item = itemStack.getItem();
+        if (item == null || item instanceof BlockType || !item.hasIcon()) return;
+        uiRenderer.renderItemIcon(x, y, size, size, item, renderer.getBlockTextureArray());
     }
 
     // ─────────────────────────────────────────────── Phase C — count text

@@ -1,11 +1,12 @@
 package com.stonebreak.rendering.UI.masonryUI;
 
 import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.ClipMode;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.PaintMode;
+import io.github.humbleui.skija.Path;
+import io.github.humbleui.skija.PathBuilder;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.types.RRect;
 import io.github.humbleui.types.Rect;
@@ -84,56 +85,128 @@ public final class MPainter {
     }
 
     /**
+     * Hard cap on noise speckles for a single surface. A large panel would
+     * otherwise scatter many thousands of {@code drawRect} calls every frame
+     * (count grows with area); the unbounded batch was a source of rendering
+     * instability. The cap keeps every stone surface to a bounded, predictable
+     * draw-call count regardless of size — that is the "guard".
+     */
+    private static final int NOISE_MAX = 1200;
+
+    /**
      * Inner bevel — thin highlight along top+left, thin shadow along
-     * bottom+right. Clips to the rounded rect so corners follow the radius.
+     * bottom+right.
+     *
+     * <p>Drawn as two stroked open {@link Path}s that follow the corner radius
+     * by construction (the corner arcs are tessellated into short line
+     * segments). The previous implementation clipped four straight edge rects
+     * to a rounded rect via {@code clipRRect}; relying on Skia's anti-aliased
+     * round-rect clip made the bevel intermittently render with square corners
+     * when GPU state churned between frames. Path strokes need no clip, so the
+     * corners can no longer "flicker into triangles".
      */
     private static void drawInnerBevel(Canvas canvas, float x, float y, float w, float h,
                                        float radius, int highlight, int shadow) {
-        int save = canvas.save();
-        try {
-            canvas.clipRRect(RRect.makeXYWH(x, y, w, h, radius), ClipMode.INTERSECT, true);
-            if ((highlight & 0xFF000000) != 0) {
-                try (Paint p = new Paint().setColor(highlight).setAntiAlias(false)) {
-                    canvas.drawRect(Rect.makeXYWH(x, y, w, 1f), p);        // top
-                    canvas.drawRect(Rect.makeXYWH(x, y, 1f, h), p);        // left
-                }
+        if (w < 3f || h < 3f) return;
+
+        // Trace the bevel one half-pixel inside the fill so the 1px stroke
+        // sits flush against the inner edge.
+        float ix = x + 0.5f, iy = y + 0.5f;
+        float iw = w - 1f, ih = h - 1f;
+        float ir = Math.max(0f, radius - 1f);
+
+        if ((highlight & 0xFF000000) != 0) {
+            try (PathBuilder pb = new PathBuilder()) {
+                pb.moveTo(ix, iy + ih - ir);                  // up the left edge
+                pb.lineTo(ix, iy + ir);
+                arcSegments(pb, ix + ir, iy + ir, ir, 180f, 270f); // top-left corner
+                pb.lineTo(ix + iw - ir, iy);                  // along the top edge
+                strokePath(canvas, pb, highlight);
             }
-            if ((shadow & 0xFF000000) != 0) {
-                try (Paint p = new Paint().setColor(shadow).setAntiAlias(false)) {
-                    canvas.drawRect(Rect.makeXYWH(x, y + h - 1f, w, 1f), p);   // bottom
-                    canvas.drawRect(Rect.makeXYWH(x + w - 1f, y, 1f, h), p);   // right
-                }
+        }
+        if ((shadow & 0xFF000000) != 0) {
+            try (PathBuilder pb = new PathBuilder()) {
+                pb.moveTo(ix + ir, iy + ih);                  // along the bottom edge
+                pb.lineTo(ix + iw - ir, iy + ih);
+                arcSegments(pb, ix + iw - ir, iy + ih - ir, ir, 90f, 0f); // bottom-right corner
+                pb.lineTo(ix + iw, iy + ir);                  // up the right edge
+                strokePath(canvas, pb, shadow);
             }
-        } finally {
-            canvas.restoreToCount(save);
         }
     }
 
     /**
-     * Scatters tiny speckles across a clipped rounded rect. Uses a seeded
-     * hash on a loop index to produce stable, non-grid-aligned noise.
+     * Appends a quarter (or partial) corner arc to {@code pb} as short line
+     * segments — Skija's {@code PathBuilder} only exposes {@code moveTo} /
+     * {@code lineTo}, and a 1px stroke hides the faceting at UI corner radii.
+     */
+    private static void arcSegments(PathBuilder pb, float cx, float cy, float r,
+                                    float startDeg, float endDeg) {
+        final int steps = 6;
+        for (int i = 1; i <= steps; i++) {
+            double t = Math.toRadians(startDeg + (endDeg - startDeg) * i / steps);
+            pb.lineTo((float) (cx + r * Math.cos(t)), (float) (cy + r * Math.sin(t)));
+        }
+    }
+
+    /** Strokes the built path with a crisp 1px anti-aliased line. */
+    private static void strokePath(Canvas canvas, PathBuilder pb, int color) {
+        try (Path path = pb.build();
+             Paint paint = new Paint().setColor(color).setAntiAlias(true)
+                     .setMode(PaintMode.STROKE).setStrokeWidth(1f)) {
+            canvas.drawPath(path, paint);
+        }
+    }
+
+    /**
+     * Scatters tiny speckles across a rounded rect. Uses a seeded hash on the
+     * loop index to produce stable, non-grid-aligned noise.
+     *
+     * <p>Speckles that would spill past the rounded corners are rejected with
+     * a containment test rather than masked with {@code clipRRect}, so the
+     * surface never depends on Skia's AA round-rect clip. The speckle count is
+     * also capped via {@link #NOISE_MAX}.
      */
     private static void drawNoise(Canvas canvas, float x, float y, float w, float h,
                                   float radius, int darkColor, int lightColor) {
-        int save = canvas.save();
-        try {
-            canvas.clipRRect(RRect.makeXYWH(x, y, w, h, radius), ClipMode.INTERSECT, true);
-            int count = Math.max(40, (int) (w * h / 55f));
-            try (Paint dark = new Paint().setColor(darkColor).setAntiAlias(false);
-                 Paint light = new Paint().setColor(lightColor).setAntiAlias(false)) {
-                for (int i = 0; i < count; i++) {
-                    int h1 = hash(i * 0x27D4EB2D);
-                    int h2 = hash((i + 1) * 0x85EBCA6B ^ 0x9E3779B9);
-                    float px = x + (h1 & 0x7FFF) / 32767f * w;
-                    float py = y + (h2 & 0x7FFF) / 32767f * h;
-                    int size = 1 + ((h1 >>> 16) & 0x3); // 1–4 px
-                    Paint p = ((h2 >>> 17) & 1) == 0 ? dark : light;
-                    canvas.drawRect(Rect.makeXYWH(px, py, size, size), p);
+        if ((darkColor & 0xFF000000) == 0 && (lightColor & 0xFF000000) == 0) return;
+
+        int count = Math.min(NOISE_MAX, Math.max(40, (int) (w * h / 55f)));
+        try (Paint dark = new Paint().setColor(darkColor).setAntiAlias(false);
+             Paint light = new Paint().setColor(lightColor).setAntiAlias(false)) {
+            for (int i = 0; i < count; i++) {
+                int h1 = hash(i * 0x27D4EB2D);
+                int h2 = hash((i + 1) * 0x85EBCA6B ^ 0x9E3779B9);
+                float px = x + (h1 & 0x7FFF) / 32767f * w;
+                float py = y + (h2 & 0x7FFF) / 32767f * h;
+                int size = 1 + ((h1 >>> 16) & 0x3); // 1–4 px
+
+                // Drop speckles straddling the rounded corners — keeps the
+                // noise inside the surface without an AA clip.
+                if (!insideRoundedRect(px, py, x, y, w, h, radius)
+                        || !insideRoundedRect(px + size, py + size, x, y, w, h, radius)) {
+                    continue;
                 }
+
+                Paint p = ((h2 >>> 17) & 1) == 0 ? dark : light;
+                canvas.drawRect(Rect.makeXYWH(px, py, size, size), p);
             }
-        } finally {
-            canvas.restoreToCount(save);
         }
+    }
+
+    /**
+     * Standard rounded-rect containment test: a point is inside when it lies
+     * within the rect and, in the corner quadrants, within {@code r} of the
+     * corner centre.
+     */
+    private static boolean insideRoundedRect(float px, float py,
+                                             float x, float y, float w, float h, float r) {
+        if (px < x || px > x + w || py < y || py > y + h) return false;
+        if (r <= 0f) return true;
+        float cx = Math.max(x + r, Math.min(px, x + w - r));
+        float cy = Math.max(y + r, Math.min(py, y + h - r));
+        float dx = px - cx, dy = py - cy;
+        return dx * dx + dy * dy <= r * r;
     }
 
     private static int hash(int x) {
