@@ -2,6 +2,7 @@ package com.stonebreak.core.world;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
+import com.stonebreak.ui.DebugOverlay;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -86,6 +87,12 @@ public final class WorldLifecycle {
         game.setCurrentWorldData(null);
         game.setSaveService(null);
         System.out.println("[WORLD-ISOLATION] ✓ Cleared game metadata and save system for world switching");
+
+        DebugOverlay debugOverlay = Game.getDebugOverlay();
+        if (debugOverlay != null) {
+            debugOverlay.hide();
+            System.out.println("[MAIN-MENU-TRANSITION] ✓ Hidden debug overlay (F3 menu)");
+        }
 
         System.out.println("========================================");
         System.out.println("[MAIN-MENU-TRANSITION] ✓ World reset completed - main menu is now clean!");

@@ -50,6 +50,7 @@ public final class StateConverter {
             .position(new Vector3f(player.getPosition()))
             .rotation(new Vector2f(player.getCamera().getYaw(), player.getCamera().getPitch()))
             .health(player.getHealth())
+            .flightEnabled(player.isFlightEnabled())
             .flying(player.isFlying())
             .spectator(player.isSpectator())
             .gameMode(1) // Creative mode default
@@ -83,6 +84,7 @@ public final class StateConverter {
 
         // Apply player state
         player.setHealth(data.getHealth());
+        player.setFlightEnabled(data.isFlightEnabled()); // Enable capability before activating
         player.setFlying(data.isFlying());
         player.setSpectator(data.isSpectator()); // Must be AFTER setFlying — spectator captures prior flight state.
 

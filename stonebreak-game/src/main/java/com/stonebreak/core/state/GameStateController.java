@@ -84,6 +84,15 @@ public final class GameStateController {
             game.setCheatsEnabled(false);
         }
 
+        // Hide the F3 debug overlay when entering the settings menu so it does
+        // not render on top of settings.
+        if (state == GameState.SETTINGS) {
+            com.stonebreak.ui.DebugOverlay debugOverlay = game.getDebugOverlay();
+            if (debugOverlay != null) {
+                debugOverlay.hide();
+            }
+        }
+
         updatePauseState(state);
 
         MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();

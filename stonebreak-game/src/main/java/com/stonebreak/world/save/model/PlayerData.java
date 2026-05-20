@@ -21,6 +21,7 @@ public final class PlayerData {
     private final Vector3f position;
     private final Vector2f rotation; // yaw, pitch
     private final float health;
+    private final boolean flightEnabled;
     private final boolean flying;
     private final boolean spectator;
     private final int gameMode; // 0=Survival, 1=Creative
@@ -44,6 +45,7 @@ public final class PlayerData {
         this.position = new Vector3f(builder.position);
         this.rotation = new Vector2f(builder.rotation);
         this.health = builder.health;
+        this.flightEnabled = builder.flightEnabled;
         this.flying = builder.flying;
         this.spectator = builder.spectator;
         this.gameMode = builder.gameMode;
@@ -66,6 +68,7 @@ public final class PlayerData {
     public Vector3f getPosition() { return new Vector3f(position); }
     public Vector2f getRotation() { return new Vector2f(rotation); }
     public float getHealth() { return health; }
+    public boolean isFlightEnabled() { return flightEnabled; }
     public boolean isFlying() { return flying; }
     public boolean isSpectator() { return spectator; }
     public int getGameMode() { return gameMode; }
@@ -109,6 +112,7 @@ public final class PlayerData {
         private Vector3f position = new Vector3f(0, 100, 0);
         private Vector2f rotation = new Vector2f(0, 0);
         private float health = 20.0f;
+        private boolean flightEnabled = false;
         private boolean flying = false;
         private boolean spectator = false;
         private int gameMode = 1; // Creative mode default
@@ -137,6 +141,7 @@ public final class PlayerData {
             this.position = new Vector3f(data.position);
             this.rotation = new Vector2f(data.rotation);
             this.health = data.health;
+            this.flightEnabled = data.flightEnabled;
             this.flying = data.flying;
             this.spectator = data.spectator;
             this.gameMode = data.gameMode;
@@ -167,6 +172,11 @@ public final class PlayerData {
 
         public Builder health(float health) {
             this.health = health;
+            return this;
+        }
+
+        public Builder flightEnabled(boolean flightEnabled) {
+            this.flightEnabled = flightEnabled;
             return this;
         }
 
