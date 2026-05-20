@@ -36,7 +36,9 @@ public class JsonPlayerSerializer {
         json.append("  },\n");
 
         json.append("  \"health\": ").append(player.getHealth()).append(",\n");
+        json.append("  \"flightEnabled\": ").append(player.isFlightEnabled()).append(",\n");
         json.append("  \"isFlying\": ").append(player.isFlying()).append(",\n");
+        json.append("  \"spectator\": ").append(player.isSpectator()).append(",\n");
         json.append("  \"gameMode\": ").append(player.getGameMode()).append(",\n");
         json.append("  \"selectedHotbarSlot\": ").append(player.getSelectedHotbarSlot()).append(",\n");
 
@@ -143,7 +145,9 @@ public class JsonPlayerSerializer {
                 .position(JsonParsingUtil.extractVector3f(json, "position"))
                 .rotation(JsonParsingUtil.extractVector2f(json, "rotation"))
                 .health(JsonParsingUtil.extractFloat(json, "health", 20.0f))
+                .flightEnabled(JsonParsingUtil.extractBoolean(json, "flightEnabled", false))
                 .flying(JsonParsingUtil.extractBoolean(json, "isFlying", false))
+                .spectator(JsonParsingUtil.extractBoolean(json, "spectator", false))
                 .gameMode(JsonParsingUtil.extractInt(json, "gameMode", 1))
                 .selectedHotbarSlot(JsonParsingUtil.extractInt(json, "selectedHotbarSlot", 0))
                 .lastSaved(JsonParsingUtil.extractDateTime(json, "lastSaved"));
