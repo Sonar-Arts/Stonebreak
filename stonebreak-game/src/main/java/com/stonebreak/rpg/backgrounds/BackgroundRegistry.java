@@ -8,10 +8,12 @@ public final class BackgroundRegistry {
     private BackgroundRegistry() {}
 
     public static final List<BackgroundDefinition> ALL = List.of(
-        new BackgroundDefinition("soldier",  "Soldier",  "Trained in the art of war, you served in a great army."),
-        new BackgroundDefinition("scholar",  "Scholar",  "Years of study have sharpened your mind and broadened your knowledge."),
-        new BackgroundDefinition("criminal", "Criminal", "You lived outside the law, surviving by cunning and daring."),
-        new BackgroundDefinition("noble",    "Noble",    "Born into privilege, you carry the weight of a great name.")
+        new BackgroundDefinition("adventurer",       "Adventurer",       "A wanderer ready for anything.",
+            new int[]{0, 0, 0, 0, 0, 0}, new String[]{}),
+        new BackgroundDefinition("arcane_associate", "Arcane Associate", "Your studies have sharpened your mind. Nerd",
+            new int[]{0, -1, 0, 2, 0, 0}, new String[]{"STAFF"}),
+        new BackgroundDefinition("mercenary",        "Mercenary",        "Steel and coin — that's your trade.",
+            new int[]{2, 0, 1, -2, 0, 0}, new String[]{"SWORD"})
     );
 
     public static Optional<BackgroundDefinition> findById(String id) {

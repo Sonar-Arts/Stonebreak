@@ -104,10 +104,10 @@ public class Player {
         this.blockPlacer = new BlockPlacer(state, raycastEngine, inventory, blockPlacementService, world);
         this.itemDropInteraction = new ItemDropInteraction(state, camera, blockPlacementService, world);
 
-        this.spawnService = new PlayerSpawnService(state, camera, inventory, health, attack,
-                blockBreaker, flight, jumpHandler, swimming);
-
         this.characterStats = new CharacterStats(this);
+        this.spawnService = new PlayerSpawnService(state, camera, inventory, health, attack,
+                blockBreaker, flight, jumpHandler, swimming, characterStats);
+
         updateDerivedStats();
     }
 

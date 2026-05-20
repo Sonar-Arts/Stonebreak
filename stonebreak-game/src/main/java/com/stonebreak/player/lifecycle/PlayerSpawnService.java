@@ -1,7 +1,9 @@
 package com.stonebreak.player.lifecycle;
 
 import com.stonebreak.items.Inventory;
+import com.stonebreak.items.ItemType;
 import com.stonebreak.player.Camera;
+import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.combat.AttackController;
 import com.stonebreak.player.combat.HealthController;
 import com.stonebreak.player.interaction.BlockBreaker;
@@ -9,6 +11,7 @@ import com.stonebreak.player.locomotion.FlightController;
 import com.stonebreak.player.locomotion.JumpHandler;
 import com.stonebreak.player.locomotion.SwimmingController;
 import com.stonebreak.player.state.PhysicsState;
+import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
 
 import static com.stonebreak.player.PlayerConstants.SPAWN_PROTECTION_DURATION;
 import static com.stonebreak.player.PlayerConstants.SPAWN_X;
@@ -31,13 +34,15 @@ public class PlayerSpawnService {
     private final FlightController flight;
     private final JumpHandler jumpHandler;
     private final SwimmingController swimming;
+    private final CharacterStats characterStats;
 
     private boolean loadedFromSave;
 
     public PlayerSpawnService(PhysicsState state, Camera camera, Inventory inventory,
                               HealthController health, AttackController attack,
                               BlockBreaker blockBreaker, FlightController flight,
-                              JumpHandler jumpHandler, SwimmingController swimming) {
+                              JumpHandler jumpHandler, SwimmingController swimming,
+                              CharacterStats characterStats) {
         this.state = state;
         this.camera = camera;
         this.inventory = inventory;
@@ -47,6 +52,7 @@ public class PlayerSpawnService {
         this.flight = flight;
         this.jumpHandler = jumpHandler;
         this.swimming = swimming;
+        this.characterStats = characterStats;
     }
 
     public void setLoadedFromSave(boolean loaded) {
@@ -69,6 +75,17 @@ public class PlayerSpawnService {
 
             if (camera != null) camera.reset();
             if (inventory != null) inventory.resetToStartingItems();
+
+            BackgroundRegistry.findById(characterStats.getSelectedBackground()).ifPresent(bg -> {
+                characterStats.applyBackgroundBonuses(bg.abilityScoreBonuses());
+                for (String itemName : bg.extraItemNames()) {
+                    try {
+                        inventory.addItem(ItemType.valueOf(itemName));
+                    } catch (IllegalArgumentException ignored) {
+                        System.err.println("[SPAWN] Unknown background item: " + itemName);
+                    }
+                }
+            });
 
             health.enableSpawnProtection();
             System.out.println("Spawn protection enabled for new world - fall damage disabled for " + SPAWN_PROTECTION_DURATION + " seconds");

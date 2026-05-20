@@ -19,10 +19,12 @@ import java.util.List;
  */
 public final class BackgroundTabRenderer {
 
-    private static final float ROW_H       = 44f;
+    private static final float ROW_H       = 60f;
     private static final float ROW_PAD_X   = 16f;
     private static final float ROW_GAP     = 4f;
     private static final float LIST_TOP_PAD= 16f;
+
+    private static final String[] STAT_ABBREV = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
 
     public void render(Canvas canvas, MasonryUI ui, CharacterStats stats,
                        Rect content, float mx, float my) {
@@ -61,14 +63,31 @@ public final class BackgroundTabRenderer {
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
 
             int nameColor = selected ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-            float nameY   = rowY + ROW_H * 0.38f + MStyle.FONT_ITEM * 0.38f;
+            float nameY   = rowY + ROW_H * 0.27f + MStyle.FONT_ITEM * 0.38f;
             MPainter.drawStringWithShadow(canvas, bg.name(),
                 rowX + 12f, nameY, itemFont, nameColor, MStyle.TEXT_SHADOW);
 
-            float descY = rowY + ROW_H * 0.72f + MStyle.FONT_META * 0.38f;
+            float descY = rowY + ROW_H * 0.52f + MStyle.FONT_META * 0.38f;
             MPainter.drawStringWithShadow(canvas, bg.description(),
                 rowX + 12f, descY, metaFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+
+            float bonusY = rowY + ROW_H * 0.80f + MStyle.FONT_META * 0.38f;
+            MPainter.drawStringWithShadow(canvas, formatBonusLine(bg.abilityScoreBonuses()),
+                rowX + 12f, bonusY, metaFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
         }
+    }
+
+    private String formatBonusLine(int[] bonuses) {
+        if (bonuses == null) return "No stat changes";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 6 && i < bonuses.length; i++) {
+            if (bonuses[i] == 0) continue;
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(STAT_ABBREV[i]).append(' ');
+            if (bonuses[i] > 0) sb.append('+');
+            sb.append(bonuses[i]);
+        }
+        return sb.length() == 0 ? "No stat changes" : sb.toString();
     }
 
     /**

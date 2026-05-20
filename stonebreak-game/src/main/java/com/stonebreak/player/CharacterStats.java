@@ -24,7 +24,7 @@ public class CharacterStats {
 
   // ─────────────────────────────────────────────── Background
 
-  private String selectedBackground = null;
+  private String selectedBackground = "adventurer";
 
   public String getSelectedBackground() { return selectedBackground; }
   public void setSelectedBackground(String id) { this.selectedBackground = id; }
@@ -91,6 +91,15 @@ public class CharacterStats {
 
   /** Standard modifier: floor((score - 10) / 2). */
   public int getModifier(int score) { return Math.floorDiv(score - 10, 2); }
+
+  /** Applies background ability bonuses on top of point-buy scores. Called once at first spawn. */
+  public void applyBackgroundBonuses(int[] bonuses) {
+    if (bonuses == null || bonuses.length != 6) return;
+    for (int i = 0; i < 6; i++) {
+      abilityScores[i] = Math.max(1, abilityScores[i] + bonuses[i]);
+    }
+    if (player != null) player.updateDerivedStats();
+  }
 
   // ─────────────────────────────────────────────── Class / progression (stubs)
 
