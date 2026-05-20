@@ -43,12 +43,17 @@ import java.util.Objects;
  *       hardcoded recipe registry on the game side. Older readers ignore the
  *       field; the game scans all SBOs at startup and harvests recipes whose
  *       output is the SBO's own object.</li>
+ *   <li>1.5 - Optional {@link SmeltingRecipeData} and {@link FuelData} blocks.
+ *       The smelting block, like crafting, is owned by the recipe's output SBO
+ *       (input is referenced by {@code objectId}). The fuel block describes the
+ *       burn time of the SBO's own item when used as furnace fuel. Both fields
+ *       are nullable; older readers ignore them.</li>
  * </ul>
  */
 public final class SBOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.4";
+    public static final String FORMAT_VERSION = "1.5";
 
     /** File extension for SBO files */
     public static final String FILE_EXTENSION = ".sbo";
@@ -198,6 +203,12 @@ public final class SBOFormat {
      *                         is empty.
      * @param recipes          optional crafting recipes (1.4+) whose output is this SBO's
      *                         own object. {@code null} or empty list means no recipes.
+     * @param smeltingRecipes  optional smelting recipes (1.5+) whose output is this SBO's
+     *                         own object. Each entry names the input via objectId.
+     *                         {@code null} or empty list means no smelting recipes.
+     * @param fuel             optional fuel descriptor (1.5+) declaring how long this
+     *                         SBO's own item burns when used as furnace fuel.
+     *                         {@code null} means the item is not a fuel.
      */
     public record Document(
             String version,
@@ -214,7 +225,9 @@ public final class SBOFormat {
             GameProperties gameProperties,
             List<StateEntry> states,
             String defaultStateName,
-            RecipeData recipes
+            RecipeData recipes,
+            SmeltingRecipeData smeltingRecipes,
+            FuelData fuel
     ) {
         public Document {
             Objects.requireNonNull(version, "version cannot be null");
@@ -272,6 +285,74 @@ public final class SBOFormat {
         /** True when this SBO declares one or more crafting recipes (1.4+). */
         public boolean hasRecipes() {
             return recipes != null && recipes.shaped() != null && !recipes.shaped().isEmpty();
+        }
+
+        /** True when this SBO declares one or more smelting recipes (1.5+). */
+        public boolean hasSmeltingRecipes() {
+            return smeltingRecipes != null
+                    && smeltingRecipes.recipes() != null
+                    && !smeltingRecipes.recipes().isEmpty();
+        }
+
+        /** True when this SBO declares fuel data (1.5+). */
+        public boolean hasFuel() {
+            return fuel != null && fuel.burnTicks() > 0;
+        }
+    }
+
+    /**
+     * Optional smelting recipe block embedded in an SBO manifest (format version 1.5+).
+     *
+     * <p>Like {@link RecipeData}, smelting recipes are declared on the SBO that
+     * <em>produces</em> the output. Each entry references its input by SBO
+     * {@code objectId}; the output is implicit (the SBO's own object) and may
+     * be produced in {@code outputCount} copies per smelt.
+     *
+     * @param recipes list of smelting recipes; never null but may be empty
+     */
+    public record SmeltingRecipeData(List<SmeltingRecipeEntry> recipes) {
+        public SmeltingRecipeData {
+            recipes = recipes == null ? Collections.emptyList() : List.copyOf(recipes);
+        }
+    }
+
+    /**
+     * One smelting recipe (1.5+).
+     *
+     * <p>The output is implicit: the SBO that owns this recipe.
+     *
+     * @param inputObjectId SBO {@code objectId} of the input ingredient
+     *                      (e.g. {@code "stonebreak:cobblestone"})
+     * @param outputCount   number of output items produced per smelt (>= 1)
+     */
+    public record SmeltingRecipeEntry(
+            String inputObjectId,
+            int outputCount
+    ) {
+        public SmeltingRecipeEntry {
+            Objects.requireNonNull(inputObjectId, "inputObjectId cannot be null");
+            if (inputObjectId.isBlank()) {
+                throw new IllegalArgumentException("inputObjectId cannot be blank");
+            }
+            if (outputCount < 1) {
+                throw new IllegalArgumentException("outputCount must be >= 1, got " + outputCount);
+            }
+        }
+    }
+
+    /**
+     * Optional fuel descriptor embedded in an SBO manifest (format version 1.5+).
+     *
+     * <p>Declares that the SBO's own item burns as furnace fuel for the given
+     * number of game-ticks per unit.
+     *
+     * @param burnTicks burn time per unit, in game-ticks (>= 1)
+     */
+    public record FuelData(int burnTicks) {
+        public FuelData {
+            if (burnTicks < 1) {
+                throw new IllegalArgumentException("burnTicks must be >= 1, got " + burnTicks);
+            }
         }
     }
 
@@ -433,6 +514,8 @@ public final class SBOFormat {
         private final List<StateSpec> states = new ArrayList<>();
         private String defaultStateName = "";
         private RecipeData recipes;
+        private SmeltingRecipeData smeltingRecipes;
+        private FuelData fuel;
 
         public ExportParameters() {}
 
@@ -471,6 +554,12 @@ public final class SBOFormat {
 
         public RecipeData getRecipes() { return recipes; }
         public void setRecipes(RecipeData recipes) { this.recipes = recipes; }
+
+        public SmeltingRecipeData getSmeltingRecipes() { return smeltingRecipes; }
+        public void setSmeltingRecipes(SmeltingRecipeData smeltingRecipes) { this.smeltingRecipes = smeltingRecipes; }
+
+        public FuelData getFuel() { return fuel; }
+        public void setFuel(FuelData fuel) { this.fuel = fuel; }
 
         /**
          * Validates that all required fields are populated.

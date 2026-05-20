@@ -295,20 +295,11 @@ public class Game {
     }
 
     /**
-     * Registers smelting recipes and fuel sources.
+     * Registers smelting recipes and fuel sources by harvesting them from
+     * registered SBO files. Mirrors {@link #initializeCraftingRecipes()}.
      */
     private void initializeSmeltingRecipes() {
-        // Cobblestone → Stone (demo recipe)
-        smeltingManager.registerRecipe(
-                new SmeltingRecipe(
-                        "stonebreak:cobblestone_to_stone",
-                        new ItemStack(BlockType.COBBLESTONE, 1),
-                        new ItemStack(BlockType.STONE, 1),
-                        0.1f
-                ));
-
-        // Coal ore is the canonical fuel (1600 ticks = 80 seconds per stack)
-        smeltingManager.registerFuel(BlockType.COAL_ORE, 1600);
+        com.stonebreak.crafting.SmeltingRecipeLoader.loadFromSBOs(this.smeltingManager);
     }
 
 

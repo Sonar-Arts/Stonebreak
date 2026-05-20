@@ -17,25 +17,19 @@ public class SmeltingRecipe {
     private final String id;
     private final ItemStack input;
     private final ItemStack output;
-    private final float xpReward;
 
     /**
-     * @param id       unique recipe id (e.g. "stonebreak:cobblestone_to_stone")
-     * @param input    the ingredient (count should be 1)
-     * @param output   the smelted result
-     * @param xpReward XP granted when the player collects the output (0 if none)
+     * @param id     unique recipe id (e.g. "stonebreak:cobblestone_to_stone")
+     * @param input  the ingredient (count should be 1)
+     * @param output the smelted result
      */
-    public SmeltingRecipe(String id, ItemStack input, ItemStack output, float xpReward) {
+    public SmeltingRecipe(String id, ItemStack input, ItemStack output) {
         Objects.requireNonNull(id, "Recipe ID cannot be null");
         Objects.requireNonNull(input, "Input cannot be null");
         Objects.requireNonNull(output, "Output cannot be null");
-        if (xpReward < 0f) {
-            throw new IllegalArgumentException("XP reward cannot be negative");
-        }
         this.id = id;
         this.input = input;
         this.output = output;
-        this.xpReward = xpReward;
     }
 
     public String getId() {
@@ -48,10 +42,6 @@ public class SmeltingRecipe {
 
     public ItemStack getOutput() {
         return output;
-    }
-
-    public float getXpReward() {
-        return xpReward;
     }
 
     /**

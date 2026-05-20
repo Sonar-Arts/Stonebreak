@@ -243,6 +243,39 @@ public class SBOParser {
             }
         }
 
+        SBOFormat.SmeltingRecipeData smeltingRecipes = null;
+        if (root.has("smeltingRecipes") && !root.get("smeltingRecipes").isNull()) {
+            var smeltNode = root.get("smeltingRecipes");
+            List<SBOFormat.SmeltingRecipeEntry> smeltList = new ArrayList<>();
+            if (smeltNode.has("recipes") && smeltNode.get("recipes").isArray()) {
+                for (var rNode : smeltNode.get("recipes")) {
+                    String input = rNode.has("input") ? rNode.get("input").asText() : "";
+                    int outputCount = rNode.has("outputCount") ? rNode.get("outputCount").asInt() : 1;
+                    try {
+                        smeltList.add(new SBOFormat.SmeltingRecipeEntry(input, outputCount));
+                    } catch (IllegalArgumentException ex) {
+                        logger.warn("Skipping invalid smelting recipe in manifest: {}", ex.getMessage());
+                    }
+                }
+            }
+            if (!smeltList.isEmpty()) {
+                smeltingRecipes = new SBOFormat.SmeltingRecipeData(smeltList);
+            }
+        }
+
+        SBOFormat.FuelData fuel = null;
+        if (root.has("fuel") && !root.get("fuel").isNull()) {
+            var fuelNode = root.get("fuel");
+            int burnTicks = fuelNode.has("burnTicks") ? fuelNode.get("burnTicks").asInt() : 0;
+            if (burnTicks > 0) {
+                try {
+                    fuel = new SBOFormat.FuelData(burnTicks);
+                } catch (IllegalArgumentException ex) {
+                    logger.warn("Skipping invalid fuel block in manifest: {}", ex.getMessage());
+                }
+            }
+        }
+
         return new SBOFormat.Document(
                 root.get("version").asText(),
                 root.get("objectId").asText(),
@@ -258,7 +291,9 @@ public class SBOParser {
                 gameProperties,
                 states,
                 defaultState,
-                recipes
+                recipes,
+                smeltingRecipes,
+                fuel
         );
     }
 
