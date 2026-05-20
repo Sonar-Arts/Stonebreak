@@ -324,6 +324,7 @@ public class WorldRenderer {
      * Render transparent pass (water parts of chunks).
      */
     private void renderTransparentPass(List<Chunk> visibleChunks, Player player) {
+        shaderProgram.bind(); // re-bind in case entity rendering left a different shader active
         shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
         shaderProgram.setUniform("u_waterDepthOffset", -0.0001f); // Negative offset to pull water slightly closer
         glEnable(GL_BLEND); // Enable blending
