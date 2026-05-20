@@ -818,6 +818,18 @@ public class InputHandler {
                     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
                         player.startAttackAnimation(); // Animate for interaction attempts as well
 
+                        // Staff + right-click → fire bolt spell
+                        com.stonebreak.items.ItemStack staffCheck = player.getInventory().getSelectedHotbarSlot();
+                        if (!staffCheck.isEmpty() && staffCheck.getItem() == com.stonebreak.items.ItemType.STAFF) {
+                            com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+                            if (em != null) {
+                                org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
+                                org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
+                                em.spawnFireBolt(spawnPos, dir);
+                            }
+                            return;
+                        }
+
                         // Food consumption takes priority over block placement
                         com.stonebreak.items.ItemStack heldItem = player.getInventory().getSelectedHotbarSlot();
                         if (!heldItem.isEmpty() && heldItem.isFood()) {

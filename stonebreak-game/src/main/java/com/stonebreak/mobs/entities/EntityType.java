@@ -23,6 +23,9 @@ public enum EntityType {
     // height = 1.8 (head-to-foot), width/length = 0.6, no separate legs (legHeight=0).
     REMOTE_PLAYER("Remote Player", 20.0f, 0.0f, 1.8f, 0.6f, 0.6f, 0.0f, true, null),
 
+    // Projectile entities
+    FIRE_BOLT("Fire Bolt", 1.0f, 0.0f, 0.3f, 0.3f, 0.3f, 0.0f, false, null),
+
     // Future entities can be added here
     ;
 

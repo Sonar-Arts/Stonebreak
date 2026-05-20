@@ -37,6 +37,9 @@ public class EntityRenderer {
     // 1x1 white texture for the fallback cube.
     private int fallbackTexture;
 
+    // 1x1 orange texture for the fire bolt core.
+    private int fireBoltTexture;
+
     // Entity-blind renderer for SBE-driven mobs.
     private final SbeEntityRenderer sbeEntityRenderer = new SbeEntityRenderer();
 
@@ -51,6 +54,7 @@ public class EntityRenderer {
 
         createShader();
         createFallbackTexture();
+        createFireBoltTexture();
         createSimpleCubeModel();
         sbeEntityRenderer.initialize();
         remotePlayerRenderer.initialize();
@@ -132,6 +136,19 @@ public class EntityRenderer {
         whitePixel.put((byte) 255).put((byte) 255).put((byte) 255).put((byte) 255).flip();
         GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
                 GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, whitePixel);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+    }
+
+    private void createFireBoltTexture() {
+        fireBoltTexture = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, fireBoltTexture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        // Bright orange-yellow for the fire bolt core
+        ByteBuffer pixel = ByteBuffer.allocateDirect(4);
+        pixel.put((byte) 255).put((byte) 140).put((byte) 0).put((byte) 255).flip();
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
+                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
@@ -256,6 +273,11 @@ public class EntityRenderer {
             return;
         }
 
+        if (entityType == EntityType.FIRE_BOLT) {
+            renderFireBolt(entity, viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
+
         renderSimpleEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
     }
 
@@ -345,6 +367,50 @@ public class EntityRenderer {
         GL30.glBindVertexArray(simpleCubeVAO);
         GL11.glDrawArrays(GL11.GL_QUADS, 0, 24); // 6 faces × 4 vertices
         GL30.glBindVertexArray(0);
+
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        shader.unbind();
+    }
+
+    private void renderFireBolt(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                com.stonebreak.world.World world, Vector3f cameraPos) {
+        shader.bind();
+
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, fireBoltTexture);
+        shader.setUniform("textureSampler", 0);
+        shader.setUniform("view", viewMatrix);
+        shader.setUniform("projection", projectionMatrix);
+
+        shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
+        shader.setUniform("underwaterFogDensity", 0.0f);
+        shader.setUniform("underwaterFogColor", new Vector3f(0.1f, 0.3f, 0.5f));
+
+        Matrix4f modelMatrix = new Matrix4f()
+                .translate(entity.getPosition())
+                .rotateY((float) Math.toRadians(entity.getRotation().y))
+                .scale(entity.getScale());
+        shader.setUniform("model", modelMatrix);
+
+        // Additive blending gives a glow/emissive look
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+        GL11.glDepthMask(false);
+
+        GL30.glBindVertexArray(simpleCubeVAO);
+        GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
+        GL30.glBindVertexArray(0);
+
+        // Render a larger, semi-transparent outer glow layer
+        Matrix4f glowMatrix = new Matrix4f()
+                .translate(entity.getPosition())
+                .rotateY((float) Math.toRadians(entity.getRotation().y))
+                .scale(new Vector3f(entity.getScale()).mul(1.8f));
+        shader.setUniform("model", glowMatrix);
+        GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
+
+        GL11.glDepthMask(true);
+        GL11.glDisable(GL11.GL_BLEND);
 
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
         shader.unbind();
