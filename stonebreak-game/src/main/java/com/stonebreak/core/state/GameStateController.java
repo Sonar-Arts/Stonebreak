@@ -84,6 +84,15 @@ public final class GameStateController {
             game.setCheatsEnabled(false);
         }
 
+        // Hide the F3 debug overlay when entering the settings menu so it does
+        // not render on top of settings.
+        if (state == GameState.SETTINGS) {
+            com.stonebreak.ui.DebugOverlay debugOverlay = game.getDebugOverlay();
+            if (debugOverlay != null) {
+                debugOverlay.hide();
+            }
+        }
+
         updatePauseState(state);
 
         MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();
@@ -94,10 +103,10 @@ public final class GameStateController {
 
     private void updatePauseState(GameState state) {
         switch (state) {
-            case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI, FURNACE_UI,
+            case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI,
                  MULTIPLAYER_MENU, HOST_WORLD_SELECT, JOIN_WORLD_SCREEN,
                  WORLD_SELECT, CHARACTER_CREATION, TERRAIN_MAPPER -> paused = true;
-            case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI, CHARACTER_SHEET_UI -> paused = false;
+            case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI, CHARACTER_SHEET_UI, FURNACE_UI -> paused = false;
         }
     }
 

@@ -92,6 +92,14 @@ public class DebugOverlay {
     }
 
     /**
+     * Forces the debug overlay to hide. Called automatically when leaving
+     * gameplay (world exit or opening the settings menu).
+     */
+    public void hide() {
+        visible = false;
+    }
+
+    /**
      * Returns a one-line summary of the block the player is looking at.
      * Used by the compact debug panel (MStatPanel). Returns null when nothing
      * is targeted.

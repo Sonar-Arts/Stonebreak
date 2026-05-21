@@ -221,7 +221,9 @@ public class SBOSerializer {
                 params.getGameProperties(),
                 stateEntries,
                 defaultStateName,
-                params.getRecipes()
+                params.getRecipes(),
+                params.getSmeltingRecipes(),
+                params.getFuel()
         );
 
         Path tempFile = Files.createTempFile("sbo_export_", ".tmp");
@@ -320,7 +322,9 @@ public class SBOSerializer {
                 document.gameProperties(),
                 rebuiltStates,
                 rebuiltStates.isEmpty() ? null : document.defaultStateName(),
-                document.recipes()
+                document.recipes(),
+                document.smeltingRecipes(),
+                document.fuel()
         );
 
         outputPath = SBOFormat.ensureExtension(outputPath);
@@ -417,6 +421,8 @@ public class SBOSerializer {
         public List<StateEntryDTO> states;
         public String defaultState;
         public RecipeDataDTO recipes;
+        public SmeltingRecipeDataDTO smeltingRecipes;
+        public FuelDataDTO fuel;
 
         public ManifestDTO(SBOFormat.Document doc) {
             this.version = doc.version();
@@ -445,6 +451,39 @@ public class SBOSerializer {
                 this.defaultState = null;
             }
             this.recipes = doc.hasRecipes() ? new RecipeDataDTO(doc.recipes()) : null;
+            this.smeltingRecipes = doc.hasSmeltingRecipes()
+                    ? new SmeltingRecipeDataDTO(doc.smeltingRecipes())
+                    : null;
+            this.fuel = doc.hasFuel() ? new FuelDataDTO(doc.fuel()) : null;
+        }
+    }
+
+    private static class SmeltingRecipeDataDTO {
+        public List<SmeltingRecipeEntryDTO> recipes;
+
+        public SmeltingRecipeDataDTO(SBOFormat.SmeltingRecipeData data) {
+            this.recipes = new ArrayList<>(data.recipes().size());
+            for (SBOFormat.SmeltingRecipeEntry e : data.recipes()) {
+                this.recipes.add(new SmeltingRecipeEntryDTO(e));
+            }
+        }
+    }
+
+    private static class SmeltingRecipeEntryDTO {
+        public String input;
+        public int outputCount;
+
+        public SmeltingRecipeEntryDTO(SBOFormat.SmeltingRecipeEntry e) {
+            this.input = e.inputObjectId();
+            this.outputCount = e.outputCount();
+        }
+    }
+
+    private static class FuelDataDTO {
+        public int burnTicks;
+
+        public FuelDataDTO(SBOFormat.FuelData f) {
+            this.burnTicks = f.burnTicks();
         }
     }
 

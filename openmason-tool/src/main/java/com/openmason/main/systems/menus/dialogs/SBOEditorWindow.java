@@ -40,6 +40,7 @@ public class SBOEditorWindow {
     private final SBOParser parser = new SBOParser();
     private final SBOSerializer serializer = new SBOSerializer();
     private final SBORecipeSection recipeSection;
+    private final SBOSmeltingSection smeltingSection;
     private final SBOStatesEditor statesEditor;
     private final NumericIdConflictPopup conflictPopup = new NumericIdConflictPopup();
     private final TakenIdsPopup takenIdsPopup = new TakenIdsPopup();
@@ -75,6 +76,11 @@ public class SBOEditorWindow {
     private final ImString category = new ImString(64);
     private final ImBoolean placeable = new ImBoolean(true);
 
+    // Fuel buffers (1.5+ — sits on the Properties tab even though it lives in
+    // the top-level Document.fuel field, since it's a property of the item).
+    private boolean isFuel;
+    private final ImInt fuelBurnTicks = new ImInt(1600);
+
     private static final String[] OBJECT_TYPE_LABELS = {
             "block", "item", "entity", "decoration", "particle", "other"
     };
@@ -85,6 +91,7 @@ public class SBOEditorWindow {
         this.fileDialogService = fileDialogService;
         this.statusService = statusService;
         this.recipeSection = new SBORecipeSection(() -> dirty = true);
+        this.smeltingSection = new SBOSmeltingSection(() -> dirty = true);
         this.statesEditor = new SBOStatesEditor(
                 () -> dirty = true,
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenOMODialog(cb::accept); },
@@ -158,6 +165,9 @@ public class SBOEditorWindow {
         }
 
         recipeSection.setFromRecipeData(doc.recipes());
+        smeltingSection.setFromSmeltingData(doc.smeltingRecipes());
+        isFuel = doc.fuel() != null;
+        fuelBurnTicks.set(doc.fuel() != null ? doc.fuel().burnTicks() : 1600);
         statesEditor.load(doc, loadedStateBytes, loadedDefaultBytes);
     }
 
@@ -219,6 +229,10 @@ public class SBOEditorWindow {
                 recipeSection.render();
                 ImGui.endTabItem();
             }
+            if (ImGui.beginTabItem("Smelting")) {
+                smeltingSection.render();
+                ImGui.endTabItem();
+            }
             ImGui.endTabBar();
         }
     }
@@ -234,6 +248,10 @@ public class SBOEditorWindow {
     }
 
     private void renderGamePropertiesTab() {
+        renderFuelControls();
+        ImGui.separator();
+        ImGui.dummy(0, 4);
+
         if (ImGui.checkbox("Has gameProperties block", new ImBoolean(hasGameProperties))) {
             hasGameProperties = !hasGameProperties;
             dirty = true;
@@ -260,6 +278,26 @@ public class SBOEditorWindow {
         if (ImGui.inputInt("Max Stack Size", maxStackSize))  dirty = true;
         if (ImGui.inputText("Category", category))           dirty = true;
         if (ImGui.checkbox("Placeable", placeable))          dirty = true;
+    }
+
+    private void renderFuelControls() {
+        ImGui.text("Fuel");
+        ImGui.sameLine();
+        ImGui.textDisabled("(declares this SBO's own item as furnace fuel)");
+        ImBoolean fuelBuf = new ImBoolean(isFuel);
+        if (ImGui.checkbox("Is a fuel", fuelBuf)) {
+            isFuel = fuelBuf.get();
+            dirty = true;
+        }
+        if (isFuel) {
+            ImGui.pushItemWidth(120);
+            if (ImGui.inputInt("Burn ticks per unit", fuelBurnTicks)) {
+                if (fuelBurnTicks.get() < 1) fuelBurnTicks.set(1);
+                dirty = true;
+            }
+            ImGui.popItemWidth();
+            ImGui.textDisabled("200 ticks = 1 smelt. Coal-tier is typically 1600 (8 smelts).");
+        }
     }
 
     private void renderStatesTab() {
@@ -342,7 +380,9 @@ public class SBOEditorWindow {
                 gp,
                 statesEditor.toStateEntries(),
                 statesEditor.defaultStateName(),
-                recipeSection.toRecipeData()
+                recipeSection.toRecipeData(),
+                smeltingSection.toSmeltingRecipeData(),
+                isFuel ? new SBOFormat.FuelData(Math.max(1, fuelBurnTicks.get())) : null
         );
     }
 

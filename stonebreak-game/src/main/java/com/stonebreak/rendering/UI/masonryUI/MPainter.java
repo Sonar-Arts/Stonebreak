@@ -130,7 +130,7 @@ public final class MPainter {
                 pb.lineTo(ix + iw - ir, iy + ih);
                 arcSegments(pb, ix + iw - ir, iy + ih - ir, ir, 90f, 0f); // bottom-right corner
                 pb.lineTo(ix + iw, iy + ir);                  // up the right edge
-                strokePath(canvas, pb, shadow);
+            strokePath(canvas, pb, shadow);
             }
         }
     }
