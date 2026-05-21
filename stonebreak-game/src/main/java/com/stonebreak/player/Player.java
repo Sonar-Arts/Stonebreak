@@ -5,6 +5,7 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.player.combat.AttackController;
+import com.stonebreak.player.combat.BowController;
 import com.stonebreak.player.combat.DeathHandler;
 import com.stonebreak.player.combat.FallDamageHandler;
 import com.stonebreak.player.combat.HealthController;
@@ -58,6 +59,7 @@ public class Player {
 
     // Combat
     private final AttackController attack;
+    private final BowController bow;
     private final HealthController health;
     private final StaminaController stamina;
     private final ManaController mana;
@@ -94,6 +96,7 @@ public class Player {
         this.jumpHandler = new JumpHandler(state);
 
         this.attack = new AttackController();
+        this.bow = new BowController();
         this.health = new HealthController();
         this.stamina = new StaminaController(0);
         this.mana = new ManaController(0, 0);
@@ -141,6 +144,7 @@ public class Player {
         camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
 
         attack.update(dt);
+        bow.update(dt);
         stamina.update(dt);
         mana.update(dt);
         blockBreaker.update();
@@ -228,6 +232,12 @@ public class Player {
     public void startAttackAnimation() { attack.startAttackAnimation(); }
     public float getAttackAnimationProgress() { return attack.getAnimationProgress(); }
     public float getRawAttackAnimationProgress() { return attack.getRawAnimationProgress(); }
+
+    // Bow draw
+    public BowController getBowController() { return bow; }
+    public boolean isDrawingBow() { return bow.isDrawing(); }
+    public float getBowDrawProgress() { return bow.getDrawProgress(); }
+    public String getBowSboState() { return bow.getBowSboState(); }
 
     // Flight
     public boolean isFlying() { return flight.isFlying(); }

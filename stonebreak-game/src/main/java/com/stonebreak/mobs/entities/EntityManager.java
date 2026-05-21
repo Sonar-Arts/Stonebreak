@@ -239,6 +239,17 @@ public class EntityManager {
     }
 
     /**
+     * Spawns an arrow projectile with the given initial velocity.
+     */
+    public Arrow spawnArrow(Vector3f position, Vector3f velocity) {
+        Arrow arrow = new Arrow(world, position, velocity);
+        synchronized (entitiesToAdd) {
+            entitiesToAdd.add(arrow);
+        }
+        return arrow;
+    }
+
+    /**
      * Spawns a fishing bobber launched in the given direction.
      */
     public FishingBobber spawnBobber(Vector3f position, Vector3f direction) {

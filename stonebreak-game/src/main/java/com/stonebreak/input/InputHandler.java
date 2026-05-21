@@ -816,6 +816,14 @@ public class InputHandler {
                         }
                         // Block breaking is now handled continuously in handleInput
                     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+
+                        // Bow + right-click press → start drawing (no attack swing)
+                        com.stonebreak.items.ItemStack bowPressCheck = player.getInventory().getSelectedHotbarSlot();
+                        if (!bowPressCheck.isEmpty() && bowPressCheck.getItem() == com.stonebreak.items.ItemType.BOW) {
+                            player.getBowController().startDrawing();
+                            return;
+                        }
+
                         player.startAttackAnimation(); // Animate for interaction attempts as well
 
                         // Staff + right-click → fire bolt spell
@@ -884,10 +892,29 @@ public class InputHandler {
                         }
                     }
                 }
+            } else if (action == GLFW_RELEASE) {
+                // Bow right-click release → fire arrow if drawn long enough
+                Player player = Game.getPlayer();
+                if (player != null && button == GLFW_MOUSE_BUTTON_RIGHT) {
+                    com.stonebreak.items.ItemStack bowReleaseCheck = player.getInventory().getSelectedHotbarSlot();
+                    if (!bowReleaseCheck.isEmpty() && bowReleaseCheck.getItem() == com.stonebreak.items.ItemType.BOW) {
+                        // Capture speed before releaseAndFire() resets state
+                        float arrowSpeed = player.getBowController().getArrowSpeed();
+                        if (player.getBowController().releaseAndFire()) {
+                            com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+                            if (em != null) {
+                                org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
+                                org.joml.Vector3f vel = new org.joml.Vector3f(dir).mul(arrowSpeed);
+                                org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
+                                em.spawnArrow(spawnPos, vel);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
-    
+
     // Renamed from handleMouseClick to avoid confusion, as this is the GLFW callback receiver
     // public void handleMouseClick(int button, int action) { ... } // Old method removed/refactored into processMouseButton
 

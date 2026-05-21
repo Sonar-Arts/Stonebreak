@@ -80,6 +80,8 @@ public final class ItemType implements Item {
     public static final ItemType STAFF = fromRegistry("stonebreak:staff", "STAFF");
     public static final ItemType FISHING_ROD = fromRegistry("stonebreak:fishing_rod", "FISHING_ROD");
     public static final ItemType FEATHER = fromRegistry("stonebreak:feather", "FEATHER");
+    public static final ItemType BOW = fromRegistry("stonebreak:bow", "BOW");
+    public static final ItemType ARROW = fromRegistry("stonebreak:arrow", "ARROW");
 
     // ----- SBO state name constants for the wooden bucket. ----------------
 
@@ -90,6 +92,13 @@ public final class ItemType implements Item {
 
     public static final String FISHING_ROD_STATE_CAST = "Cast";
     public static final String FISHING_ROD_STATE_REELED_IN = "Reeled in";
+
+    // ----- SBO state name constants for the bow. --------------------------
+
+    public static final String BOW_STATE_DRAW1 = "bow1";
+    public static final String BOW_STATE_DRAW2 = "bow2";
+    public static final String BOW_STATE_DRAW3 = "bow3";
+    public static final String BOW_STATE_DRAW4 = "bow4";
 
     // ----- Promote SBO entries that don't match a static-final field above.
 

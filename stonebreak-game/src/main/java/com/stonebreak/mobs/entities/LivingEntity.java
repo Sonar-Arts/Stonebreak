@@ -326,6 +326,7 @@ public abstract class LivingEntity extends Entity {
         FALL,
         DROWNING,
         FIRE,
-        EXPLOSION
+        EXPLOSION,
+        ARROW
     }
 }
