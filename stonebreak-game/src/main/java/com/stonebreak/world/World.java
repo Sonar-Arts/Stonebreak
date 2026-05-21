@@ -139,6 +139,8 @@ public class World {
             this.waterSystem = new WaterSystem(this);
             this.chunkStore.setChunkListeners(chunk -> {
                 waterSystem.onChunkLoaded(chunk);
+                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
+                if (fr != null) fr.onChunkLoaded(chunk);
                 // Mark already-meshed neighbors dirty so their chunk-border faces
                 // (especially water seams) rebuild against this newly loaded chunk.
                 if (meshPipeline != null) {
@@ -149,7 +151,11 @@ public class World {
                     markMeshedNeighborDirty(cx, cz - 1);
                     markMeshedNeighborDirty(cx, cz + 1);
                 }
-            }, waterSystem::onChunkUnloaded);
+            }, chunk -> {
+                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
+                if (fr != null) fr.onChunkUnloaded(chunk);
+                waterSystem.onChunkUnloaded(chunk);
+            });
 
             this.chunkManager = new ChunkManager(this, config.getRenderDistance());
 
@@ -172,6 +178,8 @@ public class World {
         if (meshPipeline == null) return; // Test mode - skip rendering updates
 
         waterSystem.tick(Game.getDeltaTime());
+        com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
+        if (fr != null) fr.tick(this, Game.getDeltaTime());
         meshPipeline.requeueFailedChunks();
         if (chunkManager != null) {
             chunkManager.update(Game.getPlayer());
@@ -822,5 +830,27 @@ public class World {
      */
     public void setChunk(int x, int z, Chunk chunk) {
         chunkStore.setChunk(x, z, chunk);
+    }
+
+    /** Returns the furnace registry, or {@code null} if Game isn't fully initialised yet. */
+    private static com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistryOrNull() {
+        Game g = Game.getInstance();
+        return g == null ? null : g.getFurnaceRegistry();
+    }
+
+    /**
+     * Forces a re-mesh of the chunk containing the given world position. Used
+     * by per-block-state changes (e.g. a furnace flipping lit↔unlit) where the
+     * block ID didn't change but the rendered model variant did.
+     * No-op when the chunk isn't loaded.
+     */
+    public void scheduleChunkRemeshAt(int x, int y, int z) {
+        if (meshPipeline == null) return;
+        int cx = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
+        int cz = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
+        Chunk chunk = getChunkIfLoaded(cx, cz);
+        if (chunk == null) return;
+        chunk.getCcoDirtyTracker().markMeshDirtyOnly();
+        meshPipeline.scheduleConditionalMeshBuild(chunk, MmsMeshPipeline.PRIORITY_PLAYER_MODIFICATION);
     }
 }

@@ -1,17 +1,20 @@
 package com.stonebreak.ui.furnace.core;
 
+import com.stonebreak.blocks.furnace.FurnaceState;
+import com.stonebreak.blocks.furnace.FurnaceStateRegistry;
 import com.stonebreak.core.Game;
 import com.stonebreak.crafting.SmeltingManager;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.ui.HotbarScreen;
 import com.stonebreak.ui.furnace.renderers.FurnaceRenderCoordinator;
+import com.stonebreak.util.BlockPos;
 
 /**
- * Coordinates furnace UI operations and smelting state.
- *
- * <p>Owns the three furnace slots (ingredient, fuel, output), the smelting
- * progress bar, and delegates rendering/input to specialised collaborators.</p>
+ * Coordinates the furnace UI for a single open block. The controller does NOT
+ * own smelting state — it operates on a {@link FurnaceState} held by
+ * {@link FurnaceStateRegistry}. Closing the UI just hides the screen; the
+ * registry keeps ticking the furnace.
  */
 public class FurnaceController {
 
@@ -22,19 +25,10 @@ public class FurnaceController {
     private final SmeltingManager smeltingManager;
     private FurnaceRenderCoordinator renderCoordinator;
 
+    /** The furnace block currently bound to the UI. Null when no UI is open. */
+    private FurnaceState state;
     private boolean visible;
 
-    // ── Smelting state ───────────────────────────────────────
-    private ItemStack ingredient = new ItemStack(0, 0);  // item to smelt
-    private ItemStack fuel       = new ItemStack(0, 0);  // fuel source
-    private ItemStack output     = new ItemStack(0, 0);  // smelted result
-
-    private int burnTimeRemaining = 0;   // ticks of fuel left in the currently-lit unit
-    private int currentBurnUnitTotal = 0; // total ticks the currently-lit fuel unit started with
-    private int cookProgress      = 0;   // ticks toward completing current smelt
-    private boolean cooking       = false;
-
-    // ── Tooltip ──────────────────────────────────────────────
     private ItemStack hoveredItemStack;
 
     // ── Furnace slot identifiers (for input manager) ─────────
@@ -56,108 +50,27 @@ public class FurnaceController {
         this.visible = false;
     }
 
-    // ── Visibility ───────────────────────────────────────────
-
-    public void open() {
+    /** Bind the UI to the furnace block at {@code pos} and show it. */
+    public void open(BlockPos pos) {
+        FurnaceStateRegistry registry = game.getFurnaceRegistry();
+        this.state = (registry != null) ? registry.getOrCreate(pos) : new FurnaceState(pos);
         this.visible = true;
     }
 
     public void close() {
         if (inputManager != null) inputManager.handleCloseWithDraggedItems();
-        /* return unsmelted ingredient + fuel back to inventory on close */
-        returnToInventory();
+        // Do NOT dump contents or clear state — the registry owns it and keeps ticking.
         this.visible = false;
-        clearSlots();
-    }
-
-    public void toggleVisibility() {
-        if (visible) {
-            close();
-        } else {
-            open();
-        }
+        this.state = null;
     }
 
     public boolean isVisible() {
         return visible;
     }
 
-    // ── Per-frame tick ──────────────────────────────────────
-
     public void update(float deltaTime) {
         hotbarScreen.update(deltaTime);
-        tickSmelting();
-    }
-
-    /**
-     * Advances smelting progress by one game tick.
-     */
-    private void tickSmelting() {
-        boolean recipeReady = (!ingredient.isEmpty())
-                           && (smeltingManager.getRecipe(ingredient) != null)
-                           && canAcceptOutput();
-
-        // If nothing is currently lit, try to consume one fuel unit to start a new burn.
-        // We only ignite when we'd actually use the heat — no ingredient means no light.
-        if (burnTimeRemaining <= 0 && recipeReady && !fuel.isEmpty()) {
-            int perUnit = smeltingManager.getBurnTimePerUnit(fuel.getItem());
-            if (perUnit > 0) {
-                fuel.decrementCount(1);
-                if (fuel.getCount() <= 0) fuel.clear();
-                burnTimeRemaining = perUnit;
-                currentBurnUnitTotal = perUnit;
-            }
-        }
-
-        // Advance smelt progress while we have heat and a valid recipe.
-        cooking = recipeReady && burnTimeRemaining > 0;
-        if (cooking) {
-            cookProgress++;
-            if (cookProgress >= SmeltingManager.TICKS_PER_SMELT) {
-                cookProgress = 0;
-                completeSmelt();
-            }
-        } else if (!recipeReady) {
-            cookProgress = 0;
-        }
-
-        // Already-lit fuel always burns down, even if the ingredient was yanked.
-        if (burnTimeRemaining > 0) {
-            burnTimeRemaining--;
-            if (burnTimeRemaining <= 0) {
-                currentBurnUnitTotal = 0;
-            }
-        }
-    }
-
-    private boolean canAcceptOutput() {
-        if (output.isEmpty()) return true;
-        // If output is not full, we can stack more on top
-        return true; // always accept (player will need to collect manually)
-    }
-
-    private void completeSmelt() {
-        var recipe = smeltingManager.getRecipe(ingredient);
-        if (recipe == null) return;
-
-        var recipeOutput = recipe.getOutput();
-
-        if (output.isEmpty()) {
-            output = recipeOutput.copy();
-        } else if (output.canStackWith(recipeOutput)) {
-            int canAdd = output.getMaxStackSize() - output.getCount();
-            int toAdd = Math.min(canAdd, recipeOutput.getCount());
-            output.incrementCount(toAdd);
-            if (toAdd < recipeOutput.getCount()) {
-                // Overflow — remaining drops to world (YAGNI: skip for now)
-            }
-        }
-
-        // Consume one unit of ingredient
-        ingredient.decrementCount(1);
-        if (ingredient.getCount() <= 0) {
-            ingredient.clear();
-        }
+        // Smelting is ticked by FurnaceStateRegistry — no UI-side tick here.
     }
 
     /* ── Input / rendering delegates ─────────────────────── */
@@ -211,83 +124,37 @@ public class FurnaceController {
 
     /* ── Accessors ───────────────────────────────────────── */
 
-    public HotbarScreen getHotbarScreen() {
-        return hotbarScreen;
-    }
-
-    public ItemStack getHoveredItemStack() {
-        return hoveredItemStack;
-    }
-
-    public void setHoveredItemStack(ItemStack itemStack) {
-        this.hoveredItemStack = itemStack;
-    }
+    public HotbarScreen getHotbarScreen() { return hotbarScreen; }
+    public ItemStack getHoveredItemStack() { return hoveredItemStack; }
+    public void setHoveredItemStack(ItemStack itemStack) { this.hoveredItemStack = itemStack; }
 
     public void setRenderCoordinator(FurnaceRenderCoordinator renderCoordinator) {
         this.renderCoordinator = renderCoordinator;
     }
 
-    /** Wire the input manager after construction (breaks circular dependency). */
     public void setInputManager(FurnaceInputManager inputManager) {
         this.inputManager = inputManager;
     }
 
-    public SmeltingManager getSmeltingManager() {
-        return smeltingManager;
-    }
+    public SmeltingManager getSmeltingManager() { return smeltingManager; }
 
-    /* ── Furnace slot accessors ──────────────────────────── */
+    /* ── Slot accessors (delegate to FurnaceState) ──────── */
 
-    public ItemStack getIngredientSlot() { return ingredient; }
-    public void setIngredientSlot(ItemStack stack) { this.ingredient = (stack != null && !stack.isEmpty()) ? stack : new ItemStack(0, 0); }
+    public ItemStack getIngredientSlot() { return state != null ? state.getIngredient() : new ItemStack(0, 0); }
+    public ItemStack getFuelSlot()       { return state != null ? state.getFuel()       : new ItemStack(0, 0); }
+    public ItemStack getOutputSlot()     { return state != null ? state.getOutput()     : new ItemStack(0, 0); }
 
-    public ItemStack getFuelSlot() { return fuel; }
-    public void setFuelSlot(ItemStack stack) { this.fuel = (stack != null && !stack.isEmpty()) ? stack : new ItemStack(0, 0); }
+    public void setIngredientSlot(ItemStack stack) { if (state != null) state.setIngredient(stack); }
+    public void setFuelSlot(ItemStack stack)       { if (state != null) state.setFuel(stack); }
+    public void setOutputSlot(ItemStack stack)     { if (state != null) state.setOutput(stack); }
 
-    public ItemStack getOutputSlot() { return output; }
-    public void setOutputSlot(ItemStack stack) { this.output = (stack != null && !stack.isEmpty()) ? stack : new ItemStack(0, 0); }
+    public int getBurnTimeRemaining() { return state != null ? state.getBurnTimeRemaining() : 0; }
+    public int getCookProgress()      { return state != null ? state.getCookProgress()      : 0; }
+    public boolean isCooking()        { return state != null && state.isCooking(); }
+    public float getCookProgressRatio() { return state != null ? state.getCookProgressRatio() : 0f; }
+    public float getFuelRatio()         { return state != null ? state.getFuelRatio()         : 0f; }
+    public int getCurrentBurnUnitTotal() { return state != null ? state.getCurrentBurnUnitTotal() : 0; }
 
-    public int getBurnTimeRemaining() { return burnTimeRemaining; }
-    public void setBurnTimeRemaining(int ticks) { this.burnTimeRemaining = ticks; }
-
-    public int getCookProgress() { return cookProgress; }
-    public boolean isCooking() { return cooking; }
-
-    /** Returns 0..1 progress ratio for the progress bar. */
-    public float getCookProgressRatio() {
-        return (float) cookProgress / SmeltingManager.TICKS_PER_SMELT;
-    }
-
-    /** Returns 0..1 ratio of how much of the currently-lit fuel unit is left. */
-    public float getFuelRatio() {
-        if (burnTimeRemaining <= 0 || currentBurnUnitTotal <= 0) return 0f;
-        return Math.min(1f, (float) burnTimeRemaining / currentBurnUnitTotal);
-    }
-
-    /** Total ticks the currently-lit fuel unit started with (0 if nothing lit). */
-    public int getCurrentBurnUnitTotal() { return currentBurnUnitTotal; }
-
-    /** Clear all furnace slots. */
-    private void clearSlots() {
-        ingredient.clear();
-        fuel.clear();
-        output.clear();
-        burnTimeRemaining = 0;
-        currentBurnUnitTotal = 0;
-        cookProgress = 0;
-        cooking = false;
-    }
-
-    /** Return unsmelted ingredient and fuel stacks back to player inventory. */
-    private void returnToInventory() {
-        if (!ingredient.isEmpty()) {
-            inventory.addItem(ingredient);
-            ingredient.clear();
-        }
-        if (!fuel.isEmpty()) {
-            inventory.addItem(fuel);
-            fuel.clear();
-        }
-        /* output stays — player must collect it before closing */
-    }
+    /** Unused — used to live here for fuel pre-credit; kept as no-op for callers. */
+    public void setBurnTimeRemaining(int ticks) { /* fuel ignition is now controlled by FurnaceState.tick */ }
 }

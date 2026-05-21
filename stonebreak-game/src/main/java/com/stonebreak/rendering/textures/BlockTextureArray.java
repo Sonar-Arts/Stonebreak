@@ -2,6 +2,8 @@ package com.stonebreak.rendering.textures;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import com.openmason.engine.format.mesh.ParsedFaceMapping;
+import com.openmason.engine.format.mesh.ParsedMaterialData;
+import com.openmason.engine.format.omo.OMOReader;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions;
 import com.stonebreak.blocks.BlockType;
@@ -58,6 +60,9 @@ public class BlockTextureArray {
 
     /** Per-block 6-element face→layer table (MMS face order: top,bottom,N,S,E,W). */
     private final Map<BlockType, int[]> blockFaceLayers = new IdentityHashMap<>();
+    /** Per-state face-layer overrides. {@code (blockType, stateName) → 6 layer indices}.
+     *  Missing entries fall back to {@link #blockFaceLayers}. */
+    private final Map<BlockType, Map<String, int[]>> stateBlockFaceLayers = new IdentityHashMap<>();
 
     /** Decoded ARGB pixels of every layer, retained for UI icon creation. */
     private final List<int[]> layerPixels;
@@ -104,6 +109,42 @@ public class BlockTextureArray {
                 }
             }
             blockFaceLayers.put(block, faceLayers);
+
+            // SBO 1.3+ state variants: for each named state (e.g. "Lit"), the
+            // variant carries its own materials list inside its embedded OMO.
+            // Resolve its faces with the variant's mappings and intern them as
+            // additional layers so state-aware emit can pick them up.
+            SBOParseResult sbo = (bridge != null) ? bridge.getSBODefinition(block) : null;
+            if (sbo != null && sbo.hasStates() && !sbo.stateOmoData().isEmpty()) {
+                Map<String, int[]> perStateLayers = new HashMap<>();
+                for (Map.Entry<String, OMOReader.ReadResult> e : sbo.stateOmoData().entrySet()) {
+                    String stateName = e.getKey();
+                    OMOReader.ReadResult variant = e.getValue();
+                    if (variant == null) continue;
+                    BufferedImage[] variantFaces = resolveVariantFaceImages(variant, faces);
+                    int[] variantLayers = new int[6];
+                    boolean anyDifferent = false;
+                    for (int f = 0; f < 6; f++) {
+                        BufferedImage img = variantFaces[f];
+                        int[] px = (img != null) ? toTile(img) : null;
+                        if (px == null) {
+                            variantLayers[f] = faceLayers[f]; // fall back to base
+                        } else {
+                            int layer = internLayer(px, layers, dedup);
+                            variantLayers[f] = layer;
+                            if (layer != faceLayers[f]) anyDifferent = true;
+                        }
+                    }
+                    if (anyDifferent) {
+                        perStateLayers.put(stateName, variantLayers);
+                    }
+                }
+                if (!perStateLayers.isEmpty()) {
+                    stateBlockFaceLayers.put(block, perStateLayers);
+                    logger.info("Registered {} state-variant texture set(s) for {}",
+                            perStateLayers.size(), block.name());
+                }
+            }
         }
 
         // Dedicated mutable WATER layer (never de-duplicated).
@@ -191,6 +232,55 @@ public class BlockTextureArray {
             }
             if (faceTexture == null) {
                 faceTexture = defaultTexture;
+            }
+            faces[mmsFace] = faceTexture;
+        }
+        return faces;
+    }
+
+    /**
+     * Resolve the six face images for an SBO state variant. The variant's
+     * embedded OMO carries its own materials list and faceMappings — we use
+     * those to look up per-face textures. Faces not remapped by the variant
+     * fall back to {@code baseFaces}.
+     */
+    private BufferedImage[] resolveVariantFaceImages(OMOReader.ReadResult variant,
+                                                     BufferedImage[] baseFaces) {
+        BufferedImage[] faces = new BufferedImage[6];
+
+        Map<Integer, BufferedImage> materialTextures = new HashMap<>();
+        if (variant.materials() != null) {
+            for (ParsedMaterialData mat : variant.materials()) {
+                byte[] png = mat.texturePng();
+                if (png == null || png.length == 0) continue;
+                try {
+                    BufferedImage img = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(png));
+                    if (img != null) materialTextures.put(mat.materialId(), img);
+                } catch (java.io.IOException ignored) {
+                    // Skip undecodable material — variant face falls back to base.
+                }
+            }
+        }
+
+        Map<Integer, Integer> faceToMaterialId = new HashMap<>();
+        if (variant.faceMappings() != null) {
+            for (ParsedFaceMapping mapping : variant.faceMappings()) {
+                faceToMaterialId.put(mapping.faceId(), mapping.materialId());
+            }
+        }
+
+        for (int mmsFace = 0; mmsFace < 6; mmsFace++) {
+            String faceName = SBOFaceConventions.mmsToAtlasName(mmsFace);
+            int gmrFaceId = SBOFaceConventions.atlasNameToGmr(faceName);
+            BufferedImage faceTexture = null;
+            if (gmrFaceId >= 0) {
+                Integer materialId = faceToMaterialId.get(gmrFaceId);
+                if (materialId != null) {
+                    faceTexture = materialTextures.get(materialId);
+                }
+            }
+            if (faceTexture == null) {
+                faceTexture = baseFaces[mmsFace]; // variant didn't override this face
             }
             faces[mmsFace] = faceTexture;
         }
@@ -314,6 +404,24 @@ public class BlockTextureArray {
             return errorLayer;
         }
         return faces[face];
+    }
+
+    /**
+     * Layer index for a block face with a named state-variant override.
+     * Falls back to the base block layer when no variant exists for this
+     * state, when the state name is null, or when the face index is invalid.
+     */
+    public int getBlockFaceLayer(BlockType block, String stateName, int face) {
+        if (stateName != null && block != null) {
+            Map<String, int[]> byState = stateBlockFaceLayers.get(block);
+            if (byState != null) {
+                int[] variantFaces = byState.get(stateName);
+                if (variantFaces != null && face >= 0 && face < 6) {
+                    return variantFaces[face];
+                }
+            }
+        }
+        return getBlockFaceLayer(block, face);
     }
 
     /** Layer index of the animated water texture. */

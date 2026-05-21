@@ -61,6 +61,7 @@ public class Game {
     private ChatSystem chatSystem; // Chat system
     private CraftingManager craftingManager; // Crafting manager
     private SmeltingManager smeltingManager; // Smelting manager for furnace
+    private com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry; // Per-position furnace state
     private com.stonebreak.audio.emitters.SoundEmitterManager soundEmitterManager; // Sound emitter management
     private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
     private DebugOverlay debugOverlay; // Debug overlay (F3)
@@ -172,6 +173,7 @@ public class Game {
         this.smeltingManager = new SmeltingManager();
         initializeSmeltingRecipes();
         initializeCraftingRecipes();
+        this.furnaceRegistry = new com.stonebreak.blocks.furnace.FurnaceStateRegistry(this.smeltingManager);
 
         this.chatSystem = new ChatSystem();
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f});
@@ -493,6 +495,10 @@ public class Game {
     public SmeltingManager getSmeltingManager() {
         return smeltingManager;
     }
+
+    public com.stonebreak.blocks.furnace.FurnaceStateRegistry getFurnaceRegistry() {
+        return furnaceRegistry;
+    }
     
     /**
      * Gets the input handler.
@@ -654,9 +660,9 @@ public class Game {
         stateController.closeWorkbenchScreen();
     }
 
-    /** Delegates to {@link com.stonebreak.core.state.GameStateController#openFurnaceScreen()}. */
-    public void openFurnaceScreen() {
-        stateController.openFurnaceScreen();
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#openFurnaceScreen(com.stonebreak.util.BlockPos)}. */
+    public void openFurnaceScreen(com.stonebreak.util.BlockPos pos) {
+        stateController.openFurnaceScreen(pos);
     }
 
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#closeFurnaceScreen()}. */

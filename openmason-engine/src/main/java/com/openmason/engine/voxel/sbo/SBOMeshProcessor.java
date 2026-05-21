@@ -3,6 +3,7 @@ package com.openmason.engine.voxel.sbo;
 import com.openmason.engine.format.mesh.ParsedFaceMapping;
 import com.openmason.engine.format.mesh.ParsedMaterialData;
 import com.openmason.engine.format.mesh.ParsedMeshData;
+import com.openmason.engine.format.omo.OMOReader;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.ILayerIndexProvider;
@@ -84,20 +85,54 @@ public class SBOMeshProcessor {
     public boolean process(IBlockType blockType, SBOParseResult sbo,
                            ITextureCoordProvider uvProvider, ILayerIndexProvider layerProvider,
                            SBOStampCache externalCache) {
-        ParsedMeshData meshData = sbo.meshData();
-        if (meshData == null || !meshData.hasGeometry()) {
+        // Process the default (no-state) mesh.
+        BlockStamp defaultStamp = processOne(blockType, null, sbo.meshData(), uvProvider, layerProvider);
+        if (defaultStamp == null) {
             logger.warn("SBO for {} has no mesh data", blockType.getName());
             return false;
         }
+        stampCache.put(blockType.getId(), defaultStamp);
+        processedTypes.add(blockType.getId());
+        if (externalCache != null) {
+            externalCache.put(blockType, defaultStamp);
+        }
 
-        // Compute flat normals and de-index
+        // Process every embedded state-variant mesh (1.3+). Each variant has
+        // its own geometry AND its own materials list — both contribute to
+        // a distinct (blockType, stateName) cache entry.
+        int variantCount = 0;
+        if (sbo.hasStates() && externalCache != null) {
+            for (Map.Entry<String, OMOReader.ReadResult> entry : sbo.stateOmoData().entrySet()) {
+                String stateName = entry.getKey();
+                OMOReader.ReadResult variant = entry.getValue();
+                if (variant == null || variant.meshData() == null) continue;
+                BlockStamp variantStamp = processOne(blockType, stateName, variant.meshData(), uvProvider, layerProvider);
+                if (variantStamp == null) continue;
+                externalCache.put(blockType, stateName, variantStamp);
+                variantCount++;
+            }
+        }
+
+        int totalVerts = 0;
+        for (FaceStamp face : defaultStamp.faces()) totalVerts += face.vertexCount();
+        logger.info("Processed SBO stamp for {}: {} default-state vertices across 6 faces, {} state variants",
+                blockType.getName(), totalVerts, variantCount);
+
+        return true;
+    }
+
+    /** Builds one BlockStamp from a ParsedMeshData. {@code stateName} may be
+     *  {@code null} for the default (no-state) mesh. Returns null if no geometry. */
+    private BlockStamp processOne(IBlockType blockType, String stateName, ParsedMeshData meshData,
+                                   ITextureCoordProvider uvProvider, ILayerIndexProvider layerProvider) {
+        if (meshData == null || !meshData.hasGeometry()) return null;
+
         SBONormalComputer.ProcessedMesh processed = SBONormalComputer.compute(
                 meshData.vertices(),
                 meshData.texCoords(),
                 meshData.indices()
         );
 
-        // Remap face IDs from GMR to MMS convention
         int[] remappedFaceIds = null;
         if (meshData.triangleToFaceId() != null) {
             int[] originalFaceIds = meshData.triangleToFaceId();
@@ -107,31 +142,14 @@ public class SBOMeshProcessor {
             }
         }
 
-        // Build per-face atlas-remapped stamps
-        BlockStamp stamp = buildBlockStamp(blockType, processed, remappedFaceIds, uvProvider, layerProvider);
-        stampCache.put(blockType.getId(), stamp);
-        processedTypes.add(blockType.getId());
-
-        // Also store in external cache if provided
-        if (externalCache != null) {
-            externalCache.put(blockType, stamp);
-        }
-
-        // Log mesh info
-        int totalVerts = 0;
-        for (FaceStamp face : stamp.faces()) {
-            totalVerts += face.vertexCount();
-        }
-        logger.info("Processed SBO stamp for {}: {} total vertices across {} faces, {} triangles",
-                blockType.getName(), totalVerts, 6, processed.triangleCount());
-
-        return true;
+        return buildBlockStamp(blockType, stateName, processed, remappedFaceIds, uvProvider, layerProvider);
     }
 
     /**
      * Build a BlockStamp by bucketing triangles per face and remapping UVs to atlas space.
      */
-    private BlockStamp buildBlockStamp(IBlockType blockType, SBONormalComputer.ProcessedMesh mesh,
+    private BlockStamp buildBlockStamp(IBlockType blockType, String stateName,
+                                        SBONormalComputer.ProcessedMesh mesh,
                                         int[] faceIds, ITextureCoordProvider uvProvider,
                                         ILayerIndexProvider layerProvider) {
         float[] verts = mesh.vertices();
@@ -161,7 +179,9 @@ public class SBOMeshProcessor {
             faceUVs[f] = new float[vertCount * 2];
             faceLayers[f] = new float[vertCount];
             // Every vertex of a face shares the same texture-array layer.
-            float layer = layerProvider.getBlockFaceLayer(blockType, f);
+            // State-aware lookup resolves to the variant's texture set when
+            // {@code stateName} is non-null; falls back to base layer otherwise.
+            float layer = layerProvider.getBlockFaceLayer(blockType, stateName, f);
             java.util.Arrays.fill(faceLayers[f], layer);
         }
 

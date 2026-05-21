@@ -840,7 +840,8 @@ public class InputHandler {
                                 Game.getInstance().openWorkbenchScreen();
                             } else if (targetedBlockType == BlockType.FURNACE) {
                                 // Interacted with a Furnace
-                                Game.getInstance().openFurnaceScreen();
+                                Game.getInstance().openFurnaceScreen(
+                                        new com.stonebreak.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
                             } else {
                                 // Not a workbench, proceed with normal block placement
                                 player.placeBlock();

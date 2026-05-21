@@ -134,6 +134,10 @@ public class BlockBreaker {
         // because the host also issues a giveItemTo when the client walks
         // through the host's drop.
         if (!com.stonebreak.network.MultiplayerSession.isClient()) {
+            if (blockType == BlockType.FURNACE) {
+                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = Game.getInstance().getFurnaceRegistry();
+                if (fr != null) fr.onBlockBroken(world, pos.x, pos.y, pos.z);
+            }
             ItemType toolItem = getHeldToolType();
             DropUtil.handleBlockBroken(world, dropPosition, blockType, toolItem, snowLayers);
         }

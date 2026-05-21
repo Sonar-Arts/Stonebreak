@@ -283,7 +283,7 @@ public class FurnaceInputManager {
                 return false;
             }
             // Add as new fuel — do NOT pre-credit burnTimeRemaining here.
-            // Fuel is consumed one unit at a time by FurnaceController.tickSmelting,
+            // Fuel is consumed one unit at a time by FurnaceState.tick (run by the registry),
             // so removing the stack mid-burn only refunds un-started items.
             controller.setFuelSlot(dragState.draggedItemStack.copy());
             dragState.draggedItemStack = null;

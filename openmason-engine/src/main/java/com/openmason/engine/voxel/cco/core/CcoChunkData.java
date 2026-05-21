@@ -61,4 +61,19 @@ public interface CcoChunkData {
     default int getChunkZ() {
         return getMetadata().getChunkZ();
     }
+
+    /**
+     * Get the renderable state-variant name at chunk-local coordinates, or
+     * {@code null} when the block carries no non-default state. Examples:
+     * {@code "Lit"} for a smelting furnace, {@code null} for an unlit one.
+     *
+     * <p>Implementations may need to project a richer per-block payload (e.g.
+     * inventory contents) down to just the render-relevant state name —
+     * callers in the mesh pipeline only need the variant to select.
+     *
+     * <p>Default returns {@code null} so existing data sources keep working.
+     */
+    default String getBlockState(int x, int y, int z) {
+        return null;
+    }
 }

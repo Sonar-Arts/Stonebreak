@@ -108,7 +108,7 @@ public class SBOStampEmitter {
                           int lx, int ly, int lz,
                           float worldX, float worldY, float worldZ,
                           CcoChunkData chunkData) {
-        emitBlock(builder, blockType, lx, ly, lz, worldX, worldY, worldZ, chunkData, 1.0f);
+        emitBlock(builder, blockType, lx, ly, lz, worldX, worldY, worldZ, chunkData, 1.0f, null);
     }
 
     /**
@@ -133,8 +133,20 @@ public class SBOStampEmitter {
                           int lx, int ly, int lz,
                           float worldX, float worldY, float worldZ,
                           CcoChunkData chunkData, float blockHeight) {
+        emitBlock(builder, blockType, lx, ly, lz, worldX, worldY, worldZ, chunkData, blockHeight, null);
+    }
 
-        BlockStamp stamp = cache.get(blockType);
+    /**
+     * State-aware emit. {@code stateName} selects which embedded
+     * {@code states/<name>/model.omo} mesh variant to draw; {@code null}
+     * falls back to the SBO's default mesh.
+     */
+    public void emitBlock(MmsMeshBuilder builder, IBlockType blockType,
+                          int lx, int ly, int lz,
+                          float worldX, float worldY, float worldZ,
+                          CcoChunkData chunkData, float blockHeight, String stateName) {
+
+        BlockStamp stamp = cache.get(blockType, stateName);
         if (stamp == null) return;
 
         boolean translucent = translucencyPolicy.test(blockType);

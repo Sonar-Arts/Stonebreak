@@ -113,6 +113,10 @@ public class BlockPlacer {
             if (selectedBlockType == BlockType.SNOW) {
                 world.getSnowLayerManager().setSnowLayers(placePos.x, placePos.y, placePos.z, 1);
             }
+            if (selectedBlockType == BlockType.FURNACE) {
+                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = com.stonebreak.core.Game.getInstance().getFurnaceRegistry();
+                if (fr != null) fr.onBlockPlaced(world, placePos.x, placePos.y, placePos.z, selectedBlockType);
+            }
         }
     }
 
