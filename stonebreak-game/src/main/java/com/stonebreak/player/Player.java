@@ -76,6 +76,9 @@ public class Player {
     // RPG
     private final CharacterStats characterStats;
 
+    // Fishing
+    private com.stonebreak.mobs.entities.FishingBobber activeBobber = null;
+
     public Player(World world) {
         IBlockPlacementService blockPlacementService = new BlockPlacementValidator(world);
         this.state = new PhysicsState();
@@ -196,6 +199,10 @@ public class Player {
     public Camera getCamera() { return camera; }
     public Inventory getInventory() { return inventory; }
     public Matrix4f getViewMatrix() { return camera.getViewMatrix(); }
+
+    // Fishing
+    public com.stonebreak.mobs.entities.FishingBobber getActiveBobber() { return activeBobber; }
+    public void setActiveBobber(com.stonebreak.mobs.entities.FishingBobber b) { activeBobber = b; }
 
     // RPG
     public CharacterStats getCharacterStats() { return characterStats; }

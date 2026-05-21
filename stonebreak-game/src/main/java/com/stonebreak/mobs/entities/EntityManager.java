@@ -103,6 +103,10 @@ public class EntityManager {
                 // FireBolt manages its own movement in update() — skip physics
                 if (entity.getType() == EntityType.FIRE_BOLT) {
                     // self-managed projectile, no external physics
+                } else if (entity.getType() == EntityType.BOBBER) {
+                    if (!((FishingBobber) entity).isSettled()) {
+                        collision.applyEntityPhysics(entity, deltaTime);
+                    }
                 } else if (entity instanceof LivingEntity livingEntity) {
                     collision.applyLivingEntityPhysics(livingEntity, deltaTime);
                 } else {
@@ -232,6 +236,17 @@ public class EntityManager {
             entitiesToAdd.add(bolt);
         }
         return bolt;
+    }
+
+    /**
+     * Spawns a fishing bobber launched in the given direction.
+     */
+    public FishingBobber spawnBobber(Vector3f position, Vector3f direction) {
+        FishingBobber bobber = new FishingBobber(world, position, direction);
+        synchronized (entitiesToAdd) {
+            entitiesToAdd.add(bobber);
+        }
+        return bobber;
     }
     
     /**

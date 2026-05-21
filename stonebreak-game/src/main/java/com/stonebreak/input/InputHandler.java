@@ -830,6 +830,27 @@ public class InputHandler {
                             return;
                         }
 
+                        // Fishing rod + right-click → cast or recall bobber
+                        com.stonebreak.items.ItemStack rodCheck = player.getInventory().getSelectedHotbarSlot();
+                        if (!rodCheck.isEmpty() && rodCheck.getItem() == com.stonebreak.items.ItemType.FISHING_ROD) {
+                            com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+                            if (em != null) {
+                                com.stonebreak.mobs.entities.FishingBobber existing = player.getActiveBobber();
+                                if (existing != null && existing.isAlive()) {
+                                    existing.setAlive(false);
+                                    player.setActiveBobber(null);
+                                    rodCheck.setState(com.stonebreak.items.ItemType.FISHING_ROD_STATE_REELED_IN);
+                                } else {
+                                    org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
+                                    org.joml.Vector3f pos = new org.joml.Vector3f(player.getCamera().getPosition());
+                                    com.stonebreak.mobs.entities.FishingBobber bobber = em.spawnBobber(pos, dir);
+                                    player.setActiveBobber(bobber);
+                                    rodCheck.setState(com.stonebreak.items.ItemType.FISHING_ROD_STATE_CAST);
+                                }
+                            }
+                            return;
+                        }
+
                         // Food consumption takes priority over block placement
                         com.stonebreak.items.ItemStack heldItem = player.getInventory().getSelectedHotbarSlot();
                         if (!heldItem.isEmpty() && heldItem.isFood()) {

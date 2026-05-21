@@ -26,6 +26,9 @@ public enum EntityType {
     // Projectile entities
     FIRE_BOLT("Fire Bolt", 1.0f, 0.0f, 0.3f, 0.3f, 0.3f, 0.0f, false, null),
 
+    // Fishing bobber
+    BOBBER("Bobber", 1.0f, 0.0f, 0.2f, 0.2f, 0.2f, 0.0f, false, "stonebreak:Bobber"),
+
     // Future entities can be added here
     ;
 

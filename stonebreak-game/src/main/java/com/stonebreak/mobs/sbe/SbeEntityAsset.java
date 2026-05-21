@@ -45,8 +45,8 @@ public record SbeEntityAsset(
         return variants.get(DEFAULT_VARIANT);
     }
 
-    /** Animation clip for an SBE state name, or {@code null} if absent. */
+    /** Animation clip for an SBE state name, or {@code null} if absent or {@code stateName} is null. */
     public ParsedAnimClip clipFor(String stateName) {
-        return clips.get(stateName);
+        return stateName != null ? clips.get(stateName) : null;
     }
 }

@@ -1,6 +1,7 @@
 package com.openmason.main.systems.services.commands;
 
 import com.openmason.engine.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
 import org.joml.Vector3f;
 
 import java.util.Map;
@@ -42,6 +43,12 @@ public final class VertexMoveCommand implements ModelCommand {
         for (VertexDelta delta : deltas.values()) {
             gmr.updateVertexPosition(delta.index(), new Vector3f(delta.newPos()));
         }
+        ModelPartManager pm = gmr.getPartManager();
+        if (pm != null) {
+            for (VertexDelta delta : deltas.values()) {
+                pm.syncPartVertexFromWorldPos(delta.index(), delta.newPos());
+            }
+        }
         synchronizer.synchronize();
     }
 
@@ -49,6 +56,12 @@ public final class VertexMoveCommand implements ModelCommand {
     public void undo() {
         for (VertexDelta delta : deltas.values()) {
             gmr.updateVertexPosition(delta.index(), new Vector3f(delta.oldPos()));
+        }
+        ModelPartManager pm = gmr.getPartManager();
+        if (pm != null) {
+            for (VertexDelta delta : deltas.values()) {
+                pm.syncPartVertexFromWorldPos(delta.index(), delta.oldPos());
+            }
         }
         synchronizer.synchronize();
     }

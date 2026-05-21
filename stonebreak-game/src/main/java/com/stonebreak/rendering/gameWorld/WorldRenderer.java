@@ -50,6 +50,7 @@ public class WorldRenderer {
     private final CloudRenderer cloudRenderer;
     private final FastLodRenderPass lodRenderPass;
     private final ChunkFrustumCuller frustumCuller = new ChunkFrustumCuller();
+    private final com.stonebreak.rendering.models.entities.FishingLineRenderer fishingLineRenderer;
 
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
@@ -72,6 +73,7 @@ public class WorldRenderer {
         this.skyRenderer = new SkyRenderer();
         this.cloudRenderer = new CloudRenderer();
         this.lodRenderPass = new FastLodRenderPass();
+        this.fishingLineRenderer = new com.stonebreak.rendering.models.entities.FishingLineRenderer(shaderProgram, projectionMatrix);
     }
     
     /**
@@ -648,6 +650,22 @@ public class WorldRenderer {
                     entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix, world, cameraPos);
                 }
             }
+        }
+
+        // Draw fishing line from rod tip to active bobber
+        com.stonebreak.mobs.entities.FishingBobber bobber = player.getActiveBobber();
+        if (bobber != null && bobber.isAlive()) {
+            org.joml.Vector3f camPos = player.getCamera().getPosition();
+            org.joml.Vector3f camRight = player.getCamera().getRight();
+            org.joml.Vector3f camUp = player.getCamera().getUp();
+            org.joml.Vector3f camFront = player.getCamera().getFront();
+            org.joml.Vector3f rodTip = new org.joml.Vector3f(camPos)
+                    .add(new org.joml.Vector3f(camRight).mul(0.45f))
+                    .add(new org.joml.Vector3f(camUp).mul(-0.05f))
+                    .add(new org.joml.Vector3f(camFront).mul(0.5f));
+            org.joml.Vector3f bobberTop = new org.joml.Vector3f(bobber.getPosition())
+                    .add(0, 0.1f + bobber.getBobOffset(), 0);
+            fishingLineRenderer.render(rodTip, bobberTop, player.getViewMatrix());
         }
     }
     

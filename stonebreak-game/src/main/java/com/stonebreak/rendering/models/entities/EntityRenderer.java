@@ -278,6 +278,11 @@ public class EntityRenderer {
             return;
         }
 
+        if (entityType == EntityType.BOBBER) {
+            renderBobber(entity, viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
+
         renderSimpleEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
     }
 
@@ -414,6 +419,48 @@ public class EntityRenderer {
 
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
         shader.unbind();
+    }
+
+    // Cached bobber SBE asset — loaded once on first render.
+    private com.stonebreak.mobs.sbe.SbeEntityAsset bobberAsset;
+    private boolean bobberAssetLoadAttempted = false;
+
+    private void renderBobber(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                              com.stonebreak.world.World world, Vector3f cameraPos) {
+        if (!bobberAssetLoadAttempted) {
+            bobberAssetLoadAttempted = true;
+            try {
+                bobberAsset = com.stonebreak.mobs.sbe.SbeEntityLoader.load("/sbe/Mobs/SB_Bobber.sbe");
+            } catch (Exception e) {
+                System.err.println("[EntityRenderer] Failed to load bobber SBE: " + e.getMessage());
+            }
+        }
+
+        // Apply the gentle bob offset as a render-time Y offset (does not affect physics).
+        float bobY = (entity instanceof com.stonebreak.mobs.entities.FishingBobber fb)
+                ? fb.getBobOffset() : 0f;
+        Vector3f renderPos = new Vector3f(entity.getPosition()).add(0, bobY, 0);
+
+        if (bobberAsset != null) {
+            try {
+                sbeEntityRenderer.render(
+                        bobberAsset,
+                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        null,
+                        0.0f,
+                        renderPos,
+                        entity.getRotation().y,
+                        entity.getScale(),
+                        viewMatrix, projectionMatrix, world, cameraPos);
+            } catch (Exception e) {
+                System.err.println("[EntityRenderer] Bobber render failed: "
+                        + e.getClass().getSimpleName() + ": " + e.getMessage());
+                e.printStackTrace(System.err);
+                renderSimpleEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
+            }
+        } else {
+            renderSimpleEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
+        }
     }
 
     /**

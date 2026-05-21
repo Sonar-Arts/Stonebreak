@@ -30,6 +30,7 @@ public class TextureEditorWindow {
 
     private boolean iniFileSet = false;
     private boolean defaultLayoutBuilt = false;
+    private boolean wasVisible = false;
 
     // Maximize/restore state
     private boolean isMaximized = false;
@@ -57,20 +58,29 @@ public class TextureEditorWindow {
      */
     public void render() {
         if (!visible.get()) {
+            wasVisible = false;
             return;
+        }
+
+        if (!wasVisible) {
+            ImGui.setNextWindowFocus();
+            wasVisible = true;
         }
 
         // Set initial size and position (first time only)
         if (!iniFileSet) {
             ImGui.setNextWindowSize(1200, 800);
-            ImGui.setNextWindowPos(100, 100);
+            imgui.ImGuiViewport vp = ImGui.getMainViewport();
+            ImGui.setNextWindowPos(
+                    vp.getPosX() + vp.getSizeX() / 2f - 600f,
+                    vp.getPosY() + vp.getSizeY() / 2f - 400f
+            );
             iniFileSet = true;
         }
 
         // Minimum size ensures all UI elements remain visible
         ImGui.setNextWindowSizeConstraints(600, 400, Float.MAX_VALUE, Float.MAX_VALUE);
-        int windowFlags = ImGuiWindowFlags.NoBringToFrontOnFocus |
-                          ImGuiWindowFlags.NoDocking |
+        int windowFlags = ImGuiWindowFlags.NoDocking |
                           ImGuiWindowFlags.NoTitleBar |
                           ImGuiWindowFlags.NoCollapse |
                           ImGuiWindowFlags.NoScrollbar;
