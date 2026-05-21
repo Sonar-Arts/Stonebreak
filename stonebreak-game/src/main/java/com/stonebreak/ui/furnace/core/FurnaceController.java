@@ -29,7 +29,8 @@ public class FurnaceController {
     private ItemStack fuel       = new ItemStack(0, 0);  // fuel source
     private ItemStack output     = new ItemStack(0, 0);  // smelted result
 
-    private int burnTimeRemaining = 0;   // ticks of fuel left
+    private int burnTimeRemaining = 0;   // ticks of fuel left in the currently-lit unit
+    private int currentBurnUnitTotal = 0; // total ticks the currently-lit fuel unit started with
     private int cookProgress      = 0;   // ticks toward completing current smelt
     private boolean cooking       = false;
 
@@ -92,31 +93,39 @@ public class FurnaceController {
      * Advances smelting progress by one game tick.
      */
     private void tickSmelting() {
-        // Can only cook if: we have a valid ingredient, fuel > 0,
-        // a matching smelting recipe, and output slot can accept it
-        boolean canCook = (!ingredient.isEmpty())
-                       && (!fuel.isEmpty())
-                       && (burnTimeRemaining > 0)
-                       && (smeltingManager.getRecipe(ingredient) != null)
-                       && canAcceptOutput();
+        boolean recipeReady = (!ingredient.isEmpty())
+                           && (smeltingManager.getRecipe(ingredient) != null)
+                           && canAcceptOutput();
 
-        if (canCook) {
-            cooking = true;
+        // If nothing is currently lit, try to consume one fuel unit to start a new burn.
+        // We only ignite when we'd actually use the heat — no ingredient means no light.
+        if (burnTimeRemaining <= 0 && recipeReady && !fuel.isEmpty()) {
+            int perUnit = smeltingManager.getBurnTimePerUnit(fuel.getItem());
+            if (perUnit > 0) {
+                fuel.decrementCount(1);
+                if (fuel.getCount() <= 0) fuel.clear();
+                burnTimeRemaining = perUnit;
+                currentBurnUnitTotal = perUnit;
+            }
+        }
+
+        // Advance smelt progress while we have heat and a valid recipe.
+        cooking = recipeReady && burnTimeRemaining > 0;
+        if (cooking) {
             cookProgress++;
-
             if (cookProgress >= SmeltingManager.TICKS_PER_SMELT) {
                 cookProgress = 0;
                 completeSmelt();
             }
-        } else {
-            cooking = false;
+        } else if (!recipeReady) {
+            cookProgress = 0;
         }
 
-        // Tick down fuel
-        if (cooking && burnTimeRemaining > 0) {
+        // Already-lit fuel always burns down, even if the ingredient was yanked.
+        if (burnTimeRemaining > 0) {
             burnTimeRemaining--;
             if (burnTimeRemaining <= 0) {
-                fuel.clear();
+                currentBurnUnitTotal = 0;
             }
         }
     }
@@ -249,13 +258,14 @@ public class FurnaceController {
         return (float) cookProgress / SmeltingManager.TICKS_PER_SMELT;
     }
 
-    /** Returns 0..1 fuel ratio for the fuel bar. */
+    /** Returns 0..1 ratio of how much of the currently-lit fuel unit is left. */
     public float getFuelRatio() {
-        if (fuel.isEmpty()) return 0f;
-        int maxBurn = smeltingManager.getBurnTimePerUnit(fuel.getItem());
-        if (maxBurn <= 0) return 0f;
-        return Math.min(1f, (float) burnTimeRemaining / (maxBurn * Math.max(fuel.getCount(), 1)));
+        if (burnTimeRemaining <= 0 || currentBurnUnitTotal <= 0) return 0f;
+        return Math.min(1f, (float) burnTimeRemaining / currentBurnUnitTotal);
     }
+
+    /** Total ticks the currently-lit fuel unit started with (0 if nothing lit). */
+    public int getCurrentBurnUnitTotal() { return currentBurnUnitTotal; }
 
     /** Clear all furnace slots. */
     private void clearSlots() {
@@ -263,6 +273,7 @@ public class FurnaceController {
         fuel.clear();
         output.clear();
         burnTimeRemaining = 0;
+        currentBurnUnitTotal = 0;
         cookProgress = 0;
         cooking = false;
     }

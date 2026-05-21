@@ -225,27 +225,14 @@ public class FurnaceInputManager {
 
     private FurnaceSlot hitTestFurnaceSlots(float mouseX, float mouseY,
                                             InventoryLayoutCalculator.InventoryLayout layout) {
-        int ss   = InventoryLayoutCalculator.getSlotSize();
-        int pad  = InventoryLayoutCalculator.getSlotPadding();
-        int ppad = InventoryLayoutCalculator.getPanelPadding();
-        int th   = InventoryLayoutCalculator.getTitleHeight();
-        int sp   = InventoryLayoutCalculator.getSectionSpacing();
+        FurnaceLayout.Slots s = FurnaceLayout.compute(layout);
 
-        float titleY = layout.panelStartY + ppad + th + sp;
-        int furnaceStartX = layout.panelStartX + ppad + (layout.inventoryPanelWidth - ppad * 2 - (ss * 2 + pad)) / 2;
-        int furnaceY = (int) titleY + (int)(th / 2f);
-
-        // Ingredient
-        if (isOverSlot(mouseX, mouseY, furnaceStartX, furnaceY))
-            return new FurnaceSlot(FurnaceController.SLOT_INGREDIENT, furnaceStartX, furnaceY);
-        // Fuel
-        int fuelY = furnaceY + ss + pad;
-        if (isOverSlot(mouseX, mouseY, furnaceStartX, fuelY))
-            return new FurnaceSlot(FurnaceController.SLOT_FUEL, furnaceStartX, fuelY);
-        // Output
-        int outputX = furnaceStartX + ss + pad;
-        if (isOverSlot(mouseX, mouseY, outputX, furnaceY))
-            return new FurnaceSlot(FurnaceController.SLOT_OUTPUT, outputX, furnaceY);
+        if (isOverSlot(mouseX, mouseY, s.ingredientX, s.ingredientY))
+            return new FurnaceSlot(FurnaceController.SLOT_INGREDIENT, s.ingredientX, s.ingredientY);
+        if (isOverSlot(mouseX, mouseY, s.fuelX, s.fuelY))
+            return new FurnaceSlot(FurnaceController.SLOT_FUEL, s.fuelX, s.fuelY);
+        if (isOverSlot(mouseX, mouseY, s.outputX, s.outputY))
+            return new FurnaceSlot(FurnaceController.SLOT_OUTPUT, s.outputX, s.outputY);
 
         return null;
     }
@@ -295,10 +282,10 @@ public class FurnaceInputManager {
                 }
                 return false;
             }
-            // Add as new fuel
-            int totalBurn = burn * dragState.draggedItemStack.getCount();
+            // Add as new fuel — do NOT pre-credit burnTimeRemaining here.
+            // Fuel is consumed one unit at a time by FurnaceController.tickSmelting,
+            // so removing the stack mid-burn only refunds un-started items.
             controller.setFuelSlot(dragState.draggedItemStack.copy());
-            controller.setBurnTimeRemaining(totalBurn);
             dragState.draggedItemStack = null;
             return true;
         }
