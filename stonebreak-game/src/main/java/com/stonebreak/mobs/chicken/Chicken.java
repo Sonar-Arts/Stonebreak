@@ -5,7 +5,9 @@ import com.stonebreak.world.World;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.util.DropUtil;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.AnimationController;
 
@@ -83,10 +85,17 @@ public class Chicken extends LivingEntity {
         if (chickenAI != null) {
             chickenAI.cleanup();
         }
+        for (ItemStack drop : getDrops()) {
+            DropUtil.createItemDrop(world, getPosition(), drop);
+        }
     }
 
     @Override
     public ItemStack[] getDrops() {
+        if (Math.random() < 0.60) {
+            int count = 1 + (int)(Math.random() * 2);
+            return new ItemStack[] { new ItemStack(ItemType.FEATHER, count) };
+        }
         return new ItemStack[0];
     }
 
