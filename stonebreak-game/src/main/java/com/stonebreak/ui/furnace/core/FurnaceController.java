@@ -3,7 +3,6 @@ package com.stonebreak.ui.furnace.core;
 import com.stonebreak.blocks.furnace.FurnaceState;
 import com.stonebreak.blocks.furnace.FurnaceStateRegistry;
 import com.stonebreak.core.Game;
-import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.crafting.SmeltingManager;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
@@ -78,35 +77,7 @@ public class FurnaceController {
 
     public void handleInput(int screenWidth, int screenHeight) {
         if (!visible) return;
-        // Diff the furnace contents around input handling so any slot mutation
-        // (setter or in-place incrementCount/decrementCount in the input manager)
-        // is replicated in multiplayer. Smelting-driven changes are handled by
-        // FurnaceStateRegistry; they don't happen inside handleMouseInput.
-        String before = (state != null && MultiplayerSession.isOnline()) ? state.toStateString() : null;
         inputManager.handleMouseInput(screenWidth, screenHeight);
-        if (before != null && state != null && !before.equals(state.toStateString())) {
-            syncFurnaceState();
-        }
-    }
-
-    /**
-     * Replicate the furnace's full contents after a local UI edit. Client: send
-     * each slot to the host (which validates + echoes authoritative state).
-     * Host: broadcast authoritative state to all clients. Offline: no-op.
-     */
-    private void syncFurnaceState() {
-        if (state == null) return;
-        if (MultiplayerSession.isClient()) {
-            MultiplayerSession.sendFurnaceSlot(state.getPos(), SLOT_INGREDIENT,
-                    FurnaceState.encodeStackString(state.getIngredient()));
-            MultiplayerSession.sendFurnaceSlot(state.getPos(), SLOT_FUEL,
-                    FurnaceState.encodeStackString(state.getFuel()));
-            MultiplayerSession.sendFurnaceSlot(state.getPos(), SLOT_OUTPUT,
-                    FurnaceState.encodeStackString(state.getOutput()));
-        } else if (MultiplayerSession.isHosting()) {
-            FurnaceStateRegistry registry = game.getFurnaceRegistry();
-            if (registry != null) registry.broadcastState(Game.getWorld(), state.getPos());
-        }
     }
 
     public void handleCloseRequest() {

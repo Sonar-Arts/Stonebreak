@@ -244,27 +244,6 @@ public class Cow extends LivingEntity {
     public AnimationController getAnimationController() {
         return animationController;
     }
-
-    // ── Network replication of behaviour state ──────────────────────────
-
-    @Override
-    public byte getNetworkBehaviorState() {
-        return cowAI != null ? (byte) cowAI.getCurrentState().ordinal() : -1;
-    }
-
-    @Override
-    public void applyNetworkBehaviorState(byte state) {
-        if (cowAI == null || state < 0) return;
-        CowAI.CowBehaviorState[] values = CowAI.CowBehaviorState.values();
-        if (state < values.length) cowAI.setState(values[state]);
-    }
-
-    @Override
-    public void updateShadowAnimation(float deltaTime) {
-        // Shadow cows skip update(); keep the clip clock running so the renderer
-        // (which samples by total animation time) animates them.
-        animationController.updateAnimations(deltaTime);
-    }
     
     /**
      * Gets the cow's texture variant.

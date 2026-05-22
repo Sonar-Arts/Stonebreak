@@ -89,14 +89,6 @@ public final class BlockSynchronizer implements Synchronizer {
                             + c.y() + "," + c.z() + "): host chunk not loaded.");
                     return;
                 }
-                // A client placed a furnace: create the authoritative furnace
-                // state host-side (the place arrives via setBlockAt, which
-                // bypasses BlockPlacer's onBlockPlaced hook) and replicate it.
-                if (incoming == BlockType.FURNACE && prev != BlockType.FURNACE) {
-                    com.stonebreak.blocks.furnace.FurnaceStateRegistry fr =
-                            Game.getInstance() != null ? Game.getInstance().getFurnaceRegistry() : null;
-                    if (fr != null) fr.onBlockPlaced(Game.getWorld(), c.x(), c.y(), c.z(), BlockType.FURNACE);
-                }
                 if (prev != null && prev != BlockType.AIR && incoming == BlockType.AIR) {
                     org.joml.Vector3f dropPos = new org.joml.Vector3f(
                             c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f);
@@ -107,14 +99,6 @@ public final class BlockSynchronizer implements Synchronizer {
                     java.util.Set<com.stonebreak.mobs.entities.Entity> before = em != null
                             ? new java.util.HashSet<>(em.getAllEntitiesIncludingPending())
                             : java.util.Collections.emptySet();
-                    // A client broke a furnace: spill its contents host-side
-                    // (registry hook is bypassed for inbound edits) before the
-                    // entity diff so the spilled drops get replicated too.
-                    if (prev == BlockType.FURNACE) {
-                        com.stonebreak.blocks.furnace.FurnaceStateRegistry fr =
-                                Game.getInstance() != null ? Game.getInstance().getFurnaceRegistry() : null;
-                        if (fr != null) fr.onBlockBroken(Game.getWorld(), c.x(), c.y(), c.z());
-                    }
                     com.stonebreak.util.DropUtil.handleBlockBroken(Game.getWorld(), dropPos, prev);
                     // Force-broadcast the spawn for each new drop. Required
                     // because we're inside applyInbound — SyncService.notifyLocal

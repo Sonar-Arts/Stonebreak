@@ -49,22 +49,11 @@ public final class NetworkChunkCodec {
 
     private NetworkChunkCodec() {}
 
-    /** Hard cap on block-state entries in one chunk payload (defensive). */
-    private static final int MAX_BLOCK_STATES = 65536;
-
     public static byte[] encode(Chunk chunk) {
         ByteArrayOutputStream buf = new ByteArrayOutputStream(4 * 1024);
         try (DataOutputStream out = new DataOutputStream(buf)) {
             for (int sy = 0; sy < SECTIONS_PER_CHUNK; sy++) {
                 encodeSection(chunk, sy, out);
-            }
-            // Per-block state map (furnace contents, etc.) appended after the
-            // block sections. Keys are "lx,y,lz" (chunk-local), values opaque.
-            Map<String, String> states = chunk.getBlockStates();
-            out.writeInt(states.size());
-            for (Map.Entry<String, String> e : states.entrySet()) {
-                out.writeUTF(e.getKey());
-                out.writeUTF(e.getValue() == null ? "" : e.getValue());
             }
         } catch (IOException e) {
             throw new IllegalStateException("Chunk encode failed", e);
@@ -80,34 +69,8 @@ public final class NetworkChunkCodec {
             for (int sy = 0; sy < SECTIONS_PER_CHUNK; sy++) {
                 decodeSection(chunk, sy, in);
             }
-            // Block-state map (optional — tolerate older block-only payloads).
-            if (in.available() > 0) {
-                int n = in.readInt();
-                if (n < 0 || n > MAX_BLOCK_STATES) {
-                    throw new IOException("Invalid block-state count: " + n);
-                }
-                for (int i = 0; i < n; i++) {
-                    String key = in.readUTF();
-                    String value = in.readUTF();
-                    applyBlockState(chunk, key, value);
-                }
-            }
         } catch (IOException e) {
             throw new IllegalArgumentException("Malformed chunk payload", e);
-        }
-    }
-
-    private static void applyBlockState(Chunk chunk, String key, String value) {
-        // Key layout matches Chunk.stateKey(): "localX,y,localZ".
-        String[] parts = key.split(",");
-        if (parts.length != 3) return;
-        try {
-            int lx = Integer.parseInt(parts[0]);
-            int y  = Integer.parseInt(parts[1]);
-            int lz = Integer.parseInt(parts[2]);
-            chunk.setBlockState(lx, y, lz, value);
-        } catch (NumberFormatException ignored) {
-            // Skip a malformed key rather than failing the whole chunk.
         }
     }
 

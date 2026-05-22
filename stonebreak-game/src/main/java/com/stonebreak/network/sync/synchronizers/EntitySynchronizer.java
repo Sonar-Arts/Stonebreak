@@ -50,8 +50,6 @@ public final class EntitySynchronizer implements Synchronizer {
     private final Map<Integer, float[]> lastBroadcast = new ConcurrentHashMap<>();
     /** Host: ticks since the last absolute teleport for each entity. */
     private final Map<Integer, Integer> ticksSinceResync = new ConcurrentHashMap<>();
-    /** Host: last broadcast {@code [health, behaviorState]} per entity (change detection). */
-    private final Map<Integer, float[]> lastMeta = new ConcurrentHashMap<>();
     /** Client: spawn packets that arrived before the world was ready. */
     private final Deque<Packet.EntitySpawnS2C> pendingSpawns = new ArrayDeque<>();
 
@@ -61,7 +59,6 @@ public final class EntitySynchronizer implements Synchronizer {
         byNetworkId.clear();
         lastBroadcast.clear();
         ticksSinceResync.clear();
-        lastMeta.clear();
 
         // Host: snapshot existing entities so they're tracked + can be replicated.
         if (ctx.mode() == SyncMode.HOST && Game.getEntityManager() != null) {
@@ -82,7 +79,6 @@ public final class EntitySynchronizer implements Synchronizer {
         byNetworkId.clear();
         lastBroadcast.clear();
         ticksSinceResync.clear();
-        lastMeta.clear();
         pendingSpawns.clear();
     }
 
@@ -92,10 +88,7 @@ public final class EntitySynchronizer implements Synchronizer {
                 || packet instanceof Packet.EntityDespawnS2C
                 || packet instanceof Packet.EntityStateS2C
                 || packet instanceof Packet.EntityMoveS2C
-                || packet instanceof Packet.EntityTeleportS2C
-                || packet instanceof Packet.EntityMetaS2C
-                || packet instanceof Packet.PickupRequestC2S
-                || packet instanceof Packet.PickupRejectS2C;
+                || packet instanceof Packet.EntityTeleportS2C;
     }
 
     @Override
@@ -106,9 +99,6 @@ public final class EntitySynchronizer implements Synchronizer {
             case Packet.EntityStateS2C s -> applyAbsolute(s.networkId(), s.x(), s.y(), s.z(), s.yaw());
             case Packet.EntityTeleportS2C t -> applyAbsolute(t.networkId(), t.x(), t.y(), t.z(), t.yaw());
             case Packet.EntityMoveS2C m -> applyDelta(m);
-            case Packet.EntityMetaS2C m -> applyMeta(m);
-            case Packet.PickupRequestC2S r -> handlePickupRequest(r.networkId(), originId, ctx);
-            case Packet.PickupRejectS2C r -> handlePickupReject(r.networkId());
             default -> {}
         }
     }
@@ -129,7 +119,6 @@ public final class EntitySynchronizer implements Synchronizer {
                 if (!isReplicable(e)) return;
                 registerHostEntity(e);
                 ctx.broadcast(spawnPacketFor(e));
-                ctx.broadcast(metaPacketFor(e));
             }
             case SyncEvent.EntityDespawned ed -> {
                 Entity e = ed.entity();
@@ -137,7 +126,6 @@ public final class EntitySynchronizer implements Synchronizer {
                 byNetworkId.remove(e.getNetworkId());
                 lastBroadcast.remove(e.getNetworkId());
                 ticksSinceResync.remove(e.getNetworkId());
-                lastMeta.remove(e.getNetworkId());
                 ctx.broadcast(new Packet.EntityDespawnS2C(e.getNetworkId()));
             }
             case SyncEvent.PeerJoined pj -> sendSnapshotTo(pj.playerId(), ctx);
@@ -157,9 +145,6 @@ public final class EntitySynchronizer implements Synchronizer {
         for (Entity e : byNetworkId.values()) {
             if (!e.isAlive()) continue;
             int id = e.getNetworkId();
-            // Replicate runtime state (health, behaviour/animation) regardless of
-            // movement — a standing cow can still change from idle to grazing.
-            maybeSendMeta(e, ctx);
             float[] last = lastBroadcast.get(id);
             Vector3f p = e.getPosition();
             float yaw = e.getRotation().y;
@@ -209,7 +194,6 @@ public final class EntitySynchronizer implements Synchronizer {
         if (ctx.mode() != SyncMode.HOST) return;
         for (Entity e : byNetworkId.values()) {
             ctx.sendTo(playerId, spawnPacketFor(e));
-            ctx.sendTo(playerId, metaPacketFor(e));
         }
     }
 
@@ -221,91 +205,6 @@ public final class EntitySynchronizer implements Synchronizer {
         Vector3f p = e.getPosition();
         lastBroadcast.put(e.getNetworkId(), new float[]{p.x, p.y, p.z, e.getRotation().y});
         ticksSinceResync.put(e.getNetworkId(), 0);
-        lastMeta.put(e.getNetworkId(), new float[]{e.getHealth(), e.getNetworkBehaviorState()});
-    }
-
-    private static Packet.EntityMetaS2C metaPacketFor(Entity e) {
-        return new Packet.EntityMetaS2C(e.getNetworkId(), e.getHealth(), e.getNetworkBehaviorState());
-    }
-
-    /** Host: broadcast an {@link Packet.EntityMetaS2C} if health/behaviour changed. */
-    private void maybeSendMeta(Entity e, SyncContext ctx) {
-        int id = e.getNetworkId();
-        float health = e.getHealth();
-        byte beh = e.getNetworkBehaviorState();
-        float[] last = lastMeta.get(id);
-        if (last != null && last[0] == health && (byte) last[1] == beh) return;
-        lastMeta.put(id, new float[]{health, beh});
-        ctx.broadcast(new Packet.EntityMetaS2C(id, health, beh));
-    }
-
-    /** Client: apply replicated runtime state onto the shadow entity. */
-    private void applyMeta(Packet.EntityMetaS2C m) {
-        Entity e = byNetworkId.get(m.networkId());
-        if (e == null) return;
-        e.setHealth(m.health());
-        e.applyNetworkBehaviorState(m.behaviorState());
-    }
-
-    // ─── Drop pickup arbitration ──────────────────────────────────────────────
-
-    /** Generous radius (squared) for accepting a client's predicted pickup. */
-    private static final float PICKUP_REACH_SQ = 2.5f * 2.5f;
-
-    /**
-     * Host: a client predicted picking up a drop. Grant it (give item + despawn)
-     * if the drop still exists and the requester is in range; otherwise reject so
-     * the client un-hides it. First valid claim wins (TCP-ordered, single-thread).
-     */
-    private void handlePickupRequest(int networkId, Integer originId, SyncContext ctx) {
-        if (ctx.mode() != SyncMode.HOST || originId == null) return;
-        Entity e = byNetworkId.get(networkId);
-        int itemId;
-        int count;
-        if (e == null || !e.isAlive()) {
-            ctx.sendTo(originId, new Packet.PickupRejectS2C(networkId));
-            return;
-        }
-        if (e instanceof com.stonebreak.mobs.entities.BlockDrop bd) {
-            itemId = bd.getBlockType().getId();
-            count = bd.getStackCount();
-        } else if (e instanceof com.stonebreak.mobs.entities.ItemDrop id) {
-            itemId = id.getItemStack().getItem().getId();
-            count = id.getStackCount();
-        } else {
-            ctx.sendTo(originId, new Packet.PickupRejectS2C(networkId));
-            return;
-        }
-        if (!pickupInReach(e, originId)) {
-            ctx.sendTo(originId, new Packet.PickupRejectS2C(networkId));
-            return;
-        }
-        // Grant: hand the item to the requester and kill the drop. EntityManager
-        // fires onEntityRemoved → EntityDespawnS2C broadcast to everyone (incl.
-        // the requester, who already hid it locally).
-        com.stonebreak.network.MultiplayerSession.giveItemTo(originId, itemId, count);
-        e.setAlive(false);
-    }
-
-    /** Client: the host denied our predicted pickup — restore the drop. */
-    private void handlePickupReject(int networkId) {
-        Entity e = byNetworkId.get(networkId);
-        if (e instanceof com.stonebreak.mobs.entities.BlockDrop bd) bd.cancelPredictedPickup();
-        else if (e instanceof com.stonebreak.mobs.entities.ItemDrop id) id.cancelPredictedPickup();
-    }
-
-    private static boolean pickupInReach(Entity drop, Integer originId) {
-        com.stonebreak.network.server.IntegratedServer srv =
-                com.stonebreak.network.MultiplayerSession.getServer();
-        if (srv == null) return false;
-        com.stonebreak.network.server.RemoteClient rc = srv.getClient(originId);
-        if (rc == null) return false;
-        if (rc.getLastStateNs() == 0L) return true; // no position yet — accept conservatively
-        Vector3f p = drop.getPosition();
-        float dx = p.x - rc.getX();
-        float dy = p.y - rc.getY();
-        float dz = p.z - rc.getZ();
-        return (dx * dx + dy * dy + dz * dz) <= PICKUP_REACH_SQ;
     }
 
     private static int parseInt(String s, int fallback) {

@@ -14,13 +14,11 @@ import com.stonebreak.network.sync.SyncContext;
 import com.stonebreak.network.sync.SyncEvent;
 import com.stonebreak.network.sync.SyncMode;
 import com.stonebreak.network.sync.SyncService;
-import com.stonebreak.network.sync.synchronizers.BlockStateSynchronizer;
 import com.stonebreak.network.sync.synchronizers.BlockSynchronizer;
 import com.stonebreak.network.sync.synchronizers.ChatSynchronizer;
 import com.stonebreak.network.sync.synchronizers.ChunkSynchronizer;
 import com.stonebreak.network.sync.synchronizers.EntitySynchronizer;
 import com.stonebreak.network.sync.synchronizers.PlayerStateSynchronizer;
-import com.stonebreak.util.BlockPos;
 import org.joml.Vector3f;
 
 import java.io.IOException;
@@ -78,7 +76,6 @@ public final class MultiplayerSession {
         // SyncEvent path is suppressed during inbound application).
         ChunkSynchronizer chunkSync = new ChunkSynchronizer();
         SYNC.register(new BlockSynchronizer(chunkSync));
-        SYNC.register(new BlockStateSynchronizer());
         SYNC.register(new PlayerStateSynchronizer());
         SYNC.register(new ChatSynchronizer());
         SYNC.register(new EntitySynchronizer());
@@ -159,24 +156,6 @@ public final class MultiplayerSession {
         if (mode != SyncMode.HOST || hostServer == null || count <= 0) return;
         RemoteClient rc = hostServer.getClient(playerId);
         if (rc != null) rc.send(new Packet.GiveItemS2C(itemId, count));
-    }
-
-    /**
-     * Client-side: tell the host this client set a furnace slot. No-op unless we
-     * are a client. The host validates and echoes authoritative state back.
-     */
-    public static void sendFurnaceSlot(BlockPos pos, int slot, String encodedStack) {
-        if (mode != SyncMode.CLIENT || clientConnection == null || pos == null) return;
-        clientConnection.send(new Packet.FurnaceSlotC2S(pos.x(), pos.y(), pos.z(), (byte) slot, encodedStack));
-    }
-
-    /**
-     * Client-side: request to pick up a predicted drop. No-op unless we are a
-     * client. The host arbitrates (grant via GiveItemS2C + despawn, or reject).
-     */
-    public static void requestPickup(int networkId) {
-        if (mode != SyncMode.CLIENT || clientConnection == null) return;
-        clientConnection.send(new Packet.PickupRequestC2S(networkId));
     }
 
     private static void attachEntityListener() {

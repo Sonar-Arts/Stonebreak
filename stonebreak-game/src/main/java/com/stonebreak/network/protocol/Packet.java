@@ -26,15 +26,10 @@ public sealed interface Packet
                 Packet.EntityDespawnS2C,
                 Packet.EntityStateS2C,
                 Packet.EntityMoveS2C,
-                Packet.EntityTeleportS2C,
-                Packet.EntityMetaS2C,
-                Packet.BlockStateS2C,
-                Packet.FurnaceSlotC2S,
-                Packet.PickupRequestC2S,
-                Packet.PickupRejectS2C {
+                Packet.EntityTeleportS2C {
 
     /** Bump on any wire-format change. Mismatched clients are kicked at handshake. */
-    int PROTOCOL_VERSION = 5;
+    int PROTOCOL_VERSION = 4;
 
     record HandshakeC2S(int protocolVersion, String username) implements Packet {}
 
@@ -125,39 +120,4 @@ public sealed interface Packet
     record EntityTeleportS2C(int networkId,
                              float x, float y, float z,
                              float yaw) implements Packet {}
-
-    /**
-     * Host → clients: replicated runtime entity state beyond position/rotation.
-     * Sent at spawn and whenever a tracked field changes. {@code behaviorState}
-     * is the entity's AI-state ordinal (per type; -1 = no behavior), used by the
-     * client to pick the matching animation clip on the shadow entity.
-     */
-    record EntityMetaS2C(int networkId, float health, byte behaviorState) implements Packet {}
-
-    /**
-     * Host → clients: full block-entity state string for the block at (x,y,z)
-     * — e.g. a furnace's {@code furnace:...} payload (see {@code FurnaceState}).
-     * A blank {@code state} means "clear any block-entity state here" (block
-     * removed / furnace broken).
-     */
-    record BlockStateS2C(int x, int y, int z, String state) implements Packet {}
-
-    /**
-     * Client → host: intent to set one furnace slot to {@code stack} (encoded
-     * {@code kind:id:count}, see {@code FurnaceState}). Host validates, applies
-     * to the authoritative furnace, and echoes a {@link BlockStateS2C} to all.
-     * {@code slot}: 0=ingredient, 1=fuel, 2=output.
-     */
-    record FurnaceSlotC2S(int x, int y, int z, byte slot, String stack) implements Packet {}
-
-    /**
-     * Client → host: request to pick up the drop entity {@code networkId} the
-     * client has predicted picking up. Host arbitrates: on success it grants the
-     * item ({@link GiveItemS2C}) and despawns the drop ({@link EntityDespawnS2C});
-     * on failure it replies {@link PickupRejectS2C} so the client un-hides it.
-     */
-    record PickupRequestC2S(int networkId) implements Packet {}
-
-    /** Host → one client: the predicted pickup of {@code networkId} was denied. */
-    record PickupRejectS2C(int networkId) implements Packet {}
 }

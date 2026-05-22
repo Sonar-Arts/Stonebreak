@@ -214,24 +214,6 @@ public abstract class Entity {
     public void setNetworkShadow(boolean shadow) { this.networkShadow = shadow; }
     public com.stonebreak.network.sync.NetworkInterpolator getInterpolator() { return interpolator; }
     public void setInterpolator(com.stonebreak.network.sync.NetworkInterpolator interp) { this.interpolator = interp; }
-
-    /**
-     * Replicated AI/behaviour-state ordinal for this entity, or {@code -1} if it
-     * has none. Sent in {@link com.stonebreak.network.protocol.Packet.EntityMetaS2C}
-     * and used by clients to drive the shadow's animation. Subclasses with AI
-     * states (cow, chicken) override this.
-     */
-    public byte getNetworkBehaviorState() { return -1; }
-
-    /** Applies a replicated behaviour-state ordinal onto this shadow entity. */
-    public void applyNetworkBehaviorState(byte state) { /* no-op for stateless entities */ }
-
-    /**
-     * Per-frame hook for network-shadow entities (which skip {@link #update}).
-     * Advances animation clocks so replicated mobs animate between snapshots.
-     * Subclasses with animation controllers override this.
-     */
-    public void updateShadowAnimation(float deltaTime) { /* no-op by default */ }
     
     /**
      * Simple bounding box class for collision detection.
