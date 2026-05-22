@@ -274,9 +274,12 @@ public class FurnaceInputManager {
 
             ItemStack fuel = controller.getFuelSlot();
             if (!fuel.isEmpty()) {
-                if (fuel.getItem() == dragState.draggedItemStack.getItem()) {
-                    fuel.incrementCount(1);
-                    dragState.draggedItemStack.decrementCount(1);
+                if (fuel.canStackWith(dragState.draggedItemStack)) {
+                    int canAdd = fuel.getMaxStackSize() - fuel.getCount();
+                    int toAdd = Math.min(canAdd, dragState.draggedItemStack.getCount());
+                    if (toAdd <= 0) return false;
+                    fuel.incrementCount(toAdd);
+                    dragState.draggedItemStack.decrementCount(toAdd);
                     if (dragState.draggedItemStack.isEmpty()) dragState.draggedItemStack = null;
                     return true;
                 }
@@ -294,8 +297,7 @@ public class FurnaceInputManager {
         ItemStack current = getFurnaceSlot(slot.id);
         if (current.isEmpty()) {
             setFurnaceSlot(slot.id, dragState.draggedItemStack.copy());
-            dragState.draggedItemStack.decrementCount(1);
-            if (dragState.draggedItemStack.isEmpty()) dragState.draggedItemStack = null;
+            dragState.draggedItemStack = null;
             return true;
         } else if (current.canStackWith(dragState.draggedItemStack)) {
             int canAdd = current.getMaxStackSize() - current.getCount();
