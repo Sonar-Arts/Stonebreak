@@ -47,8 +47,8 @@ public class WorldMouseHandler {
     }
 
     private String hitActionButton(double mouseX, double mouseY, WorldSelectLayout layout) {
-        float w = WorldSelectLayout.ACTION_BUTTON_WIDTH;
-        float h = WorldSelectLayout.ACTION_BUTTON_HEIGHT;
+        float w = layout.actionButtonWidth;
+        float h = layout.actionButtonHeight;
         if (layout.hitRect(mouseX, mouseY, layout.playButtonX,   layout.playButtonY,   w, h)) return "play";
         if (layout.hitRect(mouseX, mouseY, layout.createButtonX, layout.createButtonY, w, h)) return "create";
         if (layout.hitRect(mouseX, mouseY, layout.deleteButtonX, layout.deleteButtonY, w, h)) return "delete";
@@ -57,16 +57,16 @@ public class WorldMouseHandler {
     }
 
     private String hitDialogButton(double mouseX, double mouseY, WorldSelectLayout layout) {
-        float w = WorldSelectLayout.DIALOG_BUTTON_WIDTH;
-        float h = WorldSelectLayout.DIALOG_BUTTON_HEIGHT;
+        float w = layout.dialogButtonWidth;
+        float h = layout.dialogButtonHeight;
         if (layout.hitRect(mouseX, mouseY, layout.dialogCreateX, layout.dialogButtonY, w, h)) return "dialog-create";
         if (layout.hitRect(mouseX, mouseY, layout.dialogCancelX, layout.dialogButtonY, w, h)) return "dialog-cancel";
         return null;
     }
 
     private String hitConfirmButton(double mouseX, double mouseY, WorldSelectLayout layout) {
-        float w = WorldSelectLayout.DIALOG_BUTTON_WIDTH;
-        float h = WorldSelectLayout.DIALOG_BUTTON_HEIGHT;
+        float w = layout.dialogButtonWidth;
+        float h = layout.dialogButtonHeight;
         if (layout.hitRect(mouseX, mouseY, layout.confirmConfirmX, layout.confirmButtonY, w, h)) return "confirm-delete";
         if (layout.hitRect(mouseX, mouseY, layout.confirmCancelX,  layout.confirmButtonY, w, h)) return "confirm-cancel";
         return null;
@@ -96,19 +96,19 @@ public class WorldMouseHandler {
 
         if (layout.hitRect(mouseX, mouseY,
                 layout.playButtonX, layout.playButtonY,
-                WorldSelectLayout.ACTION_BUTTON_WIDTH, WorldSelectLayout.ACTION_BUTTON_HEIGHT)) {
+                layout.actionButtonWidth, layout.actionButtonHeight)) {
             actionHandler.loadSelectedWorld();
             return;
         }
         if (layout.hitRect(mouseX, mouseY,
                 layout.createButtonX, layout.createButtonY,
-                WorldSelectLayout.ACTION_BUTTON_WIDTH, WorldSelectLayout.ACTION_BUTTON_HEIGHT)) {
+                layout.actionButtonWidth, layout.actionButtonHeight)) {
             actionHandler.openCreateWorldDialog();
             return;
         }
         if (layout.hitRect(mouseX, mouseY,
                 layout.deleteButtonX, layout.deleteButtonY,
-                WorldSelectLayout.ACTION_BUTTON_WIDTH, WorldSelectLayout.ACTION_BUTTON_HEIGHT)) {
+                layout.actionButtonWidth, layout.actionButtonHeight)) {
             if (stateManager.hasWorlds() && stateManager.getSelectedWorld() != null) {
                 actionHandler.requestDeleteSelectedWorld();
             }
@@ -116,52 +116,51 @@ public class WorldMouseHandler {
         }
         if (layout.hitRect(mouseX, mouseY,
                 layout.backButtonX, layout.backButtonY,
-                WorldSelectLayout.ACTION_BUTTON_WIDTH, WorldSelectLayout.ACTION_BUTTON_HEIGHT)) {
+                layout.actionButtonWidth, layout.actionButtonHeight)) {
             actionHandler.returnToMainMenu();
         }
     }
 
     private void handleDeleteDialogClick(double mouseX, double mouseY, WorldSelectLayout layout) {
         if (!layout.hitRect(mouseX, mouseY, layout.confirmDialogX, layout.confirmDialogY,
-                WorldSelectLayout.CONFIRM_DIALOG_WIDTH, WorldSelectLayout.CONFIRM_DIALOG_HEIGHT)) {
+                layout.confirmDialogWidth, layout.confirmDialogHeight)) {
             actionHandler.cancelDeleteWorld();
             return;
         }
         if (layout.hitRect(mouseX, mouseY, layout.confirmConfirmX, layout.confirmButtonY,
-                WorldSelectLayout.DIALOG_BUTTON_WIDTH, WorldSelectLayout.DIALOG_BUTTON_HEIGHT)) {
+                layout.dialogButtonWidth, layout.dialogButtonHeight)) {
             actionHandler.confirmDeleteWorld();
             return;
         }
         if (layout.hitRect(mouseX, mouseY, layout.confirmCancelX, layout.confirmButtonY,
-                WorldSelectLayout.DIALOG_BUTTON_WIDTH, WorldSelectLayout.DIALOG_BUTTON_HEIGHT)) {
+                layout.dialogButtonWidth, layout.dialogButtonHeight)) {
             actionHandler.cancelDeleteWorld();
         }
     }
 
     private void handleDialogClick(double mouseX, double mouseY, WorldSelectLayout layout) {
-        // Click outside dialog cancels
         if (!layout.hitRect(mouseX, mouseY, layout.dialogX, layout.dialogY,
-                WorldSelectLayout.DIALOG_WIDTH, WorldSelectLayout.DIALOG_HEIGHT)) {
+                layout.dialogWidth, layout.dialogHeight)) {
             actionHandler.closeCreateWorldDialog();
             return;
         }
         if (layout.hitRect(mouseX, mouseY, layout.dialogCreateX, layout.dialogButtonY,
-                WorldSelectLayout.DIALOG_BUTTON_WIDTH, WorldSelectLayout.DIALOG_BUTTON_HEIGHT)) {
+                layout.dialogButtonWidth, layout.dialogButtonHeight)) {
             actionHandler.createWorldFromDialog();
             return;
         }
         if (layout.hitRect(mouseX, mouseY, layout.dialogCancelX, layout.dialogButtonY,
-                WorldSelectLayout.DIALOG_BUTTON_WIDTH, WorldSelectLayout.DIALOG_BUTTON_HEIGHT)) {
+                layout.dialogButtonWidth, layout.dialogButtonHeight)) {
             actionHandler.closeCreateWorldDialog();
             return;
         }
         if (layout.hitRect(mouseX, mouseY, layout.nameFieldX, layout.nameFieldY,
-                WorldSelectLayout.DIALOG_INPUT_WIDTH, WorldSelectLayout.DIALOG_INPUT_HEIGHT)) {
+                layout.dialogInputWidth, layout.dialogInputHeight)) {
             inputHandler.setNameInputMode(true);
             return;
         }
         if (layout.hitRect(mouseX, mouseY, layout.seedFieldX, layout.seedFieldY,
-                WorldSelectLayout.DIALOG_INPUT_WIDTH, WorldSelectLayout.DIALOG_INPUT_HEIGHT)) {
+                layout.dialogInputWidth, layout.dialogInputHeight)) {
             inputHandler.setNameInputMode(false);
         }
     }

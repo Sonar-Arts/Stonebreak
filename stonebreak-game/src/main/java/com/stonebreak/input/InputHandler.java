@@ -816,7 +816,67 @@ public class InputHandler {
                         }
                         // Block breaking is now handled continuously in handleInput
                     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+
+                        // Bow + right-click press → start drawing (no attack swing)
+                        com.stonebreak.items.ItemStack bowPressCheck = player.getInventory().getSelectedHotbarSlot();
+                        if (!bowPressCheck.isEmpty() && bowPressCheck.getItem() == com.stonebreak.items.ItemType.BOW) {
+                            player.getBowController().startDrawing();
+                            return;
+                        }
+
                         player.startAttackAnimation(); // Animate for interaction attempts as well
+
+                        // Staff + right-click → fire bolt spell
+                        com.stonebreak.items.ItemStack staffCheck = player.getInventory().getSelectedHotbarSlot();
+                        if (!staffCheck.isEmpty() && staffCheck.getItem() == com.stonebreak.items.ItemType.STAFF) {
+                            com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+                            if (em != null) {
+                                org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
+                                org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
+                                em.spawnFireBolt(spawnPos, dir);
+                            }
+                            return;
+                        }
+
+                        // Fishing rod + right-click → cast or recall bobber
+                        com.stonebreak.items.ItemStack rodCheck = player.getInventory().getSelectedHotbarSlot();
+                        if (!rodCheck.isEmpty() && rodCheck.getItem() == com.stonebreak.items.ItemType.FISHING_ROD) {
+                            com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+                            if (em != null) {
+                                com.stonebreak.mobs.entities.FishingBobber existing = player.getActiveBobber();
+                                if (existing != null && existing.isAlive()) {
+                                    if (existing.isFishBiting() && existing.isInWaterSettled()) {
+                                        com.stonebreak.items.ItemType caught = (Math.random() < 0.75)
+                                                ? com.stonebreak.items.ItemType.BASS
+                                                : com.stonebreak.items.ItemType.STICK;
+                                        com.stonebreak.world.World world = Game.getWorld();
+                                        if (world != null) {
+                                            org.joml.Vector3f bobberPos = new org.joml.Vector3f(existing.getPosition());
+                                            org.joml.Vector3f toPlayer = new org.joml.Vector3f(player.getPosition())
+                                                    .sub(bobberPos).normalize();
+                                            org.joml.Vector3f catchVelocity = new org.joml.Vector3f(toPlayer)
+                                                    .mul(6.0f).add(0, 4.0f, 0);
+                                            com.stonebreak.mobs.entities.ItemDrop fishDrop =
+                                                    com.stonebreak.mobs.entities.ItemDrop.createDropWithVelocity(
+                                                            world, bobberPos,
+                                                            new com.stonebreak.items.ItemStack(caught, 1),
+                                                            catchVelocity);
+                                            em.addEntity(fishDrop);
+                                        }
+                                    }
+                                    existing.setAlive(false);
+                                    player.setActiveBobber(null);
+                                    rodCheck.setState(com.stonebreak.items.ItemType.FISHING_ROD_STATE_REELED_IN);
+                                } else {
+                                    org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
+                                    org.joml.Vector3f pos = new org.joml.Vector3f(player.getCamera().getPosition());
+                                    com.stonebreak.mobs.entities.FishingBobber bobber = em.spawnBobber(pos, dir);
+                                    player.setActiveBobber(bobber);
+                                    rodCheck.setState(com.stonebreak.items.ItemType.FISHING_ROD_STATE_CAST);
+                                }
+                            }
+                            return;
+                        }
 
                         // Food consumption takes priority over block placement
                         com.stonebreak.items.ItemStack heldItem = player.getInventory().getSelectedHotbarSlot();
@@ -852,10 +912,31 @@ public class InputHandler {
                         }
                     }
                 }
+            } else if (action == GLFW_RELEASE) {
+                // Bow right-click release → fire arrow if drawn long enough
+                Player player = Game.getPlayer();
+                if (player != null && button == GLFW_MOUSE_BUTTON_RIGHT) {
+                    com.stonebreak.items.ItemStack bowReleaseCheck = player.getInventory().getSelectedHotbarSlot();
+                    if (!bowReleaseCheck.isEmpty() && bowReleaseCheck.getItem() == com.stonebreak.items.ItemType.BOW) {
+                        // Capture speed before releaseAndFire() resets state
+                        float arrowSpeed = player.getBowController().getArrowSpeed();
+                        if (player.getBowController().releaseAndFire()
+                                && player.getInventory().hasItem(com.stonebreak.items.ItemType.ARROW)) {
+                            player.getInventory().removeItem(com.stonebreak.items.ItemType.ARROW);
+                            com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+                            if (em != null) {
+                                org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
+                                org.joml.Vector3f vel = new org.joml.Vector3f(dir).mul(arrowSpeed);
+                                org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
+                                em.spawnArrow(spawnPos, vel);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
-    
+
     // Renamed from handleMouseClick to avoid confusion, as this is the GLFW callback receiver
     // public void handleMouseClick(int button, int action) { ... } // Old method removed/refactored into processMouseButton
 

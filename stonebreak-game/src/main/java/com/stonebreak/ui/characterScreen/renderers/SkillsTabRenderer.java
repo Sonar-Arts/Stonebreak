@@ -51,10 +51,10 @@ public class SkillsTabRenderer {
 
   /** Renders the full Skills tab content. */
   public void render(Canvas canvas, MasonryUI ui, CharacterStats stats,
-                     float px, float py, float mx, float my) {
-    drawHeader(canvas, ui, stats, px, py);
-    drawSkillRows(canvas, ui, stats, px, py, mx, my);
-    drawTooltip(canvas, ui, px, py);
+                     float px, float py, float mx, float my, float scale) {
+    drawHeader(canvas, ui, stats, px, py, scale);
+    drawSkillRows(canvas, ui, stats, px, py, mx, my, scale);
+    drawTooltip(canvas, ui, px, py, scale);
   }
 
   /** Handles a click; returns true if consumed. */
@@ -75,81 +75,92 @@ public class SkillsTabRenderer {
   // ─────────────────────────────────────────────── Drawing
 
   private void drawHeader(Canvas canvas, MasonryUI ui, CharacterStats stats,
-                          float px, float py) {
+                          float px, float py, float scale) {
+    float rowPadX = ROW_PADDING_X * scale;
+    float innerW  = PANEL_INNER_W * scale;
     MPainter.drawStringWithShadow(canvas, "SP Available: " + stats.getRemainingSkillPoints(),
-        px + ROW_PADDING_X, py + 32f,
+        px + rowPadX, py + 32f * scale,
         ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-    drawEngravedRule(canvas, px + ROW_PADDING_X, py + 38f, PANEL_INNER_W - ROW_PADDING_X * 2f);
+    drawEngravedRule(canvas, px + rowPadX, py + 38f * scale, innerW - rowPadX * 2f);
   }
 
   private void drawSkillRows(Canvas canvas, MasonryUI ui, CharacterStats stats,
-                             float px, float py, float mx, float my) {
+                             float px, float py, float mx, float my, float scale) {
     List<SkillDefinition> skills = SkillRegistry.ALL;
     hoveredSkillId = null;
+    float rowPadX  = ROW_PADDING_X * scale;
+    float innerW   = PANEL_INNER_W * scale;
+    float rowH     = ROW_H         * scale;
+    float rowStart = ROW_START_OFFSET_Y * scale;
+    float levelX   = LEVEL_COL_X   * scale;
+    float btnXOff  = BTN_X_OFFSET  * scale;
+    float btnW     = BTN_W         * scale;
+    float btnH     = BTN_H         * scale;
 
     for (int i = 0; i < skills.size(); i++) {
       SkillDefinition skill = skills.get(i);
-      float rowY = py + ROW_START_OFFSET_Y + i * ROW_H;
-      float rowBottom = rowY + ROW_H;
+      float rowY = py + rowStart + i * rowH;
+      float rowBottom = rowY + rowH;
 
-      boolean hovered = mx >= px + ROW_PADDING_X
-          && mx <= px + ROW_PADDING_X + PANEL_INNER_W - ROW_PADDING_X * 2f
+      boolean hovered = mx >= px + rowPadX
+          && mx <= px + rowPadX + innerW - rowPadX * 2f
           && my >= rowY && my < rowBottom;
 
       if (hovered) {
         hoveredSkillId = skill.id();
-        MPainter.fillRoundedRect(canvas, px + ROW_PADDING_X, rowY,
-            PANEL_INNER_W - ROW_PADDING_X * 2f, ROW_H, 3f, 0x22FFFFFF);
+        MPainter.fillRoundedRect(canvas, px + rowPadX, rowY,
+            innerW - rowPadX * 2f, rowH, 3f, 0x22FFFFFF);
       }
 
-      // Skill name
-      float textY = rowY + ROW_H * 0.5f + MStyle.FONT_META * 0.38f;
+      float textY = rowY + rowH * 0.5f + MStyle.FONT_META * 0.38f;
       MPainter.drawStringWithShadow(canvas, skill.name(),
-          px + ROW_PADDING_X, textY,
+          px + rowPadX, textY,
           ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
 
-      // Level display
       int level = stats.getSkillLevel(skill.id());
       MPainter.drawStringWithShadow(canvas, "Lvl: " + level,
-          px + LEVEL_COL_X, textY,
+          px + levelX, textY,
           ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
 
-      // +1 SP button
       boolean canInvest = stats.getRemainingSkillPoints() > 0;
-      investButtons[i].bounds(px + BTN_X_OFFSET, rowY + 1f, BTN_W, BTN_H);
+      investButtons[i].bounds(px + btnXOff, rowY + 1f, btnW, btnH);
       investButtons[i].updateHover(mx, my);
 
       int btnFill = !canInvest ? MStyle.BUTTON_FILL_DIS
           : investButtons[i].isHovered() ? MStyle.BUTTON_FILL_HI
           : MStyle.BUTTON_FILL;
-      MPainter.stoneSurface(canvas, px + BTN_X_OFFSET, rowY + 1f, BTN_W, BTN_H,
+      MPainter.stoneSurface(canvas, px + btnXOff, rowY + 1f, btnW, btnH,
           MStyle.BUTTON_RADIUS, btnFill, MStyle.BUTTON_BORDER,
           MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
           MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
 
       int btnTextColor = canInvest ? MStyle.TEXT_PRIMARY : MStyle.TEXT_DISABLED;
-      float btnTextY = rowY + 1f + BTN_H * 0.5f + MStyle.FONT_META * 0.38f;
+      float btnTextY = rowY + 1f + btnH * 0.5f + MStyle.FONT_META * 0.38f;
       MPainter.drawCenteredStringWithShadow(canvas, "+1 SP",
-          px + BTN_X_OFFSET + BTN_W / 2f, btnTextY,
+          px + btnXOff + btnW / 2f, btnTextY,
           ui.fonts().get(MStyle.FONT_META), btnTextColor, MStyle.TEXT_SHADOW);
     }
   }
 
-  private void drawTooltip(Canvas canvas, MasonryUI ui, float px, float py) {
+  private void drawTooltip(Canvas canvas, MasonryUI ui, float px, float py, float scale) {
     if (hoveredSkillId == null) {
       return;
     }
+    float rowPadX = ROW_PADDING_X * scale;
+    float innerW  = PANEL_INNER_W * scale;
+    float panelH  = PANEL_HEIGHT  * scale;
+    float tipPad  = TOOLTIP_BOTTOM_PAD * scale;
     SkillRegistry.ALL.stream()
         .filter(s -> s.id().equals(hoveredSkillId))
         .findFirst()
         .ifPresent(skill -> {
-          float tooltipY = py + PANEL_HEIGHT - TOOLTIP_BOTTOM_PAD;
-          float tooltipW = PANEL_INNER_W - ROW_PADDING_X * 2f;
-          MPainter.stoneSurface(canvas, px + ROW_PADDING_X, tooltipY,
-              tooltipW, 24f, 3f, TOOLTIP_BG, TOOLTIP_BORDER,
+          float tooltipY = py + panelH - tipPad;
+          float tooltipW = innerW - rowPadX * 2f;
+          MPainter.stoneSurface(canvas, px + rowPadX, tooltipY,
+              tooltipW, 24f * scale, 3f, TOOLTIP_BG, TOOLTIP_BORDER,
               0x1AFFFFFF, 0x1A000000, 0, 0, 0);
           MPainter.drawCenteredStringWithShadow(canvas, skill.description(),
-              px + ROW_PADDING_X + tooltipW / 2f, tooltipY + 16f,
+              px + rowPadX + tooltipW / 2f, tooltipY + 16f * scale,
               ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
         });
   }

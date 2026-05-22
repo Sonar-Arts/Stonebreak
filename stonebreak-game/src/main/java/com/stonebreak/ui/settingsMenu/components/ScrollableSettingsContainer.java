@@ -28,17 +28,21 @@ public final class ScrollableSettingsContainer {
     }
 
     public void updateBounds(float centerX, float centerY, float panelHeight) {
-        float viewportW = SettingsConfig.SETTINGS_PANEL_WIDTH;
-        float viewportH = panelHeight - SettingsConfig.SCROLL_TOP_MARGIN - SettingsConfig.SCROLL_BOTTOM_MARGIN;
-        float viewportX = centerX + SettingsConfig.SETTINGS_PANEL_X_OFFSET - viewportW / 2f;
-        float viewportY = centerY - panelHeight / 2f + SettingsConfig.SCROLL_TOP_MARGIN;
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        itemSpacing = SettingsConfig.getScaledScrollItemSpacing();
+
+        float viewportW = SettingsConfig.getScaledSettingsPanelWidth();
+        float viewportH = panelHeight - SettingsConfig.getScaledScrollTopMargin()
+                - SettingsConfig.getScaledScrollBottomMargin();
+        float viewportX = centerX + SettingsConfig.getScaledSettingsPanelXOffset() - viewportW / 2f;
+        float viewportY = centerY - panelHeight / 2f + SettingsConfig.getScaledScrollTopMargin();
 
         CategoryState category = stateManager.getSelectedCategory();
         int count = category.getSettings().length;
-        float topPadding = Math.max(SettingsConfig.SCROLL_CONTENT_PADDING, 40f);
+        float topPadding = Math.max(SettingsConfig.getScaledScrollContentPadding(), 40f * s);
         contentHeight = Math.max(0f,
                 topPadding + Math.max(0, count - 1) * itemSpacing
-                        + SettingsConfig.BUTTON_HEIGHT + SettingsConfig.SCROLL_CONTENT_PADDING);
+                        + SettingsConfig.getScaledButtonHeight() + SettingsConfig.getScaledScrollContentPadding());
 
         MScrollMath math = stateManager.getCurrentScrollMath();
         if (math != null) {

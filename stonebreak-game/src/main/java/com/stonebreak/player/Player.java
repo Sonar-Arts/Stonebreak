@@ -5,6 +5,7 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.player.combat.AttackController;
+import com.stonebreak.player.combat.BowController;
 import com.stonebreak.player.combat.DeathHandler;
 import com.stonebreak.player.combat.FallDamageHandler;
 import com.stonebreak.player.combat.HealthController;
@@ -58,6 +59,7 @@ public class Player {
 
     // Combat
     private final AttackController attack;
+    private final BowController bow;
     private final HealthController health;
     private final StaminaController stamina;
     private final ManaController mana;
@@ -76,6 +78,9 @@ public class Player {
     // RPG
     private final CharacterStats characterStats;
 
+    // Fishing
+    private com.stonebreak.mobs.entities.FishingBobber activeBobber = null;
+
     public Player(World world) {
         IBlockPlacementService blockPlacementService = new BlockPlacementValidator(world);
         this.state = new PhysicsState();
@@ -91,6 +96,7 @@ public class Player {
         this.jumpHandler = new JumpHandler(state);
 
         this.attack = new AttackController();
+        this.bow = new BowController();
         this.health = new HealthController();
         this.stamina = new StaminaController(0);
         this.mana = new ManaController(0, 0);
@@ -104,10 +110,10 @@ public class Player {
         this.blockPlacer = new BlockPlacer(state, raycastEngine, inventory, blockPlacementService, world);
         this.itemDropInteraction = new ItemDropInteraction(state, camera, blockPlacementService, world);
 
-        this.spawnService = new PlayerSpawnService(state, camera, inventory, health, attack,
-                blockBreaker, flight, jumpHandler, swimming);
-
         this.characterStats = new CharacterStats(this);
+        this.spawnService = new PlayerSpawnService(state, camera, inventory, health, attack,
+                blockBreaker, flight, jumpHandler, swimming, characterStats);
+
         updateDerivedStats();
     }
 
@@ -138,6 +144,7 @@ public class Player {
         camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
 
         attack.update(dt);
+        bow.update(dt);
         stamina.update(dt);
         mana.update(dt);
         blockBreaker.update();
@@ -197,6 +204,10 @@ public class Player {
     public Inventory getInventory() { return inventory; }
     public Matrix4f getViewMatrix() { return camera.getViewMatrix(); }
 
+    // Fishing
+    public com.stonebreak.mobs.entities.FishingBobber getActiveBobber() { return activeBobber; }
+    public void setActiveBobber(com.stonebreak.mobs.entities.FishingBobber b) { activeBobber = b; }
+
     // RPG
     public CharacterStats getCharacterStats() { return characterStats; }
 
@@ -221,6 +232,12 @@ public class Player {
     public void startAttackAnimation() { attack.startAttackAnimation(); }
     public float getAttackAnimationProgress() { return attack.getAnimationProgress(); }
     public float getRawAttackAnimationProgress() { return attack.getRawAnimationProgress(); }
+
+    // Bow draw
+    public BowController getBowController() { return bow; }
+    public boolean isDrawingBow() { return bow.isDrawing(); }
+    public float getBowDrawProgress() { return bow.getDrawProgress(); }
+    public String getBowSboState() { return bow.getBowSboState(); }
 
     // Flight
     public boolean isFlying() { return flight.isFlying(); }

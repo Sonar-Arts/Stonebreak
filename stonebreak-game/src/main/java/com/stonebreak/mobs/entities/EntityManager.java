@@ -100,7 +100,14 @@ public class EntityManager {
                 entity.update(deltaTime);
 
                 // Apply physics and collision
-                if (entity instanceof LivingEntity livingEntity) {
+                // FireBolt manages its own movement in update() — skip physics
+                if (entity.getType() == EntityType.FIRE_BOLT) {
+                    // self-managed projectile, no external physics
+                } else if (entity.getType() == EntityType.BOBBER) {
+                    if (!((FishingBobber) entity).isSettled()) {
+                        collision.applyEntityPhysics(entity, deltaTime);
+                    }
+                } else if (entity instanceof LivingEntity livingEntity) {
                     collision.applyLivingEntityPhysics(livingEntity, deltaTime);
                 } else {
                     collision.applyEntityPhysics(entity, deltaTime);
@@ -212,11 +219,45 @@ public class EntityManager {
                 yield new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
             }
             case CHICKEN -> new com.stonebreak.mobs.chicken.Chicken(world, position);
+            case FIRE_BOLT -> new FireBolt(world, position, new Vector3f(0, 0, -1));
             default -> {
                 System.err.println("Unknown entity type: " + type);
                 yield null;
             }
         };
+    }
+
+    /**
+     * Spawns a fire bolt projectile aimed in the given direction.
+     */
+    public FireBolt spawnFireBolt(Vector3f position, Vector3f direction) {
+        FireBolt bolt = new FireBolt(world, position, direction);
+        synchronized (entitiesToAdd) {
+            entitiesToAdd.add(bolt);
+        }
+        return bolt;
+    }
+
+    /**
+     * Spawns an arrow projectile with the given initial velocity.
+     */
+    public Arrow spawnArrow(Vector3f position, Vector3f velocity) {
+        Arrow arrow = new Arrow(world, position, velocity);
+        synchronized (entitiesToAdd) {
+            entitiesToAdd.add(arrow);
+        }
+        return arrow;
+    }
+
+    /**
+     * Spawns a fishing bobber launched in the given direction.
+     */
+    public FishingBobber spawnBobber(Vector3f position, Vector3f direction) {
+        FishingBobber bobber = new FishingBobber(world, position, direction);
+        synchronized (entitiesToAdd) {
+            entitiesToAdd.add(bobber);
+        }
+        return bobber;
     }
     
     /**

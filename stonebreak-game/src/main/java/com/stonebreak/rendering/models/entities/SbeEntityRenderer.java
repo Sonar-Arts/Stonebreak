@@ -23,6 +23,7 @@ import org.lwjgl.opengl.GL30;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -203,7 +204,7 @@ public final class SbeEntityRenderer {
 
         ParsedAnimClip clip = asset.clipFor(stateName);
         float clipTime = 0f;
-        Map<String, ParsedAnimTrack> tracksById = Map.of();
+        Map<String, ParsedAnimTrack> tracksById = Collections.emptyMap();
         if (clip != null) {
             clipTime = AnimSampler.wrapTime(animationTime, clip.duration(), clip.loop());
             tracksById = clip.trackByPartId();
@@ -322,7 +323,7 @@ public final class SbeEntityRenderer {
 
         ParsedAnimClip clip = asset.clipFor(stateName);
         float clipTime = 0f;
-        Map<String, ParsedAnimTrack> tracksById = Map.of();
+        Map<String, ParsedAnimTrack> tracksById = Collections.emptyMap();
         if (clip != null) {
             clipTime = AnimSampler.wrapTime(animationTime, clip.duration(), clip.loop());
             tracksById = clip.trackByPartId();

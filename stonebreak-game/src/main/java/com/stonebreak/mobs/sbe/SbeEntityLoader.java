@@ -166,9 +166,11 @@ public final class SbeEntityLoader {
         }
 
         // Mesh and UVs are used exactly as authored in the OMO — no remapping.
-        return new SbeModelGeometry(
-                mesh.vertices(), mesh.texCoords(), mesh.indices(),
-                parts, materials);
+        // Guard against null arrays (e.g. models with no UV data) to prevent NPE in uploadVariant.
+        float[] vertices  = mesh.vertices()  != null ? mesh.vertices()  : new float[0];
+        float[] texCoords = mesh.texCoords() != null ? mesh.texCoords() : new float[0];
+        int[]   indices   = mesh.indices()   != null ? mesh.indices()   : new int[0];
+        return new SbeModelGeometry(vertices, texCoords, indices, parts, materials);
     }
 
     /**

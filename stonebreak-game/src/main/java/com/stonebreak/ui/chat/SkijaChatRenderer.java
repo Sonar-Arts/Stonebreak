@@ -74,21 +74,22 @@ public final class SkijaChatRenderer {
             int windowWidth, int windowHeight
     ) {
         static Layout compute(int sw, int sh) {
-            float chatX = 20f;
-            float lineHeight = 20f;
+            float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+            float chatX = 20f * s;
+            float lineHeight = 20f * s;
             float maxChatWidth = sw * 0.4f;
-            float padding = 10f;
-            float inputBoxHeight = 25f;
-            float inputBoxMargin = 10f;
+            float padding = 10f * s;
+            float inputBoxHeight = 25f * s;
+            float inputBoxMargin = 10f * s;
 
             float panelHeight = (MAX_VISIBLE_LINES * lineHeight) + inputBoxHeight + inputBoxMargin + padding * 2f;
             float panelX = chatX - padding;
             float panelY = sh - panelHeight;
             float panelWidth = maxChatWidth + padding * 2f;
 
-            float tabHeight = 22f;
+            float tabHeight = 22f * s;
             float tabSpacing = 2f;
-            float tabWidth = 80f;
+            float tabWidth = 80f * s;
             float tabX = panelX + 5f;
             float tabY = panelY - tabHeight - tabSpacing;
 
@@ -290,7 +291,8 @@ public final class SkijaChatRenderer {
      */
     private void drawMixedLine(Canvas canvas, String text, float x, float y,
                                Font font, int color, boolean spritesEnabled) {
-        float spriteSize = L_LINE_HEIGHT - 4f; // fits neatly in the 20px line
+        float lineHeight = L_LINE_HEIGHT * com.stonebreak.config.Settings.getInstance().getUiScale();
+        float spriteSize = lineHeight - 4f;
         float xCursor = x;
         int pos = 0;
 
@@ -651,10 +653,11 @@ public final class SkijaChatRenderer {
 
         // Scrollbar Y bounds depend only on window height — compute directly
         // so the drag path doesn't need to know window width.
-        float lineHeight = 20f;
-        float padding = 10f;
-        float inputBoxHeight = 25f;
-        float inputBoxMargin = 10f;
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        float lineHeight = 20f * s;
+        float padding = 10f * s;
+        float inputBoxHeight = 25f * s;
+        float inputBoxMargin = 10f * s;
         float panelHeight = (MAX_VISIBLE_LINES * lineHeight) + inputBoxHeight + inputBoxMargin + padding * 2f;
         float panelY = windowHeight - panelHeight;
         float trackY = panelY + padding;

@@ -127,13 +127,18 @@ public class PreferencesWindow {
         // Detect window open transition and sync state from persistence
         if (!wasVisible) {
             pageRenderer.onWindowOpened();
+            ImGui.setNextWindowFocus();
             wasVisible = true;
         }
 
         // Set initial size and position (first time only)
         if (!iniFileSet) {
             ImGui.setNextWindowSize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT);
-            ImGui.setNextWindowPos(200, 100);
+            ImVec2 center = ImGui.getMainViewport().getCenter();
+            ImGui.setNextWindowPos(
+                    center.x - MIN_WINDOW_WIDTH / 2f,
+                    center.y - MIN_WINDOW_HEIGHT / 2f
+            );
             iniFileSet = true;
         }
 
@@ -144,8 +149,7 @@ public class PreferencesWindow {
         );
 
         // Configure window flags for standalone floating window
-        int windowFlags = ImGuiWindowFlags.NoBringToFrontOnFocus |
-                ImGuiWindowFlags.NoDocking |
+        int windowFlags = ImGuiWindowFlags.NoDocking |
                 ImGuiWindowFlags.NoTitleBar |
                 ImGuiWindowFlags.NoCollapse |
                 ImGuiWindowFlags.NoScrollbar;

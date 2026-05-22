@@ -67,10 +67,14 @@ public class InventoryRenderCoordinator {
     // MStyle.PANEL_FILL is kept fully opaque for settings menus; we override here.
     private static final int PANEL_FILL_TRANS = 0xBF6B6B6B;
 
-    // Tab bar constants — shared with InventoryInputManager for click-detection bounds
+    // Tab bar base constants (unscaled) — use the getScaledTab* methods for rendering/hit-testing
     public static final int INV_TAB_WIDTH  = 84;
     public static final int INV_TAB_HEIGHT = 28;
     public static final int INV_TAB_GAP    = 4;
+
+    public static int getScaledTabWidth()  { return Math.round(INV_TAB_WIDTH  * com.stonebreak.config.Settings.getInstance().getUiScale()); }
+    public static int getScaledTabHeight() { return Math.round(INV_TAB_HEIGHT * com.stonebreak.config.Settings.getInstance().getUiScale()); }
+    public static int getScaledTabGap()    { return Math.round(INV_TAB_GAP    * com.stonebreak.config.Settings.getInstance().getUiScale()); }
 
     public InventoryRenderCoordinator(UIRenderer uiRenderer,
                                       Renderer renderer,
@@ -230,16 +234,15 @@ public class InventoryRenderCoordinator {
     }
 
     private void drawTitles(Canvas canvas, InventoryLayoutCalculator.InventoryLayout layout) {
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
         Font font = ui.fonts().get(MStyle.FONT_BUTTON);
         float centerX = layout.panelStartX + layout.inventoryPanelWidth / 2f;
 
-        // "Crafting" title — match old panelStartY + 20 baseline position
-        float craftY = layout.panelStartY + 20 + MStyle.FONT_BUTTON / 3f;
+        float craftY = layout.panelStartY + 20 * scale + MStyle.FONT_BUTTON / 3f;
         MPainter.drawCenteredStringWithShadow(canvas, "Crafting", centerX, craftY,
                 font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
 
-        // "Inventory" title — match old mainInvContentStartY - 20
-        float invY = layout.mainInvContentStartY - 20 + MStyle.FONT_BUTTON / 3f;
+        float invY = layout.mainInvContentStartY - 20 * scale + MStyle.FONT_BUTTON / 3f;
         MPainter.drawCenteredStringWithShadow(canvas, "Inventory", centerX, invY,
                 font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
     }
@@ -264,10 +267,11 @@ public class InventoryRenderCoordinator {
         }
 
         // Arrow
+        int arrowSize = Math.round(20 * com.stonebreak.config.Settings.getInstance().getUiScale());
         float arrowX = layout.craftingElementsStartX + layout.craftInputGridVisualWidth
-                + slotPadding + (slotSize - 20) / 2f;
-        float arrowY = layout.craftingGridStartY + (slotSize - 20) / 2f;
-        MPainter.craftingArrow(canvas, arrowX, arrowY, 20, 20, ARROW_FILL);
+                + slotPadding + (slotSize - arrowSize) / 2f;
+        float arrowY = layout.craftingGridStartY + (slotSize - arrowSize) / 2f;
+        MPainter.craftingArrow(canvas, arrowX, arrowY, arrowSize, arrowSize, ARROW_FILL);
 
         // Output slot
         float ox = layout.outputSlotX;
@@ -445,39 +449,42 @@ public class InventoryRenderCoordinator {
 
     /** Positions all five tab buttons flush above the inventory panel. */
     private void updateTabBounds(InventoryLayoutCalculator.InventoryLayout layout) {
-        float tabY = layout.panelStartY - INV_TAB_HEIGHT;
-        float stride = INV_TAB_WIDTH + INV_TAB_GAP;
-        tabInventory.bounds(layout.panelStartX,              tabY, INV_TAB_WIDTH, INV_TAB_HEIGHT);
-        tabCharacter.bounds(layout.panelStartX + stride,     tabY, INV_TAB_WIDTH, INV_TAB_HEIGHT);
-        tabClasses  .bounds(layout.panelStartX + stride * 2, tabY, INV_TAB_WIDTH, INV_TAB_HEIGHT);
-        tabSkills   .bounds(layout.panelStartX + stride * 3, tabY, INV_TAB_WIDTH, INV_TAB_HEIGHT);
-        tabFeats    .bounds(layout.panelStartX + stride * 4, tabY, INV_TAB_WIDTH, INV_TAB_HEIGHT);
+        int tw = getScaledTabWidth(); int th = getScaledTabHeight(); int tg = getScaledTabGap();
+        float tabY = layout.panelStartY - th;
+        float stride = tw + tg;
+        tabInventory.bounds(layout.panelStartX,              tabY, tw, th);
+        tabCharacter.bounds(layout.panelStartX + stride,     tabY, tw, th);
+        tabClasses  .bounds(layout.panelStartX + stride * 2, tabY, tw, th);
+        tabSkills   .bounds(layout.panelStartX + stride * 3, tabY, tw, th);
+        tabFeats    .bounds(layout.panelStartX + stride * 4, tabY, tw, th);
     }
 
     /** Draws all five tabs — Inventory is always active here. */
     private void drawTabBar(Canvas canvas, InventoryLayoutCalculator.InventoryLayout layout) {
-        float tabY = layout.panelStartY - INV_TAB_HEIGHT;
-        float stride = INV_TAB_WIDTH + INV_TAB_GAP;
-        drawTab(canvas, layout.panelStartX,              tabY, "Inventory", true,  tabInventory.isHovered());
-        drawTab(canvas, layout.panelStartX + stride,     tabY, "Character", false, tabCharacter.isHovered());
-        drawTab(canvas, layout.panelStartX + stride * 2, tabY, "Classes",   false, tabClasses.isHovered());
-        drawTab(canvas, layout.panelStartX + stride * 3, tabY, "Skills",    false, tabSkills.isHovered());
-        drawTab(canvas, layout.panelStartX + stride * 4, tabY, "Feats",     false, tabFeats.isHovered());
+        int tw = getScaledTabWidth(); int th = getScaledTabHeight(); int tg = getScaledTabGap();
+        float tabY = layout.panelStartY - th;
+        float stride = tw + tg;
+        drawTab(canvas, layout.panelStartX,              tabY, "Inventory", true,  tabInventory.isHovered(), tw, th);
+        drawTab(canvas, layout.panelStartX + stride,     tabY, "Character", false, tabCharacter.isHovered(), tw, th);
+        drawTab(canvas, layout.panelStartX + stride * 2, tabY, "Classes",   false, tabClasses.isHovered(),   tw, th);
+        drawTab(canvas, layout.panelStartX + stride * 3, tabY, "Skills",    false, tabSkills.isHovered(),    tw, th);
+        drawTab(canvas, layout.panelStartX + stride * 4, tabY, "Feats",     false, tabFeats.isHovered(),     tw, th);
     }
 
-    private void drawTab(Canvas canvas, float x, float y, String label, boolean active, boolean hovered) {
+    private void drawTab(Canvas canvas, float x, float y, String label, boolean active, boolean hovered,
+                         int tabW, int tabH) {
         int fill = active ? 0xFF7A7A7A
                 : hovered ? MStyle.BUTTON_FILL_HI
                 : MStyle.BUTTON_FILL;
-        MPainter.stoneSurface(canvas, x, y, INV_TAB_WIDTH, INV_TAB_HEIGHT, MStyle.BUTTON_RADIUS,
+        MPainter.stoneSurface(canvas, x, y, tabW, tabH, MStyle.BUTTON_RADIUS,
                 fill, MStyle.BUTTON_BORDER,
                 MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
         Font font  = ui.fonts().get(MStyle.FONT_META);
         int  color = active ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-        float ty   = y + INV_TAB_HEIGHT * 0.5f + MStyle.FONT_META * 0.38f;
+        float ty   = y + tabH * 0.5f + MStyle.FONT_META * 0.38f;
         MPainter.drawCenteredStringWithShadow(canvas, label,
-                x + INV_TAB_WIDTH / 2f, ty, font, color, MStyle.TEXT_SHADOW);
+                x + tabW / 2f, ty, font, color, MStyle.TEXT_SHADOW);
     }
 
     private void checkHover(ItemStack itemStack, float sx, float sy, int slotSize,

@@ -117,6 +117,7 @@ public class PlayerArmRenderer {
         // Render appropriate content based on what's selected
         if (displayInfo.displayingItem) {
             renderSelectedItem(displayInfo);
+            renderArrowOverlayIfDrawing(player, displayInfo);
         } else {
             renderDefaultArm();
         }
@@ -164,7 +165,14 @@ public class PlayerArmRenderer {
         ItemDisplayInfo info = new ItemDisplayInfo();
         
         if (selectedItem != null && !selectedItem.isEmpty()) {
-            info.selectedState = selectedItem.getState();
+            // Bow: override the stack's stored state with the live draw-progress state
+            if (selectedItem.asItemType() == ItemType.BOW) {
+                info.selectedState = com.stonebreak.core.Game.getPlayer() != null
+                        ? com.stonebreak.core.Game.getPlayer().getBowSboState()
+                        : selectedItem.getState();
+            } else {
+                info.selectedState = selectedItem.getState();
+            }
             if (selectedItem.isPlaceable()) {
                 info.selectedBlockType = selectedItem.asBlockType();
                 info.isDisplayingBlock = (info.selectedBlockType != null && 
@@ -197,6 +205,25 @@ public class PlayerArmRenderer {
         } else if (displayInfo.isDisplayingTool && displayInfo.selectedItemType != null) {
             handItemRenderer.renderToolInHand(displayInfo.selectedItemType, displayInfo.selectedState);
         }
+    }
+
+    /**
+     * Renders the arrow overlaid on the bow when the player is drawing.
+     * Offsets the arrow slightly so it appears nocked on the bow string.
+     */
+    private void renderArrowOverlayIfDrawing(Player player, ItemDisplayInfo displayInfo) {
+        if (displayInfo.selectedItemType != ItemType.BOW) return;
+        if (!player.isDrawingBow()) return;
+        if (player.getBowDrawProgress() <= 0.05f) return;
+
+        // Shift arrow to sit along the bow centre; push it slightly forward so
+        // it isn't buried inside the bow sprite.
+        Matrix4f arrowMatrix = new Matrix4f(reusableArmViewModel);
+        arrowMatrix.translate(0.0f, -0.08f, -0.15f);
+        shaderProgram.setUniform("viewMatrix", arrowMatrix);
+        handItemRenderer.renderToolInHand(ItemType.ARROW, null);
+        // Restore the arm matrix for any subsequent draws
+        shaderProgram.setUniform("viewMatrix", reusableArmViewModel);
     }
     
     /**

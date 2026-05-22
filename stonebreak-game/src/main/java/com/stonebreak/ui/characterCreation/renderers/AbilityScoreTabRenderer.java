@@ -5,6 +5,7 @@ import com.stonebreak.rendering.UI.masonryUI.MButton;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
 import com.stonebreak.ui.characterCreation.CharacterCreationActionHandler;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout.Rect;
 import io.github.humbleui.skija.Canvas;
@@ -53,6 +54,9 @@ public final class AbilityScoreTabRenderer {
         float gridY = content.y() + 36f;
 
         int[] scores = stats.getAbilityScores();
+        int[] bgBonuses = new int[6];
+        BackgroundRegistry.findById(stats.getSelectedBackground())
+            .ifPresent(bg -> System.arraycopy(bg.abilityScoreBonuses(), 0, bgBonuses, 0, 6));
 
         for (int i = 0; i < 6; i++) {
             int col = i % 3;
@@ -118,8 +122,17 @@ public final class AbilityScoreTabRenderer {
                 plusEnabled ? MStyle.TEXT_PRIMARY : MStyle.TEXT_DISABLED,
                 MStyle.TEXT_SHADOW);
 
-            // Modifier
-            int mod = stats.getModifier(scores[i]);
+            // Background bonus badge
+            if (bgBonuses[i] != 0) {
+                String bonusStr = (bgBonuses[i] > 0 ? "+" : "−") + Math.abs(bgBonuses[i]);
+                int bonusColor = bgBonuses[i] > 0 ? MStyle.TEXT_ACCENT : MStyle.TEXT_ERROR;
+                MPainter.drawCenteredStringWithShadow(canvas, bonusStr,
+                    tileCX, ty + 74f, metaFont, bonusColor, MStyle.TEXT_SHADOW);
+            }
+
+            // Modifier (reflects final score after background bonus)
+            int finalScore = Math.max(1, scores[i] + bgBonuses[i]);
+            int mod = stats.getModifier(finalScore);
             String modStr = (mod >= 0 ? "+" : "") + mod;
             MPainter.drawCenteredStringWithShadow(canvas, modStr,
                 tileCX, ty + TILE_H - 10f,

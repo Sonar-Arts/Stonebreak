@@ -6,7 +6,7 @@ package com.stonebreak.ui.settingsMenu.config;
  */
 public enum CategoryState {
     // ===== CATEGORIES =====
-    GENERAL(0, new SettingType[]{SettingType.RESOLUTION}),
+    GENERAL(0, new SettingType[]{SettingType.RESOLUTION, SettingType.UI_SCALE}),
     QUALITY(1, new SettingType[]{SettingType.LEAF_TRANSPARENCY, SettingType.WATER_SHADER, SettingType.CLOUDS_ENABLED}),
     PERFORMANCE(2, new SettingType[]{SettingType.RENDER_DISTANCE, SettingType.VSYNC}),
     ADVANCED(3, new SettingType[]{SettingType.ARM_MODEL, SettingType.LOD_ENABLED, SettingType.LOD_DISTANCE}),
@@ -80,7 +80,8 @@ public enum CategoryState {
         VSYNC(10),
         APPLY(11),
         BACK(12),
-        CLOUDS_ENABLED(13);
+        CLOUDS_ENABLED(13),
+        UI_SCALE(14);
         
         private final int index;
         

@@ -37,11 +37,20 @@ public class EntityRenderer {
     // 1x1 white texture for the fallback cube.
     private int fallbackTexture;
 
+    // 1x1 orange texture for the fire bolt core.
+    private int fireBoltTexture;
+
+    // 1x1 brown texture for arrow projectiles.
+    private int arrowTexture;
+
     // Entity-blind renderer for SBE-driven mobs.
     private final SbeEntityRenderer sbeEntityRenderer = new SbeEntityRenderer();
 
     // Renderer for multiplayer remote players (cylinder).
     private final RemotePlayerRenderer remotePlayerRenderer = new RemotePlayerRenderer();
+
+    // Voxelized sprite renderer for arrow projectiles (uses the main scene shader).
+    private com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer arrowVoxelRenderer;
 
     /**
      * Initialize the entity renderer. Called by the main Renderer.
@@ -51,10 +60,22 @@ public class EntityRenderer {
 
         createShader();
         createFallbackTexture();
+        createFireBoltTexture();
+        createArrowTexture();
         createSimpleCubeModel();
         sbeEntityRenderer.initialize();
         remotePlayerRenderer.initialize();
         initialized = true;
+    }
+
+    /**
+     * Wires up the voxelized-sprite renderer used for arrow projectiles.
+     * Must be called after initialize() and after the main scene shader is ready.
+     */
+    public void initializeArrowRenderer(ShaderProgram mainSceneShader) {
+        if (mainSceneShader != null) {
+            arrowVoxelRenderer = new com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer(mainSceneShader);
+        }
     }
 
     private void createShader() {
@@ -132,6 +153,31 @@ public class EntityRenderer {
         whitePixel.put((byte) 255).put((byte) 255).put((byte) 255).put((byte) 255).flip();
         GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
                 GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, whitePixel);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+    }
+
+    private void createArrowTexture() {
+        arrowTexture = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, arrowTexture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        ByteBuffer pixel = ByteBuffer.allocateDirect(4);
+        pixel.put((byte) 139).put((byte) 90).put((byte) 43).put((byte) 255).flip(); // saddle-brown
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
+                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+    }
+
+    private void createFireBoltTexture() {
+        fireBoltTexture = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, fireBoltTexture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        // Bright orange-yellow for the fire bolt core
+        ByteBuffer pixel = ByteBuffer.allocateDirect(4);
+        pixel.put((byte) 255).put((byte) 140).put((byte) 0).put((byte) 255).flip();
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
+                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
@@ -256,6 +302,21 @@ public class EntityRenderer {
             return;
         }
 
+        if (entityType == EntityType.FIRE_BOLT) {
+            renderFireBolt(entity, viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
+
+        if (entityType == EntityType.ARROW) {
+            renderArrow(entity, viewMatrix, projectionMatrix);
+            return;
+        }
+
+        if (entityType == EntityType.BOBBER) {
+            renderBobber(entity, viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
+
         renderSimpleEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
     }
 
@@ -312,6 +373,37 @@ public class EntityRenderer {
         }
     }
 
+    /**
+     * Renders an arrow as an elongated brown cylinder approximated with a scaled cube.
+     * Rotated to face the arrow's velocity direction (stored in entity.rotation.y).
+     */
+    private void renderArrow(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
+        shader.bind();
+
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, arrowTexture);
+        shader.setUniform("textureSampler", 0);
+        shader.setUniform("view", viewMatrix);
+        shader.setUniform("projection", projectionMatrix);
+        shader.setUniform("cameraPos", new Vector3f(0, 0, 0));
+        shader.setUniform("underwaterFogDensity", 0.0f);
+        shader.setUniform("underwaterFogColor", new Vector3f(0.1f, 0.3f, 0.5f));
+
+        // Elongated along local Z (direction of travel); yaw from rotation.y
+        Matrix4f modelMatrix = new Matrix4f()
+                .translate(entity.getPosition())
+                .rotateY((float) Math.toRadians(entity.getRotation().y))
+                .scale(0.06f, 0.06f, 0.5f);
+        shader.setUniform("model", modelMatrix);
+
+        GL30.glBindVertexArray(simpleCubeVAO);
+        GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
+        GL30.glBindVertexArray(0);
+
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        shader.unbind();
+    }
+
     private void renderSimpleEntity(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                     com.stonebreak.world.World world, Vector3f cameraPos) {
         shader.bind();
@@ -350,6 +442,92 @@ public class EntityRenderer {
         shader.unbind();
     }
 
+    private void renderFireBolt(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                com.stonebreak.world.World world, Vector3f cameraPos) {
+        shader.bind();
+
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, fireBoltTexture);
+        shader.setUniform("textureSampler", 0);
+        shader.setUniform("view", viewMatrix);
+        shader.setUniform("projection", projectionMatrix);
+
+        shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
+        shader.setUniform("underwaterFogDensity", 0.0f);
+        shader.setUniform("underwaterFogColor", new Vector3f(0.1f, 0.3f, 0.5f));
+
+        Matrix4f modelMatrix = new Matrix4f()
+                .translate(entity.getPosition())
+                .rotateY((float) Math.toRadians(entity.getRotation().y))
+                .scale(entity.getScale());
+        shader.setUniform("model", modelMatrix);
+
+        // Additive blending gives a glow/emissive look
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+        GL11.glDepthMask(false);
+
+        GL30.glBindVertexArray(simpleCubeVAO);
+        GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
+        GL30.glBindVertexArray(0);
+
+        // Render a larger, semi-transparent outer glow layer
+        Matrix4f glowMatrix = new Matrix4f()
+                .translate(entity.getPosition())
+                .rotateY((float) Math.toRadians(entity.getRotation().y))
+                .scale(new Vector3f(entity.getScale()).mul(1.8f));
+        shader.setUniform("model", glowMatrix);
+        GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
+
+        GL11.glDepthMask(true);
+        GL11.glDisable(GL11.GL_BLEND);
+
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        shader.unbind();
+    }
+
+    // Cached bobber SBE asset — loaded once on first render.
+    private com.stonebreak.mobs.sbe.SbeEntityAsset bobberAsset;
+    private boolean bobberAssetLoadAttempted = false;
+
+    private void renderBobber(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                              com.stonebreak.world.World world, Vector3f cameraPos) {
+        if (!bobberAssetLoadAttempted) {
+            bobberAssetLoadAttempted = true;
+            try {
+                bobberAsset = com.stonebreak.mobs.sbe.SbeEntityLoader.load("/sbe/Mobs/SB_Bobber.sbe");
+            } catch (Exception e) {
+                System.err.println("[EntityRenderer] Failed to load bobber SBE: " + e.getMessage());
+            }
+        }
+
+        // Apply the gentle bob offset as a render-time Y offset (does not affect physics).
+        float bobY = (entity instanceof com.stonebreak.mobs.entities.FishingBobber fb)
+                ? fb.getBobOffset() : 0f;
+        Vector3f renderPos = new Vector3f(entity.getPosition()).add(0, bobY, 0);
+
+        if (bobberAsset != null) {
+            try {
+                sbeEntityRenderer.render(
+                        bobberAsset,
+                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        null,
+                        0.0f,
+                        renderPos,
+                        entity.getRotation().y,
+                        entity.getScale(),
+                        viewMatrix, projectionMatrix, world, cameraPos);
+            } catch (Exception e) {
+                System.err.println("[EntityRenderer] Bobber render failed: "
+                        + e.getClass().getSimpleName() + ": " + e.getMessage());
+                e.printStackTrace(System.err);
+                renderSimpleEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
+            }
+        } else {
+            renderSimpleEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
+        }
+    }
+
     /**
      * Cleanup method called by the main Renderer.
      */
@@ -370,6 +548,9 @@ public class EntityRenderer {
         }
         if (fallbackTexture != 0) {
             GL11.glDeleteTextures(fallbackTexture);
+        }
+        if (arrowTexture != 0) {
+            GL11.glDeleteTextures(arrowTexture);
         }
 
         sbeEntityRenderer.cleanup();

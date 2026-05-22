@@ -50,6 +50,7 @@ public class WorldRenderer {
     private final CloudRenderer cloudRenderer;
     private final FastLodRenderPass lodRenderPass;
     private final ChunkFrustumCuller frustumCuller = new ChunkFrustumCuller();
+    private final com.stonebreak.rendering.models.entities.FishingLineRenderer fishingLineRenderer;
 
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
@@ -72,6 +73,7 @@ public class WorldRenderer {
         this.skyRenderer = new SkyRenderer();
         this.cloudRenderer = new CloudRenderer();
         this.lodRenderPass = new FastLodRenderPass();
+        this.fishingLineRenderer = new com.stonebreak.rendering.models.entities.FishingLineRenderer(shaderProgram, projectionMatrix);
     }
     
     /**
@@ -170,6 +172,9 @@ public class WorldRenderer {
 
         // Render water particles
         renderWaterParticles();
+
+        // Render fire bolt trail particles
+        renderFireBoltParticles();
 
         // Render player arm last (if not paused) to appear in front of entities
         renderPlayerArm(player);
@@ -321,6 +326,7 @@ public class WorldRenderer {
      * Render transparent pass (water parts of chunks).
      */
     private void renderTransparentPass(List<Chunk> visibleChunks, Player player) {
+        shaderProgram.bind(); // re-bind in case entity rendering left a different shader active
         shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
         shaderProgram.setUniform("u_waterDepthOffset", -0.0001f); // Negative offset to pull water slightly closer
         glEnable(GL_BLEND); // Enable blending
@@ -470,6 +476,59 @@ public class WorldRenderer {
     }
     
     /**
+     * Render fire trail particles from all active fire bolt entities.
+     */
+    private void renderFireBoltParticles() {
+        com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+        if (em == null) return;
+
+        boolean anyParticles = false;
+        for (com.stonebreak.mobs.entities.Entity entity : em.getAllEntities()) {
+            if (entity instanceof com.stonebreak.mobs.entities.FireBolt bolt && bolt.isAlive()
+                    && !bolt.particles.isEmpty()) {
+                anyParticles = true;
+                break;
+            }
+        }
+        if (!anyParticles) return;
+
+        Matrix4f viewMatrix = Game.getPlayer().getViewMatrix();
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("viewMatrix", viewMatrix);
+        shaderProgram.setUniform("u_useSolidColor", true);
+        shaderProgram.setUniform("u_isText", false);
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // additive for fire glow
+        glDepthMask(false);
+        glPointSize(5.0f);
+
+        for (com.stonebreak.mobs.entities.Entity entity : em.getAllEntities()) {
+            if (!(entity instanceof com.stonebreak.mobs.entities.FireBolt bolt) || !bolt.isAlive()) continue;
+
+            for (com.stonebreak.rendering.effects.FireTrailParticles.FireParticle p : bolt.particles.getParticles()) {
+                float opacity = p.getOpacity();
+                // Lerp orange → red as particle fades
+                float r = 1.0f;
+                float g = 0.35f * opacity;
+                shaderProgram.setUniform("u_color", new org.joml.Vector4f(r, g, 0.0f, opacity * 0.85f));
+
+                glPointSize(p.getSize());
+                glBegin(GL_POINTS);
+                glVertex3f(p.getPosition().x, p.getPosition().y, p.getPosition().z);
+                glEnd();
+            }
+        }
+
+        glPointSize(1.0f);
+        glDepthMask(true);
+        glDisable(GL_BLEND);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.unbind();
+    }
+
+    /**
      * Render all drops using the drop sub-renderer.
      * Drops are rendered before entities to appear underneath everything but above world geometry.
      *
@@ -591,6 +650,22 @@ public class WorldRenderer {
                     entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix, world, cameraPos);
                 }
             }
+        }
+
+        // Draw fishing line from rod tip to active bobber
+        com.stonebreak.mobs.entities.FishingBobber bobber = player.getActiveBobber();
+        if (bobber != null && bobber.isAlive()) {
+            org.joml.Vector3f camPos = player.getCamera().getPosition();
+            org.joml.Vector3f camRight = player.getCamera().getRight();
+            org.joml.Vector3f camUp = player.getCamera().getUp();
+            org.joml.Vector3f camFront = player.getCamera().getFront();
+            org.joml.Vector3f rodTip = new org.joml.Vector3f(camPos)
+                    .add(new org.joml.Vector3f(camRight).mul(0.45f))
+                    .add(new org.joml.Vector3f(camUp).mul(-0.05f))
+                    .add(new org.joml.Vector3f(camFront).mul(0.5f));
+            org.joml.Vector3f bobberTop = new org.joml.Vector3f(bobber.getPosition())
+                    .add(0, 0.1f + bobber.getBobOffset(), 0);
+            fishingLineRenderer.render(rodTip, bobberTop, player.getViewMatrix());
         }
     }
     

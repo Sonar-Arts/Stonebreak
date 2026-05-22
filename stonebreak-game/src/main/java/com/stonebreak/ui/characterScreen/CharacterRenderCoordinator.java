@@ -104,8 +104,11 @@ public class CharacterRenderCoordinator {
       return;
     }
 
-    float px = (screenWidth  - PANEL_WIDTH)  / 2f;
-    float py = (screenHeight - PANEL_HEIGHT) / 2f;
+    float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+    float scaledPW = PANEL_WIDTH  * scale;
+    float scaledPH = PANEL_HEIGHT * scale;
+    float px = (screenWidth  - scaledPW) / 2f;
+    float py = (screenHeight - scaledPH) / 2f;
 
     Vector2f mouse = inputHandler.getMousePosition();
     float mx = mouse.x;
@@ -113,25 +116,22 @@ public class CharacterRenderCoordinator {
 
     Canvas canvas = ui.canvas();
 
-    // Tab bar (above panel)
-    updateTabBounds(px, py);
+    updateTabBounds(px, py, scale, scaledPW);
     updateTabHovers(mx, my);
-    drawTabBar(canvas, px, py);
+    drawTabBar(canvas, px, py, scale, scaledPW);
 
-    // Main stone panel
-    MPainter.stoneSurface(canvas, px, py, PANEL_WIDTH, PANEL_HEIGHT, MStyle.PANEL_RADIUS,
+    MPainter.stoneSurface(canvas, px, py, scaledPW, scaledPH, MStyle.PANEL_RADIUS,
         PANEL_FILL_TRANS, MStyle.PANEL_BORDER,
         MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, MStyle.PANEL_DROP_SHADOW,
         MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
 
-    drawEngravedRule(canvas, px + 10, py + 12, PANEL_WIDTH - 20);
+    drawEngravedRule(canvas, px + 10 * scale, py + 12 * scale, scaledPW - 20 * scale);
 
-    // Delegate content to the active tab
     switch (controller.getActiveTab()) {
-      case OVERVIEW -> drawOverviewContent(canvas, mx, my, px, py);
-      case CLASSES  -> classesRenderer.render(canvas, ui, stats, px, py, mx, my);
-      case SKILLS   -> skillsRenderer.render(canvas, ui, stats, px, py, mx, my);
-      case FEATS    -> featsRenderer.render(canvas, ui, stats, px, py, mx, my);
+      case OVERVIEW -> drawOverviewContent(canvas, mx, my, px, py, scale, scaledPW);
+      case CLASSES  -> classesRenderer.render(canvas, ui, stats, px, py, mx, my, scale);
+      case SKILLS   -> skillsRenderer.render(canvas, ui, stats, px, py, mx, my, scale);
+      case FEATS    -> featsRenderer.render(canvas, ui, stats, px, py, mx, my, scale);
     }
 
     ui.renderOverlays();
@@ -150,9 +150,12 @@ public class CharacterRenderCoordinator {
       return;
     }
 
-    float px = (screenWidth  - PANEL_WIDTH)  / 2f;
-    float py = (screenHeight - PANEL_HEIGHT) / 2f;
-    updateTabBounds(px, py);
+    float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+    float scaledPW = PANEL_WIDTH  * scale;
+    float scaledPH = PANEL_HEIGHT * scale;
+    float px = (screenWidth  - scaledPW) / 2f;
+    float py = (screenHeight - scaledPH) / 2f;
+    updateTabBounds(px, py, scale, scaledPW);
 
     if (leftClick) {
       // Inventory tab — close character screen, open inventory
@@ -184,10 +187,10 @@ public class CharacterRenderCoordinator {
       }
 
       boolean consumed = switch (controller.getActiveTab()) {
-        case OVERVIEW -> handleOverviewClick(mx, my, px, py);
-        case CLASSES  -> classesRenderer.handleClick(mx, my, stats, px, py);
+        case OVERVIEW -> handleOverviewClick(mx, my, px, py, scale);
+        case CLASSES  -> classesRenderer.handleClick(mx, my, stats, px, py, scale);
         case SKILLS   -> skillsRenderer.handleClick(mx, my, stats);
-        case FEATS    -> featsRenderer.handleClick(mx, my, stats, px, py);
+        case FEATS    -> featsRenderer.handleClick(mx, my, stats, px, py, scale);
       };
       if (consumed) {
         inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
@@ -196,7 +199,7 @@ public class CharacterRenderCoordinator {
 
     if (rightClick) {
       boolean consumed = switch (controller.getActiveTab()) {
-        case FEATS -> featsRenderer.handleRightClick(mx, my, stats, px, py);
+        case FEATS -> featsRenderer.handleRightClick(mx, my, stats, px, py, scale);
         default    -> false;
       };
       if (consumed) {
@@ -205,7 +208,7 @@ public class CharacterRenderCoordinator {
     }
   }
 
-  private boolean handleOverviewClick(float mx, float my, float px, float py) {
+  private boolean handleOverviewClick(float mx, float my, float px, float py, float scale) {
     for (int i = 0; i < 6; i++) {
       if (scorePlusButtons[i].contains(mx, my)) {
         stats.incrementAbilityScore(i);
@@ -224,27 +227,32 @@ public class CharacterRenderCoordinator {
     Vector2f mouse = inputHandler.getMousePosition();
     int screenW = Game.getWindowWidth();
     int screenH = Game.getWindowHeight();
-    float px = (screenW - PANEL_WIDTH) / 2f;
-    float py = (screenH - PANEL_HEIGHT) / 2f;
+    float scale  = com.stonebreak.config.Settings.getInstance().getUiScale();
+    float px = (screenW - PANEL_WIDTH  * scale) / 2f;
+    float py = (screenH - PANEL_HEIGHT * scale) / 2f;
 
     switch (controller.getActiveTab()) {
-      case CLASSES -> classesRenderer.handleScroll(deltaY, mouse.x, mouse.y, px, py);
-      case FEATS   -> featsRenderer.handleScroll(deltaY, px, py);
+      case CLASSES -> classesRenderer.handleScroll(deltaY, mouse.x, mouse.y, px, py, scale);
+      case FEATS   -> featsRenderer.handleScroll(deltaY, px, py, scale);
       default      -> { /* OVERVIEW and SKILLS do not scroll */ }
     }
   }
 
   // ─────────────────────────────────────────────── Tab bar
 
-  private void updateTabBounds(float px, float py) {
-    float tabY = py - TAB_HEIGHT;
-    float startX = px + TAB_START_OFFSET;
-    float stride = TAB_WIDTH + TAB_GAP;
-    tabInventory.bounds(startX,              tabY, TAB_WIDTH, TAB_HEIGHT);
-    tabCharacter.bounds(startX + stride,     tabY, TAB_WIDTH, TAB_HEIGHT);
-    tabClasses  .bounds(startX + stride * 2, tabY, TAB_WIDTH, TAB_HEIGHT);
-    tabSkills   .bounds(startX + stride * 3, tabY, TAB_WIDTH, TAB_HEIGHT);
-    tabFeats    .bounds(startX + stride * 4, tabY, TAB_WIDTH, TAB_HEIGHT);
+  private void updateTabBounds(float px, float py, float scale, float scaledPW) {
+    float tabH = TAB_HEIGHT * scale;
+    float tabW = TAB_WIDTH  * scale;
+    float tabG = TAB_GAP    * scale;
+    float tabStartOffset = (scaledPW - (5 * tabW + 4 * tabG)) / 2f;
+    float tabY = py - tabH;
+    float startX = px + tabStartOffset;
+    float stride = tabW + tabG;
+    tabInventory.bounds(startX,              tabY, tabW, tabH);
+    tabCharacter.bounds(startX + stride,     tabY, tabW, tabH);
+    tabClasses  .bounds(startX + stride * 2, tabY, tabW, tabH);
+    tabSkills   .bounds(startX + stride * 3, tabY, tabW, tabH);
+    tabFeats    .bounds(startX + stride * 4, tabY, tabW, tabH);
   }
 
   private void updateTabHovers(float mx, float my) {
@@ -255,59 +263,63 @@ public class CharacterRenderCoordinator {
     tabFeats    .updateHover(mx, my);
   }
 
-  private void drawTabBar(Canvas canvas, float px, float py) {
+  private void drawTabBar(Canvas canvas, float px, float py, float scale, float scaledPW) {
     CharacterPanelTab active = controller.getActiveTab();
-    float tabY = py - TAB_HEIGHT;
-    float startX = px + TAB_START_OFFSET;
-    float stride = TAB_WIDTH + TAB_GAP;
-    // Inventory tab is never "active" on the character screen — it always navigates away
+    float tabH = TAB_HEIGHT * scale;
+    float tabW = TAB_WIDTH  * scale;
+    float tabG = TAB_GAP    * scale;
+    float tabStartOffset = (scaledPW - (5 * tabW + 4 * tabG)) / 2f;
+    float tabY = py - tabH;
+    float startX = px + tabStartOffset;
+    float stride = tabW + tabG;
     drawTab(canvas, startX,              tabY, "Inventory",
-        false, tabInventory.isHovered());
+        false, tabInventory.isHovered(), tabW, tabH);
     drawTab(canvas, startX + stride,     tabY, "Character",
-        active == CharacterPanelTab.OVERVIEW, tabCharacter.isHovered());
+        active == CharacterPanelTab.OVERVIEW, tabCharacter.isHovered(), tabW, tabH);
     drawTab(canvas, startX + stride * 2, tabY, "Classes",
-        active == CharacterPanelTab.CLASSES, tabClasses.isHovered());
+        active == CharacterPanelTab.CLASSES, tabClasses.isHovered(), tabW, tabH);
     drawTab(canvas, startX + stride * 3, tabY, "Skills",
-        active == CharacterPanelTab.SKILLS, tabSkills.isHovered());
+        active == CharacterPanelTab.SKILLS, tabSkills.isHovered(), tabW, tabH);
     drawTab(canvas, startX + stride * 4, tabY, "Feats",
-        active == CharacterPanelTab.FEATS, tabFeats.isHovered());
+        active == CharacterPanelTab.FEATS, tabFeats.isHovered(), tabW, tabH);
   }
 
   private void drawTab(Canvas canvas, float x, float y, String label,
-                       boolean active, boolean hovered) {
+                       boolean active, boolean hovered, float tabW, float tabH) {
     int fill = active ? TAB_ACTIVE_FILL
         : hovered ? MStyle.BUTTON_FILL_HI
         : MStyle.BUTTON_FILL;
-    MPainter.stoneSurface(canvas, x, y, TAB_WIDTH, TAB_HEIGHT, MStyle.BUTTON_RADIUS,
+    MPainter.stoneSurface(canvas, x, y, tabW, tabH, MStyle.BUTTON_RADIUS,
         fill, MStyle.BUTTON_BORDER,
         MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
         MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
     Font font = ui.fonts().get(MStyle.FONT_META);
     int color = active ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-    float ty = y + TAB_HEIGHT * 0.5f + MStyle.FONT_META * 0.38f;
-    MPainter.drawCenteredStringWithShadow(canvas, label, x + TAB_WIDTH / 2f, ty,
+    float ty = y + tabH * 0.5f + MStyle.FONT_META * 0.38f;
+    MPainter.drawCenteredStringWithShadow(canvas, label, x + tabW / 2f, ty,
         font, color, MStyle.TEXT_SHADOW);
   }
 
   // ─────────────────────────────────────────────── Overview tab content
 
-  private void drawOverviewContent(Canvas canvas, float mx, float my, float px, float py) {
-    float leftColX = px + 16;
-    float leftColW = PANEL_WIDTH * 0.38f;
-    float rightColX = leftColX + leftColW + 12f;
-    float rightColW = PANEL_WIDTH - leftColW - 44f;
-    float contentY  = py + 20f;
+  private void drawOverviewContent(Canvas canvas, float mx, float my, float px, float py,
+                                   float scale, float scaledPW) {
+    float leftColX  = px + 16 * scale;
+    float leftColW  = scaledPW * 0.38f;
+    float rightColX = leftColX + leftColW + 12f * scale;
+    float rightColW = scaledPW - leftColW - 44f * scale;
+    float contentY  = py + 20f * scale;
 
-    drawCharacterSilhouette(canvas, leftColX, contentY, leftColW);
-    drawClassAndFeats(canvas, leftColX, contentY + 162f, leftColW);
-    drawCurrencies(canvas, leftColX, contentY + 300f, leftColW);
+    drawCharacterSilhouette(canvas, leftColX, contentY, leftColW, scale);
+    drawClassAndFeats(canvas, leftColX, contentY + 162f * scale, leftColW, scale);
+    drawCurrencies(canvas, leftColX, contentY + 300f * scale, leftColW, scale);
 
-    drawAbilityScores(canvas, rightColX, contentY, rightColW, mx, my);
+    drawAbilityScores(canvas, rightColX, contentY, rightColW, mx, my, scale);
 
-    float barSectionY = contentY + 190f;
-    drawHealthBar(canvas, rightColX, barSectionY, rightColW);
-    drawManaBar(canvas, rightColX, barSectionY + 32f, rightColW);
-    drawStatusEffects(canvas, rightColX, barSectionY + 74f, rightColW, mx, my);
+    float barSectionY = contentY + 190f * scale;
+    drawHealthBar(canvas, rightColX, barSectionY, rightColW, scale);
+    drawManaBar(canvas, rightColX, barSectionY + 32f * scale, rightColW, scale);
+    drawStatusEffects(canvas, rightColX, barSectionY + 74f * scale, rightColW, mx, my, scale);
   }
 
   // ─────────────────────────────────────────────── Decorative helpers
@@ -322,24 +334,24 @@ public class CharacterRenderCoordinator {
 
   // ─────────────────────────────────────────────── Left column
 
-  private void drawCharacterSilhouette(Canvas canvas, float colX, float colY, float colW) {
+  private void drawCharacterSilhouette(Canvas canvas, float colX, float colY, float colW, float scale) {
     float cx   = colX + colW / 2f;
-    float topY = colY + 16f;
+    float topY = colY + 16f * scale;
 
     try (Paint fill   = new Paint().setColor(SILHOUETTE_FILL).setAntiAlias(true);
          Paint stroke = new Paint().setColor(SILHOUETTE_STROKE)
              .setMode(PaintMode.STROKE).setStrokeWidth(1.5f).setAntiAlias(true)) {
 
-      float headR  = 22f;
+      float headR  = 22f * scale;
       float headCX = cx;
       float headCY = topY + headR;
       canvas.drawCircle(headCX, headCY, headR, fill);
       canvas.drawCircle(headCX, headCY, headR, stroke);
 
-      float shoulderW = 52f;
-      float waistW    = 34f;
-      float bodyH     = 80f;
-      float bodyTopY  = headCY + headR + 4f;
+      float shoulderW = 52f * scale;
+      float waistW    = 34f * scale;
+      float bodyH     = 80f * scale;
+      float bodyTopY  = headCY + headR + 4f * scale;
       float bodyBotY  = bodyTopY + bodyH;
 
       try (PathBuilder bodyBuilder = new PathBuilder()) {
@@ -356,34 +368,34 @@ public class CharacterRenderCoordinator {
     }
   }
 
-  private void drawClassAndFeats(Canvas canvas, float colX, float colY, float colW) {
+  private void drawClassAndFeats(Canvas canvas, float colX, float colY, float colW, float scale) {
     Font metaFont = ui.fonts().get(MStyle.FONT_META);
 
     drawEngravedRule(canvas, colX, colY, colW);
-    float y = colY + 14f;
+    float y = colY + 14f * scale;
 
     String classLine = "Class: " + stats.getCharacterClass();
     MPainter.drawStringWithShadow(canvas, classLine, colX + 4f, y, metaFont,
         MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-    y += 22f;
+    y += 22f * scale;
 
     drawEngravedRule(canvas, colX, y, colW);
-    y += 12f;
+    y += 12f * scale;
 
     MPainter.drawStringWithShadow(canvas, "Feats:", colX + 4f, y, metaFont,
         MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-    y += 18f;
+    y += 18f * scale;
 
     List<String> feats = stats.getFeats();
     if (feats.isEmpty()) {
       MPainter.drawStringWithShadow(canvas, "(None)", colX + 8f, y, metaFont,
           MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
     } else {
-      int maxVisible = 6; // cap so feats don't overflow into currencies section
+      int maxVisible = 6;
       for (int i = 0; i < Math.min(feats.size(), maxVisible); i++) {
         MPainter.drawStringWithShadow(canvas, feats.get(i), colX + 8f, y, metaFont,
             MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
-        y += 18f;
+        y += 18f * scale;
       }
       if (feats.size() > maxVisible) {
         MPainter.drawStringWithShadow(canvas, "+" + (feats.size() - maxVisible) + " more…",
@@ -392,10 +404,10 @@ public class CharacterRenderCoordinator {
     }
   }
 
-  private void drawCurrencies(Canvas canvas, float colX, float colY, float colW) {
+  private void drawCurrencies(Canvas canvas, float colX, float colY, float colW, float scale) {
     Font font = ui.fonts().get(MStyle.FONT_META);
     drawEngravedRule(canvas, colX, colY, colW);
-    float y = colY + 14f;
+    float y = colY + 14f * scale;
 
     record Entry(String label, int value) {}
     Entry[] entries = {
@@ -407,24 +419,24 @@ public class CharacterRenderCoordinator {
     for (Entry e : entries) {
       MPainter.drawStringWithShadow(canvas, e.label() + ": " + e.value(),
           colX + 4f, y, font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-      y += 18f;
+      y += 18f * scale;
     }
   }
 
   // ─────────────────────────────────────────────── Right column — ability scores
 
   private void drawAbilityScores(Canvas canvas, float colX, float colY,
-                                 float colW, float mx, float my) {
+                                 float colW, float mx, float my, float scale) {
     int[] scores = {
         stats.getStrength(),     stats.getDexterity(),    stats.getConstitution(),
         stats.getIntelligence(), stats.getWisdom(),       stats.getCharisma()
     };
 
-    final float tileW   = 64f;
-    final float tileH   = 80f;
-    final float tileGap = 8f;
-    final float btnW    = 16f;
-    final float btnH    = 14f;
+    final float tileW   = 64f * scale;
+    final float tileH   = 80f * scale;
+    final float tileGap = 8f  * scale;
+    final float btnW    = 16f * scale;
+    final float btnH    = 14f * scale;
 
     Font abbrevFont = ui.fonts().get(MStyle.FONT_META);
     Font valueFont  = ui.fonts().get(MStyle.FONT_BUTTON);
@@ -449,16 +461,13 @@ public class CharacterRenderCoordinator {
 
       float tileCX = tx + tileW / 2f;
 
-      // Abbreviation
       MPainter.drawCenteredStringWithShadow(canvas, ABILITY_ABBREV[i],
-          tileCX, ty + 14f, abbrevFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+          tileCX, ty + 14f * scale, abbrevFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
 
-      // Score value
       MPainter.drawCenteredStringWithShadow(canvas, String.valueOf(scores[i]),
-          tileCX, ty + 50f, valueFont, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+          tileCX, ty + 50f * scale, valueFont, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
 
-      // [-] button (left side, vertically centered on score)
-      float btnY = ty + 34f;
+      float btnY = ty + 34f * scale;
       scoreMinusButtons[i].bounds(tx + 2f, btnY, btnW, btnH);
       scoreMinusButtons[i].updateHover(mx, my);
       boolean minusHovered = scoreMinusButtons[i].isHovered();
@@ -488,17 +497,16 @@ public class CharacterRenderCoordinator {
       MPainter.drawCenteredStringWithShadow(canvas, "+",
           tx + tileW - btnW - 2f + btnW / 2f, btnY + btnH * 0.72f, btnFont, plusTextColor, MStyle.TEXT_SHADOW);
 
-      // Modifier
       int mod = stats.getModifier(scores[i]);
       String modStr = (mod >= 0 ? "+" : "") + mod;
       MPainter.drawCenteredStringWithShadow(canvas, modStr,
-          tileCX, ty + tileH - 10f, modFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+          tileCX, ty + tileH - 10f * scale, modFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
     }
   }
 
   // ─────────────────────────────────────────────── Right column — vitals
 
-  private void drawHealthBar(Canvas canvas, float x, float y, float w) {
+  private void drawHealthBar(Canvas canvas, float x, float y, float w, float scale) {
     Font font   = ui.fonts().get(MStyle.FONT_META);
     float hp    = stats.getHealth();
     float maxHp = stats.getMaxHealth();
@@ -506,64 +514,63 @@ public class CharacterRenderCoordinator {
     MPainter.drawStringWithShadow(canvas, "HP", x, y, font,
         MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
 
-    float heartSize = 13f;
-    float startX    = x + 28f;
+    float heartSize = 13f * scale;
+    float startX    = x + 28f * scale;
     float heartTop  = y - heartSize;
     float filled    = maxHp > 0f ? (hp / maxHp) * 10f : 0f;
 
     for (int i = 0; i < 10; i++) {
-      float hx    = startX + i * (heartSize + 2f);
+      float hx    = startX + i * (heartSize + 2f * scale);
       int   color = i < filled ? COLOR_HEART : COLOR_HEART_DIM;
       drawHeart(canvas, hx, heartTop, heartSize, color);
     }
 
     String hpText = (int) hp + "/" + (int) maxHp;
     MPainter.drawStringWithShadow(canvas, hpText,
-        startX + 10 * (heartSize + 2f) + 6f, y, font,
+        startX + 10 * (heartSize + 2f * scale) + 6f * scale, y, font,
         MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
   }
 
-  private void drawManaBar(Canvas canvas, float x, float y, float w) {
+  private void drawManaBar(Canvas canvas, float x, float y, float w, float scale) {
     Font font = ui.fonts().get(MStyle.FONT_META);
 
     MPainter.drawStringWithShadow(canvas, "MP", x, y, font,
         MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
 
-    float dSize  = 11f;
-    float startX = x + 28f;
+    float dSize  = 11f * scale;
+    float startX = x + 28f * scale;
     float dTop   = y - dSize;
 
     for (int i = 0; i < 10; i++) {
-      float dx = startX + i * (dSize + 2f);
+      float dx = startX + i * (dSize + 2f * scale);
       drawDiamond(canvas, dx, dTop, dSize, COLOR_MANA_DIM);
     }
 
     MPainter.drawStringWithShadow(canvas, "0/0",
-        startX + 10 * (dSize + 2f) + 6f, y, font,
+        startX + 10 * (dSize + 2f * scale) + 6f * scale, y, font,
         MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
   }
 
-  // ─────────────────────────────────────────────── Right column — status effects
-
   private void drawStatusEffects(Canvas canvas, float x, float y, float w,
-                                 float mx, float my) {
+                                 float mx, float my, float scale) {
     Font labelFont = ui.fonts().get(MStyle.FONT_META);
     Font qFont     = ui.fonts().get(MStyle.FONT_ITEM);
 
     MPainter.drawStringWithShadow(canvas, "Status Effects", x, y, labelFont,
         MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
 
-    float slotY = y + 6f;
-    float gap   = 6f;
+    int scaledSlot = Math.round(SLOT_SIZE * scale);
+    float slotY = y + 6f * scale;
+    float gap   = 6f * scale;
 
     for (int i = 0; i < 6; i++) {
-      float sx = x + i * (SLOT_SIZE + gap);
-      MItemSlot slot = new MItemSlot().bounds(sx, slotY, SLOT_SIZE, SLOT_SIZE);
+      float sx = x + i * (scaledSlot + gap);
+      MItemSlot slot = new MItemSlot().bounds(sx, slotY, scaledSlot, scaledSlot);
       slot.updateHover(mx, my);
       slot.render(ui);
 
-      float qCX = sx + SLOT_SIZE / 2f;
-      float qCY = slotY + SLOT_SIZE / 2f + MStyle.FONT_ITEM * 0.35f;
+      float qCX = sx + scaledSlot / 2f;
+      float qCY = slotY + scaledSlot / 2f + MStyle.FONT_ITEM * 0.35f;
       MPainter.drawCenteredStringWithShadow(canvas, "?", qCX, qCY, qFont,
           MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
     }

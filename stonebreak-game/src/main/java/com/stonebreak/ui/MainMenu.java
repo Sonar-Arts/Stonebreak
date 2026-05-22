@@ -53,43 +53,43 @@ public class MainMenu {
     }
     
     public void handleMouseMove(double mouseX, double mouseY, int windowWidth, int windowHeight) {
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        float bw = 400f * s;
+        float bh = 40f  * s;
+        float sp = 50f  * s;
         float centerX = windowWidth / 2.0f;
         float centerY = windowHeight / 2.0f;
-        
-        // Check which button mouse is over
-        if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY - 20, 400, 40)) {
-            selectedButton = 0; // Singleplayer
-        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY + 30, 400, 40)) {
-            selectedButton = 1; // Multiplayer
-        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY + 80, 400, 40)) {
-            selectedButton = 2; // Settings
-        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY + 130, 400, 40)) {
-            selectedButton = 3; // Quit Game
-        } else {
-            selectedButton = -1; // No button hovered
-        }
 
+        if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s, bw, bh)) {
+            selectedButton = 0;
+        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp, bw, bh)) {
+            selectedButton = 1;
+        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp * 2f, bw, bh)) {
+            selectedButton = 2;
+        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp * 3f, bw, bh)) {
+            selectedButton = 3;
+        } else {
+            selectedButton = -1;
+        }
     }
-    
+
     public void handleMouseClick(double mouseX, double mouseY, int windowWidth, int windowHeight) {
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        float bw = 400f * s;
+        float bh = 40f  * s;
+        float sp = 50f  * s;
         float centerX = windowWidth / 2.0f;
         float centerY = windowHeight / 2.0f;
-        
-        // Only execute action if mouse is actually over a button
-        if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY - 20, 400, 40)) {
-            selectedButton = 0; // Singleplayer
-            executeSelectedAction();
-        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY + 30, 400, 40)) {
-            selectedButton = 1; // Multiplayer
-            executeSelectedAction();
-        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY + 80, 400, 40)) {
-            selectedButton = 2; // Settings
-            executeSelectedAction();
-        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY + 130, 400, 40)) {
-            selectedButton = 3; // Quit Game
-            executeSelectedAction();
+
+        if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s, bw, bh)) {
+            selectedButton = 0; executeSelectedAction();
+        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp, bw, bh)) {
+            selectedButton = 1; executeSelectedAction();
+        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp * 2f, bw, bh)) {
+            selectedButton = 2; executeSelectedAction();
+        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp * 3f, bw, bh)) {
+            selectedButton = 3; executeSelectedAction();
         }
-        // If mouse is not over any button, do nothing
     }
     
     private boolean isMouseOverButton(float mouseX, float mouseY, float buttonX, float buttonY, float buttonW, float buttonH) {

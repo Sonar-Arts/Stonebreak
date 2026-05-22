@@ -18,11 +18,14 @@ public final class SkijaPauseMenuRenderer {
 
     public static final float BUTTON_WIDTH  = 360f;
     public static final float BUTTON_HEIGHT = 50f;
-    public static final float PANEL_WIDTH   = 520f;
-    public static final float PANEL_HEIGHT  = 450f;
 
-    private static final float TITLE_SIZE       = 42f;
-    private static final float BUTTON_TEXT_SIZE = 20f;
+    private static final float BASE_BUTTON_WIDTH  = BUTTON_WIDTH;
+    private static final float BASE_BUTTON_HEIGHT = BUTTON_HEIGHT;
+    private static final float BASE_PANEL_WIDTH   = 520f;
+    private static final float BASE_PANEL_HEIGHT  = 450f;
+
+    private static final float BASE_TITLE_SIZE       = 42f;
+    private static final float BASE_BUTTON_TEXT_SIZE = 20f;
 
     private static final int COLOR_TEXT_PRIMARY   = MStyle.TEXT_PRIMARY;
     private static final int COLOR_TEXT_SHADOW    = MStyle.TEXT_SHADOW;
@@ -33,6 +36,7 @@ public final class SkijaPauseMenuRenderer {
 
     private Font fontTitle;
     private Font fontButton;
+    private float lastFontScale = -1f;
 
     public SkijaPauseMenuRenderer(SkijaUIBackend backend) {
         this.backend = backend;
@@ -41,7 +45,13 @@ public final class SkijaPauseMenuRenderer {
     public void render(int windowWidth, int windowHeight,
                        boolean settingsHovered, boolean quitHovered) {
         if (backend == null || !backend.isAvailable()) return;
-        ensureFonts();
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        ensureFonts(scale);
+
+        float buttonWidth  = BASE_BUTTON_WIDTH  * scale;
+        float buttonHeight = BASE_BUTTON_HEIGHT * scale;
+        float panelWidth   = BASE_PANEL_WIDTH   * scale;
+        float panelHeight  = BASE_PANEL_HEIGHT  * scale;
 
         backend.beginFrame(windowWidth, windowHeight, 1.0f);
         try {
@@ -53,27 +63,34 @@ public final class SkijaPauseMenuRenderer {
 
             float centerX = windowWidth  / 2f;
             float centerY = windowHeight / 2f;
-            float panelX = centerX - PANEL_WIDTH  / 2f;
-            float panelY = centerY - PANEL_HEIGHT / 2f;
+            float panelX = centerX - panelWidth  / 2f;
+            float panelY = centerY - panelHeight / 2f;
 
-            MPainter.panel(canvas, panelX, panelY, PANEL_WIDTH, PANEL_HEIGHT);
+            MPainter.panel(canvas, panelX, panelY, panelWidth, panelHeight);
 
-            drawTitle(canvas, centerX, panelY + 70f, "GAME PAUSED");
+            drawTitle(canvas, centerX, panelY + 70f * scale, "GAME PAUSED");
 
-            float buttonX = centerX - BUTTON_WIDTH / 2f;
-            drawButton(canvas, "Resume Game",       buttonX, centerY - 60f, false);
-            drawButton(canvas, "Settings",          buttonX, centerY + 10f, settingsHovered);
-            drawButton(canvas, "Quit to Main Menu", buttonX, centerY + 80f, quitHovered);
+            float buttonX = centerX - buttonWidth / 2f;
+            drawButton(canvas, "Resume Game",       buttonX, centerY - 60f * scale, false,        buttonWidth, buttonHeight);
+            drawButton(canvas, "Settings",          buttonX, centerY + 10f * scale, settingsHovered, buttonWidth, buttonHeight);
+            drawButton(canvas, "Quit to Main Menu", buttonX, centerY + 80f * scale, quitHovered,    buttonWidth, buttonHeight);
         } finally {
             backend.endFrame();
         }
     }
 
-    private void ensureFonts() {
-        if (fontTitle != null) return;
+    private void ensureFonts(float scale) {
+        if (fontTitle != null && scale == lastFontScale) return;
+        disposeFonts();
+        lastFontScale = scale;
         Typeface tf = backend.getMinecraftTypeface();
-        fontTitle  = new Font(tf, TITLE_SIZE);
-        fontButton = new Font(tf, BUTTON_TEXT_SIZE);
+        fontTitle  = new Font(tf, BASE_TITLE_SIZE * scale);
+        fontButton = new Font(tf, BASE_BUTTON_TEXT_SIZE * scale);
+    }
+
+    private void disposeFonts() {
+        if (fontTitle  != null) { fontTitle.close();  fontTitle  = null; }
+        if (fontButton != null) { fontButton.close(); fontButton = null; }
     }
 
     private void drawTitle(Canvas canvas, float cx, float cy, String title) {
@@ -92,22 +109,22 @@ public final class SkijaPauseMenuRenderer {
         }
     }
 
-    private void drawButton(Canvas canvas, String text, float x, float y, boolean highlighted) {
+    private void drawButton(Canvas canvas, String text, float x, float y, boolean highlighted,
+                            float buttonWidth, float buttonHeight) {
         int fill = highlighted ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
 
-        MPainter.stoneSurface(canvas, x, y, BUTTON_WIDTH, BUTTON_HEIGHT, MStyle.BUTTON_RADIUS,
+        MPainter.stoneSurface(canvas, x, y, buttonWidth, buttonHeight, MStyle.BUTTON_RADIUS,
                 fill, MStyle.BUTTON_BORDER,
                 MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, MStyle.BUTTON_DROP_SHADOW,
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
 
         int textColor = highlighted ? COLOR_TEXT_HIGHLIGHT : COLOR_TEXT_PRIMARY;
-        float tx = x + BUTTON_WIDTH / 2f;
-        float ty = y + BUTTON_HEIGHT / 2f + 7f;
+        float tx = x + buttonWidth / 2f;
+        float ty = y + buttonHeight / 2f + 7f;
         MPainter.drawCenteredStringWithShadow(canvas, text, tx, ty, fontButton, textColor, COLOR_TEXT_SHADOW);
     }
 
     public void dispose() {
-        if (fontTitle  != null) { fontTitle.close();  fontTitle  = null; }
-        if (fontButton != null) { fontButton.close(); fontButton = null; }
+        disposeFonts();
     }
 }

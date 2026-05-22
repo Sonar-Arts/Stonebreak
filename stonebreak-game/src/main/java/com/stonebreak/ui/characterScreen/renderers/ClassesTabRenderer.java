@@ -62,29 +62,29 @@ public class ClassesTabRenderer {
 
   /** Renders the full Classes tab content. */
   public void render(Canvas canvas, MasonryUI ui, CharacterStats stats,
-                     float px, float py, float mx, float my) {
-    drawSidebar(canvas, ui, stats, px, py, mx, my);
-    drawContentArea(canvas, ui, stats, px, py, mx, my);
+                     float px, float py, float mx, float my, float scale) {
+    drawSidebar(canvas, ui, stats, px, py, mx, my, scale);
+    drawContentArea(canvas, ui, stats, px, py, mx, my, scale);
   }
 
   /** Handles a click; returns true if consumed. */
-  public boolean handleClick(float mx, float my, CharacterStats stats, float px, float py) {
-    return handleSidebarClick(mx, my, px, py)
+  public boolean handleClick(float mx, float my, CharacterStats stats, float px, float py, float scale) {
+    return handleSidebarClick(mx, my, px, py, scale)
         || handleAbilityClick(mx, my, stats);
   }
 
   /** Scrolls the sidebar (left area) or the ability list (right area). */
-  public void handleScroll(float deltaY, float mx, float my, float px, float py) {
-    float sideX = px + SIDEBAR_X_PAD;
-    if (mx >= sideX && mx <= sideX + SIDEBAR_W) {
-      float totalListH = ClassRegistry.ALL.size() * (CLASS_BTN_H + CLASS_BTN_GAP);
-      float maxScroll = Math.max(0f, totalListH - SIDEBAR_CLIP_H);
+  public void handleScroll(float deltaY, float mx, float my, float px, float py, float scale) {
+    float sideX = px + SIDEBAR_X_PAD * scale;
+    if (mx >= sideX && mx <= sideX + SIDEBAR_W * scale) {
+      float totalListH = ClassRegistry.ALL.size() * ((CLASS_BTN_H + CLASS_BTN_GAP) * scale);
+      float maxScroll = Math.max(0f, totalListH - SIDEBAR_CLIP_H * scale);
       leftScrollOffset = Math.clamp(leftScrollOffset + deltaY * 20f, 0f, maxScroll);
     } else {
       Optional<PlayerClassDefinition> cls = classOpt();
       if (cls.isPresent()) {
-        float totalH = cls.get().abilities().size() * ABILITY_ROW_H;
-        float clipH = abilityClipH();
+        float totalH = cls.get().abilities().size() * ABILITY_ROW_H * scale;
+        float clipH = abilityClipH(scale);
         float maxScroll = Math.max(0f, totalH - clipH);
         rightScrollOffset = Math.clamp(rightScrollOffset + deltaY * 20f, 0f, maxScroll);
       }
@@ -94,30 +94,34 @@ public class ClassesTabRenderer {
   // ─────────────────────────────────────────────── Sidebar
 
   private void drawSidebar(Canvas canvas, MasonryUI ui, CharacterStats stats,
-                           float px, float py, float mx, float my) {
-    float sideX = px + SIDEBAR_X_PAD;
-    float sideY = py + 20f;
+                           float px, float py, float mx, float my, float scale) {
+    float sideX = px + SIDEBAR_X_PAD * scale;
+    float sideY = py + 20f * scale;
+    float btnW  = CLASS_BTN_W * scale;
+    float btnH  = CLASS_BTN_H * scale;
+    float btnG  = CLASS_BTN_GAP * scale;
+    float sideW = SIDEBAR_W * scale;
+    float clipH = SIDEBAR_CLIP_H * scale;
 
     MPainter.drawStringWithShadow(canvas, "Class Select",
-        sideX + 4f, sideY + 14f,
+        sideX + 4f, sideY + 14f * scale,
         ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-    drawEngravedRule(canvas, sideX, sideY + 20f, SIDEBAR_W);
+    drawEngravedRule(canvas, sideX, sideY + 20f * scale, sideW);
 
-    float clipTop = sideY + LIST_CLIP_TOP_PAD;
+    float clipTop = sideY + LIST_CLIP_TOP_PAD * scale;
     List<PlayerClassDefinition> classes = ClassRegistry.ALL;
-    float totalListH = classes.size() * (CLASS_BTN_H + CLASS_BTN_GAP);
+    float totalListH = classes.size() * (btnH + btnG);
 
     canvas.save();
-    canvas.clipRect(Rect.makeXYWH(sideX, clipTop, SIDEBAR_W, SIDEBAR_CLIP_H));
+    canvas.clipRect(Rect.makeXYWH(sideX, clipTop, sideW, clipH));
 
     for (int i = 0; i < classes.size(); i++) {
       PlayerClassDefinition cls = classes.get(i);
-      float btnY = clipTop + i * (CLASS_BTN_H + CLASS_BTN_GAP) - leftScrollOffset;
+      float btnY = clipTop + i * (btnH + btnG) - leftScrollOffset;
 
       boolean selected = cls.id().equals(displayedClassId);
-      // Hover detection in screen space (unaffected by canvas transforms)
-      boolean hovered = mx >= sideX && mx <= sideX + CLASS_BTN_W
-          && my >= btnY && my <= btnY + CLASS_BTN_H;
+      boolean hovered = mx >= sideX && mx <= sideX + btnW
+          && my >= btnY && my <= btnY + btnH;
 
       int cpSpent = stats.getTotalCpSpentForClass(cls.id());
       boolean hasPoints = cpSpent > 0;
@@ -125,12 +129,12 @@ public class ClassesTabRenderer {
       int fill = selected ? 0xFF7A7A7A
           : hovered ? MStyle.BUTTON_FILL_HI
           : MStyle.BUTTON_FILL;
-      MPainter.stoneSurface(canvas, sideX + 1f, btnY, CLASS_BTN_W, CLASS_BTN_H,
+      MPainter.stoneSurface(canvas, sideX + 1f, btnY, btnW, btnH,
           MStyle.BUTTON_RADIUS, fill, MStyle.BUTTON_BORDER,
           MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
           MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
 
-      float textY = btnY + CLASS_BTN_H * 0.5f + MStyle.FONT_META * 0.38f;
+      float textY = btnY + btnH * 0.5f + MStyle.FONT_META * 0.38f;
       int textColor = selected ? MStyle.TEXT_ACCENT
           : hasPoints ? MStyle.TEXT_PRIMARY
           : MStyle.TEXT_SECONDARY;
@@ -141,68 +145,69 @@ public class ClassesTabRenderer {
       if (hasPoints) {
         String cpStr = cpSpent + " CP";
         MPainter.drawStringWithShadow(canvas, cpStr,
-            sideX + CLASS_BTN_W - 34f, textY,
+            sideX + btnW - 34f * scale, textY,
             ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
       }
     }
 
     canvas.restore();
-    drawScrollbar(canvas, sideX + SIDEBAR_W - 6f, clipTop, 6f, SIDEBAR_CLIP_H,
+    drawScrollbar(canvas, sideX + sideW - 6f, clipTop, 6f, clipH,
         leftScrollOffset, totalListH);
   }
 
   // ─────────────────────────────────────────────── Content area
 
   private void drawContentArea(Canvas canvas, MasonryUI ui, CharacterStats stats,
-                               float px, float py, float mx, float my) {
-    float cx = px + CONTENT_X_PAD;
-    float cy = py + 20f;
+                               float px, float py, float mx, float my, float scale) {
+    float cx = px + CONTENT_X_PAD * scale;
+    float cy = py + 20f * scale;
+    float cw = CONTENT_W * scale;
 
     Optional<PlayerClassDefinition> classOpt = classOpt();
     String className = classOpt.map(PlayerClassDefinition::name).orElse("Select a class");
     String classDesc = classOpt.map(PlayerClassDefinition::description)
         .orElse("Choose a class from the list on the left.");
 
-    // Fixed header
     MPainter.drawStringWithShadow(canvas, className,
-        cx + 4f, cy + 18f,
+        cx + 4f, cy + 18f * scale,
         ui.fonts().get(MStyle.FONT_ITEM), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
     MPainter.drawStringWithShadow(canvas, classDesc,
-        cx + 4f, cy + 36f,
+        cx + 4f, cy + 36f * scale,
         ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-    drawEngravedRule(canvas, cx, cy + 46f, CONTENT_W);
+    drawEngravedRule(canvas, cx, cy + 46f * scale, cw);
 
-    // Dirt background
-    float dirtY = cy + 52f;
-    float dirtH = 400f;
-    MPainter.stoneSurface(canvas, cx, dirtY, CONTENT_W, dirtH,
+    float dirtY = cy + 52f * scale;
+    float dirtH = 400f * scale;
+    MPainter.stoneSurface(canvas, cx, dirtY, cw, dirtH,
         MStyle.PANEL_RADIUS, DIRT_FILL, DIRT_BORDER,
         MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, 0,
         DIRT_NOISE_DARK, DIRT_NOISE_LIGHT);
 
-    // CP counter (fixed inside dirt panel)
     MPainter.drawStringWithShadow(canvas, "CP Available: " + stats.getRemainingCp(),
-        cx + 8f, dirtY + 16f,
+        cx + 8f, dirtY + 16f * scale,
         ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-    drawEngravedRule(canvas, cx + 4f, dirtY + 22f, CONTENT_W - 8f);
+    drawEngravedRule(canvas, cx + 4f, dirtY + 22f * scale, cw - 8f);
 
     if (classOpt.isEmpty()) {
       return;
     }
 
-    drawAbilityList(canvas, ui, stats, classOpt.get(), cx, dirtY, mx, my);
+    drawAbilityList(canvas, ui, stats, classOpt.get(), cx, dirtY, mx, my, scale, cw);
   }
 
   private void drawAbilityList(Canvas canvas, MasonryUI ui, CharacterStats stats,
                                PlayerClassDefinition cls, float cx, float dirtY,
-                               float mx, float my) {
+                               float mx, float my, float scale, float cw) {
     List<ClassAbility> abilities = cls.abilities();
-    float clipTop = dirtY + 28f;
-    float clipH = abilityClipH();
-    float totalH = abilities.size() * ABILITY_ROW_H;
+    float rowH  = ABILITY_ROW_H  * scale;
+    float btnW  = SPEND_BTN_W    * scale;
+    float btnH  = SPEND_BTN_H    * scale;
+    float clipTop = dirtY + 28f * scale;
+    float clipH = abilityClipH(scale);
+    float totalH = abilities.size() * rowH;
 
     canvas.save();
-    canvas.clipRect(Rect.makeXYWH(cx, clipTop, CONTENT_W - 8f, clipH));
+    canvas.clipRect(Rect.makeXYWH(cx, clipTop, cw - 8f, clipH));
 
     for (int i = 0; i < abilities.size(); i++) {
       ClassAbility ability = abilities.get(i);
@@ -210,63 +215,62 @@ public class ClassesTabRenderer {
       int spent = stats.getSpentCp(key);
       boolean canSpend = stats.getRemainingCp() > 0;
 
-      float rowY = clipTop + i * ABILITY_ROW_H - rightScrollOffset;
+      float rowY = clipTop + i * rowH - rightScrollOffset;
 
-      // Ability name
       MPainter.drawStringWithShadow(canvas, ability.name(),
-          cx + 8f, rowY + 16f,
+          cx + 8f, rowY + 16f * scale,
           ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
 
-      // Hint / description
       MPainter.drawStringWithShadow(canvas, ability.description(),
-          cx + 8f, rowY + 32f,
+          cx + 8f, rowY + 32f * scale,
           ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
 
-      // Spend CP button — bounds stored in screen space for click detection
-      float btnX = cx + CONTENT_W - SPEND_BTN_W - 8f;
-      float btnY = rowY + (ABILITY_ROW_H - SPEND_BTN_H) / 2f;
-      spendButtons[i].bounds(btnX, btnY, SPEND_BTN_W, SPEND_BTN_H);
+      float btnX = cx + cw - btnW - 8f;
+      float btnY = rowY + (rowH - btnH) / 2f;
+      spendButtons[i].bounds(btnX, btnY, btnW, btnH);
       spendButtons[i].updateHover(mx, my);
 
       int btnFill = !canSpend ? MStyle.BUTTON_FILL_DIS
           : spendButtons[i].isHovered() ? MStyle.BUTTON_FILL_HI
           : MStyle.BUTTON_FILL;
-      MPainter.stoneSurface(canvas, btnX, btnY, SPEND_BTN_W, SPEND_BTN_H,
+      MPainter.stoneSurface(canvas, btnX, btnY, btnW, btnH,
           MStyle.BUTTON_RADIUS, btnFill, MStyle.BUTTON_BORDER,
           MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
           MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
 
       String btnLabel = "Spend " + ability.cpCost() + " CP (" + spent + ")";
       int btnTextColor = canSpend ? MStyle.TEXT_PRIMARY : MStyle.TEXT_DISABLED;
-      float btnTextY = btnY + SPEND_BTN_H * 0.5f + MStyle.FONT_META * 0.38f;
+      float btnTextY = btnY + btnH * 0.5f + MStyle.FONT_META * 0.38f;
       MPainter.drawCenteredStringWithShadow(canvas, btnLabel,
-          btnX + SPEND_BTN_W / 2f, btnTextY,
+          btnX + btnW / 2f, btnTextY,
           ui.fonts().get(MStyle.FONT_META), btnTextColor, MStyle.TEXT_SHADOW);
 
-      // Row separator
       if (i < abilities.size() - 1) {
-        drawEngravedRule(canvas, cx + 4f, rowY + ABILITY_ROW_H - 4f, CONTENT_W - 12f);
+        drawEngravedRule(canvas, cx + 4f, rowY + rowH - 4f * scale, cw - 12f);
       }
     }
 
     canvas.restore();
-    drawScrollbar(canvas, cx + CONTENT_W - 7f, clipTop, 6f, clipH,
+    drawScrollbar(canvas, cx + cw - 7f, clipTop, 6f, clipH,
         rightScrollOffset, totalH);
   }
 
   // ─────────────────────────────────────────────── Click handling
 
-  private boolean handleSidebarClick(float mx, float my, float px, float py) {
-    float sideX = px + SIDEBAR_X_PAD;
-    float clipTop = py + 20f + LIST_CLIP_TOP_PAD;
+  private boolean handleSidebarClick(float mx, float my, float px, float py, float scale) {
+    float sideX = px + SIDEBAR_X_PAD * scale;
+    float clipTop = py + (20f + LIST_CLIP_TOP_PAD) * scale;
+    float btnW = CLASS_BTN_W * scale;
+    float btnH = CLASS_BTN_H * scale;
+    float btnG = CLASS_BTN_GAP * scale;
 
-    if (mx < sideX || mx > sideX + CLASS_BTN_W
-        || my < clipTop || my > clipTop + SIDEBAR_CLIP_H) {
+    if (mx < sideX || mx > sideX + btnW
+        || my < clipTop || my > clipTop + SIDEBAR_CLIP_H * scale) {
       return false;
     }
 
     float relY = my - clipTop + leftScrollOffset;
-    int idx = (int) (relY / (CLASS_BTN_H + CLASS_BTN_GAP));
+    int idx = (int) (relY / (btnH + btnG));
 
     if (idx >= 0 && idx < ClassRegistry.ALL.size()) {
       displayedClassId = ClassRegistry.ALL.get(idx).id();
@@ -297,8 +301,8 @@ public class ClassesTabRenderer {
         : Optional.empty();
   }
 
-  private float abilityClipH() {
-    return 365f;
+  private float abilityClipH(float scale) {
+    return 365f * scale;
   }
 
   private void drawEngravedRule(Canvas canvas, float x, float y, float w) {

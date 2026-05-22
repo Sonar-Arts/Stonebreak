@@ -3,6 +3,7 @@ package com.openmason.engine.rendering.model.gmr.parts;
 import com.openmason.engine.rendering.model.ModelPart;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -575,6 +576,47 @@ public class ModelPartManager implements IModelPartManager {
             rebuildCombinedMesh();
         }
         return updated;
+    }
+
+    /**
+     * Back-propagate a combined-mesh vertex position (world space) to part-local geometry,
+     * without triggering a rebuild. Call this after committing viewport vertex edits to
+     * GenericModelRenderer so that partGeometry stays in sync. The next rebuildCombinedMesh()
+     * (e.g. caused by a part transform change) will then use the updated local positions
+     * instead of the stale originals.
+     *
+     * <p>Handles UV-split duplicates: any co-located local vertices are updated together,
+     * matching the behaviour of {@link #updatePartVertex}.
+     *
+     * @param globalIndex  Vertex index in the combined mesh buffer
+     * @param newWorldPos  New position in combined-mesh (world) space
+     */
+    public void syncPartVertexFromWorldPos(int globalIndex, Vector3f newWorldPos) {
+        for (Map.Entry<String, ModelPartDescriptor> entry : parts.entrySet()) {
+            MeshRange range = entry.getValue().meshRange();
+            if (range == null || !range.containsVertex(globalIndex)) continue;
+
+            PartMeshRebuilder.PartGeometry geo = partGeometry.get(entry.getKey());
+            if (geo == null || geo.vertices() == null) return;
+
+            Matrix4f inv = new Matrix4f(getEffectiveWorldMatrix(entry.getKey())).invert();
+            Vector4f local = new Vector4f(newWorldPos.x, newWorldPos.y, newWorldPos.z, 1f);
+            inv.transform(local);
+
+            int li = range.toLocalVertex(globalIndex);
+            float[] verts = geo.vertices();
+            final float ox = verts[li * 3], oy = verts[li * 3 + 1], oz = verts[li * 3 + 2];
+            final float epsSq = 1e-8f;
+            for (int i = 0, n = verts.length / 3; i < n; i++) {
+                float dx = verts[i * 3] - ox, dy = verts[i * 3 + 1] - oy, dz = verts[i * 3 + 2] - oz;
+                if (dx * dx + dy * dy + dz * dz < epsSq) {
+                    verts[i * 3] = local.x;
+                    verts[i * 3 + 1] = local.y;
+                    verts[i * 3 + 2] = local.z;
+                }
+            }
+            return;
+        }
     }
 
     // ========== Hierarchy ==========

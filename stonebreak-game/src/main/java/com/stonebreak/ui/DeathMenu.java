@@ -10,8 +10,8 @@ import com.stonebreak.ui.deathMenu.SkijaDeathMenuRenderer;
  */
 public class DeathMenu {
 
-    private static final float BUTTON_WIDTH  = SkijaDeathMenuRenderer.BUTTON_WIDTH;
-    private static final float BUTTON_HEIGHT = SkijaDeathMenuRenderer.BUTTON_HEIGHT;
+    private static final float BASE_BUTTON_WIDTH  = SkijaDeathMenuRenderer.BUTTON_WIDTH;
+    private static final float BASE_BUTTON_HEIGHT = SkijaDeathMenuRenderer.BUTTON_HEIGHT;
 
     private final SkijaDeathMenuRenderer skijaRenderer;
 
@@ -70,11 +70,14 @@ public class DeathMenu {
     }
 
     private static boolean hitRespawnButton(float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        float buttonWidth  = BASE_BUTTON_WIDTH  * scale;
+        float buttonHeight = BASE_BUTTON_HEIGHT * scale;
         float centerX = windowWidth  / 2.0f;
         float centerY = windowHeight / 2.0f;
-        float x = centerX - BUTTON_WIDTH / 2f;
-        float y = centerY + 20f;
-        return mouseX >= x && mouseX <= x + BUTTON_WIDTH
-            && mouseY >= y && mouseY <= y + BUTTON_HEIGHT;
+        float x = centerX - buttonWidth / 2f;
+        float y = centerY + 20f * scale;
+        return mouseX >= x && mouseX <= x + buttonWidth
+            && mouseY >= y && mouseY <= y + buttonHeight;
     }
 }

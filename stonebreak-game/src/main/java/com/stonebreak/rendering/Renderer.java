@@ -138,7 +138,8 @@ public class Renderer {
         
         entityRenderer = new EntityRenderer();
         entityRenderer.initialize();
-        
+        entityRenderer.initializeArrowRenderer(resourceManager.getShaderProgram());
+
         dropRenderer = new DropRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, resourceManager.getShaderProgram());
 
         // Test the new voxelized item drop system

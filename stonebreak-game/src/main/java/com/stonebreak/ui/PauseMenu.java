@@ -10,8 +10,8 @@ import com.stonebreak.ui.pauseMenu.SkijaPauseMenuRenderer;
  */
 public class PauseMenu {
 
-    private static final float BUTTON_WIDTH  = SkijaPauseMenuRenderer.BUTTON_WIDTH;
-    private static final float BUTTON_HEIGHT = SkijaPauseMenuRenderer.BUTTON_HEIGHT;
+    private static final float BASE_BUTTON_WIDTH  = SkijaPauseMenuRenderer.BUTTON_WIDTH;
+    private static final float BASE_BUTTON_HEIGHT = SkijaPauseMenuRenderer.BUTTON_HEIGHT;
 
     private final SkijaPauseMenuRenderer skijaRenderer;
 
@@ -67,11 +67,14 @@ public class PauseMenu {
     }
 
     private static boolean hitButton(float mouseX, float mouseY, int windowWidth, int windowHeight, float buttonTopOffset) {
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        float buttonWidth  = BASE_BUTTON_WIDTH  * scale;
+        float buttonHeight = BASE_BUTTON_HEIGHT * scale;
         float centerX = windowWidth  / 2.0f;
         float centerY = windowHeight / 2.0f;
-        float x = centerX - BUTTON_WIDTH / 2f;
-        float y = centerY + buttonTopOffset;
-        return mouseX >= x && mouseX <= x + BUTTON_WIDTH
-            && mouseY >= y && mouseY <= y + BUTTON_HEIGHT;
+        float x = centerX - buttonWidth / 2f;
+        float y = centerY + buttonTopOffset * scale;
+        return mouseX >= x && mouseX <= x + buttonWidth
+            && mouseY >= y && mouseY <= y + buttonHeight;
     }
 }

@@ -58,6 +58,11 @@ public class PlayerArmAnimator {
         if (player.isAttacking()) {
             applyAttackAnimation(armTransform, player.getAttackAnimationProgress(), heldItem);
         }
+
+        // Apply bow draw animation (overrides walk/idle sway when drawing)
+        if (player.isDrawingBow()) {
+            applyBowDrawAnimation(armTransform, player.getBowDrawProgress());
+        }
     }
     
     /**
@@ -193,6 +198,23 @@ public class PlayerArmAnimator {
         armTransform.rotate((float) Math.toRadians(swingTwist), 0.0f, 0.0f, 1.0f);
     }
     
+    /**
+     * Pulls the arm back as the bow is drawn. Progress [0,1] over 3 seconds.
+     * Additive on top of base position/breathing so the arm tilts smoothly into an aiming pose.
+     */
+    private void applyBowDrawAnimation(Matrix4f armTransform, float progress) {
+        // Pull back on X axis (raise the bow hand toward the shoulder)
+        float pullBack = (float) Math.toRadians(-30.0f * progress);
+        armTransform.rotate(pullBack, 1.0f, 0.0f, 0.0f);
+
+        // Slight inward Y rotation (draw arm wraps inward)
+        float inward = (float) Math.toRadians(10.0f * progress);
+        armTransform.rotate(inward, 0.0f, 1.0f, 0.0f);
+
+        // Small upward lift
+        armTransform.translate(0.0f, 0.03f * progress, 0.0f);
+    }
+
     /**
      * Applies positioning and scaling adjustments for item rendering.
      */
