@@ -44,25 +44,22 @@ public final class SkijaSettingsRenderer {
         if (!ui.isAvailable()) return;
         if (!ui.beginFrame(windowWidth, windowHeight, 1.0f)) return;
         try {
+            float s = com.stonebreak.config.Settings.getInstance().getUiScale();
             float centerX = windowWidth / 2f;
             float centerY = windowHeight / 2f;
 
-            // Panel matches legacy NanoVG SettingsMenu sizing so content
-            // alignment (category column, scroll viewport, title) is identical.
-            float panelWidth = Math.min(700f, windowWidth * 0.85f);
-            float panelHeight = Math.min(550f, windowHeight * 0.85f);
+            float panelWidth = Math.min(700f * s, windowWidth * 0.92f);
+            float panelHeight = Math.min(550f * s, windowHeight * 0.92f);
             float panelX = centerX - panelWidth / 2f;
             float panelY = centerY - panelHeight / 2f;
 
-            // Draw the visible backdrop slightly taller than the content grid
-            // so the Back button doesn't kiss the bottom edge.
-            float backdropExtra = 40f;
+            float backdropExtra = 40f * s;
 
             Canvas canvas = ui.canvas();
             drawBackground(canvas, windowWidth, windowHeight);
             drawBackdropPanel(canvas, panelX, panelY, panelWidth, panelHeight + backdropExtra);
 
-            float titleY = panelY + Math.max(40f, panelHeight * 0.08f);
+            float titleY = panelY + Math.max(40f * s, panelHeight * 0.08f);
             drawTitle(canvas, centerX, titleY);
 
             if (state.getCurrentScrollMath() != null) {
@@ -138,11 +135,12 @@ public final class SkijaSettingsRenderer {
     // ─────────────────────────────────────────────── Panels
 
     private void positionCategoryButtons(float centerX, float centerY) {
-        float categoryX = centerX + SettingsConfig.CATEGORY_PANEL_X_OFFSET;
-        float categoryY = centerY + SettingsConfig.CATEGORY_BUTTONS_START_Y_OFFSET - 20f;
+        float categoryX = centerX + SettingsConfig.getScaledCategoryPanelXOffset();
+        float categoryY = centerY + SettingsConfig.getScaledCategoryButtonsStartY()
+                - 20f * com.stonebreak.config.Settings.getInstance().getUiScale();
         var buttons = state.getCategoryButtons();
         for (int i = 0; i < buttons.size(); i++) {
-            buttons.get(i).position(categoryX, categoryY + i * SettingsConfig.CATEGORY_BUTTON_SPACING);
+            buttons.get(i).position(categoryX, categoryY + i * SettingsConfig.getScaledCategoryButtonSpacing());
         }
     }
 
@@ -162,17 +160,18 @@ public final class SkijaSettingsRenderer {
         CategoryState category = state.getSelectedCategory();
         CategoryState.SettingType[] settings = category.getSettings();
 
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
         float offset = scrollContainer.getScrollOffset();
-        float topPadding = Math.max(SettingsConfig.SCROLL_CONTENT_PADDING, 40f);
+        float topPadding = Math.max(SettingsConfig.getScaledScrollContentPadding(), 40f * s);
         float startY = scrollContainer.getContainerY() - offset + topPadding;
         float centerX = scrollContainer.getContainerCenterX();
         float viewportY = scrollContainer.getContainerY();
         float viewportBottom = viewportY + scrollContainer.getContainerHeight();
-        float cullBuffer = 50f;
+        float cullBuffer = 50f * s;
 
         for (int i = 0; i < settings.length; i++) {
             float rowY = startY + i * scrollContainer.getItemSpacing();
-            if (rowY + SettingsConfig.BUTTON_HEIGHT < viewportY - cullBuffer) continue;
+            if (rowY + SettingsConfig.getScaledButtonHeight() < viewportY - cullBuffer) continue;
             if (rowY > viewportBottom + cullBuffer) continue;
             positionAndRenderSetting(settings[i], centerX, rowY);
         }
@@ -182,9 +181,9 @@ public final class SkijaSettingsRenderer {
         MWidget widget = resolveWidget(type);
         if (widget == null) return;
         if (isSlider(type)) {
-            widget.position(centerX, y + SettingsConfig.BUTTON_HEIGHT / 2f);
+            widget.position(centerX, y + SettingsConfig.getScaledButtonHeight() / 2f);
         } else {
-            widget.position(centerX - SettingsConfig.BUTTON_WIDTH / 2f, y);
+            widget.position(centerX - SettingsConfig.getScaledButtonWidth() / 2f, y);
         }
         widget.render(ui);
     }
@@ -193,7 +192,8 @@ public final class SkijaSettingsRenderer {
         return type == CategoryState.SettingType.VOLUME
                 || type == CategoryState.SettingType.CROSSHAIR_SIZE
                 || type == CategoryState.SettingType.RENDER_DISTANCE
-                || type == CategoryState.SettingType.LOD_DISTANCE;
+                || type == CategoryState.SettingType.LOD_DISTANCE
+                || type == CategoryState.SettingType.UI_SCALE;
     }
 
     private MWidget resolveWidget(CategoryState.SettingType type) {
@@ -210,6 +210,7 @@ public final class SkijaSettingsRenderer {
             case LOD_DISTANCE     -> state.getLodDistanceSlider();
             case LOD_ENABLED      -> state.getLodEnabledButton();
             case VSYNC            -> state.getVsyncButton();
+            case UI_SCALE         -> state.getUiScaleSlider();
             default -> null;
         };
     }
@@ -217,15 +218,14 @@ public final class SkijaSettingsRenderer {
     // ─────────────────────────────────────────────── Action buttons
 
     private void drawActionButtons() {
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        float bw = SettingsConfig.getScaledButtonWidth();
+        float bh = SettingsConfig.getScaledButtonHeight();
         float centerX = scrollContainer.getContainerCenterX();
-        float applyY = scrollContainer.getContainerBottom() + 20f;
-        float backY = applyY + SettingsConfig.BUTTON_HEIGHT + 15f;
+        float applyY = scrollContainer.getContainerBottom() + 20f * s;
+        float backY  = applyY + bh + 15f * s;
 
-        state.getApplyButton()
-                .position(centerX - SettingsConfig.BUTTON_WIDTH / 2f, applyY)
-                .render(ui);
-        state.getBackButton()
-                .position(centerX - SettingsConfig.BUTTON_WIDTH / 2f, backY)
-                .render(ui);
+        state.getApplyButton().position(centerX - bw / 2f, applyY).render(ui);
+        state.getBackButton() .position(centerX - bw / 2f, backY) .render(ui);
     }
 }

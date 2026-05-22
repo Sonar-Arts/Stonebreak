@@ -63,65 +63,78 @@ public class InventoryLayoutCalculator {
      * Calculates modern inventory layout with improved spacing and visual hierarchy.
      */
     public static InventoryLayout calculateLayout(int screenWidth, int screenHeight) {
+        float uiScale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        int slotSize = Math.round(SLOT_SIZE * uiScale);
+        int slotPadding = Math.round(SLOT_PADDING * uiScale);
+        int sectionSpacing = Math.round(SECTION_SPACING * uiScale);
+        int titleHeight = Math.round(TITLE_HEIGHT * uiScale);
+        int panelPadding = Math.round(PANEL_PADDING * uiScale);
+
         // Calculate base inventory panel width with improved spacing
-        int baseInventoryPanelWidth = Inventory.MAIN_INVENTORY_COLS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + (PANEL_PADDING * 2);
+        int baseInventoryPanelWidth = Inventory.MAIN_INVENTORY_COLS * (slotSize + slotPadding) + slotPadding + (panelPadding * 2);
 
         // Crafting section with better proportions
-        int craftingSectionHeight = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + SLOT_SIZE + SECTION_SPACING;
+        int craftingSectionHeight = CRAFTING_GRID_SIZE * (slotSize + slotPadding) + slotPadding + slotSize + sectionSpacing;
 
         // Calculate main inventory and hotbar heights separately for better control
-        int mainInventoryHeight = Inventory.MAIN_INVENTORY_ROWS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        int hotbarHeight = SLOT_SIZE + SLOT_PADDING; // Single row for hotbar
-        int mainAndHotbarHeight = mainInventoryHeight + hotbarHeight + SECTION_SPACING; // Extra spacing between main inv and hotbar
+        int mainInventoryHeight = Inventory.MAIN_INVENTORY_ROWS * (slotSize + slotPadding) + slotPadding;
+        int hotbarHeight = slotSize + slotPadding;
+        int mainAndHotbarHeight = mainInventoryHeight + hotbarHeight + sectionSpacing;
 
         // Calculate required width for crafting section with improved button sizing
-        int craftInputGridVisualWidth = CRAFTING_GRID_SIZE * SLOT_SIZE + (CRAFTING_GRID_SIZE - 1) * SLOT_PADDING;
-        int recipeButtonWidth = Math.max(100, (int)(baseInventoryPanelWidth * 0.28f)); // Larger button
-        int craftingElementsTotalWidth = craftInputGridVisualWidth + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE + (SLOT_PADDING * 2) + recipeButtonWidth;
+        int craftInputGridVisualWidth = CRAFTING_GRID_SIZE * slotSize + (CRAFTING_GRID_SIZE - 1) * slotPadding;
+        int recipeButtonMinWidth = Math.round(100 * uiScale);
+        int recipeButtonWidth = Math.max(recipeButtonMinWidth, (int)(baseInventoryPanelWidth * 0.28f));
+        int craftingElementsTotalWidth = craftInputGridVisualWidth + slotSize + slotPadding + slotSize + (slotPadding * 2) + recipeButtonWidth;
 
         // Use modern spacing for panel dimensions
-        int inventoryPanelWidth = Math.max(baseInventoryPanelWidth, craftingElementsTotalWidth + (PANEL_PADDING * 2));
+        int inventoryPanelWidth = Math.max(baseInventoryPanelWidth, craftingElementsTotalWidth + (panelPadding * 2));
         // Panel height: crafting title + crafting section + inventory title + main inventory + hotbar + padding
-        int inventoryPanelHeight = TITLE_HEIGHT + craftingSectionHeight + TITLE_HEIGHT + mainAndHotbarHeight + (PANEL_PADDING * 2);
+        int inventoryPanelHeight = titleHeight + craftingSectionHeight + titleHeight + mainAndHotbarHeight + (panelPadding * 2);
 
         // Center the panel on screen
         int panelStartX = (screenWidth - inventoryPanelWidth) / 2;
         int panelStartY = (screenHeight - inventoryPanelHeight) / 2;
 
         // Crafting area calculations with improved spacing
-        int craftingGridStartY = panelStartY + PANEL_PADDING + TITLE_HEIGHT + SECTION_SPACING;
-        int craftingElementsStartX = panelStartX + PANEL_PADDING + (inventoryPanelWidth - craftingElementsTotalWidth - (PANEL_PADDING * 2)) / 2;
-        int craftingAreaHeight = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        int craftingGridStartY = panelStartY + panelPadding + titleHeight + sectionSpacing;
+        int craftingElementsStartX = panelStartX + panelPadding + (inventoryPanelWidth - craftingElementsTotalWidth - (panelPadding * 2)) / 2;
+        int craftingAreaHeight = CRAFTING_GRID_SIZE * (slotSize + slotPadding) + slotPadding;
 
         // Main inventory area calculations with better section separation
-        float inventoryTitleY = craftingGridStartY + craftingSectionHeight - SECTION_SPACING;
-        int mainInvContentStartY = (int)(inventoryTitleY + TITLE_HEIGHT / 2f + SECTION_SPACING);
+        float inventoryTitleY = craftingGridStartY + craftingSectionHeight - sectionSpacing;
+        int mainInvContentStartY = (int)(inventoryTitleY + titleHeight / 2f + sectionSpacing);
 
         // Hotbar Y calculation with improved spacing - ensure it stays within panel bounds
-        int hotbarRowY = mainInvContentStartY + SLOT_PADDING + Inventory.MAIN_INVENTORY_ROWS * (SLOT_SIZE + SLOT_PADDING) + SECTION_SPACING;
+        int hotbarRowY = mainInvContentStartY + slotPadding + Inventory.MAIN_INVENTORY_ROWS * (slotSize + slotPadding) + sectionSpacing;
 
         // Output slot calculation with centered positioning
-        int outputSlotX = craftingElementsStartX + craftInputGridVisualWidth + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING;
-        int outputSlotY = craftingGridStartY + (craftingAreaHeight - SLOT_SIZE) / 2;
+        int outputSlotX = craftingElementsStartX + craftInputGridVisualWidth + slotPadding + slotSize + slotPadding;
+        int outputSlotY = craftingGridStartY + (craftingAreaHeight - slotSize) / 2;
 
         // Validate that hotbar is within panel bounds
         int panelBottomY = panelStartY + inventoryPanelHeight;
-        int hotbarBottomY = hotbarRowY + SLOT_SIZE;
-        if (hotbarBottomY > panelBottomY - PANEL_PADDING) {
+        int hotbarBottomY = hotbarRowY + slotSize;
+        if (hotbarBottomY > panelBottomY - panelPadding) {
             System.err.println("WARNING: Hotbar extends beyond panel bounds! " +
                              "Hotbar bottom: " + hotbarBottomY +
-                             ", Panel bottom (with padding): " + (panelBottomY - PANEL_PADDING));
+                             ", Panel bottom (with padding): " + (panelBottomY - panelPadding));
         }
 
         return new InventoryLayout(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight,
                                  craftingGridStartY, craftingElementsStartX, craftInputGridVisualWidth,
-                                 mainInvContentStartY, hotbarRowY, outputSlotX, outputSlotY);
+                                 mainInvContentStartY, hotbarRowY, outputSlotX, outputSlotY,
+                                 panelStartX + panelPadding);
     }
 
     // ==================== GETTER METHODS ====================
 
-    public static int getSlotSize() { return SLOT_SIZE; }
-    public static int getSlotPadding() { return SLOT_PADDING; }
+    public static int getSlotSize() {
+        return Math.round(SLOT_SIZE * com.stonebreak.config.Settings.getInstance().getUiScale());
+    }
+    public static int getSlotPadding() {
+        return Math.round(SLOT_PADDING * com.stonebreak.config.Settings.getInstance().getUiScale());
+    }
     public static int getSectionSpacing() { return SECTION_SPACING; }
     public static int getTitleHeight() { return TITLE_HEIGHT; }
     public static int getPanelPadding() { return PANEL_PADDING; }
@@ -173,62 +186,68 @@ public class InventoryLayoutCalculator {
      * Calculate modern layout for workbench screen with 3x3 crafting grid and improved spacing.
      */
     public static InventoryLayout calculateWorkbenchLayout(int screenWidth, int screenHeight) {
-        int baseInventoryPanelWidth = Inventory.MAIN_INVENTORY_COLS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + (PANEL_PADDING * 2);
+        float uiScale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        int slotSize = Math.round(SLOT_SIZE * uiScale);
+        int slotPadding = Math.round(SLOT_PADDING * uiScale);
+        int sectionSpacing = Math.round(SECTION_SPACING * uiScale);
+        int titleHeight = Math.round(TITLE_HEIGHT * uiScale);
+        int panelPadding = Math.round(PANEL_PADDING * uiScale);
+
+        int baseInventoryPanelWidth = Inventory.MAIN_INVENTORY_COLS * (slotSize + slotPadding) + slotPadding + (panelPadding * 2);
 
         // Crafting area: 3x3 grid + arrow + output slot + recipe button with modern spacing
-        int craftingGridVisualWidth = WORKBENCH_CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) - SLOT_PADDING;
+        int craftingGridVisualWidth = WORKBENCH_CRAFTING_GRID_SIZE * (slotSize + slotPadding) - slotPadding;
 
         // Calculate recipe button width with improved proportions
-        int minPanelWidth = baseInventoryPanelWidth;
-        int recipeButtonWidth = Math.max(100, (int)(minPanelWidth * 0.28f)); // Larger button
+        int recipeButtonMinWidth = Math.round(100 * uiScale);
+        int recipeButtonWidth = Math.max(recipeButtonMinWidth, (int)(baseInventoryPanelWidth * 0.28f));
 
         // Total crafting section with better spacing
-        int craftingSectionWidth = craftingGridVisualWidth + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE + (SLOT_PADDING * 2) + recipeButtonWidth;
+        int craftingSectionWidth = craftingGridVisualWidth + slotPadding + slotSize + slotPadding + slotSize + (slotPadding * 2) + recipeButtonWidth;
 
-        int inventoryPanelWidth = Math.max(baseInventoryPanelWidth, craftingSectionWidth + (PANEL_PADDING * 2));
+        int inventoryPanelWidth = Math.max(baseInventoryPanelWidth, craftingSectionWidth + (panelPadding * 2));
 
         // Height with modern section spacing
-        int craftingGridActualHeight = WORKBENCH_CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        // Calculate main inventory and hotbar heights separately for better control
-        int mainInventoryHeight = Inventory.MAIN_INVENTORY_ROWS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        int hotbarHeight = SLOT_SIZE + SLOT_PADDING; // Single row for hotbar
-        int playerInvHeight = mainInventoryHeight + hotbarHeight + SECTION_SPACING; // Extra spacing between main inv and hotbar
+        int craftingGridActualHeight = WORKBENCH_CRAFTING_GRID_SIZE * (slotSize + slotPadding) + slotPadding;
+        int mainInventoryHeight = Inventory.MAIN_INVENTORY_ROWS * (slotSize + slotPadding) + slotPadding;
+        int hotbarHeight = slotSize + slotPadding;
+        int playerInvHeight = mainInventoryHeight + hotbarHeight + sectionSpacing;
 
-        int inventoryPanelHeight = TITLE_HEIGHT + craftingGridActualHeight + TITLE_HEIGHT + playerInvHeight + (SECTION_SPACING * 3) + (PANEL_PADDING * 2);
+        int inventoryPanelHeight = titleHeight + craftingGridActualHeight + titleHeight + playerInvHeight + (sectionSpacing * 3) + (panelPadding * 2);
 
         int panelStartX = (screenWidth - inventoryPanelWidth) / 2;
         int panelStartY = (screenHeight - inventoryPanelHeight) / 2;
 
         // Crafting elements layout with improved spacing
-        int craftingGridStartY = panelStartY + PANEL_PADDING + TITLE_HEIGHT + SECTION_SPACING;
-        int craftingElementsStartX = panelStartX + PANEL_PADDING + (inventoryPanelWidth - craftingSectionWidth - (PANEL_PADDING * 2)) / 2;
+        int craftingGridStartY = panelStartY + panelPadding + titleHeight + sectionSpacing;
+        int craftingElementsStartX = panelStartX + panelPadding + (inventoryPanelWidth - craftingSectionWidth - (panelPadding * 2)) / 2;
 
         // Arrow position centered with improved alignment
-        int arrowX = craftingElementsStartX + craftingGridVisualWidth + SLOT_PADDING;
-        int arrowY = craftingGridStartY + (WORKBENCH_CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) - SLOT_PADDING - SLOT_SIZE) / 2;
+        int arrowX = craftingElementsStartX + craftingGridVisualWidth + slotPadding;
+        int arrowY = craftingGridStartY + (WORKBENCH_CRAFTING_GRID_SIZE * (slotSize + slotPadding) - slotPadding - slotSize) / 2;
 
         // Output slot position aligned with arrow
-        int outputSlotX = arrowX + SLOT_SIZE + SLOT_PADDING;
+        int outputSlotX = arrowX + slotSize + slotPadding;
         int outputSlotY = arrowY;
 
         // Player inventory area with better section separation
-        int playerInvTitleY = craftingGridStartY + craftingGridActualHeight + SECTION_SPACING + (TITLE_HEIGHT / 2);
-        int mainInvContentStartY = playerInvTitleY + (TITLE_HEIGHT / 2) + SECTION_SPACING;
+        int playerInvTitleY = craftingGridStartY + craftingGridActualHeight + sectionSpacing + (titleHeight / 2);
+        int mainInvContentStartY = playerInvTitleY + (titleHeight / 2) + sectionSpacing;
 
         // Hotbar Y calculation with improved spacing - ensure it stays within panel bounds
-        int hotbarRowY = mainInvContentStartY + Inventory.MAIN_INVENTORY_ROWS * (SLOT_SIZE + SLOT_PADDING) + SECTION_SPACING;
+        int hotbarRowY = mainInvContentStartY + Inventory.MAIN_INVENTORY_ROWS * (slotSize + slotPadding) + sectionSpacing;
 
         // Validate that hotbar is within panel bounds for workbench layout
         int panelBottomY = panelStartY + inventoryPanelHeight;
-        int hotbarBottomY = hotbarRowY + SLOT_SIZE;
-        if (hotbarBottomY > panelBottomY - PANEL_PADDING) {
+        int hotbarBottomY = hotbarRowY + slotSize;
+        if (hotbarBottomY > panelBottomY - panelPadding) {
             System.err.println("WARNING: Workbench hotbar extends beyond panel bounds! " +
                              "Hotbar bottom: " + hotbarBottomY +
-                             ", Panel bottom (with padding): " + (panelBottomY - PANEL_PADDING));
+                             ", Panel bottom (with padding): " + (panelBottomY - panelPadding));
         }
 
         // Calculate centered inventory section start X
-        int inventoryGridWidth = Inventory.MAIN_INVENTORY_COLS * (SLOT_SIZE + SLOT_PADDING) - SLOT_PADDING;
+        int inventoryGridWidth = Inventory.MAIN_INVENTORY_COLS * (slotSize + slotPadding) - slotPadding;
         int inventorySectionStartX = panelStartX + (inventoryPanelWidth - inventoryGridWidth) / 2;
 
         return new InventoryLayout(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight,

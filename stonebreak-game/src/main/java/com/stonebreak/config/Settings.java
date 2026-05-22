@@ -42,6 +42,9 @@ public class Settings {
     // ZGC keeps frame pacing stable.
     private boolean vsyncEnabled = true;
 
+    // UI scaling factor applied to all HUD and menu elements.
+    private float uiScale = 1.0f;
+
     // Multiplayer settings
     private int multiplayerPort = 25565;
     private String lastJoinHost = "localhost";
@@ -95,7 +98,8 @@ public class Settings {
             json.append("  \"vsyncEnabled\": ").append(vsyncEnabled).append(",\n");
             json.append("  \"multiplayerPort\": ").append(multiplayerPort).append(",\n");
             json.append("  \"lastJoinHost\": \"").append(lastJoinHost).append("\",\n");
-            json.append("  \"multiplayerUsername\": \"").append(multiplayerUsername).append("\"\n");
+            json.append("  \"multiplayerUsername\": \"").append(multiplayerUsername).append("\",\n");
+            json.append("  \"uiScale\": ").append(uiScale).append("\n");
             json.append("}");
             
             Files.write(Paths.get(SETTINGS_FILE), json.toString().getBytes());
@@ -301,6 +305,15 @@ public class Settings {
             } else if (line.contains("multiplayerUsername")) {
                 String value = extractStringValue(line);
                 if (value != null) multiplayerUsername = value;
+            } else if (line.contains("uiScale")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        uiScale = Float.parseFloat(value);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid uiScale value: " + value);
+                    }
+                }
             }
         }
     }
@@ -454,7 +467,13 @@ public class Settings {
     public void setVsyncEnabled(boolean value) {
         this.vsyncEnabled = value;
     }
-    
+
+    public float getUiScale() { return uiScale; }
+
+    public void setUiScale(float scale) {
+        this.uiScale = Math.max(0.5f, Math.min(2.0f, scale));
+    }
+
     // Helper methods
     public static int[][] getAvailableResolutions() {
         return RESOLUTIONS;

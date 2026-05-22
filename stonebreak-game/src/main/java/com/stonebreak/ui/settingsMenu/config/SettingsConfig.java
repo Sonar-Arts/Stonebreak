@@ -44,6 +44,11 @@ public final class SettingsConfig {
     public static final float CATEGORY_PANEL_WIDTH = 180;
     public static final float SETTINGS_PANEL_WIDTH = 450;
     
+    // ===== UI SCALE CONFIGURATION =====
+    public static final float MIN_UI_SCALE = 0.5f;
+    public static final float MAX_UI_SCALE = 2.0f;
+    public static final float UI_SCALE_STEP = 0.1f;
+
     // ===== AUDIO CONFIGURATION =====
     public static final float VOLUME_STEP = 0.1f;
     public static final float MIN_VOLUME = 0.0f;
@@ -95,6 +100,27 @@ public final class SettingsConfig {
     public static final float SCROLL_VELOCITY_DECAY = 0.85f; // Velocity decay rate per frame
     public static final float SCROLL_LERP_SPEED = 8.0f; // Smoothness of scroll interpolation
     
+    // ===== SCALED GETTERS (apply current uiScale) =====
+
+    private static float s() { return com.stonebreak.config.Settings.getInstance().getUiScale(); }
+
+    public static float getScaledButtonWidth()           { return BUTTON_WIDTH           * s(); }
+    public static float getScaledButtonHeight()          { return BUTTON_HEIGHT          * s(); }
+    public static float getScaledSliderWidth()           { return SLIDER_WIDTH           * s(); }
+    public static float getScaledSliderHeight()          { return SLIDER_HEIGHT          * s(); }
+    public static float getScaledDropdownItemHeight()    { return DROPDOWN_ITEM_HEIGHT   * s(); }
+    public static float getScaledCategoryButtonWidth()   { return CATEGORY_BUTTON_WIDTH  * s(); }
+    public static float getScaledCategoryButtonHeight()  { return CATEGORY_BUTTON_HEIGHT * s(); }
+    public static float getScaledCategoryPanelXOffset()  { return CATEGORY_PANEL_X_OFFSET        * s(); }
+    public static float getScaledCategoryButtonSpacing() { return CATEGORY_BUTTON_SPACING        * s(); }
+    public static float getScaledCategoryButtonsStartY() { return CATEGORY_BUTTONS_START_Y_OFFSET * s(); }
+    public static float getScaledSettingsPanelXOffset()  { return SETTINGS_PANEL_X_OFFSET        * s(); }
+    public static float getScaledSettingsPanelWidth()    { return SETTINGS_PANEL_WIDTH           * s(); }
+    public static float getScaledScrollTopMargin()       { return SCROLL_TOP_MARGIN              * s(); }
+    public static float getScaledScrollBottomMargin()    { return SCROLL_BOTTOM_MARGIN           * s(); }
+    public static float getScaledScrollItemSpacing()     { return SCROLL_ITEM_SPACING            * s(); }
+    public static float getScaledScrollContentPadding()  { return SCROLL_CONTENT_PADDING         * s(); }
+
     /**
      * Gets the arm model index for the specified type.
      * @param currentArmModel the arm model type to find

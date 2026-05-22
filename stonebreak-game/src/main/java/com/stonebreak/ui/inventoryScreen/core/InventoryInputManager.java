@@ -216,10 +216,10 @@ public class InventoryInputManager {
     }
 
     private void updateCharTabBounds(InventoryLayoutCalculator.InventoryLayout layout) {
-        charTabWidth  = com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.INV_TAB_WIDTH;
-        charTabHeight = com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.INV_TAB_HEIGHT;
-        int stride = com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.INV_TAB_WIDTH
-            + com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.INV_TAB_GAP;
+        charTabWidth  = com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.getScaledTabWidth();
+        charTabHeight = com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.getScaledTabHeight();
+        int stride = com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.getScaledTabWidth()
+            + com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.getScaledTabGap();
         charTabX    = layout.panelStartX + stride;
         charTabY    = layout.panelStartY - charTabHeight;
         classesTabX = layout.panelStartX + stride * 2;

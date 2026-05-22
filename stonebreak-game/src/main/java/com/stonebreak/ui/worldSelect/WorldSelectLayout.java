@@ -35,6 +35,24 @@ public final class WorldSelectLayout {
     public static final float CONFIRM_DIALOG_WIDTH = 460f;
     public static final float CONFIRM_DIALOG_HEIGHT = 200f;
 
+    // Scaled instance dimensions (read these instead of the static constants at render/hit-test time)
+    public final float itemHeight;
+    public final float listWidth;
+    public final float listHeight;
+    public final float panelWidth;
+    public final float panelHeight;
+    public final float panelPadding;
+    public final float actionButtonWidth;
+    public final float actionButtonHeight;
+    public final float dialogWidth;
+    public final float dialogHeight;
+    public final float dialogInputWidth;
+    public final float dialogInputHeight;
+    public final float dialogButtonWidth;
+    public final float dialogButtonHeight;
+    public final float confirmDialogWidth;
+    public final float confirmDialogHeight;
+
     public final int windowWidth;
     public final int windowHeight;
     public final float centerX;
@@ -72,24 +90,45 @@ public final class WorldSelectLayout {
     public final float confirmButtonY;
 
     private WorldSelectLayout(int width, int height) {
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+
+        // Compute scaled dimensions from the base constants
+        this.itemHeight        = ITEM_HEIGHT         * s;
+        this.listWidth         = LIST_WIDTH          * s;
+        this.listHeight        = this.itemHeight     * ITEMS_PER_PAGE;
+        this.panelPadding      = PANEL_PADDING       * s;
+        this.panelWidth        = this.listWidth      + this.panelPadding * 2f;
+        this.panelHeight       = this.listHeight     + this.panelPadding * 2f + 90f * s;
+        this.actionButtonWidth = ACTION_BUTTON_WIDTH * s;
+        this.actionButtonHeight= ACTION_BUTTON_HEIGHT* s;
+        this.dialogWidth       = DIALOG_WIDTH        * s;
+        this.dialogHeight      = DIALOG_HEIGHT       * s;
+        this.dialogInputWidth  = DIALOG_INPUT_WIDTH  * s;
+        this.dialogInputHeight = DIALOG_INPUT_HEIGHT * s;
+        this.dialogButtonWidth = DIALOG_BUTTON_WIDTH * s;
+        this.dialogButtonHeight= DIALOG_BUTTON_HEIGHT* s;
+        this.confirmDialogWidth = CONFIRM_DIALOG_WIDTH * s;
+        this.confirmDialogHeight= CONFIRM_DIALOG_HEIGHT* s;
+
         this.windowWidth = width;
         this.windowHeight = height;
         this.centerX = width / 2f;
 
-        this.titleY = Math.max(72f, height * 0.11f);
-        this.subtitleY = titleY + 38f;
+        this.titleY = Math.max(72f * s, height * 0.11f);
+        this.subtitleY = titleY + 38f * s;
 
-        this.panelX = centerX - PANEL_WIDTH / 2f;
-        this.panelY = subtitleY + 28f;
+        this.panelX = centerX - panelWidth / 2f;
+        this.panelY = subtitleY + 28f * s;
 
-        this.listX = panelX + PANEL_PADDING;
-        this.listY = panelY + PANEL_PADDING;
-        this.scrollbarX = listX + LIST_WIDTH + 4f;
+        this.listX = panelX + panelPadding;
+        this.listY = panelY + panelPadding;
+        this.scrollbarX = listX + listWidth + 4f;
 
-        float actionRowY = panelY + PANEL_HEIGHT - ACTION_BUTTON_HEIGHT - 22f;
-        float actionRowWidth = ACTION_BUTTON_WIDTH * ACTION_BUTTON_COUNT + ACTION_BUTTON_GAP * (ACTION_BUTTON_COUNT - 1);
+        float actionButtonGap = ACTION_BUTTON_GAP * s;
+        float actionRowY = panelY + panelHeight - actionButtonHeight - 22f * s;
+        float actionRowWidth = actionButtonWidth * ACTION_BUTTON_COUNT + actionButtonGap * (ACTION_BUTTON_COUNT - 1);
         float actionRowX = centerX - actionRowWidth / 2f;
-        float stride = ACTION_BUTTON_WIDTH + ACTION_BUTTON_GAP;
+        float stride = actionButtonWidth + actionButtonGap;
         this.backButtonY = actionRowY;
         this.createButtonY = actionRowY;
         this.deleteButtonY = actionRowY;
@@ -99,21 +138,21 @@ public final class WorldSelectLayout {
         this.deleteButtonX = actionRowX + stride * 2f;
         this.playButtonX   = actionRowX + stride * 3f;
 
-        this.dialogX = centerX - DIALOG_WIDTH / 2f;
-        this.dialogY = (height - DIALOG_HEIGHT) / 2f;
-        this.nameFieldX = dialogX + (DIALOG_WIDTH - DIALOG_INPUT_WIDTH) / 2f;
-        this.nameFieldY = dialogY + 76f;
+        this.dialogX = centerX - dialogWidth / 2f;
+        this.dialogY = (height - dialogHeight) / 2f;
+        this.nameFieldX = dialogX + (dialogWidth - dialogInputWidth) / 2f;
+        this.nameFieldY = dialogY + 76f * s;
         this.seedFieldX = nameFieldX;
-        this.seedFieldY = nameFieldY + DIALOG_INPUT_HEIGHT + 32f;
-        this.dialogButtonY = dialogY + DIALOG_HEIGHT - DIALOG_BUTTON_HEIGHT - 22f;
-        this.dialogCreateX = centerX - DIALOG_BUTTON_WIDTH - 10f;
-        this.dialogCancelX = centerX + 10f;
+        this.seedFieldY = nameFieldY + dialogInputHeight + 32f * s;
+        this.dialogButtonY = dialogY + dialogHeight - dialogButtonHeight - 22f * s;
+        this.dialogCreateX = centerX - dialogButtonWidth - 10f * s;
+        this.dialogCancelX = centerX + 10f * s;
 
-        this.confirmDialogX = centerX - CONFIRM_DIALOG_WIDTH / 2f;
-        this.confirmDialogY = (height - CONFIRM_DIALOG_HEIGHT) / 2f;
-        this.confirmButtonY = confirmDialogY + CONFIRM_DIALOG_HEIGHT - DIALOG_BUTTON_HEIGHT - 22f;
-        this.confirmConfirmX = centerX - DIALOG_BUTTON_WIDTH - 10f;
-        this.confirmCancelX = centerX + 10f;
+        this.confirmDialogX = centerX - confirmDialogWidth / 2f;
+        this.confirmDialogY = (height - confirmDialogHeight) / 2f;
+        this.confirmButtonY = confirmDialogY + confirmDialogHeight - dialogButtonHeight - 22f * s;
+        this.confirmConfirmX = centerX - dialogButtonWidth - 10f * s;
+        this.confirmCancelX = centerX + 10f * s;
     }
 
     public static WorldSelectLayout compute(int width, int height) {
@@ -121,9 +160,9 @@ public final class WorldSelectLayout {
     }
 
     public boolean hitItem(double mouseX, double mouseY, int rowsVisible, int scrollOffset, int totalItems, int[] outIndex) {
-        if (mouseX < listX || mouseX > listX + LIST_WIDTH) return false;
-        if (mouseY < listY || mouseY > listY + LIST_HEIGHT) return false;
-        int row = (int) ((mouseY - listY) / ITEM_HEIGHT);
+        if (mouseX < listX || mouseX > listX + listWidth) return false;
+        if (mouseY < listY || mouseY > listY + listHeight) return false;
+        int row = (int) ((mouseY - listY) / itemHeight);
         if (row < 0 || row >= rowsVisible) return false;
         int index = row + scrollOffset;
         if (index < 0 || index >= totalItems) return false;

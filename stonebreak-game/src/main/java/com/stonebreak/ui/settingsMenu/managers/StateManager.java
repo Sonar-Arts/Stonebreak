@@ -40,6 +40,7 @@ public final class StateManager {
     private MSlider lodDistanceSlider;
     private MButton lodEnabledButton;
     private MButton vsyncButton;
+    private MSlider uiScaleSlider;
 
     private List<MCategoryButton<CategoryState>> categoryButtons;
 
@@ -90,67 +91,104 @@ public final class StateManager {
 
     private void initCategoryButtons() {
         categoryButtons = new ArrayList<>();
+        float cbw = SettingsConfig.getScaledCategoryButtonWidth();
+        float cbh = SettingsConfig.getScaledCategoryButtonHeight();
         for (CategoryState category : CategoryState.values()) {
             MCategoryButton<CategoryState> button = new MCategoryButton<>(category, category.getDisplayName());
-            button.size(SettingsConfig.CATEGORY_BUTTON_WIDTH, SettingsConfig.CATEGORY_BUTTON_HEIGHT);
+            button.size(cbw, cbh);
             categoryButtons.add(button);
         }
     }
 
     public void initSettingWidgets() {
-        applyButton = new MButton("Apply Settings").size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
-        backButton = new MButton("Back").size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        float bw  = SettingsConfig.getScaledButtonWidth();
+        float bh  = SettingsConfig.getScaledButtonHeight();
+        float sw  = SettingsConfig.getScaledSliderWidth();
+        float sh  = SettingsConfig.getScaledSliderHeight();
+        float dih = SettingsConfig.getScaledDropdownItemHeight();
+
+        applyButton = new MButton("Apply Settings").size(bw, bh);
+        backButton = new MButton("Back").size(bw, bh);
 
         String[] resolutionStrings = toResolutionStrings(Settings.getAvailableResolutions());
-        resolutionButton = new MDropdown("Resolution", resolutionStrings)
-                .itemHeight(SettingsConfig.DROPDOWN_ITEM_HEIGHT);
-        resolutionButton.size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        resolutionButton = new MDropdown("Resolution", resolutionStrings).itemHeight(dih);
+        resolutionButton.size(bw, bh);
         resolutionButton.setSelectedIndex(selectedResolutionIndex);
 
-        armModelButton = new MDropdown("Arm Model", SettingsConfig.ARM_MODEL_NAMES)
-                .itemHeight(SettingsConfig.DROPDOWN_ITEM_HEIGHT);
-        armModelButton.size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        armModelButton = new MDropdown("Arm Model", SettingsConfig.ARM_MODEL_NAMES).itemHeight(dih);
+        armModelButton.size(bw, bh);
         armModelButton.setSelectedIndex(selectedArmModelIndex);
 
-        crosshairStyleButton = new MDropdown("Crosshair", SettingsConfig.CROSSHAIR_STYLE_NAMES)
-                .itemHeight(SettingsConfig.DROPDOWN_ITEM_HEIGHT);
-        crosshairStyleButton.size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        crosshairStyleButton = new MDropdown("Crosshair", SettingsConfig.CROSSHAIR_STYLE_NAMES).itemHeight(dih);
+        crosshairStyleButton.size(bw, bh);
         crosshairStyleButton.setSelectedIndex(selectedCrosshairStyleIndex);
 
         volumeSlider = new MSlider("Master Volume",
                 SettingsConfig.MIN_VOLUME, SettingsConfig.MAX_VOLUME, settings.getMasterVolume())
-                .trackHeight(SettingsConfig.SLIDER_HEIGHT);
-        volumeSlider.size(SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT);
+                .trackHeight(sh);
+        volumeSlider.size(sw, sh);
 
         crosshairSizeSlider = new MSlider("Crosshair Size",
                 SettingsConfig.MIN_CROSSHAIR_SIZE, SettingsConfig.MAX_CROSSHAIR_SIZE, settings.getCrosshairSize())
-                .trackHeight(SettingsConfig.SLIDER_HEIGHT);
-        crosshairSizeSlider.size(SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT);
+                .trackHeight(sh);
+        crosshairSizeSlider.size(sw, sh);
 
-        leafTransparencyButton = new MButton(leafTransparencyLabel())
-                .size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
-        waterShaderButton = new MButton(waterShaderLabel())
-                .size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
-        cloudsButton = new MButton(cloudsLabel())
-                .size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        leafTransparencyButton = new MButton(leafTransparencyLabel()).size(bw, bh);
+        waterShaderButton = new MButton(waterShaderLabel()).size(bw, bh);
+        cloudsButton = new MButton(cloudsLabel()).size(bw, bh);
 
         renderDistanceSlider = new MSlider(renderDistanceLabel(),
                 SettingsConfig.MIN_RENDER_DISTANCE, SettingsConfig.MAX_RENDER_DISTANCE,
                 settings.getRenderDistance())
-                .trackHeight(SettingsConfig.SLIDER_HEIGHT);
-        renderDistanceSlider.size(SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT);
+                .trackHeight(sh);
+        renderDistanceSlider.size(sw, sh);
 
         lodDistanceSlider = new MSlider(lodDistanceLabel(),
                 SettingsConfig.MIN_LOD_DISTANCE, SettingsConfig.MAX_LOD_DISTANCE,
                 settings.getLodDistance())
-                .trackHeight(SettingsConfig.SLIDER_HEIGHT);
-        lodDistanceSlider.size(SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT);
+                .trackHeight(sh);
+        lodDistanceSlider.size(sw, sh);
 
-        lodEnabledButton = new MButton(lodEnabledLabel())
-                .size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        lodEnabledButton = new MButton(lodEnabledLabel()).size(bw, bh);
+        vsyncButton = new MButton(vsyncLabel()).size(bw, bh);
 
-        vsyncButton = new MButton(vsyncLabel())
-                .size(SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT);
+        uiScaleSlider = new MSlider("UI Scale",
+                SettingsConfig.MIN_UI_SCALE, SettingsConfig.MAX_UI_SCALE, settings.getUiScale())
+                .trackHeight(sh);
+        uiScaleSlider.size(sw, sh);
+    }
+
+    /**
+     * Re-sizes all existing widgets to match the current uiScale.
+     * Call this whenever the scale setting changes.
+     */
+    public void resizeWidgets() {
+        float bw  = SettingsConfig.getScaledButtonWidth();
+        float bh  = SettingsConfig.getScaledButtonHeight();
+        float sw  = SettingsConfig.getScaledSliderWidth();
+        float sh  = SettingsConfig.getScaledSliderHeight();
+        float dih = SettingsConfig.getScaledDropdownItemHeight();
+        float cbw = SettingsConfig.getScaledCategoryButtonWidth();
+        float cbh = SettingsConfig.getScaledCategoryButtonHeight();
+
+        applyButton.size(bw, bh);
+        backButton.size(bw, bh);
+        resolutionButton.size(bw, bh).itemHeight(dih);
+        armModelButton.size(bw, bh).itemHeight(dih);
+        crosshairStyleButton.size(bw, bh).itemHeight(dih);
+        volumeSlider.size(sw, sh);
+        crosshairSizeSlider.size(sw, sh);
+        leafTransparencyButton.size(bw, bh);
+        waterShaderButton.size(bw, bh);
+        cloudsButton.size(bw, bh);
+        renderDistanceSlider.size(sw, sh);
+        lodDistanceSlider.size(sw, sh);
+        lodEnabledButton.size(bw, bh);
+        vsyncButton.size(bw, bh);
+        uiScaleSlider.size(sw, sh);
+        for (MCategoryButton<CategoryState> button : categoryButtons) {
+            button.size(cbw, cbh);
+        }
     }
 
     /**
@@ -166,7 +204,8 @@ public final class StateManager {
                              java.util.function.Consumer<Float> renderDistanceAction,
                              java.util.function.Consumer<Float> lodDistanceAction,
                              Runnable lodEnabledAction,
-                             Runnable vsyncAction) {
+                             Runnable vsyncAction,
+                             java.util.function.Consumer<Float> uiScaleAction) {
         applyButton.setOnClick(applyAction);
         backButton.setOnClick(backAction);
         resolutionButton.setOnSelectionChanged(resolutionAction);
@@ -181,6 +220,7 @@ public final class StateManager {
         lodDistanceSlider.setOnChange(lodDistanceAction);
         lodEnabledButton.setOnClick(lodEnabledAction);
         vsyncButton.setOnClick(vsyncAction);
+        uiScaleSlider.setOnChange(uiScaleAction);
 
         for (MCategoryButton<CategoryState> button : categoryButtons) {
             CategoryState category = button.tag();
@@ -217,6 +257,7 @@ public final class StateManager {
         lodDistanceSlider.setSelected(false);
         lodEnabledButton.setSelected(false);
         vsyncButton.setSelected(false);
+        uiScaleSlider.setSelected(false);
     }
 
     public void closeAllDropdowns() {
@@ -270,6 +311,7 @@ public final class StateManager {
         lodDistanceSlider.setLabel(lodDistanceLabel());
         lodEnabledButton.setText(lodEnabledLabel());
         vsyncButton.setText(vsyncLabel());
+        uiScaleSlider.setLabel(uiScaleLabel());
     }
 
     private String leafTransparencyLabel() {
@@ -298,6 +340,10 @@ public final class StateManager {
 
     private String vsyncLabel() {
         return "VSync: " + (settings.isVsyncEnabled() ? "ON" : "OFF");
+    }
+
+    private String uiScaleLabel() {
+        return "UI Scale: " + String.format("%.1f", settings.getUiScale()) + "x";
     }
 
     // ─────────────────────────────────────────────── Getters / setters
@@ -334,6 +380,7 @@ public final class StateManager {
     public MSlider getLodDistanceSlider() { return lodDistanceSlider; }
     public MButton getLodEnabledButton() { return lodEnabledButton; }
     public MButton getVsyncButton() { return vsyncButton; }
+    public MSlider getUiScaleSlider() { return uiScaleSlider; }
     public List<MCategoryButton<CategoryState>> getCategoryButtons() { return categoryButtons; }
 
     public MScrollMath getCurrentScrollMath() { return currentScrollMath; }

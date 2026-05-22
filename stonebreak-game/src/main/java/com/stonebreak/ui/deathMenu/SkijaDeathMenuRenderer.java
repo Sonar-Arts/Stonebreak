@@ -21,8 +21,8 @@ public final class SkijaDeathMenuRenderer {
     public static final float BUTTON_WIDTH  = 360f;
     public static final float BUTTON_HEIGHT = 50f;
 
-    private static final float TITLE_SIZE       = 96f;
-    private static final float BUTTON_TEXT_SIZE = 20f;
+    private static final float BASE_TITLE_SIZE       = 96f;
+    private static final float BASE_BUTTON_TEXT_SIZE = 20f;
 
     private static final int COLOR_TEXT_PRIMARY   = MStyle.TEXT_PRIMARY;
     private static final int COLOR_TEXT_SHADOW    = MStyle.TEXT_SHADOW;
@@ -35,6 +35,7 @@ public final class SkijaDeathMenuRenderer {
 
     private Font fontTitle;
     private Font fontButton;
+    private float lastFontScale = -1f;
 
     public SkijaDeathMenuRenderer(SkijaUIBackend backend) {
         this.backend = backend;
@@ -42,13 +43,16 @@ public final class SkijaDeathMenuRenderer {
 
     public void render(int windowWidth, int windowHeight, boolean respawnHovered) {
         if (backend == null || !backend.isAvailable()) return;
-        ensureFonts();
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        ensureFonts(scale);
+
+        float buttonWidth  = BUTTON_WIDTH  * scale;
+        float buttonHeight = BUTTON_HEIGHT * scale;
 
         backend.beginFrame(windowWidth, windowHeight, 1.0f);
         try {
             Canvas canvas = backend.getCanvas();
 
-            // Dark red overlay
             try (Paint p = new Paint().setColor(COLOR_OVERLAY)) {
                 canvas.drawRect(Rect.makeXYWH(0, 0, windowWidth, windowHeight), p);
             }
@@ -56,23 +60,28 @@ public final class SkijaDeathMenuRenderer {
             float centerX = windowWidth  / 2f;
             float centerY = windowHeight / 2f;
 
-            // "You Died!" title with shadow (centered, offset from center)
-            drawTitle(canvas, centerX, centerY - 100f, "You Died!");
+            drawTitle(canvas, centerX, centerY - 100f * scale, "You Died!");
 
-            // Respawn button
-            float buttonX = centerX - BUTTON_WIDTH / 2f;
-            float buttonY = centerY + 20f;
-            drawButton(canvas, "Respawn", buttonX, buttonY, respawnHovered);
+            float buttonX = centerX - buttonWidth / 2f;
+            float buttonY = centerY + 20f * scale;
+            drawButton(canvas, "Respawn", buttonX, buttonY, respawnHovered, buttonWidth, buttonHeight);
         } finally {
             backend.endFrame();
         }
     }
 
-    private void ensureFonts() {
-        if (fontTitle != null) return;
+    private void ensureFonts(float scale) {
+        if (fontTitle != null && scale == lastFontScale) return;
+        disposeFonts();
+        lastFontScale = scale;
         Typeface tf = backend.getMinecraftTypeface();
-        fontTitle  = new Font(tf, TITLE_SIZE);
-        fontButton = new Font(tf, BUTTON_TEXT_SIZE);
+        fontTitle  = new Font(tf, BASE_TITLE_SIZE * scale);
+        fontButton = new Font(tf, BASE_BUTTON_TEXT_SIZE * scale);
+    }
+
+    private void disposeFonts() {
+        if (fontTitle  != null) { fontTitle.close();  fontTitle  = null; }
+        if (fontButton != null) { fontButton.close(); fontButton = null; }
     }
 
     private void drawTitle(Canvas canvas, float cx, float cy, String title) {
@@ -82,22 +91,22 @@ public final class SkijaDeathMenuRenderer {
         MPainter.drawCenteredString(canvas, title, cx, cy, fontTitle, COLOR_TITLE);
     }
 
-    private void drawButton(Canvas canvas, String text, float x, float y, boolean highlighted) {
+    private void drawButton(Canvas canvas, String text, float x, float y, boolean highlighted,
+                            float buttonWidth, float buttonHeight) {
         int fill = highlighted ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
 
-        MPainter.stoneSurface(canvas, x, y, BUTTON_WIDTH, BUTTON_HEIGHT, MStyle.BUTTON_RADIUS,
+        MPainter.stoneSurface(canvas, x, y, buttonWidth, buttonHeight, MStyle.BUTTON_RADIUS,
                 fill, MStyle.BUTTON_BORDER,
                 MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, MStyle.BUTTON_DROP_SHADOW,
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
 
         int textColor = highlighted ? COLOR_TEXT_HIGHLIGHT : COLOR_TEXT_PRIMARY;
-        float tx = x + BUTTON_WIDTH / 2f;
-        float ty = y + BUTTON_HEIGHT / 2f + 7f;
+        float tx = x + buttonWidth / 2f;
+        float ty = y + buttonHeight / 2f + 7f;
         MPainter.drawCenteredStringWithShadow(canvas, text, tx, ty, fontButton, textColor, COLOR_TEXT_SHADOW);
     }
 
     public void dispose() {
-        if (fontTitle  != null) { fontTitle.close();  fontTitle  = null; }
-        if (fontButton != null) { fontButton.close(); fontButton = null; }
+        disposeFonts();
     }
 }

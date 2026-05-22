@@ -57,15 +57,15 @@ public class FeatsTabRenderer {
 
   /** Renders the full Feats tab content. */
   public void render(Canvas canvas, MasonryUI ui, CharacterStats stats,
-                     float px, float py, float mx, float my) {
-    drawFilterBar(canvas, ui, px, py, mx, my);
+                     float px, float py, float mx, float my, float scale) {
+    drawFilterBar(canvas, ui, px, py, mx, my, scale);
     List<FeatDefinition> filtered = FeatRegistry.filter(filterLevel, filterGeneral);
-    drawFeatList(canvas, ui, stats, filtered, px, py, mx, my);
-    drawDetailPanel(canvas, ui, stats, px, py, mx, my);
+    drawFeatList(canvas, ui, stats, filtered, px, py, mx, my, scale);
+    drawDetailPanel(canvas, ui, stats, px, py, mx, my, scale);
   }
 
   /** Handles a click; returns true if consumed. */
-  public boolean handleClick(float mx, float my, CharacterStats stats, float px, float py) {
+  public boolean handleClick(float mx, float my, CharacterStats stats, float px, float py, float scale) {
     if (levelFilterBtn.contains(mx, my)) {
       filterLevel = (filterLevel + 1) % 11;
       levelFilterBtn.setText(filterLevel == 0 ? "Level: All" : "Level: " + filterLevel);
@@ -83,13 +83,12 @@ public class FeatsTabRenderer {
       stats.acquireFeat(selectedFeatId);
       return true;
     }
-    // Check feat list row clicks
     List<FeatDefinition> filtered = FeatRegistry.filter(filterLevel, filterGeneral);
-    return handleListClick(mx, my, filtered, px, py);
+    return handleListClick(mx, my, filtered, px, py, scale);
   }
 
   /** Handles a right-click; returns true if consumed. */
-  public boolean handleRightClick(float mx, float my, CharacterStats stats, float px, float py) {
+  public boolean handleRightClick(float mx, float my, CharacterStats stats, float px, float py, float scale) {
     if (levelFilterBtn.contains(mx, my)) {
       filterLevel = (filterLevel - 1 + 11) % 11;
       levelFilterBtn.setText(filterLevel == 0 ? "Level: All" : "Level: " + filterLevel);
@@ -101,63 +100,67 @@ public class FeatsTabRenderer {
   }
 
   /** Scrolls the feat list. */
-  public void handleScroll(float deltaY, float px, float py) {
+  public void handleScroll(float deltaY, float px, float py, float scale) {
     List<FeatDefinition> filtered = FeatRegistry.filter(filterLevel, filterGeneral);
-    float totalH = filtered.size() * ROW_H;
-    float maxScroll = Math.max(0f, totalH - LIST_H);
+    float totalH = filtered.size() * ROW_H * scale;
+    float maxScroll = Math.max(0f, totalH - LIST_H * scale);
     scrollOffset = Math.clamp(scrollOffset + deltaY * 20f, 0f, maxScroll);
   }
 
   // ─────────────────────────────────────────────── Filter bar
 
   private void drawFilterBar(Canvas canvas, MasonryUI ui, float px, float py,
-                             float mx, float my) {
-    float barX = px + FILTER_PAD_X;
-    float barY = py + FILTER_BAR_OFFSET_Y;
-    float barW = 580f;
+                             float mx, float my, float scale) {
+    float barX = px + FILTER_PAD_X * scale;
+    float barY = py + FILTER_BAR_OFFSET_Y * scale;
+    float barW = 580f * scale;
+    float barH = FILTER_BAR_H * scale;
+    float fbH  = 22f * scale;
 
-    MPainter.stoneSurface(canvas, barX, barY, barW, FILTER_BAR_H,
+    MPainter.stoneSurface(canvas, barX, barY, barW, barH,
         MStyle.PANEL_RADIUS, FILTER_BAR_BG, MStyle.PANEL_BORDER,
         MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, 0,
         MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
 
-    float btnY = barY + (FILTER_BAR_H - 22f) / 2f;
+    float btnY = barY + (barH - fbH) / 2f;
+    float b1W = 100f * scale;
+    float b2W = 84f  * scale;
+    float b3W = 148f * scale;
 
-    // Level filter button
-    levelFilterBtn.bounds(barX + 6f, btnY, 100f, 22f);
+    levelFilterBtn.bounds(barX + 6f * scale, btnY, b1W, fbH);
     levelFilterBtn.updateHover(mx, my);
     int lvlFill = levelFilterBtn.isHovered() ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
-    MPainter.stoneSurface(canvas, barX + 6f, btnY, 100f, 22f,
+    MPainter.stoneSurface(canvas, barX + 6f * scale, btnY, b1W, fbH,
         MStyle.BUTTON_RADIUS, lvlFill, MStyle.BUTTON_BORDER,
         MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
         MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
     String lvlLabel = filterLevel == 0 ? "Level: All" : "Level: " + filterLevel;
     MPainter.drawCenteredStringWithShadow(canvas, lvlLabel,
-        barX + 6f + 50f, btnY + 22f * 0.5f + MStyle.FONT_META * 0.38f,
+        barX + 6f * scale + b1W / 2f, btnY + fbH * 0.5f + MStyle.FONT_META * 0.38f,
         ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
 
-    // General filter toggle
-    generalFilterBtn.bounds(barX + 114f, btnY, 84f, 22f);
+    float b2X = barX + (6f + 108f) * scale;
+    generalFilterBtn.bounds(b2X, btnY, b2W, fbH);
     generalFilterBtn.updateHover(mx, my);
     int genFill = filterGeneral ? MStyle.BUTTON_FILL_HI
         : generalFilterBtn.isHovered() ? MStyle.BUTTON_FILL_HI
         : MStyle.BUTTON_FILL;
-    MPainter.stoneSurface(canvas, barX + 114f, btnY, 84f, 22f,
+    MPainter.stoneSurface(canvas, b2X, btnY, b2W, fbH,
         MStyle.BUTTON_RADIUS, genFill, MStyle.BUTTON_BORDER,
         MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
         MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
     int genTextColor = filterGeneral ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
     MPainter.drawCenteredStringWithShadow(canvas, "General",
-        barX + 114f + 42f, btnY + 22f * 0.5f + MStyle.FONT_META * 0.38f,
+        b2X + b2W / 2f, btnY + fbH * 0.5f + MStyle.FONT_META * 0.38f,
         ui.fonts().get(MStyle.FONT_META), genTextColor, MStyle.TEXT_SHADOW);
 
-    // Ability Score pill (disabled/not implemented)
-    MPainter.stoneSurface(canvas, barX + 206f, btnY, 148f, 22f,
+    float b3X = barX + (6f + 108f + 92f) * scale;
+    MPainter.stoneSurface(canvas, b3X, btnY, b3W, fbH,
         MStyle.BUTTON_RADIUS, MStyle.BUTTON_FILL_DIS, MStyle.BUTTON_BORDER,
         MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
         MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
     MPainter.drawCenteredStringWithShadow(canvas, "Ability Score: N/A",
-        barX + 206f + 74f, btnY + 22f * 0.5f + MStyle.FONT_META * 0.38f,
+        b3X + b3W / 2f, btnY + fbH * 0.5f + MStyle.FONT_META * 0.38f,
         ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
   }
 
@@ -165,65 +168,64 @@ public class FeatsTabRenderer {
 
   private void drawFeatList(Canvas canvas, MasonryUI ui, CharacterStats stats,
                             List<FeatDefinition> feats, float px, float py,
-                            float mx, float my) {
-    float listX = px + LIST_X_PAD;
-    float listY = py + LIST_TOP_OFFSET_Y;
-    float totalH = feats.size() * ROW_H;
+                            float mx, float my, float scale) {
+    float listX  = px + LIST_X_PAD        * scale;
+    float listY  = py + LIST_TOP_OFFSET_Y * scale;
+    float listW  = LIST_W  * scale;
+    float listH  = LIST_H  * scale;
+    float rowH   = ROW_H   * scale;
+    float totalH = feats.size() * rowH;
 
     canvas.save();
-    canvas.clipRect(Rect.makeXYWH(listX, listY, LIST_W, LIST_H));
+    canvas.clipRect(Rect.makeXYWH(listX, listY, listW, listH));
 
     for (int i = 0; i < feats.size(); i++) {
       FeatDefinition feat = feats.get(i);
-      float rowY = listY + i * ROW_H - scrollOffset;
+      float rowY = listY + i * rowH - scrollOffset;
       boolean selected = feat.id().equals(selectedFeatId);
-      boolean hovered = mx >= listX && mx <= listX + LIST_W - 8f
-          && my >= rowY && my < rowY + ROW_H;
+      boolean hovered = mx >= listX && mx <= listX + listW - 8f
+          && my >= rowY && my < rowY + rowH;
 
       if (selected) {
-        MPainter.fillRoundedRect(canvas, listX, rowY, LIST_W - 8f, ROW_H, 2f, 0x33FFCC55);
+        MPainter.fillRoundedRect(canvas, listX, rowY, listW - 8f, rowH, 2f, 0x33FFCC55);
       } else if (hovered) {
-        MPainter.fillRoundedRect(canvas, listX, rowY, LIST_W - 8f, ROW_H, 2f, 0x22FFFFFF);
+        MPainter.fillRoundedRect(canvas, listX, rowY, listW - 8f, rowH, 2f, 0x22FFFFFF);
       }
 
-      float textY = rowY + ROW_H * 0.5f + MStyle.FONT_META * 0.38f;
+      float textY = rowY + rowH * 0.5f + MStyle.FONT_META * 0.38f;
       int nameColor = selected ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
       MPainter.drawStringWithShadow(canvas, feat.name(),
           listX + 4f, textY,
           ui.fonts().get(MStyle.FONT_META), nameColor, MStyle.TEXT_SHADOW);
 
-      String levelStr = "(Lvl " + feat.level() + ")";
-      MPainter.drawStringWithShadow(canvas, levelStr,
-          listX + 224f, textY,
+      MPainter.drawStringWithShadow(canvas, "(Lvl " + feat.level() + ")",
+          listX + 224f * scale, textY,
           ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
 
       if (feat.isGeneral()) {
         MPainter.drawStringWithShadow(canvas, "(General)",
-            listX + 282f, textY,
+            listX + 282f * scale, textY,
             ui.fonts().get(MStyle.FONT_META), GENERAL_TAG_COLOR, MStyle.TEXT_SHADOW);
       }
     }
 
     canvas.restore();
 
-    // Vertical divider between list and detail panel
-    drawEngravedRule(canvas, px + LIST_X_PAD + LIST_W + 4f, py + LIST_TOP_OFFSET_Y,
-        1f, LIST_H);
-
-    drawScrollbar(canvas, listX + LIST_W - 6f, listY, 6f, LIST_H,
-        scrollOffset, totalH);
+    drawEngravedRule(canvas, px + (LIST_X_PAD + LIST_W) * scale + 4f, listY, 1f, listH);
+    drawScrollbar(canvas, listX + listW - 6f, listY, 6f, listH, scrollOffset, totalH);
   }
 
   // ─────────────────────────────────────────────── Detail panel
 
   private void drawDetailPanel(Canvas canvas, MasonryUI ui, CharacterStats stats,
-                               float px, float py, float mx, float my) {
-    float detailX = px + DETAIL_X_PAD;
+                               float px, float py, float mx, float my, float scale) {
+    float detailX = px + DETAIL_X_PAD * scale;
+    float detailW = DETAIL_W * scale;
 
     if (selectedFeatId == null) {
-      float centerY = py + LIST_TOP_OFFSET_Y + LIST_H / 2f;
+      float centerY = py + (LIST_TOP_OFFSET_Y + LIST_H / 2f) * scale;
       MPainter.drawCenteredStringWithShadow(canvas, "Select a feat",
-          detailX + DETAIL_W / 2f, centerY,
+          detailX + detailW / 2f, centerY,
           ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
       return;
     }
@@ -231,48 +233,45 @@ public class FeatsTabRenderer {
     FeatRegistry.ALL.stream()
         .filter(f -> f.id().equals(selectedFeatId))
         .findFirst()
-        .ifPresent(feat -> drawFeatDetails(canvas, ui, stats, feat, detailX, py, mx, my));
+        .ifPresent(feat -> drawFeatDetails(canvas, ui, stats, feat, detailX, detailW, py, mx, my, scale));
   }
 
   private void drawFeatDetails(Canvas canvas, MasonryUI ui, CharacterStats stats,
-                               FeatDefinition feat, float detailX, float py,
-                               float mx, float my) {
-    float y = py + LIST_TOP_OFFSET_Y + 12f;
+                               FeatDefinition feat, float detailX, float detailW,
+                               float py, float mx, float my, float scale) {
+    float y = py + (LIST_TOP_OFFSET_Y + 12f) * scale;
 
-    // Feat name
     MPainter.drawStringWithShadow(canvas, feat.name(),
         detailX + 4f, y,
         ui.fonts().get(MStyle.FONT_ITEM), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-    y += 24f;
+    y += 24f * scale;
 
-    // Type
     String typeStr = "Type: " + (feat.isGeneral() ? "General Feat" : "Feat");
     MPainter.drawStringWithShadow(canvas, typeStr,
         detailX + 4f, y,
         ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-    y += 18f;
+    y += 18f * scale;
 
-    // Level
     MPainter.drawStringWithShadow(canvas, "Required Level: " + feat.level(),
         detailX + 4f, y,
         ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-    y += 18f;
+    y += 18f * scale;
 
-    drawEngravedRule(canvas, detailX + 4f, y, DETAIL_W - 8f);
-    y += 12f;
+    drawEngravedRule(canvas, detailX + 4f, y, detailW - 8f);
+    y += 12f * scale;
 
-    // Description
     MPainter.drawStringWithShadow(canvas, feat.description(),
         detailX + 4f, y,
         ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
 
-    // Acquire button (pinned to bottom)
     boolean acquired = stats.hasFeat(feat.id());
     boolean canAfford = stats.getRemainingFeatPoints() > 0;
-    float btnX = detailX + (DETAIL_W - ACQUIRE_BTN_W) / 2f;
-    float btnY = py + ACQUIRE_BTN_Y_PAD;
+    float acqBtnW = ACQUIRE_BTN_W * scale;
+    float acqBtnH = ACQUIRE_BTN_H * scale;
+    float btnX = detailX + (detailW - acqBtnW) / 2f;
+    float btnY = py + ACQUIRE_BTN_Y_PAD * scale;
 
-    acquireBtn.bounds(btnX, btnY, ACQUIRE_BTN_W, ACQUIRE_BTN_H);
+    acquireBtn.bounds(btnX, btnY, acqBtnW, acqBtnH);
     acquireBtn.updateHover(mx, my);
 
     int btnFill;
@@ -293,30 +292,33 @@ public class FeatsTabRenderer {
       btnLabel = "Acquire? (1 FP)";
     }
 
-    MPainter.stoneSurface(canvas, btnX, btnY, ACQUIRE_BTN_W, ACQUIRE_BTN_H,
+    MPainter.stoneSurface(canvas, btnX, btnY, acqBtnW, acqBtnH,
         MStyle.BUTTON_RADIUS, btnFill, MStyle.BUTTON_BORDER,
         MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
         MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
-    float btnTextY = btnY + ACQUIRE_BTN_H * 0.5f + MStyle.FONT_META * 0.38f;
+    float btnTextY = btnY + acqBtnH * 0.5f + MStyle.FONT_META * 0.38f;
     MPainter.drawCenteredStringWithShadow(canvas, btnLabel,
-        btnX + ACQUIRE_BTN_W / 2f, btnTextY,
+        btnX + acqBtnW / 2f, btnTextY,
         ui.fonts().get(MStyle.FONT_META), btnTextColor, MStyle.TEXT_SHADOW);
   }
 
   // ─────────────────────────────────────────────── Click handling
 
   private boolean handleListClick(float mx, float my, List<FeatDefinition> feats,
-                                  float px, float py) {
-    float listX = px + LIST_X_PAD;
-    float listY = py + LIST_TOP_OFFSET_Y;
+                                  float px, float py, float scale) {
+    float listX = px + LIST_X_PAD        * scale;
+    float listY = py + LIST_TOP_OFFSET_Y * scale;
+    float listW = LIST_W * scale;
+    float listH = LIST_H * scale;
+    float rowH  = ROW_H  * scale;
 
-    if (mx < listX || mx > listX + LIST_W - 8f
-        || my < listY || my > listY + LIST_H) {
+    if (mx < listX || mx > listX + listW - 8f
+        || my < listY || my > listY + listH) {
       return false;
     }
 
     float relY = my - listY + scrollOffset;
-    int idx = (int) (relY / ROW_H);
+    int idx = (int) (relY / rowH);
     if (idx >= 0 && idx < feats.size()) {
       selectedFeatId = feats.get(idx).id();
       return true;

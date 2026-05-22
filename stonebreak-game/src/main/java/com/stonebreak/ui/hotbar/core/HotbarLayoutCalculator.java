@@ -59,19 +59,24 @@ public class HotbarLayoutCalculator {
      * Calculates the complete hotbar layout for the given screen dimensions.
      */
     public static HotbarLayout calculateLayout(int screenWidth, int screenHeight) {
+        float uiScale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        int scaledSlotSize = Math.round(SLOT_SIZE * uiScale);
+        int scaledSlotPadding = Math.round(SLOT_PADDING * uiScale);
+        int scaledHotbarYOffset = Math.round(HOTBAR_Y_OFFSET * uiScale);
+
         // Calculate hotbar dimensions
         int slotCount = Inventory.HOTBAR_SIZE;
-        int hotbarContentWidth = slotCount * SLOT_SIZE + (slotCount - 1) * SLOT_PADDING;
-        int hotbarContentHeight = SLOT_SIZE;
+        int hotbarContentWidth = slotCount * scaledSlotSize + (slotCount - 1) * scaledSlotPadding;
+        int hotbarContentHeight = scaledSlotSize;
 
         // Calculate background dimensions with padding
-        int backgroundPadding = (int) HotbarTheme.Measurements.PADDING_SMALL;
+        int backgroundPadding = Math.round(HotbarTheme.Measurements.PADDING_SMALL * uiScale);
         int backgroundWidth = hotbarContentWidth + (backgroundPadding * 2);
         int backgroundHeight = hotbarContentHeight + (backgroundPadding * 2);
 
         // Center horizontally, position at bottom with offset
         int backgroundX = (screenWidth - backgroundWidth) / 2;
-        int backgroundY = screenHeight - backgroundHeight - HOTBAR_Y_OFFSET;
+        int backgroundY = screenHeight - backgroundHeight - scaledHotbarYOffset;
 
         // Content starts inside the background padding
         int contentStartX = backgroundX + backgroundPadding;
@@ -92,10 +97,14 @@ public class HotbarLayoutCalculator {
             throw new IllegalArgumentException("Slot index out of bounds: " + slotIndex);
         }
 
-        int slotX = layout.startX + slotIndex * (SLOT_SIZE + SLOT_PADDING);
+        float uiScale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        int scaledSlotSize = Math.round(SLOT_SIZE * uiScale);
+        int scaledSlotPadding = Math.round(SLOT_PADDING * uiScale);
+
+        int slotX = layout.startX + slotIndex * (scaledSlotSize + scaledSlotPadding);
         int slotY = layout.startY;
 
-        return new SlotPosition(slotX, slotY, SLOT_SIZE, SLOT_SIZE);
+        return new SlotPosition(slotX, slotY, scaledSlotSize, scaledSlotSize);
     }
 
     /**
@@ -217,14 +226,18 @@ public class HotbarLayoutCalculator {
      * Calculates item icon size based on slot size and padding.
      */
     public static int calculateIconSize() {
-        int iconPadding = Math.max(2, SLOT_SIZE / 12); // Generous padding ratio
-        return SLOT_SIZE - (iconPadding * 2);
+        float uiScale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        int scaledSlotSize = Math.round(SLOT_SIZE * uiScale);
+        int iconPadding = Math.max(2, scaledSlotSize / 12);
+        return scaledSlotSize - (iconPadding * 2);
     }
 
     /**
      * Calculates item icon padding for consistent positioning.
      */
     public static int calculateIconPadding() {
-        return Math.max(2, SLOT_SIZE / 12);
+        float uiScale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        int scaledSlotSize = Math.round(SLOT_SIZE * uiScale);
+        return Math.max(2, scaledSlotSize / 12);
     }
 }

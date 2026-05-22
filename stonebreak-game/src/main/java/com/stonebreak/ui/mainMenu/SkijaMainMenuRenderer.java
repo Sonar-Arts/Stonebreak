@@ -23,12 +23,12 @@ import io.github.humbleui.types.Rect;
  */
 public final class SkijaMainMenuRenderer {
 
-    private static final float BUTTON_WIDTH = 400f;
-    private static final float BUTTON_HEIGHT = 40f;
-    private static final float BUTTON_SPACING = 50f;
-    private static final float TITLE_SIZE = 56f;
-    private static final float SPLASH_SIZE = 18f;
-    private static final float BUTTON_TEXT_SIZE = 20f;
+    private static final float BASE_BUTTON_WIDTH = 400f;
+    private static final float BASE_BUTTON_HEIGHT = 40f;
+    private static final float BASE_BUTTON_SPACING = 50f;
+    private static final float BASE_TITLE_SIZE = 56f;
+    private static final float BASE_SPLASH_SIZE = 18f;
+    private static final float BASE_BUTTON_TEXT_SIZE = 20f;
 
     private static final int COLOR_TEXT_PRIMARY   = 0xFFFFFFF0;
     private static final int COLOR_TEXT_SHADOW    = 0xFF1A1A1A;
@@ -41,6 +41,7 @@ public final class SkijaMainMenuRenderer {
     private Font fontTitle;
     private Font fontSplash;
     private Font fontButton;
+    private float lastFontScale = -1f;
 
     private Shader dirtShader;
 
@@ -50,8 +51,14 @@ public final class SkijaMainMenuRenderer {
 
     public void render(MainMenu menu, int windowWidth, int windowHeight) {
         if (!backend.isAvailable()) return;
-        ensureFonts();
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        ensureFonts(scale);
         ensureDirtShader();
+
+        float buttonWidth = BASE_BUTTON_WIDTH * scale;
+        float buttonHeight = BASE_BUTTON_HEIGHT * scale;
+        float buttonSpacing = BASE_BUTTON_SPACING * scale;
+        float titleSize = BASE_TITLE_SIZE * scale;
 
         backend.beginFrame(windowWidth, windowHeight, 1.0f);
         try {
@@ -62,41 +69,47 @@ public final class SkijaMainMenuRenderer {
             float centerY = windowHeight / 2f;
 
             String titleText = "STONEBREAK";
-            float titleY = centerY - 120f;
+            float titleY = centerY - 120f * scale;
             drawTitle(canvas, centerX, titleY, titleText);
 
             if (menu != null) {
                 String splash = menu.getCurrentSplashText();
                 if (splash != null && !splash.isEmpty()) {
-                    // Anchor splash to the title's bottom-right corner so it
-                    // hangs off the last letter like the classic MC splash.
                     float titleWidth = fontTitle.measureTextWidth(titleText);
-                    float splashCx = centerX + titleWidth / 2f - 10f;
-                    float splashCy = titleY + TITLE_SIZE * 0.45f;
+                    float splashCx = centerX + titleWidth / 2f - 10f * scale;
+                    float splashCy = titleY + titleSize * 0.45f;
                     drawSplashText(canvas, splashCx, splashCy, splash);
                 }
             }
 
             int selected = menu != null ? menu.getSelectedButton() : -1;
-            drawButton(canvas, "Singleplayer", centerX - BUTTON_WIDTH / 2f,
-                    centerY - 20f, selected == 0);
-            drawButton(canvas, "Multiplayer", centerX - BUTTON_WIDTH / 2f,
-                    centerY - 20f + BUTTON_SPACING, selected == 1);
-            drawButton(canvas, "Settings", centerX - BUTTON_WIDTH / 2f,
-                    centerY - 20f + BUTTON_SPACING * 2f, selected == 2);
-            drawButton(canvas, "Quit Game", centerX - BUTTON_WIDTH / 2f,
-                    centerY - 20f + BUTTON_SPACING * 3f, selected == 3);
+            drawButton(canvas, "Singleplayer", centerX - buttonWidth / 2f,
+                    centerY - 20f * scale, selected == 0, buttonWidth, buttonHeight);
+            drawButton(canvas, "Multiplayer", centerX - buttonWidth / 2f,
+                    centerY - 20f * scale + buttonSpacing, selected == 1, buttonWidth, buttonHeight);
+            drawButton(canvas, "Settings", centerX - buttonWidth / 2f,
+                    centerY - 20f * scale + buttonSpacing * 2f, selected == 2, buttonWidth, buttonHeight);
+            drawButton(canvas, "Quit Game", centerX - buttonWidth / 2f,
+                    centerY - 20f * scale + buttonSpacing * 3f, selected == 3, buttonWidth, buttonHeight);
         } finally {
             backend.endFrame();
         }
     }
 
-    private void ensureFonts() {
-        if (fontTitle != null) return;
+    private void ensureFonts(float scale) {
+        if (fontTitle != null && scale == lastFontScale) return;
+        disposeFonts();
+        lastFontScale = scale;
         Typeface tf = backend.getMinecraftTypeface();
-        fontTitle  = new Font(tf, TITLE_SIZE);
-        fontSplash = new Font(tf, SPLASH_SIZE);
-        fontButton = new Font(tf, BUTTON_TEXT_SIZE);
+        fontTitle  = new Font(tf, BASE_TITLE_SIZE * scale);
+        fontSplash = new Font(tf, BASE_SPLASH_SIZE * scale);
+        fontButton = new Font(tf, BASE_BUTTON_TEXT_SIZE * scale);
+    }
+
+    private void disposeFonts() {
+        if (fontTitle  != null) { fontTitle.close();  fontTitle  = null; }
+        if (fontSplash != null) { fontSplash.close(); fontSplash = null; }
+        if (fontButton != null) { fontButton.close(); fontButton = null; }
     }
 
     private void ensureDirtShader() {
@@ -165,16 +178,17 @@ public final class SkijaMainMenuRenderer {
         canvas.restore();
     }
 
-    private void drawButton(Canvas canvas, String text, float x, float y, boolean highlighted) {
+    private void drawButton(Canvas canvas, String text, float x, float y, boolean highlighted,
+                            float buttonWidth, float buttonHeight) {
         int fill = highlighted ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
-        MPainter.stoneSurface(canvas, x, y, BUTTON_WIDTH, BUTTON_HEIGHT, MStyle.BUTTON_RADIUS,
+        MPainter.stoneSurface(canvas, x, y, buttonWidth, buttonHeight, MStyle.BUTTON_RADIUS,
                 fill, MStyle.BUTTON_BORDER,
                 MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, MStyle.BUTTON_DROP_SHADOW,
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
 
         int textColor = highlighted ? COLOR_TEXT_HIGHLIGHT : COLOR_TEXT_PRIMARY;
-        float tx = x + BUTTON_WIDTH / 2f;
-        float ty = y + BUTTON_HEIGHT / 2f + 7f;
+        float tx = x + buttonWidth / 2f;
+        float ty = y + buttonHeight / 2f + 7f;
         MPainter.drawCenteredStringWithShadow(canvas, text, tx, ty, fontButton, textColor, COLOR_TEXT_SHADOW);
     }
 
@@ -189,8 +203,6 @@ public final class SkijaMainMenuRenderer {
 
     public void dispose() {
         if (dirtShader != null) { dirtShader.close(); dirtShader = null; }
-        if (fontTitle  != null) { fontTitle.close();  fontTitle  = null; }
-        if (fontSplash != null) { fontSplash.close(); fontSplash = null; }
-        if (fontButton != null) { fontButton.close(); fontButton = null; }
+        disposeFonts();
     }
 }

@@ -173,7 +173,7 @@ public final class SkijaWorldSelectRenderer {
 
     private void drawListPanel(Canvas canvas, WorldSelectLayout layout) {
         drawMinecraftPanel(canvas, layout.panelX, layout.panelY,
-                WorldSelectLayout.PANEL_WIDTH, WorldSelectLayout.PANEL_HEIGHT);
+                layout.panelWidth, layout.panelHeight);
     }
 
     private void drawMinecraftPanel(Canvas canvas, float x, float y, float w, float h) {
@@ -186,24 +186,24 @@ public final class SkijaWorldSelectRenderer {
         List<String> worlds = stateManager.getWorldList();
         if (worlds.isEmpty()) {
             drawCenteredString(canvas, "No worlds yet — click 'Create New World' to begin.",
-                    layout.centerX, layout.listY + WorldSelectLayout.LIST_HEIGHT / 2f,
+                    layout.centerX, layout.listY + layout.listHeight / 2f,
                     fontItem, COLOR_TEXT_SECONDARY);
             return;
         }
         int start = stateManager.getVisibleStartIndex();
         int end = stateManager.getVisibleEndIndex();
         for (int i = start; i < end; i++) {
-            float itemY = layout.listY + (i - start) * WorldSelectLayout.ITEM_HEIGHT;
-            drawWorldItem(canvas, worlds.get(i), i, layout.listX, itemY);
+            float itemY = layout.listY + (i - start) * layout.itemHeight;
+            drawWorldItem(canvas, worlds.get(i), i, layout.listX, itemY, layout);
         }
     }
 
-    private void drawWorldItem(Canvas canvas, String name, int index, float x, float y) {
+    private void drawWorldItem(Canvas canvas, String name, int index, float x, float y, WorldSelectLayout layout) {
         boolean selected = index == stateManager.getSelectedIndex();
         boolean hovered = index == stateManager.getHoveredIndex();
         int fill = selected ? COLOR_ITEM_SELECTED : (hovered ? COLOR_ITEM_HOVER : COLOR_ITEM_FILL);
 
-        RRect rect = RRect.makeXYWH(x, y + 4f, WorldSelectLayout.LIST_WIDTH, WorldSelectLayout.ITEM_HEIGHT - 8f, 4f);
+        RRect rect = RRect.makeXYWH(x, y + 4f, layout.listWidth, layout.itemHeight - 8f, 4f);
         try (Paint p = new Paint().setColor(fill)) {
             canvas.drawRRect(rect, p);
         }
@@ -247,9 +247,9 @@ public final class SkijaWorldSelectRenderer {
         if (total <= WorldSelectLayout.ITEMS_PER_PAGE) return;
         try (Paint track = new Paint().setColor(0x80000000);
              Paint thumb = new Paint().setColor(0xFFB4B4B4)) {
-            canvas.drawRRect(RRect.makeXYWH(layout.scrollbarX, layout.listY, 6f, WorldSelectLayout.LIST_HEIGHT, 3f), track);
-            float thumbH = WorldSelectLayout.LIST_HEIGHT * WorldSelectLayout.ITEMS_PER_PAGE / (float) total;
-            float thumbY = layout.listY + (WorldSelectLayout.LIST_HEIGHT - thumbH)
+            canvas.drawRRect(RRect.makeXYWH(layout.scrollbarX, layout.listY, 6f, layout.listHeight, 3f), track);
+            float thumbH = layout.listHeight * WorldSelectLayout.ITEMS_PER_PAGE / (float) total;
+            float thumbY = layout.listY + (layout.listHeight - thumbH)
                     * stateManager.getScrollOffset() / Math.max(1, total - WorldSelectLayout.ITEMS_PER_PAGE);
             canvas.drawRRect(RRect.makeXYWH(layout.scrollbarX, thumbY, 6f, thumbH, 3f), thumb);
         }
@@ -263,16 +263,16 @@ public final class SkijaWorldSelectRenderer {
                 && stateManager.getSelectedIndex() < stateManager.getWorldList().size();
         String hov = stateManager.getHoveredButton();
         drawMinecraftButton(canvas, "Back", layout.backButtonX, layout.backButtonY,
-                WorldSelectLayout.ACTION_BUTTON_WIDTH, WorldSelectLayout.ACTION_BUTTON_HEIGHT,
+                layout.actionButtonWidth, layout.actionButtonHeight,
                 "back".equals(hov), true);
         drawMinecraftButton(canvas, "Create World", layout.createButtonX, layout.createButtonY,
-                WorldSelectLayout.ACTION_BUTTON_WIDTH, WorldSelectLayout.ACTION_BUTTON_HEIGHT,
+                layout.actionButtonWidth, layout.actionButtonHeight,
                 "create".equals(hov), true);
         drawMinecraftButton(canvas, "Delete World", layout.deleteButtonX, layout.deleteButtonY,
-                WorldSelectLayout.ACTION_BUTTON_WIDTH, WorldSelectLayout.ACTION_BUTTON_HEIGHT,
+                layout.actionButtonWidth, layout.actionButtonHeight,
                 hasSelection && "delete".equals(hov), hasSelection);
         drawMinecraftButton(canvas, "Play Selected", layout.playButtonX, layout.playButtonY,
-                WorldSelectLayout.ACTION_BUTTON_WIDTH, WorldSelectLayout.ACTION_BUTTON_HEIGHT,
+                layout.actionButtonWidth, layout.actionButtonHeight,
                 hasSelection && "play".equals(hov), hasSelection);
     }
 
@@ -297,27 +297,27 @@ public final class SkijaWorldSelectRenderer {
             canvas.drawRect(Rect.makeXYWH(0, 0, w, h), p);
         }
         drawMinecraftPanel(canvas, layout.dialogX, layout.dialogY,
-                WorldSelectLayout.DIALOG_WIDTH, WorldSelectLayout.DIALOG_HEIGHT);
+                layout.dialogWidth, layout.dialogHeight);
 
         drawCenteredString(canvas, "Create New World", layout.centerX + 1, layout.dialogY + 41, fontButton, COLOR_TEXT_SHADOW);
         drawCenteredString(canvas, "Create New World", layout.centerX, layout.dialogY + 40, fontButton, COLOR_TEXT_ACCENT);
 
         boolean nameActive = inputHandler.isNameInputMode();
         drawString(canvas, "World Name", layout.nameFieldX, layout.nameFieldY - 8, fontMeta, COLOR_TEXT_SECONDARY);
-        drawInputField(canvas, layout.nameFieldX, layout.nameFieldY,
+        drawInputField(canvas, layout.nameFieldX, layout.nameFieldY, layout,
                 stateManager.getNewWorldName(), nameActive, "e.g. New World");
 
         drawString(canvas, "Seed (optional)", layout.seedFieldX, layout.seedFieldY - 8, fontMeta, COLOR_TEXT_SECONDARY);
-        drawInputField(canvas, layout.seedFieldX, layout.seedFieldY,
+        drawInputField(canvas, layout.seedFieldX, layout.seedFieldY, layout,
                 stateManager.getNewWorldSeed(), !nameActive, "leave blank for random");
 
         boolean canCreate = stateManager.isValidWorldName();
         String hov = stateManager.getHoveredButton();
         drawMinecraftButton(canvas, "Create", layout.dialogCreateX, layout.dialogButtonY,
-                WorldSelectLayout.DIALOG_BUTTON_WIDTH, WorldSelectLayout.DIALOG_BUTTON_HEIGHT,
+                layout.dialogButtonWidth, layout.dialogButtonHeight,
                 canCreate && "dialog-create".equals(hov), canCreate);
         drawMinecraftButton(canvas, "Cancel", layout.dialogCancelX, layout.dialogButtonY,
-                WorldSelectLayout.DIALOG_BUTTON_WIDTH, WorldSelectLayout.DIALOG_BUTTON_HEIGHT,
+                layout.dialogButtonWidth, layout.dialogButtonHeight,
                 "dialog-cancel".equals(hov), true);
 
         // Validation hint
@@ -333,7 +333,7 @@ public final class SkijaWorldSelectRenderer {
             canvas.drawRect(Rect.makeXYWH(0, 0, w, h), p);
         }
         drawMinecraftPanel(canvas, layout.confirmDialogX, layout.confirmDialogY,
-                WorldSelectLayout.CONFIRM_DIALOG_WIDTH, WorldSelectLayout.CONFIRM_DIALOG_HEIGHT);
+                layout.confirmDialogWidth, layout.confirmDialogHeight);
 
         drawCenteredString(canvas, "Delete World?", layout.centerX + 1, layout.confirmDialogY + 41, fontButton, COLOR_TEXT_SHADOW);
         drawCenteredString(canvas, "Delete World?", layout.centerX, layout.confirmDialogY + 40, fontButton, COLOR_TEXT_ERROR);
@@ -348,24 +348,25 @@ public final class SkijaWorldSelectRenderer {
 
         String hov = stateManager.getHoveredButton();
         drawMinecraftButton(canvas, "Delete", layout.confirmConfirmX, layout.confirmButtonY,
-                WorldSelectLayout.DIALOG_BUTTON_WIDTH, WorldSelectLayout.DIALOG_BUTTON_HEIGHT,
+                layout.dialogButtonWidth, layout.dialogButtonHeight,
                 "confirm-delete".equals(hov), true);
         drawMinecraftButton(canvas, "Cancel", layout.confirmCancelX, layout.confirmButtonY,
-                WorldSelectLayout.DIALOG_BUTTON_WIDTH, WorldSelectLayout.DIALOG_BUTTON_HEIGHT,
+                layout.dialogButtonWidth, layout.dialogButtonHeight,
                 "confirm-cancel".equals(hov), true);
     }
 
-    private void drawInputField(Canvas canvas, float x, float y, String text, boolean focused, String placeholder) {
+    private void drawInputField(Canvas canvas, float x, float y, WorldSelectLayout layout,
+                                String text, boolean focused, String placeholder) {
+        float iw = layout.dialogInputWidth;
+        float ih = layout.dialogInputHeight;
         try (Paint fill = new Paint().setColor(COLOR_INPUT_FILL)) {
-            canvas.drawRRect(RRect.makeXYWH(x, y, WorldSelectLayout.DIALOG_INPUT_WIDTH,
-                    WorldSelectLayout.DIALOG_INPUT_HEIGHT, 4f), fill);
+            canvas.drawRRect(RRect.makeXYWH(x, y, iw, ih, 4f), fill);
         }
         int border = focused ? COLOR_INPUT_BORDER_HOT : COLOR_INPUT_BORDER;
         try (Paint p = new Paint().setColor(border).setMode(PaintMode.STROKE).setStrokeWidth(focused ? 2.5f : 1.5f)) {
-            canvas.drawRRect(RRect.makeXYWH(x, y, WorldSelectLayout.DIALOG_INPUT_WIDTH,
-                    WorldSelectLayout.DIALOG_INPUT_HEIGHT, 4f), p);
+            canvas.drawRRect(RRect.makeXYWH(x, y, iw, ih, 4f), p);
         }
-        float textY = y + WorldSelectLayout.DIALOG_INPUT_HEIGHT / 2f + 6f;
+        float textY = y + ih / 2f + 6f;
         if (text == null || text.isEmpty()) {
             drawString(canvas, placeholder, x + 12f, textY, fontInput, COLOR_TEXT_DISABLED);
         } else {
@@ -376,7 +377,7 @@ public final class SkijaWorldSelectRenderer {
             if (cursorVisible) {
                 float caretX = x + 12f + measureWidthSafe(fontInput, text);
                 try (Paint p = new Paint().setColor(COLOR_TEXT_PRIMARY)) {
-                    canvas.drawRect(Rect.makeXYWH(caretX, y + 6f, 2f, WorldSelectLayout.DIALOG_INPUT_HEIGHT - 12f), p);
+                    canvas.drawRect(Rect.makeXYWH(caretX, y + 6f, 2f, ih - 12f), p);
                 }
             }
         }

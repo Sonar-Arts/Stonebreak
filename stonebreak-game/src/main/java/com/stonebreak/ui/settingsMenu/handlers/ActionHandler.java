@@ -237,4 +237,13 @@ public class ActionHandler {
         settings.setCloudsEnabled(!currentValue);
         System.out.println("Clouds toggled to: " + (!currentValue ? "ON" : "OFF"));
     }
+
+    /**
+     * Callback for when the UI scale slider value changes.
+     * Takes effect immediately on the next rendered frame.
+     */
+    public void onUiScaleChange(Float newScale) {
+        settings.setUiScale(newScale);
+        stateManager.resizeWidgets();
+    }
 }

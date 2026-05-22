@@ -60,7 +60,8 @@ public final class SettingsMenu {
                 actionHandler::onRenderDistanceChange,
                 actionHandler::onLodDistanceChange,
                 actionHandler::toggleLodEnabled,
-                actionHandler::toggleVsync
+                actionHandler::toggleVsync,
+                actionHandler::onUiScaleChange
         );
     }
 
