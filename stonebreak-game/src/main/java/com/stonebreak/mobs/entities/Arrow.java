@@ -66,7 +66,9 @@ public class Arrow extends Entity {
                 }
             }
         }
-        // Physics (gravity) is applied by EntityManager for non-FireBolt entities.
+        // Counter-act most of the engine gravity so arrows arc gently rather than
+        // dropping steeply. Entity.GRAVITY = -40; net effective gravity ≈ -10.
+        velocity.y += 30.0f * deltaTime;
     }
 
     @Override

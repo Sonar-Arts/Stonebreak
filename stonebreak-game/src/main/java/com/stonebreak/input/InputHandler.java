@@ -900,7 +900,9 @@ public class InputHandler {
                     if (!bowReleaseCheck.isEmpty() && bowReleaseCheck.getItem() == com.stonebreak.items.ItemType.BOW) {
                         // Capture speed before releaseAndFire() resets state
                         float arrowSpeed = player.getBowController().getArrowSpeed();
-                        if (player.getBowController().releaseAndFire()) {
+                        if (player.getBowController().releaseAndFire()
+                                && player.getInventory().hasItem(com.stonebreak.items.ItemType.ARROW)) {
+                            player.getInventory().removeItem(com.stonebreak.items.ItemType.ARROW);
                             com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
                             if (em != null) {
                                 org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
