@@ -845,6 +845,25 @@ public class InputHandler {
                             if (em != null) {
                                 com.stonebreak.mobs.entities.FishingBobber existing = player.getActiveBobber();
                                 if (existing != null && existing.isAlive()) {
+                                    if (existing.isFishBiting() && existing.isInWaterSettled()) {
+                                        com.stonebreak.items.ItemType caught = (Math.random() < 0.75)
+                                                ? com.stonebreak.items.ItemType.BASS
+                                                : com.stonebreak.items.ItemType.STICK;
+                                        com.stonebreak.world.World world = Game.getWorld();
+                                        if (world != null) {
+                                            org.joml.Vector3f bobberPos = new org.joml.Vector3f(existing.getPosition());
+                                            org.joml.Vector3f toPlayer = new org.joml.Vector3f(player.getPosition())
+                                                    .sub(bobberPos).normalize();
+                                            org.joml.Vector3f catchVelocity = new org.joml.Vector3f(toPlayer)
+                                                    .mul(6.0f).add(0, 4.0f, 0);
+                                            com.stonebreak.mobs.entities.ItemDrop fishDrop =
+                                                    com.stonebreak.mobs.entities.ItemDrop.createDropWithVelocity(
+                                                            world, bobberPos,
+                                                            new com.stonebreak.items.ItemStack(caught, 1),
+                                                            catchVelocity);
+                                            em.addEntity(fishDrop);
+                                        }
+                                    }
                                     existing.setAlive(false);
                                     player.setActiveBobber(null);
                                     rodCheck.setState(com.stonebreak.items.ItemType.FISHING_ROD_STATE_REELED_IN);
