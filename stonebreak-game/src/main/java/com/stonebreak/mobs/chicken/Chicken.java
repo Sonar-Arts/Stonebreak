@@ -127,4 +127,27 @@ public class Chicken extends LivingEntity {
     public AnimationController getAnimationController() {
         return animationController;
     }
+
+    // ── Network replication of behaviour state ──────────────────────────
+
+    @Override
+    public byte getNetworkBehaviorState() {
+        return chickenAI != null ? (byte) chickenAI.getCurrentState().ordinal() : -1;
+    }
+
+    @Override
+    public void applyNetworkBehaviorState(byte state) {
+        if (chickenAI == null || state < 0) return;
+        ChickenAI.ChickenBehaviorState[] values = ChickenAI.ChickenBehaviorState.values();
+        if (state < values.length) chickenAI.setState(values[state]);
+    }
+
+    @Override
+    public void updateShadowAnimation(float deltaTime) {
+        // Shadow chickens skip update(); advance the clip clock and the AI's
+        // state timer so looping clips run and the one-shot Wingflap (timed off
+        // the state timer in EntityRenderer) plays through.
+        animationController.updateAnimations(deltaTime);
+        if (chickenAI != null) chickenAI.advanceShadowTimers(deltaTime);
+    }
 }

@@ -192,6 +192,29 @@ public final class FurnaceState {
         return s;
     }
 
+    /**
+     * Overwrites this state's fields from a previously-encoded state string,
+     * <em>in place</em> (object identity preserved). Used by the multiplayer
+     * client to apply an authoritative {@code BlockStateS2C} onto the furnace an
+     * open UI is already bound to, so the UI reflects the host without rebinding.
+     */
+    public void applyStateString(String raw) {
+        FurnaceState tmp = fromStateString(pos, raw);
+        this.ingredient = tmp.ingredient;
+        this.fuel = tmp.fuel;
+        this.output = tmp.output;
+        this.burnTimeRemaining = tmp.burnTimeRemaining;
+        this.currentBurnUnitTotal = tmp.currentBurnUnitTotal;
+        this.cookProgress = tmp.cookProgress;
+        this.cooking = tmp.cooking;
+    }
+
+    /** Public wire helper: encode an ItemStack as {@code kind:id:count}. */
+    public static String encodeStackString(ItemStack s) { return encodeStack(s); }
+
+    /** Public wire helper: decode a {@code kind:id:count} string to an ItemStack. */
+    public static ItemStack decodeStackString(String v) { return decodeStack(v); }
+
     /** Returns just the renderable state name ({@code "Lit"} / {@code "Unlit"}). */
     public static String extractRenderState(String raw) {
         if (raw == null || !raw.startsWith(STATE_PREFIX)) return null;

@@ -94,6 +94,13 @@ public class EntityManager {
                 // smooth between snapshots instead of teleporting at tick rate.
                 if (entity.isNetworkShadow()) {
                     if (entity.getInterpolator() != null) entity.getInterpolator().apply(entity);
+                    // Shadows skip update(); still advance animation clocks so
+                    // replicated mobs animate between snapshots.
+                    entity.updateShadowAnimation(deltaTime);
+                    // Client-predicted drop pickup: a shadow drop the local player
+                    // walks into is hidden + requested immediately (host arbitrates).
+                    if (entity instanceof BlockDrop bd) bd.clientPredictPickup(deltaTime);
+                    else if (entity instanceof ItemDrop id) id.clientPredictPickup(deltaTime);
                     continue;
                 }
 

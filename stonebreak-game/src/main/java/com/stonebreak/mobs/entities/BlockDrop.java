@@ -30,6 +30,9 @@ public class BlockDrop extends Entity {
     private boolean isCompressed = false; // Whether this drop is part of a compressed group
     private BlockDrop parentDrop = null; // Parent drop if this one is hidden
     private boolean hasInitialStackCount = false; // Whether this drop was created with an intentional stack count
+    /** Client-only: this shadow drop was predicted picked-up and is awaiting host
+     *  confirmation. Hidden from rendering and not re-requested while true. */
+    private boolean networkPickupPredicted = false;
     
     // Physics constants for drops (reworked for moderately floaty effect)
     private static final float DROP_GRAVITY = 12.0f; // Moderate downward acceleration
@@ -175,23 +178,10 @@ public class BlockDrop extends Entity {
         com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
         if (game == null) return;
 
-        // Multiplayer host: pickup is server-authoritative for RemotePlayers too.
-        // We test those first so a remote player walking through a drop gets it
-        // even when the host's own player isn't nearby.
-        if (com.stonebreak.network.MultiplayerSession.isHosting()) {
-            com.stonebreak.mobs.entities.EntityManager em = com.stonebreak.core.Game.getEntityManager();
-            if (em != null) {
-                for (com.stonebreak.mobs.entities.Entity other : em.getAllEntities()) {
-                    if (!(other instanceof com.stonebreak.mobs.entities.RemotePlayer rp)) continue;
-                    if (!rp.isAlive()) continue;
-                    if (position.distance(rp.getPosition()) > PICKUP_RANGE) continue;
-                    com.stonebreak.network.MultiplayerSession.giveItemTo(
-                            rp.getPlayerId(), blockType.getId(), stackCount);
-                    alive = false;
-                    return;
-                }
-            }
-        }
+        // Multiplayer: remote players no longer auto-picked-up by the host here.
+        // Each client predicts its own pickup and the host arbitrates the claim
+        // via PickupRequestC2S (see EntitySynchronizer). This branch only handles
+        // the host's / single-player local player below.
 
         com.stonebreak.player.Player player = game.getPlayer();
         if (player == null) return;
@@ -384,10 +374,36 @@ public class BlockDrop extends Entity {
     }
     
     /**
-     * Returns true if this drop should be rendered (not compressed into another).
+     * Returns true if this drop should be rendered (not compressed into another
+     * and not hidden by an in-flight predicted pickup).
      */
     public boolean shouldRender() {
-        return !isCompressed;
+        return !isCompressed && !networkPickupPredicted;
+    }
+
+    /**
+     * Client-side predicted pickup: if the local player has walked into a shadow
+     * drop, hide it immediately and ask the host to confirm. The 0.5s window is
+     * preserved so the drop is visible for at least one snapshot before vanishing.
+     */
+    public void clientPredictPickup(float deltaTime) {
+        if (networkPickupPredicted) return;
+        if (pickupDelay > 0f) { pickupDelay -= deltaTime; return; }
+        com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
+        if (game == null) return;
+        com.stonebreak.player.Player player = game.getPlayer();
+        if (player == null || player.isDead()) return;
+        if (position.distance(player.getPosition()) > PICKUP_RANGE) return;
+        networkPickupPredicted = true;
+        com.stonebreak.audio.SoundSystem ss = game.getSoundSystem();
+        if (ss != null) ss.playSound("blockpickup");
+        com.stonebreak.network.MultiplayerSession.requestPickup(getNetworkId());
+    }
+
+    /** Host denied the predicted pickup — restore the drop and back off briefly. */
+    public void cancelPredictedPickup() {
+        networkPickupPredicted = false;
+        pickupDelay = PICKUP_DELAY;
     }
     
     /**

@@ -35,6 +35,11 @@ public final class PacketCodec {
     private static final byte T_HELD_ITEM_C2S       = 20;
     private static final byte T_HELD_ITEM_S2C       = 21;
     private static final byte T_GIVE_ITEM_S2C       = 22;
+    private static final byte T_ENTITY_META_S2C     = 23;
+    private static final byte T_BLOCK_STATE_S2C     = 24;
+    private static final byte T_FURNACE_SLOT_C2S    = 25;
+    private static final byte T_PICKUP_REQUEST_C2S  = 26;
+    private static final byte T_PICKUP_REJECT_S2C   = 27;
 
     /** Hard cap on entries in a single MultiBlockChangeS2C packet (one full section). */
     private static final int MAX_MULTI_BLOCK_ENTRIES = 4096;
@@ -47,6 +52,7 @@ public final class PacketCodec {
     private static final int MAX_CHAT_CHARS     = 256;
     private static final int MAX_REASON_CHARS   = 128;
     private static final int MAX_METADATA_CHARS = 256;
+    private static final int MAX_BLOCK_STATE_CHARS = 512;
 
     private static String boundedUtf(DataInputStream in, int maxChars, String field) throws IOException {
         String s = in.readUTF();
@@ -203,6 +209,35 @@ public final class PacketCodec {
                 body.writeFloat(p.z());
                 body.writeFloat(p.yaw());
             }
+            case Packet.EntityMetaS2C p -> {
+                body.writeByte(T_ENTITY_META_S2C);
+                body.writeInt(p.networkId());
+                body.writeFloat(p.health());
+                body.writeByte(p.behaviorState());
+            }
+            case Packet.BlockStateS2C p -> {
+                body.writeByte(T_BLOCK_STATE_S2C);
+                body.writeInt(p.x());
+                body.writeInt(p.y());
+                body.writeInt(p.z());
+                body.writeUTF(p.state() == null ? "" : p.state());
+            }
+            case Packet.FurnaceSlotC2S p -> {
+                body.writeByte(T_FURNACE_SLOT_C2S);
+                body.writeInt(p.x());
+                body.writeInt(p.y());
+                body.writeInt(p.z());
+                body.writeByte(p.slot());
+                body.writeUTF(p.stack() == null ? "" : p.stack());
+            }
+            case Packet.PickupRequestC2S p -> {
+                body.writeByte(T_PICKUP_REQUEST_C2S);
+                body.writeInt(p.networkId());
+            }
+            case Packet.PickupRejectS2C p -> {
+                body.writeByte(T_PICKUP_REJECT_S2C);
+                body.writeInt(p.networkId());
+            }
         }
         body.flush();
         byte[] bytes = buf.toByteArray();
@@ -292,6 +327,16 @@ public final class PacketCodec {
                         body.readInt(),
                         body.readFloat(), body.readFloat(), body.readFloat(),
                         body.readFloat());
+                case T_ENTITY_META_S2C -> new Packet.EntityMetaS2C(
+                        body.readInt(), body.readFloat(), body.readByte());
+                case T_BLOCK_STATE_S2C -> new Packet.BlockStateS2C(
+                        body.readInt(), body.readInt(), body.readInt(),
+                        boundedUtf(body, MAX_BLOCK_STATE_CHARS, "blockState"));
+                case T_FURNACE_SLOT_C2S -> new Packet.FurnaceSlotC2S(
+                        body.readInt(), body.readInt(), body.readInt(),
+                        body.readByte(), boundedUtf(body, MAX_METADATA_CHARS, "furnaceSlot"));
+                case T_PICKUP_REQUEST_C2S -> new Packet.PickupRequestC2S(body.readInt());
+                case T_PICKUP_REJECT_S2C  -> new Packet.PickupRejectS2C(body.readInt());
                 default -> throw new IOException("Unknown packet type: " + type);
             };
         } catch (EOFException eof) {

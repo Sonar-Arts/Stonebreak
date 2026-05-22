@@ -707,6 +707,10 @@ public class World {
             System.err.println("[NETWORK] Failed to decode chunk (" + chunkX + "," + chunkZ + "): " + e.getMessage());
             return;
         }
+        // Load any block-entity (furnace) state carried in the payload into the
+        // registry so client-side furnace UIs/rendering reflect host contents.
+        com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
+        if (fr != null) fr.onChunkLoaded(chunk);
         if (meshPipeline != null) {
             markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
             if (neighborCoordinator != null) {

@@ -14,6 +14,13 @@ public sealed interface SyncEvent {
     /** A block was placed/broken locally (player-driven). */
     record BlockChanged(int x, int y, int z, BlockType type) implements SyncEvent {}
 
+    /**
+     * A block-entity's state string changed locally (host-driven) — e.g. a
+     * furnace's contents or lit-state. Carries the full encoded state ({@code ""}
+     * means the state was cleared / block-entity removed).
+     */
+    record BlockStateChanged(int x, int y, int z, String state) implements SyncEvent {}
+
     /** A chat message was submitted locally. */
     record ChatSubmitted(String text) implements SyncEvent {}
 

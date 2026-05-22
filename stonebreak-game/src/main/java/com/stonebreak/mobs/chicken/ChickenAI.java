@@ -321,6 +321,15 @@ public class ChickenAI {
 
     // Getters
     public ChickenBehaviorState getCurrentState() { return currentState; }
+
+    /**
+     * Network-shadow hook: advance the timers the renderer reads, without
+     * running AI logic. Lets a replicated chicken's one-shot Wingflap clip
+     * (timed off {@code stateTimer}) play through on remote clients.
+     */
+    public void advanceShadowTimers(float deltaTime) {
+        stateTimer += deltaTime;
+    }
     public float getStateTimer() { return stateTimer; }
 
     /**
