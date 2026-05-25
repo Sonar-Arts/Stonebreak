@@ -188,7 +188,7 @@ public final class SkijaMainMenuRenderer {
 
         int textColor = highlighted ? COLOR_TEXT_HIGHLIGHT : COLOR_TEXT_PRIMARY;
         float tx = x + buttonWidth / 2f;
-        float ty = y + buttonHeight / 2f + 7f;
+        float ty = y + buttonHeight / 2f + 7f * com.stonebreak.config.Settings.getInstance().getUiScale();
         MPainter.drawCenteredStringWithShadow(canvas, text, tx, ty, fontButton, textColor, COLOR_TEXT_SHADOW);
     }
 

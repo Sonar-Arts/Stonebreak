@@ -60,9 +60,11 @@ public final class FurnaceLayout {
         // Distance from crucible center to slot center. Vertical extent
         // becomes 2*radius + ss = 3*ss + 2*pad, matching the reserved band.
         float radius = ss + pad;
-        // Leave a clear ~12px chute between the crucible rim and each slot edge.
-        float crucibleRadius = radius - ss / 2f - 12f;
-        if (crucibleRadius < 12f) crucibleRadius = 12f;
+        // Leave a clear ~12px chute between the crucible rim and each slot edge
+        // (scaled so the gap stays proportional at non-default UI scales).
+        float chute = 12f * com.stonebreak.config.Settings.getInstance().getUiScale();
+        float crucibleRadius = radius - ss / 2f - chute;
+        if (crucibleRadius < chute) crucibleRadius = chute;
 
         int ingredientX = Math.round(centerX - ss / 2f);
         int ingredientY = Math.round(centerY - radius - ss / 2f);

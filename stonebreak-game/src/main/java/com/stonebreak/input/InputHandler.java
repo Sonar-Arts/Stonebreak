@@ -55,6 +55,15 @@ public class InputHandler {
     
     // Selected hotbar slot index
     private int currentSelectedHotbarIndex = 0; // Tracks the desired index, 0-8
+
+    // Staff fire-bolt cast cooldown so right-click spam can't flood the world
+    // with projectiles. Minimum 0.4s between casts.
+    private static final long STAFF_CAST_COOLDOWN_NANOS = 400_000_000L;
+    private long lastFireBoltCastNanos = 0L;
+
+    // Resolves fishing catches (loot roll + drop spawn) when a bobber is reeled in.
+    private final com.stonebreak.mobs.entities.FishingManager fishingManager =
+            new com.stonebreak.mobs.entities.FishingManager();
     // private int selectedBlock = 1; // Old field, replaced by currentSelectedHotbarIndex logic for selection
     
     
@@ -826,14 +835,18 @@ public class InputHandler {
 
                         player.startAttackAnimation(); // Animate for interaction attempts as well
 
-                        // Staff + right-click → fire bolt spell
+                        // Staff + right-click → fire bolt spell (rate-limited)
                         com.stonebreak.items.ItemStack staffCheck = player.getInventory().getSelectedHotbarSlot();
                         if (!staffCheck.isEmpty() && staffCheck.getItem() == com.stonebreak.items.ItemType.STAFF) {
-                            com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
-                            if (em != null) {
-                                org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
-                                org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
-                                em.spawnFireBolt(spawnPos, dir);
+                            long now = System.nanoTime();
+                            if (now - lastFireBoltCastNanos >= STAFF_CAST_COOLDOWN_NANOS) {
+                                com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+                                if (em != null) {
+                                    org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
+                                    org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
+                                    em.spawnFireBolt(spawnPos, dir);
+                                    lastFireBoltCastNanos = now;
+                                }
                             }
                             return;
                         }
@@ -845,25 +858,7 @@ public class InputHandler {
                             if (em != null) {
                                 com.stonebreak.mobs.entities.FishingBobber existing = player.getActiveBobber();
                                 if (existing != null && existing.isAlive()) {
-                                    if (existing.isFishBiting() && existing.isInWaterSettled()) {
-                                        com.stonebreak.items.ItemType caught = (Math.random() < 0.75)
-                                                ? com.stonebreak.items.ItemType.BASS
-                                                : com.stonebreak.items.ItemType.STICK;
-                                        com.stonebreak.world.World world = Game.getWorld();
-                                        if (world != null) {
-                                            org.joml.Vector3f bobberPos = new org.joml.Vector3f(existing.getPosition());
-                                            org.joml.Vector3f toPlayer = new org.joml.Vector3f(player.getPosition())
-                                                    .sub(bobberPos).normalize();
-                                            org.joml.Vector3f catchVelocity = new org.joml.Vector3f(toPlayer)
-                                                    .mul(6.0f).add(0, 4.0f, 0);
-                                            com.stonebreak.mobs.entities.ItemDrop fishDrop =
-                                                    com.stonebreak.mobs.entities.ItemDrop.createDropWithVelocity(
-                                                            world, bobberPos,
-                                                            new com.stonebreak.items.ItemStack(caught, 1),
-                                                            catchVelocity);
-                                            em.addEntity(fishDrop);
-                                        }
-                                    }
+                                    fishingManager.tryCatch(player, existing);
                                     existing.setAlive(false);
                                     player.setActiveBobber(null);
                                     rodCheck.setState(com.stonebreak.items.ItemType.FISHING_ROD_STATE_REELED_IN);
@@ -900,7 +895,8 @@ public class InputHandler {
                                 Game.getInstance().openWorkbenchScreen();
                             } else if (targetedBlockType == BlockType.FURNACE) {
                                 // Interacted with a Furnace
-                                Game.getInstance().openFurnaceScreen();
+                                Game.getInstance().openFurnaceScreen(
+                                        new com.stonebreak.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
                             } else {
                                 // Not a workbench, proceed with normal block placement
                                 player.placeBlock();

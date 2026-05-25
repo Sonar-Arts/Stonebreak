@@ -162,12 +162,12 @@ public final class GameStateController {
         }
     }
 
-    public void openFurnaceScreen() {
+    public void openFurnaceScreen(com.stonebreak.util.BlockPos pos) {
         FurnaceScreen furnaceScreen = game.getFurnaceScreen();
         if (furnaceScreen != null && currentState == GameState.PLAYING && !paused) {
             setState(GameState.FURNACE_UI);
-            furnaceScreen.open();
-            System.out.println("Opened Furnace Screen.");
+            furnaceScreen.open(pos);
+            System.out.println("Opened Furnace Screen at " + pos);
         } else {
             System.out.println("Cannot open furnace: Not in PLAYING state, or game paused by menu, or furnaceScreen is null.");
         }

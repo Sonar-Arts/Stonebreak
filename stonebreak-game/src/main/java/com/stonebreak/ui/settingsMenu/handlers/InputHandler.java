@@ -29,11 +29,27 @@ public final class InputHandler {
     }
 
     public void handleInput(long window) {
+        // While the keep/revert popup is up it owns the keyboard: Enter keeps,
+        // Escape reverts; everything else is suppressed so the menu stays modal.
+        if (stateManager.isUiScaleConfirmActive()) {
+            handleConfirmationKeys(window);
+            return;
+        }
         handleCategoryNavigation(window);
         handleSettingNavigation(window);
         handleValueAdjustment(window);
         handleEnter(window);
         handleEscape(window);
+    }
+
+    private void handleConfirmationKeys(long window) {
+        boolean enterDown = pressed(window, GLFW_KEY_ENTER);
+        if (enterDown && !enterPressed) actionHandler.confirmUiScale();
+        enterPressed = enterDown;
+
+        boolean escDown = pressed(window, GLFW_KEY_ESCAPE);
+        if (escDown && !escapePressed) actionHandler.revertUiScale();
+        escapePressed = escDown;
     }
 
     private void handleCategoryNavigation(long window) {

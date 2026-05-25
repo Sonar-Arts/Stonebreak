@@ -16,6 +16,26 @@ public abstract class MWidget {
     protected boolean hovered;
     protected boolean selected;
 
+    /**
+     * When true this widget renders its text at {@code baseSize * uiScale} so
+     * labels track the surrounding scaled geometry. Opt-in (default false) so
+     * widgets on screens that are not scale-aware keep their fixed text size.
+     */
+    protected boolean scaleText = false;
+
+    public MWidget scaleText(boolean v) { this.scaleText = v; return this; }
+    public boolean isScaleText() { return scaleText; }
+
+    /** UI scale to apply to this widget's text/offsets, or 1.0 when not scale-aware. */
+    protected float textScale() {
+        return scaleText ? com.stonebreak.config.Settings.getInstance().getUiScale() : 1f;
+    }
+
+    /** Fetches a font at {@code baseSize}, scaled by the UI scale when {@link #scaleText} is set. */
+    protected io.github.humbleui.skija.Font fontFor(MasonryUI ui, float baseSize) {
+        return scaleText ? ui.fonts().getScaled(baseSize) : ui.fonts().get(baseSize);
+    }
+
     // ─────────────────────────────────────────────── Layout
 
     public MWidget position(float x, float y) {

@@ -68,7 +68,7 @@ public class WorkbenchRenderCoordinator {
         this.ui              = new MasonryUI(renderer.getSkijaBackend());
         this.mHotbarRenderer = new MHotbarRenderer(uiRenderer, renderer);
 
-        this.recipeButton    = new MButton(RECIPE_BUTTON_TEXT);
+        this.recipeButton    = new MButton(RECIPE_BUTTON_TEXT).scaleText(true);
     }
 
     // ─────────────────────────────────────────────── Public entry points
@@ -150,7 +150,7 @@ public class WorkbenchRenderCoordinator {
         int count = dragged.getCount();
         if (count > 1 && ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
             Canvas canvas = ui.canvas();
-            Font font = ui.fonts().get(MStyle.FONT_META);
+            Font font = ui.fonts().getScaled(MStyle.FONT_META);
             String countStr = String.valueOf(count);
             float textX = iconX + iconSize - MPainter.measureWidth(font, countStr) - 2f;
             float textY = iconY + iconSize - 2f;
@@ -186,14 +186,15 @@ public class WorkbenchRenderCoordinator {
     }
 
     private void drawTitles(Canvas canvas, InventoryLayoutCalculator.InventoryLayout layout) {
-        Font font = ui.fonts().get(MStyle.FONT_BUTTON);
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        Font font = ui.fonts().getScaled(MStyle.FONT_BUTTON);
         float centerX = layout.panelStartX + layout.inventoryPanelWidth / 2f;
 
-        float craftY = layout.panelStartY + 20 + MStyle.FONT_BUTTON / 3f;
+        float craftY = layout.panelStartY + 20 * scale + MStyle.FONT_BUTTON / 3f * scale;
         MPainter.drawCenteredStringWithShadow(canvas, "Workbench", centerX, craftY,
                 font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
 
-        float invY = layout.mainInvContentStartY - 20 + MStyle.FONT_BUTTON / 3f;
+        float invY = layout.mainInvContentStartY - 20 * scale + MStyle.FONT_BUTTON / 3f * scale;
         MPainter.drawCenteredStringWithShadow(canvas, "Inventory", centerX, invY,
                 font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
     }
@@ -218,10 +219,11 @@ public class WorkbenchRenderCoordinator {
         }
 
         // Arrow
+        int arrowSize = Math.round(20 * com.stonebreak.config.Settings.getInstance().getUiScale());
         float arrowX = layout.craftingElementsStartX + layout.craftInputGridVisualWidth
-                + slotPadding + (slotSize - 20) / 2f;
-        float arrowY = layout.craftingGridStartY + (slotSize - 20) / 2f;
-        MPainter.craftingArrow(canvas, arrowX, arrowY, 20, 20, ARROW_FILL);
+                + slotPadding + (slotSize - arrowSize) / 2f;
+        float arrowY = layout.craftingGridStartY + (slotSize - arrowSize) / 2f;
+        MPainter.craftingArrow(canvas, arrowX, arrowY, arrowSize, arrowSize, ARROW_FILL);
 
         // Output slot
         float ox = layout.outputSlotX;
@@ -326,7 +328,7 @@ public class WorkbenchRenderCoordinator {
 
     private void drawAllCountTexts(Canvas canvas,
                                    InventoryLayoutCalculator.InventoryLayout layout) {
-        Font font       = ui.fonts().get(MStyle.FONT_META);
+        Font font       = ui.fonts().getScaled(MStyle.FONT_META);
         int slotSize    = InventoryLayoutCalculator.getSlotSize();
         int slotPadding = InventoryLayoutCalculator.getSlotPadding();
         int gridSize    = InventoryLayoutCalculator.getWorkbenchCraftingGridSize();

@@ -11,6 +11,7 @@ import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.FilterTileMode;
+import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.SamplingMode;
@@ -78,9 +79,53 @@ public final class SkijaSettingsRenderer {
 
             // Dropdowns drew earlier but queued themselves as overlays.
             ui.renderOverlays();
+
+            // Confirmation popup sits on top of everything, including overlays.
+            if (state.isUiScaleConfirmActive()) {
+                drawUiScaleConfirmation(canvas, windowWidth, windowHeight, s);
+            }
         } finally {
             ui.endFrame();
         }
+    }
+
+    /**
+     * Modal "keep this UI scale?" popup with a live countdown. The new scale is
+     * already applied to the live UI here; if the user does nothing the menu's
+     * per-frame tick auto-reverts, so an unreadable scale still self-heals.
+     */
+    private void drawUiScaleConfirmation(Canvas canvas, int w, int h, float s) {
+        MPainter.fillRect(canvas, 0, 0, w, h, 0xC8000000);
+
+        float dialogW = Math.min(460f * s, w * 0.9f);
+        float dialogH = Math.min(210f * s, h * 0.9f);
+        float dx = w / 2f - dialogW / 2f;
+        float dy = h / 2f - dialogH / 2f;
+        MPainter.panel(canvas, dx, dy, dialogW, dialogH);
+
+        float cx = w / 2f;
+        Font titleFont = ui.fonts().getScaled(MStyle.FONT_BUTTON);
+        Font bodyFont  = ui.fonts().getScaled(MStyle.FONT_META);
+
+        MPainter.drawCenteredStringWithShadow(canvas, "Keep UI Scale?",
+                cx, dy + 42f * s, titleFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+
+        String pendingStr  = String.format("New scale: %.1fx", state.getUiScaleSlider().value());
+        String countdown   = "Reverting to " + String.format("%.1f", state.getUiScalePreviousScale())
+                + "x in " + state.getUiScaleConfirmSecondsLeft() + "s";
+        MPainter.drawCenteredStringWithShadow(canvas, pendingStr,
+                cx, dy + 82f * s, bodyFont, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+        MPainter.drawCenteredStringWithShadow(canvas, countdown,
+                cx, dy + 104f * s, bodyFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+
+        float bh  = SettingsConfig.getScaledButtonHeight();
+        float gap = 16f * s;
+        // Keep both buttons inside the dialog even when the base button width is wide.
+        float bw  = Math.min(SettingsConfig.getScaledButtonWidth(), (dialogW - gap - 24f * s) / 2f);
+        float btnY = dy + dialogH - bh - 22f * s;
+
+        state.getKeepUiScaleButton().size(bw, bh).position(cx - gap / 2f - bw, btnY).render(ui);
+        state.getRevertUiScaleButton().size(bw, bh).position(cx + gap / 2f, btnY).render(ui);
     }
 
     public void dispose() {
@@ -128,7 +173,7 @@ public final class SkijaSettingsRenderer {
                 }
             }
             MPainter.drawCenteredString(canvas, title, centerX + i * 2f, titleY + i * 2f,
-                    ui.fonts().get(MStyle.FONT_TITLE), color);
+                    ui.fonts().getScaled(MStyle.FONT_TITLE), color);
         }
     }
 

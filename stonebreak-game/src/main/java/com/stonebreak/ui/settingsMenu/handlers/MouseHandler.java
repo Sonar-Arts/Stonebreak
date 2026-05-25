@@ -25,6 +25,12 @@ public final class MouseHandler {
     }
 
     public void handleMouseMove(double mouseX, double mouseY, int windowWidth, int windowHeight) {
+        // Confirmation popup is modal: only its buttons respond.
+        if (stateManager.isUiScaleConfirmActive()) {
+            stateManager.getKeepUiScaleButton().updateHover((float) mouseX, (float) mouseY);
+            stateManager.getRevertUiScaleButton().updateHover((float) mouseX, (float) mouseY);
+            return;
+        }
         updateHoverStates((float) mouseX, (float) mouseY);
         stateManager.getVolumeSlider().handleDrag((float) mouseX);
         stateManager.getCrosshairSizeSlider().handleDrag((float) mouseX);
@@ -74,6 +80,13 @@ public final class MouseHandler {
     }
 
     private void handlePress(float mouseX, float mouseY) {
+        // Confirmation popup is modal: only Keep / Revert are clickable.
+        if (stateManager.isUiScaleConfirmActive()) {
+            if (stateManager.getKeepUiScaleButton().handleClick(mouseX, mouseY)) return;
+            stateManager.getRevertUiScaleButton().handleClick(mouseX, mouseY);
+            return;
+        }
+
         // Open dropdowns consume clicks first (they own an overlay hit area).
         if (routeClickToOpenDropdown(mouseX, mouseY)) return;
 

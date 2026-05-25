@@ -129,8 +129,10 @@ public class InventoryRenderCoordinator {
     this.ui = new MasonryUI(renderer.getSkijaBackend());
     this.mHotbarRenderer = new MHotbarRenderer(uiRenderer, renderer);
 
-    this.recipeButton = new MButton("Recipes");
-    this.craftAllButton = new MButton("Craft All").fontSize(MStyle.FONT_META);
+        // Buttons are purely visual here; click detection remains in InventoryInputManager.
+        // scaleText so their labels grow with the UI scale like the panel geometry.
+        this.recipeButton   = new MButton("Recipes").scaleText(true);
+        this.craftAllButton = new MButton("Craft All").fontSize(MStyle.FONT_META).scaleText(true);
 
     this.tabInventory = new MButton("Inventory").fontSize(MStyle.FONT_META);
     this.tabCharacter = new MButton("Character").fontSize(MStyle.FONT_META);
@@ -232,18 +234,19 @@ public class InventoryRenderCoordinator {
           renderer.getBlockTextureArray());
     }
 
-    int count = dragged.getCount();
-    if (count > 1 && ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
-      Canvas canvas = ui.canvas();
-      Font font = ui.fonts().get(MStyle.FONT_META);
-      String countStr = String.valueOf(count);
-      float textX = iconX + iconSize - MPainter.measureWidth(font, countStr) - 2f;
-      float textY = iconY + iconSize - 2f;
-      MPainter.drawStringWithShadow(canvas, countStr, textX, textY,
-          font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-      ui.endFrame();
+        // Count text in its own Skija frame
+        int count = dragged.getCount();
+        if (count > 1 && ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
+            Canvas canvas = ui.canvas();
+            Font font = ui.fonts().getScaled(MStyle.FONT_META);
+            String countStr = String.valueOf(count);
+            float textX = iconX + iconSize - MPainter.measureWidth(font, countStr) - 2f;
+            float textY = iconY + iconSize - 2f;
+            MPainter.drawStringWithShadow(canvas, countStr, textX, textY,
+                    font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+            ui.endFrame();
+        }
     }
-  }
 
   // ─── Hotbar ───────────────────────────────────────────────────────────────
 
@@ -404,14 +407,14 @@ public class InventoryRenderCoordinator {
     Font font = ui.fonts().get(MStyle.FONT_BUTTON);
     float centerX = center.panelStartX + center.inventoryPanelWidth / 2f;
 
-    float craftY = center.panelStartY + 20 * scale + MStyle.FONT_BUTTON / 3f;
-    MPainter.drawCenteredStringWithShadow(canvas, "Crafting", centerX, craftY,
-        font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        float craftY = layout.panelStartY + 20 * scale + MStyle.FONT_BUTTON / 3f * scale;
+        MPainter.drawCenteredStringWithShadow(canvas, "Crafting", centerX, craftY,
+                font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
 
-    float invY = center.mainInvContentStartY - 20 * scale + MStyle.FONT_BUTTON / 3f;
-    MPainter.drawCenteredStringWithShadow(canvas, "Inventory", centerX, invY,
-        font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-  }
+        float invY = layout.mainInvContentStartY - 20 * scale + MStyle.FONT_BUTTON / 3f * scale;
+        MPainter.drawCenteredStringWithShadow(canvas, "Inventory", centerX, invY,
+                font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+    }
 
   private void drawCraftingSection(Canvas canvas,
                                    InventoryLayoutCalculator.InventoryLayout layout,
@@ -611,14 +614,14 @@ public class InventoryRenderCoordinator {
 
   // ─── Phase C — count texts ────────────────────────────────────────────────
 
-  private void drawAllCountTexts(Canvas canvas,
-                                 InventoryLayoutCalculator.InventoryLayout center) {
-    Font font = ui.fonts().get(MStyle.FONT_META);
-    int slotSize = InventoryLayoutCalculator.getSlotSize();
-    int slotPadding = InventoryLayoutCalculator.getSlotPadding();
-    int gridSize = InventoryLayoutCalculator.getCraftingGridSize();
-    int inputCount = InventoryLayoutCalculator.getCraftingInputSlotsCount();
-    ItemStack[] craftingInput = craftingManager.getCraftingInputSlots();
+    private void drawAllCountTexts(Canvas canvas,
+                                   InventoryLayoutCalculator.InventoryLayout layout) {
+        Font font       = ui.fonts().getScaled(MStyle.FONT_META);
+        int slotSize    = InventoryLayoutCalculator.getSlotSize();
+        int slotPadding = InventoryLayoutCalculator.getSlotPadding();
+        int gridSize    = InventoryLayoutCalculator.getCraftingGridSize();
+        int inputCount  = InventoryLayoutCalculator.getCraftingInputSlotsCount();
+        ItemStack[] craftingInput = craftingManager.getCraftingInputSlots();
 
     for (int i = 0; i < inputCount; i++) {
       int row = i / gridSize;
@@ -716,6 +719,22 @@ public class InventoryRenderCoordinator {
     craftAllButton.bounds(inputManager.getCraftAllButtonX(), inputManager.getCraftAllButtonY(),
         inputManager.getCraftAllButtonWidth(), inputManager.getCraftAllButtonHeight());
   }
+    private void drawTab(Canvas canvas, float x, float y, String label, boolean active, boolean hovered,
+                         int tabW, int tabH) {
+        int fill = active ? 0xFF7A7A7A
+                : hovered ? MStyle.BUTTON_FILL_HI
+                : MStyle.BUTTON_FILL;
+        MPainter.stoneSurface(canvas, x, y, tabW, tabH, MStyle.BUTTON_RADIUS,
+                fill, MStyle.BUTTON_BORDER,
+                MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
+                MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        Font font  = ui.fonts().getScaled(MStyle.FONT_META);
+        int  color = active ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
+        float ty   = y + tabH * 0.5f + MStyle.FONT_META * 0.38f * scale;
+        MPainter.drawCenteredStringWithShadow(canvas, label,
+                x + tabW / 2f, ty, font, color, MStyle.TEXT_SHADOW);
+    }
 
   private void checkHover(ItemStack itemStack, float sx, float sy, int slotSize,
                           float mouseX, float mouseY) {

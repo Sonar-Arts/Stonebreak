@@ -19,4 +19,14 @@ public interface ILayerIndexProvider {
      * @return the layer index into the block texture array
      */
     int getBlockFaceLayer(IBlockType blockType, int face);
+
+    /**
+     * State-aware overload — selects a per-state texture set for blocks with
+     * SBO 1.3+ state variants (e.g. {@code "Lit"} for an active furnace).
+     * Defaults to the base block face layer so providers that don't care about
+     * states keep working unchanged.
+     */
+    default int getBlockFaceLayer(IBlockType blockType, String stateName, int face) {
+        return getBlockFaceLayer(blockType, face);
+    }
 }

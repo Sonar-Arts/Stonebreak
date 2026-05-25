@@ -170,8 +170,9 @@ public class MmsCcoAdapter {
                                 blockHeight = Math.min(1.0f, Math.max(0.125f, layers * 0.125f));
                             }
 
+                            String stateName = chunkData.getBlockState(lx, ly, lz);
                             sboStampEmitter.emitBlock(atlasBuilder, blockType, lx, ly, lz,
-                                    worldX, worldY, worldZ, chunkData, blockHeight);
+                                    worldX, worldY, worldZ, chunkData, blockHeight, stateName);
                             continue;
                         }
 

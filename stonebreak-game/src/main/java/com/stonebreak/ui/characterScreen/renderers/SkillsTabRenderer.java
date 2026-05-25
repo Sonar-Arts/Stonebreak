@@ -80,7 +80,7 @@ public class SkillsTabRenderer {
     float innerW  = PANEL_INNER_W * scale;
     MPainter.drawStringWithShadow(canvas, "SP Available: " + stats.getRemainingSkillPoints(),
         px + rowPadX, py + 32f * scale,
-        ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
     drawEngravedRule(canvas, px + rowPadX, py + 38f * scale, innerW - rowPadX * 2f);
   }
 
@@ -112,15 +112,15 @@ public class SkillsTabRenderer {
             innerW - rowPadX * 2f, rowH, 3f, 0x22FFFFFF);
       }
 
-      float textY = rowY + rowH * 0.5f + MStyle.FONT_META * 0.38f;
+      float textY = rowY + rowH * 0.5f + MStyle.FONT_META * 0.38f * scale;
       MPainter.drawStringWithShadow(canvas, skill.name(),
           px + rowPadX, textY,
-          ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+          ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
 
       int level = stats.getSkillLevel(skill.id());
       MPainter.drawStringWithShadow(canvas, "Lvl: " + level,
           px + levelX, textY,
-          ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+          ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
 
       boolean canInvest = stats.getRemainingSkillPoints() > 0;
       investButtons[i].bounds(px + btnXOff, rowY + 1f, btnW, btnH);
@@ -135,10 +135,10 @@ public class SkillsTabRenderer {
           MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
 
       int btnTextColor = canInvest ? MStyle.TEXT_PRIMARY : MStyle.TEXT_DISABLED;
-      float btnTextY = rowY + 1f + btnH * 0.5f + MStyle.FONT_META * 0.38f;
+      float btnTextY = rowY + 1f + btnH * 0.5f + MStyle.FONT_META * 0.38f * scale;
       MPainter.drawCenteredStringWithShadow(canvas, "+1 SP",
           px + btnXOff + btnW / 2f, btnTextY,
-          ui.fonts().get(MStyle.FONT_META), btnTextColor, MStyle.TEXT_SHADOW);
+          ui.fonts().getScaled(MStyle.FONT_META), btnTextColor, MStyle.TEXT_SHADOW);
     }
   }
 
@@ -161,7 +161,7 @@ public class SkillsTabRenderer {
               0x1AFFFFFF, 0x1A000000, 0, 0, 0);
           MPainter.drawCenteredStringWithShadow(canvas, skill.description(),
               px + rowPadX + tooltipW / 2f, tooltipY + 16f * scale,
-              ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+              ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
         });
   }
 

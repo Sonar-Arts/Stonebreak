@@ -59,10 +59,8 @@ public class PlayerArmAnimator {
             applyAttackAnimation(armTransform, player.getAttackAnimationProgress(), heldItem);
         }
 
-        // Apply bow draw animation (overrides walk/idle sway when drawing)
-        if (player.isDrawingBow()) {
-            applyBowDrawAnimation(armTransform, player.getBowDrawProgress());
-        }
+        // Bow draw is handled in applyItemTransform(), which blends the in-hand
+        // pose into a centred aiming pose so the bow presents side-on to the view.
     }
     
     /**
@@ -198,33 +196,70 @@ public class PlayerArmAnimator {
         armTransform.rotate((float) Math.toRadians(swingTwist), 0.0f, 0.0f, 1.0f);
     }
     
+    // --- Bow aiming pose -----------------------------------------------------
+    // Drawing the bow keeps (nearly) its default orientation and pulls it toward
+    // the player's face rather than flying out to screen centre. Translation is
+    // in the 0.4-scaled arm frame (X = right, Y = up, Z = toward camera), so a
+    // larger Z brings the bow closer to the face.
+
+    // Resting in-hand pose — legacy values shared with all held tools.
+    private static final float REST_ROT_X = 20.0f, REST_ROT_Y = -30.0f, REST_ROT_Z = 10.0f;
+    private static final float REST_TX = -0.3f, REST_TY = 0.15f, REST_TZ = 0.3f;
+
+    // Aim pose — a modest lift/inward shift plus a pull toward the face (Z), and
+    // a very slight extra turn away from the camera (more negative Y). PRIMARY
+    // tuning knobs for the drawn-bow look.
+    private static final float AIM_ROT_X = 20.0f, AIM_ROT_Y = -36.0f, AIM_ROT_Z = 10.0f;
+    private static final float AIM_TX = -0.45f, AIM_TY = 0.45f, AIM_TZ = 0.65f;
+
+    private static final float BOW_TREMOR_SPEED = 28.0f;
+    private static final float BOW_TREMOR_AMPLITUDE = 0.02f;
+
     /**
-     * Pulls the arm back as the bow is drawn. Progress [0,1] over 3 seconds.
-     * Additive on top of base position/breathing so the arm tilts smoothly into an aiming pose.
+     * Applies positioning and scaling adjustments for item rendering (no bow draw).
      */
-    private void applyBowDrawAnimation(Matrix4f armTransform, float progress) {
-        // Pull back on X axis (raise the bow hand toward the shoulder)
-        float pullBack = (float) Math.toRadians(-30.0f * progress);
-        armTransform.rotate(pullBack, 1.0f, 0.0f, 0.0f);
-
-        // Slight inward Y rotation (draw arm wraps inward)
-        float inward = (float) Math.toRadians(10.0f * progress);
-        armTransform.rotate(inward, 0.0f, 1.0f, 0.0f);
-
-        // Small upward lift
-        armTransform.translate(0.0f, 0.03f * progress, 0.0f);
+    public void applyItemTransform(Matrix4f armTransform) {
+        applyItemTransform(armTransform, 0.0f);
     }
 
     /**
-     * Applies positioning and scaling adjustments for item rendering.
+     * Applies item positioning, sliding the bow toward its aim position by draw
+     * progress while preserving its default orientation.
+     *
+     * <p>{@code bowDrawProgress} is 0 for any non-drawing item (identical to the
+     * legacy pose) and ramps to 1 as the bow reaches full draw. The blend uses an
+     * ease-out curve so the bow rises into aim quickly then settles, and a faint
+     * strain tremor fades in over the final stretch of the draw.
      */
-    public void applyItemTransform(Matrix4f armTransform) {
+    public void applyItemTransform(Matrix4f armTransform, float bowDrawProgress) {
+        float p = Math.max(0.0f, Math.min(bowDrawProgress, 1.0f));
+        float aim = 1.0f - (1.0f - p) * (1.0f - p); // ease-out
+
         armTransform.scale(0.4f); // Larger scale for better visibility
-        armTransform.translate(-0.3f, 0.15f, 0.3f); // Adjust position for item in hand
-        
-        // Apply Minecraft-style item rotation
-        armTransform.rotate((float) Math.toRadians(20.0f), 1.0f, 0.0f, 0.0f);
-        armTransform.rotate((float) Math.toRadians(-30.0f), 0.0f, 1.0f, 0.0f);
-        armTransform.rotate((float) Math.toRadians(10.0f), 0.0f, 0.0f, 1.0f);
+
+        float tx = lerp(REST_TX, AIM_TX, aim);
+        float ty = lerp(REST_TY, AIM_TY, aim);
+        float tz = lerp(REST_TZ, AIM_TZ, aim);
+
+        // Held-tension tremor: fades in over the final 30% of the draw.
+        float tension = Math.max(0.0f, (p - 0.7f) / 0.3f);
+        if (tension > 0.0f) {
+            float t = Game.getInstance().getTotalTimeElapsed();
+            float tremor = (float) Math.sin(t * BOW_TREMOR_SPEED) * BOW_TREMOR_AMPLITUDE * tension;
+            tx += tremor;
+            ty += tremor * 0.6f;
+        }
+        armTransform.translate(tx, ty, tz);
+
+        // Blend orientation slightly toward the aim pose (a touch more turned
+        // away from the camera). Same rotation order as the rest pose, so a
+        // per-axis lerp is safe.
+        armTransform.rotate((float) Math.toRadians(lerp(REST_ROT_X, AIM_ROT_X, aim)), 1.0f, 0.0f, 0.0f);
+        armTransform.rotate((float) Math.toRadians(lerp(REST_ROT_Y, AIM_ROT_Y, aim)), 0.0f, 1.0f, 0.0f);
+        armTransform.rotate((float) Math.toRadians(lerp(REST_ROT_Z, AIM_ROT_Z, aim)), 0.0f, 0.0f, 1.0f);
+    }
+
+    private static float lerp(float a, float b, float t) {
+        return a + (b - a) * t;
     }
 }

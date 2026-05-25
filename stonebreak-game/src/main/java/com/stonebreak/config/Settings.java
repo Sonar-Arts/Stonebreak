@@ -309,7 +309,9 @@ public class Settings {
                 String value = extractValue(line);
                 if (value != null) {
                     try {
-                        uiScale = Float.parseFloat(value);
+                        // Route through the setter so out-of-range or hand-edited
+                        // values are clamped to the supported [0.5, 2.0] range.
+                        setUiScale(Float.parseFloat(value));
                     } catch (NumberFormatException e) {
                         System.err.println("Invalid uiScale value: " + value);
                     }

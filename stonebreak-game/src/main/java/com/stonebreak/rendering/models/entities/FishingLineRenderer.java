@@ -63,6 +63,10 @@ public class FishingLineRenderer {
         shaderProgram.setUniform("modelMatrix", new Matrix4f());
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_useSolidColor", true);
+        // Mark as a UI/overlay element so the vertex shader's water-wave
+        // displacement is skipped — otherwise the line picks up the wave
+        // animation and visibly ripples like water.
+        shaderProgram.setUniform("u_isUIElement", true);
         shaderProgram.setUniform("u_color", LINE_COLOR);
 
         lineScratch.clear();
@@ -79,6 +83,7 @@ public class FishingLineRenderer {
 
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_isUIElement", false);
         shaderProgram.unbind();
 
         glLineWidth(savedLineWidth);

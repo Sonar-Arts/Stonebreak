@@ -1,6 +1,7 @@
 package com.stonebreak.rendering.sbo;
 
 import com.openmason.engine.format.mesh.ParsedMaterialData;
+import com.openmason.engine.format.omo.OMOReader;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
@@ -68,6 +69,47 @@ public class SBOBlockBridge {
      */
     public SBOParseResult getSBODefinition(BlockType blockType) {
         return sboByBlockType.get(blockType);
+    }
+
+    /**
+     * Returns the OMO model bytes / parsed data for a specific state variant of
+     * a BlockType — e.g. {@code getStateModel(FURNACE, "Lit")} resolves to the
+     * lit furnace mesh embedded inside {@code SB_Furnace.sbo}.
+     *
+     * <p>Falls back to the SBO's {@code defaultStateName()} when {@code stateName}
+     * is {@code null}, blank, or unknown. Returns {@code null} for SBOs that
+     * declare no states at all — callers should then use the standard
+     * {@link #getSBODefinition(BlockType)} path.
+     *
+     * <p>Engine-side note: the chunk mesher must consult {@link Chunk#getBlockState}
+     * for each SBO block and pass the resulting state name here so the right
+     * variant is bucketed during meshing. Until that wiring lands, this method
+     * is callable but unused — the lit/unlit state is still persisted on the
+     * chunk and survives save/load, but the rendered model won't actually swap.
+     */
+    public OMOReader.ReadResult getStateModel(BlockType blockType, String stateName) {
+        SBOParseResult result = sboByBlockType.get(blockType);
+        if (result == null || !result.hasStates()) return null;
+        Map<String, OMOReader.ReadResult> byName = result.stateOmoData();
+        if (byName == null || byName.isEmpty()) return null;
+
+        OMOReader.ReadResult exact = (stateName != null && !stateName.isBlank())
+                ? byName.get(stateName)
+                : null;
+        if (exact != null) return exact;
+
+        String fallback = result.defaultStateName();
+        return fallback != null ? byName.get(fallback) : null;
+    }
+
+    /**
+     * Returns the name of the SBO state declared as default for a BlockType,
+     * or {@code null} if the SBO has no state variants. Convenience for the
+     * mesher when {@code Chunk.getBlockState(x,y,z)} returns {@code null}.
+     */
+    public String getDefaultStateName(BlockType blockType) {
+        SBOParseResult result = sboByBlockType.get(blockType);
+        return (result != null && result.hasStates()) ? result.defaultStateName() : null;
     }
 
     /**

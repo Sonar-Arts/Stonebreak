@@ -74,6 +74,27 @@ public class FireTrailParticles {
         }
     }
 
+    /**
+     * Spawns a short radial puff of particles at the given position, used when
+     * the fire bolt impacts a block or entity so the trail ends with a burst
+     * rather than vanishing.
+     *
+     * @param origin world position of the impact
+     */
+    public void burst(Vector3f origin) {
+        int count = Math.min(20, MAX_PARTICLES - particles.size());
+        for (int i = 0; i < count; i++) {
+            Vector3f vel = new Vector3f(
+                    (random.nextFloat() - 0.5f) * 4.0f,
+                    random.nextFloat() * 3.0f,
+                    (random.nextFloat() - 0.5f) * 4.0f
+            );
+            float lifetime = 0.25f + random.nextFloat() * 0.5f;
+            float size = 4.0f + random.nextFloat() * 5.0f;
+            particles.add(new FireParticle(origin, vel, lifetime, size));
+        }
+    }
+
     public void update(float deltaTime) {
         synchronized (particles) {
             particles.removeIf(FireParticle::isDead);
@@ -83,7 +104,16 @@ public class FireTrailParticles {
         }
     }
 
-    public List<FireParticle> getParticles() { return particles; }
+    /**
+     * Returns a defensive copy of the live particles taken under the list's
+     * monitor, safe to iterate on a different thread (e.g. the render thread)
+     * while {@link #update} mutates the backing list.
+     */
+    public List<FireParticle> snapshot() {
+        synchronized (particles) {
+            return new ArrayList<>(particles);
+        }
+    }
 
     public boolean isEmpty() { return particles.isEmpty(); }
 }

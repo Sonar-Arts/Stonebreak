@@ -77,6 +77,11 @@ public class Arrow extends Entity {
     }
 
     @Override
+    public boolean isPersistent() {
+        return false;
+    }
+
+    @Override
     public EntityType getType() {
         return EntityType.ARROW;
     }

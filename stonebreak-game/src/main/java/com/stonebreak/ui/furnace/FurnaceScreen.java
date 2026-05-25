@@ -9,6 +9,7 @@ import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.furnace.core.FurnaceController;
 import com.stonebreak.ui.furnace.core.FurnaceInputManager;
 import com.stonebreak.ui.furnace.renderers.FurnaceRenderCoordinator;
+import com.stonebreak.util.BlockPos;
 
 /**
  * A furnace screen for smelting items.
@@ -41,16 +42,12 @@ public class FurnaceScreen {
         this.controller = controllerInstance;
     }
 
-    public void open() {
-        controller.open();
+    public void open(BlockPos pos) {
+        controller.open(pos);
     }
 
     public void close() {
         controller.close();
-    }
-
-    public void toggleVisibility() {
-        controller.toggleVisibility();
     }
 
     public boolean isVisible() {

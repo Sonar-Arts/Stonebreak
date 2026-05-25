@@ -26,6 +26,16 @@ public final class MFonts {
         this.backend = backend;
     }
 
+    /**
+     * Returns a font at {@code baseSize} multiplied by the current UI scale.
+     * Use this for any text that lives inside scalable UI so labels grow and
+     * shrink in step with the surrounding box geometry. The per-size cache means
+     * each distinct scaled size is still built only once.
+     */
+    public Font getScaled(float baseSize) {
+        return get(baseSize * com.stonebreak.config.Settings.getInstance().getUiScale());
+    }
+
     public Font get(float size) {
         Typeface typeface = backend != null ? backend.getMinecraftTypeface() : null;
         if (typeface == null) return null;

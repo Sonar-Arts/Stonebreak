@@ -196,7 +196,22 @@ public abstract class Entity {
     public float getWidth() { return width; }
     public float getHeight() { return height; }
     public float getLength() { return length; }
-    
+
+    /**
+     * Whether this entity drives its own movement inside {@link #update} and
+     * should be skipped by the EntityManager's external physics/collision step.
+     * Projectiles such as the fire bolt override this to return {@code true}.
+     */
+    public boolean isSelfPropelled() { return false; }
+
+    /**
+     * Whether this entity is part of the world's saved state. Transient
+     * entities (projectiles such as the fire bolt, arrow, and fishing bobber)
+     * override this to return {@code false} so they are skipped by the save
+     * serializer instead of triggering an "unknown entity type" warning.
+     */
+    public boolean isPersistent() { return true; }
+
     // Setters
     public void setPosition(Vector3f position) { this.position.set(position); }
     public void setVelocity(Vector3f velocity) { this.velocity.set(velocity); }

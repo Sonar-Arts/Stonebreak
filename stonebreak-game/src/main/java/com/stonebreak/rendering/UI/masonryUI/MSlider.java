@@ -17,6 +17,8 @@ public final class MSlider extends MWidget {
     private boolean dragging;
     private Consumer<Float> onChange;
     private float trackHeight = 20f;
+    /** When true the label is suffixed with ": NN%"; off for labels that carry their own units/value. */
+    private boolean showPercent = true;
 
     public MSlider(String label, float min, float max, float initial) {
         this.label = label;
@@ -34,7 +36,9 @@ public final class MSlider extends MWidget {
         return this;
     }
     public MSlider onChange(Consumer<Float> consumer) { this.onChange = consumer; return this; }
+    public MSlider showPercent(boolean v) { this.showPercent = v; return this; }
 
+    @Override public MSlider scaleText(boolean v) { super.scaleText(v); return this; }
     @Override public MSlider position(float x, float y) { super.position(x, y); return this; }
     @Override public MSlider size(float w, float h) { super.size(w, h); return this; }
     @Override public MSlider bounds(float x, float y, float w, float h) {
@@ -116,10 +120,13 @@ public final class MSlider extends MWidget {
         Canvas canvas = ui.canvas();
         if (canvas == null) return;
 
-        Font labelFont = ui.fonts().get(MStyle.FONT_META);
+        float ts = textScale();
+        Font labelFont = fontFor(ui, MStyle.FONT_META);
         if (label != null && !label.isEmpty()) {
-            String display = String.format("%s: %d%%", label, Math.round(normalized() * 100f));
-            MPainter.drawCenteredStringWithShadow(canvas, display, x, y - 14f, labelFont,
+            String display = showPercent
+                    ? String.format("%s: %d%%", label, Math.round(normalized() * 100f))
+                    : label;
+            MPainter.drawCenteredStringWithShadow(canvas, display, x, y - 14f * ts, labelFont,
                     MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
         }
 
@@ -132,8 +139,10 @@ public final class MSlider extends MWidget {
             MPainter.fillRoundedRect(canvas, left, top, fillW, height, 3f, MStyle.SLIDER_FILL);
         }
 
-        float thumbX = left + fillW - 4f;
-        MPainter.fillRect(canvas, thumbX, top - 3f, 8f, height + 6f, MStyle.SLIDER_THUMB);
-        MPainter.strokeRect(canvas, thumbX, top - 3f, 8f, height + 6f, MStyle.SLIDER_THUMB_EDGE, 1.5f);
+        float thumbW = 8f * ts;
+        float thumbOverhang = 3f * ts;
+        float thumbX = left + fillW - thumbW / 2f;
+        MPainter.fillRect(canvas, thumbX, top - thumbOverhang, thumbW, height + thumbOverhang * 2f, MStyle.SLIDER_THUMB);
+        MPainter.strokeRect(canvas, thumbX, top - thumbOverhang, thumbW, height + thumbOverhang * 2f, MStyle.SLIDER_THUMB_EDGE, 1.5f);
     }
 }

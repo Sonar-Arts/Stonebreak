@@ -100,8 +100,9 @@ public class EntityManager {
                 entity.update(deltaTime);
 
                 // Apply physics and collision
-                // FireBolt manages its own movement in update() — skip physics
-                if (entity.getType() == EntityType.FIRE_BOLT) {
+                // Self-propelled projectiles (e.g. the fire bolt) move themselves
+                // in update() and must skip the external physics step.
+                if (entity.isSelfPropelled()) {
                     // self-managed projectile, no external physics
                 } else if (entity.getType() == EntityType.BOBBER) {
                     if (!((FishingBobber) entity).isSettled()) {
@@ -219,7 +220,8 @@ public class EntityManager {
                 yield new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
             }
             case CHICKEN -> new com.stonebreak.mobs.chicken.Chicken(world, position);
-            case FIRE_BOLT -> new FireBolt(world, position, new Vector3f(0, 0, -1));
+            // Projectiles (FIRE_BOLT, ARROW, BOBBER) require a launch direction and
+            // are spawned via their dedicated spawn* methods, not this generic path.
             default -> {
                 System.err.println("Unknown entity type: " + type);
                 yield null;

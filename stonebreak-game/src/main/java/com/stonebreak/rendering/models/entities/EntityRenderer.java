@@ -444,6 +444,12 @@ public class EntityRenderer {
 
     private void renderFireBolt(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                 com.stonebreak.world.World world, Vector3f cameraPos) {
+        // Once the bolt has impacted, the solid core is gone — only the fading
+        // trail/impact particles remain (drawn by WorldRenderer).
+        if (entity instanceof com.stonebreak.mobs.entities.FireBolt bolt && bolt.isImpacted()) {
+            return;
+        }
+
         shader.bind();
 
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -548,6 +554,9 @@ public class EntityRenderer {
         }
         if (fallbackTexture != 0) {
             GL11.glDeleteTextures(fallbackTexture);
+        }
+        if (fireBoltTexture != 0) {
+            GL11.glDeleteTextures(fireBoltTexture);
         }
         if (arrowTexture != 0) {
             GL11.glDeleteTextures(arrowTexture);

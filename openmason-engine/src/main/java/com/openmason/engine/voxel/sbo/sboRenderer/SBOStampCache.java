@@ -7,53 +7,58 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Thread-safe cache for pre-computed SBO block stamps.
+ * Thread-safe cache for pre-computed SBO block stamps, optionally keyed by
+ * named state variant (SBO 1.3+).
  *
- * <p>Stores {@link BlockStamp} records keyed by block type ID.
- * Stamps are computed once at startup by {@link com.openmason.engine.voxel.sbo.SBOMeshProcessor}
- * and looked up at chunk mesh generation time by {@link SBOStampEmitter}.
+ * <p>Lookup model: for each block type ID, a small map of {@code stateName ->
+ * BlockStamp}. The {@code null} key holds the default (no-state) stamp. State
+ * lookup falls back to the default when an unknown state name is requested.
  *
- * <p>The cache is populated during initialization and read-only at runtime,
- * so no synchronization is needed after initialization completes.
+ * <p>Populated during initialization, read-only at runtime — no synchronization
+ * needed after init.
  */
 public class SBOStampCache {
 
-    private final Map<Integer, BlockStamp> stamps = new HashMap<>();
+    private final Map<Integer, Map<String, BlockStamp>> stamps = new HashMap<>();
 
-    /**
-     * Store a pre-computed block stamp.
-     *
-     * @param blockType the block type this stamp represents
-     * @param stamp     the pre-computed stamp data
-     */
+    /** Store the default (no-state) block stamp. */
     public void put(IBlockType blockType, BlockStamp stamp) {
-        stamps.put(blockType.getId(), stamp);
+        put(blockType, null, stamp);
     }
 
-    /**
-     * Retrieve the block stamp for a block type.
-     *
-     * @param blockType the block type
-     * @return the stamp, or null if no SBO mesh exists for this type
-     */
+    /** Store a state-specific block stamp. {@code stateName} may be {@code null}
+     *  to mean "default state". */
+    public void put(IBlockType blockType, String stateName, BlockStamp stamp) {
+        stamps.computeIfAbsent(blockType.getId(), k -> new HashMap<>()).put(stateName, stamp);
+    }
+
+    /** Get the default (no-state) stamp for a block type. */
     public BlockStamp get(IBlockType blockType) {
-        return stamps.get(blockType.getId());
+        return get(blockType, null);
     }
 
-    /**
-     * Check if a block type has a cached SBO stamp.
-     *
-     * @param blockType the block type
-     * @return true if a stamp exists
-     */
+    /** Get the stamp for the given state, falling back to the default stamp
+     *  when {@code stateName} is null, unknown, or has no variant registered. */
+    public BlockStamp get(IBlockType blockType, String stateName) {
+        Map<String, BlockStamp> byState = stamps.get(blockType.getId());
+        if (byState == null) return null;
+        if (stateName != null) {
+            BlockStamp exact = byState.get(stateName);
+            if (exact != null) return exact;
+        }
+        return byState.get(null);
+    }
+
+    /** True if any stamp (default or variant) exists for this block type. */
     public boolean has(IBlockType blockType) {
-        return stamps.containsKey(blockType.getId());
+        Map<String, BlockStamp> byState = stamps.get(blockType.getId());
+        return byState != null && !byState.isEmpty();
     }
 
-    /**
-     * Get the number of cached stamps.
-     */
+    /** Number of distinct (block, state) entries cached. */
     public int size() {
-        return stamps.size();
+        int n = 0;
+        for (Map<String, BlockStamp> m : stamps.values()) n += m.size();
+        return n;
     }
 }

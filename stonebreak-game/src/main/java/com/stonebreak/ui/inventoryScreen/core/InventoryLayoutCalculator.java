@@ -211,15 +211,16 @@ public class InventoryLayoutCalculator {
 
     // ==================== GETTER METHODS ====================
 
-    public static int getSlotSize() {
-        return Math.round(SLOT_SIZE * com.stonebreak.config.Settings.getInstance().getUiScale());
-    }
-    public static int getSlotPadding() {
-        return Math.round(SLOT_PADDING * com.stonebreak.config.Settings.getInstance().getUiScale());
-    }
-    public static int getSectionSpacing() { return SECTION_SPACING; }
-    public static int getTitleHeight() { return TITLE_HEIGHT; }
-    public static int getPanelPadding() { return PANEL_PADDING; }
+    // All dimensional getters return values scaled by the current uiScale so
+    // external consumers (furnace layout, slot/input managers) stay aligned with
+    // the scaled panel geometry produced by calculateLayout/calculateWorkbenchLayout.
+    private static float uiScale() { return com.stonebreak.config.Settings.getInstance().getUiScale(); }
+
+    public static int getSlotSize() { return Math.round(SLOT_SIZE * uiScale()); }
+    public static int getSlotPadding() { return Math.round(SLOT_PADDING * uiScale()); }
+    public static int getSectionSpacing() { return Math.round(SECTION_SPACING * uiScale()); }
+    public static int getTitleHeight() { return Math.round(TITLE_HEIGHT * uiScale()); }
+    public static int getPanelPadding() { return Math.round(PANEL_PADDING * uiScale()); }
     public static int getCraftingGridSize() { return CRAFTING_GRID_SIZE; }
     public static int getWorkbenchCraftingGridSize() { return WORKBENCH_CRAFTING_GRID_SIZE; }
     public static int getCraftingInputSlotsCount() { return CRAFTING_GRID_SIZE * CRAFTING_GRID_SIZE; }

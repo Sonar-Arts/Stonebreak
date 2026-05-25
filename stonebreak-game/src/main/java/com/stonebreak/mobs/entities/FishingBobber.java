@@ -97,11 +97,12 @@ public class FishingBobber extends Entity {
     }
 
     /**
-     * Visual Y offset applied by the renderer. When a fish is biting the bobber
-     * dips below the surface; otherwise it gently bobs on the waves.
+     * Visual Y offset applied by the renderer. Only the bobber floating in water
+     * animates: when a fish is biting it dips below the surface, otherwise it
+     * gently bobs on the waves. A bobber that landed on solid ground sits still.
      */
     public float getBobOffset() {
-        if (!settled) return 0f;
+        if (!inWaterSettled) return 0f;
         if (fishBiting) return BITE_DIP;
         return (float) Math.sin(age * BOB_FREQUENCY) * BOB_AMPLITUDE;
     }
@@ -116,15 +117,16 @@ public class FishingBobber extends Entity {
         return EntityType.BOBBER;
     }
 
+    @Override
+    public boolean isPersistent() {
+        return false;
+    }
+
     public boolean isSettled() {
         return settled;
     }
 
     public boolean isFishBiting() {
         return fishBiting;
-    }
-
-    public boolean isInWaterSettled() {
-        return inWaterSettled;
     }
 }

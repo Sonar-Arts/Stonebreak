@@ -42,6 +42,12 @@ public class EntitySerializer {
         if (entity.isNetworkShadow() || entity.getType() == EntityType.REMOTE_PLAYER) {
             return null;
         }
+        // Transient entities (projectiles such as fire bolts, arrows, and
+        // bobbers) are not part of the world's persistent state. Skip silently
+        // to avoid the "Unknown entity type" warning at every save.
+        if (!entity.isPersistent()) {
+            return null;
+        }
 
         EntityType entityType = entity.getType();
         EntityData.Builder builder = EntityData.builder()
