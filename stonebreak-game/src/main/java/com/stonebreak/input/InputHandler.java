@@ -55,6 +55,11 @@ public class InputHandler {
     
     // Selected hotbar slot index
     private int currentSelectedHotbarIndex = 0; // Tracks the desired index, 0-8
+
+    // Staff fire-bolt cast cooldown so right-click spam can't flood the world
+    // with projectiles. Minimum 0.4s between casts.
+    private static final long STAFF_CAST_COOLDOWN_NANOS = 400_000_000L;
+    private long lastFireBoltCastNanos = 0L;
     // private int selectedBlock = 1; // Old field, replaced by currentSelectedHotbarIndex logic for selection
     
     
@@ -826,14 +831,18 @@ public class InputHandler {
 
                         player.startAttackAnimation(); // Animate for interaction attempts as well
 
-                        // Staff + right-click → fire bolt spell
+                        // Staff + right-click → fire bolt spell (rate-limited)
                         com.stonebreak.items.ItemStack staffCheck = player.getInventory().getSelectedHotbarSlot();
                         if (!staffCheck.isEmpty() && staffCheck.getItem() == com.stonebreak.items.ItemType.STAFF) {
-                            com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
-                            if (em != null) {
-                                org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
-                                org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
-                                em.spawnFireBolt(spawnPos, dir);
+                            long now = System.nanoTime();
+                            if (now - lastFireBoltCastNanos >= STAFF_CAST_COOLDOWN_NANOS) {
+                                com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+                                if (em != null) {
+                                    org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
+                                    org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
+                                    em.spawnFireBolt(spawnPos, dir);
+                                    lastFireBoltCastNanos = now;
+                                }
                             }
                             return;
                         }

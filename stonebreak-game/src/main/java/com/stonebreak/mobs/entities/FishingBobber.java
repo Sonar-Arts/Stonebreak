@@ -116,6 +116,11 @@ public class FishingBobber extends Entity {
         return EntityType.BOBBER;
     }
 
+    @Override
+    public boolean isPersistent() {
+        return false;
+    }
+
     public boolean isSettled() {
         return settled;
     }

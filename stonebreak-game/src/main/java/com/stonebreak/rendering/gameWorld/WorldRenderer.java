@@ -173,6 +173,11 @@ public class WorldRenderer {
         // Render water particles
         renderWaterParticles();
 
+        // Render fire bolt cores after the transparent water pass so they draw
+        // over water instead of being blended under it. Depth testing still
+        // lets opaque blocks in front occlude them correctly.
+        renderFireBoltCores(player);
+
         // Render fire bolt trail particles
         renderFireBoltParticles();
 
@@ -476,6 +481,25 @@ public class WorldRenderer {
     }
     
     /**
+     * Render fire bolt core cubes after the transparent water pass so they are
+     * not blended under water. Drawn via the entity renderer, which skips bolts
+     * that have already impacted (only their particles remain).
+     */
+    private void renderFireBoltCores(Player player) {
+        com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+        if (em == null || entityRenderer == null) return;
+
+        World world = Game.getWorld();
+        Vector3f cameraPos = player.getCamera().getPosition();
+        for (com.stonebreak.mobs.entities.Entity entity : em.getAllEntities()) {
+            if (entity.isAlive()
+                    && entity.getType() == com.stonebreak.mobs.entities.EntityType.FIRE_BOLT) {
+                entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix, world, cameraPos);
+            }
+        }
+    }
+
+    /**
      * Render fire trail particles from all active fire bolt entities.
      */
     private void renderFireBoltParticles() {
@@ -502,12 +526,11 @@ public class WorldRenderer {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE); // additive for fire glow
         glDepthMask(false);
-        glPointSize(5.0f);
 
         for (com.stonebreak.mobs.entities.Entity entity : em.getAllEntities()) {
             if (!(entity instanceof com.stonebreak.mobs.entities.FireBolt bolt) || !bolt.isAlive()) continue;
 
-            for (com.stonebreak.rendering.effects.FireTrailParticles.FireParticle p : bolt.particles.getParticles()) {
+            for (com.stonebreak.rendering.effects.FireTrailParticles.FireParticle p : bolt.particles.snapshot()) {
                 float opacity = p.getOpacity();
                 // Lerp orange → red as particle fades
                 float r = 1.0f;
@@ -646,7 +669,10 @@ public class WorldRenderer {
 
             // Get all entities and render them using the sub-renderer with underwater fog support
             for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
-                if (entity.isAlive() && !isDropEntity(entity)) { // Exclude drops as they're rendered separately
+                // Exclude drops (rendered separately) and fire bolts (rendered
+                // after the transparent water pass so they draw over water).
+                if (entity.isAlive() && !isDropEntity(entity)
+                        && entity.getType() != com.stonebreak.mobs.entities.EntityType.FIRE_BOLT) {
                     entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix, world, cameraPos);
                 }
             }
