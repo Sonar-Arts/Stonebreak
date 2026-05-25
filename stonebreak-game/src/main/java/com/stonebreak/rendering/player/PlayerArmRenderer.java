@@ -45,6 +45,18 @@ public class PlayerArmRenderer {
     
     // Reusable matrix to avoid allocations
     private final Matrix4f reusableArmViewModel = new Matrix4f();
+
+    // Cached rod-tip position in arm-local space (sprite transform applied to the
+    // rod's topmost voxel). Computed once; the per-frame arm animation and camera
+    // transform are applied on top in getHeldRodTipWorld().
+    private org.joml.Vector3f cachedRodTipModelPoint;
+    private boolean rodTipComputeAttempted = false;
+
+    // Fine nudge of the line anchor in camera space (eye units), applied after
+    // the rod tip is located, to seat the line exactly on the rod's visual tip.
+    // +right moves it right on screen, +up moves it up.
+    private static final float ROD_TIP_NUDGE_RIGHT = 0.07f;
+    private static final float ROD_TIP_NUDGE_UP    = -0.01f;
     
     /**
      * Creates and initializes the player arm renderer with specialized components.
@@ -131,6 +143,77 @@ public class PlayerArmRenderer {
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_playerLight", -1.0f);
         shaderProgram.unbind();
+    }
+
+    /**
+     * World-space position of the held fishing rod's tip, where the fishing line
+     * attaches. Rebuilds the exact transform chain the rod is rendered with
+     * ({@code armViewModel × spriteTransform}) and maps the rod's top vertex into
+     * the world, so the line stays physically attached to the rod as the arm
+     * animates (walk bob, idle sway, swing).
+     *
+     * @return the rod tip in world space, or {@code null} if the rod geometry
+     *         isn't available.
+     */
+    public org.joml.Vector3f getHeldRodTipWorld(Player player) {
+        // Reproduce the arm view-model used in renderPlayerArm: animations first,
+        // then the held-item pose (no bow draw for a rod).
+        Matrix4f armViewModel = new Matrix4f();
+        animator.applyAnimations(armViewModel, player, getSelectedItem(player));
+        animator.applyItemTransform(armViewModel, 0.0f);
+
+        org.joml.Vector3f modelTip = getRodTipModelPoint(armViewModel);
+        if (modelTip == null) {
+            return null;
+        }
+
+        // armViewModel acts as the view here (camera at origin), so this is the
+        // rod tip in eye space. Nudge it onto the rod's visual tip, then map
+        // eye → world via the inverse camera view.
+        org.joml.Vector3f eyeTip = armViewModel.transformPosition(new org.joml.Vector3f(modelTip));
+        eyeTip.x += ROD_TIP_NUDGE_RIGHT;
+        eyeTip.y += ROD_TIP_NUDGE_UP;
+        Matrix4f invView = new Matrix4f();
+        player.getViewMatrix().invert(invView);
+        return invView.transformPosition(eyeTip);
+    }
+
+    /**
+     * The rod's tip in arm-local space (sprite transform applied). Selected as
+     * the voxel that sits highest on screen in the rendered pose — i.e. the top
+     * of the rod, where the line should hang from. Computed once and cached; the
+     * live arm animation is re-applied per frame in {@link #getHeldRodTipWorld}.
+     *
+     * @param armViewModel the current arm pose, used only to pick the topmost
+     *                     voxel on the first call.
+     */
+    private org.joml.Vector3f getRodTipModelPoint(Matrix4f armViewModel) {
+        if (rodTipComputeAttempted) {
+            return cachedRodTipModelPoint;
+        }
+        rodTipComputeAttempted = true;
+
+        com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer.VoxelizationResult result =
+                com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer
+                        .voxelizeSpriteWithPalette(ItemType.FISHING_ROD, null);
+        if (result == null || !result.isValid() || result.getVoxels().isEmpty()) {
+            return null;
+        }
+
+        Matrix4f sprite = com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer
+                .getBaseSpriteTransform();
+        org.joml.Vector3f best = null;
+        float bestEyeY = -Float.MAX_VALUE;
+        for (com.stonebreak.rendering.player.items.voxelization.VoxelData voxel : result.getVoxels()) {
+            org.joml.Vector3f model = sprite.transformPosition(new org.joml.Vector3f(voxel.getPosition()));
+            float eyeY = armViewModel.transformPosition(new org.joml.Vector3f(model)).y;
+            if (eyeY > bestEyeY) {
+                bestEyeY = eyeY;
+                best = model;
+            }
+        }
+        cachedRodTipModelPoint = best;
+        return best;
     }
 
     /**

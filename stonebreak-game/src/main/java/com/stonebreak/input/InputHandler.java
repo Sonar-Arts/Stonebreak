@@ -60,6 +60,10 @@ public class InputHandler {
     // with projectiles. Minimum 0.4s between casts.
     private static final long STAFF_CAST_COOLDOWN_NANOS = 400_000_000L;
     private long lastFireBoltCastNanos = 0L;
+
+    // Resolves fishing catches (loot roll + drop spawn) when a bobber is reeled in.
+    private final com.stonebreak.mobs.entities.FishingManager fishingManager =
+            new com.stonebreak.mobs.entities.FishingManager();
     // private int selectedBlock = 1; // Old field, replaced by currentSelectedHotbarIndex logic for selection
     
     
@@ -854,25 +858,7 @@ public class InputHandler {
                             if (em != null) {
                                 com.stonebreak.mobs.entities.FishingBobber existing = player.getActiveBobber();
                                 if (existing != null && existing.isAlive()) {
-                                    if (existing.isFishBiting() && existing.isInWaterSettled()) {
-                                        com.stonebreak.items.ItemType caught = (Math.random() < 0.75)
-                                                ? com.stonebreak.items.ItemType.BASS
-                                                : com.stonebreak.items.ItemType.STICK;
-                                        com.stonebreak.world.World world = Game.getWorld();
-                                        if (world != null) {
-                                            org.joml.Vector3f bobberPos = new org.joml.Vector3f(existing.getPosition());
-                                            org.joml.Vector3f toPlayer = new org.joml.Vector3f(player.getPosition())
-                                                    .sub(bobberPos).normalize();
-                                            org.joml.Vector3f catchVelocity = new org.joml.Vector3f(toPlayer)
-                                                    .mul(6.0f).add(0, 4.0f, 0);
-                                            com.stonebreak.mobs.entities.ItemDrop fishDrop =
-                                                    com.stonebreak.mobs.entities.ItemDrop.createDropWithVelocity(
-                                                            world, bobberPos,
-                                                            new com.stonebreak.items.ItemStack(caught, 1),
-                                                            catchVelocity);
-                                            em.addEntity(fishDrop);
-                                        }
-                                    }
+                                    fishingManager.tryCatch(player, existing);
                                     existing.setAlive(false);
                                     player.setActiveBobber(null);
                                     rodCheck.setState(com.stonebreak.items.ItemType.FISHING_ROD_STATE_REELED_IN);

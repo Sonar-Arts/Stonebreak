@@ -244,6 +244,22 @@ public class VoxelizedSpriteRenderer {
     }
 
     /**
+     * Builds the base sprite model transform — identical to
+     * {@link #createSpriteTransform()} with zero instance adjustments. Exposed so
+     * other systems (e.g. the fishing line) can locate a held item's geometry in
+     * the same eye space the sprite is rendered in.
+     */
+    public static Matrix4f getBaseSpriteTransform() {
+        Matrix4f transform = new Matrix4f();
+        transform.translate(BASE_TRANSLATION);
+        transform.scale(BASE_SCALE);
+        transform.rotateX((float) Math.toRadians(BASE_ROTATION.x));
+        transform.rotateY((float) Math.toRadians(BASE_ROTATION.y));
+        transform.rotateZ((float) Math.toRadians(BASE_ROTATION.z));
+        return transform;
+    }
+
+    /**
      * Gets the current model matrix from the shader.
      */
     private Matrix4f getCurrentModelMatrix() {

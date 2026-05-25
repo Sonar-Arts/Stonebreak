@@ -678,20 +678,17 @@ public class WorldRenderer {
             }
         }
 
-        // Draw fishing line from rod tip to active bobber
+        // Draw fishing line from the held rod's tip to the active bobber. The
+        // rod tip is computed from the rod's actual render transform so the line
+        // stays physically attached to the rod.
         com.stonebreak.mobs.entities.FishingBobber bobber = player.getActiveBobber();
         if (bobber != null && bobber.isAlive()) {
-            org.joml.Vector3f camPos = player.getCamera().getPosition();
-            org.joml.Vector3f camRight = player.getCamera().getRight();
-            org.joml.Vector3f camUp = player.getCamera().getUp();
-            org.joml.Vector3f camFront = player.getCamera().getFront();
-            org.joml.Vector3f rodTip = new org.joml.Vector3f(camPos)
-                    .add(new org.joml.Vector3f(camRight).mul(0.45f))
-                    .add(new org.joml.Vector3f(camUp).mul(-0.05f))
-                    .add(new org.joml.Vector3f(camFront).mul(0.5f));
-            org.joml.Vector3f bobberTop = new org.joml.Vector3f(bobber.getPosition())
-                    .add(0, 0.1f + bobber.getBobOffset(), 0);
-            fishingLineRenderer.render(rodTip, bobberTop, player.getViewMatrix());
+            org.joml.Vector3f rodTip = playerArmRenderer.getHeldRodTipWorld(player);
+            if (rodTip != null) {
+                org.joml.Vector3f bobberTop = new org.joml.Vector3f(bobber.getPosition())
+                        .add(0, 0.1f + bobber.getBobOffset(), 0);
+                fishingLineRenderer.render(rodTip, bobberTop, player.getViewMatrix());
+            }
         }
     }
     
