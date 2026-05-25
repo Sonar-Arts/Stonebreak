@@ -146,10 +146,8 @@ public class ChatSystem {
             if (message.startsWith("/")) {
                 commandExecutor.executeCommand(message);
             } else if (com.stonebreak.network.MultiplayerSession.isOnline()) {
-                // Multiplayer: route through the sync service so the message is
-                // broadcast and locally echoed by ChatSynchronizer.
-                com.stonebreak.network.MultiplayerSession.getSyncService()
-                        .notifyLocal(new com.stonebreak.network.sync.SyncEvent.ChatSubmitted(message));
+                // Multiplayer: send to the server, which broadcasts + echoes back.
+                com.stonebreak.network.MultiplayerSession.submitChat(message);
             } else {
                 messageManager.addMessage("<Player> " + message);
             }

@@ -8,7 +8,7 @@ import org.joml.Vector3f;
 
 /**
  * A remote (network) player. Updated entirely from incoming
- * {@link com.stonebreak.network.protocol.Packet.PlayerStateS2C} packets,
+ * {@link com.stonebreak.network.packet.player.PlayerStateS2C} packets,
  * not local physics or AI.
  */
 public class RemotePlayer extends LivingEntity {
@@ -38,7 +38,7 @@ public class RemotePlayer extends LivingEntity {
      * the position is set immediately.
      */
     public void applyNetworkState(float x, float y, float z, float yaw, float pitch) {
-        com.stonebreak.network.sync.NetworkInterpolator interp = getInterpolator();
+        com.stonebreak.network.client.NetworkInterpolator interp = getInterpolator();
         if (interp != null) {
             interp.receive(x, y, z, yaw, pitch, this);
         } else {

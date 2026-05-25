@@ -45,7 +45,10 @@ final class NetChannelInitializer extends ChannelInitializer<Channel> {
 
     @Override
     protected void initChannel(Channel ch) {
-        ch.attr(PipelineAttributes.PHASE).set(ProtocolPhase.HANDSHAKE);
+        // Connections start in PLAY: the current protocol uses a single active phase
+        // (a cross-thread HANDSHAKE→PLAY decode transition is racy and deferred). The
+        // HANDSHAKE phase value is reserved for a future netty-thread phase transition.
+        ch.attr(PipelineAttributes.PHASE).set(ProtocolPhase.PLAY);
         ChannelPipeline p = ch.pipeline();
         if (transport == TransportType.TCP) {
             // maxFrame, lengthFieldOffset=0, lengthFieldLength=4, lengthAdjustment=0, stripBytes=4

@@ -714,7 +714,10 @@ public class World {
             return;
         }
         try {
-            com.stonebreak.network.protocol.NetworkChunkCodec.decodeInto(payload, chunk);
+            com.openmason.engine.net.protocol.codec.VoxelChunkCodec.decodeInto(
+                    payload,
+                    new com.stonebreak.network.bridge.GameBlockSetter(chunk),
+                    com.stonebreak.network.bridge.GameBlockTypeResolver.INSTANCE);
         } catch (Exception e) {
             System.err.println("[NETWORK] Failed to decode chunk (" + chunkX + "," + chunkZ + "): " + e.getMessage());
             return;
