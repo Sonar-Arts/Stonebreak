@@ -7,7 +7,6 @@ import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.ProtocolVersion;
 import com.openmason.engine.net.transport.NetAddress;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.config.Settings;
 import com.stonebreak.core.Game;
 import com.stonebreak.network.StonebreakProtocol;
 import com.stonebreak.network.client.handlers.ClientBlockHandler;
@@ -65,7 +64,6 @@ public final class ClientWorldView {
     private final ClientChatHandler chatHandler = new ClientChatHandler();
 
     private int localPlayerId = -1;
-    private Vector3f pendingSpawnTeleport;
     private int lastBroadcastHeldItemId = -1;
 
     private long lastTickNs = 0L;
@@ -90,15 +88,6 @@ public final class ClientWorldView {
 
     public void tick() {
         networkClient.inboundQueue().drain(this::dispatch);
-
-        // Apply the host-advertised spawn once the local Player exists (world gen is async).
-        if (pendingSpawnTeleport != null) {
-            Player p = Game.getPlayer();
-            if (p != null) {
-                p.setPosition(pendingSpawnTeleport);
-                pendingSpawnTeleport = null;
-            }
-        }
 
         long now = System.nanoTime();
         if (lastTickNs == 0L) {
@@ -151,14 +140,15 @@ public final class ClientWorldView {
         connection.send(new BlockChangeC2S(x, y, z, id), false);
     }
 
-    /** Local chat submission: send to the server, with an optimistic local echo. */
+    /**
+     * Local chat submission: send to the server. The server broadcasts to everyone INCLUDING
+     * the sender, so there is no optimistic local echo (that would double-print).
+     */
     public void submitChat(String text) {
         if (connection == null || text == null || text.isBlank()) {
             return;
         }
         connection.send(new ChatMessageC2S(text), false);
-        String name = Settings.getInstance().getMultiplayerUsername();
-        chatHandler.apply(new ChatMessageS2C(localPlayerId, name, text));
     }
 
     public void shutdown() {
@@ -193,6 +183,7 @@ public final class ClientWorldView {
             case ChunkDataS2C cd -> chunkHandler.apply(cd);
             case BlockChangeS2C b -> blockHandler.applyBlockChange(b);
             case MultiBlockChangeS2C m -> blockHandler.applyMultiBlock(m);
+            case ChatMessageS2C cm -> chatHandler.apply(cm);
             case PlayerStateS2C ps -> playerHandler.handlePlayerState(localPlayerId, ps);
             case PlayerJoinS2C j -> playerHandler.handleJoin(localPlayerId, j);
             case PlayerLeaveS2C l -> playerHandler.handleLeave(l);
@@ -209,8 +200,12 @@ public final class ClientWorldView {
 
     private void handleWelcome(WelcomeS2C w) {
         localPlayerId = w.playerId();
-        pendingSpawnTeleport = new Vector3f(w.spawnX(), w.spawnY(), w.spawnZ());
-        String name = "mp_" + System.currentTimeMillis();
-        Game.getInstance().startWorldGeneration(name, w.worldSeed());
+        Vector3f spawn = new Vector3f(w.spawnX(), w.spawnY(), w.spawnZ());
+        // Build the client RENDER world: no terrain generation, no save service — chunks stream
+        // in from the server. The local player is positioned at the authoritative spawn.
+        String label = Game.getInstance().getCurrentWorldName() != null
+            ? Game.getInstance().getCurrentWorldName()
+            : "mp_" + System.currentTimeMillis();
+        Game.getInstance().startClientWorld(label, w.worldSeed(), spawn);
     }
 }

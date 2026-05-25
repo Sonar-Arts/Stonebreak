@@ -51,6 +51,28 @@ public class World {
     // Lazily constructed once the render-thread hands us a texture atlas.
     private volatile FastLodManager fastLodManager;
 
+    // Per-world persistence. Null = this world is not persisted (e.g. a client render
+    // world, whose state is authoritative on the server). Set by SaveService.initialize().
+    // Replaces WorldChunkStore's old dependency on the Game-singleton SaveService.
+    private volatile com.stonebreak.world.save.SaveService saveService;
+
+    // Render-only client view: fully rendered (mesh pipeline present), but generates no terrain
+    // and runs no authoritative sim (water/furnace/features/spawn/time). All block + chunk +
+    // entity state arrives from the server. Set only via createClientView(); the
+    // authoritative/singleplayer world is never render-only. Drives GameLoop's update branch.
+    private volatile boolean renderOnly = false;
+
+    // Per-world entity spawner used for initial mob spawning during chunk generation. The
+    // headless server world sets this to ITS OWN spawner so generated mobs land in the server's
+    // EntityManager (not the client's, which the Game singleton would resolve to). Null = fall
+    // back to the Game singleton's spawner (the co-located / single-world behavior).
+    private volatile com.stonebreak.mobs.entities.EntitySpawner entitySpawner;
+
+    // Per-world entity manager, used when loading saved chunk entities (Chunk.loadFromSnapshot).
+    // The headless server world sets its own so restored mobs go to the server (not the Game
+    // singleton's manager, which during server boot is the previous session's terminated one).
+    private volatile com.stonebreak.mobs.entities.EntityManager entityManager;
+
     public World() {
         this(new WorldConfiguration());
     }
@@ -61,6 +83,31 @@ public class World {
 
     public World(WorldConfiguration config, long seed) {
         this(config, seed, false);
+    }
+
+    /**
+     * Create a headless world (no MmsAPI / mesh pipeline / OpenGL) for an authoritative
+     * server. Block data, generation, water, and feature population work; rendering does not.
+     * The server drives chunk loading via {@code getChunkAt} (no {@code chunkManager}).
+     */
+    public static World createHeadless(WorldConfiguration config, long seed) {
+        return new World(config, seed, true);
+    }
+
+    /**
+     * Create a client render-view world: a fully rendered {@code World} (mesh pipeline, GL,
+     * chunk manager) that generates <b>no</b> terrain and runs <b>no</b> authoritative
+     * simulation. Every chunk arrives from the server via {@link #installNetworkChunk}; blocks,
+     * entities, water, furnaces, and time are all server-authoritative. {@code GameLoop} routes
+     * such a world through {@link #updateClient} instead of {@link #update}, and it carries no
+     * {@code SaveService} (never persists locally). The seed is still used to construct the
+     * terrain system (cheap, deterministic) but it is never invoked because generation is off.
+     */
+    public static World createClientView(WorldConfiguration config, long seed) {
+        World w = new World(config, seed, false); // full rendering pipeline, no testMode
+        w.renderOnly = true;
+        w.chunkStore.setTerrainGenerationEnabled(false);
+        return w;
     }
 
     /**
@@ -193,6 +240,77 @@ public class World {
         meshPipeline.processChunkMeshBuildRequests(this);
     }
 
+    /**
+     * Authoritative simulation step, independent of rendering. Runs the parts of
+     * {@link #update} that mutate world state — water flow, furnace smelting, deferred
+     * feature population — but none of the mesh/GL work. Used by the headless server world
+     * ({@code ServerLevel.tick}), where {@code meshPipeline == null} and {@link #update}
+     * is a no-op. Safe to call with no render infrastructure.
+     */
+    public void updateSimulation(float deltaTime) {
+        waterSystem.tick(deltaTime);
+        com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
+        if (fr != null) fr.tick(this, deltaTime);
+        if (chunkStore != null) {
+            chunkStore.processPendingFeaturePopulation();
+        }
+    }
+
+    /**
+     * Render-only client update, run by {@code GameLoop} on a {@link #createClientView} world.
+     * Mirrors {@link #update} but drops every authoritative-sim step — no water flow, no furnace
+     * smelting, no feature population — because the server owns all of that and pushes results
+     * via streamed chunks and block changes. It keeps only the render-side work: requeue failed
+     * meshes, stream chunks in/out around the local player ({@code chunkManager}), and build the
+     * pending chunk meshes. Terrain generation is disabled on this world, so the chunk manager's
+     * "load" produces empty placeholders that {@link #installNetworkChunk} then fills.
+     */
+    public void updateClient(com.stonebreak.rendering.Renderer renderer) {
+        if (meshPipeline == null) return; // No rendering infrastructure — nothing to do.
+
+        // Deliberately NO chunkManager.update here: on a render-only world it calls
+        // getOrCreateChunk around the player and, with terrain generation disabled, manufactures
+        // empty all-air placeholder chunks the server never streams — their empty meshes get
+        // treated as failed builds and spam the retry path. The client only meshes chunks the
+        // server installs (installNetworkChunk schedules their build directly); we just pump the
+        // build queue. (Distant streamed chunks are not yet unloaded — memory grows; add
+        // client-side unloading later.)
+        meshPipeline.requeueFailedChunks();
+        meshPipeline.processChunkMeshBuildRequests(this);
+        unloadClientChunksOutsideView();
+    }
+
+    /**
+     * Chebyshev radius (chunks) a client retains around the player before unloading. The
+     * server streams within its view distance (8) and FORGETS a player's chunks beyond this
+     * SAME radius so they re-stream on return — so this MUST match
+     * {@code ServerChunkHandler.FORGET_DISTANCE_CHUNKS} to avoid holes when revisiting. It is
+     * independent of the user's render distance (the server caps streaming at its view distance).
+     */
+    public static final int CLIENT_KEEP_RADIUS = 10;
+
+    /**
+     * Unload streamed chunks that have left the client's keep radius. Render-only worlds never
+     * regenerate, so a dropped chunk simply re-streams from the server if the player returns
+     * (the server forgets it at the same radius). Bounds the client's memory as it explores;
+     * no save (the client never persists).
+     */
+    private void unloadClientChunksOutsideView() {
+        var player = Game.getPlayer();
+        if (player == null || chunkStore == null) {
+            return;
+        }
+        Vector3f pos = player.getPosition();
+        int pcx = Math.floorDiv((int) Math.floor(pos.x), WorldConfiguration.CHUNK_SIZE);
+        int pcz = Math.floorDiv((int) Math.floor(pos.z), WorldConfiguration.CHUNK_SIZE);
+        for (ChunkPosition cp : chunkStore.getAllChunkPositions()) {
+            int dist = Math.max(Math.abs(cp.getX() - pcx), Math.abs(cp.getZ() - pcz));
+            if (dist > CLIENT_KEEP_RADIUS) {
+                chunkStore.unloadChunk(cp.getX(), cp.getZ());
+            }
+        }
+    }
+
     public void updateMainThread() {
         if (meshPipeline == null) return; // Test mode - skip rendering updates
 
@@ -272,6 +390,17 @@ public class World {
         if (chunkStore == null) return false; // Test mode - no chunk store
 
         return chunkStore.hasChunk(x, z);
+    }
+
+    /**
+     * True when the chunk is resident AND has a GPU mesh (i.e. it has been filled with real
+     * data and rendered). On a client render world this distinguishes a fully streamed chunk
+     * from an empty, not-yet-filled placeholder — used to stop the player falling through
+     * terrain that hasn't arrived yet.
+     */
+    public boolean isChunkRenderableAt(int chunkX, int chunkZ) {
+        Chunk c = getChunkIfLoaded(chunkX, chunkZ);
+        return c != null && c.getMmsRenderableHandle() != null;
     }
 
     /**
@@ -409,6 +538,48 @@ public class World {
         return waterSystem;
     }
 
+    /** Per-world save service, or null if this world is not persisted (e.g. a client view). */
+    public com.stonebreak.world.save.SaveService getSaveService() {
+        return saveService;
+    }
+
+    /**
+     * True when this is a client render-view world ({@link #createClientView}): generates no
+     * terrain, runs no authoritative sim. {@code GameLoop} uses this to choose {@link #updateClient}
+     * over {@link #update} and to skip server-owned steps (spawning, time-of-day).
+     */
+    public boolean isRenderOnly() {
+        return renderOnly;
+    }
+
+    /**
+     * Bind the spawner that initial chunk-gen mob spawning should use for THIS world. The
+     * headless server world sets its own so spawns land in the server's EntityManager.
+     */
+    public void setEntitySpawner(com.stonebreak.mobs.entities.EntitySpawner entitySpawner) {
+        this.entitySpawner = entitySpawner;
+    }
+
+    /** This world's spawner if bound, else null (caller falls back to the Game singleton). */
+    public com.stonebreak.mobs.entities.EntitySpawner getEntitySpawner() {
+        return entitySpawner;
+    }
+
+    /** Bind the entity manager that saved-chunk entity loading should target for THIS world. */
+    public void setEntityManager(com.stonebreak.mobs.entities.EntityManager entityManager) {
+        this.entityManager = entityManager;
+    }
+
+    /** This world's entity manager if bound, else null (caller falls back to the Game singleton). */
+    public com.stonebreak.mobs.entities.EntityManager getEntityManager() {
+        return entityManager;
+    }
+
+    /** Bind this world's save service. Called by {@code SaveService.initialize}. */
+    public void setSaveService(com.stonebreak.world.save.SaveService saveService) {
+        this.saveService = saveService;
+    }
+
     public com.stonebreak.world.generation.features.FeatureQueue getFeatureQueue() {
         return featureQueue;
     }
@@ -478,8 +649,10 @@ public class World {
     public Map<ChunkPosition, Chunk> getChunksAroundPlayer(int playerChunkX, int playerChunkZ) {
         Map<ChunkPosition, Chunk> allChunks = chunkStore.getChunksInRenderDistance(playerChunkX, playerChunkZ);
 
-        // Ensure border chunks exist for meshing purposes (triggers generation cascade)
-        if (neighborCoordinator != null) {
+        // Ensure border chunks exist for meshing purposes (triggers generation cascade).
+        // Skip on a render-only client world: it generates no terrain, so this would only
+        // manufacture empty placeholder chunks that then fail meshing.
+        if (neighborCoordinator != null && !renderOnly) {
             neighborCoordinator.ensureBorderChunksExist(playerChunkX, playerChunkZ);
         }
 

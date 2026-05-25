@@ -65,11 +65,17 @@ public final class IntegratedServer {
     }
 
     /**
-     * Start listening. {@code localAddress} (in-JVM, always for SP/host) and/or
-     * {@code tcpAddress} (host/dedicated) — pass null to omit either. Snapshots the current
-     * world's entities so they replicate to joiners.
+     * Boot the authoritative world and start listening. {@code worldName}/{@code fallbackSeed}
+     * select the world to load-or-generate; {@code localAddress} (in-JVM, always for SP/host)
+     * and/or {@code tcpAddress} (host/dedicated) are bound (pass null to omit either). The
+     * {@link ServerLevel} is booted (world + persistence + spawn pre-gen) BEFORE accepting
+     * clients so handshakes hand out a real spawn and entities snapshot the live world.
      */
-    public void start(NetAddress localAddress, NetAddress tcpAddress) throws InterruptedException {
+    public void start(NetAddress localAddress, NetAddress tcpAddress, String worldName, long fallbackSeed)
+            throws InterruptedException {
+        ServerLevel level = ServerLevel.createAndLoad(worldName, fallbackSeed);
+        ctx.setServerLevel(level);
+
         networkServer.start(localAddress, tcpAddress);
         chunkHandler.onSessionStart();
         playerHandler.onSessionStart();
@@ -104,6 +110,13 @@ public final class IntegratedServer {
     }
 
     private void replicationTick() {
+        // Authoritative world simulation on the headless server world: water/furnace/features,
+        // entity AI + physics, mob spawning, and time. Replication handlers then ship the
+        // resulting state to clients.
+        ServerLevel level = ctx.serverLevel();
+        if (level != null) {
+            level.tick(TICK_PERIOD_NS / 1_000_000_000f);
+        }
         blockHandler.tick(ctx);
         playerHandler.tick(ctx);
         entityHandler.tick(ctx);
@@ -164,13 +177,13 @@ public final class IntegratedServer {
         sp.setUsername(hs.username());
         ctx.addPlayer(sp);
 
-        Vector3f spawn = ctx.hostSpawn();
+        Vector3f spawn = ctx.spawn();
 
-        // 1. Welcome: who you are + the seed (so the client mirrors terrain).
+        // 1. Welcome: who you are + the seed + the authoritative spawn.
         sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), spawn.x, spawn.y, spawn.z));
 
-        // 2. Roster bootstrap: host + everyone already present.
-        sp.send(new PlayerJoinS2C(ServerWorldContext.HOST_PLAYER_ID, "Host", spawn.x, spawn.y, spawn.z));
+        // 2. Roster bootstrap: every player already present (no synthetic host — the local
+        //    player is a normal client that announced itself like any other).
         for (ServerPlayer other : ctx.players()) {
             if (other.playerId() != sp.playerId()) {
                 sp.send(new PlayerJoinS2C(other.playerId(), other.username(), other.x(), other.y(), other.z()));
@@ -215,11 +228,7 @@ public final class IntegratedServer {
         blockHandler.onLocalBlockChange(x, y, z, type, ctx);
     }
 
-    public void onHostChat(String text) {
-        chatHandler.onHostChat(text, ctx);
-    }
-
-    /** Host-side: hand a connected client an item stack (drop pickup, command-give). */
+    /** Server-side: hand a connected client an item stack (drop pickup, command-give). */
     public void giveItemTo(int playerId, int itemId, int count) {
         if (count <= 0) {
             return;

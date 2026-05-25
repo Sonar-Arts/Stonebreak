@@ -148,8 +148,16 @@ public final class GameLoop {
 
         World world = Game.getWorld();
         Renderer renderer = Game.getRenderer();
+        // A render-only client world (two-world model) is driven by server packets: run the
+        // reduced client update (mesh + chunk streaming around the local player), never the
+        // authoritative sim. The co-located singleplayer/host world stays on the full update.
+        final boolean renderOnly = world != null && world.isRenderOnly();
         if (world != null) {
-            worldUpdateExecutor.submit(() -> world.update(renderer));
+            if (renderOnly) {
+                worldUpdateExecutor.submit(() -> world.updateClient(renderer));
+            } else {
+                worldUpdateExecutor.submit(() -> world.update(renderer));
+            }
             world.updateMainThread();
             world.processGpuCleanupQueue();
         }
@@ -173,19 +181,26 @@ public final class GameLoop {
             waterEffects.update(player, deltaTime);
         }
 
+        // Entity manager always ticks: on a render-only client it advances only shadow
+        // interpolation (EntityManager.update already skips AI/physics for network shadows).
         com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
         if (entityManager != null) {
             entityManager.update(deltaTime);
         }
 
-        com.stonebreak.mobs.entities.EntitySpawner entitySpawner = game.getEntitySpawner();
-        if (entitySpawner != null) {
-            entitySpawner.update(deltaTime);
-        }
+        // Mob spawning and the day/night clock are server-authoritative. On a render-only
+        // client they are driven by replication (entity spawns; a future TimeSyncS2C), so skip
+        // them locally to avoid the client diverging from the server.
+        if (!renderOnly) {
+            com.stonebreak.mobs.entities.EntitySpawner entitySpawner = game.getEntitySpawner();
+            if (entitySpawner != null) {
+                entitySpawner.update(deltaTime);
+            }
 
-        TimeOfDay timeOfDay = Game.getTimeOfDay();
-        if (timeOfDay != null) {
-            timeOfDay.update(deltaTime);
+            TimeOfDay timeOfDay = Game.getTimeOfDay();
+            if (timeOfDay != null) {
+                timeOfDay.update(deltaTime);
+            }
         }
     }
 }

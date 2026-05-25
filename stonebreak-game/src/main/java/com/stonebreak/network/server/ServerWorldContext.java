@@ -2,9 +2,7 @@ package com.stonebreak.network.server;
 
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.server.ConnectionRegistry;
-import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityManager;
-import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
@@ -15,38 +13,51 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The authoritative-world view that every server handler operates on, in place of direct
- * {@code Game.get*()} calls. This is the seam for a future dedicated server: today it
- * delegates to {@code Game} (the <b>shared-World shortcut</b> — for singleplayer/host the
- * authoritative world and the rendered world are the same instance), but a dedicated build
- * would back these accessors with the server's own {@code World}/{@code EntityManager}
- * without touching the handlers.
+ * {@code Game.get*()} calls. Backed by the headless {@link ServerLevel} (the two-world model):
+ * {@link #world()}/{@link #entityManager()}/{@link #worldSeed()} resolve to the server's own
+ * instances, never the client's render world.
  *
- * <p>Player ids: {@code 0} is reserved for the co-located host; remote players are
- * allocated from {@code 1} upward.
+ * <p>Every player — including the in-process local (host) player — is a normal client with an
+ * id allocated from {@code 1} upward; there is no reserved host id.
  */
 public final class ServerWorldContext {
-
-    public static final int HOST_PLAYER_ID = 0;
 
     private final ConnectionRegistry connections;
     private final Map<Integer, ServerPlayer> players = new ConcurrentHashMap<>();
     private final AtomicInteger nextPlayerId = new AtomicInteger(1);
 
+    /** The authoritative headless server world. Set by {@code IntegratedServer.start}. */
+    private volatile ServerLevel serverLevel;
+
     public ServerWorldContext(ConnectionRegistry connections) {
         this.connections = connections;
     }
 
-    // ─── Authoritative world (shared-World shortcut) ──────────────────────────
-    public World world() { return Game.getWorld(); }
-    public EntityManager entityManager() { return Game.getEntityManager(); }
-    public Player hostPlayer() { return Game.getPlayer(); }
-    public long worldSeed() { return Game.getInstance().getCurrentWorldSeed(); }
-
-    /** Host spawn = the host player's position, or a sane default before it exists. */
-    public Vector3f hostSpawn() {
-        Player p = hostPlayer();
-        return p != null ? new Vector3f(p.getPosition()) : new Vector3f(0, 80, 0);
+    // ─── Authoritative world ──────────────────────────────────────────────────
+    public World world() {
+        ServerLevel level = serverLevel;
+        return level != null ? level.world() : null;
     }
+
+    public EntityManager entityManager() {
+        ServerLevel level = serverLevel;
+        return level != null ? level.entityManager() : null;
+    }
+
+    public long worldSeed() {
+        ServerLevel level = serverLevel;
+        return level != null ? level.seed() : 0L;
+    }
+
+    /** Authoritative world spawn (saved player/world spawn), or a sane default. */
+    public Vector3f spawn() {
+        ServerLevel level = serverLevel;
+        return level != null ? level.spawn() : new Vector3f(0, 80, 0);
+    }
+
+    public ServerLevel serverLevel() { return serverLevel; }
+
+    public void setServerLevel(ServerLevel serverLevel) { this.serverLevel = serverLevel; }
 
     // ─── Player registry ──────────────────────────────────────────────────────
     public int allocatePlayerId() { return nextPlayerId.getAndIncrement(); }

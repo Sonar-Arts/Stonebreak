@@ -110,6 +110,15 @@ public final class WorldLifecycle {
     }
 
     /**
+     * Creates a client RENDER world (two-world model): fully rendered, but with terrain
+     * generation disabled and no save service. Its contents stream in from the authoritative
+     * server. MmsAPI must already be initialized.
+     */
+    public World createClientWorldInstance(long seed) {
+        return World.createClientView(new WorldConfiguration(), seed);
+    }
+
+    /**
      * Replaces the current world with a new instance, disposes of the old
      * one, creates a fresh player, and re-runs world-dependent bootstrap.
      */

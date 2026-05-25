@@ -570,15 +570,22 @@ public class Chunk {
             ));
         }
 
-        // Load entities from snapshot
+        // Load entities from snapshot into THIS world's entity manager. Critically, prefer the
+        // world's own manager over the Game singleton: during server world-load the singleton
+        // points at the client's manager (or, just after a world switch, the previous session's
+        // terminated one), which would reject the deserialization task.
         if (world != null && !snapshot.getEntities().isEmpty()) {
-            com.stonebreak.core.Game game = Game.getInstance();
-            if (game != null && game.getEntityManager() != null) {
+            com.stonebreak.mobs.entities.EntityManager em = world.getEntityManager();
+            if (em == null) {
+                com.stonebreak.core.Game game = Game.getInstance();
+                em = (game != null) ? game.getEntityManager() : null;
+            }
+            if (em != null) {
                 logger.log(Level.FINE, String.format(
                     "[ENTITY-LOAD] Chunk (%d,%d): Loading %d entities",
                     snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getEntities().size()
                 ));
-                game.getEntityManager().loadEntitiesForChunk(snapshot.getEntities(), snapshot.getChunkX(), snapshot.getChunkZ());
+                em.loadEntitiesForChunk(snapshot.getEntities(), snapshot.getChunkX(), snapshot.getChunkZ());
             }
         }
 

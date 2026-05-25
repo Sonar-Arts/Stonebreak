@@ -4,8 +4,8 @@ import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.ProtocolPhase;
 import com.openmason.engine.net.server.ServerConnection;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Server-side state for one connected player. Successor to the old {@code RemoteClient}'s
@@ -30,10 +30,12 @@ public final class ServerPlayer {
     /** Last reported held block/item id. 0 = empty/air. */
     private int heldItemId = 0;
 
-    // Per-player chunk-view tracker (was ChunkSynchronizer.PlayerView).
+    // Per-player chunk-view tracker (was ChunkSynchronizer.PlayerView). Stores the chunk
+    // VERSION last sent to this player so the server re-streams a chunk when it changes
+    // server-side (player edits, water flow). Absent key = never sent.
     private int lastCx = Integer.MIN_VALUE;
     private int lastCz = Integer.MIN_VALUE;
-    private final Set<Long> sentChunks = new HashSet<>();
+    private final Map<Long, Integer> sentChunkVersions = new HashMap<>();
 
     public ServerPlayer(ServerConnection connection, int playerId) {
         this.connection = connection;
@@ -66,8 +68,15 @@ public final class ServerPlayer {
     public int lastCx() { return lastCx; }
     public int lastCz() { return lastCz; }
     public void setLastChunk(int cx, int cz) { this.lastCx = cx; this.lastCz = cz; }
-    public boolean hasSentChunk(long key) { return sentChunks.contains(key); }
-    public void markChunkSent(long key) { sentChunks.add(key); }
+    /** Version of {@code key} last sent to this player, or -1 if never sent. */
+    public int sentChunkVersion(long key) { return sentChunkVersions.getOrDefault(key, -1); }
+    public void markChunkSent(long key, int version) { sentChunkVersions.put(key, version); }
+    /** Forget a chunk (e.g. it left the view) so it re-streams if it returns. */
+    public void forgetChunk(long key) { sentChunkVersions.remove(key); }
+    /** Forget every sent chunk whose packed key matches the predicate (left the keep radius). */
+    public void forgetChunksMatching(java.util.function.LongPredicate predicate) {
+        sentChunkVersions.keySet().removeIf(k -> predicate.test(k));
+    }
 
     // ─── Transport convenience ────────────────────────────────────────────────
     public boolean send(Packet packet, boolean droppable) { return connection.send(packet, droppable); }

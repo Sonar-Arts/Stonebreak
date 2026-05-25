@@ -206,14 +206,9 @@ public final class HostWorldScreen {
         WorldData wd = discovery.getWorldData(worldName);
         long seed = (wd != null && wd.getSeed() != 0) ? wd.getSeed() : new Random().nextLong();
 
-        try {
-            MultiplayerSession.startHosting(port);
-        } catch (Exception ex) {
-            statusMessage = "Failed to bind port " + port + ": " + ex.getMessage();
-            return;
-        }
-        // Load the world; networking layer will broadcast events as the host plays.
-        Game.getInstance().startWorldGeneration(worldName, seed);
+        // Two-world model: start the integrated server (Local + TCP) which loads/persists the
+        // authoritative world, then the in-process local client which builds the render world.
+        MultiplayerSession.startHosting(worldName, seed, port);
     }
 
     public void dispose() {

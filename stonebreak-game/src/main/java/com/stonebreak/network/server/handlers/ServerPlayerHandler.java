@@ -6,26 +6,22 @@ import com.stonebreak.network.packet.player.PlayerStateC2S;
 import com.stonebreak.network.packet.player.PlayerStateS2C;
 import com.stonebreak.network.server.ServerPlayer;
 import com.stonebreak.network.server.ServerWorldContext;
-import com.stonebreak.player.Player;
 import com.stonebreak.world.operations.WorldConfiguration;
-import org.joml.Vector3f;
 
 /**
  * Server-authoritative player-state relay — successor of the old
  * {@code PlayerStateSynchronizer} HOST path. Validates and caches inbound client transforms
  * (the cache feeds block-edit reach checks and chunk targeting), rebroadcasts them to other
- * clients, relays held-item changes, and each tick broadcasts the host player's own state.
+ * clients, and relays held-item changes.
  *
- * <p>Remote-player spawn/despawn + interpolation is a client concern and lives in the
- * client world view, not here.
+ * <p>In the two-world model every player — including the in-process local (host) player —
+ * is a normal client that sends its own {@link PlayerStateC2S}; there is no host special case
+ * here. Remote-player spawn/despawn + interpolation is a client concern (client world view).
  */
 public final class ServerPlayerHandler {
 
-    /** Last held item id broadcast for the host (player 0); -1 = never sent. */
-    private int lastHostHeldItemId = -1;
-
     public void onSessionStart() {
-        lastHostHeldItemId = -1;
+        // no per-handler state to reset
     }
 
     // ─── Inbound ───────────────────────────────────────────────────────────────
@@ -45,11 +41,6 @@ public final class ServerPlayerHandler {
 
     /** Bring a newly-joined client up to date on every existing player's held item. */
     public void onPeerJoined(ServerPlayer joined, ServerWorldContext ctx) {
-        Player host = ctx.hostPlayer();
-        if (host != null && host.getInventory() != null) {
-            joined.send(new PlayerHeldItemS2C(ServerWorldContext.HOST_PLAYER_ID,
-                host.getInventory().getSelectedBlockTypeId()), false);
-        }
         for (ServerPlayer other : ctx.players()) {
             if (other.playerId() == joined.playerId()) {
                 continue;
@@ -58,26 +49,11 @@ public final class ServerPlayerHandler {
         }
     }
 
-    // ─── Per-tick host broadcast ────────────────────────────────────────────────
+    // ─── Per-tick ───────────────────────────────────────────────────────────────
 
     public void tick(ServerWorldContext ctx) {
-        Player p = ctx.hostPlayer();
-        if (p == null) {
-            return;
-        }
-        Vector3f pos = p.getPosition();
-        float yaw = p.getCamera() != null ? p.getCamera().getYaw() : 0f;
-        float pitch = p.getCamera() != null ? p.getCamera().getPitch() : 0f;
-        ctx.broadcast(new PlayerStateS2C(ServerWorldContext.HOST_PLAYER_ID,
-            pos.x, pos.y, pos.z, yaw, pitch), true);
-
-        if (p.getInventory() != null) {
-            int held = p.getInventory().getSelectedBlockTypeId();
-            if (held != lastHostHeldItemId) {
-                lastHostHeldItemId = held;
-                ctx.broadcast(new PlayerHeldItemS2C(ServerWorldContext.HOST_PLAYER_ID, held), false);
-            }
-        }
+        // No host special case: every player (incl. the local one) relays its own state via
+        // PlayerStateC2S → handlePlayerState. Nothing to broadcast from here.
     }
 
     // ─── Validation ──────────────────────────────────────────────────────────────
