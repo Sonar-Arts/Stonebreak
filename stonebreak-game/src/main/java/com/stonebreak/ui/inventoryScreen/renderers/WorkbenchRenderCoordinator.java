@@ -121,7 +121,9 @@ public class WorkbenchRenderCoordinator {
 
         Vector2f mouse = inputHandler.getMousePosition();
         if (ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
-            MTooltip.draw(ui, item.getName(), mouse.x + 15, mouse.y + 15,
+            float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+            float tooltipOff = Math.round(15 * scale);
+            MTooltip.draw(ui, item.getName(), mouse.x + tooltipOff, mouse.y + tooltipOff,
                           screenWidth, screenHeight);
             ui.endFrame();
         }
@@ -277,7 +279,7 @@ public class WorkbenchRenderCoordinator {
     private void renderItemIcons(InventoryLayoutCalculator.InventoryLayout layout) {
         int slotSize    = InventoryLayoutCalculator.getSlotSize();
         int slotPadding = InventoryLayoutCalculator.getSlotPadding();
-        int iconInset   = 3;
+        int iconInset   = Math.round(3 * com.stonebreak.config.Settings.getInstance().getUiScale());
         int iconSize    = slotSize - iconInset * 2;
         int gridSize    = InventoryLayoutCalculator.getWorkbenchCraftingGridSize();
         int inputCount  = InventoryLayoutCalculator.getWorkbenchCraftingInputSlotsCount();
@@ -367,8 +369,9 @@ public class WorkbenchRenderCoordinator {
                                float slotX, float slotY, int slotSize) {
         if (itemStack == null || itemStack.isEmpty() || itemStack.getCount() <= 1) return;
         String countStr = String.valueOf(itemStack.getCount());
-        float textX = slotX + slotSize - MPainter.measureWidth(font, countStr) - 2f;
-        float textY = slotY + slotSize - 2f;
+        float countMargin = 2f * com.stonebreak.config.Settings.getInstance().getUiScale();
+        float textX = slotX + slotSize - MPainter.measureWidth(font, countStr) - countMargin;
+        float textY = slotY + slotSize - countMargin;
         MPainter.drawStringWithShadow(canvas, countStr, textX, textY,
                 font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
     }

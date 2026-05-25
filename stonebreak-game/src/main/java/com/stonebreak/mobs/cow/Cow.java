@@ -6,6 +6,8 @@ import com.stonebreak.world.World;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
+import com.stonebreak.util.DropUtil;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.AnimationController;
@@ -192,22 +194,22 @@ public class Cow extends LivingEntity {
      */
     @Override
     protected void onDeath() {
-        // Cleanup AI state and references
         if (cowAI != null) {
             cowAI.cleanup();
         }
-
-        // Reset sound system state
         if (cowSounds != null) {
             cowSounds.reset();
         }
+        for (ItemStack drop : getDrops()) {
+            DropUtil.createItemDrop(world, getPosition(), drop);
+        }
     }
-    
-    /**
-     * Gets the items this cow drops when it dies.
-     */
+
     @Override
     public ItemStack[] getDrops() {
+        if (Math.random() < 0.40) {
+            return new ItemStack[] { new ItemStack(ItemType.LEATHER, 1) };
+        }
         return new ItemStack[0];
     }
     

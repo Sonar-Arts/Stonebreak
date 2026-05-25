@@ -24,13 +24,14 @@ public final class MTooltip {
         Canvas canvas = ui.canvas();
         if (canvas == null) return;
 
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
         Font font  = ui.fonts().get(MStyle.FONT_ITEM);
         float textW = MPainter.measureWidth(font, text);
-        float pad   = 8f;
+        float pad   = 8f * scale;
         float boxW  = textW + pad * 2.5f;
         float boxH  = MStyle.FONT_ITEM + pad * 2f;
 
-        float margin = 8f;
+        float margin = 8f * scale;
         float bx = Math.max(margin, Math.min(x, screenWidth  - boxW - margin));
         float by = Math.max(margin, Math.min(y, screenHeight - boxH - margin));
 

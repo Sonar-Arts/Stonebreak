@@ -204,7 +204,9 @@ public class InventoryRenderCoordinator {
 
     Vector2f mouse = inputHandler.getMousePosition();
     if (ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
-      MTooltip.draw(ui, item.getName(), mouse.x + 15, mouse.y + 15, screenWidth, screenHeight);
+      float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+      float tooltipOff = Math.round(15 * scale);
+      MTooltip.draw(ui, item.getName(), mouse.x + tooltipOff, mouse.y + tooltipOff, screenWidth, screenHeight);
       ui.endFrame();
     }
   }
@@ -407,11 +409,11 @@ public class InventoryRenderCoordinator {
     Font font = ui.fonts().get(MStyle.FONT_BUTTON);
     float centerX = center.panelStartX + center.inventoryPanelWidth / 2f;
 
-        float craftY = layout.panelStartY + 20 * scale + MStyle.FONT_BUTTON / 3f * scale;
+        float craftY = center.panelStartY + 20 * scale + MStyle.FONT_BUTTON / 3f * scale;
         MPainter.drawCenteredStringWithShadow(canvas, "Crafting", centerX, craftY,
                 font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
 
-        float invY = layout.mainInvContentStartY - 20 * scale + MStyle.FONT_BUTTON / 3f * scale;
+        float invY = center.mainInvContentStartY - 20 * scale + MStyle.FONT_BUTTON / 3f * scale;
         MPainter.drawCenteredStringWithShadow(canvas, "Inventory", centerX, invY,
                 font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
     }
@@ -561,7 +563,7 @@ public class InventoryRenderCoordinator {
   private void renderItemIcons(InventoryLayoutCalculator.InventoryLayout center) {
     int slotSize = InventoryLayoutCalculator.getSlotSize();
     int slotPadding = InventoryLayoutCalculator.getSlotPadding();
-    int iconInset = 3;
+    int iconInset = Math.round(3 * com.stonebreak.config.Settings.getInstance().getUiScale());
     int iconSize = slotSize - iconInset * 2;
     int gridSize = InventoryLayoutCalculator.getCraftingGridSize();
     int inputCount = InventoryLayoutCalculator.getCraftingInputSlotsCount();
@@ -626,27 +628,27 @@ public class InventoryRenderCoordinator {
     for (int i = 0; i < inputCount; i++) {
       int row = i / gridSize;
       int col = i % gridSize;
-      float sx = center.craftingElementsStartX + col * (slotSize + slotPadding);
-      float sy = center.craftingGridStartY + row * (slotSize + slotPadding);
+      float sx = layout.craftingElementsStartX + col * (slotSize + slotPadding);
+      float sy = layout.craftingGridStartY + row * (slotSize + slotPadding);
       drawCountText(canvas, font, craftingInput[i], sx, sy, slotSize);
     }
 
     drawCountText(canvas, font, craftingManager.getCraftingOutputSlot(),
-        center.outputSlotX, center.outputSlotY, slotSize);
+        layout.outputSlotX, layout.outputSlotY, slotSize);
 
     ItemStack[] mainSlots = inventory.getMainInventorySlots();
     for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
       int row = i / Inventory.MAIN_INVENTORY_COLS;
       int col = i % Inventory.MAIN_INVENTORY_COLS;
-      float sx = center.inventorySectionStartX + slotPadding + col * (slotSize + slotPadding);
-      float sy = center.mainInvContentStartY + slotPadding + row * (slotSize + slotPadding);
+      float sx = layout.inventorySectionStartX + slotPadding + col * (slotSize + slotPadding);
+      float sy = layout.mainInvContentStartY + slotPadding + row * (slotSize + slotPadding);
       drawCountText(canvas, font, mainSlots[i], sx, sy, slotSize);
     }
 
     ItemStack[] hotbarSlots = inventory.getHotbarSlots();
     for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
-      float sx = center.inventorySectionStartX + slotPadding + i * (slotSize + slotPadding);
-      float sy = center.hotbarRowY;
+      float sx = layout.inventorySectionStartX + slotPadding + i * (slotSize + slotPadding);
+      float sy = layout.hotbarRowY;
       drawCountText(canvas, font, hotbarSlots[i], sx, sy, slotSize);
     }
   }
@@ -657,8 +659,9 @@ public class InventoryRenderCoordinator {
       return;
     }
     String countStr = String.valueOf(itemStack.getCount());
-    float textX = slotX + slotSize - MPainter.measureWidth(font, countStr) - 2f;
-    float textY = slotY + slotSize - 2f;
+    float countMargin = 2f * com.stonebreak.config.Settings.getInstance().getUiScale();
+    float textX = slotX + slotSize - MPainter.measureWidth(font, countStr) - countMargin;
+    float textY = slotY + slotSize - countMargin;
     MPainter.drawStringWithShadow(canvas, countStr, textX, textY,
         font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
   }
@@ -692,20 +695,6 @@ public class InventoryRenderCoordinator {
     drawTab(canvas, startX + stride * 2, tabY, "Classes", false, tabClasses.isHovered(), tw, th);
     drawTab(canvas, startX + stride * 3, tabY, "Skills", false, tabSkills.isHovered(), tw, th);
     drawTab(canvas, startX + stride * 4, tabY, "Feats", false, tabFeats.isHovered(), tw, th);
-  }
-
-  private void drawTab(Canvas canvas, float x, float y, String label, boolean active,
-                       boolean hovered, int tabW, int tabH) {
-    int fill = active ? 0xFF7A7A7A : hovered ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
-    MPainter.stoneSurface(canvas, x, y, tabW, tabH, MStyle.BUTTON_RADIUS,
-        fill, MStyle.BUTTON_BORDER,
-        MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
-        MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
-    Font font = ui.fonts().get(MStyle.FONT_META);
-    int color = active ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-    float ty = y + tabH * 0.5f + MStyle.FONT_META * 0.38f;
-    MPainter.drawCenteredStringWithShadow(canvas, label, x + tabW / 2f, ty,
-        font, color, MStyle.TEXT_SHADOW);
   }
 
   // ─── Utilities ────────────────────────────────────────────────────────────

@@ -315,8 +315,9 @@ public class MHotbarRenderer {
             HotbarLayoutCalculator.SlotPosition pos =
                     HotbarLayoutCalculator.calculateSlotPosition(i, layout);
             String countStr = String.valueOf(stack.getCount());
-            float  textX    = pos.x + pos.width  - MPainter.measureWidth(font, countStr) - 2f;
-            float  textY    = pos.y + pos.height - 2f;
+            float  countMargin = 2f * com.stonebreak.config.Settings.getInstance().getUiScale();
+            float  textX    = pos.x + pos.width  - MPainter.measureWidth(font, countStr) - countMargin;
+            float  textY    = pos.y + pos.height - countMargin;
             MPainter.drawStringWithShadow(canvas, countStr, textX, textY,
                     font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
         }
@@ -338,11 +339,12 @@ public class MHotbarRenderer {
         // Centre tooltip above the selected slot
         HotbarLayoutCalculator.SlotPosition slotPos =
                 HotbarLayoutCalculator.calculateSlotPosition(selectedIndex, layout);
-        float bx = slotPos.centerX - boxW / 2f;
-        float by = layout.backgroundY - boxH - 8f;
+        float bx  = slotPos.centerX - boxW / 2f;
+        float gap = 8f * scale;
+        float by  = layout.backgroundY - boxH - gap;
 
         // Keep within screen
-        float margin = 8f;
+        float margin = 8f * scale;
         bx = Math.max(margin, Math.min(bx, sw - boxW - margin));
         by = Math.max(margin, Math.min(by, sh - boxH - margin));
 
