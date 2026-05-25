@@ -889,6 +889,14 @@ public class Game {
             if (p != null) {
                 p.setPosition(spawn);
             }
+
+            // Restore the local player's saved data NOW, on this thread, applied to the player we
+            // just created (p). Doing it here — rather than from the main-thread tick reading
+            // Game.getPlayer() — avoids the re-open bug where the restore hit the previous
+            // session's stale player. For SP/host this is synchronous; for JOIN it's a no-op
+            // (the data arrives via PlayerDataS2C and is applied by the client view).
+            com.stonebreak.network.MultiplayerSession.restoreLocalPlayer(p);
+
             if (this.timeOfDay == null) {
                 // Client clock is server-authoritative; seed a sane default until TimeSync lands.
                 setTimeOfDay(new TimeOfDay(TimeOfDay.NOON));
@@ -897,15 +905,18 @@ public class Game {
             // Wait (bounded) for the spawn chunk to stream in so the player doesn't fall into
             // void before terrain arrives. The client tick (which installs chunks) runs during
             // LOADING because GameLoop pumps the network before routing state updates.
-            // Wait only for the spawn chunk to be STREAMED IN (present), not meshed: meshing
-            // happens once we're in PLAYING (GameLoop skips world updates during LOADING), and
-            // the player physics guard (isGroundChunkReady) holds the player until it renders, so
-            // entering play before the mesh exists is safe and avoids a long loading-screen hang.
+            // Wait for two things before entering PLAY:
+            //  1. the spawn chunk is STREAMED IN (present) — not meshed; meshing happens in
+            //     PLAYING and the player physics guard holds the player until it renders.
+            //  2. the local player's saved data has been RESTORED — otherwise the player would
+            //     briefly appear with an empty inventory before the restore lands (visible
+            //     especially on a fast same-world re-open).
             int scx = (int) Math.floor(spawn.x / 16.0);
             int scz = (int) Math.floor(spawn.z / 16.0);
             long deadline = System.currentTimeMillis() + 10_000L;
-            while (renderWorld.getChunkIfLoaded(scx, scz) == null
-                    && System.currentTimeMillis() < deadline) {
+            while (System.currentTimeMillis() < deadline
+                    && (renderWorld.getChunkIfLoaded(scx, scz) == null
+                        || !com.stonebreak.network.MultiplayerSession.isLocalPlayerDataReady())) {
                 Thread.sleep(50);
             }
 

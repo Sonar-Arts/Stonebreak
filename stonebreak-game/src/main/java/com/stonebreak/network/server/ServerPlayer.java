@@ -64,6 +64,18 @@ public final class ServerPlayer {
     public int heldItemId() { return heldItemId; }
     public void setHeldItemId(int id) { this.heldItemId = id; }
 
+    // Latest serialized PlayerData (inventory + position + stats) reported by a REMOTE client,
+    // persisted per username on disconnect / autosave / shutdown. Null until the client sends one.
+    private volatile byte[] playerDataBlob;
+    public byte[] playerDataBlob() { return playerDataBlob; }
+    public void setPlayerDataBlob(byte[] blob) { this.playerDataBlob = blob; }
+
+    /** True for the in-process (host/singleplayer) player on the in-JVM Local channel. Its state
+     *  is persisted same-JVM, so it is excluded from the network player-data sync. */
+    public boolean isLocal() {
+        return connection.channel() instanceof io.netty.channel.local.LocalChannel;
+    }
+
     // ─── Chunk-view tracker ───────────────────────────────────────────────────
     public int lastCx() { return lastCx; }
     public int lastCz() { return lastCz; }

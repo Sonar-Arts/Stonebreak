@@ -72,8 +72,22 @@ public final class ClientWorldView {
     private volatile boolean disconnected = false;
     private volatile String kickReason = null;
 
+    // Remote (TCP) player-data sync. The in-process local player is persisted same-JVM and does
+    // NOT use this path. A remote client first receives its saved PlayerData (PlayerDataS2C),
+    // applies it, THEN periodically sends its own (PlayerDataC2S) — so an empty inventory can't
+    // overwrite the save before the restore lands.
+    private static final long PLAYER_DATA_SEND_PERIOD_NS = 3_000_000_000L; // 3s
+    private final com.stonebreak.world.save.serialization.JsonPlayerSerializer playerSerializer =
+            new com.stonebreak.world.save.serialization.JsonPlayerSerializer();
+    private volatile boolean remote = false;
+    private volatile boolean restoreReceived = false;
+    private volatile byte[] restoreBlob;
+    private boolean restoreApplied = false;
+    private long lastPlayerDataSendNs = 0L;
+
     /** Connect (Local or TCP) and send the handshake. */
     public void connect(NetAddress address, String username) throws InterruptedException {
+        this.remote = address.type() == com.openmason.engine.net.transport.TransportType.TCP;
         connection = networkClient.connect(address);
         connection.send(new HandshakeC2S(ProtocolVersion.CURRENT, username));
         lastTickNs = System.nanoTime();
@@ -83,6 +97,9 @@ public final class ClientWorldView {
     public int localPlayerId() { return localPlayerId; }
     public boolean isDisconnected() { return disconnected || connection == null || !connection.isActive(); }
     public String kickReason() { return kickReason; }
+    /** True once a remote client has applied its server-sent player data (or for a non-remote
+     *  client, trivially true — it doesn't use the network restore path). */
+    public boolean isRestoreApplied() { return !remote || restoreApplied; }
 
     // ─── Per-frame pump (game thread) ─────────────────────────────────────────
 
@@ -108,6 +125,65 @@ public final class ClientWorldView {
         chunkHandler.tick();
         entityHandler.tick();
         sendLocalPlayerState();
+        sendPlayerDataIfDue();
+    }
+
+    /** True once the server's PlayerData blob has arrived (remote restore can be applied). */
+    public boolean isRestoreReceived() { return restoreReceived; }
+
+    /**
+     * Apply the server-restored PlayerData to a SPECIFIC player (the one the world bootstrap just
+     * created). Driven from the build thread rather than auto-applied to {@code Game.getPlayer()},
+     * so a re-open never restores into a stale previous-session player. Empty blob ⇒ a fresh
+     * player on this server, so give starting items.
+     */
+    public void applyRestoreTo(Player p) {
+        if (p == null) {
+            return;
+        }
+        byte[] blob = restoreBlob;
+        if (blob != null && blob.length > 0) {
+            try {
+                com.stonebreak.world.save.util.StateConverter.applyPlayerData(
+                        p, playerSerializer.deserialize(blob));
+                System.out.println("[CLIENT] Restored saved player data from server.");
+            } catch (Exception e) {
+                System.err.println("[CLIENT] Failed to apply restored player data: " + e.getMessage());
+                p.giveStartingItems();
+            }
+        } else {
+            p.giveStartingItems(); // first time on this server
+            System.out.println("[CLIENT] New player on this server — gave starting items.");
+        }
+        restoreApplied = true;
+    }
+
+    /** Periodically push our full inventory/stats to the server so it can persist them (remote). */
+    private void sendPlayerDataIfDue() {
+        if (!remote || !restoreApplied || connection == null) {
+            return;
+        }
+        long now = System.nanoTime();
+        if (now - lastPlayerDataSendNs < PLAYER_DATA_SEND_PERIOD_NS) {
+            return;
+        }
+        lastPlayerDataSendNs = now;
+        sendPlayerDataNow();
+    }
+
+    private void sendPlayerDataNow() {
+        Player p = Game.getPlayer();
+        if (p == null || connection == null) {
+            return;
+        }
+        try {
+            byte[] json = playerSerializer.serialize(
+                    com.stonebreak.world.save.util.StateConverter.toPlayerData(
+                            p, Game.getInstance().getCurrentWorldName()));
+            connection.send(new com.stonebreak.network.packet.player.PlayerDataC2S(json), false);
+        } catch (Exception e) {
+            System.err.println("[CLIENT] Failed to send player data: " + e.getMessage());
+        }
     }
 
     private void sendLocalPlayerState() {
@@ -154,6 +230,10 @@ public final class ClientWorldView {
     public void shutdown() {
         if (connection != null) {
             try {
+                // Final inventory flush before leaving so the latest state persists (remote only).
+                if (remote && restoreApplied) {
+                    sendPlayerDataNow();
+                }
                 connection.send(new DisconnectC2S("client_quit"));
             } catch (RuntimeException ignored) {
                 // best-effort notice
@@ -189,6 +269,10 @@ public final class ClientWorldView {
             case PlayerLeaveS2C l -> playerHandler.handleLeave(l);
             case PlayerHeldItemS2C h -> playerHandler.handleHeldItem(localPlayerId, h);
             case GiveItemS2C g -> playerHandler.handleGiveItem(g);
+            case com.stonebreak.network.packet.player.PlayerDataS2C pd -> {
+                restoreBlob = pd.json();
+                restoreReceived = true;
+            }
             case EntitySpawnS2C s -> entityHandler.applySpawn(s);
             case EntityDespawnS2C d -> entityHandler.applyDespawn(d.networkId());
             case EntityMoveS2C mv -> entityHandler.applyDelta(mv);

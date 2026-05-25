@@ -15,6 +15,8 @@ import com.stonebreak.network.packet.handshake.HandshakeC2S;
 import com.stonebreak.network.packet.handshake.KickS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.network.packet.player.GiveItemS2C;
+import com.stonebreak.network.packet.player.PlayerDataC2S;
+import com.stonebreak.network.packet.player.PlayerDataS2C;
 import com.stonebreak.network.packet.player.PlayerHeldItemC2S;
 import com.stonebreak.network.packet.player.PlayerJoinS2C;
 import com.stonebreak.network.packet.player.PlayerLeaveS2C;
@@ -41,6 +43,9 @@ public final class IntegratedServer {
 
     private static final long TICK_PERIOD_NS = 50_000_000L;        // 20 Hz
     private static final long MAX_ACCUMULATOR_NS = TICK_PERIOD_NS * 5;
+    /** Persist connected remote players' inventories this often (~30 s at 20 Hz) for crash safety. */
+    private static final int REMOTE_PLAYER_SAVE_INTERVAL_TICKS = 600;
+    private int remotePlayerSaveCounter = 0;
 
     private final NetworkServer networkServer;
     private final ServerWorldContext ctx;
@@ -121,6 +126,14 @@ public final class IntegratedServer {
         playerHandler.tick(ctx);
         entityHandler.tick(ctx);
         chunkHandler.tick(ctx);
+
+        // Periodically persist connected remote players' inventories (crash safety).
+        if (++remotePlayerSaveCounter >= REMOTE_PLAYER_SAVE_INTERVAL_TICKS) {
+            remotePlayerSaveCounter = 0;
+            for (ServerPlayer sp : ctx.players()) {
+                persistPlayer(sp);
+            }
+        }
     }
 
     // ─── Inbound dispatch (tick thread) ───────────────────────────────────────────
@@ -160,6 +173,7 @@ public final class IntegratedServer {
             case PlayerStateC2S ps -> playerHandler.handlePlayerState(sp, ps, ctx);
             case PlayerHeldItemC2S h -> playerHandler.handleHeldItem(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
+            case PlayerDataC2S pd -> { if (!sp.isLocal()) sp.setPlayerDataBlob(pd.json()); }
             case DisconnectC2S ignored -> sp.disconnect();
             default -> { /* unknown / unexpected serverbound packet — ignore */ }
         }
@@ -198,7 +212,45 @@ public final class IntegratedServer {
         entityHandler.onPeerJoined(sp);
         playerHandler.onPeerJoined(sp, ctx);
 
+        // 5. Restore a REMOTE player's saved inventory/stats (the local player is restored
+        //    same-JVM). An empty payload tells the client to use fresh starting items.
+        sendInitialPlayerData(sp);
+
         System.out.println("[SERVER] " + hs.username() + " joined as id " + sp.playerId());
+    }
+
+    /** Load a remote player's saved PlayerData blob from per-username storage and send it. */
+    private void sendInitialPlayerData(ServerPlayer sp) {
+        if (sp.isLocal()) {
+            return; // local player restored same-JVM (player.json)
+        }
+        byte[] blob = new byte[0];
+        ServerLevel level = ctx.serverLevel();
+        if (level != null && level.saveService() != null) {
+            try {
+                byte[] loaded = level.saveService().loadNamedPlayer(sp.username())
+                        .get(5, java.util.concurrent.TimeUnit.SECONDS);
+                if (loaded != null) {
+                    blob = loaded;
+                }
+            } catch (Exception e) {
+                System.err.println("[SERVER] Failed to load saved data for "
+                        + sp.username() + ": " + e.getMessage());
+            }
+        }
+        sp.send(new PlayerDataS2C(blob), false);
+    }
+
+    /** Persist one remote player's last-reported PlayerData blob (async). No-op for local. */
+    private void persistPlayer(ServerPlayer sp) {
+        if (sp == null || sp.isLocal()) {
+            return;
+        }
+        byte[] blob = sp.playerDataBlob();
+        ServerLevel level = ctx.serverLevel();
+        if (blob != null && level != null && level.saveService() != null) {
+            level.saveService().saveNamedPlayer(sp.username(), blob);
+        }
     }
 
     private void handleDisconnect(ServerConnection conn) {
@@ -207,6 +259,7 @@ public final class IntegratedServer {
             return;
         }
         boolean wasRostered = ctx.player(sp.playerId()) != null;
+        persistPlayer(sp); // save the leaving remote player's last inventory/stats
         ctx.removePlayer(sp);
         if (wasRostered) {
             ctx.broadcast(new PlayerLeaveS2C(sp.playerId()), false);
@@ -240,9 +293,38 @@ public final class IntegratedServer {
     }
 
     public void shutdown() {
+        persistAllRemotePlayersBlocking();
         blockHandler.onSessionEnd();
         entityHandler.onSessionEnd();
         networkServer.shutdown();
         System.out.println("[SERVER] Shut down.");
+    }
+
+    /**
+     * Flush every connected remote player's last-reported inventory/stats to disk and WAIT for
+     * it — called on shutdown before the save service closes, so quitting never loses a remote
+     * player's data.
+     */
+    private void persistAllRemotePlayersBlocking() {
+        ServerLevel level = ctx.serverLevel();
+        if (level == null || level.saveService() == null) {
+            return;
+        }
+        java.util.List<java.util.concurrent.CompletableFuture<Void>> futures = new java.util.ArrayList<>();
+        for (ServerPlayer sp : ctx.players()) {
+            if (!sp.isLocal() && sp.playerDataBlob() != null) {
+                futures.add(level.saveService().saveNamedPlayer(sp.username(), sp.playerDataBlob()));
+            }
+        }
+        if (futures.isEmpty()) {
+            return;
+        }
+        try {
+            java.util.concurrent.CompletableFuture
+                .allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0]))
+                .get(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception e) {
+            System.err.println("[SERVER] Timed out flushing remote player data: " + e.getMessage());
+        }
     }
 }

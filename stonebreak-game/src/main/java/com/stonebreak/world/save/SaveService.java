@@ -239,6 +239,38 @@ public class SaveService implements AutoCloseable {
         return CompletableFuture.supplyAsync(() -> repository.chunkExists(chunkX, chunkZ), ioExecutor);
     }
 
+    /**
+     * Persist a remote player's serialized PlayerData blob under players/&lt;username&gt;.json.
+     * Opaque to the save service — the bytes come straight from the client. Runs on the IO thread.
+     */
+    public CompletableFuture<Void> saveNamedPlayer(String username, byte[] json) {
+        if (username == null || json == null || json.length == 0) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return CompletableFuture.runAsync(() -> {
+            try {
+                repository.saveNamedPlayerBytes(username, json);
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to save player '" + username + "'", e);
+            }
+        }, ioExecutor).exceptionally(t -> {
+            System.err.println("[SAVE] Failed to save player '" + username + "': " + t.getMessage());
+            return null;
+        });
+    }
+
+    /** Load a remote player's serialized PlayerData blob, or null if none saved. IO thread. */
+    public CompletableFuture<byte[]> loadNamedPlayer(String username) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return repository.loadNamedPlayerBytes(username).orElse(null);
+            } catch (IOException e) {
+                System.err.println("[LOAD] Failed to load player '" + username + "': " + e.getMessage());
+                return null;
+            }
+        }, ioExecutor);
+    }
+
     public String getWorldPath() {
         return worldPath;
     }

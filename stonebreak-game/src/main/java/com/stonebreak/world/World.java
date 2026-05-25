@@ -184,30 +184,36 @@ public class World {
             }, config);
 
             this.waterSystem = new WaterSystem(this);
-            this.chunkStore.setChunkListeners(chunk -> {
-                waterSystem.onChunkLoaded(chunk);
-                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
-                if (fr != null) fr.onChunkLoaded(chunk);
-                // Mark already-meshed neighbors dirty so their chunk-border faces
-                // (especially water seams) rebuild against this newly loaded chunk.
-                if (meshPipeline != null) {
-                    int cx = chunk.getX();
-                    int cz = chunk.getZ();
-                    markMeshedNeighborDirty(cx - 1, cz);
-                    markMeshedNeighborDirty(cx + 1, cz);
-                    markMeshedNeighborDirty(cx, cz - 1);
-                    markMeshedNeighborDirty(cx, cz + 1);
-                }
-            }, chunk -> {
-                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
-                if (fr != null) fr.onChunkUnloaded(chunk);
-                waterSystem.onChunkUnloaded(chunk);
-            });
-
             this.chunkManager = new ChunkManager(this, config.getRenderDistance());
 
             System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
         }
+
+        // Chunk listeners (wired for BOTH the headless server world and rendered worlds). The
+        // authoritative water/furnace round-trip runs on every world EXCEPT a render-only client
+        // view — there the server owns that state, so firing these would corrupt the shared
+        // registry. Mesh-seam rebuilds run only where there's a mesh pipeline.
+        this.chunkStore.setChunkListeners(chunk -> {
+            if (!renderOnly) {
+                waterSystem.onChunkLoaded(chunk);
+                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
+                if (fr != null) fr.onChunkLoaded(chunk);
+            }
+            if (meshPipeline != null) {
+                int cx = chunk.getX();
+                int cz = chunk.getZ();
+                markMeshedNeighborDirty(cx - 1, cz);
+                markMeshedNeighborDirty(cx + 1, cz);
+                markMeshedNeighborDirty(cx, cz - 1);
+                markMeshedNeighborDirty(cx, cz + 1);
+            }
+        }, chunk -> {
+            if (!renderOnly) {
+                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
+                if (fr != null) fr.onChunkUnloaded(chunk);
+                waterSystem.onChunkUnloaded(chunk);
+            }
+        });
     }
     
     /**
@@ -895,6 +901,10 @@ public class World {
             System.err.println("[NETWORK] Failed to decode chunk (" + chunkX + "," + chunkZ + "): " + e.getMessage());
             return;
         }
+        // The chunk was an empty placeholder (all-air heightmap). Now that real blocks are in,
+        // rebuild the heightmap so sky-shadow/lighting and the mesher's Y-scan are correct —
+        // generated/loaded chunks do this; streamed chunks must too.
+        chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
         if (meshPipeline != null) {
             markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
             if (neighborCoordinator != null) {

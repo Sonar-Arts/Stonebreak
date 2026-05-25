@@ -9,9 +9,9 @@ import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * World-scoped registry of {@link FurnaceState} objects, one per placed
@@ -24,7 +24,9 @@ public class FurnaceStateRegistry {
 
     private static final int CHUNK_SIZE = 16;
 
-    private final Map<BlockPos, FurnaceState> states = new HashMap<>();
+    // Concurrent: the authoritative sim (tick / chunk load+unload) runs on the server thread
+    // while the furnace UI + block place/break run on the main thread.
+    private final Map<BlockPos, FurnaceState> states = new ConcurrentHashMap<>();
     private final SmeltingManager smeltingManager;
 
     public FurnaceStateRegistry(SmeltingManager smeltingManager) {
@@ -109,11 +111,13 @@ public class FurnaceStateRegistry {
 
         for (FurnaceState s : states.values()) {
             boolean litFlipped = s.tick(smeltingManager, dtSeconds);
-            // Push to chunk only on a visual change (lit↔unlit). Cook progress
-            // and ingredient/output stacks are persisted by onChunkUnloaded
-            // before save — no need to mark the chunk dirty every single tick.
+            // Persist the current state to the chunk every tick so the autosave captures cook
+            // progress + contents. This matters now that the authoritative (headless) server
+            // never unloads chunks — the old onChunkUnloaded-only flush would never fire, losing
+            // furnace contents. setBlockState dedups (only re-dirties on an actual change), so an
+            // idle furnace costs nothing. A lit↔unlit flip additionally triggers a remesh.
+            writeChunkState(world, s.getPos(), s.toStateString());
             if (litFlipped) {
-                writeChunkState(world, s.getPos(), s.toStateString());
                 world.scheduleChunkRemeshAt(s.getPos().x(), s.getPos().y(), s.getPos().z());
             }
         }

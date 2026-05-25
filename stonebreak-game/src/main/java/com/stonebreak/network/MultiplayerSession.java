@@ -35,12 +35,23 @@ public final class MultiplayerSession {
 
     public enum Mode { MENU, SINGLEPLAYER, HOST, JOIN }
 
+    /** How often the dedicated server thread pumps {@code server.tick()} (inbound drain runs at
+     *  this rate; the authoritative sim runs at 20 Hz via the tick's internal accumulator). */
+    private static final long SERVER_POLL_MS = 5;
+
     private static volatile Mode mode = Mode.MENU;
     private static volatile IntegratedServer server;
     private static volatile ClientWorldView client;
     private static EntityManager.Listener entityListener;
     private static EntityManager listenerTarget;
     private static volatile boolean localPlayerRestored;
+
+    // Dedicated server-tick thread (singleplayer/host). The integrated server runs OFF the
+    // render thread so world sim / terrain + feature generation / chunk encode don't hitch the
+    // frame. It only touches server-owned state (its own world, EntityManager, ServerPlayers);
+    // the sole cross-thread reads are player positions (benign).
+    private static volatile Thread serverThread;
+    private static volatile boolean serverRunning;
 
     private MultiplayerSession() {}
 
@@ -58,6 +69,27 @@ public final class MultiplayerSession {
     public static boolean hasIntegratedServer() { return mode == Mode.SINGLEPLAYER || mode == Mode.HOST; }
     public static IntegratedServer getServer() { return server; }
     public static ClientWorldView getClient() { return client; }
+
+    /**
+     * True once the local player's saved data has been restored (or there's nothing to restore).
+     * The world bootstrap waits on this before entering PLAY so the player never appears with a
+     * momentarily-empty inventory while the restore is still in flight.
+     * <ul>
+     *   <li>MENU: nothing to do.</li>
+     *   <li>SINGLEPLAYER/HOST: the same-JVM restore has run ({@link #localPlayerRestored}).</li>
+     *   <li>JOIN: the client has applied the server's PlayerData.</li>
+     * </ul>
+     */
+    public static boolean isLocalPlayerDataReady() {
+        if (mode == Mode.MENU) {
+            return true;
+        }
+        if (hasIntegratedServer()) {
+            return localPlayerRestored;
+        }
+        ClientWorldView c = client;
+        return c != null && c.isRestoreApplied();
+    }
 
     // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -79,26 +111,56 @@ public final class MultiplayerSession {
         }
         localPlayerRestored = false;
         mode = targetMode;
+        serverRunning = true;
         final String username = Settings.getInstance().getMultiplayerUsername();
         final String localId = "sb-local-" + System.nanoTime();
         final NetAddress tcp = tcpPort > 0 ? NetAddress.tcpBind(tcpPort) : null;
 
-        // Boot the authoritative world (blocking load/gen) + connect off the render thread.
-        new Thread(() -> {
+        // One dedicated thread: boot the authoritative world (blocking load/gen), connect the
+        // in-process client, then run the server tick loop off the render thread.
+        Thread t = new Thread(() -> {
+            IntegratedServer s = null;
             try {
-                IntegratedServer s = new IntegratedServer();
+                s = new IntegratedServer();
                 s.start(NetAddress.local(localId), tcp, worldName, seed);
+                // If a shutdown raced our boot (quick start→quit), tear our own server down
+                // here rather than publishing it — otherwise a stale server keeps auto-saving.
+                if (!serverRunning) {
+                    teardownServer(s);
+                    return;
+                }
                 server = s;
+                // Attach the spawn/despawn listener so server-side spawns (mobs, drops) replicate.
+                attachEntityListener(s.worldContext().entityManager());
 
                 ClientWorldView c = new ClientWorldView();
                 c.connect(NetAddress.local(localId), username);
                 client = c;
+
+                // Authoritative tick loop (sim @ 20 Hz via the tick's accumulator).
+                while (serverRunning) {
+                    try {
+                        s.tick();
+                    } catch (Throwable th) {
+                        System.err.println("[SERVER-THREAD] Tick error: " + th);
+                        th.printStackTrace();
+                    }
+                    Thread.sleep(SERVER_POLL_MS);
+                }
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt(); // shutdown requested
             } catch (Exception e) {
                 System.err.println("[NET] Failed to start " + targetMode + ": " + e.getMessage());
                 e.printStackTrace();
-                shutdown();
+                serverRunning = false;
+                if (server == null && s != null) {
+                    teardownServer(s); // never published — clean up our own instance
+                }
             }
-        }, targetMode + "-Start").start();
+        }, targetMode + "-Server");
+        t.setDaemon(true);
+        serverThread = t;
+        t.start();
     }
 
     /** Join a remote host: client only (the host owns the authoritative world + persistence). */
@@ -115,21 +177,55 @@ public final class MultiplayerSession {
     }
 
     public static synchronized void shutdown() {
+        // Stop the server tick thread before tearing down its world/connections.
+        serverRunning = false;
+        Thread t = serverThread;
+        if (t != null) {
+            t.interrupt();
+            try {
+                t.join(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            serverThread = null;
+        }
+
+        // Robustly capture the local player's CURRENT inventory before teardown. The server
+        // thread is now stopped, so this can't race the sim. Re-registering points the save
+        // service at the live player so the close-flush below writes its latest state — this is
+        // independent of whether the restore/registration happened earlier in the session, which
+        // is what previously let an exit drop the inventory.
+        if (server != null && hasIntegratedServer()) {
+            ServerLevel level = server.worldContext().serverLevel();
+            Player local = Game.getPlayer();
+            if (level != null && local != null) {
+                level.registerLocalPlayer(local);
+            }
+        }
+
         detachEntityListener();
         if (client != null) {
             client.shutdown();
             client = null;
         }
         if (server != null) {
-            ServerLevel level = server.worldContext().serverLevel();
-            server.shutdown();
-            if (level != null) {
-                level.cleanup(); // flushes + closes the save service, then frees the world
-            }
+            teardownServer(server); // close() flushes the (now-registered) player + chunks
             server = null;
         }
         localPlayerRestored = false;
         mode = Mode.MENU;
+    }
+
+    /** Shut down a server instance and its level (flush + close the save service, free the world). */
+    private static void teardownServer(IntegratedServer s) {
+        if (s == null) {
+            return;
+        }
+        ServerLevel level = s.worldContext().serverLevel();
+        s.shutdown();
+        if (level != null) {
+            level.cleanup();
+        }
     }
 
     // ─── Game-system hooks ──────────────────────────────────────────────────────
@@ -195,23 +291,12 @@ public final class MultiplayerSession {
             return;
         }
 
-        IntegratedServer s = server;
-        if (hasIntegratedServer() && s != null) {
-            // Attach the spawn/despawn listener to the SERVER's entity manager so server-side
-            // spawns (mobs, drops) replicate. Lazily, since it exists only after the level boots.
-            if (entityListener == null) {
-                EntityManager em = s.worldContext().entityManager();
-                if (em != null) {
-                    attachEntityListener(em);
-                }
-            }
-            s.tick();
-        }
-
+        // The integrated server ticks on its own thread (see startWithServer). The main thread
+        // only pumps the CLIENT here — applying inbound packets to the render world + sending
+        // local intents — so rendering never waits on server-side world generation.
         ClientWorldView c = client;
         if (c != null) {
             c.tick();
-            restoreLocalPlayerIfReady(s);
             if (c.isDisconnected()) {
                 String reason = c.kickReason();
                 System.out.println("[NET] Disconnected"
@@ -223,28 +308,54 @@ public final class MultiplayerSession {
     }
 
     /**
-     * Same-JVM player restoration for an integrated server: once the local client's player
-     * exists, apply the server's loaded {@link com.stonebreak.world.save.model.PlayerData}
-     * (inventory + position) to it and register it with the server save service so it persists.
+     * Same-JVM player restoration for an integrated server. Called from the world bootstrap
+     * (on the build thread) with the EXACT player just created — never via {@code Game.getPlayer()}
+     * from another thread, which on a re-open could still be the previous session's stale player
+     * (that bug applied the saved inventory to a dead object, leaving the live player empty).
+     * Applies the server's loaded {@link com.stonebreak.world.save.model.PlayerData} (or starting
+     * items for a fresh world) and registers the player with the save service so it persists.
+     *
+     * <p>For JOIN it waits (bounded) for the host's {@code PlayerDataS2C} and applies it to the
+     * same player. Intentionally NOT synchronized — the JOIN wait must not hold the session lock,
+     * or it would block the main-thread tick that receives the blob (deadlock).
      */
-    private static void restoreLocalPlayerIfReady(IntegratedServer s) {
-        if (localPlayerRestored || !hasIntegratedServer() || s == null) {
+    public static void restoreLocalPlayer(Player player) {
+        if (player == null) {
             return;
         }
-        Player local = Game.getPlayer();
-        ServerLevel level = s.worldContext().serverLevel();
-        if (local == null || level == null) {
+        if (hasIntegratedServer()) {
+            IntegratedServer s = server;
+            ServerLevel level = (s != null) ? s.worldContext().serverLevel() : null;
+            if (level == null) {
+                return;
+            }
+            if (level.loadedPlayerData() != null) {
+                StateConverter.applyPlayerData(player, level.loadedPlayerData());
+                System.out.println("[NET] Restored saved player data into the local client.");
+            } else {
+                player.giveStartingItems();
+                System.out.println("[NET] New world — gave the local player starting items.");
+            }
+            level.registerLocalPlayer(player);
+            localPlayerRestored = true;
             return;
         }
-        if (level.loadedPlayerData() != null) {
-            StateConverter.applyPlayerData(local, level.loadedPlayerData());
-            System.out.println("[NET] Restored saved player data into the local client.");
-        } else {
-            local.giveStartingItems();
-            System.out.println("[NET] New world — gave the local player starting items.");
+        if (mode == Mode.JOIN) {
+            ClientWorldView c = client;
+            if (c == null) {
+                return;
+            }
+            // Wait for the host to send our saved data, then apply it to THIS player.
+            long deadline = System.currentTimeMillis() + 5000L;
+            while (!c.isRestoreReceived() && !c.isDisconnected()
+                    && System.currentTimeMillis() < deadline) {
+                try { Thread.sleep(50); } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            c.applyRestoreTo(player);
         }
-        level.registerLocalPlayer(local);
-        localPlayerRestored = true;
     }
 
     // ─── Entity spawn/despawn replication listener ──────────────────────────────
