@@ -29,6 +29,7 @@ public class MButton extends MWidget {
     public boolean enabled() { return enabled; }
 
     // Covariant returns keep fluent chains typed as MButton so assignment works.
+    @Override public MButton scaleText(boolean v) { super.scaleText(v); return this; }
     @Override public MButton position(float x, float y) { super.position(x, y); return this; }
     @Override public MButton size(float width, float height) { super.size(width, height); return this; }
     @Override public MButton bounds(float x, float y, float width, float height) {
@@ -68,7 +69,7 @@ public class MButton extends MWidget {
         Canvas canvas = ui.canvas();
         if (canvas == null) return;
         drawBody(canvas);
-        drawLabel(canvas, ui.fonts().get(fontSize));
+        drawLabel(canvas, fontFor(ui, fontSize));
     }
 
     protected void drawBody(Canvas canvas) {
@@ -87,7 +88,7 @@ public class MButton extends MWidget {
                 : (hovered || selected) ? MStyle.TEXT_ACCENT
                 : MStyle.TEXT_PRIMARY;
         float tx = x + width / 2f;
-        float ty = y + height / 2f + 7f;
+        float ty = y + height / 2f + 7f * textScale();
         MPainter.drawCenteredStringWithShadow(canvas, text, tx, ty, font, color, MStyle.TEXT_SHADOW);
     }
 }

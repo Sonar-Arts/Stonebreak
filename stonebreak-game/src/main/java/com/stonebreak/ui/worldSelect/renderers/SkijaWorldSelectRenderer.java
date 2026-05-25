@@ -61,6 +61,7 @@ public final class SkijaWorldSelectRenderer {
     private Font fontItem;
     private Font fontMeta;
     private Font fontInput;
+    private float lastFontScale = -1f;
 
     private Shader dirtShader;
     private long lastCursorBlink = System.currentTimeMillis();
@@ -76,15 +77,26 @@ public final class SkijaWorldSelectRenderer {
         this.inputHandler = inputHandler;
     }
 
-    private void ensureFonts() {
-        if (fontTitle != null) return;
+    private void ensureFonts(float scale) {
+        if (fontTitle != null && scale == lastFontScale) return;
+        disposeFonts();
+        lastFontScale = scale;
         Typeface tf = backend.getMinecraftTypeface();
-        fontTitle    = new Font(tf, 56f);
-        fontSubtitle = new Font(tf, 18f);
-        fontButton   = new Font(tf, 20f);
-        fontItem     = new Font(tf, 22f);
-        fontMeta     = new Font(tf, 14f);
-        fontInput    = new Font(tf, 18f);
+        fontTitle    = new Font(tf, 56f * scale);
+        fontSubtitle = new Font(tf, 18f * scale);
+        fontButton   = new Font(tf, 20f * scale);
+        fontItem     = new Font(tf, 22f * scale);
+        fontMeta     = new Font(tf, 14f * scale);
+        fontInput    = new Font(tf, 18f * scale);
+    }
+
+    private void disposeFonts() {
+        if (fontTitle != null) { fontTitle.close(); fontTitle = null; }
+        if (fontSubtitle != null) { fontSubtitle.close(); fontSubtitle = null; }
+        if (fontButton != null) { fontButton.close(); fontButton = null; }
+        if (fontItem != null) { fontItem.close(); fontItem = null; }
+        if (fontMeta != null) { fontMeta.close(); fontMeta = null; }
+        if (fontInput != null) { fontInput.close(); fontInput = null; }
     }
 
     private void ensureDirtShader() {
@@ -96,7 +108,7 @@ public final class SkijaWorldSelectRenderer {
 
     public void render(int windowWidth, int windowHeight) {
         if (!backend.isAvailable()) return;
-        ensureFonts();
+        ensureFonts(com.stonebreak.config.Settings.getInstance().getUiScale());
         ensureDirtShader();
 
         WorldSelectLayout layout = WorldSelectLayout.compute(windowWidth, windowHeight);
@@ -425,11 +437,6 @@ public final class SkijaWorldSelectRenderer {
 
     public void dispose() {
         if (dirtShader != null) { dirtShader.close(); dirtShader = null; }
-        if (fontTitle != null) { fontTitle.close(); fontTitle = null; }
-        if (fontSubtitle != null) { fontSubtitle.close(); fontSubtitle = null; }
-        if (fontButton != null) { fontButton.close(); fontButton = null; }
-        if (fontItem != null) { fontItem.close(); fontItem = null; }
-        if (fontMeta != null) { fontMeta.close(); fontMeta = null; }
-        if (fontInput != null) { fontInput.close(); fontInput = null; }
+        disposeFonts();
     }
 }

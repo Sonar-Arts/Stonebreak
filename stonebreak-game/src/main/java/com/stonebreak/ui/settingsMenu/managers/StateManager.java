@@ -7,6 +7,7 @@ import com.stonebreak.rendering.UI.masonryUI.MCategoryButton;
 import com.stonebreak.rendering.UI.masonryUI.MDropdown;
 import com.stonebreak.rendering.UI.masonryUI.MScrollMath;
 import com.stonebreak.rendering.UI.masonryUI.MSlider;
+import com.stonebreak.rendering.UI.masonryUI.MWidget;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 
@@ -42,7 +43,18 @@ public final class StateManager {
     private MButton vsyncButton;
     private MSlider uiScaleSlider;
 
+    // Confirmation popup shown after applying a UI-scale change (Keep / Revert).
+    private MButton keepUiScaleButton;
+    private MButton revertUiScaleButton;
+
     private List<MCategoryButton<CategoryState>> categoryButtons;
+
+    // ─────────────────────────────────────────────── UI-scale confirmation
+    /** Seconds the "keep this scale?" popup waits before auto-reverting. */
+    private static final long UI_SCALE_CONFIRM_MS = 10_000L;
+    private boolean uiScaleConfirmActive = false;
+    private float uiScalePreviousScale = 1.0f;
+    private long uiScaleConfirmDeadlineMs = 0L;
 
     // ─────────────────────────────────────────────── Navigation state
     private CategoryState selectedCategory = CategoryState.GENERAL;
@@ -95,7 +107,7 @@ public final class StateManager {
         float cbh = SettingsConfig.getScaledCategoryButtonHeight();
         for (CategoryState category : CategoryState.values()) {
             MCategoryButton<CategoryState> button = new MCategoryButton<>(category, category.getDisplayName());
-            button.size(cbw, cbh);
+            button.size(cbw, cbh).scaleText(true);
             categoryButtons.add(button);
         }
     }
@@ -140,13 +152,13 @@ public final class StateManager {
         renderDistanceSlider = new MSlider(renderDistanceLabel(),
                 SettingsConfig.MIN_RENDER_DISTANCE, SettingsConfig.MAX_RENDER_DISTANCE,
                 settings.getRenderDistance())
-                .trackHeight(sh);
+                .trackHeight(sh).showPercent(false);
         renderDistanceSlider.size(sw, sh);
 
         lodDistanceSlider = new MSlider(lodDistanceLabel(),
                 SettingsConfig.MIN_LOD_DISTANCE, SettingsConfig.MAX_LOD_DISTANCE,
                 settings.getLodDistance())
-                .trackHeight(sh);
+                .trackHeight(sh).showPercent(false);
         lodDistanceSlider.size(sw, sh);
 
         lodEnabledButton = new MButton(lodEnabledLabel()).size(bw, bh);
@@ -154,8 +166,20 @@ public final class StateManager {
 
         uiScaleSlider = new MSlider("UI Scale",
                 SettingsConfig.MIN_UI_SCALE, SettingsConfig.MAX_UI_SCALE, settings.getUiScale())
-                .trackHeight(sh);
+                .trackHeight(sh).showPercent(false);
         uiScaleSlider.size(sw, sh);
+
+        keepUiScaleButton   = new MButton("Keep").size(bw, bh);
+        revertUiScaleButton = new MButton("Revert").size(bw, bh);
+
+        // Text on every settings widget tracks the UI scale (opt-in; persists across resizeWidgets).
+        for (MWidget w : new MWidget[]{
+                applyButton, backButton, resolutionButton, armModelButton, crosshairStyleButton,
+                volumeSlider, crosshairSizeSlider, leafTransparencyButton, waterShaderButton,
+                cloudsButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
+                vsyncButton, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
+            w.scaleText(true);
+        }
     }
 
     /**
@@ -186,6 +210,8 @@ public final class StateManager {
         lodEnabledButton.size(bw, bh);
         vsyncButton.size(bw, bh);
         uiScaleSlider.size(sw, sh);
+        keepUiScaleButton.size(bw, bh);
+        revertUiScaleButton.size(bw, bh);
         for (MCategoryButton<CategoryState> button : categoryButtons) {
             button.size(cbw, cbh);
         }
@@ -205,7 +231,9 @@ public final class StateManager {
                              java.util.function.Consumer<Float> lodDistanceAction,
                              Runnable lodEnabledAction,
                              Runnable vsyncAction,
-                             java.util.function.Consumer<Float> uiScaleAction) {
+                             java.util.function.Consumer<Float> uiScaleAction,
+                             Runnable keepUiScaleAction,
+                             Runnable revertUiScaleAction) {
         applyButton.setOnClick(applyAction);
         backButton.setOnClick(backAction);
         resolutionButton.setOnSelectionChanged(resolutionAction);
@@ -221,6 +249,8 @@ public final class StateManager {
         lodEnabledButton.setOnClick(lodEnabledAction);
         vsyncButton.setOnClick(vsyncAction);
         uiScaleSlider.setOnChange(uiScaleAction);
+        keepUiScaleButton.setOnClick(keepUiScaleAction);
+        revertUiScaleButton.setOnClick(revertUiScaleAction);
 
         for (MCategoryButton<CategoryState> button : categoryButtons) {
             CategoryState category = button.tag();
@@ -343,7 +373,36 @@ public final class StateManager {
     }
 
     private String uiScaleLabel() {
-        return "UI Scale: " + String.format("%.1f", settings.getUiScale()) + "x";
+        // Show the pending (slider) value so the user sees what Apply will commit,
+        // even though the change is not applied to the live UI until then.
+        float pending = uiScaleSlider != null ? uiScaleSlider.value() : settings.getUiScale();
+        return "UI Scale: " + String.format("%.1f", pending) + "x";
+    }
+
+    // ─────────────────────────────────────────────── UI-scale confirmation
+
+    /** Begins the keep/revert countdown, remembering the scale to fall back to. */
+    public void startUiScaleConfirmation(float previousScale) {
+        this.uiScalePreviousScale = previousScale;
+        this.uiScaleConfirmActive = true;
+        this.uiScaleConfirmDeadlineMs = System.currentTimeMillis() + UI_SCALE_CONFIRM_MS;
+    }
+
+    public void endUiScaleConfirmation() {
+        this.uiScaleConfirmActive = false;
+    }
+
+    public boolean isUiScaleConfirmActive() { return uiScaleConfirmActive; }
+    public float getUiScalePreviousScale() { return uiScalePreviousScale; }
+
+    /** Whole seconds remaining before auto-revert (never negative). */
+    public int getUiScaleConfirmSecondsLeft() {
+        long remaining = uiScaleConfirmDeadlineMs - System.currentTimeMillis();
+        return (int) Math.max(0, Math.ceil(remaining / 1000.0));
+    }
+
+    public boolean isUiScaleConfirmExpired() {
+        return uiScaleConfirmActive && System.currentTimeMillis() >= uiScaleConfirmDeadlineMs;
     }
 
     // ─────────────────────────────────────────────── Getters / setters
@@ -381,6 +440,8 @@ public final class StateManager {
     public MButton getLodEnabledButton() { return lodEnabledButton; }
     public MButton getVsyncButton() { return vsyncButton; }
     public MSlider getUiScaleSlider() { return uiScaleSlider; }
+    public MButton getKeepUiScaleButton() { return keepUiScaleButton; }
+    public MButton getRevertUiScaleButton() { return revertUiScaleButton; }
     public List<MCategoryButton<CategoryState>> getCategoryButtons() { return categoryButtons; }
 
     public MScrollMath getCurrentScrollMath() { return currentScrollMath; }

@@ -105,7 +105,7 @@ public class ClassesTabRenderer {
 
     MPainter.drawStringWithShadow(canvas, "Class Select",
         sideX + 4f, sideY + 14f * scale,
-        ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+        ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
     drawEngravedRule(canvas, sideX, sideY + 20f * scale, sideW);
 
     float clipTop = sideY + LIST_CLIP_TOP_PAD * scale;
@@ -134,19 +134,19 @@ public class ClassesTabRenderer {
           MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
           MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
 
-      float textY = btnY + btnH * 0.5f + MStyle.FONT_META * 0.38f;
+      float textY = btnY + btnH * 0.5f + MStyle.FONT_META * 0.38f * scale;
       int textColor = selected ? MStyle.TEXT_ACCENT
           : hasPoints ? MStyle.TEXT_PRIMARY
           : MStyle.TEXT_SECONDARY;
       MPainter.drawStringWithShadow(canvas, cls.name(),
           sideX + 5f, textY,
-          ui.fonts().get(MStyle.FONT_META), textColor, MStyle.TEXT_SHADOW);
+          ui.fonts().getScaled(MStyle.FONT_META), textColor, MStyle.TEXT_SHADOW);
 
       if (hasPoints) {
         String cpStr = cpSpent + " CP";
         MPainter.drawStringWithShadow(canvas, cpStr,
             sideX + btnW - 34f * scale, textY,
-            ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+            ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
       }
     }
 
@@ -170,10 +170,10 @@ public class ClassesTabRenderer {
 
     MPainter.drawStringWithShadow(canvas, className,
         cx + 4f, cy + 18f * scale,
-        ui.fonts().get(MStyle.FONT_ITEM), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        ui.fonts().getScaled(MStyle.FONT_ITEM), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
     MPainter.drawStringWithShadow(canvas, classDesc,
         cx + 4f, cy + 36f * scale,
-        ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+        ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
     drawEngravedRule(canvas, cx, cy + 46f * scale, cw);
 
     float dirtY = cy + 52f * scale;
@@ -185,7 +185,7 @@ public class ClassesTabRenderer {
 
     MPainter.drawStringWithShadow(canvas, "CP Available: " + stats.getRemainingCp(),
         cx + 8f, dirtY + 16f * scale,
-        ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
     drawEngravedRule(canvas, cx + 4f, dirtY + 22f * scale, cw - 8f);
 
     if (classOpt.isEmpty()) {
@@ -219,11 +219,11 @@ public class ClassesTabRenderer {
 
       MPainter.drawStringWithShadow(canvas, ability.name(),
           cx + 8f, rowY + 16f * scale,
-          ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+          ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
 
       MPainter.drawStringWithShadow(canvas, ability.description(),
           cx + 8f, rowY + 32f * scale,
-          ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+          ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
 
       float btnX = cx + cw - btnW - 8f;
       float btnY = rowY + (rowH - btnH) / 2f;
@@ -240,10 +240,10 @@ public class ClassesTabRenderer {
 
       String btnLabel = "Spend " + ability.cpCost() + " CP (" + spent + ")";
       int btnTextColor = canSpend ? MStyle.TEXT_PRIMARY : MStyle.TEXT_DISABLED;
-      float btnTextY = btnY + btnH * 0.5f + MStyle.FONT_META * 0.38f;
+      float btnTextY = btnY + btnH * 0.5f + MStyle.FONT_META * 0.38f * scale;
       MPainter.drawCenteredStringWithShadow(canvas, btnLabel,
           btnX + btnW / 2f, btnTextY,
-          ui.fonts().get(MStyle.FONT_META), btnTextColor, MStyle.TEXT_SHADOW);
+          ui.fonts().getScaled(MStyle.FONT_META), btnTextColor, MStyle.TEXT_SHADOW);
 
       if (i < abilities.size() - 1) {
         drawEngravedRule(canvas, cx + 4f, rowY + rowH - 4f * scale, cw - 12f);

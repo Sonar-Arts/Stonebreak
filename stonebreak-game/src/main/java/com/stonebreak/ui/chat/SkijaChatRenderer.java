@@ -88,7 +88,7 @@ public final class SkijaChatRenderer {
             float panelWidth = maxChatWidth + padding * 2f;
 
             float tabHeight = 22f * s;
-            float tabSpacing = 2f;
+            float tabSpacing = 2f * s;
             float tabWidth = 80f * s;
             float tabX = panelX + 5f;
             float tabY = panelY - tabHeight - tabSpacing;
@@ -213,16 +213,18 @@ public final class SkijaChatRenderer {
         // Subtle top highlight — same trick as MPainter.stoneSurface bevel.
         MPainter.fillRect(canvas, x + 1f, y + 1f, w - 2f, 1f, MStyle.PANEL_HIGHLIGHT);
 
-        Font font = fonts.get(MStyle.FONT_META);
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        Font font = fonts.getScaled(MStyle.FONT_META);
         int color = active ? MStyle.TEXT_PRIMARY : MStyle.TEXT_SECONDARY;
-        float ty = y + h / 2f + MStyle.FONT_META * 0.35f;
+        float ty = y + h / 2f + MStyle.FONT_META * 0.35f * s;
         MPainter.drawCenteredStringWithShadow(canvas, label, x + w / 2f, ty, font, color, MStyle.TEXT_SHADOW);
     }
 
     // ─────────────────────────────────────────────────────────── Messages
 
     private void drawMessages(Canvas canvas, Layout L, ChatSystem chat, List<ChatMessage> visible, boolean open) {
-        Font font = fonts.get(MStyle.FONT_META);
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        Font font = fonts.getScaled(MStyle.FONT_META);
         if (font == null) return;
 
         // Bottom-up stacking matches the old renderer: newest at the bottom,
@@ -262,7 +264,7 @@ public final class SkijaChatRenderer {
                 }
 
                 int color = argb(msg.getColor(), alpha);
-                float baseline = currentY - L.lineHeight / 2f + MStyle.FONT_META * 0.35f;
+                float baseline = currentY - L.lineHeight / 2f + MStyle.FONT_META * 0.35f * s;
 
                 if (!open) {
                     // Subtle shadow when floating without the panel — keeps text
@@ -367,7 +369,8 @@ public final class SkijaChatRenderer {
             canvas.drawRRect(RRect.makeXYWH(x + 0.5f, y + 0.5f, w - 1f, h - 1f, r), border);
         }
 
-        Font font = fonts.get(MStyle.FONT_META);
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        Font font = fonts.getScaled(MStyle.FONT_META);
         if (font == null) return;
 
         String displayText = chat.getDisplayInput();
@@ -378,7 +381,7 @@ public final class SkijaChatRenderer {
         int save = canvas.save();
         canvas.clipRect(Rect.makeXYWH(x, y, w, h), ClipMode.INTERSECT, true);
         try {
-            float baseline = y + h / 2f + MStyle.FONT_META * 0.35f;
+            float baseline = y + h / 2f + MStyle.FONT_META * 0.35f * s;
             float availableWidth = L.inputWidth;
 
             // No placeholder — show only the live input + blinking cursor so
@@ -464,9 +467,10 @@ public final class SkijaChatRenderer {
         sorted.sort(Map.Entry.comparingByKey());
         if (sorted.isEmpty()) return;
 
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
         float buttonWidth = L.viewportWidth - L.scrollbarWidth - 12f;
-        float buttonHeight = 25f;
-        float buttonPadding = 5f;
+        float buttonHeight = 25f * s;
+        float buttonPadding = 5f * s;
 
         int save = canvas.save();
         canvas.clipRect(Rect.makeXYWH(L.viewportX, L.viewportY, L.viewportWidth, L.viewportHeight),
@@ -476,8 +480,8 @@ public final class SkijaChatRenderer {
             float scrollPx = scrollOffset * (buttonHeight + buttonPadding);
             float currentY = L.viewportY + 4f - scrollPx;
 
-            Font nameFont = fonts.get(MStyle.FONT_META);
-            Font descFont = fonts.get(12f);
+            Font nameFont = fonts.getScaled(MStyle.FONT_META);
+            Font descFont = fonts.getScaled(12f);
 
             for (Map.Entry<String, ChatCommand> entry : sorted) {
                 if (currentY + buttonHeight < L.viewportY || currentY > L.viewportY + L.viewportHeight) {
@@ -495,7 +499,7 @@ public final class SkijaChatRenderer {
                         MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
 
                 int textColor = hovered ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-                float baseline = currentY + buttonHeight / 2f + MStyle.FONT_META * 0.35f;
+                float baseline = currentY + buttonHeight / 2f + MStyle.FONT_META * 0.35f * s;
                 MPainter.drawStringWithShadow(canvas, "/" + entry.getKey(),
                         bx + 10f, baseline, nameFont, textColor, MStyle.TEXT_SHADOW);
 
@@ -592,8 +596,9 @@ public final class SkijaChatRenderer {
         if (mx < L.viewportX || mx > L.viewportX + L.viewportWidth - L.scrollbarWidth - 4f) return null;
         if (my < L.viewportY || my > L.viewportY + L.viewportHeight) return null;
 
-        float buttonHeight = 25f;
-        float buttonPadding = 5f;
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        float buttonHeight = 25f * s;
+        float buttonPadding = 5f * s;
         int scrollOffset = chat.getCommandScrollOffset();
         float relativeY = my - (L.viewportY + 4f);
         int index = scrollOffset + (int) (relativeY / (buttonHeight + buttonPadding));

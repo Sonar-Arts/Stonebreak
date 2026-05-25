@@ -187,7 +187,7 @@ public class CharacterRenderCoordinator {
       }
 
       boolean consumed = switch (controller.getActiveTab()) {
-        case OVERVIEW -> handleOverviewClick(mx, my, px, py, scale);
+        case OVERVIEW -> handleOverviewClick(mx, my, px, py);
         case CLASSES  -> classesRenderer.handleClick(mx, my, stats, px, py, scale);
         case SKILLS   -> skillsRenderer.handleClick(mx, my, stats);
         case FEATS    -> featsRenderer.handleClick(mx, my, stats, px, py, scale);
@@ -208,7 +208,7 @@ public class CharacterRenderCoordinator {
     }
   }
 
-  private boolean handleOverviewClick(float mx, float my, float px, float py, float scale) {
+  private boolean handleOverviewClick(float mx, float my, float px, float py) {
     for (int i = 0; i < 6; i++) {
       if (scorePlusButtons[i].contains(mx, my)) {
         stats.incrementAbilityScore(i);
@@ -293,9 +293,10 @@ public class CharacterRenderCoordinator {
         fill, MStyle.BUTTON_BORDER,
         MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
         MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
-    Font font = ui.fonts().get(MStyle.FONT_META);
+    float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+    Font font = ui.fonts().getScaled(MStyle.FONT_META);
     int color = active ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-    float ty = y + tabH * 0.5f + MStyle.FONT_META * 0.38f;
+    float ty = y + tabH * 0.5f + MStyle.FONT_META * 0.38f * scale;
     MPainter.drawCenteredStringWithShadow(canvas, label, x + tabW / 2f, ty,
         font, color, MStyle.TEXT_SHADOW);
   }
@@ -369,7 +370,7 @@ public class CharacterRenderCoordinator {
   }
 
   private void drawClassAndFeats(Canvas canvas, float colX, float colY, float colW, float scale) {
-    Font metaFont = ui.fonts().get(MStyle.FONT_META);
+    Font metaFont = ui.fonts().getScaled(MStyle.FONT_META);
 
     drawEngravedRule(canvas, colX, colY, colW);
     float y = colY + 14f * scale;
@@ -405,7 +406,7 @@ public class CharacterRenderCoordinator {
   }
 
   private void drawCurrencies(Canvas canvas, float colX, float colY, float colW, float scale) {
-    Font font = ui.fonts().get(MStyle.FONT_META);
+    Font font = ui.fonts().getScaled(MStyle.FONT_META);
     drawEngravedRule(canvas, colX, colY, colW);
     float y = colY + 14f * scale;
 
@@ -438,10 +439,10 @@ public class CharacterRenderCoordinator {
     final float btnW    = 16f * scale;
     final float btnH    = 14f * scale;
 
-    Font abbrevFont = ui.fonts().get(MStyle.FONT_META);
-    Font valueFont  = ui.fonts().get(MStyle.FONT_BUTTON);
-    Font modFont    = ui.fonts().get(MStyle.FONT_META);
-    Font btnFont    = ui.fonts().get(MStyle.FONT_META);
+    Font abbrevFont = ui.fonts().getScaled(MStyle.FONT_META);
+    Font valueFont  = ui.fonts().getScaled(MStyle.FONT_BUTTON);
+    Font modFont    = ui.fonts().getScaled(MStyle.FONT_META);
+    Font btnFont    = ui.fonts().getScaled(MStyle.FONT_META);
 
     for (int i = 0; i < 6; i++) {
       int col = i % 3;
@@ -507,7 +508,7 @@ public class CharacterRenderCoordinator {
   // ─────────────────────────────────────────────── Right column — vitals
 
   private void drawHealthBar(Canvas canvas, float x, float y, float w, float scale) {
-    Font font   = ui.fonts().get(MStyle.FONT_META);
+    Font font   = ui.fonts().getScaled(MStyle.FONT_META);
     float hp    = stats.getHealth();
     float maxHp = stats.getMaxHealth();
 
@@ -532,7 +533,7 @@ public class CharacterRenderCoordinator {
   }
 
   private void drawManaBar(Canvas canvas, float x, float y, float w, float scale) {
-    Font font = ui.fonts().get(MStyle.FONT_META);
+    Font font = ui.fonts().getScaled(MStyle.FONT_META);
 
     MPainter.drawStringWithShadow(canvas, "MP", x, y, font,
         MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
@@ -553,8 +554,8 @@ public class CharacterRenderCoordinator {
 
   private void drawStatusEffects(Canvas canvas, float x, float y, float w,
                                  float mx, float my, float scale) {
-    Font labelFont = ui.fonts().get(MStyle.FONT_META);
-    Font qFont     = ui.fonts().get(MStyle.FONT_ITEM);
+    Font labelFont = ui.fonts().getScaled(MStyle.FONT_META);
+    Font qFont     = ui.fonts().getScaled(MStyle.FONT_ITEM);
 
     MPainter.drawStringWithShadow(canvas, "Status Effects", x, y, labelFont,
         MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
@@ -570,7 +571,7 @@ public class CharacterRenderCoordinator {
       slot.render(ui);
 
       float qCX = sx + scaledSlot / 2f;
-      float qCY = slotY + scaledSlot / 2f + MStyle.FONT_ITEM * 0.35f;
+      float qCY = slotY + scaledSlot / 2f + MStyle.FONT_ITEM * 0.35f * scale;
       MPainter.drawCenteredStringWithShadow(canvas, "?", qCX, qCY, qFont,
           MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
     }

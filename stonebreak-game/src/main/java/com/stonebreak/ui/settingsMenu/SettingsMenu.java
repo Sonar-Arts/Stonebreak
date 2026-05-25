@@ -61,13 +61,17 @@ public final class SettingsMenu {
                 actionHandler::onLodDistanceChange,
                 actionHandler::toggleLodEnabled,
                 actionHandler::toggleVsync,
-                actionHandler::onUiScaleChange
+                actionHandler::onUiScaleChange,
+                actionHandler::confirmUiScale,
+                actionHandler::revertUiScale
         );
     }
 
     // ─────────────────────────────────────────────── Input
 
     public void handleInput(long window) {
+        // Per-frame: auto-revert the UI scale if the confirmation popup times out.
+        actionHandler.tickUiScaleConfirmation();
         inputHandler.handleInput(window);
     }
 

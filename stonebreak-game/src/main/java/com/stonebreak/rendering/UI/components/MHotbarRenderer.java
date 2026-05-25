@@ -308,7 +308,7 @@ public class MHotbarRenderer {
     private void drawCountTexts(Canvas canvas, ItemStack[] slots,
                                 HotbarLayoutCalculator.HotbarLayout layout,
                                 HotbarScreen hotbarScreen) {
-        Font font = ui.fonts().get(MStyle.FONT_META);
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
         for (int i = 0; i < slots.length; i++) {
             ItemStack stack = slots[i];
             if (stack == null || stack.isEmpty() || stack.getCount() <= 1) continue;
@@ -328,11 +328,12 @@ public class MHotbarRenderer {
                              int selectedIndex,
                              HotbarLayoutCalculator.HotbarLayout layout,
                              int sw, int sh) {
-        Font  font  = ui.fonts().get(MStyle.FONT_ITEM);
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        Font  font  = ui.fonts().getScaled(MStyle.FONT_ITEM);
         float textW = MPainter.measureWidth(font, text);
-        float pad   = 8f;
+        float pad   = 8f * scale;
         float boxW  = textW + pad * 2.5f;
-        float boxH  = MStyle.FONT_ITEM + pad * 2f;
+        float boxH  = MStyle.FONT_ITEM * scale + pad * 2f;
 
         // Centre tooltip above the selected slot
         HotbarLayoutCalculator.SlotPosition slotPos =
@@ -351,7 +352,7 @@ public class MHotbarRenderer {
                 a(MStyle.PANEL_DROP_SHADOW, alpha),
                 a(MStyle.PANEL_NOISE_DARK, alpha), a(MStyle.PANEL_NOISE_LIGHT, alpha));
 
-        float textBaseline = by + boxH / 2f + MStyle.FONT_ITEM * 0.35f;
+        float textBaseline = by + boxH / 2f + MStyle.FONT_ITEM * 0.35f * scale;
         MPainter.drawCenteredStringWithShadow(canvas, text, bx + boxW / 2f, textBaseline,
                 font, a(MStyle.TEXT_PRIMARY, alpha), a(MStyle.TEXT_SHADOW, alpha));
     }

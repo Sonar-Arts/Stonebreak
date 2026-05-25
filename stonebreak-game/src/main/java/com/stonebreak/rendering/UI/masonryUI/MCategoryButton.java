@@ -20,6 +20,7 @@ public class MCategoryButton<T> extends MButton {
         return tag;
     }
 
+    @Override public MCategoryButton<T> scaleText(boolean v) { super.scaleText(v); return this; }
     @Override public MCategoryButton<T> position(float x, float y) { super.position(x, y); return this; }
     @Override public MCategoryButton<T> size(float w, float h) { super.size(w, h); return this; }
     @Override public MCategoryButton<T> bounds(float x, float y, float w, float h) {

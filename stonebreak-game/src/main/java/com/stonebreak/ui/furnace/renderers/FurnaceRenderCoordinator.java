@@ -136,7 +136,7 @@ public class FurnaceRenderCoordinator {
         int count = ds.draggedItemStack.getCount();
         if (count > 1 && ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
             Canvas canvas = ui.canvas();
-            Font font = ui.fonts().get(MStyle.FONT_META);
+            Font font = ui.fonts().getScaled(MStyle.FONT_META);
             String countStr = String.valueOf(count);
             float textX = iconX + iconSize - MPainter.measureWidth(font, countStr) - 2f;
             float textY = iconY + iconSize - 2f;
@@ -178,7 +178,7 @@ public class FurnaceRenderCoordinator {
         int titleH    = InventoryLayoutCalculator.getTitleHeight();
 
         // Title
-        Font font = ui.fonts().get(MStyle.FONT_BUTTON);
+        Font font = ui.fonts().getScaled(MStyle.FONT_BUTTON);
         float centerX = layout.panelStartX + layout.inventoryPanelWidth / 2f;
         float titleY = layout.panelStartY + panelPad + titleH + InventoryLayoutCalculator.getSectionSpacing();
         MPainter.drawCenteredStringWithShadow(canvas, "Furnace", centerX, titleY,
@@ -557,7 +557,7 @@ public class FurnaceRenderCoordinator {
     /* ── Phase C – count texts ────────────────────────────── */
 
     private void drawAllCountTexts(Canvas canvas, InventoryLayoutCalculator.InventoryLayout layout) {
-        Font font       = ui.fonts().get(MStyle.FONT_META);
+        Font font       = ui.fonts().getScaled(MStyle.FONT_META);
         int slotSize    = InventoryLayoutCalculator.getSlotSize();
         int padding     = InventoryLayoutCalculator.getSlotPadding();
         FurnaceLayout.Slots s = FurnaceLayout.compute(layout);

@@ -31,6 +31,7 @@ public class MDropdown extends MButton {
     public MDropdown itemHeight(float h) { this.itemHeight = h; return this; }
     public MDropdown onSelect(Runnable callback) { this.onSelectionChanged = callback; return this; }
 
+    @Override public MDropdown scaleText(boolean v) { super.scaleText(v); return this; }
     @Override public MDropdown position(float x, float y) { super.position(x, y); return this; }
     @Override public MDropdown size(float w, float h) { super.size(w, h); return this; }
     @Override public MDropdown bounds(float x, float y, float w, float h) {
@@ -135,7 +136,7 @@ public class MDropdown extends MButton {
         Canvas canvas = ui.canvas();
         if (canvas == null) return;
         drawBody(canvas);
-        Font font = ui.fonts().get(fontSize);
+        Font font = fontFor(ui, fontSize);
         drawLabel(canvas, font);
         drawArrow(canvas);
         if (open) ui.pushOverlay(() -> renderOverlay(ui));
@@ -167,7 +168,8 @@ public class MDropdown extends MButton {
 
         MPainter.fillRect(canvas, listX, listY, width, listH, MStyle.DROPDOWN_FILL);
 
-        Font font = ui.fonts().get(MStyle.FONT_DROPDOWN);
+        float ts = textScale();
+        Font font = fontFor(ui, MStyle.FONT_DROPDOWN);
         for (int i = 0; i < items.length; i++) {
             float rowY = listY + i * itemHeight;
             int fill;
@@ -175,7 +177,7 @@ public class MDropdown extends MButton {
             else if (i == selectedIndex) fill = MStyle.DROPDOWN_ITEM_CURRENT;
             else fill = MStyle.DROPDOWN_ITEM_FILL;
             if (fill != 0) MPainter.fillRect(canvas, listX, rowY, width, itemHeight, fill);
-            MPainter.drawString(canvas, items[i], listX + 12f, rowY + itemHeight / 2f + 6f, font, MStyle.TEXT_PRIMARY);
+            MPainter.drawString(canvas, items[i], listX + 12f * ts, rowY + itemHeight / 2f + 6f * ts, font, MStyle.TEXT_PRIMARY);
         }
 
         MPainter.strokeRect(canvas, listX, listY, width, listH, MStyle.BUTTON_BORDER, 2f);

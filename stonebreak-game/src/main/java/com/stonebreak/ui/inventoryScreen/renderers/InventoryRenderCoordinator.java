@@ -95,8 +95,9 @@ public class InventoryRenderCoordinator {
         this.mHotbarRenderer = new MHotbarRenderer(uiRenderer, renderer);
 
         // Buttons are purely visual here; click detection remains in InventoryInputManager.
-        this.recipeButton   = new MButton("Recipes");
-        this.craftAllButton = new MButton("Craft All").fontSize(MStyle.FONT_META);
+        // scaleText so their labels grow with the UI scale like the panel geometry.
+        this.recipeButton   = new MButton("Recipes").scaleText(true);
+        this.craftAllButton = new MButton("Craft All").fontSize(MStyle.FONT_META).scaleText(true);
 
         // Tab buttons — visual only; click detection is in InventoryInputManager
         this.tabInventory = new MButton("Inventory").fontSize(MStyle.FONT_META);
@@ -196,7 +197,7 @@ public class InventoryRenderCoordinator {
         int count = dragged.getCount();
         if (count > 1 && ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
             Canvas canvas = ui.canvas();
-            Font font = ui.fonts().get(MStyle.FONT_META);
+            Font font = ui.fonts().getScaled(MStyle.FONT_META);
             String countStr = String.valueOf(count);
             float textX = iconX + iconSize - MPainter.measureWidth(font, countStr) - 2f;
             float textY = iconY + iconSize - 2f;
@@ -235,14 +236,14 @@ public class InventoryRenderCoordinator {
 
     private void drawTitles(Canvas canvas, InventoryLayoutCalculator.InventoryLayout layout) {
         float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
-        Font font = ui.fonts().get(MStyle.FONT_BUTTON);
+        Font font = ui.fonts().getScaled(MStyle.FONT_BUTTON);
         float centerX = layout.panelStartX + layout.inventoryPanelWidth / 2f;
 
-        float craftY = layout.panelStartY + 20 * scale + MStyle.FONT_BUTTON / 3f;
+        float craftY = layout.panelStartY + 20 * scale + MStyle.FONT_BUTTON / 3f * scale;
         MPainter.drawCenteredStringWithShadow(canvas, "Crafting", centerX, craftY,
                 font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
 
-        float invY = layout.mainInvContentStartY - 20 * scale + MStyle.FONT_BUTTON / 3f;
+        float invY = layout.mainInvContentStartY - 20 * scale + MStyle.FONT_BUTTON / 3f * scale;
         MPainter.drawCenteredStringWithShadow(canvas, "Inventory", centerX, invY,
                 font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
     }
@@ -387,7 +388,7 @@ public class InventoryRenderCoordinator {
 
     private void drawAllCountTexts(Canvas canvas,
                                    InventoryLayoutCalculator.InventoryLayout layout) {
-        Font font       = ui.fonts().get(MStyle.FONT_META);
+        Font font       = ui.fonts().getScaled(MStyle.FONT_META);
         int slotSize    = InventoryLayoutCalculator.getSlotSize();
         int slotPadding = InventoryLayoutCalculator.getSlotPadding();
         int gridSize    = InventoryLayoutCalculator.getCraftingGridSize();
@@ -480,9 +481,10 @@ public class InventoryRenderCoordinator {
                 fill, MStyle.BUTTON_BORDER,
                 MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
-        Font font  = ui.fonts().get(MStyle.FONT_META);
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        Font font  = ui.fonts().getScaled(MStyle.FONT_META);
         int  color = active ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-        float ty   = y + tabH * 0.5f + MStyle.FONT_META * 0.38f;
+        float ty   = y + tabH * 0.5f + MStyle.FONT_META * 0.38f * scale;
         MPainter.drawCenteredStringWithShadow(canvas, label,
                 x + tabW / 2f, ty, font, color, MStyle.TEXT_SHADOW);
     }

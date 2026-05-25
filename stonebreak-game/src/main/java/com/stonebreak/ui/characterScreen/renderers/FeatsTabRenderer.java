@@ -136,8 +136,8 @@ public class FeatsTabRenderer {
         MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
     String lvlLabel = filterLevel == 0 ? "Level: All" : "Level: " + filterLevel;
     MPainter.drawCenteredStringWithShadow(canvas, lvlLabel,
-        barX + 6f * scale + b1W / 2f, btnY + fbH * 0.5f + MStyle.FONT_META * 0.38f,
-        ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+        barX + 6f * scale + b1W / 2f, btnY + fbH * 0.5f + MStyle.FONT_META * 0.38f * scale,
+        ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
 
     float b2X = barX + (6f + 108f) * scale;
     generalFilterBtn.bounds(b2X, btnY, b2W, fbH);
@@ -151,8 +151,8 @@ public class FeatsTabRenderer {
         MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
     int genTextColor = filterGeneral ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
     MPainter.drawCenteredStringWithShadow(canvas, "General",
-        b2X + b2W / 2f, btnY + fbH * 0.5f + MStyle.FONT_META * 0.38f,
-        ui.fonts().get(MStyle.FONT_META), genTextColor, MStyle.TEXT_SHADOW);
+        b2X + b2W / 2f, btnY + fbH * 0.5f + MStyle.FONT_META * 0.38f * scale,
+        ui.fonts().getScaled(MStyle.FONT_META), genTextColor, MStyle.TEXT_SHADOW);
 
     float b3X = barX + (6f + 108f + 92f) * scale;
     MPainter.stoneSurface(canvas, b3X, btnY, b3W, fbH,
@@ -160,8 +160,8 @@ public class FeatsTabRenderer {
         MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
         MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
     MPainter.drawCenteredStringWithShadow(canvas, "Ability Score: N/A",
-        b3X + b3W / 2f, btnY + fbH * 0.5f + MStyle.FONT_META * 0.38f,
-        ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
+        b3X + b3W / 2f, btnY + fbH * 0.5f + MStyle.FONT_META * 0.38f * scale,
+        ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
   }
 
   // ─────────────────────────────────────────────── Feat list
@@ -192,20 +192,20 @@ public class FeatsTabRenderer {
         MPainter.fillRoundedRect(canvas, listX, rowY, listW - 8f, rowH, 2f, 0x22FFFFFF);
       }
 
-      float textY = rowY + rowH * 0.5f + MStyle.FONT_META * 0.38f;
+      float textY = rowY + rowH * 0.5f + MStyle.FONT_META * 0.38f * scale;
       int nameColor = selected ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
       MPainter.drawStringWithShadow(canvas, feat.name(),
           listX + 4f, textY,
-          ui.fonts().get(MStyle.FONT_META), nameColor, MStyle.TEXT_SHADOW);
+          ui.fonts().getScaled(MStyle.FONT_META), nameColor, MStyle.TEXT_SHADOW);
 
       MPainter.drawStringWithShadow(canvas, "(Lvl " + feat.level() + ")",
           listX + 224f * scale, textY,
-          ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+          ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
 
       if (feat.isGeneral()) {
         MPainter.drawStringWithShadow(canvas, "(General)",
             listX + 282f * scale, textY,
-            ui.fonts().get(MStyle.FONT_META), GENERAL_TAG_COLOR, MStyle.TEXT_SHADOW);
+            ui.fonts().getScaled(MStyle.FONT_META), GENERAL_TAG_COLOR, MStyle.TEXT_SHADOW);
       }
     }
 
@@ -226,7 +226,7 @@ public class FeatsTabRenderer {
       float centerY = py + (LIST_TOP_OFFSET_Y + LIST_H / 2f) * scale;
       MPainter.drawCenteredStringWithShadow(canvas, "Select a feat",
           detailX + detailW / 2f, centerY,
-          ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
+          ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
       return;
     }
 
@@ -243,18 +243,18 @@ public class FeatsTabRenderer {
 
     MPainter.drawStringWithShadow(canvas, feat.name(),
         detailX + 4f, y,
-        ui.fonts().get(MStyle.FONT_ITEM), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        ui.fonts().getScaled(MStyle.FONT_ITEM), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
     y += 24f * scale;
 
     String typeStr = "Type: " + (feat.isGeneral() ? "General Feat" : "Feat");
     MPainter.drawStringWithShadow(canvas, typeStr,
         detailX + 4f, y,
-        ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+        ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
     y += 18f * scale;
 
     MPainter.drawStringWithShadow(canvas, "Required Level: " + feat.level(),
         detailX + 4f, y,
-        ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+        ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
     y += 18f * scale;
 
     drawEngravedRule(canvas, detailX + 4f, y, detailW - 8f);
@@ -262,7 +262,7 @@ public class FeatsTabRenderer {
 
     MPainter.drawStringWithShadow(canvas, feat.description(),
         detailX + 4f, y,
-        ui.fonts().get(MStyle.FONT_META), MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+        ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
 
     boolean acquired = stats.hasFeat(feat.id());
     boolean canAfford = stats.getRemainingFeatPoints() > 0;
@@ -296,10 +296,10 @@ public class FeatsTabRenderer {
         MStyle.BUTTON_RADIUS, btnFill, MStyle.BUTTON_BORDER,
         MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
         MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
-    float btnTextY = btnY + acqBtnH * 0.5f + MStyle.FONT_META * 0.38f;
+    float btnTextY = btnY + acqBtnH * 0.5f + MStyle.FONT_META * 0.38f * scale;
     MPainter.drawCenteredStringWithShadow(canvas, btnLabel,
         btnX + acqBtnW / 2f, btnTextY,
-        ui.fonts().get(MStyle.FONT_META), btnTextColor, MStyle.TEXT_SHADOW);
+        ui.fonts().getScaled(MStyle.FONT_META), btnTextColor, MStyle.TEXT_SHADOW);
   }
 
   // ─────────────────────────────────────────────── Click handling

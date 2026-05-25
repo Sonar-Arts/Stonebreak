@@ -65,6 +65,9 @@ public class ActionHandler {
      * Does not exit the settings menu, allowing users to continue making adjustments.
      */
     public void applySettings() {
+        // Persist + apply everything except a pending UI-scale change. At this point
+        // settings.getUiScale() is still the previous value, so this save records the
+        // old scale; the new scale is only persisted once the user confirms it below.
         settings.saveSettings();
 
         settingsManager.applyAudioSettings();
@@ -72,14 +75,61 @@ public class ActionHandler {
         settingsManager.applyDisplaySettings();
         settingsManager.applyWorldDistanceSettings();
 
+        maybeBeginUiScaleConfirmation();
+
         System.out.println("Settings applied successfully!");
         // Note: Removed goBack() call - users should be able to continue adjusting settings
+    }
+
+    /**
+     * If the UI-scale slider differs from the live scale, apply it immediately and
+     * open the keep/revert confirmation. The new scale is NOT saved until kept, so a
+     * timeout or revert restores the previous value without touching disk.
+     */
+    private void maybeBeginUiScaleConfirmation() {
+        float pending = stateManager.getUiScaleSlider().value();
+        float current = settings.getUiScale();
+        if (Math.abs(pending - current) < 0.001f) return;
+
+        stateManager.startUiScaleConfirmation(current);
+        settings.setUiScale(pending);
+        stateManager.resizeWidgets();
+    }
+
+    /** "Keep" button: accept the applied scale and persist it. */
+    public void confirmUiScale() {
+        stateManager.endUiScaleConfirmation();
+        settings.saveSettings();
+        System.out.println("UI scale kept at " + settings.getUiScale() + "x");
+    }
+
+    /** "Revert" button or countdown timeout: restore the previous scale. */
+    public void revertUiScale() {
+        float previous = stateManager.getUiScalePreviousScale();
+        settings.setUiScale(previous);
+        stateManager.getUiScaleSlider().setValue(previous);
+        stateManager.resizeWidgets();
+        stateManager.endUiScaleConfirmation();
+        // Disk already holds the previous scale (saved in applySettings), so no save needed.
+        System.out.println("UI scale reverted to " + previous + "x");
+    }
+
+    /** Called once per frame while the settings menu is open; auto-reverts on timeout. */
+    public void tickUiScaleConfirmation() {
+        if (stateManager.isUiScaleConfirmExpired()) {
+            revertUiScale();
+        }
     }
     
     /**
      * Navigates back to the previous game state.
      */
     public void goBack() {
+        // Discard any un-applied UI-scale change so a stale pending value doesn't
+        // linger on the slider the next time settings is opened.
+        if (stateManager.getUiScaleSlider() != null) {
+            stateManager.getUiScaleSlider().setValue(settings.getUiScale());
+        }
         if (stateManager.getPreviousState() == GameState.PLAYING) {
             returnToGameplay();
         } else {
@@ -239,11 +289,12 @@ public class ActionHandler {
     }
 
     /**
-     * Callback for when the UI scale slider value changes.
-     * Takes effect immediately on the next rendered frame.
+     * Callback for when the UI scale slider value changes. Intentionally does NOT
+     * apply the change live — the slider's value is treated as a pending request
+     * that is only committed (with a confirmation popup) when the user hits Apply.
+     * The displayed label tracks the slider value via {@code StateManager.refreshLabels}.
      */
     public void onUiScaleChange(Float newScale) {
-        settings.setUiScale(newScale);
-        stateManager.resizeWidgets();
+        // No-op: deferred until Apply. See maybeBeginUiScaleConfirmation().
     }
 }
