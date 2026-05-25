@@ -319,6 +319,9 @@ public final class WorldGenerationCoordinator {
                                 game.setTimeOfDay(timeOfDay);
                                 System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + timeOfDay.getTimeString() + ")");
 
+                                game.setCheatsEnabled(worldData.isCheatsEnabled());
+                                System.out.println("[CHEATS] ✓ Loaded cheats flag from world: " + worldData.isCheatsEnabled());
+
                                 if (result.getPlayerData() != null) {
                                     StateConverter.applyPlayerData(freshPlayer, result.getPlayerData());
                                     System.out.println("[PLAYER-DATA] Applied loaded player data to position: " +
