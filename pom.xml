@@ -24,9 +24,9 @@
         <lwjgl.natives>natives-windows</lwjgl.natives>
         <jackson.version>2.21.3</jackson.version>
         <jackson.version.annotations>2.21</jackson.version.annotations>
-        <junit.version>6.0.3</junit.version>
+        <junit.version>6.1.0</junit.version>
         <mockito.version>5.23.0</mockito.version>
-        <skija.version>0.143.13</skija.version>
+        <skija.version>0.143.16</skija.version>
         <sqlite.version>3.53.1.0</sqlite.version>
     </properties>
 
@@ -172,13 +172,13 @@
             <dependency>
                 <groupId>org.junit.platform</groupId>
                 <artifactId>junit-platform-suite-api</artifactId>
-                <version>6.0.3</version>
+                <version>6.1.0</version>
                 <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>org.junit.platform</groupId>
                 <artifactId>junit-platform-suite-engine</artifactId>
-                <version>6.0.3</version>
+                <version>6.1.0</version>
                 <scope>test</scope>
             </dependency>
         </dependencies>
