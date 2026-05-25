@@ -576,6 +576,18 @@ public class World {
             chunkStore.cleanup();
         }
 
+        // Shut down the Fast LOD manager so its world-specific SQLite cache is
+        // closed. The store points at worlds/<name>/fastlod/cache.sqlite, so
+        // leaving it open here would keep the .sqlite/.sqlite-wal/.sqlite-shm
+        // files locked and block a later world deletion. Runs on the main/GL
+        // thread (clearWorldData is invoked from the quit-to-menu path), so we
+        // can drain the LOD GPU cleanup queue inline rather than deferring it.
+        if (fastLodManager != null) {
+            fastLodManager.shutdown();
+            fastLodManager.applyGLUpdates();
+            fastLodManager = null;
+        }
+
         // Process any pending GPU cleanup without shutting down the pipeline
         if (meshPipeline != null) {
             meshPipeline.processGpuCleanupQueue();
