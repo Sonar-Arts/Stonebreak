@@ -105,9 +105,13 @@ public class PlayerArmRenderer {
         // Apply all animations through the animator component (with item context for attack animations)
         animator.applyAnimations(reusableArmViewModel, player, selectedItem);
         
-        // Apply item-specific transformations if displaying an item
+        // Apply item-specific transformations if displaying an item. A drawn bow
+        // blends toward the side-on aiming pose; everything else passes 0.
         if (displayInfo.displayingItem) {
-            animator.applyItemTransform(reusableArmViewModel);
+            float bowDrawProgress = (displayInfo.selectedItemType == ItemType.BOW && player.isDrawingBow())
+                    ? player.getBowDrawProgress()
+                    : 0.0f;
+            animator.applyItemTransform(reusableArmViewModel, bowDrawProgress);
         }
 
         // Set shader matrices
@@ -214,12 +218,15 @@ public class PlayerArmRenderer {
     private void renderArrowOverlayIfDrawing(Player player, ItemDisplayInfo displayInfo) {
         if (displayInfo.selectedItemType != ItemType.BOW) return;
         if (!player.isDrawingBow()) return;
-        if (player.getBowDrawProgress() <= 0.05f) return;
+        float progress = player.getBowDrawProgress();
+        if (progress <= 0.05f) return;
 
-        // Shift arrow to sit along the bow centre; push it slightly forward so
-        // it isn't buried inside the bow sprite.
+        // Shift the arrow to sit along the bow centre, nudged forward so it
+        // isn't buried in the sprite, then slide it back toward the camera as
+        // the string is drawn (+Z = toward viewer) so it visibly retracts.
+        float retract = 0.20f * progress;
         Matrix4f arrowMatrix = new Matrix4f(reusableArmViewModel);
-        arrowMatrix.translate(0.0f, -0.08f, -0.15f);
+        arrowMatrix.translate(0.0f, -0.08f, -0.15f + retract);
         shaderProgram.setUniform("viewMatrix", arrowMatrix);
         handItemRenderer.renderToolInHand(ItemType.ARROW, null);
         // Restore the arm matrix for any subsequent draws
