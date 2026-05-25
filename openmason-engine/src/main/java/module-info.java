@@ -20,6 +20,15 @@ module openmason.engine {
     // Logging
     requires org.slf4j;
 
+    // Netty (automatic modules) for the networking framework (com.openmason.engine.net).
+    // buffer is transitive: ByteBuf appears in the exported PacketCodec API, so consumers
+    // (the game module) read it through us without their own explicit requires.
+    requires transitive io.netty.buffer;
+    requires io.netty.common;
+    requires io.netty.transport;
+    requires io.netty.codec;
+    requires io.netty.handler;
+
     // Java base modules
     requires java.desktop;
     requires java.logging;
@@ -45,6 +54,15 @@ module openmason.engine {
 
     // Export voxel abstractions
     exports com.openmason.engine.voxel;
+
+    // Export networking framework (com.openmason.engine.net)
+    exports com.openmason.engine.net.protocol;
+    exports com.openmason.engine.net.protocol.codec;
+    exports com.openmason.engine.net.replication;
+    exports com.openmason.engine.net.pipeline;
+    exports com.openmason.engine.net.transport;
+    exports com.openmason.engine.net.server;
+    exports com.openmason.engine.net.client;
 
     // Export CCO (Common Chunk Operations)
     exports com.openmason.engine.voxel.cco.core;
