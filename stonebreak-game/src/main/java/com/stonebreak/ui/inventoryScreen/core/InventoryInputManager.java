@@ -55,7 +55,8 @@ public class InventoryInputManager {
     }
 
     public void handleMouseInput(int screenWidth, int screenHeight) {
-        InventoryLayoutCalculator.InventoryLayout layout = InventoryLayoutCalculator.calculateLayout(screenWidth, screenHeight);
+        InventoryLayoutCalculator.InventoryLayout layout =
+            InventoryLayoutCalculator.calculateThreeColumnLayout(screenWidth, screenHeight).center;
 
         Vector2f mousePos = inputHandler.getMousePosition();
         float mouseX = mousePos.x;

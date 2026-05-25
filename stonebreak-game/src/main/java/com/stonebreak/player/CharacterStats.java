@@ -152,8 +152,10 @@ public class CharacterStats {
   /** Each WIS point contributes MANA_REGEN_PER_WIS_POINT mana/sec. WIS 10 = 2/sec. */
   public float computeManaRegen()  { return getWisdom()       * com.stonebreak.player.PlayerConstants.MANA_REGEN_PER_WIS_POINT; }
 
-  public float getMana()    { return player != null ? player.getMana()    : 0f; }
-  public float getMaxMana() { return player != null ? player.getMaxMana() : 0f; }
+  public float getMana()       { return player != null ? player.getMana()       : 0f; }
+  public float getMaxMana()    { return player != null ? player.getMaxMana()    : 0f; }
+  public float getStamina()    { return player != null ? player.getStamina()    : 0f; }
+  public float getMaxStamina() { return player != null ? player.getMaxStamina() : 0f; }
 
   // ─────────────────────────────────────────────── Class selection
 

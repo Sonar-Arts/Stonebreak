@@ -17,6 +17,11 @@ public class InventoryLayoutCalculator {
     private static final int CRAFTING_GRID_SIZE = 2;
     private static final int WORKBENCH_CRAFTING_GRID_SIZE = 3;
 
+    // Three-column layout constants (unscaled)
+    private static final int LEFT_COL_WIDTH = 180;
+    private static final int RIGHT_COL_WIDTH = 180;
+    private static final int COL_GAP = 10;
+
     public static class InventoryLayout {
         public final int panelStartX;
         public final int panelStartY;
@@ -57,6 +62,83 @@ public class InventoryLayoutCalculator {
             this.outputSlotY = outputSlotY;
             this.inventorySectionStartX = inventorySectionStartX;
         }
+    }
+
+    /** Positions for the full three-column inventory panel. */
+    public static class InventoryLayout3Col {
+        public final int panelStartX, panelStartY;
+        public final int totalPanelWidth, totalPanelHeight;
+        public final int leftColX, leftColY, leftColW, leftColH;
+        public final InventoryLayout center;
+        public final int rightColX, rightColY, rightColW, rightColH;
+
+        public InventoryLayout3Col(int panelStartX, int panelStartY,
+                                   int totalPanelWidth, int totalPanelHeight,
+                                   int leftColX, int leftColY, int leftColW, int leftColH,
+                                   InventoryLayout center,
+                                   int rightColX, int rightColY, int rightColW, int rightColH) {
+            this.panelStartX = panelStartX;
+            this.panelStartY = panelStartY;
+            this.totalPanelWidth = totalPanelWidth;
+            this.totalPanelHeight = totalPanelHeight;
+            this.leftColX = leftColX;
+            this.leftColY = leftColY;
+            this.leftColW = leftColW;
+            this.leftColH = leftColH;
+            this.center = center;
+            this.rightColX = rightColX;
+            this.rightColY = rightColY;
+            this.rightColW = rightColW;
+            this.rightColH = rightColH;
+        }
+    }
+
+    /**
+     * Computes the three-column inventory layout: equipment panel (left),
+     * crafting+items (center), and character stats (right).
+     *
+     * The center column reuses {@link #calculateLayout} geometry but shifts all
+     * X coordinates to account for the left column.
+     */
+    public static InventoryLayout3Col calculateThreeColumnLayout(int screenWidth, int screenHeight) {
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        int leftColW = Math.round(LEFT_COL_WIDTH * scale);
+        int rightColW = Math.round(RIGHT_COL_WIDTH * scale);
+        int colGap = Math.round(COL_GAP * scale);
+
+        InventoryLayout rawCenter = calculateLayout(screenWidth, screenHeight);
+        int centerW = rawCenter.inventoryPanelWidth;
+        int centerH = rawCenter.inventoryPanelHeight;
+
+        int totalW = leftColW + colGap + centerW + colGap + rightColW;
+        int panelStartX = (screenWidth - totalW) / 2;
+        int panelStartY = rawCenter.panelStartY;
+        int centerStartX = panelStartX + leftColW + colGap;
+        int rightStartX = centerStartX + centerW + colGap;
+
+        int xShift = centerStartX - rawCenter.panelStartX;
+        InventoryLayout shiftedCenter = new InventoryLayout(
+            centerStartX,
+            rawCenter.panelStartY,
+            centerW,
+            centerH,
+            rawCenter.craftingGridStartY,
+            rawCenter.craftingElementsStartX + xShift,
+            rawCenter.craftInputGridVisualWidth,
+            rawCenter.mainInvContentStartY,
+            rawCenter.hotbarRowY,
+            rawCenter.outputSlotX + xShift,
+            rawCenter.outputSlotY,
+            rawCenter.inventorySectionStartX + xShift
+        );
+
+        return new InventoryLayout3Col(
+            panelStartX, panelStartY,
+            totalW, centerH,
+            panelStartX, panelStartY, leftColW, centerH,
+            shiftedCenter,
+            rightStartX, panelStartY, rightColW, centerH
+        );
     }
 
     /**
