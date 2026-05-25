@@ -24,6 +24,8 @@ public class SoundSystem {
         this.audioDiagnostics = new AudioDiagnostics(openALContext, soundBuffer);
     }
     
+    // No synchronization needed: getInstance() is only called from the main thread during startup,
+    // before any background threads are spawned. Post-init access is read-only.
     public static SoundSystem getInstance() {
         if (instance == null) {
             instance = new SoundSystem();

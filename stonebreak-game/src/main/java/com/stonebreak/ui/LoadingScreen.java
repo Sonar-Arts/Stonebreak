@@ -38,9 +38,8 @@ public class LoadingScreen {
     );
     private final int totalStages = stages.size();
 
-    // TODO: Enhanced error-reporting feature - implemented but not yet wired up to any caller.
-    // Hook reportError/reportDetailedError/updateDetailedProgress into world generation
-    // failure paths, or remove this feature if it stays unused.
+    // Error state fields — read by SkijaLoadingScreenRenderer to style the error panel.
+    // Defaults hold when no error is active (errorSeverity=INFO, empty lists, null strings).
     private ErrorSeverity errorSeverity = ErrorSeverity.INFO;
     private String errorCode = null;
     private List<String> recoveryActions = new ArrayList<>();
@@ -107,38 +106,6 @@ public class LoadingScreen {
 
     public boolean isVisible() {
         return visible;
-    }
-
-    public void reportError(String error) {
-        reportDetailedError(error, ErrorSeverity.ERROR, null, null, null);
-    }
-
-    public void reportDetailedError(String error, ErrorSeverity severity, String errorCode,
-                                   List<String> recoveryActions, List<String> diagnosticInfo) {
-        this.errorMessage = error;
-        this.hasError = true;
-        this.errorSeverity = severity;
-        this.errorCode = errorCode;
-        this.recoveryActions = recoveryActions != null ? new ArrayList<>(recoveryActions) : new ArrayList<>();
-        this.diagnosticInfo = diagnosticInfo != null ? new ArrayList<>(diagnosticInfo) : new ArrayList<>();
-
-        System.err.println("LoadingScreen: Reported " + severity + " error - " + error);
-        if (errorCode != null) {
-            System.err.println("LoadingScreen: Error code - " + errorCode);
-        }
-    }
-
-    public void updateDetailedProgress(String stageName, String subStage, int subProgress,
-                                     int totalSubStages, String timeRemaining) {
-        updateProgress(stageName);
-        this.currentSubStage = subStage;
-        this.subStageProgress = subProgress;
-        this.totalSubStages = totalSubStages;
-        this.estimatedTimeRemaining = timeRemaining != null ? timeRemaining : "Calculating...";
-
-        if (!stageName.equals(this.currentStageName)) {
-            this.stageStartTime = System.currentTimeMillis();
-        }
     }
 
     /**

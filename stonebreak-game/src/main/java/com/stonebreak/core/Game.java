@@ -117,6 +117,8 @@ public class Game {
     
     /**
      * Gets the singleton instance.
+     * No synchronization needed: always created on the main thread during startup,
+     * before any background threads are spawned. Post-init access is read-only.
      */
     public static Game getInstance() {
         if (instance == null) {

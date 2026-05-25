@@ -231,10 +231,12 @@ public class PlayerArmRenderer {
             return com.openmason.engine.voxel.lighting.VertexLightSampler.samplePointSky(
                 ctx, pos.x, pos.y + 1.6f, pos.z);
         } catch (Exception ignored) {
+            // Lighting sampler throws when the player's chunk is unloaded (early boot, menu transitions).
+            // Return full brightness so the arm is never rendered pitch-black.
             return 1.0f;
         }
     }
-    
+
     /**
      * Gets the currently selected item from the player's inventory.
      */

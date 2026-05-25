@@ -150,6 +150,7 @@ public final class FastLodStore implements AutoCloseable {
         // is already drained. Order: statements → connection.
         closeQuietly(selectStmt);
         closeQuietly(upsertStmt);
+        // Null guard: connection may be null if initialization failed before it was assigned.
         try { if (connection != null) connection.close(); } catch (SQLException ignored) {}
     }
 

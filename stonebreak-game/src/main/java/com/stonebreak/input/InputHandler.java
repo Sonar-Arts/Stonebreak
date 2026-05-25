@@ -64,9 +64,7 @@ public class InputHandler {
     // Resolves fishing catches (loot roll + drop spawn) when a bobber is reeled in.
     private final com.stonebreak.mobs.entities.FishingManager fishingManager =
             new com.stonebreak.mobs.entities.FishingManager();
-    // private int selectedBlock = 1; // Old field, replaced by currentSelectedHotbarIndex logic for selection
-    
-    
+
     // Key state tracking for toggle actions
     private boolean escapeKeyPressed = false;
     private boolean inventoryKeyPressed = false; // Added for inventory toggle
@@ -85,7 +83,6 @@ public class InputHandler {
     
     // Track which buttons were pressed to optimize clearing
     private boolean[] buttonWasPressed = new boolean[GLFW_MOUSE_BUTTON_LAST + 1];
-    // private boolean recipeBookKeyPressed = false; // Removed for Recipe Book Button
     private double scrollYOffset = 0.0;
     private boolean[] keyJustPressed = new boolean[512]; // Assuming a max key code for simplicity
     private boolean[] keyPressedState = new boolean[512]; // Tracks current GLFW state
@@ -268,7 +265,6 @@ public class InputHandler {
             RecipeScreen recipeScreen = game.getRecipeBookScreen();
             WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
             InventoryScreen inventoryScreen = game.getInventoryScreen();
-            // PauseMenu pauseMenu = game.getPauseMenu(); // Get the PauseMenu instance // Removed as unused
 
             // Priority:
             // 1. Close Chat (already handled in its own key input)
@@ -1007,9 +1003,6 @@ public class InputHandler {
             Player player = Game.getPlayer();
             if (player != null && player.getInventory() != null) {
                 player.getInventory().setSelectedHotbarSlotIndex(currentSelectedHotbarIndex);
-                
-                // ItemStack selectedStack = player.getInventory().getHotbarSlot(currentSelectedHotbarIndex); // Get the actual stack - Unused
-                // Hotbar slot selection handled silently
             }
         }
     }

@@ -67,6 +67,9 @@ public class RemotePlayer extends LivingEntity {
     @Override
     public EntityType getType() { return EntityType.REMOTE_PLAYER; }
 
+    // RemotePlayer is a display-only proxy for a server-authoritative remote client.
+    // Interaction, damage, and death are resolved server-side and broadcast via packets;
+    // the local ghost intentionally ignores these events.
     @Override
     public void onInteract(Player player) {}
 

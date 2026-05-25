@@ -17,20 +17,12 @@ public class CowSounds {
     private static final float WALKING_SOUND_INTERVAL = 1.2f; // Much slower interval for relaxed cow footsteps
     private static final float MAX_SOUND_DISTANCE = 30.0f; // Maximum distance for cow sounds
 
-    // Ambient mooing system
-    // private float ambientMooTimer;
-    // private static final float MIN_MOO_INTERVAL = 15.0f;
-    // private static final float MAX_MOO_INTERVAL = 45.0f;
-    // private float nextMooTime;
-
     private final World world;
 
     public CowSounds(World world) {
         this.world = world;
         this.walkingSoundTimer = 0.0f;
         this.wasMovingLastFrame = false;
-        // this.ambientMooTimer = 0.0f;
-        // this.nextMooTime = generateRandomMooTime();
     }
 
     /**
@@ -39,7 +31,6 @@ public class CowSounds {
      */
     public void updateSounds(Vector3f position, Vector3f velocity, boolean onGround) {
         updateWalkingSounds(position, velocity, onGround);
-        // updateAmbientSounds(position);
     }
 
     /**
@@ -75,19 +66,6 @@ public class CowSounds {
 
         wasMovingLastFrame = isMoving;
     }
-
-    /**
-     * Updates ambient mooing sounds.
-     */
-    // private void updateAmbientSounds(Vector3f position) {
-    //     ambientMooTimer += Game.getDeltaTime();
-    //
-    //     if (ambientMooTimer >= nextMooTime) {
-    //         playMooSound(position);
-    //         ambientMooTimer = 0.0f;
-    //         nextMooTime = generateRandomMooTime();
-    //     }
-    // }
 
     /**
      * Plays the appropriate walking sound based on the block type under the cow.
@@ -131,49 +109,10 @@ public class CowSounds {
     }
 
     /**
-     * Plays a moo sound with variation.
-     */
-    // private void playMooSound(Vector3f position) {
-    //     SoundSystem soundSystem = Game.getSoundSystem();
-    //     if (soundSystem != null) {
-    //         soundSystem.playSoundWithVariation("cow_moo", 0.4f);
-    //     }
-    // }
-
-    /**
-     * Plays an interaction moo sound when the cow is petted or milked.
-     */
-    // public void playInteractionMoo(Vector3f position) {
-    //     SoundSystem soundSystem = Game.getSoundSystem();
-    //     if (soundSystem != null) {
-    //         soundSystem.playSoundWithVariation("cow_moo_happy", 0.5f);
-    //     }
-    // }
-
-    /**
-     * Plays a hurt sound when the cow takes damage.
-     */
-    // public void playHurtSound(Vector3f position) {
-    //     SoundSystem soundSystem = Game.getSoundSystem();
-    //     if (soundSystem != null) {
-    //         soundSystem.playSoundWithVariation("cow_hurt", 0.6f);
-    //     }
-    // }
-
-    /**
-     * Generates a random time for the next ambient moo.
-     */
-    // private float generateRandomMooTime() {
-    //     return MIN_MOO_INTERVAL + (float) Math.random() * (MAX_MOO_INTERVAL - MIN_MOO_INTERVAL);
-    // }
-
-    /**
      * Resets the cow sound state. Call when cow is spawned or respawned.
      */
     public void reset() {
         walkingSoundTimer = 0.0f;
         wasMovingLastFrame = false;
-        // ambientMooTimer = 0.0f;
-        // nextMooTime = generateRandomMooTime();
     }
 }

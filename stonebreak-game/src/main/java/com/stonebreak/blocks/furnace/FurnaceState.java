@@ -226,6 +226,7 @@ public final class FurnaceState {
     }
 
     private static int parseInt(String s) {
+        // Save data may be missing or corrupted; default to 0 to reset furnace progress gracefully.
         try { return Integer.parseInt(s.trim()); } catch (Exception e) { return 0; }
     }
 

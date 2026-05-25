@@ -65,6 +65,8 @@ public class Settings {
         loadSettingsInternal();
     }
     
+    // No synchronization needed: getInstance() is always called from the main thread during startup,
+    // before any background threads are spawned. Post-init access is read-only.
     public static Settings getInstance() {
         if (instance == null) {
             instance = new Settings();

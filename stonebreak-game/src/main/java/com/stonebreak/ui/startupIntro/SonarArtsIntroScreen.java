@@ -78,6 +78,8 @@ public final class SonarArtsIntroScreen {
             sound.loadSound(SONAR_SOUND_NAME, SONAR_SOUND_RESOURCE);
             sonarSoundRegistered = true;
         } catch (Throwable t) {
+            // Intro sound is cosmetic — if the audio device is unavailable or the resource
+            // is missing, the intro still plays silently rather than crashing.
             System.err.println("[SonarIntro] Failed to register sonar sound: " + t.getMessage());
         }
     }

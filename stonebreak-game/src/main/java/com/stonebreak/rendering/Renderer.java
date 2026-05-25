@@ -125,6 +125,8 @@ public class Renderer {
             System.out.println("[Renderer] Skija UI backend initialized (" +
                     configManager.getWindowWidth() + "x" + configManager.getWindowHeight() + ")");
         } catch (Throwable t) {
+            // Skija is optional — NanoVG handles fallback UI rendering. Log and continue
+            // rather than crashing the game over a non-fatal UI backend failure.
             System.err.println("[Renderer] Skija backend init failed: " + t.getMessage());
             t.printStackTrace();
         }
@@ -477,6 +479,8 @@ public class Renderer {
             uiRenderer.cleanup();
         }
         if (skijaBackend != null) {
+            // Cleanup is best-effort on shutdown — swallow failures to avoid masking any
+            // earlier error that caused the shutdown path to be reached.
             try {
                 com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry.disposeAll();
             } catch (Throwable t) {
