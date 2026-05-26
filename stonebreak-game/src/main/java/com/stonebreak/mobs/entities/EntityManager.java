@@ -220,6 +220,7 @@ public class EntityManager {
                 yield new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
             }
             case CHICKEN -> new com.stonebreak.mobs.chicken.Chicken(world, position);
+            case SHEEP -> new com.stonebreak.mobs.sheep.Sheep(world, position, "default");
             // Projectiles (FIRE_BOLT, ARROW, BOBBER) require a launch direction and
             // are spawned via their dedicated spawn* methods, not this generic path.
             default -> {

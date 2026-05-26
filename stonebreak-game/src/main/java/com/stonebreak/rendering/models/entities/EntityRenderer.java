@@ -277,6 +277,19 @@ public class EntityRenderer {
             return;
         }
 
+        if (entityType == EntityType.SHEEP && entity instanceof com.stonebreak.mobs.sheep.Sheep sheep) {
+            sbeEntityRenderer.render(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
+                    sheep.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.SheepStateMapping.sbeState(sheep.getAI().getCurrentState()),
+                    sheep.getAnimationController().getTotalAnimationTime(),
+                    sheep.getPosition(),
+                    sheep.getRotation().y,
+                    sheep.getScale(),
+                    viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
+
         if (entityType == EntityType.CHICKEN && entity instanceof com.stonebreak.mobs.chicken.Chicken chicken) {
             com.stonebreak.mobs.chicken.ChickenAI chickenAI = chicken.getAI();
             // The Wingflap clip is one-shot: feed it flap-relative time (the AI
@@ -345,6 +358,19 @@ public class EntityRenderer {
                     cow.getPosition(),
                     cow.getRotation().y,
                     cow.getScale(),
+                    viewMatrix, projectionMatrix, color);
+            return;
+        }
+
+        if (entityType == EntityType.SHEEP && entity instanceof com.stonebreak.mobs.sheep.Sheep sheep) {
+            sbeEntityRenderer.renderWireframe(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
+                    sheep.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.SheepStateMapping.sbeState(sheep.getAI().getCurrentState()),
+                    sheep.getAnimationController().getTotalAnimationTime(),
+                    sheep.getPosition(),
+                    sheep.getRotation().y,
+                    sheep.getScale(),
                     viewMatrix, projectionMatrix, color);
             return;
         }

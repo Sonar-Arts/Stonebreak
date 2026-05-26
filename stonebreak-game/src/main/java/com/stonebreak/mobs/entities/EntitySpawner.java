@@ -89,7 +89,7 @@ public class EntitySpawner {
 
     // Passive mob types spawned by this spawner, each rolled independently so
     // chickens appear with the same frequency as cows.
-    private static final EntityType[] PASSIVE_SPAWN_TYPES = {EntityType.COW, EntityType.CHICKEN};
+    private static final EntityType[] PASSIVE_SPAWN_TYPES = {EntityType.COW, EntityType.SHEEP, EntityType.CHICKEN};
 
     /**
      * Initial spawning when a chunk is generated.

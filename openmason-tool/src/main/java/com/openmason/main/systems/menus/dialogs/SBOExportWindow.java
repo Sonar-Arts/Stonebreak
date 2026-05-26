@@ -134,6 +134,7 @@ public class SBOExportWindow {
      */
     public void show() {
         visible.set(true);
+        iniFileSet = false;
         prepopulateFromModel();
         if (numericId.get() < 0) {
             numericId.set(NumericIdValidator.suggestNextFreeId(NumericIdValidator.Domain.BLOCK));
@@ -181,8 +182,7 @@ public class SBOExportWindow {
 
         ImGui.setNextWindowSizeConstraints(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, Float.MAX_VALUE, Float.MAX_VALUE);
 
-        int windowFlags = ImGuiWindowFlags.NoBringToFrontOnFocus
-                | ImGuiWindowFlags.NoDocking
+        int windowFlags = ImGuiWindowFlags.NoDocking
                 | ImGuiWindowFlags.NoTitleBar
                 | ImGuiWindowFlags.NoCollapse
                 | ImGuiWindowFlags.NoScrollbar;
