@@ -133,29 +133,6 @@ public class CcoNeighborCoordinator {
     }
 
     /**
-     * Marks ALL four cardinal neighbors dirty and schedules their mesh rebuilds, regardless of
-     * any local-coordinate edge condition. Use for whole-chunk operations (e.g. installing a
-     * network-streamed chunk) where every border of every adjacent chunk needs to re-mesh
-     * against the newly-installed terrain. The single-block variant
-     * {@link #markAndScheduleNeighbors(int, int, int, int, Consumer)} only schedules the
-     * neighbor(s) implied by {@code (localX, localZ)} — wrong choice for whole-chunk installs.
-     *
-     * @param chunkX Center chunk X coordinate
-     * @param chunkZ Center chunk Z coordinate
-     * @param meshBuildScheduler Callback to schedule mesh builds
-     */
-    public void markAndScheduleAllNeighbors(int chunkX, int chunkZ,
-                                            Consumer<Chunk> meshBuildScheduler) {
-        if (meshBuildScheduler == null) {
-            throw new IllegalArgumentException("Mesh build scheduler cannot be null");
-        }
-        markAndScheduleNeighbor(chunkX - 1, chunkZ, meshBuildScheduler);
-        markAndScheduleNeighbor(chunkX + 1, chunkZ, meshBuildScheduler);
-        markAndScheduleNeighbor(chunkX, chunkZ - 1, meshBuildScheduler);
-        markAndScheduleNeighbor(chunkX, chunkZ + 1, meshBuildScheduler);
-    }
-
-    /**
      * Ensures all cardinal neighbors (N, S, E, W) are ready for rendering.
      * Schedules mesh builds for any neighbors that are populated but don't have meshes.
      *

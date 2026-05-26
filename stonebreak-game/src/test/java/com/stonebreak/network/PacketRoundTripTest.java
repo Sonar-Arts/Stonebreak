@@ -64,7 +64,7 @@ class PacketRoundTripTest {
         assertEquals(new WelcomeS2C(7, 123456789L, 1f, 64f, 2f), roundTrip(WelcomeS2C.CODEC, new WelcomeS2C(7, 123456789L, 1f, 64f, 2f)));
         assertEquals(new KickS2C("bye"), roundTrip(KickS2C.CODEC, new KickS2C("bye")));
         assertEquals(new DisconnectC2S("leaving"), roundTrip(DisconnectC2S.CODEC, new DisconnectC2S("leaving")));
-        assertEquals(new BlockChangeC2S(10, 64, -5, (short) 3), roundTrip(BlockChangeC2S.CODEC, new BlockChangeC2S(10, 64, -5, (short) 3)));
+        assertEquals(new BlockChangeC2S(10, 64, -5, (short) 3, (short) 1), roundTrip(BlockChangeC2S.CODEC, new BlockChangeC2S(10, 64, -5, (short) 3, (short) 1)));
         assertEquals(new BlockChangeS2C(10, 64, -5, (short) 3), roundTrip(BlockChangeS2C.CODEC, new BlockChangeS2C(10, 64, -5, (short) 3)));
         assertEquals(new PlayerStateC2S(1f, 2f, 3f, 90f, -10f), roundTrip(PlayerStateC2S.CODEC, new PlayerStateC2S(1f, 2f, 3f, 90f, -10f)));
         assertEquals(new PlayerStateS2C(4, 1f, 2f, 3f, 90f, -10f), roundTrip(PlayerStateS2C.CODEC, new PlayerStateS2C(4, 1f, 2f, 3f, 90f, -10f)));
@@ -117,7 +117,7 @@ class PacketRoundTripTest {
         PacketRegistry reg = StonebreakProtocol.registry();
         assertEquals(new HandshakeC2S(1, "p"), viaRegistry(reg, PLAY, SERVERBOUND, new HandshakeC2S(1, "p")));
         assertEquals(new WelcomeS2C(1, 2L, 3f, 4f, 5f), viaRegistry(reg, PLAY, CLIENTBOUND, new WelcomeS2C(1, 2L, 3f, 4f, 5f)));
-        assertEquals(new BlockChangeC2S(1, 2, 3, (short) 4), viaRegistry(reg, PLAY, SERVERBOUND, new BlockChangeC2S(1, 2, 3, (short) 4)));
+        assertEquals(new BlockChangeC2S(1, 2, 3, (short) 4, (short) 5), viaRegistry(reg, PLAY, SERVERBOUND, new BlockChangeC2S(1, 2, 3, (short) 4, (short) 5)));
         assertEquals(new PlayerLeaveS2C(8), viaRegistry(reg, PLAY, CLIENTBOUND, new PlayerLeaveS2C(8)));
     }
 

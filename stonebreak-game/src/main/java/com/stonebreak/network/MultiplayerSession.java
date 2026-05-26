@@ -230,11 +230,16 @@ public final class MultiplayerSession {
 
     // ─── Game-system hooks ──────────────────────────────────────────────────────
 
-    /** Hook from {@code World.setBlockAt} for player-driven edits — routed via the local client. */
-    public static void onLocalBlockChange(int x, int y, int z, BlockType type) {
+    /**
+     * Hook from {@code World.setBlockAt} for player-driven edits — routed via the local client.
+     * {@code prevType} is the block the client just overwrote; the server uses it as the
+     * authoritative source of "what the player broke" for drop spawning (its own snapshot may
+     * lag behind under load).
+     */
+    public static void onLocalBlockChange(int x, int y, int z, BlockType type, BlockType prevType) {
         ClientWorldView c = client;
         if (c != null) {
-            c.onLocalBlockChange(x, y, z, type);
+            c.onLocalBlockChange(x, y, z, type, prevType);
         }
     }
 

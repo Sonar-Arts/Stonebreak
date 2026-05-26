@@ -73,14 +73,6 @@ public class World {
     // singleton's manager, which during server boot is the previous session's terminated one).
     private volatile com.stonebreak.mobs.entities.EntityManager entityManager;
 
-    // Render-only client: chunks installed by the server may have their mesh build SKIPPED (not
-    // failed) if the chunk's placeholder build is in-flight when the network payload arrives —
-    // scheduleConditionalMeshBuild silently no-ops in that state, and the failed-build retry path
-    // doesn't catch it. We track these and re-schedule each tick until the chunk has a renderable
-    // handle (self-cleaning).
-    private final java.util.Set<ChunkPosition> streamedChunksAwaitingMesh =
-        java.util.concurrent.ConcurrentHashMap.newKeySet();
-
     public World() {
         this(new WorldConfiguration());
     }
@@ -290,7 +282,6 @@ public class World {
         // build queue. (Distant streamed chunks are not yet unloaded — memory grows; add
         // client-side unloading later.)
         meshPipeline.requeueFailedChunks();
-        retryStreamedChunkMeshes();
         meshPipeline.processChunkMeshBuildRequests(this);
         unloadClientChunksOutsideView();
     }
@@ -544,7 +535,9 @@ public class World {
         // changes are applied by the client handlers via setBlockAt(..., false) — the
         // non-broadcasting path — so they never re-enter this hook and loop back out.
         if (isPlayerModification) {
-            com.stonebreak.network.MultiplayerSession.onLocalBlockChange(x, y, z, blockType);
+            // Pass `previous` so the server can spawn break drops from the client's view (its
+            // own world snapshot may lag — esp. for fast non-host breaks on a busy tick).
+            com.stonebreak.network.MultiplayerSession.onLocalBlockChange(x, y, z, blockType, previous);
         }
 
         return true;
@@ -896,12 +889,10 @@ public class World {
      */
     public void installNetworkChunk(int chunkX, int chunkZ, byte[] payload) {
         if (chunkStore == null) return;
-        Chunk chunk = chunkStore.getOrCreateChunk(chunkX, chunkZ);
-        if (chunk == null) {
-            // Async generation in progress; skip this packet — the host will
-            // re-broadcast modified chunks on a future tick if needed.
-            return;
-        }
+        // Synchronous slot creation — the render-only client has no disk-load or terrain-gen,
+        // so the chunk arrives ready in the same call. No async machinery, no race conditions,
+        // no chance of dropping the payload because the slot "isn't ready yet".
+        Chunk chunk = chunkStore.createOrGetNetworkChunkSlot(chunkX, chunkZ);
         try {
             com.openmason.engine.net.protocol.codec.VoxelChunkCodec.decodeInto(
                     payload,
@@ -918,41 +909,14 @@ public class World {
         if (meshPipeline != null) {
             markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
             if (neighborCoordinator != null) {
-                // Whole-chunk install needs all four neighbors re-meshed — the single-block
-                // markAndScheduleNeighbors(...,0,0,...) variant only re-meshes west+north.
-                neighborCoordinator.markAndScheduleAllNeighbors(chunkX, chunkZ,
+                // Single-block (0,0) re-meshes only west+north neighbors. That's intentional and
+                // sufficient for streaming: each newly-arriving chunk re-meshes the chunks west
+                // and north of it (which are usually already installed); east/south neighbors
+                // re-mesh themselves when THEY arrive and reference this chunk. The only stale
+                // borders are at the view edge — not visible to the player.
+                neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, 0, 0,
                         meshPipeline::scheduleConditionalMeshBuild);
             }
-            // Track for retry — scheduleConditionalMeshBuild may have silently no-op'd if the
-            // chunk's placeholder build was in-flight. The retry sweep in updateClient catches it.
-            streamedChunksAwaitingMesh.add(new ChunkPosition(chunkX, chunkZ));
-        }
-    }
-
-    /**
-     * Render-only client: re-schedule mesh builds for streamed chunks that don't yet have a
-     * renderable handle. Called once per client tick. {@code scheduleConditionalMeshBuild} is
-     * idempotent — no-ops if the chunk is already queued/meshed/not-dirty. Entries self-clean
-     * when a renderable handle exists or the chunk is unloaded. Only operates on chunks the
-     * server has already streamed, so it never manufactures empty placeholders.
-     */
-    private void retryStreamedChunkMeshes() {
-        if (meshPipeline == null || chunkStore == null || streamedChunksAwaitingMesh.isEmpty()) {
-            return;
-        }
-        java.util.Iterator<ChunkPosition> it = streamedChunksAwaitingMesh.iterator();
-        while (it.hasNext()) {
-            ChunkPosition pos = it.next();
-            Chunk chunk = chunkStore.getChunk(pos.getX(), pos.getZ());
-            if (chunk == null) {
-                it.remove(); // chunk unloaded — stop tracking
-                continue;
-            }
-            if (chunk.getMmsRenderableHandle() != null) {
-                it.remove(); // mesh built successfully — stop tracking
-                continue;
-            }
-            meshPipeline.scheduleConditionalMeshBuild(chunk);
         }
     }
 

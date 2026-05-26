@@ -54,8 +54,16 @@ public final class ServerBlockHandler {
             sendRevert(sp, c.x(), c.y(), c.z(), ctx);
             return;
         }
-        BlockType prev = world.getBlockAt(c.x(), c.y(), c.z());
         BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
+        // Use the CLIENT-reported prev as the source of truth for "what the player broke" —
+        // the server's own world snapshot can lag under burst load (esp. for fast non-host
+        // edits arriving between server ticks), causing the server's getBlockAt to read the
+        // post-edit AIR and emit no drop. Cross-check the server's snapshot only as a sanity
+        // guard for cheating: if the client claims a block we'd never accept, fall back to
+        // the server's view.
+        BlockType clientPrev = BlockType.getById(c.prevBlockTypeId() & 0xFFFF);
+        BlockType serverPrev = world.getBlockAt(c.x(), c.y(), c.z());
+        BlockType prev = (clientPrev != null && clientPrev != BlockType.AIR) ? clientPrev : serverPrev;
         boolean applied = applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId());
         if (!applied) {
             // Host chunk not loaded — don't broadcast (originator applied locally; a

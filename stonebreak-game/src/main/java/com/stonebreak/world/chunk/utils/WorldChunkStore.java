@@ -94,6 +94,38 @@ public class WorldChunkStore {
         return chunks.get(positionCache.get(x, z));
     }
 
+    /**
+     * Synchronously create (or return existing) chunk slot for a streamed network chunk.
+     *
+     * <p>Render-only clients ({@code terrainGenerationEnabled = false}) deliberately bypass
+     * the async {@link #getOrCreateChunk} path here: the async machinery is meant for disk
+     * load + terrain generation, neither of which a render-only client does — and its
+     * sync-completion path is racy (the inline {@code .thenApply} puts the chunk into the
+     * map BEFORE the outer call returns, so {@code getOrCreateChunk} returns {@code null}
+     * even when the chunk is already resident). For a freshly-arriving network chunk we
+     * just want an empty resident slot, NOW, with no futures.
+     *
+     * <p>Fires the load listener exactly once on first creation (mesh-pipeline marks
+     * neighbor borders dirty so they re-mesh against the new chunk).
+     */
+    public Chunk createOrGetNetworkChunkSlot(int x, int z) {
+        ChunkPosition pos = positionCache.get(x, z);
+        Chunk existing = chunks.get(pos);
+        if (existing != null) {
+            return existing;
+        }
+        Chunk chunk = generateEmptyChunk(x, z);
+        Chunk prior = chunks.putIfAbsent(pos, chunk);
+        if (prior != null) {
+            // Lost a race against another thread that just installed the same chunk; use theirs.
+            return prior;
+        }
+        if (loadListener != null) {
+            notify(loadListener, chunk);
+        }
+        return chunk;
+    }
+
     public Chunk getOrCreateChunk(int x, int z) {
         ChunkPosition pos = positionCache.get(x, z);
 

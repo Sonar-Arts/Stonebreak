@@ -207,13 +207,14 @@ public final class ClientWorldView {
 
     // ─── Local intents (wired from game systems in the lifecycle phase) ──────────
 
-    /** Local-player block edit: send the intent to the server. */
-    public void onLocalBlockChange(int x, int y, int z, BlockType type) {
+    /** Local-player block edit: send the intent (with the prev block the player saw) to the server. */
+    public void onLocalBlockChange(int x, int y, int z, BlockType type, BlockType prevType) {
         if (connection == null) {
             return;
         }
         short id = (short) (type == null ? 0 : type.getId());
-        connection.send(new BlockChangeC2S(x, y, z, id), false);
+        short prevId = (short) (prevType == null ? 0 : prevType.getId());
+        connection.send(new BlockChangeC2S(x, y, z, id, prevId), false);
     }
 
     /**
