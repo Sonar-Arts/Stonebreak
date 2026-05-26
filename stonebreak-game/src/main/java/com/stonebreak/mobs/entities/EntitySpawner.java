@@ -268,7 +268,7 @@ public class EntitySpawner {
         int z = (int) Math.floor(position.z);
 
         return switch (type) {
-            case COW, CHICKEN -> isValidGroundSpawnLocation(x, y, z);
+            case COW, SHEEP, CHICKEN -> isValidGroundSpawnLocation(x, y, z);
             default -> false;
         };
     }
@@ -313,7 +313,7 @@ public class EntitySpawner {
         Vector3f playerPos = player.getPosition();
         List<Entity> nearby = entityManager.getEntitiesInRange(playerPos, SPAWN_RADIUS);
         return (int) nearby.stream()
-                .filter(e -> e.getType() == EntityType.COW || e.getType() == EntityType.CHICKEN)
+                .filter(e -> e.getType() == EntityType.COW || e.getType() == EntityType.SHEEP || e.getType() == EntityType.CHICKEN)
                 .count();
     }
 
