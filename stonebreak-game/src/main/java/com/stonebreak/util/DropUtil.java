@@ -49,14 +49,17 @@ public class DropUtil {
         );
         
         BlockDrop drop = BlockDrop.createDropWithVelocity(world, dropPosition, blockType, initialVelocity);
-        
-        // Add to entity manager
-        EntityManager entityManager = Game.getEntityManager();
+
+        // Route through the passed world's EntityManager (NOT Game.getEntityManager(), which
+        // always resolves to the client render world in the two-world model). On a server-thread
+        // break this puts the drop into the authoritative EntityManager whose spawn listener
+        // emits EntitySpawnS2C to every connected client.
+        EntityManager entityManager = world.getEntityManager();
         if (entityManager != null) {
             entityManager.addEntity(drop);
         }
     }
-    
+
     /**
      * Creates multiple block drops for blocks that drop multiple items (like snow layers).
      */
@@ -90,14 +93,13 @@ public class DropUtil {
         );
         
         ItemDrop drop = ItemDrop.createDropWithVelocity(world, dropPosition, itemStack, initialVelocity);
-        
-        // Add to entity manager
-        EntityManager entityManager = Game.getEntityManager();
+
+        EntityManager entityManager = world.getEntityManager();
         if (entityManager != null) {
             entityManager.addEntity(drop);
         }
     }
-    
+
     /**
      * Creates an item drop from item type and count.
      */

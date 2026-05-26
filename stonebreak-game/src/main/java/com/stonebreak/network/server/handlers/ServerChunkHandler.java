@@ -38,11 +38,21 @@ public final class ServerChunkHandler {
      */
     private static final int FORGET_DISTANCE_CHUNKS = 10;
     /**
-     * Chunks streamed per player per tick. Kept modest because both the server encode and the
-     * client decode run on the main game thread (the integrated server ticks there) — a large
-     * burst causes frame hitches. 8/tick @ 20 Hz = 160 chunks/s fills a view in ~2 s.
+     * Chunks streamed per remote player per tick. Kept modest because both the server encode
+     * and the client decode run on the main game thread (the integrated server ticks there) —
+     * a large burst causes frame hitches over the wire. 8/tick @ 20 Hz = 160 chunks/s fills a
+     * view in ~2 s. See {@link #LOCAL_PUSH_PER_TICK} for the in-JVM host fast path.
      */
     private static final int MAX_PUSH_PER_TICK = 8;
+    /**
+     * Streaming budget for the in-JVM host player (Netty LocalChannel). Pre-Netty singleplayer
+     * had no streaming throttle at all — chunks generated and rendered in a single world. With
+     * the two-world model the host self-streams over an in-process channel where encode/decode
+     * is an object handoff (no serialization), so we can ship a much larger burst per tick
+     * without paying any wire cost. Keeps host responsiveness close to the pre-Netty feel and
+     * stops a fast-flying host from outrunning its own chunk stream.
+     */
+    private static final int LOCAL_PUSH_PER_TICK = 256;
 
     /** Current version per chunk key; bumped on modification so clients re-receive it. */
     private final Map<Long, Integer> chunkVersions = new HashMap<>();
@@ -92,7 +102,7 @@ public final class ServerChunkHandler {
                 }
             }
 
-            int budget = MAX_PUSH_PER_TICK;
+            int budget = sp.isLocal() ? LOCAL_PUSH_PER_TICK : MAX_PUSH_PER_TICK;
             outer:
             for (int r = 0; r <= VIEW_DISTANCE_CHUNKS; r++) {
                 for (int dz = -r; dz <= r; dz++) {

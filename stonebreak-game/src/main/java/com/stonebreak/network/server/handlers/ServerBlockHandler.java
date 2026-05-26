@@ -62,9 +62,14 @@ public final class ServerBlockHandler {
             // re-broadcast would worsen divergence with other clients).
             return;
         }
-        // Break (non-air → air): spawn drops authoritatively. The EntityManager listener
-        // broadcasts the resulting drop entities (see ServerEntityHandler).
+        // Break (non-air → air): spawn drops authoritatively and run per-break cleanup. The
+        // EntityManager listener broadcasts the resulting drop entities (see ServerEntityHandler).
         if (prev != null && prev != BlockType.AIR && incoming == BlockType.AIR) {
+            if (prev == BlockType.FURNACE) {
+                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr =
+                    com.stonebreak.core.Game.getInstance().getFurnaceRegistry();
+                if (fr != null) fr.onBlockBroken(world, c.x(), c.y(), c.z());
+            }
             Vector3f dropPos = new Vector3f(c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f);
             com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev);
         }

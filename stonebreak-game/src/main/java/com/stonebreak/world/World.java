@@ -73,6 +73,14 @@ public class World {
     // singleton's manager, which during server boot is the previous session's terminated one).
     private volatile com.stonebreak.mobs.entities.EntityManager entityManager;
 
+    // Render-only client: chunks installed by the server may have their mesh build SKIPPED (not
+    // failed) if the chunk's placeholder build is in-flight when the network payload arrives —
+    // scheduleConditionalMeshBuild silently no-ops in that state, and the failed-build retry path
+    // doesn't catch it. We track these and re-schedule each tick until the chunk has a renderable
+    // handle (self-cleaning).
+    private final java.util.Set<ChunkPosition> streamedChunksAwaitingMesh =
+        java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     public World() {
         this(new WorldConfiguration());
     }
@@ -282,6 +290,7 @@ public class World {
         // build queue. (Distant streamed chunks are not yet unloaded — memory grows; add
         // client-side unloading later.)
         meshPipeline.requeueFailedChunks();
+        retryStreamedChunkMeshes();
         meshPipeline.processChunkMeshBuildRequests(this);
         unloadClientChunksOutsideView();
     }
@@ -909,9 +918,41 @@ public class World {
         if (meshPipeline != null) {
             markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
             if (neighborCoordinator != null) {
-                neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, 0, 0,
+                // Whole-chunk install needs all four neighbors re-meshed — the single-block
+                // markAndScheduleNeighbors(...,0,0,...) variant only re-meshes west+north.
+                neighborCoordinator.markAndScheduleAllNeighbors(chunkX, chunkZ,
                         meshPipeline::scheduleConditionalMeshBuild);
             }
+            // Track for retry — scheduleConditionalMeshBuild may have silently no-op'd if the
+            // chunk's placeholder build was in-flight. The retry sweep in updateClient catches it.
+            streamedChunksAwaitingMesh.add(new ChunkPosition(chunkX, chunkZ));
+        }
+    }
+
+    /**
+     * Render-only client: re-schedule mesh builds for streamed chunks that don't yet have a
+     * renderable handle. Called once per client tick. {@code scheduleConditionalMeshBuild} is
+     * idempotent — no-ops if the chunk is already queued/meshed/not-dirty. Entries self-clean
+     * when a renderable handle exists or the chunk is unloaded. Only operates on chunks the
+     * server has already streamed, so it never manufactures empty placeholders.
+     */
+    private void retryStreamedChunkMeshes() {
+        if (meshPipeline == null || chunkStore == null || streamedChunksAwaitingMesh.isEmpty()) {
+            return;
+        }
+        java.util.Iterator<ChunkPosition> it = streamedChunksAwaitingMesh.iterator();
+        while (it.hasNext()) {
+            ChunkPosition pos = it.next();
+            Chunk chunk = chunkStore.getChunk(pos.getX(), pos.getZ());
+            if (chunk == null) {
+                it.remove(); // chunk unloaded — stop tracking
+                continue;
+            }
+            if (chunk.getMmsRenderableHandle() != null) {
+                it.remove(); // mesh built successfully — stop tracking
+                continue;
+            }
+            meshPipeline.scheduleConditionalMeshBuild(chunk);
         }
     }
 

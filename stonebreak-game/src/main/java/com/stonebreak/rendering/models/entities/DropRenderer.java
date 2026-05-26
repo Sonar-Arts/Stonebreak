@@ -378,11 +378,21 @@ public class DropRenderer {
             glDepthMask(true);
         }
 
+        // Restore shared shader state — the loop overwrites viewMatrix per player and tweaks
+        // u_color/u_useTextureArray/u_useSolidColor/u_isUIElement/depthMask. The subsequent
+        // chunk transparent pass relies on viewMatrix being the camera view (it does not re-bind
+        // it), so leaking the last hand model-view transforms water/ice/glass by it — visible as
+        // translucent blocks "pinned behind" the player and turning black. Mirror the cleanup in
+        // renderOpaqueDrops to stay symmetric.
+        shaderProgram.setUniform("viewMatrix", viewMatrix);
+        glDepthMask(true);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
     }
 
     /**

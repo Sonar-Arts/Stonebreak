@@ -7,9 +7,7 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.player.combat.AttackController;
-import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
 import org.joml.Vector3i;
 
 /**
@@ -121,36 +119,18 @@ public class BlockBreaker {
         if (blockType == BlockType.WATER) {
             Water.removeWaterSource(pos.x, pos.y, pos.z);
         }
-        // Capture snow layer count before removing the data, so drops can use it
-        int snowLayers = 0;
         if (blockType == BlockType.SNOW) {
-            snowLayers = world.getSnowLayers(pos.x, pos.y, pos.z);
             world.getSnowLayerManager().removeSnowLayers(pos.x, pos.y, pos.z);
         }
-        Vector3f dropPosition = new Vector3f(pos.x + 0.5f, pos.y + 0.5f, pos.z + 0.5f);
-        // Drops are host-authoritative in multiplayer. A client that creates
-        // its own local drop here would end up with two drops (the local one
-        // plus the shadow the host broadcasts back) and would double-collect
-        // because the host also issues a giveItemTo when the client walks
-        // through the host's drop.
-        if (!com.stonebreak.network.MultiplayerSession.isClient()) {
-            if (blockType == BlockType.FURNACE) {
-                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = Game.getInstance().getFurnaceRegistry();
-                if (fr != null) fr.onBlockBroken(world, pos.x, pos.y, pos.z);
-            }
-            ItemType toolItem = getHeldToolType();
-            DropUtil.handleBlockBroken(world, dropPosition, blockType, toolItem, snowLayers);
-        }
+        // Drops and per-block-break side effects (furnace cleanup, item drops) are
+        // server-authoritative. The setBlockAt(..., true) below forwards this edit to the
+        // server via MultiplayerSession.onLocalBlockChange; ServerBlockHandler.handleBlockChange
+        // then runs DropUtil + furnace cleanup on the server world, and broadcasts the resulting
+        // drops via EntitySpawnS2C. This applies uniformly to host and client — the host is its
+        // own server's LocalChannel client. Running DropUtil here too would create a duplicate
+        // local drop (in the client EM) alongside the server-spawned shadow.
         world.setBlockAt(pos.x, pos.y, pos.z, BlockType.AIR, true);
         Water.onBlockBroken(pos.x, pos.y, pos.z);
-    }
-
-    private ItemType getHeldToolType() {
-        ItemStack selectedItem = inventory.getSelectedHotbarSlot();
-        if (selectedItem != null && selectedItem.isTool()) {
-            return selectedItem.asItemType();
-        }
-        return null;
     }
 
     private static boolean isWoodenBlock(BlockType blockType) {
