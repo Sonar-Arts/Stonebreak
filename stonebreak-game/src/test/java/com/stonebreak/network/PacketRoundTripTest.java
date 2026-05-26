@@ -16,6 +16,8 @@ import com.stonebreak.network.packet.handshake.HandshakeC2S;
 import com.stonebreak.network.packet.handshake.KickS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.network.packet.player.GiveItemS2C;
+import com.stonebreak.network.packet.player.PlayerDataC2S;
+import com.stonebreak.network.packet.player.PlayerDataS2C;
 import com.stonebreak.network.packet.player.PlayerHeldItemC2S;
 import com.stonebreak.network.packet.player.PlayerHeldItemS2C;
 import com.stonebreak.network.packet.player.PlayerJoinS2C;
@@ -87,6 +89,17 @@ class PacketRoundTripTest {
         assertEquals(3, decoded.chunkX());
         assertEquals(-7, decoded.chunkZ());
         assertArrayEquals(payload, decoded.payload());
+    }
+
+    @Test
+    void playerDataBlobsRoundTrip() {
+        // PlayerData{C2S,S2C} carry an opaque JSON blob; byte[] needs array equality (record
+        // equals() compares array identity, so assertEquals would falsely fail here).
+        byte[] blob = "{\"inv\":[1,2,3]}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        assertArrayEquals(blob, roundTrip(PlayerDataC2S.CODEC, new PlayerDataC2S(blob)).json());
+        assertArrayEquals(blob, roundTrip(PlayerDataS2C.CODEC, new PlayerDataS2C(blob)).json());
+        // Empty blob (S2C "no saved data" sentinel) must survive the round-trip too.
+        assertArrayEquals(new byte[0], roundTrip(PlayerDataS2C.CODEC, new PlayerDataS2C(new byte[0])).json());
     }
 
     @Test
