@@ -47,8 +47,19 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
     private final World world;
     private final float[] waterTopTextureBounds; // [uMin, uMax, vMin, vMax]
 
-    private long cachedCornerKey = Long.MIN_VALUE;
-    private float[] cachedCornerHeights;
+    /**
+     * Per-thread memo for {@link #getSewnCornerHeights}. The mesh pipeline runs many builder
+     * threads against the singleton MmsWaterGenerator (via singleton MmsCcoAdapter); a plain
+     * mutable instance cache here would race — one thread writes corner heights for chunk X,
+     * another reads them for its own chunk Y, producing skewed/dark translucent water sheets
+     * under burst load (e.g. join-time chunk flood). Sibling SCRATCH_* buffers below are
+     * correctly thread-local for the same reason.
+     */
+    private static final class CornerCache {
+        long key = Long.MIN_VALUE;
+        float[] heights;
+    }
+    private static final ThreadLocal<CornerCache> CORNER_CACHE = ThreadLocal.withInitial(CornerCache::new);
 
     /**
      * Per-thread scratch buffers reused across water-face emissions. Water
@@ -267,8 +278,9 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
      */
     private float[] getSewnCornerHeights(int blockX, int blockY, int blockZ) {
         long key = packBlockKey(blockX, blockY, blockZ);
-        if (key == cachedCornerKey && cachedCornerHeights != null) {
-            return cachedCornerHeights;
+        CornerCache cache = CORNER_CACHE.get();
+        if (key == cache.key && cache.heights != null) {
+            return cache.heights;
         }
 
         // Corner indices (see header): 0=(x, z+1), 1=(x+1, z+1), 2=(x+1, z), 3=(x, z).
@@ -280,8 +292,8 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
         };
         normalizeCornerHeights(heights);
 
-        cachedCornerKey = key;
-        cachedCornerHeights = heights;
+        cache.key = key;
+        cache.heights = heights;
         return heights;
     }
 
@@ -375,15 +387,22 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
             return worldY;
         }
 
-        // Connect seamlessly to water below
+        // Connect seamlessly to water below. On the render-only client, WaterSystem never runs
+        // onChunkLoaded — Water.getWaterBlock returns null for SOURCE cells (only flowing levels
+        // are streamed over the wire), so a null lookup with belowType==WATER means a source.
+        // Treat it identically here as resolveWaterHeight / computeCanonicalCornerHeight already
+        // do; otherwise this falls through to getNeighborBlockHeight(WATER, ...) and yields a
+        // 1/8-block gap that stacks into visible walls at chunk borders.
         if (belowType == BlockType.WATER) {
             WaterBlock waterBelow = Water.getWaterBlock(blockX, belowY, blockZ);
-            if (waterBelow != null) {
-                float waterBelowHeight = waterBelow.level() == WaterBlock.SOURCE_LEVEL ?
-                    MAX_WATER_HEIGHT : (8 - waterBelow.level()) * MAX_WATER_HEIGHT / 8.0f;
-                waterBelowHeight = clampWaterHeight(waterBelowHeight);
-                return belowY + waterBelowHeight;
+            float waterBelowHeight;
+            if (waterBelow == null || waterBelow.level() == WaterBlock.SOURCE_LEVEL) {
+                waterBelowHeight = MAX_WATER_HEIGHT;
+            } else {
+                waterBelowHeight = (8 - waterBelow.level()) * MAX_WATER_HEIGHT / 8.0f;
             }
+            waterBelowHeight = clampWaterHeight(waterBelowHeight);
+            return belowY + waterBelowHeight;
         }
 
         // For non-water blocks, attach to top surface

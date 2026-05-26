@@ -80,8 +80,10 @@ public class WorldActionHandler {
                 System.out.println("Generated new world seed: " + seed);
             }
 
-            // Trigger actual world loading/generation process
-            Game.getInstance().startWorldGeneration(worldName, seed);
+            // Two-world model: singleplayer starts an in-process authoritative server (which
+            // loads/generates + persists the world) and connects the local client, which builds
+            // the render world. The client's WelcomeS2C handler drives the loading screen.
+            com.stonebreak.network.MultiplayerSession.startSingleplayer(worldName, seed);
 
             // Trigger callback for world loaded
             if (onWorldLoaded != null) {

@@ -42,6 +42,11 @@ public class SaveService implements AutoCloseable {
     private volatile World world;
     private volatile long lastAutoSaveTime;
 
+    // World-time source for save snapshots. In the two-world model the authoritative clock is
+    // the server's TimeOfDay (a render-only client's clock is frozen), so it is injected here.
+    // Null = fall back to the Game singleton's clock (the pre-two-world / co-located behavior).
+    private volatile com.stonebreak.world.TimeOfDay worldTimeSource;
+
     public SaveService(String worldPath) {
         this.worldPath = Objects.requireNonNull(worldPath, "worldPath");
         this.repository = new FileSaveRepository(worldPath);
@@ -68,6 +73,30 @@ public class SaveService implements AutoCloseable {
         this.worldData = worldData;
         this.player = player;
         this.world = world;
+        // Bind this service to the world so its chunk store persists through it, instead of
+        // the chunk store reaching into the Game singleton's save service.
+        if (world != null) {
+            world.setSaveService(this);
+        }
+    }
+
+    /**
+     * Inject the authoritative world clock used when stamping the world-time into saves. The
+     * server's {@code ServerLevel} sets this so persistence reflects server time rather than a
+     * render-only client's frozen clock. Pass {@code null} to revert to the Game-singleton clock.
+     */
+    public void setWorldTimeSource(com.stonebreak.world.TimeOfDay timeOfDay) {
+        this.worldTimeSource = timeOfDay;
+    }
+
+    /** Injected clock if present, else the Game singleton's (may be null during early bootstrap). */
+    private com.stonebreak.world.TimeOfDay resolveWorldTimeSource() {
+        com.stonebreak.world.TimeOfDay injected = worldTimeSource;
+        if (injected != null) {
+            return injected;
+        }
+        com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
+        return game != null ? game.getTimeOfDay() : null;
     }
 
     public void startAutoSave() {
@@ -122,11 +151,11 @@ public class SaveService implements AutoCloseable {
         long sessionTime = now - lastAutoSaveTime;
         WorldData updatedWorld = worldData.withAddedPlayTime(sessionTime);
 
-        // Capture current world time from TimeOfDay system
-        com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
-        if (game != null && game.getTimeOfDay() != null) {
-            long currentTimeTicks = game.getTimeOfDay().getTicks();
-            updatedWorld = updatedWorld.withWorldTime(currentTimeTicks);
+        // Capture current world time from the authoritative clock (server-owned in the two-world
+        // model; falls back to the Game singleton's clock when none is injected).
+        com.stonebreak.world.TimeOfDay timeSource = resolveWorldTimeSource();
+        if (timeSource != null) {
+            updatedWorld = updatedWorld.withWorldTime(timeSource.getTicks());
         }
 
         this.worldData = updatedWorld;
@@ -210,6 +239,38 @@ public class SaveService implements AutoCloseable {
         return CompletableFuture.supplyAsync(() -> repository.chunkExists(chunkX, chunkZ), ioExecutor);
     }
 
+    /**
+     * Persist a remote player's serialized PlayerData blob under players/&lt;username&gt;.json.
+     * Opaque to the save service — the bytes come straight from the client. Runs on the IO thread.
+     */
+    public CompletableFuture<Void> saveNamedPlayer(String username, byte[] json) {
+        if (username == null || json == null || json.length == 0) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return CompletableFuture.runAsync(() -> {
+            try {
+                repository.saveNamedPlayerBytes(username, json);
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to save player '" + username + "'", e);
+            }
+        }, ioExecutor).exceptionally(t -> {
+            System.err.println("[SAVE] Failed to save player '" + username + "': " + t.getMessage());
+            return null;
+        });
+    }
+
+    /** Load a remote player's serialized PlayerData blob, or null if none saved. IO thread. */
+    public CompletableFuture<byte[]> loadNamedPlayer(String username) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return repository.loadNamedPlayerBytes(username).orElse(null);
+            } catch (IOException e) {
+                System.err.println("[LOAD] Failed to load player '" + username + "': " + e.getMessage());
+                return null;
+            }
+        }, ioExecutor);
+    }
+
     public String getWorldPath() {
         return worldPath;
     }
@@ -291,11 +352,11 @@ public class SaveService implements AutoCloseable {
         long sessionTime = started - lastAutoSaveTime;
         WorldData updatedWorld = worldData.withAddedPlayTime(sessionTime);
 
-        // Capture current world time from TimeOfDay system
-        com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
-        if (game != null && game.getTimeOfDay() != null) {
-            long currentTimeTicks = game.getTimeOfDay().getTicks();
-            updatedWorld = updatedWorld.withWorldTime(currentTimeTicks);
+        // Capture current world time from the authoritative clock (server-owned in the two-world
+        // model; falls back to the Game singleton's clock when none is injected).
+        com.stonebreak.world.TimeOfDay timeSource = resolveWorldTimeSource();
+        if (timeSource != null) {
+            updatedWorld = updatedWorld.withWorldTime(timeSource.getTicks());
         }
 
         this.worldData = updatedWorld;

@@ -102,7 +102,9 @@ public final class TerrainActionHandler {
 
         state.setErrorMessage(null);
         state.reset();
-        Game.getInstance().startWorldGeneration(name, seed);
+        // Two-world model: start the integrated server (it will load the just-written world)
+        // + local client. The client builds the render world from WelcomeS2C.
+        com.stonebreak.network.MultiplayerSession.startSingleplayer(name, seed);
         return true;
     }
 }

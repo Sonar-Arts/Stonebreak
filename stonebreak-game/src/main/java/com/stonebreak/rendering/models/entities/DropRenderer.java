@@ -378,11 +378,25 @@ public class DropRenderer {
             glDepthMask(true);
         }
 
+        // Restore shared shader state — the loop overwrites viewMatrix per player and tweaks
+        // u_color/u_useTextureArray/u_useSolidColor/u_isUIElement/depthMask. The subsequent
+        // chunk transparent pass relies on viewMatrix being the camera view AND
+        // u_useTextureArray=true (it does not re-bind either). If we leave the per-hand
+        // model-view, water/ice/glass renders transformed by it. If we leave u_useTextureArray
+        // false (the function sets it false at entry and only re-sets to true INSIDE the loop
+        // body, so a run with no held items leaks the entry-time false), the chunk shader
+        // samples the wrong texture and water renders black — visible as a flicker that
+        // correlates with what remote players are holding.
+        shaderProgram.setUniform("viewMatrix", viewMatrix);
+        glDepthMask(true);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_useTextureArray", true);
+        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
     }
 
     /**

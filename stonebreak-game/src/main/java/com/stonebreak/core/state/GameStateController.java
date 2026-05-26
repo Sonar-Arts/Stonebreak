@@ -68,9 +68,10 @@ public final class GameStateController {
             game.getJoinWorldScreen().onShow();
         }
 
-        // Tear down any active multiplayer session when returning to the main menu.
+        // Tear down any active session when returning to the main menu. In the two-world model
+        // singleplayer also runs an integrated server + local client, so tear those down too.
         if (state == GameState.MAIN_MENU
-                && com.stonebreak.network.MultiplayerSession.isOnline()) {
+                && com.stonebreak.network.MultiplayerSession.isInWorld()) {
             com.stonebreak.network.MultiplayerSession.shutdown();
         }
 

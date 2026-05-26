@@ -145,11 +145,10 @@ public class ChatSystem {
         if (!message.isEmpty()) {
             if (message.startsWith("/")) {
                 commandExecutor.executeCommand(message);
-            } else if (com.stonebreak.network.MultiplayerSession.isOnline()) {
-                // Multiplayer: route through the sync service so the message is
-                // broadcast and locally echoed by ChatSynchronizer.
-                com.stonebreak.network.MultiplayerSession.getSyncService()
-                        .notifyLocal(new com.stonebreak.network.sync.SyncEvent.ChatSubmitted(message));
+            } else if (com.stonebreak.network.MultiplayerSession.isInWorld()) {
+                // Two-world model: the local player is always a client in a world. Send to the
+                // server, which broadcasts to everyone (including us) — we render it on receipt.
+                com.stonebreak.network.MultiplayerSession.submitChat(message);
             } else {
                 messageManager.addMessage("<Player> " + message);
             }

@@ -271,9 +271,13 @@ public final class MmsMeshPipeline {
 
             com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult meshResult = MmsAPI.getInstance().generateChunkMesh(chunk);
             meshData = meshResult.atlasMesh();
-            success = meshData != null && !meshData.isEmpty();
+            // The build COMPLETED (no exception), so it is not a failure even if it produced no
+            // geometry — a chunk with no visible faces (fully enclosed, all-air, or off-view
+            // border) legitimately yields an empty mesh. Only thrown exceptions are retried.
+            success = true;
+            boolean hasGeometry = meshData != null && !meshData.isEmpty();
 
-            if (success) {
+            if (hasGeometry) {
                 // Store the full mesh result on the chunk so SBO mesh also gets uploaded
                 chunk.setPendingChunkMeshResult(meshResult);
 
@@ -294,6 +298,16 @@ public final class MmsMeshPipeline {
                 synchronized (chunk) {
                     chunk.getCcoStateManager().addState(CcoChunkState.MESH_CPU_READY);
                     chunk.getCcoDirtyTracker().clearMeshDirty();
+                }
+            } else {
+                // Valid empty result: clear dirty so it doesn't churn, and mark it "meshed" so
+                // markMeshGenerationComplete doesn't re-dirty it into a rebuild loop. Keep any
+                // existing GPU mesh (a transient empty build must not blank a rendered chunk).
+                synchronized (chunk) {
+                    chunk.getCcoDirtyTracker().clearMeshDirty();
+                    if (!chunk.getCcoStateManager().hasState(CcoChunkState.MESH_GPU_UPLOADED)) {
+                        chunk.getCcoStateManager().addState(CcoChunkState.MESH_CPU_READY);
+                    }
                 }
             }
 
@@ -579,8 +593,11 @@ public final class MmsMeshPipeline {
         synchronized (chunk) {
             chunk.getCcoStateManager().removeState(CcoChunkState.MESH_GENERATING);
 
-            // If not CPU ready, mark as dirty for retry
-            if (!chunk.getCcoStateManager().hasState(CcoChunkState.MESH_CPU_READY)) {
+            // If the chunk has no mesh at all (neither CPU-ready nor GPU-uploaded), mark dirty
+            // for retry. An already-meshed chunk (incl. one that just produced a valid empty
+            // result) must NOT be re-dirtied here, or it rebuilds forever.
+            if (!chunk.getCcoStateManager().hasState(CcoChunkState.MESH_CPU_READY)
+                    && !chunk.getCcoStateManager().hasState(CcoChunkState.MESH_GPU_UPLOADED)) {
                 chunk.getCcoDirtyTracker().markMeshDirtyOnly();
             }
         }

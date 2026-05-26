@@ -40,6 +40,12 @@ public class WorldChunkStore {
     private Consumer<Chunk> loadListener;
     private Consumer<Chunk> unloadListener;
 
+    // Client render-view worlds generate NO terrain — every chunk arrives from the server
+    // (installNetworkChunk). When disabled, generate() yields an empty all-air chunk that the
+    // network layer fills in. See the two-world separation plan, decision #1 (server streams
+    // all chunks). Default true: the authoritative/singleplayer world generates terrain.
+    private volatile boolean terrainGenerationEnabled = true;
+
     public WorldChunkStore(TerrainGenerationSystem terrainSystem,
                           WorldConfiguration config,
                           MmsMeshPipeline meshPipeline,
@@ -70,8 +76,54 @@ public class WorldChunkStore {
         this.unloadListener = unloadListener;
     }
 
+    /**
+     * Enable/disable local terrain generation. A client render-view world disables it so
+     * {@link #generate} returns empty chunks waiting to be filled by streamed network data
+     * instead of running {@code TerrainGenerationSystem}. Authoritative/singleplayer worlds
+     * leave it enabled.
+     */
+    public void setTerrainGenerationEnabled(boolean enabled) {
+        this.terrainGenerationEnabled = enabled;
+    }
+
+    public boolean isTerrainGenerationEnabled() {
+        return terrainGenerationEnabled;
+    }
+
     public Chunk getChunk(int x, int z) {
         return chunks.get(positionCache.get(x, z));
+    }
+
+    /**
+     * Synchronously create (or return existing) chunk slot for a streamed network chunk.
+     *
+     * <p>Render-only clients ({@code terrainGenerationEnabled = false}) deliberately bypass
+     * the async {@link #getOrCreateChunk} path here: the async machinery is meant for disk
+     * load + terrain generation, neither of which a render-only client does — and its
+     * sync-completion path is racy (the inline {@code .thenApply} puts the chunk into the
+     * map BEFORE the outer call returns, so {@code getOrCreateChunk} returns {@code null}
+     * even when the chunk is already resident). For a freshly-arriving network chunk we
+     * just want an empty resident slot, NOW, with no futures.
+     *
+     * <p>Fires the load listener exactly once on first creation (mesh-pipeline marks
+     * neighbor borders dirty so they re-mesh against the new chunk).
+     */
+    public Chunk createOrGetNetworkChunkSlot(int x, int z) {
+        ChunkPosition pos = positionCache.get(x, z);
+        Chunk existing = chunks.get(pos);
+        if (existing != null) {
+            return existing;
+        }
+        Chunk chunk = generateEmptyChunk(x, z);
+        Chunk prior = chunks.putIfAbsent(pos, chunk);
+        if (prior != null) {
+            // Lost a race against another thread that just installed the same chunk; use theirs.
+            return prior;
+        }
+        if (loadListener != null) {
+            notify(loadListener, chunk);
+        }
+        return chunk;
     }
 
     public Chunk getOrCreateChunk(int x, int z) {
@@ -192,7 +244,10 @@ public class WorldChunkStore {
 
         for (int x = playerChunkX - renderDist; x <= playerChunkX + renderDist; x++) {
             for (int z = playerChunkZ - renderDist; z <= playerChunkZ + renderDist; z++) {
-                Chunk chunk = getOrCreateChunk(x, z);
+                // Render-only (client) worlds must NEVER generate here — that would create empty
+                // all-air placeholder chunks the server never streams, whose empty meshes are
+                // treated as failed builds. Only return chunks the server has already installed.
+                Chunk chunk = terrainGenerationEnabled ? getOrCreateChunk(x, z) : getChunk(x, z);
                 if (chunk != null) {
                     visible.put(positionCache.get(x, z), chunk);
                 }
@@ -215,8 +270,10 @@ public class WorldChunkStore {
         // We must save the chunk first so extractWaterMetadata() can access those cells.
 
         // OPTIMIZATION: Async save - don't block main thread
-        // Save dirty chunks asynchronously, cleanup after save completes
-        if (chunk.isDirty()) {
+        // Save dirty chunks asynchronously, cleanup after save completes.
+        // A render-only client world has no save service — skip the save entirely (its chunks
+        // are authoritative on the server) so unloading doesn't error on every dirty chunk.
+        if (chunk.isDirty() && getSaveService() != null) {
             saveIfDirtyAsync(chunk).thenRun(() -> {
                 // AFTER save completes, notify unload listener to clean up water cells
                 notify(unloadListener, chunk);
@@ -341,6 +398,16 @@ public class WorldChunkStore {
                     if (meshPipeline != null) {
                         meshPipeline.scheduleConditionalMeshBuild(chunk);
                     }
+                    // Initial mob spawn runs HERE, not in generate(). Rationale: in generate()
+                    // the chunk isn't yet in the chunk store, its features (trees, etc.) haven't
+                    // landed, and its neighbor chunks may not exist — all of which let mobs
+                    // spawn onto unstable terrain and fall through the world. By the time the
+                    // chunk reaches this point it is resident, features-populated, and its 8
+                    // neighbors are loaded, so any mob placed on it has a stable footing.
+                    if (!chunk.getCcoMetadata().hasEntities()) {
+                        initialMobSpawn(chunk);
+                        chunk.setEntitiesGenerated(true);
+                    }
                     processed++;
                 } catch (Exception e) {
                     System.err.println("Exception populating features for chunk (" + x + ", " + z + "): " + e.getMessage());
@@ -384,6 +451,11 @@ public class WorldChunkStore {
     }
 
     private Chunk generate(int x, int z) {
+        // Client render-view: no local terrain. Hand back an empty chunk for the network
+        // layer to fill (installNetworkChunk). No features, no mob spawn, no save.
+        if (!terrainGenerationEnabled) {
+            return generateEmptyChunk(x, z);
+        }
         try {
             MemoryProfiler.getInstance().incrementAllocation("Chunk");
 
@@ -403,17 +475,18 @@ public class WorldChunkStore {
             // (which would otherwise block the mesh thread for ~1 ms/chunk).
             chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
 
-            // Initial mob spawning during chunk generation
-            // Following Minecraft rules: "Most animals spawn within chunks when they are generated"
-            // This is INITIAL population only - continuous spawning happens via spawning cycle
-            initialMobSpawn(chunk);
+            // Initial mob spawning is DEFERRED to processPendingFeaturePopulation(): at this
+            // point the chunk isn't in the chunk store yet, features haven't landed, and
+            // neighbors may not exist — all of which would spawn mobs onto unstable terrain
+            // and let them fall through the world.
 
             // CRITICAL FIX: Mark newly generated chunks as clean UNLESS they contain flowing water
             // setBlock() calls during generation marked them dirty, but they don't
             // need saving until the PLAYER modifies them. This prevents all 3000+
             // generated chunks from staying dirty forever and never being unloaded.
             // EXCEPTION: Chunks with flowing water MUST be saved to persist water metadata.
-            // NOTE: Initial mob spawning doesn't make chunk dirty - entities are transient and saved separately
+            // (Initial mob spawning now happens later, in processPendingFeaturePopulation,
+            // and dirties the chunk itself via setEntitiesGenerated.)
             boolean hasFlowingWater = chunkHasFlowingWater(chunk);
 
             if (!hasFlowingWater) {
@@ -430,20 +503,41 @@ public class WorldChunkStore {
     }
 
     /**
+     * Builds an empty, all-air chunk for a client render-view world (terrain generation
+     * disabled). The chunk's real contents arrive later via {@code installNetworkChunk}; this
+     * is just the resident placeholder so streamed data has somewhere to land. Marked as
+     * features-populated and clean — a client never generates features and never persists.
+     */
+    private Chunk generateEmptyChunk(int x, int z) {
+        MemoryProfiler.getInstance().incrementAllocation("Chunk");
+        Chunk chunk = new Chunk(x, z);
+        chunk.setFeaturesPopulated(true);
+        // Heightmap must be valid before the mesh-build samples it (sky shadows).
+        chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
+        chunk.markClean();
+        return chunk;
+    }
+
+    /**
      * Initial mob spawning during chunk generation.
      * Following Minecraft rules: "Most animals spawn within chunks when they are generated"
      * This provides initial population - continuous spawning happens via spawning cycles.
      */
     private void initialMobSpawn(Chunk chunk) {
-        // Get entity spawner from Game
-        Game game = Game.getInstance();
-        if (game == null || game.getEntitySpawner() == null) {
+        // Prefer this world's own spawner (the headless server world binds its own so mobs land
+        // in the server's EntityManager); fall back to the Game singleton for the co-located /
+        // single-world case.
+        com.stonebreak.mobs.entities.EntitySpawner spawner =
+            (world != null) ? world.getEntitySpawner() : null;
+        if (spawner == null) {
+            Game game = Game.getInstance();
+            spawner = (game != null) ? game.getEntitySpawner() : null;
+        }
+        if (spawner == null) {
             return;
         }
-
-        // Perform initial spawn for newly generated chunk
-        // EntitySpawner will handle spawn chance and mob placement
-        game.getEntitySpawner().initialChunkSpawn(chunk);
+        // EntitySpawner handles spawn chance and mob placement.
+        spawner.initialChunkSpawn(chunk);
     }
 
     /**
@@ -546,8 +640,9 @@ public class WorldChunkStore {
     }
 
     private SaveService getSaveService() {
-        Game game = Game.getInstance();
-        return (game != null) ? game.getSaveService() : null;
+        // Per-world persistence (set via SaveService.initialize). A client render world has
+        // none — its chunks are authoritative on the server and never saved locally.
+        return (world != null) ? world.getSaveService() : null;
     }
 
     private String getErrorMessage(Exception e) {

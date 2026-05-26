@@ -235,6 +235,7 @@ public class Game {
         // Initialize entity system
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
         this.entitySpawner = new com.stonebreak.mobs.entities.EntitySpawner(world, entityManager);
+        world.setEntityManager(this.entityManager);
         System.out.println("Entity system initialized - cows can now spawn!");
 
         // Note: TimeOfDay initialization is handled during world loading/generation
@@ -856,6 +857,89 @@ public class Game {
     /** Delegates to {@link com.stonebreak.core.world.WorldGenerationCoordinator#startWorldGeneration(String, long)}. */
     public void startWorldGeneration(String worldName, long seed) {
         worldGenerationCoordinator.startWorldGeneration(worldName, seed);
+    }
+
+    /**
+     * Build the client RENDER world (two-world model): a {@code World.createClientView} world
+     * that generates no terrain and carries no {@link SaveService} — its chunks, entities, and
+     * blocks stream in from the authoritative server. Called from the client world view on
+     * {@code WelcomeS2C}. Shows the loading screen until the spawn chunk has streamed in, then
+     * enters play (the loading screen's hide() transitions to PLAYING).
+     */
+    public void startClientWorld(String worldName, long seed, org.joml.Vector3f spawn) {
+        // The client never persists — drop any save service so the chunk store stays read-only.
+        SaveService prev = this.saveService;
+        if (prev != null) {
+            try { prev.stopAutoSave(); prev.close(); } catch (Exception ignored) { }
+            this.saveService = null;
+        }
+        setCurrentWorldName(worldName);
+        setCurrentWorldSeed(seed);
+        setCurrentWorldData(null);
+
+        LoadingScreen ls = getLoadingScreen();
+        if (ls != null) {
+            ls.show();
+        }
+        new Thread(() -> buildClientWorld(seed, spawn), "ClientWorld-Build").start();
+    }
+
+    private void buildClientWorld(long seed, org.joml.Vector3f spawn) {
+        try {
+            World renderWorld = worldLifecycle.createClientWorldInstance(seed);
+            worldLifecycle.replaceWorldInstance(renderWorld); // fresh player + world components
+            renderWorld.setSpawnPosition(spawn);
+            Player p = Game.getPlayer();
+            if (p != null) {
+                p.setPosition(spawn);
+            }
+
+            // Restore the local player's saved data NOW, on this thread, applied to the player we
+            // just created (p). Doing it here — rather than from the main-thread tick reading
+            // Game.getPlayer() — avoids the re-open bug where the restore hit the previous
+            // session's stale player. For SP/host this is synchronous; for JOIN it's a no-op
+            // (the data arrives via PlayerDataS2C and is applied by the client view).
+            com.stonebreak.network.MultiplayerSession.restoreLocalPlayer(p);
+
+            if (this.timeOfDay == null) {
+                // Client clock is server-authoritative; seed a sane default until TimeSync lands.
+                setTimeOfDay(new TimeOfDay(TimeOfDay.NOON));
+            }
+
+            // Wait (bounded) for the spawn chunk to stream in so the player doesn't fall into
+            // void before terrain arrives. The client tick (which installs chunks) runs during
+            // LOADING because GameLoop pumps the network before routing state updates.
+            // Wait for two things before entering PLAY:
+            //  1. the spawn chunk is STREAMED IN (present) — not meshed; meshing happens in
+            //     PLAYING and the player physics guard holds the player until it renders.
+            //  2. the local player's saved data has been RESTORED — otherwise the player would
+            //     briefly appear with an empty inventory before the restore lands (visible
+            //     especially on a fast same-world re-open).
+            int scx = (int) Math.floor(spawn.x / 16.0);
+            int scz = (int) Math.floor(spawn.z / 16.0);
+            long deadline = System.currentTimeMillis() + 10_000L;
+            while (System.currentTimeMillis() < deadline
+                    && (renderWorld.getChunkIfLoaded(scx, scz) == null
+                        || !com.stonebreak.network.MultiplayerSession.isLocalPlayerDataReady())) {
+                Thread.sleep(50);
+            }
+
+            LoadingScreen ls = getLoadingScreen();
+            if (ls != null) {
+                ls.hide(); // → GameState.PLAYING
+            }
+            if (mouseCaptureManager != null) {
+                mouseCaptureManager.forceUpdate();
+            }
+            System.out.println("[CLIENT-WORLD] Render world ready; entering play.");
+        } catch (Exception e) {
+            System.err.println("[CLIENT-WORLD] Failed to build render world: " + e.getMessage());
+            e.printStackTrace();
+            LoadingScreen ls = getLoadingScreen();
+            if (ls != null) {
+                ls.hide();
+            }
+        }
     }
 
     /** Delegates to {@link com.stonebreak.core.world.WorldGenerationCoordinator#completeWorldGeneration()}. */

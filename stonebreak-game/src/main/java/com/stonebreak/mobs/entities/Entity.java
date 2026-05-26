@@ -41,7 +41,7 @@ public abstract class Entity {
     // networkShadow=true means a remote-owned entity that should skip local AI/physics.
     private int networkId = -1;
     private boolean networkShadow = false;
-    private com.stonebreak.network.sync.NetworkInterpolator interpolator;
+    private com.stonebreak.network.client.NetworkInterpolator interpolator;
     
     /**
      * Creates a new entity at the specified position.
@@ -227,8 +227,8 @@ public abstract class Entity {
     public void setNetworkId(int networkId) { this.networkId = networkId; }
     public boolean isNetworkShadow() { return networkShadow; }
     public void setNetworkShadow(boolean shadow) { this.networkShadow = shadow; }
-    public com.stonebreak.network.sync.NetworkInterpolator getInterpolator() { return interpolator; }
-    public void setInterpolator(com.stonebreak.network.sync.NetworkInterpolator interp) { this.interpolator = interp; }
+    public com.stonebreak.network.client.NetworkInterpolator getInterpolator() { return interpolator; }
+    public void setInterpolator(com.stonebreak.network.client.NetworkInterpolator interp) { this.interpolator = interp; }
     
     /**
      * Simple bounding box class for collision detection.

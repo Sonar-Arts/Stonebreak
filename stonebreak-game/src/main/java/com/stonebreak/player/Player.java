@@ -125,6 +125,16 @@ public class Player {
 
         float dt = Game.getDeltaTime();
 
+        // Don't fall through terrain that hasn't streamed in yet (async client render world). If
+        // the chunk under us isn't rendered — an empty placeholder, or not arrived — hold
+        // position instead of dropping into the void. Flight/spectator move freely (no fall).
+        if (!flight.isFlying() && !spectator.isActive() && !isGroundChunkReady()) {
+            state.getVelocity().set(0f, 0f, 0f);
+            Vector3f hp = state.getPosition();
+            camera.setPosition(hp.x, hp.y + CAMERA_EYE_OFFSET, hp.z);
+            return;
+        }
+
         health.updateSpawnProtection(dt, state.isOnGround());
         swimming.updateWaterState();
         swimming.applyAntiFloatingPreIntegration(flight.isFlying(),
@@ -156,6 +166,22 @@ public class Player {
 
         fallDamage.update(flight.isFlying());
         deathHandler.processDeathIfNeeded();
+    }
+
+    /**
+     * True when the chunk under the player is resident AND rendered (filled with streamed data
+     * + meshed). On the client render world an unfilled placeholder reports false, so physics
+     * holds the player until real terrain arrives rather than dropping them through it.
+     */
+    private boolean isGroundChunkReady() {
+        World w = Game.getWorld();
+        if (w == null) {
+            return false;
+        }
+        Vector3f p = state.getPosition();
+        int cx = Math.floorDiv((int) Math.floor(p.x), 16);
+        int cz = Math.floorDiv((int) Math.floor(p.z), 16);
+        return w.isChunkRenderableAt(cx, cz);
     }
 
     public void processMovement(boolean forward, boolean backward, boolean left, boolean right,

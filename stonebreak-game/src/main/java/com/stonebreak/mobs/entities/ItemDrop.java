@@ -167,79 +167,14 @@ public class ItemDrop extends Entity {
      */
     private void checkPlayerPickup() {
         if (world == null) return;
-
-        // Get player from game instance
-        com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
-        if (game == null) return;
-
-        // Multiplayer host: pickup is server-authoritative for RemotePlayers too.
-        if (com.stonebreak.network.MultiplayerSession.isHosting()) {
-            com.stonebreak.mobs.entities.EntityManager em = com.stonebreak.core.Game.getEntityManager();
-            if (em != null) {
-                for (com.stonebreak.mobs.entities.Entity other : em.getAllEntities()) {
-                    if (!(other instanceof com.stonebreak.mobs.entities.RemotePlayer rp)) continue;
-                    if (!rp.isAlive()) continue;
-                    if (position.distance(rp.getPosition()) > PICKUP_RANGE) continue;
-                    com.stonebreak.network.MultiplayerSession.giveItemTo(
-                            rp.getPlayerId(), itemStack.getItem().getId(), stackCount);
-                    alive = false;
-                    return;
-                }
-            }
-        }
-
-        com.stonebreak.player.Player player = game.getPlayer();
-        if (player == null) return;
-
-        // Dead players cannot pick up items
-        if (player.isDead()) return;
-
-        // Check if player is within pickup range
-        Vector3f playerPosition = player.getPosition();
-        float distance = position.distance(playerPosition);
-
-        if (distance <= PICKUP_RANGE) {
-            // Try to add item(s) to player inventory
-            com.stonebreak.items.Inventory inventory = player.getInventory();
-            if (inventory != null) {
-                // Create ItemStack using the original item (preserves ItemType/BlockType distinction + SBO state)
-                com.stonebreak.items.ItemStack itemStack = new com.stonebreak.items.ItemStack(this.itemStack.getItem(), stackCount, this.itemStack.getState());
-
-                // Try to add to inventory
-                if (inventory.addItem(itemStack)) {
-                    // Successfully picked up - play sound and mark as dead
-                    com.stonebreak.audio.SoundSystem soundSystem = game.getSoundSystem();
-                    if (soundSystem != null) {
-                        soundSystem.playSound("blockpickup");
-                    }
-                    alive = false;
-                } else {
-                    // Try to add as many as possible
-                    int addedCount = 0;
-                    for (int i = 0; i < stackCount; i++) {
-                        com.stonebreak.items.ItemStack singleItem = new com.stonebreak.items.ItemStack(this.itemStack.getItem(), 1, this.itemStack.getState());
-                        if (inventory.addItem(singleItem)) {
-                            addedCount++;
-                        } else {
-                            break; // Inventory is full
-                        }
-                    }
-                    
-                    if (addedCount > 0) {
-                        // Play sound for partial pickup
-                        com.stonebreak.audio.SoundSystem soundSystem = game.getSoundSystem();
-                        if (soundSystem != null) {
-                            soundSystem.playSound("blockpickup");
-                        }
-                        
-                        stackCount -= addedCount;
-                        if (stackCount <= 0) {
-                            alive = false;
-                        }
-                    }
-                }
-                // If inventory is full, drop stays in world
-            }
+        // Drops are authoritative SERVER entities; the client holds only render shadows, which
+        // must never self-collect. Pickup is server-authoritative: if any connected player
+        // (local or remote) is within range, give them the stack — the local client adds it on
+        // receipt of GiveItemS2C — and despawn this drop.
+        if (isNetworkShadow()) return;
+        if (com.stonebreak.network.MultiplayerSession.tryServerPickup(
+                position, PICKUP_RANGE, itemStack.getItem().getId(), stackCount)) {
+            alive = false;
         }
     }
     

@@ -68,6 +68,37 @@ public class FileSaveRepository {
         return Optional.of(playerSerializer.deserialize(payload));
     }
 
+    // ── Per-username player blobs (remote multiplayer players) ──────────────────
+    // The host persists every connected player's serialized PlayerData under
+    // players/<sanitized-username>.json. The in-process local player keeps using player.json.
+
+    public void saveNamedPlayerBytes(String username, byte[] json) throws IOException {
+        ensureWorldDirectory();
+        Path file = playersDir().resolve(sanitize(username) + ".json");
+        writeAtomic(file, json);
+    }
+
+    public Optional<byte[]> loadNamedPlayerBytes(String username) throws IOException {
+        Path file = playersDir().resolve(sanitize(username) + ".json");
+        if (!Files.exists(file)) {
+            return Optional.empty();
+        }
+        return Optional.of(Files.readAllBytes(file));
+    }
+
+    private Path playersDir() {
+        return worldRoot.resolve("players");
+    }
+
+    /** Map a username to a safe, collision-resistant filename component. */
+    private static String sanitize(String username) {
+        if (username == null || username.isBlank()) {
+            return "_anonymous";
+        }
+        String cleaned = username.replaceAll("[^A-Za-z0-9_.-]", "_");
+        return cleaned.length() > 64 ? cleaned.substring(0, 64) : cleaned;
+    }
+
     public void saveChunks(Collection<ChunkData> chunks) throws IOException {
         ensureWorldDirectory();
         chunkStorage.saveChunks(chunks);

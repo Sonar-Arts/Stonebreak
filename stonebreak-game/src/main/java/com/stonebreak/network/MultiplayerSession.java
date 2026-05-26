@@ -1,347 +1,393 @@
 package com.stonebreak.network;
 
+import com.openmason.engine.net.transport.NetAddress;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.config.Settings;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
-import com.stonebreak.network.client.ClientConnection;
-import com.stonebreak.network.client.NetworkEventBus;
-import com.stonebreak.network.protocol.Packet;
+import com.stonebreak.network.client.ClientWorldView;
 import com.stonebreak.network.server.IntegratedServer;
-import com.stonebreak.network.server.RemoteClient;
-import com.stonebreak.network.sync.SyncContext;
-import com.stonebreak.network.sync.SyncEvent;
-import com.stonebreak.network.sync.SyncMode;
-import com.stonebreak.network.sync.SyncService;
-import com.stonebreak.network.sync.synchronizers.BlockSynchronizer;
-import com.stonebreak.network.sync.synchronizers.ChatSynchronizer;
-import com.stonebreak.network.sync.synchronizers.ChunkSynchronizer;
-import com.stonebreak.network.sync.synchronizers.EntitySynchronizer;
-import com.stonebreak.network.sync.synchronizers.PlayerStateSynchronizer;
+import com.stonebreak.network.server.ServerLevel;
+import com.stonebreak.network.server.ServerPlayer;
+import com.stonebreak.player.Player;
+import com.stonebreak.world.save.util.StateConverter;
 import org.joml.Vector3f;
 
-import java.io.IOException;
-
 /**
- * Lifecycle owner for the multiplayer session.
+ * Lifecycle facade over the two-world networking stack. In every in-world mode the local
+ * player is a <b>client</b>; singleplayer and host additionally run an in-process
+ * {@link IntegratedServer} (the authoritative {@link ServerLevel} + persistence) that the local
+ * client connects to over an in-JVM Local channel. A pure join runs the client only.
  *
- * <p>Responsibilities kept here:
  * <ul>
- *   <li>Start / stop / mode tracking (HOST | CLIENT | OFFLINE).</li>
- *   <li>Holding the {@link IntegratedServer} or {@link ClientConnection}.</li>
- *   <li>Initial handshake / welcome / join-snapshot — protocol bootstrapping
- *       that has to happen before per-domain sync makes sense.</li>
- *   <li>Per-tick pump that drains transport queues and forwards each packet
- *       into the {@link SyncService}.</li>
+ *   <li>{@code MENU} — no session (main menu).</li>
+ *   <li>{@code SINGLEPLAYER} — integrated server (Local listener) + local client.</li>
+ *   <li>{@code HOST} — integrated server (Local + TCP) + local client.</li>
+ *   <li>{@code JOIN} — client only, connected to a remote host over TCP.</li>
  * </ul>
  *
- * <p>All ongoing state replication (blocks, chat, entities, player state) is
- * delegated to {@link SyncService} and its registered synchronizers — this
- * class never talks to the world or entity systems directly outside of the
- * handshake path.
+ * <p>Game-system hooks (block edits, chat, drop pickup) are routed to the right side; the
+ * heavy lifting lives in the per-domain server/client handlers.
  */
 public final class MultiplayerSession {
 
-    private static volatile SyncMode mode = SyncMode.OFFLINE;
-    private static volatile IntegratedServer hostServer;
-    private static volatile ClientConnection clientConnection;
-    private static volatile NetworkEventBus clientEventBus;
-    private static volatile int localPlayerId = -1;
+    public enum Mode { MENU, SINGLEPLAYER, HOST, JOIN }
 
-    /**
-     * Spawn position the host advertised in {@link Packet.WelcomeS2C}, deferred
-     * until the local Player exists (world generation runs on a worker thread).
-     * Cleared on apply.
-     */
-    private static volatile Vector3f pendingSpawnTeleport;
+    /** How often the dedicated server thread pumps {@code server.tick()} (inbound drain runs at
+     *  this rate; the authoritative sim runs at 20 Hz via the tick's internal accumulator). */
+    private static final long SERVER_POLL_MS = 5;
 
-    // Fixed 20 Hz server tick (Minecraft's standard rate).
-    // Inbound packets are drained every frame for responsiveness; periodic
-    // broadcasts (entity state, player state, chunk pushes) only fire on a
-    // server tick boundary so cadence doesn't depend on render FPS.
-    private static final long TICK_PERIOD_NS = 50_000_000L;
-    private static final long MAX_ACCUMULATOR_NS = TICK_PERIOD_NS * 5;
-    private static long lastTickNs = 0L;
-    private static long tickAccumulatorNs = 0L;
-
-    private static final SyncService SYNC = new SyncService();
-
+    private static volatile Mode mode = Mode.MENU;
+    private static volatile IntegratedServer server;
+    private static volatile ClientWorldView client;
     private static EntityManager.Listener entityListener;
+    private static EntityManager listenerTarget;
+    private static volatile boolean localPlayerRestored;
 
-    static {
-        // One-time registration; synchronizers are stateless across sessions.
-        // BlockSynchronizer needs a reference to ChunkSynchronizer so it can
-        // mark chunks modified after applying inbound client edits (the normal
-        // SyncEvent path is suppressed during inbound application).
-        ChunkSynchronizer chunkSync = new ChunkSynchronizer();
-        SYNC.register(new BlockSynchronizer(chunkSync));
-        SYNC.register(new PlayerStateSynchronizer());
-        SYNC.register(new ChatSynchronizer());
-        SYNC.register(new EntitySynchronizer());
-        SYNC.register(chunkSync);
-    }
+    // Dedicated server-tick thread (singleplayer/host). The integrated server runs OFF the
+    // render thread so world sim / terrain + feature generation / chunk encode don't hitch the
+    // frame. It only touches server-owned state (its own world, EntityManager, ServerPlayers);
+    // the sole cross-thread reads are player positions (benign).
+    private static volatile Thread serverThread;
+    private static volatile boolean serverRunning;
 
     private MultiplayerSession() {}
 
-    // ────────────────────────────────────────────────── Mode queries
+    // ─── Mode queries ──────────────────────────────────────────────────────────
 
-    public static SyncMode getMode() { return mode; }
-    public static boolean isHosting() { return mode == SyncMode.HOST; }
-    public static boolean isClient()  { return mode == SyncMode.CLIENT; }
-    public static boolean isOnline()  { return mode != SyncMode.OFFLINE; }
-    public static SyncService getSyncService() { return SYNC; }
-    public static IntegratedServer getServer() { return hostServer; }
+    public static Mode getMode() { return mode; }
+    /** In a world (any mode but MENU). The local player is a client whenever this is true. */
+    public static boolean isInWorld() { return mode != Mode.MENU; }
+    /** A real network is involved (host or remote join) — not pure singleplayer. */
+    public static boolean isOnline() { return mode == Mode.HOST || mode == Mode.JOIN; }
+    public static boolean isHosting() { return mode == Mode.HOST; }
+    /** The local player is a client in every in-world mode (two-world model). */
+    public static boolean isClient() { return mode != Mode.MENU; }
+    /** True when an authoritative server runs in this process (singleplayer or host). */
+    public static boolean hasIntegratedServer() { return mode == Mode.SINGLEPLAYER || mode == Mode.HOST; }
+    public static IntegratedServer getServer() { return server; }
+    public static ClientWorldView getClient() { return client; }
 
-    // ────────────────────────────────────────────────── Lifecycle
-
-    public static synchronized void startHosting(int port) throws IOException {
-        if (mode != SyncMode.OFFLINE) shutdown();
-        hostServer = new IntegratedServer(port);
-        mode = SyncMode.HOST;
-        localPlayerId = 0;
-        lastTickNs = System.nanoTime();
-        tickAccumulatorNs = 0L;
-        SYNC.start(buildContext());
-        attachEntityListener();
+    /**
+     * True once the local player's saved data has been restored (or there's nothing to restore).
+     * The world bootstrap waits on this before entering PLAY so the player never appears with a
+     * momentarily-empty inventory while the restore is still in flight.
+     * <ul>
+     *   <li>MENU: nothing to do.</li>
+     *   <li>SINGLEPLAYER/HOST: the same-JVM restore has run ({@link #localPlayerRestored}).</li>
+     *   <li>JOIN: the client has applied the server's PlayerData.</li>
+     * </ul>
+     */
+    public static boolean isLocalPlayerDataReady() {
+        if (mode == Mode.MENU) {
+            return true;
+        }
+        if (hasIntegratedServer()) {
+            return localPlayerRestored;
+        }
+        ClientWorldView c = client;
+        return c != null && c.isRestoreApplied();
     }
 
-    public static synchronized void joinServer(String host, int port, String username) throws IOException {
-        if (mode != SyncMode.OFFLINE) shutdown();
-        clientEventBus = new NetworkEventBus();
-        clientConnection = new ClientConnection(host, port, clientEventBus);
-        mode = SyncMode.CLIENT;
-        lastTickNs = System.nanoTime();
-        tickAccumulatorNs = 0L;
-        SYNC.start(buildContext());
-        clientConnection.send(new Packet.HandshakeC2S(Packet.PROTOCOL_VERSION, username));
+    // ─── Lifecycle ─────────────────────────────────────────────────────────────
+
+    /** Singleplayer: integrated server (Local only) + in-process client. */
+    public static synchronized void startSingleplayer(String worldName, long seed) {
+        startWithServer(worldName, seed, Mode.SINGLEPLAYER, -1);
+        System.out.println("[NET] Singleplayer starting for world '" + worldName + "'");
+    }
+
+    /** Host: integrated server (Local + TCP) + in-process client. */
+    public static synchronized void startHosting(String worldName, long seed, int port) {
+        startWithServer(worldName, seed, Mode.HOST, port);
+        System.out.println("[NET] Hosting world '" + worldName + "' on TCP port " + port);
+    }
+
+    private static void startWithServer(String worldName, long seed, Mode targetMode, int tcpPort) {
+        if (mode != Mode.MENU) {
+            shutdown();
+        }
+        localPlayerRestored = false;
+        mode = targetMode;
+        serverRunning = true;
+        final String username = Settings.getInstance().getMultiplayerUsername();
+        final String localId = "sb-local-" + System.nanoTime();
+        final NetAddress tcp = tcpPort > 0 ? NetAddress.tcpBind(tcpPort) : null;
+
+        // One dedicated thread: boot the authoritative world (blocking load/gen), connect the
+        // in-process client, then run the server tick loop off the render thread.
+        Thread t = new Thread(() -> {
+            IntegratedServer s = null;
+            try {
+                s = new IntegratedServer();
+                s.start(NetAddress.local(localId), tcp, worldName, seed);
+                // If a shutdown raced our boot (quick start→quit), tear our own server down
+                // here rather than publishing it — otherwise a stale server keeps auto-saving.
+                if (!serverRunning) {
+                    teardownServer(s);
+                    return;
+                }
+                server = s;
+                // Attach the spawn/despawn listener so server-side spawns (mobs, drops) replicate.
+                attachEntityListener(s.worldContext().entityManager());
+
+                ClientWorldView c = new ClientWorldView();
+                c.connect(NetAddress.local(localId), username);
+                client = c;
+
+                // Authoritative tick loop (sim @ 20 Hz via the tick's accumulator).
+                while (serverRunning) {
+                    try {
+                        s.tick();
+                    } catch (Throwable th) {
+                        System.err.println("[SERVER-THREAD] Tick error: " + th);
+                        th.printStackTrace();
+                    }
+                    Thread.sleep(SERVER_POLL_MS);
+                }
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt(); // shutdown requested
+            } catch (Exception e) {
+                System.err.println("[NET] Failed to start " + targetMode + ": " + e.getMessage());
+                e.printStackTrace();
+                serverRunning = false;
+                if (server == null && s != null) {
+                    teardownServer(s); // never published — clean up our own instance
+                }
+            }
+        }, targetMode + "-Server");
+        t.setDaemon(true);
+        serverThread = t;
+        t.start();
+    }
+
+    /** Join a remote host: client only (the host owns the authoritative world + persistence). */
+    public static synchronized void joinServer(String host, int port, String username) throws InterruptedException {
+        if (mode != Mode.MENU) {
+            shutdown();
+        }
+        localPlayerRestored = false;
+        ClientWorldView c = new ClientWorldView();
+        c.connect(NetAddress.tcp(host, port), username);
+        client = c;
+        mode = Mode.JOIN;
+        System.out.println("[NET] Joining " + host + ":" + port);
     }
 
     public static synchronized void shutdown() {
+        // Stop the server tick thread before tearing down its world/connections.
+        serverRunning = false;
+        Thread t = serverThread;
+        if (t != null) {
+            t.interrupt();
+            try {
+                t.join(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            serverThread = null;
+        }
+
+        // Robustly capture the local player's CURRENT inventory before teardown. The server
+        // thread is now stopped, so this can't race the sim. Re-registering points the save
+        // service at the live player so the close-flush below writes its latest state — this is
+        // independent of whether the restore/registration happened earlier in the session, which
+        // is what previously let an exit drop the inventory.
+        if (server != null && hasIntegratedServer()) {
+            ServerLevel level = server.worldContext().serverLevel();
+            Player local = Game.getPlayer();
+            if (level != null && local != null) {
+                level.registerLocalPlayer(local);
+            }
+        }
+
         detachEntityListener();
-        SYNC.stop();
-        if (clientConnection != null) {
-            try { clientConnection.send(new Packet.DisconnectC2S("client_quit")); } catch (Exception ignored) {}
-            clientConnection.close();
-            clientConnection = null;
+        if (client != null) {
+            client.shutdown();
+            client = null;
         }
-        if (hostServer != null) {
-            hostServer.shutdown();
-            hostServer = null;
+        if (server != null) {
+            teardownServer(server); // close() flushes the (now-registered) player + chunks
+            server = null;
         }
-        clientEventBus = null;
-        mode = SyncMode.OFFLINE;
-        localPlayerId = -1;
-        pendingSpawnTeleport = null;
+        localPlayerRestored = false;
+        mode = Mode.MENU;
     }
 
-    // ────────────────────────────────────────────────── World/entity hooks
-
-    /**
-     * Hook from {@code World.setBlockAt}: forward a locally-driven block change
-     * into the sync service. The service suppresses re-broadcast when the
-     * change came from an inbound packet via its applyingInbound flag.
-     */
-    public static void onLocalBlockChange(int x, int y, int z, BlockType type) {
-        if (!isOnline()) return;
-        SYNC.notifyLocal(new SyncEvent.BlockChanged(x, y, z, type));
-    }
-
-    /**
-     * Host-side: hand a remote client an item stack (drop pickup, command-give).
-     * No-op on clients or offline. Client receives the {@link Packet.GiveItemS2C}
-     * and adds it to its local inventory in {@code PlayerStateSynchronizer}.
-     */
-    public static void giveItemTo(int playerId, int itemId, int count) {
-        if (mode != SyncMode.HOST || hostServer == null || count <= 0) return;
-        RemoteClient rc = hostServer.getClient(playerId);
-        if (rc != null) rc.send(new Packet.GiveItemS2C(itemId, count));
-    }
-
-    private static void attachEntityListener() {
-        EntityManager em = Game.getEntityManager();
-        if (em == null) {
-            // World may not exist yet (host hasn't loaded a world). Listener
-            // will be re-attached lazily on first tick once the manager exists.
+    /** Shut down a server instance and its level (flush + close the save service, free the world). */
+    private static void teardownServer(IntegratedServer s) {
+        if (s == null) {
             return;
         }
-        if (entityListener != null) em.removeListener(entityListener);
-        entityListener = new EntityManager.Listener() {
-            @Override public void onEntityAdded(Entity e)   { SYNC.notifyLocal(new SyncEvent.EntitySpawned(e)); }
-            @Override public void onEntityRemoved(Entity e) { SYNC.notifyLocal(new SyncEvent.EntityDespawned(e)); }
-        };
-        em.addListener(entityListener);
+        ServerLevel level = s.worldContext().serverLevel();
+        s.shutdown();
+        if (level != null) {
+            level.cleanup();
+        }
     }
 
-    private static void detachEntityListener() {
-        EntityManager em = Game.getEntityManager();
-        if (em != null && entityListener != null) em.removeListener(entityListener);
-        entityListener = null;
+    // ─── Game-system hooks ──────────────────────────────────────────────────────
+
+    /**
+     * Hook from {@code World.setBlockAt} for player-driven edits — routed via the local client.
+     * {@code prevType} is the block the client just overwrote; the server uses it as the
+     * authoritative source of "what the player broke" for drop spawning (its own snapshot may
+     * lag behind under load).
+     */
+    public static void onLocalBlockChange(int x, int y, int z, BlockType type, BlockType prevType) {
+        ClientWorldView c = client;
+        if (c != null) {
+            c.onLocalBlockChange(x, y, z, type, prevType);
+        }
     }
 
-    // ────────────────────────────────────────────────── Per-tick pump
+    /** Hook from the chat UI for a locally-submitted message — routed via the local client. */
+    public static void submitChat(String text) {
+        ClientWorldView c = client;
+        if (c != null) {
+            c.submitChat(text);
+        }
+    }
+
+    /** Server-side: hand a connected client an item stack (drop pickup, command-give). */
+    public static void giveItemTo(int playerId, int itemId, int count) {
+        IntegratedServer s = server;
+        if (s != null) {
+            s.giveItemTo(playerId, itemId, count);
+        }
+    }
+
+    /**
+     * Server-authoritative drop pickup. Called from a drop entity on the server tick: if any
+     * connected player (local or remote) is within {@code range}, give them the stack (over the
+     * wire; the local client adds it on receipt) and report the pickup so the drop despawns.
+     * Returns false when there is no server or nobody is close enough.
+     */
+    public static boolean tryServerPickup(Vector3f pos, float range, int itemId, int count) {
+        IntegratedServer s = server;
+        if (s == null) {
+            return false;
+        }
+        float rangeSq = range * range;
+        for (ServerPlayer sp : s.worldContext().players()) {
+            float dx = pos.x - sp.x();
+            float dy = pos.y - sp.y();
+            float dz = pos.z - sp.z();
+            if (dx * dx + dy * dy + dz * dz <= rangeSq) {
+                s.giveItemTo(sp.playerId(), itemId, count);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ─── Per-tick pump (called from the game loop) ───────────────────────────────
 
     public static void tick() {
-        // Synchronize on the same monitor as start/stop so we never read a
-        // half-torn-down hostServer/clientConnection mid-shutdown.
         synchronized (MultiplayerSession.class) {
             tickLocked();
         }
     }
 
     private static void tickLocked() {
-        if (!isOnline()) return;
-
-        // Lazy listener attach (entity manager only exists after world load).
-        if (entityListener == null && Game.getEntityManager() != null) {
-            attachEntityListener();
-            // Snapshot existing entities into the sync layer.
-            for (Entity e : Game.getEntityManager().getAllEntities()) {
-                if (mode == SyncMode.HOST) SYNC.notifyLocal(new SyncEvent.EntitySpawned(e));
-            }
-        }
-
-        // Client: apply the host-advertised spawn once the local Player exists.
-        // World gen is async, so the Player isn't around at handleWelcome time;
-        // we poll here every tick until it appears, then teleport once.
-        if (mode == SyncMode.CLIENT && pendingSpawnTeleport != null) {
-            com.stonebreak.player.Player p = Game.getPlayer();
-            if (p != null) {
-                p.setPosition(pendingSpawnTeleport);
-                System.out.println("[CLIENT] Teleported to host spawn " + pendingSpawnTeleport);
-                pendingSpawnTeleport = null;
-            }
-        }
-
-        // Drain transport queues, dispatch each packet through the sync layer
-        // (handshake/welcome are special-cased here; everything else goes to SyncService).
-        if (mode == SyncMode.HOST && hostServer != null) {
-            hostServer.getInboundEvents().drain((p, originId) -> {
-                if (p instanceof Packet.HandshakeC2S hs) {
-                    handleHandshake(originId, hs);
-                } else if (p instanceof Packet.DisconnectC2S) {
-                    RemoteClient rc = hostServer.getClient(originId);
-                    if (rc != null) rc.close();
-                } else {
-                    SYNC.onInbound(p, originId);
-                }
-            });
-        } else if (mode == SyncMode.CLIENT && clientEventBus != null) {
-            clientEventBus.drain(p -> {
-                if (p instanceof Packet.WelcomeS2C w) {
-                    handleWelcome(w);
-                } else if (p instanceof Packet.KickS2C kick) {
-                    System.out.println("[CLIENT] Kicked by server: " + kick.reason());
-                    shutdown();
-                    Game.getInstance().setState(GameState.MAIN_MENU);
-                } else {
-                    SYNC.onInbound(p, null);
-                }
-            });
-            if (clientConnection == null || !clientConnection.isConnected()) {
-                System.out.println("[NETWORK] Lost server connection; returning to main menu.");
-                shutdown();
-                Game.getInstance().setState(GameState.MAIN_MENU);
-                return;
-            }
-        }
-
-        // Fixed-step server tick: run synchronizers' periodic broadcasts at
-        // exactly 20 Hz regardless of render frame rate.
-        long now = System.nanoTime();
-        if (lastTickNs == 0L) lastTickNs = now;
-        tickAccumulatorNs += now - lastTickNs;
-        lastTickNs = now;
-        if (tickAccumulatorNs > MAX_ACCUMULATOR_NS) tickAccumulatorNs = MAX_ACCUMULATOR_NS;
-        while (tickAccumulatorNs >= TICK_PERIOD_NS) {
-            tickAccumulatorNs -= TICK_PERIOD_NS;
-            SYNC.tick(TICK_PERIOD_NS / 1_000_000_000f);
-        }
-    }
-
-    // ────────────────────────────────────────────────── Handshake / welcome
-
-    private static void handleHandshake(Integer originId, Packet.HandshakeC2S hs) {
-        if (originId == null || hostServer == null) return;
-        RemoteClient rc = hostServer.getClient(originId);
-        if (rc == null) return;
-        if (hs.protocolVersion() != Packet.PROTOCOL_VERSION) {
-            String msg = "Protocol mismatch (server=" + Packet.PROTOCOL_VERSION
-                       + ", client=" + hs.protocolVersion() + ")";
-            System.out.println("[SERVER] Rejecting client " + originId + ": " + msg);
-            rc.send(new Packet.KickS2C(msg));
-            rc.close();
+        if (mode == Mode.MENU) {
             return;
         }
-        rc.setUsername(hs.username());
 
-        com.stonebreak.player.Player hostPlayer = Game.getPlayer();
-        long seed = Game.getInstance().getCurrentWorldSeed();
-        Vector3f spawn = hostPlayer != null ? hostPlayer.getPosition() : new Vector3f(0, 80, 0);
-
-        // 1. Tell the new client who they are + the seed (so they can mirror terrain).
-        rc.send(new Packet.WelcomeS2C(originId, seed, spawn.x, spawn.y, spawn.z));
-
-        // 2. Roster bootstrap: tell new client about everyone already present.
-        rc.send(new Packet.PlayerJoinS2C(0, "Host", spawn.x, spawn.y, spawn.z));
-        for (RemoteClient other : hostServer.getClients().values()) {
-            if (other.getPlayerId() != originId) {
-                rc.send(new Packet.PlayerJoinS2C(other.getPlayerId(), other.getUsername(),
-                        other.getX(), other.getY(), other.getZ()));
+        // The integrated server ticks on its own thread (see startWithServer). The main thread
+        // only pumps the CLIENT here — applying inbound packets to the render world + sending
+        // local intents — so rendering never waits on server-side world generation.
+        ClientWorldView c = client;
+        if (c != null) {
+            c.tick();
+            if (c.isDisconnected()) {
+                String reason = c.kickReason();
+                System.out.println("[NET] Disconnected"
+                        + (reason != null ? ": " + reason : "") + "; returning to menu.");
+                shutdown();
+                Game.getInstance().setState(GameState.MAIN_MENU);
             }
         }
-
-        // 3. Tell existing clients about the newcomer.
-        hostServer.broadcastExcept(originId,
-                new Packet.PlayerJoinS2C(originId, hs.username(), spawn.x, spawn.y, spawn.z));
-
-        // 4. Fire PeerJoined so each interested synchronizer can deliver its
-        //    snapshot (entities, modified chunks, future: weather, time-of-day...).
-        SYNC.notifyLocal(new SyncEvent.PeerJoined(originId, hs.username()));
-
-        System.out.println("[SERVER] " + hs.username() + " joined as id " + originId);
     }
 
-    private static void handleWelcome(Packet.WelcomeS2C w) {
-        localPlayerId = w.playerId();
-        System.out.println("[CLIENT] Welcomed as id " + w.playerId()
-                + " (seed=" + w.worldSeed() + ", spawn=" + w.spawnX() + "," + w.spawnY() + "," + w.spawnZ() + ")");
-        // Defer applying the host's spawn until the local Player is created
-        // (world gen runs async; tick() polls and applies once available).
-        pendingSpawnTeleport = new Vector3f(w.spawnX(), w.spawnY(), w.spawnZ());
-        String name = "mp_" + System.currentTimeMillis();
-        Game.getInstance().startWorldGeneration(name, w.worldSeed());
+    /**
+     * Same-JVM player restoration for an integrated server. Called from the world bootstrap
+     * (on the build thread) with the EXACT player just created — never via {@code Game.getPlayer()}
+     * from another thread, which on a re-open could still be the previous session's stale player
+     * (that bug applied the saved inventory to a dead object, leaving the live player empty).
+     * Applies the server's loaded {@link com.stonebreak.world.save.model.PlayerData} (or starting
+     * items for a fresh world) and registers the player with the save service so it persists.
+     *
+     * <p>For JOIN it waits (bounded) for the host's {@code PlayerDataS2C} and applies it to the
+     * same player. Intentionally NOT synchronized — the JOIN wait must not hold the session lock,
+     * or it would block the main-thread tick that receives the blob (deadlock).
+     */
+    public static void restoreLocalPlayer(Player player) {
+        if (player == null) {
+            return;
+        }
+        if (hasIntegratedServer()) {
+            IntegratedServer s = server;
+            ServerLevel level = (s != null) ? s.worldContext().serverLevel() : null;
+            if (level == null) {
+                return;
+            }
+            if (level.loadedPlayerData() != null) {
+                StateConverter.applyPlayerData(player, level.loadedPlayerData());
+                System.out.println("[NET] Restored saved player data into the local client.");
+            } else {
+                player.giveStartingItems();
+                System.out.println("[NET] New world — gave the local player starting items.");
+            }
+            level.registerLocalPlayer(player);
+            localPlayerRestored = true;
+            return;
+        }
+        if (mode == Mode.JOIN) {
+            ClientWorldView c = client;
+            if (c == null) {
+                return;
+            }
+            // Wait for the host to send our saved data, then apply it to THIS player.
+            long deadline = System.currentTimeMillis() + 5000L;
+            while (!c.isRestoreReceived() && !c.isDisconnected()
+                    && System.currentTimeMillis() < deadline) {
+                try { Thread.sleep(50); } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            c.applyRestoreTo(player);
+        }
     }
 
-    // ────────────────────────────────────────────────── SyncContext
+    // ─── Entity spawn/despawn replication listener ──────────────────────────────
 
-    private static SyncContext buildContext() {
-        return new SyncContext() {
-            @Override public SyncMode mode() { return mode; }
-            @Override public int localPlayerId() { return localPlayerId; }
-
-            @Override public void broadcast(Packet packet) {
-                if (mode == SyncMode.HOST && hostServer != null) {
-                    hostServer.broadcast(packet);
-                } else if (mode == SyncMode.CLIENT && clientConnection != null) {
-                    clientConnection.send(packet);
-                }
+    private static void attachEntityListener(EntityManager em) {
+        if (entityListener != null && listenerTarget != null) {
+            listenerTarget.removeListener(entityListener);
+        }
+        listenerTarget = em;
+        entityListener = new EntityManager.Listener() {
+            @Override public void onEntityAdded(Entity e) {
+                IntegratedServer s = server;
+                if (s != null) s.onEntitySpawned(e);
             }
-
-            @Override public void broadcastExcept(int excludePlayerId, Packet packet) {
-                if (mode == SyncMode.HOST && hostServer != null) {
-                    hostServer.broadcastExcept(excludePlayerId, packet);
-                }
+            @Override public void onEntityRemoved(Entity e) {
+                IntegratedServer s = server;
+                if (s != null) s.onEntityDespawned(e);
             }
-
-            @Override public void sendTo(int playerId, Packet packet) {
-                if (mode == SyncMode.HOST && hostServer != null) {
-                    RemoteClient rc = hostServer.getClient(playerId);
-                    if (rc != null) rc.send(packet);
-                }
-            }
-
-            @Override public boolean isApplyingInbound() { return SYNC.isApplyingInbound(); }
         };
+        em.addListener(entityListener);
+    }
+
+    private static void detachEntityListener() {
+        if (listenerTarget != null && entityListener != null) {
+            listenerTarget.removeListener(entityListener);
+        }
+        entityListener = null;
+        listenerTarget = null;
     }
 }
