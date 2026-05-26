@@ -29,6 +29,10 @@ import com.stonebreak.network.server.handlers.ServerEntityHandler;
 import com.stonebreak.network.server.handlers.ServerPlayerHandler;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+
 /**
  * The world-authoritative integrated server. Wraps the engine {@link NetworkServer} and
  * owns the {@link ServerWorldContext} plus the per-domain handlers. Every player —
@@ -81,6 +85,11 @@ public final class IntegratedServer {
         ServerLevel level = ServerLevel.createAndLoad(worldName, fallbackSeed);
         ctx.setServerLevel(level);
 
+        // Wire the spawner's player-position source to the live server roster. Kept here
+        // (not in ServerLevel) so the mobs.entities package never imports network classes —
+        // the dependency flows network -> mobs, not the reverse.
+        level.entitySpawner().setPlayerPositionSource(this::collectPlayerSpawnAnchors);
+
         networkServer.start(localAddress, tcpAddress);
         chunkHandler.onSessionStart();
         playerHandler.onSessionStart();
@@ -91,6 +100,22 @@ public final class IntegratedServer {
 
     public ServerWorldContext worldContext() {
         return ctx;
+    }
+
+    /**
+     * Snapshots the positions of every handshake-complete player on the server. Supplied
+     * to the entity spawner so continuous spawning and despawning consider all players,
+     * not just the local one.
+     */
+    private List<Vector3f> collectPlayerSpawnAnchors() {
+        Collection<ServerPlayer> roster = ctx.players();
+        if (roster.isEmpty()) return List.of();
+        List<Vector3f> out = new ArrayList<>(roster.size());
+        for (ServerPlayer sp : roster) {
+            if (!sp.handshakeDone()) continue;
+            out.add(new Vector3f(sp.x(), sp.y(), sp.z()));
+        }
+        return out;
     }
 
     // ─── Per-frame pump (host game thread) ────────────────────────────────────────

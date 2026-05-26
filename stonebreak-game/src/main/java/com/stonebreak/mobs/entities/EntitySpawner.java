@@ -1,97 +1,121 @@
 package com.stonebreak.mobs.entities;
 
-import org.joml.Vector3f;
+import com.stonebreak.blocks.BlockType;
+import com.stonebreak.core.Game;
+import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.player.Player;
-import com.stonebreak.core.Game;
+import org.joml.Vector3f;
 
-import java.util.Random;
+import java.util.Collections;
 import java.util.List;
-import java.util.ArrayList;
+import java.util.Random;
+import java.util.function.Supplier;
 
 /**
- * Handles natural entity spawning following Minecraft mechanics:
+ * Server-side passive mob spawner. Authoritative under the two-world model — only the
+ * headless server's spawner is ticked (see {@code ServerLevel.tick}); the client render
+ * world never owns a live spawner.
  *
- * INITIAL SPAWNING:
- * - Most animals spawn within chunks when they are generated
+ * <p><b>Initial spawning.</b> Triggered once per chunk via {@link #initialChunkSpawn},
+ * which the world driver calls only after a chunk's terrain AND features are populated.
+ * Reads blocks directly from the chunk (so it works before the chunk is registered with
+ * the chunk store) and gates each placement on {@link #isValidSpawnLocation}.
  *
- * CONTINUOUS SPAWNING:
- * - Passive mobs have a spawning cycle every 400 game ticks (20 seconds)
- * - Mobs spawn within chunks that have a player horizontally within 128 blocks
- * - Can only spawn within 128 block radius sphere centered on player
+ * <p><b>Continuous spawning.</b> Every {@link #PASSIVE_MOB_SPAWN_TICKS} ticks the spawner
+ * picks targets near each connected player and attempts placements there. A target is
+ * rejected outright unless its chunk is resident in the chunk store AND has features
+ * populated — this is what prevents mobs from being placed onto unloaded/half-baked
+ * chunks where they'd fall through the world or get stuck in soon-to-arrive features.
  *
- * DESPAWNING:
- * - Mobs that move farther than 128 blocks from nearest player despawn
+ * <p><b>Despawning.</b> A mob despawns only when farther than {@link #DESPAWN_RADIUS}
+ * from <i>every</i> connected player (so a mob near any one player survives).
+ *
+ * <p>Public API is preserved: {@link #initialChunkSpawn}, {@link #update},
+ * {@link #forceSpawnEntity}, {@link #spawnCowHerd}, {@link #getSpawnStats}.
  */
 public class EntitySpawner {
-    private final World world;
-    private final EntityManager entityManager;
-    private final Random random;
 
-    // Minecraft spawning mechanics
-    private static final int PASSIVE_MOB_SPAWN_TICKS = 400; // 20 seconds at 20 ticks/second
-    private static final int SPAWN_RADIUS = 128; // blocks from player
-    private static final int DESPAWN_RADIUS = 128; // blocks from nearest player
+    // ─── Tuning ───────────────────────────────────────────────────────────────
+    /** 20 seconds at 20 ticks/second — Minecraft's passive spawn cadence. */
+    private static final int PASSIVE_MOB_SPAWN_TICKS = 400;
+    private static final int SPAWN_RADIUS = 128;
+    private static final int DESPAWN_RADIUS = 128;
 
-    // Initial spawning during chunk generation
-    private static final float INITIAL_SPAWN_CHANCE = 0.15f; // 15% chance per chunk
-    private static final int MIN_INITIAL_COWS = 2;
-    private static final int MAX_INITIAL_COWS = 4;
+    /** Per-chunk roll for initial spawning of each passive type. */
+    private static final float INITIAL_SPAWN_CHANCE = 0.15f;
+    private static final int MIN_INITIAL_HERD = 2;
+    private static final int MAX_INITIAL_HERD = 4;
 
-    // Continuous spawning limits
-    private static final int MAX_PASSIVE_MOBS_PER_PLAYER = 10; // Minecraft uses mob cap per player
-    private static final int SPAWN_ATTEMPTS_PER_CYCLE = 3; // Number of spawn attempts per cycle
+    /** Shared passive-mob cap per player; bounds total continuous spawns. */
+    private static final int MAX_PASSIVE_MOBS_PER_PLAYER = 10;
+    private static final int SPAWN_ATTEMPTS_PER_CYCLE = 3;
 
-    // Spawn height limits
     private static final int MIN_SPAWN_HEIGHT = 60;
     private static final int MAX_SPAWN_HEIGHT = 120;
 
-    // Cow appearance variants — must match the variant names in SB_Cow.sbe.
+    /** Continuous spawns must land at least this far from the target player. */
+    private static final int MIN_SPAWN_DISTANCE = 24;
+
+    /** Passive types rolled independently so chickens spawn as often as cows. */
+    private static final EntityType[] PASSIVE_SPAWN_TYPES = {EntityType.COW, EntityType.CHICKEN};
+
+    /** Must match the variant names in {@code SB_Cow.sbe}. */
     private static final String[] COW_TEXTURE_VARIANTS = {"Default", "Angus", "Highland"};
 
-    // Tick counter for spawning cycle
-    private int tickCounter = 0;
+    // ─── Collaborators ────────────────────────────────────────────────────────
+    private final World world;
+    private final EntityManager entityManager;
+    private final Random random = new Random();
 
     /**
-     * Creates a new entity spawner for the specified world.
+     * Supplier of player positions to use for continuous spawning and despawning.
+     * Injected by the world owner so this class doesn't reach into the network layer
+     * (which would invert the dependency direction — network already imports mobs).
+     * Defaults to "the single local player from {@code Game}" for tests / dev runs.
      */
+    private volatile Supplier<List<Vector3f>> playerPositionSource = EntitySpawner::defaultLocalPlayer;
+
+    private int tickCounter = 0;
+
     public EntitySpawner(World world, EntityManager entityManager) {
         this.world = world;
         this.entityManager = entityManager;
-        this.random = new Random();
     }
 
     /**
-     * Updates the spawner - handles continuous spawning cycle and despawning.
-     * Should be called every game tick (20 times per second).
+     * Replaces the player-position source. Server-side wiring (the integrated server)
+     * supplies one that enumerates every connected player.
+     */
+    public void setPlayerPositionSource(Supplier<List<Vector3f>> source) {
+        this.playerPositionSource = (source != null) ? source : EntitySpawner::defaultLocalPlayer;
+    }
+
+    private static List<Vector3f> defaultLocalPlayer() {
+        Player local = Game.getPlayer();
+        return local != null ? List.of(new Vector3f(local.getPosition())) : Collections.emptyList();
+    }
+
+    // ─── Tick loop ────────────────────────────────────────────────────────────
+
+    /**
+     * Per-tick update. Only the authoritative server world ever calls this (the client
+     * render world's spawner is never ticked), so no host/client guard is needed here.
      */
     public void update(float deltaTime) {
-        // Two-world model: only the SERVER's spawner is ever ticked (ServerLevel.tick). The
-        // client render world's spawner is never ticked (GameLoop skips it for render-only
-        // worlds), so no client/host guard is needed here — whoever calls update() owns spawns.
         tickCounter++;
-
-        // Passive mob spawning cycle every 400 ticks (20 seconds)
         if (tickCounter >= PASSIVE_MOB_SPAWN_TICKS) {
             tickCounter = 0;
             performContinuousSpawning();
         }
-
-        // Check for mobs that need to despawn
         checkDespawning();
     }
 
-    // Passive mob types spawned by this spawner, each rolled independently so
-    // chickens appear with the same frequency as cows.
-    private static final EntityType[] PASSIVE_SPAWN_TYPES = {EntityType.COW, EntityType.CHICKEN};
+    // ─── Initial spawning (called once per chunk by the world driver) ─────────
 
     /**
-     * Initial spawning when a chunk is generated.
-     * "Most animals spawn within chunks when they are generated"
-     *
-     * <p>Each passive mob type rolls its own independent spawn chance.
+     * Rolls initial mob spawns for a chunk. Should be invoked AFTER the chunk's
+     * features are populated (the world chunk store handles this).
      */
     public void initialChunkSpawn(Chunk chunk) {
         for (EntityType type : PASSIVE_SPAWN_TYPES) {
@@ -99,32 +123,187 @@ public class EntitySpawner {
         }
     }
 
-    /**
-     * Rolls the initial spawn chance for one mob type and, on success, spawns a
-     * small herd of that type within the chunk.
-     */
     private void spawnInitialHerd(Chunk chunk, EntityType type) {
         if (random.nextFloat() > INITIAL_SPAWN_CHANCE) {
-            return; // This chunk won't have this mob type.
+            return;
         }
-
-        int toSpawn = MIN_INITIAL_COWS + random.nextInt(MAX_INITIAL_COWS - MIN_INITIAL_COWS + 1);
+        int target = MIN_INITIAL_HERD + random.nextInt(MAX_INITIAL_HERD - MIN_INITIAL_HERD + 1);
         int spawned = 0;
-        int maxAttempts = 20;
-
-        for (int attempt = 0; attempt < maxAttempts && spawned < toSpawn; attempt++) {
-            Vector3f spawnPos = findSpawnLocationInChunk(chunk);
-            if (spawnPos != null && isValidSpawnLocation(spawnPos, type)
-                    && spawnPassiveMob(type, spawnPos) != null) {
+        for (int attempt = 0; attempt < 20 && spawned < target; attempt++) {
+            Vector3f pos = findSpawnInChunk(chunk);
+            if (pos != null && isValidSpawnLocation(pos, type) && spawnPassiveMob(type, pos) != null) {
                 spawned++;
             }
         }
     }
 
+    // ─── Continuous spawning ──────────────────────────────────────────────────
+
+    private void performContinuousSpawning() {
+        List<Vector3f> players = collectPlayerPositions();
+        if (players.isEmpty()) return;
+
+        for (Vector3f playerPos : players) {
+            for (EntityType type : PASSIVE_SPAWN_TYPES) {
+                spawnContinuousNear(playerPos, type);
+            }
+        }
+    }
+
+    private void spawnContinuousNear(Vector3f playerPos, EntityType type) {
+        if (countPassiveMobsNear(playerPos) >= MAX_PASSIVE_MOBS_PER_PLAYER) {
+            return;
+        }
+        for (int attempt = 0; attempt < SPAWN_ATTEMPTS_PER_CYCLE; attempt++) {
+            if (countPassiveMobsNear(playerPos) >= MAX_PASSIVE_MOBS_PER_PLAYER) break;
+            Vector3f pos = findSpawnNear(playerPos);
+            if (pos != null && isValidSpawnLocation(pos, type)) {
+                spawnPassiveMob(type, pos);
+            }
+        }
+    }
+
+    private int countPassiveMobsNear(Vector3f playerPos) {
+        int count = 0;
+        for (Entity e : entityManager.getEntitiesInRange(playerPos, SPAWN_RADIUS)) {
+            EntityType t = e.getType();
+            if (t == EntityType.COW || t == EntityType.CHICKEN) count++;
+        }
+        return count;
+    }
+
+    // ─── Despawning ───────────────────────────────────────────────────────────
+
+    private void checkDespawning() {
+        List<Vector3f> players = collectPlayerPositions();
+        if (players.isEmpty()) return;
+
+        for (EntityType type : PASSIVE_SPAWN_TYPES) {
+            for (Entity mob : entityManager.getEntitiesByType(type)) {
+                if (distanceToNearest(mob.getPosition(), players) > DESPAWN_RADIUS) {
+                    entityManager.removeEntity(mob);
+                }
+            }
+        }
+    }
+
+    private static float distanceToNearest(Vector3f point, List<Vector3f> players) {
+        float best = Float.POSITIVE_INFINITY;
+        for (Vector3f p : players) {
+            float d = point.distance(p);
+            if (d < best) best = d;
+        }
+        return best;
+    }
+
+    // ─── Player enumeration (multi-player aware via injected source) ──────────
+
+    private List<Vector3f> collectPlayerPositions() {
+        List<Vector3f> result = playerPositionSource.get();
+        return result != null ? result : Collections.emptyList();
+    }
+
+    // ─── Spawn-location finders ───────────────────────────────────────────────
+
     /**
-     * Spawns one passive mob of the given type, applying type-specific creation
-     * (cows pick a random texture variant).
+     * Picks a random (x,z) inside the chunk and the first valid Y above ground.
+     * Reads blocks directly from the chunk so it works before the chunk is in the
+     * chunk store (initial spawn runs on a worker thread during generation).
      */
+    private Vector3f findSpawnInChunk(Chunk chunk) {
+        int worldX = chunk.getChunkX() * 16;
+        int worldZ = chunk.getChunkZ() * 16;
+        int lx = random.nextInt(16);
+        int lz = random.nextInt(16);
+
+        for (int y = MAX_SPAWN_HEIGHT; y >= MIN_SPAWN_HEIGHT; y--) {
+            if (isStandableColumn(chunk.getBlock(lx, y, lz),
+                                  chunk.getBlock(lx, y + 1, lz),
+                                  chunk.getBlock(lx, y + 2, lz))) {
+                return new Vector3f(worldX + lx + 0.5f, y + 1, worldZ + lz + 0.5f);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Picks a random point on a ring around {@code playerPos} and finds a valid Y.
+     * Rejects outright when the target chunk isn't fully ready ({@link #isChunkReadyForSpawn}),
+     * which is what prevents mobs being placed on unloaded chunks (where they'd fall
+     * through the world) or on terrain-only chunks whose neighbors are still AIR.
+     */
+    private Vector3f findSpawnNear(Vector3f playerPos) {
+        float angle = random.nextFloat() * (float) (Math.PI * 2);
+        float distance = MIN_SPAWN_DISTANCE
+                + random.nextFloat() * (SPAWN_RADIUS - MIN_SPAWN_DISTANCE);
+        int x = (int) (playerPos.x + Math.cos(angle) * distance);
+        int z = (int) (playerPos.z + Math.sin(angle) * distance);
+
+        int chunkX = Math.floorDiv(x, 16);
+        int chunkZ = Math.floorDiv(z, 16);
+        if (!isChunkReadyForSpawn(chunkX, chunkZ)) {
+            return null;
+        }
+
+        for (int y = MAX_SPAWN_HEIGHT; y >= MIN_SPAWN_HEIGHT; y--) {
+            if (isStandableColumn(world.getBlockAt(x, y, z),
+                                  world.getBlockAt(x, y + 1, z),
+                                  world.getBlockAt(x, y + 2, z))) {
+                return new Vector3f(x + 0.5f, y + 1, z + 0.5f);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A chunk is ready for a spawn iff it's resident in the store AND its features
+     * have been populated. Both conditions together mean the chunk is part of the
+     * server's working set and its blocks are final.
+     */
+    private boolean isChunkReadyForSpawn(int chunkX, int chunkZ) {
+        Chunk chunk = world.getChunkIfLoaded(chunkX, chunkZ);
+        return chunk != null && chunk.areFeaturesPopulated();
+    }
+
+    private static boolean isStandableColumn(BlockType ground, BlockType head, BlockType above) {
+        if (ground == null || ground == BlockType.AIR || ground == BlockType.WATER) return false;
+        return (head == null || head == BlockType.AIR) && (above == null || above == BlockType.AIR);
+    }
+
+    // ─── Validation ───────────────────────────────────────────────────────────
+
+    /**
+     * Validates a candidate spawn position for the given type. Public so tools and
+     * commands can reuse the same gate.
+     */
+    public boolean isValidSpawnLocation(Vector3f position, EntityType type) {
+        int x = (int) Math.floor(position.x);
+        int y = (int) Math.floor(position.y);
+        int z = (int) Math.floor(position.z);
+        return switch (type) {
+            case COW, CHICKEN -> isValidGroundSpawn(x, y, z, position);
+            default -> false;
+        };
+    }
+
+    private boolean isValidGroundSpawn(int x, int y, int z, Vector3f position) {
+        BlockType ground = world.getBlockAt(x, y - 1, z);
+        if (ground == null || ground == BlockType.AIR || ground == BlockType.WATER) return false;
+
+        BlockType head = world.getBlockAt(x, y, z);
+        BlockType above = world.getBlockAt(x, y + 1, z);
+        if (head != null && head != BlockType.AIR) return false;
+        if (above != null && above != BlockType.AIR) return false;
+
+        return !isOvercrowded(position);
+    }
+
+    private boolean isOvercrowded(Vector3f position) {
+        return entityManager.getEntitiesInRange(position, 5.0f).size() >= 3;
+    }
+
+    // ─── Spawning primitives ──────────────────────────────────────────────────
+
     private Entity spawnPassiveMob(EntityType type, Vector3f position) {
         if (type == EntityType.COW) {
             String variant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
@@ -133,248 +312,56 @@ public class EntitySpawner {
         return entityManager.spawnEntity(type, position);
     }
 
-    /**
-     * Continuous spawning cycle for passive mobs.
-     * Spawns mobs near players following Minecraft rules.
-     */
-    private void performContinuousSpawning() {
-        Player player = Game.getPlayer();
-        if (player == null) {
-            return;
-        }
+    // ─── Backwards-compatible public helpers ──────────────────────────────────
 
-        // Each passive mob type gets its own set of spawn attempts, so chickens
-        // spawn as often as cows. The shared mob cap bounds the total.
-        for (EntityType type : PASSIVE_SPAWN_TYPES) {
-            spawnContinuousType(player, type);
-        }
-    }
+    /** Spawns a herd near {@code center} for commands/testing — bypasses the spawn cycle. */
+    public void spawnCowHerd(Vector3f center, int count) {
+        int spawned = 0;
+        for (int attempt = 0; attempt < count * 5 && spawned < count; attempt++) {
+            float ox = (random.nextFloat() - 0.5f) * 16.0f;
+            float oz = (random.nextFloat() - 0.5f) * 16.0f;
+            int x = (int) (center.x + ox);
+            int z = (int) (center.z + oz);
 
-    /**
-     * Runs a cycle of continuous spawn attempts for one mob type near a player,
-     * respecting the shared passive-mob cap.
-     */
-    private void spawnContinuousType(Player player, EntityType type) {
-        int passiveMobCount = countPassiveMobsNearPlayer(player);
-        if (passiveMobCount >= MAX_PASSIVE_MOBS_PER_PLAYER) {
-            return; // Mob cap reached
-        }
+            int y = findSurfaceY(x, z);
+            if (y <= 0) continue;
 
-        for (int attempt = 0; attempt < SPAWN_ATTEMPTS_PER_CYCLE; attempt++) {
-            if (passiveMobCount >= MAX_PASSIVE_MOBS_PER_PLAYER) {
-                break; // Mob cap reached during spawning
-            }
+            Vector3f pos = new Vector3f(x + 0.5f, y, z + 0.5f);
+            if (!isValidSpawnLocation(pos, EntityType.COW)) continue;
 
-            Vector3f spawnPos = findSpawnLocationNearPlayer(player);
-            if (spawnPos != null && isValidSpawnLocation(spawnPos, type)
-                    && spawnPassiveMob(type, spawnPos) != null) {
-                passiveMobCount++;
+            String variant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
+            if (entityManager.spawnCowWithVariant(pos, variant) != null) {
+                spawned++;
             }
         }
     }
 
-    /**
-     * Checks for mobs that are too far from players and despawns them.
-     */
-    private void checkDespawning() {
-        Player player = Game.getPlayer();
-        if (player == null) {
-            return;
-        }
-
-        for (EntityType type : PASSIVE_SPAWN_TYPES) {
-            for (Entity mob : entityManager.getEntitiesByType(type)) {
-                float distance = mob.getPosition().distance(player.getPosition());
-                if (distance > DESPAWN_RADIUS) {
-                    entityManager.removeEntity(mob);
-                }
-            }
-        }
-    }
-
-    /**
-     * Finds a random spawn location within a chunk.
-     */
-    private Vector3f findSpawnLocationInChunk(Chunk chunk) {
-        int chunkX = chunk.getChunkX();
-        int chunkZ = chunk.getChunkZ();
-        int worldX = chunkX * 16;
-        int worldZ = chunkZ * 16;
-
-        // Pick random position within chunk
-        int x = worldX + random.nextInt(16);
-        int z = worldZ + random.nextInt(16);
-
-        // Find suitable Y position
-        int y = findSuitableSpawnHeight(x, z);
-        if (y > 0) {
-            return new Vector3f(x + 0.5f, y, z + 0.5f);
-        }
-
-        return null;
-    }
-
-    /**
-     * Finds a spawn location near a player within 128 blocks.
-     */
-    private Vector3f findSpawnLocationNearPlayer(Player player) {
-        Vector3f playerPos = player.getPosition();
-
-        // Random angle and distance within spawn radius
-        float angle = random.nextFloat() * (float)(Math.PI * 2);
-        float distance = 24 + random.nextFloat() * (SPAWN_RADIUS - 24); // Spawn between 24-128 blocks
-
-        int x = (int)(playerPos.x + Math.cos(angle) * distance);
-        int z = (int)(playerPos.z + Math.sin(angle) * distance);
-
-        // Find suitable Y position
-        int y = findSuitableSpawnHeight(x, z);
-        if (y > 0) {
-            return new Vector3f(x + 0.5f, y, z + 0.5f);
-        }
-
-        return null;
-    }
-
-    /**
-     * Finds a suitable spawn height at the given x,z coordinates.
-     */
-    private int findSuitableSpawnHeight(int x, int z) {
+    private int findSurfaceY(int x, int z) {
         for (int y = MAX_SPAWN_HEIGHT; y >= MIN_SPAWN_HEIGHT; y--) {
-            BlockType groundBlock = world.getBlockAt(x, y, z);
-            BlockType airBlock1 = world.getBlockAt(x, y + 1, z);
-            BlockType airBlock2 = world.getBlockAt(x, y + 2, z);
-
-            if (groundBlock != null && groundBlock != BlockType.AIR && groundBlock != BlockType.WATER &&
-                (airBlock1 == null || airBlock1 == BlockType.AIR) &&
-                (airBlock2 == null || airBlock2 == BlockType.AIR)) {
-                return y + 1; // Spawn on top of the ground block
+            if (isStandableColumn(world.getBlockAt(x, y, z),
+                                  world.getBlockAt(x, y + 1, z),
+                                  world.getBlockAt(x, y + 2, z))) {
+                return y + 1;
             }
         }
-
-        return -1; // No suitable spawn height found
+        return -1;
     }
 
-    /**
-     * Checks if a location is valid for spawning the specified entity type.
-     */
-    public boolean isValidSpawnLocation(Vector3f position, EntityType type) {
-        int x = (int) Math.floor(position.x);
-        int y = (int) Math.floor(position.y);
-        int z = (int) Math.floor(position.z);
-
-        return switch (type) {
-            case COW, CHICKEN -> isValidGroundSpawnLocation(x, y, z);
-            default -> false;
-        };
+    /** Test/command hook — unconditional spawn, no validation. */
+    public Entity forceSpawnEntity(EntityType type, Vector3f position) {
+        return entityManager.spawnEntity(type, position);
     }
 
-    /**
-     * Checks if a location is suitable for passive ground-mob spawning
-     * (solid non-water ground, two blocks of clear space, not overcrowded).
-     */
-    private boolean isValidGroundSpawnLocation(int x, int y, int z) {
-        // Check ground block
-        BlockType groundBlock = world.getBlockAt(x, y - 1, z);
-        if (groundBlock == null || groundBlock == BlockType.AIR || groundBlock == BlockType.WATER) {
-            return false;
-        }
-
-        // Check for enough space (cow needs 2 blocks of height)
-        BlockType airBlock1 = world.getBlockAt(x, y, z);
-        BlockType airBlock2 = world.getBlockAt(x, y + 1, z);
-        if ((airBlock1 != null && airBlock1 != BlockType.AIR) ||
-            (airBlock2 != null && airBlock2 != BlockType.AIR)) {
-            return false;
-        }
-
-        // Check not in water
-        if (world.getBlockAt(x, y, z) == BlockType.WATER ||
-            world.getBlockAt(x, y + 1, z) == BlockType.WATER) {
-            return false;
-        }
-
-        // Check for nearby entities to avoid overcrowding
-        if (hasNearbyEntities(new Vector3f(x, y, z), 5.0f, 3)) {
-            return false;
-        }
-
-        return true;
+    public String getSpawnStats() {
+        int cows = entityManager.getEntitiesByType(EntityType.COW).size();
+        int chickens = entityManager.getEntitiesByType(EntityType.CHICKEN).size();
+        return String.format("Cows: %d | Chickens: %d | Next cycle: %d ticks",
+                cows, chickens, PASSIVE_MOB_SPAWN_TICKS - tickCounter);
     }
 
-    /**
-     * Counts passive mobs near a player (within spawn radius).
-     */
-    private int countPassiveMobsNearPlayer(Player player) {
-        Vector3f playerPos = player.getPosition();
-        List<Entity> nearby = entityManager.getEntitiesInRange(playerPos, SPAWN_RADIUS);
-        return (int) nearby.stream()
-                .filter(e -> e.getType() == EntityType.COW || e.getType() == EntityType.CHICKEN)
-                .count();
-    }
-
-    /**
-     * Checks if there are too many entities nearby.
-     */
-    private boolean hasNearbyEntities(Vector3f position, float radius, int maxCount) {
-        int nearbyCount = entityManager.getEntitiesInRange(position, radius).size();
-        return nearbyCount >= maxCount;
-    }
-
-    /**
-     * Legacy method - redirects to initial chunk spawn
-     * @deprecated Use initialChunkSpawn() instead
-     */
+    /** @deprecated use {@link #initialChunkSpawn}. */
     @Deprecated
     public void spawnEntitiesInChunk(Chunk chunk) {
         initialChunkSpawn(chunk);
-    }
-
-    /**
-     * Spawns a specific number of cows near a center position (for testing/commands).
-     */
-    public void spawnCowHerd(Vector3f center, int count) {
-        int spawned = 0;
-        int maxAttempts = count * 5;
-
-        for (int attempt = 0; attempt < maxAttempts && spawned < count; attempt++) {
-            float offsetX = (random.nextFloat() - 0.5f) * 16.0f;
-            float offsetZ = (random.nextFloat() - 0.5f) * 16.0f;
-
-            Vector3f spawnPos = new Vector3f(
-                center.x + offsetX,
-                center.y,
-                center.z + offsetZ
-            );
-
-            int groundY = findSuitableSpawnHeight((int)spawnPos.x, (int)spawnPos.z);
-            if (groundY > 0) {
-                spawnPos.y = groundY;
-
-                if (isValidSpawnLocation(spawnPos, EntityType.COW)) {
-                    String textureVariant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
-                    Entity cow = entityManager.spawnCowWithVariant(spawnPos, textureVariant);
-                    if (cow != null) {
-                        spawned++;
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Gets spawn statistics for debugging.
-     */
-    public String getSpawnStats() {
-        int totalCows = entityManager.getEntitiesByType(EntityType.COW).size();
-        return String.format("Total cows: %d | Next spawn cycle in: %d ticks",
-            totalCows, PASSIVE_MOB_SPAWN_TICKS - tickCounter);
-    }
-
-    /**
-     * Forces spawning of entities for testing (ignores normal spawn rules).
-     */
-    public Entity forceSpawnEntity(EntityType type, Vector3f position) {
-        return entityManager.spawnEntity(type, position);
     }
 }

@@ -398,6 +398,16 @@ public class WorldChunkStore {
                     if (meshPipeline != null) {
                         meshPipeline.scheduleConditionalMeshBuild(chunk);
                     }
+                    // Initial mob spawn runs HERE, not in generate(). Rationale: in generate()
+                    // the chunk isn't yet in the chunk store, its features (trees, etc.) haven't
+                    // landed, and its neighbor chunks may not exist — all of which let mobs
+                    // spawn onto unstable terrain and fall through the world. By the time the
+                    // chunk reaches this point it is resident, features-populated, and its 8
+                    // neighbors are loaded, so any mob placed on it has a stable footing.
+                    if (!chunk.getCcoMetadata().hasEntities()) {
+                        initialMobSpawn(chunk);
+                        chunk.setEntitiesGenerated(true);
+                    }
                     processed++;
                 } catch (Exception e) {
                     System.err.println("Exception populating features for chunk (" + x + ", " + z + "): " + e.getMessage());
@@ -465,17 +475,18 @@ public class WorldChunkStore {
             // (which would otherwise block the mesh thread for ~1 ms/chunk).
             chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
 
-            // Initial mob spawning during chunk generation
-            // Following Minecraft rules: "Most animals spawn within chunks when they are generated"
-            // This is INITIAL population only - continuous spawning happens via spawning cycle
-            initialMobSpawn(chunk);
+            // Initial mob spawning is DEFERRED to processPendingFeaturePopulation(): at this
+            // point the chunk isn't in the chunk store yet, features haven't landed, and
+            // neighbors may not exist — all of which would spawn mobs onto unstable terrain
+            // and let them fall through the world.
 
             // CRITICAL FIX: Mark newly generated chunks as clean UNLESS they contain flowing water
             // setBlock() calls during generation marked them dirty, but they don't
             // need saving until the PLAYER modifies them. This prevents all 3000+
             // generated chunks from staying dirty forever and never being unloaded.
             // EXCEPTION: Chunks with flowing water MUST be saved to persist water metadata.
-            // NOTE: Initial mob spawning doesn't make chunk dirty - entities are transient and saved separately
+            // (Initial mob spawning now happens later, in processPendingFeaturePopulation,
+            // and dirties the chunk itself via setEntitiesGenerated.)
             boolean hasFlowingWater = chunkHasFlowingWater(chunk);
 
             if (!hasFlowingWater) {
