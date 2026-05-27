@@ -58,7 +58,7 @@ public class EntitySpawner {
     private static final int MIN_SPAWN_DISTANCE = 24;
 
     /** Passive types rolled independently so chickens spawn as often as cows. */
-    private static final EntityType[] PASSIVE_SPAWN_TYPES = {EntityType.COW, EntityType.CHICKEN};
+    private static final EntityType[] PASSIVE_SPAWN_TYPES = {EntityType.COW, EntityType.CHICKEN, EntityType.SHEEP};
 
     /** Must match the variant names in {@code SB_Cow.sbe}. */
     private static final String[] COW_TEXTURE_VARIANTS = {"Default", "Angus", "Highland"};
@@ -167,7 +167,7 @@ public class EntitySpawner {
         int count = 0;
         for (Entity e : entityManager.getEntitiesInRange(playerPos, SPAWN_RADIUS)) {
             EntityType t = e.getType();
-            if (t == EntityType.COW || t == EntityType.CHICKEN) count++;
+            if (t == EntityType.COW || t == EntityType.CHICKEN || t == EntityType.SHEEP) count++;
         }
         return count;
     }
@@ -281,7 +281,7 @@ public class EntitySpawner {
         int y = (int) Math.floor(position.y);
         int z = (int) Math.floor(position.z);
         return switch (type) {
-            case COW, CHICKEN -> isValidGroundSpawn(x, y, z, position);
+            case COW, CHICKEN, SHEEP -> isValidGroundSpawn(x, y, z, position);
             default -> false;
         };
     }
@@ -355,8 +355,9 @@ public class EntitySpawner {
     public String getSpawnStats() {
         int cows = entityManager.getEntitiesByType(EntityType.COW).size();
         int chickens = entityManager.getEntitiesByType(EntityType.CHICKEN).size();
-        return String.format("Cows: %d | Chickens: %d | Next cycle: %d ticks",
-                cows, chickens, PASSIVE_MOB_SPAWN_TICKS - tickCounter);
+        int sheep = entityManager.getEntitiesByType(EntityType.SHEEP).size();
+        return String.format("Cows: %d | Chickens: %d | Sheep: %d | Next cycle: %d ticks",
+                cows, chickens, sheep, PASSIVE_MOB_SPAWN_TICKS - tickCounter);
     }
 
     /** @deprecated use {@link #initialChunkSpawn}. */

@@ -99,6 +99,11 @@ public class EntityManager {
 
                 entity.update(deltaTime);
 
+                if (entity.getPosition().y < -10) {
+                    entity.setAlive(false);
+                    continue;
+                }
+
                 // Apply physics and collision
                 // Self-propelled projectiles (e.g. the fire bolt) move themselves
                 // in update() and must skip the external physics step.

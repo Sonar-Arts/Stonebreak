@@ -6,6 +6,7 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.chicken.Chicken;
 import com.stonebreak.mobs.cow.Cow;
 import com.stonebreak.mobs.cow.CowAI;
+import com.stonebreak.mobs.sheep.Sheep;
 import com.stonebreak.mobs.entities.BlockDrop;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
@@ -17,6 +18,7 @@ import org.joml.Vector3f;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -66,6 +68,7 @@ public class EntitySerializer {
             case ITEM_DROP -> serializeItemDrop((ItemDrop) entity, builder);
             case COW -> serializeCow((Cow) entity, builder);
             case CHICKEN -> serializeChicken((Chicken) entity, builder);
+            case SHEEP -> serializeSheep((Sheep) entity, builder);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for serialization: " + entityType);
                 return null;
@@ -92,6 +95,7 @@ public class EntitySerializer {
             case ITEM_DROP -> deserializeItemDrop(entityData, world);
             case COW -> deserializeCow(entityData, world);
             case CHICKEN -> deserializeChicken(entityData, world);
+            case SHEEP -> deserializeSheep(entityData, world);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for deserialization: " + entityType);
                 yield null;
@@ -374,6 +378,42 @@ public class EntitySerializer {
             return chicken;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to deserialize Chicken", e);
+            return null;
+        }
+    }
+
+    // ===== Sheep Serialization =====
+
+    private static void serializeSheep(Sheep sheep, EntityData.Builder builder) {
+        String aiState = sheep.getAI() != null
+                ? sheep.getAI().getCurrentState().name()
+                : "IDLE";
+        builder.addCustomData("textureVariant", sheep.getTextureVariant())
+               .addCustomData("aiState", aiState);
+    }
+
+    private static Entity deserializeSheep(EntityData entityData, World world) {
+        try {
+            Vector3f position = entityData.getPosition();
+            Map<String, Object> customData = entityData.getCustomData();
+            String textureVariant = (String) customData.getOrDefault("textureVariant", "default");
+
+            Sheep sheep = new Sheep(world, position, textureVariant);
+
+            sheep.setPosition(position);
+            sheep.setVelocity(entityData.getVelocity());
+            sheep.setRotation(entityData.getRotation());
+            sheep.setHealth(entityData.getHealth());
+            sheep.setMaxHealth(entityData.getMaxHealth());
+            sheep.setAlive(entityData.isAlive());
+
+            Field ageField = Entity.class.getDeclaredField("age");
+            ageField.setAccessible(true);
+            ageField.setFloat(sheep, entityData.getAge());
+
+            return sheep;
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Failed to deserialize Sheep", e);
             return null;
         }
     }
