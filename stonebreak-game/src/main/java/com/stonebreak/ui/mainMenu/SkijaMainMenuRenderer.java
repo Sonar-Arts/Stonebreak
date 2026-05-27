@@ -8,6 +8,7 @@ import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.FilterTileMode;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Image;
+import io.github.humbleui.skija.ImageFilter;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.skija.Shader;
@@ -26,9 +27,12 @@ public final class SkijaMainMenuRenderer {
     private static final float BASE_BUTTON_WIDTH = 400f;
     private static final float BASE_BUTTON_HEIGHT = 40f;
     private static final float BASE_BUTTON_SPACING = 50f;
-    private static final float BASE_TITLE_SIZE = 56f;
     private static final float BASE_SPLASH_SIZE = 18f;
     private static final float BASE_BUTTON_TEXT_SIZE = 20f;
+
+    // Logo intrinsic viewBox is 1641 x 419 (aspect ~3.917).
+    private static final float BASE_LOGO_HEIGHT = 140f;
+    private static final float LOGO_ASPECT = 1641f / 419f;
 
     private static final int COLOR_TEXT_PRIMARY   = 0xFFFFFFF0;
     private static final int COLOR_TEXT_SHADOW    = 0xFF1A1A1A;
@@ -38,7 +42,6 @@ public final class SkijaMainMenuRenderer {
 
     private final SkijaUIBackend backend;
 
-    private Font fontTitle;
     private Font fontSplash;
     private Font fontButton;
     private float lastFontScale = -1f;
@@ -58,7 +61,6 @@ public final class SkijaMainMenuRenderer {
         float buttonWidth = BASE_BUTTON_WIDTH * scale;
         float buttonHeight = BASE_BUTTON_HEIGHT * scale;
         float buttonSpacing = BASE_BUTTON_SPACING * scale;
-        float titleSize = BASE_TITLE_SIZE * scale;
 
         backend.beginFrame(windowWidth, windowHeight, 1.0f);
         try {
@@ -68,16 +70,17 @@ public final class SkijaMainMenuRenderer {
             float centerX = windowWidth / 2f;
             float centerY = windowHeight / 2f;
 
-            String titleText = "STONEBREAK";
-            float titleY = centerY - 120f * scale;
-            drawTitle(canvas, centerX, titleY, titleText);
+            float logoHeight = BASE_LOGO_HEIGHT * scale;
+            float logoWidth = logoHeight * LOGO_ASPECT;
+            float logoX = centerX - logoWidth / 2f;
+            float logoY = centerY - 120f * scale - logoHeight / 2f;
+            drawLogo(canvas, logoX, logoY, logoWidth, logoHeight);
 
             if (menu != null) {
                 String splash = menu.getCurrentSplashText();
                 if (splash != null && !splash.isEmpty()) {
-                    float titleWidth = fontTitle.measureTextWidth(titleText);
-                    float splashCx = centerX + titleWidth / 2f - 10f * scale;
-                    float splashCy = titleY + titleSize * 0.45f;
+                    float splashCx = centerX + logoWidth / 2f - 10f * scale;
+                    float splashCy = logoY + logoHeight * 0.95f;
                     drawSplashText(canvas, splashCx, splashCy, splash);
                 }
             }
@@ -97,17 +100,15 @@ public final class SkijaMainMenuRenderer {
     }
 
     private void ensureFonts(float scale) {
-        if (fontTitle != null && scale == lastFontScale) return;
+        if (fontSplash != null && scale == lastFontScale) return;
         disposeFonts();
         lastFontScale = scale;
         Typeface tf = backend.getMinecraftTypeface();
-        fontTitle  = new Font(tf, BASE_TITLE_SIZE * scale);
         fontSplash = new Font(tf, BASE_SPLASH_SIZE * scale);
         fontButton = new Font(tf, BASE_BUTTON_TEXT_SIZE * scale);
     }
 
     private void disposeFonts() {
-        if (fontTitle  != null) { fontTitle.close();  fontTitle  = null; }
         if (fontSplash != null) { fontSplash.close(); fontSplash = null; }
         if (fontButton != null) { fontButton.close(); fontButton = null; }
     }
@@ -136,19 +137,15 @@ public final class SkijaMainMenuRenderer {
         }
     }
 
-    private void drawTitle(Canvas canvas, float cx, float cy, String title) {
-        for (int i = 6; i >= 0; i--) {
-            int color;
-            switch (i) {
-                case 0 -> color = COLOR_TEXT_PRIMARY;
-                case 1 -> color = 0xFFC8C8BE;
-                default -> {
-                    int v = Math.max(20, 80 - i * 15);
-                    color = (0xDC << 24) | (v << 16) | (v << 8) | v;
-                }
-            }
-            float offset = i * 2.5f;
-            drawCentered(canvas, title, cx + offset, cy + offset, fontTitle, color);
+    private void drawLogo(Canvas canvas, float x, float y, float w, float h) {
+        Image logo = backend.getStonebreakLogo();
+        if (logo == null) return;
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        // Soft drop shadow grounds the logo against the dirt background.
+        try (ImageFilter shadow = ImageFilter.makeDropShadow(
+                0f, 4f * scale, 6f * scale, 6f * scale, 0xC0000000, null);
+             Paint paint = new Paint().setImageFilter(shadow)) {
+            canvas.drawImageRect(logo, Rect.makeXYWH(x, y, w, h), paint);
         }
     }
 

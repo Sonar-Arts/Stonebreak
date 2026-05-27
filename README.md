@@ -1,4 +1,5 @@
-# Stonebreak
+<img width="1641" height="419" alt="Stonebreak Logo" src="https://github.com/user-attachments/assets/4b97dd76-23fb-483b-83c8-351e741d54ad" />
+
 
 An open source work-in-progress 3D voxel-based sandbox RPG game created with Java and LWJGL. Inspired by games like Minecraft, Neverwinter Nights, and Dwarf Fortress.
 
