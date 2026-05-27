@@ -5,7 +5,11 @@ import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.Image;
+import io.github.humbleui.skija.ImageFilter;
+import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.Typeface;
+import io.github.humbleui.types.Rect;
 
 /**
  * Skija-backed renderer for the loading screen. Replaces the former NanoVG-
@@ -25,6 +29,10 @@ public final class SkijaLoadingScreenRenderer {
 
     private static final float BAR_WIDTH   = 400f;
     private static final float BAR_HEIGHT  = 30f;
+
+    // Logo intrinsic viewBox is 1641 x 419 (aspect ~3.917).
+    private static final float LOGO_HEIGHT = 120f;
+    private static final float LOGO_ASPECT = 1641f / 419f;
 
     // Colors (ARGB)
     private static final int COLOR_TITLE_TEXT     = 0xFFDCDCDC;
@@ -110,7 +118,7 @@ public final class SkijaLoadingScreenRenderer {
             float cy = windowHeight / 2f;
 
             drawOverlay(canvas, windowWidth, windowHeight);
-            drawTitle(canvas, cx, cy - 100f);
+            drawLogo(canvas, cx, cy - 100f);
             drawStageName(canvas, cx, cy - 10f, screen.getCurrentStageName());
             drawSubStage(canvas, cx, cy + 15f, screen);
             drawTimeRemaining(canvas, cx, cy + 35f, screen);
@@ -128,13 +136,16 @@ public final class SkijaLoadingScreenRenderer {
         MPainter.fillRect(canvas, 0, 0, w, h, 0xD9000000); // ~0.85 alpha black
     }
 
-    private void drawTitle(Canvas canvas, float cx, float y) {
-        if (fontTitle == null) return;
-        String title = "STONEBREAK";
-        // Shadow layer
-        MPainter.drawCenteredString(canvas, title, cx + 2f, y + 2f, fontTitle, COLOR_TITLE_SHADOW);
-        // Main layer
-        MPainter.drawCenteredString(canvas, title, cx, y, fontTitle, COLOR_TITLE_TEXT);
+    private void drawLogo(Canvas canvas, float cx, float cy) {
+        Image logo = backend.getStonebreakLogo();
+        if (logo == null) return;
+        float h = LOGO_HEIGHT;
+        float w = h * LOGO_ASPECT;
+        Rect dst = Rect.makeXYWH(cx - w / 2f, cy - h / 2f, w, h);
+        try (ImageFilter shadow = ImageFilter.makeDropShadow(0f, 4f, 6f, 6f, 0xC0000000, null);
+             Paint paint = new Paint().setImageFilter(shadow)) {
+            canvas.drawImageRect(logo, dst, paint);
+        }
     }
 
     private void drawStageName(Canvas canvas, float cx, float y, String stageName) {

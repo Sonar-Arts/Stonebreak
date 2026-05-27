@@ -23,6 +23,7 @@ public final class SkijaUIBackend implements UIBackend {
     private Typeface minecraftTypeface;
     private Image dirtTexture;
     private Image woodPlanksTexture;
+    private Image stonebreakLogo;
 
     private boolean inFrame;
     private int frameDepth;  // nesting depth for nested begin/end pairs
@@ -37,6 +38,7 @@ public final class SkijaUIBackend implements UIBackend {
         minecraftTypeface = loadTypeface("/fonts/Minecraft.ttf");
         dirtTexture = loadImage("/ui/mainMenu/Dirt.png");
         woodPlanksTexture = loadWoodPlanksFace("/blocks/Textures/wood_planks_custom_texture.png");
+        stonebreakLogo = loadImage("/ui/mainMenu/Stonebreak_Logo.png");
     }
 
     private Typeface loadTypeface(String resourcePath) {
@@ -121,6 +123,7 @@ public final class SkijaUIBackend implements UIBackend {
     public void dispose() {
         if (dirtTexture != null) { dirtTexture.close(); dirtTexture = null; }
         if (woodPlanksTexture != null) { woodPlanksTexture.close(); woodPlanksTexture = null; }
+        if (stonebreakLogo != null) { stonebreakLogo.close(); stonebreakLogo = null; }
         if (minecraftTypeface != null) { minecraftTypeface.close(); minecraftTypeface = null; }
         context.dispose();
     }
@@ -145,4 +148,6 @@ public final class SkijaUIBackend implements UIBackend {
     public Image getDirtTexture() { return dirtTexture; }
 
     public Image getWoodPlanksTexture() { return woodPlanksTexture; }
+
+    public Image getStonebreakLogo() { return stonebreakLogo; }
 }
