@@ -611,27 +611,6 @@ public class DebugOverlay {
         panel.section("Debug");
         panel.row("Path Visual", "ON");
 
-        panel.section("Sheep");
-        EntityManager em = Game.getEntityManager();
-        if (em != null) {
-            List<Entity> sheepList = em.getEntitiesByType(EntityType.SHEEP);
-            panel.row("Count", String.valueOf(sheepList.size()));
-            int idx = 0;
-            for (Entity e : sheepList) {
-                if (!(e instanceof Sheep s) || !s.isAlive()) continue;
-                float dist = s.getPosition().distance(pos);
-                SheepAI ai = s.getAI();
-                String state = ai != null ? ai.getCurrentState().name() : "?";
-                panel.row("Sheep " + idx,
-                    String.format("%s  %.0fm  %.0f/%.0f hp",
-                        state, dist, s.getHealth(), s.getMaxHealth()));
-                idx++;
-            }
-            if (idx == 0) panel.row("(none loaded)", "");
-        } else {
-            panel.row("(unavailable)", "");
-        }
-
         return panel;
     }
 
