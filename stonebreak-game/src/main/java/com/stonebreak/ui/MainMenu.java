@@ -12,11 +12,14 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.core.Game;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.ui.mainMenu.MainMenuStage;
 import com.stonebreak.ui.mainMenu.SkijaMainMenuRenderer;
 import com.stonebreak.ui.mainMenu.SplashTextManager;
+import io.github.humbleui.types.Rect;
 
 public class MainMenu {
     private final SkijaMainMenuRenderer skijaRenderer;
+    private final MainMenuStage stage = new MainMenuStage();
     // -1 = no selection, 0 = Singleplayer, 1 = Multiplayer, 2 = Settings, 3 = Quit Game
     private int selectedButton = -1;
     private static final int BUTTON_COUNT = 4;
@@ -81,6 +84,14 @@ public class MainMenu {
         float centerX = windowWidth / 2.0f;
         float centerY = windowHeight / 2.0f;
 
+        Rect logo = SkijaMainMenuRenderer.computeLogoRect(windowWidth, windowHeight, s);
+        if (isMouseOverButton((float)mouseX, (float)mouseY, logo.getLeft(), logo.getTop(),
+                logo.getWidth(), logo.getHeight())) {
+            stage.onTitleClick(logo.getLeft() + logo.getWidth() / 2f,
+                    logo.getTop() + logo.getHeight() / 2f);
+            return;
+        }
+
         if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s, bw, bh)) {
             selectedButton = 0; executeSelectedAction();
         } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp, bw, bh)) {
@@ -116,7 +127,18 @@ public class MainMenu {
     }
     
     public void render(int windowWidth, int windowHeight) {
+        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        stage.update(Game.getDeltaTime(), windowWidth, windowHeight, scale);
         skijaRenderer.render(this, windowWidth, windowHeight);
+    }
+
+    public MainMenuStage getStage() {
+        return stage;
+    }
+
+    /** Returns the title interaction to its dirt-background idle state. */
+    public void resetTitleAnimation() {
+        stage.reset();
     }
 
     public void dispose() {

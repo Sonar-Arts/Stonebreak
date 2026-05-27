@@ -1,15 +1,20 @@
 package com.stonebreak.ui.mainMenu;
 
+import com.stonebreak.core.Game;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.ui.MainMenu;
 import io.github.humbleui.skija.Canvas;
+import io.github.humbleui.skija.ClipMode;
 import io.github.humbleui.skija.FilterTileMode;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.ImageFilter;
 import io.github.humbleui.skija.Paint;
+import io.github.humbleui.skija.PaintMode;
+import io.github.humbleui.skija.Path;
+import io.github.humbleui.skija.PathBuilder;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.skija.Shader;
 import io.github.humbleui.skija.Typeface;
@@ -39,8 +44,13 @@ public final class SkijaMainMenuRenderer {
     private static final int COLOR_TEXT_HIGHLIGHT = 0xFFFFCC55;
     private static final int COLOR_OVERLAY        = 0x3C000000; // ~60/255
 
+    // Dark fill drawn slightly beyond the screen so the impact screen-shake
+    // never exposes a hard edge while the space scene is showing.
+    private static final int SPACE_OVERSCAN_COLOR = 0xFF050510;
+    private static final float OVERSCAN_MARGIN = 40f;
 
     private final SkijaUIBackend backend;
+    private final SpaceBackgroundRenderer spaceRenderer = new SpaceBackgroundRenderer();
 
     private Font fontSplash;
     private Font fontButton;
@@ -50,6 +60,20 @@ public final class SkijaMainMenuRenderer {
 
     public SkijaMainMenuRenderer(SkijaUIBackend backend) {
         this.backend = backend;
+    }
+
+    /**
+     * Screen-space rectangle the logo occupies. Shared by the renderer and the
+     * controller's click hit-test so both agree on the title bounds.
+     */
+    public static Rect computeLogoRect(int windowWidth, int windowHeight, float scale) {
+        float centerX = windowWidth / 2f;
+        float centerY = windowHeight / 2f;
+        float logoHeight = BASE_LOGO_HEIGHT * scale;
+        float logoWidth = logoHeight * LOGO_ASPECT;
+        float logoX = centerX - logoWidth / 2f;
+        float logoY = centerY - 120f * scale - logoHeight / 2f;
+        return Rect.makeXYWH(logoX, logoY, logoWidth, logoHeight);
     }
 
     public void render(MainMenu menu, int windowWidth, int windowHeight) {
@@ -62,25 +86,33 @@ public final class SkijaMainMenuRenderer {
         float buttonHeight = BASE_BUTTON_HEIGHT * scale;
         float buttonSpacing = BASE_BUTTON_SPACING * scale;
 
+        MainMenuStage stage = menu != null ? menu.getStage() : null;
+
         backend.beginFrame(windowWidth, windowHeight, 1.0f);
         try {
             Canvas canvas = backend.getCanvas();
-            drawBackground(canvas, windowWidth, windowHeight);
+
+            int frameSave = canvas.save();
+            if (stage != null) {
+                canvas.translate(stage.getScreenShakeX(), stage.getScreenShakeY());
+            }
+
+            drawBackground(canvas, windowWidth, windowHeight, stage);
+            if (stage != null && stage.isShockwaveActive()) {
+                drawShockwave(canvas, stage, scale);
+            }
 
             float centerX = windowWidth / 2f;
             float centerY = windowHeight / 2f;
 
-            float logoHeight = BASE_LOGO_HEIGHT * scale;
-            float logoWidth = logoHeight * LOGO_ASPECT;
-            float logoX = centerX - logoWidth / 2f;
-            float logoY = centerY - 120f * scale - logoHeight / 2f;
-            drawLogo(canvas, logoX, logoY, logoWidth, logoHeight);
+            Rect logoRect = computeLogoRect(windowWidth, windowHeight, scale);
+            drawLogo(canvas, logoRect, stage);
 
             if (menu != null) {
                 String splash = menu.getCurrentSplashText();
                 if (splash != null && !splash.isEmpty()) {
-                    float splashCx = centerX + logoWidth / 2f - 10f * scale;
-                    float splashCy = logoY + logoHeight * 0.95f;
+                    float splashCx = logoRect.getRight() - 10f * scale;
+                    float splashCy = logoRect.getTop() + logoRect.getHeight() * 0.95f;
                     drawSplashText(canvas, splashCx, splashCy, splash);
                 }
             }
@@ -94,6 +126,8 @@ public final class SkijaMainMenuRenderer {
                     centerY - 20f * scale + buttonSpacing * 2f, selected == 2, buttonWidth, buttonHeight);
             drawButton(canvas, "Quit Game", centerX - buttonWidth / 2f,
                     centerY - 20f * scale + buttonSpacing * 3f, selected == 3, buttonWidth, buttonHeight);
+
+            canvas.restoreToCount(frameSave);
         } finally {
             backend.endFrame();
         }
@@ -120,7 +154,45 @@ public final class SkijaMainMenuRenderer {
         dirtShader = dirt.makeShader(FilterTileMode.REPEAT, FilterTileMode.REPEAT, SamplingMode.DEFAULT, null);
     }
 
-    private void drawBackground(Canvas canvas, int w, int h) {
+    private void drawBackground(Canvas canvas, int w, int h, MainMenuStage stage) {
+        MainMenuStage.BackgroundMode mode =
+                stage != null ? stage.getBackgroundMode() : MainMenuStage.BackgroundMode.DIRT;
+        switch (mode) {
+            case DIRT -> drawDirt(canvas, w, h);
+            case SPACE -> {
+                fillOverscan(canvas, w, h, SPACE_OVERSCAN_COLOR);
+                spaceRenderer.draw(canvas, w, h, spaceTime());
+            }
+            case REVEALING -> drawReveal(canvas, w, h, stage);
+        }
+    }
+
+    private void drawReveal(Canvas canvas, int w, int h, MainMenuStage stage) {
+        fillOverscan(canvas, w, h, SPACE_OVERSCAN_COLOR);
+        spaceRenderer.draw(canvas, w, h, spaceTime());
+
+        // Keep the dirt everywhere the shockwave has not yet reached.
+        int save = canvas.save();
+        try (PathBuilder pb = new PathBuilder()) {
+            float cx = stage.getShockwaveCenterX();
+            float cy = stage.getShockwaveCenterY();
+            float r = stage.getShockwaveRadius();
+            int steps = 64;
+            pb.moveTo(cx + r, cy);
+            for (int i = 1; i <= steps; i++) {
+                double a = 2 * Math.PI * i / steps;
+                pb.lineTo((float) (cx + r * Math.cos(a)), (float) (cy + r * Math.sin(a)));
+            }
+            pb.closePath();
+            try (Path circle = pb.build()) {
+                canvas.clipPath(circle, ClipMode.DIFFERENCE, true);
+            }
+        }
+        drawDirt(canvas, w, h);
+        canvas.restoreToCount(save);
+    }
+
+    private void drawDirt(Canvas canvas, int w, int h) {
         try (Paint p = new Paint().setColor(0xFF2C2C2C)) {
             canvas.drawRect(Rect.makeXYWH(0, 0, w, h), p);
         }
@@ -137,16 +209,62 @@ public final class SkijaMainMenuRenderer {
         }
     }
 
-    private void drawLogo(Canvas canvas, float x, float y, float w, float h) {
+    private void fillOverscan(Canvas canvas, int w, int h, int color) {
+        try (Paint p = new Paint().setColor(color)) {
+            canvas.drawRect(Rect.makeXYWH(-OVERSCAN_MARGIN, -OVERSCAN_MARGIN,
+                    w + OVERSCAN_MARGIN * 2f, h + OVERSCAN_MARGIN * 2f), p);
+        }
+    }
+
+    private void drawShockwave(Canvas canvas, MainMenuStage stage, float scale) {
+        float cx = stage.getShockwaveCenterX();
+        float cy = stage.getShockwaveCenterY();
+        float r = stage.getShockwaveRadius();
+        int alpha = Math.round(stage.getShockwaveAlpha() * 255f);
+        if (alpha <= 0 || r <= 0f) {
+            return;
+        }
+        try (Paint glow = new Paint().setAntiAlias(true).setMode(PaintMode.STROKE)
+                .setStrokeWidth(10f * scale)
+                .setColor((0x8FE9FF) | (Math.round(alpha * 0.4f) << 24))) {
+            canvas.drawCircle(cx, cy, r, glow);
+        }
+        try (Paint ring = new Paint().setAntiAlias(true).setMode(PaintMode.STROKE)
+                .setStrokeWidth(3f * scale)
+                .setColor((0xFFFFFF) | (alpha << 24))) {
+            canvas.drawCircle(cx, cy, r, ring);
+        }
+    }
+
+    private float spaceTime() {
+        Game game = Game.getInstance();
+        return game != null ? game.getTotalTimeElapsed() : 0f;
+    }
+
+    private void drawLogo(Canvas canvas, Rect rect, MainMenuStage stage) {
         Image logo = backend.getStonebreakLogo();
         if (logo == null) return;
         float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
-        // Soft drop shadow grounds the logo against the dirt background.
+
+        float offsetX = stage != null ? stage.getTitleOffsetX() : 0f;
+        float offsetY = stage != null ? stage.getTitleOffsetY() : 0f;
+        float titleScale = stage != null ? stage.getTitleScale() : 1f;
+        float rotation = stage != null ? stage.getTitleRotationDeg() : 0f;
+        float cx = rect.getLeft() + rect.getWidth() / 2f;
+        float cy = rect.getTop() + rect.getHeight() / 2f;
+
+        int save = canvas.save();
+        canvas.translate(cx + offsetX, cy + offsetY);
+        canvas.rotate(rotation);
+        canvas.scale(titleScale, titleScale);
+        canvas.translate(-cx, -cy);
+        // Soft drop shadow grounds the logo against the background.
         try (ImageFilter shadow = ImageFilter.makeDropShadow(
                 0f, 4f * scale, 6f * scale, 6f * scale, 0xC0000000, null);
              Paint paint = new Paint().setImageFilter(shadow)) {
-            canvas.drawImageRect(logo, Rect.makeXYWH(x, y, w, h), paint);
+            canvas.drawImageRect(logo, rect, paint);
         }
+        canvas.restoreToCount(save);
     }
 
     private void drawSplashText(Canvas canvas, float cx, float cy, String splash) {
@@ -200,6 +318,7 @@ public final class SkijaMainMenuRenderer {
 
     public void dispose() {
         if (dirtShader != null) { dirtShader.close(); dirtShader = null; }
+        spaceRenderer.dispose();
         disposeFonts();
     }
 }

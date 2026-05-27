@@ -55,6 +55,7 @@ public final class GameStateController {
         MainMenu mainMenu = game.getMainMenu();
         if (state == GameState.MAIN_MENU && mainMenu != null) {
             mainMenu.refreshSplashText();
+            mainMenu.resetTitleAnimation();
         }
 
         if (state == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
