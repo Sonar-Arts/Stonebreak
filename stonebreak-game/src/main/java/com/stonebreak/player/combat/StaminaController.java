@@ -30,7 +30,8 @@ public class StaminaController {
         }
     }
 
-    public boolean hasStamina() { return stamina > 0; }
+    public boolean hasStamina()  { return stamina > 0; }
+    public boolean isSprinting() { return sprinting; }
     public float getStamina()   { return stamina; }
     public float getMaxStamina() { return maxStamina; }
 

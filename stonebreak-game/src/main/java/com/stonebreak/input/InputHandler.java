@@ -307,6 +307,13 @@ public class InputHandler {
                 return; // Action taken
             }
 
+            // 4.6 Close Statistics Screen
+            com.stonebreak.ui.statisticsScreen.StatisticsScreen statsScreen = game.getStatisticsScreen();
+            if (statsScreen != null && statsScreen.isVisible()) {
+                game.closeStatisticsScreen();
+                return; // Action taken
+            }
+
             // 5. Toggle Pause Menu (if no other screen was closed by Escape above)
             // No specific UI screen active, so toggle the main pause menu
             game.togglePauseMenu(); // This will manage paused state and PauseMenu visibility
@@ -781,6 +788,10 @@ public class InputHandler {
                 if (pauseMenu.isResumeButtonClicked(currentMouseX, currentMouseY, w, h)) {
                     Game.getInstance().togglePauseMenu(); // Resume the game
                 }
+                // Check statistics button
+                else if (pauseMenu.isStatisticsButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    Game.getInstance().openStatisticsScreen();
+                }
                 // Check settings button
                 else if (pauseMenu.isSettingsButtonClicked(currentMouseX, currentMouseY, w, h)) {
                     // Go to settings menu, remember we came from the game
@@ -802,6 +813,19 @@ public class InputHandler {
                 }
             }
             return; // Pause menu handled or ignored the click
+        }
+
+        // Statistics screen Back button
+        com.stonebreak.ui.statisticsScreen.StatisticsScreen statsScreen = Game.getInstance().getStatisticsScreen();
+        if (statsScreen != null && statsScreen.isVisible()) {
+            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+                int w = Game.getWindowWidth();
+                int h = Game.getWindowHeight();
+                if (statsScreen.isBackButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    Game.getInstance().closeStatisticsScreen();
+                }
+            }
+            return;
         }
 
         // Only allow world interaction in PLAYING state
@@ -1042,6 +1066,11 @@ public class InputHandler {
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible()) {
             pauseMenu.updateHover(currentMouseX, currentMouseY, Game.getWindowWidth(), Game.getWindowHeight());
+        }
+
+        com.stonebreak.ui.statisticsScreen.StatisticsScreen statsScreenHover = Game.getInstance().getStatisticsScreen();
+        if (statsScreenHover != null && statsScreenHover.isVisible()) {
+            statsScreenHover.updateHover(currentMouseX, currentMouseY, Game.getWindowWidth(), Game.getWindowHeight());
         }
 
         // Update chat renderer hover states and scrollbar dragging

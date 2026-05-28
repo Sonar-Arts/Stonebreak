@@ -1,5 +1,6 @@
 package com.stonebreak.world.save.serialization;
 
+import com.stonebreak.player.PlayerStats;
 import com.stonebreak.world.save.model.PlayerData;
 import com.stonebreak.world.save.util.JsonParsingUtil;
 import com.stonebreak.items.ItemStack;
@@ -132,7 +133,17 @@ public class JsonPlayerSerializer {
         json.append("],\n");
         json.append("  \"remainingAp\": ").append(player.getRemainingAp()).append(",\n");
         json.append("  \"level\": ").append(player.getLevel()).append(",\n");
-        json.append("  \"xp\": ").append(player.getXp()).append("\n");
+        json.append("  \"xp\": ").append(player.getXp()).append(",\n");
+
+        json.append("  \"statistics\": {\n");
+        json.append("    \"entitiesKilled\": ").append(player.getStatEntitiesKilled()).append(",\n");
+        json.append("    \"damageDealt\": ").append(player.getStatDamageDealt()).append(",\n");
+        json.append("    \"totalDistance\": ").append(player.getStatTotalDistance()).append(",\n");
+        json.append("    \"distanceWalked\": ").append(player.getStatDistanceWalked()).append(",\n");
+        json.append("    \"distanceSprinted\": ").append(player.getStatDistanceSprinted()).append(",\n");
+        json.append("    \"distanceInAir\": ").append(player.getStatDistanceInAir()).append(",\n");
+        json.append("    \"timeInAir\": ").append(player.getStatTimeInAir()).append("\n");
+        json.append("  }\n");
 
         json.append("}");
 
@@ -219,6 +230,21 @@ public class JsonPlayerSerializer {
             builder.remainingAp(JsonParsingUtil.extractInt(json, "remainingAp", 27));
             builder.level(JsonParsingUtil.extractInt(json, "level", 1));
             builder.xp(JsonParsingUtil.extractInt(json, "xp", 0));
+
+            // Statistics (backward-compat: missing block → all 0)
+            if (json.contains("\"statistics\"")) {
+                PlayerStats ps = new PlayerStats();
+                ps.restore(
+                    (long) JsonParsingUtil.extractDoubleFromObject(json, "statistics", "entitiesKilled"),
+                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "damageDealt"),
+                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "totalDistance"),
+                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceWalked"),
+                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceSprinted"),
+                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceInAir"),
+                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "timeInAir")
+                );
+                builder.stats(ps);
+            }
 
             return builder.build();
 

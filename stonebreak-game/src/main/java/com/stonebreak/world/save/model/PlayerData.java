@@ -1,5 +1,6 @@
 package com.stonebreak.world.save.model;
 
+import com.stonebreak.player.PlayerStats;
 import org.joml.Vector3f;
 import org.joml.Vector2f;
 import com.stonebreak.items.ItemStack;
@@ -43,6 +44,15 @@ public final class PlayerData {
     private final int level;
     private final int xp;
 
+    // Statistics
+    private final long statEntitiesKilled;
+    private final double statDamageDealt;
+    private final double statTotalDistance;
+    private final double statDistanceWalked;
+    private final double statDistanceSprinted;
+    private final double statDistanceInAir;
+    private final double statTimeInAir;
+
     private PlayerData(Builder builder) {
         this.position = new Vector3f(builder.position);
         this.rotation = new Vector2f(builder.rotation);
@@ -66,6 +76,13 @@ public final class PlayerData {
         this.remainingAp = builder.remainingAp;
         this.level = builder.level;
         this.xp    = builder.xp;
+        this.statEntitiesKilled  = builder.statEntitiesKilled;
+        this.statDamageDealt     = builder.statDamageDealt;
+        this.statTotalDistance   = builder.statTotalDistance;
+        this.statDistanceWalked  = builder.statDistanceWalked;
+        this.statDistanceSprinted = builder.statDistanceSprinted;
+        this.statDistanceInAir   = builder.statDistanceInAir;
+        this.statTimeInAir       = builder.statTimeInAir;
     }
 
     // Getters - return defensive copies for mutable objects
@@ -91,6 +108,14 @@ public final class PlayerData {
     public int getRemainingAp() { return remainingAp; }
     public int getLevel() { return level; }
     public int getXp()    { return xp; }
+
+    public long   getStatEntitiesKilled()   { return statEntitiesKilled; }
+    public double getStatDamageDealt()      { return statDamageDealt; }
+    public double getStatTotalDistance()    { return statTotalDistance; }
+    public double getStatDistanceWalked()   { return statDistanceWalked; }
+    public double getStatDistanceSprinted() { return statDistanceSprinted; }
+    public double getStatDistanceInAir()    { return statDistanceInAir; }
+    public double getStatTimeInAir()        { return statTimeInAir; }
 
     /**
      * Creates a new PlayerData with updated last saved time.
@@ -137,6 +162,13 @@ public final class PlayerData {
         private int remainingAp = 27;
         private int level = 1;
         private int xp    = 0;
+        private long   statEntitiesKilled   = 0;
+        private double statDamageDealt      = 0.0;
+        private double statTotalDistance    = 0.0;
+        private double statDistanceWalked   = 0.0;
+        private double statDistanceSprinted = 0.0;
+        private double statDistanceInAir    = 0.0;
+        private double statTimeInAir        = 0.0;
 
         public Builder() {
             // Initialize empty inventory
@@ -168,6 +200,13 @@ public final class PlayerData {
             this.remainingAp = data.remainingAp;
             this.level = data.level;
             this.xp    = data.xp;
+            this.statEntitiesKilled  = data.statEntitiesKilled;
+            this.statDamageDealt     = data.statDamageDealt;
+            this.statTotalDistance   = data.statTotalDistance;
+            this.statDistanceWalked  = data.statDistanceWalked;
+            this.statDistanceSprinted = data.statDistanceSprinted;
+            this.statDistanceInAir   = data.statDistanceInAir;
+            this.statTimeInAir       = data.statTimeInAir;
         }
 
         public Builder position(Vector3f position) {
@@ -282,6 +321,19 @@ public final class PlayerData {
 
         public Builder xp(int xp) {
             this.xp = Math.max(0, xp);
+            return this;
+        }
+
+        public Builder stats(PlayerStats s) {
+            if (s != null) {
+                this.statEntitiesKilled  = s.getEntitiesKilled();
+                this.statDamageDealt     = s.getDamageDealt();
+                this.statTotalDistance   = s.getTotalDistance();
+                this.statDistanceWalked  = s.getDistanceWalked();
+                this.statDistanceSprinted = s.getDistanceSprinted();
+                this.statDistanceInAir   = s.getDistanceInAir();
+                this.statTimeInAir       = s.getTimeInAir();
+            }
             return this;
         }
 

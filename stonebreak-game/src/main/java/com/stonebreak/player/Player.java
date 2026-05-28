@@ -78,6 +78,9 @@ public class Player {
     // RPG
     private final CharacterStats characterStats;
 
+    // Statistics
+    private final PlayerStats stats = new PlayerStats();
+
     // Fishing
     private com.stonebreak.mobs.entities.FishingBobber activeBobber = null;
 
@@ -142,7 +145,28 @@ public class Player {
         swimming.applyWaterFlow(flight.isFlying());
 
         movement.applyGravity();
+        Vector3f posBeforeIntegrate = state.getPosition();
+        float prevX = posBeforeIntegrate.x;
+        float prevZ = posBeforeIntegrate.z;
+        boolean wasOnGround = state.isOnGround();
+        boolean wasSprinting = stamina.isSprinting();
         movement.integrateAndCollide();
+        float dx = posBeforeIntegrate.x - prevX;
+        float dz = posBeforeIntegrate.z - prevZ;
+        float horizDist = (float) Math.sqrt(dx * dx + dz * dz);
+        if (horizDist > 0f) {
+            stats.addTotalDistance(horizDist);
+            if (wasOnGround && wasSprinting) {
+                stats.addDistanceSprinted(horizDist);
+            } else if (wasOnGround) {
+                stats.addDistanceWalked(horizDist);
+            } else {
+                stats.addDistanceInAir(horizDist);
+            }
+        }
+        if (!wasOnGround) {
+            stats.addTimeInAir(dt);
+        }
         if (spectator.isActive()) {
             state.setOnGround(false);
         } else {
@@ -236,6 +260,9 @@ public class Player {
 
     // RPG
     public CharacterStats getCharacterStats() { return characterStats; }
+
+    // Statistics
+    public PlayerStats getStats() { return stats; }
 
     // Stamina / mana
     public float getStamina()    { return stamina.getStamina(); }

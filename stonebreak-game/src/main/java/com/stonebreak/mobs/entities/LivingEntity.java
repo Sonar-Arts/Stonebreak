@@ -114,12 +114,16 @@ public abstract class LivingEntity extends Entity {
         invulnerabilityTimer = INVULNERABILITY_DURATION;
         DamageNumberRenderer.getInstance().spawn(
             position.x, position.y + height * 0.9f, position.z, amount);
-        if (!alive && source == DamageSource.PLAYER) {
-            int xpReward = getXpReward();
-            if (xpReward > 0) {
-                Player player = Game.getPlayer();
-                if (player != null) {
-                    player.getCharacterStats().addXp(xpReward);
+        if (source == DamageSource.PLAYER) {
+            Player player = Game.getPlayer();
+            if (player != null) {
+                player.getStats().addDamageDealt(amount);
+                if (!alive) {
+                    player.getStats().incrementEntitiesKilled();
+                    int xpReward = getXpReward();
+                    if (xpReward > 0) {
+                        player.getCharacterStats().addXp(xpReward);
+                    }
                 }
             }
         }

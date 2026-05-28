@@ -927,6 +927,12 @@ public class Main {
             renderer.getUIRenderer().renderPauseMenuDepthCurtain();
         }
 
+        // Render statistics screen
+        com.stonebreak.ui.statisticsScreen.StatisticsScreen statsScreen = game.getStatisticsScreen();
+        if (statsScreen != null && statsScreen.isVisible() && renderer != null) {
+            statsScreen.render(width, height);
+        }
+
         // Render death menu if player is dead
         com.stonebreak.ui.DeathMenu deathMenu = game.getDeathMenu();
         if (deathMenu != null && deathMenu.isVisible() && renderer != null) {

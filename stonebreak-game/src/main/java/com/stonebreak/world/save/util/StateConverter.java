@@ -68,6 +68,7 @@ public final class StateConverter {
             .remainingAp(cs.getRemainingAp())
             .level(cs.getLevel())
             .xp(cs.getXp())
+            .stats(player.getStats())
             .build();
     }
 
@@ -120,6 +121,17 @@ public final class StateConverter {
             // Set selected hotbar slot
             inventory.setSelectedSlot(data.getSelectedHotbarSlot());
         }
+
+        // Restore statistics
+        player.getStats().restore(
+            data.getStatEntitiesKilled(),
+            data.getStatDamageDealt(),
+            data.getStatTotalDistance(),
+            data.getStatDistanceWalked(),
+            data.getStatDistanceSprinted(),
+            data.getStatDistanceInAir(),
+            data.getStatTimeInAir()
+        );
 
         // Restore RPG / character progression
         CharacterStats cs = player.getCharacterStats();

@@ -43,6 +43,7 @@ public class Game {
     private Renderer renderer;
     private BlockTextureArray textureAtlas;
     private PauseMenu pauseMenu;
+    private com.stonebreak.ui.statisticsScreen.StatisticsScreen statisticsScreen;
     private DeathMenu deathMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private CharacterScreen characterScreen; // Character stats screen
@@ -152,6 +153,7 @@ public class Game {
 
         this.mouseCaptureManager = new MouseCaptureManager(window);
         this.pauseMenu = new PauseMenu(this.renderer.getSkijaBackend());
+        this.statisticsScreen = new com.stonebreak.ui.statisticsScreen.StatisticsScreen(this.renderer.getSkijaBackend());
         this.deathMenu = new DeathMenu(this.renderer.getSkijaBackend());
         this.waterEffects = new WaterEffects();
 
@@ -456,6 +458,11 @@ public class Game {
         stateController.togglePauseMenu();
     }
 
+    public void openStatisticsScreen()  { stateController.openStatisticsScreen(); }
+    public void closeStatisticsScreen() { stateController.closeStatisticsScreen(); }
+
+    public com.stonebreak.core.state.GameStateController getStateController() { return stateController; }
+
     /** Checks if the game is paused. */
     public boolean isPaused() {
         return stateController.isPaused();
@@ -466,6 +473,10 @@ public class Game {
      */
     public PauseMenu getPauseMenu() {
         return pauseMenu;
+    }
+
+    public com.stonebreak.ui.statisticsScreen.StatisticsScreen getStatisticsScreen() {
+        return statisticsScreen;
     }
 
     /**
