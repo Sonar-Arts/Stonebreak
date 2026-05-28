@@ -292,6 +292,9 @@ public class InventoryRenderCoordinator {
 
     float cursorY = colY + padY;
 
+    cursorY = drawLevelWidget(canvas, colX + padX, cursorY, colW - padX * 2, scale);
+    cursorY += 8f * scale;
+
     cursorY = drawSectionHeader(canvas, "Equipment", colX + padX, cursorY, scale);
 
     cursorY = drawEquipmentSlots(canvas, colX, cursorY, colW, padX, scale, mx, my);
@@ -303,6 +306,34 @@ public class InventoryRenderCoordinator {
 
     cursorY += 8f * scale;
     drawStatusEffectSlots(canvas, colX + padX, cursorY, colW - padX * 2, scale, mx, my);
+  }
+
+  /** Draws the level label and XP progress bar; returns the Y position after the widget. */
+  private float drawLevelWidget(Canvas canvas, float x, float y, float barW, float scale) {
+    Font labelFont = ui.fonts().get(MStyle.FONT_META);
+    String levelText = "Level " + stats.getLevel();
+    MPainter.drawStringWithShadow(canvas, levelText, x, y + MStyle.FONT_META * 0.85f,
+        labelFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+
+    int xp    = stats.getXp();
+    int xpMax = stats.getXpForNextLevel();
+    float fraction = xpMax > 0 ? Math.min(1f, (float) xp / xpMax) : 0f;
+
+    float barH   = Math.round(10 * scale);
+    float barY   = y + MStyle.FONT_META + 4f * scale;
+
+    MPainter.fillRoundedRect(canvas, x, barY, barW, barH, 3f, 0xFF333333);
+    if (fraction > 0f) {
+      MPainter.fillRoundedRect(canvas, x, barY, barW * fraction, barH, 3f, 0xFF44AACC);
+    }
+
+    Font metaFont = ui.fonts().getScaled(MStyle.FONT_META);
+    String xpText = xp + " / " + xpMax + " xp";
+    float textX = x + barW - MPainter.measureWidth(metaFont, xpText);
+    MPainter.drawStringWithShadow(canvas, xpText, textX, barY - 2f,
+        metaFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+
+    return barY + barH;
   }
 
   /** Draws a small section header and returns the Y position after it. */

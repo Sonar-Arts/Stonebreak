@@ -45,6 +45,27 @@ public class CharacterStats {
 
   private final Set<String> acquiredFeatIds = new HashSet<>();
 
+  // ─────────────────────────────────────────────── Level / XP
+
+  private int level = 1;
+  private int xp    = 0;
+
+  public int getLevel() { return level; }
+  public int getXp()    { return xp; }
+
+  /** XP required to advance from current level to level+1. */
+  public int getXpForNextLevel() { return 200 + (level / 5) * 50; }
+
+  /** Adds XP and handles level-up chain. */
+  public void addXp(int amount) {
+    if (amount <= 0) return;
+    xp += amount;
+    while (xp >= getXpForNextLevel()) {
+      xp -= getXpForNextLevel();
+      level++;
+    }
+  }
+
   // ─────────────────────────────────────────────── Point currencies
 
   private int remainingCp = 100;
@@ -127,13 +148,13 @@ public class CharacterStats {
   // ─────────────────────────────────────────────── Point currencies (stubs)
 
   /** @deprecated Use {@link #getRemainingCp()} for live values. */
-  public int getClassPoints() { return remainingCp; }
+  @Deprecated public int getClassPoints() { return remainingCp; }
 
   /** @deprecated Use {@link #getRemainingSkillPoints()} for live values. */
-  public int getSkillPoints() { return remainingSp; }
+  @Deprecated public int getSkillPoints() { return remainingSp; }
 
   /** @deprecated Use {@link #getRemainingFeatPoints()} for live values. */
-  public int getFeatPoints()  { return remainingFp; }
+  @Deprecated public int getFeatPoints()  { return remainingFp; }
 
   // ─────────────────────────────────────────────── Vitals
 
@@ -283,7 +304,8 @@ public class CharacterStats {
                       Map<String, Integer> skills,
                       Set<String> feats,
                       int cp, int sp, int fp,
-                      int[] scores, int ap) {
+                      int[] scores, int ap,
+                      int level, int xp) {
     this.selectedClassId = classId;
     this.spentAbilityCp.clear();
     this.spentAbilityCp.putAll(abilityCp);
@@ -298,6 +320,8 @@ public class CharacterStats {
       this.abilityScores = java.util.Arrays.copyOf(scores, 6);
     }
     this.remainingAp = ap;
+    this.level = Math.max(1, level);
+    this.xp    = Math.max(0, xp);
     if (player != null) player.updateDerivedStats();
   }
 }

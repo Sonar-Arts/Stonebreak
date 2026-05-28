@@ -130,7 +130,9 @@ public class JsonPlayerSerializer {
             json.append(scores[i]);
         }
         json.append("],\n");
-        json.append("  \"remainingAp\": ").append(player.getRemainingAp()).append("\n");
+        json.append("  \"remainingAp\": ").append(player.getRemainingAp()).append(",\n");
+        json.append("  \"level\": ").append(player.getLevel()).append(",\n");
+        json.append("  \"xp\": ").append(player.getXp()).append("\n");
 
         json.append("}");
 
@@ -215,6 +217,8 @@ public class JsonPlayerSerializer {
             }
             builder.abilityScores(abilityScores);
             builder.remainingAp(JsonParsingUtil.extractInt(json, "remainingAp", 27));
+            builder.level(JsonParsingUtil.extractInt(json, "level", 1));
+            builder.xp(JsonParsingUtil.extractInt(json, "xp", 0));
 
             return builder.build();
 

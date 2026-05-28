@@ -40,6 +40,8 @@ public final class PlayerData {
     private final int remainingFp;
     private final int[] abilityScores;  // length 6: STR DEX CON INT WIS CHA
     private final int remainingAp;
+    private final int level;
+    private final int xp;
 
     private PlayerData(Builder builder) {
         this.position = new Vector3f(builder.position);
@@ -62,6 +64,8 @@ public final class PlayerData {
         this.remainingFp = builder.remainingFp;
         this.abilityScores = Arrays.copyOf(builder.abilityScores, 6);
         this.remainingAp = builder.remainingAp;
+        this.level = builder.level;
+        this.xp    = builder.xp;
     }
 
     // Getters - return defensive copies for mutable objects
@@ -85,6 +89,8 @@ public final class PlayerData {
     public int getRemainingFeatPoints() { return remainingFp; }
     public int[] getAbilityScores() { return Arrays.copyOf(abilityScores, 6); }
     public int getRemainingAp() { return remainingAp; }
+    public int getLevel() { return level; }
+    public int getXp()    { return xp; }
 
     /**
      * Creates a new PlayerData with updated last saved time.
@@ -129,6 +135,8 @@ public final class PlayerData {
         private int remainingFp = 100;
         private int[] abilityScores = {10, 10, 10, 10, 10, 10};
         private int remainingAp = 27;
+        private int level = 1;
+        private int xp    = 0;
 
         public Builder() {
             // Initialize empty inventory
@@ -158,6 +166,8 @@ public final class PlayerData {
             this.remainingFp = data.remainingFp;
             this.abilityScores = Arrays.copyOf(data.abilityScores, 6);
             this.remainingAp = data.remainingAp;
+            this.level = data.level;
+            this.xp    = data.xp;
         }
 
         public Builder position(Vector3f position) {
@@ -262,6 +272,16 @@ public final class PlayerData {
 
         public Builder remainingAp(int remainingAp) {
             this.remainingAp = remainingAp;
+            return this;
+        }
+
+        public Builder level(int level) {
+            this.level = Math.max(1, level);
+            return this;
+        }
+
+        public Builder xp(int xp) {
+            this.xp = Math.max(0, xp);
             return this;
         }
 

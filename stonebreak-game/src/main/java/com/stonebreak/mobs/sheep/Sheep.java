@@ -82,6 +82,9 @@ public class Sheep extends LivingEntity {
         return new ItemStack[0];
     }
 
+    @Override
+    public int getXpReward() { return 4; }
+
     public void setGrazing(boolean grazing) {
         this.isGrazing = grazing;
     }

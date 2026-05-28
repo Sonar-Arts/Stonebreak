@@ -212,6 +212,9 @@ public class Cow extends LivingEntity {
         }
         return new ItemStack[0];
     }
+
+    @Override
+    public int getXpReward() { return 5; }
     
     /**
      * Sets the cow's grazing state.

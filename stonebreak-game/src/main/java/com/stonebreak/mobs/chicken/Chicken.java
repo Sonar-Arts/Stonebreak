@@ -99,6 +99,9 @@ public class Chicken extends LivingEntity {
         return new ItemStack[0];
     }
 
+    @Override
+    public int getXpReward() { return 2; }
+
     /**
      * Makes the chicken go idle - stops horizontal movement.
      */

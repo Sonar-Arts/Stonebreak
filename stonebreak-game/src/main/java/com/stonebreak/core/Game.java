@@ -217,7 +217,9 @@ public class Game {
                 pending.getRemainingSkillPoints(),
                 pending.getRemainingFeatPoints(),
                 pending.getAbilityScores(),
-                pending.getRemainingAp()
+                pending.getRemainingAp(),
+                pending.getLevel(),
+                pending.getXp()
             );
             live.setSelectedBackground(pending.getSelectedBackground());
         }

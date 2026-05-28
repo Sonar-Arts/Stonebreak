@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities;
 
 import org.joml.Vector3f;
+import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
 import com.stonebreak.items.ItemStack;
@@ -113,8 +114,20 @@ public abstract class LivingEntity extends Entity {
         invulnerabilityTimer = INVULNERABILITY_DURATION;
         DamageNumberRenderer.getInstance().spawn(
             position.x, position.y + height * 0.9f, position.z, amount);
+        if (!alive && source == DamageSource.PLAYER) {
+            int xpReward = getXpReward();
+            if (xpReward > 0) {
+                Player player = Game.getPlayer();
+                if (player != null) {
+                    player.getCharacterStats().addXp(xpReward);
+                }
+            }
+        }
         onDamage(amount, source);
     }
+
+    /** XP awarded to the player when this entity is killed. Override in subclasses. */
+    public int getXpReward() { return 0; }
     
     /**
      * Moves the entity toward a target position.

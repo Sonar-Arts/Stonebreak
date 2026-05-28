@@ -315,9 +315,11 @@ public class CharacterRenderCoordinator {
     drawClassAndFeats(canvas, leftColX, contentY + 162f * scale, leftColW, scale);
     drawCurrencies(canvas, leftColX, contentY + 300f * scale, leftColW, scale);
 
-    drawAbilityScores(canvas, rightColX, contentY, rightColW, mx, my, scale);
+    float abilitiesY = drawCharLevelWidget(canvas, rightColX, contentY, rightColW, scale);
+    abilitiesY += 6f * scale;
+    drawAbilityScores(canvas, rightColX, abilitiesY, rightColW, mx, my, scale);
 
-    float barSectionY = contentY + 190f * scale;
+    float barSectionY = abilitiesY + 190f * scale;
     drawHealthBar(canvas, rightColX, barSectionY, rightColW, scale);
     drawManaBar(canvas, rightColX, barSectionY + 32f * scale, rightColW, scale);
     drawStatusEffects(canvas, rightColX, barSectionY + 74f * scale, rightColW, mx, my, scale);
@@ -422,6 +424,36 @@ public class CharacterRenderCoordinator {
           colX + 4f, y, font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
       y += 18f * scale;
     }
+  }
+
+  // ─────────────────────────────────────────────── Right column — level widget
+
+  /** Draws level label + XP bar; returns the Y position below the widget. */
+  private float drawCharLevelWidget(Canvas canvas, float x, float y, float colW, float scale) {
+    Font labelFont = ui.fonts().getScaled(MStyle.FONT_META);
+    String levelText = "Level " + stats.getLevel();
+    MPainter.drawStringWithShadow(canvas, levelText, x, y + MStyle.FONT_META * 0.85f * scale,
+        labelFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+
+    int xp    = stats.getXp();
+    int xpMax = stats.getXpForNextLevel();
+    float fraction = xpMax > 0 ? Math.min(1f, (float) xp / xpMax) : 0f;
+
+    float barH = Math.round(10 * scale);
+    float barY = y + MStyle.FONT_META * scale + 4f * scale;
+
+    MPainter.fillRoundedRect(canvas, x, barY, colW, barH, 3f, 0xFF333333);
+    if (fraction > 0f) {
+      MPainter.fillRoundedRect(canvas, x, barY, colW * fraction, barH, 3f, 0xFF44AACC);
+    }
+
+    Font metaFont = ui.fonts().getScaled(MStyle.FONT_META);
+    String xpText = xp + " / " + xpMax + " xp";
+    float textX = x + colW - MPainter.measureWidth(metaFont, xpText);
+    MPainter.drawStringWithShadow(canvas, xpText, textX, barY - 2f,
+        metaFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+
+    return barY + barH;
   }
 
   // ─────────────────────────────────────────────── Right column — ability scores
