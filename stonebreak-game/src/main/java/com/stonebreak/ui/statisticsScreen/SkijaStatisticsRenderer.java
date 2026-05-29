@@ -1,6 +1,7 @@
 package com.stonebreak.ui.statisticsScreen;
 
 import com.stonebreak.core.Game;
+import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.PlayerStats;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
@@ -93,9 +94,16 @@ public final class SkijaStatisticsRenderer {
             // COMBAT
             drawCategoryHeader(canvas, "COMBAT", leftX, rowY);
             rowY += rowGap;
-            drawStatRow(canvas, "Entities Killed",    formatLong(stats != null ? stats.getEntitiesKilled() : 0),  leftX, rightX, rowY);
+            drawStatRow(canvas, "Entities Killed", formatLong(stats != null ? stats.getEntitiesKilled() : 0), leftX, rightX, rowY);
             rowY += rowGap;
-            drawStatRow(canvas, "Damage Dealt",       formatDamage(stats != null ? stats.getDamageDealt() : 0),   leftX, rightX, rowY);
+            float indentX = leftX + 20f * scale;
+            drawStatRow(canvas, "Cows",     formatLong(getKillCount(stats, EntityType.COW)),     indentX, rightX, rowY);
+            rowY += rowGap;
+            drawStatRow(canvas, "Sheep",    formatLong(getKillCount(stats, EntityType.SHEEP)),   indentX, rightX, rowY);
+            rowY += rowGap;
+            drawStatRow(canvas, "Chickens", formatLong(getKillCount(stats, EntityType.CHICKEN)), indentX, rightX, rowY);
+            rowY += rowGap;
+            drawStatRow(canvas, "Damage Dealt",    formatDamage(stats != null ? stats.getDamageDealt() : 0),   leftX, rightX, rowY);
             rowY += rowGap + headerGap;
 
             // Separator
@@ -204,6 +212,11 @@ public final class SkijaStatisticsRenderer {
         if (h > 0) return String.format("%dh %dm %ds", h, m, s);
         if (m > 0) return String.format("%dm %ds", m, s);
         return String.format("%ds", s);
+    }
+
+    private static long getKillCount(PlayerStats stats, EntityType type) {
+        if (stats == null) return 0L;
+        return stats.getKillsByType().getOrDefault(type, 0L);
     }
 
     public void dispose() {

@@ -52,6 +52,7 @@ public final class PlayerData {
     private final double statDistanceSprinted;
     private final double statDistanceInAir;
     private final double statTimeInAir;
+    private final Map<String, Long> statKillsByEntityType;
 
     private PlayerData(Builder builder) {
         this.position = new Vector3f(builder.position);
@@ -83,6 +84,7 @@ public final class PlayerData {
         this.statDistanceSprinted = builder.statDistanceSprinted;
         this.statDistanceInAir   = builder.statDistanceInAir;
         this.statTimeInAir       = builder.statTimeInAir;
+        this.statKillsByEntityType = Collections.unmodifiableMap(new HashMap<>(builder.statKillsByEntityType));
     }
 
     // Getters - return defensive copies for mutable objects
@@ -116,6 +118,7 @@ public final class PlayerData {
     public double getStatDistanceSprinted() { return statDistanceSprinted; }
     public double getStatDistanceInAir()    { return statDistanceInAir; }
     public double getStatTimeInAir()        { return statTimeInAir; }
+    public Map<String, Long> getStatKillsByEntityType() { return statKillsByEntityType; }
 
     /**
      * Creates a new PlayerData with updated last saved time.
@@ -169,6 +172,7 @@ public final class PlayerData {
         private double statDistanceSprinted = 0.0;
         private double statDistanceInAir    = 0.0;
         private double statTimeInAir        = 0.0;
+        private Map<String, Long> statKillsByEntityType = new HashMap<>();
 
         public Builder() {
             // Initialize empty inventory
@@ -207,6 +211,7 @@ public final class PlayerData {
             this.statDistanceSprinted = data.statDistanceSprinted;
             this.statDistanceInAir   = data.statDistanceInAir;
             this.statTimeInAir       = data.statTimeInAir;
+            this.statKillsByEntityType = new HashMap<>(data.statKillsByEntityType);
         }
 
         public Builder position(Vector3f position) {
@@ -333,7 +338,15 @@ public final class PlayerData {
                 this.statDistanceSprinted = s.getDistanceSprinted();
                 this.statDistanceInAir   = s.getDistanceInAir();
                 this.statTimeInAir       = s.getTimeInAir();
+                this.statKillsByEntityType = new HashMap<>();
+                s.getKillsByType().forEach((type, count) ->
+                    this.statKillsByEntityType.put(type.name(), count));
             }
+            return this;
+        }
+
+        public Builder statKillsByEntityType(Map<String, Long> map) {
+            this.statKillsByEntityType = new HashMap<>(map);
             return this;
         }
 

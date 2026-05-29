@@ -117,6 +117,7 @@ public abstract class LivingEntity extends Entity {
                 player.getStats().addDamageDealt(amount);
                 if (!alive) {
                     player.getStats().incrementEntitiesKilled();
+                    player.getStats().incrementKillsForType(getType());
                     int xpReward = getXpReward();
                     if (xpReward > 0) {
                         player.getCharacterStats().addXp(xpReward);

@@ -1,5 +1,6 @@
 package com.stonebreak.world.save.serialization;
 
+import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.player.PlayerStats;
 import com.stonebreak.world.save.model.PlayerData;
 import com.stonebreak.world.save.util.JsonParsingUtil;
@@ -9,6 +10,7 @@ import org.joml.Vector3f;
 import org.joml.Vector2f;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
+import java.util.EnumMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -131,7 +133,16 @@ public class JsonPlayerSerializer {
         json.append("    \"distanceWalked\": ").append(player.getStatDistanceWalked()).append(",\n");
         json.append("    \"distanceSprinted\": ").append(player.getStatDistanceSprinted()).append(",\n");
         json.append("    \"distanceInAir\": ").append(player.getStatDistanceInAir()).append(",\n");
-        json.append("    \"timeInAir\": ").append(player.getStatTimeInAir()).append("\n");
+        json.append("    \"timeInAir\": ").append(player.getStatTimeInAir()).append(",\n");
+        json.append("    \"killsByEntityType\": {");
+        Map<String, Long> killsByType = player.getStatKillsByEntityType();
+        boolean firstKill = true;
+        for (Map.Entry<String, Long> e : killsByType.entrySet()) {
+            if (!firstKill) json.append(", ");
+            json.append("\"").append(e.getKey()).append("\": ").append(e.getValue());
+            firstKill = false;
+        }
+        json.append("}\n");
         json.append("  }\n");
 
         json.append("}");
@@ -232,6 +243,7 @@ public class JsonPlayerSerializer {
                     JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceInAir"),
                     JsonParsingUtil.extractDoubleFromObject(json, "statistics", "timeInAir")
                 );
+                ps.restoreKillsByType(extractKillsByEntityType(json));
                 builder.stats(ps);
             }
 
@@ -240,6 +252,34 @@ public class JsonPlayerSerializer {
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialize PlayerData: " + e.getMessage(), e);
         }
+    }
+
+    private static Map<EntityType, Long> extractKillsByEntityType(String json) {
+        Map<EntityType, Long> result = new EnumMap<>(EntityType.class);
+        java.util.regex.Pattern statsBlock = java.util.regex.Pattern.compile(
+            "\"statistics\"\\s*:\\s*\\{([^}]*(?:\\{[^}]*\\}[^}]*)*)\\}",
+            java.util.regex.Pattern.DOTALL);
+        java.util.regex.Matcher bm = statsBlock.matcher(json);
+        if (!bm.find()) return result;
+        String statsContent = bm.group(1);
+
+        java.util.regex.Pattern killsBlock = java.util.regex.Pattern.compile(
+            "\"killsByEntityType\"\\s*:\\s*\\{([^}]*)\\}",
+            java.util.regex.Pattern.DOTALL);
+        java.util.regex.Matcher km = killsBlock.matcher(statsContent);
+        if (!km.find()) return result;
+        String killsContent = km.group(1);
+
+        java.util.regex.Pattern entryPattern = java.util.regex.Pattern.compile(
+            "\"([^\"]+)\"\\s*:\\s*(\\d+)");
+        java.util.regex.Matcher em = entryPattern.matcher(killsContent);
+        while (em.find()) {
+            try {
+                EntityType type = EntityType.valueOf(em.group(1));
+                result.put(type, Long.parseLong(em.group(2)));
+            } catch (IllegalArgumentException ignored) {}
+        }
+        return result;
     }
 
     /**
