@@ -501,15 +501,21 @@ public class EntityRenderer {
 
         GL30.glBindVertexArray(simpleCubeVAO);
         GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
-        GL30.glBindVertexArray(0);
 
-        // Render a larger, semi-transparent outer glow layer
+        // Render a larger, semi-transparent outer glow layer. Keep simpleCubeVAO
+        // bound across both draws — unbinding between them (then calling
+        // glDrawArrays with no VAO) is undefined and on some drivers picks up
+        // whichever VAO another renderer last used. After the player switches
+        // held items mid-flight, that "last VAO" becomes the new held item's
+        // mesh, so the glow quads sample its vertex buffer and stretch the bolt
+        // across the screen toward the hand position (issue #177).
         Matrix4f glowMatrix = new Matrix4f()
                 .translate(entity.getPosition())
                 .rotateY((float) Math.toRadians(entity.getRotation().y))
                 .scale(new Vector3f(entity.getScale()).mul(1.8f));
         shader.setUniform("model", glowMatrix);
         GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
+        GL30.glBindVertexArray(0);
 
         GL11.glDepthMask(true);
         GL11.glDisable(GL11.GL_BLEND);
