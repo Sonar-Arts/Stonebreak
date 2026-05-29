@@ -340,6 +340,5 @@ public class Player {
         blockPlacer.setWorld(world);
         itemDropInteraction.setWorld(world);
         deathHandler.setWorld(world);
-        System.out.println("[WORLD-ISOLATION] Player world reference updated for world switching");
     }
 }

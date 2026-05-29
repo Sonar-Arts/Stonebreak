@@ -189,7 +189,6 @@ public class Game {
         com.stonebreak.core.bootstrap.GameBootstrap.initializeEntityAssets();
         com.stonebreak.core.bootstrap.GameBootstrap.configureEngine(renderer.getBlockTextureArray(), renderer);
 
-        System.out.println("[STARTUP] Core components initialized (no world/player yet)");
     }
 
     /**
@@ -240,7 +239,6 @@ public class Game {
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
         this.entitySpawner = new com.stonebreak.mobs.entities.EntitySpawner(world, entityManager);
         world.setEntityManager(this.entityManager);
-        System.out.println("Entity system initialized - cows can now spawn!");
 
         // Note: TimeOfDay initialization is handled during world loading/generation
         // For new worlds: Set to NOON in performInitialWorldGeneration()
@@ -292,10 +290,7 @@ public class Game {
         // Initialize player sounds
         if (soundSystem != null) {
             soundSystem.initializePlayerSounds(world);
-            System.out.println("Player sound system initialized");
         }
-
-        System.out.println("[WORLD-CREATION] World components initialized for new world");
     }
 
     /**
@@ -944,7 +939,6 @@ public class Game {
             if (mouseCaptureManager != null) {
                 mouseCaptureManager.forceUpdate();
             }
-            System.out.println("[CLIENT-WORLD] Render world ready; entering play.");
         } catch (Exception e) {
             System.err.println("[CLIENT-WORLD] Failed to build render world: " + e.getMessage());
             e.printStackTrace();

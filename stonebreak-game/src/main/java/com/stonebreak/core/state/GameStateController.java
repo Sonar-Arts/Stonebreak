@@ -148,9 +148,6 @@ public final class GameStateController {
         if (workbenchScreen != null && currentState == GameState.PLAYING && !paused) {
             setState(GameState.WORKBENCH_UI);
             workbenchScreen.open();
-            System.out.println("Opened Workbench Screen.");
-        } else {
-            System.out.println("Cannot open workbench: Not in PLAYING state, or game paused by menu, or workbenchScreen is null.");
         }
     }
 
@@ -161,7 +158,6 @@ public final class GameStateController {
             if (currentState == GameState.WORKBENCH_UI) {
                 setState(GameState.PLAYING);
             }
-            System.out.println("Closed Workbench Screen.");
         }
     }
 
@@ -170,9 +166,6 @@ public final class GameStateController {
         if (furnaceScreen != null && currentState == GameState.PLAYING && !paused) {
             setState(GameState.FURNACE_UI);
             furnaceScreen.open(pos);
-            System.out.println("Opened Furnace Screen at " + pos);
-        } else {
-            System.out.println("Cannot open furnace: Not in PLAYING state, or game paused by menu, or furnaceScreen is null.");
         }
     }
 
@@ -183,16 +176,12 @@ public final class GameStateController {
             if (currentState == GameState.FURNACE_UI) {
                 setState(GameState.PLAYING);
             }
-            System.out.println("Closed Furnace Screen.");
         }
     }
 
     public void openRecipeBookScreen() {
         RecipeScreen recipeScreen = game.getRecipeBookScreen();
-        if (recipeScreen == null) {
-            System.out.println("Cannot open RecipeBook: recipeBookScreen is null.");
-            return;
-        }
+        if (recipeScreen == null) return;
 
         PauseMenu pauseMenu = game.getPauseMenu();
         boolean allowOpen =
@@ -203,18 +192,6 @@ public final class GameStateController {
         if (allowOpen) {
             setState(GameState.RECIPE_BOOK_UI);
             recipeScreen.onOpen();
-            System.out.println("Opened RecipeBook Screen. Will return to: " + previousGameState);
-        } else {
-            String contextDetails = "Current state: " + currentState;
-            InventoryScreen inventoryScreen = game.getInventoryScreen();
-            if (inventoryScreen != null) {
-                contextDetails += ", InventoryVisible: " + inventoryScreen.isVisible();
-            }
-            if (pauseMenu != null) {
-                contextDetails += ", MainPauseActive: " + pauseMenu.isVisible();
-            }
-            contextDetails += ", CurrentState: " + currentState;
-            System.out.println("Cannot open RecipeBook: Not in a valid context (" + contextDetails + ").");
         }
     }
 
@@ -272,7 +249,6 @@ public final class GameStateController {
         if (recipeScreen != null && currentState == GameState.RECIPE_BOOK_UI) {
             recipeScreen.onClose();
             setState(previousGameState);
-            System.out.println("Closed RecipeBook Screen. Returning to: " + previousGameState);
         }
     }
 

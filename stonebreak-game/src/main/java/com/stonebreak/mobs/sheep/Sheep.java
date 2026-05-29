@@ -1,7 +1,6 @@
 package com.stonebreak.mobs.sheep;
 
 import org.joml.Vector3f;
-import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
@@ -35,7 +34,7 @@ public class Sheep extends LivingEntity {
     @Override
     public void update(float deltaTime) {
         super.update(deltaTime);
-        if (sheepAI != null) sheepAI.update(deltaTime);
+        sheepAI.update(deltaTime);
         animationController.updateAnimations(deltaTime);
     }
 
@@ -57,24 +56,14 @@ public class Sheep extends LivingEntity {
     @Override
     public void onDamage(float damage, DamageSource source) {
         if (source == DamageSource.PLAYER) {
-            Player player = Game.getPlayer();
-            if (player != null) {
-                Vector3f knockbackDir = new Vector3f(position).sub(player.getPosition());
-                knockbackDir.y = 0;
-                if (knockbackDir.length() > 0.01f) {
-                    knockbackDir.normalize();
-                    velocity.x += knockbackDir.x * 6.0f;
-                    velocity.z += knockbackDir.z * 6.0f;
-                    velocity.y += 0.6f;
-                }
-            }
+            applyPlayerKnockback();
         }
-        if (sheepAI != null) sheepAI.onDamaged(damage);
+        sheepAI.onDamaged(damage);
     }
 
     @Override
     protected void onDeath() {
-        if (sheepAI != null) sheepAI.cleanup();
+        sheepAI.cleanup();
     }
 
     @Override

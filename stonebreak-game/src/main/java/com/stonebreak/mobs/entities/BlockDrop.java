@@ -202,6 +202,9 @@ public class BlockDrop extends Entity {
         return blockType;
     }
     
+    public float getDespawnTimer() { return despawnTimer; }
+    public void setDespawnTimer(float timer) { this.despawnTimer = timer; }
+
     /**
      * Gets the remaining despawn time in seconds.
      */

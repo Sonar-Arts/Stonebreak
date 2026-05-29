@@ -414,9 +414,9 @@ public class CharacterRenderCoordinator {
 
     record Entry(String label, int value) {}
     Entry[] entries = {
-        new Entry("CP", stats.getClassPoints()),
-        new Entry("SP", stats.getSkillPoints()),
-        new Entry("FP", stats.getFeatPoints()),
+        new Entry("CP", stats.getRemainingCp()),
+        new Entry("SP", stats.getRemainingSkillPoints()),
+        new Entry("FP", stats.getRemainingFeatPoints()),
         new Entry("AP", stats.getRemainingAp()),
     };
     for (Entry e : entries) {

@@ -73,10 +73,10 @@ public class SheepAnimal implements Animal {
     public boolean canSpawnInChunk(Chunk chunk) {
         for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
             for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
-                for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
-                    if (chunk.getBlock(x, y, z) == BlockType.GRASS) {
-                        return true;
-                    }
+                for (int y = WorldConfiguration.WORLD_HEIGHT - 1; y >= 0; y--) {
+                    BlockType b = chunk.getBlock(x, y, z);
+                    if (b == BlockType.GRASS) return true;
+                    if (b != BlockType.AIR) break; // hit a non-grass surface; skip this column
                 }
             }
         }

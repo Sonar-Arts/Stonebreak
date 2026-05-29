@@ -52,21 +52,11 @@ public class JsonPlayerSerializer {
         // Serialize inventory as simple {id, count} pairs
         json.append("  \"inventory\": [\n");
         ItemStack[] inv = player.getInventory();
-        System.out.println("[SAVE-DEBUG] ========== SAVING PLAYER INVENTORY ==========");
-        System.out.println("[SAVE-DEBUG] Total inventory slots: " + inv.length);
         for (int i = 0; i < 36; i++) {
             ItemStack stack = inv[i];
             int id = (stack == null) ? BlockType.AIR.getId() : stack.getBlockTypeId();
             int count = (stack == null) ? 0 : stack.getCount();
             String state = (stack == null) ? null : stack.getState();
-
-            // DIAGNOSTIC LOGGING:
-            if (stack != null && id > 0) {
-                System.out.println("[SAVE-DEBUG] Slot " + i + ": " +
-                    stack.getName() + " (ID=" + id + " count=" + count +
-                    (state != null ? " state=" + state : "") +
-                    " item=" + stack.getItem().getClass().getSimpleName() + ")");
-            }
 
             json.append("    {\"id\": ").append(id).append(", \"count\": ").append(count);
             if (state != null) {
@@ -76,7 +66,6 @@ public class JsonPlayerSerializer {
             if (i < 35) json.append(",");
             json.append("\n");
         }
-        System.out.println("[SAVE-DEBUG] ========== END INVENTORY SAVE ==========");
         json.append("  ],\n");
 
         // RPG / character progression

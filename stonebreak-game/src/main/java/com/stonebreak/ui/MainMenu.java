@@ -154,11 +154,6 @@ public class MainMenu {
     }
 
     public void refreshSplashText() {
-        String oldText = this.currentSplashText;
         this.currentSplashText = splashTextManager.getRandomSplashText();
-        // Debug output to verify randomization (can be removed in production)
-        if (!oldText.equals(this.currentSplashText)) {
-            System.out.println("Splash text changed: '" + oldText + "' -> '" + this.currentSplashText + "'");
-        }
     }
 }

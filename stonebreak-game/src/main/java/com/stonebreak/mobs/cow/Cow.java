@@ -1,7 +1,6 @@
 package com.stonebreak.mobs.cow;
 
 import org.joml.Vector3f;
-import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
@@ -24,7 +23,6 @@ public class Cow extends LivingEntity {
     private float wanderTimer;
     private float idleTimer;
     private boolean isGrazing;
-    private float grazingTimer;
     
     
     // Milk system (basic implementation)
@@ -64,7 +62,6 @@ public class Cow extends LivingEntity {
         this.wanderTimer = 0.0f;
         this.idleTimer = 0.0f;
         this.isGrazing = false;
-        this.grazingTimer = 0.0f;
         
         
         // Initialize milk system
@@ -99,18 +96,11 @@ public class Cow extends LivingEntity {
         updateMilkSystem(deltaTime);
         updateBehaviorTimers(deltaTime);
         
-        // Update AI behavior
-        if (cowAI != null) {
-            cowAI.update(deltaTime);
-        }
-        
+        cowAI.update(deltaTime);
+
         // Advance the animation clock; the SBE cow renderer samples clips from it.
         animationController.updateAnimations(deltaTime);
-
-        // Update cow sounds
-        if (cowSounds != null) {
-            cowSounds.updateSounds(position, velocity, isOnGround());
-        }
+        cowSounds.updateSounds(position, velocity, isOnGround());
     }
     
     /**
@@ -133,10 +123,6 @@ public class Cow extends LivingEntity {
     private void updateBehaviorTimers(float deltaTime) {
         wanderTimer += deltaTime;
         idleTimer += deltaTime;
-        
-        if (isGrazing) {
-            grazingTimer += deltaTime;
-        }
     }
     
     /**
@@ -172,21 +158,9 @@ public class Cow extends LivingEntity {
     @Override
     public void onDamage(float damage, DamageSource source) {
         if (source == DamageSource.PLAYER) {
-            Player player = Game.getPlayer();
-            if (player != null) {
-                Vector3f knockbackDir = new Vector3f(position).sub(player.getPosition());
-                knockbackDir.y = 0;
-                if (knockbackDir.length() > 0.01f) {
-                    knockbackDir.normalize();
-                    velocity.x += knockbackDir.x * 6.0f;
-                    velocity.z += knockbackDir.z * 6.0f;
-                    velocity.y += 0.6f;
-                }
-            }
+            applyPlayerKnockback();
         }
-        if (cowAI != null) {
-            cowAI.onDamaged(damage);
-        }
+        cowAI.onDamaged(damage);
     }
     
     /**
@@ -194,12 +168,8 @@ public class Cow extends LivingEntity {
      */
     @Override
     protected void onDeath() {
-        if (cowAI != null) {
-            cowAI.cleanup();
-        }
-        if (cowSounds != null) {
-            cowSounds.reset();
-        }
+        cowAI.cleanup();
+        cowSounds.reset();
         for (ItemStack drop : getDrops()) {
             DropUtil.createItemDrop(world, getPosition(), drop);
         }
@@ -221,9 +191,6 @@ public class Cow extends LivingEntity {
      */
     public void setGrazing(boolean grazing) {
         this.isGrazing = grazing;
-        if (grazing) {
-            this.grazingTimer = 0.0f;
-        }
     }
     
     
@@ -250,6 +217,11 @@ public class Cow extends LivingEntity {
         return animationController;
     }
     
+    public boolean isCanBeMilked() { return canBeMilked; }
+    public void setCanBeMilked(boolean canBeMilked) { this.canBeMilked = canBeMilked; }
+    public float getMilkRegenTimer() { return milkRegenTimer; }
+    public void setMilkRegenTimer(float timer) { this.milkRegenTimer = timer; }
+
     /**
      * Gets the cow's texture variant.
      */

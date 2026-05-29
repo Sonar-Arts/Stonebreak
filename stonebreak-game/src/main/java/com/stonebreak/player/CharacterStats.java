@@ -145,17 +145,6 @@ public class CharacterStats {
   }
   public List<String> getStatusEffects() { return List.of(); }
 
-  // ─────────────────────────────────────────────── Point currencies (stubs)
-
-  /** @deprecated Use {@link #getRemainingCp()} for live values. */
-  @Deprecated public int getClassPoints() { return remainingCp; }
-
-  /** @deprecated Use {@link #getRemainingSkillPoints()} for live values. */
-  @Deprecated public int getSkillPoints() { return remainingSp; }
-
-  /** @deprecated Use {@link #getRemainingFeatPoints()} for live values. */
-  @Deprecated public int getFeatPoints()  { return remainingFp; }
-
   // ─────────────────────────────────────────────── Vitals
 
   /** Live health from player. */

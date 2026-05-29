@@ -34,9 +34,6 @@ public abstract class LivingEntity extends Entity {
     protected long lastInteractionTime;
     private static final float INTERACTION_COOLDOWN = 1.0f; // 1 second between interactions
     
-    // AI and behavior (to be implemented in future phases)
-    protected Object ai; // Placeholder for AI system
-    
     /**
      * Creates a new living entity at the specified position.
      */
@@ -294,6 +291,23 @@ public abstract class LivingEntity extends Entity {
                blockType == BlockType.WILDGRASS;
     }
     
+    /**
+     * Applies knockback away from the attacking player. Call from {@link #onDamage} when
+     * source is {@link DamageSource#PLAYER}.
+     */
+    protected void applyPlayerKnockback() {
+        Player player = Game.getPlayer();
+        if (player == null) return;
+        Vector3f knockbackDir = new Vector3f(position).sub(player.getPosition());
+        knockbackDir.y = 0;
+        if (knockbackDir.length() > 0.01f) {
+            knockbackDir.normalize();
+            velocity.x += knockbackDir.x * 6.0f;
+            velocity.z += knockbackDir.z * 6.0f;
+            velocity.y += 0.6f;
+        }
+    }
+
     // Abstract methods that must be implemented by subclasses
     
     /**
