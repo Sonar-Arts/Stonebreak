@@ -256,17 +256,11 @@ public class JsonPlayerSerializer {
 
     private static Map<EntityType, Long> extractKillsByEntityType(String json) {
         Map<EntityType, Long> result = new EnumMap<>(EntityType.class);
-        java.util.regex.Pattern statsBlock = java.util.regex.Pattern.compile(
-            "\"statistics\"\\s*:\\s*\\{([^}]*(?:\\{[^}]*\\}[^}]*)*)\\}",
-            java.util.regex.Pattern.DOTALL);
-        java.util.regex.Matcher bm = statsBlock.matcher(json);
-        if (!bm.find()) return result;
-        String statsContent = bm.group(1);
-
+        // "killsByEntityType" appears once in player.json; search the full string to avoid nested-brace regex pitfalls.
         java.util.regex.Pattern killsBlock = java.util.regex.Pattern.compile(
             "\"killsByEntityType\"\\s*:\\s*\\{([^}]*)\\}",
             java.util.regex.Pattern.DOTALL);
-        java.util.regex.Matcher km = killsBlock.matcher(statsContent);
+        java.util.regex.Matcher km = killsBlock.matcher(json);
         if (!km.find()) return result;
         String killsContent = km.group(1);
 

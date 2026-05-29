@@ -13,6 +13,8 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.blocks.BlockType;
 import org.joml.Vector3f;
 import org.joml.Vector2f;
+import com.stonebreak.mobs.entities.EntityType;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -132,6 +134,13 @@ public final class StateConverter {
             data.getStatDistanceInAir(),
             data.getStatTimeInAir()
         );
+        Map<EntityType, Long> killsByType = new EnumMap<>(EntityType.class);
+        data.getStatKillsByEntityType().forEach((typeName, count) -> {
+            try {
+                killsByType.put(EntityType.valueOf(typeName), count);
+            } catch (IllegalArgumentException ignored) {}
+        });
+        player.getStats().restoreKillsByType(killsByType);
 
         // Restore RPG / character progression
         CharacterStats cs = player.getCharacterStats();
