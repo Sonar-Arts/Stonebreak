@@ -49,6 +49,11 @@ public class ViewportInputHandler {
     private float lastViewportMouseX = 0;
     private float lastViewportMouseY = 0;
 
+    // Last known viewport hover state, captured during handleInput (inside the viewport window's
+    // Begin/End). Consulted by handleKeyboardInput, which runs outside the window where per-window
+    // hover/focus queries are invalid — prevents keyboard (e.g. WASD) bleed when another window has focus.
+    private boolean lastViewportHovered = false;
+
     public ViewportInputHandler(ViewportCamera viewportCamera) {
         this.viewportCamera = viewportCamera;
 
@@ -218,6 +223,9 @@ public class ViewportInputHandler {
             return;
         }
 
+        // Remember hover state for the keyboard path (runs outside the viewport window).
+        this.lastViewportHovered = viewportHovered;
+
         // Check if ImGui wants to capture mouse
         boolean wantCapture = ImGui.getIO().getWantCaptureMouse();
 
@@ -232,8 +240,14 @@ public class ViewportInputHandler {
         this.lastViewportMouseX = viewportMouseX;
         this.lastViewportMouseY = viewportMouseY;
 
-        // Check if mouse is within viewport bounds
-        boolean mouseInBounds = !mouseCaptureManager.isMouseCaptured() && (mousePos.x >= imagePos.x &&
+        // Check if mouse is within viewport bounds.
+        // viewportHovered (ImGui.isWindowHovered) is ANDed in so that an overlapping window
+        // (e.g. the Texture Editor) occluding the viewport's screen rectangle does NOT count as
+        // in-bounds. This is the single authoritative gate: every controller keys interaction
+        // starts off mouseInBounds, so input can never bleed through an occluding window. Active
+        // drags continue via their own isDragging() signals (mouseInBounds is already false during
+        // captured drags), so this does not interrupt in-progress operations.
+        boolean mouseInBounds = viewportHovered && !mouseCaptureManager.isMouseCaptured() && (mousePos.x >= imagePos.x &&
                 mousePos.x < imagePos.x + imageWidth &&
                 mousePos.y >= imagePos.y &&
                 mousePos.y < imagePos.y + imageHeight);
@@ -327,6 +341,12 @@ public class ViewportInputHandler {
      * Delegates to camera controller for first-person movement.
      */
     public void handleKeyboardInput(float deltaTime) {
+        // Only drive the camera from the keyboard when the viewport was the hovered window last
+        // frame. Prevents WASD/Space/Ctrl bleed-through while another window (e.g. Texture Editor)
+        // has focus. CameraInputController additionally guards on ImGui text/keyboard capture.
+        if (!lastViewportHovered) {
+            return;
+        }
         cameraController.handleKeyboardInput(deltaTime);
     }
 
