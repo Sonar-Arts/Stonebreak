@@ -3,6 +3,7 @@ package com.stonebreak.core;
 import java.util.concurrent.*;
 
 import com.stonebreak.rendering.textures.BlockTextureArray;
+import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.audio.*;
 import com.stonebreak.blocks.*;
 import com.stonebreak.crafting.*;
@@ -57,7 +58,8 @@ public class Game {
     private com.stonebreak.ui.multiplayerMenu.MultiplayerMenu multiplayerMenu;
     private com.stonebreak.ui.multiplayerMenu.HostWorldScreen hostWorldScreen;
     private com.stonebreak.ui.multiplayerMenu.JoinWorldScreen joinWorldScreen;
-    private SoundSystem soundSystem; // Sound system
+    private SoundSystem soundSystem; // Sound system (engine)
+    private PlayerSounds playerSounds; // Game-side player footstep sound binding
     private ChatSystem chatSystem; // Chat system
     private CraftingManager craftingManager; // Crafting manager
     private SmeltingManager smeltingManager; // Smelting manager for furnace
@@ -281,11 +283,9 @@ public class Game {
             System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
         }
 
-        // Initialize player sounds
-        if (soundSystem != null) {
-            soundSystem.initializePlayerSounds(world);
-            System.out.println("Player sound system initialized");
-        }
+        // Initialize player sounds (game-side binding over the engine SoundSystem)
+        this.playerSounds = new PlayerSounds(world);
+        System.out.println("Player sound system initialized");
 
         System.out.println("[WORLD-CREATION] World components initialized for new world");
     }
@@ -597,6 +597,13 @@ public class Game {
      */
     public static SoundSystem getSoundSystem() {
         return getInstance().soundSystem;
+    }
+
+    /**
+     * Gets the player sound binding (footstep selection). May be null before a world is loaded.
+     */
+    public static PlayerSounds getPlayerSounds() {
+        return getInstance().playerSounds;
     }
     
     /**

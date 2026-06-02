@@ -1,6 +1,6 @@
 package com.stonebreak.ui.startupIntro;
 
-import com.stonebreak.audio.SoundSystem;
+import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
@@ -75,8 +75,10 @@ public final class SonarArtsIntroScreen {
         SoundSystem sound = SoundSystem.getInstance();
         if (sound == null) return;
         try {
-            sound.loadSound(SONAR_SOUND_NAME, SONAR_SOUND_RESOURCE);
-            sonarSoundRegistered = true;
+            com.stonebreak.audio.GameSoundLoader.load(sound, SONAR_SOUND_NAME, SONAR_SOUND_RESOURCE);
+            // Only treat as registered if the buffer actually loaded, so we don't spam
+            // "Sound not found" on every ping when the resource/codec failed.
+            sonarSoundRegistered = sound.isSoundLoaded(SONAR_SOUND_NAME);
         } catch (Throwable t) {
             System.err.println("[SonarIntro] Failed to register sonar sound: " + t.getMessage());
         }

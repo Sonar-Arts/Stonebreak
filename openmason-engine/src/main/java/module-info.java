@@ -8,6 +8,7 @@ module openmason.engine {
     requires org.lwjgl;
     requires org.lwjgl.opengl;
     requires org.lwjgl.stb;
+    requires org.lwjgl.openal; // OpenAL for the engine audio subsystem
 
     // Math library
     requires org.joml;
@@ -87,6 +88,9 @@ module openmason.engine {
 
     // Export diagnostics (GPU memory tracker, etc.)
     exports com.openmason.engine.diagnostics;
+
+    // Export audio subsystem (game-agnostic OpenAL sound system)
+    exports com.openmason.engine.audio;
 
     // Export format classes
     exports com.openmason.engine.format.sbo;

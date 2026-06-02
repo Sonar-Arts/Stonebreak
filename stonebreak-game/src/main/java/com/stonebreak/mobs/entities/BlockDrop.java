@@ -238,7 +238,7 @@ public class BlockDrop extends Entity {
             // Successfully picked up - play sound and mark as dead
             com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
             if (game != null) {
-                com.stonebreak.audio.SoundSystem soundSystem = game.getSoundSystem();
+                com.openmason.engine.audio.SoundSystem soundSystem = game.getSoundSystem();
                 if (soundSystem != null) {
                     soundSystem.playSound("blockpickup");
                 }

@@ -1,6 +1,6 @@
 package com.stonebreak.core.bootstrap;
 
-import com.stonebreak.audio.SoundSystem;
+import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.config.Settings;
 import com.stonebreak.player.Player;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
@@ -30,10 +30,10 @@ public final class GameBootstrap {
      */
     public static void configureSoundSystem(SoundSystem soundSystem) {
         soundSystem.initialize();
-        soundSystem.loadSound("grasswalk", "/sounds/GrassWalk.wav");
-        soundSystem.loadSound("sandwalk", "/sounds/SandWalk-001.wav");
-        soundSystem.loadSound("woodwalk", "/sounds/WoodWalk.wav");
-        soundSystem.loadSound("blockpickup", "/sounds/BlockPickup.wav");
+        com.stonebreak.audio.GameSoundLoader.load(soundSystem, "grasswalk", "/sounds/GrassWalk.wav");
+        com.stonebreak.audio.GameSoundLoader.load(soundSystem, "sandwalk", "/sounds/SandWalk-001.wav");
+        com.stonebreak.audio.GameSoundLoader.load(soundSystem, "woodwalk", "/sounds/WoodWalk.wav");
+        com.stonebreak.audio.GameSoundLoader.load(soundSystem, "blockpickup", "/sounds/BlockPickup.wav");
 
         soundSystem.setMasterVolume(Settings.getInstance().getMasterVolume());
         soundSystem.testBasicFunctionality();

@@ -1,7 +1,7 @@
 package com.stonebreak.audio.emitters;
 
 import org.joml.Vector3f;
-import com.stonebreak.audio.SoundSystem;
+import com.openmason.engine.audio.SoundSystem;
 
 /**
  * Base class for sound emitters that can be placed in the world and play sounds automatically.

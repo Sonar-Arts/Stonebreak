@@ -1,6 +1,5 @@
 package com.stonebreak.ui.chat.chatSystem.commands;
 
-import com.stonebreak.core.Game;
 import com.stonebreak.ui.chat.chatSystem.ChatMessageManager;
 import com.stonebreak.ui.chat.chatSystem.commands.util.ChatColors;
 import com.stonebreak.ui.chat.chatSystem.commands.util.CommandValidator;
@@ -26,7 +25,7 @@ public class Test3DAudioCommand implements ChatCommand {
         );
 
         // Run test in separate thread to avoid blocking
-        new Thread(() -> Game.getSoundSystem().test3DAudio()).start();
+        new Thread(com.stonebreak.audio.Audio3DTest::test3DAudio).start();
     }
 
     @Override

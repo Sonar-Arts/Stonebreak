@@ -1,7 +1,12 @@
-package com.stonebreak.audio;
+package com.openmason.engine.audio;
 
-import com.stonebreak.audio.components.*;
-
+/**
+ * Game-agnostic OpenAL sound system. Owns the OpenAL context, sound buffers/sources,
+ * the 3D listener, master volume, and playback (2D and positional 3D).
+ *
+ * <p>Higher-level, game-specific behaviour (player footstep selection, entity sounds,
+ * player-position-relative test commands) lives in the consuming module, not here.
+ */
 public class SoundSystem {
     private static SoundSystem instance;
 
@@ -12,7 +17,6 @@ public class SoundSystem {
     private final SoundPlayer soundPlayer;
     private final AudioListener audioListener;
     private final AudioDiagnostics audioDiagnostics;
-    private PlayerSounds playerSounds;
 
     private SoundSystem() {
         this.openALContext = new OpenALContext();
@@ -23,37 +27,51 @@ public class SoundSystem {
         this.audioListener = new AudioListener();
         this.audioDiagnostics = new AudioDiagnostics(openALContext, soundBuffer);
     }
-    
+
     public static SoundSystem getInstance() {
         if (instance == null) {
             instance = new SoundSystem();
         }
         return instance;
     }
-    
+
     public void initialize() {
         if (openALContext.initialize()) {
             audioListener.initializeDefaultListener();
         }
     }
-    
+
     public void loadSound(String name, String resourcePath) {
         AudioLoader.LoadResult result = audioLoader.loadSound(name, resourcePath);
+        registerLoadResult(name, result);
+    }
+
+    /**
+     * Loads a sound from a caller-supplied {@link java.io.InputStream}. Preferred when the audio
+     * resource lives in a different module than this engine (the caller resolves it against its
+     * own module/classloader). The stream is closed by this method.
+     */
+    public void loadSound(String name, java.io.InputStream stream) {
+        AudioLoader.LoadResult result = audioLoader.loadSound(name, stream);
+        registerLoadResult(name, result);
+    }
+
+    private void registerLoadResult(String name, AudioLoader.LoadResult result) {
         if (result.success) {
             soundBuffer.addSound(name, result.buffer);
         } else {
             System.err.println("Failed to load sound " + name + ": " + result.errorMessage);
         }
     }
-    
+
     public void playSound(String name) {
         soundPlayer.playSound(name);
     }
-    
+
     public void playSoundWithVolume(String name, float volume) {
         soundPlayer.playSoundWithVolume(name, volume);
     }
-    
+
     public void playSoundWithVariation(String name, float volume) {
         soundPlayer.playSoundWithVariation(name, volume);
     }
@@ -106,7 +124,7 @@ public class SoundSystem {
     public void playSoundAt3DWithVariation(String name, float volume, org.joml.Vector3f position) {
         playSoundAt3DWithVariation(name, volume, position.x, position.y, position.z);
     }
-    
+
     public void setListenerPosition(float x, float y, float z) {
         audioListener.setListenerPosition(x, y, z);
     }
@@ -130,11 +148,11 @@ public class SoundSystem {
     public void setListenerFromCamera(org.joml.Vector3f position, org.joml.Vector3f front, org.joml.Vector3f up) {
         audioListener.setListenerFromCamera(position, front, up);
     }
-    
+
     public boolean isSoundLoaded(String name) {
         return soundBuffer.isSoundLoaded(name);
     }
-    
+
     public void testBasicFunctionality() {
         audioDiagnostics.testBasicFunctionality();
         // Note: Sound playing removed to prevent audio before world is loaded
@@ -152,96 +170,6 @@ public class SoundSystem {
         } else {
             System.err.println("Cannot test sound playback - grasswalk sound not loaded");
         }
-    }
-
-    /**
-     * Tests 3D audio functionality with known positions relative to the player.
-     * This method plays sounds at specific distances to verify 3D audio is working.
-     */
-    public void test3DAudio() {
-        if (!soundBuffer.isSoundLoaded("blockpickup")) {
-            System.err.println("Cannot test 3D audio - blockpickup sound not loaded");
-            return;
-        }
-
-        com.stonebreak.player.Player player = com.stonebreak.core.Game.getPlayer();
-        if (player == null) {
-            System.err.println("Cannot test 3D audio - player not found");
-            return;
-        }
-
-        org.joml.Vector3f playerPos = player.getPosition();
-        System.out.println("🧪 3D AUDIO TEST: Player position: (" + playerPos.x + ", " + playerPos.y + ", " + playerPos.z + ")");
-
-        // Test sounds at various distances
-        float[][] testPositions = {
-            {playerPos.x + 2.0f, playerPos.y, playerPos.z},     // 2 blocks away (should be loud)
-            {playerPos.x + 10.0f, playerPos.y, playerPos.z},    // 10 blocks away (should be quieter)
-            {playerPos.x + 25.0f, playerPos.y, playerPos.z},    // 25 blocks away (should be very quiet)
-            {playerPos.x + 60.0f, playerPos.y, playerPos.z}     // 60 blocks away (should be silent)
-        };
-
-        String[] descriptions = {
-            "2 blocks (should be loud)",
-            "10 blocks (should be quieter)",
-            "25 blocks (should be very quiet)",
-            "60 blocks (should be silent)"
-        };
-
-        for (int i = 0; i < testPositions.length; i++) {
-            float[] pos = testPositions[i];
-            System.out.println("🧪 3D AUDIO TEST: Playing sound at " + descriptions[i] + " - position (" + pos[0] + ", " + pos[1] + ", " + pos[2] + ")");
-
-            // Calculate distance for reference
-            float distance = (float) Math.sqrt(
-                Math.pow(pos[0] - playerPos.x, 2) +
-                Math.pow(pos[1] - playerPos.y, 2) +
-                Math.pow(pos[2] - playerPos.z, 2)
-            );
-            System.out.println("🧪 3D AUDIO TEST: Calculated distance: " + distance + " blocks");
-
-            playSoundAt3D("blockpickup", 0.8f, pos[0], pos[1], pos[2]);
-
-            // Wait a bit between sounds
-            try {
-                Thread.sleep(2000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-
-        System.out.println("🧪 3D AUDIO TEST: Test completed. If 3D audio is working, you should have heard:");
-        System.out.println("  - Loud sound at 2 blocks");
-        System.out.println("  - Quieter sound at 10 blocks");
-        System.out.println("  - Very quiet sound at 25 blocks");
-        System.out.println("  - Silent or barely audible sound at 60 blocks");
-    }
-
-    /**
-     * Simple immediate test of 3D audio at one position
-     */
-    public void testSingle3DAudio(float distance) {
-        if (!soundBuffer.isSoundLoaded("blockpickup")) {
-            System.err.println("Cannot test 3D audio - blockpickup sound not loaded");
-            return;
-        }
-
-        com.stonebreak.player.Player player = com.stonebreak.core.Game.getPlayer();
-        if (player == null) {
-            System.err.println("Cannot test 3D audio - player not found");
-            return;
-        }
-
-        org.joml.Vector3f playerPos = player.getPosition();
-        float testX = playerPos.x + distance;
-        float testY = playerPos.y;
-        float testZ = playerPos.z;
-
-        System.out.println("🧪 SINGLE 3D TEST: Player at (" + playerPos.x + ", " + playerPos.y + ", " + playerPos.z + ")");
-        System.out.println("🧪 SINGLE 3D TEST: Playing sound " + distance + " blocks away at (" + testX + ", " + testY + ", " + testZ + ")");
-
-        playSoundAt3D("blockpickup", 0.8f, testX, testY, testZ);
     }
 
     /**
@@ -287,7 +215,7 @@ public class SoundSystem {
             System.out.println("  No OpenAL errors detected");
         }
     }
-    
+
     /**
      * Sets the master volume for all sounds.
      * @param volume Volume level (0.0 = silent, 1.0 = normal volume)
@@ -302,33 +230,6 @@ public class SoundSystem {
      */
     public float getMasterVolume() {
         return volumeController.getMasterVolume();
-    }
-
-    /**
-     * Initializes player sound management with the given world.
-     * Should be called when a world is loaded.
-     */
-    public void initializePlayerSounds(com.stonebreak.world.World world) {
-        this.playerSounds = new PlayerSounds(world);
-    }
-
-    /**
-     * Updates player walking sounds based on movement state.
-     * Should be called every frame during player update.
-     */
-    public void updatePlayerSounds(org.joml.Vector3f position, org.joml.Vector3f velocity, boolean onGround, boolean physicallyInWater) {
-        if (playerSounds != null) {
-            playerSounds.updateWalkingSounds(position, velocity, onGround, physicallyInWater);
-        }
-    }
-
-    /**
-     * Resets player sound state. Call when player is created or respawned.
-     */
-    public void resetPlayerSounds() {
-        if (playerSounds != null) {
-            playerSounds.reset();
-        }
     }
 
     public void cleanup() {

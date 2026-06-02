@@ -1,7 +1,7 @@
 package com.stonebreak.audio.emitters.types;
 
 import org.joml.Vector3f;
-import com.stonebreak.audio.SoundSystem;
+import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.audio.emitters.SoundEmitter;
 
 /**

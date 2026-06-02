@@ -1,6 +1,6 @@
 package com.stonebreak.ui.settingsMenu.managers;
 
-import com.stonebreak.audio.SoundSystem;
+import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.config.Settings;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.Main;
