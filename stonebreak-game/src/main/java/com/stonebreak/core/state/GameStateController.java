@@ -163,7 +163,7 @@ public final class GameStateController {
         }
     }
 
-    public void openFurnaceScreen(com.stonebreak.util.BlockPos pos) {
+    public void openFurnaceScreen(com.openmason.engine.util.BlockPos pos) {
         FurnaceScreen furnaceScreen = game.getFurnaceScreen();
         if (furnaceScreen != null && currentState == GameState.PLAYING && !paused) {
             setState(GameState.FURNACE_UI);

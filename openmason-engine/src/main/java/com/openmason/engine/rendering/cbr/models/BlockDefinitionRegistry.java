@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.core.API.commonBlockResources.models;
+package com.openmason.engine.rendering.cbr.models;
 
 import java.util.Collection;
 import java.util.Optional;

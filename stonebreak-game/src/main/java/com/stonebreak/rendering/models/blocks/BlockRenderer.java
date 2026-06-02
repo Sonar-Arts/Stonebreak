@@ -4,7 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
+import com.openmason.engine.rendering.cbr.models.BlockDefinitionRegistry;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3i;

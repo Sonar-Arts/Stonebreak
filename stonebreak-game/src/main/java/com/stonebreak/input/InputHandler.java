@@ -27,7 +27,7 @@ import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.ui.furnace.FurnaceScreen;
-import com.stonebreak.util.MemoryProfiler;
+import com.openmason.engine.diagnostics.MemoryProfiler;
 import com.stonebreak.world.World;
 
 import static org.lwjgl.glfw.GLFW.*;
@@ -896,7 +896,7 @@ public class InputHandler {
                             } else if (targetedBlockType == BlockType.FURNACE) {
                                 // Interacted with a Furnace
                                 Game.getInstance().openFurnaceScreen(
-                                        new com.stonebreak.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
+                                        new com.openmason.engine.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
                             } else {
                                 // Not a workbench, proceed with normal block placement
                                 player.placeBlock();

@@ -668,8 +668,8 @@ public class Game {
         stateController.closeWorkbenchScreen();
     }
 
-    /** Delegates to {@link com.stonebreak.core.state.GameStateController#openFurnaceScreen(com.stonebreak.util.BlockPos)}. */
-    public void openFurnaceScreen(com.stonebreak.util.BlockPos pos) {
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#openFurnaceScreen(com.openmason.engine.util.BlockPos)}. */
+    public void openFurnaceScreen(com.openmason.engine.util.BlockPos pos) {
         stateController.openFurnaceScreen(pos);
     }
 

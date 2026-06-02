@@ -4,6 +4,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import com.openmason.engine.diagnostics.MemoryProfiler;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
 

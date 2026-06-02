@@ -1,6 +1,6 @@
-package com.stonebreak.rendering.core.API.commonBlockResources.meshing;
+package com.openmason.engine.rendering.cbr.meshing;
 
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
+import com.openmason.engine.rendering.cbr.models.BlockDefinition;
 import org.lwjgl.BufferUtils;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;

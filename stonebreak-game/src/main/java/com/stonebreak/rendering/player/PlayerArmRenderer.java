@@ -62,7 +62,7 @@ public class PlayerArmRenderer {
      * Creates and initializes the player arm renderer with specialized components.
      */
     public PlayerArmRenderer(ShaderProgram shaderProgram, BlockTextureArray blockTextureArray, Matrix4f projectionMatrix,
-                             com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry blockRegistry,
+                             com.openmason.engine.rendering.cbr.models.BlockDefinitionRegistry blockRegistry,
                              com.stonebreak.rendering.sbo.SBOHandMeshRegistry sboHandMeshRegistry) {
         this.shaderProgram = shaderProgram;
         this.blockTextureArray = blockTextureArray;

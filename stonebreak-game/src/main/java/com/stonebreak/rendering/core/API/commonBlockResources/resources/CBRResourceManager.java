@@ -2,10 +2,10 @@ package com.stonebreak.rendering.core.API.commonBlockResources.resources;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
-import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManager;
+import com.openmason.engine.rendering.cbr.meshing.MeshManager;
 import com.stonebreak.rendering.core.API.commonBlockResources.texturing.TextureResourceManager;
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
+import com.openmason.engine.rendering.cbr.models.BlockDefinition;
+import com.openmason.engine.rendering.cbr.models.BlockDefinitionRegistry;
 
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;

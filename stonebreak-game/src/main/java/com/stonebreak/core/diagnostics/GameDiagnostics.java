@@ -4,7 +4,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.ui.DebugOverlay;
 import com.stonebreak.util.MemoryLeakDetector;
-import com.stonebreak.util.MemoryProfiler;
+import com.openmason.engine.diagnostics.MemoryProfiler;
 
 /**
  * Memory / performance / debug-overlay diagnostic helpers previously hosted

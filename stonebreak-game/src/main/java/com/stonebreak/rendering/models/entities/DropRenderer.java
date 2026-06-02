@@ -5,7 +5,7 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManager;
+import com.openmason.engine.rendering.cbr.meshing.MeshManager;
 import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.rendering.shaders.ShaderProgram;

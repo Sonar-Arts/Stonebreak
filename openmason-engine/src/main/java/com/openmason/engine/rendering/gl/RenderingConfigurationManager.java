@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.core;
+package com.openmason.engine.rendering.gl;
 
 import org.joml.Matrix4f;
 

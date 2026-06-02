@@ -8,7 +8,7 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.ui.HotbarScreen;
 import com.stonebreak.ui.furnace.renderers.FurnaceRenderCoordinator;
-import com.stonebreak.util.BlockPos;
+import com.openmason.engine.util.BlockPos;
 
 /**
  * Coordinates the furnace UI for a single open block. The controller does NOT

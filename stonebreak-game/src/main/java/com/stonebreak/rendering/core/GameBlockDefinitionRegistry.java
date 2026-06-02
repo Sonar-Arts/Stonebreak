@@ -1,8 +1,8 @@
 package com.stonebreak.rendering.core;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
+import com.openmason.engine.rendering.cbr.models.BlockDefinition;
+import com.openmason.engine.rendering.cbr.models.BlockDefinitionRegistry;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 
 import java.util.*;

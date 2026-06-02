@@ -2,7 +2,7 @@ package com.stonebreak.blocks.furnace;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.crafting.SmeltingManager;
-import com.stonebreak.util.BlockPos;
+import com.openmason.engine.util.BlockPos;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import org.joml.Vector3f;

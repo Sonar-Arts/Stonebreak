@@ -33,6 +33,7 @@ module openmason.engine {
     // Java base modules
     requires java.desktop;
     requires java.logging;
+    requires java.management; // JVM memory/GC beans for MemoryProfiler (diagnostics)
 
     // Export rendering API
     exports com.openmason.engine.rendering.api;
@@ -91,6 +92,17 @@ module openmason.engine {
 
     // Export audio subsystem (game-agnostic OpenAL sound system)
     exports com.openmason.engine.audio;
+
+    // Export shared utilities (pure value/math types)
+    exports com.openmason.engine.util;
+
+    // Export low-level GL helpers (error handling, state save/restore, projection config)
+    exports com.openmason.engine.rendering.gl;
+
+    // Export CBR clean core (block definitions, registry/resource interfaces, mesh manager)
+    exports com.openmason.engine.rendering.cbr.models;
+    exports com.openmason.engine.rendering.cbr.resources;
+    exports com.openmason.engine.rendering.cbr.meshing;
 
     // Export format classes
     exports com.openmason.engine.format.sbo;

@@ -3,7 +3,7 @@ package com.stonebreak.rendering.sbo;
 import com.openmason.engine.format.mesh.ParsedMeshData;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManager;
+import com.openmason.engine.rendering.cbr.meshing.MeshManager;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import org.slf4j.Logger;

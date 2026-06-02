@@ -6,7 +6,7 @@ import com.stonebreak.crafting.SmeltingRecipe;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
-import com.stonebreak.util.BlockPos;
+import com.openmason.engine.util.BlockPos;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;

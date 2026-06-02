@@ -2,7 +2,7 @@ package com.stonebreak.world.chunk.utils;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
-import com.stonebreak.util.MemoryProfiler;
+import com.openmason.engine.diagnostics.MemoryProfiler;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.ChunkStatus;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;

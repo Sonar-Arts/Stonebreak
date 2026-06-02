@@ -1,13 +1,13 @@
 package com.stonebreak.rendering;
 
-import com.stonebreak.rendering.core.OpenGLErrorHandler;
-import com.stonebreak.rendering.core.RenderingConfigurationManager;
+import com.openmason.engine.rendering.gl.OpenGLErrorHandler;
+import com.openmason.engine.rendering.gl.RenderingConfigurationManager;
 import com.stonebreak.rendering.core.ResourceManager;
 import com.stonebreak.rendering.core.GameBlockDefinitionRegistry;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.models.entities.DropRenderer;
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
+import com.openmason.engine.rendering.cbr.models.BlockDefinitionRegistry;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.gameWorld.WorldRenderer;
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
@@ -209,7 +209,7 @@ public class Renderer {
                             if (blockRegistry == null) return false;
                             String resourceId = "stonebreak:" + bt.name().toLowerCase();
                             return blockRegistry.getDefinition(resourceId)
-                                    .map(def -> def.getRenderLayer() == com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition.RenderLayer.TRANSLUCENT)
+                                    .map(def -> def.getRenderLayer() == com.openmason.engine.rendering.cbr.models.BlockDefinition.RenderLayer.TRANSLUCENT)
                                     .orElse(false);
                         };
 

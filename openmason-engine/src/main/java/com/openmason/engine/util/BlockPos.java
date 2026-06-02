@@ -1,4 +1,4 @@
-package com.stonebreak.util;
+package com.openmason.engine.util;
 
 /**
  * Immutable block position in 3D space.
