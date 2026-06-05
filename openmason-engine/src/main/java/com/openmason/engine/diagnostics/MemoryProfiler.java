@@ -1,4 +1,4 @@
-package com.stonebreak.util;
+package com.openmason.engine.diagnostics;
 
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;

@@ -1,4 +1,4 @@
-package com.stonebreak.audio.components;
+package com.openmason.engine.audio;
 
 public class VolumeController {
     private float masterVolume = 1.0f;

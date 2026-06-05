@@ -21,7 +21,7 @@ import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import org.lwjgl.*;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.ui.furnace.FurnaceScreen;
-import com.stonebreak.util.MemoryProfiler;
+import com.openmason.engine.diagnostics.MemoryProfiler;
 import com.stonebreak.world.World;
 import org.lwjgl.Version;
 import org.lwjgl.glfw.*;

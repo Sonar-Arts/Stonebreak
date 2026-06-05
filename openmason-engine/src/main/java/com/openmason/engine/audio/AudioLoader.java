@@ -1,4 +1,4 @@
-package com.stonebreak.audio.components;
+package com.openmason.engine.audio;
 
 import org.lwjgl.BufferUtils;
 import static org.lwjgl.openal.AL10.*;
@@ -55,6 +55,32 @@ public class AudioLoader {
             return LoadResult.failure(errorMsg);
         } finally {
             System.out.println("=====================");
+        }
+    }
+
+    /**
+     * Loads a sound from a caller-supplied {@link InputStream}. Preferred entry point when the
+     * audio resource lives in a different module than this engine class: the consumer resolves
+     * the resource against its own module/classloader and hands the bytes here for decoding.
+     * The stream is always closed by this method.
+     *
+     * @param name  logical sound name (used for logging/diagnostics)
+     * @param is    the audio data stream, or {@code null}
+     * @return the load result; failure if {@code is} is {@code null} or decoding fails
+     */
+    public LoadResult loadSound(String name, InputStream is) {
+        if (is == null) {
+            String errorMsg = "InputStream is NULL for sound: " + name;
+            System.err.println(errorMsg);
+            return LoadResult.failure(errorMsg);
+        }
+        try (InputStream finalIs = is) {
+            return loadSoundFromStream(name, finalIs, name);
+        } catch (IOException e) {
+            String errorMsg = "IOException loading sound " + name + ": " + e.getMessage();
+            System.err.println(errorMsg);
+            System.err.println("Stack trace: " + e.toString());
+            return LoadResult.failure(errorMsg);
         }
     }
 

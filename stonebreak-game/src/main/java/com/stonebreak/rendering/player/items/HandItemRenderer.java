@@ -3,7 +3,7 @@ package com.stonebreak.rendering.player.items;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManager;
+import com.openmason.engine.rendering.cbr.meshing.MeshManager;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer;
 import com.stonebreak.rendering.sbo.SBOHandMeshRegistry;

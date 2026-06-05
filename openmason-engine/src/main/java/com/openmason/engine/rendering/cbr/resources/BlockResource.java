@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.core.API.commonBlockResources.resources;
+package com.openmason.engine.rendering.cbr.resources;
 
 /**
  * Core interface for block resources following Interface Segregation Principle.

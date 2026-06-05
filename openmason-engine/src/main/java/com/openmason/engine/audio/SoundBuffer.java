@@ -1,4 +1,4 @@
-package com.stonebreak.audio.components;
+package com.openmason.engine.audio;
 
 import static org.lwjgl.openal.AL10.*;
 

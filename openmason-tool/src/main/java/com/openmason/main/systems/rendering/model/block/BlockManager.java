@@ -1,7 +1,7 @@
 package com.openmason.main.systems.rendering.model.block;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
+import com.openmason.engine.rendering.cbr.models.BlockDefinitionRegistry;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
 import com.stonebreak.rendering.core.GameBlockDefinitionRegistry;
 

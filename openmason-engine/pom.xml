@@ -53,6 +53,18 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- LWJGL OpenAL for the engine audio subsystem (com.openmason.engine.audio) -->
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-openal</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-openal</artifactId>
+            <classifier>${lwjgl.natives}</classifier>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- Java OpenGL Math Library -->
         <dependency>
             <groupId>org.joml</groupId>

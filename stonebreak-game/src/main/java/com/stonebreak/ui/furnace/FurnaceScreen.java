@@ -9,7 +9,7 @@ import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.furnace.core.FurnaceController;
 import com.stonebreak.ui.furnace.core.FurnaceInputManager;
 import com.stonebreak.ui.furnace.renderers.FurnaceRenderCoordinator;
-import com.stonebreak.util.BlockPos;
+import com.openmason.engine.util.BlockPos;
 
 /**
  * A furnace screen for smelting items.

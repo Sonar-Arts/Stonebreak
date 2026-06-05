@@ -1,6 +1,6 @@
 package com.stonebreak.world.generation.heightmap;
 
-import com.stonebreak.util.SplineInterpolator;
+import com.openmason.engine.util.SplineInterpolator;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 import com.stonebreak.world.operations.WorldConfiguration;
 

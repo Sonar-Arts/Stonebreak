@@ -2,7 +2,7 @@ package com.openmason.main.systems.rendering.core;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
+import com.openmason.engine.rendering.cbr.models.BlockDefinition;
 import com.openmason.main.systems.rendering.model.block.BlockManager;
 import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;

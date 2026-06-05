@@ -183,7 +183,10 @@ public class Player {
         mana.update(dt);
         blockBreaker.update();
 
-        Game.getSoundSystem().updatePlayerSounds(p, state.getVelocity(), state.isOnGround(), state.isPhysicallyInWater());
+        com.stonebreak.audio.PlayerSounds playerSounds = Game.getPlayerSounds();
+        if (playerSounds != null) {
+            playerSounds.updateWalkingSounds(p, state.getVelocity(), state.isOnGround(), state.isPhysicallyInWater());
+        }
         if (Game.getWorld() != null) {
             Game.getSoundSystem().setListenerFromCamera(p, camera.getFront(), camera.getUp());
         }

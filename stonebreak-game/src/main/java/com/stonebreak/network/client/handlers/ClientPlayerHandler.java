@@ -1,6 +1,6 @@
 package com.stonebreak.network.client.handlers;
 
-import com.stonebreak.audio.SoundSystem;
+import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.entities.EntityManager;

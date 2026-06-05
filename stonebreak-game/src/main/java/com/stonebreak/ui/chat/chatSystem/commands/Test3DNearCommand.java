@@ -1,6 +1,5 @@
 package com.stonebreak.ui.chat.chatSystem.commands;
 
-import com.stonebreak.core.Game;
 import com.stonebreak.ui.chat.chatSystem.ChatMessageManager;
 import com.stonebreak.ui.chat.chatSystem.commands.util.ChatColors;
 import com.stonebreak.ui.chat.chatSystem.commands.util.CommandValidator;
@@ -17,7 +16,7 @@ public class Test3DNearCommand implements ChatCommand {
         }
 
         messageManager.addMessage("Testing 3D audio at 2 blocks distance...", ChatColors.CYAN);
-        Game.getSoundSystem().testSingle3DAudio(2.0f);
+        com.stonebreak.audio.Audio3DTest.testSingle3DAudio(2.0f);
     }
 
     @Override

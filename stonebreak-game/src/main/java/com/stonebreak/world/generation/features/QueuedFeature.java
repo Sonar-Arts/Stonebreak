@@ -1,6 +1,6 @@
 package com.stonebreak.world.generation.features;
 
-import com.stonebreak.util.BlockPos;
+import com.openmason.engine.util.BlockPos;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
 
 import java.util.Set;

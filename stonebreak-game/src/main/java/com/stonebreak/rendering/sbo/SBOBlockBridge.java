@@ -4,7 +4,7 @@ import com.openmason.engine.format.mesh.ParsedMaterialData;
 import com.openmason.engine.format.omo.OMOReader;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
+import com.openmason.engine.rendering.cbr.models.BlockDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

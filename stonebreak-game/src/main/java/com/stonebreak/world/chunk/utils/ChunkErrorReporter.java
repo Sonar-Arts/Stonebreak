@@ -1,6 +1,6 @@
 package com.stonebreak.world.chunk.utils;
 
-import com.stonebreak.util.MemoryProfiler;
+import com.openmason.engine.diagnostics.MemoryProfiler;
 import com.stonebreak.world.chunk.Chunk;
 import com.openmason.engine.voxel.cco.performance.CcoMetrics;
 import com.openmason.engine.voxel.cco.performance.CcoProfiler;

@@ -3,7 +3,7 @@ package com.stonebreak.world.generation;
 import java.util.HashSet;
 import java.util.Set;
 
-import com.stonebreak.util.BlockPos;
+import com.openmason.engine.util.BlockPos;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkPosition;

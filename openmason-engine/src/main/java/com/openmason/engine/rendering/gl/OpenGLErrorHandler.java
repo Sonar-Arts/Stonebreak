@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.core;
+package com.openmason.engine.rendering.gl;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL13.GL_ACTIVE_TEXTURE;

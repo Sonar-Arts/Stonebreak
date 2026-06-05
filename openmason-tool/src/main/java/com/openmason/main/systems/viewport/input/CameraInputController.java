@@ -100,6 +100,13 @@ public class CameraInputController {
             return;
         }
 
+        // Never consume movement keys while ImGui is routing keyboard input to a widget (e.g. a
+        // text field or focused control in the Texture Editor). Mirrors the guard used by
+        // ViewportKeyboardShortcuts.shouldProcessShortcuts(), broadened to any keyboard capture.
+        if (ImGui.getIO().getWantTextInput() || ImGui.getIO().getWantCaptureKeyboard()) {
+            return;
+        }
+
         // First-person movement controls
         boolean moved = false;
 
