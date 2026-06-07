@@ -5,6 +5,7 @@ import com.stonebreak.rendering.UI.masonryUI.MButton;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.stonebreak.rpg.classes.AbilityIconCache;
 import com.stonebreak.rpg.classes.ClassAbility;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.classes.PlayerClassDefinition;
@@ -13,6 +14,7 @@ import com.stonebreak.ui.characterCreation.CharacterCreationLayout;
 import com.stonebreak.ui.characterCreation.CharacterCreationStateManager;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.Image;
 
 import java.util.List;
 import java.util.Optional;
@@ -29,9 +31,13 @@ public final class ClassAbilitiesTabRenderer {
     private static final float SIDEBAR_PAD    = 8f;
     private static final float CLASS_ROW_H    = 36f;
     private static final float CLASS_ROW_GAP  = 2f;
+    private static final float CLASS_ICON_SIZE = 20f;
+    private static final float CLASS_ICON_GAP  = 6f;
 
     private static final float CONTENT_PAD    = 12f;
     private static final float ABILITY_ROW_H  = 64f;
+    private static final float ABILITY_ICON_SIZE = 32f;
+    private static final float ABILITY_ICON_GAP  = 10f;
     private static final float SPEND_BTN_W    = 110f;
     private static final float SPEND_BTN_H    = 24f;
     private static final float ABILITY_CLIP_H = 300f;
@@ -100,8 +106,17 @@ public final class ClassAbilitiesTabRenderer {
 
             int nameColor = selected ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
             float textY   = rowY + CLASS_ROW_H * 0.5f + MStyle.FONT_META * 0.38f;
+
+            float nameX = rowX + 6f;
+            Image classIcon = cls.iconPath() != null ? AbilityIconCache.get(cls.iconPath()) : null;
+            if (classIcon != null) {
+                float iconY = rowY + (CLASS_ROW_H - CLASS_ICON_SIZE) / 2f;
+                MPainter.drawImage(canvas, classIcon, nameX, iconY, CLASS_ICON_SIZE, CLASS_ICON_SIZE);
+                nameX += CLASS_ICON_SIZE + CLASS_ICON_GAP;
+            }
+
             MPainter.drawStringWithShadow(canvas, cls.name(),
-                rowX + 6f, textY, metaFont, nameColor, MStyle.TEXT_SHADOW);
+                nameX, textY, metaFont, nameColor, MStyle.TEXT_SHADOW);
         }
     }
 
@@ -187,10 +202,18 @@ public final class ClassAbilitiesTabRenderer {
 
             float rowY = startY + i * ABILITY_ROW_H - scroll;
 
+            float textX = cx;
+            Image icon = AbilityIconCache.get(ability.iconPath());
+            if (icon != null) {
+                float iconY = rowY + (ABILITY_ROW_H - ABILITY_ICON_SIZE) / 2f;
+                MPainter.drawImage(canvas, icon, cx, iconY, ABILITY_ICON_SIZE, ABILITY_ICON_SIZE);
+                textX = cx + ABILITY_ICON_SIZE + ABILITY_ICON_GAP;
+            }
+
             MPainter.drawStringWithShadow(canvas, ability.name(),
-                cx, rowY + 16f, metaFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+                textX, rowY + 16f, metaFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
             MPainter.drawStringWithShadow(canvas, ability.description(),
-                cx, rowY + 32f, metaFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+                textX, rowY + 32f, metaFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
 
             float btnX = cx + cw - SPEND_BTN_W;
             float btnY = rowY + (ABILITY_ROW_H - SPEND_BTN_H) / 2f;

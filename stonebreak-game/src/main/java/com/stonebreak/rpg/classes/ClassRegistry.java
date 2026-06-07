@@ -51,7 +51,8 @@ public final class ClassRegistry {
                     + "T2: leaves a burning trail behind you that damages enemies who linger in it.\n"
                     + "T3: the charge widens to fill the passable width of the area — a full cleave "
                     + "that staggers and knocks back everything it hits.",
-                1
+                1,
+                "/ui/abilities/berserker/Rampage.png"
             ),
             new ClassAbility(
                 "Skull Crusher",
@@ -62,9 +63,11 @@ public final class ClassRegistry {
                     + "T2: the shockwave also briefly stuns everything it hits.\n"
                     + "T3: leaves a persistent crater that inflicts Armor Break — reduced damage "
                     + "resistance — on enemies standing within it.",
-                1
+                1,
+                "/ui/abilities/berserker/Skull_Crusher.png"
             )
-        )
+        ),
+        "/ui/abilities/berserker/Rage.png"
     );
   }
 }

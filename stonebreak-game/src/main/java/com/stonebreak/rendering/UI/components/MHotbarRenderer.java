@@ -12,6 +12,7 @@ import com.stonebreak.player.combat.RageController;
 import com.stonebreak.player.combat.RageTier;
 import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
 import com.stonebreak.player.combat.berserker.BerserkerTierText;
+import com.stonebreak.rpg.classes.AbilityIconCache;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.masonryUI.MItemSlot;
@@ -27,6 +28,7 @@ import com.stonebreak.ui.HotbarScreen;
 import com.stonebreak.ui.hotbar.core.HotbarLayoutCalculator;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.Image;
 
 /**
  * MasonryUI/Skija-based hotbar renderer.
@@ -78,8 +80,14 @@ public class MHotbarRenderer {
     private static final int   RAGE_SEGMENT_BORDER  = 0xFF000000;
     private static final int   RAGE_SEGMENT_FILLED  = 0xDCC83C32; // fierce red
     private static final int   RAGE_SEGMENT_PARTIAL = 0xDC9C5028; // dim ember
-    private static final int   RAGE_LABEL_GAP       = 4;
-    private static final int   RAGE_BONUS_LINE_GAP  = 2;
+    private static final int   RAGE_LABEL_GAP       = 10;
+    private static final int   RAGE_BONUS_LINE_GAP  = 8;
+    private static final float RAGE_ICON_SIZE       = 20f;
+    private static final float RAGE_ICON_GAP        = 4f;
+
+    private static final String RAGE_ICON_PATH          = "/ui/abilities/berserker/Rage.png";
+    private static final String RAMPAGE_ICON_PATH       = "/ui/abilities/berserker/Rampage.png";
+    private static final String SKULL_CRUSHER_ICON_PATH = "/ui/abilities/berserker/Skull_Crusher.png";
 
     private record HeartLayout(int heartsPerRow, int numRows, float step) {}
 
@@ -257,7 +265,8 @@ public class MHotbarRenderer {
 
         Font font = ui.fonts().getScaled(MStyle.FONT_META);
         String tierLabel = "Rage: T" + tier.ordinal();
-        MPainter.drawStringWithShadow(canvas, tierLabel, panelX, y + MStyle.FONT_META,
+        float labelX = drawIconBeforeText(canvas, RAGE_ICON_PATH, panelX, y, MStyle.FONT_META);
+        MPainter.drawStringWithShadow(canvas, tierLabel, labelX, y + MStyle.FONT_META,
                 font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
         y += MStyle.FONT_META + RAGE_LABEL_GAP;
 
@@ -281,15 +290,31 @@ public class MHotbarRenderer {
         var stats = player.getCharacterStats();
         if (stats.getSpentCp(BerserkerAbilityController.RAMPAGE_KEY) > 0) {
             y += MStyle.FONT_META;
-            MPainter.drawStringWithShadow(canvas, BerserkerTierText.rampageBonus(tier), panelX, y,
+            float bonusX = drawIconBeforeText(canvas, RAMPAGE_ICON_PATH, panelX, y - MStyle.FONT_META, MStyle.FONT_META);
+            MPainter.drawStringWithShadow(canvas, BerserkerTierText.rampageBonus(tier), bonusX, y,
                     font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
             y += RAGE_BONUS_LINE_GAP;
         }
         if (stats.getSpentCp(BerserkerAbilityController.SKULL_CRUSHER_KEY) > 0) {
             y += MStyle.FONT_META;
-            MPainter.drawStringWithShadow(canvas, BerserkerTierText.skullCrusherBonus(tier), panelX, y,
+            float bonusX = drawIconBeforeText(canvas, SKULL_CRUSHER_ICON_PATH, panelX, y - MStyle.FONT_META, MStyle.FONT_META);
+            MPainter.drawStringWithShadow(canvas, BerserkerTierText.skullCrusherBonus(tier), bonusX, y,
                     font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
         }
+    }
+
+    /**
+     * Draws the icon at {@code iconPath} vertically centered against a text line spanning
+     * {@code [lineTopY, lineTopY + lineHeight]} at {@code lineX}, and returns the x-coordinate
+     * where the line's text should start (shifted right past the icon, or {@code lineX}
+     * unchanged if the icon failed to load).
+     */
+    private float drawIconBeforeText(Canvas canvas, String iconPath, float lineX, float lineTopY, float lineHeight) {
+        Image icon = AbilityIconCache.get(iconPath);
+        if (icon == null) return lineX;
+        float iconY = lineTopY + (lineHeight - RAGE_ICON_SIZE) / 2f;
+        MPainter.drawImage(canvas, icon, lineX, iconY, RAGE_ICON_SIZE, RAGE_ICON_SIZE);
+        return lineX + RAGE_ICON_SIZE + RAGE_ICON_GAP;
     }
 
     private HeartLayout computeHeartLayout(int totalHearts, int heartSize, int availableWidth) {

@@ -41,10 +41,10 @@ public final class EmojiPickerRenderer {
 
     // ─────────────────────────────────────────── Layout computation
 
-    private record SectionLayout(float headerY, float contentY, float contentH, List<ChatEmoji> emojis) {}
+    private record SectionLayout(String label, float headerY, float contentY, float contentH, List<ChatEmoji> emojis) {}
 
     private record PickerLayout(float panelX, float panelY, float panelH,
-                                SectionLayout favs, SectionLayout recent, SectionLayout all) {}
+                                SectionLayout favs, SectionLayout recent, List<SectionLayout> groups) {}
 
     private static float contentH(List<ChatEmoji> emojis) {
         return emojis.isEmpty() ? EMPTY_ROW_H : CELL_SIZE + 4f;
@@ -58,18 +58,28 @@ public final class EmojiPickerRenderer {
         List<ChatEmoji> favs = new ArrayList<>(state.getFavorites());
         List<ChatEmoji> recent = state.getRecentlyUsed();
 
-        List<ChatEmoji> all = new ArrayList<>();
-        Collections.addAll(all, EmojiType.values());
-        Collections.addAll(all, GifEmojiType.values());
+        List<ChatEmoji> allEmojis = new ArrayList<>();
+        Collections.addAll(allEmojis, EmojiType.values());
+        Collections.addAll(allEmojis, GifEmojiType.values());
+
+        List<SectionLayout> groupSections = new ArrayList<>();
+        float groupsH = 0f;
+        for (EmojiGroup group : EmojiGroup.values()) {
+            List<ChatEmoji> inGroup = allEmojis.stream().filter(e -> e.getGroup() == group).toList();
+            if (inGroup.isEmpty()) continue;
+            float h = contentH(inGroup);
+            groupSections.add(new SectionLayout(group.label, 0f, 0f, h, inGroup));
+            groupsH += SECTION_H + h + SECTION_GAP;
+        }
+        if (!groupSections.isEmpty()) groupsH -= SECTION_GAP; // no trailing gap after the last section
 
         float favH    = contentH(favs);
         float recentH = contentH(recent);
-        float allH    = contentH(all);
 
         float panelH = PADDING
                 + SECTION_H + favH + SECTION_GAP
                 + SECTION_H + recentH + SECTION_GAP
-                + SECTION_H + allH
+                + groupsH
                 + PADDING;
 
         float panelX = anchorRight - PANEL_W;
@@ -85,13 +95,18 @@ public final class EmojiPickerRenderer {
         float recentContentY = y + SECTION_H;
         y = recentContentY + recentH + SECTION_GAP;
 
-        float allHeaderY  = y;
-        float allContentY = y + SECTION_H;
+        List<SectionLayout> groups = new ArrayList<>(groupSections.size());
+        for (SectionLayout base : groupSections) {
+            float headerY  = y;
+            float contentY = y + SECTION_H;
+            groups.add(new SectionLayout(base.label(), headerY, contentY, base.contentH(), base.emojis()));
+            y = contentY + base.contentH() + SECTION_GAP;
+        }
 
         return new PickerLayout(panelX, panelY, panelH,
-                new SectionLayout(favHeaderY,    favContentY,    favH,    favs),
-                new SectionLayout(recentHeaderY, recentContentY, recentH, recent),
-                new SectionLayout(allHeaderY,    allContentY,    allH,    all));
+                new SectionLayout("Favorites", favHeaderY,    favContentY,    favH,    favs),
+                new SectionLayout("Recent",    recentHeaderY, recentContentY, recentH, recent),
+                groups);
     }
 
     // ─────────────────────────────────────────── Rendering
@@ -107,25 +122,30 @@ public final class EmojiPickerRenderer {
         Font headerFont = fonts.get(MStyle.FONT_META);
         Font smallFont  = fonts.get(12f);
 
-        drawSection(canvas, L.panelX, L.favs,    "Favorites",   state.getFavorites().isEmpty(),
+        drawSection(canvas, L.panelX, L.favs,    state.getFavorites().isEmpty(),
                 state, mouseX, mouseY, headerFont, smallFont);
         drawSectionSeparator(canvas, L.panelX, L.favs.contentY() + L.favs.contentH());
 
-        drawSection(canvas, L.panelX, L.recent,  "Recent",      state.getRecentlyUsed().isEmpty(),
+        drawSection(canvas, L.panelX, L.recent,  state.getRecentlyUsed().isEmpty(),
                 state, mouseX, mouseY, headerFont, smallFont);
         drawSectionSeparator(canvas, L.panelX, L.recent.contentY() + L.recent.contentH());
 
-        drawSection(canvas, L.panelX, L.all,     "All",         false,
-                state, mouseX, mouseY, headerFont, smallFont);
+        for (int i = 0; i < L.groups.size(); i++) {
+            SectionLayout sec = L.groups.get(i);
+            drawSection(canvas, L.panelX, sec, false, state, mouseX, mouseY, headerFont, smallFont);
+            if (i < L.groups.size() - 1) {
+                drawSectionSeparator(canvas, L.panelX, sec.contentY() + sec.contentH());
+            }
+        }
     }
 
     private void drawSection(Canvas canvas, float panelX, SectionLayout sec,
-                             String label, boolean isEmpty,
+                             boolean isEmpty,
                              ChatEmojiSystem state, float mx, float my,
                              Font headerFont, Font smallFont) {
         // Header
         float baseline = sec.headerY() + SECTION_H * 0.75f;
-        MPainter.drawString(canvas, label, panelX + PADDING, baseline,
+        MPainter.drawString(canvas, sec.label(), panelX + PADDING, baseline,
                 headerFont, MStyle.TEXT_SECONDARY);
 
         if (isEmpty) {
@@ -221,7 +241,12 @@ public final class EmojiPickerRenderer {
         PickerLayout L = computeLayout(state, anchorRight, anchorTop);
         ChatEmoji hit = emojiAtPoint(L.favs,   mx, my, L.panelX);
         if (hit == null) hit = emojiAtPoint(L.recent, mx, my, L.panelX);
-        if (hit == null) hit = emojiAtPoint(L.all,    mx, my, L.panelX);
+        if (hit == null) {
+            for (SectionLayout sec : L.groups) {
+                hit = emojiAtPoint(sec, mx, my, L.panelX);
+                if (hit != null) break;
+            }
+        }
         return hit;
     }
 
@@ -233,7 +258,12 @@ public final class EmojiPickerRenderer {
         PickerLayout L = computeLayout(state, anchorRight, anchorTop);
         ChatEmoji hit = starAtPoint(L.favs,   mx, my, L.panelX);
         if (hit == null) hit = starAtPoint(L.recent, mx, my, L.panelX);
-        if (hit == null) hit = starAtPoint(L.all,    mx, my, L.panelX);
+        if (hit == null) {
+            for (SectionLayout sec : L.groups) {
+                hit = starAtPoint(sec, mx, my, L.panelX);
+                if (hit != null) break;
+            }
+        }
         return hit;
     }
 

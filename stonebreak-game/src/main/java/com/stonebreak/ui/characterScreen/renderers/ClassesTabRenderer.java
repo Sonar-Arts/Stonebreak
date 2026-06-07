@@ -5,12 +5,16 @@ import com.stonebreak.rendering.UI.masonryUI.MButton;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.stonebreak.rpg.classes.AbilityIconCache;
 import com.stonebreak.rpg.classes.ClassAbility;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.classes.PlayerClassDefinition;
 import io.github.humbleui.skija.Canvas;
+import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.Image;
 import io.github.humbleui.types.Rect;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,11 +34,15 @@ public class ClassesTabRenderer {
   private static final float CLASS_BTN_GAP    = 2f;
   private static final float LIST_CLIP_TOP_PAD = 30f; // below "Class Select" label + rule
   private static final float SIDEBAR_CLIP_H   = 420f;
+  private static final float CLASS_ICON_SIZE  = 16f;
+  private static final float CLASS_ICON_GAP   = 4f;
 
   // ─── Content area layout ───────────────────────────────────────────────────
   private static final float CONTENT_X_PAD    = 193f;
   private static final float CONTENT_W        = 391f;
   private static final float ABILITY_ROW_H    = 64f;
+  private static final float ABILITY_ICON_SIZE = 32f;
+  private static final float ABILITY_ICON_GAP  = 10f;
   private static final float SPEND_BTN_W      = 88f;
   private static final float SPEND_BTN_H      = 22f;
 
@@ -48,6 +56,9 @@ public class ClassesTabRenderer {
   private float leftScrollOffset  = 0f;
   private float rightScrollOffset = 0f;
   private String displayedClassId = null;
+
+  /** Ability-list clip height computed during the last draw; reused for scroll-clamping. */
+  private float lastAbilityClipH = 365f;
 
   /** One spend-CP button per ability slot (max 5). Bounds updated each frame. */
   private final MButton[] spendButtons = new MButton[5];
@@ -84,8 +95,7 @@ public class ClassesTabRenderer {
       Optional<PlayerClassDefinition> cls = classOpt();
       if (cls.isPresent()) {
         float totalH = cls.get().abilities().size() * ABILITY_ROW_H * scale;
-        float clipH = abilityClipH(scale);
-        float maxScroll = Math.max(0f, totalH - clipH);
+        float maxScroll = Math.max(0f, totalH - lastAbilityClipH);
         rightScrollOffset = Math.clamp(rightScrollOffset + deltaY * 20f, 0f, maxScroll);
       }
     }
@@ -138,8 +148,18 @@ public class ClassesTabRenderer {
       int textColor = selected ? MStyle.TEXT_ACCENT
           : hasPoints ? MStyle.TEXT_PRIMARY
           : MStyle.TEXT_SECONDARY;
+
+      float nameX = sideX + 5f;
+      Image classIcon = cls.iconPath() != null ? AbilityIconCache.get(cls.iconPath()) : null;
+      if (classIcon != null) {
+        float iconSize = CLASS_ICON_SIZE * scale;
+        float iconY = btnY + (btnH - iconSize) / 2f;
+        MPainter.drawImage(canvas, classIcon, nameX, iconY, iconSize, iconSize);
+        nameX += iconSize + CLASS_ICON_GAP * scale;
+      }
+
       MPainter.drawStringWithShadow(canvas, cls.name(),
-          sideX + 5f, textY,
+          nameX, textY,
           ui.fonts().getScaled(MStyle.FONT_META), textColor, MStyle.TEXT_SHADOW);
 
       if (hasPoints) {
@@ -171,13 +191,24 @@ public class ClassesTabRenderer {
     MPainter.drawStringWithShadow(canvas, className,
         cx + 4f, cy + 18f * scale,
         ui.fonts().getScaled(MStyle.FONT_ITEM), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-    MPainter.drawStringWithShadow(canvas, classDesc,
-        cx + 4f, cy + 36f * scale,
-        ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-    drawEngravedRule(canvas, cx, cy + 46f * scale, cw);
 
-    float dirtY = cy + 52f * scale;
-    float dirtH = 400f * scale;
+    Font metaFont = ui.fonts().getScaled(MStyle.FONT_META);
+    List<String> descLines = wrapText(metaFont, classDesc, cw - 8f);
+    float descLineH = 16f * scale;
+    float descY = cy + 36f * scale;
+    for (int i = 0; i < descLines.size(); i++) {
+      MPainter.drawStringWithShadow(canvas, descLines.get(i),
+          cx + 4f, descY + i * descLineH,
+          metaFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+    }
+
+    float lastDescBaseline = descY + Math.max(0, descLines.size() - 1) * descLineH;
+    float ruleY = lastDescBaseline + 10f * scale;
+    drawEngravedRule(canvas, cx, ruleY, cw);
+
+    float dirtY = ruleY + 6f * scale;
+    float dirtBottom = cy + 452f * scale;
+    float dirtH = Math.max(150f * scale, dirtBottom - dirtY);
     MPainter.stoneSurface(canvas, cx, dirtY, cw, dirtH,
         MStyle.PANEL_RADIUS, DIRT_FILL, DIRT_BORDER,
         MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, 0,
@@ -192,18 +223,41 @@ public class ClassesTabRenderer {
       return;
     }
 
-    drawAbilityList(canvas, ui, stats, classOpt.get(), cx, dirtY, mx, my, scale, cw);
+    drawAbilityList(canvas, ui, stats, classOpt.get(), cx, dirtY, dirtH, mx, my, scale, cw);
+  }
+
+  /** Greedily wraps {@code text} to fit within {@code maxWidth} pixels, honoring "\n" breaks. */
+  private List<String> wrapText(Font font, String text, float maxWidth) {
+    List<String> lines = new ArrayList<>();
+    if (text == null || text.isEmpty()) {
+      return lines;
+    }
+    for (String paragraph : text.split("\n")) {
+      StringBuilder current = new StringBuilder();
+      for (String word : paragraph.split(" ")) {
+        String candidate = current.isEmpty() ? word : current + " " + word;
+        if (current.length() > 0 && MPainter.measureWidth(font, candidate) > maxWidth) {
+          lines.add(current.toString());
+          current = new StringBuilder(word);
+        } else {
+          current = new StringBuilder(candidate);
+        }
+      }
+      lines.add(current.toString());
+    }
+    return lines;
   }
 
   private void drawAbilityList(Canvas canvas, MasonryUI ui, CharacterStats stats,
-                               PlayerClassDefinition cls, float cx, float dirtY,
+                               PlayerClassDefinition cls, float cx, float dirtY, float dirtH,
                                float mx, float my, float scale, float cw) {
     List<ClassAbility> abilities = cls.abilities();
     float rowH  = ABILITY_ROW_H  * scale;
     float btnW  = SPEND_BTN_W    * scale;
     float btnH  = SPEND_BTN_H    * scale;
     float clipTop = dirtY + 28f * scale;
-    float clipH = abilityClipH(scale);
+    float clipH = Math.max(0f, dirtH - 35f * scale);
+    lastAbilityClipH = clipH;
     float totalH = abilities.size() * rowH;
 
     canvas.save();
@@ -217,12 +271,21 @@ public class ClassesTabRenderer {
 
       float rowY = clipTop + i * rowH - rightScrollOffset;
 
+      float textX = cx + 8f;
+      Image icon = AbilityIconCache.get(ability.iconPath());
+      if (icon != null) {
+        float iconSize = ABILITY_ICON_SIZE * scale;
+        float iconY = rowY + (rowH - iconSize) / 2f;
+        MPainter.drawImage(canvas, icon, textX, iconY, iconSize, iconSize);
+        textX += iconSize + ABILITY_ICON_GAP * scale;
+      }
+
       MPainter.drawStringWithShadow(canvas, ability.name(),
-          cx + 8f, rowY + 16f * scale,
+          textX, rowY + 16f * scale,
           ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
 
       MPainter.drawStringWithShadow(canvas, ability.description(),
-          cx + 8f, rowY + 32f * scale,
+          textX, rowY + 32f * scale,
           ui.fonts().getScaled(MStyle.FONT_META), MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
 
       float btnX = cx + cw - btnW - 8f;
@@ -299,10 +362,6 @@ public class ClassesTabRenderer {
     return displayedClassId != null
         ? ClassRegistry.findById(displayedClassId)
         : Optional.empty();
-  }
-
-  private float abilityClipH(float scale) {
-    return 365f * scale;
   }
 
   private void drawEngravedRule(Canvas canvas, float x, float y, float w) {

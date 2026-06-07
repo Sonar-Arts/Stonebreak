@@ -4,4 +4,5 @@ public sealed interface ChatEmoji permits EmojiType, GifEmojiType {
     String getId();
     String getToken();
     boolean isAnimated();
+    EmojiGroup getGroup();
 }
