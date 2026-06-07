@@ -48,4 +48,47 @@ public final class PlayerConstants {
     public static final float SPAWN_Z = 0.0f;
 
     public static final float CAMERA_EYE_OFFSET = PLAYER_HEIGHT * 0.8f;
+
+    // ── Berserker: Rage resource ──────────────────────────────────────────────
+    public static final float RAGE_MAX             = 100f;
+    public static final float RAGE_T1_THRESHOLD    = 33f;
+    public static final float RAGE_T2_THRESHOLD    = 66f;
+    public static final float RAGE_T3_THRESHOLD    = 100f;
+
+    public static final float RAGE_GAIN_PER_HIT_DEALT    = 6f;
+    public static final float RAGE_GAIN_PER_HIT_RECEIVED = 9f;
+    public static final float RAGE_COMBAT_TIMEOUT        = 4f;   // seconds of no combat before decay starts
+    public static final float RAGE_DECAY_PER_SECOND      = 18f;
+
+    public static final float RAGE_T1_DAMAGE_BONUS       = 0.20f; // +20% melee damage at T1+
+    public static final float RAGE_T2_ATTACK_SPEED_BONUS = 0.30f; // +30% swing speed at T2+
+    public static final float RAGE_T3_LIFESTEAL_PCT      = 0.25f; // heal for 25% of melee damage dealt at T3
+
+    // ── Berserker: Rampage ability ────────────────────────────────────────────
+    public static final float RAMPAGE_BASE_RANGE            = 5f;
+    public static final float RAMPAGE_T1_RANGE              = 9f;
+    public static final float RAMPAGE_SPEED                 = 14f;
+    public static final float RAMPAGE_DAMAGE                = 6f;
+    public static final float RAMPAGE_HIT_RADIUS            = 1.2f;
+    public static final float RAMPAGE_TRAIL_WAYPOINT_GAP    = 0.75f; // distance between trail zones
+    public static final float RAMPAGE_TRAIL_TICK_DAMAGE     = 2f;    // burning DOT per second
+    public static final float RAMPAGE_TRAIL_DURATION        = 4f;
+    public static final float RAMPAGE_KNOCKBACK_HORIZONTAL  = 9f;
+    public static final float RAMPAGE_KNOCKBACK_VERTICAL    = 4f;
+    public static final float RAMPAGE_STAGGER_DURATION      = 1.2f;
+    public static final float RAMPAGE_MAX_CLEAVE_HALF_WIDTH = 6f;
+    public static final float RAMPAGE_COOLDOWN              = 6f;
+
+    // ── Berserker: Skull Crusher ability ──────────────────────────────────────
+    public static final float SKULLCRUSHER_WINDUP_DURATION       = 1.1f;
+    public static final float SKULLCRUSHER_DAMAGE                = 14f;
+    public static final float SKULLCRUSHER_RANGE                 = 5f;
+    public static final float SKULLCRUSHER_SHOCKWAVE_RADIUS      = 4f;
+    public static final float SKULLCRUSHER_SHOCKWAVE_DAMAGE      = 5f;
+    public static final float SKULLCRUSHER_STUN_DURATION         = 1.5f;
+    public static final float SKULLCRUSHER_CRATER_RADIUS         = 4.5f;
+    public static final float SKULLCRUSHER_CRATER_DURATION       = 6f;
+    public static final float SKULLCRUSHER_ARMOR_BREAK_MAGNITUDE = 0.35f; // +35% damage taken
+    public static final float SKULLCRUSHER_ARMOR_BREAK_DURATION  = 3f;
+    public static final float SKULLCRUSHER_COOLDOWN              = 8f;
 }

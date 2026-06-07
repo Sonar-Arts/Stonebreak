@@ -45,9 +45,9 @@ class TcpSmokeTest {
     @Test
     void tcpRoundTripsAChunkSizedPacket() throws Exception {
         PacketRegistry reg = new PacketRegistry();
-        // Channels start in HANDSHAKE; register there so no phase flip is needed.
-        reg.register(ProtocolPhase.HANDSHAKE, PacketDirection.SERVERBOUND, 1, Blob.class, BLOB_CODEC);
-        reg.register(ProtocolPhase.HANDSHAKE, PacketDirection.CLIENTBOUND, 1, Blob.class, BLOB_CODEC);
+        // Channels start in PLAY (see NetChannelInitializer); register there so no phase flip is needed.
+        reg.register(ProtocolPhase.PLAY, PacketDirection.SERVERBOUND, 1, Blob.class, BLOB_CODEC);
+        reg.register(ProtocolPhase.PLAY, PacketDirection.CLIENTBOUND, 1, Blob.class, BLOB_CODEC);
 
         NetworkServer server = new NetworkServer(reg);
         NetworkClient client = new NetworkClient(reg);

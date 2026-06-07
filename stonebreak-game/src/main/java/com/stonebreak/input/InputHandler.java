@@ -69,6 +69,8 @@ public class InputHandler {
     private boolean escapeKeyPressed = false;
     private boolean inventoryKeyPressed = false; // Added for inventory toggle
     private boolean characterKeyPressed = false; // Added for character screen toggle
+    private boolean rampageKeyPressed = false; // Berserker: Rampage cast (R)
+    private boolean skullCrusherKeyPressed = false; // Berserker: Skull Crusher cast (F)
     private boolean chatKeyPressed = false; // Added for chat toggle
     private boolean qKeyPressed = false; // Added for item dropping
     private boolean f3KeyPressed = false; // Added for debug info
@@ -157,6 +159,7 @@ public class InputHandler {
             handleEscapeKey();      // Toggles pauseMenu and game state transitions
             handleInventoryKey();   // Toggles inventoryScreen and INVENTORY_UI state
             handleCharacterKey();   // Toggles characterScreen and CHARACTER_SHEET_UI state
+            handleBerserkerAbilityKeys(player); // Berserker: R = Rampage, F = Skull Crusher
             handleChatKey();        // Opens chatSystem, sets cursor
             handleDropKey();        // Drops selected item when Q is pressed
             handleDebugKeys();      // Handle debug and memory profiling keys
@@ -218,8 +221,11 @@ public class InputHandler {
                 boolean crouch = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS || 
                                glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
                 
-                // Handle movement
-                player.processMovement(moveForward, moveBackward, moveLeft, moveRight, jump, shift);
+                // Handle movement (suppressed mid-Rampage / mid-Skull-Crusher-windup, which drive
+                // the player directly and would otherwise fight with normal input-driven movement)
+                if (!player.getBerserkerAbilities().isMovementLocked()) {
+                    player.processMovement(moveForward, moveBackward, moveLeft, moveRight, jump, shift);
+                }
                 
                 // Handle flight controls (Space for ascent, Ctrl for descent)
                 if (player.isFlying()) {
@@ -408,6 +414,35 @@ public class InputHandler {
             Game.getInstance().toggleCharacterScreen();
         } else if (!isCharKeyPressed) {
             characterKeyPressed = false;
+        }
+    }
+
+    /**
+     * Berserker ability casts: R for Rampage, F for Skull Crusher. Both route through
+     * {@link com.stonebreak.player.combat.berserker.BerserkerAbilityController}, which is
+     * a no-op for non-Berserkers / locked abilities — harmless for any other class.
+     */
+    private void handleBerserkerAbilityKeys(Player player) {
+        if (Game.getInstance().getState() != GameState.PLAYING) {
+            rampageKeyPressed = false;
+            skullCrusherKeyPressed = false;
+            return;
+        }
+
+        boolean isRampagePressed = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+        if (isRampagePressed && !rampageKeyPressed) {
+            rampageKeyPressed = true;
+            player.getBerserkerAbilities().tryCastRampage(player);
+        } else if (!isRampagePressed) {
+            rampageKeyPressed = false;
+        }
+
+        boolean isSkullCrusherPressed = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
+        if (isSkullCrusherPressed && !skullCrusherKeyPressed) {
+            skullCrusherKeyPressed = true;
+            player.getBerserkerAbilities().tryCastSkullCrusher(player, player.getRaycastEngine());
+        } else if (!isSkullCrusherPressed) {
+            skullCrusherKeyPressed = false;
         }
     }
 
@@ -840,7 +875,7 @@ public class InputHandler {
                         if (em != null) {
                             LivingEntity target = player.getRaycastEngine().raycastEntity(em.getLivingEntities());
                             if (target != null) {
-                                target.damage(player.getAttackDamage(), LivingEntity.DamageSource.PLAYER);
+                                player.attackEntity(target);
                             }
                         }
                         // Block breaking is now handled continuously in handleInput

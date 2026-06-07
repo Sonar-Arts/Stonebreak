@@ -10,7 +10,10 @@ import com.stonebreak.player.combat.DeathHandler;
 import com.stonebreak.player.combat.FallDamageHandler;
 import com.stonebreak.player.combat.HealthController;
 import com.stonebreak.player.combat.ManaController;
+import com.stonebreak.player.combat.RageTier;
 import com.stonebreak.player.combat.StaminaController;
+import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
+import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.interaction.BlockBreaker;
 import com.stonebreak.player.interaction.BlockPlacer;
 import com.stonebreak.player.interaction.ItemDropInteraction;
@@ -30,6 +33,9 @@ import org.joml.Vector3f;
 import org.joml.Vector3i;
 
 import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
+import static com.stonebreak.player.PlayerConstants.RAGE_T1_DAMAGE_BONUS;
+import static com.stonebreak.player.PlayerConstants.RAGE_T2_ATTACK_SPEED_BONUS;
+import static com.stonebreak.player.PlayerConstants.RAGE_T3_LIFESTEAL_PCT;
 import static com.stonebreak.player.PlayerConstants.SPAWN_X;
 import static com.stonebreak.player.PlayerConstants.SPAWN_Y;
 import static com.stonebreak.player.PlayerConstants.SPAWN_Z;
@@ -65,6 +71,7 @@ public class Player {
     private final ManaController mana;
     private final FallDamageHandler fallDamage;
     private final DeathHandler deathHandler;
+    private final BerserkerAbilityController berserkerAbilities;
 
     // Interaction
     private final RaycastEngine raycastEngine;
@@ -107,6 +114,7 @@ public class Player {
         this.movement = new MovementController(state, camera, collisionHandler, flight, swimming, jumpHandler, spectator);
         this.fallDamage = new FallDamageHandler(state, health);
         this.deathHandler = new DeathHandler(state, health, inventory, camera, world);
+        this.berserkerAbilities = new BerserkerAbilityController();
 
         this.raycastEngine = new RaycastEngine(state, camera, world);
         this.blockBreaker = new BlockBreaker(raycastEngine, inventory, attack, world);
@@ -177,6 +185,11 @@ public class Player {
         Vector3f p = state.getPosition();
         camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
 
+        berserkerAbilities.update(dt, this);
+        RageTier rageTier = berserkerAbilities.getRage().getTier();
+        attack.setAnimationSpeedMultiplier(rageTier.atLeast(RageTier.T2)
+            ? 1f + RAGE_T2_ATTACK_SPEED_BONUS
+            : 1f);
         attack.update(dt);
         bow.update(dt);
         stamina.update(dt);
@@ -279,7 +292,10 @@ public class Player {
     public boolean isDead() { return health.isDead(); }
     public int getHearts() { return health.getHearts(); }
     public void setHealth(float h) { health.setHealth(h); }
-    public void damage(float amount) { health.damage(amount); }
+    public void damage(float amount) {
+        berserkerAbilities.getRage().onHitReceived();
+        health.damage(amount);
+    }
     public void heal(float amount) { health.heal(amount); }
     public void respawn() { deathHandler.respawn(); }
 
@@ -319,6 +335,32 @@ public class Player {
         }
         return 1.0f;
     }
+
+    /** Multiplier applied to melee damage from the Berserker's Rage tier (T1+ grants increased damage). */
+    public float getMeleeDamageMultiplier() {
+        RageTier tier = berserkerAbilities.getRage().getTier();
+        return tier.atLeast(RageTier.T1)
+            ? 1f + RAGE_T1_DAMAGE_BONUS
+            : 1f;
+    }
+
+    /**
+     * Resolves a melee hit on {@code target}: applies Rage-scaled damage, grants Rage for
+     * the hit dealt, and — at Rage T3 — heals the player via lifesteal. Centralizes melee
+     * combat resolution so Berserker bonuses apply uniformly regardless of caller.
+     */
+    public void attackEntity(LivingEntity target) {
+        float damageDealt = getAttackDamage() * getMeleeDamageMultiplier();
+        target.damage(damageDealt, LivingEntity.DamageSource.PLAYER);
+        berserkerAbilities.getRage().onMeleeHitDealt();
+
+        if (berserkerAbilities.getRage().getTier().atLeast(RageTier.T3)) {
+            heal(damageDealt * RAGE_T3_LIFESTEAL_PCT);
+        }
+    }
+
+    // Berserker
+    public BerserkerAbilityController getBerserkerAbilities() { return berserkerAbilities; }
 
     // Block interaction
     public Vector3i raycast() { return raycastEngine.raycast(); }

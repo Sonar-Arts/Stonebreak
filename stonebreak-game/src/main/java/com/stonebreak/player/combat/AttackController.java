@@ -12,13 +12,25 @@ public class AttackController {
     private boolean attacking;
     private float animationTime;
 
+    // Scales swing duration; >1 = faster swings (e.g. Berserker Rage T2 attack-speed bonus).
+    private float animationSpeedMultiplier = 1.0f;
+
     public void update(float deltaTime) {
         if (!attacking) return;
         animationTime += deltaTime;
-        if (animationTime >= ATTACK_ANIMATION_DURATION) {
+        if (animationTime >= animationDuration()) {
             attacking = false;
             animationTime = 0.0f;
         }
+    }
+
+    /** Sets the swing-speed multiplier (1.0 = normal, >1.0 = faster). Clamped to a sane minimum. */
+    public void setAnimationSpeedMultiplier(float multiplier) {
+        this.animationSpeedMultiplier = Math.max(0.1f, multiplier);
+    }
+
+    private float animationDuration() {
+        return ATTACK_ANIMATION_DURATION / animationSpeedMultiplier;
     }
 
     public void startAttackAnimation() {
@@ -42,13 +54,13 @@ public class AttackController {
 
     public float getAnimationProgress() {
         if (!attacking) return 0.0f;
-        float progress = Math.min(animationTime / ATTACK_ANIMATION_DURATION, 1.0f);
+        float progress = Math.min(animationTime / animationDuration(), 1.0f);
         return (float) (1.0 - Math.pow(1.0 - progress, 2.0));
     }
 
     public float getRawAnimationProgress() {
         if (!attacking) return 0.0f;
-        return Math.min(animationTime / ATTACK_ANIMATION_DURATION, 1.0f);
+        return Math.min(animationTime / animationDuration(), 1.0f);
     }
 
     public void reset() {

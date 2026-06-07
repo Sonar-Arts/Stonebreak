@@ -8,6 +8,10 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.player.Player;
+import com.stonebreak.player.combat.RageController;
+import com.stonebreak.player.combat.RageTier;
+import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
+import com.stonebreak.player.combat.berserker.BerserkerTierText;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.masonryUI.MItemSlot;
@@ -16,6 +20,9 @@ import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.rendering.UI.masonryUI.textures.MTexture;
 import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
+import static com.stonebreak.player.PlayerConstants.RAGE_T1_THRESHOLD;
+import static com.stonebreak.player.PlayerConstants.RAGE_T2_THRESHOLD;
+import static com.stonebreak.player.PlayerConstants.RAGE_T3_THRESHOLD;
 import com.stonebreak.ui.HotbarScreen;
 import com.stonebreak.ui.hotbar.core.HotbarLayoutCalculator;
 import io.github.humbleui.skija.Canvas;
@@ -62,6 +69,18 @@ public class MHotbarRenderer {
     private static final int STAMINA_FILL       = 0xDC50C850;
     private static final int STAMINA_BORDER     = 0xFF000000;
 
+    // ── Berserker Rage indicator (only shown when Berserker is the selected class) ────
+    private static final int   RAGE_PANEL_GAP       = 12;   // pixels right of the hotbar background
+    private static final int   RAGE_PANEL_WIDTH     = 190;
+    private static final int   RAGE_SEGMENT_HEIGHT  = 10;
+    private static final int   RAGE_SEGMENT_GAP     = 3;
+    private static final int   RAGE_SEGMENT_BG      = 0xC83C3C3C;
+    private static final int   RAGE_SEGMENT_BORDER  = 0xFF000000;
+    private static final int   RAGE_SEGMENT_FILLED  = 0xDCC83C32; // fierce red
+    private static final int   RAGE_SEGMENT_PARTIAL = 0xDC9C5028; // dim ember
+    private static final int   RAGE_LABEL_GAP       = 4;
+    private static final int   RAGE_BONUS_LINE_GAP  = 2;
+
     private record HeartLayout(int heartsPerRow, int numRows, float step) {}
 
     private static final String HEART_EMPTY_SBT = "/ui/HUD/Health Icon/SB_Empty_Health_Icon.sbt";
@@ -96,6 +115,7 @@ public class MHotbarRenderer {
             drawSbtItemIcons(canvas, slots, layout);
             drawHealthHearts(canvas, layout);
             drawStaminaBar(canvas, layout);
+            drawRageIndicator(canvas, layout);
             ui.renderOverlays();
             ui.endFrame();
         }
@@ -215,6 +235,61 @@ public class MHotbarRenderer {
             MPainter.fillRect(canvas, layout.backgroundX, barY, fillW, STAMINA_BAR_HEIGHT, STAMINA_FILL);
         }
         MPainter.strokeRect(canvas, layout.backgroundX, barY, layout.backgroundWidth, STAMINA_BAR_HEIGHT, STAMINA_BORDER, 1f);
+    }
+
+    /**
+     * Draws the Berserker Rage panel — three tier segments (T1/T2/T3), a "Rage: T<N>"
+     * label, and one live tier-bonus line per unlocked ability — to the right of the
+     * hotbar. Renders only when the player's selected class is the Berserker.
+     */
+    private void drawRageIndicator(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        if (!BerserkerAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+
+        RageController rage = player.getBerserkerAbilities().getRage();
+        RageTier tier = rage.getTier();
+        float currentRage = rage.getRage();
+        float[] thresholds = { RAGE_T1_THRESHOLD, RAGE_T2_THRESHOLD, RAGE_T3_THRESHOLD };
+
+        float panelX = layout.backgroundX + layout.backgroundWidth + RAGE_PANEL_GAP;
+        float y = layout.backgroundY;
+
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
+        String tierLabel = "Rage: T" + tier.ordinal();
+        MPainter.drawStringWithShadow(canvas, tierLabel, panelX, y + MStyle.FONT_META,
+                font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        y += MStyle.FONT_META + RAGE_LABEL_GAP;
+
+        for (int i = 0; i < thresholds.length; i++) {
+            float segMin = i == 0 ? 0f : thresholds[i - 1];
+            float segMax = thresholds[i];
+            float fraction = Math.max(0f, Math.min(1f, (currentRage - segMin) / (segMax - segMin)));
+
+            MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, RAGE_SEGMENT_HEIGHT, RAGE_SEGMENT_BG);
+            if (fraction >= 1f) {
+                MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, RAGE_SEGMENT_HEIGHT, RAGE_SEGMENT_FILLED);
+            } else if (fraction > 0f) {
+                MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH * fraction, RAGE_SEGMENT_HEIGHT, RAGE_SEGMENT_PARTIAL);
+            }
+            MPainter.strokeRect(canvas, panelX, y, RAGE_PANEL_WIDTH, RAGE_SEGMENT_HEIGHT, RAGE_SEGMENT_BORDER, 1f);
+
+            y += RAGE_SEGMENT_HEIGHT + RAGE_SEGMENT_GAP;
+        }
+
+        y += RAGE_BONUS_LINE_GAP;
+        var stats = player.getCharacterStats();
+        if (stats.getSpentCp(BerserkerAbilityController.RAMPAGE_KEY) > 0) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas, BerserkerTierText.rampageBonus(tier), panelX, y,
+                    font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+            y += RAGE_BONUS_LINE_GAP;
+        }
+        if (stats.getSpentCp(BerserkerAbilityController.SKULL_CRUSHER_KEY) > 0) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas, BerserkerTierText.skullCrusherBonus(tier), panelX, y,
+                    font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+        }
     }
 
     private HeartLayout computeHeartLayout(int totalHearts, int heartSize, int availableWidth) {

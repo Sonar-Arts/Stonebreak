@@ -9,6 +9,12 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.Water;
 import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
+import com.stonebreak.mobs.entities.status.StatusEffect;
+import com.stonebreak.mobs.entities.status.StatusEffectType;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 /**
  * Base class for all living entities that can move, interact, and have AI behavior.
@@ -33,7 +39,10 @@ public abstract class LivingEntity extends Entity {
     protected float interactionRange;
     protected long lastInteractionTime;
     private static final float INTERACTION_COOLDOWN = 1.0f; // 1 second between interactions
-    
+
+    // Status effects (timed debuffs — burning, stun, armor break, etc.)
+    private final List<StatusEffect> statusEffects = new ArrayList<>();
+
     /**
      * Creates a new living entity at the specified position.
      */
@@ -85,8 +94,13 @@ public abstract class LivingEntity extends Entity {
         // Apply basic physics
         applyPhysics(deltaTime);
 
-        // Update AI behavior (to be implemented in future phases)
-        updateAI(deltaTime);
+        // Tick timed debuffs (burning DOT, stun, armor break, ...)
+        updateStatusEffects(deltaTime);
+
+        // Update AI behavior — suppressed while stunned
+        if (!isStunned()) {
+            updateAI(deltaTime);
+        }
     }
     
     /**
@@ -106,15 +120,16 @@ public abstract class LivingEntity extends Entity {
 
     public void damage(float amount, DamageSource source) {
         if (!alive || invulnerable) return;
-        super.damage(amount);
+        float effectiveAmount = amount * getArmorBreakDamageMultiplier();
+        super.damage(effectiveAmount);
         invulnerable = true;
         invulnerabilityTimer = INVULNERABILITY_DURATION;
         DamageNumberRenderer.getInstance().spawn(
-            position.x, position.y + height * 0.9f, position.z, amount);
+            position.x, position.y + height * 0.9f, position.z, effectiveAmount);
         if (source == DamageSource.PLAYER) {
             Player player = Game.getPlayer();
             if (player != null) {
-                player.getStats().addDamageDealt(amount);
+                player.getStats().addDamageDealt(effectiveAmount);
                 if (!alive) {
                     player.getStats().incrementEntitiesKilled();
                     player.getStats().incrementKillsForType(getType());
@@ -125,7 +140,65 @@ public abstract class LivingEntity extends Entity {
                 }
             }
         }
-        onDamage(amount, source);
+        onDamage(effectiveAmount, source);
+    }
+
+    // ─────────────────────────────────────────────── Status effects
+
+    /** Applies (or refreshes) a timed debuff. Same-type effects are refreshed rather than stacked. */
+    public void applyStatusEffect(StatusEffectType type, float duration, float magnitude) {
+        if (!alive) return;
+        for (StatusEffect existing : statusEffects) {
+            if (existing.getType() == type) {
+                existing.refresh(duration);
+                return;
+            }
+        }
+        statusEffects.add(new StatusEffect(type, duration, magnitude));
+    }
+
+    private void updateStatusEffects(float deltaTime) {
+        if (statusEffects.isEmpty()) return;
+
+        // Tick and prune first so damage()/onDamage() (which may itself touch statusEffects,
+        // e.g. via applyStatusEffect) never runs while we're iterating the live list.
+        float burningTickDamage = 0f;
+        Iterator<StatusEffect> it = statusEffects.iterator();
+        while (it.hasNext()) {
+            StatusEffect effect = it.next();
+            boolean dotTick = effect.tick(deltaTime);
+            if (dotTick && effect.getType() == StatusEffectType.BURNING) {
+                burningTickDamage += effect.getMagnitude() * StatusEffect.DOT_TICK_INTERVAL;
+            }
+            if (effect.isExpired()) {
+                it.remove();
+            }
+        }
+
+        if (burningTickDamage > 0f && alive) {
+            damage(burningTickDamage, DamageSource.FIRE);
+        }
+    }
+
+    /** True while any STUNNED effect is active — suppresses AI updates. */
+    public boolean isStunned() {
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == StatusEffectType.STUNNED) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Multiplier applied to incoming damage; {@code 1.0} with no Armor Break active, higher otherwise. */
+    public float getArmorBreakDamageMultiplier() {
+        float bonus = 0f;
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == StatusEffectType.ARMOR_BREAK) {
+                bonus = Math.max(bonus, effect.getMagnitude());
+            }
+        }
+        return 1f + bonus;
     }
 
     /** XP awarded to the player when this entity is killed. Override in subclasses. */
@@ -303,10 +376,22 @@ public abstract class LivingEntity extends Entity {
         knockbackDir.y = 0;
         if (knockbackDir.length() > 0.01f) {
             knockbackDir.normalize();
-            velocity.x += knockbackDir.x * 6.0f;
-            velocity.z += knockbackDir.z * 6.0f;
-            velocity.y += 0.6f;
+            applyKnockback(knockbackDir, 6.0f, 0.6f);
         }
+    }
+
+    /**
+     * Applies an instantaneous knockback impulse in an arbitrary horizontal direction
+     * (e.g. away from a charge line or an ability's impact point), plus a vertical lift.
+     * {@code horizontalDirection} need not be normalized; only its horizontal (XZ) component is used.
+     */
+    public void applyKnockback(Vector3f horizontalDirection, float horizontalForce, float verticalForce) {
+        Vector3f dir = new Vector3f(horizontalDirection.x, 0f, horizontalDirection.z);
+        if (dir.lengthSquared() <= 0.0001f) return;
+        dir.normalize();
+        velocity.x += dir.x * horizontalForce;
+        velocity.z += dir.z * horizontalForce;
+        velocity.y += verticalForce;
     }
 
     // Abstract methods that must be implemented by subclasses

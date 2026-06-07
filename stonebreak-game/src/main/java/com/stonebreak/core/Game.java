@@ -47,6 +47,7 @@ public class Game {
     private DeathMenu deathMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private CharacterScreen characterScreen; // Character stats screen
+    private com.stonebreak.ui.statisticsScreen.StatisticsScreen statisticsScreen; // Statistics screen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
     private FurnaceScreen furnaceScreen; // Furnace smelting GUI
     private RecipeScreen recipeScreen; // Added RecipeBookScreen
