@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.shaders.exceptions;
+package com.openmason.engine.rendering.shaders.exceptions;
 
 /**
  * Exception thrown when texture unit operations fail.

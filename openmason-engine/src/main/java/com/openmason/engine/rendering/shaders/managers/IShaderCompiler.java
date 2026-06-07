@@ -1,7 +1,7 @@
-package com.stonebreak.rendering.shaders.managers;
+package com.openmason.engine.rendering.shaders.managers;
 
-import com.stonebreak.rendering.shaders.exceptions.ShaderCompilationException;
-import com.stonebreak.rendering.shaders.exceptions.ShaderLinkException;
+import com.openmason.engine.rendering.shaders.exceptions.ShaderCompilationException;
+import com.openmason.engine.rendering.shaders.exceptions.ShaderLinkException;
 
 /**
  * Interface for compiling OpenGL shaders.

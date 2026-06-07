@@ -15,7 +15,7 @@ import static org.lwjgl.opengl.GL11.*;
 import com.stonebreak.audio.emitters.SoundEmitter;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 
 /**
  * Specialized renderer for sound emitters, displaying them as yellow triangle wireframes

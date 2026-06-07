@@ -24,7 +24,7 @@ import com.openmason.engine.voxel.sbo.sboRenderer.SBORendererAPI;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.ui.Font;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.chat.ChatSystem;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;

@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.shaders.managers;
+package com.openmason.engine.rendering.shaders.managers;
 
 import java.util.List;
 

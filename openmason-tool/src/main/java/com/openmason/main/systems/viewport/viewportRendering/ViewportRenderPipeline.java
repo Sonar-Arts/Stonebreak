@@ -274,12 +274,12 @@ public class ViewportRenderPipeline {
             blockRenderer.renderBlock(
                 renderingState.getSelectedBlock(),
                 matrixShader.getProgramId(),
-                matrixShader.getMvpMatrixLocation(),
-                matrixShader.getModelMatrixLocation(),
+                matrixShader.getUniformLocation("uMVPMatrix"),
+                matrixShader.getUniformLocation("uModelMatrix"),
                 vpArray,
                 transformState.getTransformMatrix(),
-                matrixShader.getTextureLocation(),
-                matrixShader.getUseTextureLocation()
+                matrixShader.getUniformLocation("uTexture"),
+                matrixShader.getUniformLocation("uUseTexture")
             );
 
             logger.trace("Block rendered: {}", renderingState.getSelectedBlock().name());
@@ -306,11 +306,11 @@ public class ViewportRenderPipeline {
             itemRenderer.renderItem(
                 renderingState.getSelectedItem(),
                 matrixShader.getProgramId(),
-                matrixShader.getMvpMatrixLocation(),
-                matrixShader.getModelMatrixLocation(),
+                matrixShader.getUniformLocation("uMVPMatrix"),
+                matrixShader.getUniformLocation("uModelMatrix"),
                 vpArray,
                 transformState.getTransformMatrix(),
-                    matrixShader.getUseTextureLocation()
+                    matrixShader.getUniformLocation("uUseTexture")
             );
 
             logger.trace("Item rendered: {}", renderingState.getSelectedItem().name());
@@ -337,11 +337,11 @@ public class ViewportRenderPipeline {
             sbtRenderer.renderSBT(
                     renderingState.getSelectedSbtPath(),
                     matrixShader.getProgramId(),
-                    matrixShader.getMvpMatrixLocation(),
-                    matrixShader.getModelMatrixLocation(),
+                    matrixShader.getUniformLocation("uMVPMatrix"),
+                    matrixShader.getUniformLocation("uModelMatrix"),
                     vpArray,
                     transformState.getTransformMatrix(),
-                    matrixShader.getUseTextureLocation()
+                    matrixShader.getUniformLocation("uUseTexture")
             );
 
             logger.trace("SBT rendered: {}", renderingState.getSelectedSbtPath());

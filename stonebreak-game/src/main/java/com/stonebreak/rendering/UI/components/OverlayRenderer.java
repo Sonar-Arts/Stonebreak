@@ -8,7 +8,7 @@ import com.stonebreak.items.Item;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.UI.menus.BlockIconRenderer;
 import com.stonebreak.rendering.UI.menus.ItemIconRenderer;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.furnace.FurnaceScreen;

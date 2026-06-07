@@ -9,7 +9,7 @@ import com.stonebreak.mobs.sbe.SbeEntityAsset;
 import com.stonebreak.mobs.sbe.SbeFace;
 import com.stonebreak.mobs.sbe.SbeModelGeometry;
 import com.stonebreak.mobs.sbe.SbePart;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;

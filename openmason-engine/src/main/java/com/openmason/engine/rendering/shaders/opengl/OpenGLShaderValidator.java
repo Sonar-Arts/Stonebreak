@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.shaders.OpenGL;
+package com.openmason.engine.rendering.shaders.opengl;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -6,8 +6,8 @@ import java.util.logging.Logger;
 import java.util.logging.Level;
 import java.nio.IntBuffer;
 
-import com.stonebreak.rendering.shaders.GeometryShaderSupport;
-import com.stonebreak.rendering.shaders.managers.IShaderValidator;
+import com.openmason.engine.rendering.shaders.GeometryShaderSupport;
+import com.openmason.engine.rendering.shaders.managers.IShaderValidator;
 import org.lwjgl.BufferUtils;
 
 import static org.lwjgl.opengl.GL11.*;

@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.player.items.voxelization;
 
 import com.stonebreak.items.ItemType;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import org.joml.Vector4f;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;

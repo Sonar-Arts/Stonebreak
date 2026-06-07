@@ -1,7 +1,7 @@
-package com.stonebreak.rendering.shaders.OpenGL;
+package com.openmason.engine.rendering.shaders.opengl;
 
-import com.stonebreak.rendering.shaders.managers.IUniformBufferManager;
-import com.stonebreak.rendering.shaders.exceptions.UniformBufferException;
+import com.openmason.engine.rendering.shaders.managers.IUniformBufferManager;
+import com.openmason.engine.rendering.shaders.exceptions.UniformBufferException;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentHashMap;

@@ -3,7 +3,7 @@ package com.stonebreak.rendering.UI.menus;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.openmason.engine.rendering.cbr.meshing.MeshManager;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.UI.UIRenderer;
 import org.joml.Matrix4f;
