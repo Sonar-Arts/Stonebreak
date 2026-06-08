@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.gameWorld.sky.clouds;
+package com.openmason.engine.rendering.sky.clouds;
 
 // Standard Library Imports
 import java.io.IOException;
@@ -17,7 +17,6 @@ import static org.lwjgl.opengl.GL30.*;
 
 // Project Imports
 import com.openmason.engine.rendering.shaders.ShaderProgram;
-import com.stonebreak.world.TimeOfDay;
 
 /**
  * Renderer for the Minecraft-style voxel cloud layer.
@@ -26,10 +25,10 @@ import com.stonebreak.world.TimeOfDay;
  * (see {@link CloudPattern} and {@link CloudMeshBuilder}). Because the pattern
  * is toroidal, the mesh is drawn in a 3x3 tiling around the camera so the cloud
  * layer appears seamless and infinite. Clouds drift continuously and are tinted
- * by the {@link TimeOfDay} system so they darken at night.</p>
+ * by a caller-supplied ambient light level so they darken at night.</p>
  *
- * <p>This is a sibling renderer to {@code SkyRenderer}; it is owned and invoked
- * by {@code WorldRenderer} immediately after the sky dome is drawn.</p>
+ * <p>This is a sibling renderer to {@code SkyRenderer}; it is typically owned and
+ * invoked by the world renderer immediately after the sky dome is drawn.</p>
  */
 public class CloudRenderer {
 
@@ -127,14 +126,14 @@ public class CloudRenderer {
      * Renders the cloud layer. Should be called immediately after the sky dome,
      * before world geometry.
      *
-     * @param projectionMatrix the projection matrix
-     * @param viewMatrix       the camera view matrix
-     * @param cameraPosition   the camera position
-     * @param totalTime        total elapsed game time, in seconds
-     * @param timeOfDay        the time-of-day system (null for a static daytime tint)
+     * @param projectionMatrix  the projection matrix
+     * @param viewMatrix        the camera view matrix
+     * @param cameraPosition    the camera position
+     * @param totalTime         total elapsed game time, in seconds
+     * @param ambientLightLevel ambient light level (0..1) driving the cloud tint
      */
     public void renderClouds(Matrix4f projectionMatrix, Matrix4f viewMatrix,
-                             Vector3f cameraPosition, float totalTime, TimeOfDay timeOfDay) {
+                             Vector3f cameraPosition, float totalTime, float ambientLightLevel) {
         // Save current OpenGL state.
         boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
@@ -157,7 +156,7 @@ public class CloudRenderer {
         cloudShaderProgram.setUniform("projectionMatrix", projectionMatrix);
         cloudShaderProgram.setUniform("viewMatrix", viewMatrix);
         cloudShaderProgram.setUniform("cameraPosition", cameraPosition);
-        cloudShaderProgram.setUniform("cloudColor", computeCloudColor(timeOfDay));
+        cloudShaderProgram.setUniform("cloudColor", computeCloudColor(ambientLightLevel));
         cloudShaderProgram.setUniform("cloudAlpha", CLOUD_ALPHA);
 
         // Drift wraps at the tile extent so the toroidal pattern stays seamless.
@@ -202,15 +201,14 @@ public class CloudRenderer {
     }
 
     /**
-     * Derives the cloud tint from the time of day: bright white during the day,
-     * darkening toward a dim blue-grey at night.
+     * Derives the cloud tint from the ambient light level: bright white during the
+     * day, darkening toward a dim blue-grey at night.
      */
-    private Vector3f computeCloudColor(TimeOfDay timeOfDay) {
-        float ambient = (timeOfDay != null) ? timeOfDay.getAmbientLightLevel() : 1.0f;
+    private Vector3f computeCloudColor(float ambientLightLevel) {
         // Night clouds: dim blue-grey. Day clouds: near-white.
-        float r = lerp(0.18f, 1.0f, ambient);
-        float g = lerp(0.19f, 1.0f, ambient);
-        float b = lerp(0.26f, 1.0f, ambient);
+        float r = lerp(0.18f, 1.0f, ambientLightLevel);
+        float g = lerp(0.19f, 1.0f, ambientLightLevel);
+        float b = lerp(0.26f, 1.0f, ambientLightLevel);
         return cloudColor.set(r, g, b);
     }
 

@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.gameWorld.sky.clouds;
+package com.openmason.engine.rendering.sky.clouds;
 
 import java.util.Random;
 
