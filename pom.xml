@@ -20,10 +20,10 @@
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <lwjgl.version>3.4.1</lwjgl.version>
-        <joml.version>1.10.8</joml.version>
+        <joml.version>1.10.9</joml.version>
         <lwjgl.natives>natives-windows</lwjgl.natives>
-        <jackson.version>2.21.3</jackson.version>
-        <jackson.version.annotations>2.21</jackson.version.annotations>
+        <jackson.version>2.22.0</jackson.version>
+        <jackson.version.annotations>2.22</jackson.version.annotations>
         <junit.version>6.1.0</junit.version>
         <mockito.version>5.23.0</mockito.version>
         <skija.version>0.143.16</skija.version>
@@ -247,7 +247,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.5.5</version>
+                    <version>3.5.6</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
