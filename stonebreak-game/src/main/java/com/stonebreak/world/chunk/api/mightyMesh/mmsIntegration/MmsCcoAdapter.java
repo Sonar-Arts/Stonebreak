@@ -1,6 +1,7 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.Water;
 import com.stonebreak.world.World;
 import com.openmason.engine.voxel.cco.core.CcoChunkData;
 import com.openmason.engine.voxel.cco.data.CcoChunkState;
@@ -424,10 +425,39 @@ public class MmsCcoAdapter {
             // other faces when transparent (but not water)
             if (face == 0) { // Top face
                 return !adjacentBlock.isTransparent() || adjacentBlock == BlockType.AIR;
-            } else {
-                return adjacentBlock.isTransparent() && adjacentBlock != BlockType.WATER;
             }
+            // Submerged-continuous cull: surface heights are sewn continuous across
+            // cells (MmsWaterGenerator.getSewnCornerHeights), but this culling is
+            // per-cell. The top cell of a variable-height column next to an AIR
+            // neighbor whose column holds water one cell BELOW is interior to one
+            // continuous water body — rendering that side face paints a spurious
+            // vertical sheet at the column/chunk border. Beach and waterfall edges
+            // (neighbor-below dry) must still render.
+            if (face >= 2 && adjacentBlock == BlockType.AIR
+                    && isWaterCell(adjX, adjY - 1, adjZ, chunkData)) {
+                return false;
+            }
+            return adjacentBlock.isTransparent() && adjacentBlock != BlockType.WATER;
         }
+    }
+
+    /**
+     * Water lives in two representations: the chunk block array and the dynamic
+     * WaterSystem (per-cell flow levels). The geometry side reads both
+     * (MmsWaterGenerator.resolveWaterHeight), so face culling must agree with
+     * both or the two disagree and spurious faces get drawn.
+     */
+    private boolean isWaterCell(int adjX, int adjY, int adjZ, CcoChunkData chunkData) {
+        if (adjY < 0 || adjY >= WorldConfiguration.WORLD_HEIGHT) {
+            return false;
+        }
+        if (getAdjacentBlock(adjX, adjY, adjZ, chunkData) == BlockType.WATER) {
+            return true;
+        }
+        int worldX = adjX + chunkData.getChunkX() * WorldConfiguration.CHUNK_SIZE;
+        int worldZ = adjZ + chunkData.getChunkZ() * WorldConfiguration.CHUNK_SIZE;
+        return Water.getWaterBlock(worldX, adjY, worldZ) != null
+            || Water.getWaterLevel(worldX, adjY, worldZ) > 0.0f;
     }
 
     /**

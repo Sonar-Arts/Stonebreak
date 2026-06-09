@@ -909,12 +909,17 @@ public class World {
         if (meshPipeline != null) {
             markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
             if (neighborCoordinator != null) {
-                // Single-block (0,0) re-meshes only west+north neighbors. That's intentional and
-                // sufficient for streaming: each newly-arriving chunk re-meshes the chunks west
-                // and north of it (which are usually already installed); east/south neighbors
-                // re-mesh themselves when THEY arrive and reference this chunk. The only stale
-                // borders are at the view edge — not visible to the player.
+                // Re-mesh ALL four resident neighbors: any neighbor meshed before this
+                // payload landed built its border against an absent or empty chunk
+                // (culled/sentinel faces, or all-AIR reads → spurious water sheets).
+                // Streaming order is not guaranteed to be west/north-first — movement
+                // west or north delivers new chunks on the far side of already-meshed
+                // ones — so both edge pairs must be marked. Non-resident neighbors
+                // no-op, and the dirty-flag gating keeps this to one rebuild each.
                 neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, 0, 0,
+                        meshPipeline::scheduleConditionalMeshBuild);
+                neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ,
+                        WorldConfiguration.CHUNK_SIZE - 1, WorldConfiguration.CHUNK_SIZE - 1,
                         meshPipeline::scheduleConditionalMeshBuild);
             }
         }

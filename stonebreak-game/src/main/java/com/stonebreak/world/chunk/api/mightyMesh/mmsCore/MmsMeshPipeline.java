@@ -247,6 +247,17 @@ public final class MmsMeshPipeline {
     private void processMeshGenerationTask(World world, Chunk chunk) {
         boolean success = false;
         MmsMeshData meshData = null;
+        // Consume the pending remesh request at build START, before any chunk
+        // data is read. A markMeshDirty arriving after this point refers to
+        // data this build may not see (neighbor chunk payload installed,
+        // water tick, block edit) — the flag stays set and the go-live
+        // recheck (GPU upload for non-empty results, worker end for empty)
+        // reschedules exactly once. Clearing the flag at build END instead
+        // (the old behavior) silently dropped any request that arrived while
+        // the chunk was MESH_GENERATING or queued for upload, leaving
+        // permanently stale border meshes (e.g. full-height water sheets
+        // against a neighbor that was an empty network placeholder slot).
+        chunk.getCcoDirtyTracker().checkAndClearMeshDirty();
         // Snapshot which of the 4 cardinal neighbors are UNLOADED at build
         // start. MmsFaceCullingService treats unloaded neighbors as opaque
         // (sentinel), culling boundary faces — so if any of these neighbors
@@ -292,19 +303,20 @@ public final class MmsMeshPipeline {
                 meshesReadyForGLUpload.offer(uploadTask);
                 chunksInUploadQueue.add(chunk);
 
-                // Mark chunk state as CPU ready and clear dirty. If a neighbor
-                // that was unloaded at build start has since loaded by the
-                // time of GPU upload, the upload step rechecks and reschedules.
+                // Mark chunk state as CPU ready. The dirty flag was consumed at
+                // build start; do NOT clear it here — if it is set again, a
+                // remesh request arrived mid-build and the GPU upload step
+                // rechecks and reschedules once the mesh goes live.
                 synchronized (chunk) {
                     chunk.getCcoStateManager().addState(CcoChunkState.MESH_CPU_READY);
-                    chunk.getCcoDirtyTracker().clearMeshDirty();
                 }
             } else {
-                // Valid empty result: clear dirty so it doesn't churn, and mark it "meshed" so
-                // markMeshGenerationComplete doesn't re-dirty it into a rebuild loop. Keep any
-                // existing GPU mesh (a transient empty build must not blank a rendered chunk).
+                // Valid empty result: mark it "meshed" so markMeshGenerationComplete
+                // doesn't re-dirty it into a rebuild loop. Keep any existing GPU mesh
+                // (a transient empty build must not blank a rendered chunk). The dirty
+                // flag was consumed at build start; if set again, the worker-end
+                // recheck in the finally block reschedules.
                 synchronized (chunk) {
-                    chunk.getCcoDirtyTracker().clearMeshDirty();
                     if (!chunk.getCcoStateManager().hasState(CcoChunkState.MESH_GPU_UPLOADED)) {
                         chunk.getCcoStateManager().addState(CcoChunkState.MESH_CPU_READY);
                     }
@@ -323,6 +335,15 @@ public final class MmsMeshPipeline {
 
             // Clean up priority map
             chunkPriorityMap.remove(chunk);
+
+            // Go-live recheck for results that never reach the GPU upload step
+            // (empty meshes): a remesh request that arrived mid-build left the
+            // dirty flag set — honor it now. For non-empty results this no-ops
+            // (the chunk is in the upload queue) and the upload step rechecks
+            // instead. Failures are handled by the retry queue, not here.
+            if (success && chunk.getCcoDirtyTracker().isMeshDirty()) {
+                scheduleConditionalMeshBuild(chunk);
+            }
         }
     }
 
@@ -437,21 +458,33 @@ public final class MmsMeshPipeline {
                     }
 
                     // CRITICAL: Remove MESH_CPU_READY first because mesh states are mutually exclusive!
+                    // Do NOT clear the dirty flag here — it was consumed at build start;
+                    // if set now, a remesh request arrived while this mesh was building
+                    // or queued and must be honored below.
                     task.chunk.getCcoStateManager().removeState(CcoChunkState.MESH_CPU_READY);
                     task.chunk.getCcoStateManager().addState(CcoChunkState.MESH_GPU_UPLOADED);
-                    task.chunk.getCcoDirtyTracker().clearMeshDirty();
                 }
 
                 // If a neighbor was unloaded at build start AND is now loaded,
                 // the boundary face toward it was sentinel-culled with stale
-                // data — reschedule one rebuild. Narrowly scoped to this
-                // exact race; does not fire for general markMeshDirty calls.
+                // data — mark for one rebuild. Narrowly scoped to this exact
+                // race (nothing marks the dirty flag for it).
                 if (task.anyNeighborUnloadedAtBuildStart) {
                     World gw = Game.getInstance() != null ? Game.getInstance().getWorld() : null;
                     if (gw != null && neighborFlipped(gw, task)) {
                         task.chunk.getCcoDirtyTracker().markMeshDirtyOnly();
-                        scheduleConditionalMeshBuild(task.chunk);
                     }
+                }
+
+                // Go-live recheck: a remesh request that arrived while this chunk
+                // was MESH_GENERATING or sitting in the upload queue could not
+                // schedule (the conditional-build gates skip it) — only the dirty
+                // flag survived. Now that the mesh is live and the chunk is out
+                // of both queues, reschedule exactly once; the rebuild consumes
+                // the flag at its own start. Covers block edits, water-flow
+                // ticks, and neighbor chunk payload installs generically.
+                if (task.chunk.getCcoDirtyTracker().isMeshDirty()) {
+                    scheduleConditionalMeshBuild(task.chunk);
                 }
 
                 updatesThisFrame++;
