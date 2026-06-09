@@ -27,8 +27,8 @@
         <junit.version>6.1.0</junit.version>
         <mockito.version>5.23.0</mockito.version>
         <skija.version>0.143.16</skija.version>
-        <sqlite.version>3.53.1.0</sqlite.version>
-        <netty.version>4.1.135.Final</netty.version>
+        <sqlite.version>3.53.2.0</sqlite.version>
+        <netty.version>4.2.15.Final</netty.version>
     </properties>
 
     <dependencyManagement>
