@@ -10,6 +10,7 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.network.StonebreakProtocol;
 import com.stonebreak.network.packet.chat.ChatMessageC2S;
+import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.handshake.DisconnectC2S;
 import com.stonebreak.network.packet.handshake.HandshakeC2S;
 import com.stonebreak.network.packet.handshake.KickS2C;
@@ -198,6 +199,7 @@ public final class IntegratedServer {
             case PlayerStateC2S ps -> playerHandler.handlePlayerState(sp, ps, ctx);
             case PlayerHeldItemC2S h -> playerHandler.handleHeldItem(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
+            case EntityDamageC2S ed -> entityHandler.handleEntityDamage(sp, ed, ctx);
             case PlayerDataC2S pd -> { if (!sp.isLocal()) sp.setPlayerDataBlob(pd.json()); }
             case DisconnectC2S ignored -> sp.disconnect();
             default -> { /* unknown / unexpected serverbound packet — ignore */ }

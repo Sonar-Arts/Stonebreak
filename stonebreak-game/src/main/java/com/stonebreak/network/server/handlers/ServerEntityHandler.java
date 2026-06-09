@@ -7,8 +7,11 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.ItemDrop;
+import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.RemotePlayer;
+import com.stonebreak.mobs.sheep.Sheep;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
 import com.stonebreak.network.packet.entity.EntitySpawnS2C;
@@ -37,6 +40,11 @@ public final class ServerEntityHandler {
     private static final float MIN_BROADCAST_YAW_DEG = 0.5f;
     /** Force an absolute teleport every N ticks per entity to bound drift from lost deltas. */
     private static final int RESYNC_PERIOD_TICKS = 40; // 40 * 50ms = 2 s
+
+    /** Lenient hit-range gate (arrows/fire bolts land at distance); rejects absurd claims. */
+    private static final float MAX_DAMAGE_RANGE_SQ = 64f * 64f;
+    /** Upper bound on a single client-reported hit, to contain buggy/hostile clients. */
+    private static final float MAX_DAMAGE_AMOUNT = 100f;
 
     private final AtomicInteger nextNetworkId = new AtomicInteger(1);
     private final Map<Integer, Entity> byNetworkId = new ConcurrentHashMap<>();
@@ -143,6 +151,48 @@ public final class ServerEntityHandler {
         }
     }
 
+    /**
+     * C2S: a player claims to have damaged entity {@code targetNetworkId}. Validates the
+     * claim (entity exists + alive, plausible range, sane amount/source) and applies the
+     * damage on the authoritative entity. Death then flows through the normal listener
+     * chain (EntityManager removal → {@link EntityDespawnS2C} + replicated drops).
+     */
+    public void handleEntityDamage(ServerPlayer sp, EntityDamageC2S pkt, ServerWorldContext ctx) {
+        Entity e = byNetworkId.get(pkt.targetNetworkId());
+        if (!(e instanceof LivingEntity le) || !le.isAlive()) {
+            return; // unknown id (despawn raced the hit) or already dead — drop silently
+        }
+        Vector3f p = e.getPosition();
+        float dx = p.x - sp.x();
+        float dy = p.y - sp.y();
+        float dz = p.z - sp.z();
+        if (dx * dx + dy * dy + dz * dz > MAX_DAMAGE_RANGE_SQ) {
+            return;
+        }
+        float amount = pkt.amount();
+        if (!(amount > 0f)) { // also rejects NaN
+            return;
+        }
+        amount = Math.min(amount, MAX_DAMAGE_AMOUNT);
+
+        LivingEntity.DamageSource source = decodeSource(pkt.sourceOrdinal());
+        // Stats/XP credit only the same-JVM local player; remote attackers credit nobody
+        // rather than mis-crediting the host (per-player attribution is a follow-up).
+        le.damage(amount, source, new Vector3f(sp.x(), sp.y(), sp.z()), sp.isLocal());
+    }
+
+    private static LivingEntity.DamageSource decodeSource(byte ordinal) {
+        LivingEntity.DamageSource[] values = LivingEntity.DamageSource.values();
+        if (ordinal < 0 || ordinal >= values.length) {
+            return LivingEntity.DamageSource.UNKNOWN;
+        }
+        LivingEntity.DamageSource source = values[ordinal];
+        return switch (source) { // allow-list of client-originated sources
+            case PLAYER, ARROW, FIRE -> source;
+            default -> LivingEntity.DamageSource.UNKNOWN;
+        };
+    }
+
     // ─── Helpers ───────────────────────────────────────────────────────────────
 
     private void registerHostEntity(Entity e) {
@@ -162,6 +212,7 @@ public final class ServerEntityHandler {
         EntityType t = e.getType();
         return t == EntityType.COW
             || t == EntityType.CHICKEN
+            || t == EntityType.SHEEP
             || t == EntityType.BLOCK_DROP
             || t == EntityType.ITEM_DROP;
     }
@@ -171,6 +222,8 @@ public final class ServerEntityHandler {
         String metadata = "";
         if (e instanceof Cow cow) {
             metadata = cow.getTextureVariant();
+        } else if (e instanceof Sheep sheep) {
+            metadata = sheep.getTextureVariant();
         } else if (e instanceof BlockDrop bd) {
             metadata = Integer.toString(bd.getBlockType().getId());
         } else if (e instanceof ItemDrop id) {

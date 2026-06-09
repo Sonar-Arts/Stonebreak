@@ -8,6 +8,7 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.Water;
 import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
+import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 import com.stonebreak.mobs.entities.status.StatusEffect;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
@@ -42,6 +43,13 @@ public abstract class LivingEntity extends Entity {
 
     // Status effects (timed debuffs — burning, stun, armor break, etc.)
     private final List<StatusEffect> statusEffects = new ArrayList<>();
+
+    /**
+     * Position of the most recent attacker, set per damage application. Lets knockback push
+     * away from the actual attacker (e.g. a remote player on a host) instead of always the
+     * local player. Null when the attacker is unknown or is the local player.
+     */
+    private Vector3f lastAttackerPosition;
 
     /**
      * Creates a new living entity at the specified position.
@@ -126,14 +134,45 @@ public abstract class LivingEntity extends Entity {
     }
 
     public void damage(float amount, DamageSource source) {
+        damage(amount, source, null, true);
+    }
+
+    /**
+     * Authoritative damage application.
+     *
+     * <p>On a network shadow this never mutates local state: the authoritative entity lives
+     * on the server, so the hit is forwarded as an {@code EntityDamageC2S} intent and a
+     * predicted damage number is shown for feedback. (Mutating the shadow would also wedge
+     * it permanently invulnerable — shadows never tick, so i-frames would never expire.)
+     *
+     * @param attackerPos       authoritative attacker position for knockback direction, or
+     *                          null to fall back to the local player's position
+     * @param creditLocalPlayer whether PLAYER-source stats/XP credit the local player; the
+     *                          server passes false for remote attackers so the host isn't
+     *                          credited for their kills
+     */
+    public void damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer) {
+        if (isNetworkShadow()) {
+            if (getNetworkId() >= 0 && amount > 0f) {
+                DamageNumberRenderer.getInstance().spawn(
+                    position.x, position.y + height * 0.9f, position.z, amount);
+                MultiplayerSession.onLocalEntityDamage(this, amount, source);
+            }
+            return;
+        }
         if (!alive || invulnerable) return;
         float effectiveAmount = amount * getIncomingDamageMultiplier();
         super.damage(effectiveAmount);
         invulnerable = true;
         invulnerabilityTimer = INVULNERABILITY_DURATION;
-        DamageNumberRenderer.getInstance().spawn(
-            position.x, position.y + height * 0.9f, position.z, effectiveAmount);
-        if (source == DamageSource.PLAYER) {
+        // Damage numbers are client UI — only spawn them for entities living in the world
+        // being rendered. Authoritative entities live in the headless server world, where
+        // this would emit a duplicate of the client's predicted number from the tick thread.
+        if (Game.getWorld() == world) {
+            DamageNumberRenderer.getInstance().spawn(
+                position.x, position.y + height * 0.9f, position.z, effectiveAmount);
+        }
+        if (source == DamageSource.PLAYER && creditLocalPlayer) {
             Player player = Game.getPlayer();
             if (player != null) {
                 player.getStats().addDamageDealt(effectiveAmount);
@@ -147,6 +186,7 @@ public abstract class LivingEntity extends Entity {
                 }
             }
         }
+        lastAttackerPosition = attackerPos;
         onDamage(effectiveAmount, source);
     }
 
@@ -427,9 +467,13 @@ public abstract class LivingEntity extends Entity {
      * source is {@link DamageSource#PLAYER}.
      */
     protected void applyPlayerKnockback() {
-        Player player = Game.getPlayer();
-        if (player == null) return;
-        Vector3f knockbackDir = new Vector3f(position).sub(player.getPosition());
+        Vector3f attackerPos = lastAttackerPosition;
+        if (attackerPos == null) {
+            Player player = Game.getPlayer();
+            if (player == null) return;
+            attackerPos = player.getPosition();
+        }
+        Vector3f knockbackDir = new Vector3f(position).sub(attackerPos);
         knockbackDir.y = 0;
         if (knockbackDir.length() > 0.01f) {
             knockbackDir.normalize();

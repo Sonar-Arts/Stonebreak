@@ -3,6 +3,7 @@ package com.stonebreak.network;
 import com.openmason.engine.net.protocol.PacketRegistry;
 import com.stonebreak.network.packet.chat.ChatMessageC2S;
 import com.stonebreak.network.packet.chat.ChatMessageS2C;
+import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
 import com.stonebreak.network.packet.entity.EntitySpawnS2C;
@@ -62,6 +63,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 5, DisconnectC2S.class, DisconnectC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 6, HandshakeC2S.class, HandshakeC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 7, PlayerDataC2S.class, PlayerDataC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 8, EntityDamageC2S.class, EntityDamageC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);

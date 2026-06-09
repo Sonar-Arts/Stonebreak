@@ -22,7 +22,7 @@ import java.util.function.Supplier;
  * Reads blocks directly from the chunk (so it works before the chunk is registered with
  * the chunk store) and gates each placement on {@link #isValidSpawnLocation}.
  *
- * <p><b>Continuous spawning.</b> Every {@link #PASSIVE_MOB_SPAWN_TICKS} ticks the spawner
+ * <p><b>Continuous spawning.</b> Every {@link #PASSIVE_SPAWN_INTERVAL_SECONDS} seconds the spawner
  * picks targets near each connected player and attempts placements there. A target is
  * rejected outright unless its chunk is resident in the chunk store AND has features
  * populated — this is what prevents mobs from being placed onto unloaded/half-baked
@@ -37,13 +37,23 @@ import java.util.function.Supplier;
 public class EntitySpawner {
 
     // ─── Tuning ───────────────────────────────────────────────────────────────
-    /** 20 seconds at 20 ticks/second — Minecraft's passive spawn cadence. */
-    private static final int PASSIVE_MOB_SPAWN_TICKS = 400;
+    /**
+     * Seconds of sim time between continuous spawn cycles — Minecraft's passive cadence.
+     * Time-based (not call-counted) so the cadence holds whether update() is driven by the
+     * server's fixed 20 Hz tick or a legacy per-frame caller.
+     */
+    private static final float PASSIVE_SPAWN_INTERVAL_SECONDS = 20.0f;
+    /** Seconds between despawn sweeps; no need to scan every update. */
+    private static final float DESPAWN_CHECK_INTERVAL_SECONDS = 1.0f;
     private static final int SPAWN_RADIUS = 128;
     private static final int DESPAWN_RADIUS = 128;
 
-    /** Per-chunk roll for initial spawning of each passive type. */
-    private static final float INITIAL_SPAWN_CHANCE = 0.15f;
+    /**
+     * Single per-chunk roll for initial spawning. On success ONE random passive type spawns
+     * one herd (Minecraft-like). Rolling per TYPE instead (the old behavior) tripled the
+     * density (~1.35 mobs/chunk) and flooded the world as chunks generated.
+     */
+    private static final float INITIAL_SPAWN_CHANCE = 0.10f;
     private static final int MIN_INITIAL_HERD = 2;
     private static final int MAX_INITIAL_HERD = 4;
 
@@ -76,7 +86,8 @@ public class EntitySpawner {
      */
     private volatile Supplier<List<Vector3f>> playerPositionSource = EntitySpawner::defaultLocalPlayer;
 
-    private int tickCounter = 0;
+    private float spawnTimer = 0f;
+    private float despawnTimer = 0f;
 
     public EntitySpawner(World world, EntityManager entityManager) {
         this.world = world;
@@ -103,12 +114,16 @@ public class EntitySpawner {
      * render world's spawner is never ticked), so no host/client guard is needed here.
      */
     public void update(float deltaTime) {
-        tickCounter++;
-        if (tickCounter >= PASSIVE_MOB_SPAWN_TICKS) {
-            tickCounter = 0;
+        spawnTimer += deltaTime;
+        if (spawnTimer >= PASSIVE_SPAWN_INTERVAL_SECONDS) {
+            spawnTimer = 0f;
             performContinuousSpawning();
         }
-        checkDespawning();
+        despawnTimer += deltaTime;
+        if (despawnTimer >= DESPAWN_CHECK_INTERVAL_SECONDS) {
+            despawnTimer = 0f;
+            checkDespawning();
+        }
     }
 
     // ─── Initial spawning (called once per chunk by the world driver) ─────────
@@ -118,15 +133,15 @@ public class EntitySpawner {
      * features are populated (the world chunk store handles this).
      */
     public void initialChunkSpawn(Chunk chunk) {
-        for (EntityType type : PASSIVE_SPAWN_TYPES) {
-            spawnInitialHerd(chunk, type);
-        }
-    }
-
-    private void spawnInitialHerd(Chunk chunk, EntityType type) {
+        // ONE roll per chunk; on success pick ONE passive type and spawn a single herd.
         if (random.nextFloat() > INITIAL_SPAWN_CHANCE) {
             return;
         }
+        EntityType type = PASSIVE_SPAWN_TYPES[random.nextInt(PASSIVE_SPAWN_TYPES.length)];
+        spawnInitialHerd(chunk, type);
+    }
+
+    private void spawnInitialHerd(Chunk chunk, EntityType type) {
         int target = MIN_INITIAL_HERD + random.nextInt(MAX_INITIAL_HERD - MIN_INITIAL_HERD + 1);
         int spawned = 0;
         for (int attempt = 0; attempt < 20 && spawned < target; attempt++) {
@@ -356,8 +371,8 @@ public class EntitySpawner {
         int cows = entityManager.getEntitiesByType(EntityType.COW).size();
         int chickens = entityManager.getEntitiesByType(EntityType.CHICKEN).size();
         int sheep = entityManager.getEntitiesByType(EntityType.SHEEP).size();
-        return String.format("Cows: %d | Chickens: %d | Sheep: %d | Next cycle: %d ticks",
-                cows, chickens, sheep, PASSIVE_MOB_SPAWN_TICKS - tickCounter);
+        return String.format("Cows: %d | Chickens: %d | Sheep: %d | Next cycle: %.1fs",
+                cows, chickens, sheep, PASSIVE_SPAWN_INTERVAL_SECONDS - spawnTimer);
     }
 
     /** @deprecated use {@link #initialChunkSpawn}. */
