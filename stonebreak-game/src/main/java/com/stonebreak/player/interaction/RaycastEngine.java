@@ -38,12 +38,17 @@ public class RaycastEngine {
 
     /** First solid (non-air, non-water) block hit; water is transparent. */
     public Vector3i raycast() {
-        return marchToFirstSolid();
+        return marchToFirstSolid(eyeOrigin(), camera.getFront(), RAY_CAST_DISTANCE);
+    }
+
+    /** First solid block hit along the look ray within {@code maxDistance} (e.g. trap placement). */
+    public Vector3i raycast(float maxDistance) {
+        return marchToFirstSolid(eyeOrigin(), camera.getFront(), maxDistance);
     }
 
     /** Alias used by placement code — identical logic to raycast(). */
     public Vector3i raycastForPlacement() {
-        return marchToFirstSolid();
+        return marchToFirstSolid(eyeOrigin(), camera.getFront(), RAY_CAST_DISTANCE);
     }
 
     /** First non-air block hit (water is opaque). Used by bucket interactions. */
@@ -105,6 +110,42 @@ public class RaycastEngine {
         return closest;
     }
 
+    /**
+     * Returns the closest living entity along an arbitrary ray within {@code maxRange}, or null
+     * if no entity is hit or solid terrain blocks the ray before reaching it. Used by long-range
+     * hitscan abilities (e.g. the Ranger's Culling Shot) whose direction is locked independently
+     * of the current camera.
+     */
+    public LivingEntity raycastEntityAlong(Vector3f origin, Vector3f direction,
+                                           List<LivingEntity> entities, float maxRange) {
+        LivingEntity closest = null;
+        float closestT = maxRange;
+        for (LivingEntity entity : entities) {
+            float t = rayAABBIntersect(origin, direction, entity.getBoundingBox());
+            if (t < closestT) {
+                closestT = t;
+                closest = entity;
+            }
+        }
+        if (closest == null) return null;
+        return distanceToFirstSolid(origin, direction, closestT) < closestT ? null : closest;
+    }
+
+    /**
+     * Distance along the ray to the first solid (non-air, non-water) block, or
+     * {@link Float#MAX_VALUE} if the ray is clear out to {@code maxDistance}.
+     */
+    public float distanceToFirstSolid(Vector3f origin, Vector3f direction, float maxDistance) {
+        for (float d = 0; d < maxDistance; d += STEP_SIZE) {
+            Vector3f p = new Vector3f(direction).mul(d).add(origin);
+            BlockType bt = world.getBlockAt((int) Math.floor(p.x), (int) Math.floor(p.y), (int) Math.floor(p.z));
+            if (bt != BlockType.AIR && bt != BlockType.WATER) {
+                return d;
+            }
+        }
+        return Float.MAX_VALUE;
+    }
+
     private float rayAABBIntersect(Vector3f origin, Vector3f dir, Entity.BoundingBox box) {
         float tMin = 0.0f;
         float tMax = Float.MAX_VALUE;
@@ -148,10 +189,8 @@ public class RaycastEngine {
         return tMin >= 0.0f ? tMin : Float.MAX_VALUE;
     }
 
-    private Vector3i marchToFirstSolid() {
-        Vector3f origin = eyeOrigin();
-        Vector3f direction = camera.getFront();
-        for (float d = 0; d < RAY_CAST_DISTANCE; d += STEP_SIZE) {
+    private Vector3i marchToFirstSolid(Vector3f origin, Vector3f direction, float maxDistance) {
+        for (float d = 0; d < maxDistance; d += STEP_SIZE) {
             Vector3f p = new Vector3f(direction).mul(d).add(origin);
             int bx = (int) Math.floor(p.x);
             int by = (int) Math.floor(p.y);

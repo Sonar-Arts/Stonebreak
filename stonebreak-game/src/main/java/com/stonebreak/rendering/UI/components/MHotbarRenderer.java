@@ -8,10 +8,14 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.player.Player;
+import com.stonebreak.player.combat.QuarryController;
 import com.stonebreak.player.combat.RageController;
 import com.stonebreak.player.combat.RageTier;
 import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
 import com.stonebreak.player.combat.berserker.BerserkerTierText;
+import com.stonebreak.player.combat.ranger.RangerAbilityController;
+import com.stonebreak.player.combat.ranger.RangerHudText;
+import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.rpg.classes.AbilityIconCache;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.UIRenderer;
@@ -89,6 +93,19 @@ public class MHotbarRenderer {
     private static final String RAMPAGE_ICON_PATH       = "/ui/abilities/berserker/Rampage.png";
     private static final String SKULL_CRUSHER_ICON_PATH = "/ui/abilities/berserker/Skull_Crusher.png";
 
+    // ── Ranger Quarry indicator (only shown when Ranger is the selected class) ────────
+    private static final int   QUARRY_PIP_HEIGHT  = 10;
+    private static final int   QUARRY_PIP_GAP     = 3;
+    private static final int   QUARRY_PIP_FILLED  = 0xDC58B858; // hunter green
+    private static final int   QUARRY_PIP_DIMMED  = 0xDC4A6E3C; // decaying — dim moss
+    private static final int   QUARRY_HP_HEIGHT   = 5;
+    private static final int   QUARRY_HP_FILL     = 0xDCC83C32;
+    private static final int   QUARRY_LINE_GAP    = 8;
+
+    private static final String QUARRY_ICON_PATH       = "/ui/abilities/ranger/Quarry.png";
+    private static final String SNARE_ICON_PATH        = "/ui/abilities/ranger/Snare.png";
+    private static final String CULLING_SHOT_ICON_PATH = "/ui/abilities/ranger/Culling_Shot.png";
+
     private record HeartLayout(int heartsPerRow, int numRows, float step) {}
 
     private static final String HEART_EMPTY_SBT = "/ui/HUD/Health Icon/SB_Empty_Health_Icon.sbt";
@@ -124,6 +141,7 @@ public class MHotbarRenderer {
             drawHealthHearts(canvas, layout);
             drawStaminaBar(canvas, layout);
             drawRageIndicator(canvas, layout);
+            drawQuarryIndicator(canvas, layout);
             ui.renderOverlays();
             ui.endFrame();
         }
@@ -299,6 +317,86 @@ public class MHotbarRenderer {
             y += MStyle.FONT_META;
             float bonusX = drawIconBeforeText(canvas, SKULL_CRUSHER_ICON_PATH, panelX, y - MStyle.FONT_META, MStyle.FONT_META);
             MPainter.drawStringWithShadow(canvas, BerserkerTierText.skullCrusherBonus(tier), bonusX, y,
+                    font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+        }
+    }
+
+    /**
+     * Draws the Ranger Quarry panel — header with the current Quarry and Study count,
+     * three discrete Study pips (the topmost dims while the decay window has elapsed),
+     * the Quarry's HP bar, the stack-1 armor/resistance reveal, and one live status line
+     * per unlocked ability — to the right of the hotbar. Renders only when the player's
+     * selected class is the Ranger.
+     */
+    private void drawQuarryIndicator(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        if (!RangerAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+
+        RangerAbilityController ranger = player.getRangerAbilities();
+        QuarryController quarry = ranger.getQuarry();
+        LivingEntity target = quarry.getQuarry();
+        int stacks = quarry.getStudyStacks();
+        boolean decaying = quarry.getDecayProgress() >= 1f;
+
+        float panelX = layout.backgroundX + layout.backgroundWidth + RAGE_PANEL_GAP;
+        float y = layout.backgroundY;
+
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
+        float labelX = drawIconBeforeText(canvas, QUARRY_ICON_PATH, panelX, y, MStyle.FONT_META);
+        MPainter.drawStringWithShadow(canvas, RangerHudText.quarryStatus(quarry), labelX, y + MStyle.FONT_META,
+                font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        y += MStyle.FONT_META + RAGE_LABEL_GAP;
+
+        for (int i = 0; i < com.stonebreak.player.PlayerConstants.RANGER_STUDY_MAX_STACKS; i++) {
+            MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, QUARRY_PIP_HEIGHT, RAGE_SEGMENT_BG);
+            if (i < stacks) {
+                boolean topPip = i == stacks - 1;
+                int fill = topPip && decaying ? QUARRY_PIP_DIMMED : QUARRY_PIP_FILLED;
+                MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, QUARRY_PIP_HEIGHT, fill);
+            }
+            MPainter.strokeRect(canvas, panelX, y, RAGE_PANEL_WIDTH, QUARRY_PIP_HEIGHT, RAGE_SEGMENT_BORDER, 1f);
+            y += QUARRY_PIP_HEIGHT + QUARRY_PIP_GAP;
+        }
+
+        if (target != null) {
+            float hpFraction = target.getMaxHealth() > 0f
+                    ? Math.max(0f, Math.min(1f, target.getHealth() / target.getMaxHealth()))
+                    : 0f;
+            MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, QUARRY_HP_HEIGHT, RAGE_SEGMENT_BG);
+            if (hpFraction > 0f) {
+                MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH * hpFraction, QUARRY_HP_HEIGHT, QUARRY_HP_FILL);
+            }
+            MPainter.strokeRect(canvas, panelX, y, RAGE_PANEL_WIDTH, QUARRY_HP_HEIGHT, RAGE_SEGMENT_BORDER, 1f);
+            y += QUARRY_HP_HEIGHT + QUARRY_LINE_GAP;
+        }
+
+        if (target != null && stacks >= 1) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas, RangerHudText.revealLine(target.getType()), panelX, y,
+                    font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+            y += QUARRY_LINE_GAP;
+        }
+        if (target != null && stacks >= 2) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas, "Weak point exposed", panelX, y,
+                    font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+            y += QUARRY_LINE_GAP;
+        }
+
+        y += RAGE_BONUS_LINE_GAP;
+        var stats = player.getCharacterStats();
+        if (stats.getSpentCp(RangerAbilityController.SNARE_KEY) > 0) {
+            y += MStyle.FONT_META;
+            float lineX = drawIconBeforeText(canvas, SNARE_ICON_PATH, panelX, y - MStyle.FONT_META, MStyle.FONT_META);
+            MPainter.drawStringWithShadow(canvas, RangerHudText.snareStatus(ranger.getSnare()), lineX, y,
+                    font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+            y += RAGE_BONUS_LINE_GAP;
+        }
+        if (stats.getSpentCp(RangerAbilityController.CULLING_SHOT_KEY) > 0) {
+            y += MStyle.FONT_META;
+            float lineX = drawIconBeforeText(canvas, CULLING_SHOT_ICON_PATH, panelX, y - MStyle.FONT_META, MStyle.FONT_META);
+            MPainter.drawStringWithShadow(canvas, RangerHudText.cullingShotStatus(ranger.getCullingShot()), lineX, y,
                     font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
         }
     }

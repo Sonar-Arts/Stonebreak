@@ -61,6 +61,12 @@ public class Arrow extends Entity {
                     float speedRatio = launchSpeed > 0 ? Math.min(launchSpeed / 45.0f, 1.0f) : 0.0f;
                     float damage = BASE_DAMAGE + (MAX_DAMAGE - BASE_DAMAGE) * speedRatio;
                     le.damage(damage, LivingEntity.DamageSource.ARROW);
+                    // Arrows are player-fired (bow is the sole spawn path) — a Ranger's
+                    // arrow hits mark and study the Quarry like any other hit.
+                    com.stonebreak.player.Player player = Game.getPlayer();
+                    if (player != null) {
+                        player.getRangerAbilities().onPlayerArrowHit(player, le);
+                    }
                     alive = false;
                     return;
                 }

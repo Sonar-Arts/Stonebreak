@@ -15,6 +15,7 @@ import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 import com.stonebreak.rendering.UI.components.OverlayRenderer;
+import com.stonebreak.rendering.UI.components.QuarryMarkerRenderer;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
@@ -135,6 +136,7 @@ public class Renderer {
         // that it exists. UIRenderer.init() ran earlier and only set up NanoVG.
         uiRenderer.initializeSkijaRenderers(skijaBackend);
         DamageNumberRenderer.getInstance().setBackend(skijaBackend);
+        QuarryMarkerRenderer.getInstance().setBackend(skijaBackend);
 
         debugRenderer = new DebugRenderer(resourceManager.getShaderProgram(), configManager.getProjectionMatrix());
         

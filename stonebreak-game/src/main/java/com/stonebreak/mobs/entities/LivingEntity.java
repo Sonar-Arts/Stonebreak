@@ -91,6 +91,13 @@ public abstract class LivingEntity extends Entity {
         // Update movement state
         isMoving = velocity.length() > 0.1f;
 
+        // Rooted entities are pinned in place — kill residual horizontal drift
+        // (knockback slide, water flow) before it integrates into position.
+        if (isRooted()) {
+            velocity.x = 0f;
+            velocity.z = 0f;
+        }
+
         // Apply basic physics
         applyPhysics(deltaTime);
 
@@ -120,7 +127,7 @@ public abstract class LivingEntity extends Entity {
 
     public void damage(float amount, DamageSource source) {
         if (!alive || invulnerable) return;
-        float effectiveAmount = amount * getArmorBreakDamageMultiplier();
+        float effectiveAmount = amount * getIncomingDamageMultiplier();
         super.damage(effectiveAmount);
         invulnerable = true;
         invulnerabilityTimer = INVULNERABILITY_DURATION;
@@ -163,6 +170,7 @@ public abstract class LivingEntity extends Entity {
         // Tick and prune first so damage()/onDamage() (which may itself touch statusEffects,
         // e.g. via applyStatusEffect) never runs while we're iterating the live list.
         float burningTickDamage = 0f;
+        float bleedTickDamage = 0f;
         Iterator<StatusEffect> it = statusEffects.iterator();
         while (it.hasNext()) {
             StatusEffect effect = it.next();
@@ -170,13 +178,27 @@ public abstract class LivingEntity extends Entity {
             if (dotTick && effect.getType() == StatusEffectType.BURNING) {
                 burningTickDamage += effect.getMagnitude() * StatusEffect.DOT_TICK_INTERVAL;
             }
+            if (dotTick && effect.getType() == StatusEffectType.BLEED) {
+                bleedTickDamage += effect.getMagnitude() * StatusEffect.DOT_TICK_INTERVAL;
+            }
             if (effect.isExpired()) {
                 it.remove();
             }
         }
 
-        if (burningTickDamage > 0f && alive) {
-            damage(burningTickDamage, DamageSource.FIRE);
+        // Combine concurrent DOT ticks into a single damage() call — the 0.5s
+        // invulnerability window would otherwise swallow the second application.
+        float totalTickDamage = burningTickDamage + bleedTickDamage;
+        if (totalTickDamage > 0f && alive) {
+            DamageSource source;
+            if (bleedTickDamage <= 0f) {
+                source = DamageSource.FIRE;
+            } else if (burningTickDamage <= 0f) {
+                source = DamageSource.BLEED;
+            } else {
+                source = DamageSource.UNKNOWN;
+            }
+            damage(totalTickDamage, source);
         }
     }
 
@@ -184,6 +206,16 @@ public abstract class LivingEntity extends Entity {
     public boolean isStunned() {
         for (StatusEffect effect : statusEffects) {
             if (effect.getType() == StatusEffectType.STUNNED) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True while any ROOT (or STUNNED — stun implies immobility) effect is active. */
+    public boolean isRooted() {
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == StatusEffectType.ROOT || effect.getType() == StatusEffectType.STUNNED) {
                 return true;
             }
         }
@@ -201,6 +233,31 @@ public abstract class LivingEntity extends Entity {
         return 1f + bonus;
     }
 
+    /**
+     * Combined multiplier applied to all incoming damage: Armor Break composed with Exposed
+     * (multiplicative across the two debuff types, max-of-magnitude within each).
+     */
+    public float getIncomingDamageMultiplier() {
+        float exposedBonus = 0f;
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == StatusEffectType.EXPOSED) {
+                exposedBonus = Math.max(exposedBonus, effect.getMagnitude());
+            }
+        }
+        return getArmorBreakDamageMultiplier() * (1f + exposedBonus);
+    }
+
+    /** Multiplier applied to movement speed; {@code 1.0} with no Cripple active, lower otherwise. */
+    public float getMoveSpeedMultiplier() {
+        float reduction = 0f;
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == StatusEffectType.CRIPPLE) {
+                reduction = Math.max(reduction, effect.getMagnitude());
+            }
+        }
+        return Math.max(0f, 1f - reduction);
+    }
+
     /** XP awarded to the player when this entity is killed. Override in subclasses. */
     public int getXpReward() { return 0; }
     
@@ -208,13 +265,13 @@ public abstract class LivingEntity extends Entity {
      * Moves the entity toward a target position.
      */
     public void moveToward(Vector3f target, float deltaTime) {
-        if (!alive) return;
-        
+        if (!alive || isRooted()) return;
+
         Vector3f direction = new Vector3f(target).sub(position).normalize();
         direction.y = 0; // Don't move vertically through movement
-        
-        // Apply movement velocity
-        Vector3f movement = new Vector3f(direction).mul(moveSpeed * deltaTime);
+
+        // Apply movement velocity (Cripple slows, Root pins entirely above)
+        Vector3f movement = new Vector3f(direction).mul(moveSpeed * getMoveSpeedMultiplier() * deltaTime);
         velocity.x = movement.x;
         velocity.z = movement.z;
         
@@ -444,6 +501,7 @@ public abstract class LivingEntity extends Entity {
         DROWNING,
         FIRE,
         EXPLOSION,
-        ARROW
+        ARROW,
+        BLEED
     }
 }

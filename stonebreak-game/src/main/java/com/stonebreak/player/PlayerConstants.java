@@ -91,4 +91,38 @@ public final class PlayerConstants {
     public static final float SKULLCRUSHER_ARMOR_BREAK_MAGNITUDE = 0.35f; // +35% damage taken
     public static final float SKULLCRUSHER_ARMOR_BREAK_DURATION  = 3f;
     public static final float SKULLCRUSHER_COOLDOWN              = 8f;
+
+    // ── Ranger: Quarry / Study resource ───────────────────────────────────────
+    public static final int   RANGER_STUDY_MAX_STACKS         = 3;
+    public static final float RANGER_STUDY_DECAY_TIMEOUT      = 6f;   // sec without hitting Quarry before decay
+    public static final float RANGER_STUDY_DECAY_INTERVAL     = 3f;   // one stack lost per interval after timeout
+    public static final float RANGER_MARKED_PREY_VISION_RANGE = 48f;  // through-terrain marker range
+    public static final float RANGER_PREY_LOW_HP_FRACTION     = 0.30f;
+    public static final float RANGER_PREY_SPEED_BONUS         = 0.30f; // +30% move speed toward low-HP Marked Prey
+    public static final float RANGER_PREY_SPEED_TOWARD_DOT    = 0.5f;  // move dir · prey bearing ≥ this counts as "toward"
+    public static final float RANGER_CRIT_MULTIPLIER          = 2.0f;  // guaranteed crit at Marked Prey
+
+    // ── Ranger: Snare ability ─────────────────────────────────────────────────
+    public static final float RANGER_SNARE_PLACE_RANGE       = 12f;
+    public static final float RANGER_SNARE_ARM_TIME          = 1.0f;
+    public static final float RANGER_SNARE_RADIUS            = 1.5f;
+    public static final float RANGER_SNARE_ROOT_DURATION     = 2.0f;
+    public static final float RANGER_SNARE_ROOT_EXTENSION    = 1.5f;  // extra root vs an already-studied Quarry
+    public static final int   RANGER_SNARE_STACKS_ON_TRIGGER = 2;
+    public static final float RANGER_SNARE_COOLDOWN          = 5f;
+    public static final float RANGER_EXPOSED_DURATION        = 4f;
+    public static final float RANGER_EXPOSED_MAGNITUDE       = 0.25f; // +25% damage taken from all sources
+
+    // ── Ranger: Culling Shot ability ──────────────────────────────────────────
+    public static final float RANGER_CULLING_CHANNEL_TIME    = 0.9f;
+    public static final float RANGER_CULLING_RANGE           = 40f;
+    public static final float RANGER_CULLING_BASE_DAMAGE     = 10f;
+    public static final float RANGER_CULLING_WEAKPOINT_BONUS = 6f;
+    public static final float RANGER_CULLING_COOLDOWN        = 7f;
+    public static final float RANGER_BLEED_DURATION          = 5f;
+    public static final float RANGER_BLEED_DPS               = 2f;
+    public static final float RANGER_CRIPPLE_DURATION        = 3f;
+    public static final float RANGER_CRIPPLE_MAGNITUDE       = 0.6f;  // 60% move-speed reduction
+    public static final float RANGER_DASH_DISTANCE           = 6f;
+    public static final float RANGER_DASH_SPEED              = 18f;
 }

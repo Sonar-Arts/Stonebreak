@@ -112,9 +112,11 @@ public class MovementController {
     /**
      * Processes WASD + jump + sprint into velocity. Jump handling splits across
      * {@link FlightController} (toggle) and {@link JumpHandler} (ground/water jump).
+     * {@code speedMultiplier} scales the computed move speed (1.0 = no modifier);
+     * class ability buffs (e.g. the Ranger's Marked Prey chase) feed in through it.
      */
     public void processMovement(boolean forward, boolean backward, boolean left, boolean right,
-                                boolean jump, boolean shift, boolean sprinting) {
+                                boolean jump, boolean shift, boolean sprinting, float speedMultiplier) {
         Vector3f velocity = state.getVelocity();
         Vector3f front = camera.getFront();
         Vector3f rightVec = camera.getRight();
@@ -130,6 +132,7 @@ public class MovementController {
         } else {
             speed = sprinting ? MOVE_SPEED * SPRINT_MULTIPLIER : MOVE_SPEED * 0.85f;
         }
+        speed *= speedMultiplier;
 
         float dt = Game.getDeltaTime();
         if (forward) {

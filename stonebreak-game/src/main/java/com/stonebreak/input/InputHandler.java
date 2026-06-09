@@ -159,7 +159,7 @@ public class InputHandler {
             handleEscapeKey();      // Toggles pauseMenu and game state transitions
             handleInventoryKey();   // Toggles inventoryScreen and INVENTORY_UI state
             handleCharacterKey();   // Toggles characterScreen and CHARACTER_SHEET_UI state
-            handleBerserkerAbilityKeys(player); // Berserker: R = Rampage, F = Skull Crusher
+            handleClassAbilityKeys(player); // Berserker R/F = Rampage/Skull Crusher; Ranger R/F = Snare/Culling Shot
             handleChatKey();        // Opens chatSystem, sets cursor
             handleDropKey();        // Drops selected item when Q is pressed
             handleDebugKeys();      // Handle debug and memory profiling keys
@@ -221,9 +221,10 @@ public class InputHandler {
                 boolean crouch = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS || 
                                glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
                 
-                // Handle movement (suppressed mid-Rampage / mid-Skull-Crusher-windup, which drive
-                // the player directly and would otherwise fight with normal input-driven movement)
-                if (!player.getBerserkerAbilities().isMovementLocked()) {
+                // Handle movement (suppressed mid-Rampage / mid-Skull-Crusher-windup / mid-Culling-
+                // Shot-dash, which drive the player directly and would otherwise fight with normal
+                // input-driven movement)
+                if (!player.isAbilityMovementLocked()) {
                     player.processMovement(moveForward, moveBackward, moveLeft, moveRight, jump, shift);
                 }
                 
@@ -418,11 +419,12 @@ public class InputHandler {
     }
 
     /**
-     * Berserker ability casts: R for Rampage, F for Skull Crusher. Both route through
-     * {@link com.stonebreak.player.combat.berserker.BerserkerAbilityController}, which is
-     * a no-op for non-Berserkers / locked abilities — harmless for any other class.
+     * Class ability casts on shared keys: R = Rampage (Berserker) / Snare (Ranger),
+     * F = Skull Crusher (Berserker) / Culling Shot (Ranger). Every controller self-gates
+     * on the selected class and CP unlock, so each press acts through at most one class
+     * and is harmless for the others.
      */
-    private void handleBerserkerAbilityKeys(Player player) {
+    private void handleClassAbilityKeys(Player player) {
         if (Game.getInstance().getState() != GameState.PLAYING) {
             rampageKeyPressed = false;
             skullCrusherKeyPressed = false;
@@ -433,6 +435,7 @@ public class InputHandler {
         if (isRampagePressed && !rampageKeyPressed) {
             rampageKeyPressed = true;
             player.getBerserkerAbilities().tryCastRampage(player);
+            player.getRangerAbilities().tryCastSnare(player);
         } else if (!isRampagePressed) {
             rampageKeyPressed = false;
         }
@@ -441,6 +444,7 @@ public class InputHandler {
         if (isSkullCrusherPressed && !skullCrusherKeyPressed) {
             skullCrusherKeyPressed = true;
             player.getBerserkerAbilities().tryCastSkullCrusher(player, player.getRaycastEngine());
+            player.getRangerAbilities().tryCastCullingShot(player);
         } else if (!isSkullCrusherPressed) {
             skullCrusherKeyPressed = false;
         }

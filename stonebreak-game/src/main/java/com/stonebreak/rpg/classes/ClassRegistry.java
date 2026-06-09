@@ -19,7 +19,7 @@ public final class ClassRegistry {
       PlayerClassDefinition.placeholder("rogue",      "Rogue",      5),
       PlayerClassDefinition.placeholder("monk",       "Monk",       5),
       PlayerClassDefinition.placeholder("arcanist",   "Arcanist",   5),
-      PlayerClassDefinition.placeholder("ranger",     "Ranger",     5),
+      ranger(),
       PlayerClassDefinition.placeholder("illusionist","Illusionist", 5)
   );
 
@@ -68,6 +68,49 @@ public final class ClassRegistry {
             )
         ),
         "/ui/abilities/berserker/Rage.png"
+    );
+  }
+
+  /**
+   * WIS+DEX hybrid hunter built around the Quarry: the first hit marks a single target,
+   * and further hits or trap triggers build up to three Study stacks on it — revealing
+   * its defenses, exposing a weak point, and finally rendering it Marked Prey (visible
+   * through terrain, with a chase speed bonus once wounded). Stacks decay slowly when the
+   * Quarry goes unstudied. Spending CP on either ability unlocks it for casting
+   * (R = Snare, F = Culling Shot).
+   */
+  private static PlayerClassDefinition ranger() {
+    return new PlayerClassDefinition(
+        "ranger",
+        "Ranger",
+        "A WIS+DEX hunter who studies a single Quarry before striking. Hits and traps "
+            + "build Study stacks that reveal the target's defenses, expose weak points, and "
+            + "finally mark it as prey to be run down and executed.",
+        List.of(
+            new ClassAbility(
+                "Snare",
+                "Place a ground trap at a targeted spot. It arms after a short delay and "
+                    + "persists until triggered (one trap at a time; placing another replaces it). "
+                    + "The victim is rooted in place and instantly studied — gaining 2 Study "
+                    + "stacks and becoming your Quarry if it wasn't already. Trapping a Quarry "
+                    + "you have already studied roots it longer and leaves it Exposed, taking "
+                    + "increased damage from all sources.",
+                1,
+                "/ui/abilities/ranger/Snare.png"
+            ),
+            new ClassAbility(
+                "Culling Shot",
+                "Channel briefly, locking your aim, then fire a long-range shot that cannot "
+                    + "be redirected. Scales with Study stacks on the target when it lands:\n"
+                    + "0-1 stacks: strong damage and a Bleed.\n"
+                    + "2 stacks: strikes the exposed weak point for bonus damage.\n"
+                    + "3 stacks (Marked Prey): a guaranteed critical that Cripples the target — "
+                    + "and if the prey is already badly wounded, you dash forward to close the trap.",
+                1,
+                "/ui/abilities/ranger/Culling_Shot.png"
+            )
+        ),
+        "/ui/abilities/ranger/Quarry.png"
     );
   }
 }

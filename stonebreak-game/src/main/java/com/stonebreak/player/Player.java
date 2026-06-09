@@ -13,6 +13,7 @@ import com.stonebreak.player.combat.ManaController;
 import com.stonebreak.player.combat.RageTier;
 import com.stonebreak.player.combat.StaminaController;
 import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
+import com.stonebreak.player.combat.ranger.RangerAbilityController;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.interaction.BlockBreaker;
 import com.stonebreak.player.interaction.BlockPlacer;
@@ -72,6 +73,7 @@ public class Player {
     private final FallDamageHandler fallDamage;
     private final DeathHandler deathHandler;
     private final BerserkerAbilityController berserkerAbilities;
+    private final RangerAbilityController rangerAbilities;
 
     // Interaction
     private final RaycastEngine raycastEngine;
@@ -115,6 +117,7 @@ public class Player {
         this.fallDamage = new FallDamageHandler(state, health);
         this.deathHandler = new DeathHandler(state, health, inventory, camera, world);
         this.berserkerAbilities = new BerserkerAbilityController();
+        this.rangerAbilities = new RangerAbilityController();
 
         this.raycastEngine = new RaycastEngine(state, camera, world);
         this.blockBreaker = new BlockBreaker(raycastEngine, inventory, attack, world);
@@ -186,6 +189,7 @@ public class Player {
         camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
 
         berserkerAbilities.update(dt, this);
+        rangerAbilities.update(dt, this);
         RageTier rageTier = berserkerAbilities.getRage().getTier();
         attack.setAnimationSpeedMultiplier(rageTier.atLeast(RageTier.T2)
             ? 1f + RAGE_T2_ATTACK_SPEED_BONUS
@@ -232,7 +236,33 @@ public class Player {
                             && stamina.hasStamina();
         stamina.setSprinting(sprinting);
         jumpHandler.setCanDoubleJump(characterStats.hasFeat("double_jump"));
-        movement.processMovement(forward, backward, left, right, jump, shift, sprinting);
+        float speedMultiplier = rangerAbilities.getSpeedMultiplier(this,
+                computeIntendedMoveDirection(forward, backward, left, right));
+        movement.processMovement(forward, backward, left, right, jump, shift, sprinting, speedMultiplier);
+    }
+
+    /**
+     * Horizontal direction the WASD input is asking for (same camera math as
+     * {@link MovementController}), normalized, or the zero vector when no movement
+     * keys are held or the inputs cancel out.
+     */
+    private Vector3f computeIntendedMoveDirection(boolean forward, boolean backward,
+                                                  boolean left, boolean right) {
+        Vector3f front = camera.getFront();
+        Vector3f rightVec = camera.getRight();
+        Vector3f frontDirection = new Vector3f(front.x, 0, front.z);
+        Vector3f rightDirection = new Vector3f(rightVec.x, 0, rightVec.z);
+        Vector3f intended = new Vector3f();
+        if (forward) intended.add(frontDirection);
+        if (backward) intended.sub(frontDirection);
+        if (right) intended.add(rightDirection);
+        if (left) intended.sub(rightDirection);
+        if (intended.lengthSquared() > 0.0001f) {
+            intended.normalize();
+        } else {
+            intended.set(0f, 0f, 0f);
+        }
+        return intended;
     }
 
     public void updateDerivedStats() {
@@ -353,6 +383,7 @@ public class Player {
         float damageDealt = getAttackDamage() * getMeleeDamageMultiplier();
         target.damage(damageDealt, LivingEntity.DamageSource.PLAYER);
         berserkerAbilities.getRage().onMeleeHitDealt();
+        rangerAbilities.onPlayerMeleeHit(this, target);
 
         if (berserkerAbilities.getRage().getTier().atLeast(RageTier.T3)) {
             heal(damageDealt * RAGE_T3_LIFESTEAL_PCT);
@@ -361,6 +392,14 @@ public class Player {
 
     // Berserker
     public BerserkerAbilityController getBerserkerAbilities() { return berserkerAbilities; }
+
+    // Ranger
+    public RangerAbilityController getRangerAbilities() { return rangerAbilities; }
+
+    /** True while any class ability is driving the player and movement input should be suppressed. */
+    public boolean isAbilityMovementLocked() {
+        return berserkerAbilities.isMovementLocked() || rangerAbilities.isMovementLocked();
+    }
 
     // Block interaction
     public Vector3i raycast() { return raycastEngine.raycast(); }
@@ -385,5 +424,7 @@ public class Player {
         blockPlacer.setWorld(world);
         itemDropInteraction.setWorld(world);
         deathHandler.setWorld(world);
+        // Quarry mark, trap, and ability state reference entities from the old world
+        rangerAbilities.reset();
     }
 }
