@@ -1,6 +1,12 @@
 package com.stonebreak.world.save.io;
 
+import com.openmason.engine.voxel.IBlockType;
+import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
+import com.openmason.engine.voxel.cco.data.palette.CcoPaletteSection;
+import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
+import com.openmason.engine.voxel.cco.data.palette.CcoSectionIndexing;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.world.chunk.utils.LocalBlockKey;
 import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.EntityData;
 import com.stonebreak.world.save.serialization.JsonEntitySerializer;
@@ -86,7 +92,7 @@ public final class ChunkCodec {
             out.writeBoolean(chunk.isFeaturesPopulated());
             out.writeBoolean(chunk.hasEntitiesGenerated());
 
-            byte[] compressedBlocks = compressBlocks(chunk.getBlocks());
+            byte[] compressedBlocks = compressBlocks(chunk.getBlockStorage());
             out.writeInt(compressedBlocks.length);
             out.write(compressedBlocks);
 
@@ -126,14 +132,14 @@ public final class ChunkCodec {
                 throw new IOException("Incomplete block buffer: expected " + compressedLength
                     + " bytes, got " + compressedBlocks.length);
             }
-            BlockType[][][] blocks = decompressBlocks(compressedBlocks);
+            CcoBlockStorage blocks = decompressBlocks(compressedBlocks);
 
             Map<String, ChunkData.WaterBlockData> waterMeta = readWaterMetadata(in);
             List<EntityData> entities = readEntities(in);
 
             // v2+: per-block SBO state map. Older saves omit this section
             // and load with an empty map (everything renders as default).
-            Map<String, String> blockStates = (version >= 2) ? readBlockStates(in) : new HashMap<>();
+            Map<Integer, String> blockStates = (version >= 2) ? readBlockStates(in) : new HashMap<>();
 
             return ChunkData.builder()
                 .chunkX(chunkX)
@@ -151,22 +157,22 @@ public final class ChunkCodec {
         }
     }
 
-    private static void writeBlockStates(DataOutputStream out, Map<String, String> blockStates) throws IOException {
+    private static void writeBlockStates(DataOutputStream out, Map<Integer, String> blockStates) throws IOException {
         out.writeInt(blockStates.size());
-        for (Map.Entry<String, String> entry : blockStates.entrySet()) {
-            int[] coords = parseKey(entry.getKey());
-            out.writeByte(coords[0]);
-            out.writeShort(coords[1]);
-            out.writeByte(coords[2]);
+        for (Map.Entry<Integer, String> entry : blockStates.entrySet()) {
+            int key = entry.getKey();
+            out.writeByte(LocalBlockKey.x(key));
+            out.writeShort(LocalBlockKey.y(key));
+            out.writeByte(LocalBlockKey.z(key));
             byte[] nameBytes = entry.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8);
             out.writeShort(nameBytes.length);
             out.write(nameBytes);
         }
     }
 
-    private static Map<String, String> readBlockStates(DataInputStream in) throws IOException {
+    private static Map<Integer, String> readBlockStates(DataInputStream in) throws IOException {
         int count = in.readInt();
-        Map<String, String> result = new HashMap<>(Math.max(count, 0));
+        Map<Integer, String> result = new HashMap<>(Math.max(count, 0));
         for (int i = 0; i < count; i++) {
             int localX = Byte.toUnsignedInt(in.readByte());
             int y = Short.toUnsignedInt(in.readShort());
@@ -177,7 +183,7 @@ public final class ChunkCodec {
                 throw new IOException("Incomplete block-state name: expected " + len + " bytes");
             }
             String state = new String(nameBytes, java.nio.charset.StandardCharsets.UTF_8);
-            result.put(localX + "," + y + "," + localZ, state);
+            result.put(LocalBlockKey.pack(localX, y, localZ), state);
         }
         return result;
     }
@@ -238,19 +244,43 @@ public final class ChunkCodec {
         return entities;
     }
 
-    private static byte[] compressBlocks(BlockType[][][] blocks) throws IOException {
-        if (blocks == null) {
+    /**
+     * Serializes block storage to the deflated short-id stream.
+     * Byte output is identical to the legacy dense-array encoder (y,z,x order),
+     * so saves stay interchangeable across versions.
+     *
+     * <p>Paletted sections take a fast path: cells within a section are laid
+     * out in the same y,z,x order, and uniform sections emit one id 4096 times
+     * with zero per-cell lookups.
+     */
+    private static byte[] compressBlocks(CcoBlockStorage storage) throws IOException {
+        if (storage == null) {
             throw new IllegalArgumentException("Chunk blocks cannot be null");
         }
 
         ByteArrayOutputStream raw = new ByteArrayOutputStream(BLOCK_COUNT * Short.BYTES);
         try (DataOutputStream rawOut = new DataOutputStream(raw)) {
-            for (int y = 0; y < CHUNK_HEIGHT; y++) {
-                for (int z = 0; z < CHUNK_WIDTH; z++) {
-                    for (int x = 0; x < CHUNK_WIDTH; x++) {
-                        BlockType block = blocks[x][y][z];
-                        int id = block != null ? block.getId() : BlockType.AIR.getId();
-                        rawOut.writeShort(id);
+            if (storage instanceof CcoPalettedChunkStorage paletted) {
+                int cellsPerSection = CHUNK_WIDTH * CHUNK_WIDTH * CcoSectionIndexing.SECTION_HEIGHT;
+                for (int s = 0; s < paletted.getSectionCount(); s++) {
+                    CcoPaletteSection section = paletted.getSection(s);
+                    if (section.isUniform()) {
+                        int id = blockId(section.uniformBlock());
+                        for (int i = 0; i < cellsPerSection; i++) {
+                            rawOut.writeShort(id);
+                        }
+                    } else {
+                        for (int i = 0; i < cellsPerSection; i++) {
+                            rawOut.writeShort(blockId(section.get(i)));
+                        }
+                    }
+                }
+            } else {
+                for (int y = 0; y < CHUNK_HEIGHT; y++) {
+                    for (int z = 0; z < CHUNK_WIDTH; z++) {
+                        for (int x = 0; x < CHUNK_WIDTH; x++) {
+                            rawOut.writeShort(blockId(storage.get(x, y, z)));
+                        }
                     }
                 }
             }
@@ -264,7 +294,11 @@ public final class ChunkCodec {
         return compressed.toByteArray();
     }
 
-    private static BlockType[][][] decompressBlocks(byte[] compressed) throws IOException {
+    private static int blockId(IBlockType block) {
+        return block != null ? block.getId() : BlockType.AIR.getId();
+    }
+
+    private static CcoBlockStorage decompressBlocks(byte[] compressed) throws IOException {
         ByteArrayOutputStream raw = new ByteArrayOutputStream(BLOCK_COUNT * Short.BYTES);
         try (InflaterInputStream inflater = new InflaterInputStream(
             new BufferedInputStream(new ByteArrayInputStream(compressed)))) {
@@ -276,22 +310,25 @@ public final class ChunkCodec {
             throw new IOException("Unexpected decompressed block array length: " + rawBytes.length);
         }
 
-        BlockType[][][] blocks = new BlockType[CHUNK_WIDTH][CHUNK_HEIGHT][CHUNK_WIDTH];
+        // Build paletted storage directly — skipping AIR writes keeps the
+        // above-terrain sections in their near-free uniform tier.
+        CcoPalettedChunkStorage storage =
+            CcoPalettedChunkStorage.createEmpty(CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_WIDTH, BlockType.AIR);
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(rawBytes))) {
             for (int y = 0; y < CHUNK_HEIGHT; y++) {
                 for (int z = 0; z < CHUNK_WIDTH; z++) {
                     for (int x = 0; x < CHUNK_WIDTH; x++) {
                         int id = Short.toUnsignedInt(in.readShort());
                         BlockType block = BlockType.getById(id);
-                        if (block == null) {
-                            block = BlockType.AIR;
+                        if (block == null || block == BlockType.AIR) {
+                            continue;
                         }
-                        blocks[x][y][z] = block;
+                        storage.set(x, y, z, block);
                     }
                 }
             }
         }
-        return blocks;
+        return storage;
     }
 
     private static int[] parseKey(String key) {

@@ -145,9 +145,15 @@ public class MmsCcoAdapter {
             int chunkX = chunkData.getChunkX();
             int chunkZ = chunkData.getChunkZ();
 
+            // Skip the empty air space above the terrain — paletted storage
+            // knows the highest non-air Y cheaply (uniform-air sections skip
+            // 16 levels at a time). For a sea-level chunk this avoids ~70% of
+            // the 65k-cell iteration.
+            int maxY = Math.min(chunkData.getHighestNonAirY(), WorldConfiguration.WORLD_HEIGHT - 1);
+
             // Iterate through all blocks in the chunk
             for (int lx = 0; lx < WorldConfiguration.CHUNK_SIZE; lx++) {
-                for (int ly = 0; ly < WorldConfiguration.WORLD_HEIGHT; ly++) {
+                for (int ly = 0; ly <= maxY; ly++) {
                     for (int lz = 0; lz < WorldConfiguration.CHUNK_SIZE; lz++) {
                         BlockType blockType = (BlockType) chunkData.getBlock(lx, ly, lz);
 

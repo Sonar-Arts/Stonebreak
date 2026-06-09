@@ -71,6 +71,7 @@ module openmason.engine {
     // Export CCO (Common Chunk Operations)
     exports com.openmason.engine.voxel.cco.core;
     exports com.openmason.engine.voxel.cco.data;
+    exports com.openmason.engine.voxel.cco.data.palette;
     exports com.openmason.engine.voxel.cco.state;
     exports com.openmason.engine.voxel.cco.coordinates;
     exports com.openmason.engine.voxel.cco.operations;

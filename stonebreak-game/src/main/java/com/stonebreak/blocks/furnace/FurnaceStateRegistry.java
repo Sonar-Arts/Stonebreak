@@ -5,6 +5,7 @@ import com.stonebreak.crafting.SmeltingManager;
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.utils.LocalBlockKey;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,12 +69,15 @@ public class FurnaceStateRegistry {
     public void onChunkLoaded(Chunk chunk) {
         int cx = chunk.getX();
         int cz = chunk.getZ();
-        for (Map.Entry<String, String> e : chunk.getBlockStates().entrySet()) {
+        for (Map.Entry<Integer, String> e : chunk.getBlockStates().entrySet()) {
             String value = e.getValue();
             if (value == null || !value.startsWith(FurnaceState.STATE_PREFIX)) continue;
 
-            BlockPos pos = parseStateKey(cx, cz, e.getKey());
-            if (pos == null) continue;
+            int key = e.getKey();
+            BlockPos pos = new BlockPos(
+                cx * CHUNK_SIZE + LocalBlockKey.x(key),
+                LocalBlockKey.y(key),
+                cz * CHUNK_SIZE + LocalBlockKey.z(key));
             FurnaceState s = FurnaceState.fromStateString(pos, value);
             states.put(pos, s);
         }
@@ -136,17 +140,4 @@ public class FurnaceStateRegistry {
         chunk.setBlockState(lx, pos.y(), lz, stateString);
     }
 
-    private static BlockPos parseStateKey(int chunkX, int chunkZ, String key) {
-        try {
-            String[] parts = key.split(",");
-            if (parts.length != 3) return null;
-            int lx = Integer.parseInt(parts[0]);
-            int y  = Integer.parseInt(parts[1]);
-            int lz = Integer.parseInt(parts[2]);
-            return new BlockPos(chunkX * CHUNK_SIZE + lx, y, chunkZ * CHUNK_SIZE + lz);
-        } catch (Exception e) {
-            logger.debug("Bad block-state key {}", key);
-            return null;
-        }
-    }
 }

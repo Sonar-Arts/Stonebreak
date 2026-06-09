@@ -10,7 +10,6 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializableSnapshot;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.Inventory;
-import com.stonebreak.blocks.BlockType;
 import org.joml.Vector3f;
 import org.joml.Vector2f;
 import java.util.HashMap;
@@ -157,7 +156,7 @@ public final class StateConverter {
         CcoSerializableSnapshot snapshot = new CcoSerializableSnapshot(
             data.getChunkX(),
             data.getChunkZ(),
-            data.getBlocks(),
+            data.getBlockStorage(),
             data.getLastModified(),
             data.isFeaturesPopulated(),
             data.hasEntitiesGenerated(),

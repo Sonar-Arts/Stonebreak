@@ -2,28 +2,28 @@ package com.openmason.engine.voxel.cco.operations;
 
 import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.cco.coordinates.CcoBounds;
-import com.openmason.engine.voxel.cco.data.CcoBlockArray;
+import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
 
 import java.util.Objects;
 
 /**
  * Block writing operations with automatic dirty tracking for CCO chunks.
- * NOT thread-safe - caller must synchronize writes.
- * Performance: < 100ns per write (array access + dirty flag set).
+ * Single-cell writes are internally synchronized by the storage; callers
+ * coordinating multi-cell invariants must still synchronize externally.
  */
 public final class CcoBlockWriter {
 
-    private final CcoBlockArray blocks;
+    private final CcoBlockStorage blocks;
     private final CcoDirtyTracker dirtyTracker;
 
     /**
      * Creates a block writer with dirty tracking.
      *
-     * @param blocks Block array to write to
+     * @param blocks Block storage to write to
      * @param dirtyTracker Dirty tracker for automatic marking
      */
-    public CcoBlockWriter(CcoBlockArray blocks, CcoDirtyTracker dirtyTracker) {
+    public CcoBlockWriter(CcoBlockStorage blocks, CcoDirtyTracker dirtyTracker) {
         this.blocks = Objects.requireNonNull(blocks, "blocks cannot be null");
         this.dirtyTracker = Objects.requireNonNull(dirtyTracker, "dirtyTracker cannot be null");
     }
@@ -60,19 +60,6 @@ public final class CcoBlockWriter {
      */
     public boolean setNoDirty(int x, int y, int z, IBlockType block) {
         return blocks.set(x, y, z, block);
-    }
-
-    /**
-     * Sets block with unsafe direct array access (no bounds checking).
-     * Caller MUST ensure coordinates are valid and handle dirty tracking.
-     *
-     * @param x Local X coordinate (must be valid)
-     * @param y Local Y coordinate (must be valid)
-     * @param z Local Z coordinate (must be valid)
-     * @param block Block type to set
-     */
-    public void setUnsafe(int x, int y, int z, IBlockType block) {
-        blocks.getUnderlyingArray()[x][y][z] = block;
     }
 
     /**
@@ -131,11 +118,11 @@ public final class CcoBlockWriter {
     }
 
     /**
-     * Gets the underlying block array.
+     * Gets the underlying block storage.
      *
-     * @return Block array
+     * @return Block storage
      */
-    public CcoBlockArray getBlockArray() {
+    public CcoBlockStorage getStorage() {
         return blocks;
     }
 }

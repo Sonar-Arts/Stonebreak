@@ -6,6 +6,7 @@ import com.openmason.engine.diagnostics.MemoryProfiler;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.ChunkStatus;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
+import com.stonebreak.world.generation.ColumnProfile;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.generation.features.FeatureQueue;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -33,6 +34,12 @@ public class WorldChunkStore {
 
     // Deferred feature population queue to break recursive generation cycles
     private final Queue<ChunkPosition> pendingFeaturePopulation = new ConcurrentLinkedQueue<>();
+
+    // Column profiles (heights + biomes) computed during terrain generation,
+    // consumed by deferred feature population so the noise stack isn't
+    // resampled. Entries are removed when consumed, when the position is
+    // permanently dequeued, or when the chunk unloads.
+    private final Map<ChunkPosition, ColumnProfile> pendingColumnProfiles = new ConcurrentHashMap<>();
 
     // Async chunk loading support - tracks chunks being loaded to prevent duplicate requests
     private final Map<ChunkPosition, CompletableFuture<Chunk>> pendingChunkLoads = new ConcurrentHashMap<>();
@@ -258,6 +265,7 @@ public class WorldChunkStore {
 
     public void unloadChunk(int chunkX, int chunkZ) {
         ChunkPosition pos = positionCache.get(chunkX, chunkZ);
+        pendingColumnProfiles.remove(pos);
         Chunk chunk = chunks.remove(pos);
         if (chunk == null) {
             // Chunk doesn't exist, but still clean up position cache entry
@@ -375,6 +383,7 @@ public class WorldChunkStore {
 
             // Skip if chunk was unloaded or already has features
             if (chunk == null || chunk.areFeaturesPopulated()) {
+                pendingColumnProfiles.remove(pos);
                 continue;
             }
 
@@ -388,7 +397,10 @@ public class WorldChunkStore {
             if (neighborsReady) {
                 // Neighbors exist - safe to populate features
                 try {
-                    terrainSystem.populateChunkWithFeatures(world, chunk, world.getSnowLayerManager());
+                    // Profile from terrain generation (null for disk-loaded chunks
+                    // that somehow still need features — populate recomputes then).
+                    ColumnProfile profile = pendingColumnProfiles.remove(pos);
+                    terrainSystem.populateChunkWithFeatures(world, chunk, world.getSnowLayerManager(), profile);
                     chunk.setFeaturesPopulated(true);
                     // Features write via chunk.setBlock(), which only flips the CCO dirty flag
                     // and does not schedule a remesh. If the mesh was already built from
@@ -461,11 +473,16 @@ public class WorldChunkStore {
 
             // Generate terrain ONLY - features will be populated later via queue
             // This prevents recursive chunk generation during mesh building
-            Chunk chunk = terrainSystem.generateTerrainOnly(x, z);
-            if (chunk == null) {
+            TerrainGenerationSystem.TerrainResult result = terrainSystem.generateTerrainOnly(x, z);
+            if (result == null || result.chunk() == null) {
                 System.err.println("CRITICAL: Failed to generate chunk at (" + x + ", " + z + ")");
                 return null;
             }
+            Chunk chunk = result.chunk();
+
+            // Keep the column profile so deferred feature population reuses it
+            // instead of resampling the noise stack (~3 KB per pending chunk).
+            pendingColumnProfiles.put(positionCache.get(x, z), result.profile());
 
             // DO NOT populate features here - they will be populated by processPendingFeaturePopulation()
             // when neighbors exist and it's safe to do so without triggering recursion
@@ -543,34 +560,13 @@ public class WorldChunkStore {
     /**
      * Checks if a chunk contains any flowing (non-source) water blocks.
      * Used to determine if a newly generated chunk needs to be saved to persist water metadata.
+     * Queries the WaterSystem's sparse cell map — no 65k-block chunk scan.
      */
     private boolean chunkHasFlowingWater(Chunk chunk) {
         if (world == null || world.getWaterSystem() == null) {
             return false;
         }
-
-        int chunkX = chunk.getChunkX();
-        int chunkZ = chunk.getChunkZ();
-
-        // Scan chunk for water blocks and check their state in WaterSystem
-        for (int localX = 0; localX < WorldConfiguration.CHUNK_SIZE; localX++) {
-            for (int localZ = 0; localZ < WorldConfiguration.CHUNK_SIZE; localZ++) {
-                for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
-                    if (chunk.getBlock(localX, y, localZ) == com.stonebreak.blocks.BlockType.WATER) {
-                        int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + localX;
-                        int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + localZ;
-
-                        var waterBlock = world.getWaterSystem().getWaterBlock(worldX, y, worldZ);
-                        // If there's any non-source water, this chunk needs to be saved
-                        if (waterBlock != null && !waterBlock.isSource()) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-
-        return false;
+        return world.getWaterSystem().hasFlowingCellInChunk(chunk.getChunkX(), chunk.getChunkZ());
     }
 
     private void prepareLoadedChunk(Chunk chunk) {

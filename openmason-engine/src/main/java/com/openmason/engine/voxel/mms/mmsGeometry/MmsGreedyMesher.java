@@ -40,6 +40,24 @@ public final class MmsGreedyMesher {
     private static final int DIR_POS_Z = 4;
     private static final int DIR_NEG_Z = 5;
 
+    // Immutable per-direction lookup tables — callers only read these, so the
+    // per-call array allocations they replace were pure garbage churn.
+    private static final int[][] DIRECTION_OFFSETS = {
+        {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}
+    };
+    private static final float[][] DIRECTION_NORMALS = {
+        {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}
+    };
+
+    // Per-thread scratch for the meshing hot path (multiple mesh worker
+    // threads share this stateless class). Contents are fully consumed
+    // before the next call on the same thread — same pattern as
+    // MmsCuboidGenerator's SCRATCH_VERTICES. No per-world state is retained.
+    private static final ThreadLocal<int[]> SCRATCH_WORLD_COORDS =
+        ThreadLocal.withInitial(() -> new int[3]);
+    private static final ThreadLocal<float[]> SCRATCH_QUAD_VERTICES =
+        ThreadLocal.withInitial(() -> new float[12]);
+
     /**
      * Face mask entry representing a visible face.
      * Contains block type and texture coordinates for merging decisions.
@@ -171,13 +189,16 @@ public final class MmsGreedyMesher {
         }
     }
 
+    /** Returns a per-thread scratch array — consume before the next call on this thread. */
     private static int[] maskToWorldCoords(int direction, int x, int y, int depth) {
-        return switch (direction) {
-            case DIR_POS_X, DIR_NEG_X -> new int[]{depth, y, x};
-            case DIR_POS_Y, DIR_NEG_Y -> new int[]{x, depth, y};
-            case DIR_POS_Z, DIR_NEG_Z -> new int[]{x, y, depth};
+        int[] coords = SCRATCH_WORLD_COORDS.get();
+        switch (direction) {
+            case DIR_POS_X, DIR_NEG_X -> { coords[0] = depth; coords[1] = y; coords[2] = x; }
+            case DIR_POS_Y, DIR_NEG_Y -> { coords[0] = x; coords[1] = depth; coords[2] = y; }
+            case DIR_POS_Z, DIR_NEG_Z -> { coords[0] = x; coords[1] = y; coords[2] = depth; }
             default -> throw new IllegalArgumentException("Invalid direction");
-        };
+        }
+        return coords;
     }
 
     private static boolean isFaceVisible(CcoChunkData chunkData, int x, int y, int z, int direction) {
@@ -210,15 +231,7 @@ public final class MmsGreedyMesher {
     }
 
     private static int[] getDirectionOffset(int direction) {
-        return switch (direction) {
-            case DIR_POS_X -> new int[]{1, 0, 0};
-            case DIR_NEG_X -> new int[]{-1, 0, 0};
-            case DIR_POS_Y -> new int[]{0, 1, 0};
-            case DIR_NEG_Y -> new int[]{0, -1, 0};
-            case DIR_POS_Z -> new int[]{0, 0, 1};
-            case DIR_NEG_Z -> new int[]{0, 0, -1};
-            default -> throw new IllegalArgumentException("Invalid direction");
-        };
+        return DIRECTION_OFFSETS[direction];
     }
 
     private static int generateMergedQuads(FaceMask[][] mask, MmsMeshBuilder builder,
@@ -300,9 +313,10 @@ public final class MmsGreedyMesher {
             .endFace();
     }
 
+    /** Returns a per-thread scratch array — consume before the next call on this thread. */
     private static float[] generateQuadVertices(int direction, float x, float y, float z,
                                                 int width, int height) {
-        float[] vertices = new float[12];
+        float[] vertices = SCRATCH_QUAD_VERTICES.get();
 
         switch (direction) {
             case DIR_POS_Y:
@@ -347,14 +361,6 @@ public final class MmsGreedyMesher {
     }
 
     private static float[] getDirectionNormal(int direction) {
-        return switch (direction) {
-            case DIR_POS_X -> new float[]{1, 0, 0};
-            case DIR_NEG_X -> new float[]{-1, 0, 0};
-            case DIR_POS_Y -> new float[]{0, 1, 0};
-            case DIR_NEG_Y -> new float[]{0, -1, 0};
-            case DIR_POS_Z -> new float[]{0, 0, 1};
-            case DIR_NEG_Z -> new float[]{0, 0, -1};
-            default -> new float[]{0, 0, 0};
-        };
+        return DIRECTION_NORMALS[direction];
     }
 }

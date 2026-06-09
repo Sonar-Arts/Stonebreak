@@ -201,6 +201,47 @@ public final class WaterSystem {
         );
     }
 
+    /** Visitor for {@link #forEachCellInChunk}. Coordinates are world-space. */
+    @FunctionalInterface
+    public interface WaterCellVisitor {
+        void visit(int worldX, int y, int worldZ, WaterBlock waterBlock);
+    }
+
+    /**
+     * Visits every tracked water cell inside the given chunk. Iterates the
+     * sparse cell map instead of scanning 65k chunk blocks — this is the save
+     * path's way of extracting water metadata.
+     */
+    public void forEachCellInChunk(int chunkX, int chunkZ, WaterCellVisitor visitor) {
+        for (Map.Entry<Long, WaterBlock> entry : cells.entrySet()) {
+            long posKey = entry.getKey();
+            int worldX = unpackX(posKey);
+            int worldZ = unpackZ(posKey);
+            if (Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE) == chunkX &&
+                Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE) == chunkZ) {
+                visitor.visit(worldX, unpackY(posKey), worldZ, entry.getValue());
+            }
+        }
+    }
+
+    /**
+     * Whether the chunk contains any non-source (flowing) water cell.
+     * Early-exit sparse-map check — replaces the legacy 65k-block chunk scan.
+     */
+    public boolean hasFlowingCellInChunk(int chunkX, int chunkZ) {
+        for (Map.Entry<Long, WaterBlock> entry : cells.entrySet()) {
+            if (entry.getValue().isSource()) {
+                continue;
+            }
+            long posKey = entry.getKey();
+            if (Math.floorDiv(unpackX(posKey), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+                Math.floorDiv(unpackZ(posKey), WorldConfiguration.CHUNK_SIZE) == chunkZ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Notified by the world whenever a block changes.
      * Note: CCO API handles callbacks automatically, so we process all changes.

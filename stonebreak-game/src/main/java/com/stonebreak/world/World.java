@@ -212,6 +212,9 @@ public class World {
                 com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
                 if (fr != null) fr.onChunkUnloaded(chunk);
                 waterSystem.onChunkUnloaded(chunk);
+                // Purge snow layers with the chunk — without this the snow map
+                // grows unbounded for the lifetime of the world.
+                snowLayerManager.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
             }
         });
     }

@@ -1,44 +1,74 @@
 package com.stonebreak.world;
 
+import com.stonebreak.world.operations.WorldConfiguration;
+
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
 
 /**
  * Manages snow layer data for the world.
- * This is a simplified implementation - a full system would integrate this into the chunk system.
+ *
+ * <p>Keyed by packed world coordinates (no string allocation per access) and
+ * purged per chunk on unload — previously this map grew unbounded for the
+ * lifetime of the world. Layout matches WaterSystem's packing: [x:24][z:24][y:16].
+ *
+ * <p>Note: snow layers are not persisted, so purging on unload means layer
+ * counts reset to the 1-layer default when a chunk reloads (previously they
+ * only reset on world reload).
  */
 public class SnowLayerManager {
-    
-    // Map from world position to snow layer count (1-8)
-    private final Map<String, Integer> snowLayers = new ConcurrentHashMap<>();
-    
+
+    private static final int X_SHIFT = 40;
+    private static final int Z_SHIFT = 16;
+    private static final long XZ_MASK = 0xFFFFFFL;
+    private static final long Y_MASK = 0xFFFFL;
+    private static final int XZ_SIGN_BIT = 0x00800000;
+    private static final int XZ_SIGN_EXT = 0xFF000000;
+
+    // Map from packed world position to snow layer count (1-8)
+    private final Map<Long, Integer> snowLayers = new ConcurrentHashMap<>();
+
+    private static long packKey(int x, int y, int z) {
+        return ((long) (x & 0xFFFFFF) << X_SHIFT)
+             | ((long) (z & 0xFFFFFF) << Z_SHIFT)
+             | (y & Y_MASK);
+    }
+
+    private static int unpackX(long key) {
+        int x = (int) ((key >>> X_SHIFT) & XZ_MASK);
+        return (x & XZ_SIGN_BIT) != 0 ? x | XZ_SIGN_EXT : x;
+    }
+
+    private static int unpackZ(long key) {
+        int z = (int) ((key >>> Z_SHIFT) & XZ_MASK);
+        return (z & XZ_SIGN_BIT) != 0 ? z | XZ_SIGN_EXT : z;
+    }
+
     /**
      * Gets the snow layer count at a specific position
      * @param x World X coordinate
-     * @param y World Y coordinate  
+     * @param y World Y coordinate
      * @param z World Z coordinate
-     * @return Number of snow layers (1-8), or 0 if no snow
+     * @return Number of snow layers (1-8), or 1 if untracked (snow block default)
      */
     public int getSnowLayers(int x, int y, int z) {
-        String key = x + "," + y + "," + z;
-        return snowLayers.getOrDefault(key, 1); // Default to 1 layer if snow exists
+        return snowLayers.getOrDefault(packKey(x, y, z), 1); // Default to 1 layer if snow exists
     }
-    
+
     /**
      * Sets the snow layer count at a specific position
      * @param x World X coordinate
      * @param y World Y coordinate
-     * @param z World Z coordinate  
+     * @param z World Z coordinate
      * @param layers Number of snow layers (1-8)
      */
     public void setSnowLayers(int x, int y, int z, int layers) {
         if (layers < 1 || layers > 8) {
             throw new IllegalArgumentException("Snow layers must be between 1 and 8");
         }
-        String key = x + "," + y + "," + z;
-        snowLayers.put(key, layers);
+        snowLayers.put(packKey(x, y, z), layers);
     }
-    
+
     /**
      * Removes snow layer data at a specific position
      * @param x World X coordinate
@@ -46,10 +76,9 @@ public class SnowLayerManager {
      * @param z World Z coordinate
      */
     public void removeSnowLayers(int x, int y, int z) {
-        String key = x + "," + y + "," + z;
-        snowLayers.remove(key);
+        snowLayers.remove(packKey(x, y, z));
     }
-    
+
     /**
      * Attempts to add a snow layer at the specified position
      * @param x World X coordinate
@@ -65,7 +94,7 @@ public class SnowLayerManager {
         }
         return false;
     }
-    
+
     /**
      * Gets the visual height of snow at a position (0.125 to 1.0)
      * @param x World X coordinate
@@ -77,9 +106,20 @@ public class SnowLayerManager {
         int layers = getSnowLayers(x, y, z);
         return layers * 0.125f;
     }
-    
+
     /**
-     * Clears all snow layer data (for chunk unloading, etc.)
+     * Drops all snow layer entries inside an unloading chunk. Without this,
+     * the map grows for every snowfall the player ever walks past.
+     */
+    public void onChunkUnloaded(int chunkX, int chunkZ) {
+        snowLayers.keySet().removeIf(key ->
+            Math.floorDiv(unpackX(key), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+            Math.floorDiv(unpackZ(key), WorldConfiguration.CHUNK_SIZE) == chunkZ
+        );
+    }
+
+    /**
+     * Clears all snow layer data (world unload).
      */
     public void clear() {
         snowLayers.clear();

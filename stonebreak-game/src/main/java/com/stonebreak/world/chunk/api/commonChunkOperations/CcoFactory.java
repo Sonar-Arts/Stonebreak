@@ -1,21 +1,19 @@
 package com.stonebreak.world.chunk.api.commonChunkOperations;
 
+import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.cco.buffers.CcoBufferAllocator;
 import com.openmason.engine.voxel.cco.buffers.CcoBufferPool;
 import com.openmason.engine.voxel.cco.coordinates.CcoBounds;
-import com.openmason.engine.voxel.cco.data.CcoBlockArray;
+import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 import com.openmason.engine.voxel.cco.data.CcoChunkMetadata;
 import com.openmason.engine.voxel.cco.data.CcoChunkState;
 import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
 import com.openmason.engine.voxel.cco.data.CcoBufferHandle;
 import com.openmason.engine.voxel.cco.data.CcoMeshData;
-import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializableSnapshot;
+import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
 import com.openmason.engine.voxel.cco.operations.CcoBlockReader;
 import com.openmason.engine.voxel.cco.operations.CcoBlockWriter;
-import com.openmason.engine.voxel.cco.operations.CcoBulkOperations;
-import com.stonebreak.world.chunk.api.commonChunkOperations.serialization.*;
 import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
-import com.stonebreak.blocks.BlockType;
 
 /**
  * CCO Factory - Component factory with builder pattern
@@ -28,7 +26,7 @@ import com.stonebreak.blocks.BlockType;
  * Performance: Minimal overhead, focuses on correctness
  * Usage:
  * 1. Simple creation: CcoFactory.createMetadata(...)
- * 2. Builder pattern: CcoFactory.builder().withBlocks(...).build()
+ * 2. Builder pattern: CcoFactory.builder().withEmptyStorage(...).build()
  * 3. Component recycling: Use buffer pool for reusable components
  */
 public final class CcoFactory {
@@ -87,13 +85,13 @@ public final class CcoFactory {
     }
 
     /**
-     * Create block array wrapper
+     * Create empty paletted block storage for a standard chunk.
      *
-     * @param blocks Block data array (16x256x16)
-     * @return Zero-copy block array wrapper
+     * @param airBlock Block type used as the uniform fill (air)
+     * @return Paletted storage, all sections uniform-air
      */
-    public static CcoBlockArray createBlockArray(BlockType[][][] blocks) {
-        return CcoBlockArray.wrap(blocks);
+    public static CcoBlockStorage createEmptyStorage(IBlockType airBlock) {
+        return CcoPalettedChunkStorage.createEmpty(CcoBounds.getConfig(), airBlock);
     }
 
     /**
@@ -119,45 +117,22 @@ public final class CcoFactory {
     /**
      * Create block reader
      *
-     * @param blocks Block array
+     * @param blocks Block storage
      * @return Fast block query operations
      */
-    public static CcoBlockReader createBlockReader(CcoBlockArray blocks) {
+    public static CcoBlockReader createBlockReader(CcoBlockStorage blocks) {
         return new CcoBlockReader(blocks);
     }
 
     /**
      * Create block writer
      *
-     * @param blocks Block array
+     * @param blocks Block storage
      * @param dirtyTracker Dirty flag tracker
      * @return Dirty-tracking block writes
      */
-    public static CcoBlockWriter createBlockWriter(CcoBlockArray blocks, CcoDirtyTracker dirtyTracker) {
+    public static CcoBlockWriter createBlockWriter(CcoBlockStorage blocks, CcoDirtyTracker dirtyTracker) {
         return new CcoBlockWriter(blocks, dirtyTracker);
-    }
-
-    /**
-     * Create bulk operations handler
-     *
-     * @param blocks Block array
-     * @param dirtyTracker Dirty flag tracker
-     * @return Batch block operations
-     */
-    public static CcoBulkOperations createBulkOperations(CcoBlockArray blocks, CcoDirtyTracker dirtyTracker) {
-        return new CcoBulkOperations(blocks, dirtyTracker);
-    }
-
-    /**
-     * Create snapshot builder
-     *
-     * @param blocks Block array
-     * @param metadata Chunk metadata
-     * @return Lazy snapshot builder
-     */
-    public static CcoSnapshotBuilder createSnapshotBuilder(CcoBlockArray blocks,
-                                                           CcoChunkMetadata metadata) {
-        return CcoSnapshotBuilder.from(metadata, blocks);
     }
 
     /**
@@ -221,7 +196,7 @@ public final class CcoFactory {
      * <pre>
      * var chunk = CcoFactory.builder()
      *     .withPosition(x, z)
-     *     .withBlocks(blockArray)
+     *     .withEmptyStorage(BlockType.AIR)
      *     .withSeed(seed)
      *     .build();
      * </pre>
@@ -230,7 +205,8 @@ public final class CcoFactory {
         // Required fields
         private int chunkX;
         private int chunkZ;
-        private BlockType[][][] blocks;
+        private CcoBlockStorage storage;
+        private IBlockType emptyFill;
 
         // Optional fields
         private long generationSeed = 0;
@@ -255,13 +231,24 @@ public final class CcoFactory {
         }
 
         /**
-         * Set block data
+         * Use fresh empty (all-air) paletted storage.
          *
-         * @param blocks Block array (16x256x16)
+         * @param airBlock Block type used as the uniform fill (air)
          * @return This builder
          */
-        public Builder withBlocks(BlockType[][][] blocks) {
-            this.blocks = blocks;
+        public Builder withEmptyStorage(IBlockType airBlock) {
+            this.emptyFill = airBlock;
+            return this;
+        }
+
+        /**
+         * Use existing block storage (zero-copy adoption).
+         *
+         * @param storage Block storage to adopt
+         * @return This builder
+         */
+        public Builder withStorage(CcoBlockStorage storage) {
+            this.storage = storage;
             return this;
         }
 
@@ -328,8 +315,8 @@ public final class CcoFactory {
          */
         public ComponentBundle build() {
             // Validate required fields
-            if (blocks == null) {
-                throw new IllegalStateException("Block array is required");
+            if (storage == null && emptyFill == null) {
+                throw new IllegalStateException("Block storage is required (withStorage or withEmptyStorage)");
             }
 
             // Create components
@@ -338,22 +325,20 @@ public final class CcoFactory {
                 hasStructures, needsDecoration, hasEntities
             );
 
-            CcoBlockArray blockArray = createBlockArray(blocks);
+            CcoBlockStorage blockStorage = storage != null ? storage : createEmptyStorage(emptyFill);
             CcoDirtyTracker dirtyTracker = createDirtyTracker();
             CcoAtomicStateManager stateManager = createStateManager(initialState, dirtyTracker);
 
-            CcoBlockReader reader = createBlockReader(blockArray);
-            CcoBlockWriter writer = createBlockWriter(blockArray, dirtyTracker);
-            CcoBulkOperations bulkOps = createBulkOperations(blockArray, dirtyTracker);
+            CcoBlockReader reader = createBlockReader(blockStorage);
+            CcoBlockWriter writer = createBlockWriter(blockStorage, dirtyTracker);
 
             return new ComponentBundle(
                 metadata,
-                blockArray,
+                blockStorage,
                 dirtyTracker,
                 stateManager,
                 reader,
-                writer,
-                bulkOps
+                writer
             );
         }
     }
@@ -373,33 +358,21 @@ public final class CcoFactory {
      */
     public static class ComponentBundle {
         public final CcoChunkMetadata metadata;
-        public final CcoBlockArray blocks;
+        public final CcoBlockStorage blocks;
         public final CcoDirtyTracker dirtyTracker;
         public final CcoAtomicStateManager stateManager;
         public final CcoBlockReader reader;
         public final CcoBlockWriter writer;
-        public final CcoBulkOperations bulkOps;
 
-        private ComponentBundle(CcoChunkMetadata metadata, CcoBlockArray blocks,
+        private ComponentBundle(CcoChunkMetadata metadata, CcoBlockStorage blocks,
                                CcoDirtyTracker dirtyTracker, CcoAtomicStateManager stateManager,
-                               CcoBlockReader reader, CcoBlockWriter writer,
-                               CcoBulkOperations bulkOps) {
+                               CcoBlockReader reader, CcoBlockWriter writer) {
             this.metadata = metadata;
             this.blocks = blocks;
             this.dirtyTracker = dirtyTracker;
             this.stateManager = stateManager;
             this.reader = reader;
             this.writer = writer;
-            this.bulkOps = bulkOps;
-        }
-
-        /**
-         * Create snapshot builder for this bundle
-         *
-         * @return Snapshot builder ready for use
-         */
-        public CcoSnapshotBuilder createSnapshotBuilder() {
-            return CcoFactory.createSnapshotBuilder(blocks, metadata);
         }
     }
 

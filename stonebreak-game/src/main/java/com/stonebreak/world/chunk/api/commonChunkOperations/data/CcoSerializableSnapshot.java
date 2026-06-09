@@ -1,23 +1,23 @@
 package com.stonebreak.world.chunk.api.commonChunkOperations.data;
 
-import com.openmason.engine.voxel.cco.data.CcoBlockArray;
-import com.openmason.engine.voxel.cco.data.CcoChunkMetadata;
-import com.stonebreak.blocks.BlockType;
+import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.EntityData;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.List;
-import java.util.ArrayList;
 
 /**
  * Immutable snapshot of chunk data for serialization.
  * Designed for efficient conversion to save system's ChunkData model.
  *
- * Lazy deep-copy: blocks are referenced (zero-copy) until ChunkData builder copies them.
+ * <p>Holds an already-copied paletted block storage (the snapshot creator copies
+ * once, cheaply); no further deep copies happen anywhere in the save chain.
  * Thread-safe through immutability.
  *
  * WATER METADATA INTEGRATION:
@@ -31,78 +31,37 @@ import java.util.ArrayList;
 public final class CcoSerializableSnapshot {
     private final int chunkX;
     private final int chunkZ;
-    private final BlockType[][][] blocks;  // Direct reference - ChunkData will copy
+    private final CcoBlockStorage blocks;  // Snapshot copy owned exclusively by this object
     private final LocalDateTime lastModified;
     private final boolean featuresPopulated;
     private final boolean hasEntitiesGenerated;  // Whether entities were spawned for this chunk
     private final Map<String, ChunkData.WaterBlockData> waterMetadata;  // Water flow levels (non-source only)
     private final List<EntityData> entities;  // Entity data for this chunk
     /**
-     * Sparse per-block SBO state map (1.3+). Same {@code "x,y,z"} keying as
-     * {@link #waterMetadata}; only blocks with non-default state appear here.
+     * Sparse per-block SBO state map (1.3+), keyed by packed local coordinates
+     * (LocalBlockKey); only blocks with non-default state appear here.
      */
-    private final Map<String, String> blockStates;
+    private final Map<Integer, String> blockStates;
 
     /**
      * Creates a serializable snapshot.
      *
      * @param chunkX Chunk X coordinate
      * @param chunkZ Chunk Z coordinate
-     * @param blocks Block array (will be deep-copied by ChunkData)
-     * @param lastModified Last modification timestamp
-     * @param featuresPopulated Whether features are populated
-     */
-    public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
-                                   LocalDateTime lastModified, boolean featuresPopulated) {
-        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, false, new HashMap<>(), new ArrayList<>(), new HashMap<>());
-    }
-
-    /**
-     * Creates a serializable snapshot with water metadata.
-     *
-     * @param chunkX Chunk X coordinate
-     * @param chunkZ Chunk Z coordinate
-     * @param blocks Block array (will be deep-copied by ChunkData)
-     * @param lastModified Last modification timestamp
-     * @param featuresPopulated Whether features are populated
-     * @param waterMetadata Water flow level metadata (defensive copy made)
-     */
-    public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
-                                   LocalDateTime lastModified, boolean featuresPopulated,
-                                   Map<String, ChunkData.WaterBlockData> waterMetadata) {
-        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, false, waterMetadata, new ArrayList<>(), new HashMap<>());
-    }
-
-    /**
-     * Creates a serializable snapshot with water metadata and entities.
-     *
-     * @param chunkX Chunk X coordinate
-     * @param chunkZ Chunk Z coordinate
-     * @param blocks Block array (will be deep-copied by ChunkData)
+     * @param blocks Block storage snapshot — caller must pass a copy it no longer mutates
      * @param lastModified Last modification timestamp
      * @param featuresPopulated Whether features are populated
      * @param hasEntitiesGenerated Whether entities were spawned for this chunk
      * @param waterMetadata Water flow level metadata (defensive copy made)
      * @param entities Entity data for this chunk (defensive copy made)
+     * @param blockStates Per-block SBO state map (defensive copy made)
      */
-    public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
-                                   LocalDateTime lastModified, boolean featuresPopulated,
-                                   boolean hasEntitiesGenerated,
-                                   Map<String, ChunkData.WaterBlockData> waterMetadata,
-                                   List<EntityData> entities) {
-        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, hasEntitiesGenerated,
-                waterMetadata, entities, new HashMap<>());
-    }
-
-    /**
-     * Full constructor including SBO 1.3 per-block state map.
-     */
-    public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
+    public CcoSerializableSnapshot(int chunkX, int chunkZ, CcoBlockStorage blocks,
                                    LocalDateTime lastModified, boolean featuresPopulated,
                                    boolean hasEntitiesGenerated,
                                    Map<String, ChunkData.WaterBlockData> waterMetadata,
                                    List<EntityData> entities,
-                                   Map<String, String> blockStates) {
+                                   Map<Integer, String> blockStates) {
         this.chunkX = chunkX;
         this.chunkZ = chunkZ;
         this.blocks = Objects.requireNonNull(blocks, "blocks cannot be null");
@@ -122,22 +81,8 @@ public final class CcoSerializableSnapshot {
     }
 
     /**
-     * Creates a snapshot from CCO metadata and block array.
-     */
-    public static CcoSerializableSnapshot from(CcoChunkMetadata metadata, CcoBlockArray blockArray) {
-        // Safe cast: the game always stores BlockType values in the IBlockType array
-        return new CcoSerializableSnapshot(
-                metadata.getChunkX(),
-                metadata.getChunkZ(),
-                (BlockType[][][]) blockArray.getUnderlyingArray(),
-                metadata.getLastModified(),
-                metadata.isFeaturesPopulated()
-        );
-    }
-
-    /**
      * Converts this snapshot to the save system's ChunkData model.
-     * ChunkData will perform a deep copy of the blocks array.
+     * Zero-copy: ChunkData adopts this snapshot's storage handle.
      *
      * @return ChunkData ready for serialization
      */
@@ -145,7 +90,7 @@ public final class CcoSerializableSnapshot {
         return ChunkData.builder()
                 .chunkX(chunkX)
                 .chunkZ(chunkZ)
-                .blocks(blocks)  // ChunkData builder will deep-copy
+                .blocks(blocks)
                 .lastModified(lastModified)
                 .featuresPopulated(featuresPopulated)
                 .hasEntitiesGenerated(hasEntitiesGenerated)  // Include entity generation flag
@@ -163,7 +108,8 @@ public final class CcoSerializableSnapshot {
         return chunkZ;
     }
 
-    public BlockType[][][] getBlocks() {
+    /** Block storage snapshot. Treat as read-only. */
+    public CcoBlockStorage getBlockStorage() {
         return blocks;
     }
 
@@ -176,16 +122,16 @@ public final class CcoSerializableSnapshot {
     }
 
     public Map<String, ChunkData.WaterBlockData> getWaterMetadata() {
-        return new HashMap<>(waterMetadata);  // Defensive copy
+        return Collections.unmodifiableMap(waterMetadata);
     }
 
     public List<EntityData> getEntities() {
-        return new ArrayList<>(entities);  // Defensive copy
+        return Collections.unmodifiableList(entities);
     }
 
-    /** Per-block SBO state map (1.3+). Defensive copy. */
-    public Map<String, String> getBlockStates() {
-        return new HashMap<>(blockStates);
+    /** Per-block SBO state map (1.3+), packed-coordinate keys. Unmodifiable view. */
+    public Map<Integer, String> getBlockStates() {
+        return Collections.unmodifiableMap(blockStates);
     }
 
     @Override

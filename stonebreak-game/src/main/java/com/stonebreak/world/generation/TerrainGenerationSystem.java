@@ -1,11 +1,13 @@
 package com.stonebreak.world.generation;
 
+import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.features.OreGenerator;
@@ -142,12 +144,18 @@ public class TerrainGenerationSystem {
     }
 
     /**
+     * Result of terrain-only generation: the chunk plus the column profile
+     * (heights + biomes) so deferred feature population can reuse it instead
+     * of resampling the noise stack.
+     */
+    public record TerrainResult(Chunk chunk, ColumnProfile profile) {}
+
+    /**
      * Generates terrain blocks for a chunk. Features are populated separately
      * once neighbor chunks exist (prevents recursive generation across chunk borders).
      */
-    public Chunk generateTerrainOnly(int chunkX, int chunkZ) {
+    public TerrainResult generateTerrainOnly(int chunkX, int chunkZ) {
         updateLoadingProgress("Generating Base Terrain Shape");
-        Chunk chunk = new Chunk(chunkX, chunkZ);
 
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
@@ -166,6 +174,13 @@ public class TerrainGenerationSystem {
         caveMask.or(megaCavernResult.carveMask);
         BitSet formationMask = cavernResult.formationMask;
         formationMask.or(megaCavernResult.formationMask);
+
+        // Write terrain into paletted storage directly instead of 65k
+        // chunk.setBlock calls (each of which churns dirty flags, per-block
+        // state removal, and incremental heightmap updates). AIR cells are
+        // skipped entirely — sections above the terrain stay in their
+        // near-free uniform tier. The caller recomputes the heightmap once.
+        CcoBlockStorage storage = CcoFactory.createEmptyStorage(BlockType.AIR);
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -177,26 +192,38 @@ public class TerrainGenerationSystem {
                 int worldZ = baseZ + z;
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     int bit = (x << 12) | (y << 4) | z;
+                    BlockType block;
                     if (y > 0 && y < height && formationMask.get(bit)) {
-                        chunk.setBlock(x, y, z, BlockType.STONE);
+                        block = BlockType.STONE;
                     } else if (y > 0 && y < height && caveMask.get(bit)) {
-                        chunk.setBlock(x, y, z, BlockType.AIR);
+                        continue; // carved to air — already the uniform fill
                     } else {
-                        chunk.setBlock(x, y, z, determineBlockType(worldX, y, worldZ, height, biome));
+                        block = determineBlockType(worldX, y, worldZ, height, biome);
+                    }
+                    if (block != BlockType.AIR) {
+                        storage.set(x, y, z, block);
                     }
                 }
             }
         }
 
+        Chunk chunk = new Chunk(chunkX, chunkZ, storage);
+        // One mesh+data dirty mark replaces the per-setBlock marks. The caller
+        // clears data-dirty for waterless chunks, exactly as before.
+        chunk.getCcoDirtyTracker().markBlockChanged();
         chunk.setFeaturesPopulated(false);
-        return chunk;
+        return new TerrainResult(chunk, new ColumnProfile(heights, biomes));
     }
 
     /**
      * Populates features (ores, vegetation, decorations, mobs) on an already-terrained chunk.
      * Caller must ensure neighbor chunks at (+1,0), (0,+1), (+1,+1) exist.
+     *
+     * @param profile Column profile from terrain generation, or null to recompute
+     *                (e.g., for chunks loaded from disk that still need features)
      */
-    public void populateChunkWithFeatures(World world, Chunk chunk, SnowLayerManager snowLayerManager) {
+    public void populateChunkWithFeatures(World world, Chunk chunk, SnowLayerManager snowLayerManager,
+                                          ColumnProfile profile) {
         if (chunk == null || chunk.areFeaturesPopulated()) {
             return;
         }
@@ -211,10 +238,19 @@ public class TerrainGenerationSystem {
 
         updateLoadingProgress("Adding Surface Decorations & Details");
 
-        int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
-        BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
-        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights);
-        biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
+        int[] heights;
+        BiomeType[] biomes;
+        if (profile != null) {
+            // Reuse the profile computed during terrain generation — skips a
+            // full noise resampling pass per chunk.
+            heights = profile.heights();
+            biomes = profile.biomes();
+        } else {
+            heights = new int[CHUNK_SIZE * CHUNK_SIZE];
+            biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
+            heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights);
+            biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
+        }
         BiomeType dominantBiome = biomes[(CHUNK_SIZE / 2) * CHUNK_SIZE + (CHUNK_SIZE / 2)];
 
         ChunkGenerationContext ctx = new ChunkGenerationContext(

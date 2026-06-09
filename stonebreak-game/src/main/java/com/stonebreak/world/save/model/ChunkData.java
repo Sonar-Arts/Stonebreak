@@ -1,6 +1,6 @@
 package com.stonebreak.world.save.model;
 
-import com.stonebreak.blocks.BlockType;
+import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.HashMap;
@@ -11,28 +11,32 @@ import java.util.ArrayList;
  * Pure data model for chunk state.
  * No serialization logic - follows SOLID principles.
  * Immutable for thread safety.
+ *
+ * <p>Block data is held as a {@link CcoBlockStorage} snapshot handle. The
+ * snapshot chain (Chunk.createSnapshot → CcoSerializableSnapshot → here)
+ * copies the paletted storage exactly once at the start; this class adopts
+ * the handle without further copying.
  */
 public final class ChunkData {
     private final int chunkX;
     private final int chunkZ;
-    private final BlockType[][][] blocks;
+    private final CcoBlockStorage blocks;
     private final LocalDateTime lastModified;
     private final boolean featuresPopulated;
     private final boolean hasEntitiesGenerated;
     private final Map<String, WaterBlockData> waterMetadata;
     private final List<EntityData> entities;
     /**
-     * Sparse per-block SBO state map (1.3+). Keyed by {@code "localX,y,localZ"}
-     * (same convention as {@link #waterMetadata}). Only blocks whose state is
-     * non-default appear here — default-state blocks keep this empty for
-     * minimal save footprint.
+     * Sparse per-block SBO state map (1.3+). Keyed by packed local coordinates
+     * ({@code LocalBlockKey}). Only blocks whose state is non-default appear
+     * here — default-state blocks keep this empty for minimal save footprint.
      */
-    private final Map<String, String> blockStates;
+    private final Map<Integer, String> blockStates;
 
     private ChunkData(Builder builder) {
         this.chunkX = builder.chunkX;
         this.chunkZ = builder.chunkZ;
-        this.blocks = deepCopyBlocks(builder.blocks);
+        this.blocks = builder.blocks;
         this.lastModified = builder.lastModified;
         this.featuresPopulated = builder.featuresPopulated;
         this.hasEntitiesGenerated = builder.hasEntitiesGenerated;
@@ -41,30 +45,17 @@ public final class ChunkData {
         this.blockStates = builder.blockStates != null ? new HashMap<>(builder.blockStates) : new HashMap<>();
     }
 
-    // Getters - return defensive copies for mutable objects
+    // Getters
     public int getChunkX() { return chunkX; }
     public int getChunkZ() { return chunkZ; }
-    public BlockType[][][] getBlocks() { return deepCopyBlocks(blocks); }
+    /** Block storage snapshot. Treat as read-only. */
+    public CcoBlockStorage getBlockStorage() { return blocks; }
     public LocalDateTime getLastModified() { return lastModified; }
     public boolean isFeaturesPopulated() { return featuresPopulated; }
     public boolean hasEntitiesGenerated() { return hasEntitiesGenerated; }
     public Map<String, WaterBlockData> getWaterMetadata() { return new HashMap<>(waterMetadata); }
     public List<EntityData> getEntities() { return new ArrayList<>(entities); }
-    public Map<String, String> getBlockStates() { return new HashMap<>(blockStates); }
-
-    /**
-     * Deep copies block array for immutability.
-     */
-    private static BlockType[][][] deepCopyBlocks(BlockType[][][] source) {
-        if (source == null) return null;
-        BlockType[][][] copy = new BlockType[16][256][16];
-        for (int x = 0; x < 16; x++) {
-            for (int y = 0; y < 256; y++) {
-                System.arraycopy(source[x][y], 0, copy[x][y], 0, 16);
-            }
-        }
-        return copy;
-    }
+    public Map<Integer, String> getBlockStates() { return new HashMap<>(blockStates); }
 
     public static Builder builder() {
         return new Builder();
@@ -73,13 +64,13 @@ public final class ChunkData {
     public static final class Builder {
         private int chunkX;
         private int chunkZ;
-        private BlockType[][][] blocks;
+        private CcoBlockStorage blocks;
         private LocalDateTime lastModified = LocalDateTime.now();
         private boolean featuresPopulated = false;
         private boolean hasEntitiesGenerated = false;
         private Map<String, WaterBlockData> waterMetadata = new HashMap<>();
         private List<EntityData> entities = new ArrayList<>();
-        private Map<String, String> blockStates = new HashMap<>();
+        private Map<Integer, String> blockStates = new HashMap<>();
 
         public Builder chunkX(int chunkX) {
             this.chunkX = chunkX;
@@ -91,7 +82,8 @@ public final class ChunkData {
             return this;
         }
 
-        public Builder blocks(BlockType[][][] blocks) {
+        /** Adopts the storage handle without copying — pass a snapshot copy. */
+        public Builder blocks(CcoBlockStorage blocks) {
             this.blocks = blocks;
             return this;
         }
@@ -121,14 +113,14 @@ public final class ChunkData {
             return this;
         }
 
-        public Builder blockStates(Map<String, String> blockStates) {
+        public Builder blockStates(Map<Integer, String> blockStates) {
             this.blockStates = blockStates != null ? new HashMap<>(blockStates) : new HashMap<>();
             return this;
         }
 
         public ChunkData build() {
-            if (blocks == null || blocks.length != 16 || blocks[0].length != 256 || blocks[0][0].length != 16) {
-                throw new IllegalStateException("Invalid chunk block array dimensions");
+            if (blocks == null || blocks.getSizeX() != 16 || blocks.getSizeY() != 256 || blocks.getSizeZ() != 16) {
+                throw new IllegalStateException("Invalid chunk block storage dimensions");
             }
             return new ChunkData(this);
         }
