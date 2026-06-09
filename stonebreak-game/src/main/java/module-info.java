@@ -24,6 +24,11 @@ module stonebreak.game {
     // OpenMason Engine for shared rendering and format support
     requires openmason.engine;
 
+    // Netty transport: ServerPlayer detects in-JVM hosts via LocalChannel
+    // (io.netty.channel.local). buffer comes transitively through the engine,
+    // but transport does not, so require it explicitly.
+    requires io.netty.transport;
+
     // JSON processing
     requires com.fasterxml.jackson.databind;
     requires com.fasterxml.jackson.core;
