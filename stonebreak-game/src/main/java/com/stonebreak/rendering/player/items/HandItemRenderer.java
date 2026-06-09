@@ -7,7 +7,7 @@ import com.openmason.engine.rendering.cbr.meshing.MeshManager;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer;
 import com.stonebreak.rendering.sbo.SBOHandMeshRegistry;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL13;

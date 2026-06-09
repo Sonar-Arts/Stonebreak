@@ -1,6 +1,6 @@
 package com.stonebreak.rendering.gameWorld.fastlod;
 
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.world.fastlod.FastLodManager;
 
 /**

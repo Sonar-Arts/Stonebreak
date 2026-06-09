@@ -1,6 +1,6 @@
 package com.stonebreak.ui;
 
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import org.lwjgl.stb.STBTTAlignedQuad;
 import org.lwjgl.stb.STBTTBakedChar;
 // import org.lwjgl.stb.STBTruetype; // Removed unused import

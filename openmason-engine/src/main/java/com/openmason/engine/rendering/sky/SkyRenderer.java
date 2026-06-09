@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.gameWorld.sky;
+package com.openmason.engine.rendering.sky;
 
 // Standard Library Imports
 import java.io.IOException;
@@ -18,13 +18,14 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 // Project Imports
-import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.world.TimeOfDay;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 
 /**
- * Renderer for procedural sky with sun and clouds.
+ * Renderer for procedural sky with sun.
  * Renders a full-screen sky dome with atmospheric effects.
- * Sky color and sun position are driven by the TimeOfDay system.
+ *
+ * <p>Sky color and sun direction are supplied per-frame by the caller (e.g. derived from a
+ * game time-of-day system), keeping this renderer free of any game-world coupling.</p>
  */
 public class SkyRenderer {
 
@@ -35,7 +36,7 @@ public class SkyRenderer {
 
     // Shader program for sky rendering
     private ShaderProgram skyShaderProgram;
-    
+
     // Sky dome vertices (cube that will be expanded in vertex shader)
     private static final float[] SKY_VERTICES = {
         // Positions for a simple cube (will be expanded to sky dome in shader)
@@ -48,7 +49,7 @@ public class SkyRenderer {
          1.0f,  1.0f,  1.0f,
         -1.0f,  1.0f,  1.0f
     };
-    
+
     private static final int[] SKY_INDICES = {
         // Front face
         0, 1, 2, 2, 3, 0,
@@ -63,7 +64,7 @@ public class SkyRenderer {
         // Bottom face
         0, 1, 5, 5, 4, 0
     };
-    
+
     /**
      * Creates a new sky renderer and initializes OpenGL resources.
      */
@@ -71,7 +72,7 @@ public class SkyRenderer {
         initializeOpenGLResources();
         initializeShaders();
     }
-    
+
     /**
      * Initialize OpenGL buffers and vertex arrays for sky dome.
      */
@@ -79,55 +80,55 @@ public class SkyRenderer {
         // Generate VAO
         skyVAO = glGenVertexArrays();
         glBindVertexArray(skyVAO);
-        
+
         // Generate and bind VBO
         skyVBO = glGenBuffers();
         glBindBuffer(GL_ARRAY_BUFFER, skyVBO);
         glBufferData(GL_ARRAY_BUFFER, SKY_VERTICES, GL_STATIC_DRAW);
-        
+
         // Generate and bind EBO
         skyEBO = glGenBuffers();
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, skyEBO);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, SKY_INDICES, GL_STATIC_DRAW);
-        
+
         // Configure vertex attributes (position only)
         glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
         glEnableVertexAttribArray(0);
-        
+
         // Unbind VAO
         glBindVertexArray(0);
     }
-    
+
     /**
      * Initialize sky shaders using the ShaderProgram class.
      */
     private void initializeShaders() {
         skyShaderProgram = new ShaderProgram();
-        
+
         try {
             // Load vertex shader
             String vertexShaderSource = loadShaderSource("/shaders/sky/sky.vert");
             skyShaderProgram.createVertexShader(vertexShaderSource);
-            
+
             // Load fragment shader
             String fragmentShaderSource = loadShaderSource("/shaders/sky/sky.frag");
             skyShaderProgram.createFragmentShader(fragmentShaderSource);
-            
+
             // Link shader program
             skyShaderProgram.link();
-            
+
             // Create uniforms
             skyShaderProgram.createUniform("projectionMatrix");
             skyShaderProgram.createUniform("viewMatrix");
             skyShaderProgram.createUniform("cameraPosition");
             skyShaderProgram.createUniform("sunDirection");
             skyShaderProgram.createUniform("skyColor");
-            
+
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize sky shaders", e);
         }
     }
-    
+
     /**
      * Load shader source code from resources.
      */
@@ -139,18 +140,19 @@ public class SkyRenderer {
             return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
-    
+
     /**
      * Render the sky dome with dynamic time-of-day lighting.
      * Should be called first in the rendering pipeline, before world geometry.
      *
      * @param projectionMatrix The projection matrix
-     * @param viewMatrix The view matrix
-     * @param cameraPosition The camera position
-     * @param totalTime The total game time
-     * @param timeOfDay The time of day system (null for static sky)
+     * @param viewMatrix       The view matrix
+     * @param cameraPosition   The camera position
+     * @param sunDirection     Normalized sun direction in world space
+     * @param skyColor         RGB sky color (0..1)
      */
-    public void renderSky(Matrix4f projectionMatrix, Matrix4f viewMatrix, Vector3f cameraPosition, float totalTime, TimeOfDay timeOfDay) {
+    public void renderSky(Matrix4f projectionMatrix, Matrix4f viewMatrix, Vector3f cameraPosition,
+                          Vector3f sunDirection, Vector3f skyColor) {
         // Save current OpenGL state
         boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
@@ -159,28 +161,16 @@ public class SkyRenderer {
         int currentDepthFunc = glGetInteger(GL_DEPTH_FUNC);
         int currentBlendSrc = glGetInteger(GL_BLEND_SRC);
         int currentBlendDst = glGetInteger(GL_BLEND_DST);
-        
+
         // Configure OpenGL state for sky rendering
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL); // Sky should be rendered at maximum depth
         glDisable(GL_CULL_FACE); // Render both sides of sky dome
         glDisable(GL_BLEND); // Sky doesn't need blending
         glDepthMask(true); // Enable depth writing for sky
-        
+
         // Use sky shader
         skyShaderProgram.bind();
-
-        // Calculate sun direction and sky color from TimeOfDay if available
-        Vector3f sunDirection;
-        Vector3f skyColor;
-        if (timeOfDay != null) {
-            sunDirection = timeOfDay.getSunDirection();
-            skyColor = timeOfDay.getSkyColor();
-        } else {
-            // Fallback to static values if no TimeOfDay system
-            sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
-            skyColor = new Vector3f(0.53f, 0.81f, 0.92f); // Day sky
-        }
 
         // Set uniforms
         skyShaderProgram.setUniform("projectionMatrix", projectionMatrix);
@@ -188,35 +178,35 @@ public class SkyRenderer {
         skyShaderProgram.setUniform("cameraPosition", cameraPosition);
         skyShaderProgram.setUniform("sunDirection", sunDirection);
         skyShaderProgram.setUniform("skyColor", skyColor);
-        
+
         // Bind sky VAO and render
         glBindVertexArray(skyVAO);
         glDrawElements(GL_TRIANGLES, SKY_INDICES.length, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
-        
+
         // Unbind shader
         skyShaderProgram.unbind();
-        
+
         // Restore previous OpenGL state
         if (depthTestEnabled) {
             glEnable(GL_DEPTH_TEST);
         } else {
             glDisable(GL_DEPTH_TEST);
         }
-        
+
         if (cullFaceEnabled) {
             glEnable(GL_CULL_FACE);
         } else {
             glDisable(GL_CULL_FACE);
         }
-        
+
         if (blendEnabled) {
             glEnable(GL_BLEND);
             glBlendFunc(currentBlendSrc, currentBlendDst);
         } else {
             glDisable(GL_BLEND);
         }
-        
+
         glDepthMask(depthMaskEnabled);
         glDepthFunc(currentDepthFunc);
     }
@@ -228,7 +218,7 @@ public class SkyRenderer {
         if (skyShaderProgram != null) {
             skyShaderProgram.cleanup();
         }
-        
+
         if (skyVAO != 0) {
             glDeleteVertexArrays(skyVAO);
         }

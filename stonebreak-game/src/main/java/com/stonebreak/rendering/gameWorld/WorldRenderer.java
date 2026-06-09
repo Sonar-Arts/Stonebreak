@@ -18,15 +18,15 @@ import static org.lwjgl.opengl.GL11.*;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.WaterEffects;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.models.entities.DropRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.rendering.gameWorld.sky.SkyRenderer;
-import com.stonebreak.rendering.gameWorld.sky.clouds.CloudRenderer;
+import com.openmason.engine.rendering.sky.SkyRenderer;
+import com.openmason.engine.rendering.sky.clouds.CloudRenderer;
 import com.stonebreak.rendering.gameWorld.fastlod.FastLodRenderPass;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
@@ -90,15 +90,29 @@ public class WorldRenderer {
         clearPendingGLErrors();
         checkGLError("After clearing pending errors");
 
-        // Get time of day system for lighting
+        // Get time of day system for lighting. The engine sky/cloud renderers are decoupled
+        // from TimeOfDay, so resolve the values they need here (static fallback when absent).
         com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
+        Vector3f sunDirection;
+        Vector3f skyColor;
+        float ambientLightLevel;
+        if (timeOfDay != null) {
+            sunDirection = timeOfDay.getSunDirection();
+            skyColor = timeOfDay.getSkyColor();
+            ambientLightLevel = timeOfDay.getAmbientLightLevel();
+        } else {
+            sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
+            skyColor = new Vector3f(0.53f, 0.81f, 0.92f); // Day sky
+            ambientLightLevel = 1.0f;
+        }
+
         // Render sky first (before world geometry for proper depth testing)
-        skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, timeOfDay);
+        skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), sunDirection, skyColor);
         checkGLError("After sky rendering");
 
         // Render the voxel cloud layer just after the sky dome, before world geometry.
         if (com.stonebreak.config.Settings.getInstance().getCloudsEnabled()) {
-            cloudRenderer.renderClouds(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, timeOfDay);
+            cloudRenderer.renderClouds(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, ambientLightLevel);
             checkGLError("After cloud rendering");
         }
         

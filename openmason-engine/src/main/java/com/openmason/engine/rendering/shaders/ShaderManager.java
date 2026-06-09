@@ -6,11 +6,15 @@ import org.slf4j.LoggerFactory;
 import java.util.EnumMap;
 import java.util.Map;
 
-import static org.lwjgl.opengl.GL20.*;
-
 /**
  * Manages creation, compilation, and lifecycle of all viewport shaders.
  * Centralizes shader management following Single Responsibility Principle.
+ *
+ * <p>Each preset is built on the canonical {@link ShaderProgram} via its source-compilation
+ * pipeline. Uniforms that callers read back as raw GL locations (via
+ * {@link ShaderProgram#getUniformLocation(String)}) are explicitly registered with
+ * {@link ShaderProgram#createUniform(String)}; uniforms set by name through the tolerant
+ * {@code setMat4/setVec3/...} setters auto-register on first use and need no pre-declaration.
  */
 public class ShaderManager {
 
@@ -62,6 +66,17 @@ public class ShaderManager {
     }
 
     /**
+     * Build a canonical {@link ShaderProgram} from vertex + fragment source.
+     */
+    private ShaderProgram buildProgram(String vertexSource, String fragmentSource) {
+        ShaderProgram program = new ShaderProgram();
+        program.createVertexShader(vertexSource);
+        program.createFragmentShader(fragmentSource);
+        program.link();
+        return program;
+    }
+
+    /**
      * Create basic shader for simple geometry (vertices, grid, test cube).
      * Uses intensity multiplier for hover highlighting (same pattern as gizmo shader).
      */
@@ -94,15 +109,9 @@ public class ShaderManager {
             }
             """;
 
-        int vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource, "BASIC_VERTEX");
-        int fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource, "BASIC_FRAGMENT");
-        int program = linkProgram(vertexShader, fragmentShader);
-
-        int mvpLocation = glGetUniformLocation(program, "uMVPMatrix");
-        int colorLocation = -1; // Not used for intensity-based highlighting
-
-        logger.debug("BASIC shader created - program: {}, mvp: {}", program, mvpLocation);
-        return new ShaderProgram(ShaderType.BASIC, program, vertexShader, fragmentShader, mvpLocation, colorLocation);
+        ShaderProgram program = buildProgram(vertexShaderSource, fragmentShaderSource);
+        logger.debug("BASIC shader created - program: {}", program.getProgramId());
+        return program;
     }
 
     /**
@@ -170,20 +179,17 @@ public class ShaderManager {
             }
             """;
 
-        int vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource, "MATRIX_VERTEX");
-        int fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource, "MATRIX_FRAGMENT");
-        int program = linkProgram(vertexShader, fragmentShader);
+        ShaderProgram program = buildProgram(vertexShaderSource, fragmentShaderSource);
 
-        int mvpLocation = glGetUniformLocation(program, "uMVPMatrix");
-        int colorLocation = glGetUniformLocation(program, "uColor");
-        int modelLocation = glGetUniformLocation(program, "uModelMatrix");
-        int textureLocation = glGetUniformLocation(program, "uTexture");
-        int useTextureLocation = glGetUniformLocation(program, "uUseTexture");
+        // Register the uniforms that callers read back as raw GL locations
+        // (ViewportRenderPipeline passes these locations into the block/item/SBT renderers).
+        program.createUniform("uMVPMatrix");
+        program.createUniform("uModelMatrix");
+        program.createUniform("uTexture");
+        program.createUniform("uUseTexture");
 
-        logger.debug("MATRIX shader created - program: {}, mvp: {}, model: {}, texture: {}",
-                    program, mvpLocation, modelLocation, textureLocation);
-        return new ShaderProgram(ShaderType.MATRIX, program, vertexShader, fragmentShader,
-                                mvpLocation, colorLocation, modelLocation, textureLocation, useTextureLocation);
+        logger.debug("MATRIX shader created - program: {}", program.getProgramId());
+        return program;
     }
 
     /**
@@ -217,15 +223,9 @@ public class ShaderManager {
             }
             """;
 
-        int vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource, "GIZMO_VERTEX");
-        int fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource, "GIZMO_FRAGMENT");
-        int program = linkProgram(vertexShader, fragmentShader);
-
-        int mvpLocation = glGetUniformLocation(program, "uMVPMatrix");
-        int colorLocation = glGetUniformLocation(program, "uColor");
-
-        logger.debug("GIZMO shader created - program: {}, mvp: {}, color: {}", program, mvpLocation, colorLocation);
-        return new ShaderProgram(ShaderType.GIZMO, program, vertexShader, fragmentShader, mvpLocation, colorLocation);
+        ShaderProgram program = buildProgram(vertexShaderSource, fragmentShaderSource);
+        logger.debug("GIZMO shader created - program: {}", program.getProgramId());
+        return program;
     }
 
     /**
@@ -262,15 +262,9 @@ public class ShaderManager {
             }
             """;
 
-        int vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource, "FACE_VERTEX");
-        int fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource, "FACE_FRAGMENT");
-        int program = linkProgram(vertexShader, fragmentShader);
-
-        int mvpLocation = glGetUniformLocation(program, "uMVPMatrix");
-        int colorLocation = glGetUniformLocation(program, "uColor");
-
-        logger.debug("FACE shader created - program: {}, mvp: {}, color: {}", program, mvpLocation, colorLocation);
-        return new ShaderProgram(ShaderType.FACE, program, vertexShader, fragmentShader, mvpLocation, colorLocation);
+        ShaderProgram program = buildProgram(vertexShaderSource, fragmentShaderSource);
+        logger.debug("FACE shader created - program: {}", program.getProgramId());
+        return program;
     }
 
     /**
@@ -342,15 +336,9 @@ public class ShaderManager {
             }
             """;
 
-        int vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource, "VERTEX_POINT_VERTEX");
-        int fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource, "VERTEX_POINT_FRAGMENT");
-        int program = linkProgram(vertexShader, fragmentShader);
-
-        int mvpLocation = glGetUniformLocation(program, "uMVPMatrix");
-        int colorLocation = -1;
-
-        logger.debug("VERTEX shader created - program: {}, mvp: {}", program, mvpLocation);
-        return new ShaderProgram(ShaderType.VERTEX, program, vertexShader, fragmentShader, mvpLocation, colorLocation);
+        ShaderProgram program = buildProgram(vertexShaderSource, fragmentShaderSource);
+        logger.debug("VERTEX shader created - program: {}", program.getProgramId());
+        return program;
     }
 
     /**
@@ -529,64 +517,8 @@ public class ShaderManager {
             }
             """;
 
-        int vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource, "INFINITE_GRID_VERTEX");
-        int fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource, "INFINITE_GRID_FRAGMENT");
-        int program = linkProgram(vertexShader, fragmentShader);
-
-        // Get uniform locations (using -1 for unused uniforms to match constructor)
-        int mvpLocation = -1;  // Not used in infinite grid shader
-        int colorLocation = -1; // Not used in infinite grid shader
-
-        logger.debug("INFINITE_GRID shader created - program: {}", program);
-        return new ShaderProgram(ShaderType.INFINITE_GRID, program, vertexShader, fragmentShader, mvpLocation, colorLocation);
-    }
-
-    /**
-     * Compile a shader from source.
-     */
-    private int compileShader(int type, String source, String name) {
-        int shader = glCreateShader(type);
-        if (shader == 0) {
-            throw new RuntimeException("Failed to create shader: " + name);
-        }
-
-        glShaderSource(shader, source);
-        glCompileShader(shader);
-
-        // Check compilation status
-        int success = glGetShaderi(shader, GL_COMPILE_STATUS);
-        if (success == GL_FALSE) {
-            String infoLog = glGetShaderInfoLog(shader);
-            glDeleteShader(shader);
-            throw new RuntimeException("Shader compilation failed (" + name + "): " + infoLog);
-        }
-
-        logger.trace("Shader compiled successfully: {}", name);
-        return shader;
-    }
-
-    /**
-     * Link vertex and fragment shaders into a program.
-     */
-    private int linkProgram(int vertexShader, int fragmentShader) {
-        int program = glCreateProgram();
-        if (program == 0) {
-            throw new RuntimeException("Failed to create shader program");
-        }
-
-        glAttachShader(program, vertexShader);
-        glAttachShader(program, fragmentShader);
-        glLinkProgram(program);
-
-        // Check linking status
-        int success = glGetProgrami(program, GL_LINK_STATUS);
-        if (success == GL_FALSE) {
-            String infoLog = glGetProgramInfoLog(program);
-            glDeleteProgram(program);
-            throw new RuntimeException("Program linking failed: " + infoLog);
-        }
-
-        logger.trace("Shader program linked successfully: {}", program);
+        ShaderProgram program = buildProgram(vertexShaderSource, fragmentShaderSource);
+        logger.debug("INFINITE_GRID shader created - program: {}", program.getProgramId());
         return program;
     }
 

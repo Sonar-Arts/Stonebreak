@@ -7,7 +7,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.items.Item;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.components.MCrosshairRenderer;
 import com.stonebreak.ui.chat.SkijaChatRenderer;

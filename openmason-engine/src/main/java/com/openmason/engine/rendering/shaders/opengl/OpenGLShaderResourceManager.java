@@ -1,6 +1,6 @@
-package com.stonebreak.rendering.shaders.OpenGL;
+package com.openmason.engine.rendering.shaders.opengl;
 
-import com.stonebreak.rendering.shaders.managers.IShaderResourceManager;
+import com.openmason.engine.rendering.shaders.managers.IShaderResourceManager;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;

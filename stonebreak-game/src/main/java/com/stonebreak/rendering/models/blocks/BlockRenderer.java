@@ -2,7 +2,7 @@ package com.stonebreak.rendering.models.blocks;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
 import com.openmason.engine.rendering.cbr.models.BlockDefinitionRegistry;
 import org.joml.Matrix4f;

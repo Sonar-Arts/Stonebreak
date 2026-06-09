@@ -7,7 +7,7 @@ import org.lwjgl.opengl.GL30;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;

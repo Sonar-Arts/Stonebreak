@@ -23,7 +23,7 @@ import static org.lwjgl.opengl.GL11.*;
 // Stonebreak Game Components
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.emitters.SoundEmitterRenderer;
 import com.stonebreak.audio.emitters.SoundEmitter;
 

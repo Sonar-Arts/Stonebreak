@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.core;
 
 import com.stonebreak.ui.Font;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 
 public class ResourceManager {
     private ShaderProgram shaderProgram;

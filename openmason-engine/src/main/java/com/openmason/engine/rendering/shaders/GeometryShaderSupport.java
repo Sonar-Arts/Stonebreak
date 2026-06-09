@@ -1,9 +1,9 @@
-package com.stonebreak.rendering.shaders;
+package com.openmason.engine.rendering.shaders;
 
-import com.stonebreak.rendering.shaders.exceptions.ShaderCompilationException;
-import com.stonebreak.rendering.shaders.exceptions.ShaderLinkException;
-import com.stonebreak.rendering.shaders.managers.IShaderCompiler;
-import com.stonebreak.rendering.shaders.managers.IShaderResourceManager;
+import com.openmason.engine.rendering.shaders.exceptions.ShaderCompilationException;
+import com.openmason.engine.rendering.shaders.exceptions.ShaderLinkException;
+import com.openmason.engine.rendering.shaders.managers.IShaderCompiler;
+import com.openmason.engine.rendering.shaders.managers.IShaderResourceManager;
 
 import java.util.logging.Logger;
 import java.util.logging.Level;

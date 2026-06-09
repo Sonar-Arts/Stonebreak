@@ -1,6 +1,6 @@
 package com.stonebreak.rendering.UI.components;
 
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.pipeline.DepthCurtainRenderer;
 import org.joml.Vector4f;

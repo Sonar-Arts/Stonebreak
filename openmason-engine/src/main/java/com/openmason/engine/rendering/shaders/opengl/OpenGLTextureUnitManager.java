@@ -1,7 +1,7 @@
-package com.stonebreak.rendering.shaders.OpenGL;
+package com.openmason.engine.rendering.shaders.opengl;
 
-import com.stonebreak.rendering.shaders.managers.ITextureUnitManager;
-import com.stonebreak.rendering.shaders.exceptions.TextureUnitException;
+import com.openmason.engine.rendering.shaders.managers.ITextureUnitManager;
+import com.openmason.engine.rendering.shaders.exceptions.TextureUnitException;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;

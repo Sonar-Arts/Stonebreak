@@ -17,7 +17,7 @@ import com.stonebreak.config.Settings;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 
 // Specialized Player Rendering Components

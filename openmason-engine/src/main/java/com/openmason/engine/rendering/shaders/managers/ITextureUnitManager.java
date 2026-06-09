@@ -1,6 +1,6 @@
-package com.stonebreak.rendering.shaders.managers;
+package com.openmason.engine.rendering.shaders.managers;
 
-import com.stonebreak.rendering.shaders.exceptions.TextureUnitException;
+import com.openmason.engine.rendering.shaders.exceptions.TextureUnitException;
 
 /**
  * Interface for managing OpenGL texture units.
