@@ -44,6 +44,9 @@ public final class McpServerBootstrap {
             AnimationEditingService animationEditor = new AnimationEditingService(mainInterface);
             new AnimationToolDefinitions(animationEditor, mapper).registerAll(registry);
 
+            ViewportCaptureService viewportCapture = new ViewportCaptureService(mainInterface);
+            new ViewportToolDefinitions(viewportCapture, mapper).registerAll(registry);
+
             McpRequestRouter router = new McpRequestRouter(registry, mapper);
             server = new McpHttpServer(PORT, router, mapper);
             server.start();
