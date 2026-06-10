@@ -22,6 +22,7 @@ import com.stonebreak.network.packet.player.PlayerDataC2S;
 import com.stonebreak.network.packet.player.PlayerDataS2C;
 import com.stonebreak.network.packet.player.PlayerStateC2S;
 import com.stonebreak.network.packet.player.PlayerStateS2C;
+import com.stonebreak.network.packet.player.ViewDistanceC2S;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
 import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.ChunkDataS2C;
@@ -63,6 +64,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 5, DisconnectC2S.class, DisconnectC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 6, HandshakeC2S.class, HandshakeC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 7, PlayerDataC2S.class, PlayerDataC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 8, ViewDistanceC2S.class, ViewDistanceC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 8, EntityDamageC2S.class, EntityDamageC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────

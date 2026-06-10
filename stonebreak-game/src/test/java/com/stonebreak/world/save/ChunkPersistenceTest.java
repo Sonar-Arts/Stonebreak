@@ -1,5 +1,7 @@
 package com.stonebreak.world.save;
 
+import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
+import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.world.save.io.ChunkCodec;
@@ -9,6 +11,8 @@ import com.stonebreak.world.save.model.EntityData;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.zip.InflaterInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,8 +53,47 @@ class ChunkPersistenceTest {
         }
     }
 
+    @Test
+    void encodedBlockStreamMatchesLegacyLayout() throws IOException {
+        // The on-disk block section must stay a deflated little chain of
+        // big-endian short ids in y,z,x order — exactly what pre-palette
+        // builds wrote and read. This pins the layout so old worlds load
+        // and new saves load in old builds.
+        ChunkData chunk = createSampleChunk(2, 7);
+        byte[] payload = ChunkCodec.encode(chunk);
+
+        try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(payload))) {
+            in.readInt();              // magic
+            in.readUnsignedShort();    // version
+            in.readInt();              // chunkX
+            in.readInt();              // chunkZ
+            in.readLong();             // lastModified
+            in.readBoolean();          // featuresPopulated
+            in.readBoolean();          // hasEntitiesGenerated
+
+            int compressedLength = in.readInt();
+            byte[] compressed = in.readNBytes(compressedLength);
+            assertEquals(compressedLength, compressed.length, "Incomplete block buffer");
+
+            try (DataInputStream blockIn = new DataInputStream(
+                    new InflaterInputStream(new ByteArrayInputStream(compressed)))) {
+                CcoBlockStorage storage = chunk.getBlockStorage();
+                for (int y = 0; y < 256; y++) {
+                    for (int z = 0; z < 16; z++) {
+                        for (int x = 0; x < 16; x++) {
+                            int id = Short.toUnsignedInt(blockIn.readShort());
+                            assertEquals(((BlockType) storage.get(x, y, z)).getId(), id,
+                                "Block id mismatch at (" + x + "," + y + "," + z + ")");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private static ChunkData createSampleChunk(int chunkX, int chunkZ) {
-        BlockType[][][] blocks = new BlockType[16][256][16];
+        CcoPalettedChunkStorage blocks =
+            CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
         BlockType[] palette = {
             BlockType.STONE,
             BlockType.GRASS,
@@ -61,7 +105,7 @@ class ChunkPersistenceTest {
         for (int x = 0; x < 16; x++) {
             for (int y = 0; y < 256; y++) {
                 for (int z = 0; z < 16; z++) {
-                    blocks[x][y][z] = palette[random.nextInt(palette.length)];
+                    blocks.set(x, y, z, palette[random.nextInt(palette.length)]);
                 }
             }
         }
@@ -134,12 +178,12 @@ class ChunkPersistenceTest {
             assertEquals(a.getCustomData(), b.getCustomData(), "Entity custom data mismatch at index " + i);
         }
 
-        BlockType[][][] expectedBlocks = expected.getBlocks();
-        BlockType[][][] actualBlocks = actual.getBlocks();
+        CcoBlockStorage expectedBlocks = expected.getBlockStorage();
+        CcoBlockStorage actualBlocks = actual.getBlockStorage();
         for (int x = 0; x < 16; x++) {
             for (int y = 0; y < 256; y++) {
                 for (int z = 0; z < 16; z++) {
-                    assertEquals(expectedBlocks[x][y][z], actualBlocks[x][y][z],
+                    assertEquals(expectedBlocks.get(x, y, z), actualBlocks.get(x, y, z),
                         "Block mismatch at (" + x + "," + y + "," + z + ")");
                 }
             }

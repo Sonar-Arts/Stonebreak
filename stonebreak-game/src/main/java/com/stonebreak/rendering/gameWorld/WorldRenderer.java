@@ -29,7 +29,6 @@ import com.openmason.engine.rendering.sky.SkyRenderer;
 import com.openmason.engine.rendering.sky.clouds.CloudRenderer;
 import com.stonebreak.rendering.gameWorld.fastlod.FastLodRenderPass;
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.utils.ChunkPosition;
 import com.stonebreak.world.World;
 
 /**
@@ -55,6 +54,12 @@ public class WorldRenderer {
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
     private final List<Chunk> reusableVisibleChunks = new ArrayList<>();
+    // Cached so the per-frame chunk visit doesn't allocate a capturing lambda each call.
+    private final java.util.function.Consumer<Chunk> frustumCollector = chunk -> {
+        if (frustumCuller.isChunkVisible(chunk)) {
+            reusableVisibleChunks.add(chunk);
+        }
+    };
     
     /**
      * Creates a WorldRenderer with the required dependencies.
@@ -141,14 +146,13 @@ public class WorldRenderer {
         updateAnimatedTextures(totalTime, player);
         checkGLError("After updateAnimatedWater");
         
-        // Get chunks around the player, then cull those outside the view frustum
-        Map<ChunkPosition, Chunk> nearbyChunks = getVisibleChunks(world, player);
-        List<Chunk> visibleChunks = cullChunksToFrustum(nearbyChunks, player);
+        // Visit chunks around the player, culling those outside the view frustum
+        List<Chunk> visibleChunks = cullChunksToFrustum(world, player);
 
         // Debug: Log chunk count
         if (debugVisibleChunksCount < 1) {
             System.out.println("[WorldRenderer] Got " + visibleChunks.size() + " visible chunks (of "
-                + nearbyChunks.size() + " nearby) after frustum culling");
+                + world.getLoadedChunkCount() + " loaded) after frustum culling");
             debugVisibleChunksCount++;
         }
 
@@ -273,26 +277,17 @@ public class WorldRenderer {
     }
     
     /**
-     * Get visible chunks around the player.
+     * Visits the chunks around the player and collects those intersecting the camera view
+     * frustum. Returns a reused list; the visit itself is allocation-free (no intermediate
+     * map of nearby chunks — at 24-chunk render distance that map was ~2,401 entries of
+     * per-frame garbage).
      */
-    private Map<ChunkPosition, Chunk> getVisibleChunks(World world, Player player) {
+    private List<Chunk> cullChunksToFrustum(World world, Player player) {
         int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
-        return world.getChunksAroundPlayer(playerChunkX, playerChunkZ);
-    }
-
-    /**
-     * Filters the nearby chunks down to those intersecting the camera view frustum.
-     * Returns a reused list to avoid per-frame allocations.
-     */
-    private List<Chunk> cullChunksToFrustum(Map<ChunkPosition, Chunk> nearbyChunks, Player player) {
         frustumCuller.update(projectionMatrix, player.getViewMatrix());
         reusableVisibleChunks.clear();
-        for (Chunk chunk : nearbyChunks.values()) {
-            if (frustumCuller.isChunkVisible(chunk)) {
-                reusableVisibleChunks.add(chunk);
-            }
-        }
+        world.forEachChunkAroundPlayer(playerChunkX, playerChunkZ, frustumCollector);
         return reusableVisibleChunks;
     }
 

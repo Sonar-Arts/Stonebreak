@@ -76,4 +76,15 @@ public interface CcoChunkData {
     default String getBlockState(int x, int y, int z) {
         return null;
     }
+
+    /**
+     * Highest Y containing a non-air block, or -1 if the chunk is all air.
+     * Meshers use this to skip iterating empty air space above the terrain.
+     *
+     * <p>Default returns {@link Integer#MAX_VALUE} (no information — callers
+     * clamp to world height), so existing data sources keep working.
+     */
+    default int getHighestNonAirY() {
+        return Integer.MAX_VALUE;
+    }
 }

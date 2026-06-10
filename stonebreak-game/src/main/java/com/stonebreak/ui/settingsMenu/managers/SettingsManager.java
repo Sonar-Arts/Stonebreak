@@ -81,6 +81,11 @@ public class SettingsManager {
      * Pushes render + LOD distance from Settings into the live world config.
      * ChunkManager and FastLodManager both read from that config each tick, so the
      * change takes effect within ~1s without a world restart.
+     *
+     * <p>Also reports the new render distance to the server (ViewDistanceC2S) —
+     * in the two-world model the SERVER decides how many chunks each player is
+     * streamed, so without this the local config change only widens the loop
+     * over chunks the client will never receive.
      */
     public void applyWorldDistanceSettings() {
         com.stonebreak.world.World world = Game.getWorld();
@@ -88,6 +93,13 @@ public class SettingsManager {
         world.getConfig().setRenderDistance(settings.getRenderDistance());
         world.getConfig().setLodRange(settings.getLodDistance());
         world.getConfig().setLodEnabled(settings.getLodEnabled());
+
+        com.stonebreak.network.client.ClientWorldView client =
+                com.stonebreak.network.MultiplayerSession.getClient();
+        if (client != null) {
+            client.sendViewDistance(settings.getRenderDistance());
+        }
+
         System.out.println("Applied render distance: " + settings.getRenderDistance()
                 + ", LOD distance: " + settings.getLodDistance()
                 + ", LOD enabled: " + settings.getLodEnabled());

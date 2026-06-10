@@ -3,16 +3,20 @@ package com.stonebreak.network.client.handlers;
 import com.stonebreak.core.Game;
 import com.stonebreak.network.packet.world.ChunkDataS2C;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.Iterator;
 
 /**
- * Client-side: installs authoritative chunk snapshots into the local world. Chunks that
- * arrive before the local world has generated the target chunk are deferred and drained on
- * later ticks. Successor of the old {@code ChunkSynchronizer} CLIENT path.
+ * Client-side: installs authoritative chunk snapshots into the local world.
+ * Successor of the old {@code ChunkSynchronizer} CLIENT path.
+ *
+ * <p>Installs happen immediately on arrival — {@code World.installNetworkChunk}
+ * creates its chunk slot synchronously, so there is nothing to wait for. (An
+ * older version gated installs behind {@code world.getChunkAt(...) != null},
+ * which deferred every payload at least one tick and pushed empty placeholder
+ * chunks through the async load path for nothing.) Only payloads that arrive
+ * before the world object itself exists are deferred.
  */
 public final class ClientChunkHandler {
 
@@ -24,27 +28,20 @@ public final class ClientChunkHandler {
             pending.add(cd);
             return;
         }
-        Chunk chunk = world.getChunkAt(cd.chunkX(), cd.chunkZ());
-        if (chunk == null) {
-            pending.add(cd);
-            return;
-        }
         world.installNetworkChunk(cd.chunkX(), cd.chunkZ(), cd.payload());
     }
 
     public void tick() {
-        if (pending.isEmpty() || Game.getWorld() == null) {
+        if (pending.isEmpty()) {
             return;
         }
         World world = Game.getWorld();
-        Iterator<ChunkDataS2C> it = pending.iterator();
-        while (it.hasNext()) {
-            ChunkDataS2C cd = it.next();
-            if (world.getChunkAt(cd.chunkX(), cd.chunkZ()) == null) {
-                continue;
-            }
+        if (world == null) {
+            return;
+        }
+        ChunkDataS2C cd;
+        while ((cd = pending.poll()) != null) {
             world.installNetworkChunk(cd.chunkX(), cd.chunkZ(), cd.payload());
-            it.remove();
         }
     }
 

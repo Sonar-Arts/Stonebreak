@@ -1,7 +1,6 @@
 package com.openmason.engine.voxel.mms.mmsCore;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
-import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 
@@ -171,12 +170,14 @@ public final class MmsRenderableHandle implements AutoCloseable {
      *   pos(3 floats) | tex(2 floats) | normal(3 floats) | flags(4 bytes) | layer(1 float)
      *
      * @param meshData Source mesh data
-     * @return direct ByteBuffer positioned at 0, limit = vertexCount * stride
+     * @return direct ByteBuffer positioned at 0, limit = vertexCount * stride.
+     *         Pooled per GL thread — valid only until the next upload; the
+     *         glBufferData call in {@link #upload} consumes it synchronously.
      */
     private static ByteBuffer createInterleavedVertexData(MmsMeshData meshData) {
         int vertexCount = meshData.getVertexCount();
         int totalBytes = vertexCount * MmsBufferLayout.VERTEX_STRIDE_BYTES;
-        ByteBuffer buffer = BufferUtils.createByteBuffer(totalBytes);
+        ByteBuffer buffer = MmsUploadBufferPool.acquire(totalBytes);
 
         float[] positions = meshData.getVertexPositions();
         float[] texCoords = meshData.getTextureCoordinates();

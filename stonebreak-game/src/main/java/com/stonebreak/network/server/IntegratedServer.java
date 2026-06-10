@@ -19,6 +19,7 @@ import com.stonebreak.network.packet.player.GiveItemS2C;
 import com.stonebreak.network.packet.player.PlayerDataC2S;
 import com.stonebreak.network.packet.player.PlayerDataS2C;
 import com.stonebreak.network.packet.player.PlayerHeldItemC2S;
+import com.stonebreak.network.packet.player.ViewDistanceC2S;
 import com.stonebreak.network.packet.player.PlayerJoinS2C;
 import com.stonebreak.network.packet.player.PlayerLeaveS2C;
 import com.stonebreak.network.packet.player.PlayerStateC2S;
@@ -201,6 +202,7 @@ public final class IntegratedServer {
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
             case EntityDamageC2S ed -> entityHandler.handleEntityDamage(sp, ed, ctx);
             case PlayerDataC2S pd -> { if (!sp.isLocal()) sp.setPlayerDataBlob(pd.json()); }
+            case ViewDistanceC2S vd -> sp.setViewDistanceChunks(vd.chunks());
             case DisconnectC2S ignored -> sp.disconnect();
             default -> { /* unknown / unexpected serverbound packet — ignore */ }
         }

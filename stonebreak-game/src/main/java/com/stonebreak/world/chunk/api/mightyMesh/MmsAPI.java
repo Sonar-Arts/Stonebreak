@@ -717,6 +717,11 @@ public final class MmsAPI {
         }
 
         @Override
+        public int getHighestNonAirY() {
+            return chunk.getHighestNonAirY();
+        }
+
+        @Override
         public String getBlockState(int x, int y, int z) {
             String raw = chunk.getBlockState(x, y, z);
             if (raw == null) return null;

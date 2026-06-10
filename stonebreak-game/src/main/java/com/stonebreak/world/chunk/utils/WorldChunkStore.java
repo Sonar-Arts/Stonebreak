@@ -6,6 +6,7 @@ import com.openmason.engine.diagnostics.MemoryProfiler;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.ChunkStatus;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
+import com.stonebreak.world.generation.ColumnProfile;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.generation.features.FeatureQueue;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -15,6 +16,10 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -34,8 +39,21 @@ public class WorldChunkStore {
     // Deferred feature population queue to break recursive generation cycles
     private final Queue<ChunkPosition> pendingFeaturePopulation = new ConcurrentLinkedQueue<>();
 
+    // Column profiles (heights + biomes) computed during terrain generation,
+    // consumed by deferred feature population so the noise stack isn't
+    // resampled. Entries are removed when consumed, when the position is
+    // permanently dequeued, or when the chunk unloads.
+    private final Map<ChunkPosition, ColumnProfile> pendingColumnProfiles = new ConcurrentHashMap<>();
+
     // Async chunk loading support - tracks chunks being loaded to prevent duplicate requests
     private final Map<ChunkPosition, CompletableFuture<Chunk>> pendingChunkLoads = new ConcurrentHashMap<>();
+
+    // Terrain generation worker pool. Generation used to ride the disk-load future's
+    // continuation onto SaveService's single io thread, serializing every chunk's noise
+    // sampling and carving behind disk traffic. The generation stack is stateless per
+    // chunk (audited), so disk misses hop here and generate in parallel; disk I/O keeps
+    // its own single ordered thread.
+    private final ExecutorService generationExecutor;
 
     private Consumer<Chunk> loadListener;
     private Consumer<Chunk> unloadListener;
@@ -67,6 +85,17 @@ public class WorldChunkStore {
         this.chunks = new ConcurrentHashMap<>(initialCapacity);
 
         this.positionCache = new PositionCache();
+
+        // Same sizing as the mesh pipeline's pool: max(1, cores/2). Daemon threads —
+        // mostly parked on the render-only client world (empty placeholders only).
+        AtomicInteger threadCounter = new AtomicInteger(1);
+        this.generationExecutor = Executors.newFixedThreadPool(
+            config.getChunkBuildThreads(),
+            r -> {
+                Thread t = new Thread(r, "ChunkGeneration-" + threadCounter.getAndIncrement());
+                t.setDaemon(true);
+                return t;
+            });
     }
 
     // ========== Public API ==========
@@ -170,14 +199,17 @@ public class WorldChunkStore {
                     chunks.put(pos, loadedChunk);
                     finalizeChunkLoad(pos, loadedChunk);
                 }
-                // Remove from pending loads
-                pendingChunkLoads.remove(pos);
                 return loadedChunk;
             });
             // NO exception handling - let it crash immediately with full stack trace
+            // (whenComplete below does not swallow: the stored future still completes
+            // exceptionally and the fast path above rethrows on next poll)
 
-        // Track this pending load
+        // Track this pending load BEFORE attaching the removal — if the removal lived
+        // inside the chain above, a fast completion could remove the entry before this
+        // put ran, stranding a stale completed future in the map.
         pendingChunkLoads.put(pos, loadFuture);
+        loadFuture.whenComplete((c, t) -> pendingChunkLoads.remove(pos));
 
         // Return null - chunk will be available on next frame
         return null;
@@ -238,26 +270,45 @@ public class WorldChunkStore {
         return chunks.size();
     }
 
-    public Map<ChunkPosition, Chunk> getChunksInRenderDistance(int playerChunkX, int playerChunkZ) {
-        Map<ChunkPosition, Chunk> visible = new HashMap<>();
+    /**
+     * Visits every resident chunk within render distance of the given chunk position.
+     * Replaces the old {@code getChunksInRenderDistance}, which built a fresh ~(2r+1)²-entry
+     * HashMap per call — pure per-frame garbage at high render distances since the render
+     * path only ever iterated the values.
+     */
+    public void forEachChunkInRenderDistance(int playerChunkX, int playerChunkZ, Consumer<Chunk> action) {
         int renderDist = config.getRenderDistance();
 
         for (int x = playerChunkX - renderDist; x <= playerChunkX + renderDist; x++) {
             for (int z = playerChunkZ - renderDist; z <= playerChunkZ + renderDist; z++) {
                 // Render-only (client) worlds must NEVER generate here — that would create empty
                 // all-air placeholder chunks the server never streams, whose empty meshes are
-                // treated as failed builds. Only return chunks the server has already installed.
+                // treated as failed builds. Only visit chunks the server has already installed.
                 Chunk chunk = terrainGenerationEnabled ? getOrCreateChunk(x, z) : getChunk(x, z);
                 if (chunk != null) {
-                    visible.put(positionCache.get(x, z), chunk);
+                    action.accept(chunk);
                 }
             }
         }
-        return visible;
+    }
+
+    /**
+     * Unloads every resident chunk whose Chebyshev distance from the given center exceeds
+     * {@code keepRadius}. Iterates the live key set directly — ConcurrentHashMap's view is
+     * weakly consistent and tolerates concurrent removal, so no defensive copy is needed.
+     */
+    public void unloadChunksOutside(int centerChunkX, int centerChunkZ, int keepRadius) {
+        for (ChunkPosition cp : chunks.keySet()) {
+            int dist = Math.max(Math.abs(cp.getX() - centerChunkX), Math.abs(cp.getZ() - centerChunkZ));
+            if (dist > keepRadius) {
+                unloadChunk(cp.getX(), cp.getZ());
+            }
+        }
     }
 
     public void unloadChunk(int chunkX, int chunkZ) {
         ChunkPosition pos = positionCache.get(chunkX, chunkZ);
+        pendingColumnProfiles.remove(pos);
         Chunk chunk = chunks.remove(pos);
         if (chunk == null) {
             // Chunk doesn't exist, but still clean up position cache entry
@@ -307,6 +358,18 @@ public class WorldChunkStore {
         // Cancel any pending chunk loads
         pendingChunkLoads.values().forEach(future -> future.cancel(true));
         pendingChunkLoads.clear();
+
+        // Stop the generation workers (same pattern as ChunkManager.shutdown):
+        // graceful drain, then force after a timeout.
+        generationExecutor.shutdown();
+        try {
+            if (!generationExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                generationExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            generationExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
 
         // Clean up loaded chunks
         chunks.values().forEach(chunk -> {
@@ -375,6 +438,7 @@ public class WorldChunkStore {
 
             // Skip if chunk was unloaded or already has features
             if (chunk == null || chunk.areFeaturesPopulated()) {
+                pendingColumnProfiles.remove(pos);
                 continue;
             }
 
@@ -388,7 +452,10 @@ public class WorldChunkStore {
             if (neighborsReady) {
                 // Neighbors exist - safe to populate features
                 try {
-                    terrainSystem.populateChunkWithFeatures(world, chunk, world.getSnowLayerManager());
+                    // Profile from terrain generation (null for disk-loaded chunks
+                    // that somehow still need features — populate recomputes then).
+                    ColumnProfile profile = pendingColumnProfiles.remove(pos);
+                    terrainSystem.populateChunkWithFeatures(world, chunk, world.getSnowLayerManager(), profile);
                     chunk.setFeaturesPopulated(true);
                     // Features write via chunk.setBlock(), which only flips the CCO dirty flag
                     // and does not schedule a remesh. If the mesh was already built from
@@ -435,19 +502,23 @@ public class WorldChunkStore {
         // Try loading from disk first (async)
         if (saveService != null) {
             return saveService.loadChunk(x, z)
-                .thenApply(loaded -> {
+                .thenCompose(loaded -> {
                     if (loaded != null) {
+                        // Disk hit: prepare on the io thread, as before.
                         prepareLoadedChunk(loaded);
-                        return loaded;
+                        return CompletableFuture.completedFuture(loaded);
                     }
-                    // Chunk not on disk, generate new one
-                    return generate(x, z);
+                    // Disk miss: hop to the generation pool. This frees the single io
+                    // thread immediately and lets N chunks generate in parallel —
+                    // previously generation ran serialized on the io thread itself.
+                    return CompletableFuture.supplyAsync(() -> generate(x, z), generationExecutor);
                 });
                 // NO exception handling - let corruption errors crash immediately with full stack trace
         }
 
-        // No save service, generate immediately
-        return CompletableFuture.completedFuture(generate(x, z));
+        // No save service (render-only client world): still a cheap empty chunk,
+        // but keep it off the caller's thread for a uniform async contract.
+        return CompletableFuture.supplyAsync(() -> generate(x, z), generationExecutor);
     }
 
     private Chunk generate(int x, int z) {
@@ -461,11 +532,16 @@ public class WorldChunkStore {
 
             // Generate terrain ONLY - features will be populated later via queue
             // This prevents recursive chunk generation during mesh building
-            Chunk chunk = terrainSystem.generateTerrainOnly(x, z);
-            if (chunk == null) {
+            TerrainGenerationSystem.TerrainResult result = terrainSystem.generateTerrainOnly(x, z);
+            if (result == null || result.chunk() == null) {
                 System.err.println("CRITICAL: Failed to generate chunk at (" + x + ", " + z + ")");
                 return null;
             }
+            Chunk chunk = result.chunk();
+
+            // Keep the column profile so deferred feature population reuses it
+            // instead of resampling the noise stack (~3 KB per pending chunk).
+            pendingColumnProfiles.put(positionCache.get(x, z), result.profile());
 
             // DO NOT populate features here - they will be populated by processPendingFeaturePopulation()
             // when neighbors exist and it's safe to do so without triggering recursion
@@ -543,34 +619,13 @@ public class WorldChunkStore {
     /**
      * Checks if a chunk contains any flowing (non-source) water blocks.
      * Used to determine if a newly generated chunk needs to be saved to persist water metadata.
+     * Queries the WaterSystem's sparse cell map — no 65k-block chunk scan.
      */
     private boolean chunkHasFlowingWater(Chunk chunk) {
         if (world == null || world.getWaterSystem() == null) {
             return false;
         }
-
-        int chunkX = chunk.getChunkX();
-        int chunkZ = chunk.getChunkZ();
-
-        // Scan chunk for water blocks and check their state in WaterSystem
-        for (int localX = 0; localX < WorldConfiguration.CHUNK_SIZE; localX++) {
-            for (int localZ = 0; localZ < WorldConfiguration.CHUNK_SIZE; localZ++) {
-                for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
-                    if (chunk.getBlock(localX, y, localZ) == com.stonebreak.blocks.BlockType.WATER) {
-                        int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + localX;
-                        int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + localZ;
-
-                        var waterBlock = world.getWaterSystem().getWaterBlock(worldX, y, worldZ);
-                        // If there's any non-source water, this chunk needs to be saved
-                        if (waterBlock != null && !waterBlock.isSource()) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-
-        return false;
+        return world.getWaterSystem().hasFlowingCellInChunk(chunk.getChunkX(), chunk.getChunkZ());
     }
 
     private void prepareLoadedChunk(Chunk chunk) {

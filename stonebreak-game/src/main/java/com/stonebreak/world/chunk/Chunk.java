@@ -6,14 +6,13 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory.ComponentBundle;
 import com.openmason.engine.voxel.cco.coordinates.CcoCoordinates;
-import com.openmason.engine.voxel.cco.data.CcoBlockArray;
+import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 import com.openmason.engine.voxel.cco.data.CcoChunkMetadata;
 import com.openmason.engine.voxel.cco.data.CcoChunkState;
 import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializableSnapshot;
 import com.openmason.engine.voxel.cco.operations.CcoBlockReader;
 import com.openmason.engine.voxel.cco.operations.CcoBlockWriter;
-import com.stonebreak.world.chunk.api.commonChunkOperations.serialization.CcoSnapshotBuilder;
 import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
 import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
 import com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult;
@@ -50,7 +49,7 @@ public class Chunk {
 
     // CCO Components
     private CcoChunkMetadata metadata;
-    private final CcoBlockArray blocks;
+    private final CcoBlockStorage blocks;
     private final CcoBlockReader reader;
     private final CcoBlockWriter writer;
     private final CcoAtomicStateManager stateManager;
@@ -70,38 +69,44 @@ public class Chunk {
     private final ColumnOpacityProbe opacityProbe = WorldLightingContext.probeFor(this);
 
     /**
-     * Sparse per-block SBO state map (1.3+). Keys are encoded as
-     * {@code "localX,y,localZ"} (matching the water metadata convention).
-     * Only blocks with a non-default state are stored — clearing or setting
-     * a block to its default state removes the entry to keep memory and save
-     * footprint minimal.
+     * Sparse per-block SBO state map (1.3+). Keys are packed local coordinates
+     * (see {@link com.stonebreak.world.chunk.utils.LocalBlockKey}) — no string
+     * allocation per access. Only blocks with a non-default state are stored —
+     * clearing or setting a block to its default state removes the entry to
+     * keep memory and save footprint minimal.
      */
-    private final java.util.Map<String, String> blockStates = new java.util.HashMap<>();
+    private final java.util.Map<Integer, String> blockStates = new java.util.HashMap<>();
 
     /**
      * Creates a new chunk at the specified position using CCO API.
+     * Paletted storage starts as uniform-air sections — no 65k-reference
+     * array allocation/fill.
      */
     public Chunk(int x, int z) {
+        this(x, z, null);
+    }
+
+    /**
+     * Creates a chunk adopting pre-built block storage (zero-copy).
+     * Used by terrain generation, which fills storage directly instead of
+     * issuing 65k {@code setBlock} calls.
+     *
+     * @param storage Pre-built storage to adopt, or null for empty (all-air)
+     */
+    public Chunk(int x, int z, CcoBlockStorage storage) {
         this.x = x;
         this.z = z;
 
-        // Initialize block array (16x256x16)
-        BlockType[][][] blockArray = new BlockType[16][256][16];
-        for (int ix = 0; ix < 16; ix++) {
-            for (int iy = 0; iy < 256; iy++) {
-                for (int iz = 0; iz < 16; iz++) {
-                    blockArray[ix][iy][iz] = BlockType.AIR;
-                }
-            }
-        }
-
-        // Build CCO components using factory
-        ComponentBundle bundle = CcoFactory.builder()
+        CcoFactory.Builder builder = CcoFactory.builder()
             .withPosition(x, z)
-            .withBlocks(blockArray)
             .withSeed(0)
-            .withInitialState(CcoChunkState.BLOCKS_POPULATED)
-            .build();
+            .withInitialState(CcoChunkState.BLOCKS_POPULATED);
+        if (storage != null) {
+            builder.withStorage(storage);
+        } else {
+            builder.withEmptyStorage(BlockType.AIR);
+        }
+        ComponentBundle bundle = builder.build();
 
         // Extract components
         this.metadata = bundle.metadata;
@@ -134,7 +139,7 @@ public class Chunk {
             // states are scoped to the block instance, not the cell. Without
             // this, breaking a water-bucket-placed block and replacing it with
             // a different block would leak the bucket's "water" state.
-            blockStates.remove(stateKey(x, y, z));
+            blockStates.remove(com.stonebreak.world.chunk.utils.LocalBlockKey.pack(x, y, z));
             heightMap.onBlockChanged(x, y, z,
                     BlockOpacity.isOpaque(blockType),
                     BlockOpacity.isOpaque(previous),
@@ -149,7 +154,7 @@ public class Chunk {
      * if the block carries no non-default state.
      */
     public String getBlockState(int x, int y, int z) {
-        return blockStates.get(stateKey(x, y, z));
+        return blockStates.get(com.stonebreak.world.chunk.utils.LocalBlockKey.pack(x, y, z));
     }
 
     /**
@@ -157,7 +162,7 @@ public class Chunk {
      * clear back to the default state. Marks chunk dirty for save & remesh.
      */
     public void setBlockState(int x, int y, int z, String state) {
-        String key = stateKey(x, y, z);
+        int key = com.stonebreak.world.chunk.utils.LocalBlockKey.pack(x, y, z);
         String previous;
         if (state == null || state.isBlank()) {
             previous = blockStates.remove(key);
@@ -170,18 +175,36 @@ public class Chunk {
         }
     }
 
-    /** Read-only view of the per-block state map. */
-    public java.util.Map<String, String> getBlockStates() {
+    /**
+     * Read-only view of the per-block state map. Keys are packed local
+     * coordinates ({@link com.stonebreak.world.chunk.utils.LocalBlockKey}).
+     */
+    public java.util.Map<Integer, String> getBlockStates() {
         return java.util.Collections.unmodifiableMap(blockStates);
-    }
-
-    private static String stateKey(int x, int y, int z) {
-        return x + "," + y + "," + z;
     }
 
     /** Returns the engine opacity probe bound to this chunk — used by recomputeAll callers. */
     public ColumnOpacityProbe getOpacityProbe() {
         return opacityProbe;
+    }
+
+    /**
+     * Highest Y containing a non-air block, or -1 if the chunk is all air.
+     * Cheap with paletted storage — used by the mesher to skip empty air space.
+     */
+    public int getHighestNonAirY() {
+        return blocks.getHighestNonAirY();
+    }
+
+    /**
+     * Replaces this chunk's entire block contents with a copy of the given
+     * storage (section-level palette copy, near-free) and marks the chunk
+     * dirty for remesh. Used by the network chunk-install path; the caller
+     * must recompute the heightmap afterwards.
+     */
+    public void replaceAllBlocks(CcoBlockStorage source) {
+        blocks.copyFrom(source);
+        dirtyTracker.markBlockChanged();
     }
 
     // ===== Mesh Operations (CCO-based) =====
@@ -411,9 +434,10 @@ public class Chunk {
      * Creates a serializable snapshot of this chunk using CCO API.
      * Extracts water metadata from the World's WaterSystem and entities from EntityManager.
      *
-     * CRITICAL: Creates an ATOMIC snapshot by deep-copying the block array immediately.
+     * CRITICAL: Creates an ATOMIC snapshot by copying the block storage immediately.
      * This prevents race conditions where the chunk is modified after the snapshot is created
-     * but before it's serialized.
+     * but before it's serialized. The copy is cheap with paletted storage (~35 KB,
+     * uniform air sections cost almost nothing).
      *
      * @param world World instance to extract water metadata and entities from
      * @return Immutable snapshot including blocks, water metadata, and entities
@@ -428,59 +452,38 @@ public class Chunk {
             ));
         }
 
-        // CRITICAL FIX: Deep copy blocks array IMMEDIATELY to prevent race conditions
-        // This ensures the snapshot is truly immutable and captures the exact state
-        // at the moment checkAndClearDataDirty() was called.
-        BlockType[][][] blocksCopy = (BlockType[][][]) blocks.deepCopy();
+        // Copy block storage IMMEDIATELY so the snapshot is immutable and captures
+        // the exact state at the moment checkAndClearDataDirty() was called.
+        CcoBlockStorage blocksCopy = blocks.copy();
 
-        // Extract water metadata from WaterSystem
+        // Extract water metadata from WaterSystem's sparse cell map — no 65k-cell
+        // block scan. Only non-source (flowing) water is saved; source is default.
         java.util.Map<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> waterMetadata = new java.util.HashMap<>();
 
-        int totalWaterBlocks = 0;
-        int sourceBlocks = 0;
-        int flowingBlocks = 0;
-        int missingFromWaterSystem = 0;
-
         if (world != null && world.getWaterSystem() != null) {
-            // Scan all water blocks in this chunk (using the deep copy)
-            for (int localX = 0; localX < 16; localX++) {
-                for (int localZ = 0; localZ < 16; localZ++) {
-                    for (int y = 0; y < 256; y++) {
-                        if (blocksCopy[localX][y][localZ] == BlockType.WATER) {
-                            totalWaterBlocks++;
-                            int worldX = x * 16 + localX;
-                            int worldZ = z * 16 + localZ;
-
-                            // Get water state from WaterSystem
-                            var waterBlock = world.getWaterSystem().getWaterBlock(worldX, y, worldZ);
-                            if (waterBlock == null) {
-                                missingFromWaterSystem++;
-                            } else if (waterBlock.isSource()) {
-                                sourceBlocks++;
-                            } else {
-                                flowingBlocks++;
-                                // Only save non-source water (source is default)
-                                String key = localX + "," + y + "," + localZ;
-                                waterMetadata.put(key, new com.stonebreak.world.save.model.ChunkData.WaterBlockData(
-                                    waterBlock.level(),
-                                    waterBlock.falling()
-                                ));
-                            }
-                        }
-                    }
+            world.getWaterSystem().forEachCellInChunk(x, z, (worldX, y, worldZ, waterBlock) -> {
+                if (waterBlock.isSource()) {
+                    return;
                 }
-            }
+                int localX = worldX - x * 16;
+                int localZ = worldZ - z * 16;
+                // Guard against drift between the cell map and block data: only
+                // persist cells whose block (in this atomic copy) is still water.
+                if (blocksCopy.get(localX, y, localZ) == BlockType.WATER) {
+                    waterMetadata.put(localX + "," + y + "," + localZ,
+                        new com.stonebreak.world.save.model.ChunkData.WaterBlockData(
+                            waterBlock.level(),
+                            waterBlock.falling()
+                        ));
+                }
+            });
 
-            // Log water metadata extraction results
-            if (totalWaterBlocks > 0) {
+            if (!waterMetadata.isEmpty()) {
                 logger.log(Level.FINE, String.format(
-                    "[WATER-SAVE] Chunk (%d,%d): %d water blocks total | %d sources | %d flowing (saved) | %d missing from WaterSystem",
-                    x, z, totalWaterBlocks, sourceBlocks, flowingBlocks, missingFromWaterSystem
+                    "[WATER-SAVE] Chunk (%d,%d): %d flowing water blocks saved",
+                    x, z, waterMetadata.size()
                 ));
             }
-        } else {
-            // Don't log warning - null world is expected in unit tests
-            // In production, world should never be null when saving
         }
 
         // Extract entities in this chunk from EntityManager
@@ -496,7 +499,7 @@ public class Chunk {
             }
         }
 
-        // Create snapshot with deep-copied blocks, water metadata, entities,
+        // Create snapshot with copied block storage, water metadata, entities,
         // entity generation flag, and per-block SBO state map.
         return new CcoSerializableSnapshot(
             metadata.getChunkX(),
@@ -536,14 +539,9 @@ public class Chunk {
             snapshot.hasEntitiesGenerated() // Restore entity generation flag from snapshot
         );
 
-        // Copy block data
-        BlockType[][][] snapshotBlocks = snapshot.getBlocks();
-        BlockType[][][] currentBlocks = (BlockType[][][]) blocks.getUnderlyingArray();
-        for (int ix = 0; ix < 16; ix++) {
-            for (int iy = 0; iy < 256; iy++) {
-                System.arraycopy(snapshotBlocks[ix][iy], 0, currentBlocks[ix][iy], 0, 16);
-            }
-        }
+        // Copy block data — section-level palette copy, near-free compared to
+        // the old 65k-element arraycopy.
+        blocks.copyFrom(snapshot.getBlockStorage());
 
         // Restore per-block SBO state map (1.3+). Empty for v1 saves.
         blockStates.clear();

@@ -2,23 +2,22 @@ package com.openmason.engine.voxel.cco.operations;
 
 import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.cco.coordinates.CcoBounds;
-import com.openmason.engine.voxel.cco.data.CcoBlockArray;
+import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 
 /**
  * Fast block reading operations for CCO chunks.
  * All operations are thread-safe for concurrent reads.
- * Performance: < 100ns per read (direct array access).
  */
 public final class CcoBlockReader {
 
-    private final CcoBlockArray blocks;
+    private final CcoBlockStorage blocks;
 
     /**
-     * Creates a block reader for the given block array.
+     * Creates a block reader for the given block storage.
      *
-     * @param blocks Block array to read from
+     * @param blocks Block storage to read from
      */
-    public CcoBlockReader(CcoBlockArray blocks) {
+    public CcoBlockReader(CcoBlockStorage blocks) {
         this.blocks = blocks;
     }
 
@@ -28,23 +27,10 @@ public final class CcoBlockReader {
      * @param x Local X coordinate
      * @param y Local Y coordinate
      * @param z Local Z coordinate
-     * @return Block type, or AIR if out of bounds
+     * @return Block type, or null if out of bounds
      */
     public IBlockType get(int x, int y, int z) {
         return blocks.get(x, y, z);
-    }
-
-    /**
-     * Gets block with bounds checking disabled (unsafe but fast).
-     * Caller MUST ensure coordinates are valid.
-     *
-     * @param x Local X coordinate (must be valid)
-     * @param y Local Y coordinate (must be valid)
-     * @param z Local Z coordinate (must be valid)
-     * @return Block type
-     */
-    public IBlockType getUnsafe(int x, int y, int z) {
-        return blocks.getUnderlyingArray()[x][y][z];
     }
 
     /**
@@ -101,20 +87,12 @@ public final class CcoBlockReader {
 
     /**
      * Counts non-AIR blocks in the chunk.
+     * Cheap for paletted storage (sums per-section counters).
      *
      * @return Number of non-AIR blocks
      */
     public int countNonAirBlocks() {
         return blocks.countNonAirBlocks();
-    }
-
-    /**
-     * Counts unique block types in the chunk.
-     *
-     * @return Number of unique block types
-     */
-    public int countUniqueTypes() {
-        return blocks.countUniqueBlockTypes();
     }
 
     /**
@@ -127,12 +105,11 @@ public final class CcoBlockReader {
     }
 
     /**
-     * Gets the underlying block array for advanced operations.
-     * Use with caution - modifications will affect the chunk.
+     * Gets the underlying block storage for advanced operations.
      *
-     * @return Block array
+     * @return Block storage
      */
-    public CcoBlockArray getBlockArray() {
+    public CcoBlockStorage getStorage() {
         return blocks;
     }
 }
