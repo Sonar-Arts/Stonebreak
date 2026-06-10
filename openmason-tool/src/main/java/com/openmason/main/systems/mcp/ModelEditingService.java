@@ -1,5 +1,6 @@
 package com.openmason.main.systems.mcp;
 
+import com.fasterxml.jackson.annotation.JsonValue;
 import com.openmason.engine.rendering.model.ModelPart;
 import com.openmason.engine.rendering.model.gmr.parts.MeshRange;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
@@ -220,29 +221,27 @@ public final class ModelEditingService {
 
     // ===================== Mutate: mesh elements =====================
 
-    public Optional<List<VertexView>> listPartVertices(String idOrName) {
+    public Optional<VerticesView> listPartVertices(String idOrName) {
         return await(MainThreadExecutor.submit(() -> {
             Optional<ModelPartDescriptor> p = resolve(idOrName);
-            if (p.isEmpty()) return Optional.<List<VertexView>>empty();
+            if (p.isEmpty()) return Optional.<VerticesView>empty();
             PartMeshRebuilder.PartGeometry geo = requirePartManager().getPartGeometry(p.get().id());
-            if (geo == null || geo.vertices() == null) return Optional.of(List.<VertexView>of());
-            float[] verts = geo.vertices();
-            int count = verts.length / 3;
-            List<VertexView> out = new ArrayList<>(count);
-            for (int i = 0; i < count; i++) {
-                int o = i * 3;
-                out.add(new VertexView(i, new Vec3(verts[o], verts[o + 1], verts[o + 2])));
+            if (geo == null || geo.vertices() == null) {
+                return Optional.of(new VerticesView(0, new float[0]));
             }
-            return Optional.of(out);
+            float[] verts = geo.vertices();
+            return Optional.of(new VerticesView(verts.length / 3, verts.clone()));
         }));
     }
 
-    public Optional<List<EdgeView>> listPartEdges(String idOrName) {
+    public Optional<EdgesView> listPartEdges(String idOrName) {
         return await(MainThreadExecutor.submit(() -> {
             Optional<ModelPartDescriptor> p = resolve(idOrName);
-            if (p.isEmpty()) return Optional.<List<EdgeView>>empty();
+            if (p.isEmpty()) return Optional.<EdgesView>empty();
             PartMeshRebuilder.PartGeometry geo = requirePartManager().getPartGeometry(p.get().id());
-            if (geo == null || geo.indices() == null) return Optional.of(List.<EdgeView>of());
+            if (geo == null || geo.indices() == null) {
+                return Optional.of(new EdgesView(0, new int[0]));
+            }
             int[] indices = geo.indices();
             int triCount = indices.length / 3;
             LinkedHashSet<Long> seen = new LinkedHashSet<>();
@@ -252,14 +251,13 @@ public final class ModelEditingService {
                 seen.add(edgeKey(v1, v2));
                 seen.add(edgeKey(v2, v0));
             }
-            List<EdgeView> out = new ArrayList<>(seen.size());
+            int[] pairs = new int[seen.size() * 2];
             int idx = 0;
             for (long key : seen) {
-                int a = (int) (key >> 32);
-                int b = (int) (key & 0xFFFFFFFFL);
-                out.add(new EdgeView(idx++, a, b));
+                pairs[idx++] = (int) (key >> 32);
+                pairs[idx++] = (int) (key & 0xFFFFFFFFL);
             }
-            return Optional.of(out);
+            return Optional.of(new EdgesView(seen.size(), pairs));
         }));
     }
 
@@ -372,20 +370,6 @@ public final class ModelEditingService {
             if (!vp.getCommandHistory().canRedo()) return false;
             vp.getCommandHistory().redo();
             return true;
-        }));
-    }
-
-    public boolean canUndo() {
-        return await(MainThreadExecutor.submit(() -> {
-            ViewportController vp = mainInterface.getViewport3D();
-            return vp != null && vp.getCommandHistory() != null && vp.getCommandHistory().canUndo();
-        }));
-    }
-
-    public boolean canRedo() {
-        return await(MainThreadExecutor.submit(() -> {
-            ViewportController vp = mainInterface.getViewport3D();
-            return vp != null && vp.getCommandHistory() != null && vp.getCommandHistory().canRedo();
         }));
     }
 
@@ -534,9 +518,15 @@ public final class ModelEditingService {
 
     public record ModelInfo(boolean modelLoaded, int partCount) {}
 
+    /** Serializes as a compact {@code [x, y, z]} array to keep MCP responses small. */
     public record Vec3(float x, float y, float z) {
         public static Vec3 from(Vector3f v) {
             return new Vec3(v.x, v.y, v.z);
+        }
+
+        @JsonValue
+        public float[] xyz() {
+            return new float[] {x, y, z};
         }
     }
 
@@ -609,11 +599,13 @@ public final class ModelEditingService {
         }
     }
 
-    public record VertexView(int localIndex, Vec3 position) {}
+    /** Flat positions array: vertex i is at positions[3i .. 3i+2]; local index == i. */
+    public record VerticesView(int count, float[] positions) {}
 
-    public record EdgeView(int edgeIndex, int vertexA, int vertexB) {}
+    /** Flat vertex-index pairs: edge i is (vertexPairs[2i], vertexPairs[2i+1]); edge index == i. */
+    public record EdgesView(int count, int[] vertexPairs) {}
 
-    public record FaceView(int localFaceId, int[] vertexIndices) {}
+    public record FaceView(int faceId, int[] vertices) {}
 
     public record PartView(String id, String name, boolean visible, boolean locked,
                            Vec3 origin, Vec3 position, Vec3 rotation, Vec3 scale,

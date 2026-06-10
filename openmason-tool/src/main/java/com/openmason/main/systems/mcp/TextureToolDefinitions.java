@@ -42,6 +42,19 @@ public final class TextureToolDefinitions {
                 args -> editor.getPixel(reqInt(args, "x"), reqInt(args, "y"))));
 
         registry.register(new McpTool(
+                "tex_get_region",
+                "Read a rectangular region of the active layer as a flat [r,g,b,a, ...] array, "
+                        + "row-major from (x,y). Far cheaper than per-pixel tex_get_pixel calls.",
+                schema()
+                        .intg("x", "Origin X").intg("y", "Origin Y")
+                        .intg("w", "Width in pixels").intg("h", "Height in pixels")
+                        .required("x", "y", "w", "h")
+                        .build(),
+                args -> editor.getRegion(
+                        reqInt(args, "x"), reqInt(args, "y"),
+                        reqInt(args, "w"), reqInt(args, "h"))));
+
+        registry.register(new McpTool(
                 "tex_list_layers",
                 "List all layers in the texture project (index, name, visibility, opacity, active flag).",
                 schema().build(),
@@ -51,29 +64,32 @@ public final class TextureToolDefinitions {
 
         registry.register(new McpTool(
                 "tex_set_pixel",
-                "Set a single pixel on the active layer. Channel values 0-255. Recorded as one undoable step.",
+                "Set a single pixel on the active layer. Recorded as one undoable step.",
                 rgbaSchema()
                         .intg("x", "Pixel X").intg("y", "Pixel Y")
-                        .required("x", "y", "r", "g", "b", "a")
+                        .required("x", "y", "color")
                         .build(),
-                args -> editor.setPixel(
-                        reqInt(args, "x"), reqInt(args, "y"),
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.setPixel(
+                            reqInt(args, "x"), reqInt(args, "y"), c[0], c[1], c[2], c[3]);
+                }));
 
         registry.register(new McpTool(
                 "tex_set_pixels",
-                "Bulk per-pixel write. 'pixels' is an array of {x,y,r,g,b,a} entries. All recorded as a single undo step.",
+                "Bulk per-pixel write. 'pixels' is a flat int array [x,y,r,g,b,a, x,y,r,g,b,a, ...] "
+                        + "(6 values per pixel). All recorded as a single undo step.",
                 pixelsArraySchema(),
                 args -> editor.setPixels(parsePixels(args.get("pixels")))));
 
         registry.register(new McpTool(
                 "tex_fill_canvas",
                 "Fill every editable pixel of the active layer with a solid RGBA color.",
-                rgbaSchema().required("r", "g", "b", "a").build(),
-                args -> editor.fillCanvas(
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                rgbaSchema().required("color").build(),
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.fillCanvas(c[0], c[1], c[2], c[3]);
+                }));
 
         registry.register(new McpTool(
                 "tex_clear_canvas",
@@ -84,22 +100,26 @@ public final class TextureToolDefinitions {
         registry.register(new McpTool(
                 "tex_fill_rect",
                 "Fill a solid rectangle (origin x,y with width w and height h) with an RGBA color.",
-                rectSchema().required("x", "y", "w", "h", "r", "g", "b", "a").build(),
-                args -> editor.fillRect(
-                        reqInt(args, "x"), reqInt(args, "y"),
-                        reqInt(args, "w"), reqInt(args, "h"),
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                rectSchema().required("x", "y", "w", "h", "color").build(),
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.fillRect(
+                            reqInt(args, "x"), reqInt(args, "y"),
+                            reqInt(args, "w"), reqInt(args, "h"),
+                            c[0], c[1], c[2], c[3]);
+                }));
 
         registry.register(new McpTool(
                 "tex_draw_rect",
                 "Draw a rectangle outline (1 pixel thick) at origin (x,y) with size w x h.",
-                rectSchema().required("x", "y", "w", "h", "r", "g", "b", "a").build(),
-                args -> editor.drawRect(
-                        reqInt(args, "x"), reqInt(args, "y"),
-                        reqInt(args, "w"), reqInt(args, "h"),
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                rectSchema().required("x", "y", "w", "h", "color").build(),
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.drawRect(
+                            reqInt(args, "x"), reqInt(args, "y"),
+                            reqInt(args, "w"), reqInt(args, "h"),
+                            c[0], c[1], c[2], c[3]);
+                }));
 
         registry.register(new McpTool(
                 "tex_draw_line",
@@ -107,25 +127,28 @@ public final class TextureToolDefinitions {
                 rgbaSchema()
                         .intg("x0", "Start X").intg("y0", "Start Y")
                         .intg("x1", "End X").intg("y1", "End Y")
-                        .required("x0", "y0", "x1", "y1", "r", "g", "b", "a")
+                        .required("x0", "y0", "x1", "y1", "color")
                         .build(),
-                args -> editor.drawLine(
-                        reqInt(args, "x0"), reqInt(args, "y0"),
-                        reqInt(args, "x1"), reqInt(args, "y1"),
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.drawLine(
+                            reqInt(args, "x0"), reqInt(args, "y0"),
+                            reqInt(args, "x1"), reqInt(args, "y1"),
+                            c[0], c[1], c[2], c[3]);
+                }));
 
         registry.register(new McpTool(
                 "tex_flood_fill",
                 "Flood-fill (4-connected) starting at (x,y) with an RGBA color. Respects layer mask + active selection.",
                 rgbaSchema()
                         .intg("x", "Seed X").intg("y", "Seed Y")
-                        .required("x", "y", "r", "g", "b", "a")
+                        .required("x", "y", "color")
                         .build(),
-                args -> editor.floodFill(
-                        reqInt(args, "x"), reqInt(args, "y"),
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.floodFill(reqInt(args, "x"), reqInt(args, "y"),
+                            c[0], c[1], c[2], c[3]);
+                }));
 
         // ---------- Filters ----------
 
@@ -242,11 +265,7 @@ public final class TextureToolDefinitions {
     }
 
     private SchemaBuilder rgbaSchema() {
-        return schema()
-                .intg("r", "Red 0..255")
-                .intg("g", "Green 0..255")
-                .intg("b", "Blue 0..255")
-                .intg("a", "Alpha 0..255");
+        return schema().rgba("color", "RGBA [r,g,b,a], each 0..255");
     }
 
     private SchemaBuilder rectSchema() {
@@ -258,34 +277,10 @@ public final class TextureToolDefinitions {
     }
 
     private JsonNode pixelsArraySchema() {
-        ObjectNode root = mapper.createObjectNode();
-        root.put("type", "object");
-        ObjectNode props = mapper.createObjectNode();
-        ObjectNode arr = mapper.createObjectNode();
-        arr.put("type", "array");
-        arr.put("description", "Array of pixel entries");
-
-        ObjectNode item = mapper.createObjectNode();
-        item.put("type", "object");
-        ObjectNode itemProps = mapper.createObjectNode();
-        for (String n : new String[]{"x", "y", "r", "g", "b", "a"}) {
-            ObjectNode field = mapper.createObjectNode();
-            field.put("type", "integer");
-            itemProps.set(n, field);
-        }
-        item.set("properties", itemProps);
-        ArrayNode itemRequired = mapper.createArrayNode();
-        for (String n : new String[]{"x", "y", "r", "g", "b", "a"}) itemRequired.add(n);
-        item.set("required", itemRequired);
-
-        arr.set("items", item);
-        props.set("pixels", arr);
-        root.set("properties", props);
-
-        ArrayNode required = mapper.createArrayNode();
-        required.add("pixels");
-        root.set("required", required);
-        return root;
+        return schema()
+                .intArr("pixels", "Flat [x,y,r,g,b,a, ...] array, 6 ints per pixel")
+                .required("pixels")
+                .build();
     }
 
     private static final class SchemaBuilder {
@@ -308,6 +303,31 @@ public final class TextureToolDefinitions {
         SchemaBuilder intg(String name, String description) { return prop(name, "integer", description); }
         SchemaBuilder bool(String name, String description) { return prop(name, "boolean", description); }
 
+        /** Fixed-length [r,g,b,a] integer array. */
+        SchemaBuilder rgba(String name, String description) {
+            ObjectNode def = intArrNode(description);
+            def.put("minItems", 4);
+            def.put("maxItems", 4);
+            properties.set(name, def);
+            return this;
+        }
+
+        /** Variable-length integer array. */
+        SchemaBuilder intArr(String name, String description) {
+            properties.set(name, intArrNode(description));
+            return this;
+        }
+
+        private ObjectNode intArrNode(String description) {
+            ObjectNode def = mapper.createObjectNode();
+            def.put("type", "array");
+            def.put("description", description);
+            ObjectNode items = mapper.createObjectNode();
+            items.put("type", "integer");
+            def.set("items", items);
+            return def;
+        }
+
         SchemaBuilder prop(String name, String type, String description) {
             ObjectNode def = mapper.createObjectNode();
             def.put("type", type);
@@ -329,17 +349,43 @@ public final class TextureToolDefinitions {
 
     // ===================== Argument parsing =====================
 
+    /** Parse a flat [x,y,r,g,b,a, ...] array (6 ints per pixel). */
     private static List<TextureEditingService.PixelEntry> parsePixels(JsonNode arr) {
-        if (arr == null || !arr.isArray()) {
-            throw new IllegalArgumentException("Missing required array argument: pixels");
+        if (arr == null || !arr.isArray() || arr.size() % 6 != 0) {
+            throw new IllegalArgumentException(
+                    "pixels must be a flat int array [x,y,r,g,b,a, ...] with length divisible by 6");
         }
-        List<TextureEditingService.PixelEntry> out = new ArrayList<>(arr.size());
-        for (int i = 0; i < arr.size(); i++) {
-            JsonNode p = arr.get(i);
+        List<TextureEditingService.PixelEntry> out = new ArrayList<>(arr.size() / 6);
+        for (int i = 0; i < arr.size(); i += 6) {
             out.add(new TextureEditingService.PixelEntry(
-                    reqInt(p, "x"), reqInt(p, "y"),
-                    reqInt(p, "r"), reqInt(p, "g"),
-                    reqInt(p, "b"), reqInt(p, "a")));
+                    intAt(arr, i), intAt(arr, i + 1),
+                    intAt(arr, i + 2), intAt(arr, i + 3),
+                    intAt(arr, i + 4), intAt(arr, i + 5)));
+        }
+        return out;
+    }
+
+    private static int intAt(JsonNode arr, int index) {
+        JsonNode n = arr.get(index);
+        if (n == null || !n.isNumber()) {
+            throw new IllegalArgumentException("pixels[" + index + "] is not a number");
+        }
+        return n.intValue();
+    }
+
+    /** Parse the required [r,g,b,a] 'color' array argument. */
+    private static int[] reqRgba(JsonNode args) {
+        JsonNode n = args.get("color");
+        if (n == null || !n.isArray() || n.size() != 4) {
+            throw new IllegalArgumentException("Missing required [r,g,b,a] argument: color");
+        }
+        int[] out = new int[4];
+        for (int i = 0; i < 4; i++) {
+            JsonNode c = n.get(i);
+            if (c == null || !c.isNumber()) {
+                throw new IllegalArgumentException("color[" + i + "] is not a number");
+            }
+            out[i] = c.intValue();
         }
         return out;
     }

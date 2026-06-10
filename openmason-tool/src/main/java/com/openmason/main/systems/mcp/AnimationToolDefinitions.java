@@ -128,23 +128,23 @@ public final class AnimationToolDefinitions {
         registry.register(new McpTool(
                 "anim_insert_keyframe",
                 "Insert (or upsert) a keyframe on the part's track at the given time with the supplied pose. "
-                        + "Any of position/rotation/scale may be omitted — omitted axes are taken from the part's "
-                        + "current local transform. Rotation is Euler degrees. Easing defaults to LINEAR.",
+                        + "Any of position/rotation/scale may be omitted — omitted components are taken from the "
+                        + "part's current local transform. Rotation is Euler degrees. Easing defaults to LINEAR.",
                 schema()
                         .str("part_id_or_name", "Part id or name")
                         .num("time", "Keyframe time in seconds")
-                        .num("position_x", "Position X").num("position_y", "Position Y").num("position_z", "Position Z")
-                        .num("rotation_x", "Rotation X (degrees)").num("rotation_y", "Rotation Y (degrees)").num("rotation_z", "Rotation Z (degrees)")
-                        .num("scale_x", "Scale X").num("scale_y", "Scale Y").num("scale_z", "Scale Z")
+                        .vec3("position", "Position [x,y,z]")
+                        .vec3("rotation", "Euler degrees [x,y,z]")
+                        .vec3("scale", "Scale [x,y,z]")
                         .str("easing", "Easing curve (LINEAR; reserved for future curves)")
                         .required("part_id_or_name", "time")
                         .build(),
                 args -> editor.insertKeyframe(
                         reqString(args, "part_id_or_name"),
                         reqFloat(args, "time"),
-                        optVec3(args, "position_x", "position_y", "position_z"),
-                        optVec3(args, "rotation_x", "rotation_y", "rotation_z"),
-                        optVec3(args, "scale_x", "scale_y", "scale_z"),
+                        optVec3(args, "position"),
+                        optVec3(args, "rotation"),
+                        optVec3(args, "scale"),
                         optString(args, "easing")).orElse(null)));
 
         registry.register(new McpTool(
@@ -155,9 +155,9 @@ public final class AnimationToolDefinitions {
                         .str("part_id_or_name", "Part id or name")
                         .num("index", "Keyframe index from anim_list_keyframes")
                         .num("time", "New time in seconds (optional)")
-                        .num("position_x", "Position X").num("position_y", "Position Y").num("position_z", "Position Z")
-                        .num("rotation_x", "Rotation X (degrees)").num("rotation_y", "Rotation Y (degrees)").num("rotation_z", "Rotation Z (degrees)")
-                        .num("scale_x", "Scale X").num("scale_y", "Scale Y").num("scale_z", "Scale Z")
+                        .vec3("position", "Position [x,y,z]")
+                        .vec3("rotation", "Euler degrees [x,y,z]")
+                        .vec3("scale", "Scale [x,y,z]")
                         .str("easing", "Easing curve")
                         .required("part_id_or_name", "index")
                         .build(),
@@ -165,9 +165,9 @@ public final class AnimationToolDefinitions {
                         reqString(args, "part_id_or_name"),
                         (int) reqFloat(args, "index"),
                         optFloatBoxed(args, "time"),
-                        optVec3(args, "position_x", "position_y", "position_z"),
-                        optVec3(args, "rotation_x", "rotation_y", "rotation_z"),
-                        optVec3(args, "scale_x", "scale_y", "scale_z"),
+                        optVec3(args, "position"),
+                        optVec3(args, "rotation"),
+                        optVec3(args, "scale"),
                         optString(args, "easing")).orElse(null)));
 
         registry.register(new McpTool(
@@ -260,6 +260,20 @@ public final class AnimationToolDefinitions {
         SchemaBuilder num(String name, String description) { return prop(name, "number", description); }
         SchemaBuilder bool(String name, String description) { return prop(name, "boolean", description); }
 
+        /** Fixed-length [x,y,z] number array. */
+        SchemaBuilder vec3(String name, String description) {
+            ObjectNode def = mapper.createObjectNode();
+            def.put("type", "array");
+            def.put("description", description);
+            ObjectNode items = mapper.createObjectNode();
+            items.put("type", "number");
+            def.set("items", items);
+            def.put("minItems", 3);
+            def.put("maxItems", 3);
+            properties.set(name, def);
+            return this;
+        }
+
         SchemaBuilder prop(String name, String type, String description) {
             ObjectNode def = mapper.createObjectNode();
             def.put("type", type);
@@ -304,22 +318,19 @@ public final class AnimationToolDefinitions {
         return n.floatValue();
     }
 
-    private static float optFloat(JsonNode args, String key, float fallback) {
-        JsonNode n = args.get(key);
-        return (n == null || n.isNull() || !n.isNumber()) ? fallback : n.floatValue();
-    }
-
     private static Float optFloatBoxed(JsonNode args, String key) {
         JsonNode n = args.get(key);
         return (n == null || n.isNull() || !n.isNumber()) ? null : n.floatValue();
     }
 
-    private static Vector3f optVec3(JsonNode args, String xKey, String yKey, String zKey) {
-        boolean any = args.has(xKey) || args.has(yKey) || args.has(zKey);
-        if (!any) return null;
-        return new Vector3f(
-                optFloat(args, xKey, 0f),
-                optFloat(args, yKey, 0f),
-                optFloat(args, zKey, 0f));
+    /** Parse an optional [x,y,z] array argument; null when absent. */
+    private static Vector3f optVec3(JsonNode args, String key) {
+        JsonNode n = args.get(key);
+        if (n == null || n.isNull()) return null;
+        if (!n.isArray() || n.size() != 3
+                || !n.get(0).isNumber() || !n.get(1).isNumber() || !n.get(2).isNumber()) {
+            throw new IllegalArgumentException(key + " must be a [x,y,z] number array");
+        }
+        return new Vector3f(n.get(0).floatValue(), n.get(1).floatValue(), n.get(2).floatValue());
     }
 }

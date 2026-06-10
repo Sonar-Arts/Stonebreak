@@ -68,24 +68,24 @@ public final class BoneToolDefinitions {
         registry.register(new McpTool(
                 "bone_create",
                 "Create a new bone. parent_bone_id may be omitted/null for a root bone. "
-                        + "origin/pos/rot default to zero; endpoint defaults to (0,1,0) so the bone "
+                        + "origin/position/rotation default to zero; endpoint defaults to [0,1,0] so the bone "
                         + "has a visible length out of the box. Rotation is Euler degrees (XYZ).",
                 schema()
                         .str("name", "Display name for the new bone")
                         .str("parent_bone_id", "Parent bone id or name (omit for a root bone)")
-                        .num("origin_x", "Pivot X").num("origin_y", "Pivot Y").num("origin_z", "Pivot Z")
-                        .num("position_x", "Translation X").num("position_y", "Translation Y").num("position_z", "Translation Z")
-                        .num("rotation_x", "Rotation X (degrees)").num("rotation_y", "Rotation Y (degrees)").num("rotation_z", "Rotation Z (degrees)")
-                        .num("endpoint_x", "Tail offset X (local)").num("endpoint_y", "Tail offset Y (local)").num("endpoint_z", "Tail offset Z (local)")
+                        .vec3("origin", "Pivot [x,y,z]")
+                        .vec3("position", "Translation [x,y,z]")
+                        .vec3("rotation", "Euler degrees [x,y,z]")
+                        .vec3("endpoint", "Tail offset [x,y,z] (local)")
                         .required("name")
                         .build(),
                 args -> editor.createBone(
                         reqString(args, "name"),
                         optString(args, "parent_bone_id"),
-                        optVec3(args, "origin_x", "origin_y", "origin_z"),
-                        optVec3(args, "position_x", "position_y", "position_z"),
-                        optVec3(args, "rotation_x", "rotation_y", "rotation_z"),
-                        optVec3(args, "endpoint_x", "endpoint_y", "endpoint_z"))));
+                        optVec3(args, "origin"),
+                        optVec3(args, "position"),
+                        optVec3(args, "rotation"),
+                        optVec3(args, "endpoint"))));
 
         registry.register(new McpTool(
                 "bone_delete",
@@ -106,22 +106,22 @@ public final class BoneToolDefinitions {
 
         registry.register(new McpTool(
                 "bone_set_transform",
-                "Set rest-pose components of a bone. Any axis triple (origin/position/rotation/endpoint) "
+                "Set rest-pose components of a bone. Any of origin/position/rotation/endpoint "
                         + "may be omitted to keep its current value. Rotation is Euler degrees (XYZ).",
                 schema()
                         .str("id_or_name", "Bone id or name")
-                        .num("origin_x", "Pivot X").num("origin_y", "Pivot Y").num("origin_z", "Pivot Z")
-                        .num("position_x", "Translation X").num("position_y", "Translation Y").num("position_z", "Translation Z")
-                        .num("rotation_x", "Rotation X (degrees)").num("rotation_y", "Rotation Y (degrees)").num("rotation_z", "Rotation Z (degrees)")
-                        .num("endpoint_x", "Tail offset X").num("endpoint_y", "Tail offset Y").num("endpoint_z", "Tail offset Z")
+                        .vec3("origin", "Pivot [x,y,z]")
+                        .vec3("position", "Translation [x,y,z]")
+                        .vec3("rotation", "Euler degrees [x,y,z]")
+                        .vec3("endpoint", "Tail offset [x,y,z]")
                         .required("id_or_name")
                         .build(),
                 args -> editor.setBoneTransform(
                         reqString(args, "id_or_name"),
-                        optVec3(args, "origin_x", "origin_y", "origin_z"),
-                        optVec3(args, "position_x", "position_y", "position_z"),
-                        optVec3(args, "rotation_x", "rotation_y", "rotation_z"),
-                        optVec3(args, "endpoint_x", "endpoint_y", "endpoint_z")).orElse(null)));
+                        optVec3(args, "origin"),
+                        optVec3(args, "position"),
+                        optVec3(args, "rotation"),
+                        optVec3(args, "endpoint")).orElse(null)));
 
         registry.register(new McpTool(
                 "bone_set_parent",
@@ -162,18 +162,6 @@ public final class BoneToolDefinitions {
                 "Redo the most recently undone bone operation.",
                 schema().build(),
                 args -> editor.redo()));
-
-        registry.register(new McpTool(
-                "bone_can_undo",
-                "Returns true if there is at least one bone command in the undo stack.",
-                schema().build(),
-                args -> editor.canUndo()));
-
-        registry.register(new McpTool(
-                "bone_can_redo",
-                "Returns true if there is at least one bone command in the redo stack.",
-                schema().build(),
-                args -> editor.canRedo()));
     }
 
     // ===================== Schema helpers =====================
@@ -204,6 +192,20 @@ public final class BoneToolDefinitions {
         SchemaBuilder str(String name, String description) { return prop(name, "string", description); }
         SchemaBuilder num(String name, String description) { return prop(name, "number", description); }
         SchemaBuilder bool(String name, String description) { return prop(name, "boolean", description); }
+
+        /** Fixed-length [x,y,z] number array. */
+        SchemaBuilder vec3(String name, String description) {
+            ObjectNode def = mapper.createObjectNode();
+            def.put("type", "array");
+            def.put("description", description);
+            ObjectNode items = mapper.createObjectNode();
+            items.put("type", "number");
+            def.set("items", items);
+            def.put("minItems", 3);
+            def.put("maxItems", 3);
+            properties.set(name, def);
+            return this;
+        }
 
         SchemaBuilder prop(String name, String type, String description) {
             ObjectNode def = mapper.createObjectNode();
@@ -241,17 +243,14 @@ public final class BoneToolDefinitions {
         return s.isBlank() ? null : s;
     }
 
-    private static float optFloat(JsonNode args, String key, float fallback) {
+    /** Parse an optional [x,y,z] array argument; null when absent. */
+    private static Vector3f optVec3(JsonNode args, String key) {
         JsonNode n = args.get(key);
-        return (n == null || n.isNull() || !n.isNumber()) ? fallback : n.floatValue();
-    }
-
-    private static Vector3f optVec3(JsonNode args, String xKey, String yKey, String zKey) {
-        boolean any = args.has(xKey) || args.has(yKey) || args.has(zKey);
-        if (!any) return null;
-        return new Vector3f(
-                optFloat(args, xKey, 0f),
-                optFloat(args, yKey, 0f),
-                optFloat(args, zKey, 0f));
+        if (n == null || n.isNull()) return null;
+        if (!n.isArray() || n.size() != 3
+                || !n.get(0).isNumber() || !n.get(1).isNumber() || !n.get(2).isNumber()) {
+            throw new IllegalArgumentException(key + " must be a [x,y,z] number array");
+        }
+        return new Vector3f(n.get(0).floatValue(), n.get(1).floatValue(), n.get(2).floatValue());
     }
 }
