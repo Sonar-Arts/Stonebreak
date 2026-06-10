@@ -1,6 +1,5 @@
 package com.stonebreak.world;
 
-import java.util.Map;
 import java.util.List;
 import java.util.Set;
 import java.util.Collection;
@@ -290,19 +289,32 @@ public class World {
     }
 
     /**
-     * Chebyshev radius (chunks) a client retains around the player before unloading. The
-     * server streams within its view distance (8) and FORGETS a player's chunks beyond this
-     * SAME radius so they re-stream on return — so this MUST match
-     * {@code ServerChunkHandler.FORGET_DISTANCE_CHUNKS} to avoid holes when revisiting. It is
-     * independent of the user's render distance (the server caps streaming at its view distance).
+     * Chebyshev radius (chunks) a client retains around the player before unloading:
+     * the render distance plus a 2-chunk margin. The server streams within the
+     * player's reported view distance and FORGETS a player's chunks beyond this SAME
+     * radius (view + 2, see {@code ServerChunkHandler}) so they re-stream on return —
+     * the two must stay in lockstep or a returning player gets holes. Tracks the
+     * render-distance setting live (config.renderDistance is volatile and updated by
+     * the settings Apply path).
      */
-    public static final int CLIENT_KEEP_RADIUS = 10;
+    public int clientKeepRadius() {
+        return config.getRenderDistance() + 2;
+    }
+
+    // Last position/radius the client unload sweep ran for. The sweep only does work when the
+    // player crosses a chunk boundary or the keep radius shrinks/grows (settings Apply) —
+    // chunks the server streams in are always within the keep radius, so a stationary player
+    // can never accumulate out-of-range chunks between crossings.
+    private int lastUnloadSweepCx = Integer.MIN_VALUE;
+    private int lastUnloadSweepCz = Integer.MIN_VALUE;
+    private int lastUnloadSweepKeepRadius = -1;
 
     /**
      * Unload streamed chunks that have left the client's keep radius. Render-only worlds never
      * regenerate, so a dropped chunk simply re-streams from the server if the player returns
      * (the server forgets it at the same radius). Bounds the client's memory as it explores;
-     * no save (the client never persists).
+     * no save (the client never persists). Skips entirely while the player stays inside one
+     * chunk — the previous per-frame full scan copied every resident chunk position each frame.
      */
     private void unloadClientChunksOutsideView() {
         var player = Game.getPlayer();
@@ -312,12 +324,14 @@ public class World {
         Vector3f pos = player.getPosition();
         int pcx = Math.floorDiv((int) Math.floor(pos.x), WorldConfiguration.CHUNK_SIZE);
         int pcz = Math.floorDiv((int) Math.floor(pos.z), WorldConfiguration.CHUNK_SIZE);
-        for (ChunkPosition cp : chunkStore.getAllChunkPositions()) {
-            int dist = Math.max(Math.abs(cp.getX() - pcx), Math.abs(cp.getZ() - pcz));
-            if (dist > CLIENT_KEEP_RADIUS) {
-                chunkStore.unloadChunk(cp.getX(), cp.getZ());
-            }
+        int keepRadius = clientKeepRadius();
+        if (pcx == lastUnloadSweepCx && pcz == lastUnloadSweepCz && keepRadius == lastUnloadSweepKeepRadius) {
+            return;
         }
+        lastUnloadSweepCx = pcx;
+        lastUnloadSweepCz = pcz;
+        lastUnloadSweepKeepRadius = keepRadius;
+        chunkStore.unloadChunksOutside(pcx, pcz, keepRadius);
     }
 
     public void updateMainThread() {
@@ -652,14 +666,16 @@ public class World {
     
 
     /**
-     * Returns chunks around the specified position within render distance.
+     * Visits every resident chunk around the specified position within render distance.
      * This method performs side effects:
      * - Ensures border chunks exist for neighbor meshing
      *
-     * Use this method when preparing chunks for rendering.
+     * Use this method when preparing chunks for rendering. Replaces the old
+     * {@code getChunksAroundPlayer}, which materialized a fresh HashMap of every in-range
+     * chunk per render frame.
      */
-    public Map<ChunkPosition, Chunk> getChunksAroundPlayer(int playerChunkX, int playerChunkZ) {
-        Map<ChunkPosition, Chunk> allChunks = chunkStore.getChunksInRenderDistance(playerChunkX, playerChunkZ);
+    public void forEachChunkAroundPlayer(int playerChunkX, int playerChunkZ, Consumer<Chunk> action) {
+        chunkStore.forEachChunkInRenderDistance(playerChunkX, playerChunkZ, action);
 
         // Ensure border chunks exist for meshing purposes (triggers generation cascade).
         // Skip on a render-only client world: it generates no terrain, so this would only
@@ -667,8 +683,6 @@ public class World {
         if (neighborCoordinator != null && !renderOnly) {
             neighborCoordinator.ensureBorderChunksExist(playerChunkX, playerChunkZ);
         }
-
-        return allChunks;
     }
 
     /**
@@ -947,17 +961,14 @@ public class World {
         if (meshPipeline == null) return; // Test mode - no rendering
 
         try {
-            // Get all chunks currently loaded around the player
-            Map<ChunkPosition, Chunk> loadedChunks = getChunksAroundPlayer(playerChunkX, playerChunkZ);
+            // Mark all chunks currently loaded around the player for mesh rebuild
+            int[] marked = {0};
+            forEachChunkAroundPlayer(playerChunkX, playerChunkZ, chunk -> {
+                markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+                marked[0]++;
+            });
 
-            // Mark all loaded chunks for mesh rebuild
-            for (Chunk chunk : loadedChunks.values()) {
-                if (chunk != null) {
-                    markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
-                }
-            }
-
-            System.out.println("Marked " + loadedChunks.size() + " chunks for mesh rebuild due to settings change");
+            System.out.println("Marked " + marked[0] + " chunks for mesh rebuild due to settings change");
         } catch (Exception e) {
             System.err.println("Error rebuilding all chunks: " + e.getMessage());
         }

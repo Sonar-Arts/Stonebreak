@@ -1,15 +1,13 @@
 package com.stonebreak.network.server.handlers;
 
 import com.openmason.engine.net.protocol.codec.VoxelChunkCodec;
+import com.openmason.engine.util.LongIntHashMap;
 import com.stonebreak.network.packet.world.ChunkDataS2C;
 import com.stonebreak.network.server.ServerPlayer;
 import com.stonebreak.network.server.ServerWorldContext;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.voxel.ChunkDataAdapter;
-
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * Streams authoritative chunk snapshots to each client within their view distance. In the
@@ -27,16 +25,18 @@ import java.util.Map;
  */
 public final class ServerChunkHandler {
 
-    private static final int VIEW_DISTANCE_CHUNKS = 8;
-    /** One ring beyond the view is generated (not streamed) so view-edge chunks get features. */
-    private static final int GEN_DISTANCE_CHUNKS = VIEW_DISTANCE_CHUNKS + 1;
-    /**
-     * Beyond this Chebyshev radius a player's "already sent" record is forgotten, so the chunk
-     * re-streams if the player returns. MUST match {@code World.CLIENT_KEEP_RADIUS} (the client
-     * unloads at the same radius) — otherwise a returning player gets holes (client dropped the
-     * chunk but the server still thinks it was sent).
-     */
-    private static final int FORGET_DISTANCE_CHUNKS = 10;
+    // Per-player view distance comes from the client's render-distance setting
+    // (ViewDistanceC2S → ServerPlayer.viewDistanceChunks, clamped server-side).
+    // Derived radii, per player:
+    //   view   = sp.viewDistanceChunks()  — chunks streamed
+    //   gen    = view + 1                 — one ring beyond view is generated (not streamed)
+    //                                       so view-edge chunks get features
+    //   forget = view + 2                 — beyond this the "already sent" record is dropped
+    //                                       so the chunk re-streams on return. MUST match the
+    //                                       client's keep radius (World.clientKeepRadius() =
+    //                                       renderDistance + 2) or a returning player gets
+    //                                       holes (client dropped the chunk but the server
+    //                                       still thinks it was sent).
     /**
      * Chunks streamed per remote player per tick. Kept modest because the server encode runs
      * on the main game thread (the integrated server ticks there) and the wire needs
@@ -49,21 +49,29 @@ public final class ServerChunkHandler {
      * chunk pop-in for the host (~2 s to fill a view). The client-side install is cheap
      * enough to absorb this now: decode lands in a detached paletted storage and installs
      * with one section copy + one heightmap recompute (World.installNetworkChunk).
-     * 64/tick @ 20 Hz fills the 289-chunk view in ~0.25 s.
+     * 64/tick @ 20 Hz fills the default view (r=8, 289 chunks) in ~0.25 s and the
+     * maximum view (r=24, 2401 chunks) in ~1.9 s.
      */
     private static final int LOCAL_PUSH_PER_TICK = 64;
 
-    /** Current version per chunk key; bumped on modification so clients re-receive it. */
-    private final Map<Long, Integer> chunkVersions = new HashMap<>();
+    /** Current version per chunk key; bumped on modification so clients re-receive it.
+     *  Primitive-keyed: the view scan probes this per ring cell, and a boxed
+     *  {@code Map<Long, Integer>} allocated a Long per probe. */
+    private final LongIntHashMap chunkVersions = new LongIntHashMap();
+
+    /** Set when any chunk version bumps; the next tick re-arms every player's view scan. */
+    private boolean versionsDirty = false;
 
     /** Mark a chunk changed so every player re-receives its snapshot within view. */
     public void markChunkModified(int cx, int cz) {
         long key = packKey(cx, cz);
-        chunkVersions.merge(key, 1, Integer::sum);
+        chunkVersions.put(key, chunkVersions.get(key, 0) + 1);
+        versionsDirty = true;
     }
 
     public void onSessionStart() {
         chunkVersions.clear();
+        versionsDirty = true;
     }
 
     public void tick(ServerWorldContext ctx) {
@@ -71,6 +79,11 @@ public final class ServerChunkHandler {
         if (world == null) {
             return;
         }
+        // A version bump anywhere re-arms every player's scan once; the scan itself decides
+        // per player whether the bumped chunk is in view (the per-cell version check).
+        boolean versionsBumped = versionsDirty;
+        versionsDirty = false;
+
         for (ServerPlayer sp : ctx.players()) {
             // Wait for a reported position before streaming — avoids shipping chunks around
             // (0,0) to a player who actually spawned far away.
@@ -80,58 +93,82 @@ public final class ServerChunkHandler {
 
             int cx = (int) Math.floor(sp.x() / 16.0);
             int cz = (int) Math.floor(sp.z() / 16.0);
-            sp.setLastChunk(cx, cz);
+            sp.setLastChunk(cx, cz); // marks the scan pending on a boundary crossing
+            if (versionsBumped) {
+                sp.markViewScanPending();
+            }
+
+            // Steady state for a stationary player with a fully-streamed view: skip the whole
+            // O(view²) ring walk. The flag re-arms on movement, view-distance change, version
+            // bump, or join, and stays set while any in-view chunk is still pending below.
+            if (!sp.viewScanPending()) {
+                continue;
+            }
+
+            int viewDistance = sp.viewDistanceChunks();
+            int genDistance = viewDistance + 1;
+            int forgetDistance = viewDistance + 2;
 
             // Forget chunks the client has unloaded (left its keep radius) so they re-stream on
             // return, and to bound the per-player sent-set as the player explores.
             sp.forgetChunksMatching(key -> {
                 int kx = (int) (key >> 32);
                 int kz = (int) key;
-                return Math.max(Math.abs(kx - cx), Math.abs(kz - cz)) > FORGET_DISTANCE_CHUNKS;
+                return Math.max(Math.abs(kx - cx), Math.abs(kz - cz)) > forgetDistance;
             });
 
             // Generate one ring BEYOND the streamed view so the view-edge chunks have the
             // east/south/southeast neighbors that feature population (trees/flowers) requires;
             // those border chunks are generated but never streamed.
-            for (int dz = -GEN_DISTANCE_CHUNKS; dz <= GEN_DISTANCE_CHUNKS; dz++) {
-                for (int dx = -GEN_DISTANCE_CHUNKS; dx <= GEN_DISTANCE_CHUNKS; dx++) {
-                    if (Math.max(Math.abs(dx), Math.abs(dz)) > VIEW_DISTANCE_CHUNKS) {
+            for (int dz = -genDistance; dz <= genDistance; dz++) {
+                for (int dx = -genDistance; dx <= genDistance; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) > viewDistance) {
                         world.getChunkAt(cx + dx, cz + dz);
                     }
                 }
             }
 
+            // True only if this scan confirmed every in-view chunk is sent at its current
+            // version — any deferral (gen in flight, features pending, budget exhausted)
+            // keeps the scan armed for next tick.
+            boolean viewComplete = true;
             int budget = sp.isLocal() ? LOCAL_PUSH_PER_TICK : MAX_PUSH_PER_TICK;
             outer:
-            for (int r = 0; r <= VIEW_DISTANCE_CHUNKS; r++) {
+            for (int r = 0; r <= viewDistance; r++) {
                 for (int dz = -r; dz <= r; dz++) {
                     for (int dx = -r; dx <= r; dx++) {
                         if (Math.max(Math.abs(dx), Math.abs(dz)) != r) {
                             continue;
                         }
                         long key = packKey(cx + dx, cz + dz);
-                        int version = chunkVersions.getOrDefault(key, 0);
+                        int version = chunkVersions.get(key, 0);
                         if (sp.sentChunkVersion(key) >= version) {
                             continue; // already has the current version
                         }
                         Chunk chunk = world.getChunkAt(cx + dx, cz + dz);
                         if (chunk == null) {
+                            viewComplete = false;
                             continue; // async gen in flight — retry next tick
                         }
                         // Don't stream a chunk until its features (trees, flowers, ...) are
                         // populated — otherwise the client receives a terrain-only snapshot and,
                         // since feature population doesn't bump the version, never gets the rest.
                         if (!chunk.areFeaturesPopulated()) {
+                            viewComplete = false;
                             continue; // not ready — retry next tick (do NOT mark sent)
                         }
                         byte[] payload = VoxelChunkCodec.encode(new ChunkDataAdapter(chunk));
                         sp.send(new ChunkDataS2C(cx + dx, cz + dz, payload), false);
                         sp.markChunkSent(key, version);
                         if (--budget <= 0) {
+                            viewComplete = false; // out of budget — outer rings unverified
                             break outer;
                         }
                     }
                 }
+            }
+            if (viewComplete) {
+                sp.clearViewScanPending();
             }
         }
     }

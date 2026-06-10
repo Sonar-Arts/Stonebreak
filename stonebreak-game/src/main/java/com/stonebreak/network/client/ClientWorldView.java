@@ -90,8 +90,24 @@ public final class ClientWorldView {
         this.remote = address.type() == com.openmason.engine.net.transport.TransportType.TCP;
         connection = networkClient.connect(address);
         connection.send(new HandshakeC2S(ProtocolVersion.CURRENT, username));
+        // Report our render distance right after the handshake (channel is FIFO, so the
+        // server processes the handshake first). Without this the server streams its
+        // default view radius no matter what the user's setting says.
+        sendViewDistance(com.stonebreak.config.Settings.getInstance().getRenderDistance());
         lastTickNs = System.nanoTime();
         tickAccumulatorNs = 0L;
+    }
+
+    /**
+     * Tell the server our render distance (chunks). Called on connect and whenever the
+     * player applies a new render-distance setting; the server resizes this player's
+     * chunk-streaming view accordingly.
+     */
+    public void sendViewDistance(int chunks) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(new com.stonebreak.network.packet.player.ViewDistanceC2S(chunks));
+        }
     }
 
     public int localPlayerId() { return localPlayerId; }
