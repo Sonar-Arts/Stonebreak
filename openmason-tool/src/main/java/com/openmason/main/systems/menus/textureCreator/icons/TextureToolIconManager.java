@@ -192,6 +192,16 @@ public class TextureToolIconManager {
     }
 
     /**
+     * Resolve a tool key to its SVG classpath resource, or null if unmapped.
+     * Shared with the Skija icon store so both rasterization paths use the
+     * same tool-to-SVG mapping.
+     */
+    public static String getSvgResourcePath(String toolName) {
+        String filename = TOOL_ICON_MAP.get(toolName);
+        return filename != null ? ICON_BASE_PATH + filename : null;
+    }
+
+    /**
      * Cleanup all OpenGL textures.
      * Call this when shutting down the texture editor.
      */

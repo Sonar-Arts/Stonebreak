@@ -28,6 +28,7 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
     private final List<DrawingTool> tools;
     private DrawingTool currentTool;
     private final TextureToolIconManager iconManager;
+    private final SkijaToolStripRenderer skijaStrip = new SkijaToolStripRenderer();
     private MoveToolController moveToolInstance; // Reference to move tool for configuration
     private SelectionBrushTool selectionBrushTool; // Reference to brush tool for configuration
     private PasteTool pasteToolInstance; // Reference to paste tool for programmatic activation
@@ -101,16 +102,76 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
     }
 
     /**
-     * Render the toolbar panel.
+     * Render the toolbar panel as an Aseprite-style narrow icon strip.
+     * Skija paints the strip (vector icons, AA highlights) when available;
+     * otherwise falls back to plain ImGui image buttons.
      */
     public void render() {
         ImGui.beginChild("##toolbar_panel", 0, 0, false);
+        ImGui.spacing();
 
-        // Aseprite-style narrow icon strip: no header, single column of icons
+        if (skijaStrip.isAvailable()) {
+            renderSkijaStrip();
+        } else {
+            renderImGuiFallback();
+        }
+
+        ImGui.endChild();
+    }
+
+    /**
+     * Skija-painted strip: one image item, hit-testing by cell index.
+     */
+    private void renderSkijaStrip() {
+        // Center the single cell column horizontally in the panel
+        float indent = Math.max(0, (ImGui.getContentRegionAvailX() - SkijaToolStripRenderer.CELL_SIZE) / 2f);
+        ImGui.setCursorPosX(ImGui.getCursorPosX() + indent);
+
+        List<String> iconKeys = new ArrayList<>(tools.size());
+        int selectedIndex = -1;
+        for (int i = 0; i < tools.size(); i++) {
+            DrawingTool tool = tools.get(i);
+            if (tool == currentTool) {
+                selectedIndex = i;
+            }
+            if (tool instanceof ShapeTool shapeTool) {
+                iconKeys.add("Shapes:" + shapeTool.getCurrentShape().getDisplayName());
+            } else {
+                iconKeys.add(tool.getName());
+            }
+        }
+
+        int hovered = skijaStrip.render(iconKeys, selectedIndex);
+
+        if (hovered >= 0) {
+            DrawingTool hoveredTool = tools.get(hovered);
+
+            if (ImGui.isItemClicked(0)) {
+                setCurrentTool(hoveredTool);
+            }
+            if (hoveredTool instanceof ShapeTool && ImGui.isItemClicked(1)) {
+                ImGui.openPopup("##ShapeVariantPopup");
+            }
+
+            if (hoveredTool instanceof ShapeTool shapeTool) {
+                ImGui.setTooltip(shapeTool.getCurrentShape().getDisplayName()
+                        + " (right-click for more shapes)");
+            } else {
+                ImGui.setTooltip(hoveredTool.getName());
+            }
+        }
+
+        if (ImGui.beginPopup("##ShapeVariantPopup")) {
+            renderShapeVariantPopup(shapeToolInstance, 20.0f);
+        }
+    }
+
+    /**
+     * Plain ImGui fallback (used only when Skija failed to initialize).
+     */
+    private void renderImGuiFallback() {
         float iconDisplaySize = 24.0f;
         float buttonPadding = 4.0f;
-
-        ImGui.spacing();
 
         // Apply button padding (inherited from BaseToolbarRenderer)
         pushButtonPadding(buttonPadding, buttonPadding);
@@ -167,8 +228,6 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
         }
 
         popButtonPadding(); // Pop button padding
-
-        ImGui.endChild();
     }
 
     /**
@@ -252,5 +311,12 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
      */
     public MoveToolController getMoveToolInstance() {
         return moveToolInstance;
+    }
+
+    /**
+     * Release Skija strip resources (surface, SVG DOMs). Call on shutdown.
+     */
+    public void dispose() {
+        skijaStrip.close();
     }
 }

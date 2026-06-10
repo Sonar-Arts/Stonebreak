@@ -71,6 +71,7 @@ public class TextureCreatorImGui {
 
     // Panels (passed to renderer)
     private final ColorPanelView colorPanel;
+    private final TextureEditorToolbarRenderer toolbarPanel;
 
     // Status bar (rendered by the hosting window below the dockspace)
     private com.openmason.main.systems.menus.textureCreator.panels.status.StatusBarPanel statusBarPanel;
@@ -127,6 +128,7 @@ public class TextureCreatorImGui {
         this.dialogProcessor = dialogProcessor;
         this.dragDropHandler = dragDropHandler;
         this.colorPanel = colorPanel;
+        this.toolbarPanel = toolbarPanel;
 
         // Wire up dependencies
         toolCoordinator.setDependencies(controller, pasteCoordinator);
@@ -599,7 +601,8 @@ public class TextureCreatorImGui {
      */
     public void dispose() {
         preferences.setColorHistory(colorPanel.getColorHistory());
-        colorPanel.close(); // frees the Skija picker surfaces
+        colorPanel.close();     // frees the Skija picker surfaces
+        toolbarPanel.dispose(); // frees the Skija tool strip + SVG DOMs
         TextureToolIconManager.getInstance().dispose();
         logger.info("Texture Creator UI disposed");
     }

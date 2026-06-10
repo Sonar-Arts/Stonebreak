@@ -1,32 +1,36 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-  <!-- Minimalist Hand/Grabber Glove icon - Orange -->
+  <!-- Hand/Grabber tool - smooth rounded glove silhouette, orange -->
 
-  <!-- Thumb -->
-  <path d="M 6 16 L 8 14 L 11 16 L 11 19 L 8 20 L 6 18 Z"
-        fill="#FF9933" stroke="#CC7A29" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- One continuous hand outline: four rounded fingers, palm, thumb -->
+  <path d="M 9.4 15.2
+           L 9.4 8.6
+           C 9.4 6.6 12.4 6.6 12.4 8.6
+           L 12.4 13.4
+           L 13.4 13.4
+           L 13.4 6.4
+           C 13.4 4.4 16.4 4.4 16.4 6.4
+           L 16.4 13.4
+           L 17.4 13.4
+           L 17.4 7.2
+           C 17.4 5.2 20.4 5.2 20.4 7.2
+           L 20.4 13.8
+           L 21.4 13.8
+           L 21.4 9.4
+           C 21.4 7.5 24.2 7.5 24.2 9.4
+           L 24.2 18.0
+           C 24.2 23.2 21.4 26.6 16.8 26.6
+           C 13.2 26.6 11.2 25.0 9.2 21.6
+           C 8.2 19.9 6.6 17.5 5.2 15.9
+           C 4.2 14.7 5.4 13.1 6.8 13.7
+           C 7.8 14.1 8.7 14.4 9.4 15.2
+           Z"
+        fill="#FFA64D" stroke="#B36A1F" stroke-width="1.6"
+        stroke-linejoin="round" stroke-linecap="round"/>
 
-  <!-- Index finger -->
-  <rect x="12" y="5" width="3.5" height="13" rx="1.5"
-        fill="#FF9933" stroke="#CC7A29" stroke-width="1.5"/>
-
-  <!-- Middle finger (longest) -->
-  <rect x="16" y="3" width="3.5" height="15" rx="1.5"
-        fill="#FF9933" stroke="#CC7A29" stroke-width="1.5"/>
-
-  <!-- Ring finger -->
-  <rect x="20" y="5" width="3.5" height="13" rx="1.5"
-        fill="#FF9933" stroke="#CC7A29" stroke-width="1.5"/>
-
-  <!-- Pinky finger (shortest) -->
-  <rect x="24" y="7" width="3" height="11" rx="1.5"
-        fill="#FF9933" stroke="#CC7A29" stroke-width="1.5"/>
-
-  <!-- Palm -->
-  <path d="M 11 18 L 11 24 C 11 26 12 28 14 28 L 23 28 C 25 28 26 26 26 24 L 26 18 Z"
-        fill="#FF9933" stroke="#CC7A29" stroke-width="1.5" stroke-linejoin="round"/>
-
-  <!-- Wrist cuff -->
-  <rect x="11" y="27" width="15" height="2" rx="1"
-        fill="#CC7A29" stroke="#CC7A29" stroke-width="1"/>
+  <!-- Finger creases extending the gaps between fingers into the palm -->
+  <path d="M 12.9 13.6 L 12.9 16.4
+           M 16.9 13.6 L 16.9 16.4
+           M 20.9 14.0 L 20.9 16.8"
+        fill="none" stroke="#B36A1F" stroke-width="1.2" stroke-linecap="round"/>
 </svg>
