@@ -36,7 +36,6 @@ public class GridRenderer {
 
     // Grid colors
     private final Vector3f primaryColor = new Vector3f(0.5f, 0.5f, 0.5f);    // Main grid lines
-    private final Vector3f secondaryColor = new Vector3f(0.3f, 0.3f, 0.3f);  // Subdivision lines
     private final Vector3f axisXColor = new Vector3f(0.8f, 0.2f, 0.2f);      // X-axis (red)
     private final Vector3f axisZColor = new Vector3f(0.2f, 0.2f, 0.8f);      // Z-axis (blue)
     private final Vector3f fogColor = new Vector3f(0.2f, 0.2f, 0.3f);        // Background fog color (matches viewport background)
@@ -112,18 +111,15 @@ public class GridRenderer {
             // Get camera matrices
             Matrix4f viewMatrix = context.getCamera().getViewMatrix();
             Matrix4f projectionMatrix = context.getCamera().getProjectionMatrix();
-            Vector3f cameraPosition = context.getCamera().getPosition();
 
             // Upload uniforms
             shader.setMat4("uViewMatrix", viewMatrix);
             shader.setMat4("uProjectionMatrix", projectionMatrix);
-            shader.setVec3("uCameraPosition", cameraPosition);
             shader.setFloat("uGridScale", gridScale);
             shader.setFloat("uGridLineWidth", gridLineWidth);
             shader.setFloat("uFadeDistance", fadeDistance);
             shader.setFloat("uMaxDistance", maxDistance);
             shader.setVec3("uPrimaryColor", primaryColor);
-            shader.setVec3("uSecondaryColor", secondaryColor);
             shader.setVec3("uAxisXColor", axisXColor);
             shader.setVec3("uAxisZColor", axisZColor);
             shader.setVec3("uFogColor", fogColor);
