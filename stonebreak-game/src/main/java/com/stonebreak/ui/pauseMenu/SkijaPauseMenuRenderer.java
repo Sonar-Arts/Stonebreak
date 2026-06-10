@@ -22,7 +22,7 @@ public final class SkijaPauseMenuRenderer {
     private static final float BASE_BUTTON_WIDTH  = BUTTON_WIDTH;
     private static final float BASE_BUTTON_HEIGHT = BUTTON_HEIGHT;
     private static final float BASE_PANEL_WIDTH   = 520f;
-    private static final float BASE_PANEL_HEIGHT  = 520f;
+    private static final float BASE_PANEL_HEIGHT  = 560f;
 
     private static final float BASE_TITLE_SIZE       = 42f;
     private static final float BASE_BUTTON_TEXT_SIZE = 20f;
@@ -43,7 +43,7 @@ public final class SkijaPauseMenuRenderer {
     }
 
     public void render(int windowWidth, int windowHeight,
-                       boolean statisticsHovered, boolean settingsHovered, boolean quitHovered) {
+                       boolean statisticsHovered, boolean glossaryHovered, boolean settingsHovered, boolean quitHovered) {
         if (backend == null || !backend.isAvailable()) return;
         float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
         ensureFonts(scale);
@@ -71,10 +71,11 @@ public final class SkijaPauseMenuRenderer {
             drawTitle(canvas, centerX, panelY + 70f * scale, "GAME PAUSED");
 
             float buttonX = centerX - buttonWidth / 2f;
-            drawButton(canvas, "Resume Game",       buttonX, centerY - 105f * scale, false,             buttonWidth, buttonHeight);
-            drawButton(canvas, "Statistics",        buttonX, centerY -  35f * scale, statisticsHovered, buttonWidth, buttonHeight);
-            drawButton(canvas, "Settings",          buttonX, centerY +  35f * scale, settingsHovered,   buttonWidth, buttonHeight);
-            drawButton(canvas, "Quit to Main Menu", buttonX, centerY + 105f * scale, quitHovered,       buttonWidth, buttonHeight);
+            drawButton(canvas, "Resume Game",       buttonX, centerY - 140f * scale, false,             buttonWidth, buttonHeight);
+            drawButton(canvas, "Statistics",        buttonX, centerY -  70f * scale, statisticsHovered, buttonWidth, buttonHeight);
+            drawButton(canvas, "Glossary",          buttonX, centerY +   0f * scale, glossaryHovered,   buttonWidth, buttonHeight);
+            drawButton(canvas, "Settings",          buttonX, centerY +  70f * scale, settingsHovered,   buttonWidth, buttonHeight);
+            drawButton(canvas, "Quit to Main Menu", buttonX, centerY + 140f * scale, quitHovered,       buttonWidth, buttonHeight);
         } finally {
             backend.endFrame();
         }

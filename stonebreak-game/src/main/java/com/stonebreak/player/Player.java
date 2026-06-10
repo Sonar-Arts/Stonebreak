@@ -90,6 +90,12 @@ public class Player {
     // Statistics
     private final PlayerStats stats = new PlayerStats();
 
+    // Entity glossary discoveries
+    private final EntityDiscoveries discoveries = new EntityDiscoveries();
+
+    // Entity sight tracking (variant discovery via proximity+FOV)
+    private final EntitySightingTracker sightingTracker = new EntitySightingTracker();
+
     // Fishing
     private com.stonebreak.mobs.entities.FishingBobber activeBobber = null;
 
@@ -309,6 +315,10 @@ public class Player {
 
     // Statistics
     public PlayerStats getStats() { return stats; }
+
+    // Entity glossary
+    public EntityDiscoveries getEntityDiscoveries() { return discoveries; }
+    public EntitySightingTracker getEntitySightingTracker() { return sightingTracker; }
 
     // Stamina / mana
     public float getStamina()    { return stamina.getStamina(); }

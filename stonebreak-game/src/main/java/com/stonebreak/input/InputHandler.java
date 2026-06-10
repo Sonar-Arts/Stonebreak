@@ -321,6 +321,13 @@ public class InputHandler {
                 return; // Action taken
             }
 
+            // 4.7 Close Glossary Screen
+            com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen = game.getGlossaryScreen();
+            if (glossaryScreen != null && glossaryScreen.isVisible()) {
+                game.closeGlossaryScreen();
+                return; // Action taken
+            }
+
             // 5. Toggle Pause Menu (if no other screen was closed by Escape above)
             // No specific UI screen active, so toggle the main pause menu
             game.togglePauseMenu(); // This will manage paused state and PauseMenu visibility
@@ -831,6 +838,10 @@ public class InputHandler {
                 else if (pauseMenu.isStatisticsButtonClicked(currentMouseX, currentMouseY, w, h)) {
                     Game.getInstance().openStatisticsScreen();
                 }
+                // Check glossary button
+                else if (pauseMenu.isGlossaryButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    Game.getInstance().openGlossaryScreen();
+                }
                 // Check settings button
                 else if (pauseMenu.isSettingsButtonClicked(currentMouseX, currentMouseY, w, h)) {
                     // Go to settings menu, remember we came from the game
@@ -862,6 +873,23 @@ public class InputHandler {
                 int h = Game.getWindowHeight();
                 if (statsScreen.isBackButtonClicked(currentMouseX, currentMouseY, w, h)) {
                     Game.getInstance().closeStatisticsScreen();
+                }
+            }
+            return;
+        }
+
+        // Glossary screen Back button
+        com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen = Game.getInstance().getGlossaryScreen();
+        if (glossaryScreen != null && glossaryScreen.isVisible()) {
+            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+                int w = Game.getWindowWidth();
+                int h = Game.getWindowHeight();
+                // Variant cycler arrows take precedence over the Back button.
+                if (glossaryScreen.handleClick(currentMouseX, currentMouseY, w, h)) {
+                    return;
+                }
+                if (glossaryScreen.isBackButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    Game.getInstance().closeGlossaryScreen();
                 }
             }
             return;

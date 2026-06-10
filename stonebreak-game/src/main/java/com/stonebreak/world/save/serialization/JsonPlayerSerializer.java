@@ -11,6 +11,8 @@ import org.joml.Vector2f;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -143,6 +145,35 @@ public class JsonPlayerSerializer {
             firstKill = false;
         }
         json.append("}\n");
+        json.append("  },\n");
+
+        // Discoveries (entity glossary)
+        json.append("  \"discoveries\": {\n");
+        json.append("    \"variantsSeen\": {");
+        Map<String, Set<String>> variants = player.getDiscoveredVariantsByEntityType();
+        boolean firstVariant = true;
+        for (Map.Entry<String, Set<String>> e : variants.entrySet()) {
+            if (!firstVariant) json.append(", ");
+            json.append("\"").append(e.getKey()).append("\": [");
+            boolean firstArr = true;
+            for (String v : e.getValue()) {
+                if (!firstArr) json.append(", ");
+                json.append("\"").append(JsonParsingUtil.escapeJson(v)).append("\"");
+                firstArr = false;
+            }
+            json.append("]");
+            firstVariant = false;
+        }
+        json.append("},\n");
+        json.append("    \"weaknessesDiscovered\": [");
+        Set<String> weaknesses = player.getDiscoveredWeaknessEntityTypes();
+        boolean firstWeak = true;
+        for (String w : weaknesses) {
+            if (!firstWeak) json.append(", ");
+            json.append("\"").append(JsonParsingUtil.escapeJson(w)).append("\"");
+            firstWeak = false;
+        }
+        json.append("]\n");
         json.append("  }\n");
 
         json.append("}");
@@ -247,6 +278,12 @@ public class JsonPlayerSerializer {
                 builder.stats(ps);
             }
 
+            // Discoveries (backward-compat: missing block → empty)
+            if (json.contains("\"discoveries\"")) {
+                builder.discoveredVariantsByEntityType(extractVariantsSeen(json));
+                builder.discoveredWeaknessEntityTypes(extractWeaknessesDiscovered(json));
+            }
+
             return builder.build();
 
         } catch (Exception e) {
@@ -272,6 +309,59 @@ public class JsonPlayerSerializer {
                 EntityType type = EntityType.valueOf(em.group(1));
                 result.put(type, Long.parseLong(em.group(2)));
             } catch (IllegalArgumentException ignored) {}
+        }
+        return result;
+    }
+
+    /**
+     * Extract weaknessesDiscovered array from the discoveries block.
+     */
+    private static Set<String> extractWeaknessesDiscovered(String json) {
+        Set<String> result = new HashSet<>();
+        java.util.regex.Pattern block = java.util.regex.Pattern.compile(
+            "\"weaknessesDiscovered\"\\s*:\\s*\\[([^\\]]*)\\]");
+        java.util.regex.Matcher m = block.matcher(json);
+        if (!m.find()) return result;
+        String content = m.group(1).trim();
+        if (content.isEmpty()) return result;
+        java.util.regex.Pattern entry = java.util.regex.Pattern.compile("\"([^\"]*)\"");
+        java.util.regex.Matcher em = entry.matcher(content);
+        while (em.find()) {
+            result.add(em.group(1));
+        }
+        return result;
+    }
+
+    /**
+     * Extract the variantsSeen map from the discoveries block.
+     * Format: "COW": ["default", "angus"]
+     */
+    private static Map<String, Set<String>> extractVariantsSeen(String json) {
+        Map<String, Set<String>> result = new HashMap<>();
+        // Extract the variantsSeen block — note: each value is an array, so we use [^\]]* for the array content
+        java.util.regex.Pattern variantsBlock = java.util.regex.Pattern.compile(
+            "\"variantsSeen\"\\s*:\\s*\\{([^}]*)\\}",
+            java.util.regex.Pattern.DOTALL);
+        java.util.regex.Matcher vm = variantsBlock.matcher(json);
+        if (!vm.find()) return result;
+        String variantsContent = vm.group(1);
+
+        // Each entry: "ENTITY_TYPE": ["variant1", "variant2"]
+        java.util.regex.Pattern entryPattern = java.util.regex.Pattern.compile(
+            "\"([^\"]+)\"\\s*:\\s*\\[([^\\]]*)\\]");
+        java.util.regex.Matcher em = entryPattern.matcher(variantsContent);
+        while (em.find()) {
+            String entityType = em.group(1);
+            String variantsStr = em.group(2).trim();
+            Set<String> variants = new HashSet<>();
+            if (!variantsStr.isEmpty()) {
+                java.util.regex.Pattern variantPattern = java.util.regex.Pattern.compile("\"([^\"]*)\"");
+                java.util.regex.Matcher variantMatcher = variantPattern.matcher(variantsStr);
+                while (variantMatcher.find()) {
+                    variants.add(variantMatcher.group(1));
+                }
+            }
+            result.put(entityType, variants);
         }
         return result;
     }

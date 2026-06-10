@@ -935,6 +935,12 @@ public class Main {
             statsScreen.render(width, height);
         }
 
+        // Render glossary screen
+        com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen = game.getGlossaryScreen();
+        if (glossaryScreen != null && glossaryScreen.isVisible() && renderer != null) {
+            glossaryScreen.render(width, height);
+        }
+
         // Render death menu if player is dead
         com.stonebreak.ui.DeathMenu deathMenu = game.getDeathMenu();
         if (deathMenu != null && deathMenu.isVisible() && renderer != null) {

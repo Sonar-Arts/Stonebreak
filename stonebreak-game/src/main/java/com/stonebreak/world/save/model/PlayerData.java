@@ -54,6 +54,10 @@ public final class PlayerData {
     private final double statTimeInAir;
     private final Map<String, Long> statKillsByEntityType;
 
+    // Entity glossary discoveries
+    private final Map<String, Set<String>> discoveredVariantsByEntityType;
+    private final Set<String> discoveredWeaknessEntityTypes;
+
     private PlayerData(Builder builder) {
         this.position = new Vector3f(builder.position);
         this.rotation = new Vector2f(builder.rotation);
@@ -85,6 +89,8 @@ public final class PlayerData {
         this.statDistanceInAir   = builder.statDistanceInAir;
         this.statTimeInAir       = builder.statTimeInAir;
         this.statKillsByEntityType = Collections.unmodifiableMap(new HashMap<>(builder.statKillsByEntityType));
+        this.discoveredVariantsByEntityType = Collections.unmodifiableMap(new HashMap<>(builder.discoveredVariantsByEntityType));
+        this.discoveredWeaknessEntityTypes = Collections.unmodifiableSet(new HashSet<>(builder.discoveredWeaknessEntityTypes));
     }
 
     // Getters - return defensive copies for mutable objects
@@ -119,6 +125,10 @@ public final class PlayerData {
     public double getStatDistanceInAir()    { return statDistanceInAir; }
     public double getStatTimeInAir()        { return statTimeInAir; }
     public Map<String, Long> getStatKillsByEntityType() { return statKillsByEntityType; }
+
+    // Discoveries
+    public Map<String, Set<String>> getDiscoveredVariantsByEntityType() { return discoveredVariantsByEntityType; }
+    public Set<String> getDiscoveredWeaknessEntityTypes() { return discoveredWeaknessEntityTypes; }
 
     /**
      * Creates a new PlayerData with updated last saved time.
@@ -174,6 +184,10 @@ public final class PlayerData {
         private double statTimeInAir        = 0.0;
         private Map<String, Long> statKillsByEntityType = new HashMap<>();
 
+        // Discoveries (default empty — backward-compatible for old saves)
+        private Map<String, Set<String>> discoveredVariantsByEntityType = new HashMap<>();
+        private Set<String> discoveredWeaknessEntityTypes = new HashSet<>();
+
         public Builder() {
             // Initialize empty inventory
             for (int i = 0; i < inventory.length; i++) {
@@ -212,6 +226,8 @@ public final class PlayerData {
             this.statDistanceInAir   = data.statDistanceInAir;
             this.statTimeInAir       = data.statTimeInAir;
             this.statKillsByEntityType = new HashMap<>(data.statKillsByEntityType);
+            this.discoveredVariantsByEntityType = new HashMap<>(data.discoveredVariantsByEntityType);
+            this.discoveredWeaknessEntityTypes = new HashSet<>(data.discoveredWeaknessEntityTypes);
         }
 
         public Builder position(Vector3f position) {
@@ -347,6 +363,16 @@ public final class PlayerData {
 
         public Builder statKillsByEntityType(Map<String, Long> map) {
             this.statKillsByEntityType = new HashMap<>(map);
+            return this;
+        }
+
+        public Builder discoveredVariantsByEntityType(Map<String, Set<String>> map) {
+            this.discoveredVariantsByEntityType = new HashMap<>(map);
+            return this;
+        }
+
+        public Builder discoveredWeaknessEntityTypes(Set<String> set) {
+            this.discoveredWeaknessEntityTypes = new HashSet<>(set);
             return this;
         }
 

@@ -36,6 +36,9 @@ public final class GameShutdown {
         if (game.getStatisticsScreen() != null) {
             game.getStatisticsScreen().cleanup();
         }
+        if (game.getGlossaryScreen() != null) {
+            game.getGlossaryScreen().cleanup();
+        }
         if (Game.getSoundSystem() != null) {
             Game.getSoundSystem().cleanup();
         }

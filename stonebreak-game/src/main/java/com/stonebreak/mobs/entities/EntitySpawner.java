@@ -70,8 +70,8 @@ public class EntitySpawner {
     /** Passive types rolled independently so chickens spawn as often as cows. */
     private static final EntityType[] PASSIVE_SPAWN_TYPES = {EntityType.COW, EntityType.CHICKEN, EntityType.SHEEP};
 
-    /** Must match the variant names in {@code SB_Cow.sbe}. */
-    private static final String[] COW_TEXTURE_VARIANTS = {"Default", "Angus", "Highland"};
+    /** Cow texture variants — delegates to EntityType to kill duplication. */
+    private static final String[] COW_TEXTURE_VARIANTS = EntityType.COW.getTextureVariants();
 
     // ─── Collaborators ────────────────────────────────────────────────────────
     private final World world;

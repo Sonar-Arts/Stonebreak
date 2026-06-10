@@ -334,6 +334,36 @@ public class EntityRenderer {
     }
 
     /**
+     * Renders a glossary/preview pose of an SBE-driven entity into whatever
+     * viewport/scissor the caller has set up, using a caller-supplied camera.
+     *
+     * <p>Unlike {@link #renderEntity}, this needs no live {@link Entity}: the
+     * caller picks the appearance variant and SBE animation state directly. The
+     * asset is resolved from the type's object id, exactly as the live path does.
+     * Intended for UI previews (Entity Glossary), so underwater fog is disabled.
+     *
+     * @param type        glossary entity type (must be SBE-driven)
+     * @param variant     appearance variant name (case-insensitive; unknown → default)
+     * @param stateName   SBE animation-state name (unknown/null → rest pose)
+     * @param animationTime elapsed clip time in seconds
+     * @param position    model-space position to place the origin at
+     * @param yawDegrees  Y-axis rotation in degrees
+     * @param scale       world scale
+     * @param viewMatrix  preview camera view matrix
+     * @param projectionMatrix preview camera projection matrix
+     */
+    public void renderEntityPreview(EntityType type, String variant, String stateName,
+                                    float animationTime, Vector3f position, float yawDegrees,
+                                    Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
+        if (!initialized || type == null) return;
+        com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId());
+        if (asset == null) return;
+        sbeEntityRenderer.render(asset, variant, stateName, animationTime,
+                position, yawDegrees, scale, viewMatrix, projectionMatrix, null, null);
+    }
+
+    /**
      * Draws a debug wireframe overlay of an entity's actual model.
      *
      * <p>Unlike a bounding box, this re-draws the model's own mesh through the

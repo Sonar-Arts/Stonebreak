@@ -108,7 +108,7 @@ public final class GameStateController {
         switch (state) {
             case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI,
                  MULTIPLAYER_MENU, HOST_WORLD_SELECT, JOIN_WORLD_SCREEN,
-                 WORLD_SELECT, CHARACTER_CREATION, TERRAIN_MAPPER, STATISTICS -> paused = true;
+                 WORLD_SELECT, CHARACTER_CREATION, TERRAIN_MAPPER, STATISTICS, GLOSSARY -> paused = true;
             case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI, CHARACTER_SHEET_UI, FURNACE_UI -> paused = false;
         }
     }
@@ -239,6 +239,23 @@ public final class GameStateController {
     public void closeStatisticsScreen() {
         StatisticsScreen statsScreen = game.getStatisticsScreen();
         if (statsScreen != null) statsScreen.setVisible(false);
+        PauseMenu pauseMenu = game.getPauseMenu();
+        if (pauseMenu != null) pauseMenu.setVisible(true);
+        setState(GameState.PAUSED);
+    }
+
+    public void openGlossaryScreen() {
+        com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen = game.getGlossaryScreen();
+        if (glossaryScreen == null) return;
+        PauseMenu pauseMenu = game.getPauseMenu();
+        if (pauseMenu != null) pauseMenu.setVisible(false);
+        glossaryScreen.setVisible(true);
+        setState(GameState.GLOSSARY);
+    }
+
+    public void closeGlossaryScreen() {
+        com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen = game.getGlossaryScreen();
+        if (glossaryScreen != null) glossaryScreen.setVisible(false);
         PauseMenu pauseMenu = game.getPauseMenu();
         if (pauseMenu != null) pauseMenu.setVisible(true);
         setState(GameState.PAUSED);

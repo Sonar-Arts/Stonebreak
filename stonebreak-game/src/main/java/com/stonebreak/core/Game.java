@@ -48,6 +48,7 @@ public class Game {
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private CharacterScreen characterScreen; // Character stats screen
     private com.stonebreak.ui.statisticsScreen.StatisticsScreen statisticsScreen; // Statistics screen
+    private com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen; // Entity Glossary screen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
     private FurnaceScreen furnaceScreen; // Furnace smelting GUI
     private RecipeScreen recipeScreen; // Added RecipeBookScreen
@@ -156,6 +157,7 @@ public class Game {
         this.mouseCaptureManager = new MouseCaptureManager(window);
         this.pauseMenu = new PauseMenu(this.renderer.getSkijaBackend());
         this.statisticsScreen = new com.stonebreak.ui.statisticsScreen.StatisticsScreen(this.renderer.getSkijaBackend());
+        this.glossaryScreen = new com.stonebreak.ui.glossaryScreen.GlossaryScreen(this.renderer.getSkijaBackend());
         this.deathMenu = new DeathMenu(this.renderer.getSkijaBackend());
         this.waterEffects = new WaterEffects();
 
@@ -459,6 +461,8 @@ public class Game {
 
     public void openStatisticsScreen()  { stateController.openStatisticsScreen(); }
     public void closeStatisticsScreen() { stateController.closeStatisticsScreen(); }
+    public void openGlossaryScreen()  { stateController.openGlossaryScreen(); }
+    public void closeGlossaryScreen() { stateController.closeGlossaryScreen(); }
 
     public com.stonebreak.core.state.GameStateController getStateController() { return stateController; }
 
@@ -476,6 +480,10 @@ public class Game {
 
     public com.stonebreak.ui.statisticsScreen.StatisticsScreen getStatisticsScreen() {
         return statisticsScreen;
+    }
+
+    public com.stonebreak.ui.glossaryScreen.GlossaryScreen getGlossaryScreen() {
+        return glossaryScreen;
     }
 
     /**

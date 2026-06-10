@@ -18,5 +18,6 @@ public enum GameState {
     INVENTORY_UI,    // State for when inventory is open
     RECIPE_BOOK_UI,   // State for Recipe Book UI
     CHARACTER_SHEET_UI, // State for when character screen is open
-    STATISTICS          // Statistics screen (opened from pause menu)
+    STATISTICS,          // Statistics screen (opened from pause menu)
+    GLOSSARY             // Entity Glossary screen (opened from pause menu)
 }

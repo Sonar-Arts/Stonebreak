@@ -219,13 +219,16 @@ public class EntityManager {
     private Entity createEntity(EntityType type, Vector3f position) {
         return switch (type) {
             case COW -> {
-                // Select random texture variant for fallback cow creation
-                String[] variants = {"default", "angus", "highland"};
+                String[] variants = type.getTextureVariants();
                 String textureVariant = variants[(int)(Math.random() * variants.length)];
                 yield new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
             }
             case CHICKEN -> new com.stonebreak.mobs.chicken.Chicken(world, position);
-            case SHEEP -> new com.stonebreak.mobs.sheep.Sheep(world, position, "default");
+            case SHEEP -> {
+                String[] variants = type.getTextureVariants();
+                String textureVariant = variants[(int)(Math.random() * variants.length)];
+                yield new com.stonebreak.mobs.sheep.Sheep(world, position, textureVariant);
+            }
             // Projectiles (FIRE_BOLT, ARROW, BOBBER) require a launch direction and
             // are spawned via their dedicated spawn* methods, not this generic path.
             default -> {

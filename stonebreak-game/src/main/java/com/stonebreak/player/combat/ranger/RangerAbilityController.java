@@ -32,6 +32,12 @@ public class RangerAbilityController {
         quarry.update(deltaTime);
         snare.update(deltaTime, quarry);
         cullingShot.update(deltaTime, player, quarry);
+
+        // Record weakness discovery when Quarry is fully studied (Marked Prey).
+        // O(1), idempotent — covers all stack paths (melee, arrow, Snare).
+        if (quarry.isMarkedPrey() && quarry.getQuarry() != null) {
+            player.getEntityDiscoveries().recordWeaknessDiscovered(quarry.getQuarry().getType());
+        }
     }
 
     public boolean tryCastSnare(Player player) {
