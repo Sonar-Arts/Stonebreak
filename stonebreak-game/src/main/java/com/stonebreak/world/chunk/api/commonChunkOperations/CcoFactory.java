@@ -86,12 +86,18 @@ public final class CcoFactory {
 
     /**
      * Create empty paletted block storage for a standard chunk.
+     * Uses the WorldConfiguration constants directly (not the CcoBounds
+     * global) so headless/test worlds that never run GameBootstrap work.
      *
      * @param airBlock Block type used as the uniform fill (air)
      * @return Paletted storage, all sections uniform-air
      */
     public static CcoBlockStorage createEmptyStorage(IBlockType airBlock) {
-        return CcoPalettedChunkStorage.createEmpty(CcoBounds.getConfig(), airBlock);
+        return CcoPalettedChunkStorage.createEmpty(
+            com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE,
+            com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT,
+            com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE,
+            airBlock);
     }
 
     /**

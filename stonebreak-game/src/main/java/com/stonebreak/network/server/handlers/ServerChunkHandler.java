@@ -38,11 +38,20 @@ public final class ServerChunkHandler {
      */
     private static final int FORGET_DISTANCE_CHUNKS = 10;
     /**
-     * Chunks streamed per player per tick. Kept modest because both the server encode and the
-     * client decode run on the main game thread (the integrated server ticks there) — a large
-     * burst causes frame hitches. 8/tick @ 20 Hz = 160 chunks/s fills a view in ~2 s.
+     * Chunks streamed per remote player per tick. Kept modest because the server encode runs
+     * on the main game thread (the integrated server ticks there) and the wire needs
+     * backpressure. 8/tick @ 20 Hz = 160 chunks/s fills a view in ~2 s.
      */
     private static final int MAX_PUSH_PER_TICK = 8;
+    /**
+     * Budget for the LOCAL (host) player. The LocalChannel is an in-JVM object handoff —
+     * no real wire to protect — and the wire-rate throttle was the dominant cause of slow
+     * chunk pop-in for the host (~2 s to fill a view). The client-side install is cheap
+     * enough to absorb this now: decode lands in a detached paletted storage and installs
+     * with one section copy + one heightmap recompute (World.installNetworkChunk).
+     * 64/tick @ 20 Hz fills the 289-chunk view in ~0.25 s.
+     */
+    private static final int LOCAL_PUSH_PER_TICK = 64;
 
     /** Current version per chunk key; bumped on modification so clients re-receive it. */
     private final Map<Long, Integer> chunkVersions = new HashMap<>();
@@ -92,7 +101,7 @@ public final class ServerChunkHandler {
                 }
             }
 
-            int budget = MAX_PUSH_PER_TICK;
+            int budget = sp.isLocal() ? LOCAL_PUSH_PER_TICK : MAX_PUSH_PER_TICK;
             outer:
             for (int r = 0; r <= VIEW_DISTANCE_CHUNKS; r++) {
                 for (int dz = -r; dz <= r; dz++) {

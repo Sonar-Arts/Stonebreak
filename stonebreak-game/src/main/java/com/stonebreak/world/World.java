@@ -896,15 +896,25 @@ public class World {
         // so the chunk arrives ready in the same call. No async machinery, no race conditions,
         // no chance of dropping the payload because the slot "isn't ready yet".
         Chunk chunk = chunkStore.createOrGetNetworkChunkSlot(chunkX, chunkZ);
+        // Decode into a detached paletted storage, then install with one section-level
+        // copy. The old per-block chunk.setBlock path paid dirty-flag churn, state-map
+        // removals, and an incremental heightmap update per block — and the heightmap
+        // was recomputed wholesale below anyway. This keeps install cost low enough
+        // for the lifted local-player streaming budget (ServerChunkHandler).
+        com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage decoded =
+            com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage.createEmpty(
+                WorldConfiguration.CHUNK_SIZE, WorldConfiguration.WORLD_HEIGHT,
+                WorldConfiguration.CHUNK_SIZE, com.stonebreak.blocks.BlockType.AIR);
         try {
             com.openmason.engine.net.protocol.codec.VoxelChunkCodec.decodeInto(
                     payload,
-                    new com.stonebreak.network.bridge.GameBlockSetter(chunk),
+                    new com.stonebreak.network.bridge.StorageBlockSetter(decoded),
                     com.stonebreak.network.bridge.GameBlockTypeResolver.INSTANCE);
         } catch (Exception e) {
             System.err.println("[NETWORK] Failed to decode chunk (" + chunkX + "," + chunkZ + "): " + e.getMessage());
             return;
         }
+        chunk.replaceAllBlocks(decoded);
         // The chunk was an empty placeholder (all-air heightmap). Now that real blocks are in,
         // rebuild the heightmap so sky-shadow/lighting and the mesher's Y-scan are correct —
         // generated/loaded chunks do this; streamed chunks must too.

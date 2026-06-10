@@ -196,6 +196,17 @@ public class Chunk {
         return blocks.getHighestNonAirY();
     }
 
+    /**
+     * Replaces this chunk's entire block contents with a copy of the given
+     * storage (section-level palette copy, near-free) and marks the chunk
+     * dirty for remesh. Used by the network chunk-install path; the caller
+     * must recompute the heightmap afterwards.
+     */
+    public void replaceAllBlocks(CcoBlockStorage source) {
+        blocks.copyFrom(source);
+        dirtyTracker.markBlockChanged();
+    }
+
     // ===== Mesh Operations (CCO-based) =====
 
     /**
