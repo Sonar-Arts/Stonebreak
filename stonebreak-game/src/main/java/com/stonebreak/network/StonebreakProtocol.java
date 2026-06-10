@@ -65,7 +65,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 6, HandshakeC2S.class, HandshakeC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 7, PlayerDataC2S.class, PlayerDataC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 8, ViewDistanceC2S.class, ViewDistanceC2S.CODEC);
-        r.register(PLAY, SERVERBOUND, 8, EntityDamageC2S.class, EntityDamageC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 9, EntityDamageC2S.class, EntityDamageC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);
