@@ -55,12 +55,45 @@ public class CanvasPanel {
     // Current draw command (active during a drawing operation)
     private DrawCommand currentDrawCommand = null;
 
+    // Hovered-pixel sink for the status bar (optional)
+    private com.openmason.main.systems.menus.textureCreator.panels.status.CanvasHoverInfo hoverInfo = null;
+
     /**
      * Create canvas panel.
      */
     public CanvasPanel() {
         this.renderer = new CanvasRenderer();
         logger.debug("Canvas panel created");
+    }
+
+    /**
+     * Wire the hovered-pixel sink updated each frame for the status bar.
+     */
+    public void setHoverInfo(com.openmason.main.systems.menus.textureCreator.panels.status.CanvasHoverInfo hoverInfo) {
+        this.hoverInfo = hoverInfo;
+    }
+
+    /**
+     * Update the hovered-pixel info consumed by the status bar.
+     */
+    private void updateHoverInfo(PixelCanvas canvas, CanvasState canvasState, ImVec2 canvasRegionMin) {
+        if (hoverInfo == null) {
+            return;
+        }
+        if (!ImGui.isWindowHovered()) {
+            hoverInfo.clear();
+            return;
+        }
+        ImVec2 mousePos = ImGui.getMousePos();
+        int[] coords = new int[2];
+        canvasState.screenToCanvasCoords(mousePos.x, mousePos.y,
+                canvasRegionMin.x, canvasRegionMin.y, coords);
+        if (coords[0] >= 0 && coords[0] < canvas.getWidth()
+                && coords[1] >= 0 && coords[1] < canvas.getHeight()) {
+            hoverInfo.set(coords[0], coords[1]);
+        } else {
+            hoverInfo.clear();
+        }
     }
 
     /**
@@ -91,6 +124,8 @@ public class CanvasPanel {
 
         // Calculate canvas display size and centering offset
         ImVec2 canvasRegionMin = getImVec2(displayCanvas, canvasState);
+
+        updateHoverInfo(displayCanvas, canvasState, canvasRegionMin);
 
         // Get selection preview if using selection tool
         int[] selectionPreviewBounds = null;

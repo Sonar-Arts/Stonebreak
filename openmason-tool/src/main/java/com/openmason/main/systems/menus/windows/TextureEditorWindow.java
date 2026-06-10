@@ -1,14 +1,15 @@
 package com.openmason.main.systems.menus.windows;
 
+import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
+import com.openmason.main.systems.menus.textureCreator.rendering.TextureEditorLayoutBuilder;
+import com.openmason.main.systems.menus.textureCreator.rendering.TextureEditorStyleScope;
 import com.openmason.main.systems.services.drop.PendingFileDrops;
 import imgui.ImGui;
-import imgui.flag.ImGuiDir;
 import imgui.flag.ImGuiDockNodeFlags;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
-import imgui.type.ImInt;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,9 +28,10 @@ public class TextureEditorWindow {
     private final TextureCreatorImGui textureCreator;
     private final ImBoolean visible;
     private final WindowTitleBar titleBar;
+    private final TextureEditorLayoutBuilder layoutBuilder;
+    private final TextureEditorStyleScope styleScope = new TextureEditorStyleScope();
 
     private boolean iniFileSet = false;
-    private boolean defaultLayoutBuilt = false;
     private boolean wasVisible = false;
 
     // Maximize/restore state
@@ -48,8 +50,10 @@ public class TextureEditorWindow {
         this.textureCreator = textureCreator;
         this.visible = new ImBoolean(false);
         this.titleBar = new WindowTitleBar(WINDOW_TITLE, true, true);
+        this.layoutBuilder = new TextureEditorLayoutBuilder(PreferencesManager.getInstance());
 
         textureCreator.setWindowedMode(true);
+        textureCreator.setOnResetLayout(layoutBuilder::requestReset);
         logger.debug("TextureEditorWindow created with windowed mode enabled");
     }
 
@@ -85,6 +89,7 @@ public class TextureEditorWindow {
                           ImGuiWindowFlags.NoCollapse |
                           ImGuiWindowFlags.NoScrollbar;
 
+        styleScope.push();
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
 
         if (ImGui.begin(WINDOW_TITLE, visible, windowFlags)) {
@@ -114,14 +119,15 @@ public class TextureEditorWindow {
                 textureCreator.renderWindowedToolbar();
 
                 int dockspaceId = ImGui.getID(DOCKSPACE_NAME);
-                ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.None);
+                // Negative height reserves room for the status bar strip below
+                ImGui.dockSpace(dockspaceId, 0.0f,
+                        -com.openmason.main.systems.menus.textureCreator.panels.status.StatusBarPanel.HEIGHT,
+                        ImGuiDockNodeFlags.None);
 
-                if (!defaultLayoutBuilt) {
-                    defaultLayoutBuilt = true;
-                    buildDefaultLayout(dockspaceId);
-                }
+                layoutBuilder.applyIfNeeded(dockspaceId, ImGui.getWindowWidth(), ImGui.getWindowHeight());
 
                 textureCreator.renderWindowedPanels();
+                textureCreator.renderStatusBar();
                 renderResizeGrip();
 
             } catch (Exception e) {
@@ -132,50 +138,7 @@ public class TextureEditorWindow {
         }
         ImGui.end();
         ImGui.popStyleVar();
-    }
-
-    /**
-     * Build the default texture editor docking layout: Tools (left) | Canvas (center) | Color/Layers (right).
-     * New panes (Noise Filter, Symmetry, etc.) dock as tabs in the right node.
-     * Skipped if a saved imgui.ini layout already exists for this dockspace.
-     */
-    private void buildDefaultLayout(int dockspaceId) {
-        var node = imgui.internal.ImGui.dockBuilderGetNode(dockspaceId);
-        if (node != null && node.isSplitNode()) {
-            return;
-        }
-
-        logger.info("No saved texture editor layout — building default docking layout");
-
-        imgui.internal.ImGui.dockBuilderRemoveNode(dockspaceId);
-        imgui.internal.ImGui.dockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags.None);
-
-        float width = ImGui.getWindowWidth();
-        float height = ImGui.getWindowHeight();
-        if (width <= 0 || height <= 0) {
-            width = 1200;
-            height = 800;
-        }
-        imgui.internal.ImGui.dockBuilderSetNodeSize(dockspaceId, width, height);
-
-        ImInt dockLeft = new ImInt();
-        ImInt dockMain = new ImInt();
-        imgui.internal.ImGui.dockBuilderSplitNode(dockspaceId, ImGuiDir.Left, 0.10f, dockLeft, dockMain);
-
-        ImInt dockRight = new ImInt();
-        ImInt dockCenter = new ImInt();
-        imgui.internal.ImGui.dockBuilderSplitNode(dockMain.get(), ImGuiDir.Right, 0.30f, dockRight, dockCenter);
-
-        imgui.internal.ImGui.dockBuilderDockWindow("Tools", dockLeft.get());
-        imgui.internal.ImGui.dockBuilderDockWindow("Canvas", dockCenter.get());
-        imgui.internal.ImGui.dockBuilderDockWindow("Color", dockRight.get());
-        imgui.internal.ImGui.dockBuilderDockWindow("Layers", dockRight.get());
-        imgui.internal.ImGui.dockBuilderDockWindow("Noise Filter", dockRight.get());
-        imgui.internal.ImGui.dockBuilderDockWindow("Symmetry", dockRight.get());
-
-        imgui.internal.ImGui.dockBuilderFinish(dockspaceId);
-
-        logger.info("Default texture editor layout built successfully");
+        styleScope.pop();
     }
 
     /**

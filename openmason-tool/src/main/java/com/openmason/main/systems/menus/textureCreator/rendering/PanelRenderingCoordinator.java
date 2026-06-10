@@ -7,6 +7,7 @@ import com.openmason.main.systems.menus.textureCreator.TextureCreatorWindowState
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.menus.textureCreator.coordinators.ToolCoordinator;
 import com.openmason.main.systems.menus.textureCreator.panels.*;
+import com.openmason.main.systems.menus.textureCreator.panels.color.ColorPanelView;
 import com.openmason.main.systems.menus.toolbars.TextureEditorToolbarRenderer;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
@@ -32,7 +33,8 @@ public class PanelRenderingCoordinator {
     private final ToolOptionsBar toolOptionsBar;
     private final CanvasPanel canvasPanel;
     private final LayerPanelRenderer layerPanel;
-    private final ColorPanel colorPanel;
+    private final ColorPanelView colorPanel;
+    private final PaletteStripPanel palettePanel;
     private final NoiseFilterPanel noiseFilterPanel;
     private final SymmetryPanel symmetryPanel;
 
@@ -51,7 +53,8 @@ public class PanelRenderingCoordinator {
                                     ToolOptionsBar toolOptionsBar,
                                     CanvasPanel canvasPanel,
                                     LayerPanelRenderer layerPanel,
-                                    ColorPanel colorPanel,
+                                    ColorPanelView colorPanel,
+                                    PaletteStripPanel palettePanel,
                                     NoiseFilterPanel noiseFilterPanel,
                                     SymmetryPanel symmetryPanel) {
         this.state = state;
@@ -64,6 +67,7 @@ public class PanelRenderingCoordinator {
         this.canvasPanel = canvasPanel;
         this.layerPanel = layerPanel;
         this.colorPanel = colorPanel;
+        this.palettePanel = palettePanel;
         this.noiseFilterPanel = noiseFilterPanel;
         this.symmetryPanel = symmetryPanel;
     }
@@ -76,6 +80,7 @@ public class PanelRenderingCoordinator {
         renderCanvasPanel();
         renderLayersPanel();
         renderColorPanel();
+        renderPalettePanel();
     }
 
     /**
@@ -224,6 +229,19 @@ public class PanelRenderingCoordinator {
             if (ImGui.begin("Color", windowState.getShowColorPanel())) {
                 colorPanel.render();
                 state.setCurrentColor(colorPanel.getCurrentColor());
+            }
+            ImGui.end();
+        }
+    }
+
+    /**
+     * Render palette strip panel.
+     * Panel is closeable - clicking (x) button will hide it.
+     */
+    private void renderPalettePanel() {
+        if (windowState.getShowPalettePanel().get()) {
+            if (ImGui.begin("Palette", windowState.getShowPalettePanel())) {
+                palettePanel.render();
             }
             ImGui.end();
         }

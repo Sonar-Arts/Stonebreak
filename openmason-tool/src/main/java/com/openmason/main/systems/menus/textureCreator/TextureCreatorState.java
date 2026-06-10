@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.textureCreator;
 
+import com.openmason.main.systems.menus.textureCreator.panels.status.CanvasHoverInfo;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionManager;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionRegion;
 import com.openmason.main.systems.menus.textureCreator.tools.DrawingTool;
@@ -38,6 +39,7 @@ public class TextureCreatorState {
     private final SelectionManager selectionManager; // Centralized selection management
     private final SymmetryState symmetryState; // Symmetry/mirror mode state
     private final ImBoolean showGrid;
+    private final CanvasHoverInfo canvasHoverInfo; // Hovered pixel for status bar
 
     /**
      * Create new texture creator state with defaults.
@@ -52,6 +54,14 @@ public class TextureCreatorState {
         this.selectionManager = new SelectionManager(); // Initialize selection manager
         this.symmetryState = new SymmetryState(); // Initialize symmetry state
         this.showGrid = new ImBoolean(true);
+        this.canvasHoverInfo = new CanvasHoverInfo();
+    }
+
+    /**
+     * Get the canvas hover info (hovered pixel coordinates for the status bar).
+     */
+    public CanvasHoverInfo getCanvasHoverInfo() {
+        return canvasHoverInfo;
     }
 
     // Getters and setters

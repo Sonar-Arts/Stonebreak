@@ -106,14 +106,10 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
     public void render() {
         ImGui.beginChild("##toolbar_panel", 0, 0, false);
 
-        ImGui.text("Tools");
-        ImGui.separator();
+        // Aseprite-style narrow icon strip: no header, single column of icons
+        float iconDisplaySize = 24.0f;
+        float buttonPadding = 4.0f;
 
-        // Icon rendering configuration
-        float iconDisplaySize = 20.0f; // Render icons at 20x20 (smaller than 32x32)
-        float buttonPadding = 4.0f;    // Padding around icon
-
-        // Add spacing between buttons
         ImGui.spacing();
 
         // Apply button padding (inherited from BaseToolbarRenderer)

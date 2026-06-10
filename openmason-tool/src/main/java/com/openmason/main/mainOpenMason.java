@@ -22,6 +22,8 @@ import com.openmason.main.systems.menus.textureCreator.TexturePreviewPipeline;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.services.drop.ViewportDropCallbackManager;
 import com.openmason.main.systems.menus.windows.TextureEditorWindow;
+import com.openmason.main.systems.skija.SkijaContext;
+import com.openmason.main.systems.skija.SkijaTestPanel;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryStack;
@@ -71,6 +73,8 @@ public class mainOpenMason {
     private AnimationEditorImGui animationEditor;
     private TexturePreviewPipeline texturePreviewPipeline;
     private final McpServerBootstrap mcpServer = new McpServerBootstrap();
+    private SkijaContext skijaContext;
+    private SkijaTestPanel skijaTestPanel;
 
     // State flags
     private boolean showHomeScreen = true;
@@ -91,6 +95,7 @@ public class mainOpenMason {
             initializeGLFW();
             createWindow();
             initializeImGui();
+            initializeSkija();
             initializeUI();
 
             omLifecycle.onApplicationStarted();
@@ -229,6 +234,24 @@ public class mainOpenMason {
         // In imgui-java 1.87+, OpenGL device objects are lazily created on the first
         // newFrame() call rather than during init(). Trigger creation before main loop.
         imGuiGl3.newFrame();
+    }
+
+    /**
+     * Initialize the shared Skija DirectContext for high-quality 2D widget
+     * rendering. Non-fatal on failure — Skija-backed widgets fall back to
+     * ImGui draw-list rendering when no context is available.
+     */
+    private void initializeSkija() {
+        try {
+            skijaContext = SkijaContext.initialize();
+            if (SkijaTestPanel.ENABLED) {
+                skijaTestPanel = new SkijaTestPanel();
+                logger.info("Skija test panel enabled (-Dopenmason.skija.test=true)");
+            }
+        } catch (Throwable t) {
+            logger.error("Skija initialization failed — Skija widgets will fall back to ImGui", t);
+            skijaContext = null;
+        }
     }
 
     /**
@@ -536,6 +559,10 @@ public class mainOpenMason {
                     "Unsaved Changes Dialog");
         }
 
+        if (skijaTestPanel != null) {
+            safeRender(() -> skijaTestPanel.render(), "Skija Test Panel");
+        }
+
         // Flush pending texture preview updates to the 3D viewport
         if (texturePreviewPipeline != null) {
             texturePreviewPipeline.flush();
@@ -663,6 +690,16 @@ public class mainOpenMason {
         if (texturePreviewPipeline != null) {
             texturePreviewPipeline.dispose();
         }
+
+        if (skijaTestPanel != null) {
+            skijaTestPanel.close();
+            skijaTestPanel = null;
+        }
+        if (skijaContext != null) {
+            skijaContext.close();
+            skijaContext = null;
+        }
+
         safeDispose(viewportInterface);
         safeDispose(textureCreatorInterface);
         safeDispose(themeManager);

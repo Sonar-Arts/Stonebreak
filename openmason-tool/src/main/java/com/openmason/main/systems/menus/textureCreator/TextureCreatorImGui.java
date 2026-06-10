@@ -12,6 +12,7 @@ import com.openmason.main.systems.menus.textureCreator.io.DragDropHandler;
 import com.openmason.main.systems.menus.textureCreator.keyboard.KeyboardShortcutManager;
 import com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey;
 import com.openmason.main.systems.menus.textureCreator.panels.*;
+import com.openmason.main.systems.menus.textureCreator.panels.color.ColorPanelView;
 import com.openmason.main.systems.menus.textureCreator.selection.RectangularSelection;
 import com.openmason.main.systems.LogoManager;
 import com.openmason.main.systems.menus.textureCreator.tools.EraserTool;
@@ -69,7 +70,10 @@ public class TextureCreatorImGui {
     private final AboutDialog aboutDialog;
 
     // Panels (passed to renderer)
-    private final ColorPanel colorPanel;
+    private final ColorPanelView colorPanel;
+
+    // Status bar (rendered by the hosting window below the dockspace)
+    private com.openmason.main.systems.menus.textureCreator.panels.status.StatusBarPanel statusBarPanel;
 
     // Drag-and-drop handler for processing dropped files
     private final DragDropHandler dragDropHandler;
@@ -89,7 +93,7 @@ public class TextureCreatorImGui {
                               ToolOptionsBar toolOptionsBar,
                               CanvasPanel canvasPanel,
                               LayerPanelRenderer layerPanel,
-                              ColorPanel colorPanel,
+                              ColorPanelView colorPanel,
                               NewTextureDialog newTextureDialog,
                               ImportPNGDialog importPNGDialog,
                               OMTImportDialog omtImportDialog,
@@ -153,10 +157,21 @@ public class TextureCreatorImGui {
         TextureEditorToolbarRenderer toolbarPanel = new TextureEditorToolbarRenderer();
         ToolOptionsBar toolOptionsBar = new ToolOptionsBar(preferences);
         CanvasPanel canvasPanel = new CanvasPanel();
+        canvasPanel.setHoverInfo(state.getCanvasHoverInfo());
         LayerPanelRenderer layerPanel = new LayerPanelRenderer();
-        ColorPanel colorPanel = new ColorPanel();
+        ColorPanelView colorPanel = new ColorPanelView();
         NoiseFilterPanel noiseFilterPanel = new NoiseFilterPanel();
         SymmetryPanel symmetryPanel = new SymmetryPanel();
+
+        // Palette strip: swatch clicks drive the color panel; every structural
+        // change is persisted immediately (no dispose-time flush needed)
+        com.openmason.main.systems.menus.textureCreator.palette.PalettePersistence palettePersistence =
+            new com.openmason.main.systems.menus.textureCreator.palette.PalettePersistence(preferencesManager);
+        com.openmason.main.systems.menus.textureCreator.palette.PaletteModel paletteModel =
+            palettePersistence.load();
+        paletteModel.setChangeListener(() -> palettePersistence.save(paletteModel));
+        PaletteStripPanel paletteStripPanel = new PaletteStripPanel(
+            paletteModel, colorPanel::getCurrentColor, colorPanel::setColor);
 
         // Create dialogs
         NewTextureDialog newTextureDialog = new NewTextureDialog();
@@ -189,17 +204,21 @@ public class TextureCreatorImGui {
         WindowedMenuBarRenderer windowedMenuBarRenderer = new WindowedMenuBarRenderer(state, controller, fileOperations,
             newTextureDialog, importPNGDialog, exportFormatDialog, null, aboutMenuHandler);
         PanelRenderingCoordinator panelRenderer = new PanelRenderingCoordinator(state, controller, preferences,
-            toolCoordinator, windowState, toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, noiseFilterPanel, symmetryPanel);
+            toolCoordinator, windowState, toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel,
+            paletteStripPanel, noiseFilterPanel, symmetryPanel);
         DialogProcessor dialogProcessor = new DialogProcessor(controller, fileOperations, dragDropHandler,
             newTextureDialog, importPNGDialog, omtImportDialog);
 
-        return new TextureCreatorImGui(
+        TextureCreatorImGui ui = new TextureCreatorImGui(
             state, controller, preferences, windowState,
             toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel,
             newTextureDialog, importPNGDialog, omtImportDialog, exportFormatDialog, aboutDialog,
             fileOperations, toolCoordinator, pasteCoordinator, shortcutManager,
             menuBarRenderer, windowedMenuBarRenderer, panelRenderer, dialogProcessor, dragDropHandler
         );
+        ui.statusBarPanel = new com.openmason.main.systems.menus.textureCreator.panels.status.StatusBarPanel(
+            statusService, state, controller, state.getCanvasHoverInfo());
+        return ui;
     }
 
     /**
@@ -217,12 +236,14 @@ public class TextureCreatorImGui {
         menuBarRenderer.setOnSymmetryToggle(windowState::toggleSymmetryWindow);
         menuBarRenderer.setOnLayersPanelToggle(windowState::toggleLayersPanel, windowState.getShowLayersPanel());
         menuBarRenderer.setOnColorPanelToggle(windowState::toggleColorPanel, windowState.getShowColorPanel());
+        menuBarRenderer.setOnPalettePanelToggle(windowState::togglePalettePanel, windowState.getShowPalettePanel());
 
         windowedMenuBarRenderer.setOnPreferencesToggle(windowState::togglePreferencesWindow);
         windowedMenuBarRenderer.setOnNoiseFilterToggle(windowState::toggleNoiseFilterWindow);
         windowedMenuBarRenderer.setOnSymmetryToggle(windowState::toggleSymmetryWindow);
         windowedMenuBarRenderer.setOnLayersPanelToggle(windowState::toggleLayersPanel, windowState.getShowLayersPanel());
         windowedMenuBarRenderer.setOnColorPanelToggle(windowState::toggleColorPanel, windowState.getShowColorPanel());
+        windowedMenuBarRenderer.setOnPalettePanelToggle(windowState::togglePalettePanel, windowState.getShowPalettePanel());
 
         // Inject SymmetryState into tools that support it
         injectSymmetryStateIntoTools(toolbarPanel);
@@ -293,6 +314,15 @@ public class TextureCreatorImGui {
     public void setBackToHomeCallback(Runnable callback) {
         menuBarRenderer.setBackToHomeCallback(callback);
         windowedMenuBarRenderer.setBackToHomeCallback(callback);
+    }
+
+    /**
+     * Set callback for View → Reset Layout (rebuilds the default dock layout).
+     * Wired by the window hosting the dockspace (TextureEditorWindow).
+     */
+    public void setOnResetLayout(Runnable callback) {
+        menuBarRenderer.setOnResetLayout(callback);
+        windowedMenuBarRenderer.setOnResetLayout(callback);
     }
 
     /**
@@ -431,6 +461,15 @@ public class TextureCreatorImGui {
     }
 
     /**
+     * Render the status bar strip (for use below the dockspace in TextureEditorWindow).
+     */
+    public void renderStatusBar() {
+        if (statusBarPanel != null) {
+            statusBarPanel.render();
+        }
+    }
+
+    /**
      * Render windowed panels and dialogs (for use below dockspace in TextureEditorWindow).
      */
     public void renderWindowedPanels() {
@@ -560,6 +599,7 @@ public class TextureCreatorImGui {
      */
     public void dispose() {
         preferences.setColorHistory(colorPanel.getColorHistory());
+        colorPanel.close(); // frees the Skija picker surfaces
         TextureToolIconManager.getInstance().dispose();
         logger.info("Texture Creator UI disposed");
     }
