@@ -2,6 +2,9 @@ package com.stonebreak.rendering;
 
 import com.openmason.engine.rendering.gl.OpenGLErrorHandler;
 import com.openmason.engine.rendering.gl.RenderingConfigurationManager;
+import com.openmason.engine.rendering.postfx.PostFxFrameParams;
+import com.openmason.engine.rendering.postfx.PostProcessingPipeline;
+import com.openmason.engine.rendering.postfx.effects.GodRaysEffect;
 import com.stonebreak.rendering.core.ResourceManager;
 import com.stonebreak.rendering.core.GameBlockDefinitionRegistry;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
@@ -70,6 +73,9 @@ public class Renderer {
     private final WorldRenderer worldRenderer;
     private final OverlayRenderer overlayRenderer;
     private final DropRenderer dropRenderer;
+
+    // Post-processing (scene FBO + screen-space effects, e.g. god rays)
+    private final PostProcessingPipeline postPipeline;
     
 
     /**
@@ -85,6 +91,9 @@ public class Renderer {
         initializeSBOBlocks();
 
         configManager = new RenderingConfigurationManager(width, height);
+
+        postPipeline = new PostProcessingPipeline(width, height);
+        postPipeline.addEffect(new GodRaysEffect());
 
         // Initialize block definition registry for CBR support.
         // The SBO bridge (populated above) is consulted so SBO-declared
@@ -285,6 +294,7 @@ public class Renderer {
         if (skijaBackend != null && skijaBackend.isAvailable()) {
             skijaBackend.resize(width, height);
         }
+        postPipeline.resize(width, height);
     }
 
     public int getWindowWidth() {
@@ -439,8 +449,45 @@ public class Renderer {
      * UI elements have been stripped from this method and should be rendered separately.
      */
     public void renderWorld(World world, Player player, float totalTime) {
-        // Delegate to the specialized WorldRenderer
+        com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
+        org.joml.Vector3f sunDirection = timeOfDay != null
+                ? timeOfDay.getSunDirection()
+                : new org.joml.Vector3f(0.7f, 0.1f, 0.5f).normalize();
+        float godRayStrength = com.stonebreak.config.Settings.getInstance().getGodRaysEnabled()
+                ? computeGodRayStrength(sunDirection)
+                : 0.0f;
+
+        if (godRayStrength <= 0.001f) {
+            // Effect off or sun below the horizon — render directly to the default
+            // framebuffer, exactly the pre-post-processing path.
+            worldRenderer.renderWorld(world, player, totalTime);
+            return;
+        }
+
+        postPipeline.beginFrame();
         worldRenderer.renderWorld(world, player, totalTime);
+        postPipeline.endFrame(new PostFxFrameParams(
+                player.getViewMatrix(),
+                configManager.getProjectionMatrix(),
+                sunDirection,
+                godRayStrength));
+    }
+
+    /**
+     * God ray intensity from sun elevation: off at night, strongest near the horizon
+     * (dawn/dusk), subtle at noon.
+     */
+    private static float computeGodRayStrength(org.joml.Vector3f sunDirection) {
+        float elevation = sunDirection.y;
+        if (elevation < -0.05f) {
+            return 0.0f; // Night — sun below the horizon.
+        }
+        float horizonRamp = Math.clamp((elevation + 0.05f) / 0.15f, 0.0f, 1.0f);
+        float baseStrength = 0.6f * horizonRamp;
+        if (elevation > 0.0f && elevation < 0.35f) {
+            baseStrength = Math.min(1.0f, baseStrength * 1.5f); // Dawn/dusk drama boost.
+        }
+        return baseStrength;
     }
     
     
@@ -465,6 +512,11 @@ public class Renderer {
      * Cleanup method to release resources.
      */
     public void cleanup() {
+        // Cleanup post-processing pipeline
+        if (postPipeline != null) {
+            postPipeline.cleanup();
+        }
+
         // Cleanup core managers
         if (resourceManager != null) {
             resourceManager.cleanup();

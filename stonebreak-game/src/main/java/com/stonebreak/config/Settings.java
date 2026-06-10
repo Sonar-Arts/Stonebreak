@@ -31,6 +31,7 @@ public class Settings {
     private boolean leafTransparency = true;
     private boolean waterShaderEnabled = true;
     private boolean cloudsEnabled = true;
+    private boolean godRaysEnabled = true;
 
     // Performance + advanced settings — defaults sourced from WorldConfiguration to avoid drift.
     private int renderDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_RENDER_DISTANCE;
@@ -94,6 +95,7 @@ public class Settings {
             json.append("  \"leafTransparency\": ").append(leafTransparency).append(",\n");
             json.append("  \"waterShaderEnabled\": ").append(waterShaderEnabled).append(",\n");
             json.append("  \"cloudsEnabled\": ").append(cloudsEnabled).append(",\n");
+            json.append("  \"godRaysEnabled\": ").append(godRaysEnabled).append(",\n");
             json.append("  \"renderDistance\": ").append(renderDistance).append(",\n");
             json.append("  \"lodDistance\": ").append(lodDistance).append(",\n");
             json.append("  \"lodEnabled\": ").append(lodEnabled).append(",\n");
@@ -267,6 +269,11 @@ public class Settings {
                 if (value != null) {
                     cloudsEnabled = Boolean.parseBoolean(value);
                 }
+            } else if (line.contains("godRaysEnabled")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    godRaysEnabled = Boolean.parseBoolean(value);
+                }
             } else if (line.contains("renderDistance")) {
                 String value = extractValue(line);
                 if (value != null) {
@@ -365,6 +372,7 @@ public class Settings {
     public boolean getLeafTransparency() { return leafTransparency; }
     public boolean getWaterShaderEnabled() { return waterShaderEnabled; }
     public boolean getCloudsEnabled() { return cloudsEnabled; }
+    public boolean getGodRaysEnabled() { return godRaysEnabled; }
 
     // Performance / advanced getters
     public int getRenderDistance() { return renderDistance; }
@@ -448,6 +456,10 @@ public class Settings {
 
     public void setCloudsEnabled(boolean cloudsEnabled) {
         this.cloudsEnabled = cloudsEnabled;
+    }
+
+    public void setGodRaysEnabled(boolean godRaysEnabled) {
+        this.godRaysEnabled = godRaysEnabled;
     }
 
     public void setRenderDistance(int value) {

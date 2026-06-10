@@ -57,6 +57,7 @@ public final class SettingsMenu {
                 actionHandler::toggleLeafTransparency,
                 actionHandler::toggleWaterShader,
                 actionHandler::toggleClouds,
+                actionHandler::toggleGodRays,
                 actionHandler::onRenderDistanceChange,
                 actionHandler::onLodDistanceChange,
                 actionHandler::toggleLodEnabled,
