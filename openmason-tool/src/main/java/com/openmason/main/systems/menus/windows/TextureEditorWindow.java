@@ -84,10 +84,13 @@ public class TextureEditorWindow {
 
         // Minimum size ensures all UI elements remain visible
         ImGui.setNextWindowSizeConstraints(600, 400, Float.MAX_VALUE, Float.MAX_VALUE);
+        // NoScrollWithMouse matters: if content ever overflows by a pixel,
+        // a scrollable host window lets the wheel nudge the entire editor
         int windowFlags = ImGuiWindowFlags.NoDocking |
                           ImGuiWindowFlags.NoTitleBar |
                           ImGuiWindowFlags.NoCollapse |
-                          ImGuiWindowFlags.NoScrollbar;
+                          ImGuiWindowFlags.NoScrollbar |
+                          ImGuiWindowFlags.NoScrollWithMouse;
 
         styleScope.push();
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
@@ -119,10 +122,13 @@ public class TextureEditorWindow {
                 textureCreator.renderWindowedToolbar();
 
                 int dockspaceId = ImGui.getID(DOCKSPACE_NAME);
-                // Negative height reserves room for the status bar strip below
-                ImGui.dockSpace(dockspaceId, 0.0f,
-                        -com.openmason.main.systems.menus.textureCreator.panels.status.StatusBarPanel.HEIGHT,
-                        ImGuiDockNodeFlags.None);
+                // Reserve room for the status bar strip below, including the
+                // item spacing ImGui inserts after the dockspace item — without
+                // it the content overflows by a few pixels and becomes scrollable
+                float statusReserve =
+                        com.openmason.main.systems.menus.textureCreator.panels.status.StatusBarPanel.HEIGHT
+                        + ImGui.getStyle().getItemSpacingY();
+                ImGui.dockSpace(dockspaceId, 0.0f, -statusReserve, ImGuiDockNodeFlags.None);
 
                 layoutBuilder.applyIfNeeded(dockspaceId, ImGui.getWindowWidth(), ImGui.getWindowHeight());
 

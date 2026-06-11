@@ -421,15 +421,16 @@ public class WindowedMenuBarRenderer {
     }
 
     private void renderStatusInfo() {
-        // Position status info on the right side
-        float textWidth = ImGui.calcTextSize(String.format("Canvas: %s | Zoom: %.0f%%",
+        // Zoom padded to a fixed digit count: the text is right-aligned by its
+        // measured width, so a varying digit count ("800%" vs "1600%") would
+        // re-anchor the block and make the menu bar wobble while zooming.
+        // The UI font is monospaced, so padded text keeps a stable pixel width.
+        String status = String.format("Canvas: %s | Zoom: %4.0f%%",
             state.getCurrentCanvasSize().getDisplayName(),
-            controller.getCanvasState().getZoomLevel() * 100)).x;
+            controller.getCanvasState().getZoomLevel() * 100);
 
-        ImGui.sameLine(ImGui.getContentRegionAvailX() - textWidth);
-        ImGui.text(String.format("Canvas: %s | Zoom: %.0f%%",
-            state.getCurrentCanvasSize().getDisplayName(),
-            controller.getCanvasState().getZoomLevel() * 100));
+        ImGui.sameLine(ImGui.getContentRegionAvailX() - ImGui.calcTextSize(status).x);
+        ImGui.text(status);
     }
 
     private void renderSeparator() {

@@ -39,6 +39,11 @@ public final class StatusBarPanel {
     }
 
     public void render() {
+        // Pin to the window bottom: the strip occupies exactly the reserved
+        // band and can never extend the host window's content height (which
+        // would make the window scrollable and let the wheel shift the UI)
+        ImGui.setCursorPos(0, ImGui.getWindowHeight() - HEIGHT);
+
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 8.0f, 4.0f);
         ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 0.0f, 0.0f);
 
@@ -64,6 +69,9 @@ public final class StatusBarPanel {
     }
 
     private String buildRightSegments() {
+        // Numeric fields use fixed-width formats: this block is right-aligned
+        // by its measured width, and the UI font is monospaced — padding keeps
+        // the cluster pixel-stable while zooming or moving over the canvas.
         StringBuilder sb = new StringBuilder(96);
 
         DrawingTool tool = state.getCurrentTool();
@@ -71,16 +79,18 @@ public final class StatusBarPanel {
             sb.append(tool.getName());
         }
 
+        appendSeparator(sb);
         if (hoverInfo != null && hoverInfo.isHovering()) {
-            appendSeparator(sb);
-            sb.append(hoverInfo.getPixelX()).append(", ").append(hoverInfo.getPixelY());
+            sb.append(String.format("%4d,%4d", hoverInfo.getPixelX(), hoverInfo.getPixelY()));
+        } else {
+            sb.append("   -,   -"); // same width as the populated segment
         }
 
         appendSeparator(sb);
         sb.append(state.getCurrentCanvasSize().getDisplayName());
 
         appendSeparator(sb);
-        sb.append(Math.round(controller.getCanvasState().getZoomLevel() * 100f)).append('%');
+        sb.append(String.format("%4d%%", Math.round(controller.getCanvasState().getZoomLevel() * 100f)));
 
         SelectionRegion selection = state.getCurrentSelection();
         if (selection != null && !selection.isEmpty()) {
