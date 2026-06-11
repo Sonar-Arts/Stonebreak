@@ -6,6 +6,7 @@ import com.openmason.main.systems.menus.textureCreator.TextureCreatorState;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorWindowState;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.menus.textureCreator.coordinators.ToolCoordinator;
+import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.menus.textureCreator.panels.*;
 import com.openmason.main.systems.menus.textureCreator.panels.color.ColorPanelView;
 import com.openmason.main.systems.menus.toolbars.TextureEditorToolbarRenderer;
@@ -34,7 +35,6 @@ public class PanelRenderingCoordinator {
     private final CanvasPanel canvasPanel;
     private final LayerPanelRenderer layerPanel;
     private final ColorPanelView colorPanel;
-    private final PaletteStripPanel palettePanel;
     private final NoiseFilterPanel noiseFilterPanel;
     private final SymmetryPanel symmetryPanel;
 
@@ -59,7 +59,6 @@ public class PanelRenderingCoordinator {
                                     CanvasPanel canvasPanel,
                                     LayerPanelRenderer layerPanel,
                                     ColorPanelView colorPanel,
-                                    PaletteStripPanel palettePanel,
                                     NoiseFilterPanel noiseFilterPanel,
                                     SymmetryPanel symmetryPanel) {
         this.state = state;
@@ -72,7 +71,6 @@ public class PanelRenderingCoordinator {
         this.canvasPanel = canvasPanel;
         this.layerPanel = layerPanel;
         this.colorPanel = colorPanel;
-        this.palettePanel = palettePanel;
         this.noiseFilterPanel = noiseFilterPanel;
         this.symmetryPanel = symmetryPanel;
     }
@@ -81,11 +79,97 @@ public class PanelRenderingCoordinator {
      * Render all panels.
      */
     public void renderAllPanels() {
-        renderToolsPanel();
         renderCanvasPanel();
         renderLayersPanel();
-        renderColorPanel();
-        renderPalettePanel();
+    }
+
+    // ========================================
+    // FIXED LEFT CHROME: Color column | splitter | Tools column
+    // ========================================
+    // These live OUTSIDE the dock system on purpose: as dock nodes, the
+    // fixed-width Tools column couldn't coexist with a resizable Color
+    // column (dock splitters either froze both or dumped freed space into
+    // the Tools node, detaching the strip and crushing the canvas).
+
+    private static final float TOOLS_COLUMN_WIDTH = 48f;
+    private static final float SPLITTER_WIDTH = 6f;
+    private static final float COLOR_COLUMN_MIN = 240f;
+    private static final float COLOR_COLUMN_MAX = 480f;
+    private static final float COLOR_COLUMN_DEFAULT = 320f;
+
+    private float colorColumnWidth = -1f; // lazy-loaded from preferences
+
+    /**
+     * Render the fixed left columns (Color panel + splitter + tools strip)
+     * as chrome children. Caller follows with {@code ImGui.sameLine(0,0)} and
+     * the dockspace, which fills the remaining width.
+     *
+     * @param height pixel height of the column row (content minus status bar)
+     */
+    public void renderLeftColumns(float height) {
+        if (colorColumnWidth < 0) {
+            colorColumnWidth = PreferencesManager.getInstance()
+                    .getTextureEditorColorColumnWidth(COLOR_COLUMN_DEFAULT);
+        }
+
+        if (windowState.getShowColorPanel().get()) {
+            ImGui.beginChild("##color_column", colorColumnWidth, height, false,
+                    ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+            colorPanel.render();
+            state.setCurrentColor(colorPanel.getCurrentColor());
+            ImGui.endChild();
+
+            ImGui.sameLine(0, 0);
+            renderColorColumnSplitter(height);
+            ImGui.sameLine(0, 0);
+        }
+
+        ImGui.beginChild("##tools_column", TOOLS_COLUMN_WIDTH, height, false,
+                ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+        toolbarPanel.render();
+        toolCoordinator.syncToolState();
+        ImGui.endChild();
+
+        // 1px divider on the tools column's right edge, separating the fixed
+        // chrome from the dockspace. Drawn on the foreground list: the child
+        // windows paint their opaque ChildBg above the host window's draw
+        // list, which swallows a line drawn there.
+        float edgeX = ImGui.getItemRectMaxX() - 0.5f;
+        ImGui.getForegroundDrawList().addLine(
+                edgeX, ImGui.getItemRectMinY(), edgeX, ImGui.getItemRectMaxY(),
+                ImGui.getColorU32(imgui.flag.ImGuiCol.Separator), 1.0f);
+    }
+
+    /**
+     * Custom drag handle between the Color and Tools columns. Dragging
+     * resizes only the Color column; the dockspace (canvas) absorbs the
+     * difference naturally since it fills the remaining width.
+     */
+    private void renderColorColumnSplitter(float height) {
+        ImGui.invisibleButton("##color_column_splitter", SPLITTER_WIDTH, height);
+
+        boolean hovered = ImGui.isItemHovered();
+        boolean active = ImGui.isItemActive();
+        if (hovered || active) {
+            ImGui.setMouseCursor(imgui.flag.ImGuiMouseCursor.ResizeEW);
+        }
+        if (active) {
+            float delta = ImGui.getIO().getMouseDelta().x;
+            if (delta != 0) {
+                colorColumnWidth = Math.max(COLOR_COLUMN_MIN,
+                        Math.min(COLOR_COLUMN_MAX, colorColumnWidth + delta));
+            }
+        }
+        if (ImGui.isItemDeactivated()) {
+            PreferencesManager.getInstance().setTextureEditorColorColumnWidth(colorColumnWidth);
+        }
+
+        // Visible 1px divider centered in the grab area
+        float x = ImGui.getItemRectMinX() + SPLITTER_WIDTH / 2f;
+        int color = ImGui.getColorU32(active ? imgui.flag.ImGuiCol.SeparatorActive
+                : hovered ? imgui.flag.ImGuiCol.SeparatorHovered
+                : imgui.flag.ImGuiCol.Separator);
+        ImGui.getWindowDrawList().addLine(x, ImGui.getItemRectMinY(), x, ImGui.getItemRectMaxY(), color, 1.0f);
     }
 
     /**
@@ -154,17 +238,6 @@ public class PanelRenderingCoordinator {
     }
 
     /**
-     * Render tools panel.
-     */
-    private void renderToolsPanel() {
-        if (ImGui.begin("Tools")) {
-            toolbarPanel.render();
-            toolCoordinator.syncToolState();
-        }
-        ImGui.end();
-    }
-
-    /**
      * Render canvas panel with builder pattern.
      */
     private void renderCanvasPanel() {
@@ -220,33 +293,6 @@ public class PanelRenderingCoordinator {
         if (windowState.getShowLayersPanel().get()) {
             if (ImGui.begin("Layers", windowState.getShowLayersPanel())) {
                 layerPanel.render(controller.getLayerManager(), controller.getCommandHistory());
-            }
-            ImGui.end();
-        }
-    }
-
-    /**
-     * Render color panel.
-     * Panel is closeable - clicking (x) button will hide it.
-     */
-    private void renderColorPanel() {
-        if (windowState.getShowColorPanel().get()) {
-            if (ImGui.begin("Color", windowState.getShowColorPanel())) {
-                colorPanel.render();
-                state.setCurrentColor(colorPanel.getCurrentColor());
-            }
-            ImGui.end();
-        }
-    }
-
-    /**
-     * Render palette strip panel.
-     * Panel is closeable - clicking (x) button will hide it.
-     */
-    private void renderPalettePanel() {
-        if (windowState.getShowPalettePanel().get()) {
-            if (ImGui.begin("Palette", windowState.getShowPalettePanel())) {
-                palettePanel.render();
             }
             ImGui.end();
         }

@@ -1,6 +1,5 @@
-package com.openmason.main.systems.menus.textureCreator.panels;
+package com.openmason.main.systems.menus.textureCreator.palette;
 
-import com.openmason.main.systems.menus.textureCreator.palette.PaletteModel;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
@@ -10,57 +9,54 @@ import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
 
 /**
- * Aseprite-style swatch palette strip (docked along the bottom of the texture
- * editor by the default layout). Left-click paints with a swatch; right-click
- * opens a context menu to replace/remove; the trailing "+" adds the current
- * color as a new swatch.
+ * Reusable width-wrapping swatch grid for a {@link PaletteModel}. Left-click
+ * picks a swatch, right-click opens a replace/remove context menu, and a
+ * trailing "+" adds the current color. Used by both the bottom palette strip
+ * and the color panel's Palette section.
  */
-public final class PaletteStripPanel {
+public final class PaletteSwatchGrid {
 
-    private static final float SWATCH_SIZE = 20.0f;
     private static final float SWATCH_SPACING = 3.0f;
-    private static final int BORDER_COLOR = 0xFF000000;        // subtle dark outline
-    private static final int SELECTED_RING_COLOR = 0xFFFFFFFF; // white ring on selection
+    private static final int BORDER_COLOR = 0xFF000000;
+    private static final int SELECTED_RING_COLOR = 0xFFFFFFFF;
 
-    private final PaletteModel model;
-    private final IntSupplier currentColorSupplier;
-    private final IntConsumer onSwatchPicked;
+    private final float swatchSize;
 
-    public PaletteStripPanel(PaletteModel model,
-                             IntSupplier currentColorSupplier,
-                             IntConsumer onSwatchPicked) {
-        this.model = model;
-        this.currentColorSupplier = currentColorSupplier;
-        this.onSwatchPicked = onSwatchPicked;
+    public PaletteSwatchGrid(float swatchSize) {
+        this.swatchSize = swatchSize;
     }
 
-    public PaletteModel getModel() {
-        return model;
-    }
-
-    public void render() {
+    /**
+     * Render the grid wrapped to the available width.
+     *
+     * @param model                the palette to display and mutate
+     * @param currentColorSupplier source for "+" and "replace with current"
+     * @param onSwatchPicked       receives the packed RGBA color on left-click
+     */
+    public void render(PaletteModel model, IntSupplier currentColorSupplier, IntConsumer onSwatchPicked) {
         ImDrawList drawList = ImGui.getWindowDrawList();
         float availWidth = ImGui.getContentRegionAvailX();
-        int perRow = Math.max(1, (int) ((availWidth + SWATCH_SPACING) / (SWATCH_SIZE + SWATCH_SPACING)));
+        int perRow = Math.max(1, (int) ((availWidth + SWATCH_SPACING) / (swatchSize + SWATCH_SPACING)));
 
         for (int i = 0; i < model.size(); i++) {
             if (i % perRow != 0) {
                 ImGui.sameLine(0, SWATCH_SPACING);
             }
-            renderSwatch(drawList, i);
+            renderSwatch(drawList, model, i, currentColorSupplier, onSwatchPicked);
         }
 
         if (model.size() % perRow != 0) {
             ImGui.sameLine(0, SWATCH_SPACING);
         }
-        renderAddButton(drawList);
+        renderAddButton(drawList, model, currentColorSupplier);
     }
 
-    private void renderSwatch(ImDrawList drawList, int index) {
+    private void renderSwatch(ImDrawList drawList, PaletteModel model, int index,
+                              IntSupplier currentColorSupplier, IntConsumer onSwatchPicked) {
         int color = model.getColor(index);
         ImGui.pushID(index);
         ImVec2 pos = ImGui.getCursorScreenPos();
-        ImGui.invisibleButton("##swatch", SWATCH_SIZE, SWATCH_SIZE);
+        ImGui.invisibleButton("##swatch", swatchSize, swatchSize);
 
         boolean hovered = ImGui.isItemHovered();
         if (ImGui.isItemClicked(ImGuiMouseButton.Left)) {
@@ -70,17 +66,17 @@ public final class PaletteStripPanel {
 
         // Alpha checkerboard backing for translucent swatches
         if ((color >>> 24) < 0xFF) {
-            drawCheckerboard(drawList, pos.x, pos.y, SWATCH_SIZE);
+            drawCheckerboard(drawList, pos.x, pos.y, swatchSize);
         }
-        drawList.addRectFilled(pos.x, pos.y, pos.x + SWATCH_SIZE, pos.y + SWATCH_SIZE, color);
-        drawList.addRect(pos.x, pos.y, pos.x + SWATCH_SIZE, pos.y + SWATCH_SIZE, BORDER_COLOR);
+        drawList.addRectFilled(pos.x, pos.y, pos.x + swatchSize, pos.y + swatchSize, color);
+        drawList.addRect(pos.x, pos.y, pos.x + swatchSize, pos.y + swatchSize, BORDER_COLOR);
 
         if (index == model.getSelectedIndex()) {
             drawList.addRect(pos.x - 1, pos.y - 1,
-                    pos.x + SWATCH_SIZE + 1, pos.y + SWATCH_SIZE + 1,
+                    pos.x + swatchSize + 1, pos.y + swatchSize + 1,
                     SELECTED_RING_COLOR, 0, 0, 2.0f);
         } else if (hovered) {
-            drawList.addRect(pos.x, pos.y, pos.x + SWATCH_SIZE, pos.y + SWATCH_SIZE,
+            drawList.addRect(pos.x, pos.y, pos.x + swatchSize, pos.y + swatchSize,
                     0xFFCCCCCC, 0, 0, 1.5f);
         }
 
@@ -96,18 +92,18 @@ public final class PaletteStripPanel {
         ImGui.popID();
     }
 
-    private void renderAddButton(ImDrawList drawList) {
+    private void renderAddButton(ImDrawList drawList, PaletteModel model, IntSupplier currentColorSupplier) {
         ImVec2 pos = ImGui.getCursorScreenPos();
-        ImGui.invisibleButton("##palette_add", SWATCH_SIZE, SWATCH_SIZE);
+        ImGui.invisibleButton("##palette_add", swatchSize, swatchSize);
 
         boolean hovered = ImGui.isItemHovered();
         int border = hovered ? 0xFFCCCCCC : 0xFF777777;
-        drawList.addRect(pos.x, pos.y, pos.x + SWATCH_SIZE, pos.y + SWATCH_SIZE, border);
+        drawList.addRect(pos.x, pos.y, pos.x + swatchSize, pos.y + swatchSize, border);
 
         // "+" glyph
-        float cx = pos.x + SWATCH_SIZE / 2f;
-        float cy = pos.y + SWATCH_SIZE / 2f;
-        float arm = SWATCH_SIZE * 0.25f;
+        float cx = pos.x + swatchSize / 2f;
+        float cy = pos.y + swatchSize / 2f;
+        float arm = swatchSize * 0.25f;
         drawList.addLine(cx - arm, cy, cx + arm, cy, border, 1.5f);
         drawList.addLine(cx, cy - arm, cx, cy + arm, border, 1.5f);
 

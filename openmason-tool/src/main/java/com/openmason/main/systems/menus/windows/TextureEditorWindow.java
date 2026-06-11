@@ -82,8 +82,9 @@ public class TextureEditorWindow {
             iniFileSet = true;
         }
 
-        // Minimum size ensures all UI elements remain visible
-        ImGui.setNextWindowSizeConstraints(600, 400, Float.MAX_VALUE, Float.MAX_VALUE);
+        // Minimum size ensures all UI elements remain visible: the fixed left
+        // chrome (Color 320 + Tools 48) plus a workable canvas and Layers column
+        ImGui.setNextWindowSizeConstraints(1100, 700, Float.MAX_VALUE, Float.MAX_VALUE);
         // NoScrollWithMouse matters: if content ever overflows by a pixel,
         // a scrollable host window lets the wheel nudge the entire editor
         int windowFlags = ImGuiWindowFlags.NoDocking |
@@ -121,16 +122,22 @@ public class TextureEditorWindow {
                 textureCreator.renderWindowedMenuBar();
                 textureCreator.renderWindowedToolbar();
 
-                int dockspaceId = ImGui.getID(DOCKSPACE_NAME);
-                // Reserve room for the status bar strip below, including the
-                // item spacing ImGui inserts after the dockspace item — without
-                // it the content overflows by a few pixels and becomes scrollable
+                // One content row: fixed left chrome (Color | splitter | Tools)
+                // then the dockspace (Canvas | Layers) filling the rest. Height
+                // excludes the status bar strip pinned at the window bottom.
                 float statusReserve =
                         com.openmason.main.systems.menus.textureCreator.panels.status.StatusBarPanel.HEIGHT
                         + ImGui.getStyle().getItemSpacingY();
-                ImGui.dockSpace(dockspaceId, 0.0f, -statusReserve, ImGuiDockNodeFlags.None);
+                float rowHeight = ImGui.getContentRegionAvailY() - statusReserve;
 
-                layoutBuilder.applyIfNeeded(dockspaceId, ImGui.getWindowWidth(), ImGui.getWindowHeight());
+                textureCreator.renderLeftColumns(rowHeight);
+                ImGui.sameLine(0, 0);
+
+                float dockspaceWidth = ImGui.getContentRegionAvailX();
+                int dockspaceId = ImGui.getID(DOCKSPACE_NAME);
+                ImGui.dockSpace(dockspaceId, 0.0f, rowHeight, ImGuiDockNodeFlags.None);
+
+                layoutBuilder.applyIfNeeded(dockspaceId, dockspaceWidth, rowHeight);
 
                 textureCreator.renderWindowedPanels();
                 textureCreator.renderStatusBar();

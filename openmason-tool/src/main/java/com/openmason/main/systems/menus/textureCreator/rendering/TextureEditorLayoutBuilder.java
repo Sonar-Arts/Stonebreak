@@ -11,15 +11,20 @@ import org.slf4j.LoggerFactory;
  * Builds the texture editor's curated Aseprite-style default dock layout:
  *
  * <pre>
- * ┌──────┬─────────────────────────┬───────────┐
- * │Tools │                         │ Layers    │  (Layers node keeps its tab
- * │      │        Canvas           │           │   bar — hosts Noise Filter
- * │      │                         ├───────────┤   and Symmetry as tabs)
- * │      │                         │ Color     │
- * ├──────┴─────────────────────────┴───────────┤
- * │ Palette                                    │
- * └─────────────────────────────────────────────┘
+ * ┌─────────┬─────┬──────────────────┬─────────┐
+ * │ Color   │Tools│                  │ Layers  │  (Layers node keeps its tab
+ * │ picker  │     │      Canvas      │         │   bar — hosts Noise Filter
+ * │ recent  │fixed│                  │         │   and Symmetry as tabs)
+ * │ palettes│width│                  │         │
+ * └─────────┴─────┴──────────────────┴─────────┘
+ *  └── fixed chrome ──┘└────── dockspace ──────┘
  * </pre>
+ *
+ * Only Canvas and Layers live in the dockspace. The Color and Tools columns
+ * are fixed chrome rendered by {@code PanelRenderingCoordinator
+ * .renderLeftColumns()} — as dock nodes, a fixed-width Tools column could
+ * not coexist with a resizable Color column (dock splitters either froze
+ * both or dumped freed space into the Tools node).
  *
  * The layout is rebuilt when: no saved layout exists, the saved layout
  * predates {@link #LAYOUT_VERSION} (stamped in preferences so an old
@@ -31,12 +36,9 @@ public final class TextureEditorLayoutBuilder {
     private static final Logger logger = LoggerFactory.getLogger(TextureEditorLayoutBuilder.class);
 
     /** Bump when the curated layout changes to force a one-time rebuild. */
-    public static final int LAYOUT_VERSION = 3;
+    public static final int LAYOUT_VERSION = 7;
 
-    private static final float TOOLS_RATIO = 0.05f;
-    private static final float PALETTE_RATIO = 0.08f;
-    private static final float RIGHT_COLUMN_RATIO = 0.26f;
-    private static final float LAYERS_RATIO = 0.55f;
+    private static final float RIGHT_COLUMN_RATIO = 0.25f;
 
     private final PreferencesManager preferences;
     private boolean resetRequested = false;
@@ -90,45 +92,27 @@ public final class TextureEditorLayoutBuilder {
         imgui.internal.ImGui.dockBuilderAddNode(dockspaceId, imgui.flag.ImGuiDockNodeFlags.None);
         imgui.internal.ImGui.dockBuilderSetNodeSize(dockspaceId, width, height);
 
-        ImInt tools = new ImInt();
-        ImInt rest = new ImInt();
-        imgui.internal.ImGui.dockBuilderSplitNode(dockspaceId, ImGuiDir.Left, TOOLS_RATIO, tools, rest);
-
-        ImInt palette = new ImInt();
-        ImInt mid = new ImInt();
-        imgui.internal.ImGui.dockBuilderSplitNode(rest.get(), ImGuiDir.Down, PALETTE_RATIO, palette, mid);
-
         ImInt right = new ImInt();
         ImInt center = new ImInt();
-        imgui.internal.ImGui.dockBuilderSplitNode(mid.get(), ImGuiDir.Right, RIGHT_COLUMN_RATIO, right, center);
+        imgui.internal.ImGui.dockBuilderSplitNode(dockspaceId, ImGuiDir.Right, RIGHT_COLUMN_RATIO, right, center);
 
-        ImInt layers = new ImInt();
-        ImInt color = new ImInt();
-        imgui.internal.ImGui.dockBuilderSplitNode(right.get(), ImGuiDir.Up, LAYERS_RATIO, layers, color);
-
-        imgui.internal.ImGui.dockBuilderDockWindow("Tools", tools.get());
-        imgui.internal.ImGui.dockBuilderDockWindow("Palette", palette.get());
         imgui.internal.ImGui.dockBuilderDockWindow("Canvas", center.get());
-        imgui.internal.ImGui.dockBuilderDockWindow("Layers", layers.get());
-        imgui.internal.ImGui.dockBuilderDockWindow("Noise Filter", layers.get());
-        imgui.internal.ImGui.dockBuilderDockWindow("Symmetry", layers.get());
-        imgui.internal.ImGui.dockBuilderDockWindow("Color", color.get());
+        imgui.internal.ImGui.dockBuilderDockWindow("Layers", right.get());
+        imgui.internal.ImGui.dockBuilderDockWindow("Noise Filter", right.get());
+        imgui.internal.ImGui.dockBuilderDockWindow("Symmetry", right.get());
 
-        // Aseprite-style fixed look: hide tab bars on single-purpose nodes.
+        // Aseprite-style fixed look: hide the tab bar on the canvas node.
         // The Layers node keeps its tab bar — it hosts Noise Filter/Symmetry
         // tabs and is the recovery point for re-docking floating windows.
         //
         // NoDockingOverMe is essential alongside NoTabBar: without it, a
-        // window dragged onto one of these nodes tabs in BEHIND the resident
-        // window with no tab bar to reach it — invisible and unrecoverable
-        // except via Reset Layout.
+        // window dragged onto the node tabs in BEHIND the resident window
+        // with no tab bar to reach it — invisible and unrecoverable except
+        // via Reset Layout.
         int hidden = imgui.internal.flag.ImGuiDockNodeFlags.NoTabBar
                 | imgui.internal.flag.ImGuiDockNodeFlags.NoWindowMenuButton
                 | imgui.internal.flag.ImGuiDockNodeFlags.NoDockingOverMe;
-        addLocalFlags(tools.get(), hidden);
-        addLocalFlags(palette.get(), hidden);
         addLocalFlags(center.get(), hidden);
-        addLocalFlags(color.get(), hidden);
 
         imgui.internal.ImGui.dockBuilderFinish(dockspaceId);
     }

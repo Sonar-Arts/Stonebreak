@@ -28,12 +28,6 @@ public class TextureCreatorWindowState implements HelpWindowVisibilityState {
      */
     private final ImBoolean showColorPanel = new ImBoolean(true);
 
-    /**
-     * Palette strip visibility.
-     * Shows the swatch palette docked along the bottom of the editor.
-     */
-    private final ImBoolean showPalettePanel = new ImBoolean(true);
-
     // ========================================
     // DIALOG WINDOWS
     // ========================================
@@ -87,14 +81,6 @@ public class TextureCreatorWindowState implements HelpWindowVisibilityState {
      */
     public ImBoolean getShowColorPanel() {
         return showColorPanel;
-    }
-
-    /**
-     * Get palette strip visibility flag.
-     * @return ImBoolean reference for ImGui binding
-     */
-    public ImBoolean getShowPalettePanel() {
-        return showPalettePanel;
     }
 
     // ========================================
@@ -152,14 +138,6 @@ public class TextureCreatorWindowState implements HelpWindowVisibilityState {
     public void toggleColorPanel() {
         showColorPanel.set(!showColorPanel.get());
         logger.debug("Color panel visibility toggled to: {}", showColorPanel.get());
-    }
-
-    /**
-     * Toggle palette strip visibility.
-     */
-    public void togglePalettePanel() {
-        showPalettePanel.set(!showPalettePanel.get());
-        logger.debug("Palette panel visibility toggled to: {}", showPalettePanel.get());
     }
 
     /**

@@ -89,6 +89,17 @@ public final class RgbSliderGroup {
         }
 
         if (ImGui.isItemHovered()) {
+            // Mouse wheel: fine adjustment (Shift = x10)
+            float wheel = ImGui.getIO().getMouseWheel();
+            if (wheel != 0) {
+                int step = ImGui.getIO().getKeyShift() ? 10 : 1;
+                int newValue = ColorUtils.clamp(rgba[channel] + Math.round(wheel * step), 0, 255);
+                if (newValue != rgba[channel]) {
+                    int[] updated = {rgba[0], rgba[1], rgba[2]};
+                    updated[channel] = newValue;
+                    state.setRgb(updated[0], updated[1], updated[2]);
+                }
+            }
             ImGui.setTooltip(label + " = " + rgba[channel]);
         }
     }

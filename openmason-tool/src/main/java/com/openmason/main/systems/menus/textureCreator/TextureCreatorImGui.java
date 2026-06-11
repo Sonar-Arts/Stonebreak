@@ -161,19 +161,21 @@ public class TextureCreatorImGui {
         CanvasPanel canvasPanel = new CanvasPanel();
         canvasPanel.setHoverInfo(state.getCanvasHoverInfo());
         LayerPanelRenderer layerPanel = new LayerPanelRenderer();
-        ColorPanelView colorPanel = new ColorPanelView();
         NoiseFilterPanel noiseFilterPanel = new NoiseFilterPanel();
         SymmetryPanel symmetryPanel = new SymmetryPanel();
 
-        // Palette strip: swatch clicks drive the color panel; every structural
-        // change is persisted immediately (no dispose-time flush needed)
+        // Saved-palettes library: shared by the color panel's Palette section
+        // and the bottom palette strip (both bind the same active model).
+        // Every change — swatch edits or palette switch/create/delete — is
+        // persisted immediately (no dispose-time flush needed).
         com.openmason.main.systems.menus.textureCreator.palette.PalettePersistence palettePersistence =
             new com.openmason.main.systems.menus.textureCreator.palette.PalettePersistence(preferencesManager);
-        com.openmason.main.systems.menus.textureCreator.palette.PaletteModel paletteModel =
+        com.openmason.main.systems.menus.textureCreator.palette.PaletteLibrary paletteLibrary =
             palettePersistence.load();
-        paletteModel.setChangeListener(() -> palettePersistence.save(paletteModel));
-        PaletteStripPanel paletteStripPanel = new PaletteStripPanel(
-            paletteModel, colorPanel::getCurrentColor, colorPanel::setColor);
+        paletteLibrary.setChangeListener(() -> palettePersistence.save(paletteLibrary));
+        paletteLibrary.getActiveModel().setChangeListener(() -> palettePersistence.save(paletteLibrary));
+
+        ColorPanelView colorPanel = new ColorPanelView(paletteLibrary);
 
         // Create dialogs
         NewTextureDialog newTextureDialog = new NewTextureDialog();
@@ -207,7 +209,7 @@ public class TextureCreatorImGui {
             newTextureDialog, importPNGDialog, exportFormatDialog, null, aboutMenuHandler);
         PanelRenderingCoordinator panelRenderer = new PanelRenderingCoordinator(state, controller, preferences,
             toolCoordinator, windowState, toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel,
-            paletteStripPanel, noiseFilterPanel, symmetryPanel);
+            noiseFilterPanel, symmetryPanel);
         DialogProcessor dialogProcessor = new DialogProcessor(controller, fileOperations, dragDropHandler,
             newTextureDialog, importPNGDialog, omtImportDialog);
 
@@ -238,14 +240,12 @@ public class TextureCreatorImGui {
         menuBarRenderer.setOnSymmetryToggle(windowState::toggleSymmetryWindow);
         menuBarRenderer.setOnLayersPanelToggle(windowState::toggleLayersPanel, windowState.getShowLayersPanel());
         menuBarRenderer.setOnColorPanelToggle(windowState::toggleColorPanel, windowState.getShowColorPanel());
-        menuBarRenderer.setOnPalettePanelToggle(windowState::togglePalettePanel, windowState.getShowPalettePanel());
 
         windowedMenuBarRenderer.setOnPreferencesToggle(windowState::togglePreferencesWindow);
         windowedMenuBarRenderer.setOnNoiseFilterToggle(windowState::toggleNoiseFilterWindow);
         windowedMenuBarRenderer.setOnSymmetryToggle(windowState::toggleSymmetryWindow);
         windowedMenuBarRenderer.setOnLayersPanelToggle(windowState::toggleLayersPanel, windowState.getShowLayersPanel());
         windowedMenuBarRenderer.setOnColorPanelToggle(windowState::toggleColorPanel, windowState.getShowColorPanel());
-        windowedMenuBarRenderer.setOnPalettePanelToggle(windowState::togglePalettePanel, windowState.getShowPalettePanel());
 
         // Inject SymmetryState into tools that support it
         injectSymmetryStateIntoTools(toolbarPanel);
@@ -460,6 +460,16 @@ public class TextureCreatorImGui {
      */
     public void renderWindowedToolbar() {
         panelRenderer.renderToolOptionsBar();
+    }
+
+    /**
+     * Render the fixed left chrome columns (Color panel + splitter + tools
+     * strip). Called by TextureEditorWindow before submitting the dockspace.
+     *
+     * @param height pixel height of the column row
+     */
+    public void renderLeftColumns(float height) {
+        panelRenderer.renderLeftColumns(height);
     }
 
     /**

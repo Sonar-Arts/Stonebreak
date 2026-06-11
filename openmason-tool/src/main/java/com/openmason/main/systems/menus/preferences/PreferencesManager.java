@@ -38,6 +38,8 @@ public class PreferencesManager {
     private static final String TEXTURE_EDITOR_SHAPE_FILL_MODE_KEY = "texture.editor.shape.fill.mode";
     private static final String TEXTURE_EDITOR_LAYOUT_VERSION_KEY = "texture.editor.layout.version";
     private static final String TEXTURE_EDITOR_PALETTE_KEY = "texture.editor.palette";
+    private static final String TEXTURE_EDITOR_PALETTES_JSON_KEY = "texture.editor.palettes.json";
+    private static final String TEXTURE_EDITOR_COLOR_COLUMN_WIDTH_KEY = "texture.editor.color.column.width";
 
     // Default values - 3D Model Editor
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
@@ -617,6 +619,48 @@ public class PreferencesManager {
             }
             properties.setProperty(TEXTURE_EDITOR_PALETTE_KEY, sb.toString());
         }
+        savePreferences();
+    }
+
+    /**
+     * Get the texture editor's color column width in pixels (the fixed-chrome
+     * left panel, resized via its custom splitter).
+     */
+    public float getTextureEditorColorColumnWidth(float defaultWidth) {
+        String value = properties.getProperty(TEXTURE_EDITOR_COLOR_COLUMN_WIDTH_KEY);
+        if (value != null) {
+            try {
+                return Float.parseFloat(value);
+            } catch (NumberFormatException e) {
+                logger.warn("Invalid color column width: {}, using default", value);
+            }
+        }
+        return defaultWidth;
+    }
+
+    /**
+     * Persist the texture editor's color column width.
+     */
+    public void setTextureEditorColorColumnWidth(float width) {
+        properties.setProperty(TEXTURE_EDITOR_COLOR_COLUMN_WIDTH_KEY, String.valueOf(width));
+        savePreferences();
+    }
+
+    /**
+     * Get the saved-palettes library as a JSON string (multiple named
+     * palettes + active name). Serialization handled by PalettePersistence.
+     *
+     * @return JSON string, or null if never persisted
+     */
+    public String getTextureEditorPalettesJson() {
+        return properties.getProperty(TEXTURE_EDITOR_PALETTES_JSON_KEY);
+    }
+
+    /**
+     * Persist the saved-palettes library JSON.
+     */
+    public void setTextureEditorPalettesJson(String json) {
+        properties.setProperty(TEXTURE_EDITOR_PALETTES_JSON_KEY, json != null ? json : "");
         savePreferences();
     }
 

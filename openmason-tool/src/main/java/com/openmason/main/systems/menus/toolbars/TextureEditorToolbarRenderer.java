@@ -123,9 +123,10 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
      * Skija-painted strip: one image item, hit-testing by cell index.
      */
     private void renderSkijaStrip() {
-        // Center the single cell column horizontally in the panel
+        // Center within the column, but cap the indent so the strip hugs the
+        // left edge if the dock node is transiently wider than its fixed width
         float indent = Math.max(0, (ImGui.getContentRegionAvailX() - SkijaToolStripRenderer.CELL_SIZE) / 2f);
-        ImGui.setCursorPosX(ImGui.getCursorPosX() + indent);
+        ImGui.setCursorPosX(ImGui.getCursorPosX() + Math.min(indent, 6f));
 
         List<String> iconKeys = new ArrayList<>(tools.size());
         int selectedIndex = -1;

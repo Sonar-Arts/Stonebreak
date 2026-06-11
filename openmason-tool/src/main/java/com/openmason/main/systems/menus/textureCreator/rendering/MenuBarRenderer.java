@@ -39,7 +39,6 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     private Runnable onSymmetryToggle;
     private Runnable onLayersPanelToggle;
     private Runnable onColorPanelToggle;
-    private Runnable onPalettePanelToggle;
     private Runnable onResetLayout;
     private Runnable onExportSBT;
     private Runnable onExportSBO;
@@ -49,7 +48,6 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     private java.util.function.Supplier<String> sbtOmtPathSupplier = () -> null;
     private ImBoolean showLayersPanel;
     private ImBoolean showColorPanel;
-    private ImBoolean showPalettePanel;
 
     /**
      * Create menu bar renderer.
@@ -130,14 +128,6 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     public void setOnColorPanelToggle(Runnable callback, ImBoolean showColorPanel) {
         this.onColorPanelToggle = callback;
         this.showColorPanel = showColorPanel;
-    }
-
-    /**
-     * Set callback for palette panel toggle.
-     */
-    public void setOnPalettePanelToggle(Runnable callback, ImBoolean showPalettePanel) {
-        this.onPalettePanelToggle = callback;
-        this.showPalettePanel = showPalettePanel;
     }
 
     /**
@@ -332,11 +322,6 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
                 if (showColorPanel != null && ImGui.menuItem("Color", null, showColorPanel.get())) {
                     if (onColorPanelToggle != null) {
                         onColorPanelToggle.run();
-                    }
-                }
-                if (showPalettePanel != null && ImGui.menuItem("Palette", null, showPalettePanel.get())) {
-                    if (onPalettePanelToggle != null) {
-                        onPalettePanelToggle.run();
                     }
                 }
                 ImGui.endMenu();
