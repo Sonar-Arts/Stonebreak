@@ -31,7 +31,7 @@ public final class TextureEditorLayoutBuilder {
     private static final Logger logger = LoggerFactory.getLogger(TextureEditorLayoutBuilder.class);
 
     /** Bump when the curated layout changes to force a one-time rebuild. */
-    public static final int LAYOUT_VERSION = 2;
+    public static final int LAYOUT_VERSION = 3;
 
     private static final float TOOLS_RATIO = 0.05f;
     private static final float PALETTE_RATIO = 0.08f;
@@ -117,8 +117,14 @@ public final class TextureEditorLayoutBuilder {
         // Aseprite-style fixed look: hide tab bars on single-purpose nodes.
         // The Layers node keeps its tab bar — it hosts Noise Filter/Symmetry
         // tabs and is the recovery point for re-docking floating windows.
+        //
+        // NoDockingOverMe is essential alongside NoTabBar: without it, a
+        // window dragged onto one of these nodes tabs in BEHIND the resident
+        // window with no tab bar to reach it — invisible and unrecoverable
+        // except via Reset Layout.
         int hidden = imgui.internal.flag.ImGuiDockNodeFlags.NoTabBar
-                | imgui.internal.flag.ImGuiDockNodeFlags.NoWindowMenuButton;
+                | imgui.internal.flag.ImGuiDockNodeFlags.NoWindowMenuButton
+                | imgui.internal.flag.ImGuiDockNodeFlags.NoDockingOverMe;
         addLocalFlags(tools.get(), hidden);
         addLocalFlags(palette.get(), hidden);
         addLocalFlags(center.get(), hidden);

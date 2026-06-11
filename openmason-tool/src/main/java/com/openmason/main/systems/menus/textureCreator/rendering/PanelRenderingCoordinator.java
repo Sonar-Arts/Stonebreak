@@ -41,6 +41,11 @@ public class PanelRenderingCoordinator {
     // Windowed mode flag - when true, skip fullscreen dockspace creation
     private boolean windowedMode = false;
 
+    // Previous-frame visibility, to focus these windows when they (re)open —
+    // surfaces them even if they were docked behind another window
+    private boolean noiseFilterWasVisible = false;
+    private boolean symmetryWasVisible = false;
+
     /**
      * Create panel rendering coordinator.
      */
@@ -264,12 +269,17 @@ public class PanelRenderingCoordinator {
      * Window is closeable - clicking (x) button will hide it.
      */
     public void renderNoiseFilterWindow() {
-        if (windowState.getShowNoiseFilterWindow().get()) {
+        boolean visible = windowState.getShowNoiseFilterWindow().get();
+        if (visible) {
+            if (!noiseFilterWasVisible) {
+                ImGui.setNextWindowFocus();
+            }
             if (ImGui.begin("Noise Filter", windowState.getShowNoiseFilterWindow())) {
                 noiseFilterPanel.render(state.getCurrentSelection());
             }
             ImGui.end();
         }
+        noiseFilterWasVisible = visible;
     }
 
     /**
@@ -277,7 +287,11 @@ public class PanelRenderingCoordinator {
      * Window is closeable - clicking (x) button will hide it.
      */
     public void renderSymmetryWindow() {
-        if (windowState.getShowSymmetryWindow().get()) {
+        boolean visible = windowState.getShowSymmetryWindow().get();
+        if (visible) {
+            if (!symmetryWasVisible) {
+                ImGui.setNextWindowFocus();
+            }
             if (ImGui.begin("Symmetry", windowState.getShowSymmetryWindow())) {
                 int canvasWidth = state.getCurrentCanvasSize().getWidth();
                 int canvasHeight = state.getCurrentCanvasSize().getHeight();
@@ -285,5 +299,6 @@ public class PanelRenderingCoordinator {
             }
             ImGui.end();
         }
+        symmetryWasVisible = visible;
     }
 }
