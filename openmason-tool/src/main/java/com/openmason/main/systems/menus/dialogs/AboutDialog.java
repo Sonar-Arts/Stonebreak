@@ -47,7 +47,7 @@ public class AboutDialog {
             // Application title and version
             ImGui.textColored(0.2f, 0.6f, 1.0f, 1.0f, toolName);
             ImGui.sameLine();
-            ImGui.text("v0.0.1");
+            ImGui.text("v0.0.5");
 
             // Simple description
             ImGui.textDisabled("Part of the OpenMason Toolset");

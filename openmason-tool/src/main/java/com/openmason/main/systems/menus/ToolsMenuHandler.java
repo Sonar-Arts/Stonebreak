@@ -123,11 +123,11 @@ public class ToolsMenuHandler {
         boolean canExport = modelState != null
                 && modelState.isModelLoaded()
                 && (modelState.hasOMOFile() || modelState.canSaveModel());
-        if (ImGui.menuItem("Export SBO", "Ctrl+Shift+E", false, canExport)) {
+        if (ImGui.menuItem("Export SBO...", "", false, canExport)) {
             exportSBO();
         }
 
-        if (ImGui.menuItem("Export SBE", "", false, canExport)) {
+        if (ImGui.menuItem("Export SBE...", "", false, canExport)) {
             exportSBE();
         }
 

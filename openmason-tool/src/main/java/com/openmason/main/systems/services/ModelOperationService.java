@@ -284,17 +284,6 @@ public class ModelOperationService {
     }
 
     /**
-     * Load recent file by name.
-     */
-    public void loadRecentFile(String filename) {
-        statusService.updateStatus("Loading " + filename + "...");
-        modelState.setModelLoaded(true);
-        modelState.setCurrentModelPath(filename);
-        modelState.setUnsavedChanges(false);
-        statusService.updateStatus("Loaded " + filename);
-    }
-
-    /**
      * Select model from browser.
      */
     public void selectModel(String modelName, String variant) {
