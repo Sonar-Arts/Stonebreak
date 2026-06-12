@@ -125,4 +125,41 @@ public final class PlayerConstants {
     public static final float RANGER_CRIPPLE_MAGNITUDE       = 0.6f;  // 60% move-speed reduction
     public static final float RANGER_DASH_DISTANCE           = 6f;
     public static final float RANGER_DASH_SPEED              = 18f;
+
+    // ── Arcanist: Resonance resource ──────────────────────────────────────────
+    public static final int   ARCANIST_RESONANCE_MAX_STACKS               = 4;
+    public static final float ARCANIST_SAME_SCHOOL_COST_REDUCTION_PER_CAST = 0.08f; // 8% cheaper per consecutive same-school cast
+    public static final float ARCANIST_SAME_SCHOOL_MAX_COST_REDUCTION      = 0.35f; // cap at 35% cost reduction
+    public static final float ARCANIST_SAME_SCHOOL_DAMAGE_PENALTY_PER_CAST = 0.10f; // 10% weaker per consecutive same-school cast
+    public static final float ARCANIST_SAME_SCHOOL_MIN_DAMAGE_MULTIPLIER   = 0.50f; // floor at 50% damage
+    public static final float ARCANIST_INT_SCALING                         = 0.04f; // damage scaling per INT point
+    public static final float ARCANIST_INT_DURATION_SCALING                = 0.015f; // duration scaling per INT point
+    public static final float SPELLMARKED_BONUS_DAMAGE_MULT                = 0.35f; // +35% damage on the consuming arcane hit
+
+    // ── Arcanist: Leyline Breach ability ──────────────────────────────────────
+    public static final float LEYLINE_BREACH_MANA_COST            = 30f;
+    public static final float LEYLINE_BREACH_COOLDOWN             = 14f;
+    public static final float LEYLINE_BREACH_MAX_RANGE            = 18f;
+    public static final float LEYLINE_BREACH_RADIUS               = 5f;
+    public static final float LEYLINE_BREACH_DURATION             = 8f;
+    public static final float LEYLINE_BREACH_PULSE_INTERVAL       = 1.2f;
+    public static final float LEYLINE_BREACH_PULSE_BASE           = 18f;
+    public static final float LEYLINE_BREACH_PULL_FORCE           = 2.5f;
+    public static final float LEYLINE_BREACH_AMPLIFY_BONUS        = 0.20f; // +20% magical damage taken
+    public static final float LEYLINE_BREACH_AMPLIFY_DURATION     = 2.5f;
+    public static final float LEYLINE_BREACH_OVERLOAD_RADIUS_MULT = 1.7f;
+    public static final float LEYLINE_BREACH_OVERLOAD_PULL_MULT   = 2.2f;
+    public static final float LEYLINE_BREACH_OVERLOAD_DAMAGE_MULT = 1.8f;
+    public static final float LEYLINE_BREACH_ROOT_DURATION        = 2f;
+
+    // ── Arcanist: Null Spike ability ──────────────────────────────────────────
+    public static final float NULL_SPIKE_MANA_COST            = 15f;
+    public static final float NULL_SPIKE_COOLDOWN             = 8f;
+    public static final float NULL_SPIKE_MAX_RANGE            = 22f;
+    public static final float NULL_SPIKE_PROJECTILE_SPEED     = 28f;
+    public static final float NULL_SPIKE_BASE_DAMAGE          = 35f;
+    public static final float NULL_SPIKE_STACK_BONUS          = 0.09f; // +9% damage per Resonance stack at fire
+    public static final float NULL_SPIKE_SPELLMARKED_DURATION = 4f;    // doubled when Overloaded
+    public static final float NULL_SPIKE_BURST_DAMAGE         = 25f;
+    public static final float NULL_SPIKE_BURST_RADIUS         = 4f;
 }

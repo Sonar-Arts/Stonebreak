@@ -18,5 +18,15 @@ public enum StatusEffectType {
     /** Increases incoming damage from all sources. {@code magnitude} is a fractional bonus (e.g. 0.25 = +25% damage taken). */
     EXPOSED,
     /** Reduces movement speed. {@code magnitude} is a fractional reduction (e.g. 0.6 = 60% slower). */
-    CRIPPLE
+    CRIPPLE,
+    /**
+     * Increases incoming magical damage while active. {@code magnitude} is a fractional
+     * bonus (e.g. 0.20 = +20% magical damage taken). Refreshes on reapplication.
+     */
+    AMPLIFIED,
+    /**
+     * The next arcane spell hit deals bonus damage, then consumes the mark — one proc per
+     * application. {@code magnitude} is unused (the bonus is a global constant).
+     */
+    SPELLMARKED
 }

@@ -3,6 +3,7 @@ package com.stonebreak.mobs.entities;
 import org.joml.Vector3f;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
+import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.world.World;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
@@ -161,7 +162,10 @@ public abstract class LivingEntity extends Entity {
             return;
         }
         if (!alive || invulnerable) return;
-        float effectiveAmount = amount * getIncomingDamageMultiplier();
+        float effectiveAmount = amount * getIncomingDamageMultiplier(source);
+        if (source == DamageSource.ARCANE) {
+            effectiveAmount *= consumeSpellmark();
+        }
         super.damage(effectiveAmount);
         invulnerable = true;
         invulnerabilityTimer = INVULNERABILITY_DURATION;
@@ -172,7 +176,7 @@ public abstract class LivingEntity extends Entity {
             DamageNumberRenderer.getInstance().spawn(
                 position.x, position.y + height * 0.9f, position.z, effectiveAmount);
         }
-        if (source == DamageSource.PLAYER && creditLocalPlayer) {
+        if ((source == DamageSource.PLAYER || source == DamageSource.ARCANE) && creditLocalPlayer) {
             Player player = Game.getPlayer();
             if (player != null) {
                 player.getStats().addDamageDealt(effectiveAmount);
@@ -278,13 +282,45 @@ public abstract class LivingEntity extends Entity {
      * (multiplicative across the two debuff types, max-of-magnitude within each).
      */
     public float getIncomingDamageMultiplier() {
+        return getIncomingDamageMultiplier(DamageSource.UNKNOWN);
+    }
+
+    /**
+     * Source-aware variant of {@link #getIncomingDamageMultiplier()}: magical sources are
+     * additionally amplified by any active Amplified debuff. Pure — Spellmarked consumption
+     * (a mutation) happens separately in {@link #damage}.
+     */
+    public float getIncomingDamageMultiplier(DamageSource source) {
         float exposedBonus = 0f;
+        float amplifiedBonus = 0f;
         for (StatusEffect effect : statusEffects) {
             if (effect.getType() == StatusEffectType.EXPOSED) {
                 exposedBonus = Math.max(exposedBonus, effect.getMagnitude());
             }
+            if (effect.getType() == StatusEffectType.AMPLIFIED) {
+                amplifiedBonus = Math.max(amplifiedBonus, effect.getMagnitude());
+            }
         }
-        return getArmorBreakDamageMultiplier() * (1f + exposedBonus);
+        float multiplier = getArmorBreakDamageMultiplier() * (1f + exposedBonus);
+        if (source.isMagical()) {
+            multiplier *= 1f + amplifiedBonus;
+        }
+        return multiplier;
+    }
+
+    /**
+     * Consumes an active Spellmarked debuff: removes it and returns the one-shot bonus
+     * multiplier for the arcane hit that triggered it, or {@code 1.0} when unmarked.
+     */
+    private float consumeSpellmark() {
+        Iterator<StatusEffect> it = statusEffects.iterator();
+        while (it.hasNext()) {
+            if (it.next().getType() == StatusEffectType.SPELLMARKED) {
+                it.remove();
+                return 1f + PlayerConstants.SPELLMARKED_BONUS_DAMAGE_MULT;
+            }
+        }
+        return 1f;
     }
 
     /** Multiplier applied to movement speed; {@code 1.0} with no Cripple active, lower otherwise. */
@@ -546,6 +582,17 @@ public abstract class LivingEntity extends Entity {
         FIRE,
         EXPLOSION,
         ARROW,
-        BLEED
+        BLEED,
+        /** Player-cast spell damage. Credits the player and interacts with Amplified/Spellmarked. */
+        ARCANE;
+
+        /**
+         * Whether this source counts as magical for the Amplified debuff. Only ARCANE for
+         * now — FIRE (staff bolts, burning DOT) is deliberately excluded to leave existing
+         * balance untouched.
+         */
+        public boolean isMagical() {
+            return this == ARCANE;
+        }
     }
 }

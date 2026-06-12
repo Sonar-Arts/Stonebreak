@@ -43,6 +43,12 @@ public class EntityRenderer {
     // 1x1 brown texture for arrow projectiles.
     private int arrowTexture;
 
+    // 1x1 violet texture for the null spike core.
+    private int nullSpikeTexture;
+
+    // 1x1 cyan texture for the leyline breach zone slab.
+    private int leylineZoneTexture;
+
     // Entity-blind renderer for SBE-driven mobs.
     private final SbeEntityRenderer sbeEntityRenderer = new SbeEntityRenderer();
 
@@ -62,6 +68,8 @@ public class EntityRenderer {
         createFallbackTexture();
         createFireBoltTexture();
         createArrowTexture();
+        createNullSpikeTexture();
+        createLeylineZoneTexture();
         createSimpleCubeModel();
         sbeEntityRenderer.initialize();
         remotePlayerRenderer.initialize();
@@ -176,6 +184,32 @@ public class EntityRenderer {
         // Bright orange-yellow for the fire bolt core
         ByteBuffer pixel = ByteBuffer.allocateDirect(4);
         pixel.put((byte) 255).put((byte) 140).put((byte) 0).put((byte) 255).flip();
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
+                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+    }
+
+    private void createNullSpikeTexture() {
+        nullSpikeTexture = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, nullSpikeTexture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        // Arcane violet for the null spike core
+        ByteBuffer pixel = ByteBuffer.allocateDirect(4);
+        pixel.put((byte) 178).put((byte) 102).put((byte) 255).put((byte) 255).flip();
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
+                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+    }
+
+    private void createLeylineZoneTexture() {
+        leylineZoneTexture = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, leylineZoneTexture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        // Translucent arcane cyan for the zone slab (alpha matters under additive blend)
+        ByteBuffer pixel = ByteBuffer.allocateDirect(4);
+        pixel.put((byte) 64).put((byte) 210).put((byte) 255).put((byte) 110).flip();
         GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
                 GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
@@ -317,6 +351,16 @@ public class EntityRenderer {
 
         if (entityType == EntityType.FIRE_BOLT) {
             renderFireBolt(entity, viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
+
+        if (entityType == EntityType.NULL_SPIKE) {
+            renderGlowCube(entity, nullSpikeTexture, 1.8f, viewMatrix, projectionMatrix, cameraPos);
+            return;
+        }
+
+        if (entityType == EntityType.LEYLINE_BREACH_ZONE) {
+            renderGlowCube(entity, leylineZoneTexture, 1.0f, viewMatrix, projectionMatrix, cameraPos);
             return;
         }
 
@@ -506,10 +550,21 @@ public class EntityRenderer {
             return;
         }
 
+        renderGlowCube(entity, fireBoltTexture, 1.8f, viewMatrix, projectionMatrix, cameraPos);
+    }
+
+    /**
+     * Draws an entity as an additively blended emissive cube (fire bolts, null spikes,
+     * leyline zone slabs), with an optional larger outer glow layer.
+     *
+     * @param glowScale scale multiplier for the outer glow pass; {@code <= 1} skips it
+     */
+    private void renderGlowCube(Entity entity, int texture, float glowScale,
+                                Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector3f cameraPos) {
         shader.bind();
 
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, fireBoltTexture);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture);
         shader.setUniform("textureSampler", 0);
         shader.setUniform("view", viewMatrix);
         shader.setUniform("projection", projectionMatrix);
@@ -532,19 +587,21 @@ public class EntityRenderer {
         GL30.glBindVertexArray(simpleCubeVAO);
         GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
 
-        // Render a larger, semi-transparent outer glow layer. Keep simpleCubeVAO
-        // bound across both draws — unbinding between them (then calling
-        // glDrawArrays with no VAO) is undefined and on some drivers picks up
-        // whichever VAO another renderer last used. After the player switches
-        // held items mid-flight, that "last VAO" becomes the new held item's
-        // mesh, so the glow quads sample its vertex buffer and stretch the bolt
-        // across the screen toward the hand position (issue #177).
-        Matrix4f glowMatrix = new Matrix4f()
-                .translate(entity.getPosition())
-                .rotateY((float) Math.toRadians(entity.getRotation().y))
-                .scale(new Vector3f(entity.getScale()).mul(1.8f));
-        shader.setUniform("model", glowMatrix);
-        GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
+        if (glowScale > 1f) {
+            // Render a larger, semi-transparent outer glow layer. Keep simpleCubeVAO
+            // bound across both draws — unbinding between them (then calling
+            // glDrawArrays with no VAO) is undefined and on some drivers picks up
+            // whichever VAO another renderer last used. After the player switches
+            // held items mid-flight, that "last VAO" becomes the new held item's
+            // mesh, so the glow quads sample its vertex buffer and stretch the bolt
+            // across the screen toward the hand position (issue #177).
+            Matrix4f glowMatrix = new Matrix4f()
+                    .translate(entity.getPosition())
+                    .rotateY((float) Math.toRadians(entity.getRotation().y))
+                    .scale(new Vector3f(entity.getScale()).mul(glowScale));
+            shader.setUniform("model", glowMatrix);
+            GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
+        }
         GL30.glBindVertexArray(0);
 
         GL11.glDepthMask(true);
@@ -622,6 +679,12 @@ public class EntityRenderer {
         }
         if (arrowTexture != 0) {
             GL11.glDeleteTextures(arrowTexture);
+        }
+        if (nullSpikeTexture != 0) {
+            GL11.glDeleteTextures(nullSpikeTexture);
+        }
+        if (leylineZoneTexture != 0) {
+            GL11.glDeleteTextures(leylineZoneTexture);
         }
 
         sbeEntityRenderer.cleanup();

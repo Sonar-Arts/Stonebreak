@@ -11,6 +11,9 @@ import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.QuarryController;
 import com.stonebreak.player.combat.RageController;
 import com.stonebreak.player.combat.RageTier;
+import com.stonebreak.player.combat.arcanist.ArcanistAbilityController;
+import com.stonebreak.player.combat.arcanist.ArcanistHudText;
+import com.stonebreak.player.combat.arcanist.ResonanceTracker;
 import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
 import com.stonebreak.player.combat.berserker.BerserkerTierText;
 import com.stonebreak.player.combat.ranger.RangerAbilityController;
@@ -106,6 +109,18 @@ public class MHotbarRenderer {
     private static final String SNARE_ICON_PATH        = "/ui/abilities/ranger/Snare.png";
     private static final String CULLING_SHOT_ICON_PATH = "/ui/abilities/ranger/Culling_Shot.png";
 
+    // ── Arcanist Resonance indicator (only shown when Arcanist is the selected class) ──
+    private static final int RESONANCE_PIP_HEIGHT     = 10;
+    private static final int RESONANCE_PIP_GAP        = 3;
+    private static final int RESONANCE_PIP_FILLED     = 0xDC9C50E8; // arcane violet
+    private static final int RESONANCE_PIP_OVERLOADED = 0xDCFFD24A; // hot gold — Overloaded
+    private static final int RESONANCE_LINE_GAP       = 8;
+
+    // ── Mana bar (only shown when the selected class spends mana) ─────────────
+    private static final int MANA_BAR_HEIGHT = 8;
+    private static final int MANA_BAR_GAP    = 6;    // pixels above the stamina bar
+    private static final int MANA_FILL       = 0xDC3C78DC; // arcane blue
+
     private record HeartLayout(int heartsPerRow, int numRows, float step) {}
 
     private static final String HEART_EMPTY_SBT = "/ui/HUD/Health Icon/SB_Empty_Health_Icon.sbt";
@@ -140,8 +155,10 @@ public class MHotbarRenderer {
             drawSbtItemIcons(canvas, slots, layout);
             drawHealthHearts(canvas, layout);
             drawStaminaBar(canvas, layout);
+            drawManaBar(canvas, layout);
             drawRageIndicator(canvas, layout);
             drawQuarryIndicator(canvas, layout);
+            drawResonanceIndicator(canvas, layout);
             ui.renderOverlays();
             ui.endFrame();
         }
@@ -261,6 +278,39 @@ public class MHotbarRenderer {
             MPainter.fillRect(canvas, layout.backgroundX, barY, fillW, STAMINA_BAR_HEIGHT, STAMINA_FILL);
         }
         MPainter.strokeRect(canvas, layout.backgroundX, barY, layout.backgroundWidth, STAMINA_BAR_HEIGHT, STAMINA_BORDER, 1f);
+    }
+
+    /**
+     * Draws the mana bar above the stamina bar. Renders only when the selected class
+     * spends mana (currently just the Arcanist) to avoid HUD clutter for the others.
+     */
+    private void drawManaBar(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        if (!ArcanistAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+        float maxMana = player.getMaxMana();
+        if (maxMana <= 0) return;
+
+        int totalHearts = (int) Math.ceil(player.getMaxHealth() / 2.0f);
+        MTexture empty = MTextureRegistry.get(HEART_EMPTY_SBT);
+        MTexture half  = MTextureRegistry.get(HEART_HALF_SBT);
+        MTexture full  = MTextureRegistry.get(HEART_FULL_SBT);
+        int nativeSize = nativeHeartSize(empty, half, full);
+        int heartSize  = nativeSize * Math.max(1, Math.round((float) HEART_SIZE_TARGET / nativeSize));
+
+        HeartLayout hl      = computeHeartLayout(totalHearts, heartSize, layout.backgroundWidth);
+        int         rows    = Math.max(1, hl.numRows());
+        float       topRowY = layout.backgroundY - HEART_Y_GAP - (rows - 1) * (heartSize + HEART_ROW_GAP);
+        float       staminaY = topRowY - STAMINA_BAR_GAP - STAMINA_BAR_HEIGHT;
+        float       barY     = staminaY - MANA_BAR_GAP - MANA_BAR_HEIGHT;
+        float       fillW    = layout.backgroundWidth
+                * Math.max(0f, Math.min(1f, player.getMana() / maxMana));
+
+        MPainter.fillRect(canvas, layout.backgroundX, barY, layout.backgroundWidth, MANA_BAR_HEIGHT, STAMINA_BG);
+        if (fillW > 0) {
+            MPainter.fillRect(canvas, layout.backgroundX, barY, fillW, MANA_BAR_HEIGHT, MANA_FILL);
+        }
+        MPainter.strokeRect(canvas, layout.backgroundX, barY, layout.backgroundWidth, MANA_BAR_HEIGHT, STAMINA_BORDER, 1f);
     }
 
     /**
@@ -398,6 +448,68 @@ public class MHotbarRenderer {
             float lineX = drawIconBeforeText(canvas, CULLING_SHOT_ICON_PATH, panelX, y - MStyle.FONT_META, MStyle.FONT_META);
             MPainter.drawStringWithShadow(canvas, RangerHudText.cullingShotStatus(ranger.getCullingShot()), lineX, y,
                     font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+        }
+    }
+
+    /**
+     * Draws the Arcanist Resonance panel — header with the current stack count (or
+     * "OVERLOADED"), four discrete Resonance pips (all switching to hot gold while
+     * Overloaded — the distinct visual indicator), the live same-school echo line, and
+     * one status line per unlocked spell — to the right of the hotbar. Renders only when
+     * the player's selected class is the Arcanist.
+     */
+    private void drawResonanceIndicator(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        if (!ArcanistAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+
+        ArcanistAbilityController arcanist = player.getArcanistAbilities();
+        ResonanceTracker resonance = arcanist.getResonance();
+        int stacks = resonance.getResonanceStacks();
+        boolean overloaded = resonance.isOverloaded();
+
+        float panelX = layout.backgroundX + layout.backgroundWidth + RAGE_PANEL_GAP;
+        float y = layout.backgroundY;
+
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
+        MPainter.drawStringWithShadow(canvas, ArcanistHudText.resonanceStatus(resonance),
+                panelX, y + MStyle.FONT_META, font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        y += MStyle.FONT_META + RAGE_LABEL_GAP;
+
+        for (int i = 0; i < com.stonebreak.player.PlayerConstants.ARCANIST_RESONANCE_MAX_STACKS; i++) {
+            MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, RESONANCE_PIP_HEIGHT, RAGE_SEGMENT_BG);
+            if (i < stacks) {
+                int fill = overloaded ? RESONANCE_PIP_OVERLOADED : RESONANCE_PIP_FILLED;
+                MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, RESONANCE_PIP_HEIGHT, fill);
+            }
+            MPainter.strokeRect(canvas, panelX, y, RAGE_PANEL_WIDTH, RESONANCE_PIP_HEIGHT, RAGE_SEGMENT_BORDER, 1f);
+            y += RESONANCE_PIP_HEIGHT + RESONANCE_PIP_GAP;
+        }
+
+        String sameSchool = ArcanistHudText.sameSchoolStatus(resonance);
+        if (sameSchool != null) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas, sameSchool, panelX, y,
+                    font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+            y += RESONANCE_LINE_GAP;
+        }
+
+        y += RAGE_BONUS_LINE_GAP;
+        var stats = player.getCharacterStats();
+        // Spell status lines turn gold while Overloaded — the next cast is the empowered one
+        int spellColor = overloaded ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
+        if (stats.getSpentCp(ArcanistAbilityController.LEYLINE_BREACH_KEY) > 0) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas,
+                    ArcanistHudText.spellStatus("Leyline Breach", arcanist.getLeylineBreach()),
+                    panelX, y, font, spellColor, MStyle.TEXT_SHADOW);
+            y += RAGE_BONUS_LINE_GAP;
+        }
+        if (stats.getSpentCp(ArcanistAbilityController.NULL_SPIKE_KEY) > 0) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas,
+                    ArcanistHudText.spellStatus("Null Spike", arcanist.getNullSpike()),
+                    panelX, y, font, spellColor, MStyle.TEXT_SHADOW);
         }
     }
 

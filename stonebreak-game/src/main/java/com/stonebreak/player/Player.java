@@ -12,6 +12,7 @@ import com.stonebreak.player.combat.HealthController;
 import com.stonebreak.player.combat.ManaController;
 import com.stonebreak.player.combat.RageTier;
 import com.stonebreak.player.combat.StaminaController;
+import com.stonebreak.player.combat.arcanist.ArcanistAbilityController;
 import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
 import com.stonebreak.player.combat.ranger.RangerAbilityController;
 import com.stonebreak.mobs.entities.LivingEntity;
@@ -74,6 +75,7 @@ public class Player {
     private final DeathHandler deathHandler;
     private final BerserkerAbilityController berserkerAbilities;
     private final RangerAbilityController rangerAbilities;
+    private final ArcanistAbilityController arcanistAbilities;
 
     // Interaction
     private final RaycastEngine raycastEngine;
@@ -124,6 +126,7 @@ public class Player {
         this.deathHandler = new DeathHandler(state, health, inventory, camera, world);
         this.berserkerAbilities = new BerserkerAbilityController();
         this.rangerAbilities = new RangerAbilityController();
+        this.arcanistAbilities = new ArcanistAbilityController();
 
         this.raycastEngine = new RaycastEngine(state, camera, world);
         this.blockBreaker = new BlockBreaker(raycastEngine, inventory, attack, world);
@@ -196,6 +199,7 @@ public class Player {
 
         berserkerAbilities.update(dt, this);
         rangerAbilities.update(dt, this);
+        arcanistAbilities.update(dt, this);
         RageTier rageTier = berserkerAbilities.getRage().getTier();
         attack.setAnimationSpeedMultiplier(rageTier.atLeast(RageTier.T2)
             ? 1f + RAGE_T2_ATTACK_SPEED_BONUS
@@ -325,6 +329,7 @@ public class Player {
     public float getMaxStamina() { return stamina.getMaxStamina(); }
     public float getMana()       { return mana.getMana(); }
     public float getMaxMana()    { return mana.getMaxMana(); }
+    public ManaController getManaController() { return mana; }
 
     // Health / death
     public float getHealth() { return health.getHealth(); }
@@ -406,6 +411,9 @@ public class Player {
     // Ranger
     public RangerAbilityController getRangerAbilities() { return rangerAbilities; }
 
+    // Arcanist
+    public ArcanistAbilityController getArcanistAbilities() { return arcanistAbilities; }
+
     /** True while any class ability is driving the player and movement input should be suppressed. */
     public boolean isAbilityMovementLocked() {
         return berserkerAbilities.isMovementLocked() || rangerAbilities.isMovementLocked();
@@ -436,5 +444,7 @@ public class Player {
         deathHandler.setWorld(world);
         // Quarry mark, trap, and ability state reference entities from the old world
         rangerAbilities.reset();
+        // Resonance is a combat-only resource; spawned zones/projectiles are gone with the old world
+        arcanistAbilities.reset();
     }
 }

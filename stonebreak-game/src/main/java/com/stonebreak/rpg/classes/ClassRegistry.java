@@ -18,7 +18,7 @@ public final class ClassRegistry {
       berserker(),
       PlayerClassDefinition.placeholder("rogue",      "Rogue",      5),
       PlayerClassDefinition.placeholder("monk",       "Monk",       5),
-      PlayerClassDefinition.placeholder("arcanist",   "Arcanist",   5),
+      arcanist(),
       ranger(),
       PlayerClassDefinition.placeholder("illusionist","Illusionist", 5)
   );
@@ -68,6 +68,52 @@ public final class ClassRegistry {
             )
         ),
         "/ui/abilities/berserker/Rage.png"
+    );
+  }
+
+  /**
+   * Pure INT backliner built around Resonance: casting spells of different magic schools
+   * builds Resonance stacks (0-4); at 4 the Arcanist is Overloaded and the next cast
+   * unleashes an empowered variant, consuming all stacks. Repeating the same school
+   * builds nothing — each consecutive repeat is cheaper but weaker. Spells cost mana
+   * (WIS-driven pool). Spending CP on either ability unlocks it for casting
+   * (R = Leyline Breach, F = Null Spike).
+   *
+   * <p>Icon paths are null until art lands; intended:
+   * /ui/abilities/arcanist/Leyline_Breach.png, Null_Spike.png, Resonance.png.</p>
+   */
+  private static PlayerClassDefinition arcanist() {
+    return new PlayerClassDefinition(
+        "arcanist",
+        "Arcanist",
+        "A pure INT spellslinger who weaves between schools of magic. Varying schools "
+            + "builds Resonance toward an Overloaded cast of devastating power; leaning on "
+            + "one school grows cheap but sloppy.",
+        List.of(
+            new ClassAbility(
+                "Leyline Breach",
+                "Tear open a leyline at a targeted spot. The breach persists on the ground, "
+                    + "pulsing arcane damage that leaves enemies Amplified — taking increased "
+                    + "magical damage — while a constant vortex drags them toward its center. "
+                    + "Conjuration school; costs mana.\n"
+                    + "Overloaded: the breach widens dramatically, the vortex strengthens, "
+                    + "pulses hit far harder, and everything caught inside is rooted.",
+                1,
+                null
+            ),
+            new ClassAbility(
+                "Null Spike",
+                "Fire a fast arcane bolt that damages the first enemy struck and Spellmarks "
+                    + "it — the next arcane spell to hit detonates the mark for bonus damage. "
+                    + "Damage rises with your Resonance stacks at the moment of firing. "
+                    + "Arcana school; costs mana.\n"
+                    + "Overloaded: the spike pierces every enemy in its line (marks last "
+                    + "twice as long) and detonates in a radial burst where it ends.",
+                1,
+                null
+            )
+        ),
+        null
     );
   }
 

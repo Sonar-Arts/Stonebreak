@@ -261,6 +261,34 @@ public class EntityManager {
     }
 
     /**
+     * Spawns a Null Spike projectile aimed in the given direction. Damage, Spellmark
+     * duration, pierce, and burst damage are precomputed by the casting ability.
+     */
+    public NullSpikeProjectile spawnNullSpike(Vector3f position, Vector3f direction,
+            float damagePerHit, float spellmarkDuration, boolean pierce, float burstDamage) {
+        NullSpikeProjectile spike = new NullSpikeProjectile(world, position, direction,
+            damagePerHit, spellmarkDuration, pierce, burstDamage);
+        synchronized (entitiesToAdd) {
+            entitiesToAdd.add(spike);
+        }
+        return spike;
+    }
+
+    /**
+     * Spawns a Leyline Breach zone at a ground position. Radius, pull force, pulse
+     * damage, and duration are precomputed by the casting ability.
+     */
+    public LeylineBreachZone spawnLeylineBreachZone(Vector3f position, float radius,
+            float pullForce, float pulseDamage, float duration, boolean overloaded) {
+        LeylineBreachZone zone = new LeylineBreachZone(world, position, radius,
+            pullForce, pulseDamage, duration, overloaded);
+        synchronized (entitiesToAdd) {
+            entitiesToAdd.add(zone);
+        }
+        return zone;
+    }
+
+    /**
      * Spawns a fishing bobber launched in the given direction.
      */
     public FishingBobber spawnBobber(Vector3f position, Vector3f direction) {

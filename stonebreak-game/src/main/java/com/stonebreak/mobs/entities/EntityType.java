@@ -45,6 +45,10 @@ public enum EntityType {
     // Projectile entities
     FIRE_BOLT("Fire Bolt", 1.0f, 0.0f, 0.3f, 0.3f, 0.3f, 0.0f, false, null),
     ARROW("Arrow", 1.0f, 0.0f, 0.1f, 0.05f, 0.5f, 0.0f, false, null),
+    NULL_SPIKE("Null Spike", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false, null),
+
+    // Persistent spell zone (Arcanist's Leyline Breach)
+    LEYLINE_BREACH_ZONE("Leyline Breach", 1.0f, 0.0f, 0.4f, 0.4f, 0.4f, 0.0f, false, null),
 
     // Fishing bobber
     BOBBER("Bobber", 1.0f, 0.0f, 0.2f, 0.2f, 0.2f, 0.0f, false, "stonebreak:Bobber"),
