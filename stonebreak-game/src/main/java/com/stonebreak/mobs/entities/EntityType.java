@@ -42,6 +42,10 @@ public enum EntityType {
     REMOTE_PLAYER("Remote Player", 20.0f, 0.0f, 1.8f, 0.6f, 0.6f, 0.0f, true, null,
         "Varies", "Varies"),
 
+    // Illusionist Mirrored Deceit decoy; player-shaped, 1 HP so any hit kills it.
+    // Same dimensions as REMOTE_PLAYER and rendered through the same cylinder path.
+    ILLUSION_DECOY("Illusion Decoy", 1.0f, 0.0f, 1.8f, 0.6f, 0.6f, 0.0f, true, null),
+
     // Projectile entities
     FIRE_BOLT("Fire Bolt", 1.0f, 0.0f, 0.3f, 0.3f, 0.3f, 0.0f, false, null),
     ARROW("Arrow", 1.0f, 0.0f, 0.1f, 0.05f, 0.5f, 0.0f, false, null),

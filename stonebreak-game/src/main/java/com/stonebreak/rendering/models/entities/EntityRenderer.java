@@ -295,6 +295,13 @@ public class EntityRenderer {
             return;
         }
 
+        // Illusion decoys are RemotePlayer-shaped; reuse the same cylinder render path.
+        if (entityType == EntityType.ILLUSION_DECOY
+                && entity instanceof com.stonebreak.mobs.entities.IllusionDecoy decoy) {
+            remotePlayerRenderer.render(decoy, viewMatrix, projectionMatrix);
+            return;
+        }
+
         if (entityType == EntityType.COW && entity instanceof com.stonebreak.mobs.cow.Cow cow) {
             // The SBE asset comes from the registry by the entity type's object
             // id; only the variant and AI-state → animation-state mapping are

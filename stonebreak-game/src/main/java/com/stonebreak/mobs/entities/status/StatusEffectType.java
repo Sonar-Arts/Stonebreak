@@ -28,5 +28,16 @@ public enum StatusEffectType {
      * The next arcane spell hit deals bonus damage, then consumes the mark — one proc per
      * application. {@code magnitude} is unused (the bonus is a global constant).
      */
-    SPELLMARKED
+    SPELLMARKED,
+    /**
+     * Adds a fractional attack hesitation delay (Illusionist Doubt). {@code magnitude} is the
+     * delay in seconds applied per stack; stacks are tracked player-side in DoubtController and
+     * this effect is refreshed whenever Doubt stacks change.
+     */
+    SHAKEN,
+    /**
+     * Marks an enemy as visible through terrain to the owning Illusionist. {@code magnitude} is
+     * unused; the presence of the effect drives the through-terrain render outline.
+     */
+    REVEALED
 }

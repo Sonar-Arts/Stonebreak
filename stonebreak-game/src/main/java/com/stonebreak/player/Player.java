@@ -14,6 +14,7 @@ import com.stonebreak.player.combat.RageTier;
 import com.stonebreak.player.combat.StaminaController;
 import com.stonebreak.player.combat.arcanist.ArcanistAbilityController;
 import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
+import com.stonebreak.player.combat.illusionist.IllusionistAbilityController;
 import com.stonebreak.player.combat.ranger.RangerAbilityController;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.interaction.BlockBreaker;
@@ -76,6 +77,7 @@ public class Player {
     private final BerserkerAbilityController berserkerAbilities;
     private final RangerAbilityController rangerAbilities;
     private final ArcanistAbilityController arcanistAbilities;
+    private final IllusionistAbilityController illusionistAbilities;
 
     // Interaction
     private final RaycastEngine raycastEngine;
@@ -127,6 +129,7 @@ public class Player {
         this.berserkerAbilities = new BerserkerAbilityController();
         this.rangerAbilities = new RangerAbilityController();
         this.arcanistAbilities = new ArcanistAbilityController();
+        this.illusionistAbilities = new IllusionistAbilityController();
 
         this.raycastEngine = new RaycastEngine(state, camera, world);
         this.blockBreaker = new BlockBreaker(raycastEngine, inventory, attack, world);
@@ -200,6 +203,7 @@ public class Player {
         berserkerAbilities.update(dt, this);
         rangerAbilities.update(dt, this);
         arcanistAbilities.update(dt, this);
+        illusionistAbilities.update(dt, this);
         RageTier rageTier = berserkerAbilities.getRage().getTier();
         attack.setAnimationSpeedMultiplier(rageTier.atLeast(RageTier.T2)
             ? 1f + RAGE_T2_ATTACK_SPEED_BONUS
@@ -414,6 +418,11 @@ public class Player {
     // Arcanist
     public ArcanistAbilityController getArcanistAbilities() { return arcanistAbilities; }
 
+    // Illusionist
+    public IllusionistAbilityController getIllusionistAbilities() { return illusionistAbilities; }
+    public boolean tryCastMirroredDeceit() { return illusionistAbilities.tryCastMirroredDeceit(this); }
+    public boolean tryCastFracture() { return illusionistAbilities.tryCastFracture(this); }
+
     /** True while any class ability is driving the player and movement input should be suppressed. */
     public boolean isAbilityMovementLocked() {
         return berserkerAbilities.isMovementLocked() || rangerAbilities.isMovementLocked();
@@ -446,5 +455,7 @@ public class Player {
         rangerAbilities.reset();
         // Resonance is a combat-only resource; spawned zones/projectiles are gone with the old world
         arcanistAbilities.reset();
+        // Doubt tracks entities from the old world; decoys are gone with it
+        illusionistAbilities.reset();
     }
 }

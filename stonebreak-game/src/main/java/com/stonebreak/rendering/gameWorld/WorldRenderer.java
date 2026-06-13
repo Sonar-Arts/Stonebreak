@@ -199,6 +199,12 @@ public class WorldRenderer {
         // Render fire bolt trail particles
         renderFireBoltParticles();
 
+        // Render Illusionist decoy smoke puffs
+        renderIllusionSmoke();
+
+        // Render through-terrain outlines for REVEALED enemies (Illusionist)
+        renderRevealedOutlines(player);
+
         // Render player arm last (if not paused) to appear in front of entities
         renderPlayerArm(player);
     }
@@ -572,6 +578,110 @@ public class WorldRenderer {
         glDisable(GL_BLEND);
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.unbind();
+    }
+
+    /**
+     * Render the smoke puff emitted when Illusionist decoys appear or shatter. The particle list
+     * lives on the active Mirrored Deceit ability so it persists past the cast until it fades.
+     */
+    private void renderIllusionSmoke() {
+        Player player = Game.getPlayer();
+        if (player == null) return;
+        com.stonebreak.rendering.effects.IllusionSmokeParticles smoke =
+                player.getIllusionistAbilities().getMirroredDeceit().getSmoke();
+        if (smoke.isEmpty()) return;
+
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
+        shaderProgram.setUniform("u_useSolidColor", true);
+        shaderProgram.setUniform("u_isText", false);
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // straight alpha for soft grey smoke
+        glDepthMask(false);
+
+        for (com.stonebreak.rendering.effects.IllusionSmokeParticles.SmokeParticle p : smoke.snapshot()) {
+            float opacity = p.getOpacity();
+            // Pale violet smoke, fading out.
+            shaderProgram.setUniform("u_color", new org.joml.Vector4f(0.72f, 0.66f, 0.85f, opacity * 0.55f));
+            glPointSize(p.getSize());
+            glBegin(GL_POINTS);
+            glVertex3f(p.getPosition().x, p.getPosition().y, p.getPosition().z);
+            glEnd();
+        }
+
+        glPointSize(1.0f);
+        glDepthMask(true);
+        glDisable(GL_BLEND);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.unbind();
+    }
+
+    /**
+     * Render a through-terrain wireframe box around every living entity carrying the REVEALED
+     * status (Illusionist decoy hit). Depth testing is disabled so the outline is visible even
+     * when the enemy is behind walls.
+     */
+    private void renderRevealedOutlines(Player player) {
+        com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+        if (em == null) return;
+
+        List<com.stonebreak.mobs.entities.LivingEntity> revealed = new ArrayList<>();
+        for (com.stonebreak.mobs.entities.LivingEntity entity : em.getLivingEntities()) {
+            if (entity.isAlive()
+                    && entity.hasStatusEffect(com.stonebreak.mobs.entities.status.StatusEffectType.REVEALED)) {
+                revealed.add(entity);
+            }
+        }
+        if (revealed.isEmpty()) return;
+
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
+        shaderProgram.setUniform("u_useSolidColor", true);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_color", new org.joml.Vector4f(0.85f, 0.30f, 0.95f, 0.9f));
+
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(false);
+
+        for (com.stonebreak.mobs.entities.LivingEntity entity : revealed) {
+            Vector3f pos = entity.getPosition();
+            com.stonebreak.mobs.entities.EntityType type = entity.getType();
+            float hw = type.getWidth() * 0.5f;
+            float hl = type.getLength() * 0.5f;
+            float minX = pos.x - hw, maxX = pos.x + hw;
+            float minZ = pos.z - hl, maxZ = pos.z + hl;
+            float minY = pos.y - type.getLegHeight(), maxY = pos.y + type.getHeight();
+            drawWireBox(minX, minY, minZ, maxX, maxY, maxZ);
+        }
+
+        glDepthMask(true);
+        glEnable(GL_DEPTH_TEST);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.unbind();
+    }
+
+    /** Draws the 12 edges of an axis-aligned box in immediate mode (caller sets shader/color). */
+    private void drawWireBox(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+        glBegin(GL_LINES);
+        // Bottom rectangle
+        glVertex3f(minX, minY, minZ); glVertex3f(maxX, minY, minZ);
+        glVertex3f(maxX, minY, minZ); glVertex3f(maxX, minY, maxZ);
+        glVertex3f(maxX, minY, maxZ); glVertex3f(minX, minY, maxZ);
+        glVertex3f(minX, minY, maxZ); glVertex3f(minX, minY, minZ);
+        // Top rectangle
+        glVertex3f(minX, maxY, minZ); glVertex3f(maxX, maxY, minZ);
+        glVertex3f(maxX, maxY, minZ); glVertex3f(maxX, maxY, maxZ);
+        glVertex3f(maxX, maxY, maxZ); glVertex3f(minX, maxY, maxZ);
+        glVertex3f(minX, maxY, maxZ); glVertex3f(minX, maxY, minZ);
+        // Vertical edges
+        glVertex3f(minX, minY, minZ); glVertex3f(minX, maxY, minZ);
+        glVertex3f(maxX, minY, minZ); glVertex3f(maxX, maxY, minZ);
+        glVertex3f(maxX, minY, maxZ); glVertex3f(maxX, maxY, maxZ);
+        glVertex3f(minX, minY, maxZ); glVertex3f(minX, maxY, maxZ);
+        glEnd();
     }
 
     /**

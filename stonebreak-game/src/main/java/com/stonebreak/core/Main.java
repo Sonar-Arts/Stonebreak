@@ -818,6 +818,8 @@ public class Main {
                            width, height);
                 com.stonebreak.rendering.UI.components.QuarryMarkerRenderer.getInstance()
                         .render(renderer.getProjectionMatrix(), player.getViewMatrix(), width, height);
+                com.stonebreak.rendering.UI.components.DoubtMarkerRenderer.getInstance()
+                        .render(renderer.getProjectionMatrix(), player.getViewMatrix(), width, height);
             }
         }
 

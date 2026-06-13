@@ -427,9 +427,10 @@ public class InputHandler {
 
     /**
      * Class ability casts on shared keys: R = Rampage (Berserker) / Snare (Ranger) /
-     * Leyline Breach (Arcanist), F = Skull Crusher (Berserker) / Culling Shot (Ranger) /
-     * Null Spike (Arcanist). Every controller self-gates on the selected class and CP
-     * unlock, so each press acts through at most one class and is harmless for the others.
+     * Leyline Breach (Arcanist) / Mirrored Deceit (Illusionist), F = Skull Crusher (Berserker) /
+     * Culling Shot (Ranger) / Null Spike (Arcanist) / Fracture (Illusionist). Every controller
+     * self-gates on the selected class and CP unlock, so each press acts through at most one class
+     * and is harmless for the others.
      */
     private void handleClassAbilityKeys(Player player) {
         if (Game.getInstance().getState() != GameState.PLAYING) {
@@ -444,6 +445,7 @@ public class InputHandler {
             player.getBerserkerAbilities().tryCastRampage(player);
             player.getRangerAbilities().tryCastSnare(player);
             player.getArcanistAbilities().tryCastLeylineBreach(player);
+            player.getIllusionistAbilities().tryCastMirroredDeceit(player);
         } else if (!isRampagePressed) {
             rampageKeyPressed = false;
         }
@@ -454,6 +456,7 @@ public class InputHandler {
             player.getBerserkerAbilities().tryCastSkullCrusher(player, player.getRaycastEngine());
             player.getRangerAbilities().tryCastCullingShot(player);
             player.getArcanistAbilities().tryCastNullSpike(player);
+            player.getIllusionistAbilities().tryCastFracture(player);
         } else if (!isSkullCrusherPressed) {
             skullCrusherKeyPressed = false;
         }

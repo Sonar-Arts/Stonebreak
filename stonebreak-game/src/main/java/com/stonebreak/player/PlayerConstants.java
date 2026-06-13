@@ -162,4 +162,26 @@ public final class PlayerConstants {
     public static final float NULL_SPIKE_SPELLMARKED_DURATION = 4f;    // doubled when Overloaded
     public static final float NULL_SPIKE_BURST_DAMAGE         = 25f;
     public static final float NULL_SPIKE_BURST_RADIUS         = 4f;
+
+    // ── Illusionist: Doubt passive ────────────────────────────────────────────
+    public static final int   ILLUSIONIST_DOUBT_MAX_STACKS         = 3;
+    public static final float ILLUSIONIST_DOUBT_DECAY_TIMEOUT      = 6f;    // sec without illusory contact before decay starts
+    public static final float ILLUSIONIST_DOUBT_DECAY_INTERVAL     = 3f;    // one stack lost per interval after timeout
+    public static final float ILLUSIONIST_SHAKEN_ATTACK_DELAY      = 0.15f; // sec hesitation added per Doubt stack
+    public static final float ILLUSIONIST_SHAKEN_DURATION          = 2.0f;  // duration of SHAKEN refresh on stack change
+
+    // ── Illusionist: Mirrored Deceit ability ──────────────────────────────────
+    public static final float ILLUSIONIST_DECOY_DURATION           = 5.0f;  // sec decoys live
+    public static final float ILLUSIONIST_DECOY_HIT_SLOW_DURATION  = 1.0f;
+    public static final float ILLUSIONIST_DECOY_HIT_SLOW_MAG       = 0.5f;  // 50% speed reduction
+    public static final float ILLUSIONIST_DECOY_REVEAL_DURATION    = 8.0f;  // sec mark persists after decoy hit
+    public static final float ILLUSIONIST_MIRRORED_DECEIT_COOLDOWN = 12f;
+
+    // ── Illusionist: Fracture ability ─────────────────────────────────────────
+    public static final float ILLUSIONIST_FRACTURE_RANGE               = 32f;  // max range to detect Doubt-stacked enemies
+    public static final float ILLUSIONIST_FRACTURE_STUN_BASE           = 0.5f; // sec stun at 1 stack
+    public static final float ILLUSIONIST_FRACTURE_STUN_PER_STACK      = 0.4f; // added per stack above 1
+    public static final float ILLUSIONIST_FRACTURE_BEWILDERED_DURATION = 3.0f; // friendly-fire/panic duration at 3 stacks
+    public static final float ILLUSIONIST_FRACTURE_CONTAGION_RADIUS    = 6f;   // spread 1 Doubt to bystanders at Bewildered
+    public static final float ILLUSIONIST_FRACTURE_COOLDOWN            = 14f;
 }

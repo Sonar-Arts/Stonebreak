@@ -20,7 +20,7 @@ public final class ClassRegistry {
       PlayerClassDefinition.placeholder("monk",       "Monk",       5),
       arcanist(),
       ranger(),
-      PlayerClassDefinition.placeholder("illusionist","Illusionist", 5)
+      illusionist()
   );
 
   /** Returns the class with the given id, or empty if not found. */
@@ -157,6 +157,48 @@ public final class ClassRegistry {
             )
         ),
         "/ui/abilities/ranger/Quarry.png"
+    );
+  }
+
+  /**
+   * INT+CHA trickster built around Doubt: a per-enemy resource that accumulates whenever an
+   * enemy is fooled into striking one of the Illusionist's decoys. Doubt makes targets hesitate
+   * (Shaken) and decays when an enemy goes without illusory contact. Spending CP on either
+   * ability unlocks it for casting (R = Mirrored Deceit, F = Fracture).
+   *
+   * <p>Icon paths are null until art lands; intended:
+   * /ui/abilities/illusionist/Mirrored_Deceit.png, Fracture.png, Doubt.png.</p>
+   */
+  private static PlayerClassDefinition illusionist() {
+    return new PlayerClassDefinition(
+        "illusionist",
+        "Illusionist",
+        "An INT+CHA trickster who turns an enemy's own senses against them. Decoys and "
+            + "mind games sow Doubt — making foes hesitate, strike at phantoms, and finally "
+            + "shatter into panic that spreads to those around them.",
+        List.of(
+            new ClassAbility(
+                "Mirrored Deceit",
+                "Conjure two illusory doubles that fan out beside you and mirror your every "
+                    + "move, baiting enemies into attacking the wrong target. Each decoy shatters "
+                    + "in a single hit — and the attacker that pops one is slowed, Revealed "
+                    + "through terrain, and left doubting what's real, gaining a stack of Doubt.",
+                1,
+                null
+            ),
+            new ClassAbility(
+                "Fracture",
+                "Shatter the accumulated Doubt on every nearby enemy at once, stunning each for "
+                    + "a duration that grows with its Doubt:\n"
+                    + "1 stack: a brief stun.\n"
+                    + "2 stacks: a longer stun, and the target lashes out at the nearest creature.\n"
+                    + "3 stacks (Bewildered): a full stun followed by panic — the target attacks "
+                    + "friend and foe alike, spreading Doubt to those around it.",
+                1,
+                null
+            )
+        ),
+        null
     );
   }
 }

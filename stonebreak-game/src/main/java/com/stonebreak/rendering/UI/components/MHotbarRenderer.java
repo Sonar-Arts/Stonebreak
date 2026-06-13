@@ -16,6 +16,8 @@ import com.stonebreak.player.combat.arcanist.ArcanistHudText;
 import com.stonebreak.player.combat.arcanist.ResonanceTracker;
 import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
 import com.stonebreak.player.combat.berserker.BerserkerTierText;
+import com.stonebreak.player.combat.illusionist.IllusionistAbilityController;
+import com.stonebreak.player.combat.illusionist.IllusionistHudText;
 import com.stonebreak.player.combat.ranger.RangerAbilityController;
 import com.stonebreak.player.combat.ranger.RangerHudText;
 import com.stonebreak.mobs.entities.LivingEntity;
@@ -159,6 +161,7 @@ public class MHotbarRenderer {
             drawRageIndicator(canvas, layout);
             drawQuarryIndicator(canvas, layout);
             drawResonanceIndicator(canvas, layout);
+            drawDoubtIndicator(canvas, layout);
             ui.renderOverlays();
             ui.endFrame();
         }
@@ -510,6 +513,43 @@ public class MHotbarRenderer {
             MPainter.drawStringWithShadow(canvas,
                     ArcanistHudText.spellStatus("Null Spike", arcanist.getNullSpike()),
                     panelX, y, font, spellColor, MStyle.TEXT_SHADOW);
+        }
+    }
+
+    /**
+     * Draws the Illusionist Doubt panel — header summarizing how many enemies carry Doubt (and how
+     * many are Bewildered) plus one live status line per unlocked ability — to the right of the
+     * hotbar. Renders only when the player's selected class is the Illusionist.
+     */
+    private void drawDoubtIndicator(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        if (!IllusionistAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+
+        IllusionistAbilityController illusionist = player.getIllusionistAbilities();
+
+        float panelX = layout.backgroundX + layout.backgroundWidth + RAGE_PANEL_GAP;
+        float y = layout.backgroundY;
+
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
+        MPainter.drawStringWithShadow(canvas, IllusionistHudText.doubtStatus(illusionist.getDoubt()),
+                panelX, y + MStyle.FONT_META, font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        y += MStyle.FONT_META + RAGE_LABEL_GAP;
+
+        y += RAGE_BONUS_LINE_GAP;
+        var stats = player.getCharacterStats();
+        if (stats.getSpentCp(IllusionistAbilityController.MIRRORED_DECEIT_KEY) > 0) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas,
+                    IllusionistHudText.mirroredDeceitStatus(illusionist.getMirroredDeceit()),
+                    panelX, y, font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+            y += RAGE_BONUS_LINE_GAP;
+        }
+        if (stats.getSpentCp(IllusionistAbilityController.FRACTURE_KEY) > 0) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas,
+                    IllusionistHudText.fractureStatus(illusionist.getFracture()),
+                    panelX, y, font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
         }
     }
 

@@ -53,6 +53,15 @@ public abstract class LivingEntity extends Entity {
     private Vector3f lastAttackerPosition;
 
     /**
+     * Illusionist Fracture stubs. {@code bewilderedTimer} counts down while the entity is in a
+     * panic/friendly-fire state; {@code forcedAttackTarget} names an entity the AI should attack
+     * next instead of its normal selection. Both are inert today (no hostile mob AI exists yet)
+     * and will be consulted once hostile target selection is implemented.
+     */
+    private float bewilderedTimer;
+    private LivingEntity forcedAttackTarget;
+
+    /**
      * Creates a new living entity at the specified position.
      */
     public LivingEntity(World world, Vector3f position, EntityType type) {
@@ -112,6 +121,15 @@ public abstract class LivingEntity extends Entity {
 
         // Tick timed debuffs (burning DOT, stun, armor break, ...)
         updateStatusEffects(deltaTime);
+
+        // Tick the Illusionist Bewildered/panic timer; clear the forced target when it lapses.
+        if (bewilderedTimer > 0f) {
+            bewilderedTimer -= deltaTime;
+            if (bewilderedTimer <= 0f) {
+                bewilderedTimer = 0f;
+                forcedAttackTarget = null;
+            }
+        }
 
         // Update AI behavior — suppressed while stunned
         if (!isStunned()) {
@@ -246,6 +264,16 @@ public abstract class LivingEntity extends Entity {
         }
     }
 
+    /** True while a status effect of the given type is active. */
+    public boolean hasStatusEffect(StatusEffectType type) {
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == type) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** True while any STUNNED effect is active — suppresses AI updates. */
     public boolean isStunned() {
         for (StatusEffect effect : statusEffects) {
@@ -336,6 +364,25 @@ public abstract class LivingEntity extends Entity {
 
     /** XP awarded to the player when this entity is killed. Override in subclasses. */
     public int getXpReward() { return 0; }
+
+    // ─────────────────────────────────────────────── Illusionist Fracture stubs
+
+    /** World position of the most recent attacker (null if unknown / the local player). */
+    public Vector3f getLastAttackerPosition() { return lastAttackerPosition; }
+
+    /** Puts this entity into the Bewildered panic state for {@code duration} seconds. */
+    public void setBewildered(float duration) {
+        this.bewilderedTimer = Math.max(this.bewilderedTimer, duration);
+    }
+
+    /** True while this entity is panicked (Fracture at full Doubt). */
+    public boolean isBewildered() { return bewilderedTimer > 0f; }
+
+    /** Names an entity this one should attack next, overriding normal AI target selection. */
+    public void setForcedAttackTarget(LivingEntity target) { this.forcedAttackTarget = target; }
+
+    /** The forced attack target set by Fracture, or null. */
+    public LivingEntity getForcedAttackTarget() { return forcedAttackTarget; }
     
     /**
      * Moves the entity toward a target position.

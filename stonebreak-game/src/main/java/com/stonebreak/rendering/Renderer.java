@@ -146,6 +146,7 @@ public class Renderer {
         uiRenderer.initializeSkijaRenderers(skijaBackend);
         DamageNumberRenderer.getInstance().setBackend(skijaBackend);
         QuarryMarkerRenderer.getInstance().setBackend(skijaBackend);
+        com.stonebreak.rendering.UI.components.DoubtMarkerRenderer.getInstance().setBackend(skijaBackend);
 
         debugRenderer = new DebugRenderer(resourceManager.getShaderProgram(), configManager.getProjectionMatrix());
         
