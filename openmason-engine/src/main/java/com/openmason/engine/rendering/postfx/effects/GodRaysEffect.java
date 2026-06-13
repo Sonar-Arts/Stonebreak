@@ -24,9 +24,11 @@ import static org.lwjgl.opengl.GL30.glBindFramebuffer;
  * Pass B radially blurs the mask toward the sun's projected screen position and composites it
  * additively onto the default framebuffer.</p>
  *
- * <p>Known, accepted behavior: water and clouds do not write depth, so rays shine through
- * both. The effect fades out as the sun approaches the screen edge and is skipped entirely
- * when the sun is behind the camera.</p>
+ * <p>Clouds are stamped into the scene depth buffer by a depth-only occlusion pass
+ * (see {@code CloudRenderer.renderCloudOcclusion}) after world geometry, so the sun is
+ * occluded wherever a cloud crosses in front of it. Water still does not write depth, so
+ * rays shine through it (accepted behavior). The effect fades out as the sun approaches the
+ * screen edge and is skipped entirely when the sun is behind the camera.</p>
  */
 public class GodRaysEffect implements PostProcessingEffect {
 

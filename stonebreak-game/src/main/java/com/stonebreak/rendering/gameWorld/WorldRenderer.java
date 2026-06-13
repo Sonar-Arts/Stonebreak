@@ -204,6 +204,20 @@ public class WorldRenderer {
     }
     
     /**
+     * Stamps cloud depth into the bound framebuffer's depth attachment (color writes masked)
+     * so screen-space god rays treat clouds as occluders. Must be called after
+     * {@link #renderWorld} so clouds behind terrain are depth-rejected, and while the
+     * post-processing scene framebuffer (whose depth the god rays read) is still bound.
+     */
+    public void renderCloudOcclusion(Player player, float totalTime) {
+        if (!com.stonebreak.config.Settings.getInstance().getCloudsEnabled()) {
+            return;
+        }
+        cloudRenderer.renderCloudOcclusion(projectionMatrix, player.getViewMatrix(),
+                player.getPosition(), totalTime);
+    }
+
+    /**
      * Clear any pending OpenGL errors from previous operations.
      */
     private void clearPendingGLErrors() {

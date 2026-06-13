@@ -159,23 +159,7 @@ public class CloudRenderer {
         cloudShaderProgram.setUniform("cloudColor", computeCloudColor(ambientLightLevel));
         cloudShaderProgram.setUniform("cloudAlpha", CLOUD_ALPHA);
 
-        // Drift wraps at the tile extent so the toroidal pattern stays seamless.
-        float drift = (totalTime * DRIFT_SPEED) % TILE_EXTENT;
-        float baseX = (float) Math.floor((cameraPosition.x - drift) / TILE_EXTENT) * TILE_EXTENT;
-        float baseZ = (float) Math.floor(cameraPosition.z / TILE_EXTENT) * TILE_EXTENT;
-
-        glBindVertexArray(cloudVAO);
-        // Draw a 3x3 block of tiles so the camera is always covered.
-        for (int ti = -1; ti <= 1; ti++) {
-            for (int tj = -1; tj <= 1; tj++) {
-                float originX = baseX + ti * TILE_EXTENT + drift;
-                float originZ = baseZ + tj * TILE_EXTENT;
-                modelMatrix.identity().translate(originX, CLOUD_Y, originZ);
-                cloudShaderProgram.setUniform("modelMatrix", modelMatrix);
-                glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
-            }
-        }
-        glBindVertexArray(0);
+        drawCloudTiles(cameraPosition, totalTime);
 
         cloudShaderProgram.unbind();
 
@@ -198,6 +182,93 @@ public class CloudRenderer {
         }
         glDepthMask(depthMaskEnabled);
         glDepthFunc(currentDepthFunc);
+    }
+
+    /**
+     * Stamps cloud depth into the currently bound framebuffer's depth attachment without
+     * writing color, so screen-space effects that read scene depth (e.g. god rays) treat
+     * clouds as occluders. Should be called after world geometry has been rendered so that
+     * clouds hidden behind terrain are correctly depth-rejected.
+     *
+     * @param projectionMatrix the projection matrix
+     * @param viewMatrix       the camera view matrix
+     * @param cameraPosition   the camera position
+     * @param totalTime        total elapsed game time, in seconds
+     */
+    public void renderCloudOcclusion(Matrix4f projectionMatrix, Matrix4f viewMatrix,
+                                     Vector3f cameraPosition, float totalTime) {
+        // Save current OpenGL state.
+        boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
+        boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
+        boolean blendEnabled = glIsEnabled(GL_BLEND);
+        boolean depthMaskEnabled = glGetBoolean(GL_DEPTH_WRITEMASK);
+        int currentDepthFunc = glGetInteger(GL_DEPTH_FUNC);
+
+        // Depth-only: write cloud depth, but mask out all color so the visible image is
+        // unchanged. Depth-test against the world so clouds behind terrain don't stamp.
+        glColorMask(false, false, false, false);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+        glDepthMask(true);
+        glDisable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+
+        cloudShaderProgram.bind();
+        cloudShaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        cloudShaderProgram.setUniform("viewMatrix", viewMatrix);
+        cloudShaderProgram.setUniform("cameraPosition", cameraPosition);
+        // Color is masked, but the program still needs valid uniform values.
+        cloudShaderProgram.setUniform("cloudColor", cloudColor.set(1.0f, 1.0f, 1.0f));
+        cloudShaderProgram.setUniform("cloudAlpha", CLOUD_ALPHA);
+
+        drawCloudTiles(cameraPosition, totalTime);
+
+        cloudShaderProgram.unbind();
+
+        // Restore previous OpenGL state.
+        glColorMask(true, true, true, true);
+        if (cullFaceEnabled) {
+            glEnable(GL_CULL_FACE);
+        } else {
+            glDisable(GL_CULL_FACE);
+        }
+        if (blendEnabled) {
+            glEnable(GL_BLEND);
+        } else {
+            glDisable(GL_BLEND);
+        }
+        if (depthTestEnabled) {
+            glEnable(GL_DEPTH_TEST);
+        } else {
+            glDisable(GL_DEPTH_TEST);
+        }
+        glDepthMask(depthMaskEnabled);
+        glDepthFunc(currentDepthFunc);
+    }
+
+    /**
+     * Draws the cloud mesh as a 3x3 block of tiles around the camera so the toroidal pattern
+     * appears seamless and infinite. Assumes {@link #cloudShaderProgram} is bound and its
+     * non-model uniforms are already set; sets {@code modelMatrix} per tile.
+     */
+    private void drawCloudTiles(Vector3f cameraPosition, float totalTime) {
+        // Drift wraps at the tile extent so the toroidal pattern stays seamless.
+        float drift = (totalTime * DRIFT_SPEED) % TILE_EXTENT;
+        float baseX = (float) Math.floor((cameraPosition.x - drift) / TILE_EXTENT) * TILE_EXTENT;
+        float baseZ = (float) Math.floor(cameraPosition.z / TILE_EXTENT) * TILE_EXTENT;
+
+        glBindVertexArray(cloudVAO);
+        for (int ti = -1; ti <= 1; ti++) {
+            for (int tj = -1; tj <= 1; tj++) {
+                float originX = baseX + ti * TILE_EXTENT + drift;
+                float originZ = baseZ + tj * TILE_EXTENT;
+                modelMatrix.identity().translate(originX, CLOUD_Y, originZ);
+                cloudShaderProgram.setUniform("modelMatrix", modelMatrix);
+                glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+            }
+        }
+        glBindVertexArray(0);
     }
 
     /**

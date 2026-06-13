@@ -466,6 +466,8 @@ public class Renderer {
 
         postPipeline.beginFrame();
         worldRenderer.renderWorld(world, player, totalTime);
+        // Stamp cloud depth into the scene FBO so god rays are occluded by clouds.
+        worldRenderer.renderCloudOcclusion(player, totalTime);
         postPipeline.endFrame(new PostFxFrameParams(
                 player.getViewMatrix(),
                 configManager.getProjectionMatrix(),
