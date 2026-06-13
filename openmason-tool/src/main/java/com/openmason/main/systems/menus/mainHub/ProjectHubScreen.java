@@ -1,15 +1,21 @@
 package com.openmason.main.systems.menus.mainHub;
 
 import com.openmason.main.systems.LogoManager;
-import com.openmason.main.systems.menus.mainHub.components.*;
+import com.openmason.main.systems.menus.mainHub.components.HubLandingPanel;
+import com.openmason.main.systems.menus.mainHub.components.HubSidebarNav;
+import com.openmason.main.systems.menus.mainHub.components.PreviewPanel;
+import com.openmason.main.systems.menus.mainHub.components.RecentProjectsPanel;
+import com.openmason.main.systems.menus.mainHub.components.TemplatesPanel;
+import com.openmason.main.systems.menus.mainHub.model.NavigationItem;
 import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import com.openmason.main.systems.menus.mainHub.services.HubActionService;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.menus.mainHub.services.TemplateService;
 import com.openmason.main.systems.menus.mainHub.state.HubState;
-import com.openmason.main.systems.menus.mainHub.state.HubVisibilityState;
+import com.openmason.main.systems.mortar.anim.Smoother;
 import com.openmason.main.systems.themes.core.ThemeDefinition;
 import com.openmason.main.systems.themes.core.ThemeManager;
+import imgui.ImColor;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
@@ -19,101 +25,85 @@ import imgui.flag.ImGuiWindowFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
- * Main coordinator for Unity Hub-style project hub interface.
+ * Coordinator for the project hub. Recent-first information architecture:
+ * a fixed identity/navigation sidebar, a Home landing (search + New Project,
+ * Recent Projects grid, Templates grid), and a contextual {@link PreviewPanel}
+ * that slides in from the right when an item is selected. Built on MortarUI —
+ * the sidebar, grids, header action and preview hero are Skija regions sharing
+ * the live ImGui theme.
  */
 public class ProjectHubScreen {
 
     private static final Logger logger = LoggerFactory.getLogger(ProjectHubScreen.class);
 
     private static final String WINDOW_TITLE = "Open Mason - Project Hub";
-    private static final float SIDEBAR_WIDTH = 250.0f;
-    private static final float PREVIEW_WIDTH = 350.0f;
+    private static final float SIDEBAR_WIDTH = 230.0f;
+    private static final float PREVIEW_WIDTH = 340.0f;
+    private static final float PANEL_GAP = 10.0f;
 
-    // Dependencies
     private final ThemeManager themeManager;
-
-    // State
     private final HubState hubState;
-    private final HubVisibilityState visibilityState;
-
     private final HubActionService actionService;
     private final RecentProjectsService recentProjectsService;
 
-    // UI Components
-    private final HubTopToolbar topToolbar;
     private final HubSidebarNav sidebarNav;
-    private final TemplatesPanel templatesPanel;
+    private final HubLandingPanel landingPanel;
     private final RecentProjectsPanel recentProjectsPanel;
     private final PreviewPanel previewPanel;
 
-    // Animation state
-    private float animationTime = 0.0f;
+    /** Animated width of the contextual preview panel (0 = hidden). */
+    private final Smoother previewWidth = new Smoother(16.0f, 0.0f);
 
-    /**
-     * Create Project Hub Screen with dependency injection.
-     */
     public ProjectHubScreen(ThemeManager themeManager) {
         if (themeManager == null) {
             throw new IllegalArgumentException("ThemeManager cannot be null");
         }
-
         this.themeManager = themeManager;
         LogoManager logoManager = LogoManager.getInstance();
 
-        // Initialize state
         this.hubState = new HubState();
-        this.visibilityState = new HubVisibilityState();
 
-        // Initialize services
         TemplateService templateService = new TemplateService();
         this.recentProjectsService = new RecentProjectsService();
         this.actionService = new HubActionService();
 
-        // Initialize UI components with dependency injection
-        this.topToolbar = new HubTopToolbar(hubState);
         this.sidebarNav = new HubSidebarNav(themeManager, hubState, logoManager);
-        this.templatesPanel = new TemplatesPanel(themeManager, hubState, templateService);
         this.recentProjectsPanel = new RecentProjectsPanel(themeManager, hubState, recentProjectsService, actionService);
+        TemplatesPanel templatesPanel = new TemplatesPanel(themeManager, hubState, templateService);
+        this.landingPanel = new HubLandingPanel(hubState, recentProjectsPanel, templatesPanel);
         this.previewPanel = new PreviewPanel(themeManager, hubState, logoManager, actionService, recentProjectsService);
 
-        // Share dialog instances between panels to avoid duplicate popups
+        // Share dialog instances so popups render once at window scope.
         this.previewPanel.setDialogs(recentProjectsPanel.getRenameDialog(), recentProjectsPanel.getDeleteDialog());
 
-        logger.info("Project Hub Screen initialized");
+        logger.info("Project Hub Screen initialized (MortarUI)");
     }
 
-    /**
-     * Render the Project Hub screen.
-     */
     public void render() {
-        // Match window to viewport size for fullscreen effect
         ImVec2 viewportSize = ImGui.getMainViewport().getSize();
         ImVec2 viewportPos = ImGui.getMainViewport().getPos();
 
-        // Window dimensions
-        float windowWidth = viewportSize.x;
-        float windowHeight = viewportSize.y;
-
         ImGui.setNextWindowPos(viewportPos.x, viewportPos.y);
-        ImGui.setNextWindowSize(windowWidth, windowHeight);
+        ImGui.setNextWindowSize(viewportSize.x, viewportSize.y);
 
-        // Configure as borderless fullscreen window
         int windowFlags = ImGuiWindowFlags.NoResize |
-                         ImGuiWindowFlags.NoCollapse |
-                         ImGuiWindowFlags.NoMove |
-                         ImGuiWindowFlags.NoTitleBar |
-                         ImGuiWindowFlags.NoBringToFrontOnFocus;
+                ImGuiWindowFlags.NoCollapse |
+                ImGuiWindowFlags.NoMove |
+                ImGuiWindowFlags.NoTitleBar |
+                ImGuiWindowFlags.NoBringToFrontOnFocus |
+                ImGuiWindowFlags.NoScrollbar |
+                ImGuiWindowFlags.NoScrollWithMouse;
 
-        ThemeDefinition theme = themeManager.getCurrentTheme();
-        applyWindowStyling(theme);
+        applyWindowStyling(themeManager.getCurrentTheme());
 
         if (ImGui.begin(WINDOW_TITLE, windowFlags)) {
             renderLayout();
 
-            // Render modal dialogs at top-level window scope (not inside child windows)
+            // Modal dialogs at top-level window scope.
             recentProjectsPanel.getRenameDialog().render();
             recentProjectsPanel.getDeleteDialog().render();
         }
@@ -123,113 +113,90 @@ public class ProjectHubScreen {
         ImGui.popStyleColor(1);
     }
 
-    /**
-     * Render the main layout.
-     */
     private void renderLayout() {
-        // Top toolbar (full width)
-        if (visibilityState.isTopToolbarVisible()) {
-            topToolbar.render();
-            ImGui.separator();
-            ImGui.spacing();
-        }
+        ImVec2 origin = ImGui.getCursorScreenPos();
+        float availH = ImGui.getContentRegionAvailY();
+        float availW = ImGui.getContentRegionAvailX();
 
-        // Calculate available space for three-panel layout
-        float availableHeight = ImGui.getContentRegionAvailY();
-        float availableWidth = ImGui.getContentRegionAvailX();
+        // Content keeps its full width regardless of the preview — the preview
+        // slides in as an overlay on top, so the card grids never reflow/squeeze.
+        float contentW = availW - SIDEBAR_WIDTH - PANEL_GAP;
 
-        // Calculate panel widths
-        float sidebarWidth = visibilityState.isSidebarVisible() ? SIDEBAR_WIDTH : 0;
-        float previewWidth = visibilityState.isPreviewPanelVisible() ? PREVIEW_WIDTH : 0;
-        float spacing = 10.0f;
-        float centerWidth = availableWidth - sidebarWidth - previewWidth - (spacing * 2);
-
-        // Left sidebar
-        if (visibilityState.isSidebarVisible()) {
-            ImGui.beginChild("Sidebar", sidebarWidth, availableHeight, true);
-            sidebarNav.render();
-            ImGui.endChild();
-            ImGui.sameLine(0, spacing);
-        }
-
-        // Center panel (switchable content)
-        ImGui.beginChild("CenterPanel", centerWidth, availableHeight, true);
-        renderCenterPanel();
+        ImGui.beginChild("Sidebar", SIDEBAR_WIDTH, availH, true);
+        sidebarNav.render();
         ImGui.endChild();
 
-        if (visibilityState.isPreviewPanelVisible()) {
-            ImGui.sameLine(0, spacing);
+        ImGui.sameLine(0, PANEL_GAP);
 
-            // Right preview panel
-            ImGui.beginChild("PreviewPanel", previewWidth, availableHeight, true);
-            previewPanel.render();
-            ImGui.endChild();
+        ImGui.beginChild("Content", contentW, availH, true);
+        if (hubState.getCurrentView() == NavigationItem.ViewType.LEARN) {
+            renderLearn();
+        } else {
+            landingPanel.render();
+        }
+        ImGui.endChild();
+
+        float pw = previewWidth.getValue();
+        if (pw > 2.0f) {
+            renderPreviewOverlay(origin, availW, availH, pw);
         }
     }
 
     /**
-     * Render the center panel based on current view.
+     * Draw the contextual preview as an opaque overlay anchored to the right
+     * edge of the layout, with a soft shadow on its left so it reads as
+     * floating above the content rather than docked beside it.
      */
-    private void renderCenterPanel() {
-        switch (hubState.getCurrentView()) {
-            case TEMPLATES:
-                templatesPanel.render();
-                break;
-            case RECENT_PROJECTS:
-                recentProjectsPanel.render();
-                break;
-            case LEARN:
-                renderLearnPanel();
-                break;
-        }
+    private void renderPreviewOverlay(ImVec2 origin, float availW, float availH, float pw) {
+        // The panel is always full PREVIEW_WIDTH wide; only its X position is
+        // animated, so it translates in from the right edge (clipped by the
+        // window) without its content ever re-laying-out as it opens.
+        float py = origin.y;
+        float px = origin.x + availW - pw;
+
+        int transparent = ImColor.rgba(0f, 0f, 0f, 0f);
+        int shadow = ImColor.rgba(0f, 0f, 0f, 0.22f);
+        ImGui.getWindowDrawList().addRectFilledMultiColor(
+                px - 12f, py, px, py + availH, transparent, shadow, shadow, transparent);
+
+        ImVec4 bg = ImGui.getStyle().getColor(ImGuiCol.WindowBg);
+        ImGui.pushStyleColor(ImGuiCol.ChildBg, bg.x, bg.y, bg.z, 1.0f);
+        ImGui.setCursorScreenPos(px, py);
+        ImGui.beginChild("Preview", PREVIEW_WIDTH, availH, true);
+        previewPanel.render();
+        ImGui.endChild();
+        ImGui.popStyleColor();
     }
 
-    /**
-     * Render Learn panel (placeholder).
-     */
-    private void renderLearnPanel() {
-        ImGui.spacing();
-        ImGui.spacing();
+    private void renderLearn() {
+        ImGui.dummy(0, 40f);
+        centered("Learning Resources", 1.0f);
+        ImGui.dummy(0, 8f);
+        centered("Documentation and tutorials are coming soon.", 0.55f);
+    }
 
-        String title = "Learning Resources";
-        ImVec2 titleSize = ImGui.calcTextSize(title);
+    private void centered(String text, float alpha) {
         float windowWidth = ImGui.getWindowWidth();
-        float titleX = (windowWidth - titleSize.x) * 0.5f;
-        ImGui.setCursorPosX(titleX);
-        ImGui.text(title);
-
-        ImGui.spacing();
-        ImGui.separator();
-        ImGui.spacing();
-
-        ThemeDefinition theme = themeManager.getCurrentTheme();
-        ImVec4 textCol = theme.getColor(ImGuiCol.Text);
-        if (textCol != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textCol.x, textCol.y, textCol.z, 0.6f);
-        }
-
-        String message = "Documentation and tutorials coming soon!";
-        ImVec2 messageSize = ImGui.calcTextSize(message);
-        float messageX = (windowWidth - messageSize.x) * 0.5f;
-        ImGui.setCursorPosX(messageX);
-        ImGui.text(message);
-
-        if (textCol != null) {
-            ImGui.popStyleColor();
-        }
+        float tw = ImGui.calcTextSize(text).x;
+        ImGui.setCursorPosX((windowWidth - tw) * 0.5f);
+        ImVec4 c = ImGui.getStyle().getColor(ImGuiCol.Text);
+        ImGui.pushStyleColor(ImGuiCol.Text, c.x, c.y, c.z, alpha);
+        ImGui.text(text);
+        ImGui.popStyleColor();
     }
 
-    /**
-     * Update method called every frame.
-     */
     public void update(float deltaTime) {
-        animationTime += deltaTime;
-        // Animation updates can be added here
+        boolean hasSelection = hubState.getSelectedTemplate() != null
+                || hubState.getSelectedRecentProject() != null
+                || hubState.isNewProjectSelected();
+        previewWidth.setTarget(hasSelection ? PREVIEW_WIDTH : 0.0f);
+        previewWidth.update(deltaTime);
+
+        sidebarNav.update(deltaTime);
+        landingPanel.update(deltaTime);
+        previewPanel.update(deltaTime);
     }
 
-    /**
-     * Apply window styling using theme colors.
-     */
     private void applyWindowStyling(ThemeDefinition theme) {
         ImVec4 bgColor = theme.getColor(ImGuiCol.WindowBg);
         if (bgColor != null) {
@@ -237,32 +204,33 @@ public class ProjectHubScreen {
         } else {
             ImGui.pushStyleColor(ImGuiCol.WindowBg, 0.1f, 0.1f, 0.1f, 1.0f);
         }
-
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 15.0f, 15.0f);
         ImGui.pushStyleVar(ImGuiStyleVar.WindowRounding, 0.0f);
     }
 
-    /**
-     * Set transition callbacks for project creation and opening.
-     * The open callback receives the RecentProject so the .OMP file can be loaded.
-     */
-    public void setTransitionCallbacks(Runnable onCreateProject, Consumer<RecentProject> onOpenProject) {
+    public void setTransitionCallbacks(BiConsumer<String, String> onCreateProject,
+                                       Consumer<RecentProject> onOpenProject) {
         actionService.setCreateProjectCallback(onCreateProject);
         actionService.setOpenProjectCallback(onOpenProject);
     }
 
-    /**
-     * Get the recent projects service for adding new entries on project save/open.
-     */
+    /** Wire the folder picker used by the New Project / template create form. */
+    public void setFolderPicker(Consumer<Consumer<String>> picker) {
+        actionService.setFolderPicker(picker);
+    }
+
     public RecentProjectsService getRecentProjectsService() {
         return recentProjectsService;
     }
 
-    /**
-     * Set callback for preferences button.
-     */
     public void setOnPreferencesClicked(Runnable callback) {
         sidebarNav.setOnPreferencesClicked(callback);
     }
 
+    /** Release Skija regions. Must run before the SkijaContext is closed. */
+    public void dispose() {
+        sidebarNav.dispose();
+        landingPanel.dispose();
+        previewPanel.dispose();
+    }
 }

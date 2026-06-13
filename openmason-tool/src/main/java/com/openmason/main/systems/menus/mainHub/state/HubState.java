@@ -13,10 +13,11 @@ import java.util.List;
  */
 public class HubState {
 
-    private NavigationItem.ViewType currentView = NavigationItem.ViewType.TEMPLATES;
+    private NavigationItem.ViewType currentView = NavigationItem.ViewType.HOME;
     private NavigationItem selectedNavItem;
     private ProjectTemplate selectedTemplate;
     private RecentProject selectedRecentProject;
+    private boolean newProjectSelected;
     private String searchQuery = "";
     private final List<StateChangeListener> listeners = new ArrayList<>();
 
@@ -60,10 +61,23 @@ public class HubState {
     }
 
     public void setSelectedTemplate(ProjectTemplate selectedTemplate) {
-        if (this.selectedTemplate != selectedTemplate) {
+        if (this.selectedTemplate != selectedTemplate || this.newProjectSelected) {
             this.selectedTemplate = selectedTemplate;
+            this.newProjectSelected = false;
             notifyListeners();
         }
+    }
+
+    public boolean isNewProjectSelected() {
+        return newProjectSelected;
+    }
+
+    /** Select the synthetic "New Project" entry, opening its preview. */
+    public void selectNewProject() {
+        this.selectedTemplate = null;
+        this.selectedRecentProject = null;
+        this.newProjectSelected = true;
+        notifyListeners();
     }
 
     public RecentProject getSelectedRecentProject() {
@@ -71,8 +85,9 @@ public class HubState {
     }
 
     public void setSelectedRecentProject(RecentProject selectedRecentProject) {
-        if (this.selectedRecentProject != selectedRecentProject) {
+        if (this.selectedRecentProject != selectedRecentProject || this.newProjectSelected) {
             this.selectedRecentProject = selectedRecentProject;
+            this.newProjectSelected = false;
             notifyListeners();
         }
     }
@@ -94,6 +109,7 @@ public class HubState {
     public void clearSelection() {
         selectedTemplate = null;
         selectedRecentProject = null;
+        newProjectSelected = false;
         notifyListeners();
     }
 }

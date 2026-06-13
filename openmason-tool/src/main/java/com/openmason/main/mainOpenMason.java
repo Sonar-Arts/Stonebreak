@@ -319,7 +319,9 @@ public class mainOpenMason {
             projectHubScreen = new ProjectHubScreen(themeManager);
             mainInterface = new MainImGuiInterface(themeManager);
 
-            projectHubScreen.setTransitionCallbacks(this::transitionToMainInterface, this::openRecentProject);
+            projectHubScreen.setTransitionCallbacks(this::createNewProjectFile, this::openRecentProject);
+            projectHubScreen.setFolderPicker(onChosen ->
+                    mainInterface.getFileDialogService().showPickFolderDialog(onChosen::accept));
             projectHubScreen.setOnPreferencesClicked(mainInterface.getShowPreferencesCallback());
 
             // Wire recent projects service from hub into main interface for project tracking
@@ -623,6 +625,30 @@ public class mainOpenMason {
     }
 
     /**
+     * Create a new blank project at {@code directory}/{@code name}.omp, pre-save
+     * it so the file exists immediately, record it in recent projects, then open
+     * the editor on the fresh project.
+     */
+    private void createNewProjectFile(String name, String directory) {
+        String safeName = (name == null || name.isBlank()) ? "Untitled" : name.trim();
+        if (directory == null || directory.isBlank()) {
+            // No directory chosen — just open a fresh (unsaved) editor session.
+            transitionToMainInterface();
+            return;
+        }
+
+        String fileName = safeName.replaceAll("[\\\\/:*?\"<>|]", "_") + ".omp";
+        String path = java.nio.file.Path.of(directory, fileName).toString();
+
+        transitionToMainInterface();
+        boolean saved = mainInterface.saveNewProject(safeName, path);
+        if (saved && projectHubScreen != null) {
+            projectHubScreen.getRecentProjectsService().addProject(safeName, path);
+        }
+        logger.info("Created new project '{}' at {}", safeName, path);
+    }
+
+    /**
      * Open a recent project from the Project Hub.
      * Transitions to the main interface and loads the .OMP project file.
      */
@@ -694,6 +720,15 @@ public class mainOpenMason {
         if (skijaTestPanel != null) {
             skijaTestPanel.close();
             skijaTestPanel = null;
+        }
+        // Hub owns Skija regions (FBOs/textures) — release them before the
+        // SkijaContext that backs them is closed.
+        if (projectHubScreen != null) {
+            try {
+                projectHubScreen.dispose();
+            } catch (Exception e) {
+                logger.error("Error disposing Project Hub", e);
+            }
         }
         if (skijaContext != null) {
             skijaContext.close();

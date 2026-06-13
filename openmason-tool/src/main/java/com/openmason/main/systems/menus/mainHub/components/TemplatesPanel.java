@@ -3,249 +3,121 @@ package com.openmason.main.systems.menus.mainHub.components;
 import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate;
 import com.openmason.main.systems.menus.mainHub.services.TemplateService;
 import com.openmason.main.systems.menus.mainHub.state.HubState;
-import com.openmason.main.systems.themes.core.ThemeDefinition;
+import com.openmason.main.systems.mortar.core.MortarFrameResult;
+import com.openmason.main.systems.mortar.core.MortarRegion;
+import com.openmason.main.systems.mortar.parts.MortarCard;
+import com.openmason.main.systems.mortar.parts.MortarSectionLabel;
 import com.openmason.main.systems.themes.core.ThemeManager;
-import imgui.ImColor;
-import imgui.ImDrawList;
 import imgui.ImGui;
-import imgui.ImVec2;
-import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
-import imgui.flag.ImGuiMouseCursor;
-import imgui.flag.ImGuiStyleVar;
-import imgui.flag.ImGuiWindowFlags;
 
 import java.util.List;
 
 /**
- * Center panel showing project templates in grid layout.
- * Single Responsibility: Display and manage template grid.
+ * Templates grid (the secondary section on the Home landing), painted as a
+ * single Skija {@link MortarRegion} of compact {@link MortarCard}s with a
+ * responsive column count. Selecting a card sets the hub's selected template,
+ * which opens the contextual preview.
  */
 public class TemplatesPanel {
 
-    private static final float CARD_WIDTH = 220.0f;
-    private static final float CARD_HEIGHT = 180.0f;
-    private static final float CARD_PADDING = 15.0f;
-    private static final float CARD_SPACING = 20.0f;
-    private static final float CARD_ROUNDING = 8.0f;
+    private static final float MIN_CARD_W = 200f;
+    private static final float CARD_H = 122f;
+    private static final float GAP = 12f;
+    private static final float LABEL_H = 18f;
+    private static final float LABEL_GAP = 10f;
 
-    private final ThemeManager themeManager;
     private final HubState hubState;
     private final TemplateService templateService;
+    private final MortarRegion region = new MortarRegion();
 
-    // Track which card is being actively clicked (mouse down but not released)
-    private int clickedCardIndex = -1;
+    private List<ProjectTemplate> frameTemplates = List.of();
 
     public TemplatesPanel(ThemeManager themeManager, HubState hubState, TemplateService templateService) {
-        this.themeManager = themeManager;
         this.hubState = hubState;
         this.templateService = templateService;
     }
 
-    /**
-     * Render the templates panel.
-     */
     public void render() {
-        // Get filtered templates based on search query
-        String searchQuery = hubState.getSearchQuery();
-        List<ProjectTemplate> templates = searchQuery.isEmpty()
+        String query = hubState.getSearchQuery();
+        List<ProjectTemplate> templates = query.isEmpty()
                 ? templateService.getAllTemplates()
-                : templateService.search(searchQuery);
+                : templateService.search(query);
+        this.frameTemplates = templates;
 
         if (templates.isEmpty()) {
-            renderEmptyState();
+            renderEmptyState(query);
             return;
         }
 
-        // Calculate grid layout
-        float panelWidth = ImGui.getWindowWidth() - 20.0f; // Account for scrollbar
-        int cardsPerRow = Math.max(1, (int)((panelWidth + CARD_SPACING) / (CARD_WIDTH + CARD_SPACING)));
+        float availW = ImGui.getContentRegionAvailX();
+        int cols = Math.max(1, (int) ((availW + GAP) / (MIN_CARD_W + GAP)));
+        float cardW = (availW - GAP * (cols - 1)) / cols;
+        int rows = (templates.size() + cols - 1) / cols;
 
-        // Render template cards in grid
+        float gridTop = LABEL_H + LABEL_GAP;
+        float height = gridTop + rows * (CARD_H + GAP) - GAP;
+
+        region.begin(availW, height);
+        region.add("label", 0f, 0f, availW, LABEL_H, new MortarSectionLabel("Templates"));
+
         for (int i = 0; i < templates.size(); i++) {
-            ProjectTemplate template = templates.get(i);
+            ProjectTemplate t = templates.get(i);
+            int col = i % cols;
+            int row = i / cols;
+            float x = col * (cardW + GAP);
+            float y = gridTop + row * (CARD_H + GAP);
+            boolean selected = t.equals(hubState.getSelectedTemplate());
+            // Title wraps (no truncation); description is the "simple" wrapped
+            // blurb, category sits in the footer. Full description is in preview.
+            MortarCard card = new MortarCard(t.getName(), t.getDescription(), t.getCategory());
+            region.add("template." + i, x, y, cardW, CARD_H, selected, card);
+        }
 
-            renderTemplateCard(template, i);
-
-            // Move to next row or add horizontal spacing
-            if ((i + 1) % cardsPerRow == 0) {
-                // Next row
-            } else if (i < templates.size() - 1) {
-                ImGui.sameLine(0, CARD_SPACING);
+        MortarFrameResult input = region.render();
+        ProjectTemplate clicked = resolve(input.clicked());
+        if (clicked != null) {
+            if (clicked.equals(hubState.getSelectedTemplate())) {
+                hubState.setSelectedTemplate(null); // toggle off
+            } else {
+                hubState.setSelectedRecentProject(null);
+                hubState.setSelectedTemplate(clicked);
             }
         }
-
-        // Submit an item so imgui registers the boundary growth caused by the
-        // setCursorScreenPos() calls in renderTemplateCard(). Required by
-        // imgui 1.92+, otherwise the enclosing child window asserts on endChild().
-        ImGui.dummy(1, 1);
     }
 
-    /**
-     * Render empty state when no templates match search.
-     */
-    private void renderEmptyState() {
-        ImGui.spacing();
-        ImGui.spacing();
+    private ProjectTemplate resolve(String partId) {
+        if (partId == null || !partId.startsWith("template.")) {
+            return null;
+        }
+        try {
+            int index = Integer.parseInt(partId.substring("template.".length()));
+            if (index >= 0 && index < frameTemplates.size()) {
+                return frameTemplates.get(index);
+            }
+        } catch (NumberFormatException ignored) {
+        }
+        return null;
+    }
 
-        String message = hubState.getSearchQuery().isEmpty()
-                ? "No templates available"
+    private void renderEmptyState(String query) {
+        ImGui.dummy(0, 6f);
+        String message = query.isEmpty() ? "No templates available"
                 : "No templates match your search";
-
-        ImVec2 textSize = ImGui.calcTextSize(message);
-        float windowWidth = ImGui.getWindowWidth();
-        float textX = (windowWidth - textSize.x) * 0.5f;
-        ImGui.setCursorPosX(textX);
-
-        ThemeDefinition theme = themeManager.getCurrentTheme();
-        ImVec4 textCol = theme.getColor(ImGuiCol.Text);
-        if (textCol != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textCol.x, textCol.y, textCol.z, 0.6f);
-        }
+        float w = ImGui.getContentRegionAvailX();
+        float tw = ImGui.calcTextSize(message).x;
+        ImGui.setCursorPosX(ImGui.getCursorPosX() + Math.max(0f, (w - tw) / 2f));
+        var c = ImGui.getStyle().getColor(ImGuiCol.Text);
+        ImGui.pushStyleColor(ImGuiCol.Text, c.x, c.y, c.z, 0.6f);
         ImGui.text(message);
-        if (textCol != null) {
-            ImGui.popStyleColor();
-        }
+        ImGui.popStyleColor();
     }
 
-    /**
-     * Render a single template card.
-     */
-    private void renderTemplateCard(ProjectTemplate template, int index) {
-        ImVec2 cursorPos = ImGui.getCursorScreenPos();
-        ImDrawList drawList = ImGui.getWindowDrawList();
-
-        float x1 = cursorPos.x;
-        float y1 = cursorPos.y;
-        float x2 = x1 + CARD_WIDTH;
-        float y2 = y1 + CARD_HEIGHT;
-
-        boolean isSelected = hubState.getSelectedTemplate() == template;
-        boolean isHovered = ImGui.isMouseHoveringRect(x1, y1, x2, y2);
-
-        if (isHovered) {
-            ImGui.setMouseCursor(ImGuiMouseCursor.Hand);
-        }
-
-        // Get theme colors
-        ThemeDefinition theme = themeManager.getCurrentTheme();
-        // Consistent background - never changes for text readability
-        ImVec4 bgColor = theme.getColor(ImGuiCol.ChildBg);
-        if (bgColor == null) bgColor = new ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
-
-        // Determine click state
-        boolean isClicked = (clickedCardIndex == index);
-
-        // Border-based visual feedback with 4 states
-        ImVec4 borderColor;
-        float borderThickness;
-        float shadowOffset;
-        float shadowAlpha;
-
-        if (isClicked) {
-            // Clicked state: Thick bright border with strong shadow
-            borderColor = theme.getColor(ImGuiCol.ButtonHovered);
-            if (borderColor == null) borderColor = new ImVec4(0.26f, 0.59f, 0.98f, 1.0f);
-            borderThickness = 4.0f;
-            shadowOffset = 8.0f;
-            shadowAlpha = 0.4f;
-        } else if (isSelected) {
-            // Selected state: Thick colored border with moderate shadow
-            borderColor = theme.getColor(ImGuiCol.Header);
-            if (borderColor == null) borderColor = new ImVec4(0.26f, 0.59f, 0.98f, 1.0f);
-            borderThickness = 3.5f;
-            shadowOffset = 6.0f;
-            shadowAlpha = 0.3f;
-        } else if (isHovered) {
-            // Hovered state: Medium accent border with moderate shadow
-            borderColor = theme.getColor(ImGuiCol.ButtonHovered);
-            if (borderColor == null) borderColor = new ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
-            borderThickness = 2.5f;
-            shadowOffset = 6.0f;
-            shadowAlpha = 0.3f;
-        } else {
-            // Normal state: Thin subtle border with light shadow
-            borderColor = theme.getColor(ImGuiCol.Border);
-            if (borderColor == null) borderColor = new ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
-            borderThickness = 1.5f;
-            shadowOffset = 4.0f;
-            shadowAlpha = 0.2f;
-        }
-
-        // Draw drop shadow
-        int shadowColor = ImColor.rgba(0, 0, 0, shadowAlpha);
-        drawList.addRectFilled(
-                x1 + shadowOffset, y1 + shadowOffset,
-                x2 + shadowOffset, y2 + shadowOffset,
-                shadowColor, CARD_ROUNDING
-        );
-
-        // Draw card background
-        int bg = ImColor.rgba(bgColor.x, bgColor.y, bgColor.z, bgColor.w);
-        drawList.addRectFilled(x1, y1, x2, y2, bg, CARD_ROUNDING);
-
-        // Draw border
-        int border = ImColor.rgba(borderColor.x, borderColor.y, borderColor.z, 1.0f);
-        drawList.addRect(x1, y1, x2, y2, border, CARD_ROUNDING, 0, borderThickness);
-
-        // Render template name (no icon needed)
-        float nameY = y1 + CARD_PADDING + 20;
-        ImGui.setCursorScreenPos(x1 + CARD_PADDING, nameY);
-        ImGui.pushTextWrapPos(x2 - CARD_PADDING);
-        ImGui.textWrapped(template.getName());
-        ImGui.popTextWrapPos();
-
-        // Render category badge
-        float badgeY = nameY + 35;
-        ImGui.setCursorScreenPos(x1 + CARD_PADDING, badgeY);
-        renderCategoryBadge(template.getCategory(), theme);
-
-        // Render short description
-        float descY = badgeY + 25;
-        ImGui.setCursorScreenPos(x1 + CARD_PADDING, descY);
-        ImGui.beginChild("##desc_" + index, CARD_WIDTH - 2 * CARD_PADDING, y2 - descY - CARD_PADDING, false, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoBackground);
-        ImVec4 descTextCol = theme.getColor(ImGuiCol.Text);
-        if (descTextCol != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, descTextCol.x, descTextCol.y, descTextCol.z, 0.7f);
-        }
-        ImGui.pushTextWrapPos(CARD_WIDTH - 2 * CARD_PADDING);
-        ImGui.textWrapped(template.getDescription());
-        ImGui.popTextWrapPos();
-        if (descTextCol != null) {
-            ImGui.popStyleColor();
-        }
-        ImGui.endChild();
-
-        // Direct mouse click detection - no invisible button needed
-        if (isHovered && ImGui.isMouseClicked(0)) {
-            // Mouse button pressed down on this card
-            clickedCardIndex = index;
-        }
-        if (clickedCardIndex == index && !ImGui.isMouseDown(0)) {
-            // Mouse button released - complete the click
-            hubState.setSelectedTemplate(template);
-            clickedCardIndex = -1;
-        }
-
-        // Restore cursor for next card
-        ImGui.setCursorScreenPos(x1, y2 + CARD_SPACING);
+    public void update(float deltaTime) {
+        region.update(deltaTime);
     }
 
-    /**
-     * Render category badge.
-     */
-    private void renderCategoryBadge(String category, ThemeDefinition theme) {
-        ImVec4 badgeColor = theme.getColor(ImGuiCol.Button);
-        if (badgeColor != null) {
-            ImGui.pushStyleColor(ImGuiCol.Button, badgeColor.x, badgeColor.y, badgeColor.z, badgeColor.w);
-        }
-        ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 4.0f, 2.0f);
-        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 3.0f);
-        ImGui.button(category);
-        ImGui.popStyleVar(2);
-        if (badgeColor != null) {
-            ImGui.popStyleColor();
-        }
+    public void dispose() {
+        region.close();
     }
-
 }
