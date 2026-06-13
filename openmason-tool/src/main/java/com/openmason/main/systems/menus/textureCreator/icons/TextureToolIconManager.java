@@ -34,8 +34,9 @@ public class TextureToolIconManager {
     // Icon cache: tool name -> OpenGL texture ID
     private final Map<String, Integer> iconTextures;
 
-    // Icon dimensions (square icons)
-    private static final int ICON_SIZE = 32;
+    // Icon raster dimensions (square). Rasterized at 2x+ the largest display
+    // size (24-28px) so downscaled icons stay crisp with mipmapped sampling.
+    private static final int ICON_SIZE = 64;
 
     // Base path for icon resources
     private static final String ICON_BASE_PATH = "/icons/textureEditor/svg/";
@@ -170,11 +171,12 @@ public class TextureToolIconManager {
         // Set texture parameters
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
         // Upload texture data
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageBuffer);
+        glGenerateMipmap(GL_TEXTURE_2D);
 
         // Unbind texture
         glBindTexture(GL_TEXTURE_2D, 0);
@@ -187,6 +189,16 @@ public class TextureToolIconManager {
      */
     public int getIconTexture(String toolName) {
         return iconTextures.getOrDefault(toolName, -1);
+    }
+
+    /**
+     * Resolve a tool key to its SVG classpath resource, or null if unmapped.
+     * Shared with the Skija icon store so both rasterization paths use the
+     * same tool-to-SVG mapping.
+     */
+    public static String getSvgResourcePath(String toolName) {
+        String filename = TOOL_ICON_MAP.get(toolName);
+        return filename != null ? ICON_BASE_PATH + filename : null;
     }
 
     /**

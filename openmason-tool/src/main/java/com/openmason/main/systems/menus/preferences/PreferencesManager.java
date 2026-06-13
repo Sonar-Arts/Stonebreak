@@ -36,6 +36,10 @@ public class PreferencesManager {
     private static final String TEXTURE_EDITOR_ROTATION_SPEED_KEY = "texture.editor.rotation.speed";
     private static final String TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY = "texture.editor.skip.transparent.paste";
     private static final String TEXTURE_EDITOR_SHAPE_FILL_MODE_KEY = "texture.editor.shape.fill.mode";
+    private static final String TEXTURE_EDITOR_LAYOUT_VERSION_KEY = "texture.editor.layout.version";
+    private static final String TEXTURE_EDITOR_PALETTE_KEY = "texture.editor.palette";
+    private static final String TEXTURE_EDITOR_PALETTES_JSON_KEY = "texture.editor.palettes.json";
+    private static final String TEXTURE_EDITOR_COLOR_COLUMN_WIDTH_KEY = "texture.editor.color.column.width";
 
     // Default values - 3D Model Editor
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
@@ -483,6 +487,31 @@ public class PreferencesManager {
     }
 
     /**
+     * Get the last-applied texture editor dock layout version. Used to force a
+     * one-time rebuild of the default layout when the curated layout changes,
+     * even if an older imgui.ini layout exists. 0 = never built.
+     */
+    public int getTextureEditorLayoutVersion() {
+        String value = properties.getProperty(TEXTURE_EDITOR_LAYOUT_VERSION_KEY);
+        if (value != null) {
+            try {
+                return Integer.parseInt(value);
+            } catch (NumberFormatException e) {
+                logger.warn("Invalid layout version value: {}, using 0", value);
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Persist the texture editor dock layout version after a rebuild.
+     */
+    public void setTextureEditorLayoutVersion(int version) {
+        properties.setProperty(TEXTURE_EDITOR_LAYOUT_VERSION_KEY, String.valueOf(version));
+        savePreferences();
+    }
+
+    /**
      * Reset texture creator settings to defaults.
      */
     public void resetTextureCreatorToDefaults() {
@@ -547,6 +576,91 @@ public class PreferencesManager {
             }
             properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, sb.toString());
         }
+        savePreferences();
+    }
+
+    /**
+     * Get texture editor palette swatches (packed RGBA ints).
+     * Same comma-separated hex serialization as the color history.
+     *
+     * @return list of swatch colors; empty if none persisted yet
+     */
+    public List<Integer> getTextureEditorPalette() {
+        String value = properties.getProperty(TEXTURE_EDITOR_PALETTE_KEY);
+        List<Integer> colors = new ArrayList<>();
+        if (value != null && !value.trim().isEmpty()) {
+            for (String hex : value.split(",")) {
+                try {
+                    hex = hex.trim();
+                    if (!hex.isEmpty()) {
+                        colors.add((int) Long.parseLong(hex, 16));
+                    }
+                } catch (NumberFormatException e) {
+                    logger.warn("Invalid color in palette: {}", hex);
+                }
+            }
+        }
+        return colors;
+    }
+
+    /**
+     * Set texture editor palette swatches (packed RGBA ints).
+     */
+    public void setTextureEditorPalette(List<Integer> colors) {
+        if (colors == null || colors.isEmpty()) {
+            properties.setProperty(TEXTURE_EDITOR_PALETTE_KEY, "");
+        } else {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < colors.size(); i++) {
+                if (i > 0) {
+                    sb.append(",");
+                }
+                sb.append(String.format("%08X", colors.get(i)));
+            }
+            properties.setProperty(TEXTURE_EDITOR_PALETTE_KEY, sb.toString());
+        }
+        savePreferences();
+    }
+
+    /**
+     * Get the texture editor's color column width in pixels (the fixed-chrome
+     * left panel, resized via its custom splitter).
+     */
+    public float getTextureEditorColorColumnWidth(float defaultWidth) {
+        String value = properties.getProperty(TEXTURE_EDITOR_COLOR_COLUMN_WIDTH_KEY);
+        if (value != null) {
+            try {
+                return Float.parseFloat(value);
+            } catch (NumberFormatException e) {
+                logger.warn("Invalid color column width: {}, using default", value);
+            }
+        }
+        return defaultWidth;
+    }
+
+    /**
+     * Persist the texture editor's color column width.
+     */
+    public void setTextureEditorColorColumnWidth(float width) {
+        properties.setProperty(TEXTURE_EDITOR_COLOR_COLUMN_WIDTH_KEY, String.valueOf(width));
+        savePreferences();
+    }
+
+    /**
+     * Get the saved-palettes library as a JSON string (multiple named
+     * palettes + active name). Serialization handled by PalettePersistence.
+     *
+     * @return JSON string, or null if never persisted
+     */
+    public String getTextureEditorPalettesJson() {
+        return properties.getProperty(TEXTURE_EDITOR_PALETTES_JSON_KEY);
+    }
+
+    /**
+     * Persist the saved-palettes library JSON.
+     */
+    public void setTextureEditorPalettesJson(String json) {
+        properties.setProperty(TEXTURE_EDITOR_PALETTES_JSON_KEY, json != null ? json : "");
         savePreferences();
     }
 

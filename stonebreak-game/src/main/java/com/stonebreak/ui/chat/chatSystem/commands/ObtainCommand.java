@@ -203,13 +203,26 @@ public class ObtainCommand implements ChatCommand {
         messageManager.addMessage("  /obtain WOODEN_PICKAXE 1", ChatColors.ORANGE);
     }
 
+    /**
+     * Common count presets offered when the count argument is being typed.
+     * 64 (a full stack) leads so it is the default suggestion for empty input;
+     * the rest cover single items, smaller/larger stacks, and the maximum.
+     */
+    private static final int[] COUNT_SUGGESTIONS = {64, 1, 8, 16, 32, 128, 256, 512, MAX_COUNT};
+
     @Override
     public List<String> getAutocompleteSuggestions(String[] args, String currentArg) {
-        // Only provide autocomplete for the first argument (item name)
+        // Second argument (count) - suggest common stack sizes.
+        if (args.length == 1) {
+            return getCountSuggestions(currentArg);
+        }
+
+        // Only the first argument (item name) and the count are completable.
         if (args.length > 1) {
             return Collections.emptyList();
         }
 
+        // First argument (item name).
         // Remove stonebreak: prefix if present for matching
         String searchTerm = currentArg;
         boolean hasPrefix = searchTerm.toLowerCase().startsWith(PREFIX);
@@ -266,6 +279,26 @@ public class ObtainCommand implements ChatCommand {
             suggestions = suggestions.subList(0, 20);
         }
 
+        return suggestions;
+    }
+
+    /**
+     * Suggest common count presets, filtered by what has been typed so far.
+     * Matching is prefix-based so typing "1" offers 1, 16, 128, etc.
+     */
+    private List<String> getCountSuggestions(String currentArg) {
+        // Only suggest counts for numeric (or empty) input.
+        if (!currentArg.isEmpty() && !currentArg.chars().allMatch(Character::isDigit)) {
+            return Collections.emptyList();
+        }
+
+        List<String> suggestions = new ArrayList<>();
+        for (int count : COUNT_SUGGESTIONS) {
+            String value = Integer.toString(count);
+            if (value.startsWith(currentArg)) {
+                suggestions.add(value);
+            }
+        }
         return suggestions;
     }
 }

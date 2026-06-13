@@ -151,7 +151,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         // Initialize menu handlers
         this.fileMenuHandler = new FileMenuHandler(modelState, modelOperations,
                 fileDialogService, statusService);
-        EditMenuHandler editMenu = new EditMenuHandler(uiVisibilityState, statusService);
+        EditMenuHandler editMenu = new EditMenuHandler(uiVisibilityState);
         ViewMenuHandler viewMenu = new ViewMenuHandler(uiVisibilityState, viewportState,
                 viewportOperations, layoutService);
         this.toolsMenuHandler = new ToolsMenuHandler();
@@ -173,6 +173,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         fileMenuHandler.setThemeManager(themeManager);
         fileMenuHandler.setProjectService(projectService);
         fileMenuHandler.setUIVisibilityState(uiVisibilityState);
+        editMenu.setViewport(viewport3D);
         viewMenu.setViewport(viewport3D);
         toolbarRenderer.setViewport(viewport3D);
         modelOperations.setPropertiesPanel(propertyPanelImGui);
@@ -367,11 +368,6 @@ public class MainImGuiInterface implements ModelBrowserListener {
         // to be accessible from both the Project Hub and the main interface
 
         aboutDialog.render();
-
-        // Render save warning dialog if open
-        if (fileMenuHandler != null && fileMenuHandler.getSaveWarningDialog() != null) {
-            fileMenuHandler.getSaveWarningDialog().render();
-        }
 
         // Render home screen dialog if open
         if (fileMenuHandler != null && fileMenuHandler.getHomeScreenDialog() != null) {

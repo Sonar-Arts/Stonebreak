@@ -1,5 +1,6 @@
 package com.openmason.main.systems.mcp;
 
+import com.fasterxml.jackson.annotation.JsonValue;
 import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.main.systems.MainImGuiInterface;
 import com.openmason.main.systems.ViewportController;
@@ -215,20 +216,6 @@ public final class BoneEditingService {
         }));
     }
 
-    public boolean canUndo() {
-        return await(MainThreadExecutor.submit(() -> {
-            BoneCommandHistory h = getHistory();
-            return h != null && h.canUndo();
-        }));
-    }
-
-    public boolean canRedo() {
-        return await(MainThreadExecutor.submit(() -> {
-            BoneCommandHistory h = getHistory();
-            return h != null && h.canRedo();
-        }));
-    }
-
     public boolean selectBone(String idOrName) {
         return await(MainThreadExecutor.submit(() -> {
             BoneStore store = requireStore();
@@ -319,7 +306,13 @@ public final class BoneEditingService {
 
     public record SkeletonInfo(boolean available, int boneCount, String selectedBoneId) {}
 
-    public record Vec3(float x, float y, float z) {}
+    /** Serializes as a compact {@code [x, y, z]} array to keep MCP responses small. */
+    public record Vec3(float x, float y, float z) {
+        @JsonValue
+        public float[] xyz() {
+            return new float[] {x, y, z};
+        }
+    }
 
     public record BoneView(
             String id, String name, String parentBoneId, boolean root,

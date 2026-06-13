@@ -26,9 +26,9 @@ public enum ShaderType {
 
     /**
      * Infinite grid shader for procedurally generated grid with distance-based fading and atmospheric fog.
-     * Uniforms: uViewMatrix, uProjectionMatrix, uCameraPosition, uGridScale,
-     *           uGridLineWidth, uFadeDistance, uMaxDistance, uPrimaryColor,
-     *           uSecondaryColor, uAxisXColor, uAxisZColor, uFogColor
+     * Uniforms: uViewMatrix, uProjectionMatrix, uGridScale, uGridLineWidth,
+     *           uFadeDistance, uMaxDistance, uPrimaryColor, uAxisXColor,
+     *           uAxisZColor, uFogColor
      */
     INFINITE_GRID,
 

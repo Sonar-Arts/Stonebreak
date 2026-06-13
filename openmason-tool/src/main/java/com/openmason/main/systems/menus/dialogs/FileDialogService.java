@@ -7,8 +7,6 @@ import org.lwjgl.util.nfd.NFDFilterItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.swing.*;
-import javax.swing.filechooser.FileNameExtensionFilter;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Map;
@@ -18,7 +16,7 @@ import static org.lwjgl.util.nfd.NativeFileDialog.*;
 
 /**
  * File dialog service for open/save/export operations.
- * Uses LWJGL NFD for native file dialogs (PNG files) and Swing for legacy model dialogs.
+ * Uses LWJGL NFD for native file dialogs.
  * <p>
  * Optimized to minimize NFD initialization overhead and reduce code duplication.
  */
@@ -75,61 +73,6 @@ public class FileDialogService {
                 logger.error("Error during NFD cleanup", e);
             }
         }
-    }
-
-    /**
-     * Show export model dialog.
-     */
-    public void showExportDialog(ExportCallback callback) {
-        statusService.updateStatus("Exporting model...");
-
-        try {
-            SwingUtilities.invokeLater(() -> {
-                JFileChooser fileChooser = createFileChooser("Export Model");
-
-                FileNameExtensionFilter jsonFilter = new FileNameExtensionFilter("JSON Model (*.json)", "json");
-                fileChooser.addChoosableFileFilter(jsonFilter);
-                fileChooser.setFileFilter(jsonFilter);
-
-                int result = fileChooser.showSaveDialog(null);
-
-                if (result == JFileChooser.APPROVE_OPTION) {
-                    File selectedFile = fileChooser.getSelectedFile();
-                    FileNameExtensionFilter selectedFilter = (FileNameExtensionFilter) fileChooser.getFileFilter();
-                    String extension = selectedFilter.getExtensions()[0];
-
-                    selectedFile = ensureExtension(selectedFile, extension);
-                    callback.onExport(selectedFile, extension);
-                } else {
-                    statusService.updateStatus("Export cancelled");
-                }
-            });
-        } catch (Exception e) {
-            logger.error("Error showing export dialog", e);
-            statusService.updateStatus("Error opening export dialog: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Create configured file chooser.
-     */
-    private JFileChooser createFileChooser(String title) {
-        JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setDialogTitle(title);
-        fileChooser.setCurrentDirectory(new File(System.getProperty("user.dir")));
-        return fileChooser;
-    }
-
-    /**
-     * Ensure file has correct extension.
-     */
-    private File ensureExtension(File file, String extension) {
-        String filePath = file.getAbsolutePath();
-        if (!filePath.toLowerCase().endsWith("." + extension)) {
-            filePath += "." + extension;
-            file = new File(filePath);
-        }
-        return file;
     }
 
     /**
@@ -294,13 +237,6 @@ public class FileDialogService {
      */
     private interface SaveCallback {
         void onSave(String filePath);
-    }
-
-    /**
-     * Callback interface for export operations.
-     */
-    public interface ExportCallback {
-        void onExport(File file, String format);
     }
 
     /**

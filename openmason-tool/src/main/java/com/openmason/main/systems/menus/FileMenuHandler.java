@@ -2,7 +2,6 @@ package com.openmason.main.systems.menus;
 
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.menus.dialogs.HomeScreenDialog;
-import com.openmason.main.systems.menus.dialogs.SaveWarningDialog;
 import com.openmason.main.systems.menus.dialogs.UnsavedChangesDialog;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.project.ProjectService;
@@ -29,11 +28,8 @@ public class FileMenuHandler {
     private final ModelOperationService modelOperations;
     private final FileDialogService fileDialogService;
     private final StatusService statusService;
-    private final SaveWarningDialog saveWarningDialog;
     private final HomeScreenDialog homeScreenDialog;
     private final UnsavedChangesDialog unsavedChangesDialog;
-
-    private final String[] recentFiles = {"standard_cow.json", "example_model.json"};
 
     private ViewportController viewport;
     private LogoManager logoManager;
@@ -51,7 +47,6 @@ public class FileMenuHandler {
         this.modelOperations = modelOperations;
         this.fileDialogService = fileDialogService;
         this.statusService = statusService;
-        this.saveWarningDialog = new SaveWarningDialog();
         this.homeScreenDialog = new HomeScreenDialog();
         this.unsavedChangesDialog = new UnsavedChangesDialog();
     }
@@ -126,14 +121,6 @@ public class FileMenuHandler {
     }
 
     /**
-     * Get the save warning dialog for rendering in main UI.
-     * @return the save warning dialog instance
-     */
-    public SaveWarningDialog getSaveWarningDialog() {
-        return saveWarningDialog;
-    }
-
-    /**
      * Get the unsaved changes dialog for rendering in the main UI.
      * @return the unsaved changes dialog instance
      */
@@ -150,16 +137,29 @@ public class FileMenuHandler {
         }
 
         // --- New / Open ---
-        if (ImGui.menuItem("New Model", "Ctrl+N")) {
+        if (ImGui.menuItem("New Model")) {
             modelOperations.newModel();
         }
 
-        if (ImGui.menuItem("Open Model", "Ctrl+O")) {
+        if (ImGui.menuItem("Open Model...")) {
             modelOperations.openOMOModel();
         }
 
-        if (ImGui.menuItem("Open Project", "Ctrl+Shift+O")) {
+        if (ImGui.menuItem("Open Project...")) {
             openProject();
+        }
+
+        ImGui.separator();
+
+        // --- Save (Model) ---
+        boolean canSave = modelState.canSaveModel() && modelState.hasUnsavedChanges();
+        if (ImGui.menuItem("Save Model", "", false, canSave)) {
+            modelOperations.saveModel();
+        }
+
+        boolean canSaveAs = modelState.canSaveModel();
+        if (ImGui.menuItem("Save Model As...", "", false, canSaveAs)) {
+            modelOperations.saveModelAs();
         }
 
         ImGui.separator();
@@ -170,45 +170,8 @@ public class FileMenuHandler {
             saveProject();
         }
 
-        if (ImGui.menuItem("Save Project As")) {
+        if (ImGui.menuItem("Save Project As...")) {
             saveProjectAs();
-        }
-
-        ImGui.separator();
-
-        // --- Save / Export (Model) ---
-        boolean canSave = modelState.canSaveModel() && modelState.hasUnsavedChanges();
-        if (ImGui.menuItem("Save Model", "Ctrl+S", false, canSave)) {
-            if (modelState.canSaveModel()) {
-                modelOperations.saveModel();
-            } else {
-                saveWarningDialog.show();
-            }
-        }
-
-        boolean canSaveAs = modelState.canSaveModel();
-        if (ImGui.menuItem("Save Model As", "Ctrl+Shift+S", false, canSaveAs)) {
-            if (modelState.canSaveModel()) {
-                modelOperations.saveModelAs();
-            } else {
-                saveWarningDialog.show();
-            }
-        }
-
-        if (ImGui.menuItem("Export Model", "Ctrl+E", false, modelState.isModelLoaded())) {
-            exportModel();
-        }
-
-        ImGui.separator();
-
-        // --- Recent ---
-        if (ImGui.beginMenu("Recent Files")) {
-            for (String recentFile : recentFiles) {
-                if (ImGui.menuItem(recentFile)) {
-                    modelOperations.loadRecentFile(recentFile);
-                }
-            }
-            ImGui.endMenu();
         }
 
         ImGui.separator();
@@ -325,27 +288,6 @@ public class FileMenuHandler {
             recentProjectsService.addProject(name, path);
             logger.debug("Added to recent projects: {}", path);
         }
-    }
-
-    /**
-     * Export model with file dialog.
-     */
-    private void exportModel() {
-        if (!modelState.isModelLoaded()) {
-            statusService.updateStatus("No model to export");
-            return;
-        }
-
-        fileDialogService.showExportDialog((file, format) -> {
-            try {
-                statusService.updateStatus("Exporting to " + format.toUpperCase() + "...");
-                // Export logic would go here
-                statusService.updateStatus("Model exported successfully: " + file.getName());
-            } catch (Exception e) {
-                logger.error("Failed to export model to file: {}", file.getAbsolutePath(), e);
-                statusService.updateStatus("Failed to export model: " + e.getMessage());
-            }
-        });
     }
 
     /**

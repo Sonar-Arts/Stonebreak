@@ -42,6 +42,7 @@ public class ViewMenuHandler {
             return;
         }
 
+        // --- Camera ---
         if (ImGui.menuItem("Reset View", "Ctrl+R")) {
             viewportOperations.resetView(viewport);
         }
@@ -52,59 +53,62 @@ public class ViewMenuHandler {
 
         ImGui.separator();
 
+        // --- Viewport overlays ---
         if (ImGui.menuItem("Show Grid", "Ctrl+G", viewportState.getGridVisible().get())) {
             viewportOperations.toggleGrid(viewport);
         }
 
-        if (ImGui.menuItem("Show Axes", "Ctrl+X", viewportState.getAxesVisible().get())) {
+        if (ImGui.menuItem("Show Axes", "Ctrl+Shift+A", viewportState.getAxesVisible().get())) {
             viewportOperations.toggleAxes(viewport);
+        }
+
+        if (ImGui.menuItem("Show Bones", "", viewportState.getShowBones().get())) {
+            viewportState.toggleBones();
         }
 
         if (ImGui.menuItem("Unrendered Mode", "Ctrl+W", viewportState.getUnrenderedMode().get())) {
             viewportOperations.toggleUnrendered(viewport);
         }
 
-        if (ImGui.menuItem("Show Bones", "Ctrl+B", viewportState.getShowBones().get())) {
-            viewportState.toggleBones();
-        }
-
         ImGui.separator();
 
-        ImGui.menuItem("Show 3D Viewport", "Ctrl+1", true);// Viewport always visible in current implementation
-
-        if (ImGui.menuItem("Show Model Browser", "Ctrl+2", uiState.getShowModelBrowser().get())) {
+        // --- Panels ---
+        if (ImGui.menuItem("Model Browser", "", uiState.getShowModelBrowser().get())) {
             uiState.toggleModelBrowser();
         }
 
-        if (ImGui.menuItem("Show Model Properties", "Ctrl+3", uiState.getShowPropertyPanel().get())) {
+        if (ImGui.menuItem("Model Properties", "", uiState.getShowPropertyPanel().get())) {
             uiState.togglePropertyPanel();
         }
 
-        if (ImGui.menuItem("Show Rigging", "Ctrl+4", uiState.getShowRiggingPane().get())) {
+        if (ImGui.menuItem("Rigging", "", uiState.getShowRiggingPane().get())) {
             uiState.toggleRiggingPane();
         }
 
-        if (ImGui.menuItem("Show Toolbar", "Ctrl+5", uiState.getShowToolbar().get())) {
+        if (ImGui.menuItem("Toolbar", "", uiState.getShowToolbar().get())) {
             uiState.toggleToolbar();
         }
 
         ImGui.separator();
 
+        // --- Layout presets ---
         if (ImGui.beginMenu("Layout")) {
-            if (ImGui.menuItem("Reset to Default")) {
-                layoutService.resetToDefault();
-            }
-
-            if (ImGui.menuItem("Full Screen Viewport", "F11")) {
-                layoutService.toggleFullscreenViewport();
-            }
-
             if (ImGui.menuItem("Modeling Layout")) {
                 layoutService.applyModelingLayout(viewport);
             }
 
             if (ImGui.menuItem("Texturing Layout")) {
                 layoutService.applyTexturingLayout(viewport);
+            }
+
+            if (ImGui.menuItem("Full Screen Viewport")) {
+                layoutService.toggleFullscreenViewport();
+            }
+
+            ImGui.separator();
+
+            if (ImGui.menuItem("Reset to Default")) {
+                layoutService.resetToDefault();
             }
 
             ImGui.endMenu();

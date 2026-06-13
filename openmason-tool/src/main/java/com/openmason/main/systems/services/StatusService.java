@@ -23,6 +23,13 @@ public class StatusService {
     }
 
     /**
+     * Get the current status message.
+     */
+    public String getStatusMessage() {
+        return statusMessage;
+    }
+
+    /**
      * Reset status to default.
      */
     public void reset() {

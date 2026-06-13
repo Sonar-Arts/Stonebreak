@@ -15,6 +15,13 @@ module com.openmason {
     // Dear ImGui for modern UI
     requires imgui.binding;
     requires imgui.lwjgl3;
+
+    // Skija (Skia bindings) for high-quality 2D widget rendering composited into ImGui.
+    // Maven coords: io.github.humbleui:skija-windows-x64, which pulls skija-shared
+    // (Java classes) and types (Point/Rect/RRect) transitively. These jars declare
+    // explicit module-info, so use the declared module names.
+    requires io.github.humbleui.skija.shared;
+    requires io.github.humbleui.types;
     
     // Jackson for JSON processing (shared with Stonebreak)
     requires com.fasterxml.jackson.databind;

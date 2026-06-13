@@ -32,15 +32,11 @@ public final class FaceTextureToolDefinitions {
 
         registry.register(new McpTool(
                 "model_face_list_textures",
-                "List every face of the loaded model with its texture metadata: faceId, "
-                        + "materialId, material name, GPU texture id and dimensions, vertex count, "
-                        + "face normal (x,y,z), orientation label (+X/-X/+Y/-Y/+Z/-Z/OBLIQUE), "
-                        + "UV rotation degrees, UV region (u0,v0,u1,v1), owning part name, "
-                        + "suggestedWidth/suggestedHeight (geometry-derived size at the editor's "
-                        + "default pixels-per-unit — use this as a reference for sizing new "
-                        + "per-face textures), and autoResize (whether the editor may rescale "
-                        + "this face's texture on geometry changes; set to false after "
-                        + "model_face_resize_texture or model_face_create_texture).",
+                "List every face of the loaded model with texture metadata: faceId, material id/name, "
+                        + "GPU texture id + dimensions, vertex count, normal [x,y,z], orientation label "
+                        + "(+X/-X/+Y/-Y/+Z/-Z/OBLIQUE), UV rotation, UV region [u0,v0,u1,v1], part name, "
+                        + "suggested width/height (geometry-derived reference size for new textures), and "
+                        + "autoResize (false once a size was set explicitly).",
                 schema().build(),
                 args -> editor.listFaceTextures()));
 
@@ -94,25 +90,40 @@ public final class FaceTextureToolDefinitions {
                 args -> editor.getPixel(reqInt(args, "face_id"),
                         reqInt(args, "x"), reqInt(args, "y"))));
 
+        registry.register(new McpTool(
+                "model_face_get_region",
+                "Read a rectangular region of a face's open session canvas as a flat [r,g,b,a, ...] "
+                        + "array, row-major from (x,y). Far cheaper than per-pixel model_face_get_pixel calls.",
+                schema()
+                        .intg("face_id", "Face identifier")
+                        .intg("x", "Origin X").intg("y", "Origin Y")
+                        .intg("w", "Width in pixels").intg("h", "Height in pixels")
+                        .required("face_id", "x", "y", "w", "h")
+                        .build(),
+                args -> editor.getRegion(reqInt(args, "face_id"),
+                        reqInt(args, "x"), reqInt(args, "y"),
+                        reqInt(args, "w"), reqInt(args, "h"))));
+
         // ---------- Pixel mutations (require open session) ----------
 
         registry.register(new McpTool(
                 "model_face_set_pixel",
-                "Set a single pixel on a face's open session canvas. Channel values 0-255.",
+                "Set a single pixel on a face's open session canvas.",
                 rgbaSchema()
                         .intg("face_id", "Face identifier")
                         .intg("x", "Pixel X").intg("y", "Pixel Y")
-                        .required("face_id", "x", "y", "r", "g", "b", "a")
+                        .required("face_id", "x", "y", "color")
                         .build(),
-                args -> editor.setPixel(reqInt(args, "face_id"),
-                        reqInt(args, "x"), reqInt(args, "y"),
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.setPixel(reqInt(args, "face_id"),
+                            reqInt(args, "x"), reqInt(args, "y"), c[0], c[1], c[2], c[3]);
+                }));
 
         registry.register(new McpTool(
                 "model_face_set_pixels",
-                "Bulk per-pixel write to a face's open session canvas. 'pixels' is an array of "
-                        + "{x,y,r,g,b,a} entries.",
+                "Bulk per-pixel write to a face's open session canvas. 'pixels' is a flat int array "
+                        + "[x,y,r,g,b,a, x,y,r,g,b,a, ...] (6 values per pixel).",
                 pixelsArraySchema(),
                 args -> editor.setPixels(reqInt(args, "face_id"), parsePixels(args.get("pixels")))));
 
@@ -120,10 +131,11 @@ public final class FaceTextureToolDefinitions {
                 "model_face_fill",
                 "Fill every pixel of a face's open session canvas with a solid RGBA color.",
                 rgbaSchema().intg("face_id", "Face identifier")
-                        .required("face_id", "r", "g", "b", "a").build(),
-                args -> editor.fillFace(reqInt(args, "face_id"),
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                        .required("face_id", "color").build(),
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.fillFace(reqInt(args, "face_id"), c[0], c[1], c[2], c[3]);
+                }));
 
         registry.register(new McpTool(
                 "model_face_clear",
@@ -135,23 +147,27 @@ public final class FaceTextureToolDefinitions {
                 "model_face_fill_rect",
                 "Fill a solid rectangle on a face's open session canvas.",
                 rectSchema().intg("face_id", "Face identifier")
-                        .required("face_id", "x", "y", "w", "h", "r", "g", "b", "a").build(),
-                args -> editor.fillRect(reqInt(args, "face_id"),
-                        reqInt(args, "x"), reqInt(args, "y"),
-                        reqInt(args, "w"), reqInt(args, "h"),
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                        .required("face_id", "x", "y", "w", "h", "color").build(),
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.fillRect(reqInt(args, "face_id"),
+                            reqInt(args, "x"), reqInt(args, "y"),
+                            reqInt(args, "w"), reqInt(args, "h"),
+                            c[0], c[1], c[2], c[3]);
+                }));
 
         registry.register(new McpTool(
                 "model_face_draw_rect",
                 "Draw a rectangle outline (1px thick) on a face's open session canvas.",
                 rectSchema().intg("face_id", "Face identifier")
-                        .required("face_id", "x", "y", "w", "h", "r", "g", "b", "a").build(),
-                args -> editor.drawRect(reqInt(args, "face_id"),
-                        reqInt(args, "x"), reqInt(args, "y"),
-                        reqInt(args, "w"), reqInt(args, "h"),
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                        .required("face_id", "x", "y", "w", "h", "color").build(),
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.drawRect(reqInt(args, "face_id"),
+                            reqInt(args, "x"), reqInt(args, "y"),
+                            reqInt(args, "w"), reqInt(args, "h"),
+                            c[0], c[1], c[2], c[3]);
+                }));
 
         registry.register(new McpTool(
                 "model_face_draw_line",
@@ -160,13 +176,15 @@ public final class FaceTextureToolDefinitions {
                         .intg("face_id", "Face identifier")
                         .intg("x0", "Start X").intg("y0", "Start Y")
                         .intg("x1", "End X").intg("y1", "End Y")
-                        .required("face_id", "x0", "y0", "x1", "y1", "r", "g", "b", "a")
+                        .required("face_id", "x0", "y0", "x1", "y1", "color")
                         .build(),
-                args -> editor.drawLine(reqInt(args, "face_id"),
-                        reqInt(args, "x0"), reqInt(args, "y0"),
-                        reqInt(args, "x1"), reqInt(args, "y1"),
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.drawLine(reqInt(args, "face_id"),
+                            reqInt(args, "x0"), reqInt(args, "y0"),
+                            reqInt(args, "x1"), reqInt(args, "y1"),
+                            c[0], c[1], c[2], c[3]);
+                }));
 
         registry.register(new McpTool(
                 "model_face_flood_fill",
@@ -174,45 +192,44 @@ public final class FaceTextureToolDefinitions {
                 rgbaSchema()
                         .intg("face_id", "Face identifier")
                         .intg("x", "Seed X").intg("y", "Seed Y")
-                        .required("face_id", "x", "y", "r", "g", "b", "a")
+                        .required("face_id", "x", "y", "color")
                         .build(),
-                args -> editor.floodFill(reqInt(args, "face_id"),
-                        reqInt(args, "x"), reqInt(args, "y"),
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.floodFill(reqInt(args, "face_id"),
+                            reqInt(args, "x"), reqInt(args, "y"),
+                            c[0], c[1], c[2], c[3]);
+                }));
 
         // ---------- Create per-face texture ----------
 
         registry.register(new McpTool(
                 "model_face_create_texture",
-                "Allocate a new material + GPU texture for a face that currently has no explicit "
-                        + "per-face mapping (uses default material). Creates a blank canvas filled with "
-                        + "the given RGBA color and assigns it to the face, making the face addressable "
-                        + "via model_face_open and friends. Width/height in [1,1024]. Sets autoResize "
-                        + "to false for this face — the caller's chosen size is preserved across "
-                        + "geometry edits. The response includes suggestedWidth/suggestedHeight so the "
-                        + "caller can compare its chosen size against the geometry-derived size; query "
-                        + "model_face_get_info first if unsure what dimensions to use.",
+                "Allocate a new material + GPU texture (filled with the given color) for a face that "
+                        + "has no per-face mapping yet, making it addressable via model_face_open. "
+                        + "Width/height in [1,1024]; sets autoResize=false so the chosen size survives "
+                        + "geometry edits. Response includes the geometry-suggested size for comparison; "
+                        + "query model_face_get_info first if unsure what dimensions to use.",
                 rgbaSchema()
                         .intg("face_id", "Face identifier")
                         .intg("width", "Initial texture width in pixels")
                         .intg("height", "Initial texture height in pixels")
-                        .required("face_id", "width", "height", "r", "g", "b", "a")
+                        .required("face_id", "width", "height", "color")
                         .build(),
-                args -> editor.createFaceTexture(reqInt(args, "face_id"),
-                        reqInt(args, "width"), reqInt(args, "height"),
-                        reqInt(args, "r"), reqInt(args, "g"),
-                        reqInt(args, "b"), reqInt(args, "a"))));
+                args -> {
+                    int[] c = reqRgba(args);
+                    return editor.createFaceTexture(reqInt(args, "face_id"),
+                            reqInt(args, "width"), reqInt(args, "height"),
+                            c[0], c[1], c[2], c[3]);
+                }));
 
         // ---------- Resize ----------
 
         registry.register(new McpTool(
                 "model_face_resize_texture",
-                "Resize a face's GPU texture (nearest-neighbor). Allocates a new GL texture and "
-                        + "swaps it into the face's material — any other face sharing the material is "
-                        + "also affected. Drops any open session for this face. Width/height in [1,1024]. "
-                        + "Sets autoResize to false for this face so the editor will not silently "
-                        + "rescale the texture when face geometry later changes.",
+                "Resize a face's GPU texture (nearest-neighbor); other faces sharing the material are "
+                        + "also affected. Drops any open session for this face. Width/height in [1,1024]; "
+                        + "sets autoResize=false so the editor won't rescale it on later geometry changes.",
                 schema()
                         .intg("face_id", "Face identifier")
                         .intg("width", "New width in pixels")
@@ -230,11 +247,7 @@ public final class FaceTextureToolDefinitions {
     }
 
     private SchemaBuilder rgbaSchema() {
-        return schema()
-                .intg("r", "Red 0..255")
-                .intg("g", "Green 0..255")
-                .intg("b", "Blue 0..255")
-                .intg("a", "Alpha 0..255");
+        return schema().rgba("color", "RGBA [r,g,b,a], each 0..255");
     }
 
     private SchemaBuilder rectSchema() {
@@ -246,41 +259,11 @@ public final class FaceTextureToolDefinitions {
     }
 
     private JsonNode pixelsArraySchema() {
-        ObjectNode root = mapper.createObjectNode();
-        root.put("type", "object");
-        ObjectNode props = mapper.createObjectNode();
-
-        ObjectNode faceIdNode = mapper.createObjectNode();
-        faceIdNode.put("type", "integer");
-        faceIdNode.put("description", "Face identifier");
-        props.set("face_id", faceIdNode);
-
-        ObjectNode arr = mapper.createObjectNode();
-        arr.put("type", "array");
-        arr.put("description", "Array of pixel entries");
-
-        ObjectNode item = mapper.createObjectNode();
-        item.put("type", "object");
-        ObjectNode itemProps = mapper.createObjectNode();
-        for (String n : new String[]{"x", "y", "r", "g", "b", "a"}) {
-            ObjectNode field = mapper.createObjectNode();
-            field.put("type", "integer");
-            itemProps.set(n, field);
-        }
-        item.set("properties", itemProps);
-        ArrayNode itemRequired = mapper.createArrayNode();
-        for (String n : new String[]{"x", "y", "r", "g", "b", "a"}) itemRequired.add(n);
-        item.set("required", itemRequired);
-
-        arr.set("items", item);
-        props.set("pixels", arr);
-        root.set("properties", props);
-
-        ArrayNode required = mapper.createArrayNode();
-        required.add("face_id");
-        required.add("pixels");
-        root.set("required", required);
-        return root;
+        return schema()
+                .intg("face_id", "Face identifier")
+                .intArr("pixels", "Flat [x,y,r,g,b,a, ...] array, 6 ints per pixel")
+                .required("face_id", "pixels")
+                .build();
     }
 
     private static final class SchemaBuilder {
@@ -306,6 +289,31 @@ public final class FaceTextureToolDefinitions {
             return this;
         }
 
+        /** Fixed-length [r,g,b,a] integer array. */
+        SchemaBuilder rgba(String name, String description) {
+            ObjectNode def = intArrNode(description);
+            def.put("minItems", 4);
+            def.put("maxItems", 4);
+            properties.set(name, def);
+            return this;
+        }
+
+        /** Variable-length integer array. */
+        SchemaBuilder intArr(String name, String description) {
+            properties.set(name, intArrNode(description));
+            return this;
+        }
+
+        private ObjectNode intArrNode(String description) {
+            ObjectNode def = mapper.createObjectNode();
+            def.put("type", "array");
+            def.put("description", description);
+            ObjectNode items = mapper.createObjectNode();
+            items.put("type", "integer");
+            def.set("items", items);
+            return def;
+        }
+
         SchemaBuilder required(String... names) {
             for (String n : names) required.add(n);
             return this;
@@ -319,17 +327,43 @@ public final class FaceTextureToolDefinitions {
 
     // ===================== Argument parsing =====================
 
+    /** Parse a flat [x,y,r,g,b,a, ...] array (6 ints per pixel). */
     private static List<FaceTextureEditingService.PixelEntry> parsePixels(JsonNode arr) {
-        if (arr == null || !arr.isArray()) {
-            throw new IllegalArgumentException("Missing required array argument: pixels");
+        if (arr == null || !arr.isArray() || arr.size() % 6 != 0) {
+            throw new IllegalArgumentException(
+                    "pixels must be a flat int array [x,y,r,g,b,a, ...] with length divisible by 6");
         }
-        List<FaceTextureEditingService.PixelEntry> out = new ArrayList<>(arr.size());
-        for (int i = 0; i < arr.size(); i++) {
-            JsonNode p = arr.get(i);
+        List<FaceTextureEditingService.PixelEntry> out = new ArrayList<>(arr.size() / 6);
+        for (int i = 0; i < arr.size(); i += 6) {
             out.add(new FaceTextureEditingService.PixelEntry(
-                    reqInt(p, "x"), reqInt(p, "y"),
-                    reqInt(p, "r"), reqInt(p, "g"),
-                    reqInt(p, "b"), reqInt(p, "a")));
+                    intAt(arr, i), intAt(arr, i + 1),
+                    intAt(arr, i + 2), intAt(arr, i + 3),
+                    intAt(arr, i + 4), intAt(arr, i + 5)));
+        }
+        return out;
+    }
+
+    private static int intAt(JsonNode arr, int index) {
+        JsonNode n = arr.get(index);
+        if (n == null || !n.isNumber()) {
+            throw new IllegalArgumentException("pixels[" + index + "] is not a number");
+        }
+        return n.intValue();
+    }
+
+    /** Parse the required [r,g,b,a] 'color' array argument. */
+    private static int[] reqRgba(JsonNode args) {
+        JsonNode n = args.get("color");
+        if (n == null || !n.isArray() || n.size() != 4) {
+            throw new IllegalArgumentException("Missing required [r,g,b,a] argument: color");
+        }
+        int[] out = new int[4];
+        for (int i = 0; i < 4; i++) {
+            JsonNode c = n.get(i);
+            if (c == null || !c.isNumber()) {
+                throw new IllegalArgumentException("color[" + i + "] is not a number");
+            }
+            out[i] = c.intValue();
         }
         return out;
     }

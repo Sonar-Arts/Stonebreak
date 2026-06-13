@@ -802,6 +802,8 @@ public class ViewportController {
     // ========== State Accessors ==========
 
     public int getColorTexture() { return resourceManager.getFramebuffer().getColorTextureId(); }
+    public int getFramebufferWidth() { return resourceManager.getFramebuffer().getWidth(); }
+    public int getFramebufferHeight() { return resourceManager.getFramebuffer().getHeight(); }
     public boolean isInitialized() { return viewportState.isInitialized(); }
 
     public float getModelPositionX() { return transformState.getPositionX(); }

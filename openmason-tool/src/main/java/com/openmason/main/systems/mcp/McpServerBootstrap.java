@@ -1,5 +1,6 @@
 package com.openmason.main.systems.mcp;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openmason.main.systems.MainImGuiInterface;
 import org.slf4j.Logger;
@@ -24,6 +25,9 @@ public final class McpServerBootstrap {
     public void start(MainImGuiInterface mainInterface) {
         try {
             ObjectMapper mapper = new ObjectMapper();
+            // Token efficiency: omit null fields from tool results (gated arrays in
+            // inspect_part, unresolved bone world positions, etc.).
+            mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
             McpToolRegistry registry = new McpToolRegistry();
             ModelEditingService editor = new ModelEditingService(mainInterface);
             new OpenMasonToolDefinitions(editor, mapper).registerAll(registry);
@@ -39,6 +43,9 @@ public final class McpServerBootstrap {
 
             AnimationEditingService animationEditor = new AnimationEditingService(mainInterface);
             new AnimationToolDefinitions(animationEditor, mapper).registerAll(registry);
+
+            ViewportCaptureService viewportCapture = new ViewportCaptureService(mainInterface);
+            new ViewportToolDefinitions(viewportCapture, mapper).registerAll(registry);
 
             McpRequestRouter router = new McpRequestRouter(registry, mapper);
             server = new McpHttpServer(PORT, router, mapper);

@@ -39,6 +39,7 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     private Runnable onSymmetryToggle;
     private Runnable onLayersPanelToggle;
     private Runnable onColorPanelToggle;
+    private Runnable onResetLayout;
     private Runnable onExportSBT;
     private Runnable onExportSBO;
     private Runnable onOpenSBOEditor;
@@ -127,6 +128,13 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     public void setOnColorPanelToggle(Runnable callback, ImBoolean showColorPanel) {
         this.onColorPanelToggle = callback;
         this.showColorPanel = showColorPanel;
+    }
+
+    /**
+     * Set callback invoked when the user picks View → Reset Layout.
+     */
+    public void setOnResetLayout(Runnable callback) {
+        this.onResetLayout = callback;
     }
 
     /**
@@ -333,6 +341,13 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
             }
             if (ImGui.menuItem("Reset View", "0")) {
                 controller.getCanvasState().resetView();
+            }
+
+            if (onResetLayout != null) {
+                ImGui.separator();
+                if (ImGui.menuItem("Reset Layout")) {
+                    onResetLayout.run();
+                }
             }
 
             ImGui.endMenu();

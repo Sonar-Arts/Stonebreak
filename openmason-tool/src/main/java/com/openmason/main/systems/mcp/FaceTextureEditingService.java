@@ -276,6 +276,31 @@ public final class FaceTextureEditingService {
         }));
     }
 
+    /** Bulk region read — one call instead of one get_pixel round trip per pixel. */
+    public RegionInfo getRegion(int faceId, int x, int y, int w, int h) {
+        return await(MainThreadExecutor.submit(() -> {
+            Session s = requireSession(faceId);
+            if (w <= 0 || h <= 0 || !s.canvas.isValidCoordinate(x, y)
+                    || !s.canvas.isValidCoordinate(x + w - 1, y + h - 1)) {
+                throw new IllegalArgumentException("Region out of bounds: " + w + "x" + h
+                        + " at (" + x + "," + y + ") on " + s.canvas.getWidth()
+                        + "x" + s.canvas.getHeight() + " canvas");
+            }
+            int[] rgba = new int[w * h * 4];
+            int i = 0;
+            for (int yy = y; yy < y + h; yy++) {
+                for (int xx = x; xx < x + w; xx++) {
+                    int[] px = PixelCanvas.unpackRGBA(s.canvas.getPixel(xx, yy));
+                    rgba[i++] = px[0];
+                    rgba[i++] = px[1];
+                    rgba[i++] = px[2];
+                    rgba[i++] = px[3];
+                }
+            }
+            return new RegionInfo(faceId, x, y, w, h, rgba);
+        }));
+    }
+
     // ===================== Mutating primitives =====================
 
     public DrawResult setPixel(int faceId, int x, int y, int r, int g, int b, int a) {
@@ -726,6 +751,9 @@ public final class FaceTextureEditingService {
                                 int width, int height, boolean changed) {}
 
     public record PixelInfo(int x, int y, int r, int g, int b, int a) {}
+
+    /** Row-major flat [r,g,b,a, ...] pixels for a rectangular region. */
+    public record RegionInfo(int faceId, int x, int y, int width, int height, int[] rgba) {}
 
     public record DrawResult(int faceId, int pixelsChanged, boolean hasDirty) {}
 

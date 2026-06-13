@@ -121,12 +121,20 @@ public final class McpRequestRouter {
             return errorContent(e.getClass().getSimpleName() + ": " + e.getMessage());
         }
 
-        ObjectNode text = mapper.createObjectNode();
-        text.put("type", "text");
-        text.put("text", mapper.writeValueAsString(result));
+        ObjectNode content;
+        if (result instanceof McpImageContent img) {
+            content = mapper.createObjectNode();
+            content.put("type", "image");
+            content.put("data", img.base64Data());
+            content.put("mimeType", img.mimeType());
+        } else {
+            content = mapper.createObjectNode();
+            content.put("type", "text");
+            content.put("text", mapper.writeValueAsString(result));
+        }
 
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("content", List.of(text));
+        response.put("content", List.of(content));
         response.put("isError", false);
         return response;
     }

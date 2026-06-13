@@ -1,6 +1,7 @@
 package com.openmason.main.systems.menus;
 
-import com.openmason.main.systems.services.StatusService;
+import com.openmason.main.systems.ViewportController;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.stateHandling.UIVisibilityState;
 import imgui.ImGui;
 
@@ -12,8 +13,17 @@ public class EditMenuHandler {
 
     private final UIVisibilityState uiState;
 
-    public EditMenuHandler(UIVisibilityState uiState, StatusService statusService) {
+    private ViewportController viewport;
+
+    public EditMenuHandler(UIVisibilityState uiState) {
         this.uiState = uiState;
+    }
+
+    /**
+     * Set viewport reference for undo/redo access to the model command history.
+     */
+    public void setViewport(ViewportController viewport) {
+        this.viewport = viewport;
     }
 
     /**
@@ -24,7 +34,21 @@ public class EditMenuHandler {
             return;
         }
 
-        if (ImGui.menuItem("Preferences", "Ctrl+,")) {
+        ModelCommandHistory history = viewport != null ? viewport.getCommandHistory() : null;
+        boolean canUndo = history != null && history.canUndo();
+        boolean canRedo = history != null && history.canRedo();
+
+        if (ImGui.menuItem("Undo", "Ctrl+Z", false, canUndo)) {
+            history.undo();
+        }
+
+        if (ImGui.menuItem("Redo", "Ctrl+Y", false, canRedo)) {
+            history.redo();
+        }
+
+        ImGui.separator();
+
+        if (ImGui.menuItem("Preferences...")) {
             uiState.showPreferences();
         }
 

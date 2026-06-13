@@ -130,6 +130,12 @@
             <artifactId>batik-codec</artifactId>
             <version>1.19</version>
         </dependency>
+        <!-- Skija (Skia bindings) for high-quality 2D widget rendering composited into ImGui -->
+        <dependency>
+            <groupId>io.github.humbleui</groupId>
+            <artifactId>skija-windows-x64</artifactId>
+        </dependency>
+
         <!-- OpenMason Engine for shared rendering and format support -->
         <dependency>
             <groupId>com.stonebreak</groupId>

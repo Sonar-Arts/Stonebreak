@@ -77,16 +77,12 @@ public final class OpenMasonToolDefinitions {
                 schema()
                         .str("shape", "One of: CUBE, PYRAMID, PANE, SPRITE")
                         .str("name", "Display name for the new part")
-                        .num("size_x", "Size along X (default 1.0)")
-                        .num("size_y", "Size along Y (default 1.0)")
-                        .num("size_z", "Size along Z (default 1.0)")
+                        .vec3("size", "[x,y,z] size (default [1,1,1])")
                         .required("shape", "name")
                         .build(),
                 args -> {
-                    Vector3f size = new Vector3f(
-                            optFloat(args, "size_x", 1.0f),
-                            optFloat(args, "size_y", 1.0f),
-                            optFloat(args, "size_z", 1.0f));
+                    Vector3f size = optVec3(args, "size");
+                    if (size == null) size = new Vector3f(1.0f);
                     return editor.createPart(reqString(args, "shape"), reqString(args, "name"), size);
                 }));
 
@@ -118,45 +114,37 @@ public final class OpenMasonToolDefinitions {
                 "Set the local transform for a part. Any of origin/position/rotation/scale may be omitted to keep its current value. Rotation is Euler degrees.",
                 schema()
                         .str("id_or_name", "Part id or name")
-                        .num("origin_x", "Pivot X").num("origin_y", "Pivot Y").num("origin_z", "Pivot Z")
-                        .num("position_x", "Translation X").num("position_y", "Translation Y").num("position_z", "Translation Z")
-                        .num("rotation_x", "Rotation X (degrees)").num("rotation_y", "Rotation Y (degrees)").num("rotation_z", "Rotation Z (degrees)")
-                        .num("scale_x", "Scale X").num("scale_y", "Scale Y").num("scale_z", "Scale Z")
+                        .vec3("origin", "Pivot [x,y,z]")
+                        .vec3("position", "Translation [x,y,z]")
+                        .vec3("rotation", "Euler degrees [x,y,z]")
+                        .vec3("scale", "Scale [x,y,z]")
                         .required("id_or_name")
                         .build(),
-                args -> {
-                    Vector3f origin = optVec3(args, "origin_x", "origin_y", "origin_z");
-                    Vector3f position = optVec3(args, "position_x", "position_y", "position_z");
-                    Vector3f rotation = optVec3(args, "rotation_x", "rotation_y", "rotation_z");
-                    Vector3f scale = optVec3(args, "scale_x", "scale_y", "scale_z");
-                    return editor.setPartTransform(
-                            reqString(args, "id_or_name"),
-                            origin, position, rotation, scale).orElse(null);
-                }));
+                args -> editor.setPartTransform(
+                        reqString(args, "id_or_name"),
+                        optVec3(args, "origin"), optVec3(args, "position"),
+                        optVec3(args, "rotation"), optVec3(args, "scale")).orElse(null)));
 
         registry.register(new McpTool(
                 "translate_part",
                 "Translate a part by a delta offset (added to current position).",
-                deltaSchema(),
+                deltaSchema("Delta [x,y,z]"),
                 args -> editor.translatePart(
-                        reqString(args, "id_or_name"),
-                        new Vector3f(reqFloat(args, "dx"), reqFloat(args, "dy"), reqFloat(args, "dz"))).orElse(null)));
+                        reqString(args, "id_or_name"), reqVec3(args, "delta")).orElse(null)));
 
         registry.register(new McpTool(
                 "rotate_part",
                 "Rotate a part by Euler degree deltas (added to current rotation).",
-                deltaSchema(),
+                deltaSchema("Euler degree deltas [x,y,z]"),
                 args -> editor.rotatePart(
-                        reqString(args, "id_or_name"),
-                        new Vector3f(reqFloat(args, "dx"), reqFloat(args, "dy"), reqFloat(args, "dz"))).orElse(null)));
+                        reqString(args, "id_or_name"), reqVec3(args, "delta")).orElse(null)));
 
         registry.register(new McpTool(
                 "scale_part",
                 "Multiply a part's scale by per-axis factors.",
-                deltaSchema(),
+                deltaSchema("Per-axis factors [x,y,z]"),
                 args -> editor.scalePart(
-                        reqString(args, "id_or_name"),
-                        new Vector3f(reqFloat(args, "dx"), reqFloat(args, "dy"), reqFloat(args, "dz"))).orElse(null)));
+                        reqString(args, "id_or_name"), reqVec3(args, "delta")).orElse(null)));
 
         registry.register(new McpTool(
                 "set_part_visibility",
@@ -191,42 +179,42 @@ public final class OpenMasonToolDefinitions {
 
         registry.register(new McpTool(
                 "list_part_vertices",
-                "List the vertices of a part with part-local indices and positions. "
-                        + "Local indices are stable across structural edits; use them with move_vertex.",
+                "Get a part's vertices as {count, positions} where positions is a flat [x,y,z, ...] array; "
+                        + "vertex i is at positions[3i]. Local indices are stable across structural edits; "
+                        + "use them with move_vertex.",
                 idOrNameSchema(),
                 args -> editor.listPartVertices(reqString(args, "id_or_name")).orElse(null)));
 
         registry.register(new McpTool(
                 "list_part_edges",
-                "List the unique edges of a part as (edge_index, vertex_a, vertex_b) using part-local vertex indices. "
-                        + "Edges are derived from triangle indices; ordering is stable for a given mesh topology.",
+                "Get a part's unique edges as {count, vertexPairs} where vertexPairs is a flat "
+                        + "[a,b, a,b, ...] array of part-local vertex indices; edge i is at vertexPairs[2i]. "
+                        + "Ordering is stable for a given mesh topology.",
                 idOrNameSchema(),
                 args -> editor.listPartEdges(reqString(args, "id_or_name")).orElse(null)));
 
         registry.register(new McpTool(
                 "list_part_faces",
-                "List the logical faces of a part with their vertex indices (part-local). "
+                "List the logical faces of a part as {faceId, vertices} entries (part-local vertex indices). "
                         + "A face groups one or more triangles sharing a face id.",
                 idOrNameSchema(),
                 args -> editor.listPartFaces(reqString(args, "id_or_name")).orElse(null)));
 
         registry.register(new McpTool(
                 "move_vertex",
-                "Move a single vertex by part-local index. Pass dx/dy/dz for a delta move (default), "
-                        + "or set absolute=true and dx/dy/dz are taken as the new position.",
+                "Move a single vertex by part-local index. xyz is a delta by default; "
+                        + "set absolute=true to treat it as the new position.",
                 schema()
                         .str("id_or_name", "Part id or name")
                         .num("local_index", "Part-local vertex index from list_part_vertices")
-                        .num("dx", "Delta or absolute X")
-                        .num("dy", "Delta or absolute Y")
-                        .num("dz", "Delta or absolute Z")
-                        .bool("absolute", "If true, dx/dy/dz are taken as the new position (default false: delta)")
-                        .required("id_or_name", "local_index", "dx", "dy", "dz")
+                        .vec3("xyz", "Delta (default) or absolute position [x,y,z]")
+                        .bool("absolute", "Treat xyz as the new position (default false: delta)")
+                        .required("id_or_name", "local_index", "xyz")
                         .build(),
                 args -> editor.moveVertex(
                         reqString(args, "id_or_name"),
                         (int) reqFloat(args, "local_index"),
-                        new Vector3f(reqFloat(args, "dx"), reqFloat(args, "dy"), reqFloat(args, "dz")),
+                        reqVec3(args, "xyz"),
                         optBool(args, "absolute", false)).orElse(null)));
 
         registry.register(new McpTool(
@@ -235,15 +223,13 @@ public final class OpenMasonToolDefinitions {
                 schema()
                         .str("id_or_name", "Part id or name")
                         .num("edge_index", "Edge index from list_part_edges")
-                        .num("dx", "Delta X")
-                        .num("dy", "Delta Y")
-                        .num("dz", "Delta Z")
-                        .required("id_or_name", "edge_index", "dx", "dy", "dz")
+                        .vec3("delta", "Delta [x,y,z]")
+                        .required("id_or_name", "edge_index", "delta")
                         .build(),
                 args -> editor.moveEdge(
                         reqString(args, "id_or_name"),
                         (int) reqFloat(args, "edge_index"),
-                        new Vector3f(reqFloat(args, "dx"), reqFloat(args, "dy"), reqFloat(args, "dz"))).orElse(null)));
+                        reqVec3(args, "delta")).orElse(null)));
 
         registry.register(new McpTool(
                 "set_part_geometry",
@@ -274,15 +260,13 @@ public final class OpenMasonToolDefinitions {
                 schema()
                         .str("id_or_name", "Part id or name")
                         .num("local_face_id", "Local face id from list_part_faces")
-                        .num("dx", "Delta X")
-                        .num("dy", "Delta Y")
-                        .num("dz", "Delta Z")
-                        .required("id_or_name", "local_face_id", "dx", "dy", "dz")
+                        .vec3("delta", "Delta [x,y,z]")
+                        .required("id_or_name", "local_face_id", "delta")
                         .build(),
                 args -> editor.moveFace(
                         reqString(args, "id_or_name"),
                         (int) reqFloat(args, "local_face_id"),
-                        new Vector3f(reqFloat(args, "dx"), reqFloat(args, "dy"), reqFloat(args, "dz"))).orElse(null)));
+                        reqVec3(args, "delta")).orElse(null)));
 
         // ---------- Undo / redo (model + face-texture share this history) ----------
 
@@ -299,18 +283,6 @@ public final class OpenMasonToolDefinitions {
                 "Redo the most recently undone model or face-texture mutation.",
                 schema().build(),
                 args -> editor.redo()));
-
-        registry.register(new McpTool(
-                "model_can_undo",
-                "Returns true if there is at least one model/face-texture command in the undo stack.",
-                schema().build(),
-                args -> editor.canUndo()));
-
-        registry.register(new McpTool(
-                "model_can_redo",
-                "Returns true if there is at least one model/face-texture command in the redo stack.",
-                schema().build(),
-                args -> editor.canRedo()));
     }
 
     // ===================== Schema builder =====================
@@ -323,11 +295,11 @@ public final class OpenMasonToolDefinitions {
         return schema().str("id_or_name", "Part id or name").required("id_or_name").build();
     }
 
-    private JsonNode deltaSchema() {
+    private JsonNode deltaSchema(String deltaDescription) {
         return schema()
                 .str("id_or_name", "Part id or name")
-                .num("dx", "Delta X").num("dy", "Delta Y").num("dz", "Delta Z")
-                .required("id_or_name", "dx", "dy", "dz")
+                .vec3("delta", deltaDescription)
+                .required("id_or_name", "delta")
                 .build();
     }
 
@@ -365,6 +337,20 @@ public final class OpenMasonToolDefinitions {
             ObjectNode items = mapper.createObjectNode();
             items.put("type", itemType);
             def.set("items", items);
+            properties.set(name, def);
+            return this;
+        }
+
+        /** Fixed-length [x,y,z] number array. */
+        SchemaBuilder vec3(String name, String description) {
+            ObjectNode def = mapper.createObjectNode();
+            def.put("type", "array");
+            def.put("description", description);
+            ObjectNode items = mapper.createObjectNode();
+            items.put("type", "number");
+            def.set("items", items);
+            def.put("minItems", 3);
+            def.put("maxItems", 3);
             properties.set(name, def);
             return this;
         }
@@ -408,11 +394,6 @@ public final class OpenMasonToolDefinitions {
         return n.floatValue();
     }
 
-    private static float optFloat(JsonNode args, String key, float fallback) {
-        JsonNode n = args.get(key);
-        return (n == null || n.isNull() || !n.isNumber()) ? fallback : n.floatValue();
-    }
-
     private static boolean optBool(JsonNode args, String key, boolean fallback) {
         JsonNode n = args.get(key);
         return (n == null || n.isNull() || !n.isBoolean()) ? fallback : n.asBoolean();
@@ -446,12 +427,20 @@ public final class OpenMasonToolDefinitions {
         return out;
     }
 
-    private static Vector3f optVec3(JsonNode args, String xKey, String yKey, String zKey) {
-        boolean any = args.has(xKey) || args.has(yKey) || args.has(zKey);
-        if (!any) return null;
-        return new Vector3f(
-                optFloat(args, xKey, 0f),
-                optFloat(args, yKey, 0f),
-                optFloat(args, zKey, 0f));
+    /** Parse an optional [x,y,z] array argument; null when absent. */
+    private static Vector3f optVec3(JsonNode args, String key) {
+        JsonNode n = args.get(key);
+        if (n == null || n.isNull()) return null;
+        if (!n.isArray() || n.size() != 3
+                || !n.get(0).isNumber() || !n.get(1).isNumber() || !n.get(2).isNumber()) {
+            throw new IllegalArgumentException(key + " must be a [x,y,z] number array");
+        }
+        return new Vector3f(n.get(0).floatValue(), n.get(1).floatValue(), n.get(2).floatValue());
+    }
+
+    private static Vector3f reqVec3(JsonNode args, String key) {
+        Vector3f v = optVec3(args, key);
+        if (v == null) throw new IllegalArgumentException("Missing required [x,y,z] argument: " + key);
+        return v;
     }
 }

@@ -1,5 +1,6 @@
 package com.openmason.main.systems.mcp;
 
+import com.fasterxml.jackson.annotation.JsonValue;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
 import com.openmason.main.systems.MainImGuiInterface;
@@ -343,8 +344,14 @@ public final class AnimationEditingService {
             boolean dirty, boolean playing, float playhead
     ) {}
 
+    /** Serializes as a compact {@code [x, y, z]} array to keep MCP responses small. */
     public record Vec3(float x, float y, float z) {
         public static Vec3 from(Vector3f v) { return new Vec3(v.x, v.y, v.z); }
+
+        @JsonValue
+        public float[] xyz() {
+            return new float[] {x, y, z};
+        }
     }
 
     public record TrackView(String partId, String partName, int keyframeCount) {}

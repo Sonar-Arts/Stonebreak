@@ -68,6 +68,31 @@ public final class TextureEditingService {
         }));
     }
 
+    /** Bulk region read — one call instead of one get_pixel round trip per pixel. */
+    public RegionInfo getRegion(int x, int y, int w, int h) {
+        return await(MainThreadExecutor.submit(() -> {
+            PixelCanvas canvas = requireActiveCanvas();
+            if (w <= 0 || h <= 0 || !canvas.isValidCoordinate(x, y)
+                    || !canvas.isValidCoordinate(x + w - 1, y + h - 1)) {
+                throw new IllegalArgumentException("Region out of bounds: " + w + "x" + h
+                        + " at (" + x + "," + y + ") on " + canvas.getWidth()
+                        + "x" + canvas.getHeight() + " canvas");
+            }
+            int[] rgba = new int[w * h * 4];
+            int i = 0;
+            for (int yy = y; yy < y + h; yy++) {
+                for (int xx = x; xx < x + w; xx++) {
+                    int[] px = PixelCanvas.unpackRGBA(canvas.getPixel(xx, yy));
+                    rgba[i++] = px[0];
+                    rgba[i++] = px[1];
+                    rgba[i++] = px[2];
+                    rgba[i++] = px[3];
+                }
+            }
+            return new RegionInfo(x, y, w, h, rgba);
+        }));
+    }
+
     public List<LayerView> listLayers() {
         return await(MainThreadExecutor.submit(() -> {
             LayerManager lm = requireController().getLayerManager();
@@ -448,6 +473,9 @@ public final class TextureEditingService {
                               boolean canUndo, boolean canRedo) {}
 
     public record PixelInfo(int x, int y, int r, int g, int b, int a) {}
+
+    /** Row-major flat [r,g,b,a, ...] pixels for a rectangular region. */
+    public record RegionInfo(int x, int y, int width, int height, int[] rgba) {}
 
     public record LayerView(int index, String name, boolean visible, float opacity, boolean active) {}
 

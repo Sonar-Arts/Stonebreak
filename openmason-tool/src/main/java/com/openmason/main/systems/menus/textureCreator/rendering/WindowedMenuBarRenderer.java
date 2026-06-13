@@ -39,6 +39,7 @@ public class WindowedMenuBarRenderer {
     private Runnable onSymmetryToggle;
     private Runnable onLayersPanelToggle;
     private Runnable onColorPanelToggle;
+    private Runnable onResetLayout;
     private Runnable onExportSBT;
     private Runnable onExportSBO;
     private Runnable onOpenSBOEditor;
@@ -93,6 +94,13 @@ public class WindowedMenuBarRenderer {
     public void setOnColorPanelToggle(Runnable callback, ImBoolean showColorPanel) {
         this.onColorPanelToggle = callback;
         this.showColorPanel = showColorPanel;
+    }
+
+    /**
+     * Set callback invoked when the user picks View → Reset Layout.
+     */
+    public void setOnResetLayout(Runnable callback) {
+        this.onResetLayout = callback;
     }
 
     /**
@@ -323,6 +331,13 @@ public class WindowedMenuBarRenderer {
                 controller.getCanvasState().resetView();
             }
 
+            if (onResetLayout != null) {
+                ImGui.separator();
+                if (ImGui.menuItem("Reset Layout")) {
+                    onResetLayout.run();
+                }
+            }
+
             ImGui.endMenu();
         }
     }
@@ -391,15 +406,16 @@ public class WindowedMenuBarRenderer {
     }
 
     private void renderStatusInfo() {
-        // Position status info on the right side
-        float textWidth = ImGui.calcTextSize(String.format("Canvas: %s | Zoom: %.0f%%",
+        // Zoom padded to a fixed digit count: the text is right-aligned by its
+        // measured width, so a varying digit count ("800%" vs "1600%") would
+        // re-anchor the block and make the menu bar wobble while zooming.
+        // The UI font is monospaced, so padded text keeps a stable pixel width.
+        String status = String.format("Canvas: %s | Zoom: %4.0f%%",
             state.getCurrentCanvasSize().getDisplayName(),
-            controller.getCanvasState().getZoomLevel() * 100)).x;
+            controller.getCanvasState().getZoomLevel() * 100);
 
-        ImGui.sameLine(ImGui.getContentRegionAvailX() - textWidth);
-        ImGui.text(String.format("Canvas: %s | Zoom: %.0f%%",
-            state.getCurrentCanvasSize().getDisplayName(),
-            controller.getCanvasState().getZoomLevel() * 100));
+        ImGui.sameLine(ImGui.getContentRegionAvailX() - ImGui.calcTextSize(status).x);
+        ImGui.text(status);
     }
 
     private void renderSeparator() {

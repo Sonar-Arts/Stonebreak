@@ -391,13 +391,11 @@ public class ShaderManager {
             in mat4 fragView;
             in mat4 fragProj;
 
-            uniform vec3 uCameraPosition;
             uniform float uGridScale;
             uniform float uGridLineWidth;
             uniform float uFadeDistance;
             uniform float uMaxDistance;
             uniform vec3 uPrimaryColor;
-            uniform vec3 uSecondaryColor;
             uniform vec3 uAxisXColor;
             uniform vec3 uAxisZColor;
             uniform vec3 uFogColor;

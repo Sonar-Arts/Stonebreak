@@ -54,29 +54,8 @@ public class ToolOptionsBar {
                     ImGuiWindowFlags.NoSavedSettings |
                     ImGuiWindowFlags.NoDocking;
 
-        boolean hasOptions = currentTool != null && hasOptions(currentTool);
-
         if (ImGui.begin("##ToolOptionsBar", flags)) {
-            if (hasOptions) {
-                float framePaddingY = ImGui.getStyle().getFramePaddingY();
-                float textHeight = ImGui.getTextLineHeight();
-                float frameHeight = textHeight + framePaddingY * 2;
-                float verticalOffset = (TOOLBAR_HEIGHT - frameHeight) / 2.0f;
-
-                ImGui.setCursorPosX(LEFT_PADDING);
-                ImGui.setCursorPosY(verticalOffset);
-
-                ImGui.alignTextToFramePadding();
-
-                if (currentTool instanceof MoveToolController) {
-                    renderMoveToolOptions((MoveToolController) currentTool);
-                } else if (currentTool instanceof ShapeTool) {
-                    renderShapeToolOptions((ShapeTool) currentTool);
-                } else if (currentTool.supportsBrushSize()) {
-                    renderBrushSizeOption(currentTool);
-                }
-            }
-            // If no options, toolbar shows empty space (no dummy needed, window size handles it)
+            renderContent(currentTool);
 
             // Draw separator line at bottom
             renderBottomSeparator();
@@ -96,33 +75,50 @@ public class ToolOptionsBar {
                     ImGuiWindowFlags.NoScrollWithMouse |
                     ImGuiWindowFlags.NoTitleBar;
 
-        boolean hasOptions = currentTool != null && hasOptions(currentTool);
-
         if (ImGui.beginChild("##ToolOptionsBar", 0, TOOLBAR_HEIGHT, false, flags)) {
-            if (hasOptions) {
-                float framePaddingY = ImGui.getStyle().getFramePaddingY();
-                float textHeight = ImGui.getTextLineHeight();
-                float frameHeight = textHeight + framePaddingY * 2;
-                float verticalOffset = (TOOLBAR_HEIGHT - frameHeight) / 2.0f;
-
-                ImGui.setCursorPosX(LEFT_PADDING);
-                ImGui.setCursorPosY(verticalOffset);
-
-                ImGui.alignTextToFramePadding();
-
-                if (currentTool instanceof MoveToolController) {
-                    renderMoveToolOptions((MoveToolController) currentTool);
-                } else if (currentTool instanceof ShapeTool) {
-                    renderShapeToolOptions((ShapeTool) currentTool);
-                } else if (currentTool.supportsBrushSize()) {
-                    renderBrushSizeOption(currentTool);
-                }
-            }
+            renderContent(currentTool);
 
             // Draw separator line at bottom
             renderBottomSeparatorWindowed();
         }
         ImGui.endChild();
+    }
+
+    /**
+     * Aseprite-style context bar content: dimmed tool name on the left,
+     * vertical separator, then the active tool's options.
+     */
+    private void renderContent(DrawingTool currentTool) {
+        if (currentTool == null) {
+            return;
+        }
+
+        float framePaddingY = ImGui.getStyle().getFramePaddingY();
+        float textHeight = ImGui.getTextLineHeight();
+        float frameHeight = textHeight + framePaddingY * 2;
+        float verticalOffset = (TOOLBAR_HEIGHT - frameHeight) / 2.0f;
+
+        ImGui.setCursorPosX(LEFT_PADDING);
+        ImGui.setCursorPosY(verticalOffset);
+        ImGui.alignTextToFramePadding();
+
+        ImGui.textDisabled(currentTool.getName());
+
+        if (!hasOptions(currentTool)) {
+            return;
+        }
+
+        ImGui.sameLine(0.0f, OPTION_SPACING);
+        ImGui.textDisabled("|");
+        ImGui.sameLine(0.0f, OPTION_SPACING);
+
+        if (currentTool instanceof MoveToolController) {
+            renderMoveToolOptions((MoveToolController) currentTool);
+        } else if (currentTool instanceof ShapeTool) {
+            renderShapeToolOptions((ShapeTool) currentTool);
+        } else if (currentTool.supportsBrushSize()) {
+            renderBrushSizeOption(currentTool);
+        }
     }
 
     /**
@@ -165,7 +161,7 @@ public class ToolOptionsBar {
     }
 
     private void renderShapeToolOptions(ShapeTool shapeTool) {
-        ImGui.text("Shape:");
+        ImGui.textDisabled("Shape:");
         ImGui.sameLine(0.0f, OPTION_SPACING);
         ImGui.text(shapeTool.getCurrentShape().getDisplayName());
         ImGui.sameLine(0.0f, OPTION_SPACING);
@@ -183,7 +179,7 @@ public class ToolOptionsBar {
      * @param tool The tool with brush size support
      */
     private void renderBrushSizeOption(DrawingTool tool) {
-        ImGui.text("Brush Size:");
+        ImGui.textDisabled("Brush Size:");
         ImGui.sameLine(0.0f, OPTION_SPACING);
 
         // Create ImInt wrapper for the slider
