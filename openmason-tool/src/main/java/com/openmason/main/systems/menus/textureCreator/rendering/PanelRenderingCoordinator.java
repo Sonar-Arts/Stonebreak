@@ -97,6 +97,14 @@ public class PanelRenderingCoordinator {
     private static final float COLOR_COLUMN_MAX = 480f;
     private static final float COLOR_COLUMN_DEFAULT = 320f;
 
+    // Size bounds for the detached "Layers" window so it can't be resized
+    // smaller than a usable card or wider/taller than is sensible.
+    private static final float LAYERS_WINDOW_MIN_W = 220f;
+    private static final float LAYERS_WINDOW_MIN_H = 160f;
+    private static final float LAYERS_WINDOW_MAX_W = 400f;
+    private static final float LAYERS_WINDOW_DEFAULT_W = 280f;
+    private static final float LAYERS_WINDOW_DEFAULT_H = 360f;
+
     private float colorColumnWidth = -1f; // lazy-loaded from preferences
 
     /**
@@ -291,6 +299,16 @@ public class PanelRenderingCoordinator {
      */
     private void renderLayersPanel() {
         if (windowState.getShowLayersPanel().get()) {
+            // Clamp the window so it can't be dragged out to an unusable size:
+            // a min that always fits a layer card, and a max width (cards never
+            // stretch absurdly wide) with the max height capped to the screen.
+            float maxHeight = Math.max(LAYERS_WINDOW_MIN_H, ImGui.getMainViewport().getWorkSizeY());
+            ImGui.setNextWindowSizeConstraints(
+                    LAYERS_WINDOW_MIN_W, LAYERS_WINDOW_MIN_H,
+                    LAYERS_WINDOW_MAX_W, maxHeight);
+            ImGui.setNextWindowSize(LAYERS_WINDOW_DEFAULT_W, LAYERS_WINDOW_DEFAULT_H,
+                    imgui.flag.ImGuiCond.FirstUseEver);
+
             if (ImGui.begin("Layers", windowState.getShowLayersPanel())) {
                 layerPanel.render(controller.getLayerManager(), controller.getCommandHistory());
             }

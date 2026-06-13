@@ -5,12 +5,12 @@ import com.openmason.main.systems.menus.textureCreator.commands.LayerCommand;
 import com.openmason.main.systems.menus.textureCreator.layers.Layer;
 import com.openmason.main.systems.menus.textureCreator.layers.LayerManager;
 import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
+import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.flag.ImGuiCol;
+import imgui.flag.ImGuiDir;
 import imgui.flag.ImGuiStyleVar;
-import imgui.type.ImBoolean;
-import imgui.type.ImFloat;
 import imgui.type.ImString;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
@@ -23,7 +23,14 @@ public class LayerPanelRenderer {
 
     private static final Logger logger = LoggerFactory.getLogger(LayerPanelRenderer.class);
 
+    /** Resolution the thumbnail is rendered/cached at (kept crisp). */
     private static final int THUMBNAIL_SIZE = 64;
+    /** On-screen thumbnail size inside a layer card (smaller than the cache res). */
+    private static final float THUMBNAIL_DISPLAY = 48f;
+    /** Upper bound on a layer card's height so a single layer never dominates the pane. */
+    private static final float MAX_LAYER_ITEM_HEIGHT = 92f;
+    /** Upper bound on the content column width so it never stretches across a wide window. */
+    private static final float MAX_PANEL_CONTENT_WIDTH = 300f;
     private static final String DRAG_DROP_PAYLOAD_TYPE = "LAYER_REORDER";
 
     // UI state for layer renaming
@@ -52,7 +59,15 @@ public class LayerPanelRenderer {
             return;
         }
 
-        ImGui.beginChild("##layers_panel", 0, 0, false);
+        // Cap the content to a compact column so the toolbar, cards and sliders
+        // never stretch across a wide/maximized window. Pin that column to the
+        // right edge; any extra width is left as empty background on the left.
+        float avail = ImGui.getContentRegionAvailX();
+        float contentWidth = Math.min(avail, MAX_PANEL_CONTENT_WIDTH);
+        if (avail > contentWidth) {
+            ImGui.setCursorPosX(ImGui.getCursorPosX() + (avail - contentWidth));
+        }
+        ImGui.beginChild("##layers_panel", contentWidth, 0, false);
 
         // Header with add/remove buttons
         renderLayerControls(layerManager, commandHistory);
@@ -72,8 +87,13 @@ public class LayerPanelRenderer {
      * @param commandHistory command history for undo support
      */
     private void renderLayerControls(LayerManager layerManager, CommandHistory commandHistory) {
-        // Add layer button
-        if (ImGui.button("Add Layer")) {
+        // Three equal-width buttons spanning the panel width, so the toolbar
+        // scales cleanly with the column instead of left-clumping.
+        float spacing = ImGui.getStyle().getItemSpacingX();
+        float btnWidth = (ImGui.getContentRegionAvailX() - spacing * 2f) / 3f;
+
+        // Add layer
+        if (ImGui.button("+ Add", btnWidth, 0)) {
             int layerCount = layerManager.getLayerCount();
             String layerName = "Layer " + (layerCount + 1);
 
@@ -88,14 +108,33 @@ public class LayerPanelRenderer {
 
         ImGui.sameLine();
 
-        // Remove layer button (disabled if only one layer)
+        // Duplicate (disabled if there's no active layer)
+        int activeIndex = layerManager.getActiveLayerIndex();
+        boolean canDuplicate = activeIndex >= 0;
+        if (!canDuplicate) {
+            ImGui.beginDisabled();
+        }
+        if (ImGui.button("Duplicate", btnWidth, 0)) {
+            if (commandHistory != null) {
+                LayerCommand cmd = LayerCommand.duplicateLayer(layerManager, activeIndex);
+                commandHistory.executeCommand(cmd);
+                logger.debug("Executed duplicate layer command at index: {}", activeIndex);
+            } else {
+                layerManager.duplicateLayer(activeIndex);
+            }
+        }
+        if (!canDuplicate) {
+            ImGui.endDisabled();
+        }
+
+        ImGui.sameLine();
+
+        // Delete (disabled if only one layer)
         boolean canRemove = layerManager.getLayerCount() > 1;
         if (!canRemove) {
             ImGui.beginDisabled();
         }
-
-        if (ImGui.button("Remove")) {
-            int activeIndex = layerManager.getActiveLayerIndex();
+        if (ImGui.button("Delete", btnWidth, 0)) {
             if (activeIndex >= 0 && canRemove) {
                 if (commandHistory != null) {
                     LayerCommand cmd = LayerCommand.removeLayer(layerManager, activeIndex);
@@ -108,25 +147,8 @@ public class LayerPanelRenderer {
                 thumbnailCache.invalidateAll();
             }
         }
-
         if (!canRemove) {
             ImGui.endDisabled();
-        }
-
-        ImGui.sameLine();
-
-        // Duplicate layer button
-        if (ImGui.button("Duplicate")) {
-            int activeIndex = layerManager.getActiveLayerIndex();
-            if (activeIndex >= 0) {
-                if (commandHistory != null) {
-                    LayerCommand cmd = LayerCommand.duplicateLayer(layerManager, activeIndex);
-                    commandHistory.executeCommand(cmd);
-                    logger.debug("Executed duplicate layer command at index: {}", activeIndex);
-                } else {
-                    layerManager.duplicateLayer(activeIndex);
-                }
-            }
         }
     }
 
@@ -170,7 +192,7 @@ public class LayerPanelRenderer {
             ImGui.pushStyleColor(ImGuiCol.ChildBg, 0.25f, 0.45f, 0.65f, 0.25f);
         }
 
-        ImGui.beginChild("##layer_" + index, 0, 100, true);
+        ImGui.beginChild("##layer_" + index, 0, computeLayerItemHeight(), true);
 
         // Check if hovered for hover state
         boolean isHovered = ImGui.isWindowHovered();
@@ -185,30 +207,34 @@ public class LayerPanelRenderer {
 
         // Get cached thumbnail (or generate if needed)
         int thumbnailTexture = thumbnailCache.getThumbnail(layer, index);
-        renderThumbnail(thumbnailTexture);
+        renderThumbnail(thumbnailTexture, THUMBNAIL_DISPLAY);
 
         ImGui.sameLine();
 
-        // Begin vertical layout for controls
+        // Vertical control stack to the right of the thumbnail:
+        //   Row 1: name (fills) + eye toggle + reorder arrows
+        //   Row 2: full-width opacity slider with inline % readout
         ImGui.beginGroup();
 
-        // Layer name (clickable to make active)
+        float frameH = ImGui.getFrameHeight();
+        float spacing = ImGui.getStyle().getItemSpacingX();
+        // Reserve room on the right of row 1 for: eye + up + down (3 frame-sized
+        // controls) and the gaps between them and the name.
+        float rowControlsWidth = frameH * 3f + spacing * 3f;
+        float nameWidth = Math.max(40f, ImGui.getContentRegionAvailX() - rowControlsWidth);
+
+        // ---- Row 1: name / eye / reorder ----
         if (renamingLayerIndex == index) {
-            // Renaming mode
-            ImGui.pushItemWidth(150);
+            ImGui.setNextItemWidth(nameWidth);
             if (ImGui.inputText("##rename", renameBuffer, imgui.flag.ImGuiInputTextFlags.EnterReturnsTrue)) {
                 layerManager.renameLayer(index, renameBuffer.get());
                 renamingLayerIndex = -1;
             }
-            ImGui.popItemWidth();
-
-            // Cancel rename on escape
             if (KeyCodeTranslator.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
                 renamingLayerIndex = -1;
             }
         } else {
-            // Normal display
-            boolean clicked = ImGui.selectable(layer.getName(), isActive);
+            boolean clicked = ImGui.selectable(layer.getName(), isActive, 0, nameWidth, frameH);
             if (clicked) {
                 layerManager.setActiveLayer(index);
             }
@@ -227,29 +253,23 @@ public class LayerPanelRenderer {
             }
         }
 
-        // Visibility toggle
-        ImBoolean visibleBool = new ImBoolean(layer.isVisible());
-        if (ImGui.checkbox("Visible##" + index, visibleBool)) {
-            layerManager.setLayerVisibility(index, visibleBool.get());
-        }
-
-        // Opacity label and slider on new line
-        ImGui.text(String.format("Opacity: %d%%", (int)(layer.getOpacity() * 100)));
+        ImGui.sameLine();
+        renderEyeToggle(layerManager, layer, index, frameH);
 
         ImGui.sameLine();
-
-        // Draggable opacity slider
-        ImFloat opacityFloat = new ImFloat(layer.getOpacity());
-        ImGui.pushItemWidth(120);
-        if (ImGui.sliderFloat("##opacity_" + index, opacityFloat.getData(), 0.0f, 1.0f, "%.2f")) {
-            layerManager.setLayerOpacity(index, opacityFloat.get());
-        }
-        ImGui.popItemWidth();
-
-        ImGui.sameLine();
-
-        // Layer reordering buttons
         renderLayerOrderButtons(layerManager, index, commandHistory);
+
+        // ---- Row 2: opacity slider (fills width, inline % readout) ----
+        // Slider runs in percent space so the "%.0f%%" overlay reads correctly
+        // (e.g. "100%"); the model stays in 0..1.
+        float[] opacityPct = { layer.getOpacity() * 100f };
+        ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
+        if (ImGui.sliderFloat("##opacity_" + index, opacityPct, 0.0f, 100.0f, "%.0f%%")) {
+            layerManager.setLayerOpacity(index, opacityPct[0] / 100f);
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Layer opacity");
+        }
 
         ImGui.endGroup();
 
@@ -287,7 +307,68 @@ public class LayerPanelRenderer {
     }
 
     /**
-     * Render layer order buttons (move up/down).
+     * Compute the height of a single layer item so its contents are never
+     * clipped, regardless of font size or UI density scaling.
+     *
+     * <p>The card lays the thumbnail beside a two-row control group (name + eye
+     * + reorder arrows, then the opacity slider). The needed height is the
+     * taller of the thumbnail and the two rows, plus the bordered child's
+     * top/bottom padding. Derived from live style metrics so nothing clips when
+     * the theme scales frame height up, and clamped to {@link
+     * #MAX_LAYER_ITEM_HEIGHT} so a single card never balloons.</p>
+     */
+    private float computeLayerItemHeight() {
+        // Two stacked rows in the control group: name row, opacity slider row.
+        float controlsHeight = ImGui.getFrameHeightWithSpacing() * 2f;
+        float contentHeight = Math.max(THUMBNAIL_DISPLAY, controlsHeight);
+        float height = contentHeight + ImGui.getStyle().getWindowPaddingY() * 2f;
+        return Math.min(height, MAX_LAYER_ITEM_HEIGHT);
+    }
+
+    /**
+     * Render the visibility toggle as a compact, square eye icon: an iris ring
+     * with a pupil when visible, a dim flat line ("closed eye") when hidden.
+     * Drawn with the window draw list so it needs no icon-font glyph.
+     *
+     * @param layerManager layer manager
+     * @param layer        layer being toggled
+     * @param index        layer index
+     * @param size         square hit/draw size (frame height)
+     */
+    private void renderEyeToggle(LayerManager layerManager, Layer layer, int index, float size) {
+        boolean visible = layer.isVisible();
+        ImVec2 pos = ImGui.getCursorScreenPos();
+
+        if (ImGui.invisibleButton("##vis_" + index, size, size)) {
+            layerManager.setLayerVisibility(index, !visible);
+        }
+        boolean hovered = ImGui.isItemHovered();
+        if (hovered) {
+            ImGui.setTooltip(visible ? "Hide layer" : "Show layer");
+        }
+
+        ImDrawList dl = ImGui.getWindowDrawList();
+        float cx = pos.x + size * 0.5f;
+        float cy = pos.y + size * 0.5f;
+        float r = size * 0.28f;
+
+        final int col;
+        if (visible) {
+            col = hovered
+                ? ImGui.colorConvertFloat4ToU32(0.70f, 0.86f, 1.0f, 1.0f)
+                : ImGui.colorConvertFloat4ToU32(0.52f, 0.76f, 1.0f, 1.0f);
+            dl.addCircle(cx, cy, r, col, 20, 1.6f);
+            dl.addCircleFilled(cx, cy, r * 0.42f, col, 12);
+        } else {
+            col = hovered
+                ? ImGui.colorConvertFloat4ToU32(0.62f, 0.62f, 0.62f, 1.0f)
+                : ImGui.colorConvertFloat4ToU32(0.42f, 0.42f, 0.42f, 1.0f);
+            dl.addLine(cx - r, cy, cx + r, cy, col, 1.6f);
+        }
+    }
+
+    /**
+     * Render the up/down reorder controls as two square arrow buttons.
      *
      * @param layerManager layer manager
      * @param index current layer index
@@ -301,8 +382,7 @@ public class LayerPanelRenderer {
         if (!canMoveUp) {
             ImGui.beginDisabled();
         }
-
-        if (ImGui.button("^##up_" + index)) {
+        if (ImGui.arrowButton("##up_" + index, ImGuiDir.Up)) {
             if (commandHistory != null) {
                 LayerCommand cmd = LayerCommand.moveLayer(layerManager, index, index + 1);
                 commandHistory.executeCommand(cmd);
@@ -313,7 +393,9 @@ public class LayerPanelRenderer {
             // Invalidate cache when layers are reordered
             thumbnailCache.invalidateAll();
         }
-
+        if (canMoveUp && ImGui.isItemHovered()) {
+            ImGui.setTooltip("Move layer up");
+        }
         if (!canMoveUp) {
             ImGui.endDisabled();
         }
@@ -325,8 +407,7 @@ public class LayerPanelRenderer {
         if (!canMoveDown) {
             ImGui.beginDisabled();
         }
-
-        if (ImGui.button("v##down_" + index)) {
+        if (ImGui.arrowButton("##down_" + index, ImGuiDir.Down)) {
             if (commandHistory != null) {
                 LayerCommand cmd = LayerCommand.moveLayer(layerManager, index, index - 1);
                 commandHistory.executeCommand(cmd);
@@ -337,32 +418,30 @@ public class LayerPanelRenderer {
             // Invalidate cache when layers are reordered
             thumbnailCache.invalidateAll();
         }
-
+        if (canMoveDown && ImGui.isItemHovered()) {
+            ImGui.setTooltip("Move layer down");
+        }
         if (!canMoveDown) {
             ImGui.endDisabled();
-        }
-
-        // Tooltip for layer ordering
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Move layer down in stack");
         }
     }
 
     /**
-     * Render thumbnail image with border.
+     * Render thumbnail image with border at the given on-screen size.
      *
      * @param textureId OpenGL texture ID
+     * @param size on-screen size in pixels
      */
-    private void renderThumbnail(int textureId) {
+    private void renderThumbnail(int textureId, float size) {
         ImVec2 cursorPos = ImGui.getCursorScreenPos();
 
         // Draw thumbnail image
-        ImGui.image(textureId, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+        ImGui.image(textureId, size, size);
 
         // Draw border
         ImGui.getWindowDrawList().addRect(
             cursorPos.x, cursorPos.y,
-            cursorPos.x + THUMBNAIL_SIZE, cursorPos.y + THUMBNAIL_SIZE,
+            cursorPos.x + size, cursorPos.y + size,
             ImGui.colorConvertFloat4ToU32(0.3f, 0.3f, 0.3f, 1.0f),
             0.0f, 0, 1.5f
         );

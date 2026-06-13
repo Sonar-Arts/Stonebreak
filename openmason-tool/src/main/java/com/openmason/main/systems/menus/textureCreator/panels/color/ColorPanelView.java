@@ -41,6 +41,9 @@ public final class ColorPanelView implements AutoCloseable {
         this.paletteSection = paletteLibrary != null ? new PaletteSectionView(paletteLibrary) : null;
     }
 
+    /** Left inset so the picker content doesn't sit flush against the column edge. */
+    private static final float LEFT_PADDING = 8f;
+
     public void render() {
         // NoScrollWithMouse: the wheel adjusts hue/alpha/RGB sliders here, so
         // it must not simultaneously scroll the panel (the binding lacks
@@ -48,6 +51,8 @@ public final class ColorPanelView implements AutoCloseable {
         // appears and works by dragging when content overflows.
         ImGui.beginChild("##color_panel", 0, 0, false,
                 imgui.flag.ImGuiWindowFlags.NoScrollWithMouse);
+
+        ImGui.indent(LEFT_PADDING);
 
         renderPickerTab();
 
@@ -62,6 +67,7 @@ public final class ColorPanelView implements AutoCloseable {
         }
 
         ImGui.spacing();
+        ImGui.unindent(LEFT_PADDING);
         ImGui.endChild();
     }
 
