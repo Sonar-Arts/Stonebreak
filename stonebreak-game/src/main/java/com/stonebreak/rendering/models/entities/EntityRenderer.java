@@ -295,40 +295,22 @@ public class EntityRenderer {
 
         if (entityType == EntityType.REMOTE_PLAYER
                 && entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
-            com.stonebreak.mobs.sbe.SbeEntityAsset playerAsset =
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId());
-            if (playerAsset == null) {
-                // Asset not loaded — fall back to cylinder so multiplayer never goes invisible.
-                remotePlayerRenderer.render(rp, viewMatrix, projectionMatrix);
-                return;
-            }
-            String state = com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState());
-            float animTime = rp.getAnimationController().getTotalAnimationTime();
-            if (isTextured(playerAsset)) {
-                sbeEntityRenderer.render(
-                        playerAsset,
-                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                        state, animTime,
-                        rp.getPosition(), rp.getRotation().y, rp.getScale(),
-                        viewMatrix, projectionMatrix, world, cameraPos);
-            } else {
-                // Untextured asset: draw the body model in the player's stable colour
-                // (same hue scheme as the cylinder fallback) until a texture is baked in.
-                Vector4f tint = new Vector4f(RemotePlayerRenderer.colorFor(rp.getPlayerId()), 1f);
-                sbeEntityRenderer.renderColored(
-                        playerAsset,
-                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                        state, animTime,
-                        rp.getPosition(), rp.getRotation().y, rp.getScale(),
-                        viewMatrix, projectionMatrix, tint);
-            }
+            // Untextured fallback hue is stable per remote player (same scheme as the cylinder).
+            renderPlayerModel(rp, rp.getRotation().y, 0f, 0f,
+                    new Vector4f(RemotePlayerRenderer.colorFor(rp.getPlayerId()), 1f),
+                    viewMatrix, projectionMatrix, world, cameraPos);
             return;
         }
 
-        // Illusion decoys are RemotePlayer-shaped; reuse the same cylinder render path.
+        // Illusion decoys are visual copies of the caster: render them through the SAME player
+        // model the local player uses, so any texture/model change to SB_Player.sbe propagates to
+        // decoys automatically. The untextured fallback reuses the local player's colour so an
+        // untextured decoy matches the caster instead of an obvious "illusion" hue.
         if (entityType == EntityType.ILLUSION_DECOY
                 && entity instanceof com.stonebreak.mobs.entities.IllusionDecoy decoy) {
-            remotePlayerRenderer.render(decoy, viewMatrix, projectionMatrix);
+            renderPlayerModel(decoy, decoy.getRotation().y, 0f, 0f,
+                    ensureLocalPlayerColor(),
+                    viewMatrix, projectionMatrix, world, cameraPos);
             return;
         }
 
@@ -445,24 +427,73 @@ public class EntityRenderer {
         float headPitch = clamp(player.getCamera().getPitch(), -45f, 45f);
         Vector3f scale = new Vector3f(1f, 1f, 1f);
 
+        drawPlayerSbe(asset, state, animTime, position, yaw, scale, headYaw, headPitch,
+                ensureLocalPlayerColor(), viewMatrix, projectionMatrix, world, cameraPos);
+    }
+
+    /**
+     * Renders a {@link com.stonebreak.mobs.entities.RemotePlayer} (or its
+     * {@code IllusionDecoy} subclass) through the shared player SBE model. The
+     * model is always resolved from {@link EntityType#REMOTE_PLAYER}'s asset id,
+     * so any texture/geometry change to {@code SB_Player.sbe} applies to every
+     * player-shaped figure — remote players and decoys alike — without copying
+     * anything per entity. Falls back to the cylinder if the asset is missing so
+     * the figure never goes invisible.
+     */
+    private void renderPlayerModel(com.stonebreak.mobs.entities.RemotePlayer rp,
+                                   float yaw, float headYaw, float headPitch,
+                                   Vector4f untexturedTint,
+                                   Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                   com.stonebreak.world.World world, Vector3f cameraPos) {
+        com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
+                        EntityType.REMOTE_PLAYER.getSbeObjectId());
+        if (asset == null) {
+            // Asset not loaded — fall back to cylinder so the figure never goes invisible.
+            remotePlayerRenderer.render(rp, viewMatrix, projectionMatrix);
+            return;
+        }
+        String state = com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState());
+        float animTime = rp.getAnimationController().getTotalAnimationTime();
+        drawPlayerSbe(asset, state, animTime, rp.getPosition(), yaw, rp.getScale(),
+                headYaw, headPitch, untexturedTint, viewMatrix, projectionMatrix, world, cameraPos);
+    }
+
+    /**
+     * Low-level draw of the player SBE model. Textured assets render normally;
+     * untextured assets fall back to {@code untexturedTint} via the colored path
+     * (the textured path would skip every face and render nothing).
+     */
+    private void drawPlayerSbe(com.stonebreak.mobs.sbe.SbeEntityAsset asset,
+                               String state, float animTime, Vector3f position,
+                               float yaw, Vector3f scale, float headYaw, float headPitch,
+                               Vector4f untexturedTint,
+                               Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                               com.stonebreak.world.World world, Vector3f cameraPos) {
         if (isTextured(asset)) {
             sbeEntityRenderer.render(
                     asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
                     state, animTime, position, yaw, scale,
                     viewMatrix, projectionMatrix, world, cameraPos, headYaw, headPitch);
         } else {
-            // Untextured asset: draw the body model in a stable per-session random
-            // colour (same hue scheme as the cylinder fallback) until a texture is
-            // baked into SB_Player.sbe.
-            if (localPlayerColor == null) {
-                localPlayerColor = new Vector4f(
-                        RemotePlayerRenderer.colorFor(new java.util.Random().nextInt()), 1f);
-            }
             sbeEntityRenderer.renderColored(
                     asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
                     state, animTime, position, yaw, scale,
-                    viewMatrix, projectionMatrix, localPlayerColor, headYaw, headPitch);
+                    viewMatrix, projectionMatrix, untexturedTint, headYaw, headPitch);
         }
+    }
+
+    /**
+     * Stable-per-session colour for the local player's untextured body model.
+     * Decoys reuse this so an untextured decoy matches its caster. Lazily
+     * initialised on first use.
+     */
+    private Vector4f ensureLocalPlayerColor() {
+        if (localPlayerColor == null) {
+            localPlayerColor = new Vector4f(
+                    RemotePlayerRenderer.colorFor(new java.util.Random().nextInt()), 1f);
+        }
+        return localPlayerColor;
     }
 
     /** Normalizes an angle in degrees to the range (-180, 180]. */

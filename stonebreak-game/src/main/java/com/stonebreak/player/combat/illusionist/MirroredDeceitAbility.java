@@ -54,10 +54,10 @@ public class MirroredDeceitAbility {
         if (world == null || entityManager == null) return false;
 
         Vector3f spawnPos = player.getPosition();
-        int heldItemId = player.getInventory().getSelectedBlockTypeId();
+        com.stonebreak.items.Item held = selectedItem(player);
         for (float angle : DECOY_ANGLES) {
             IllusionDecoy decoy = new IllusionDecoy(world, new Vector3f(spawnPos), player, angle);
-            decoy.setHeldItemId(heldItemId);
+            decoy.setHeldItem(held);
             entityManager.addEntity(decoy);
             decoys.add(decoy);
         }
@@ -78,6 +78,8 @@ public class MirroredDeceitAbility {
 
         boolean fakeCasting = player.isAttacking();
         durationRemaining -= deltaTime;
+        // Track the caster's current hotbar selection so decoys mirror item swaps mid-cast.
+        com.stonebreak.items.Item held = selectedItem(player);
 
         Iterator<IllusionDecoy> it = decoys.iterator();
         while (it.hasNext()) {
@@ -94,6 +96,7 @@ public class MirroredDeceitAbility {
                 continue;
             }
             decoy.setFakeCasting(fakeCasting);
+            decoy.setHeldItem(held);
             decoy.update(deltaTime, player);
         }
 
@@ -101,6 +104,12 @@ public class MirroredDeceitAbility {
             active = false;
             cooldownRemaining = ILLUSIONIST_MIRRORED_DECEIT_COOLDOWN;
         }
+    }
+
+    /** The caster's currently selected hotbar item, or {@code null} when empty-handed. */
+    private static com.stonebreak.items.Item selectedItem(Player player) {
+        com.stonebreak.items.ItemStack selected = player.getInventory().getSelectedHotbarSlot();
+        return (selected == null || selected.isEmpty()) ? null : selected.getItem();
     }
 
     /** Clears decoys and cooldown (world reload — decoy references go stale). */

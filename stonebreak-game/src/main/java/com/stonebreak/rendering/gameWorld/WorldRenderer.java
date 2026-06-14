@@ -731,7 +731,7 @@ public class WorldRenderer {
                 dropRenderer.renderDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
             }
             if (!remotePlayers.isEmpty()) {
-                dropRenderer.renderHeldBlocks(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
+                dropRenderer.renderHeldItems(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
             }
         }
     }
@@ -773,7 +773,7 @@ public class WorldRenderer {
             dropRenderer.renderOpaqueDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
         }
         if (!remotePlayers.isEmpty()) {
-            dropRenderer.renderHeldBlocks(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
+            dropRenderer.renderHeldItems(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
         }
     }
 

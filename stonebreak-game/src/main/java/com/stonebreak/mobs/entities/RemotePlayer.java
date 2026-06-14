@@ -1,5 +1,7 @@
 package com.stonebreak.mobs.entities;
 
+import com.stonebreak.blocks.BlockType;
+import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.sbe.PlayerStateMapping;
 import com.stonebreak.player.Player;
@@ -21,6 +23,14 @@ public class RemotePlayer extends LivingEntity {
     private float pitch;
     /** Block/item id this remote player is currently holding. 0 = empty/air. */
     private volatile int heldItemId;
+    /**
+     * Resolved identity of the held item for third-person in-hand rendering. A
+     * {@link BlockType} (cube or flower) or an {@link com.stonebreak.items.ItemType}
+     * (voxelized tool); {@code null} when empty. Networked remote players only ever
+     * carry blocks (see {@link #setHeldItemId}); local-only figures such as
+     * {@link IllusionDecoy} set the full item via {@link #setHeldItem}.
+     */
+    private volatile Item heldItem;
 
     private final AnimationController animationController;
     private PlayerStateMapping.PlayerMovementState movementState = PlayerStateMapping.PlayerMovementState.IDLE;
@@ -38,7 +48,20 @@ public class RemotePlayer extends LivingEntity {
     public String getUsername() { return username; }
     public float getPitch() { return pitch; }
     public int getHeldItemId() { return heldItemId; }
-    public void setHeldItemId(int id) { this.heldItemId = id; }
+    public void setHeldItemId(int id) {
+        this.heldItemId = id;
+        // Networked held items are block ids; resolve to a BlockType for in-hand rendering.
+        BlockType block = BlockType.getById(id);
+        this.heldItem = (block == null || block == BlockType.AIR) ? null : block;
+    }
+
+    /** Held item identity for third-person hand rendering. {@code null} = empty-handed. */
+    public Item getHeldItem() { return heldItem; }
+    /** Sets the full held-item identity (block or tool/flower). Used by local-only figures. */
+    public void setHeldItem(Item item) {
+        this.heldItem = item;
+        this.heldItemId = item == null ? 0 : item.getId();
+    }
 
     public AnimationController getAnimationController() { return animationController; }
     public PlayerStateMapping.PlayerMovementState getMovementState() { return movementState; }
@@ -64,8 +87,16 @@ public class RemotePlayer extends LivingEntity {
     public void update(float deltaTime) {
         // Skip default physics/AI; remote players are network-driven.
         age += deltaTime;
+        updateMovementAnimation(deltaTime);
+    }
 
-        // Derive walk/idle from horizontal displacement since last frame.
+    /**
+     * Derives walk/idle from horizontal displacement since the last call and
+     * advances the animation clock. Extracted so subclasses driven externally
+     * (e.g. {@link IllusionDecoy}, moved by the ability rather than the network)
+     * can reuse the same state/animation derivation after repositioning.
+     */
+    protected void updateMovementAnimation(float deltaTime) {
         float dx = position.x - prevPosition.x;
         float dz = position.z - prevPosition.z;
         float horizDist = (float) Math.sqrt(dx * dx + dz * dz);

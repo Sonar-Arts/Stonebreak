@@ -59,10 +59,14 @@ public class IllusionDecoy extends RemotePlayer {
         position.add(rx, dy, rz);
         previousOwnerPos.set(ownerPos);
 
-        if (fakeCasting) {
-            rotation.y = ownerPlayer.getCamera().getYaw() + angle;
-        }
+        // Face the same way the owner's body does, rotated by this decoy's offset so the
+        // fanned-out figures stay oriented with their mirrored movement. While the owner is
+        // attacking, face the look direction instead so the cast pose reads correctly.
+        rotation.y = (fakeCasting ? ownerPlayer.getCamera().getYaw() : ownerPlayer.getBodyYaw()) + angle;
+
         age += deltaTime;
+        // Drive the SBE model: derive walk/idle from the move just applied and advance the clip.
+        updateMovementAnimation(deltaTime);
     }
 
     public Player getOwner() { return owner; }
