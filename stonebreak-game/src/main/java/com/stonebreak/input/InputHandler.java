@@ -75,7 +75,7 @@ public class InputHandler {
     private boolean qKeyPressed = false; // Added for item dropping
     private boolean f3KeyPressed = false; // Added for debug info
     private boolean f4KeyPressed = false; // Added for memory leak analysis
-    private boolean f5KeyPressed = false; // Added for detailed memory profiling
+    private boolean f5KeyPressed = false; // F5 = perspective toggle; Shift+F5 = memory profiling
     private boolean f6KeyPressed = false; // Added for test cow spawning
     private boolean f7KeyPressed = false; // Added for manual save
     private boolean f8KeyPressed = false; // Added for save system diagnostic
@@ -548,15 +548,24 @@ public class InputHandler {
             f4KeyPressed = false;
         }
         
-        // F5 - Detailed memory profiling
+        // F5 - Toggle perspective (first/third person); Shift+F5 - Detailed memory profiling
         boolean isF5Pressed = glfwGetKey(window, GLFW_KEY_F5) == GLFW_PRESS;
         if (isF5Pressed && !f5KeyPressed) {
             f5KeyPressed = true;
-            System.out.println("[DEBUG] Detailed memory profiling triggered by F5 key...");
-            MemoryProfiler profiler = MemoryProfiler.getInstance();
-            profiler.takeSnapshot("manual_f5_" + System.currentTimeMillis());
-            profiler.reportDetailedMemoryStats();
-            Game.forceGCAndReport("F5 Manual GC");
+            boolean shiftHeld = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS
+                    || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+            if (shiftHeld) {
+                System.out.println("[DEBUG] Detailed memory profiling triggered by Shift+F5...");
+                MemoryProfiler profiler = MemoryProfiler.getInstance();
+                profiler.takeSnapshot("manual_f5_" + System.currentTimeMillis());
+                profiler.reportDetailedMemoryStats();
+                Game.forceGCAndReport("Shift+F5 Manual GC");
+            } else {
+                com.stonebreak.player.Player p = Game.getPlayer();
+                if (p != null) {
+                    p.togglePerspective();
+                }
+            }
         } else if (!isF5Pressed) {
             f5KeyPressed = false;
         }

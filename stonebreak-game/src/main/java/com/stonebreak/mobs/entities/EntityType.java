@@ -37,9 +37,9 @@ public enum EntityType {
     BLOCK_DROP("Block Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false, null),
     ITEM_DROP("Item Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false, null),
 
-    // Remote (multiplayer) player; rendered as a cylinder.
+    // Remote (multiplayer) player; rendered via the SB_Player.sbe asset.
     // height = 1.8 (head-to-foot), width/length = 0.6, no separate legs (legHeight=0).
-    REMOTE_PLAYER("Remote Player", 20.0f, 0.0f, 1.8f, 0.6f, 0.6f, 0.0f, true, null,
+    REMOTE_PLAYER("Remote Player", 20.0f, 0.0f, 1.8f, 0.6f, 0.6f, 0.0f, true, "stonebreak:Player",
         "Varies", "Varies"),
 
     // Illusionist Mirrored Deceit decoy; player-shaped, 1 HP so any hit kills it.

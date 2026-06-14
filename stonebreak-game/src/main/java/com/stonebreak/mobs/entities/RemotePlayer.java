@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.mobs.sbe.PlayerStateMapping;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
@@ -13,16 +14,24 @@ import org.joml.Vector3f;
  */
 public class RemotePlayer extends LivingEntity {
 
+    private static final float WALK_THRESHOLD = 0.05f; // blocks/frame to count as walking
+
     private final int playerId;
     private final String username;
     private float pitch;
     /** Block/item id this remote player is currently holding. 0 = empty/air. */
     private volatile int heldItemId;
 
+    private final AnimationController animationController;
+    private PlayerStateMapping.PlayerMovementState movementState = PlayerStateMapping.PlayerMovementState.IDLE;
+    private Vector3f prevPosition;
+
     public RemotePlayer(World world, Vector3f position, int playerId, String username) {
         super(world, position, EntityType.REMOTE_PLAYER);
         this.playerId = playerId;
         this.username = username;
+        this.animationController = new AnimationController(this);
+        this.prevPosition = new Vector3f(position);
     }
 
     public int getPlayerId() { return playerId; }
@@ -30,6 +39,9 @@ public class RemotePlayer extends LivingEntity {
     public float getPitch() { return pitch; }
     public int getHeldItemId() { return heldItemId; }
     public void setHeldItemId(int id) { this.heldItemId = id; }
+
+    public AnimationController getAnimationController() { return animationController; }
+    public PlayerStateMapping.PlayerMovementState getMovementState() { return movementState; }
 
     /**
      * Apply an authoritative state update from the network.
@@ -52,6 +64,17 @@ public class RemotePlayer extends LivingEntity {
     public void update(float deltaTime) {
         // Skip default physics/AI; remote players are network-driven.
         age += deltaTime;
+
+        // Derive walk/idle from horizontal displacement since last frame.
+        float dx = position.x - prevPosition.x;
+        float dz = position.z - prevPosition.z;
+        float horizDist = (float) Math.sqrt(dx * dx + dz * dz);
+        movementState = horizDist > WALK_THRESHOLD
+                ? PlayerStateMapping.PlayerMovementState.WALKING
+                : PlayerStateMapping.PlayerMovementState.IDLE;
+        prevPosition.set(position);
+
+        animationController.updateAnimations(deltaTime);
     }
 
     @Override

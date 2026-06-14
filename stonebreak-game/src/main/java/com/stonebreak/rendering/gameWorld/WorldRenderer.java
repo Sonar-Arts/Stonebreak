@@ -437,12 +437,27 @@ public class WorldRenderer {
     }
     
     /**
-     * Render player arm in appropriate game states.
+     * Render player arm (first-person) or full body (third-person) in appropriate game states.
      */
     private void renderPlayerArm(Player player) {
         GameState currentState = Game.getInstance().getState();
-        if (currentState == GameState.PLAYING || currentState == GameState.INVENTORY_UI || currentState == GameState.CHARACTER_SHEET_UI || currentState == GameState.RECIPE_BOOK_UI || currentState == GameState.WORKBENCH_UI || currentState == GameState.FURNACE_UI) {
-            playerArmRenderer.renderPlayerArm(player); // This method binds its own shader and texture
+        boolean activeState = currentState == GameState.PLAYING
+                || currentState == GameState.INVENTORY_UI
+                || currentState == GameState.CHARACTER_SHEET_UI
+                || currentState == GameState.RECIPE_BOOK_UI
+                || currentState == GameState.WORKBENCH_UI
+                || currentState == GameState.FURNACE_UI;
+        if (!activeState) return;
+
+        if (player.isThirdPerson()) {
+            // Render the full body model instead of the first-person arm.
+            if (entityRenderer != null) {
+                World world = Game.getWorld();
+                Vector3f cameraPos = player.getCamera().getPosition();
+                entityRenderer.renderLocalPlayer(player, player.getViewMatrix(), projectionMatrix, world, cameraPos);
+            }
+        } else {
+            playerArmRenderer.renderPlayerArm(player);
         }
     }
 

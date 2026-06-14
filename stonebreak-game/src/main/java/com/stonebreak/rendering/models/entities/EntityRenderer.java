@@ -55,6 +55,10 @@ public class EntityRenderer {
     // Renderer for multiplayer remote players (cylinder).
     private final RemotePlayerRenderer remotePlayerRenderer = new RemotePlayerRenderer();
 
+    // Stable-per-session random colour for the local player's untextured body model
+    // (see renderLocalPlayer). Lazily initialised on first third-person render.
+    private Vector4f localPlayerColor;
+
     // Voxelized sprite renderer for arrow projectiles (uses the main scene shader).
     private com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer arrowVoxelRenderer;
 
@@ -291,7 +295,33 @@ public class EntityRenderer {
 
         if (entityType == EntityType.REMOTE_PLAYER
                 && entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
-            remotePlayerRenderer.render(rp, viewMatrix, projectionMatrix);
+            com.stonebreak.mobs.sbe.SbeEntityAsset playerAsset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId());
+            if (playerAsset == null) {
+                // Asset not loaded — fall back to cylinder so multiplayer never goes invisible.
+                remotePlayerRenderer.render(rp, viewMatrix, projectionMatrix);
+                return;
+            }
+            String state = com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState());
+            float animTime = rp.getAnimationController().getTotalAnimationTime();
+            if (isTextured(playerAsset)) {
+                sbeEntityRenderer.render(
+                        playerAsset,
+                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        state, animTime,
+                        rp.getPosition(), rp.getRotation().y, rp.getScale(),
+                        viewMatrix, projectionMatrix, world, cameraPos);
+            } else {
+                // Untextured asset: draw the body model in the player's stable colour
+                // (same hue scheme as the cylinder fallback) until a texture is baked in.
+                Vector4f tint = new Vector4f(RemotePlayerRenderer.colorFor(rp.getPlayerId()), 1f);
+                sbeEntityRenderer.renderColored(
+                        playerAsset,
+                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        state, animTime,
+                        rp.getPosition(), rp.getRotation().y, rp.getScale(),
+                        viewMatrix, projectionMatrix, tint);
+            }
             return;
         }
 
@@ -382,6 +412,80 @@ public class EntityRenderer {
         }
 
         renderSimpleEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
+    }
+
+    /**
+     * Renders the local player's full body model in third-person view.
+     *
+     * <p>The local {@link com.stonebreak.player.Player} is not an
+     * {@link Entity} so it cannot go through {@link #renderEntity}; this
+     * dedicated method drives the SBE pipeline directly with the player's
+     * state and animation clock.
+     */
+    public void renderLocalPlayer(com.stonebreak.player.Player player,
+                                  Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                  com.stonebreak.world.World world, Vector3f cameraPos) {
+        if (!initialized) return;
+        com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
+                        com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER.getSbeObjectId());
+        if (asset == null) return;
+
+        // One-shot clips (Attacking, Jumping) use the event-relative time so they
+        // restart each time the state is entered; looping Walking uses the
+        // continuous clock. This mirrors the chicken wing-flap pattern.
+        String state = com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getMovementState());
+        float animTime = player.getBodyEventTime();
+        Vector3f position = player.getPosition();
+        // Body faces the last movement direction (smoothed); the head turns toward
+        // the cursor independently, clamped so it never over-rotates.
+        float yaw = player.getBodyYaw(); // model faces +Z; same convention as cameraYaw + 180
+        float lookYaw = player.getCamera().getYaw() + 180f;
+        float headYaw = clamp(wrapDegrees(lookYaw - yaw), -70f, 70f);
+        float headPitch = clamp(player.getCamera().getPitch(), -45f, 45f);
+        Vector3f scale = new Vector3f(1f, 1f, 1f);
+
+        if (isTextured(asset)) {
+            sbeEntityRenderer.render(
+                    asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                    state, animTime, position, yaw, scale,
+                    viewMatrix, projectionMatrix, world, cameraPos, headYaw, headPitch);
+        } else {
+            // Untextured asset: draw the body model in a stable per-session random
+            // colour (same hue scheme as the cylinder fallback) until a texture is
+            // baked into SB_Player.sbe.
+            if (localPlayerColor == null) {
+                localPlayerColor = new Vector4f(
+                        RemotePlayerRenderer.colorFor(new java.util.Random().nextInt()), 1f);
+            }
+            sbeEntityRenderer.renderColored(
+                    asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                    state, animTime, position, yaw, scale,
+                    viewMatrix, projectionMatrix, localPlayerColor, headYaw, headPitch);
+        }
+    }
+
+    /** Normalizes an angle in degrees to the range (-180, 180]. */
+    private static float wrapDegrees(float deg) {
+        deg %= 360f;
+        if (deg > 180f) deg -= 360f;
+        else if (deg <= -180f) deg += 360f;
+        return deg;
+    }
+
+    private static float clamp(float v, float min, float max) {
+        return v < min ? min : (v > max ? max : v);
+    }
+
+    /**
+     * Whether an SBE asset has baked textures. Untextured assets (geometry only,
+     * no materials) must be drawn via {@link SbeEntityRenderer#renderColored};
+     * the textured path would skip every face and render nothing.
+     */
+    private static boolean isTextured(com.stonebreak.mobs.sbe.SbeEntityAsset asset) {
+        com.stonebreak.mobs.sbe.SbeModelGeometry geometry = asset == null ? null
+                : asset.geometryFor(com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT);
+        return geometry != null && !geometry.materials().isEmpty();
     }
 
     /**

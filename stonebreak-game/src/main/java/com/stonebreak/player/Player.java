@@ -103,6 +103,20 @@ public class Player {
     // Fishing
     private com.stonebreak.mobs.entities.FishingBobber activeBobber = null;
 
+    // Third-person body model
+    public enum Perspective { FIRST_PERSON, THIRD_PERSON }
+    private Perspective perspective = Perspective.FIRST_PERSON;
+    private float bodyAnimationTime = 0f;
+    private float attackEventTime = 0f;  // seconds since attack animation started
+    private float jumpEventTime = 0f;    // seconds since jump started
+    private static final float WALK_SPEED_THRESHOLD = 0.5f; // blocks/frame
+    // Lower-body facing (model-space degrees, same convention as cameraYaw + 180).
+    // Tracks the last horizontal movement direction, smoothed; the head tracks the
+    // camera independently in the renderer.
+    private float bodyYaw = 0f;
+    private boolean bodyYawInitialized = false;
+    private static final float BODY_TURN_DEG_PER_SEC = 600f; // smoothing turn rate
+
     public Player(World world) {
         IBlockPlacementService blockPlacementService = new BlockPlacementValidator(world);
         this.state = new PhysicsState();
@@ -198,7 +212,22 @@ public class Player {
         movement.applyDamping();
 
         Vector3f p = state.getPosition();
-        camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
+        if (perspective == Perspective.THIRD_PERSON) {
+            // Pull camera back behind and slightly above the player, but stop short of
+            // any solid terrain in the way so it never clips through walls/cliffs.
+            Vector3f pivot = new Vector3f(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
+            Vector3f offset = new Vector3f(camera.getFront()).mul(-4.0f).add(0f, 0.5f, 0f);
+            float desired = offset.length();
+            Vector3f dir = offset.normalize(new Vector3f());
+            float hit = raycastEngine.distanceToFirstSolid(pivot, dir, desired);
+            float dist = (hit == Float.MAX_VALUE) ? desired : Math.max(0.5f, hit - 0.3f);
+            camera.setPosition(
+                    pivot.x + dir.x * dist,
+                    pivot.y + dir.y * dist,
+                    pivot.z + dir.z * dist);
+        } else {
+            camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
+        }
 
         berserkerAbilities.update(dt, this);
         rangerAbilities.update(dt, this);
@@ -224,6 +253,47 @@ public class Player {
 
         fallDamage.update(flight.isFlying());
         deathHandler.processDeathIfNeeded();
+
+        // Advance body animation clocks (used by third-person renderer).
+        bodyAnimationTime += dt;
+        if (attack.isAttacking()) attackEventTime += dt; else attackEventTime = 0f;
+        if (!state.isOnGround()) jumpEventTime += dt; else jumpEventTime = 0f;
+
+        updateBodyYaw(dt);
+    }
+
+    /**
+     * Smoothly turns the lower-body facing ({@link #bodyYaw}) toward the current
+     * horizontal movement direction. When the player is essentially stationary the
+     * body holds its last facing, so in third person it keeps pointing where the
+     * player last walked rather than snapping to the cursor.
+     */
+    private void updateBodyYaw(float dt) {
+        if (!bodyYawInitialized) {
+            bodyYaw = camera.getYaw() + 180f;
+            bodyYawInitialized = true;
+        }
+        Vector3f vel = state.getVelocity();
+        float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        if (horizSpeed <= WALK_SPEED_THRESHOLD) {
+            return; // idle: hold last facing
+        }
+        float targetYaw = (float) Math.toDegrees(Math.atan2(vel.z, vel.x)) + 180f;
+        float delta = wrapDegrees(targetYaw - bodyYaw);
+        float maxStep = BODY_TURN_DEG_PER_SEC * dt;
+        if (Math.abs(delta) <= maxStep) {
+            bodyYaw = targetYaw;
+        } else {
+            bodyYaw += Math.signum(delta) * maxStep;
+        }
+    }
+
+    /** Normalizes an angle in degrees to the range (-180, 180]. */
+    private static float wrapDegrees(float deg) {
+        deg %= 360f;
+        if (deg > 180f) deg -= 360f;
+        else if (deg <= -180f) deg += 360f;
+        return deg;
     }
 
     /**
@@ -375,6 +445,47 @@ public class Player {
     public boolean isInWater() { return swimming.isInWater(); }
 
     public RaycastEngine getRaycastEngine() { return raycastEngine; }
+
+    // Third-person / body animation
+    public Perspective getPerspective() { return perspective; }
+
+    public void togglePerspective() {
+        perspective = (perspective == Perspective.FIRST_PERSON)
+                ? Perspective.THIRD_PERSON
+                : Perspective.FIRST_PERSON;
+    }
+
+    public boolean isThirdPerson() { return perspective == Perspective.THIRD_PERSON; }
+
+    /**
+     * Lower-body facing in model space (degrees, same convention as
+     * {@code cameraYaw + 180}). Tracks the last horizontal movement direction,
+     * smoothed; used as the base yaw for the third-person body model.
+     */
+    public float getBodyYaw() { return bodyYaw; }
+
+    /** Continuously advancing animation clock for the body model (Walking). */
+    public float getBodyAnimationTime() { return bodyAnimationTime; }
+
+    /**
+     * Animation time to feed for one-shot clips (Attacking, Jumping).
+     * Resets when the triggering condition clears, so the clip restarts on the
+     * next event — matching the chicken wing-flap pattern.
+     */
+    public float getBodyEventTime() {
+        if (attack.isAttacking()) return attackEventTime;
+        if (!state.isOnGround()) return jumpEventTime;
+        return bodyAnimationTime;
+    }
+
+    public com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState getMovementState() {
+        if (attack.isAttacking()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.ATTACKING;
+        if (!state.isOnGround()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.JUMPING;
+        Vector3f vel = state.getVelocity();
+        float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        if (horizSpeed > WALK_SPEED_THRESHOLD) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.WALKING;
+        return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.IDLE;
+    }
 
     /** Returns the melee damage for the player's currently held item (1.0 for bare fist). */
     public float getAttackDamage() {

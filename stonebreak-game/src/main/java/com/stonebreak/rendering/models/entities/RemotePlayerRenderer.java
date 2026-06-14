@@ -178,8 +178,8 @@ public final class RemotePlayerRenderer {
         if (wasCullEnabled) GL11.glEnable(GL11.GL_CULL_FACE);
     }
 
-    private static Vector3f colorFor(int playerId) {
-        // Stable hashed hue per player id.
+    /** Stable hashed colour per player id; shared with the SBE model colour fallback. */
+    public static Vector3f colorFor(int playerId) {
         float hue = (playerId * 0.61803398875f) % 1.0f;
         return hsvToRgb(hue, 0.7f, 0.9f);
     }
