@@ -17,7 +17,10 @@ import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
 import com.stonebreak.player.combat.dodge.DodgeController;
 import com.stonebreak.player.combat.illusionist.IllusionistAbilityController;
 import com.stonebreak.player.combat.ranger.RangerAbilityController;
+import com.stonebreak.player.combat.stealth.StealthController;
 import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.mobs.entities.ai.AwarenessController;
+import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.interaction.BlockBreaker;
 import com.stonebreak.player.interaction.BlockPlacer;
 import com.stonebreak.player.interaction.ItemDropInteraction;
@@ -80,6 +83,9 @@ public class Player {
     private final ArcanistAbilityController arcanistAbilities;
     private final IllusionistAbilityController illusionistAbilities;
     private final DodgeController dodge;
+    private final StealthController stealth = new StealthController();
+    private final java.util.Random critRandom = new java.util.Random();
+    private float lastHealthForStealth; // tracks health between frames to detect any damage taken
 
     // Interaction
     private final RaycastEngine raycastEngine;
@@ -237,6 +243,13 @@ public class Player {
         arcanistAbilities.update(dt, this);
         illusionistAbilities.update(dt, this);
         dodge.update(dt, this);
+        stealth.update(dt, this);
+        // Any health decrease (combat, fall, drowning) cancels stealth entry / breaks stealth.
+        float currentHealth = health.getHealth();
+        if (currentHealth < lastHealthForStealth - 0.001f) {
+            stealth.onDamageTaken(this);
+        }
+        lastHealthForStealth = currentHealth;
         RageTier rageTier = berserkerAbilities.getRage().getTier();
         attack.setAnimationSpeedMultiplier(rageTier.atLeast(RageTier.T2)
             ? 1f + RAGE_T2_ATTACK_SPEED_BONUS
@@ -321,11 +334,13 @@ public class Player {
         boolean moving = forward || backward || left || right;
         boolean sprinting = shift && moving && !flight.isFlying()
                             && !state.isPhysicallyInWater()
-                            && stamina.hasStamina();
+                            && stamina.hasStamina()
+                            && !stealth.isSprintBlocked(); // cannot sprint while stealthed
         stamina.setSprinting(sprinting);
         jumpHandler.setCanDoubleJump(characterStats.hasFeat("double_jump"));
         float speedMultiplier = rangerAbilities.getSpeedMultiplier(this,
                 computeIntendedMoveDirection(forward, backward, left, right));
+        speedMultiplier *= stealth.getMovementMultiplier(this); // stealth movement penalty
         movement.processMovement(forward, backward, left, right, jump, shift, sprinting, speedMultiplier);
     }
 
@@ -419,6 +434,8 @@ public class Player {
         if (dodge.isInvincible()) return;   // dodge i-frames negate combat damage
         berserkerAbilities.getRage().onHitReceived();
         health.damage(amount);
+        // Stealth break on damage is handled centrally in update() by watching health decrease,
+        // so environmental sources (fall, drowning) that call health.damage() directly count too.
     }
     public void heal(float amount) { health.heal(amount); }
     public void respawn() { deathHandler.respawn(); }
@@ -516,9 +533,28 @@ public class Player {
      */
     public void attackEntity(LivingEntity target) {
         float damageDealt = getAttackDamage() * getMeleeDamageMultiplier();
+
+        // Stealth opener: striking an unaware enemy leaves it flat-footed (so the crit roll below,
+        // and any follow-up hit within the window, gains bonus crit chance).
+        AwarenessController awareness = target.getAwareness();
+        if (awareness != null
+                && awareness.getState() == AwarenessController.AwarenessState.UNAWARE) {
+            target.applyStatusEffect(StatusEffectType.FLAT_FOOTED,
+                    stealth.getFlatFootedDuration(this), 0f);
+        }
+
+        // Crit-chance roll. Base chance is 0 today; a flat-footed target adds the class crit bonus
+        // (Rogue = 1.0 → guaranteed). On a crit, scale the damage by the generic crit multiplier.
+        float critChance = target.hasStatusEffect(StatusEffectType.FLAT_FOOTED)
+                ? stealth.getFlatFootedCritBonus(this) : 0f;
+        if (critChance > 0f && critRandom.nextFloat() < critChance) {
+            damageDealt *= PlayerConstants.PLAYER_CRIT_MULTIPLIER;
+        }
+
         target.damage(damageDealt, LivingEntity.DamageSource.PLAYER);
         berserkerAbilities.getRage().onMeleeHitDealt();
         rangerAbilities.onPlayerMeleeHit(this, target);
+        stealth.onAttack(this); // attacking breaks stealth instantly
 
         if (berserkerAbilities.getRage().getTier().atLeast(RageTier.T3)) {
             heal(damageDealt * RAGE_T3_LIFESTEAL_PCT);
@@ -557,8 +593,14 @@ public class Player {
         return dodge.tryDodge(this, computeIntendedMoveDirection(forward, backward, left, right));
     }
 
-    /** Noise radius (blocks) spiked by a recent dodge; 0 when not spiked. Read by the future stealth system. */
+    /** Noise radius (blocks) spiked by a recent dodge; 0 when not spiked. Read by the stealth system. */
     public float getDodgeNoiseRadius() { return dodge.getCurrentNoiseRadius(); }
+
+    // Stealth (universal)
+    public StealthController getStealth() { return stealth; }
+
+    /** Current player noise radius (blocks) for enemy sound detection (movement state + dodge spike). */
+    public float getCurrentNoiseRadius() { return stealth.getNoiseRadius(this); }
 
     // Block interaction
     public Vector3i raycast() { return raycastEngine.raycast(); }

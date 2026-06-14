@@ -10,6 +10,7 @@ import com.stonebreak.util.DropUtil;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.AnimationController;
+import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.audio.CowSounds;
 
 /**
@@ -70,6 +71,10 @@ public class Cow extends LivingEntity {
         
         // Initialize AI
         this.cowAI = new CowAI(this);
+
+        // Stealth awareness: cows detect and react to a stealthed player (demo of the universal
+        // AwarenessController). Investigate/pursue overrides passive wander when not UNAWARE.
+        this.awareness = new AwarenessController(this);
         
         // Initialize animation system
         this.animationController = new AnimationController(this);
@@ -95,8 +100,12 @@ public class Cow extends LivingEntity {
         // Update cow-specific systems
         updateMilkSystem(deltaTime);
         updateBehaviorTimers(deltaTime);
-        
-        cowAI.update(deltaTime);
+
+        // Stealth awareness drives movement when SUSPICIOUS/ALERTED; otherwise run passive AI.
+        awareness.update(deltaTime);
+        if (!awareness.drive(deltaTime)) {
+            cowAI.update(deltaTime);
+        }
 
         // Advance the animation clock; the SBE cow renderer samples clips from it.
         animationController.updateAnimations(deltaTime);

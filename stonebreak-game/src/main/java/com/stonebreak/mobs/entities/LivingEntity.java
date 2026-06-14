@@ -11,6 +11,7 @@ import com.stonebreak.blocks.Water;
 import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
+import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.status.StatusEffect;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 
@@ -44,6 +45,13 @@ public abstract class LivingEntity extends Entity {
 
     // Status effects (timed debuffs — burning, stun, armor break, etc.)
     private final List<StatusEffect> statusEffects = new ArrayList<>();
+
+    /**
+     * Optional per-enemy stealth awareness (sight/sound detection driving UNAWARE/SUSPICIOUS/
+     * ALERTED). Null on entities that don't react to a stealthed player; subclasses opt in by
+     * assigning one. Exposed so the combat and UI layers can query any entity generically.
+     */
+    protected AwarenessController awareness;
 
     /**
      * Position of the most recent attacker, set per damage application. Lets knockback push
@@ -264,6 +272,11 @@ public abstract class LivingEntity extends Entity {
         }
     }
 
+    /** Removes any active status effect of the given type (no-op if absent). */
+    public void removeStatusEffect(StatusEffectType type) {
+        statusEffects.removeIf(effect -> effect.getType() == type);
+    }
+
     /** True while a status effect of the given type is active. */
     public boolean hasStatusEffect(StatusEffectType type) {
         for (StatusEffect effect : statusEffects) {
@@ -364,6 +377,9 @@ public abstract class LivingEntity extends Entity {
 
     /** XP awarded to the player when this entity is killed. Override in subclasses. */
     public int getXpReward() { return 0; }
+
+    /** This entity's stealth awareness component, or null if it doesn't track the player. */
+    public AwarenessController getAwareness() { return awareness; }
 
     // ─────────────────────────────────────────────── Illusionist Fracture stubs
 

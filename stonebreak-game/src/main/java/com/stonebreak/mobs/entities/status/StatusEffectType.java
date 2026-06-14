@@ -39,5 +39,11 @@ public enum StatusEffectType {
      * Marks an enemy as visible through terrain to the owning Illusionist. {@code magnitude} is
      * unused; the presence of the effect drives the through-terrain render outline.
      */
-    REVEALED
+    REVEALED,
+    /**
+     * Caught off guard by a stealthed attacker. While active, attackers gain bonus crit chance
+     * against this target (see the stealth class config). {@code magnitude} is unused. Duration-based;
+     * also cleared when the target becomes ALERTED.
+     */
+    FLAT_FOOTED
 }

@@ -72,6 +72,7 @@ public class InputHandler {
     private boolean rampageKeyPressed = false; // Berserker: Rampage cast (R)
     private boolean skullCrusherKeyPressed = false; // Berserker: Skull Crusher cast (F)
     private boolean dodgeKeyPressed = false; // Universal: dodge dash (Left Alt)
+    private boolean stealthKeyPressed = false; // Universal: stealth toggle (Left Ctrl)
     private boolean chatKeyPressed = false; // Added for chat toggle
     private boolean qKeyPressed = false; // Added for item dropping
     private boolean f3KeyPressed = false; // Added for debug info
@@ -231,6 +232,18 @@ public class InputHandler {
                     player.tryDodge(moveForward, moveBackward, moveLeft, moveRight);
                 } else if (!isDodgePressed) {
                     dodgeKeyPressed = false;
+                }
+
+                // Universal stealth toggle (all classes): edge-triggered on Left Ctrl. Not while
+                // flying (Ctrl also drives flight descent), where stealth has no meaning.
+                boolean isStealthPressed = crouch;
+                if (isStealthPressed && !stealthKeyPressed) {
+                    stealthKeyPressed = true;
+                    if (!player.isFlying()) {
+                        player.getStealth().toggle(player);
+                    }
+                } else if (!isStealthPressed) {
+                    stealthKeyPressed = false;
                 }
 
                 // Handle movement (suppressed mid-Rampage / mid-Skull-Crusher-windup / mid-Culling-
