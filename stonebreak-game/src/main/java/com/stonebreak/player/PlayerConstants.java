@@ -49,6 +49,14 @@ public final class PlayerConstants {
 
     public static final float CAMERA_EYE_OFFSET = PLAYER_HEIGHT * 0.8f;
 
+    // ── Universal: Dodge ──────────────────────────────────────────────────────
+    public static final float DODGE_DASH_DISTANCE          = 3f;    // blocks
+    public static final float DODGE_SPEED                  = 24f;   // blocks/sec — 3-block dash finishes within the i-frame window
+    public static final float DODGE_INVINCIBILITY_TIME     = 0.25f; // seconds
+    public static final float DODGE_COOLDOWN               = 1.5f;  // seconds
+    public static final float DODGE_STEALTH_NOISE_RADIUS   = 4f;    // blocks (read by the future stealth system)
+    public static final float DODGE_STEALTH_NOISE_DURATION = 0.5f;  // seconds
+
     // ── Berserker: Rage resource ──────────────────────────────────────────────
     public static final float RAGE_MAX             = 100f;
     public static final float RAGE_T1_THRESHOLD    = 33f;

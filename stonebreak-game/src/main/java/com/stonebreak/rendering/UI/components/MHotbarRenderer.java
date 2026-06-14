@@ -123,6 +123,16 @@ public class MHotbarRenderer {
     private static final int MANA_BAR_GAP    = 6;    // pixels above the stamina bar
     private static final int MANA_FILL       = 0xDC3C78DC; // arcane blue
 
+    // ── Dodge cooldown indicator (universal — always shown) ───────────────────
+    private static final int    DODGE_PANEL_GAP    = 12;  // pixels left of the hotbar background
+    private static final int    DODGE_PANEL_WIDTH  = 120;
+    private static final int    DODGE_BAR_HEIGHT   = 10;
+    private static final int    DODGE_LABEL_GAP    = 6;
+    private static final int    DODGE_BAR_BG       = 0xC83C3C3C;
+    private static final int    DODGE_BAR_BORDER   = 0xFF000000;
+    private static final int    DODGE_BAR_CHARGING = 0xDC4A7EA8; // dim steel-blue while recharging
+    private static final int    DODGE_BAR_READY    = 0xDC50B8DC; // bright cyan when ready
+
     private record HeartLayout(int heartsPerRow, int numRows, float step) {}
 
     private static final String HEART_EMPTY_SBT = "/ui/HUD/Health Icon/SB_Empty_Health_Icon.sbt";
@@ -162,6 +172,7 @@ public class MHotbarRenderer {
             drawQuarryIndicator(canvas, layout);
             drawResonanceIndicator(canvas, layout);
             drawDoubtIndicator(canvas, layout);
+            drawDodgeIndicator(canvas, layout);
             ui.renderOverlays();
             ui.endFrame();
         }
@@ -372,6 +383,36 @@ public class MHotbarRenderer {
             MPainter.drawStringWithShadow(canvas, BerserkerTierText.skullCrusherBonus(tier), bonusX, y,
                     font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
         }
+    }
+
+    /**
+     * Draws the universal dodge cooldown indicator — a small labelled bar to the left of
+     * the hotbar that fills as the dodge recharges and brightens to "Ready" when available.
+     * Shown for every class (dodge is not class-gated).
+     */
+    private void drawDodgeIndicator(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+
+        float progress = player.getDodge().getCooldownProgress(); // 0..1, 1 = ready
+        boolean ready = progress >= 1f;
+
+        float panelX = layout.backgroundX - DODGE_PANEL_GAP - DODGE_PANEL_WIDTH;
+        float y = layout.backgroundY;
+
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
+        String label = ready ? "Dodge: Ready" : "Dodge";
+        MPainter.drawStringWithShadow(canvas, label, panelX, y + MStyle.FONT_META,
+                font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        y += MStyle.FONT_META + DODGE_LABEL_GAP;
+
+        MPainter.fillRect(canvas, panelX, y, DODGE_PANEL_WIDTH, DODGE_BAR_HEIGHT, DODGE_BAR_BG);
+        float fillW = DODGE_PANEL_WIDTH * Math.max(0f, Math.min(1f, progress));
+        if (fillW > 0) {
+            MPainter.fillRect(canvas, panelX, y, fillW, DODGE_BAR_HEIGHT,
+                    ready ? DODGE_BAR_READY : DODGE_BAR_CHARGING);
+        }
+        MPainter.strokeRect(canvas, panelX, y, DODGE_PANEL_WIDTH, DODGE_BAR_HEIGHT, DODGE_BAR_BORDER, 1f);
     }
 
     /**

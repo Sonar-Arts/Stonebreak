@@ -23,11 +23,13 @@ public class OverlayRenderer {
     private final BlockIconRenderer blockIconRenderer;
     private final ItemIconRenderer itemIconRenderer;
     private final UnderwaterOverlayRenderer underwaterOverlayRenderer;
-    
+    private final DodgeInvincibilityOverlay dodgeInvincibilityOverlay;
+
     public OverlayRenderer(BlockIconRenderer blockIconRenderer, ItemIconRenderer itemIconRenderer) {
         this.blockIconRenderer = blockIconRenderer;
         this.itemIconRenderer = itemIconRenderer;
         this.underwaterOverlayRenderer = new UnderwaterOverlayRenderer();
+        this.dodgeInvincibilityOverlay = new DodgeInvincibilityOverlay();
     }
     
     /**
@@ -136,6 +138,8 @@ public class OverlayRenderer {
         if (player != null) {
             underwaterOverlayRenderer.update(player, game.getDeltaTime());
             underwaterOverlayRenderer.render(windowWidth, windowHeight);
+            dodgeInvincibilityOverlay.update(player, game.getDeltaTime());
+            dodgeInvincibilityOverlay.render(windowWidth, windowHeight);
         }
     }
     

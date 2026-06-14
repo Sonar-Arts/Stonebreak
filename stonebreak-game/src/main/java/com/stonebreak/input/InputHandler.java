@@ -71,6 +71,7 @@ public class InputHandler {
     private boolean characterKeyPressed = false; // Added for character screen toggle
     private boolean rampageKeyPressed = false; // Berserker: Rampage cast (R)
     private boolean skullCrusherKeyPressed = false; // Berserker: Skull Crusher cast (F)
+    private boolean dodgeKeyPressed = false; // Universal: dodge dash (Left Alt)
     private boolean chatKeyPressed = false; // Added for chat toggle
     private boolean qKeyPressed = false; // Added for item dropping
     private boolean f3KeyPressed = false; // Added for debug info
@@ -221,6 +222,17 @@ public class InputHandler {
                 boolean crouch = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS || 
                                glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
                 
+                // Universal dodge (all classes): edge-triggered dash on Left Alt. Read here, after
+                // the WASD state is captured this frame, so the dash follows live input rather than
+                // residual momentum. Fires independent of the movement-lock guard below.
+                boolean isDodgePressed = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS;
+                if (isDodgePressed && !dodgeKeyPressed) {
+                    dodgeKeyPressed = true;
+                    player.tryDodge(moveForward, moveBackward, moveLeft, moveRight);
+                } else if (!isDodgePressed) {
+                    dodgeKeyPressed = false;
+                }
+
                 // Handle movement (suppressed mid-Rampage / mid-Skull-Crusher-windup / mid-Culling-
                 // Shot-dash, which drive the player directly and would otherwise fight with normal
                 // input-driven movement)

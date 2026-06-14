@@ -14,6 +14,7 @@ import com.stonebreak.player.combat.RageTier;
 import com.stonebreak.player.combat.StaminaController;
 import com.stonebreak.player.combat.arcanist.ArcanistAbilityController;
 import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
+import com.stonebreak.player.combat.dodge.DodgeController;
 import com.stonebreak.player.combat.illusionist.IllusionistAbilityController;
 import com.stonebreak.player.combat.ranger.RangerAbilityController;
 import com.stonebreak.mobs.entities.LivingEntity;
@@ -78,6 +79,7 @@ public class Player {
     private final RangerAbilityController rangerAbilities;
     private final ArcanistAbilityController arcanistAbilities;
     private final IllusionistAbilityController illusionistAbilities;
+    private final DodgeController dodge;
 
     // Interaction
     private final RaycastEngine raycastEngine;
@@ -144,6 +146,7 @@ public class Player {
         this.rangerAbilities = new RangerAbilityController();
         this.arcanistAbilities = new ArcanistAbilityController();
         this.illusionistAbilities = new IllusionistAbilityController();
+        this.dodge = new DodgeController();
 
         this.raycastEngine = new RaycastEngine(state, camera, world);
         this.blockBreaker = new BlockBreaker(raycastEngine, inventory, attack, world);
@@ -233,6 +236,7 @@ public class Player {
         rangerAbilities.update(dt, this);
         arcanistAbilities.update(dt, this);
         illusionistAbilities.update(dt, this);
+        dodge.update(dt, this);
         RageTier rageTier = berserkerAbilities.getRage().getTier();
         attack.setAnimationSpeedMultiplier(rageTier.atLeast(RageTier.T2)
             ? 1f + RAGE_T2_ATTACK_SPEED_BONUS
@@ -412,6 +416,7 @@ public class Player {
     public int getHearts() { return health.getHearts(); }
     public void setHealth(float h) { health.setHealth(h); }
     public void damage(float amount) {
+        if (dodge.isInvincible()) return;   // dodge i-frames negate combat damage
         berserkerAbilities.getRage().onHitReceived();
         health.damage(amount);
     }
@@ -536,8 +541,24 @@ public class Player {
 
     /** True while any class ability is driving the player and movement input should be suppressed. */
     public boolean isAbilityMovementLocked() {
-        return berserkerAbilities.isMovementLocked() || rangerAbilities.isMovementLocked();
+        return berserkerAbilities.isMovementLocked() || rangerAbilities.isMovementLocked()
+            || dodge.isMovementLocked();
     }
+
+    // Dodge (universal)
+    public DodgeController getDodge() { return dodge; }
+
+    /**
+     * Triggers a dodge dash in the direction the WASD input is currently asking for (or backward
+     * when no movement key is held). Resolves the intended direction from the same camera-relative
+     * math as movement so the dash follows live input, not residual momentum.
+     */
+    public boolean tryDodge(boolean forward, boolean backward, boolean left, boolean right) {
+        return dodge.tryDodge(this, computeIntendedMoveDirection(forward, backward, left, right));
+    }
+
+    /** Noise radius (blocks) spiked by a recent dodge; 0 when not spiked. Read by the future stealth system. */
+    public float getDodgeNoiseRadius() { return dodge.getCurrentNoiseRadius(); }
 
     // Block interaction
     public Vector3i raycast() { return raycastEngine.raycast(); }
