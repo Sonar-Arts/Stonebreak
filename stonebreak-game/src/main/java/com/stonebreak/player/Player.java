@@ -17,6 +17,7 @@ import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
 import com.stonebreak.player.combat.dodge.DodgeController;
 import com.stonebreak.player.combat.illusionist.IllusionistAbilityController;
 import com.stonebreak.player.combat.ranger.RangerAbilityController;
+import com.stonebreak.player.combat.rogue.RogueAbilityController;
 import com.stonebreak.player.combat.stealth.StealthController;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.AwarenessController;
@@ -82,6 +83,7 @@ public class Player {
     private final RangerAbilityController rangerAbilities;
     private final ArcanistAbilityController arcanistAbilities;
     private final IllusionistAbilityController illusionistAbilities;
+    private final RogueAbilityController rogueAbilities;
     private final DodgeController dodge;
     private final StealthController stealth = new StealthController();
     private final java.util.Random critRandom = new java.util.Random();
@@ -152,7 +154,10 @@ public class Player {
         this.rangerAbilities = new RangerAbilityController();
         this.arcanistAbilities = new ArcanistAbilityController();
         this.illusionistAbilities = new IllusionistAbilityController();
+        this.rogueAbilities = new RogueAbilityController();
         this.dodge = new DodgeController();
+        // Momentum passive: a successful dodge grants the Rogue a stack (self-gated on class).
+        this.dodge.addDodgeListener(rogueAbilities::onDodgeSuccess);
 
         this.raycastEngine = new RaycastEngine(state, camera, world);
         this.blockBreaker = new BlockBreaker(raycastEngine, inventory, attack, world);
@@ -242,6 +247,7 @@ public class Player {
         rangerAbilities.update(dt, this);
         arcanistAbilities.update(dt, this);
         illusionistAbilities.update(dt, this);
+        rogueAbilities.update(dt, this);
         dodge.update(dt, this);
         stealth.update(dt, this);
         // Any health decrease (combat, fall, drowning) cancels stealth entry / breaks stealth.
@@ -544,11 +550,13 @@ public class Player {
         }
 
         // Crit-chance roll. Base chance is 0 today; a flat-footed target adds the class crit bonus
-        // (Rogue = 1.0 → guaranteed). On a crit, scale the damage by the generic crit multiplier.
+        // (Rogue = 1.0 → guaranteed). On a crit, scale by the generic crit multiplier, then let the
+        // Rogue's Momentum (if any) amplify it further and apply its tier debuff.
         float critChance = target.hasStatusEffect(StatusEffectType.FLAT_FOOTED)
                 ? stealth.getFlatFootedCritBonus(this) : 0f;
         if (critChance > 0f && critRandom.nextFloat() < critChance) {
             damageDealt *= PlayerConstants.PLAYER_CRIT_MULTIPLIER;
+            damageDealt *= rogueAbilities.onCritLanded(this, target);
         }
 
         target.damage(damageDealt, LivingEntity.DamageSource.PLAYER);
@@ -572,6 +580,9 @@ public class Player {
 
     // Illusionist
     public IllusionistAbilityController getIllusionistAbilities() { return illusionistAbilities; }
+
+    // Rogue
+    public RogueAbilityController getRogueAbilities() { return rogueAbilities; }
     public boolean tryCastMirroredDeceit() { return illusionistAbilities.tryCastMirroredDeceit(this); }
     public boolean tryCastFracture() { return illusionistAbilities.tryCastFracture(this); }
 
@@ -631,5 +642,7 @@ public class Player {
         arcanistAbilities.reset();
         // Doubt tracks entities from the old world; decoys are gone with it
         illusionistAbilities.reset();
+        // Momentum and ability cooldowns reset; caltrop entities are gone with the old world
+        rogueAbilities.reset();
     }
 }

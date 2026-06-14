@@ -289,6 +289,18 @@ public class EntityManager {
     }
 
     /**
+     * Spawns a Rogue caltrop cluster at a ground position that flat-foots the first creature to step
+     * on it, expiring after {@code duration} seconds if untriggered.
+     */
+    public CaltropCluster spawnCaltropCluster(Vector3f position, float duration) {
+        CaltropCluster cluster = new CaltropCluster(world, position, duration);
+        synchronized (entitiesToAdd) {
+            entitiesToAdd.add(cluster);
+        }
+        return cluster;
+    }
+
+    /**
      * Spawns a fishing bobber launched in the given direction.
      */
     public FishingBobber spawnBobber(Vector3f position, Vector3f direction) {

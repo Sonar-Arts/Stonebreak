@@ -20,6 +20,7 @@ import com.stonebreak.player.combat.illusionist.IllusionistAbilityController;
 import com.stonebreak.player.combat.illusionist.IllusionistHudText;
 import com.stonebreak.player.combat.ranger.RangerAbilityController;
 import com.stonebreak.player.combat.ranger.RangerHudText;
+import com.stonebreak.player.combat.rogue.RogueAbilityController;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.rpg.classes.AbilityIconCache;
 import com.stonebreak.rendering.Renderer;
@@ -118,6 +119,11 @@ public class MHotbarRenderer {
     private static final int RESONANCE_PIP_OVERLOADED = 0xDCFFD24A; // hot gold — Overloaded
     private static final int RESONANCE_LINE_GAP       = 8;
 
+    // ── Rogue Momentum indicator (only shown when Rogue is the selected class) ─────────
+    private static final int MOMENTUM_PIP_HEIGHT = 10;
+    private static final int MOMENTUM_PIP_GAP    = 3;
+    private static final int MOMENTUM_PIP_FILLED = 0xDCC8B43C; // honed brass — charged Momentum
+
     // ── Mana bar (only shown when the selected class spends mana) ─────────────
     private static final int MANA_BAR_HEIGHT = 8;
     private static final int MANA_BAR_GAP    = 6;    // pixels above the stamina bar
@@ -172,6 +178,7 @@ public class MHotbarRenderer {
             drawQuarryIndicator(canvas, layout);
             drawResonanceIndicator(canvas, layout);
             drawDoubtIndicator(canvas, layout);
+            drawMomentumIndicator(canvas, layout);
             drawDodgeIndicator(canvas, layout);
             ui.renderOverlays();
             ui.endFrame();
@@ -492,6 +499,60 @@ public class MHotbarRenderer {
             float lineX = drawIconBeforeText(canvas, CULLING_SHOT_ICON_PATH, panelX, y - MStyle.FONT_META, MStyle.FONT_META);
             MPainter.drawStringWithShadow(canvas, RangerHudText.cullingShotStatus(ranger.getCullingShot()), lineX, y,
                     font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+        }
+    }
+
+    /**
+     * Draws the Rogue Momentum panel — header with the current stack count, three discrete Momentum
+     * pips, and a readiness/cooldown line per unlocked ability — to the right of the hotbar. Renders
+     * only when the player's selected class is the Rogue.
+     */
+    private void drawMomentumIndicator(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        if (!RogueAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+
+        RogueAbilityController rogue = player.getRogueAbilities();
+        int stacks = rogue.getMomentum().getStacks();
+        int maxStacks = com.stonebreak.player.PlayerConstants.MOMENTUM_MAX_STACKS;
+
+        float panelX = layout.backgroundX + layout.backgroundWidth + RAGE_PANEL_GAP;
+        float y = layout.backgroundY;
+
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
+        MPainter.drawStringWithShadow(canvas, "Momentum " + stacks + "/" + maxStacks,
+                panelX, y + MStyle.FONT_META, font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        y += MStyle.FONT_META + RAGE_LABEL_GAP;
+
+        for (int i = 0; i < maxStacks; i++) {
+            MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, MOMENTUM_PIP_HEIGHT, RAGE_SEGMENT_BG);
+            if (i < stacks) {
+                MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, MOMENTUM_PIP_HEIGHT, MOMENTUM_PIP_FILLED);
+            }
+            MPainter.strokeRect(canvas, panelX, y, RAGE_PANEL_WIDTH, MOMENTUM_PIP_HEIGHT, RAGE_SEGMENT_BORDER, 1f);
+            y += MOMENTUM_PIP_HEIGHT + MOMENTUM_PIP_GAP;
+        }
+
+        y += RAGE_BONUS_LINE_GAP;
+        var stats = player.getCharacterStats();
+        if (stats.getSpentCp(RogueAbilityController.SHADOW_STEP_KEY) > 0) {
+            y += MStyle.FONT_META;
+            String state = rogue.getShadowStep().isOnCooldown()
+                    ? String.format("%.0fs", rogue.getShadowStep().getCooldownRemaining())
+                    : (rogue.getShadowStep().canActivate(player) ? "Ready" : "No target");
+            int color = "Ready".equals(state) ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
+            MPainter.drawStringWithShadow(canvas, "Shadow Step: " + state, panelX, y,
+                    font, color, MStyle.TEXT_SHADOW);
+            y += RAGE_BONUS_LINE_GAP;
+        }
+        if (stats.getSpentCp(RogueAbilityController.CALTROP_KEY) > 0) {
+            y += MStyle.FONT_META;
+            String state = rogue.getCaltrops().isOnCooldown()
+                    ? String.format("%.0fs", rogue.getCaltrops().getCooldownRemaining())
+                    : "Ready";
+            int color = "Ready".equals(state) ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
+            MPainter.drawStringWithShadow(canvas, "Caltrop Scatter: " + state, panelX, y,
+                    font, color, MStyle.TEXT_SHADOW);
         }
     }
 

@@ -54,6 +54,9 @@ public enum EntityType {
     // Persistent spell zone (Arcanist's Leyline Breach)
     LEYLINE_BREACH_ZONE("Leyline Breach", 1.0f, 0.0f, 0.4f, 0.4f, 0.4f, 0.0f, false, null),
 
+    // Ground hazard (Rogue's Caltrop Scatter)
+    CALTROP_CLUSTER("Caltrop Cluster", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false, null),
+
     // Fishing bobber
     BOBBER("Bobber", 1.0f, 0.0f, 0.2f, 0.2f, 0.2f, 0.0f, false, "stonebreak:Bobber"),
 

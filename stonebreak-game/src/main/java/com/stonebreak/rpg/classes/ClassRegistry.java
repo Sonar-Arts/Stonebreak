@@ -16,7 +16,7 @@ public final class ClassRegistry {
   /** The 6 available player classes. */
   public static final List<PlayerClassDefinition> ALL = List.of(
       berserker(),
-      PlayerClassDefinition.placeholder("rogue",      "Rogue",      5),
+      rogue(),
       PlayerClassDefinition.placeholder("monk",       "Monk",       5),
       arcanist(),
       ranger(),
@@ -68,6 +68,46 @@ public final class ClassRegistry {
             )
         ),
         "/ui/abilities/berserker/Rage.png"
+    );
+  }
+
+  /**
+   * Pure DEX skirmisher built around stealth and Momentum. Dodging (and, later, parrying) builds
+   * Momentum stacks that are spent in full on the next crit to amplify it and inflict a tier debuff.
+   * Rogue-tuned stealth is quieter, faster, and re-enters sooner, and lands a guaranteed crit on a
+   * flat-footed target. Spending CP on either ability unlocks it for casting
+   * (R = Shadow Step, F = Caltrop Scatter).
+   *
+   * <p>Icon paths are null until art lands; intended:
+   * /ui/abilities/rogue/Shadow_Step.png, Caltrop_Scatter.png, Momentum.png.</p>
+   */
+  private static PlayerClassDefinition rogue() {
+    return new PlayerClassDefinition(
+        "rogue",
+        "Rogue",
+        "A pure DEX skirmisher who stalks from stealth and turns momentum into lethal crits. "
+            + "Dodges build Momentum that detonates the next critical hit; openers from the shadows "
+            + "and a field of caltrops leave foes flat-footed for guaranteed strikes.",
+        List.of(
+            new ClassAbility(
+                "Shadow Step",
+                "From full stealth, blink behind a nearby unaware target and leave it flat-footed, "
+                    + "opening a guaranteed critical strike. Breaking stealth this way starts your "
+                    + "(short) re-entry cooldown.",
+                1,
+                null
+            ),
+            new ClassAbility(
+                "Caltrop Scatter",
+                "Scatter a fan of caltrop clusters across the ground in front of you. The first foe "
+                    + "to step on a cluster is flat-footed and the cluster is spent; untriggered "
+                    + "clusters linger before expiring. You are immune to your own caltrops, and "
+                    + "scattering them does not break stealth.",
+                1,
+                null
+            )
+        ),
+        null
     );
   }
 

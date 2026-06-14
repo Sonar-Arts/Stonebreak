@@ -33,9 +33,9 @@ public record StealthConfig(
      * guaranteed flat-footed crit ({@code flatFootedCritBonus = 1.0}). Keyed by the Rogue class id.
      */
     public static final StealthConfig ROGUE = new StealthConfig(
-            1.0f,   // quieter than the 2-block base
-            3.0f,   // re-enters stealth sooner than the 4s base
-            0.75f,  // moves faster while stealthed than the 0.6 base
+            0.5f,   // near-silent while stealthed (vs. the 2-block base)
+            1.5f,   // re-enters stealth far sooner than the 4s base
+            0.9f,   // near-normal movement speed while stealthed (vs. the 0.6 base)
             1.0f,   // guaranteed crit on a flat-footed target
             PlayerConstants.FLAT_FOOTED_DURATION);
 

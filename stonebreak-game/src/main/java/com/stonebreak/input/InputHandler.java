@@ -471,6 +471,7 @@ public class InputHandler {
             player.getRangerAbilities().tryCastSnare(player);
             player.getArcanistAbilities().tryCastLeylineBreach(player);
             player.getIllusionistAbilities().tryCastMirroredDeceit(player);
+            player.getRogueAbilities().tryCastShadowStep(player);
         } else if (!isRampagePressed) {
             rampageKeyPressed = false;
         }
@@ -482,6 +483,7 @@ public class InputHandler {
             player.getRangerAbilities().tryCastCullingShot(player);
             player.getArcanistAbilities().tryCastNullSpike(player);
             player.getIllusionistAbilities().tryCastFracture(player);
+            player.getRogueAbilities().tryCastCaltropScatter(player);
         } else if (!isSkullCrusherPressed) {
             skullCrusherKeyPressed = false;
         }

@@ -225,4 +225,25 @@ public final class PlayerConstants {
     public static final float ILLUSIONIST_FRACTURE_BEWILDERED_DURATION = 3.0f; // friendly-fire/panic duration at 3 stacks
     public static final float ILLUSIONIST_FRACTURE_CONTAGION_RADIUS    = 6f;   // spread 1 Doubt to bystanders at Bewildered
     public static final float ILLUSIONIST_FRACTURE_COOLDOWN            = 14f;
+
+    // ── Rogue: Momentum passive ───────────────────────────────────────────────
+    // Stacks gained on dodge (and, later, parry); consumed in full when a crit lands,
+    // amplifying that crit by the tier multiplier and applying a tier debuff (see
+    // STEALTH_BLEED_* / STEALTH_CRIPPLE_* above, which Momentum reuses).
+    public static final int   MOMENTUM_MAX_STACKS    = 3;
+    public static final float MOMENTUM_T1_MULTIPLIER = 1.3f;
+    public static final float MOMENTUM_T2_MULTIPLIER = 1.6f; // + BLEED on target
+    public static final float MOMENTUM_T3_MULTIPLIER = 2.0f; // + CRIPPLE on target
+
+    // ── Rogue: Shadow Step ability ────────────────────────────────────────────
+    public static final float SHADOW_STEP_RANGE    = 12f; // blocks to a valid unaware target
+    public static final float SHADOW_STEP_COOLDOWN = 18f;
+
+    // ── Rogue: Caltrop Scatter ability ────────────────────────────────────────
+    public static final int   CALTROP_CLUSTER_COUNT  = 5;
+    public static final float CALTROP_CONE_ANGLE_DEG = 75f;  // full cone width
+    public static final float CALTROP_CONE_RANGE     = 7f;   // blocks
+    public static final float CALTROP_DURATION       = 75f;  // seconds before an untriggered cluster expires
+    public static final float CALTROP_COOLDOWN       = 14f;
+    public static final float CALTROP_CONTACT_RADIUS = 0.6f; // blocks — contact distance that trips a cluster
 }

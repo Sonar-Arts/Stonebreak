@@ -49,6 +49,9 @@ public class EntityRenderer {
     // 1x1 cyan texture for the leyline breach zone slab.
     private int leylineZoneTexture;
 
+    // 1x1 metallic texture for the Rogue's caltrop clusters.
+    private int caltropTexture;
+
     // Entity-blind renderer for SBE-driven mobs.
     private final SbeEntityRenderer sbeEntityRenderer = new SbeEntityRenderer();
 
@@ -74,6 +77,7 @@ public class EntityRenderer {
         createArrowTexture();
         createNullSpikeTexture();
         createLeylineZoneTexture();
+        createCaltropTexture();
         createSimpleCubeModel();
         sbeEntityRenderer.initialize();
         remotePlayerRenderer.initialize();
@@ -214,6 +218,19 @@ public class EntityRenderer {
         // Translucent arcane cyan for the zone slab (alpha matters under additive blend)
         ByteBuffer pixel = ByteBuffer.allocateDirect(4);
         pixel.put((byte) 64).put((byte) 210).put((byte) 255).put((byte) 110).flip();
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
+                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+    }
+
+    private void createCaltropTexture() {
+        caltropTexture = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, caltropTexture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        // Cool metallic steel with a faint emissive lift so clusters read in low light (additive blend).
+        ByteBuffer pixel = ByteBuffer.allocateDirect(4);
+        pixel.put((byte) 150).put((byte) 160).put((byte) 175).put((byte) 200).flip();
         GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
                 GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
@@ -380,6 +397,11 @@ public class EntityRenderer {
 
         if (entityType == EntityType.LEYLINE_BREACH_ZONE) {
             renderGlowCube(entity, leylineZoneTexture, 1.0f, viewMatrix, projectionMatrix, cameraPos);
+            return;
+        }
+
+        if (entityType == EntityType.CALTROP_CLUSTER) {
+            renderGlowCube(entity, caltropTexture, 1.4f, viewMatrix, projectionMatrix, cameraPos);
             return;
         }
 
@@ -827,6 +849,9 @@ public class EntityRenderer {
         }
         if (leylineZoneTexture != 0) {
             GL11.glDeleteTextures(leylineZoneTexture);
+        }
+        if (caltropTexture != 0) {
+            GL11.glDeleteTextures(caltropTexture);
         }
 
         sbeEntityRenderer.cleanup();

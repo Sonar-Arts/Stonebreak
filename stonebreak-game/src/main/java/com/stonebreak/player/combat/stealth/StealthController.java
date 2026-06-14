@@ -78,6 +78,17 @@ public class StealthController {
         }
     }
 
+    /**
+     * Breaks stealth on behalf of a class ability that consumes the stealthed state (e.g. the
+     * Rogue's Shadow Step), starting the re-entry cooldown. Distinct from {@link #onAttack} so the
+     * intent reads as "this ability spent my stealth", not "I swung a weapon". No-op when not stealthed.
+     */
+    public void forceBreak(Player player) {
+        if (state == State.ENTERING || state == State.STEALTHED) {
+            enterBroken(player);
+        }
+    }
+
     private void enterBroken(Player player) {
         reentryDuration = config(player).reentryDelay();
         reentryRemaining = reentryDuration;
