@@ -17,6 +17,7 @@ public class NavigationItem {
      * View types for different hub sections.
      */
     public enum ViewType {
+        HOME,
         TEMPLATES,
         RECENT_PROJECTS,
         LEARN,

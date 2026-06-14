@@ -36,7 +36,7 @@ public final class TextureEditorLayoutBuilder {
     private static final Logger logger = LoggerFactory.getLogger(TextureEditorLayoutBuilder.class);
 
     /** Bump when the curated layout changes to force a one-time rebuild. */
-    public static final int LAYOUT_VERSION = 7;
+    public static final int LAYOUT_VERSION = 8;
 
     private static final float RIGHT_COLUMN_RATIO = 0.25f;
 
@@ -109,9 +109,14 @@ public final class TextureEditorLayoutBuilder {
         // window dragged onto the node tabs in BEHIND the resident window
         // with no tab bar to reach it — invisible and unrecoverable except
         // via Reset Layout.
+        //
+        // CentralNode makes the canvas absorb dockspace resizing: when the
+        // window widens, the central node grows and the sibling Layers node
+        // keeps its pixel width instead of scaling proportionally.
         int hidden = imgui.internal.flag.ImGuiDockNodeFlags.NoTabBar
                 | imgui.internal.flag.ImGuiDockNodeFlags.NoWindowMenuButton
-                | imgui.internal.flag.ImGuiDockNodeFlags.NoDockingOverMe;
+                | imgui.internal.flag.ImGuiDockNodeFlags.NoDockingOverMe
+                | imgui.internal.flag.ImGuiDockNodeFlags.CentralNode;
         addLocalFlags(center.get(), hidden);
 
         imgui.internal.ImGui.dockBuilderFinish(dockspaceId);

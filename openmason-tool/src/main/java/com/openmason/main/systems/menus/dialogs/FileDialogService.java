@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -356,6 +357,37 @@ public class FileDialogService {
      */
     public interface SaveOMPCallback {
         void onSave(String filePath);
+    }
+
+    /**
+     * Show a native folder-picker dialog. The chosen absolute directory path is
+     * delivered to the callback; cancellation invokes nothing.
+     */
+    public void showPickFolderDialog(OpenCallback callback) {
+        if (!nfdInitialized) {
+            statusService.updateStatus("Error: File dialog not initialized");
+            return;
+        }
+        statusService.updateStatus("Choosing folder...");
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            PointerBuffer outPath = stack.mallocPointer(1);
+            int result = NFD_PickFolder(outPath, (ByteBuffer) null);
+            if (result == NFD_OKAY) {
+                String selectedPath = outPath.getStringUTF8(0);
+                NFD_FreePath(outPath.get(0));
+                logger.info("Selected folder: {}", selectedPath);
+                callback.onOpen(selectedPath);
+                statusService.updateStatus("Folder: " + selectedPath);
+            } else if (result == NFD_CANCEL) {
+                statusService.updateStatus("Folder selection cancelled");
+            } else {
+                logger.error("NFD Error: {}", NFD_GetError());
+                statusService.updateStatus("Error opening folder dialog");
+            }
+        } catch (Exception e) {
+            logger.error("Error showing folder dialog", e);
+            statusService.updateStatus("Error: " + e.getMessage());
+        }
     }
 
     /**

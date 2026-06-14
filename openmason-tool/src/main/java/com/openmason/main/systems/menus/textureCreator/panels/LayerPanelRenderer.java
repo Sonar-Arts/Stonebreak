@@ -61,12 +61,10 @@ public class LayerPanelRenderer {
 
         // Cap the content to a compact column so the toolbar, cards and sliders
         // never stretch across a wide/maximized window. Pin that column to the
-        // right edge; any extra width is left as empty background on the left.
+        // left edge of the pane; any extra width is left as empty background on
+        // the right.
         float avail = ImGui.getContentRegionAvailX();
         float contentWidth = Math.min(avail, MAX_PANEL_CONTENT_WIDTH);
-        if (avail > contentWidth) {
-            ImGui.setCursorPosX(ImGui.getCursorPosX() + (avail - contentWidth));
-        }
         ImGui.beginChild("##layers_panel", contentWidth, 0, false);
 
         // Header with add/remove buttons

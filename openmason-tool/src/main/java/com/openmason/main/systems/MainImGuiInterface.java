@@ -797,6 +797,29 @@ public class MainImGuiInterface implements ModelBrowserListener {
      *
      * @param ompFilePath the path to the .OMP project file
      */
+    /**
+     * Create a blank project and pre-save it to {@code ompFilePath} so the
+     * file exists on disk the moment the editor opens. Assumes the editor was
+     * just reset to a fresh blank session.
+     *
+     * @return true if the project file was written
+     */
+    public boolean saveNewProject(String projectName, String ompFilePath) {
+        if (projectService == null || viewport3D == null) {
+            logger.warn("Cannot create project: service or viewport not initialized");
+            return false;
+        }
+        boolean success = projectService.saveProjectAs(ompFilePath, viewport3D, modelState,
+                uiVisibilityState, projectName);
+        if (success) {
+            statusService.updateStatus("Project created: " + projectName);
+            logger.info("New project pre-saved: {}", ompFilePath);
+        } else {
+            statusService.updateStatus("Failed to create project: " + ompFilePath);
+        }
+        return success;
+    }
+
     public void openProjectFromHub(String ompFilePath) {
         if (projectService == null || viewport3D == null) {
             logger.warn("Cannot open project: service or viewport not initialized");
