@@ -30,6 +30,16 @@ public class StaminaController {
         }
     }
 
+    /** True when at least {@code amount} stamina is available to spend. */
+    public boolean canAfford(float amount) { return stamina >= amount; }
+
+    /** Spends {@code amount} stamina if affordable; returns true on success. */
+    public boolean consume(float amount) {
+        if (stamina < amount) return false;
+        stamina = Math.max(0f, stamina - amount);
+        return true;
+    }
+
     public boolean hasStamina()  { return stamina > 0; }
     public boolean isSprinting() { return sprinting; }
     public float getStamina()   { return stamina; }

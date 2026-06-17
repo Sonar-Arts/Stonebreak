@@ -56,6 +56,7 @@ public final class PlayerConstants {
     public static final float DODGE_COOLDOWN               = 1.5f;  // seconds
     public static final float DODGE_STEALTH_NOISE_RADIUS   = 4f;    // blocks (read by the stealth system)
     public static final float DODGE_STEALTH_NOISE_DURATION = 0.5f;  // seconds
+    public static final float DODGE_STAMINA_COST           = 15f;   // stamina spent per dash
 
     // ── Universal: Stealth ────────────────────────────────────────────────────
     // Detection (enemy side)

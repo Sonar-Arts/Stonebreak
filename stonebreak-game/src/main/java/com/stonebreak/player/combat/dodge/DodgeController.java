@@ -14,6 +14,7 @@ import static com.stonebreak.player.PlayerConstants.DODGE_COOLDOWN;
 import static com.stonebreak.player.PlayerConstants.DODGE_DASH_DISTANCE;
 import static com.stonebreak.player.PlayerConstants.DODGE_INVINCIBILITY_TIME;
 import static com.stonebreak.player.PlayerConstants.DODGE_SPEED;
+import static com.stonebreak.player.PlayerConstants.DODGE_STAMINA_COST;
 import static com.stonebreak.player.PlayerConstants.DODGE_STEALTH_NOISE_DURATION;
 import static com.stonebreak.player.PlayerConstants.DODGE_STEALTH_NOISE_RADIUS;
 
@@ -60,6 +61,7 @@ public class DodgeController {
      */
     public boolean tryDodge(Player player, Vector3f intendedDir) {
         if (state != State.IDLE) return false;
+        if (!player.canAffordStamina(DODGE_STAMINA_COST)) return false;
 
         // Dash where the player is inputting; if no movement key is held, dash backward.
         if (intendedDir != null && intendedDir.lengthSquared() > 0.0001f) {
@@ -73,6 +75,7 @@ public class DodgeController {
         }
         direction.normalize();
 
+        player.consumeStamina(DODGE_STAMINA_COST);
         distanceTraveled = 0f;
         invincibilityRemaining = DODGE_INVINCIBILITY_TIME;
         noiseRemaining = DODGE_STEALTH_NOISE_DURATION;

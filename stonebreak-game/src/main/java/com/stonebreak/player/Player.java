@@ -426,6 +426,8 @@ public class Player {
     // Stamina / mana
     public float getStamina()    { return stamina.getStamina(); }
     public float getMaxStamina() { return stamina.getMaxStamina(); }
+    public boolean canAffordStamina(float amount) { return stamina.canAfford(amount); }
+    public boolean consumeStamina(float amount)   { return stamina.consume(amount); }
     public float getMana()       { return mana.getMana(); }
     public float getMaxMana()    { return mana.getMaxMana(); }
     public ManaController getManaController() { return mana; }
