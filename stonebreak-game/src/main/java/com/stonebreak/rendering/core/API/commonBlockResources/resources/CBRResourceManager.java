@@ -7,6 +7,9 @@ import com.stonebreak.rendering.core.API.commonBlockResources.texturing.TextureR
 import com.openmason.engine.rendering.cbr.models.BlockDefinition;
 import com.openmason.engine.rendering.cbr.models.BlockDefinitionRegistry;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -27,7 +30,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Implements RAII for automatic resource lifecycle management.
  */
 public class CBRResourceManager implements AutoCloseable {
-    
+
+    private static final Logger logger = LoggerFactory.getLogger(CBRResourceManager.class);
+
     // Singleton instance
     private static volatile CBRResourceManager instance;
     private static final Object LOCK = new Object();
@@ -50,7 +55,7 @@ public class CBRResourceManager implements AutoCloseable {
         this.textureManager = new TextureResourceManager(registry);
         
         initialized.set(true);
-        System.out.println("[CBRResourceManager] Initialized with mesh and texture managers");
+        logger.debug("[CBRResourceManager] Initialized with mesh and texture managers");
     }
     
     /**
@@ -327,7 +332,7 @@ public class CBRResourceManager implements AutoCloseable {
     public void clearCaches() {
         ensureInitialized();
         textureManager.clearCache();
-        System.out.println("[CBRResourceManager] Cleared all resource caches");
+        logger.debug("[CBRResourceManager] Cleared all resource caches");
     }
     
     /**
@@ -353,7 +358,7 @@ public class CBRResourceManager implements AutoCloseable {
         ensureInitialized();
         clearCaches();
         System.gc(); // Suggest garbage collection
-        System.out.println("[CBRResourceManager] Optimized memory usage");
+        logger.debug("[CBRResourceManager] Optimized memory usage");
     }
 
     /**
@@ -373,16 +378,15 @@ public class CBRResourceManager implements AutoCloseable {
                     // Clear any cached resources for leaf blocks
                     current.clearCaches();
 
-                    System.out.println("[CBRResourceManager] Leaf definitions refreshed successfully");
+                    logger.debug("[CBRResourceManager] Leaf definitions refreshed successfully");
                 } else {
-                    System.out.println("[CBRResourceManager] Cannot refresh leaf definitions - unknown registry type");
+                    logger.debug("[CBRResourceManager] Cannot refresh leaf definitions - unknown registry type");
                 }
             } catch (Exception e) {
-                System.err.println("[CBRResourceManager] Error refreshing leaf definitions: " + e.getMessage());
-                e.printStackTrace();
+                logger.error("[CBRResourceManager] Error refreshing leaf definitions", e);
             }
         } else {
-            System.out.println("[CBRResourceManager] Cannot refresh - no initialized instance");
+            logger.debug("[CBRResourceManager] Cannot refresh - no initialized instance");
         }
     }
 
@@ -409,13 +413,12 @@ public class CBRResourceManager implements AutoCloseable {
                     // Create new instance with same parameters
                     CBRResourceManager newInstance = getInstance(registry);
 
-                    System.out.println("[CBRResourceManager] Forced reinitialization completed");
+                    logger.debug("[CBRResourceManager] Forced reinitialization completed");
                 } catch (Exception e) {
-                    System.err.println("[CBRResourceManager] Error during forced reinitialization: " + e.getMessage());
-                    e.printStackTrace();
+                    logger.error("[CBRResourceManager] Error during forced reinitialization", e);
                 }
             } else {
-                System.out.println("[CBRResourceManager] Reinitialization skipped - no current instance or not initialized");
+                logger.debug("[CBRResourceManager] Reinitialization skipped - no current instance or not initialized");
             }
         }
     }
@@ -480,9 +483,9 @@ public class CBRResourceManager implements AutoCloseable {
                     instance = null;
                 }
                 
-                System.out.println("[CBRResourceManager] Disposed and cleaned up all resources");
+                logger.debug("[CBRResourceManager] Disposed and cleaned up all resources");
             } catch (Exception e) {
-                System.err.println("[CBRResourceManager] Error during disposal: " + e.getMessage());
+                logger.error("[CBRResourceManager] Error during disposal", e);
             }
         }
     }

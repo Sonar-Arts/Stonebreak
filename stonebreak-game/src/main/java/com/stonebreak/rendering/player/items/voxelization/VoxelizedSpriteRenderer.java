@@ -9,6 +9,9 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL20;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +21,8 @@ import java.util.Map;
  * Manages mesh caching and OpenGL rendering state for 3D sprite projections.
  */
 public class VoxelizedSpriteRenderer {
+
+    private static final Logger logger = LoggerFactory.getLogger(VoxelizedSpriteRenderer.class);
 
     private final ShaderProgram shaderProgram;
 
@@ -78,7 +83,7 @@ public class VoxelizedSpriteRenderer {
      */
     public void renderVoxelizedSprite(ItemType itemType, String state) {
         if (!SpriteVoxelizer.isVoxelizable(itemType)) {
-            System.err.println("Item type " + itemType.getName() + " is not voxelizable");
+            logger.warn("Item type {} is not voxelizable", itemType.getName());
             return;
         }
 
@@ -87,7 +92,7 @@ public class VoxelizedSpriteRenderer {
         // Get or create voxel mesh
         VoxelMesh mesh = getOrCreateMesh(key);
         if (mesh == null || !mesh.isCreated()) {
-            System.err.println("Failed to create mesh for " + itemType.getName());
+            logger.warn("Failed to create mesh for {}", itemType.getName());
             return;
         }
 
@@ -125,8 +130,8 @@ public class VoxelizedSpriteRenderer {
         }
 
         if (!result.isValid()) {
-            System.err.println("No valid voxelization data available for "
-                    + key.itemType().getName() + " - cannot create mesh");
+            logger.warn("No valid voxelization data available for {} - cannot create mesh",
+                    key.itemType().getName());
             return null;
         }
 
@@ -305,7 +310,7 @@ public class VoxelizedSpriteRenderer {
      * Useful for reducing hitches during gameplay.
      */
     public void preloadAllVoxelMeshes() {
-        System.out.println("Preloading voxel meshes...");
+        logger.debug("Preloading voxel meshes...");
 
         for (ItemType itemType : ItemType.values()) {
             if (SpriteVoxelizer.isVoxelizable(itemType)) {
@@ -313,7 +318,7 @@ public class VoxelizedSpriteRenderer {
             }
         }
 
-        System.out.println("Preloaded " + meshCache.size() + " voxel meshes");
+        logger.debug("Preloaded {} voxel meshes", meshCache.size());
     }
 
     /**
@@ -375,7 +380,7 @@ public class VoxelizedSpriteRenderer {
         voxelizationCache.clear();
         SpriteVoxelizer.clearCache();
 
-        System.out.println("Cleared voxel renderer cache");
+        logger.debug("Cleared voxel renderer cache");
     }
 
     /**

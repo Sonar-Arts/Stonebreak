@@ -1,10 +1,14 @@
 package com.openmason.engine.audio;
 
 import org.lwjgl.openal.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import static org.lwjgl.openal.AL10.*;
 import static org.lwjgl.openal.ALC10.*;
 
 public class OpenALContext {
+    private static final Logger logger = LoggerFactory.getLogger(OpenALContext.class);
+
     private long device;
     private long context;
     private boolean initialized = false;
@@ -12,24 +16,24 @@ public class OpenALContext {
     public boolean initialize() {
         try {
             String defaultDeviceName = alcGetString(0, ALC_DEFAULT_DEVICE_SPECIFIER);
-            System.out.println("Initializing OpenAL with device: " + defaultDeviceName);
+            logger.debug("Initializing OpenAL with device: {}", defaultDeviceName);
 
             device = alcOpenDevice(defaultDeviceName);
             if (device == 0) {
-                System.err.println("Failed to open OpenAL device");
+                logger.error("Failed to open OpenAL device");
                 return false;
             }
 
             int[] attributes = {0};
             context = alcCreateContext(device, attributes);
             if (context == 0) {
-                System.err.println("Failed to create OpenAL context");
+                logger.error("Failed to create OpenAL context");
                 alcCloseDevice(device);
                 return false;
             }
 
             if (!alcMakeContextCurrent(context)) {
-                System.err.println("Failed to make OpenAL context current");
+                logger.error("Failed to make OpenAL context current");
                 alcDestroyContext(context);
                 alcCloseDevice(device);
                 return false;
@@ -39,21 +43,20 @@ public class OpenALContext {
 
             // Set up 3D audio distance model for proper spatial audio
             alDistanceModel(AL_INVERSE_DISTANCE_CLAMPED);
-            System.out.println("🔧 OPENAL DEBUG: Set distance model to AL_INVERSE_DISTANCE_CLAMPED");
-
-            // Print current distance model to verify
-            int currentModel = alGetInteger(AL_DISTANCE_MODEL);
-            System.out.println("🔧 OPENAL DEBUG: Current distance model: " + currentModel + " (AL_INVERSE_DISTANCE_CLAMPED=" + AL_INVERSE_DISTANCE_CLAMPED + ")");
+            if (logger.isDebugEnabled()) {
+                int currentModel = alGetInteger(AL_DISTANCE_MODEL);
+                logger.debug("Distance model set to AL_INVERSE_DISTANCE_CLAMPED (current={}, expected={})",
+                        currentModel, AL_INVERSE_DISTANCE_CLAMPED);
+            }
 
             // Note: Initial listener setup will be handled by AudioListener.initializeDefaultListener()
             // We don't set listener properties here to avoid conflicts
 
             initialized = true;
-            System.out.println("OpenAL initialized successfully");
+            logger.debug("OpenAL initialized successfully");
             return true;
         } catch (Exception e) {
-            System.err.println("Failed to initialize OpenAL: " + e.getMessage());
-            System.err.println("Stack trace: " + e.toString());
+            logger.error("Failed to initialize OpenAL", e);
             return false;
         }
     }

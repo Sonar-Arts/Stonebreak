@@ -5,6 +5,8 @@ import com.stonebreak.rendering.UI.masonryUI.MButton;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.stonebreak.rendering.UI.masonryUI.textures.MTexture;
+import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
 import com.stonebreak.ui.characterCreation.CharacterCreationActionHandler;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout.Rect;
@@ -13,7 +15,6 @@ import com.stonebreak.ui.characterCreation.CharacterCreationTab;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.FilterTileMode;
 import io.github.humbleui.skija.Font;
-import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.skija.Shader;
@@ -31,6 +32,9 @@ public final class SkijaCharacterCreationRenderer {
     private static final float TAB_GAP = 4f;
 
     private static final int ACTIVE_TAB_FILL = 0xFF7A7A7A;
+
+    // Wood-panel fill reuses the recipe-screen Elm UI texture.
+    private static final String WOOD_PANEL_RESOURCE = "/ui/recipeScreen/Elm_UI.sbt";
 
     private final MasonryUI ui;
     private final CharacterCreationStateManager state;
@@ -153,10 +157,11 @@ public final class SkijaCharacterCreationRenderer {
 
     private void ensureWoodPlanksShader() {
         if (woodPlanksShader != null) return;
-        if (ui.backend() == null) return;
-        Image planks = ui.backend().getWoodPlanksTexture();
-        if (planks == null) return;
-        woodPlanksShader = planks.makeShader(FilterTileMode.REPEAT, FilterTileMode.REPEAT, SamplingMode.DEFAULT, null);
+        // Reuse the recipe-screen Elm UI texture (registry-cached, shared).
+        MTexture planks = MTextureRegistry.get(WOOD_PANEL_RESOURCE);
+        if (planks == null || planks.image() == null) return;
+        woodPlanksShader = planks.image().makeShader(
+            FilterTileMode.REPEAT, FilterTileMode.REPEAT, SamplingMode.DEFAULT, null);
     }
 
     // ─────────────────────────────────────────────── Tab bar

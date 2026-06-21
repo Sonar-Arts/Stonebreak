@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Console appender for stdout -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} -- %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Root logger at WARN: the startup path emits hundreds of INFO/DEBUG
+         lines (per-SBO parse, per-material texture extraction, per-OMT read,
+         mesh-stamp processing, entity/animation loads). None of it is
+         actionable at runtime. Real problems (ID collisions, empty recipe
+         patterns) log at WARN/ERROR and still surface. -->
+    <root level="WARN">
+        <appender-ref ref="STDOUT" />
+    </root>
+
+    <!-- Flip any of these to DEBUG when troubleshooting that subsystem. -->
+    <!-- <logger name="com.openmason.engine.format.sbo" level="DEBUG" /> -->
+    <!-- <logger name="com.stonebreak.rendering.sbo" level="DEBUG" /> -->
+    <!-- <logger name="com.openmason.engine.format.omt" level="DEBUG" /> -->
+</configuration>

@@ -5,6 +5,9 @@ import com.openmason.engine.rendering.cbr.models.BlockDefinition;
 import com.openmason.engine.rendering.cbr.models.BlockDefinitionRegistry;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -17,7 +20,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * proper render type mappings for different block categories.
  */
 public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
-    
+
+    private static final Logger logger = LoggerFactory.getLogger(GameBlockDefinitionRegistry.class);
+
     private final Map<String, BlockDefinition> definitionsByResourceId;
     private final Map<Integer, BlockDefinition> definitionsByNumericId;
     private final SBOBlockBridge sboBlockBridge;
@@ -53,7 +58,7 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
             registerDefinition(definition);
         }
         
-        System.out.println("[GameBlockDefinitionRegistry] Initialized " + definitionsByResourceId.size() + " block definitions");
+        logger.debug("[GameBlockDefinitionRegistry] Initialized {} block definitions", definitionsByResourceId.size());
     }
 
     /**
@@ -68,7 +73,7 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
             registerDefinition(newDefinition);
         }
 
-        System.out.println("[GameBlockDefinitionRegistry] Refreshed " + leafBlocks.length + " leaf block definitions");
+        logger.debug("[GameBlockDefinitionRegistry] Refreshed {} leaf block definitions", leafBlocks.length);
     }
     
     /**
@@ -215,7 +220,7 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
     public void close() {
         definitionsByResourceId.clear();
         definitionsByNumericId.clear();
-        System.out.println("[GameBlockDefinitionRegistry] Closed and cleaned up resources");
+        logger.debug("[GameBlockDefinitionRegistry] Closed and cleaned up resources");
     }
     
     /**

@@ -39,7 +39,9 @@ import static org.lwjgl.system.MemoryStack.stackPush;
  * Main class for the Stonebreak game - a voxel-based sandbox.
  */
 public class Main {
-    
+
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(Main.class);
+
     // Window handle
     private long window;
     
@@ -100,7 +102,7 @@ public class Main {
             loop();
         } finally {
             cleanup();
-            System.out.println("Stonebreak shutdown complete.");
+            logger.debug("Stonebreak shutdown complete.");
         }
         System.exit(0);
     }
@@ -405,7 +407,7 @@ public class Main {
 
         // Setup window close callback to handle X button clicks
         glfwSetWindowCloseCallback(window, win -> {
-            System.out.println("Window close requested - initiating shutdown...");
+            logger.debug("Window close requested - initiating shutdown...");
             running = false;
         });
 
@@ -963,10 +965,10 @@ public class Main {
         try {
             if (com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager.isInitialized()) {
                 com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager.getInstance().close();
-                System.out.println("CBRResourceManager cleaned up successfully");
+                logger.debug("CBRResourceManager cleaned up successfully");
             }
         } catch (Exception e) {
-            System.err.println("Error cleaning up CBRResourceManager: " + e.getMessage());
+            logger.error("Error cleaning up CBRResourceManager", e);
         }
         Game.logDetailedMemoryInfo("After CBR cleanup");
 

@@ -1,5 +1,8 @@
 package com.stonebreak.core;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 
@@ -19,6 +22,8 @@ import java.lang.management.ManagementFactory;
  */
 public final class GcEnforcement {
 
+    private static final Logger logger = LoggerFactory.getLogger(GcEnforcement.class);
+
     private GcEnforcement() {}
 
     /**
@@ -27,7 +32,7 @@ public final class GcEnforcement {
      */
     public static void enforce() {
         if (Boolean.getBoolean("stonebreak.gc.allowAny")) {
-            System.out.println("[GC] stonebreak.gc.allowAny=true — skipping ZGC enforcement");
+            logger.debug("[GC] stonebreak.gc.allowAny=true — skipping ZGC enforcement");
             return;
         }
 
@@ -49,7 +54,7 @@ public final class GcEnforcement {
         }
 
         if (isZgc && isGenerational) {
-            System.out.println("[GC] Generational ZGC active — collectors: " + detected);
+            logger.debug("[GC] Generational ZGC active — collectors: {}", detected);
             return;
         }
 
@@ -77,7 +82,7 @@ public final class GcEnforcement {
             ════════════════════════════════════════════════════════════════
             """.formatted(reason);
 
-        System.err.println(banner);
+        logger.error(banner);
         throw new IllegalStateException("Generational ZGC is required. " + reason);
     }
 }
