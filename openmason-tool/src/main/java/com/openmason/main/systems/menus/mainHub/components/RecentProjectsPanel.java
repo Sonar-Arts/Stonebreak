@@ -9,9 +9,10 @@ import com.openmason.main.systems.menus.mainHub.state.HubState;
 import com.openmason.main.systems.mortar.core.MortarFrameResult;
 import com.openmason.main.systems.mortar.core.MortarRegion;
 import com.openmason.main.systems.mortar.parts.MortarCard;
-import com.openmason.main.systems.mortar.parts.MortarSectionLabel;
+import com.openmason.main.systems.mortar.parts.MortarListRow;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import imgui.ImGui;
+import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
 
 import java.nio.file.Path;
@@ -31,9 +32,11 @@ public class RecentProjectsPanel {
 
     private static final float MIN_CARD_W = 210f;
     private static final float CARD_H = 104f;
+    private static final float ROW_H = 56f;
+    private static final float ROW_GAP = 8f;
+    private static final float ROW_MAX_W = 480f;
     private static final float GAP = 12f;
-    private static final float LABEL_H = 18f;
-    private static final float LABEL_GAP = 10f;
+    private static final float TOGGLE_BTN_W = 52f;
     private static final String CTX_POPUP = "##recent_ctx";
 
     private final HubState hubState;
@@ -68,24 +71,36 @@ public class RecentProjectsPanel {
             return;
         }
 
-        float availW = ImGui.getContentRegionAvailX();
-        int cols = Math.max(1, (int) ((availW + GAP) / (MIN_CARD_W + GAP)));
-        float cardW = (availW - GAP * (cols - 1)) / cols;
-        int rows = (projects.size() + cols - 1) / cols;
+        renderHeader(projects.size());
 
-        float gridTop = LABEL_H + LABEL_GAP;
-        float height = gridTop + rows * (CARD_H + GAP) - GAP;
+        float availW = ImGui.getContentRegionAvailX();
+        boolean list = hubState.getRecentViewMode() == HubState.RecentViewMode.LIST;
+
+        float height = list
+                ? projects.size() * (ROW_H + ROW_GAP) - ROW_GAP
+                : gridRows(projects.size(), availW) * (CARD_H + GAP) - GAP;
 
         region.begin(availW, height);
-        region.add("label", 0f, 0f, availW, LABEL_H,
-                new MortarSectionLabel("Recent Projects  (" + projects.size() + ")"));
 
+        if (list) {
+            layoutList(projects, availW, 0f);
+        } else {
+            layoutGrid(projects, availW, 0f);
+        }
+
+        MortarFrameResult input = region.render();
+        handleInput(input);
+        renderContextMenu();
+    }
+
+    /** Responsive grid of {@link MortarCard} tiles. */
+    private void layoutGrid(List<RecentProject> projects, float availW, float top) {
+        int cols = gridCols(availW);
+        float cardW = (availW - GAP * (cols - 1)) / cols;
         for (int i = 0; i < projects.size(); i++) {
             RecentProject p = projects.get(i);
-            int col = i % cols;
-            int row = i / cols;
-            float x = col * (cardW + GAP);
-            float y = gridTop + row * (CARD_H + GAP);
+            float x = (i % cols) * (cardW + GAP);
+            float y = top + (i / cols) * (CARD_H + GAP);
             boolean selected = p.equals(hubState.getSelectedRecentProject());
             // Title (name) wraps; the meta line pairs relative time with the
             // folder; the file name is the faint footer.
@@ -93,10 +108,80 @@ public class RecentProjectsPanel {
             MortarCard card = new MortarCard(p.getName(), meta, fileName(p.getPath()));
             region.add("recent." + i, x, y, cardW, CARD_H, selected, card);
         }
+    }
 
-        MortarFrameResult input = region.render();
-        handleInput(input);
-        renderContextMenu();
+    /** Single-column list of informative {@link MortarListRow}s. */
+    private void layoutList(List<RecentProject> projects, float availW, float top) {
+        float rowW = Math.min(availW, ROW_MAX_W);
+        for (int i = 0; i < projects.size(); i++) {
+            RecentProject p = projects.get(i);
+            float y = top + i * (ROW_H + ROW_GAP);
+            boolean selected = p.equals(hubState.getSelectedRecentProject());
+            // Title (name) on the left; the folder/file location as a dimmed
+            // subtitle; relative time pinned to the right.
+            String subtitle = folderName(p.getPath()) + "   ·   " + fileName(p.getPath());
+            MortarListRow row = new MortarListRow(p.getName(), subtitle, relativeTime(p.getLastOpened()));
+            region.add("recent." + i, 0f, y, rowW, ROW_H, selected, row);
+        }
+    }
+
+    private static int gridCols(float availW) {
+        return Math.max(1, (int) ((availW + GAP) / (MIN_CARD_W + GAP)));
+    }
+
+    private static int gridRows(int count, float availW) {
+        int cols = gridCols(availW);
+        return (count + cols - 1) / cols;
+    }
+
+    /**
+     * The section header band: an upper-cased "RECENT PROJECTS (N)" heading on
+     * the left with the Grid/List toggle pinned to the right of the same row,
+     * then a separator that distinctly divides the header from the list below.
+     * {@link ImGui#alignTextToFramePadding()} centres the heading against the
+     * buttons so the whole row shares one baseline.
+     */
+    private void renderHeader(int count) {
+        HubState.RecentViewMode mode = hubState.getRecentViewMode();
+        float startX = ImGui.getCursorPosX();
+        float availW = ImGui.getContentRegionAvailX();
+        float spacing = ImGui.getStyle().getItemSpacingX();
+        float groupW = TOGGLE_BTN_W * 2f + spacing;
+
+        ImGui.dummy(0f, 2f);
+
+        // Heading, upper-cased and near-full strength so it clearly reads as a
+        // section title rather than body text. Aligned to the buttons' baseline.
+        ImGui.alignTextToFramePadding();
+        ImVec4 t = ImGui.getStyle().getColor(ImGuiCol.Text);
+        ImGui.pushStyleColor(ImGuiCol.Text, t.x, t.y, t.z, 0.85f);
+        ImGui.text("RECENT PROJECTS  (" + count + ")");
+        ImGui.popStyleColor();
+
+        // Toggle right-aligned on the same row; the two buttons stay paired via
+        // sameLine() with no manual cursor-Y nudging.
+        ImGui.sameLine();
+        ImGui.setCursorPosX(startX + Math.max(0f, availW - groupW));
+        toggleButton("Grid", mode == HubState.RecentViewMode.GRID, HubState.RecentViewMode.GRID);
+        ImGui.sameLine();
+        toggleButton("List", mode == HubState.RecentViewMode.LIST, HubState.RecentViewMode.LIST);
+
+        ImGui.dummy(0f, 6f);
+        ImGui.separator();
+        ImGui.dummy(0f, 12f);
+    }
+
+    private void toggleButton(String label, boolean active, HubState.RecentViewMode target) {
+        if (active) {
+            ImVec4 c = ImGui.getStyle().getColor(ImGuiCol.ButtonActive);
+            ImGui.pushStyleColor(ImGuiCol.Button, c.x, c.y, c.z, c.w);
+        }
+        if (ImGui.button(label + "##recent_view", TOGGLE_BTN_W, 0f)) {
+            hubState.setRecentViewMode(target);
+        }
+        if (active) {
+            ImGui.popStyleColor();
+        }
     }
 
     private void handleInput(MortarFrameResult input) {
