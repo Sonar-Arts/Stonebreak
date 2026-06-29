@@ -74,7 +74,8 @@ public final class TerrainMapperStateManager {
 
         this.backButton = new MButton("Back")
                 .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);
-        this.characterButton = new MButton("← Character")
+        this.characterButton = new MButton("Character")
+                .arrow(MButton.Arrow.LEFT)
                 .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);
         this.createButton = new MButton("Create World")
                 .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);

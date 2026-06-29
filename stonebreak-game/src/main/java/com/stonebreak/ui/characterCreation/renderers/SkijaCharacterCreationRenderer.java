@@ -216,13 +216,16 @@ public final class SkijaCharacterCreationRenderer {
     private void drawFooter(Rect footer) {
         float btnY = footer.y() + (footer.height() - 44f) / 2f;
 
-        state.getBackToWorldSelectButton()
+        MButton back = state.getBackToWorldSelectButton();
+        back.size(back.preferredWidth(ui), back.height())
             .position(footer.x() + 16f, btnY);
-        state.getBackToWorldSelectButton().render(ui);
+        back.render(ui);
 
-        state.getTerrainMapperButton()
-            .position(footer.right() - 16f - 180f, btnY);
-        state.getTerrainMapperButton().render(ui);
+        MButton next = state.getTerrainMapperButton();
+        float nextW = next.preferredWidth(ui);
+        next.size(nextW, next.height())
+            .position(footer.right() - 16f - nextW, btnY);
+        next.render(ui);
     }
 
     // ─────────────────────────────────────────────── Click routing

@@ -9,9 +9,13 @@ import io.github.humbleui.skija.Font;
  */
 public class MButton extends MWidget {
 
+    /** Optional vector arrow icon drawn beside the label (replaces font glyphs). */
+    public enum Arrow { NONE, LEFT, RIGHT }
+
     protected String text;
     protected boolean enabled = true;
     protected float fontSize = MStyle.FONT_BUTTON;
+    protected Arrow arrow = Arrow.NONE;
     private Runnable onClick;
 
     public MButton(String text) {
@@ -25,8 +29,27 @@ public class MButton extends MWidget {
     public MButton enabled(boolean v) { this.enabled = v; return this; }
     public MButton fontSize(float v) { this.fontSize = v; return this; }
 
+    /** Draws a {@link MPainter#navArrow} icon on the leading/trailing side of the label. */
+    public MButton arrow(Arrow side) { this.arrow = side; return this; }
+
     public String text() { return text; }
     public boolean enabled() { return enabled; }
+
+    /**
+     * Intrinsic width needed to render the label (and arrow icon, if any) with
+     * comfortable horizontal padding. Lets callers size a button to its content
+     * each frame instead of guessing a fixed width — measurement needs the live
+     * font, so it can't be done at construction time.
+     */
+    public float preferredWidth(MasonryUI ui) {
+        Font font = fontFor(ui, fontSize);
+        float scale = textScale();
+        boolean hasText = text != null && !text.isEmpty();
+        float textW = hasText ? MPainter.measureWidth(font, text) : 0f;
+        float arrowW = arrow == Arrow.NONE ? 0f : font.getSize();
+        float gap = (hasText && arrow != Arrow.NONE) ? 7f * scale : 0f;
+        return textW + arrowW + gap + 32f * scale; // 16px breathing room each side
+    }
 
     // Covariant returns keep fluent chains typed as MButton so assignment works.
     @Override public MButton scaleText(boolean v) { super.scaleText(v); return this; }
@@ -83,12 +106,40 @@ public class MButton extends MWidget {
     }
 
     protected void drawLabel(Canvas canvas, Font font) {
-        if (text == null || text.isEmpty()) return;
+        boolean hasText = text != null && !text.isEmpty();
+        if (!hasText && arrow == Arrow.NONE) return;
         int color = !enabled ? MStyle.TEXT_DISABLED
                 : (hovered || selected) ? MStyle.TEXT_ACCENT
                 : MStyle.TEXT_PRIMARY;
-        float tx = x + width / 2f;
         float ty = y + height / 2f + 7f * textScale();
-        MPainter.drawCenteredStringWithShadow(canvas, text, tx, ty, font, color, MStyle.TEXT_SHADOW);
+
+        if (arrow == Arrow.NONE) {
+            float tx = x + width / 2f;
+            MPainter.drawCenteredStringWithShadow(canvas, text, tx, ty, font, color, MStyle.TEXT_SHADOW);
+            return;
+        }
+
+        // Lay out [arrow][gap][text] (or the mirror) as one centered group.
+        float scale = textScale();
+        float arrowSize = font.getSize();
+        float gap = hasText ? 7f * scale : 0f;
+        float textW = hasText ? MPainter.measureWidth(font, text) : 0f;
+        float groupW = arrowSize + gap + textW;
+        float startX = x + width / 2f - groupW / 2f;
+        float arrowTop = y + height / 2f - arrowSize / 2f;
+
+        if (arrow == Arrow.LEFT) {
+            MPainter.navArrow(canvas, startX, arrowTop, arrowSize, arrowSize, true, color, MStyle.TEXT_SHADOW);
+            if (hasText) {
+                MPainter.drawStringWithShadow(canvas, text, startX + arrowSize + gap, ty,
+                        font, color, MStyle.TEXT_SHADOW);
+            }
+        } else { // RIGHT
+            if (hasText) {
+                MPainter.drawStringWithShadow(canvas, text, startX, ty, font, color, MStyle.TEXT_SHADOW);
+            }
+            MPainter.navArrow(canvas, startX + textW + gap, arrowTop, arrowSize, arrowSize, false,
+                    color, MStyle.TEXT_SHADOW);
+        }
     }
 }
