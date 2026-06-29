@@ -66,7 +66,7 @@ public final class WorldGenerationCoordinator {
             }
         }
 
-        String worldPath = "worlds/" + worldName;
+        String worldPath = com.stonebreak.world.save.WorldStorage.worldPath(worldName);
         game.setSaveService(new SaveService(worldPath));
         game.setCurrentWorldName(worldName);
         game.setCurrentWorldSeed(seed);
@@ -282,7 +282,7 @@ public final class WorldGenerationCoordinator {
                 return;
             }
 
-            java.io.File worldDir = new java.io.File("worlds", worldName);
+            java.io.File worldDir = com.stonebreak.world.save.WorldStorage.worldDir(worldName).toFile();
             boolean worldExists = worldDir.exists() && worldDir.isDirectory();
 
             if (worldExists) {

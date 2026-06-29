@@ -11,7 +11,6 @@ import org.joml.Vector3f;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.Random;
 
@@ -88,7 +87,7 @@ public final class TerrainActionHandler {
         }
 
         try {
-            Path worldDir = Paths.get("worlds", name);
+            Path worldDir = com.stonebreak.world.save.WorldStorage.worldDir(name);
             Files.createDirectories(worldDir);
             Files.createDirectories(worldDir.resolve("chunks"));
 

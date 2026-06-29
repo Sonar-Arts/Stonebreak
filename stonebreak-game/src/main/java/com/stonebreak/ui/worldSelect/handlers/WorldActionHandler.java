@@ -202,7 +202,7 @@ public class WorldActionHandler {
 
             // Create world directory and save world data file
             try {
-                java.nio.file.Path worldDir = java.nio.file.Paths.get("worlds", worldName);
+                java.nio.file.Path worldDir = com.stonebreak.world.save.WorldStorage.worldDir(worldName);
                 java.nio.file.Files.createDirectories(worldDir);
 
                 // Prepare chunk directory for new save system
@@ -293,7 +293,7 @@ public class WorldActionHandler {
             System.err.println("Cannot delete world: invalid name");
             return;
         }
-        java.nio.file.Path worldDir = java.nio.file.Paths.get("worlds", worldName);
+        java.nio.file.Path worldDir = com.stonebreak.world.save.WorldStorage.worldDir(worldName);
         if (!java.nio.file.Files.exists(worldDir)) {
             System.err.println("Cannot delete world: directory missing for '" + worldName + "'");
             refreshWorlds();
