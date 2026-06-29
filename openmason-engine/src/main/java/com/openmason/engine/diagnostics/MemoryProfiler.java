@@ -12,7 +12,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Advanced memory profiler for debugging memory usage and potential leaks.
  */
 public class MemoryProfiler {
-    
+
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(MemoryProfiler.class);
+
     private static final MemoryProfiler instance = new MemoryProfiler();
     private final MemoryMXBean memoryMXBean;
     private final Map<String, MemorySnapshot> snapshots;
@@ -47,8 +49,8 @@ public class MemoryProfiler {
         );
         
         snapshots.put(label, snapshot);
-        System.out.printf("[MEMORY SNAPSHOT] %s - Heap: %d MB, Non-heap: %d MB%n", 
-                         label, snapshot.heapUsed / (1024 * 1024), snapshot.nonHeapUsed / (1024 * 1024));
+        logger.debug("[MEMORY SNAPSHOT] {} - Heap: {} MB, Non-heap: {} MB",
+                label, snapshot.heapUsed / (1024 * 1024), snapshot.nonHeapUsed / (1024 * 1024));
     }
     
     /**
@@ -59,27 +61,25 @@ public class MemoryProfiler {
         MemorySnapshot after = snapshots.get(afterLabel);
         
         if (before == null || after == null) {
-            System.err.println("Cannot compare snapshots - one or both snapshots not found");
+            logger.warn("Cannot compare snapshots - one or both snapshots not found");
             return;
         }
-        
+
         long heapDiff = after.heapUsed - before.heapUsed;
         long nonHeapDiff = after.nonHeapUsed - before.nonHeapUsed;
         long gcTimeDiff = after.totalGCTime - before.totalGCTime;
         long gcRunsDiff = after.totalGCRuns - before.totalGCRuns;
-        
-        System.out.println("========== MEMORY COMPARISON ==========");
-        System.out.printf("Comparing: %s -> %s%n", beforeLabel, afterLabel);
-        System.out.printf("Heap change: %+d MB%n", heapDiff / (1024 * 1024));
-        System.out.printf("Non-heap change: %+d MB%n", nonHeapDiff / (1024 * 1024));
-        System.out.printf("GC time increase: %+d ms%n", gcTimeDiff);
-        System.out.printf("GC runs increase: %+d%n", gcRunsDiff);
-        
+
+        logger.debug("[MEMORY COMPARISON] {} -> {}: heap {}{} MB, non-heap {}{} MB, GC time +{} ms, GC runs +{}",
+                beforeLabel, afterLabel,
+                heapDiff >= 0 ? "+" : "", heapDiff / (1024 * 1024),
+                nonHeapDiff >= 0 ? "+" : "", nonHeapDiff / (1024 * 1024),
+                gcTimeDiff, gcRunsDiff);
+
         if (heapDiff > 50 * 1024 * 1024) { // More than 50MB increase
-            System.out.println("⚠️  WARNING: Significant heap memory increase detected!");
+            logger.warn("Significant heap memory increase detected: +{} MB ({} -> {})",
+                    heapDiff / (1024 * 1024), beforeLabel, afterLabel);
         }
-        
-        System.out.println("=======================================");
     }
     
     /**

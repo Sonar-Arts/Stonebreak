@@ -131,8 +131,10 @@ chunk_gl_errors.txt
 /Git ignored/
 
 # World data and Backups
+# Worlds now live in the per-user app-data dir (see WorldStorage), not the repo.
 /backups/
 /worlds/
+/stonebreak-game/worlds/
 /Dev Working/
 
 # Open Mason Theme

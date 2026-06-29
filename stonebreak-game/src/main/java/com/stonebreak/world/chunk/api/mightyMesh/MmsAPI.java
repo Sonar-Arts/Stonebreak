@@ -20,6 +20,8 @@ import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.MmsCcoAdapter;
 import com.openmason.engine.voxel.mms.mmsMetrics.MmsStatistics;
 import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Mighty Mesh System - Main API Facade.
@@ -53,6 +55,8 @@ import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
  * @since MMS 1.0
  */
 public final class MmsAPI {
+
+    private static final Logger logger = LoggerFactory.getLogger(MmsAPI.class);
 
     // Singleton instance
     private static volatile MmsAPI instance;
@@ -107,12 +111,8 @@ public final class MmsAPI {
 
         this.initialized = true;
 
-        System.out.println("[MmsAPI] Initialized Mighty Mesh System v1.1");
-        System.out.println("[MmsAPI]   - Greedy Meshing: " + greedyMeshingEnabled);
-        System.out.println("[MmsAPI]   - LOD System: " + lodSystemEnabled);
-        System.out.println("[MmsAPI]   - Mesh Caching: " + meshCachingEnabled);
-        System.out.println("[MmsAPI]   - Buffer Pooling: " + bufferPoolingEnabled);
-        System.out.println("[MmsAPI]   - Async Upload: " + asyncUploadEnabled);
+        logger.debug("[MmsAPI] Initialized Mighty Mesh System v1.1 (greedyMeshing={}, lod={}, meshCaching={}, bufferPooling={}, asyncUpload={})",
+                greedyMeshingEnabled, lodSystemEnabled, meshCachingEnabled, bufferPoolingEnabled, asyncUploadEnabled);
     }
 
     /**
@@ -174,11 +174,11 @@ public final class MmsAPI {
         this.world = world;
         if (ccoAdapter != null) {
             ccoAdapter.setWorld(world);
-            System.out.println("[MmsAPI] World instance updated in MmsAPI and CCO adapter");
+            logger.debug("[MmsAPI] World instance updated in MmsAPI and CCO adapter");
         }
         if (sboCullingService != null) {
             sboCullingService.setWorld(new com.stonebreak.world.chunk.api.voxel.WorldAdapter(world));
-            System.out.println("[MmsAPI] World set on SBO culling service");
+            logger.debug("[MmsAPI] World set on SBO culling service");
         }
     }
 
@@ -371,7 +371,7 @@ public final class MmsAPI {
      */
     public MmsAPI setGreedyMeshingEnabled(boolean enabled) {
         this.greedyMeshingEnabled = enabled;
-        System.out.println("[MmsAPI] Greedy meshing " + (enabled ? "enabled" : "disabled"));
+        logger.debug("[MmsAPI] Greedy meshing {}", enabled ? "enabled" : "disabled");
         return this;
     }
 
@@ -383,7 +383,7 @@ public final class MmsAPI {
      */
     public MmsAPI setLodSystemEnabled(boolean enabled) {
         this.lodSystemEnabled = enabled;
-        System.out.println("[MmsAPI] LOD system " + (enabled ? "enabled" : "disabled"));
+        logger.debug("[MmsAPI] LOD system {}", enabled ? "enabled" : "disabled");
         return this;
     }
 
@@ -395,7 +395,7 @@ public final class MmsAPI {
      */
     public MmsAPI setMeshCachingEnabled(boolean enabled) {
         this.meshCachingEnabled = enabled;
-        System.out.println("[MmsAPI] Mesh caching " + (enabled ? "enabled" : "disabled"));
+        logger.debug("[MmsAPI] Mesh caching {}", enabled ? "enabled" : "disabled");
         return this;
     }
 
@@ -407,7 +407,7 @@ public final class MmsAPI {
      */
     public MmsAPI setBufferPoolingEnabled(boolean enabled) {
         this.bufferPoolingEnabled = enabled;
-        System.out.println("[MmsAPI] Buffer pooling " + (enabled ? "enabled" : "disabled"));
+        logger.debug("[MmsAPI] Buffer pooling {}", enabled ? "enabled" : "disabled");
         return this;
     }
 
@@ -419,7 +419,7 @@ public final class MmsAPI {
      */
     public MmsAPI setAsyncUploadEnabled(boolean enabled) {
         this.asyncUploadEnabled = enabled;
-        System.out.println("[MmsAPI] Async upload " + (enabled ? "enabled" : "disabled"));
+        logger.debug("[MmsAPI] Async upload {}", enabled ? "enabled" : "disabled");
         return this;
     }
 
@@ -506,7 +506,7 @@ public final class MmsAPI {
     public void resetStatistics() {
         ensureInitialized();
         statistics.reset();
-        System.out.println("[MmsAPI] Statistics reset");
+        logger.debug("[MmsAPI] Statistics reset");
     }
 
     /**
@@ -589,7 +589,7 @@ public final class MmsAPI {
 
         // Shut down existing pipeline if it exists (world switching)
         if (meshPipeline != null) {
-            System.out.println("[MmsAPI] Shutting down existing mesh pipeline for world switch");
+            logger.debug("[MmsAPI] Shutting down existing mesh pipeline for world switch");
             meshPipeline.shutdown();
             meshPipeline = null;
         }
@@ -604,7 +604,7 @@ public final class MmsAPI {
         }
 
         meshPipeline = new MmsMeshPipeline(world, config, errorReporter);
-        System.out.println("[MmsAPI] Created new mesh pipeline for world");
+        logger.debug("[MmsAPI] Created new mesh pipeline for world");
         return meshPipeline;
     }
 
@@ -683,7 +683,7 @@ public final class MmsAPI {
 
                 instance.initialized = false;
                 instance = null;
-                System.out.println("[MmsAPI] Mighty Mesh System shut down");
+                logger.debug("[MmsAPI] Mighty Mesh System shut down");
             }
         }
     }

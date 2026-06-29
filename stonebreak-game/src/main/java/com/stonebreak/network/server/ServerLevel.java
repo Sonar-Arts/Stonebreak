@@ -74,7 +74,7 @@ public final class ServerLevel {
      * the world metadata loads and the spawn area pre-generates (run off the render thread).
      */
     public static ServerLevel createAndLoad(String worldName, long fallbackSeed) {
-        String worldPath = "worlds/" + worldName;
+        String worldPath = com.stonebreak.world.save.WorldStorage.worldPath(worldName);
         SaveService save = new SaveService(worldPath);
 
         SaveService.LoadResult lr = null;

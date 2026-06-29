@@ -2,6 +2,8 @@ package com.openmason.engine.rendering.cbr.meshing;
 
 import com.openmason.engine.rendering.cbr.models.BlockDefinition;
 import org.lwjgl.BufferUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.Map;
@@ -24,7 +26,9 @@ import static org.lwjgl.opengl.GL30.*;
  * Implements RAII for automatic GPU resource cleanup.
  */
 public class MeshManager implements AutoCloseable {
-    
+
+    private static final Logger logger = LoggerFactory.getLogger(MeshManager.class);
+
     private final Map<MeshType, MeshResource> prebuiltMeshes;
     private final Map<String, MeshResource> customMeshes;
     private boolean disposed = false;
@@ -597,7 +601,7 @@ public class MeshManager implements AutoCloseable {
         prebuiltMeshes.put(MeshType.SLAB_BOTTOM, createSlabMesh(false));
         prebuiltMeshes.put(MeshType.SLAB_TOP, createSlabMesh(true));
         
-        System.out.println("[MeshManager] Initialized " + prebuiltMeshes.size() + " common meshes");
+        logger.debug("[MeshManager] Initialized {} common meshes", prebuiltMeshes.size());
     }
     
     /**
@@ -827,7 +831,7 @@ public class MeshManager implements AutoCloseable {
             customMeshes.clear();
             
             disposed = true;
-            System.out.println("[MeshManager] Disposed and cleaned up all mesh resources");
+            logger.debug("[MeshManager] Disposed and cleaned up all mesh resources");
         }
     }
     

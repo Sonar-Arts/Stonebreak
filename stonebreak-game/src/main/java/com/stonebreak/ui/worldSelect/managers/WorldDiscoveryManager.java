@@ -2,13 +2,13 @@ package com.stonebreak.ui.worldSelect.managers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.stonebreak.world.save.WorldStorage;
 import com.stonebreak.world.save.model.WorldData;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.time.LocalDateTime;
 
@@ -18,7 +18,6 @@ import java.time.LocalDateTime;
  */
 public class WorldDiscoveryManager {
 
-    private static final String WORLDS_DIRECTORY = "worlds";
     private static final String WORLD_DATA_FILENAME = "world.json";
 
     private final ObjectMapper objectMapper;
@@ -41,7 +40,7 @@ public class WorldDiscoveryManager {
      */
     public List<String> discoverWorlds() {
         try {
-            Path worldsPath = Paths.get(WORLDS_DIRECTORY);
+            Path worldsPath = WorldStorage.worldsRoot();
 
             if (!Files.exists(worldsPath)) {
                 Files.createDirectories(worldsPath);
@@ -160,7 +159,7 @@ public class WorldDiscoveryManager {
      */
     private WorldData loadWorldData(String worldName) {
         try {
-            Path worldDataPath = Paths.get(WORLDS_DIRECTORY, worldName, WORLD_DATA_FILENAME);
+            Path worldDataPath = WorldStorage.worldDir(worldName).resolve(WORLD_DATA_FILENAME);
 
             if (!Files.exists(worldDataPath)) {
                 return null;
@@ -216,7 +215,7 @@ public class WorldDiscoveryManager {
         }
 
         // Check if world already exists
-        Path worldPath = Paths.get(WORLDS_DIRECTORY, trimmedName);
+        Path worldPath = WorldStorage.worldDir(trimmedName);
         return !Files.exists(worldPath);
     }
 
@@ -251,7 +250,7 @@ public class WorldDiscoveryManager {
      * Gets the worlds directory path.
      */
     public Path getWorldsDirectory() {
-        return Paths.get(WORLDS_DIRECTORY);
+        return WorldStorage.worldsRoot();
     }
 
     /**

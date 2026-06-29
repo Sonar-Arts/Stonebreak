@@ -726,8 +726,8 @@ public class InputHandler {
                     var saveService = game.getSaveService();
                     if (saveService != null) {
                         String worldPath = saveService.getWorldPath();
-                        if (worldPath != null && worldPath.startsWith("worlds/")) {
-                            worldName = worldPath.substring(7); // Remove "worlds/" prefix
+                        if (worldPath != null && !worldPath.isBlank()) {
+                            worldName = java.nio.file.Paths.get(worldPath).getFileName().toString();
                         }
                     }
 

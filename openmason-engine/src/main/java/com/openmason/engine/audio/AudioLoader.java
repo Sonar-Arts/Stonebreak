@@ -1,6 +1,8 @@
 package com.openmason.engine.audio;
 
 import org.lwjgl.BufferUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import static org.lwjgl.openal.AL10.*;
 
 import javax.sound.sampled.*;
@@ -9,6 +11,8 @@ import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 
 public class AudioLoader {
+
+    private static final Logger logger = LoggerFactory.getLogger(AudioLoader.class);
 
     public static class LoadResult {
         public final int buffer;
@@ -31,30 +35,26 @@ public class AudioLoader {
     }
 
     public LoadResult loadSound(String name, String resourcePath) {
-        System.out.println("=== Loading Sound ====");
-        System.out.println("Sound name: " + name);
-        System.out.println("Resource path: " + resourcePath);
+        logger.debug("Loading sound '{}' from resource path: {}", name, resourcePath);
 
-        logResourceDebugInfo(resourcePath);
+        if (logger.isTraceEnabled()) {
+            logResourceDebugInfo(resourcePath);
+        }
 
         InputStream is = findResourceInputStream(resourcePath);
 
         try (InputStream finalIs = is) {
             if (finalIs == null) {
-                System.err.println("InputStream is NULL for path: " + resourcePath);
+                logger.warn("InputStream is NULL for path: {} — trying alternatives", resourcePath);
                 return tryAlternativePaths(name);
             }
 
-            System.out.println("Successfully opened InputStream for: " + resourcePath);
             return loadSoundFromStream(name, finalIs, resourcePath);
 
         } catch (IOException e) {
             String errorMsg = "IOException loading sound " + resourcePath + ": " + e.getMessage();
-            System.err.println(errorMsg);
-            System.err.println("Stack trace: " + e.toString());
+            logger.error(errorMsg, e);
             return LoadResult.failure(errorMsg);
-        } finally {
-            System.out.println("=====================");
         }
     }
 
@@ -71,45 +71,42 @@ public class AudioLoader {
     public LoadResult loadSound(String name, InputStream is) {
         if (is == null) {
             String errorMsg = "InputStream is NULL for sound: " + name;
-            System.err.println(errorMsg);
+            logger.error(errorMsg);
             return LoadResult.failure(errorMsg);
         }
         try (InputStream finalIs = is) {
             return loadSoundFromStream(name, finalIs, name);
         } catch (IOException e) {
             String errorMsg = "IOException loading sound " + name + ": " + e.getMessage();
-            System.err.println(errorMsg);
-            System.err.println("Stack trace: " + e.toString());
+            logger.error(errorMsg, e);
             return LoadResult.failure(errorMsg);
         }
     }
 
     private void logResourceDebugInfo(String resourcePath) {
-        System.out.println("Class: " + getClass().getName());
-        System.out.println("ClassLoader: " + getClass().getClassLoader());
+        logger.trace("Class: {}", getClass().getName());
+        logger.trace("ClassLoader: {}", getClass().getClassLoader());
 
         try {
             java.net.URL resourceUrl = getClass().getResource("/sounds/");
-            System.out.println("Sounds directory URL: " + resourceUrl);
+            logger.trace("Sounds directory URL: {}", resourceUrl);
 
             if (resourceUrl != null) {
                 java.io.File soundsDir = new java.io.File(resourceUrl.toURI());
                 if (soundsDir.exists() && soundsDir.isDirectory()) {
-                    System.out.println("Contents of sounds directory:");
-                    for (String file : soundsDir.list()) {
-                        System.out.println("  - " + file);
-                    }
+                    logger.trace("Contents of sounds directory: {}",
+                            java.util.Arrays.toString(soundsDir.list()));
                 }
             }
         } catch (URISyntaxException | SecurityException e) {
-            System.err.println("Error listing resources: " + e.getMessage());
+            logger.trace("Error listing resources: {}", e.getMessage());
         }
 
         try {
             java.net.URL soundUrl = getClass().getResource(resourcePath);
-            System.out.println("Direct URL for " + resourcePath + ": " + soundUrl);
+            logger.trace("Direct URL for {}: {}", resourcePath, soundUrl);
         } catch (Exception e) {
-            System.err.println("Error getting URL: " + e.getMessage());
+            logger.trace("Error getting URL: {}", e.getMessage());
         }
     }
 
@@ -133,7 +130,7 @@ public class AudioLoader {
     }
 
     private LoadResult tryAlternativePaths(String name) {
-        System.out.println("Trying alternative paths...");
+        logger.debug("Trying alternative sound paths for '{}'", name);
         String[] alternativePaths = {
             "/sounds/GrassWalk.wav",
             "sounds/GrassWalk.wav",
@@ -142,16 +139,16 @@ public class AudioLoader {
         };
 
         for (String altPath : alternativePaths) {
-            System.out.println("Trying: " + altPath);
+            logger.trace("Trying: {}", altPath);
             InputStream altIs = findResourceInputStream(altPath);
 
             try (InputStream finalAltIs = altIs) {
                 if (finalAltIs != null) {
-                    System.out.println("Found sound at: " + altPath);
+                    logger.debug("Found sound at: {}", altPath);
                     return loadSoundFromStream(name, finalAltIs, altPath);
                 }
             } catch (Exception e) {
-                System.err.println("Error trying " + altPath + ": " + e.getMessage());
+                logger.trace("Error trying {}: {}", altPath, e.getMessage());
             }
         }
 
@@ -160,18 +157,16 @@ public class AudioLoader {
 
     private LoadResult loadSoundFromStream(String name, InputStream is, String path) {
         try {
-            System.out.println("Loading sound: " + name + " from " + path);
-
             try (BufferedInputStream bis = new BufferedInputStream(is);
                  AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(bis)) {
                 AudioFormat format = audioInputStream.getFormat();
 
-                System.out.println("Original format: " + format);
+                logger.debug("Sound '{}' original format: {}", name, format);
 
                 // For 3D positional audio, we need MONO sounds. Convert stereo to mono.
                 int targetChannels = 1; // Force mono for 3D audio compatibility
                 if (format.getChannels() > 1) {
-                    System.out.println("🔄 Converting " + format.getChannels() + "-channel audio to MONO for 3D positional audio");
+                    logger.debug("Converting {}-channel audio to MONO for 3D positional audio", format.getChannels());
                 }
 
                 AudioFormat targetFormat = new AudioFormat(
@@ -193,13 +188,13 @@ public class AudioLoader {
                     int channels = targetFormat.getChannels();
                     int sampleRate = (int) targetFormat.getSampleRate();
 
-                    System.out.println("Converted format: " + channels + " channels, " + sampleRate + " Hz, " + audioData.length + " bytes");
-                    System.out.println("✅ Audio converted to MONO for 3D positional audio compatibility");
+                    logger.debug("Sound '{}' converted: {} channels, {} Hz, {} bytes",
+                            name, channels, sampleRate, audioData.length);
 
                     // Since we're forcing mono, this should always be 1 channel
                     int alFormat = AL_FORMAT_MONO16;
                     if (channels != 1) {
-                        System.err.println("❌ ERROR: Expected 1 channel after conversion, got " + channels);
+                        logger.error("Expected 1 channel after conversion, got {}", channels);
                         return LoadResult.failure("Mono conversion failed: got " + channels + " channels");
                     }
 
@@ -209,25 +204,23 @@ public class AudioLoader {
                     int error = alGetError();
                     if (error != AL_NO_ERROR) {
                         String errorMsg = "OpenAL error loading buffer: " + error;
-                        System.err.println(errorMsg);
+                        logger.error(errorMsg);
                         return LoadResult.failure(errorMsg);
                     }
 
-                    System.out.println("Successfully loaded sound: " + name + " (" + channels + " channels, " + sampleRate + " Hz)");
+                    logger.debug("Successfully loaded sound: {} ({} channels, {} Hz)", name, channels, sampleRate);
                     return LoadResult.success(bufferPointer);
                 }
 
             } catch (UnsupportedAudioFileException e) {
                 String errorMsg = "Unsupported audio file format: " + path;
-                System.err.println(errorMsg);
-                System.err.println("Stack trace: " + e.toString());
+                logger.error(errorMsg, e);
                 return LoadResult.failure(errorMsg);
             }
 
         } catch (IOException e) {
             String errorMsg = "Error loading sound " + path + ": " + e.getMessage();
-            System.err.println(errorMsg);
-            System.err.println("Stack trace: " + e.toString());
+            logger.error(errorMsg, e);
             return LoadResult.failure(errorMsg);
         }
     }

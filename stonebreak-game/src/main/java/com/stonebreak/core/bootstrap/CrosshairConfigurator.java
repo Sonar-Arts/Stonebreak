@@ -3,6 +3,8 @@ package com.stonebreak.core.bootstrap;
 import com.stonebreak.config.Settings;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.components.MCrosshairRenderer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Applies saved crosshair settings (style, size, thickness, gap, opacity,
@@ -10,6 +12,8 @@ import com.stonebreak.rendering.UI.components.MCrosshairRenderer;
  * {@code Game.initializeCrosshairSettings()}.
  */
 public final class CrosshairConfigurator {
+
+    private static final Logger logger = LoggerFactory.getLogger(CrosshairConfigurator.class);
 
     private CrosshairConfigurator() {
     }
@@ -19,13 +23,13 @@ public final class CrosshairConfigurator {
      */
     public static void apply(Renderer renderer) {
         if (renderer == null || renderer.getUIRenderer() == null) {
-            System.err.println("Warning: Renderer or UIRenderer not available during crosshair initialization");
+            logger.warn("Renderer or UIRenderer not available during crosshair initialization");
             return;
         }
 
         MCrosshairRenderer crosshairRenderer = renderer.getUIRenderer().getMCrosshairRenderer();
         if (crosshairRenderer == null) {
-            System.err.println("Warning: MCrosshairRenderer not available during initialization");
+            logger.warn("MCrosshairRenderer not available during initialization");
             return;
         }
 
@@ -36,7 +40,7 @@ public final class CrosshairConfigurator {
                 MCrosshairRenderer.CrosshairStyle.valueOf(settings.getCrosshairStyle());
             crosshairRenderer.setStyle(styleEnum);
         } catch (IllegalArgumentException e) {
-            System.err.println("Invalid crosshair style in settings: " + settings.getCrosshairStyle() + ", using default");
+            logger.warn("Invalid crosshair style in settings: {}, using default", settings.getCrosshairStyle());
             crosshairRenderer.setStyle(MCrosshairRenderer.CrosshairStyle.SIMPLE_CROSS);
         }
 
@@ -47,7 +51,7 @@ public final class CrosshairConfigurator {
         crosshairRenderer.setColor(settings.getCrosshairColorR(), settings.getCrosshairColorG(), settings.getCrosshairColorB());
         crosshairRenderer.setOutline(settings.getCrosshairOutline());
 
-        System.out.println("Crosshair settings initialized: style=" + settings.getCrosshairStyle() +
-                           ", size=" + settings.getCrosshairSize());
+        logger.debug("Crosshair settings initialized: style={}, size={}",
+                settings.getCrosshairStyle(), settings.getCrosshairSize());
     }
 }

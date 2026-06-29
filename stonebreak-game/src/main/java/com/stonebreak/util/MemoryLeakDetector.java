@@ -7,13 +7,17 @@ import java.util.concurrent.TimeUnit;
 import com.openmason.engine.diagnostics.MemoryProfiler;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Advanced memory leak detection system for the game.
  * Monitors various game components and detects potential memory leaks.
  */
 public class MemoryLeakDetector {
-    
+
+    private static final Logger logger = LoggerFactory.getLogger(MemoryLeakDetector.class);
+
     private static final MemoryLeakDetector instance = new MemoryLeakDetector();
     private final ScheduledExecutorService scheduler;
     private final MemoryProfiler profiler;
@@ -41,7 +45,7 @@ public class MemoryLeakDetector {
      * Starts the memory leak detection monitoring.
      */
     public void startMonitoring() {
-        System.out.println("Starting memory leak detection...");
+        logger.debug("Starting memory leak detection...");
         
         // Take initial snapshot
         profiler.takeSnapshot("leak_detector_start");
@@ -58,7 +62,7 @@ public class MemoryLeakDetector {
      * Stops the memory leak detection monitoring.
      */
     public void stopMonitoring() {
-        System.out.println("Stopping memory leak detection...");
+        logger.debug("Stopping memory leak detection...");
         scheduler.shutdown();
         try {
             if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
@@ -79,7 +83,7 @@ public class MemoryLeakDetector {
         
         if (increaseMB >= MIN_INCREASE_MB) {
             consecutiveIncreases++;
-            System.out.printf("[LEAK DETECTOR] Heap increased by %d MB (consecutive increases: %d)%n", 
+            logger.debug("[LEAK DETECTOR] Heap increased by {} MB (consecutive increases: {})",
                              increaseMB, consecutiveIncreases);
             
             if (consecutiveIncreases >= LEAK_THRESHOLD) {
@@ -97,7 +101,7 @@ public class MemoryLeakDetector {
      * Performs detailed analysis including chunk and resource tracking.
      */
     private void performDetailedAnalysis() {
-        System.out.println("[LEAK DETECTOR] Performing detailed analysis...");
+        logger.debug("[LEAK DETECTOR] Performing detailed analysis...");
         
         profiler.takeSnapshot("detailed_analysis_" + System.currentTimeMillis());
         profiler.reportDetailedMemoryStats();
@@ -111,7 +115,7 @@ public class MemoryLeakDetector {
         double usagePercent = (double) heapUsed / heapMax * 100;
         
         if (usagePercent > 85) {
-            System.out.println("[LEAK DETECTOR] High memory usage detected - monitoring for potential leaks...");
+            logger.debug("[LEAK DETECTOR] High memory usage detected - monitoring for potential leaks...");
             // With ZGC, let garbage collection happen naturally
             // Just monitor and report - don't force GC
             
@@ -122,9 +126,9 @@ public class MemoryLeakDetector {
                 long changeMB = (heapUsed - afterWait) / (1024 * 1024);
                 
                 if (changeMB > 0) {
-                    System.out.printf("[LEAK DETECTOR] ZGC naturally reclaimed %d MB%n", changeMB);
+                    logger.debug("[LEAK DETECTOR] ZGC naturally reclaimed {} MB", changeMB);
                 } else if (changeMB < -10) {
-                    System.out.printf("[LEAK DETECTOR] Memory usage increased by %d MB - monitoring for leaks%n", Math.abs(changeMB));
+                    logger.debug("[LEAK DETECTOR] Memory usage increased by {} MB - monitoring for leaks", Math.abs(changeMB));
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -142,20 +146,20 @@ public class MemoryLeakDetector {
             int pendingMesh = world.getPendingMeshBuildCount();
             int pendingGL = world.getPendingGLUploadCount();
             
-            System.out.printf("[RESOURCE ANALYSIS] Chunks: %d loaded, %d pending mesh, %d pending GL%n",
+            logger.debug("[RESOURCE ANALYSIS] Chunks: {} loaded, {} pending mesh, {} pending GL",
                              loadedChunks, pendingMesh, pendingGL);
-            
+
             // Check for concerning patterns
             if (loadedChunks > 1000) {
-                System.err.println("⚠️  WARNING: Very high number of loaded chunks! Possible chunk leak.");
+                logger.warn("Very high number of loaded chunks ({})! Possible chunk leak.", loadedChunks);
             }
-            
+
             if (pendingMesh > 100) {
-                System.err.println("⚠️  WARNING: High number of pending mesh builds. Thread pool may be overwhelmed.");
+                logger.warn("High number of pending mesh builds ({}). Thread pool may be overwhelmed.", pendingMesh);
             }
-            
+
             if (pendingGL > 50) {
-                System.err.println("⚠️  WARNING: High number of pending GL uploads. Main thread may be bottlenecked.");
+                logger.warn("High number of pending GL uploads ({}). Main thread may be bottlenecked.", pendingGL);
             }
         }
         
@@ -167,13 +171,9 @@ public class MemoryLeakDetector {
      * Reports a potential memory leak with recommendations.
      */
     private void reportPotentialLeak() {
-        System.err.println("🚨 POTENTIAL MEMORY LEAK DETECTED!");
-        System.err.println("Heap usage has been consistently increasing over time.");
-        System.err.println("Recommendations:");
-        System.err.println("1. Check chunk loading/unloading logic");
-        System.err.println("2. Verify OpenGL resources are being cleaned up");
-        System.err.println("3. Look for growing collections or caches");
-        System.err.println("4. Check for unclosed resources or listeners");
+        logger.warn("POTENTIAL MEMORY LEAK DETECTED! Heap usage has been consistently increasing over time. "
+                + "Recommendations: 1. Check chunk loading/unloading logic; 2. Verify OpenGL resources are being "
+                + "cleaned up; 3. Look for growing collections or caches; 4. Check for unclosed resources or listeners.");
         
         // Take emergency snapshot for analysis
         profiler.takeSnapshot("potential_leak_" + System.currentTimeMillis());
@@ -187,7 +187,7 @@ public class MemoryLeakDetector {
      * Manually triggers a comprehensive leak analysis.
      */
     public void triggerLeakAnalysis() {
-        System.out.println("[LEAK DETECTOR] Manual leak analysis triggered...");
+        logger.debug("[LEAK DETECTOR] Manual leak analysis triggered...");
         profiler.takeSnapshot("manual_analysis_before");
         
         // Monitor memory without forcing GC (ZGC-optimized approach)
@@ -204,9 +204,10 @@ public class MemoryLeakDetector {
         
         long changeMB = (beforeMonitor - afterMonitor) / (1024 * 1024);
         if (changeMB > 0) {
-            System.out.printf("[LEAK DETECTOR] ZGC naturally reclaimed %d MB during analysis%n", changeMB);
+            logger.debug("[LEAK DETECTOR] ZGC naturally reclaimed {} MB during analysis", changeMB);
         } else {
-            System.out.printf("[LEAK DETECTOR] Memory usage changed by %+d MB - analyzing patterns%n", -changeMB);
+            logger.debug("[LEAK DETECTOR] Memory usage changed by {}{} MB - analyzing patterns",
+                    -changeMB >= 0 ? "+" : "", -changeMB);
         }
         
         profiler.compareSnapshots("manual_analysis_before", "manual_analysis_after_monitor");

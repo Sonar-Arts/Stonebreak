@@ -16,8 +16,12 @@ import com.stonebreak.ui.mainMenu.MainMenuStage;
 import com.stonebreak.ui.mainMenu.SkijaMainMenuRenderer;
 import com.stonebreak.ui.mainMenu.SplashTextManager;
 import io.github.humbleui.types.Rect;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MainMenu {
+    private static final Logger logger = LoggerFactory.getLogger(MainMenu.class);
+
     private final SkijaMainMenuRenderer skijaRenderer;
     private final MainMenuStage stage = new MainMenuStage();
     // -1 = no selection, 0 = Singleplayer, 1 = Multiplayer, 2 = Settings, 3 = Quit Game

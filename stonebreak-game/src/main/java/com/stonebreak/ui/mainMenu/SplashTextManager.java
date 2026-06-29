@@ -10,7 +10,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class SplashTextManager {
+    private static final Logger logger = LoggerFactory.getLogger(SplashTextManager.class);
+
     private static SplashTextManager instance;
     private final List<String> splashTexts;
     private final Random random;
@@ -38,7 +43,7 @@ public class SplashTextManager {
         InputStream inputStream = null;
 
         for (String resourcePath : resourcePaths) {
-            System.out.println("Attempting to load splash text from: " + resourcePath);
+            logger.debug("Attempting to load splash text from: {}", resourcePath);
 
             // First try: Class-specific class loader
             inputStream = SplashTextManager.class.getClassLoader().getResourceAsStream(resourcePath);
@@ -59,14 +64,13 @@ public class SplashTextManager {
             }
 
             if (inputStream != null) {
-                System.out.println("Successfully found splash text file at: " + resourcePath);
+                logger.debug("Successfully found splash text file at: {}", resourcePath);
                 break;
             }
         }
 
         if (inputStream == null) {
-            System.err.println("Could not find splash_text.json at any of the attempted paths using any class loader");
-            System.err.println("Using default splash text");
+            logger.warn("Could not find splash_text.json at any of the attempted paths using any class loader — using default splash text");
             splashTexts.add("Welcome to Stonebreak!");
             return;
         }
@@ -80,15 +84,14 @@ public class SplashTextManager {
 
             if (loadedTexts != null && !loadedTexts.isEmpty()) {
                 splashTexts.addAll(loadedTexts);
-                System.out.println("Successfully loaded " + loadedTexts.size() + " splash texts from JSON");
+                logger.debug("Successfully loaded {} splash texts from JSON", loadedTexts.size());
             } else {
-                System.err.println("JSON file loaded but contained no splash texts, using default");
+                logger.warn("JSON file loaded but contained no splash texts, using default");
                 splashTexts.add("Welcome to Stonebreak!");
             }
 
         } catch (IOException e) {
-            System.err.println("Error loading splash texts: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error loading splash texts", e);
             splashTexts.add("Welcome to Stonebreak!");
         } finally {
             try {
@@ -120,7 +123,7 @@ public class SplashTextManager {
         } while (newText.equals(lastSplashText) && attempts < 10);
 
         lastSplashText = newText;
-        System.out.println("Selected splash text: '" + newText + "'");
+        logger.debug("Selected splash text: '{}'", newText);
         return newText;
     }
 

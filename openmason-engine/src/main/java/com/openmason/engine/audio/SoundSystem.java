@@ -8,6 +8,8 @@ package com.openmason.engine.audio;
  * player-position-relative test commands) lives in the consuming module, not here.
  */
 public class SoundSystem {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(SoundSystem.class);
+
     private static SoundSystem instance;
 
     private final OpenALContext openALContext;
@@ -60,7 +62,7 @@ public class SoundSystem {
         if (result.success) {
             soundBuffer.addSound(name, result.buffer);
         } else {
-            System.err.println("Failed to load sound " + name + ": " + result.errorMessage);
+            logger.error("Failed to load sound {}: {}", name, result.errorMessage);
         }
     }
 
