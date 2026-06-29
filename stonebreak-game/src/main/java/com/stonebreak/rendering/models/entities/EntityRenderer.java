@@ -572,6 +572,37 @@ public class EntityRenderer {
     }
 
     /**
+     * Renders a preview pose of the player SBE model into whatever
+     * viewport/scissor the caller has set up, using a caller-supplied camera.
+     *
+     * <p>Counterpart to {@link #renderEntityPreview} for the player, which is not
+     * an {@link Entity} and whose asset may be untextured. Reuses
+     * {@link #drawPlayerSbe} so textured assets render normally and untextured
+     * assets fall back to the colored path (otherwise every face is skipped and
+     * nothing draws). Intended for UI previews (e.g. character creation), so the
+     * head faces forward and underwater fog is disabled.
+     *
+     * @param stateName     SBE animation-state name (null → rest pose)
+     * @param animationTime elapsed clip time in seconds
+     * @param position      model-space position to place the origin at
+     * @param yawDegrees    Y-axis rotation in degrees
+     * @param scale         world scale
+     * @param viewMatrix    preview camera view matrix
+     * @param projectionMatrix preview camera projection matrix
+     */
+    public void renderPlayerPreview(String stateName, float animationTime,
+                                    Vector3f position, float yawDegrees, Vector3f scale,
+                                    Matrix4f viewMatrix, Matrix4f projectionMatrix) {
+        if (!initialized) return;
+        com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
+                        EntityType.REMOTE_PLAYER.getSbeObjectId());
+        if (asset == null) return;
+        drawPlayerSbe(asset, stateName, animationTime, position, yawDegrees, scale,
+                0f, 0f, ensureLocalPlayerColor(), viewMatrix, projectionMatrix, null, null);
+    }
+
+    /**
      * Draws a debug wireframe overlay of an entity's actual model.
      *
      * <p>Unlike a bounding box, this re-draws the model's own mesh through the
