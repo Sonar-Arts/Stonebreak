@@ -20,6 +20,7 @@ import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
 import com.stonebreak.network.packet.entity.EntitySpawnS2C;
+import com.stonebreak.network.packet.entity.EntityAnimS2C;
 import com.stonebreak.network.packet.entity.EntityStateS2C;
 import com.stonebreak.network.packet.entity.EntityTeleportS2C;
 import com.stonebreak.network.packet.handshake.DisconnectC2S;
@@ -305,6 +306,7 @@ public final class ClientWorldView {
             case EntityMoveS2C mv -> entityHandler.applyDelta(mv);
             case EntityTeleportS2C t -> entityHandler.applyTeleport(t);
             case EntityStateS2C es -> entityHandler.applyAbsolute(es.networkId(), es.x(), es.y(), es.z(), es.yaw());
+            case EntityAnimS2C a -> entityHandler.applyAnim(a.networkId(), a.state());
             default -> { /* unexpected clientbound packet — ignore */ }
         }
     }

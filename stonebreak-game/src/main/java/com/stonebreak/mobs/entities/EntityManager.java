@@ -91,9 +91,11 @@ public class EntityManager {
             if (entity.isAlive()) {
                 // Network shadows are driven by inbound state packets — skip local
                 // AI/physics. Apply network interpolation each frame so motion is
-                // smooth between snapshots instead of teleporting at tick rate.
+                // smooth between snapshots, and advance client-only visual clocks so
+                // animations play (the discrete animation state arrives via EntityAnimS2C).
                 if (entity.isNetworkShadow()) {
                     if (entity.getInterpolator() != null) entity.getInterpolator().apply(entity);
+                    entity.updateClientVisuals(deltaTime);
                     continue;
                 }
 

@@ -88,7 +88,8 @@ public class Game {
     
     // Entity system components
     private com.stonebreak.mobs.entities.EntityManager entityManager; // Entity management system
-    private com.stonebreak.mobs.entities.EntitySpawner entitySpawner; // Entity spawning system
+    // NOTE: mob spawning is server-authoritative — the sole EntitySpawner lives on the
+    // ServerLevel (two-world model). The local client world is render-only and never spawns.
 
 
     // Time of day system
@@ -104,9 +105,7 @@ public class Game {
             new com.stonebreak.core.loop.GameLoop(this, worldUpdateExecutor);
     private final com.stonebreak.core.world.WorldLifecycle worldLifecycle =
             new com.stonebreak.core.world.WorldLifecycle(this);
-    private final com.stonebreak.core.world.WorldGenerationCoordinator worldGenerationCoordinator =
-            new com.stonebreak.core.world.WorldGenerationCoordinator(this, worldLifecycle);
-    
+
     
     // Cheat system
     private boolean cheatsEnabled = false;
@@ -244,11 +243,12 @@ public class Game {
             waterEffects.detectExistingWater();
         }
 
-        // Initialize entity system
+        // Initialize the client-side entity system. This EntityManager holds network-shadow
+        // entities streamed from the server; it owns no spawner (spawning is server-authoritative,
+        // driven by ServerLevel's EntitySpawner — the single source of truth).
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
-        this.entitySpawner = new com.stonebreak.mobs.entities.EntitySpawner(world, entityManager);
         world.setEntityManager(this.entityManager);
-        System.out.println("Entity system initialized - cows can now spawn!");
+        System.out.println("Client entity system initialized (network shadows).");
 
         // Note: TimeOfDay initialization is handled during world loading/generation
         // For new worlds: Set to NOON in performInitialWorldGeneration()
@@ -442,13 +442,6 @@ public class Game {
      */
     public static com.stonebreak.mobs.entities.EntityManager getEntityManager() {
         return getInstance().entityManager;
-    }
-
-    /**
-     * Gets the entity spawner.
-     */
-    public com.stonebreak.mobs.entities.EntitySpawner getEntitySpawner() {
-        return entitySpawner;
     }
 
 
@@ -843,9 +836,9 @@ public class Game {
         return saveService;
     }
 
-    // ---- Coordinator-facing setters / getters (package-private) ----
-    // These exist solely so WorldLifecycle / WorldGenerationCoordinator can
-    // mutate fields whose public API (getters above) lives on Game.
+    // ---- World-metadata setters / getters ----
+    // Used by WorldLifecycle and the client-world bootstrap to mutate fields
+    // whose public API (getters above) lives on Game.
 
     public void setSaveService(SaveService saveService) {
         this.saveService = saveService;
@@ -879,17 +872,7 @@ public class Game {
         this.timeOfDay = timeOfDay;
     }
 
-    // ---- World generation + lifecycle delegates ----
-
-    /** Delegates to {@link com.stonebreak.core.world.WorldGenerationCoordinator#startWorldGeneration()}. */
-    public void startWorldGeneration() {
-        worldGenerationCoordinator.startWorldGeneration();
-    }
-
-    /** Delegates to {@link com.stonebreak.core.world.WorldGenerationCoordinator#startWorldGeneration(String, long)}. */
-    public void startWorldGeneration(String worldName, long seed) {
-        worldGenerationCoordinator.startWorldGeneration(worldName, seed);
-    }
+    // ---- World lifecycle (client render world) ----
 
     /**
      * Build the client RENDER world (two-world model): a {@code World.createClientView} world
@@ -971,10 +954,5 @@ public class Game {
                 ls.hide();
             }
         }
-    }
-
-    /** Delegates to {@link com.stonebreak.core.world.WorldGenerationCoordinator#completeWorldGeneration()}. */
-    public void completeWorldGeneration() {
-        worldGenerationCoordinator.completeWorldGeneration();
     }
 }

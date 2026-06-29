@@ -7,8 +7,9 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Handles world replacement and reset flows. Extracted from
- * {@code Game.resetWorld() / createFreshWorldInstance / replaceWorldInstance}.
+ * Handles world replacement and reset flows for the two-world model. Builds the client RENDER
+ * world ({@link #createClientWorldInstance}) and swaps it in ({@link #replaceWorldInstance});
+ * the authoritative world is owned by the server ({@code ServerLevel}), not here.
  */
 public final class WorldLifecycle {
 
@@ -98,15 +99,6 @@ public final class WorldLifecycle {
         System.out.println("[MAIN-MENU-TRANSITION] ✓ World reset completed - main menu is now clean!");
         System.out.println("[MAIN-MENU-TRANSITION] No background systems should be running.");
         System.out.println("========================================");
-    }
-
-    /**
-     * Creates a fresh {@link World} instance with the specified seed.
-     * MmsAPI must already be initialized.
-     */
-    public World createFreshWorldInstance(long seed) {
-        WorldConfiguration config = new WorldConfiguration();
-        return new World(config, seed);
     }
 
     /**

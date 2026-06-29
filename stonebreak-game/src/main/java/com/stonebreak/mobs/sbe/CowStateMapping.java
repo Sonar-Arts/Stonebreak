@@ -24,4 +24,20 @@ public final class CowStateMapping {
             case IDLE -> "Idle";
         };
     }
+
+    /**
+     * Inverse of {@link #sbeState}: the cow behaviour state for a replicated SBE state name.
+     * Unknown/null names fall back to {@code IDLE}. Used on the client to apply a server-sent
+     * animation state to a network-shadow cow.
+     */
+    public static CowAI.CowBehaviorState behaviorState(String sbeState) {
+        if (sbeState == null) {
+            return CowAI.CowBehaviorState.IDLE;
+        }
+        return switch (sbeState) {
+            case "Walking" -> CowAI.CowBehaviorState.WANDERING;
+            case "Grazing" -> CowAI.CowBehaviorState.GRAZING;
+            default -> CowAI.CowBehaviorState.IDLE;
+        };
+    }
 }

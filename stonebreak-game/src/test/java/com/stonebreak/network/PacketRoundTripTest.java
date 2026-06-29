@@ -6,6 +6,7 @@ import com.openmason.engine.net.protocol.PacketCodec;
 import com.openmason.engine.net.protocol.PacketRegistry;
 import com.stonebreak.network.packet.chat.ChatMessageC2S;
 import com.stonebreak.network.packet.chat.ChatMessageS2C;
+import com.stonebreak.network.packet.entity.EntityAnimS2C;
 import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
@@ -82,6 +83,7 @@ class PacketRoundTripTest {
         assertEquals(new EntityStateS2C(9, 1f, 2f, 3f, 90f), roundTrip(EntityStateS2C.CODEC, new EntityStateS2C(9, 1f, 2f, 3f, 90f)));
         assertEquals(new EntityMoveS2C(9, (short) 1, (short) 2, (short) 3, (short) 900), roundTrip(EntityMoveS2C.CODEC, new EntityMoveS2C(9, (short) 1, (short) 2, (short) 3, (short) 900)));
         assertEquals(new EntityTeleportS2C(9, 1f, 2f, 3f, 90f), roundTrip(EntityTeleportS2C.CODEC, new EntityTeleportS2C(9, 1f, 2f, 3f, 90f)));
+        assertEquals(new EntityAnimS2C(9, "Grazing"), roundTrip(EntityAnimS2C.CODEC, new EntityAnimS2C(9, "Grazing")));
     }
 
     @Test

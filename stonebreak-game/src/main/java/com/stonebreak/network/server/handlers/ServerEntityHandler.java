@@ -9,8 +9,10 @@ import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.ItemDrop;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.RemotePlayer;
+import com.stonebreak.mobs.sbe.EntityAnimResolver;
 import com.stonebreak.mobs.sheep.Sheep;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.network.packet.entity.EntityAnimS2C;
 import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
@@ -50,6 +52,8 @@ public final class ServerEntityHandler {
     private final Map<Integer, Entity> byNetworkId = new ConcurrentHashMap<>();
     private final Map<Integer, float[]> lastBroadcast = new ConcurrentHashMap<>();
     private final Map<Integer, Integer> ticksSinceResync = new ConcurrentHashMap<>();
+    /** Last SBE animation-state name broadcast per entity, so we only resend on change. */
+    private final Map<Integer, String> lastAnimState = new ConcurrentHashMap<>();
 
     /** Reset, then snapshot existing entities so they're tracked + replicable. */
     public void onSessionStart(ServerWorldContext ctx) {
@@ -57,6 +61,7 @@ public final class ServerEntityHandler {
         byNetworkId.clear();
         lastBroadcast.clear();
         ticksSinceResync.clear();
+        lastAnimState.clear();
         EntityManager em = ctx.entityManager();
         if (em != null) {
             for (Entity e : em.getAllEntities()) {
@@ -71,6 +76,7 @@ public final class ServerEntityHandler {
         byNetworkId.clear();
         lastBroadcast.clear();
         ticksSinceResync.clear();
+        lastAnimState.clear();
     }
 
     /** EntityManager listener hook: a new entity was added to the authoritative world. */
@@ -80,6 +86,12 @@ public final class ServerEntityHandler {
         }
         registerHostEntity(e);
         ctx.broadcast(spawnPacketFor(e), false);
+        // Send the initial animation state so the shadow starts in the right clip, not the default.
+        EntityAnimS2C anim = animPacketFor(e);
+        if (anim != null) {
+            lastAnimState.put(e.getNetworkId(), anim.state());
+            ctx.broadcast(anim, false);
+        }
     }
 
     /** EntityManager listener hook: an entity was removed from the authoritative world. */
@@ -91,6 +103,7 @@ public final class ServerEntityHandler {
         byNetworkId.remove(id);
         lastBroadcast.remove(id);
         ticksSinceResync.remove(id);
+        lastAnimState.remove(id);
         ctx.broadcast(new EntityDespawnS2C(id), false);
     }
 
@@ -98,6 +111,10 @@ public final class ServerEntityHandler {
     public void onPeerJoined(ServerPlayer sp) {
         for (Entity e : byNetworkId.values()) {
             sp.send(spawnPacketFor(e), false);
+            EntityAnimS2C anim = animPacketFor(e);
+            if (anim != null) {
+                sp.send(anim, false);
+            }
         }
     }
 
@@ -106,6 +123,10 @@ public final class ServerEntityHandler {
             if (!e.isAlive()) {
                 continue;
             }
+            // Replicate animation/behavior state on change (independent of movement — a mob can
+            // change state while stationary, e.g. Idle -> Grazing).
+            broadcastAnimIfChanged(e, ctx);
+
             int id = e.getNetworkId();
             float[] last = lastBroadcast.get(id);
             if (last == null) {
@@ -147,6 +168,13 @@ public final class ServerEntityHandler {
                 ctx.broadcast(new EntityTeleportS2C(id, p.x, p.y, p.z, yaw), false);
                 last[0] = p.x; last[1] = p.y; last[2] = p.z; last[3] = yaw;
                 ticksSinceResync.put(id, 0);
+                // The periodic resync also refreshes animation state, self-healing any spawn-race
+                // miss (e.g. an anim packet that arrived before the client world was ready).
+                EntityAnimS2C anim = animPacketFor(e);
+                if (anim != null) {
+                    lastAnimState.put(id, anim.state());
+                    ctx.broadcast(anim, false);
+                }
             }
         }
     }
@@ -215,6 +243,25 @@ public final class ServerEntityHandler {
             || t == EntityType.SHEEP
             || t == EntityType.BLOCK_DROP
             || t == EntityType.ITEM_DROP;
+    }
+
+    /** Broadcast an {@link EntityAnimS2C} when an entity's SBE animation state has changed. */
+    private void broadcastAnimIfChanged(Entity e, ServerWorldContext ctx) {
+        String state = EntityAnimResolver.sbeState(e);
+        if (state == null) {
+            return; // not an AI-animated mob (drops/projectiles)
+        }
+        int id = e.getNetworkId();
+        if (!state.equals(lastAnimState.get(id))) {
+            lastAnimState.put(id, state);
+            ctx.broadcast(new EntityAnimS2C(id, state), false);
+        }
+    }
+
+    /** The current animation-state packet for an entity, or null if it has no AI-driven state. */
+    private static EntityAnimS2C animPacketFor(Entity e) {
+        String state = EntityAnimResolver.sbeState(e);
+        return state != null ? new EntityAnimS2C(e.getNetworkId(), state) : null;
     }
 
     private static EntitySpawnS2C spawnPacketFor(Entity e) {

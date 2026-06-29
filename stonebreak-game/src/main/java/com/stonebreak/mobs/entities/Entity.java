@@ -230,7 +230,22 @@ public abstract class Entity {
     public void setNetworkShadow(boolean shadow) { this.networkShadow = shadow; }
     public com.stonebreak.network.client.NetworkInterpolator getInterpolator() { return interpolator; }
     public void setInterpolator(com.stonebreak.network.client.NetworkInterpolator interp) { this.interpolator = interp; }
-    
+
+    /**
+     * Apply a server-replicated animation/behavior state to this client shadow (two-world model),
+     * given as an SBE state name. The base entity has no behavior state; mobs override this to map
+     * the name back onto their AI so the renderer and debug views reflect the authoritative state.
+     * Never called on the authoritative server (shadows exist only on the client).
+     */
+    public void applyNetworkState(String sbeStateName) { }
+
+    /**
+     * Advance client-only visual clocks for a network shadow each frame. Shadows skip the full
+     * {@link #update}, so mobs override this to keep their animation controller (and any one-shot
+     * clip timers) running while the server drives position and discrete state. No-op by default.
+     */
+    public void updateClientVisuals(float deltaTime) { }
+
     /**
      * Simple bounding box class for collision detection.
      */

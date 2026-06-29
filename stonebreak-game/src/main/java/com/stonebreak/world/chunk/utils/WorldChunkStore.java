@@ -600,15 +600,12 @@ public class WorldChunkStore {
      * This provides initial population - continuous spawning happens via spawning cycles.
      */
     private void initialMobSpawn(Chunk chunk) {
-        // Prefer this world's own spawner (the headless server world binds its own so mobs land
-        // in the server's EntityManager); fall back to the Game singleton for the co-located /
-        // single-world case.
+        // Mob spawning is server-authoritative: only the headless server world binds an
+        // EntitySpawner (the single source of truth), so initial chunk spawns land in the server's
+        // EntityManager. A render-only client world carries no spawner — its mobs stream in as
+        // network shadows — so this is a no-op there.
         com.stonebreak.mobs.entities.EntitySpawner spawner =
             (world != null) ? world.getEntitySpawner() : null;
-        if (spawner == null) {
-            Game game = Game.getInstance();
-            spawner = (game != null) ? game.getEntitySpawner() : null;
-        }
         if (spawner == null) {
             return;
         }
@@ -687,7 +684,16 @@ public class WorldChunkStore {
         if (meshPipeline != null) {
             meshPipeline.addChunkForGpuCleanup(chunk);
         }
-        Game.getEntityManager().removeEntitiesInChunk(chunkX, chunkZ);
+        // Remove entities owned by THIS world's manager (two-world model): on the client render
+        // world this culls local shadows (the manager guards against removing network shadows /
+        // remote players); on a headless server world it would target the server's manager. Using
+        // the world's own manager rather than the Game singleton (which always resolves to the
+        // CLIENT) keeps the removal authority unambiguous. The server world never unloads chunks.
+        com.stonebreak.mobs.entities.EntityManager entityManager =
+            (world != null) ? world.getEntityManager() : null;
+        if (entityManager != null) {
+            entityManager.removeEntitiesInChunk(chunkX, chunkZ);
+        }
     }
 
     private void notify(Consumer<Chunk> listener, Chunk chunk) {

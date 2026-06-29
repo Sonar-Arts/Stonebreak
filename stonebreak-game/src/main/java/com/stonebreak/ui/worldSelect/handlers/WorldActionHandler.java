@@ -64,8 +64,9 @@ public class WorldActionHandler {
         try {
             System.out.println("Loading world: " + worldName);
 
-            // Note: SaveService is created per-world, not a singleton
-            // The actual world loading will be handled by Game.startWorldGeneration
+            // Note: SaveService is created per-world by the integrated server, not a singleton.
+            // World load/generation + persistence happen on the authoritative ServerLevel; the
+            // local client just builds the render world from the server's streamed chunks.
 
             // Get world metadata to retrieve the seed
             WorldData worldData = discoveryManager.getWorldData(worldName);

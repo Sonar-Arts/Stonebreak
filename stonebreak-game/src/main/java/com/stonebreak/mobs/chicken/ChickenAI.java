@@ -324,6 +324,16 @@ public class ChickenAI {
     public float getStateTimer() { return stateTimer; }
 
     /**
+     * Advances ONLY the state-timer clock, without running any AI decisions. Used on a client
+     * network shadow (whose AI is otherwise frozen) so the one-shot Wingflap clip — which the
+     * renderer samples from {@link #getStateTimer()} — plays through after a replicated state
+     * change resets the timer via {@link #setState}.
+     */
+    public void advanceClientClock(float deltaTime) {
+        stateTimer += deltaTime;
+    }
+
+    /**
      * Cleans up AI resources when the chicken is removed.
      */
     public void cleanup() {
