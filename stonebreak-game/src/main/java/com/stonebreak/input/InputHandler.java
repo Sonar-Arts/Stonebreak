@@ -64,18 +64,20 @@ public class InputHandler {
     // Resolves fishing catches (loot roll + drop spawn) when a bobber is reeled in.
     private final com.stonebreak.mobs.entities.FishingManager fishingManager =
             new com.stonebreak.mobs.entities.FishingManager();
-    // private int selectedBlock = 1; // Old field, replaced by currentSelectedHotbarIndex logic for selection
-    
-    
+
     // Key state tracking for toggle actions
     private boolean escapeKeyPressed = false;
     private boolean inventoryKeyPressed = false; // Added for inventory toggle
     private boolean characterKeyPressed = false; // Added for character screen toggle
+    private boolean rampageKeyPressed = false; // Berserker: Rampage cast (R)
+    private boolean skullCrusherKeyPressed = false; // Berserker: Skull Crusher cast (F)
+    private boolean dodgeKeyPressed = false; // Universal: dodge dash (Left Alt)
+    private boolean stealthKeyPressed = false; // Universal: stealth toggle (Left Ctrl)
     private boolean chatKeyPressed = false; // Added for chat toggle
     private boolean qKeyPressed = false; // Added for item dropping
     private boolean f3KeyPressed = false; // Added for debug info
     private boolean f4KeyPressed = false; // Added for memory leak analysis
-    private boolean f5KeyPressed = false; // Added for detailed memory profiling
+    private boolean f5KeyPressed = false; // F5 = perspective toggle; Shift+F5 = memory profiling
     private boolean f6KeyPressed = false; // Added for test cow spawning
     private boolean f7KeyPressed = false; // Added for manual save
     private boolean f8KeyPressed = false; // Added for save system diagnostic
@@ -85,7 +87,6 @@ public class InputHandler {
     
     // Track which buttons were pressed to optimize clearing
     private boolean[] buttonWasPressed = new boolean[GLFW_MOUSE_BUTTON_LAST + 1];
-    // private boolean recipeBookKeyPressed = false; // Removed for Recipe Book Button
     private double scrollYOffset = 0.0;
     private boolean[] keyJustPressed = new boolean[512]; // Assuming a max key code for simplicity
     private boolean[] keyPressedState = new boolean[512]; // Tracks current GLFW state
@@ -160,6 +161,7 @@ public class InputHandler {
             handleEscapeKey();      // Toggles pauseMenu and game state transitions
             handleInventoryKey();   // Toggles inventoryScreen and INVENTORY_UI state
             handleCharacterKey();   // Toggles characterScreen and CHARACTER_SHEET_UI state
+            handleClassAbilityKeys(player); // Berserker R/F = Rampage/Skull Crusher; Ranger R/F = Snare/Culling Shot
             handleChatKey();        // Opens chatSystem, sets cursor
             handleDropKey();        // Drops selected item when Q is pressed
             handleDebugKeys();      // Handle debug and memory profiling keys
@@ -221,8 +223,35 @@ public class InputHandler {
                 boolean crouch = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS || 
                                glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
                 
-                // Handle movement
-                player.processMovement(moveForward, moveBackward, moveLeft, moveRight, jump, shift);
+                // Universal dodge (all classes): edge-triggered dash on Left Alt. Read here, after
+                // the WASD state is captured this frame, so the dash follows live input rather than
+                // residual momentum. Fires independent of the movement-lock guard below.
+                boolean isDodgePressed = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS;
+                if (isDodgePressed && !dodgeKeyPressed) {
+                    dodgeKeyPressed = true;
+                    player.tryDodge(moveForward, moveBackward, moveLeft, moveRight);
+                } else if (!isDodgePressed) {
+                    dodgeKeyPressed = false;
+                }
+
+                // Universal stealth toggle (all classes): edge-triggered on Left Ctrl. Not while
+                // flying (Ctrl also drives flight descent), where stealth has no meaning.
+                boolean isStealthPressed = crouch;
+                if (isStealthPressed && !stealthKeyPressed) {
+                    stealthKeyPressed = true;
+                    if (!player.isFlying()) {
+                        player.getStealth().toggle(player);
+                    }
+                } else if (!isStealthPressed) {
+                    stealthKeyPressed = false;
+                }
+
+                // Handle movement (suppressed mid-Rampage / mid-Skull-Crusher-windup / mid-Culling-
+                // Shot-dash, which drive the player directly and would otherwise fight with normal
+                // input-driven movement)
+                if (!player.isAbilityMovementLocked()) {
+                    player.processMovement(moveForward, moveBackward, moveLeft, moveRight, jump, shift);
+                }
                 
                 // Handle flight controls (Space for ascent, Ctrl for descent)
                 if (player.isFlying()) {
@@ -268,7 +297,6 @@ public class InputHandler {
             RecipeScreen recipeScreen = game.getRecipeBookScreen();
             WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
             InventoryScreen inventoryScreen = game.getInventoryScreen();
-            // PauseMenu pauseMenu = game.getPauseMenu(); // Get the PauseMenu instance // Removed as unused
 
             // Priority:
             // 1. Close Chat (already handled in its own key input)
@@ -308,6 +336,20 @@ public class InputHandler {
             com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = game.getCharacterScreen();
             if (characterScreen != null && characterScreen.isVisible()) {
                 game.toggleCharacterScreen();
+                return; // Action taken
+            }
+
+            // 4.6 Close Statistics Screen
+            com.stonebreak.ui.statisticsScreen.StatisticsScreen statsScreen = game.getStatisticsScreen();
+            if (statsScreen != null && statsScreen.isVisible()) {
+                game.closeStatisticsScreen();
+                return; // Action taken
+            }
+
+            // 4.7 Close Glossary Screen
+            com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen = game.getGlossaryScreen();
+            if (glossaryScreen != null && glossaryScreen.isVisible()) {
+                game.closeGlossaryScreen();
                 return; // Action taken
             }
 
@@ -408,6 +450,45 @@ public class InputHandler {
         }
     }
 
+    /**
+     * Class ability casts on shared keys: R = Rampage (Berserker) / Snare (Ranger) /
+     * Leyline Breach (Arcanist) / Mirrored Deceit (Illusionist), F = Skull Crusher (Berserker) /
+     * Culling Shot (Ranger) / Null Spike (Arcanist) / Fracture (Illusionist). Every controller
+     * self-gates on the selected class and CP unlock, so each press acts through at most one class
+     * and is harmless for the others.
+     */
+    private void handleClassAbilityKeys(Player player) {
+        if (Game.getInstance().getState() != GameState.PLAYING) {
+            rampageKeyPressed = false;
+            skullCrusherKeyPressed = false;
+            return;
+        }
+
+        boolean isRampagePressed = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+        if (isRampagePressed && !rampageKeyPressed) {
+            rampageKeyPressed = true;
+            player.getBerserkerAbilities().tryCastRampage(player);
+            player.getRangerAbilities().tryCastSnare(player);
+            player.getArcanistAbilities().tryCastLeylineBreach(player);
+            player.getIllusionistAbilities().tryCastMirroredDeceit(player);
+            player.getRogueAbilities().tryCastShadowStep(player);
+        } else if (!isRampagePressed) {
+            rampageKeyPressed = false;
+        }
+
+        boolean isSkullCrusherPressed = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
+        if (isSkullCrusherPressed && !skullCrusherKeyPressed) {
+            skullCrusherKeyPressed = true;
+            player.getBerserkerAbilities().tryCastSkullCrusher(player, player.getRaycastEngine());
+            player.getRangerAbilities().tryCastCullingShot(player);
+            player.getArcanistAbilities().tryCastNullSpike(player);
+            player.getIllusionistAbilities().tryCastFracture(player);
+            player.getRogueAbilities().tryCastCaltropScatter(player);
+        } else if (!isSkullCrusherPressed) {
+            skullCrusherKeyPressed = false;
+        }
+    }
+
     private void handleChatKey() {
         boolean isChatKeyPressed = glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS;
         
@@ -494,15 +575,24 @@ public class InputHandler {
             f4KeyPressed = false;
         }
         
-        // F5 - Detailed memory profiling
+        // F5 - Toggle perspective (first/third person); Shift+F5 - Detailed memory profiling
         boolean isF5Pressed = glfwGetKey(window, GLFW_KEY_F5) == GLFW_PRESS;
         if (isF5Pressed && !f5KeyPressed) {
             f5KeyPressed = true;
-            System.out.println("[DEBUG] Detailed memory profiling triggered by F5 key...");
-            MemoryProfiler profiler = MemoryProfiler.getInstance();
-            profiler.takeSnapshot("manual_f5_" + System.currentTimeMillis());
-            profiler.reportDetailedMemoryStats();
-            Game.forceGCAndReport("F5 Manual GC");
+            boolean shiftHeld = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS
+                    || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+            if (shiftHeld) {
+                System.out.println("[DEBUG] Detailed memory profiling triggered by Shift+F5...");
+                MemoryProfiler profiler = MemoryProfiler.getInstance();
+                profiler.takeSnapshot("manual_f5_" + System.currentTimeMillis());
+                profiler.reportDetailedMemoryStats();
+                Game.forceGCAndReport("Shift+F5 Manual GC");
+            } else {
+                com.stonebreak.player.Player p = Game.getPlayer();
+                if (p != null) {
+                    p.togglePerspective();
+                }
+            }
         } else if (!isF5Pressed) {
             f5KeyPressed = false;
         }
@@ -785,6 +875,14 @@ public class InputHandler {
                 if (pauseMenu.isResumeButtonClicked(currentMouseX, currentMouseY, w, h)) {
                     Game.getInstance().togglePauseMenu(); // Resume the game
                 }
+                // Check statistics button
+                else if (pauseMenu.isStatisticsButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    Game.getInstance().openStatisticsScreen();
+                }
+                // Check glossary button
+                else if (pauseMenu.isGlossaryButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    Game.getInstance().openGlossaryScreen();
+                }
                 // Check settings button
                 else if (pauseMenu.isSettingsButtonClicked(currentMouseX, currentMouseY, w, h)) {
                     // Go to settings menu, remember we came from the game
@@ -808,6 +906,36 @@ public class InputHandler {
             return; // Pause menu handled or ignored the click
         }
 
+        // Statistics screen Back button
+        com.stonebreak.ui.statisticsScreen.StatisticsScreen statsScreen = Game.getInstance().getStatisticsScreen();
+        if (statsScreen != null && statsScreen.isVisible()) {
+            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+                int w = Game.getWindowWidth();
+                int h = Game.getWindowHeight();
+                if (statsScreen.isBackButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    Game.getInstance().closeStatisticsScreen();
+                }
+            }
+            return;
+        }
+
+        // Glossary screen Back button
+        com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen = Game.getInstance().getGlossaryScreen();
+        if (glossaryScreen != null && glossaryScreen.isVisible()) {
+            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+                int w = Game.getWindowWidth();
+                int h = Game.getWindowHeight();
+                // Variant cycler arrows take precedence over the Back button.
+                if (glossaryScreen.handleClick(currentMouseX, currentMouseY, w, h)) {
+                    return;
+                }
+                if (glossaryScreen.isBackButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    Game.getInstance().closeGlossaryScreen();
+                }
+            }
+            return;
+        }
+
         // Only allow world interaction in PLAYING state
         GameState currentState = Game.getInstance().getState();
         if (currentState == GameState.PLAYING) {
@@ -820,7 +948,7 @@ public class InputHandler {
                         if (em != null) {
                             LivingEntity target = player.getRaycastEngine().raycastEntity(em.getLivingEntities());
                             if (target != null) {
-                                target.damage(player.getAttackDamage(), LivingEntity.DamageSource.PLAYER);
+                                player.attackEntity(target);
                             }
                         }
                         // Block breaking is now handled continuously in handleInput
@@ -1007,9 +1135,6 @@ public class InputHandler {
             Player player = Game.getPlayer();
             if (player != null && player.getInventory() != null) {
                 player.getInventory().setSelectedHotbarSlotIndex(currentSelectedHotbarIndex);
-                
-                // ItemStack selectedStack = player.getInventory().getHotbarSlot(currentSelectedHotbarIndex); // Get the actual stack - Unused
-                // Hotbar slot selection handled silently
             }
         }
     }
@@ -1049,6 +1174,11 @@ public class InputHandler {
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible()) {
             pauseMenu.updateHover(currentMouseX, currentMouseY, Game.getWindowWidth(), Game.getWindowHeight());
+        }
+
+        com.stonebreak.ui.statisticsScreen.StatisticsScreen statsScreenHover = Game.getInstance().getStatisticsScreen();
+        if (statsScreenHover != null && statsScreenHover.isVisible()) {
+            statsScreenHover.updateHover(currentMouseX, currentMouseY, Game.getWindowWidth(), Game.getWindowHeight());
         }
 
         // Update chat renderer hover states and scrollbar dragging

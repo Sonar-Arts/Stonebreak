@@ -40,6 +40,8 @@ module openmason.engine {
     exports com.openmason.engine.rendering.shaders;
     exports com.openmason.engine.rendering.sky;
     exports com.openmason.engine.rendering.sky.clouds;
+    exports com.openmason.engine.rendering.postfx;
+    exports com.openmason.engine.rendering.postfx.effects;
     exports com.openmason.engine.rendering.model;
     exports com.openmason.engine.rendering.model.gmr;
     exports com.openmason.engine.rendering.model.gmr.core;

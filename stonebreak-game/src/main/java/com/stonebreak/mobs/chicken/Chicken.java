@@ -47,9 +47,7 @@ public class Chicken extends LivingEntity {
     public void update(float deltaTime) {
         super.update(deltaTime);
 
-        if (chickenAI != null) {
-            chickenAI.update(deltaTime);
-        }
+        chickenAI.update(deltaTime);
 
         // Advance the animation clock; the SBE renderer samples clips from it.
         animationController.updateAnimations(deltaTime);
@@ -75,16 +73,12 @@ public class Chicken extends LivingEntity {
 
     @Override
     public void onDamage(float damage, DamageSource source) {
-        if (chickenAI != null) {
-            chickenAI.onDamaged(damage);
-        }
+        chickenAI.onDamaged(damage);
     }
 
     @Override
     protected void onDeath() {
-        if (chickenAI != null) {
-            chickenAI.cleanup();
-        }
+        chickenAI.cleanup();
         for (ItemStack drop : getDrops()) {
             DropUtil.createItemDrop(world, getPosition(), drop);
         }
@@ -98,6 +92,9 @@ public class Chicken extends LivingEntity {
         }
         return new ItemStack[0];
     }
+
+    @Override
+    public int getXpReward() { return 2; }
 
     /**
      * Makes the chicken go idle - stops horizontal movement.

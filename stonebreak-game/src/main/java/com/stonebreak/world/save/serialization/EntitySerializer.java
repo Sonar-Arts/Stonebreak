@@ -5,7 +5,7 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.chicken.Chicken;
 import com.stonebreak.mobs.cow.Cow;
-import com.stonebreak.mobs.cow.CowAI;
+import com.stonebreak.mobs.sheep.Sheep;
 import com.stonebreak.mobs.entities.BlockDrop;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
@@ -14,9 +14,9 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.save.model.EntityData;
 import org.joml.Vector3f;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -66,6 +66,7 @@ public class EntitySerializer {
             case ITEM_DROP -> serializeItemDrop((ItemDrop) entity, builder);
             case COW -> serializeCow((Cow) entity, builder);
             case CHICKEN -> serializeChicken((Chicken) entity, builder);
+            case SHEEP -> serializeSheep((Sheep) entity, builder);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for serialization: " + entityType);
                 return null;
@@ -92,6 +93,7 @@ public class EntitySerializer {
             case ITEM_DROP -> deserializeItemDrop(entityData, world);
             case COW -> deserializeCow(entityData, world);
             case CHICKEN -> deserializeChicken(entityData, world);
+            case SHEEP -> deserializeSheep(entityData, world);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for deserialization: " + entityType);
                 yield null;
@@ -130,53 +132,24 @@ public class EntitySerializer {
     // ===== BlockDrop Serialization =====
 
     private static void serializeBlockDrop(BlockDrop blockDrop, EntityData.Builder builder) {
-        try {
-            // Access private fields via reflection (alternatively, add getters to BlockDrop)
-            Field blockTypeField = BlockDrop.class.getDeclaredField("blockType");
-            blockTypeField.setAccessible(true);
-            BlockType blockType = (BlockType) blockTypeField.get(blockDrop);
-
-            Field despawnTimerField = BlockDrop.class.getDeclaredField("despawnTimer");
-            despawnTimerField.setAccessible(true);
-            float despawnTimer = despawnTimerField.getFloat(blockDrop);
-
-            // Stack count is accessible via public getter
-            int stackCount = blockDrop.getStackCount();
-
-            builder.addCustomData("blockType", blockType)
-                   .addCustomData("despawnTimer", despawnTimer)
-                   .addCustomData("stackCount", stackCount);
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Failed to serialize BlockDrop", e);
-        }
+        builder.addCustomData("blockType", blockDrop.getBlockType())
+               .addCustomData("despawnTimer", blockDrop.getDespawnTimer())
+               .addCustomData("stackCount", blockDrop.getStackCount());
     }
 
     private static Entity deserializeBlockDrop(EntityData entityData, World world) {
         try {
             EntityData.BlockDropData blockDropData = EntityData.BlockDropData.fromCustomData(entityData);
             Vector3f position = entityData.getPosition();
-            BlockType blockType = blockDropData.getBlockType();
 
-            // Create block drop
-            BlockDrop blockDrop = new BlockDrop(world, position, blockType);
-
-            // Restore state
+            BlockDrop blockDrop = new BlockDrop(world, position, blockDropData.getBlockType());
             blockDrop.setPosition(position);
             blockDrop.setVelocity(entityData.getVelocity());
             blockDrop.setHealth(entityData.getHealth());
             blockDrop.setAlive(entityData.isAlive());
             blockDrop.setStackCount(blockDropData.getStackCount());
-
-            // Restore despawn timer via reflection
-            Field despawnTimerField = BlockDrop.class.getDeclaredField("despawnTimer");
-            despawnTimerField.setAccessible(true);
-            despawnTimerField.setFloat(blockDrop, blockDropData.getDespawnTimer());
-
-            // Restore age via reflection
-            Field ageField = Entity.class.getDeclaredField("age");
-            ageField.setAccessible(true);
-            ageField.setFloat(blockDrop, entityData.getAge());
-
+            blockDrop.setDespawnTimer(blockDropData.getDespawnTimer());
+            blockDrop.setAge(entityData.getAge());
             return blockDrop;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to deserialize BlockDrop", e);
@@ -187,35 +160,16 @@ public class EntitySerializer {
     // ===== ItemDrop Serialization =====
 
     private static void serializeItemDrop(ItemDrop itemDrop, EntityData.Builder builder) {
-        try {
-            // Get the item stack
-            ItemStack itemStack = itemDrop.getItemStack();
-            if (itemStack == null || itemStack.isEmpty()) {
-                logger.log(Level.WARNING, "ItemDrop has null or empty ItemStack");
-                return;
-            }
-
-            // Determine if this is a BlockType or ItemType
-            int itemId = itemStack.getItem().getId();
-            boolean isBlockType = itemStack.asBlockType() != null;
-            int itemCount = itemStack.getCount();
-
-            // Access private fields via reflection
-            Field despawnTimerField = ItemDrop.class.getDeclaredField("despawnTimer");
-            despawnTimerField.setAccessible(true);
-            float despawnTimer = despawnTimerField.getFloat(itemDrop);
-
-            // Stack count is accessible via public getter
-            int stackCount = itemDrop.getStackCount();
-
-            builder.addCustomData("itemId", itemId)
-                   .addCustomData("isBlockType", isBlockType)
-                   .addCustomData("itemCount", itemCount)
-                   .addCustomData("despawnTimer", despawnTimer)
-                   .addCustomData("stackCount", stackCount);
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Failed to serialize ItemDrop", e);
+        ItemStack itemStack = itemDrop.getItemStack();
+        if (itemStack == null || itemStack.isEmpty()) {
+            logger.log(Level.WARNING, "ItemDrop has null or empty ItemStack");
+            return;
         }
+        builder.addCustomData("itemId", itemStack.getItem().getId())
+               .addCustomData("isBlockType", itemStack.asBlockType() != null)
+               .addCustomData("itemCount", itemStack.getCount())
+               .addCustomData("despawnTimer", itemDrop.getDespawnTimer())
+               .addCustomData("stackCount", itemDrop.getStackCount());
     }
 
     private static Entity deserializeItemDrop(EntityData entityData, World world) {
@@ -223,48 +177,31 @@ public class EntitySerializer {
             EntityData.ItemDropData itemDropData = EntityData.ItemDropData.fromCustomData(entityData);
             Vector3f position = entityData.getPosition();
 
-            // Reconstruct the item from ID and type
-            int itemId = itemDropData.getItemId();
-            boolean isBlockType = itemDropData.isBlockType();
-            int itemCount = itemDropData.getItemCount();
-
             ItemStack itemStack;
-            if (isBlockType) {
-                BlockType blockType = BlockType.getById(itemId);
+            if (itemDropData.isBlockType()) {
+                BlockType blockType = BlockType.getById(itemDropData.getItemId());
                 if (blockType == null) {
-                    logger.log(Level.WARNING, "Failed to find BlockType with ID: " + itemId);
+                    logger.log(Level.WARNING, "Failed to find BlockType with ID: " + itemDropData.getItemId());
                     return null;
                 }
-                itemStack = new ItemStack(blockType, itemCount);
+                itemStack = new ItemStack(blockType, itemDropData.getItemCount());
             } else {
-                ItemType itemType = ItemType.getById(itemId);
+                ItemType itemType = ItemType.getById(itemDropData.getItemId());
                 if (itemType == null) {
-                    logger.log(Level.WARNING, "Failed to find ItemType with ID: " + itemId);
+                    logger.log(Level.WARNING, "Failed to find ItemType with ID: " + itemDropData.getItemId());
                     return null;
                 }
-                itemStack = new ItemStack(itemType, itemCount);
+                itemStack = new ItemStack(itemType, itemDropData.getItemCount());
             }
 
-            // Create item drop
             ItemDrop itemDrop = new ItemDrop(world, position, itemStack);
-
-            // Restore state
             itemDrop.setPosition(position);
             itemDrop.setVelocity(entityData.getVelocity());
             itemDrop.setHealth(entityData.getHealth());
             itemDrop.setAlive(entityData.isAlive());
             itemDrop.setStackCount(itemDropData.getStackCount());
-
-            // Restore despawn timer via reflection
-            Field despawnTimerField = ItemDrop.class.getDeclaredField("despawnTimer");
-            despawnTimerField.setAccessible(true);
-            despawnTimerField.setFloat(itemDrop, itemDropData.getDespawnTimer());
-
-            // Restore age via reflection
-            Field ageField = Entity.class.getDeclaredField("age");
-            ageField.setAccessible(true);
-            ageField.setFloat(itemDrop, entityData.getAge());
-
+            itemDrop.setDespawnTimer(itemDropData.getDespawnTimer());
+            itemDrop.setAge(entityData.getAge());
             return itemDrop;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to deserialize ItemDrop", e);
@@ -275,66 +212,28 @@ public class EntitySerializer {
     // ===== Cow Serialization =====
 
     private static void serializeCow(Cow cow, EntityData.Builder builder) {
-        try {
-            // Texture variant is accessible via public getter
-            String textureVariant = cow.getTextureVariant();
-
-            // Access private fields via reflection
-            Field canBeMilkedField = Cow.class.getDeclaredField("canBeMilked");
-            canBeMilkedField.setAccessible(true);
-            boolean canBeMilked = canBeMilkedField.getBoolean(cow);
-
-            Field milkRegenTimerField = Cow.class.getDeclaredField("milkRegenTimer");
-            milkRegenTimerField.setAccessible(true);
-            float milkRegenTimer = milkRegenTimerField.getFloat(cow);
-
-            // Get AI state
-            CowAI cowAI = cow.getAI();
-            String aiState = cowAI != null ? cowAI.getCurrentState().name() : "IDLE";
-
-            builder.addCustomData("textureVariant", textureVariant)
-                   .addCustomData("canBeMilked", canBeMilked)
-                   .addCustomData("milkRegenTimer", milkRegenTimer)
-                   .addCustomData("aiState", aiState);
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Failed to serialize Cow", e);
-        }
+        String aiState = cow.getAI() != null ? cow.getAI().getCurrentState().name() : "IDLE";
+        builder.addCustomData("textureVariant", cow.getTextureVariant())
+               .addCustomData("canBeMilked", cow.isCanBeMilked())
+               .addCustomData("milkRegenTimer", cow.getMilkRegenTimer())
+               .addCustomData("aiState", aiState);
     }
 
     private static Entity deserializeCow(EntityData entityData, World world) {
         try {
             EntityData.CowData cowData = EntityData.CowData.fromCustomData(entityData);
             Vector3f position = entityData.getPosition();
-            String textureVariant = cowData.getTextureVariant();
 
-            // Create cow with texture variant
-            Cow cow = new Cow(world, position, textureVariant);
-
-            // Restore basic state
+            Cow cow = new Cow(world, position, cowData.getTextureVariant());
             cow.setPosition(position);
             cow.setVelocity(entityData.getVelocity());
             cow.setRotation(entityData.getRotation());
             cow.setHealth(entityData.getHealth());
             cow.setMaxHealth(entityData.getMaxHealth());
             cow.setAlive(entityData.isAlive());
-
-            // Restore milk state via reflection
-            Field canBeMilkedField = Cow.class.getDeclaredField("canBeMilked");
-            canBeMilkedField.setAccessible(true);
-            canBeMilkedField.setBoolean(cow, cowData.canBeMilked());
-
-            Field milkRegenTimerField = Cow.class.getDeclaredField("milkRegenTimer");
-            milkRegenTimerField.setAccessible(true);
-            milkRegenTimerField.setFloat(cow, cowData.getMilkRegenTimer());
-
-            // Restore age via reflection
-            Field ageField = Entity.class.getDeclaredField("age");
-            ageField.setAccessible(true);
-            ageField.setFloat(cow, entityData.getAge());
-
-            // Note: AI state will be restored when AI updates next frame
-            // The cow will start in its natural behavior and transition properly
-
+            cow.setCanBeMilked(cowData.canBeMilked());
+            cow.setMilkRegenTimer(cowData.getMilkRegenTimer());
+            cow.setAge(entityData.getAge());
             return cow;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to deserialize Cow", e);
@@ -354,26 +253,48 @@ public class EntitySerializer {
     private static Entity deserializeChicken(EntityData entityData, World world) {
         try {
             Vector3f position = entityData.getPosition();
-
             Chicken chicken = new Chicken(world, position);
-
-            // Restore basic state.
             chicken.setPosition(position);
             chicken.setVelocity(entityData.getVelocity());
             chicken.setRotation(entityData.getRotation());
             chicken.setHealth(entityData.getHealth());
             chicken.setMaxHealth(entityData.getMaxHealth());
             chicken.setAlive(entityData.isAlive());
-
-            // Restore age via reflection.
-            Field ageField = Entity.class.getDeclaredField("age");
-            ageField.setAccessible(true);
-            ageField.setFloat(chicken, entityData.getAge());
-
-            // AI resumes from its natural starting state on the next update tick.
+            chicken.setAge(entityData.getAge());
             return chicken;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to deserialize Chicken", e);
+            return null;
+        }
+    }
+
+    // ===== Sheep Serialization =====
+
+    private static void serializeSheep(Sheep sheep, EntityData.Builder builder) {
+        String aiState = sheep.getAI() != null
+                ? sheep.getAI().getCurrentState().name()
+                : "IDLE";
+        builder.addCustomData("textureVariant", sheep.getTextureVariant())
+               .addCustomData("aiState", aiState);
+    }
+
+    private static Entity deserializeSheep(EntityData entityData, World world) {
+        try {
+            Vector3f position = entityData.getPosition();
+            Map<String, Object> customData = entityData.getCustomData();
+            String textureVariant = (String) customData.getOrDefault("textureVariant", "default");
+
+            Sheep sheep = new Sheep(world, position, textureVariant);
+            sheep.setPosition(position);
+            sheep.setVelocity(entityData.getVelocity());
+            sheep.setRotation(entityData.getRotation());
+            sheep.setHealth(entityData.getHealth());
+            sheep.setMaxHealth(entityData.getMaxHealth());
+            sheep.setAlive(entityData.isAlive());
+            sheep.setAge(entityData.getAge());
+            return sheep;
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Failed to deserialize Sheep", e);
             return null;
         }
     }

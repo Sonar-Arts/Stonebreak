@@ -1,13 +1,23 @@
 package com.stonebreak.mobs.entities;
 
 import org.joml.Vector3f;
+import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
+import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.world.World;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.Water;
 import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
+import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
+import com.stonebreak.mobs.entities.ai.AwarenessController;
+import com.stonebreak.mobs.entities.status.StatusEffect;
+import com.stonebreak.mobs.entities.status.StatusEffectType;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 /**
  * Base class for all living entities that can move, interact, and have AI behavior.
@@ -32,10 +42,33 @@ public abstract class LivingEntity extends Entity {
     protected float interactionRange;
     protected long lastInteractionTime;
     private static final float INTERACTION_COOLDOWN = 1.0f; // 1 second between interactions
-    
-    // AI and behavior (to be implemented in future phases)
-    protected Object ai; // Placeholder for AI system
-    
+
+    // Status effects (timed debuffs — burning, stun, armor break, etc.)
+    private final List<StatusEffect> statusEffects = new ArrayList<>();
+
+    /**
+     * Optional per-enemy stealth awareness (sight/sound detection driving UNAWARE/SUSPICIOUS/
+     * ALERTED). Null on entities that don't react to a stealthed player; subclasses opt in by
+     * assigning one. Exposed so the combat and UI layers can query any entity generically.
+     */
+    protected AwarenessController awareness;
+
+    /**
+     * Position of the most recent attacker, set per damage application. Lets knockback push
+     * away from the actual attacker (e.g. a remote player on a host) instead of always the
+     * local player. Null when the attacker is unknown or is the local player.
+     */
+    private Vector3f lastAttackerPosition;
+
+    /**
+     * Illusionist Fracture stubs. {@code bewilderedTimer} counts down while the entity is in a
+     * panic/friendly-fire state; {@code forcedAttackTarget} names an entity the AI should attack
+     * next instead of its normal selection. Both are inert today (no hostile mob AI exists yet)
+     * and will be consulted once hostile target selection is implemented.
+     */
+    private float bewilderedTimer;
+    private LivingEntity forcedAttackTarget;
+
     /**
      * Creates a new living entity at the specified position.
      */
@@ -84,11 +117,32 @@ public abstract class LivingEntity extends Entity {
         // Update movement state
         isMoving = velocity.length() > 0.1f;
 
+        // Rooted entities are pinned in place — kill residual horizontal drift
+        // (knockback slide, water flow) before it integrates into position.
+        if (isRooted()) {
+            velocity.x = 0f;
+            velocity.z = 0f;
+        }
+
         // Apply basic physics
         applyPhysics(deltaTime);
 
-        // Update AI behavior (to be implemented in future phases)
-        updateAI(deltaTime);
+        // Tick timed debuffs (burning DOT, stun, armor break, ...)
+        updateStatusEffects(deltaTime);
+
+        // Tick the Illusionist Bewildered/panic timer; clear the forced target when it lapses.
+        if (bewilderedTimer > 0f) {
+            bewilderedTimer -= deltaTime;
+            if (bewilderedTimer <= 0f) {
+                bewilderedTimer = 0f;
+                forcedAttackTarget = null;
+            }
+        }
+
+        // Update AI behavior — suppressed while stunned
+        if (!isStunned()) {
+            updateAI(deltaTime);
+        }
     }
     
     /**
@@ -107,26 +161,256 @@ public abstract class LivingEntity extends Entity {
     }
 
     public void damage(float amount, DamageSource source) {
+        damage(amount, source, null, true);
+    }
+
+    /**
+     * Authoritative damage application.
+     *
+     * <p>On a network shadow this never mutates local state: the authoritative entity lives
+     * on the server, so the hit is forwarded as an {@code EntityDamageC2S} intent and a
+     * predicted damage number is shown for feedback. (Mutating the shadow would also wedge
+     * it permanently invulnerable — shadows never tick, so i-frames would never expire.)
+     *
+     * @param attackerPos       authoritative attacker position for knockback direction, or
+     *                          null to fall back to the local player's position
+     * @param creditLocalPlayer whether PLAYER-source stats/XP credit the local player; the
+     *                          server passes false for remote attackers so the host isn't
+     *                          credited for their kills
+     */
+    public void damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer) {
+        if (isNetworkShadow()) {
+            if (getNetworkId() >= 0 && amount > 0f) {
+                DamageNumberRenderer.getInstance().spawn(
+                    position.x, position.y + height * 0.9f, position.z, amount);
+                MultiplayerSession.onLocalEntityDamage(this, amount, source);
+            }
+            return;
+        }
         if (!alive || invulnerable) return;
-        super.damage(amount);
+        float effectiveAmount = amount * getIncomingDamageMultiplier(source);
+        if (source == DamageSource.ARCANE) {
+            effectiveAmount *= consumeSpellmark();
+        }
+        super.damage(effectiveAmount);
         invulnerable = true;
         invulnerabilityTimer = INVULNERABILITY_DURATION;
-        DamageNumberRenderer.getInstance().spawn(
-            position.x, position.y + height * 0.9f, position.z, amount);
-        onDamage(amount, source);
+        // Damage numbers are client UI — only spawn them for entities living in the world
+        // being rendered. Authoritative entities live in the headless server world, where
+        // this would emit a duplicate of the client's predicted number from the tick thread.
+        if (Game.getWorld() == world) {
+            DamageNumberRenderer.getInstance().spawn(
+                position.x, position.y + height * 0.9f, position.z, effectiveAmount);
+        }
+        if ((source == DamageSource.PLAYER || source == DamageSource.ARCANE) && creditLocalPlayer) {
+            Player player = Game.getPlayer();
+            if (player != null) {
+                player.getStats().addDamageDealt(effectiveAmount);
+                if (!alive) {
+                    player.getStats().incrementEntitiesKilled();
+                    player.getStats().incrementKillsForType(getType());
+                    int xpReward = getXpReward();
+                    if (xpReward > 0) {
+                        player.getCharacterStats().addXp(xpReward);
+                    }
+                }
+            }
+        }
+        lastAttackerPosition = attackerPos;
+        onDamage(effectiveAmount, source);
     }
+
+    // ─────────────────────────────────────────────── Status effects
+
+    /** Applies (or refreshes) a timed debuff. Same-type effects are refreshed rather than stacked. */
+    public void applyStatusEffect(StatusEffectType type, float duration, float magnitude) {
+        if (!alive) return;
+        for (StatusEffect existing : statusEffects) {
+            if (existing.getType() == type) {
+                existing.refresh(duration);
+                return;
+            }
+        }
+        statusEffects.add(new StatusEffect(type, duration, magnitude));
+    }
+
+    private void updateStatusEffects(float deltaTime) {
+        if (statusEffects.isEmpty()) return;
+
+        // Tick and prune first so damage()/onDamage() (which may itself touch statusEffects,
+        // e.g. via applyStatusEffect) never runs while we're iterating the live list.
+        float burningTickDamage = 0f;
+        float bleedTickDamage = 0f;
+        Iterator<StatusEffect> it = statusEffects.iterator();
+        while (it.hasNext()) {
+            StatusEffect effect = it.next();
+            boolean dotTick = effect.tick(deltaTime);
+            if (dotTick && effect.getType() == StatusEffectType.BURNING) {
+                burningTickDamage += effect.getMagnitude() * StatusEffect.DOT_TICK_INTERVAL;
+            }
+            if (dotTick && effect.getType() == StatusEffectType.BLEED) {
+                bleedTickDamage += effect.getMagnitude() * StatusEffect.DOT_TICK_INTERVAL;
+            }
+            if (effect.isExpired()) {
+                it.remove();
+            }
+        }
+
+        // Combine concurrent DOT ticks into a single damage() call — the 0.5s
+        // invulnerability window would otherwise swallow the second application.
+        float totalTickDamage = burningTickDamage + bleedTickDamage;
+        if (totalTickDamage > 0f && alive) {
+            DamageSource source;
+            if (bleedTickDamage <= 0f) {
+                source = DamageSource.FIRE;
+            } else if (burningTickDamage <= 0f) {
+                source = DamageSource.BLEED;
+            } else {
+                source = DamageSource.UNKNOWN;
+            }
+            damage(totalTickDamage, source);
+        }
+    }
+
+    /** Removes any active status effect of the given type (no-op if absent). */
+    public void removeStatusEffect(StatusEffectType type) {
+        statusEffects.removeIf(effect -> effect.getType() == type);
+    }
+
+    /** True while a status effect of the given type is active. */
+    public boolean hasStatusEffect(StatusEffectType type) {
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == type) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True while any STUNNED effect is active — suppresses AI updates. */
+    public boolean isStunned() {
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == StatusEffectType.STUNNED) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True while any ROOT (or STUNNED — stun implies immobility) effect is active. */
+    public boolean isRooted() {
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == StatusEffectType.ROOT || effect.getType() == StatusEffectType.STUNNED) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Multiplier applied to incoming damage; {@code 1.0} with no Armor Break active, higher otherwise. */
+    public float getArmorBreakDamageMultiplier() {
+        float bonus = 0f;
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == StatusEffectType.ARMOR_BREAK) {
+                bonus = Math.max(bonus, effect.getMagnitude());
+            }
+        }
+        return 1f + bonus;
+    }
+
+    /**
+     * Combined multiplier applied to all incoming damage: Armor Break composed with Exposed
+     * (multiplicative across the two debuff types, max-of-magnitude within each).
+     */
+    public float getIncomingDamageMultiplier() {
+        return getIncomingDamageMultiplier(DamageSource.UNKNOWN);
+    }
+
+    /**
+     * Source-aware variant of {@link #getIncomingDamageMultiplier()}: magical sources are
+     * additionally amplified by any active Amplified debuff. Pure — Spellmarked consumption
+     * (a mutation) happens separately in {@link #damage}.
+     */
+    public float getIncomingDamageMultiplier(DamageSource source) {
+        float exposedBonus = 0f;
+        float amplifiedBonus = 0f;
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == StatusEffectType.EXPOSED) {
+                exposedBonus = Math.max(exposedBonus, effect.getMagnitude());
+            }
+            if (effect.getType() == StatusEffectType.AMPLIFIED) {
+                amplifiedBonus = Math.max(amplifiedBonus, effect.getMagnitude());
+            }
+        }
+        float multiplier = getArmorBreakDamageMultiplier() * (1f + exposedBonus);
+        if (source.isMagical()) {
+            multiplier *= 1f + amplifiedBonus;
+        }
+        return multiplier;
+    }
+
+    /**
+     * Consumes an active Spellmarked debuff: removes it and returns the one-shot bonus
+     * multiplier for the arcane hit that triggered it, or {@code 1.0} when unmarked.
+     */
+    private float consumeSpellmark() {
+        Iterator<StatusEffect> it = statusEffects.iterator();
+        while (it.hasNext()) {
+            if (it.next().getType() == StatusEffectType.SPELLMARKED) {
+                it.remove();
+                return 1f + PlayerConstants.SPELLMARKED_BONUS_DAMAGE_MULT;
+            }
+        }
+        return 1f;
+    }
+
+    /** Multiplier applied to movement speed; {@code 1.0} with no Cripple active, lower otherwise. */
+    public float getMoveSpeedMultiplier() {
+        float reduction = 0f;
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == StatusEffectType.CRIPPLE) {
+                reduction = Math.max(reduction, effect.getMagnitude());
+            }
+        }
+        return Math.max(0f, 1f - reduction);
+    }
+
+    /** XP awarded to the player when this entity is killed. Override in subclasses. */
+    public int getXpReward() { return 0; }
+
+    /** This entity's stealth awareness component, or null if it doesn't track the player. */
+    public AwarenessController getAwareness() { return awareness; }
+
+    // ─────────────────────────────────────────────── Illusionist Fracture stubs
+
+    /** World position of the most recent attacker (null if unknown / the local player). */
+    public Vector3f getLastAttackerPosition() { return lastAttackerPosition; }
+
+    /** Puts this entity into the Bewildered panic state for {@code duration} seconds. */
+    public void setBewildered(float duration) {
+        this.bewilderedTimer = Math.max(this.bewilderedTimer, duration);
+    }
+
+    /** True while this entity is panicked (Fracture at full Doubt). */
+    public boolean isBewildered() { return bewilderedTimer > 0f; }
+
+    /** Names an entity this one should attack next, overriding normal AI target selection. */
+    public void setForcedAttackTarget(LivingEntity target) { this.forcedAttackTarget = target; }
+
+    /** The forced attack target set by Fracture, or null. */
+    public LivingEntity getForcedAttackTarget() { return forcedAttackTarget; }
     
     /**
      * Moves the entity toward a target position.
      */
     public void moveToward(Vector3f target, float deltaTime) {
-        if (!alive) return;
-        
+        if (!alive || isRooted()) return;
+
         Vector3f direction = new Vector3f(target).sub(position).normalize();
         direction.y = 0; // Don't move vertically through movement
-        
-        // Apply movement velocity
-        Vector3f movement = new Vector3f(direction).mul(moveSpeed * deltaTime);
+
+        // Apply movement velocity (Cripple slows, Root pins entirely above)
+        Vector3f movement = new Vector3f(direction).mul(moveSpeed * getMoveSpeedMultiplier() * deltaTime);
         velocity.x = movement.x;
         velocity.z = movement.z;
         
@@ -277,6 +561,39 @@ public abstract class LivingEntity extends Entity {
                blockType == BlockType.WILDGRASS;
     }
     
+    /**
+     * Applies knockback away from the attacking player. Call from {@link #onDamage} when
+     * source is {@link DamageSource#PLAYER}.
+     */
+    protected void applyPlayerKnockback() {
+        Vector3f attackerPos = lastAttackerPosition;
+        if (attackerPos == null) {
+            Player player = Game.getPlayer();
+            if (player == null) return;
+            attackerPos = player.getPosition();
+        }
+        Vector3f knockbackDir = new Vector3f(position).sub(attackerPos);
+        knockbackDir.y = 0;
+        if (knockbackDir.length() > 0.01f) {
+            knockbackDir.normalize();
+            applyKnockback(knockbackDir, 6.0f, 0.6f);
+        }
+    }
+
+    /**
+     * Applies an instantaneous knockback impulse in an arbitrary horizontal direction
+     * (e.g. away from a charge line or an ability's impact point), plus a vertical lift.
+     * {@code horizontalDirection} need not be normalized; only its horizontal (XZ) component is used.
+     */
+    public void applyKnockback(Vector3f horizontalDirection, float horizontalForce, float verticalForce) {
+        Vector3f dir = new Vector3f(horizontalDirection.x, 0f, horizontalDirection.z);
+        if (dir.lengthSquared() <= 0.0001f) return;
+        dir.normalize();
+        velocity.x += dir.x * horizontalForce;
+        velocity.z += dir.z * horizontalForce;
+        velocity.y += verticalForce;
+    }
+
     // Abstract methods that must be implemented by subclasses
     
     /**
@@ -327,6 +644,18 @@ public abstract class LivingEntity extends Entity {
         DROWNING,
         FIRE,
         EXPLOSION,
-        ARROW
+        ARROW,
+        BLEED,
+        /** Player-cast spell damage. Credits the player and interacts with Amplified/Spellmarked. */
+        ARCANE;
+
+        /**
+         * Whether this source counts as magical for the Amplified debuff. Only ARCANE for
+         * now — FIRE (staff bolts, burning DOT) is deliberately excluded to leave existing
+         * balance untouched.
+         */
+        public boolean isMagical() {
+            return this == ARCANE;
+        }
     }
 }

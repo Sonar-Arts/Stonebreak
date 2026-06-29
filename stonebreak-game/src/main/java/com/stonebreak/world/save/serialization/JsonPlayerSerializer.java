@@ -1,5 +1,7 @@
 package com.stonebreak.world.save.serialization;
 
+import com.stonebreak.mobs.entities.EntityType;
+import com.stonebreak.player.PlayerStats;
 import com.stonebreak.world.save.model.PlayerData;
 import com.stonebreak.world.save.util.JsonParsingUtil;
 import com.stonebreak.items.ItemStack;
@@ -8,6 +10,9 @@ import org.joml.Vector3f;
 import org.joml.Vector2f;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -51,21 +56,11 @@ public class JsonPlayerSerializer {
         // Serialize inventory as simple {id, count} pairs
         json.append("  \"inventory\": [\n");
         ItemStack[] inv = player.getInventory();
-        System.out.println("[SAVE-DEBUG] ========== SAVING PLAYER INVENTORY ==========");
-        System.out.println("[SAVE-DEBUG] Total inventory slots: " + inv.length);
         for (int i = 0; i < 36; i++) {
             ItemStack stack = inv[i];
             int id = (stack == null) ? BlockType.AIR.getId() : stack.getBlockTypeId();
             int count = (stack == null) ? 0 : stack.getCount();
             String state = (stack == null) ? null : stack.getState();
-
-            // DIAGNOSTIC LOGGING:
-            if (stack != null && id > 0) {
-                System.out.println("[SAVE-DEBUG] Slot " + i + ": " +
-                    stack.getName() + " (ID=" + id + " count=" + count +
-                    (state != null ? " state=" + state : "") +
-                    " item=" + stack.getItem().getClass().getSimpleName() + ")");
-            }
 
             json.append("    {\"id\": ").append(id).append(", \"count\": ").append(count);
             if (state != null) {
@@ -75,7 +70,6 @@ public class JsonPlayerSerializer {
             if (i < 35) json.append(",");
             json.append("\n");
         }
-        System.out.println("[SAVE-DEBUG] ========== END INVENTORY SAVE ==========");
         json.append("  ],\n");
 
         // RPG / character progression
@@ -130,7 +124,57 @@ public class JsonPlayerSerializer {
             json.append(scores[i]);
         }
         json.append("],\n");
-        json.append("  \"remainingAp\": ").append(player.getRemainingAp()).append("\n");
+        json.append("  \"remainingAp\": ").append(player.getRemainingAp()).append(",\n");
+        json.append("  \"level\": ").append(player.getLevel()).append(",\n");
+        json.append("  \"xp\": ").append(player.getXp()).append(",\n");
+
+        json.append("  \"statistics\": {\n");
+        json.append("    \"entitiesKilled\": ").append(player.getStatEntitiesKilled()).append(",\n");
+        json.append("    \"damageDealt\": ").append(player.getStatDamageDealt()).append(",\n");
+        json.append("    \"totalDistance\": ").append(player.getStatTotalDistance()).append(",\n");
+        json.append("    \"distanceWalked\": ").append(player.getStatDistanceWalked()).append(",\n");
+        json.append("    \"distanceSprinted\": ").append(player.getStatDistanceSprinted()).append(",\n");
+        json.append("    \"distanceInAir\": ").append(player.getStatDistanceInAir()).append(",\n");
+        json.append("    \"timeInAir\": ").append(player.getStatTimeInAir()).append(",\n");
+        json.append("    \"killsByEntityType\": {");
+        Map<String, Long> killsByType = player.getStatKillsByEntityType();
+        boolean firstKill = true;
+        for (Map.Entry<String, Long> e : killsByType.entrySet()) {
+            if (!firstKill) json.append(", ");
+            json.append("\"").append(e.getKey()).append("\": ").append(e.getValue());
+            firstKill = false;
+        }
+        json.append("}\n");
+        json.append("  },\n");
+
+        // Discoveries (entity glossary)
+        json.append("  \"discoveries\": {\n");
+        json.append("    \"variantsSeen\": {");
+        Map<String, Set<String>> variants = player.getDiscoveredVariantsByEntityType();
+        boolean firstVariant = true;
+        for (Map.Entry<String, Set<String>> e : variants.entrySet()) {
+            if (!firstVariant) json.append(", ");
+            json.append("\"").append(e.getKey()).append("\": [");
+            boolean firstArr = true;
+            for (String v : e.getValue()) {
+                if (!firstArr) json.append(", ");
+                json.append("\"").append(JsonParsingUtil.escapeJson(v)).append("\"");
+                firstArr = false;
+            }
+            json.append("]");
+            firstVariant = false;
+        }
+        json.append("},\n");
+        json.append("    \"weaknessesDiscovered\": [");
+        Set<String> weaknesses = player.getDiscoveredWeaknessEntityTypes();
+        boolean firstWeak = true;
+        for (String w : weaknesses) {
+            if (!firstWeak) json.append(", ");
+            json.append("\"").append(JsonParsingUtil.escapeJson(w)).append("\"");
+            firstWeak = false;
+        }
+        json.append("]\n");
+        json.append("  }\n");
 
         json.append("}");
 
@@ -215,12 +259,111 @@ public class JsonPlayerSerializer {
             }
             builder.abilityScores(abilityScores);
             builder.remainingAp(JsonParsingUtil.extractInt(json, "remainingAp", 27));
+            builder.level(JsonParsingUtil.extractInt(json, "level", 1));
+            builder.xp(JsonParsingUtil.extractInt(json, "xp", 0));
+
+            // Statistics (backward-compat: missing block → all 0)
+            if (json.contains("\"statistics\"")) {
+                PlayerStats ps = new PlayerStats();
+                ps.restore(
+                    (long) JsonParsingUtil.extractDoubleFromObject(json, "statistics", "entitiesKilled"),
+                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "damageDealt"),
+                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "totalDistance"),
+                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceWalked"),
+                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceSprinted"),
+                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceInAir"),
+                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "timeInAir")
+                );
+                ps.restoreKillsByType(extractKillsByEntityType(json));
+                builder.stats(ps);
+            }
+
+            // Discoveries (backward-compat: missing block → empty)
+            if (json.contains("\"discoveries\"")) {
+                builder.discoveredVariantsByEntityType(extractVariantsSeen(json));
+                builder.discoveredWeaknessEntityTypes(extractWeaknessesDiscovered(json));
+            }
 
             return builder.build();
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialize PlayerData: " + e.getMessage(), e);
         }
+    }
+
+    private static Map<EntityType, Long> extractKillsByEntityType(String json) {
+        Map<EntityType, Long> result = new EnumMap<>(EntityType.class);
+        // "killsByEntityType" appears once in player.json; search the full string to avoid nested-brace regex pitfalls.
+        java.util.regex.Pattern killsBlock = java.util.regex.Pattern.compile(
+            "\"killsByEntityType\"\\s*:\\s*\\{([^}]*)\\}",
+            java.util.regex.Pattern.DOTALL);
+        java.util.regex.Matcher km = killsBlock.matcher(json);
+        if (!km.find()) return result;
+        String killsContent = km.group(1);
+
+        java.util.regex.Pattern entryPattern = java.util.regex.Pattern.compile(
+            "\"([^\"]+)\"\\s*:\\s*(\\d+)");
+        java.util.regex.Matcher em = entryPattern.matcher(killsContent);
+        while (em.find()) {
+            try {
+                EntityType type = EntityType.valueOf(em.group(1));
+                result.put(type, Long.parseLong(em.group(2)));
+            } catch (IllegalArgumentException ignored) {}
+        }
+        return result;
+    }
+
+    /**
+     * Extract weaknessesDiscovered array from the discoveries block.
+     */
+    private static Set<String> extractWeaknessesDiscovered(String json) {
+        Set<String> result = new HashSet<>();
+        java.util.regex.Pattern block = java.util.regex.Pattern.compile(
+            "\"weaknessesDiscovered\"\\s*:\\s*\\[([^\\]]*)\\]");
+        java.util.regex.Matcher m = block.matcher(json);
+        if (!m.find()) return result;
+        String content = m.group(1).trim();
+        if (content.isEmpty()) return result;
+        java.util.regex.Pattern entry = java.util.regex.Pattern.compile("\"([^\"]*)\"");
+        java.util.regex.Matcher em = entry.matcher(content);
+        while (em.find()) {
+            result.add(em.group(1));
+        }
+        return result;
+    }
+
+    /**
+     * Extract the variantsSeen map from the discoveries block.
+     * Format: "COW": ["default", "angus"]
+     */
+    private static Map<String, Set<String>> extractVariantsSeen(String json) {
+        Map<String, Set<String>> result = new HashMap<>();
+        // Extract the variantsSeen block — note: each value is an array, so we use [^\]]* for the array content
+        java.util.regex.Pattern variantsBlock = java.util.regex.Pattern.compile(
+            "\"variantsSeen\"\\s*:\\s*\\{([^}]*)\\}",
+            java.util.regex.Pattern.DOTALL);
+        java.util.regex.Matcher vm = variantsBlock.matcher(json);
+        if (!vm.find()) return result;
+        String variantsContent = vm.group(1);
+
+        // Each entry: "ENTITY_TYPE": ["variant1", "variant2"]
+        java.util.regex.Pattern entryPattern = java.util.regex.Pattern.compile(
+            "\"([^\"]+)\"\\s*:\\s*\\[([^\\]]*)\\]");
+        java.util.regex.Matcher em = entryPattern.matcher(variantsContent);
+        while (em.find()) {
+            String entityType = em.group(1);
+            String variantsStr = em.group(2).trim();
+            Set<String> variants = new HashSet<>();
+            if (!variantsStr.isEmpty()) {
+                java.util.regex.Pattern variantPattern = java.util.regex.Pattern.compile("\"([^\"]*)\"");
+                java.util.regex.Matcher variantMatcher = variantPattern.matcher(variantsStr);
+                while (variantMatcher.find()) {
+                    variants.add(variantMatcher.group(1));
+                }
+            }
+            result.put(entityType, variants);
+        }
+        return result;
     }
 
     /**

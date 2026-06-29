@@ -37,15 +37,7 @@ public class MobGenerator {
     private static void processAnimalSpawning(World world, Chunk chunk, BiomeType biome, Random random, Object randomLock) {
         switch (biome) {
             case PLAINS:
-                // Spawn cows in PLAINS biome (10% chance per chunk)
-                float cowSpawnChance;
-                synchronized (randomLock) {
-                    cowSpawnChance = random.nextFloat();
-                }
-
-                if (cowSpawnChance < 0.1f) { // 10% chance per chunk
-                    AnimalGenerator.spawnCows(world, chunk, random, randomLock);
-                }
+                AnimalGenerator.spawnAnimals(world, chunk, random, randomLock);
                 break;
                 
             case SNOWY_PLAINS:

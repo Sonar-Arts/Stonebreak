@@ -45,6 +45,27 @@ public class CharacterStats {
 
   private final Set<String> acquiredFeatIds = new HashSet<>();
 
+  // ─────────────────────────────────────────────── Level / XP
+
+  private int level = 1;
+  private int xp    = 0;
+
+  public int getLevel() { return level; }
+  public int getXp()    { return xp; }
+
+  /** XP required to advance from current level to level+1. */
+  public int getXpForNextLevel() { return 200 + (level / 5) * 50; }
+
+  /** Adds XP and handles level-up chain. */
+  public void addXp(int amount) {
+    if (amount <= 0) return;
+    xp += amount;
+    while (xp >= getXpForNextLevel()) {
+      xp -= getXpForNextLevel();
+      level++;
+    }
+  }
+
   // ─────────────────────────────────────────────── Point currencies
 
   private int remainingCp = 100;
@@ -124,17 +145,6 @@ public class CharacterStats {
   }
   public List<String> getStatusEffects() { return List.of(); }
 
-  // ─────────────────────────────────────────────── Point currencies (stubs)
-
-  /** @deprecated Use {@link #getRemainingCp()} for live values. */
-  public int getClassPoints() { return remainingCp; }
-
-  /** @deprecated Use {@link #getRemainingSkillPoints()} for live values. */
-  public int getSkillPoints() { return remainingSp; }
-
-  /** @deprecated Use {@link #getRemainingFeatPoints()} for live values. */
-  public int getFeatPoints()  { return remainingFp; }
-
   // ─────────────────────────────────────────────── Vitals
 
   /** Live health from player. */
@@ -152,8 +162,10 @@ public class CharacterStats {
   /** Each WIS point contributes MANA_REGEN_PER_WIS_POINT mana/sec. WIS 10 = 2/sec. */
   public float computeManaRegen()  { return getWisdom()       * com.stonebreak.player.PlayerConstants.MANA_REGEN_PER_WIS_POINT; }
 
-  public float getMana()    { return player != null ? player.getMana()    : 0f; }
-  public float getMaxMana() { return player != null ? player.getMaxMana() : 0f; }
+  public float getMana()       { return player != null ? player.getMana()       : 0f; }
+  public float getMaxMana()    { return player != null ? player.getMaxMana()    : 0f; }
+  public float getStamina()    { return player != null ? player.getStamina()    : 0f; }
+  public float getMaxStamina() { return player != null ? player.getMaxStamina() : 0f; }
 
   // ─────────────────────────────────────────────── Class selection
 
@@ -281,7 +293,8 @@ public class CharacterStats {
                       Map<String, Integer> skills,
                       Set<String> feats,
                       int cp, int sp, int fp,
-                      int[] scores, int ap) {
+                      int[] scores, int ap,
+                      int level, int xp) {
     this.selectedClassId = classId;
     this.spentAbilityCp.clear();
     this.spentAbilityCp.putAll(abilityCp);
@@ -296,6 +309,8 @@ public class CharacterStats {
       this.abilityScores = java.util.Arrays.copyOf(scores, 6);
     }
     this.remainingAp = ap;
+    this.level = Math.max(1, level);
+    this.xp    = Math.max(0, xp);
     if (player != null) player.updateDerivedStats();
   }
 }

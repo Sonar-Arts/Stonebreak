@@ -1,5 +1,6 @@
 package com.stonebreak.world.save.model;
 
+import com.stonebreak.player.PlayerStats;
 import org.joml.Vector3f;
 import org.joml.Vector2f;
 import com.stonebreak.items.ItemStack;
@@ -40,6 +41,22 @@ public final class PlayerData {
     private final int remainingFp;
     private final int[] abilityScores;  // length 6: STR DEX CON INT WIS CHA
     private final int remainingAp;
+    private final int level;
+    private final int xp;
+
+    // Statistics
+    private final long statEntitiesKilled;
+    private final double statDamageDealt;
+    private final double statTotalDistance;
+    private final double statDistanceWalked;
+    private final double statDistanceSprinted;
+    private final double statDistanceInAir;
+    private final double statTimeInAir;
+    private final Map<String, Long> statKillsByEntityType;
+
+    // Entity glossary discoveries
+    private final Map<String, Set<String>> discoveredVariantsByEntityType;
+    private final Set<String> discoveredWeaknessEntityTypes;
 
     private PlayerData(Builder builder) {
         this.position = new Vector3f(builder.position);
@@ -62,6 +79,18 @@ public final class PlayerData {
         this.remainingFp = builder.remainingFp;
         this.abilityScores = Arrays.copyOf(builder.abilityScores, 6);
         this.remainingAp = builder.remainingAp;
+        this.level = builder.level;
+        this.xp    = builder.xp;
+        this.statEntitiesKilled  = builder.statEntitiesKilled;
+        this.statDamageDealt     = builder.statDamageDealt;
+        this.statTotalDistance   = builder.statTotalDistance;
+        this.statDistanceWalked  = builder.statDistanceWalked;
+        this.statDistanceSprinted = builder.statDistanceSprinted;
+        this.statDistanceInAir   = builder.statDistanceInAir;
+        this.statTimeInAir       = builder.statTimeInAir;
+        this.statKillsByEntityType = Collections.unmodifiableMap(new HashMap<>(builder.statKillsByEntityType));
+        this.discoveredVariantsByEntityType = Collections.unmodifiableMap(new HashMap<>(builder.discoveredVariantsByEntityType));
+        this.discoveredWeaknessEntityTypes = Collections.unmodifiableSet(new HashSet<>(builder.discoveredWeaknessEntityTypes));
     }
 
     // Getters - return defensive copies for mutable objects
@@ -85,6 +114,21 @@ public final class PlayerData {
     public int getRemainingFeatPoints() { return remainingFp; }
     public int[] getAbilityScores() { return Arrays.copyOf(abilityScores, 6); }
     public int getRemainingAp() { return remainingAp; }
+    public int getLevel() { return level; }
+    public int getXp()    { return xp; }
+
+    public long   getStatEntitiesKilled()   { return statEntitiesKilled; }
+    public double getStatDamageDealt()      { return statDamageDealt; }
+    public double getStatTotalDistance()    { return statTotalDistance; }
+    public double getStatDistanceWalked()   { return statDistanceWalked; }
+    public double getStatDistanceSprinted() { return statDistanceSprinted; }
+    public double getStatDistanceInAir()    { return statDistanceInAir; }
+    public double getStatTimeInAir()        { return statTimeInAir; }
+    public Map<String, Long> getStatKillsByEntityType() { return statKillsByEntityType; }
+
+    // Discoveries
+    public Map<String, Set<String>> getDiscoveredVariantsByEntityType() { return discoveredVariantsByEntityType; }
+    public Set<String> getDiscoveredWeaknessEntityTypes() { return discoveredWeaknessEntityTypes; }
 
     /**
      * Creates a new PlayerData with updated last saved time.
@@ -129,6 +173,20 @@ public final class PlayerData {
         private int remainingFp = 100;
         private int[] abilityScores = {10, 10, 10, 10, 10, 10};
         private int remainingAp = 27;
+        private int level = 1;
+        private int xp    = 0;
+        private long   statEntitiesKilled   = 0;
+        private double statDamageDealt      = 0.0;
+        private double statTotalDistance    = 0.0;
+        private double statDistanceWalked   = 0.0;
+        private double statDistanceSprinted = 0.0;
+        private double statDistanceInAir    = 0.0;
+        private double statTimeInAir        = 0.0;
+        private Map<String, Long> statKillsByEntityType = new HashMap<>();
+
+        // Discoveries (default empty — backward-compatible for old saves)
+        private Map<String, Set<String>> discoveredVariantsByEntityType = new HashMap<>();
+        private Set<String> discoveredWeaknessEntityTypes = new HashSet<>();
 
         public Builder() {
             // Initialize empty inventory
@@ -158,6 +216,18 @@ public final class PlayerData {
             this.remainingFp = data.remainingFp;
             this.abilityScores = Arrays.copyOf(data.abilityScores, 6);
             this.remainingAp = data.remainingAp;
+            this.level = data.level;
+            this.xp    = data.xp;
+            this.statEntitiesKilled  = data.statEntitiesKilled;
+            this.statDamageDealt     = data.statDamageDealt;
+            this.statTotalDistance   = data.statTotalDistance;
+            this.statDistanceWalked  = data.statDistanceWalked;
+            this.statDistanceSprinted = data.statDistanceSprinted;
+            this.statDistanceInAir   = data.statDistanceInAir;
+            this.statTimeInAir       = data.statTimeInAir;
+            this.statKillsByEntityType = new HashMap<>(data.statKillsByEntityType);
+            this.discoveredVariantsByEntityType = new HashMap<>(data.discoveredVariantsByEntityType);
+            this.discoveredWeaknessEntityTypes = new HashSet<>(data.discoveredWeaknessEntityTypes);
         }
 
         public Builder position(Vector3f position) {
@@ -262,6 +332,47 @@ public final class PlayerData {
 
         public Builder remainingAp(int remainingAp) {
             this.remainingAp = remainingAp;
+            return this;
+        }
+
+        public Builder level(int level) {
+            this.level = Math.max(1, level);
+            return this;
+        }
+
+        public Builder xp(int xp) {
+            this.xp = Math.max(0, xp);
+            return this;
+        }
+
+        public Builder stats(PlayerStats s) {
+            if (s != null) {
+                this.statEntitiesKilled  = s.getEntitiesKilled();
+                this.statDamageDealt     = s.getDamageDealt();
+                this.statTotalDistance   = s.getTotalDistance();
+                this.statDistanceWalked  = s.getDistanceWalked();
+                this.statDistanceSprinted = s.getDistanceSprinted();
+                this.statDistanceInAir   = s.getDistanceInAir();
+                this.statTimeInAir       = s.getTimeInAir();
+                this.statKillsByEntityType = new HashMap<>();
+                s.getKillsByType().forEach((type, count) ->
+                    this.statKillsByEntityType.put(type.name(), count));
+            }
+            return this;
+        }
+
+        public Builder statKillsByEntityType(Map<String, Long> map) {
+            this.statKillsByEntityType = new HashMap<>(map);
+            return this;
+        }
+
+        public Builder discoveredVariantsByEntityType(Map<String, Set<String>> map) {
+            this.discoveredVariantsByEntityType = new HashMap<>(map);
+            return this;
+        }
+
+        public Builder discoveredWeaknessEntityTypes(Set<String> set) {
+            this.discoveredWeaknessEntityTypes = new HashSet<>(set);
             return this;
         }
 

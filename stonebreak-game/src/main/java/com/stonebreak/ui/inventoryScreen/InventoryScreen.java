@@ -2,17 +2,18 @@ package com.stonebreak.ui.inventoryScreen;
 
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.items.Inventory;
 import com.stonebreak.crafting.CraftingManager;
-import com.stonebreak.rendering.Renderer;
 import com.stonebreak.input.InputHandler;
+import com.stonebreak.items.Inventory;
+import com.stonebreak.player.CharacterStats;
+import com.stonebreak.rendering.Renderer;
 import com.stonebreak.ui.Font;
 import com.stonebreak.ui.HotbarScreen;
 import com.stonebreak.ui.inventoryScreen.core.InventoryController;
-import com.stonebreak.ui.inventoryScreen.core.InventoryInputManager;
 import com.stonebreak.ui.inventoryScreen.core.InventoryCraftingManager;
-import com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator;
+import com.stonebreak.ui.inventoryScreen.core.InventoryInputManager;
 import com.stonebreak.ui.inventoryScreen.core.InventorySlotManager;
+import com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator;
 
 
 /**
@@ -26,19 +27,20 @@ public class InventoryScreen {
     /**
      * Creates a new inventory screen using modular architecture.
      */
-    public InventoryScreen(Inventory inventory, Font font, Renderer renderer, UIRenderer uiRenderer, InputHandler inputHandler, CraftingManager craftingManager) {
-        // Create specialized managers
+    public InventoryScreen(Inventory inventory, Font font, Renderer renderer, UIRenderer uiRenderer,
+                           InputHandler inputHandler, CraftingManager craftingManager,
+                           CharacterStats stats) {
         InventoryCraftingManager craftingManagerModule = new InventoryCraftingManager(craftingManager);
         InventorySlotManager slotManager = new InventorySlotManager(inventory, craftingManagerModule);
-        InventoryInputManager inputManager = new InventoryInputManager(inputHandler, inventory, slotManager, craftingManagerModule);
+        InventoryInputManager inputManager = new InventoryInputManager(inputHandler, inventory,
+            slotManager, craftingManagerModule);
 
-        // Create controller first
         this.controller = new InventoryController(inventory, inputManager, craftingManagerModule, null);
 
-        // Create render coordinator with controller reference
-        InventoryRenderCoordinator renderCoordinator = new InventoryRenderCoordinator(uiRenderer, renderer, inputHandler, inventory, controller, inputManager, craftingManagerModule);
+        InventoryRenderCoordinator renderCoordinator = new InventoryRenderCoordinator(
+            uiRenderer, renderer, inputHandler, inventory, controller, inputManager,
+            craftingManagerModule, stats);
 
-        // Set the render coordinator in the controller
         this.controller.setRenderCoordinator(renderCoordinator);
     }
 

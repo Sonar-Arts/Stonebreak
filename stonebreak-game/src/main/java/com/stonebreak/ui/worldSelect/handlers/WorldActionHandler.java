@@ -262,14 +262,6 @@ public class WorldActionHandler {
     }
 
     /**
-     * Opens a world for editing (placeholder for future functionality).
-     */
-    public void editWorld(String worldName) {
-        // TODO: Implement world editing functionality
-        System.out.println("Edit world requested for: " + worldName);
-    }
-
-    /**
      * Opens the delete confirmation dialog for the currently selected world.
      */
     public void requestDeleteSelectedWorld() {
@@ -321,14 +313,6 @@ public class WorldActionHandler {
         } finally {
             refreshWorlds();
         }
-    }
-
-    /**
-     * Duplicates a world (placeholder for future functionality).
-     */
-    public void duplicateWorld(String worldName) {
-        // TODO: Implement world duplication functionality
-        System.out.println("Duplicate world requested for: " + worldName);
     }
 
     // ===== UTILITY METHODS =====

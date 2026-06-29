@@ -8,6 +8,7 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
 import com.stonebreak.world.generation.terrain.animals.animalRegistry.ChickenAnimal;
 import com.stonebreak.world.generation.terrain.animals.animalRegistry.CowAnimal;
+import com.stonebreak.world.generation.terrain.animals.animalRegistry.SheepAnimal;
 
 /**
  * Handles spawning of animals in the world during chunk generation.
@@ -21,8 +22,8 @@ public class AnimalGenerator {
         // Register all available animal types
         registerAnimal(new CowAnimal());
         registerAnimal(new ChickenAnimal());
+        registerAnimal(new SheepAnimal());
         // Future animals can be added here:
-        // registerAnimal(new SheepAnimal());
         // registerAnimal(new PigAnimal());
     }
     

@@ -818,6 +818,14 @@ public class Main {
                 dmg.render(renderer.getProjectionMatrix(),
                            player.getViewMatrix(),
                            width, height);
+                com.stonebreak.rendering.UI.components.QuarryMarkerRenderer.getInstance()
+                        .render(renderer.getProjectionMatrix(), player.getViewMatrix(), width, height);
+                com.stonebreak.rendering.UI.components.DoubtMarkerRenderer.getInstance()
+                        .render(renderer.getProjectionMatrix(), player.getViewMatrix(), width, height);
+                com.stonebreak.rendering.UI.components.EnemyAwarenessRenderer.getInstance()
+                        .render(renderer.getProjectionMatrix(), player.getViewMatrix(), width, height);
+                com.stonebreak.rendering.UI.components.StealthHudRenderer.getInstance()
+                        .render(width, height);
             }
         }
 
@@ -927,6 +935,18 @@ public class Main {
             // Skija-backed; brackets its own GL state — no NanoVG frame here.
             pauseMenu.render(width, height);
             renderer.getUIRenderer().renderPauseMenuDepthCurtain();
+        }
+
+        // Render statistics screen
+        com.stonebreak.ui.statisticsScreen.StatisticsScreen statsScreen = game.getStatisticsScreen();
+        if (statsScreen != null && statsScreen.isVisible() && renderer != null) {
+            statsScreen.render(width, height);
+        }
+
+        // Render glossary screen
+        com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen = game.getGlossaryScreen();
+        if (glossaryScreen != null && glossaryScreen.isVisible() && renderer != null) {
+            glossaryScreen.render(width, height);
         }
 
         // Render death menu if player is dead

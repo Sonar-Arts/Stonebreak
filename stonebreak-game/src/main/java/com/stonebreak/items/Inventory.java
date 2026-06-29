@@ -9,14 +9,22 @@ import com.stonebreak.ui.inventoryScreen.InventoryScreen;
  */
 public class Inventory {
 
+    /** Equipment slot types. Order determines the rendering grid layout (index = slot id). */
+    public enum EquipmentSlot {
+        HEAD, CHEST, LEGS, BOOTS, NECK, RING_1, RING_2, BRACELET, TRINKET_1, TRINKET_2;
+
+        public static final int COUNT = 10;
+    }
+
     public static final int HOTBAR_SIZE = 9;
     public static final int MAIN_INVENTORY_ROWS = 3;
     public static final int MAIN_INVENTORY_COLS = 9;
     public static final int MAIN_INVENTORY_SIZE = MAIN_INVENTORY_ROWS * MAIN_INVENTORY_COLS; // 27 slots
     public static final int TOTAL_SLOTS = HOTBAR_SIZE + MAIN_INVENTORY_SIZE; // 36 slots
-    
+
     private final ItemStack[] hotbarSlots;
     private final ItemStack[] mainInventorySlots;
+    private final ItemStack[] equipmentSlots;
     private int selectedHotbarSlotIndex; // 0-8
     private InventoryScreen inventoryScreen; // Reference to InventoryScreen for tooltip
 
@@ -24,16 +32,18 @@ public class Inventory {
      * Creates a new inventory with fixed slots.
      */
     public Inventory() {
-        // this.inventoryScreen = inventoryScreen; // Removed: Will be set via setter
         this.hotbarSlots = new ItemStack[HOTBAR_SIZE];
         this.mainInventorySlots = new ItemStack[MAIN_INVENTORY_SIZE];
-        
-        // Initialize all slots with empty items
+        this.equipmentSlots = new ItemStack[EquipmentSlot.COUNT];
+
         for (int i = 0; i < HOTBAR_SIZE; i++) {
             hotbarSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
         }
         for (int i = 0; i < MAIN_INVENTORY_SIZE; i++) {
             mainInventorySlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
+        }
+        for (int i = 0; i < EquipmentSlot.COUNT; i++) {
+            equipmentSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
         }
         this.selectedHotbarSlotIndex = 0;
 
@@ -464,6 +474,27 @@ public class Inventory {
         initializeStartingItems();
         
         System.out.println("Inventory reset to starting items for new world");
+    }
+
+    /** Returns a copy of all equipment slots. Empty slots contain an empty ItemStack, never null. */
+    public ItemStack[] getEquipmentSlots() {
+        ItemStack[] copy = new ItemStack[EquipmentSlot.COUNT];
+        for (int i = 0; i < EquipmentSlot.COUNT; i++) {
+            copy[i] = equipmentSlots[i].copy();
+        }
+        return copy;
+    }
+
+    /** Returns the ItemStack in the given equipment slot (direct reference). */
+    public ItemStack getEquipmentSlot(EquipmentSlot slot) {
+        return equipmentSlots[slot.ordinal()];
+    }
+
+    /** Replaces the contents of an equipment slot. {@code null} is treated as empty. */
+    public void setEquipmentSlot(EquipmentSlot slot, ItemStack stack) {
+        equipmentSlots[slot.ordinal()] = (stack == null || stack.isEmpty())
+            ? new ItemStack(BlockType.AIR.getId(), 0)
+            : stack;
     }
 
     /**

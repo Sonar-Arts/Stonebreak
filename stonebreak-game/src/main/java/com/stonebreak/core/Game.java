@@ -51,6 +51,8 @@ public class Game {
     private DeathMenu deathMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private CharacterScreen characterScreen; // Character stats screen
+    private com.stonebreak.ui.statisticsScreen.StatisticsScreen statisticsScreen; // Statistics screen
+    private com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen; // Entity Glossary screen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
     private FurnaceScreen furnaceScreen; // Furnace smelting GUI
     private RecipeScreen recipeScreen; // Added RecipeBookScreen
@@ -123,6 +125,8 @@ public class Game {
     
     /**
      * Gets the singleton instance.
+     * No synchronization needed: always created on the main thread during startup,
+     * before any background threads are spawned. Post-init access is read-only.
      */
     public static Game getInstance() {
         if (instance == null) {
@@ -156,6 +160,8 @@ public class Game {
 
         this.mouseCaptureManager = new MouseCaptureManager(window);
         this.pauseMenu = new PauseMenu(this.renderer.getSkijaBackend());
+        this.statisticsScreen = new com.stonebreak.ui.statisticsScreen.StatisticsScreen(this.renderer.getSkijaBackend());
+        this.glossaryScreen = new com.stonebreak.ui.glossaryScreen.GlossaryScreen(this.renderer.getSkijaBackend());
         this.deathMenu = new DeathMenu(this.renderer.getSkijaBackend());
         this.waterEffects = new WaterEffects();
 
@@ -221,7 +227,9 @@ public class Game {
                 pending.getRemainingSkillPoints(),
                 pending.getRemainingFeatPoints(),
                 pending.getAbilityScores(),
-                pending.getRemainingAp()
+                pending.getRemainingAp(),
+                pending.getLevel(),
+                pending.getXp()
             );
             live.setSelectedBackground(pending.getSelectedBackground());
         }
@@ -249,7 +257,9 @@ public class Game {
 
         // Initialize InventoryScreen - requires Player, Renderer, BlockTextureArray, and InputHandler
         if (renderer.getFont() != null && textureAtlas != null) {
-            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
+            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(),
+                renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager,
+                player.getCharacterStats());
             // Now that inventoryScreen is created, give the inventory a reference to it.
             player.getInventory().setInventoryScreen(this.inventoryScreen);
             // Trigger initial tooltip for the currently selected item
@@ -454,6 +464,13 @@ public class Game {
         stateController.togglePauseMenu();
     }
 
+    public void openStatisticsScreen()  { stateController.openStatisticsScreen(); }
+    public void closeStatisticsScreen() { stateController.closeStatisticsScreen(); }
+    public void openGlossaryScreen()  { stateController.openGlossaryScreen(); }
+    public void closeGlossaryScreen() { stateController.closeGlossaryScreen(); }
+
+    public com.stonebreak.core.state.GameStateController getStateController() { return stateController; }
+
     /** Checks if the game is paused. */
     public boolean isPaused() {
         return stateController.isPaused();
@@ -464,6 +481,14 @@ public class Game {
      */
     public PauseMenu getPauseMenu() {
         return pauseMenu;
+    }
+
+    public com.stonebreak.ui.statisticsScreen.StatisticsScreen getStatisticsScreen() {
+        return statisticsScreen;
+    }
+
+    public com.stonebreak.ui.glossaryScreen.GlossaryScreen getGlossaryScreen() {
+        return glossaryScreen;
     }
 
     /**
@@ -609,7 +634,7 @@ public class Game {
     public static PlayerSounds getPlayerSounds() {
         return getInstance().playerSounds;
     }
-    
+
     /**
      * Gets the chat system.
      */
@@ -938,7 +963,6 @@ public class Game {
             if (mouseCaptureManager != null) {
                 mouseCaptureManager.forceUpdate();
             }
-            System.out.println("[CLIENT-WORLD] Render world ready; entering play.");
         } catch (Exception e) {
             System.err.println("[CLIENT-WORLD] Failed to build render world: " + e.getMessage());
             e.printStackTrace();

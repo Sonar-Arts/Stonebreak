@@ -8,6 +8,21 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.player.Player;
+import com.stonebreak.player.combat.QuarryController;
+import com.stonebreak.player.combat.RageController;
+import com.stonebreak.player.combat.RageTier;
+import com.stonebreak.player.combat.arcanist.ArcanistAbilityController;
+import com.stonebreak.player.combat.arcanist.ArcanistHudText;
+import com.stonebreak.player.combat.arcanist.ResonanceTracker;
+import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
+import com.stonebreak.player.combat.berserker.BerserkerTierText;
+import com.stonebreak.player.combat.illusionist.IllusionistAbilityController;
+import com.stonebreak.player.combat.illusionist.IllusionistHudText;
+import com.stonebreak.player.combat.ranger.RangerAbilityController;
+import com.stonebreak.player.combat.ranger.RangerHudText;
+import com.stonebreak.player.combat.rogue.RogueAbilityController;
+import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.rpg.classes.AbilityIconCache;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.masonryUI.MItemSlot;
@@ -16,10 +31,14 @@ import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.rendering.UI.masonryUI.textures.MTexture;
 import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
+import static com.stonebreak.player.PlayerConstants.RAGE_T1_THRESHOLD;
+import static com.stonebreak.player.PlayerConstants.RAGE_T2_THRESHOLD;
+import static com.stonebreak.player.PlayerConstants.RAGE_T3_THRESHOLD;
 import com.stonebreak.ui.HotbarScreen;
 import com.stonebreak.ui.hotbar.core.HotbarLayoutCalculator;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.Image;
 
 /**
  * MasonryUI/Skija-based hotbar renderer.
@@ -62,6 +81,64 @@ public class MHotbarRenderer {
     private static final int STAMINA_FILL       = 0xDC50C850;
     private static final int STAMINA_BORDER     = 0xFF000000;
 
+    // ── Berserker Rage indicator (only shown when Berserker is the selected class) ────
+    private static final int   RAGE_PANEL_GAP       = 12;   // pixels right of the hotbar background
+    private static final int   RAGE_PANEL_WIDTH     = 190;
+    private static final int   RAGE_SEGMENT_HEIGHT  = 10;
+    private static final int   RAGE_SEGMENT_GAP     = 3;
+    private static final int   RAGE_SEGMENT_BG      = 0xC83C3C3C;
+    private static final int   RAGE_SEGMENT_BORDER  = 0xFF000000;
+    private static final int   RAGE_SEGMENT_FILLED  = 0xDCC83C32; // fierce red
+    private static final int   RAGE_SEGMENT_PARTIAL = 0xDC9C5028; // dim ember
+    private static final int   RAGE_LABEL_GAP       = 10;
+    private static final int   RAGE_BONUS_LINE_GAP  = 8;
+    private static final float RAGE_ICON_SIZE       = 20f;
+    private static final float RAGE_ICON_GAP        = 4f;
+
+    private static final String RAGE_ICON_PATH          = "/ui/abilities/berserker/Rage.png";
+    private static final String RAMPAGE_ICON_PATH       = "/ui/abilities/berserker/Rampage.png";
+    private static final String SKULL_CRUSHER_ICON_PATH = "/ui/abilities/berserker/Skull_Crusher.png";
+
+    // ── Ranger Quarry indicator (only shown when Ranger is the selected class) ────────
+    private static final int   QUARRY_PIP_HEIGHT  = 10;
+    private static final int   QUARRY_PIP_GAP     = 3;
+    private static final int   QUARRY_PIP_FILLED  = 0xDC58B858; // hunter green
+    private static final int   QUARRY_PIP_DIMMED  = 0xDC4A6E3C; // decaying — dim moss
+    private static final int   QUARRY_HP_HEIGHT   = 5;
+    private static final int   QUARRY_HP_FILL     = 0xDCC83C32;
+    private static final int   QUARRY_LINE_GAP    = 8;
+
+    private static final String QUARRY_ICON_PATH       = "/ui/abilities/ranger/Quarry.png";
+    private static final String SNARE_ICON_PATH        = "/ui/abilities/ranger/Snare.png";
+    private static final String CULLING_SHOT_ICON_PATH = "/ui/abilities/ranger/Culling_Shot.png";
+
+    // ── Arcanist Resonance indicator (only shown when Arcanist is the selected class) ──
+    private static final int RESONANCE_PIP_HEIGHT     = 10;
+    private static final int RESONANCE_PIP_GAP        = 3;
+    private static final int RESONANCE_PIP_FILLED     = 0xDC9C50E8; // arcane violet
+    private static final int RESONANCE_PIP_OVERLOADED = 0xDCFFD24A; // hot gold — Overloaded
+    private static final int RESONANCE_LINE_GAP       = 8;
+
+    // ── Rogue Momentum indicator (only shown when Rogue is the selected class) ─────────
+    private static final int MOMENTUM_PIP_HEIGHT = 10;
+    private static final int MOMENTUM_PIP_GAP    = 3;
+    private static final int MOMENTUM_PIP_FILLED = 0xDCC8B43C; // honed brass — charged Momentum
+
+    // ── Mana bar (only shown when the selected class spends mana) ─────────────
+    private static final int MANA_BAR_HEIGHT = 8;
+    private static final int MANA_BAR_GAP    = 6;    // pixels above the stamina bar
+    private static final int MANA_FILL       = 0xDC3C78DC; // arcane blue
+
+    // ── Dodge cooldown indicator (universal — always shown) ───────────────────
+    private static final int    DODGE_PANEL_GAP    = 12;  // pixels left of the hotbar background
+    private static final int    DODGE_PANEL_WIDTH  = 120;
+    private static final int    DODGE_BAR_HEIGHT   = 10;
+    private static final int    DODGE_LABEL_GAP    = 6;
+    private static final int    DODGE_BAR_BG       = 0xC83C3C3C;
+    private static final int    DODGE_BAR_BORDER   = 0xFF000000;
+    private static final int    DODGE_BAR_CHARGING = 0xDC4A7EA8; // dim steel-blue while recharging
+    private static final int    DODGE_BAR_READY    = 0xDC50B8DC; // bright cyan when ready
+
     private record HeartLayout(int heartsPerRow, int numRows, float step) {}
 
     private static final String HEART_EMPTY_SBT = "/ui/HUD/Health Icon/SB_Empty_Health_Icon.sbt";
@@ -96,6 +173,13 @@ public class MHotbarRenderer {
             drawSbtItemIcons(canvas, slots, layout);
             drawHealthHearts(canvas, layout);
             drawStaminaBar(canvas, layout);
+            drawManaBar(canvas, layout);
+            drawRageIndicator(canvas, layout);
+            drawQuarryIndicator(canvas, layout);
+            drawResonanceIndicator(canvas, layout);
+            drawDoubtIndicator(canvas, layout);
+            drawMomentumIndicator(canvas, layout);
+            drawDodgeIndicator(canvas, layout);
             ui.renderOverlays();
             ui.endFrame();
         }
@@ -217,6 +301,374 @@ public class MHotbarRenderer {
         MPainter.strokeRect(canvas, layout.backgroundX, barY, layout.backgroundWidth, STAMINA_BAR_HEIGHT, STAMINA_BORDER, 1f);
     }
 
+    /**
+     * Draws the mana bar above the stamina bar. Renders only when the selected class
+     * spends mana (currently just the Arcanist) to avoid HUD clutter for the others.
+     */
+    private void drawManaBar(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        if (!ArcanistAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+        float maxMana = player.getMaxMana();
+        if (maxMana <= 0) return;
+
+        int totalHearts = (int) Math.ceil(player.getMaxHealth() / 2.0f);
+        MTexture empty = MTextureRegistry.get(HEART_EMPTY_SBT);
+        MTexture half  = MTextureRegistry.get(HEART_HALF_SBT);
+        MTexture full  = MTextureRegistry.get(HEART_FULL_SBT);
+        int nativeSize = nativeHeartSize(empty, half, full);
+        int heartSize  = nativeSize * Math.max(1, Math.round((float) HEART_SIZE_TARGET / nativeSize));
+
+        HeartLayout hl      = computeHeartLayout(totalHearts, heartSize, layout.backgroundWidth);
+        int         rows    = Math.max(1, hl.numRows());
+        float       topRowY = layout.backgroundY - HEART_Y_GAP - (rows - 1) * (heartSize + HEART_ROW_GAP);
+        float       staminaY = topRowY - STAMINA_BAR_GAP - STAMINA_BAR_HEIGHT;
+        float       barY     = staminaY - MANA_BAR_GAP - MANA_BAR_HEIGHT;
+        float       fillW    = layout.backgroundWidth
+                * Math.max(0f, Math.min(1f, player.getMana() / maxMana));
+
+        MPainter.fillRect(canvas, layout.backgroundX, barY, layout.backgroundWidth, MANA_BAR_HEIGHT, STAMINA_BG);
+        if (fillW > 0) {
+            MPainter.fillRect(canvas, layout.backgroundX, barY, fillW, MANA_BAR_HEIGHT, MANA_FILL);
+        }
+        MPainter.strokeRect(canvas, layout.backgroundX, barY, layout.backgroundWidth, MANA_BAR_HEIGHT, STAMINA_BORDER, 1f);
+    }
+
+    /**
+     * Draws the Berserker Rage panel — three tier segments (T1/T2/T3), a "Rage: T<N>"
+     * label, and one live tier-bonus line per unlocked ability — to the right of the
+     * hotbar. Renders only when the player's selected class is the Berserker.
+     */
+    private void drawRageIndicator(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        if (!BerserkerAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+
+        RageController rage = player.getBerserkerAbilities().getRage();
+        RageTier tier = rage.getTier();
+        float currentRage = rage.getRage();
+        float[] thresholds = { RAGE_T1_THRESHOLD, RAGE_T2_THRESHOLD, RAGE_T3_THRESHOLD };
+
+        float panelX = layout.backgroundX + layout.backgroundWidth + RAGE_PANEL_GAP;
+        float y = layout.backgroundY;
+
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
+        String tierLabel = "Rage: T" + tier.ordinal();
+        float labelX = drawIconBeforeText(canvas, RAGE_ICON_PATH, panelX, y, MStyle.FONT_META);
+        MPainter.drawStringWithShadow(canvas, tierLabel, labelX, y + MStyle.FONT_META,
+                font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        y += MStyle.FONT_META + RAGE_LABEL_GAP;
+
+        for (int i = 0; i < thresholds.length; i++) {
+            float segMin = i == 0 ? 0f : thresholds[i - 1];
+            float segMax = thresholds[i];
+            float fraction = Math.max(0f, Math.min(1f, (currentRage - segMin) / (segMax - segMin)));
+
+            MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, RAGE_SEGMENT_HEIGHT, RAGE_SEGMENT_BG);
+            if (fraction >= 1f) {
+                MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, RAGE_SEGMENT_HEIGHT, RAGE_SEGMENT_FILLED);
+            } else if (fraction > 0f) {
+                MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH * fraction, RAGE_SEGMENT_HEIGHT, RAGE_SEGMENT_PARTIAL);
+            }
+            MPainter.strokeRect(canvas, panelX, y, RAGE_PANEL_WIDTH, RAGE_SEGMENT_HEIGHT, RAGE_SEGMENT_BORDER, 1f);
+
+            y += RAGE_SEGMENT_HEIGHT + RAGE_SEGMENT_GAP;
+        }
+
+        y += RAGE_BONUS_LINE_GAP;
+        var stats = player.getCharacterStats();
+        if (stats.getSpentCp(BerserkerAbilityController.RAMPAGE_KEY) > 0) {
+            y += MStyle.FONT_META;
+            float bonusX = drawIconBeforeText(canvas, RAMPAGE_ICON_PATH, panelX, y - MStyle.FONT_META, MStyle.FONT_META);
+            MPainter.drawStringWithShadow(canvas, BerserkerTierText.rampageBonus(tier), bonusX, y,
+                    font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+            y += RAGE_BONUS_LINE_GAP;
+        }
+        if (stats.getSpentCp(BerserkerAbilityController.SKULL_CRUSHER_KEY) > 0) {
+            y += MStyle.FONT_META;
+            float bonusX = drawIconBeforeText(canvas, SKULL_CRUSHER_ICON_PATH, panelX, y - MStyle.FONT_META, MStyle.FONT_META);
+            MPainter.drawStringWithShadow(canvas, BerserkerTierText.skullCrusherBonus(tier), bonusX, y,
+                    font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+        }
+    }
+
+    /**
+     * Draws the universal dodge cooldown indicator — a small labelled bar to the left of
+     * the hotbar that fills as the dodge recharges and brightens to "Ready" when available.
+     * Shown for every class (dodge is not class-gated).
+     */
+    private void drawDodgeIndicator(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+
+        float progress = player.getDodge().getCooldownProgress(); // 0..1, 1 = ready
+        boolean ready = progress >= 1f;
+
+        float panelX = layout.backgroundX - DODGE_PANEL_GAP - DODGE_PANEL_WIDTH;
+        float y = layout.backgroundY;
+
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
+        String label = ready ? "Dodge: Ready" : "Dodge";
+        MPainter.drawStringWithShadow(canvas, label, panelX, y + MStyle.FONT_META,
+                font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        y += MStyle.FONT_META + DODGE_LABEL_GAP;
+
+        MPainter.fillRect(canvas, panelX, y, DODGE_PANEL_WIDTH, DODGE_BAR_HEIGHT, DODGE_BAR_BG);
+        float fillW = DODGE_PANEL_WIDTH * Math.max(0f, Math.min(1f, progress));
+        if (fillW > 0) {
+            MPainter.fillRect(canvas, panelX, y, fillW, DODGE_BAR_HEIGHT,
+                    ready ? DODGE_BAR_READY : DODGE_BAR_CHARGING);
+        }
+        MPainter.strokeRect(canvas, panelX, y, DODGE_PANEL_WIDTH, DODGE_BAR_HEIGHT, DODGE_BAR_BORDER, 1f);
+    }
+
+    /**
+     * Draws the Ranger Quarry panel — header with the current Quarry and Study count,
+     * three discrete Study pips (the topmost dims while the decay window has elapsed),
+     * the Quarry's HP bar, the stack-1 armor/resistance reveal, and one live status line
+     * per unlocked ability — to the right of the hotbar. Renders only when the player's
+     * selected class is the Ranger.
+     */
+    private void drawQuarryIndicator(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        if (!RangerAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+
+        RangerAbilityController ranger = player.getRangerAbilities();
+        QuarryController quarry = ranger.getQuarry();
+        LivingEntity target = quarry.getQuarry();
+        int stacks = quarry.getStudyStacks();
+        boolean decaying = quarry.getDecayProgress() >= 1f;
+
+        float panelX = layout.backgroundX + layout.backgroundWidth + RAGE_PANEL_GAP;
+        float y = layout.backgroundY;
+
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
+        float labelX = drawIconBeforeText(canvas, QUARRY_ICON_PATH, panelX, y, MStyle.FONT_META);
+        MPainter.drawStringWithShadow(canvas, RangerHudText.quarryStatus(quarry), labelX, y + MStyle.FONT_META,
+                font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        y += MStyle.FONT_META + RAGE_LABEL_GAP;
+
+        for (int i = 0; i < com.stonebreak.player.PlayerConstants.RANGER_STUDY_MAX_STACKS; i++) {
+            MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, QUARRY_PIP_HEIGHT, RAGE_SEGMENT_BG);
+            if (i < stacks) {
+                boolean topPip = i == stacks - 1;
+                int fill = topPip && decaying ? QUARRY_PIP_DIMMED : QUARRY_PIP_FILLED;
+                MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, QUARRY_PIP_HEIGHT, fill);
+            }
+            MPainter.strokeRect(canvas, panelX, y, RAGE_PANEL_WIDTH, QUARRY_PIP_HEIGHT, RAGE_SEGMENT_BORDER, 1f);
+            y += QUARRY_PIP_HEIGHT + QUARRY_PIP_GAP;
+        }
+
+        if (target != null) {
+            float hpFraction = target.getMaxHealth() > 0f
+                    ? Math.max(0f, Math.min(1f, target.getHealth() / target.getMaxHealth()))
+                    : 0f;
+            MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, QUARRY_HP_HEIGHT, RAGE_SEGMENT_BG);
+            if (hpFraction > 0f) {
+                MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH * hpFraction, QUARRY_HP_HEIGHT, QUARRY_HP_FILL);
+            }
+            MPainter.strokeRect(canvas, panelX, y, RAGE_PANEL_WIDTH, QUARRY_HP_HEIGHT, RAGE_SEGMENT_BORDER, 1f);
+            y += QUARRY_HP_HEIGHT + QUARRY_LINE_GAP;
+        }
+
+        if (target != null && stacks >= 1) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas, RangerHudText.revealLine(target.getType()), panelX, y,
+                    font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+            y += QUARRY_LINE_GAP;
+        }
+        if (target != null && stacks >= 2) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas, "Weak point exposed", panelX, y,
+                    font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+            y += QUARRY_LINE_GAP;
+        }
+
+        y += RAGE_BONUS_LINE_GAP;
+        var stats = player.getCharacterStats();
+        if (stats.getSpentCp(RangerAbilityController.SNARE_KEY) > 0) {
+            y += MStyle.FONT_META;
+            float lineX = drawIconBeforeText(canvas, SNARE_ICON_PATH, panelX, y - MStyle.FONT_META, MStyle.FONT_META);
+            MPainter.drawStringWithShadow(canvas, RangerHudText.snareStatus(ranger.getSnare()), lineX, y,
+                    font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+            y += RAGE_BONUS_LINE_GAP;
+        }
+        if (stats.getSpentCp(RangerAbilityController.CULLING_SHOT_KEY) > 0) {
+            y += MStyle.FONT_META;
+            float lineX = drawIconBeforeText(canvas, CULLING_SHOT_ICON_PATH, panelX, y - MStyle.FONT_META, MStyle.FONT_META);
+            MPainter.drawStringWithShadow(canvas, RangerHudText.cullingShotStatus(ranger.getCullingShot()), lineX, y,
+                    font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+        }
+    }
+
+    /**
+     * Draws the Rogue Momentum panel — header with the current stack count, three discrete Momentum
+     * pips, and a readiness/cooldown line per unlocked ability — to the right of the hotbar. Renders
+     * only when the player's selected class is the Rogue.
+     */
+    private void drawMomentumIndicator(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        if (!RogueAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+
+        RogueAbilityController rogue = player.getRogueAbilities();
+        int stacks = rogue.getMomentum().getStacks();
+        int maxStacks = com.stonebreak.player.PlayerConstants.MOMENTUM_MAX_STACKS;
+
+        float panelX = layout.backgroundX + layout.backgroundWidth + RAGE_PANEL_GAP;
+        float y = layout.backgroundY;
+
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
+        MPainter.drawStringWithShadow(canvas, "Momentum " + stacks + "/" + maxStacks,
+                panelX, y + MStyle.FONT_META, font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        y += MStyle.FONT_META + RAGE_LABEL_GAP;
+
+        for (int i = 0; i < maxStacks; i++) {
+            MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, MOMENTUM_PIP_HEIGHT, RAGE_SEGMENT_BG);
+            if (i < stacks) {
+                MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, MOMENTUM_PIP_HEIGHT, MOMENTUM_PIP_FILLED);
+            }
+            MPainter.strokeRect(canvas, panelX, y, RAGE_PANEL_WIDTH, MOMENTUM_PIP_HEIGHT, RAGE_SEGMENT_BORDER, 1f);
+            y += MOMENTUM_PIP_HEIGHT + MOMENTUM_PIP_GAP;
+        }
+
+        y += RAGE_BONUS_LINE_GAP;
+        var stats = player.getCharacterStats();
+        if (stats.getSpentCp(RogueAbilityController.SHADOW_STEP_KEY) > 0) {
+            y += MStyle.FONT_META;
+            String state = rogue.getShadowStep().isOnCooldown()
+                    ? String.format("%.0fs", rogue.getShadowStep().getCooldownRemaining())
+                    : (rogue.getShadowStep().canActivate(player) ? "Ready" : "No target");
+            int color = "Ready".equals(state) ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
+            MPainter.drawStringWithShadow(canvas, "Shadow Step: " + state, panelX, y,
+                    font, color, MStyle.TEXT_SHADOW);
+            y += RAGE_BONUS_LINE_GAP;
+        }
+        if (stats.getSpentCp(RogueAbilityController.CALTROP_KEY) > 0) {
+            y += MStyle.FONT_META;
+            String state = rogue.getCaltrops().isOnCooldown()
+                    ? String.format("%.0fs", rogue.getCaltrops().getCooldownRemaining())
+                    : "Ready";
+            int color = "Ready".equals(state) ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
+            MPainter.drawStringWithShadow(canvas, "Caltrop Scatter: " + state, panelX, y,
+                    font, color, MStyle.TEXT_SHADOW);
+        }
+    }
+
+    /**
+     * Draws the Arcanist Resonance panel — header with the current stack count (or
+     * "OVERLOADED"), four discrete Resonance pips (all switching to hot gold while
+     * Overloaded — the distinct visual indicator), the live same-school echo line, and
+     * one status line per unlocked spell — to the right of the hotbar. Renders only when
+     * the player's selected class is the Arcanist.
+     */
+    private void drawResonanceIndicator(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        if (!ArcanistAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+
+        ArcanistAbilityController arcanist = player.getArcanistAbilities();
+        ResonanceTracker resonance = arcanist.getResonance();
+        int stacks = resonance.getResonanceStacks();
+        boolean overloaded = resonance.isOverloaded();
+
+        float panelX = layout.backgroundX + layout.backgroundWidth + RAGE_PANEL_GAP;
+        float y = layout.backgroundY;
+
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
+        MPainter.drawStringWithShadow(canvas, ArcanistHudText.resonanceStatus(resonance),
+                panelX, y + MStyle.FONT_META, font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        y += MStyle.FONT_META + RAGE_LABEL_GAP;
+
+        for (int i = 0; i < com.stonebreak.player.PlayerConstants.ARCANIST_RESONANCE_MAX_STACKS; i++) {
+            MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, RESONANCE_PIP_HEIGHT, RAGE_SEGMENT_BG);
+            if (i < stacks) {
+                int fill = overloaded ? RESONANCE_PIP_OVERLOADED : RESONANCE_PIP_FILLED;
+                MPainter.fillRect(canvas, panelX, y, RAGE_PANEL_WIDTH, RESONANCE_PIP_HEIGHT, fill);
+            }
+            MPainter.strokeRect(canvas, panelX, y, RAGE_PANEL_WIDTH, RESONANCE_PIP_HEIGHT, RAGE_SEGMENT_BORDER, 1f);
+            y += RESONANCE_PIP_HEIGHT + RESONANCE_PIP_GAP;
+        }
+
+        String sameSchool = ArcanistHudText.sameSchoolStatus(resonance);
+        if (sameSchool != null) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas, sameSchool, panelX, y,
+                    font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+            y += RESONANCE_LINE_GAP;
+        }
+
+        y += RAGE_BONUS_LINE_GAP;
+        var stats = player.getCharacterStats();
+        // Spell status lines turn gold while Overloaded — the next cast is the empowered one
+        int spellColor = overloaded ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
+        if (stats.getSpentCp(ArcanistAbilityController.LEYLINE_BREACH_KEY) > 0) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas,
+                    ArcanistHudText.spellStatus("Leyline Breach", arcanist.getLeylineBreach()),
+                    panelX, y, font, spellColor, MStyle.TEXT_SHADOW);
+            y += RAGE_BONUS_LINE_GAP;
+        }
+        if (stats.getSpentCp(ArcanistAbilityController.NULL_SPIKE_KEY) > 0) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas,
+                    ArcanistHudText.spellStatus("Null Spike", arcanist.getNullSpike()),
+                    panelX, y, font, spellColor, MStyle.TEXT_SHADOW);
+        }
+    }
+
+    /**
+     * Draws the Illusionist Doubt panel — header summarizing how many enemies carry Doubt (and how
+     * many are Bewildered) plus one live status line per unlocked ability — to the right of the
+     * hotbar. Renders only when the player's selected class is the Illusionist.
+     */
+    private void drawDoubtIndicator(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
+        Player player = Game.getInstance().getPlayer();
+        if (player == null) return;
+        if (!IllusionistAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+
+        IllusionistAbilityController illusionist = player.getIllusionistAbilities();
+
+        float panelX = layout.backgroundX + layout.backgroundWidth + RAGE_PANEL_GAP;
+        float y = layout.backgroundY;
+
+        Font font = ui.fonts().getScaled(MStyle.FONT_META);
+        MPainter.drawStringWithShadow(canvas, IllusionistHudText.doubtStatus(illusionist.getDoubt()),
+                panelX, y + MStyle.FONT_META, font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+        y += MStyle.FONT_META + RAGE_LABEL_GAP;
+
+        y += RAGE_BONUS_LINE_GAP;
+        var stats = player.getCharacterStats();
+        if (stats.getSpentCp(IllusionistAbilityController.MIRRORED_DECEIT_KEY) > 0) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas,
+                    IllusionistHudText.mirroredDeceitStatus(illusionist.getMirroredDeceit()),
+                    panelX, y, font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+            y += RAGE_BONUS_LINE_GAP;
+        }
+        if (stats.getSpentCp(IllusionistAbilityController.FRACTURE_KEY) > 0) {
+            y += MStyle.FONT_META;
+            MPainter.drawStringWithShadow(canvas,
+                    IllusionistHudText.fractureStatus(illusionist.getFracture()),
+                    panelX, y, font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+        }
+    }
+
+    /**
+     * Draws the icon at {@code iconPath} vertically centered against a text line spanning
+     * {@code [lineTopY, lineTopY + lineHeight]} at {@code lineX}, and returns the x-coordinate
+     * where the line's text should start (shifted right past the icon, or {@code lineX}
+     * unchanged if the icon failed to load).
+     */
+    private float drawIconBeforeText(Canvas canvas, String iconPath, float lineX, float lineTopY, float lineHeight) {
+        Image icon = AbilityIconCache.get(iconPath);
+        if (icon == null) return lineX;
+        float iconY = lineTopY + (lineHeight - RAGE_ICON_SIZE) / 2f;
+        MPainter.drawImage(canvas, icon, lineX, iconY, RAGE_ICON_SIZE, RAGE_ICON_SIZE);
+        return lineX + RAGE_ICON_SIZE + RAGE_ICON_GAP;
+    }
+
     private HeartLayout computeHeartLayout(int totalHearts, int heartSize, int availableWidth) {
         if (totalHearts <= 0) return new HeartLayout(0, 0, 0f);
 
@@ -315,8 +767,9 @@ public class MHotbarRenderer {
             HotbarLayoutCalculator.SlotPosition pos =
                     HotbarLayoutCalculator.calculateSlotPosition(i, layout);
             String countStr = String.valueOf(stack.getCount());
-            float  textX    = pos.x + pos.width  - MPainter.measureWidth(font, countStr) - 2f;
-            float  textY    = pos.y + pos.height - 2f;
+            float  countMargin = 2f * com.stonebreak.config.Settings.getInstance().getUiScale();
+            float  textX    = pos.x + pos.width  - MPainter.measureWidth(font, countStr) - countMargin;
+            float  textY    = pos.y + pos.height - countMargin;
             MPainter.drawStringWithShadow(canvas, countStr, textX, textY,
                     font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
         }
@@ -338,11 +791,12 @@ public class MHotbarRenderer {
         // Centre tooltip above the selected slot
         HotbarLayoutCalculator.SlotPosition slotPos =
                 HotbarLayoutCalculator.calculateSlotPosition(selectedIndex, layout);
-        float bx = slotPos.centerX - boxW / 2f;
-        float by = layout.backgroundY - boxH - 8f;
+        float bx  = slotPos.centerX - boxW / 2f;
+        float gap = 8f * scale;
+        float by  = layout.backgroundY - boxH - gap;
 
         // Keep within screen
-        float margin = 8f;
+        float margin = 8f * scale;
         bx = Math.max(margin, Math.min(bx, sw - boxW - margin));
         by = Math.max(margin, Math.min(by, sh - boxH - margin));
 

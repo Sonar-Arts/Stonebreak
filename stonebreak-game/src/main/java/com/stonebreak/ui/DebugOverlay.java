@@ -30,6 +30,8 @@ import com.stonebreak.mobs.cow.Cow;
 import com.stonebreak.mobs.cow.CowAI;
 import com.stonebreak.mobs.chicken.Chicken;
 import com.stonebreak.mobs.chicken.ChickenAI;
+import com.stonebreak.mobs.sheep.Sheep;
+import com.stonebreak.mobs.sheep.SheepAI;
 import java.util.List;
 import java.util.ArrayDeque;
 
@@ -634,6 +636,7 @@ public class DebugOverlay {
 
         List<Entity> cowEntities = entityManager.getEntitiesByType(EntityType.COW);
         List<Entity> chickenEntities = entityManager.getEntitiesByType(EntityType.CHICKEN);
+        List<Entity> sheepEntities = entityManager.getEntitiesByType(EntityType.SHEEP);
 
         // Model wireframe overlays — each call manages its own GL state.
         for (Entity entity : cowEntities) {
@@ -646,6 +649,11 @@ public class DebugOverlay {
                 renderer.renderEntityWireframe(chicken, colorForState(chicken));
             }
         }
+        for (Entity entity : sheepEntities) {
+            if (entity.isAlive() && entity instanceof Sheep sheep) {
+                renderer.renderEntityWireframe(sheep, colorForState(sheep));
+            }
+        }
 
         // AI path trails — batched line drawing (cows track a path; chickens do not).
         DebugRenderer debug = renderer.getDebugRenderer();
@@ -654,6 +662,11 @@ public class DebugOverlay {
             for (Entity entity : cowEntities) {
                 if (entity.isAlive() && entity instanceof Cow cow) {
                     renderCowPath(cow, debug);
+                }
+            }
+            for (Entity entity : sheepEntities) {
+                if (entity.isAlive() && entity instanceof Sheep sheep) {
+                    renderSheepPath(sheep, debug);
                 }
             }
         } finally {
@@ -695,6 +708,21 @@ public class DebugOverlay {
     }
 
     /**
+     * Picks the wireframe colour for a sheep's current AI state, sharing the
+     * cow palette so behaviour reads consistently across mob types.
+     */
+    private Vector4f colorForState(Sheep sheep) {
+        SheepAI ai = sheep.getAI();
+        SheepAI.SheepBehaviorState state =
+                ai != null ? ai.getCurrentState() : SheepAI.SheepBehaviorState.IDLE;
+        return switch (state) {
+            case IDLE      -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
+            case WANDERING -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
+            case GRAZING   -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
+        };
+    }
+
+    /**
      * Draws the cow's AI pathfinding trail as connected line segments.
      */
     private void renderCowPath(Cow cow, DebugRenderer debug) {
@@ -703,6 +731,17 @@ public class DebugOverlay {
             return;
         }
         debug.drawPath(cowAI.getPathPoints(), PATH_COLOR);
+    }
+
+    /**
+     * Draws the sheep's AI pathfinding trail as connected line segments.
+     */
+    private void renderSheepPath(Sheep sheep, DebugRenderer debug) {
+        SheepAI sheepAI = sheep.getAI();
+        if (sheepAI == null) {
+            return;
+        }
+        debug.drawPath(sheepAI.getPathPoints(), PATH_COLOR);
     }
 
     private String getCardinalDirection(Vector3f front) {

@@ -12,9 +12,13 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.Inventory;
 import org.joml.Vector3f;
 import org.joml.Vector2f;
+import com.stonebreak.mobs.entities.EntityType;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Utility class for converting between game objects and data models.
@@ -65,7 +69,26 @@ public final class StateConverter {
             .remainingFp(cs.getRemainingFeatPoints())
             .abilityScores(cs.getAbilityScores())
             .remainingAp(cs.getRemainingAp())
+            .level(cs.getLevel())
+            .xp(cs.getXp())
+            .stats(player.getStats())
+            .discoveredVariantsByEntityType(snapshotVariants(player))
+            .discoveredWeaknessEntityTypes(snapshotWeaknesses(player))
             .build();
+    }
+
+    private static Map<String, Set<String>> snapshotVariants(Player player) {
+        Map<String, Set<String>> result = new HashMap<>();
+        player.getEntityDiscoveries().getVariantsSeen().forEach((type, variants) ->
+            result.put(type.name(), variants));
+        return result;
+    }
+
+    private static Set<String> snapshotWeaknesses(Player player) {
+        Set<String> result = new HashSet<>();
+        player.getEntityDiscoveries().getWeaknessesDiscovered().forEach(type ->
+            result.add(type.name()));
+        return result;
     }
 
     /**
@@ -118,6 +141,24 @@ public final class StateConverter {
             inventory.setSelectedSlot(data.getSelectedHotbarSlot());
         }
 
+        // Restore statistics
+        player.getStats().restore(
+            data.getStatEntitiesKilled(),
+            data.getStatDamageDealt(),
+            data.getStatTotalDistance(),
+            data.getStatDistanceWalked(),
+            data.getStatDistanceSprinted(),
+            data.getStatDistanceInAir(),
+            data.getStatTimeInAir()
+        );
+        Map<EntityType, Long> killsByType = new EnumMap<>(EntityType.class);
+        data.getStatKillsByEntityType().forEach((typeName, count) -> {
+            try {
+                killsByType.put(EntityType.valueOf(typeName), count);
+            } catch (IllegalArgumentException ignored) {}
+        });
+        player.getStats().restoreKillsByType(killsByType);
+
         // Restore RPG / character progression
         CharacterStats cs = player.getCharacterStats();
         cs.restore(
@@ -129,8 +170,25 @@ public final class StateConverter {
             data.getRemainingSkillPoints(),
             data.getRemainingFeatPoints(),
             data.getAbilityScores(),
-            data.getRemainingAp()
+            data.getRemainingAp(),
+            data.getLevel(),
+            data.getXp()
         );
+
+        // Restore entity glossary discoveries
+        Map<EntityType, Set<String>> variantsRestored = new EnumMap<>(EntityType.class);
+        data.getDiscoveredVariantsByEntityType().forEach((typeName, variants) -> {
+            try {
+                variantsRestored.put(EntityType.valueOf(typeName), variants);
+            } catch (IllegalArgumentException ignored) {}
+        });
+        Set<EntityType> weaknessesRestored = EnumSet.noneOf(EntityType.class);
+        data.getDiscoveredWeaknessEntityTypes().forEach(typeName -> {
+            try {
+                weaknessesRestored.add(EntityType.valueOf(typeName));
+            } catch (IllegalArgumentException ignored) {}
+        });
+        player.getEntityDiscoveries().restore(variantsRestored, weaknessesRestored);
     }
 
     /**

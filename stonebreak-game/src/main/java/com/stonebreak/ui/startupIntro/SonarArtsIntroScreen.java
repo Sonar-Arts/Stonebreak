@@ -80,6 +80,8 @@ public final class SonarArtsIntroScreen {
             // "Sound not found" on every ping when the resource/codec failed.
             sonarSoundRegistered = sound.isSoundLoaded(SONAR_SOUND_NAME);
         } catch (Throwable t) {
+            // Intro sound is cosmetic — if the audio device is unavailable or the resource
+            // is missing, the intro still plays silently rather than crashing.
             System.err.println("[SonarIntro] Failed to register sonar sound: " + t.getMessage());
         }
     }

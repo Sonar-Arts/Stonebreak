@@ -11,6 +11,7 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.ItemDrop;
+import com.stonebreak.mobs.sheep.Sheep;
 import com.stonebreak.network.client.NetworkInterpolator;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
@@ -140,6 +141,10 @@ public final class ClientEntityHandler {
                 yield new Cow(Game.getWorld(), pos, variant);
             }
             case CHICKEN -> new Chicken(Game.getWorld(), pos);
+            case SHEEP -> {
+                String variant = (metadata == null || metadata.isBlank()) ? "default" : metadata;
+                yield new Sheep(Game.getWorld(), pos, variant);
+            }
             case BLOCK_DROP -> {
                 BlockType bt = BlockType.getById(parseInt(metadata, 0));
                 if (bt == null) {

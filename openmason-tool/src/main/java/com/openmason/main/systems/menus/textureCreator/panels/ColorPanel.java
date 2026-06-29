@@ -54,9 +54,9 @@ public class ColorPanel {
     // Last painted color - tracks what was painted before current
     private int lastPaintedColor = 0xFF000000; // Black
 
-    // Color history (last 10 colors used)
+    // Color history (last 20 colors used)
     private final List<Integer> colorHistory = new ArrayList<>();
-    private static final int MAX_HISTORY_SIZE = 10;
+    private static final int MAX_HISTORY_SIZE = 20;
 
 
     /**

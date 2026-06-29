@@ -68,6 +68,7 @@ public final class MouseHandler {
         stateManager.getLeafTransparencyButton().updateHover(mouseX, mouseY);
         stateManager.getWaterShaderButton().updateHover(mouseX, mouseY);
         stateManager.getCloudsButton().updateHover(mouseX, mouseY);
+        stateManager.getGodRaysButton().updateHover(mouseX, mouseY);
         stateManager.getApplyButton().updateHover(mouseX, mouseY);
         stateManager.getBackButton().updateHover(mouseX, mouseY);
         stateManager.getVolumeSlider().updateHover(mouseX, mouseY);
@@ -137,6 +138,7 @@ public final class MouseHandler {
             case LEAF_TRANSPARENCY -> stateManager.getLeafTransparencyButton().handleClick(mouseX, mouseY);
             case WATER_SHADER      -> stateManager.getWaterShaderButton().handleClick(mouseX, mouseY);
             case CLOUDS_ENABLED    -> stateManager.getCloudsButton().handleClick(mouseX, mouseY);
+            case GOD_RAYS          -> stateManager.getGodRaysButton().handleClick(mouseX, mouseY);
             case RENDER_DISTANCE   -> stateManager.getRenderDistanceSlider().handleClick(mouseX, mouseY);
             case LOD_DISTANCE      -> stateManager.getLodDistanceSlider().handleClick(mouseX, mouseY);
             case LOD_ENABLED       -> stateManager.getLodEnabledButton().handleClick(mouseX, mouseY);

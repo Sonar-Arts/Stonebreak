@@ -52,6 +52,7 @@ public class ActionHandler {
             case LEAF_TRANSPARENCY -> toggleLeafTransparency();
             case WATER_SHADER -> toggleWaterShader();
             case CLOUDS_ENABLED -> toggleClouds();
+            case GOD_RAYS -> toggleGodRays();
             case LOD_ENABLED -> toggleLodEnabled();
             case VSYNC -> toggleVsync();
             case APPLY -> applySettings();
@@ -286,6 +287,15 @@ public class ActionHandler {
         boolean currentValue = settings.getCloudsEnabled();
         settings.setCloudsEnabled(!currentValue);
         System.out.println("Clouds toggled to: " + (!currentValue ? "ON" : "OFF"));
+    }
+
+    /**
+     * Toggles the god rays post-processing effect.
+     */
+    public void toggleGodRays() {
+        boolean currentValue = settings.getGodRaysEnabled();
+        settings.setGodRaysEnabled(!currentValue);
+        System.out.println("God rays toggled to: " + (!currentValue ? "ON" : "OFF"));
     }
 
     /**

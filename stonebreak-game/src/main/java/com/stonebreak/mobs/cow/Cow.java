@@ -1,14 +1,16 @@
 package com.stonebreak.mobs.cow;
 
 import org.joml.Vector3f;
-import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
+import com.stonebreak.util.DropUtil;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.AnimationController;
+import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.audio.CowSounds;
 
 /**
@@ -22,7 +24,6 @@ public class Cow extends LivingEntity {
     private float wanderTimer;
     private float idleTimer;
     private boolean isGrazing;
-    private float grazingTimer;
     
     
     // Milk system (basic implementation)
@@ -62,7 +63,6 @@ public class Cow extends LivingEntity {
         this.wanderTimer = 0.0f;
         this.idleTimer = 0.0f;
         this.isGrazing = false;
-        this.grazingTimer = 0.0f;
         
         
         // Initialize milk system
@@ -71,6 +71,10 @@ public class Cow extends LivingEntity {
         
         // Initialize AI
         this.cowAI = new CowAI(this);
+
+        // Stealth awareness: cows detect and react to a stealthed player (demo of the universal
+        // AwarenessController). Investigate/pursue overrides passive wander when not UNAWARE.
+        this.awareness = new AwarenessController(this);
         
         // Initialize animation system
         this.animationController = new AnimationController(this);
@@ -96,19 +100,16 @@ public class Cow extends LivingEntity {
         // Update cow-specific systems
         updateMilkSystem(deltaTime);
         updateBehaviorTimers(deltaTime);
-        
-        // Update AI behavior
-        if (cowAI != null) {
+
+        // Stealth awareness drives movement when SUSPICIOUS/ALERTED; otherwise run passive AI.
+        awareness.update(deltaTime);
+        if (!awareness.drive(deltaTime)) {
             cowAI.update(deltaTime);
         }
-        
+
         // Advance the animation clock; the SBE cow renderer samples clips from it.
         animationController.updateAnimations(deltaTime);
-
-        // Update cow sounds
-        if (cowSounds != null) {
-            cowSounds.updateSounds(position, velocity, isOnGround());
-        }
+        cowSounds.updateSounds(position, velocity, isOnGround());
     }
     
     /**
@@ -131,10 +132,6 @@ public class Cow extends LivingEntity {
     private void updateBehaviorTimers(float deltaTime) {
         wanderTimer += deltaTime;
         idleTimer += deltaTime;
-        
-        if (isGrazing) {
-            grazingTimer += deltaTime;
-        }
     }
     
     /**
@@ -170,21 +167,9 @@ public class Cow extends LivingEntity {
     @Override
     public void onDamage(float damage, DamageSource source) {
         if (source == DamageSource.PLAYER) {
-            Player player = Game.getPlayer();
-            if (player != null) {
-                Vector3f knockbackDir = new Vector3f(position).sub(player.getPosition());
-                knockbackDir.y = 0;
-                if (knockbackDir.length() > 0.01f) {
-                    knockbackDir.normalize();
-                    velocity.x += knockbackDir.x * 6.0f;
-                    velocity.z += knockbackDir.z * 6.0f;
-                    velocity.y += 0.6f;
-                }
-            }
+            applyPlayerKnockback();
         }
-        if (cowAI != null) {
-            cowAI.onDamaged(damage);
-        }
+        cowAI.onDamaged(damage);
     }
     
     /**
@@ -192,33 +177,29 @@ public class Cow extends LivingEntity {
      */
     @Override
     protected void onDeath() {
-        // Cleanup AI state and references
-        if (cowAI != null) {
-            cowAI.cleanup();
-        }
-
-        // Reset sound system state
-        if (cowSounds != null) {
-            cowSounds.reset();
+        cowAI.cleanup();
+        cowSounds.reset();
+        for (ItemStack drop : getDrops()) {
+            DropUtil.createItemDrop(world, getPosition(), drop);
         }
     }
-    
-    /**
-     * Gets the items this cow drops when it dies.
-     */
+
     @Override
     public ItemStack[] getDrops() {
+        if (Math.random() < 0.40) {
+            return new ItemStack[] { new ItemStack(ItemType.LEATHER, 1) };
+        }
         return new ItemStack[0];
     }
+
+    @Override
+    public int getXpReward() { return 5; }
     
     /**
      * Sets the cow's grazing state.
      */
     public void setGrazing(boolean grazing) {
         this.isGrazing = grazing;
-        if (grazing) {
-            this.grazingTimer = 0.0f;
-        }
     }
     
     
@@ -245,6 +226,11 @@ public class Cow extends LivingEntity {
         return animationController;
     }
     
+    public boolean isCanBeMilked() { return canBeMilked; }
+    public void setCanBeMilked(boolean canBeMilked) { this.canBeMilked = canBeMilked; }
+    public float getMilkRegenTimer() { return milkRegenTimer; }
+    public void setMilkRegenTimer(float timer) { this.milkRegenTimer = timer; }
+
     /**
      * Gets the cow's texture variant.
      */

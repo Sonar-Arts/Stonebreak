@@ -99,6 +99,11 @@ public class EntityManager {
 
                 entity.update(deltaTime);
 
+                if (entity.getPosition().y < -10) {
+                    entity.setAlive(false);
+                    continue;
+                }
+
                 // Apply physics and collision
                 // Self-propelled projectiles (e.g. the fire bolt) move themselves
                 // in update() and must skip the external physics step.
@@ -214,12 +219,16 @@ public class EntityManager {
     private Entity createEntity(EntityType type, Vector3f position) {
         return switch (type) {
             case COW -> {
-                // Select random texture variant for fallback cow creation
-                String[] variants = {"default", "angus", "highland"};
+                String[] variants = type.getTextureVariants();
                 String textureVariant = variants[(int)(Math.random() * variants.length)];
                 yield new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
             }
             case CHICKEN -> new com.stonebreak.mobs.chicken.Chicken(world, position);
+            case SHEEP -> {
+                String[] variants = type.getTextureVariants();
+                String textureVariant = variants[(int)(Math.random() * variants.length)];
+                yield new com.stonebreak.mobs.sheep.Sheep(world, position, textureVariant);
+            }
             // Projectiles (FIRE_BOLT, ARROW, BOBBER) require a launch direction and
             // are spawned via their dedicated spawn* methods, not this generic path.
             default -> {
@@ -249,6 +258,46 @@ public class EntityManager {
             entitiesToAdd.add(arrow);
         }
         return arrow;
+    }
+
+    /**
+     * Spawns a Null Spike projectile aimed in the given direction. Damage, Spellmark
+     * duration, pierce, and burst damage are precomputed by the casting ability.
+     */
+    public NullSpikeProjectile spawnNullSpike(Vector3f position, Vector3f direction,
+            float damagePerHit, float spellmarkDuration, boolean pierce, float burstDamage) {
+        NullSpikeProjectile spike = new NullSpikeProjectile(world, position, direction,
+            damagePerHit, spellmarkDuration, pierce, burstDamage);
+        synchronized (entitiesToAdd) {
+            entitiesToAdd.add(spike);
+        }
+        return spike;
+    }
+
+    /**
+     * Spawns a Leyline Breach zone at a ground position. Radius, pull force, pulse
+     * damage, and duration are precomputed by the casting ability.
+     */
+    public LeylineBreachZone spawnLeylineBreachZone(Vector3f position, float radius,
+            float pullForce, float pulseDamage, float duration, boolean overloaded) {
+        LeylineBreachZone zone = new LeylineBreachZone(world, position, radius,
+            pullForce, pulseDamage, duration, overloaded);
+        synchronized (entitiesToAdd) {
+            entitiesToAdd.add(zone);
+        }
+        return zone;
+    }
+
+    /**
+     * Spawns a Rogue caltrop cluster at a ground position that flat-foots the first creature to step
+     * on it, expiring after {@code duration} seconds if untriggered.
+     */
+    public CaltropCluster spawnCaltropCluster(Vector3f position, float duration) {
+        CaltropCluster cluster = new CaltropCluster(world, position, duration);
+        synchronized (entitiesToAdd) {
+            entitiesToAdd.add(cluster);
+        }
+        return cluster;
     }
 
     /**

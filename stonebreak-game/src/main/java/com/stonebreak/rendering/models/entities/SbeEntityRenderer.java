@@ -196,6 +196,22 @@ public final class SbeEntityRenderer {
                        float animationTime, Vector3f position, float yawDegrees,
                        Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                        com.stonebreak.world.World world, Vector3f cameraPos) {
+        render(asset, variantName, stateName, animationTime, position, yawDegrees, scale,
+                viewMatrix, projectionMatrix, world, cameraPos, 0f, 0f);
+    }
+
+    /**
+     * Renders an SBE entity with an optional independent head turn. {@code headYawDeg}
+     * and {@code headPitchDeg} rotate the part named "head" about its neck pivot,
+     * relative to the body yaw baked into {@code yawDegrees}; pass {@code 0,0} for
+     * no head turn. Used by the third-person local player so the head tracks the
+     * cursor while the body faces the movement direction.
+     */
+    public void render(SbeEntityAsset asset, String variantName, String stateName,
+                       float animationTime, Vector3f position, float yawDegrees,
+                       Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                       com.stonebreak.world.World world, Vector3f cameraPos,
+                       float headYawDeg, float headPitchDeg) {
         if (!initialized || asset == null) return;
 
         SbeModelGeometry geometry = asset.geometryFor(variantName);
@@ -247,36 +263,10 @@ public final class SbeEntityRenderer {
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         GL30.glBindVertexArray(gpu.vao);
 
-        // The OMO mesh vertices are baked in model space — each part already
-        // sits at its rest pose. So an un-animated part draws with the base
-        // matrix alone; an animated part applies only the delta from its rest
-        // pose: base * M_anim * M_rest^-1.
-        Matrix4f partMatrix = new Matrix4f();
-        Matrix4f restInverse = new Matrix4f();
-        for (SbePart part : geometry.parts()) {
-            // Parts are model-root parts; the base matrix is the parent.
-            ParsedAnimTrack track = tracksById.get(part.id());
-            if (track == null) {
-                track = trackByName(clip, part.name());
-            }
-
-            if (track == null) {
-                partMatrix.set(base);
-            } else {
-                AnimSampler.PartPose pose = AnimSampler.sample(track, clipTime);
-                Vector3f origin = part.restOrigin();
-
-                // M_rest^-1
-                partTransform(restInverse.identity(),
-                        part.restPos(), part.restRot(), part.restScale(), origin)
-                        .invert();
-                // base * M_anim * M_rest^-1
-                partTransform(partMatrix.set(base),
-                        pose.position(), pose.rotationDeg(), pose.scale(), origin)
-                        .mul(restInverse);
-            }
+        String headPartId = (headYawDeg != 0f || headPitchDeg != 0f) ? headPartId(geometry) : null;
+        forEachPartMatrix(geometry, clip, clipTime, tracksById, base,
+                headPartId, headYawDeg, headPitchDeg, (partMatrix, part) -> {
             shader.setUniform("model", partMatrix);
-
             for (SbeFace face : part.faces()) {
                 Integer textureId = gpu.materialTextures.get(face.materialId());
                 if (textureId == null) continue;
@@ -284,7 +274,7 @@ public final class SbeEntityRenderer {
                 GL11.glDrawElements(GL11.GL_TRIANGLES, face.indexCount(),
                         GL11.GL_UNSIGNED_INT, (long) face.indexStart() * Integer.BYTES);
             }
-        }
+        });
 
         GL30.glBindVertexArray(0);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
@@ -356,33 +346,14 @@ public final class SbeEntityRenderer {
 
         GL30.glBindVertexArray(gpu.vao);
 
-        Matrix4f partMatrix = new Matrix4f();
-        Matrix4f restInverse = new Matrix4f();
-        for (SbePart part : geometry.parts()) {
-            ParsedAnimTrack track = tracksById.get(part.id());
-            if (track == null) {
-                track = trackByName(clip, part.name());
-            }
-
-            if (track == null) {
-                partMatrix.set(base);
-            } else {
-                AnimSampler.PartPose pose = AnimSampler.sample(track, clipTime);
-                Vector3f origin = part.restOrigin();
-                partTransform(restInverse.identity(),
-                        part.restPos(), part.restRot(), part.restScale(), origin)
-                        .invert();
-                partTransform(partMatrix.set(base),
-                        pose.position(), pose.rotationDeg(), pose.scale(), origin)
-                        .mul(restInverse);
-            }
+        forEachPartMatrix(geometry, clip, clipTime, tracksById, base,
+                null, 0f, 0f, (partMatrix, part) -> {
             wireShader.setUniform("model", partMatrix);
-
             for (SbeFace face : part.faces()) {
                 GL11.glDrawElements(GL11.GL_TRIANGLES, face.indexCount(),
                         GL11.GL_UNSIGNED_INT, (long) face.indexStart() * Integer.BYTES);
             }
-        }
+        });
 
         GL30.glBindVertexArray(0);
         wireShader.unbind();
@@ -398,6 +369,175 @@ public final class SbeEntityRenderer {
         }
         GL20.glUseProgram(previousProgram);
         GL30.glBindVertexArray(previousVertexArray);
+    }
+
+    /**
+     * Render one SBE entity as a flat, solid-coloured (but fully shaded-by-depth)
+     * model — used when the asset has no baked textures yet (e.g. an
+     * authored-but-untextured player). Geometry, animation and transforms are
+     * identical to {@link #render}; only the fragment colour differs: every face
+     * is drawn in {@code color} with no texture binding. Once the asset gains
+     * materials, callers should switch back to {@link #render}.
+     *
+     * @param color RGBA solid colour to fill the model with
+     */
+    public void renderColored(SbeEntityAsset asset, String variantName, String stateName,
+                              float animationTime, Vector3f position, float yawDegrees,
+                              Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                              Vector4f color) {
+        renderColored(asset, variantName, stateName, animationTime, position, yawDegrees, scale,
+                viewMatrix, projectionMatrix, color, 0f, 0f);
+    }
+
+    /** Flat-coloured variant of {@link #render} with optional head turn (see that method). */
+    public void renderColored(SbeEntityAsset asset, String variantName, String stateName,
+                              float animationTime, Vector3f position, float yawDegrees,
+                              Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                              Vector4f color, float headYawDeg, float headPitchDeg) {
+        if (!initialized || asset == null || wireShader == null) return;
+
+        SbeModelGeometry geometry = asset.geometryFor(variantName);
+        VariantGpu gpu = resolveVariantGpu(asset, variantName);
+        if (geometry == null || gpu == null) return;
+
+        ParsedAnimClip clip = asset.clipFor(stateName);
+        float clipTime = 0f;
+        Map<String, ParsedAnimTrack> tracksById = Collections.emptyMap();
+        if (clip != null) {
+            clipTime = AnimSampler.wrapTime(animationTime, clip.duration(), clip.loop());
+            tracksById = clip.trackByPartId();
+        }
+
+        // Save GL state.
+        int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        int previousVertexArray = GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
+        boolean wasCullFaceEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
+
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthFunc(GL11.GL_LESS);
+        GL11.glDisable(GL11.GL_CULL_FACE);
+
+        wireShader.bind();
+        wireShader.setUniform("view", viewMatrix);
+        wireShader.setUniform("projection", projectionMatrix);
+        wireShader.setUniform("color", color);
+
+        // Same base transform as render(): no re-anchoring of the model origin.
+        Matrix4f base = new Matrix4f()
+                .translate(position.x, position.y, position.z)
+                .rotateY((float) Math.toRadians(yawDegrees))
+                .scale(scale);
+
+        GL30.glBindVertexArray(gpu.vao);
+
+        String headPartId = (headYawDeg != 0f || headPitchDeg != 0f) ? headPartId(geometry) : null;
+        forEachPartMatrix(geometry, clip, clipTime, tracksById, base,
+                headPartId, headYawDeg, headPitchDeg, (partMatrix, part) -> {
+            wireShader.setUniform("model", partMatrix);
+            for (SbeFace face : part.faces()) {
+                GL11.glDrawElements(GL11.GL_TRIANGLES, face.indexCount(),
+                        GL11.GL_UNSIGNED_INT, (long) face.indexStart() * Integer.BYTES);
+            }
+        });
+
+        GL30.glBindVertexArray(0);
+        wireShader.unbind();
+
+        if (wasCullFaceEnabled) {
+            GL11.glEnable(GL11.GL_CULL_FACE);
+        }
+        GL20.glUseProgram(previousProgram);
+        GL30.glBindVertexArray(previousVertexArray);
+    }
+
+    /** Receives the computed world matrix for one animated part. */
+    @FunctionalInterface
+    private interface PartConsumer {
+        void accept(Matrix4f partMatrix, SbePart part);
+    }
+
+    /**
+     * Walks the geometry's parts, computing each part's world matrix from the
+     * base transform plus its animation delta ({@code base * M_anim * M_rest^-1};
+     * un-animated parts use {@code base} alone), and hands it to {@code consumer}.
+     * Shared by {@link #render}, {@link #renderWireframe} and
+     * {@link #renderColored} so the per-part transform maths live in one place.
+     */
+    private static void forEachPartMatrix(SbeModelGeometry geometry, ParsedAnimClip clip,
+                                          float clipTime, Map<String, ParsedAnimTrack> tracksById,
+                                          Matrix4f base, String headPartId,
+                                          float headYawDeg, float headPitchDeg,
+                                          PartConsumer consumer) {
+        Matrix4f partMatrix = new Matrix4f();
+        Matrix4f restInverse = new Matrix4f();
+        for (SbePart part : geometry.parts()) {
+            // Parts are model-root parts; the base matrix is the parent.
+            ParsedAnimTrack track = tracksById.get(part.id());
+            if (track == null) {
+                track = trackByName(clip, part.name());
+            }
+
+            // The head part may receive an extra turn about its neck pivot, in the
+            // model's local frame (between base and the part transform), so the head
+            // can track the cursor while the body faces the movement direction.
+            Matrix4f parent = base;
+            if (headPartId != null && headPartId.equals(part.id())) {
+                Vector3f rp = part.restPos();
+                Vector3f ro = part.restOrigin();
+                float px = rp.x + ro.x, py = rp.y + ro.y, pz = rp.z + ro.z; // pivot in model space
+                parent = new Matrix4f(base)
+                        .translate(px, py, pz)
+                        .rotateY((float) Math.toRadians(headYawDeg))
+                        .rotateX((float) Math.toRadians(headPitchDeg))
+                        .translate(-px, -py, -pz);
+            }
+
+            if (track == null) {
+                partMatrix.set(parent);
+            } else {
+                AnimSampler.PartPose pose = AnimSampler.sample(track, clipTime);
+                Vector3f origin = part.restOrigin();
+
+                // M_rest^-1
+                partTransform(restInverse.identity(),
+                        part.restPos(), part.restRot(), part.restScale(), origin)
+                        .invert();
+                // parent * M_anim * M_rest^-1
+                partTransform(partMatrix.set(parent),
+                        pose.position(), pose.rotationDeg(), pose.scale(), origin)
+                        .mul(restInverse);
+            }
+            consumer.accept(partMatrix, part);
+        }
+    }
+
+    /** One-time diagnostic guard so the head-part lookup logs at most once. */
+    private static boolean headLookupLogged = false;
+
+    /**
+     * Part id of the geometry's head part (first part whose name contains "head",
+     * case-insensitive), or {@code null} if none — in which case head tracking is a
+     * no-op and the whole body simply uses the base yaw. Logs the resolution once.
+     */
+    private static String headPartId(SbeModelGeometry geometry) {
+        String found = null;
+        for (SbePart part : geometry.parts()) {
+            String n = part.name();
+            if (n != null && n.toLowerCase(java.util.Locale.ROOT).contains("head")) {
+                found = part.id();
+                break;
+            }
+        }
+        if (!headLookupLogged) {
+            headLookupLogged = true;
+            StringBuilder names = new StringBuilder();
+            for (SbePart part : geometry.parts()) {
+                names.append(part.name()).append(' ');
+            }
+            System.out.println("[SbeEntityRenderer] Head-tracking part lookup: head="
+                    + found + " parts=[" + names.toString().trim() + "]");
+        }
+        return found;
     }
 
     /** Returns the variant's GPU resources, uploading the asset on first use. */

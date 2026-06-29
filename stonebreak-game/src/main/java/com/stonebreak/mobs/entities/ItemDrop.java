@@ -213,6 +213,9 @@ public class ItemDrop extends Entity {
         return itemStack != null ? itemStack.getCount() : 0;
     }
     
+    public float getDespawnTimer() { return despawnTimer; }
+    public void setDespawnTimer(float timer) { this.despawnTimer = timer; }
+
     /**
      * Gets the remaining despawn time in seconds.
      */

@@ -188,6 +188,11 @@ public final class GameLoop {
             entityManager.update(deltaTime);
         }
 
+        // Entity sight tracking (client-side, throttled, FOV+proximity gated)
+        if (player != null) {
+            player.getEntitySightingTracker().update(deltaTime);
+        }
+
         // Mob spawning and the day/night clock are server-authoritative. On a render-only
         // client they are driven by replication (entity spawns; a future TimeSyncS2C), so skip
         // them locally to avoid the client diverging from the server.

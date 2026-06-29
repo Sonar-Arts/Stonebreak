@@ -136,6 +136,7 @@ public class SBEExportWindow {
 
     public void show() {
         visible.set(true);
+        iniFileSet = false;
         prepopulateFromModel();
         validationMessage = "";
         logger.debug("SBE export window shown");
@@ -168,8 +169,7 @@ public class SBEExportWindow {
 
         ImGui.setNextWindowSizeConstraints(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, Float.MAX_VALUE, Float.MAX_VALUE);
 
-        int windowFlags = ImGuiWindowFlags.NoBringToFrontOnFocus
-                | ImGuiWindowFlags.NoDocking
+        int windowFlags = ImGuiWindowFlags.NoDocking
                 | ImGuiWindowFlags.NoTitleBar
                 | ImGuiWindowFlags.NoCollapse
                 | ImGuiWindowFlags.NoScrollbar;

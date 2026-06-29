@@ -224,6 +224,7 @@ public abstract class Entity {
     public void setAlive(boolean alive) { this.alive = alive; }
 
     public int getNetworkId() { return networkId; }
+    public void setAge(float age) { this.age = age; }
     public void setNetworkId(int networkId) { this.networkId = networkId; }
     public boolean isNetworkShadow() { return networkShadow; }
     public void setNetworkShadow(boolean shadow) { this.networkShadow = shadow; }

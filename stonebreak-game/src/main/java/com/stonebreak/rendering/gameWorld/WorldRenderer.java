@@ -199,10 +199,30 @@ public class WorldRenderer {
         // Render fire bolt trail particles
         renderFireBoltParticles();
 
+        // Render Illusionist decoy smoke puffs
+        renderIllusionSmoke();
+
+        // Render through-terrain outlines for REVEALED enemies (Illusionist)
+        renderRevealedOutlines(player);
+
         // Render player arm last (if not paused) to appear in front of entities
         renderPlayerArm(player);
     }
     
+    /**
+     * Stamps cloud depth into the bound framebuffer's depth attachment (color writes masked)
+     * so screen-space god rays treat clouds as occluders. Must be called after
+     * {@link #renderWorld} so clouds behind terrain are depth-rejected, and while the
+     * post-processing scene framebuffer (whose depth the god rays read) is still bound.
+     */
+    public void renderCloudOcclusion(Player player, float totalTime) {
+        if (!com.stonebreak.config.Settings.getInstance().getCloudsEnabled()) {
+            return;
+        }
+        cloudRenderer.renderCloudOcclusion(projectionMatrix, player.getViewMatrix(),
+                player.getPosition(), totalTime);
+    }
+
     /**
      * Clear any pending OpenGL errors from previous operations.
      */
@@ -417,12 +437,27 @@ public class WorldRenderer {
     }
     
     /**
-     * Render player arm in appropriate game states.
+     * Render player arm (first-person) or full body (third-person) in appropriate game states.
      */
     private void renderPlayerArm(Player player) {
         GameState currentState = Game.getInstance().getState();
-        if (currentState == GameState.PLAYING || currentState == GameState.INVENTORY_UI || currentState == GameState.CHARACTER_SHEET_UI || currentState == GameState.RECIPE_BOOK_UI || currentState == GameState.WORKBENCH_UI || currentState == GameState.FURNACE_UI) {
-            playerArmRenderer.renderPlayerArm(player); // This method binds its own shader and texture
+        boolean activeState = currentState == GameState.PLAYING
+                || currentState == GameState.INVENTORY_UI
+                || currentState == GameState.CHARACTER_SHEET_UI
+                || currentState == GameState.RECIPE_BOOK_UI
+                || currentState == GameState.WORKBENCH_UI
+                || currentState == GameState.FURNACE_UI;
+        if (!activeState) return;
+
+        if (player.isThirdPerson()) {
+            // Render the full body model instead of the first-person arm.
+            if (entityRenderer != null) {
+                World world = Game.getWorld();
+                Vector3f cameraPos = player.getCamera().getPosition();
+                entityRenderer.renderLocalPlayer(player, player.getViewMatrix(), projectionMatrix, world, cameraPos);
+            }
+        } else {
+            playerArmRenderer.renderPlayerArm(player);
         }
     }
 
@@ -561,6 +596,110 @@ public class WorldRenderer {
     }
 
     /**
+     * Render the smoke puff emitted when Illusionist decoys appear or shatter. The particle list
+     * lives on the active Mirrored Deceit ability so it persists past the cast until it fades.
+     */
+    private void renderIllusionSmoke() {
+        Player player = Game.getPlayer();
+        if (player == null) return;
+        com.stonebreak.rendering.effects.IllusionSmokeParticles smoke =
+                player.getIllusionistAbilities().getMirroredDeceit().getSmoke();
+        if (smoke.isEmpty()) return;
+
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
+        shaderProgram.setUniform("u_useSolidColor", true);
+        shaderProgram.setUniform("u_isText", false);
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // straight alpha for soft grey smoke
+        glDepthMask(false);
+
+        for (com.stonebreak.rendering.effects.IllusionSmokeParticles.SmokeParticle p : smoke.snapshot()) {
+            float opacity = p.getOpacity();
+            // Pale violet smoke, fading out.
+            shaderProgram.setUniform("u_color", new org.joml.Vector4f(0.72f, 0.66f, 0.85f, opacity * 0.55f));
+            glPointSize(p.getSize());
+            glBegin(GL_POINTS);
+            glVertex3f(p.getPosition().x, p.getPosition().y, p.getPosition().z);
+            glEnd();
+        }
+
+        glPointSize(1.0f);
+        glDepthMask(true);
+        glDisable(GL_BLEND);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.unbind();
+    }
+
+    /**
+     * Render a through-terrain wireframe box around every living entity carrying the REVEALED
+     * status (Illusionist decoy hit). Depth testing is disabled so the outline is visible even
+     * when the enemy is behind walls.
+     */
+    private void renderRevealedOutlines(Player player) {
+        com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+        if (em == null) return;
+
+        List<com.stonebreak.mobs.entities.LivingEntity> revealed = new ArrayList<>();
+        for (com.stonebreak.mobs.entities.LivingEntity entity : em.getLivingEntities()) {
+            if (entity.isAlive()
+                    && entity.hasStatusEffect(com.stonebreak.mobs.entities.status.StatusEffectType.REVEALED)) {
+                revealed.add(entity);
+            }
+        }
+        if (revealed.isEmpty()) return;
+
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
+        shaderProgram.setUniform("u_useSolidColor", true);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_color", new org.joml.Vector4f(0.85f, 0.30f, 0.95f, 0.9f));
+
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(false);
+
+        for (com.stonebreak.mobs.entities.LivingEntity entity : revealed) {
+            Vector3f pos = entity.getPosition();
+            com.stonebreak.mobs.entities.EntityType type = entity.getType();
+            float hw = type.getWidth() * 0.5f;
+            float hl = type.getLength() * 0.5f;
+            float minX = pos.x - hw, maxX = pos.x + hw;
+            float minZ = pos.z - hl, maxZ = pos.z + hl;
+            float minY = pos.y - type.getLegHeight(), maxY = pos.y + type.getHeight();
+            drawWireBox(minX, minY, minZ, maxX, maxY, maxZ);
+        }
+
+        glDepthMask(true);
+        glEnable(GL_DEPTH_TEST);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.unbind();
+    }
+
+    /** Draws the 12 edges of an axis-aligned box in immediate mode (caller sets shader/color). */
+    private void drawWireBox(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+        glBegin(GL_LINES);
+        // Bottom rectangle
+        glVertex3f(minX, minY, minZ); glVertex3f(maxX, minY, minZ);
+        glVertex3f(maxX, minY, minZ); glVertex3f(maxX, minY, maxZ);
+        glVertex3f(maxX, minY, maxZ); glVertex3f(minX, minY, maxZ);
+        glVertex3f(minX, minY, maxZ); glVertex3f(minX, minY, minZ);
+        // Top rectangle
+        glVertex3f(minX, maxY, minZ); glVertex3f(maxX, maxY, minZ);
+        glVertex3f(maxX, maxY, minZ); glVertex3f(maxX, maxY, maxZ);
+        glVertex3f(maxX, maxY, maxZ); glVertex3f(minX, maxY, maxZ);
+        glVertex3f(minX, maxY, maxZ); glVertex3f(minX, maxY, minZ);
+        // Vertical edges
+        glVertex3f(minX, minY, minZ); glVertex3f(minX, maxY, minZ);
+        glVertex3f(maxX, minY, minZ); glVertex3f(maxX, maxY, minZ);
+        glVertex3f(maxX, minY, maxZ); glVertex3f(maxX, maxY, maxZ);
+        glVertex3f(minX, minY, maxZ); glVertex3f(minX, maxY, maxZ);
+        glEnd();
+    }
+
+    /**
      * Render all drops using the drop sub-renderer.
      * Drops are rendered before entities to appear underneath everything but above world geometry.
      *
@@ -592,7 +731,7 @@ public class WorldRenderer {
                 dropRenderer.renderDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
             }
             if (!remotePlayers.isEmpty()) {
-                dropRenderer.renderHeldBlocks(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
+                dropRenderer.renderHeldItems(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
             }
         }
     }
@@ -634,7 +773,7 @@ public class WorldRenderer {
             dropRenderer.renderOpaqueDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
         }
         if (!remotePlayers.isEmpty()) {
-            dropRenderer.renderHeldBlocks(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
+            dropRenderer.renderHeldItems(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
         }
     }
 

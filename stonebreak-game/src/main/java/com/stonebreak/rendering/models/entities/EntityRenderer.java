@@ -43,11 +43,24 @@ public class EntityRenderer {
     // 1x1 brown texture for arrow projectiles.
     private int arrowTexture;
 
+    // 1x1 violet texture for the null spike core.
+    private int nullSpikeTexture;
+
+    // 1x1 cyan texture for the leyline breach zone slab.
+    private int leylineZoneTexture;
+
+    // 1x1 metallic texture for the Rogue's caltrop clusters.
+    private int caltropTexture;
+
     // Entity-blind renderer for SBE-driven mobs.
     private final SbeEntityRenderer sbeEntityRenderer = new SbeEntityRenderer();
 
     // Renderer for multiplayer remote players (cylinder).
     private final RemotePlayerRenderer remotePlayerRenderer = new RemotePlayerRenderer();
+
+    // Stable-per-session random colour for the local player's untextured body model
+    // (see renderLocalPlayer). Lazily initialised on first third-person render.
+    private Vector4f localPlayerColor;
 
     // Voxelized sprite renderer for arrow projectiles (uses the main scene shader).
     private com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer arrowVoxelRenderer;
@@ -62,6 +75,9 @@ public class EntityRenderer {
         createFallbackTexture();
         createFireBoltTexture();
         createArrowTexture();
+        createNullSpikeTexture();
+        createLeylineZoneTexture();
+        createCaltropTexture();
         createSimpleCubeModel();
         sbeEntityRenderer.initialize();
         remotePlayerRenderer.initialize();
@@ -181,6 +197,45 @@ public class EntityRenderer {
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
+    private void createNullSpikeTexture() {
+        nullSpikeTexture = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, nullSpikeTexture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        // Arcane violet for the null spike core
+        ByteBuffer pixel = ByteBuffer.allocateDirect(4);
+        pixel.put((byte) 178).put((byte) 102).put((byte) 255).put((byte) 255).flip();
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
+                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+    }
+
+    private void createLeylineZoneTexture() {
+        leylineZoneTexture = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, leylineZoneTexture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        // Translucent arcane cyan for the zone slab (alpha matters under additive blend)
+        ByteBuffer pixel = ByteBuffer.allocateDirect(4);
+        pixel.put((byte) 64).put((byte) 210).put((byte) 255).put((byte) 110).flip();
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
+                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+    }
+
+    private void createCaltropTexture() {
+        caltropTexture = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, caltropTexture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        // Cool metallic steel with a faint emissive lift so clusters read in low light (additive blend).
+        ByteBuffer pixel = ByteBuffer.allocateDirect(4);
+        pixel.put((byte) 150).put((byte) 160).put((byte) 175).put((byte) 200).flip();
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0,
+                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+    }
+
     private void createSimpleCubeModel() {
         // Simple cube for fallback entity rendering
         float[] vertices = {
@@ -257,7 +312,22 @@ public class EntityRenderer {
 
         if (entityType == EntityType.REMOTE_PLAYER
                 && entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
-            remotePlayerRenderer.render(rp, viewMatrix, projectionMatrix);
+            // Untextured fallback hue is stable per remote player (same scheme as the cylinder).
+            renderPlayerModel(rp, rp.getRotation().y, 0f, 0f,
+                    new Vector4f(RemotePlayerRenderer.colorFor(rp.getPlayerId()), 1f),
+                    viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
+
+        // Illusion decoys are visual copies of the caster: render them through the SAME player
+        // model the local player uses, so any texture/model change to SB_Player.sbe propagates to
+        // decoys automatically. The untextured fallback reuses the local player's colour so an
+        // untextured decoy matches the caster instead of an obvious "illusion" hue.
+        if (entityType == EntityType.ILLUSION_DECOY
+                && entity instanceof com.stonebreak.mobs.entities.IllusionDecoy decoy) {
+            renderPlayerModel(decoy, decoy.getRotation().y, 0f, 0f,
+                    ensureLocalPlayerColor(),
+                    viewMatrix, projectionMatrix, world, cameraPos);
             return;
         }
 
@@ -273,6 +343,19 @@ public class EntityRenderer {
                     cow.getPosition(),
                     cow.getRotation().y,
                     cow.getScale(),
+                    viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
+
+        if (entityType == EntityType.SHEEP && entity instanceof com.stonebreak.mobs.sheep.Sheep sheep) {
+            sbeEntityRenderer.render(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
+                    sheep.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.SheepStateMapping.sbeState(sheep.getAI().getCurrentState()),
+                    sheep.getAnimationController().getTotalAnimationTime(),
+                    sheep.getPosition(),
+                    sheep.getRotation().y,
+                    sheep.getScale(),
                     viewMatrix, projectionMatrix, world, cameraPos);
             return;
         }
@@ -307,6 +390,21 @@ public class EntityRenderer {
             return;
         }
 
+        if (entityType == EntityType.NULL_SPIKE) {
+            renderGlowCube(entity, nullSpikeTexture, 1.8f, viewMatrix, projectionMatrix, cameraPos);
+            return;
+        }
+
+        if (entityType == EntityType.LEYLINE_BREACH_ZONE) {
+            renderGlowCube(entity, leylineZoneTexture, 1.0f, viewMatrix, projectionMatrix, cameraPos);
+            return;
+        }
+
+        if (entityType == EntityType.CALTROP_CLUSTER) {
+            renderGlowCube(entity, caltropTexture, 1.4f, viewMatrix, projectionMatrix, cameraPos);
+            return;
+        }
+
         if (entityType == EntityType.ARROW) {
             renderArrow(entity, viewMatrix, projectionMatrix);
             return;
@@ -318,6 +416,159 @@ public class EntityRenderer {
         }
 
         renderSimpleEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
+    }
+
+    /**
+     * Renders the local player's full body model in third-person view.
+     *
+     * <p>The local {@link com.stonebreak.player.Player} is not an
+     * {@link Entity} so it cannot go through {@link #renderEntity}; this
+     * dedicated method drives the SBE pipeline directly with the player's
+     * state and animation clock.
+     */
+    public void renderLocalPlayer(com.stonebreak.player.Player player,
+                                  Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                  com.stonebreak.world.World world, Vector3f cameraPos) {
+        if (!initialized) return;
+        com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
+                        com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER.getSbeObjectId());
+        if (asset == null) return;
+
+        // One-shot clips (Attacking, Jumping) use the event-relative time so they
+        // restart each time the state is entered; looping Walking uses the
+        // continuous clock. This mirrors the chicken wing-flap pattern.
+        String state = com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getMovementState());
+        float animTime = player.getBodyEventTime();
+        Vector3f position = player.getPosition();
+        // Body faces the last movement direction (smoothed); the head turns toward
+        // the cursor independently, clamped so it never over-rotates.
+        float yaw = player.getBodyYaw(); // model faces +Z; same convention as cameraYaw + 180
+        float lookYaw = player.getCamera().getYaw() + 180f;
+        float headYaw = clamp(wrapDegrees(lookYaw - yaw), -70f, 70f);
+        float headPitch = clamp(player.getCamera().getPitch(), -45f, 45f);
+        Vector3f scale = new Vector3f(1f, 1f, 1f);
+
+        drawPlayerSbe(asset, state, animTime, position, yaw, scale, headYaw, headPitch,
+                ensureLocalPlayerColor(), viewMatrix, projectionMatrix, world, cameraPos);
+    }
+
+    /**
+     * Renders a {@link com.stonebreak.mobs.entities.RemotePlayer} (or its
+     * {@code IllusionDecoy} subclass) through the shared player SBE model. The
+     * model is always resolved from {@link EntityType#REMOTE_PLAYER}'s asset id,
+     * so any texture/geometry change to {@code SB_Player.sbe} applies to every
+     * player-shaped figure — remote players and decoys alike — without copying
+     * anything per entity. Falls back to the cylinder if the asset is missing so
+     * the figure never goes invisible.
+     */
+    private void renderPlayerModel(com.stonebreak.mobs.entities.RemotePlayer rp,
+                                   float yaw, float headYaw, float headPitch,
+                                   Vector4f untexturedTint,
+                                   Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                   com.stonebreak.world.World world, Vector3f cameraPos) {
+        com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
+                        EntityType.REMOTE_PLAYER.getSbeObjectId());
+        if (asset == null) {
+            // Asset not loaded — fall back to cylinder so the figure never goes invisible.
+            remotePlayerRenderer.render(rp, viewMatrix, projectionMatrix);
+            return;
+        }
+        String state = com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState());
+        float animTime = rp.getAnimationController().getTotalAnimationTime();
+        drawPlayerSbe(asset, state, animTime, rp.getPosition(), yaw, rp.getScale(),
+                headYaw, headPitch, untexturedTint, viewMatrix, projectionMatrix, world, cameraPos);
+    }
+
+    /**
+     * Low-level draw of the player SBE model. Textured assets render normally;
+     * untextured assets fall back to {@code untexturedTint} via the colored path
+     * (the textured path would skip every face and render nothing).
+     */
+    private void drawPlayerSbe(com.stonebreak.mobs.sbe.SbeEntityAsset asset,
+                               String state, float animTime, Vector3f position,
+                               float yaw, Vector3f scale, float headYaw, float headPitch,
+                               Vector4f untexturedTint,
+                               Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                               com.stonebreak.world.World world, Vector3f cameraPos) {
+        if (isTextured(asset)) {
+            sbeEntityRenderer.render(
+                    asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                    state, animTime, position, yaw, scale,
+                    viewMatrix, projectionMatrix, world, cameraPos, headYaw, headPitch);
+        } else {
+            sbeEntityRenderer.renderColored(
+                    asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                    state, animTime, position, yaw, scale,
+                    viewMatrix, projectionMatrix, untexturedTint, headYaw, headPitch);
+        }
+    }
+
+    /**
+     * Stable-per-session colour for the local player's untextured body model.
+     * Decoys reuse this so an untextured decoy matches its caster. Lazily
+     * initialised on first use.
+     */
+    private Vector4f ensureLocalPlayerColor() {
+        if (localPlayerColor == null) {
+            localPlayerColor = new Vector4f(
+                    RemotePlayerRenderer.colorFor(new java.util.Random().nextInt()), 1f);
+        }
+        return localPlayerColor;
+    }
+
+    /** Normalizes an angle in degrees to the range (-180, 180]. */
+    private static float wrapDegrees(float deg) {
+        deg %= 360f;
+        if (deg > 180f) deg -= 360f;
+        else if (deg <= -180f) deg += 360f;
+        return deg;
+    }
+
+    private static float clamp(float v, float min, float max) {
+        return v < min ? min : (v > max ? max : v);
+    }
+
+    /**
+     * Whether an SBE asset has baked textures. Untextured assets (geometry only,
+     * no materials) must be drawn via {@link SbeEntityRenderer#renderColored};
+     * the textured path would skip every face and render nothing.
+     */
+    private static boolean isTextured(com.stonebreak.mobs.sbe.SbeEntityAsset asset) {
+        com.stonebreak.mobs.sbe.SbeModelGeometry geometry = asset == null ? null
+                : asset.geometryFor(com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT);
+        return geometry != null && !geometry.materials().isEmpty();
+    }
+
+    /**
+     * Renders a glossary/preview pose of an SBE-driven entity into whatever
+     * viewport/scissor the caller has set up, using a caller-supplied camera.
+     *
+     * <p>Unlike {@link #renderEntity}, this needs no live {@link Entity}: the
+     * caller picks the appearance variant and SBE animation state directly. The
+     * asset is resolved from the type's object id, exactly as the live path does.
+     * Intended for UI previews (Entity Glossary), so underwater fog is disabled.
+     *
+     * @param type        glossary entity type (must be SBE-driven)
+     * @param variant     appearance variant name (case-insensitive; unknown → default)
+     * @param stateName   SBE animation-state name (unknown/null → rest pose)
+     * @param animationTime elapsed clip time in seconds
+     * @param position    model-space position to place the origin at
+     * @param yawDegrees  Y-axis rotation in degrees
+     * @param scale       world scale
+     * @param viewMatrix  preview camera view matrix
+     * @param projectionMatrix preview camera projection matrix
+     */
+    public void renderEntityPreview(EntityType type, String variant, String stateName,
+                                    float animationTime, Vector3f position, float yawDegrees,
+                                    Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
+        if (!initialized || type == null) return;
+        com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId());
+        if (asset == null) return;
+        sbeEntityRenderer.render(asset, variant, stateName, animationTime,
+                position, yawDegrees, scale, viewMatrix, projectionMatrix, null, null);
     }
 
     /**
@@ -345,6 +596,19 @@ public class EntityRenderer {
                     cow.getPosition(),
                     cow.getRotation().y,
                     cow.getScale(),
+                    viewMatrix, projectionMatrix, color);
+            return;
+        }
+
+        if (entityType == EntityType.SHEEP && entity instanceof com.stonebreak.mobs.sheep.Sheep sheep) {
+            sbeEntityRenderer.renderWireframe(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
+                    sheep.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.SheepStateMapping.sbeState(sheep.getAI().getCurrentState()),
+                    sheep.getAnimationController().getTotalAnimationTime(),
+                    sheep.getPosition(),
+                    sheep.getRotation().y,
+                    sheep.getScale(),
                     viewMatrix, projectionMatrix, color);
             return;
         }
@@ -450,10 +714,21 @@ public class EntityRenderer {
             return;
         }
 
+        renderGlowCube(entity, fireBoltTexture, 1.8f, viewMatrix, projectionMatrix, cameraPos);
+    }
+
+    /**
+     * Draws an entity as an additively blended emissive cube (fire bolts, null spikes,
+     * leyline zone slabs), with an optional larger outer glow layer.
+     *
+     * @param glowScale scale multiplier for the outer glow pass; {@code <= 1} skips it
+     */
+    private void renderGlowCube(Entity entity, int texture, float glowScale,
+                                Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector3f cameraPos) {
         shader.bind();
 
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, fireBoltTexture);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture);
         shader.setUniform("textureSampler", 0);
         shader.setUniform("view", viewMatrix);
         shader.setUniform("projection", projectionMatrix);
@@ -476,19 +751,21 @@ public class EntityRenderer {
         GL30.glBindVertexArray(simpleCubeVAO);
         GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
 
-        // Render a larger, semi-transparent outer glow layer. Keep simpleCubeVAO
-        // bound across both draws — unbinding between them (then calling
-        // glDrawArrays with no VAO) is undefined and on some drivers picks up
-        // whichever VAO another renderer last used. After the player switches
-        // held items mid-flight, that "last VAO" becomes the new held item's
-        // mesh, so the glow quads sample its vertex buffer and stretch the bolt
-        // across the screen toward the hand position (issue #177).
-        Matrix4f glowMatrix = new Matrix4f()
-                .translate(entity.getPosition())
-                .rotateY((float) Math.toRadians(entity.getRotation().y))
-                .scale(new Vector3f(entity.getScale()).mul(1.8f));
-        shader.setUniform("model", glowMatrix);
-        GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
+        if (glowScale > 1f) {
+            // Render a larger, semi-transparent outer glow layer. Keep simpleCubeVAO
+            // bound across both draws — unbinding between them (then calling
+            // glDrawArrays with no VAO) is undefined and on some drivers picks up
+            // whichever VAO another renderer last used. After the player switches
+            // held items mid-flight, that "last VAO" becomes the new held item's
+            // mesh, so the glow quads sample its vertex buffer and stretch the bolt
+            // across the screen toward the hand position (issue #177).
+            Matrix4f glowMatrix = new Matrix4f()
+                    .translate(entity.getPosition())
+                    .rotateY((float) Math.toRadians(entity.getRotation().y))
+                    .scale(new Vector3f(entity.getScale()).mul(glowScale));
+            shader.setUniform("model", glowMatrix);
+            GL11.glDrawArrays(GL11.GL_QUADS, 0, 24);
+        }
         GL30.glBindVertexArray(0);
 
         GL11.glDepthMask(true);
@@ -566,6 +843,15 @@ public class EntityRenderer {
         }
         if (arrowTexture != 0) {
             GL11.glDeleteTextures(arrowTexture);
+        }
+        if (nullSpikeTexture != 0) {
+            GL11.glDeleteTextures(nullSpikeTexture);
+        }
+        if (leylineZoneTexture != 0) {
+            GL11.glDeleteTextures(leylineZoneTexture);
+        }
+        if (caltropTexture != 0) {
+            GL11.glDeleteTextures(caltropTexture);
         }
 
         sbeEntityRenderer.cleanup();

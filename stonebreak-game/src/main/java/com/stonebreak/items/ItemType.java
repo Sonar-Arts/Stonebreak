@@ -81,6 +81,7 @@ public final class ItemType implements Item {
     public static final ItemType FISHING_ROD = fromRegistry("stonebreak:fishing_rod", "FISHING_ROD");
     public static final ItemType BASS = fromRegistry("stonebreak:bass", "BASS");
     public static final ItemType FEATHER = fromRegistry("stonebreak:feather", "FEATHER");
+    public static final ItemType LEATHER = fromRegistry("stonebreak:leather", "LEATHER");
     public static final ItemType BOW = fromRegistry("stonebreak:bow", "BOW");
     public static final ItemType ARROW = fromRegistry("stonebreak:arrow", "ARROW");
 

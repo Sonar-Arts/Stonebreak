@@ -7,6 +7,7 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
@@ -22,14 +23,17 @@ import java.util.function.Supplier;
  * Reads blocks directly from the chunk (so it works before the chunk is registered with
  * the chunk store) and gates each placement on {@link #isValidSpawnLocation}.
  *
- * <p><b>Continuous spawning.</b> Every {@link #PASSIVE_MOB_SPAWN_TICKS} ticks the spawner
+ * <p><b>Continuous spawning.</b> Every {@link #PASSIVE_SPAWN_INTERVAL_SECONDS} seconds the spawner
  * picks targets near each connected player and attempts placements there. A target is
  * rejected outright unless its chunk is resident in the chunk store AND has features
  * populated — this is what prevents mobs from being placed onto unloaded/half-baked
  * chunks where they'd fall through the world or get stuck in soon-to-arrive features.
  *
- * <p><b>Despawning.</b> A mob despawns only when farther than {@link #DESPAWN_RADIUS}
- * from <i>every</i> connected player (so a mob near any one player survives).
+ * <p><b>Despawning.</b> A mob despawns when farther than {@link #DESPAWN_RADIUS} from
+ * <i>every</i> connected player (so a mob near any one player survives). The sweep also
+ * enforces a hard population cap ({@link #PASSIVE_POPULATION_CAP_PER_PLAYER} × player count):
+ * when exceeded it thins the in-range population from the outside in — this is what bounds a
+ * world that the uncapped initial chunk spawning would otherwise over-populate.
  *
  * <p>Public API is preserved: {@link #initialChunkSpawn}, {@link #update},
  * {@link #forceSpawnEntity}, {@link #spawnCowHerd}, {@link #getSpawnStats}.
@@ -37,19 +41,40 @@ import java.util.function.Supplier;
 public class EntitySpawner {
 
     // ─── Tuning ───────────────────────────────────────────────────────────────
-    /** 20 seconds at 20 ticks/second — Minecraft's passive spawn cadence. */
-    private static final int PASSIVE_MOB_SPAWN_TICKS = 400;
+    /**
+     * Seconds of sim time between continuous spawn cycles — Minecraft's passive cadence.
+     * Time-based (not call-counted) so the cadence holds whether update() is driven by the
+     * server's fixed 20 Hz tick or a legacy per-frame caller.
+     */
+    private static final float PASSIVE_SPAWN_INTERVAL_SECONDS = 20.0f;
+    /** Seconds between despawn sweeps; no need to scan every update. */
+    private static final float DESPAWN_CHECK_INTERVAL_SECONDS = 1.0f;
     private static final int SPAWN_RADIUS = 128;
     private static final int DESPAWN_RADIUS = 128;
 
-    /** Per-chunk roll for initial spawning of each passive type. */
-    private static final float INITIAL_SPAWN_CHANCE = 0.15f;
+    /**
+     * Single per-chunk roll for initial spawning. On success ONE random passive type spawns
+     * one herd (Minecraft-like). Rolling per TYPE instead (the old behavior) tripled the
+     * density (~1.35 mobs/chunk) and flooded the world as chunks generated.
+     */
+    private static final float INITIAL_SPAWN_CHANCE = 0.10f;
     private static final int MIN_INITIAL_HERD = 2;
     private static final int MAX_INITIAL_HERD = 4;
 
     /** Shared passive-mob cap per player; bounds total continuous spawns. */
     private static final int MAX_PASSIVE_MOBS_PER_PLAYER = 10;
     private static final int SPAWN_ATTEMPTS_PER_CYCLE = 3;
+
+    /**
+     * Hard population cap (per connected player) enforced by the despawn sweep. Initial chunk
+     * spawning ignores the continuous cap, so without this the per-chunk herds accumulate
+     * inside the despawn radius with nothing to bound them. The sweep thins anything over this.
+     */
+    private static final int PASSIVE_POPULATION_CAP_PER_PLAYER = MAX_PASSIVE_MOBS_PER_PLAYER;
+    /** Mobs nearer than this to any player are never cap-culled (so animals don't vanish in your face). */
+    private static final int CAP_PROTECTION_RADIUS = 16;
+    /** Cap-driven despawns per sweep — thins a flooded world gradually instead of popping a herd at once. */
+    private static final int MAX_CAP_DESPAWNS_PER_SWEEP = 8;
 
     private static final int MIN_SPAWN_HEIGHT = 60;
     private static final int MAX_SPAWN_HEIGHT = 120;
@@ -58,10 +83,10 @@ public class EntitySpawner {
     private static final int MIN_SPAWN_DISTANCE = 24;
 
     /** Passive types rolled independently so chickens spawn as often as cows. */
-    private static final EntityType[] PASSIVE_SPAWN_TYPES = {EntityType.COW, EntityType.CHICKEN};
+    private static final EntityType[] PASSIVE_SPAWN_TYPES = {EntityType.COW, EntityType.CHICKEN, EntityType.SHEEP};
 
-    /** Must match the variant names in {@code SB_Cow.sbe}. */
-    private static final String[] COW_TEXTURE_VARIANTS = {"Default", "Angus", "Highland"};
+    /** Cow texture variants — delegates to EntityType to kill duplication. */
+    private static final String[] COW_TEXTURE_VARIANTS = EntityType.COW.getTextureVariants();
 
     // ─── Collaborators ────────────────────────────────────────────────────────
     private final World world;
@@ -76,7 +101,8 @@ public class EntitySpawner {
      */
     private volatile Supplier<List<Vector3f>> playerPositionSource = EntitySpawner::defaultLocalPlayer;
 
-    private int tickCounter = 0;
+    private float spawnTimer = 0f;
+    private float despawnTimer = 0f;
 
     public EntitySpawner(World world, EntityManager entityManager) {
         this.world = world;
@@ -103,12 +129,16 @@ public class EntitySpawner {
      * render world's spawner is never ticked), so no host/client guard is needed here.
      */
     public void update(float deltaTime) {
-        tickCounter++;
-        if (tickCounter >= PASSIVE_MOB_SPAWN_TICKS) {
-            tickCounter = 0;
+        spawnTimer += deltaTime;
+        if (spawnTimer >= PASSIVE_SPAWN_INTERVAL_SECONDS) {
+            spawnTimer = 0f;
             performContinuousSpawning();
         }
-        checkDespawning();
+        despawnTimer += deltaTime;
+        if (despawnTimer >= DESPAWN_CHECK_INTERVAL_SECONDS) {
+            despawnTimer = 0f;
+            checkDespawning();
+        }
     }
 
     // ─── Initial spawning (called once per chunk by the world driver) ─────────
@@ -118,15 +148,35 @@ public class EntitySpawner {
      * features are populated (the world chunk store handles this).
      */
     public void initialChunkSpawn(Chunk chunk) {
-        for (EntityType type : PASSIVE_SPAWN_TYPES) {
-            spawnInitialHerd(chunk, type);
+        // Don't keep adding herds to an already-saturated world. Best-effort only: freshly
+        // spawned mobs may still be queued (not yet in the live list) during a generation
+        // burst, so the despawn sweep is the hard bound — this just curbs spawn/despawn
+        // thrash as the player explores into new chunks.
+        if (isPassivePopulationSaturated()) {
+            return;
         }
-    }
-
-    private void spawnInitialHerd(Chunk chunk, EntityType type) {
+        // ONE roll per chunk; on success pick ONE passive type and spawn a single herd.
         if (random.nextFloat() > INITIAL_SPAWN_CHANCE) {
             return;
         }
+        EntityType type = PASSIVE_SPAWN_TYPES[random.nextInt(PASSIVE_SPAWN_TYPES.length)];
+        spawnInitialHerd(chunk, type);
+    }
+
+    /** True when the live passive population already meets the global cap (cap × player count). */
+    private boolean isPassivePopulationSaturated() {
+        List<Vector3f> players = collectPlayerPositions();
+        if (players.isEmpty()) return false; // no cap reference yet — let generation populate
+        int cap = PASSIVE_POPULATION_CAP_PER_PLAYER * players.size();
+        int count = 0;
+        for (EntityType type : PASSIVE_SPAWN_TYPES) {
+            count += entityManager.getEntitiesByType(type).size();
+            if (count >= cap) return true;
+        }
+        return false;
+    }
+
+    private void spawnInitialHerd(Chunk chunk, EntityType type) {
         int target = MIN_INITIAL_HERD + random.nextInt(MAX_INITIAL_HERD - MIN_INITIAL_HERD + 1);
         int spawned = 0;
         for (int attempt = 0; attempt < 20 && spawned < target; attempt++) {
@@ -167,7 +217,7 @@ public class EntitySpawner {
         int count = 0;
         for (Entity e : entityManager.getEntitiesInRange(playerPos, SPAWN_RADIUS)) {
             EntityType t = e.getType();
-            if (t == EntityType.COW || t == EntityType.CHICKEN) count++;
+            if (t == EntityType.COW || t == EntityType.CHICKEN || t == EntityType.SHEEP) count++;
         }
         return count;
     }
@@ -178,12 +228,41 @@ public class EntitySpawner {
         List<Vector3f> players = collectPlayerPositions();
         if (players.isEmpty()) return;
 
+        List<Entity> passives = new ArrayList<>();
         for (EntityType type : PASSIVE_SPAWN_TYPES) {
-            for (Entity mob : entityManager.getEntitiesByType(type)) {
-                if (distanceToNearest(mob.getPosition(), players) > DESPAWN_RADIUS) {
-                    entityManager.removeEntity(mob);
-                }
+            passives.addAll(entityManager.getEntitiesByType(type));
+        }
+
+        // 1) Distance despawn — cull anything beyond DESPAWN_RADIUS of EVERY player. These are
+        //    off-screen, so removing all of them at once causes no visible pop.
+        List<Entity> survivors = new ArrayList<>(passives.size());
+        for (Entity mob : passives) {
+            if (distanceToNearest(mob.getPosition(), players) > DESPAWN_RADIUS) {
+                entityManager.removeEntity(mob);
+            } else {
+                survivors.add(mob);
             }
+        }
+
+        // 2) Population cap — if the in-range population still exceeds the cap (per player),
+        //    thin it from the outside in: farthest from any player first, never touching mobs
+        //    within CAP_PROTECTION_RADIUS, and only a few per sweep so a flooded world drains
+        //    smoothly rather than a whole herd vanishing in one frame. This is what actually
+        //    bounds worlds that uncapped initial chunk spawning has over-populated.
+        int cap = PASSIVE_POPULATION_CAP_PER_PLAYER * players.size();
+        int excess = survivors.size() - cap;
+        if (excess <= 0) return;
+
+        survivors.sort((a, b) -> Float.compare(
+                distanceToNearest(b.getPosition(), players),
+                distanceToNearest(a.getPosition(), players)));
+        int culled = 0;
+        for (Entity mob : survivors) {
+            if (excess <= 0 || culled >= MAX_CAP_DESPAWNS_PER_SWEEP) break;
+            if (distanceToNearest(mob.getPosition(), players) <= CAP_PROTECTION_RADIUS) continue;
+            entityManager.removeEntity(mob);
+            excess--;
+            culled++;
         }
     }
 
@@ -281,7 +360,7 @@ public class EntitySpawner {
         int y = (int) Math.floor(position.y);
         int z = (int) Math.floor(position.z);
         return switch (type) {
-            case COW, CHICKEN -> isValidGroundSpawn(x, y, z, position);
+            case COW, CHICKEN, SHEEP -> isValidGroundSpawn(x, y, z, position);
             default -> false;
         };
     }
@@ -355,8 +434,9 @@ public class EntitySpawner {
     public String getSpawnStats() {
         int cows = entityManager.getEntitiesByType(EntityType.COW).size();
         int chickens = entityManager.getEntitiesByType(EntityType.CHICKEN).size();
-        return String.format("Cows: %d | Chickens: %d | Next cycle: %d ticks",
-                cows, chickens, PASSIVE_MOB_SPAWN_TICKS - tickCounter);
+        int sheep = entityManager.getEntitiesByType(EntityType.SHEEP).size();
+        return String.format("Cows: %d | Chickens: %d | Sheep: %d | Next cycle: %.1fs",
+                cows, chickens, sheep, PASSIVE_SPAWN_INTERVAL_SECONDS - spawnTimer);
     }
 
     /** @deprecated use {@link #initialChunkSpawn}. */

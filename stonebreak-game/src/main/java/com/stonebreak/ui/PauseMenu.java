@@ -18,6 +18,8 @@ public class PauseMenu {
     private boolean visible = false;
     private boolean quitButtonHovered = false;
     private boolean settingsButtonHovered = false;
+    private boolean statisticsButtonHovered = false;
+    private boolean glossaryButtonHovered = false;
 
     public PauseMenu(SkijaUIBackend skijaBackend) {
         this.skijaRenderer = new SkijaPauseMenuRenderer(skijaBackend);
@@ -25,7 +27,7 @@ public class PauseMenu {
 
     public void render(int windowWidth, int windowHeight) {
         if (!visible) return;
-        skijaRenderer.render(windowWidth, windowHeight, settingsButtonHovered, quitButtonHovered);
+        skijaRenderer.render(windowWidth, windowHeight, statisticsButtonHovered, glossaryButtonHovered, settingsButtonHovered, quitButtonHovered);
     }
 
     public boolean isVisible() {
@@ -41,25 +43,37 @@ public class PauseMenu {
     }
 
     public boolean isResumeButtonClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        return visible && hitButton(mouseX, mouseY, windowWidth, windowHeight, -60f);
+        return visible && hitButton(mouseX, mouseY, windowWidth, windowHeight, -140f);
+    }
+
+    public boolean isStatisticsButtonClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        return visible && hitButton(mouseX, mouseY, windowWidth, windowHeight, -70f);
+    }
+
+    public boolean isGlossaryButtonClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        return visible && hitButton(mouseX, mouseY, windowWidth, windowHeight, 0f);
     }
 
     public boolean isSettingsButtonClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        return visible && hitButton(mouseX, mouseY, windowWidth, windowHeight, 10f);
+        return visible && hitButton(mouseX, mouseY, windowWidth, windowHeight, 70f);
     }
 
     public boolean isQuitButtonClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        return visible && hitButton(mouseX, mouseY, windowWidth, windowHeight, 80f);
+        return visible && hitButton(mouseX, mouseY, windowWidth, windowHeight, 140f);
     }
 
     public void updateHover(float mouseX, float mouseY, int windowWidth, int windowHeight) {
         if (!visible) {
             quitButtonHovered = false;
             settingsButtonHovered = false;
+            statisticsButtonHovered = false;
+            glossaryButtonHovered = false;
             return;
         }
-        settingsButtonHovered = isSettingsButtonClicked(mouseX, mouseY, windowWidth, windowHeight);
-        quitButtonHovered     = isQuitButtonClicked(mouseX, mouseY, windowWidth, windowHeight);
+        statisticsButtonHovered = isStatisticsButtonClicked(mouseX, mouseY, windowWidth, windowHeight);
+        glossaryButtonHovered   = isGlossaryButtonClicked(mouseX, mouseY, windowWidth, windowHeight);
+        settingsButtonHovered   = isSettingsButtonClicked(mouseX, mouseY, windowWidth, windowHeight);
+        quitButtonHovered       = isQuitButtonClicked(mouseX, mouseY, windowWidth, windowHeight);
     }
 
     public void cleanup() {

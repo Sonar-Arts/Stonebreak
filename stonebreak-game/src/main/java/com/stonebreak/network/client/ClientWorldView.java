@@ -16,6 +16,7 @@ import com.stonebreak.network.client.handlers.ClientEntityHandler;
 import com.stonebreak.network.client.handlers.ClientPlayerHandler;
 import com.stonebreak.network.packet.chat.ChatMessageC2S;
 import com.stonebreak.network.packet.chat.ChatMessageS2C;
+import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
 import com.stonebreak.network.packet.entity.EntitySpawnS2C;
@@ -231,6 +232,15 @@ public final class ClientWorldView {
         short id = (short) (type == null ? 0 : type.getId());
         short prevId = (short) (prevType == null ? 0 : prevType.getId());
         connection.send(new BlockChangeC2S(x, y, z, id, prevId), false);
+    }
+
+    /** Local hit on a replicated entity: forward the damage intent to the authoritative server. */
+    public void sendEntityDamage(int targetNetworkId, float amount,
+                                 com.stonebreak.mobs.entities.LivingEntity.DamageSource source) {
+        if (connection == null || targetNetworkId < 0 || amount <= 0f) {
+            return;
+        }
+        connection.send(new EntityDamageC2S(targetNetworkId, amount, (byte) source.ordinal()), false);
     }
 
     /**

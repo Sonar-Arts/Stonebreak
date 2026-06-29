@@ -298,15 +298,17 @@ public class DropRenderer {
     }
     
     /**
-     * Render the held block of every visible remote player as a textured block
-     * at hand position. Reuses the same CBR mesh + atlas-textured shader path
-     * as block drops, just with a different model transform.
+     * Render the held item of every visible player-shaped entity at its hand.
+     * Dispatches on the entity's resolved {@link com.stonebreak.items.Item}:
+     * blocks render as a textured cube, flowers as their SBO cross mesh, and
+     * tools/items as 3D voxelized sprites — the same three forms the first-person
+     * hand uses, so a decoy mirrors whatever the caster is holding.
      *
      * <p>This is intentionally separate from {@link #renderDrops} so callers
      * can sequence the two passes (drops first, held items second) and so the
      * remote-player list isn't dragged through the drop iteration.
      */
-    public void renderHeldBlocks(java.util.List<com.stonebreak.mobs.entities.RemotePlayer> players,
+    public void renderHeldItems(java.util.List<com.stonebreak.mobs.entities.RemotePlayer> players,
                                  ShaderProgram shaderProgram,
                                  Matrix4f projectionMatrix, Matrix4f viewMatrix,
                                  World world, Vector3f cameraPos) {
@@ -333,13 +335,13 @@ public class DropRenderer {
         final float HAND_UP      = 1.2f;
         final float HAND_FORWARD = 0.15f;
         final float HAND_SCALE   = 0.30f;
+        // Voxelized tools reuse the world-drop pipeline, which renders at scale 0.25.
+        final float TOOL_SCALE   = 0.25f;
 
         for (com.stonebreak.mobs.entities.RemotePlayer rp : players) {
             if (!rp.isAlive()) continue;
-            int held = rp.getHeldItemId();
-            if (held <= 0) continue;
-            com.stonebreak.blocks.BlockType blockType = com.stonebreak.blocks.BlockType.getById(held);
-            if (blockType == null || blockType == com.stonebreak.blocks.BlockType.AIR) continue;
+            com.stonebreak.items.Item held = rp.getHeldItem();
+            if (held == null) continue;
 
             Vector3f pos = rp.getPosition();
             float yawRad = (float) Math.toRadians(rp.getRotation().y);
@@ -348,34 +350,56 @@ public class DropRenderer {
             // World vectors: forward = (-sin, 0, -cos), right = (cos, 0, -sin).
             float worldDx = HAND_RIGHT * cos + HAND_FORWARD * (-sin);
             float worldDz = HAND_RIGHT * (-sin) + HAND_FORWARD * (-cos);
+            float handX = pos.x + worldDx;
+            float handY = pos.y + HAND_UP;
+            float handZ = pos.z + worldDz;
 
-            dropModelMatrix.identity()
-                    .translate(pos.x + worldDx, pos.y + HAND_UP, pos.z + worldDz)
-                    .rotateY(yawRad)
-                    .scale(HAND_SCALE);
+            if (held instanceof BlockType blockType && blockType != BlockType.AIR) {
+                boolean isFlower = blockType.isFlower() && sboHandMeshRegistry != null
+                        && sboHandMeshRegistry.getMesh(blockType) != null;
+                dropModelMatrix.identity()
+                        .translate(handX, handY, handZ)
+                        .rotateY(yawRad)
+                        .scale(HAND_SCALE);
+                shaderProgram.setUniform("viewMatrix", new Matrix4f(viewMatrix).mul(dropModelMatrix));
 
-            Matrix4f modelView = new Matrix4f(viewMatrix).mul(dropModelMatrix);
-            shaderProgram.setUniform("viewMatrix", modelView);
+                MeshManager.MeshResource mesh = isFlower
+                        ? sboHandMeshRegistry.getMesh(blockType)
+                        : getDropCubeMesh(blockType);
+                boolean isTransparent = isTransparentBlock(blockType);
+                if (isFlower || isTransparent) {
+                    glEnable(GL_BLEND);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                } else {
+                    glDisable(GL_BLEND);
+                }
+                glDepthMask(!isTransparent);
+                shaderProgram.setUniform("u_useSolidColor", false);
+                shaderProgram.setUniform("u_isUIElement", true);
+                shaderProgram.setUniform("u_transformUVsForItem", false);
+                shaderProgram.setUniform("u_useTextureArray", true);
+                // Flower cross meshes have no per-vertex alpha flag — force alpha test.
+                shaderProgram.setUniform("u_forceAlphaTest", isFlower);
+                float alpha = isTransparent ? 0.95f : 1.0f;
+                shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, alpha));
 
-            MeshManager.MeshResource mesh = getDropCubeMesh(blockType);
-            boolean isTransparent = isTransparentBlock(blockType);
-            if (isTransparent) {
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            } else {
+                mesh.bind();
+                glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
+                mesh.unbind();
+                shaderProgram.setUniform("u_forceAlphaTest", false);
+                glDepthMask(true);
+            } else if (held instanceof ItemType itemType && SpriteVoxelizer.isVoxelizable(itemType)) {
+                // Voxelized tool/item: position the same world-space sprite pipeline drops use
+                // at the hand (no spin), then let the drop helper drive the voxel render.
+                dropModelMatrix.identity()
+                        .translate(handX, handY, handZ)
+                        .rotateY(yawRad)
+                        .scale(TOOL_SCALE);
+                shaderProgram.setUniform("viewMatrix", new Matrix4f(viewMatrix).mul(dropModelMatrix));
                 glDisable(GL_BLEND);
+                glDepthMask(true);
+                renderVoxelizedItemDrop(itemType, null);
             }
-            glDepthMask(!isTransparent);
-            shaderProgram.setUniform("u_useSolidColor", false);
-            shaderProgram.setUniform("u_isUIElement", true);
-            shaderProgram.setUniform("u_transformUVsForItem", false);
-            shaderProgram.setUniform("u_useTextureArray", true);
-            float alpha = isTransparent ? 0.95f : 1.0f;
-            shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, alpha));
-
-            mesh.bind();
-            glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
-            glDepthMask(true);
         }
 
         // Restore shared shader state — the loop overwrites viewMatrix per player and tweaks

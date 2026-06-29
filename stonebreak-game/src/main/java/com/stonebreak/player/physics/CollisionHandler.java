@@ -150,7 +150,12 @@ public class CollisionHandler {
         if (collisionOccurred) {
             position.y = correctedPositionY;
             velocity.y = 0;
-            if (downwardCollision) state.setOnGround(true);
+            if (downwardCollision) {
+                state.setOnGround(true);
+            } else {
+                // Hit ceiling — clear ground flag so gravity can take over.
+                state.setOnGround(false);
+            }
         } else if (velocity.y < 0) {
             state.setOnGround(false);
         }

@@ -243,6 +243,18 @@ public final class MultiplayerSession {
         }
     }
 
+    /**
+     * Hook from {@code LivingEntity.damage} when the local player hits a network-shadow
+     * entity — forwards the damage intent to the authoritative server via the local client.
+     */
+    public static void onLocalEntityDamage(Entity target, float amount,
+                                           com.stonebreak.mobs.entities.LivingEntity.DamageSource source) {
+        ClientWorldView c = client;
+        if (c != null && target != null && target.getNetworkId() >= 0) {
+            c.sendEntityDamage(target.getNetworkId(), amount, source);
+        }
+    }
+
     /** Hook from the chat UI for a locally-submitted message — routed via the local client. */
     public static void submitChat(String text) {
         ClientWorldView c = client;
