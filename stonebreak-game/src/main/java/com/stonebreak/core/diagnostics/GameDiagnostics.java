@@ -5,6 +5,8 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.ui.DebugOverlay;
 import com.stonebreak.util.MemoryLeakDetector;
 import com.openmason.engine.diagnostics.MemoryProfiler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Memory / performance / debug-overlay diagnostic helpers previously hosted
@@ -12,6 +14,8 @@ import com.openmason.engine.diagnostics.MemoryProfiler;
  * {@code Game.xxx} which now delegates here.
  */
 public final class GameDiagnostics {
+
+    private static final Logger logger = LoggerFactory.getLogger(GameDiagnostics.class);
 
     private static long lastDebugTime = 0;
     private static long lastMemoryCheckTime = 0;
@@ -58,8 +62,8 @@ public final class GameDiagnostics {
         Runtime runtime = Runtime.getRuntime();
         long beforeGC = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
 
-        System.out.printf("[GC] %s - Memory before GC: %dMB%n", context, beforeGC);
-        System.out.println("[MEMORY] Relying on ZGC for optimal memory management");
+        logger.debug("[GC] {} - Memory before GC: {}MB", context, beforeGC);
+        logger.debug("[MEMORY] Relying on ZGC for optimal memory management");
 
         try {
             Thread.sleep(100);
@@ -70,7 +74,7 @@ public final class GameDiagnostics {
         long afterGC = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
         long freed = beforeGC - afterGC;
 
-        System.out.printf("[GC] %s - Memory after GC: %dMB (freed %+dMB)%n", context, afterGC, freed);
+        logger.debug("[GC] {} - Memory after GC: {}MB (freed {}{}MB)", context, afterGC, freed >= 0 ? "+" : "", freed);
     }
 
     public static void reportAllocations() {
@@ -86,7 +90,7 @@ public final class GameDiagnostics {
         if (detector != null) {
             detector.triggerLeakAnalysis();
         } else {
-            System.err.println("Memory leak detector not initialized!");
+            logger.error("Memory leak detector not initialized!");
         }
     }
 
@@ -97,7 +101,7 @@ public final class GameDiagnostics {
             return;
         }
         overlay.toggleVisibility();
-        System.out.println("Debug overlay " + (overlay.isVisible() ? "enabled" : "disabled"));
+        logger.debug("Debug overlay {}", overlay.isVisible() ? "enabled" : "disabled");
 
         if (!overlay.isVisible()) {
             EntityManager entityManager = Game.getEntityManager();

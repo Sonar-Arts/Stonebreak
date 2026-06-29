@@ -12,6 +12,8 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.save.SaveService;
 import com.stonebreak.world.save.model.WorldData;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Holds the side-effect / configuration steps that {@code Game}'s init
@@ -21,12 +23,14 @@ import com.stonebreak.world.save.model.WorldData;
  */
 public final class GameBootstrap {
 
+    private static final Logger logger = LoggerFactory.getLogger(GameBootstrap.class);
+
     private GameBootstrap() {
     }
 
     /**
      * Initializes OpenAL, loads the movement/pickup sound samples, and
-     * applies the saved master-volume setting. Also runs the sanity check.
+     * applies the saved master-volume setting.
      */
     public static void configureSoundSystem(SoundSystem soundSystem) {
         soundSystem.initialize();
@@ -36,7 +40,6 @@ public final class GameBootstrap {
         com.stonebreak.audio.GameSoundLoader.load(soundSystem, "blockpickup", "/sounds/BlockPickup.wav");
 
         soundSystem.setMasterVolume(Settings.getInstance().getMasterVolume());
-        soundSystem.testBasicFunctionality();
     }
 
     /**
@@ -46,7 +49,7 @@ public final class GameBootstrap {
     public static MemoryLeakDetector startMemoryLeakDetection() {
         MemoryLeakDetector detector = MemoryLeakDetector.getInstance();
         detector.startMonitoring();
-        System.out.println("Memory leak detection started.");
+        logger.debug("Memory leak detection started.");
         return detector;
     }
 
@@ -55,7 +58,7 @@ public final class GameBootstrap {
      */
     public static DebugOverlay createDebugOverlay() {
         DebugOverlay overlay = new DebugOverlay();
-        System.out.println("Debug overlay initialized (F3 to toggle).");
+        logger.debug("Debug overlay initialized (F3 to toggle).");
         return overlay;
     }
 
@@ -65,7 +68,7 @@ public final class GameBootstrap {
      */
     public static void initializeEntityAssets() {
         int count = SbeEntityRegistry.scanAndLoad();
-        System.out.println("SBE entity registry loaded " + count + " entit(ies)");
+        logger.debug("SBE entity registry loaded {} entit(ies)", count);
     }
 
     /**
@@ -81,7 +84,7 @@ public final class GameBootstrap {
                         WorldConfiguration.SEA_LEVEL));
 
         com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(blockTextureArray, null);
-        System.out.println("[MMS-API] Mighty Mesh System pre-initialized (World will be set later)");
+        logger.debug("[MMS-API] Mighty Mesh System pre-initialized (World will be set later)");
 
         if (renderer != null) {
             renderer.applySBODispatcher();
@@ -97,10 +100,10 @@ public final class GameBootstrap {
         if (com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.isInitialized()) {
             return;
         }
-        System.err.println("[MMS-API] WARNING: MmsAPI not initialized - this should not happen!");
+        logger.warn("[MMS-API] MmsAPI not initialized - this should not happen!");
         if (blockTextureArray != null && world != null) {
             com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(blockTextureArray, world);
-            System.out.println("[MMS-API] Emergency initialization performed");
+            logger.debug("[MMS-API] Emergency initialization performed");
         }
     }
 
@@ -112,7 +115,7 @@ public final class GameBootstrap {
         if (saveService == null || worldData == null) {
             return;
         }
-        System.out.println("[SAVE-SYSTEM] Updating save service references during world component initialization");
+        logger.debug("[SAVE-SYSTEM] Updating save service references during world component initialization");
         saveService.initialize(worldData, player, world);
     }
 }

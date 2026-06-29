@@ -37,13 +37,17 @@ import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.*;
 import com.stonebreak.world.World;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
  * Handles rendering of the world and UI elements.
  */
 public class Renderer {
-    
+
+    private static final Logger logger = LoggerFactory.getLogger(Renderer.class);
+
     // Core managers
     private final ResourceManager resourceManager;
     private final RenderingConfigurationManager configManager;
@@ -112,7 +116,7 @@ public class Renderer {
                     blockRenderer.getCBRResourceManager(),
                     blockTextureArray);
             int built = sboHandMeshRegistry.buildFlowerMeshes(sboBlockBridge);
-            System.out.println("[Renderer] SBO hand-mesh registry: built " + built + " flower meshes");
+            logger.debug("[Renderer] SBO hand-mesh registry: built {} flower meshes", built);
         }
 
         playerArmRenderer = new PlayerArmRenderer(resourceManager.getShaderProgram(),
@@ -132,13 +136,12 @@ public class Renderer {
         skijaBackend = new SkijaUIBackend();
         try {
             skijaBackend.initialize(configManager.getWindowWidth(), configManager.getWindowHeight());
-            System.out.println("[Renderer] Skija UI backend initialized (" +
-                    configManager.getWindowWidth() + "x" + configManager.getWindowHeight() + ")");
+            logger.debug("[Renderer] Skija UI backend initialized ({}x{})",
+                    configManager.getWindowWidth(), configManager.getWindowHeight());
         } catch (Throwable t) {
             // Skija is optional — NanoVG handles fallback UI rendering. Log and continue
             // rather than crashing the game over a non-fatal UI backend failure.
-            System.err.println("[Renderer] Skija backend init failed: " + t.getMessage());
-            t.printStackTrace();
+            logger.error("[Renderer] Skija backend init failed", t);
         }
 
         // Skija-backed UI renderers (chat panel) need the backend; init now
@@ -157,11 +160,6 @@ public class Renderer {
         entityRenderer.initializeArrowRenderer(resourceManager.getShaderProgram());
 
         dropRenderer = new DropRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, resourceManager.getShaderProgram());
-
-        // Test the new voxelized item drop system
-        System.out.println("[Renderer] Testing voxelized item drop system...");
-        dropRenderer.testDropRendering();
-        System.out.println("[Renderer] Voxelized item drop system test complete.");
 
         worldRenderer = new WorldRenderer(resourceManager.getShaderProgram(),
                                          blockTextureArray,
@@ -183,10 +181,10 @@ public class Renderer {
 
             if (loaded > 0) {
                 int registered = com.stonebreak.blocks.registry.BlockRegistry.getInstance().loadFrom(registry);
-                System.out.println("[Renderer] BlockRegistry: " + registered + " blocks auto-populated from SBOs");
+                logger.debug("[Renderer] BlockRegistry: {} blocks auto-populated from SBOs", registered);
 
                 int items = com.stonebreak.items.registry.ItemRegistry.getInstance().scanAndLoad();
-                System.out.println("[Renderer] ItemRegistry: " + items + " items auto-populated from SBOs");
+                logger.debug("[Renderer] ItemRegistry: {} items auto-populated from SBOs", items);
 
                 SBOBlockBridge bridge = new SBOBlockBridge();
                 bridge.initialize(registry);
@@ -194,8 +192,7 @@ public class Renderer {
 
                 // Build the SBO-driven block texture array.
                 this.blockTextureArray = new BlockTextureArray(bridge);
-                System.out.println("[Renderer] BlockTextureArray: "
-                        + blockTextureArray.getLayerCount() + " layers built");
+                logger.debug("[Renderer] BlockTextureArray: {} layers built", blockTextureArray.getLayerCount());
 
                 // Build SBO block map for the renderer API
                 java.util.Map<com.stonebreak.blocks.BlockType, SBOParseResult> sboBlockMap = new java.util.LinkedHashMap<>();
@@ -265,13 +262,12 @@ public class Renderer {
                                     && ab == com.stonebreak.blocks.BlockType.SNOW;
                         });
 
-                        System.out.println("[Renderer] SBO Renderer API: " + processed + " block types processed (emitter deferred)");
+                        logger.debug("[Renderer] SBO Renderer API: {} block types processed (emitter deferred)", processed);
                     }
                 }
             }
         } catch (Exception e) {
-            System.err.println("[Renderer] SBO initialization failed (non-fatal): " + e.getMessage());
-            e.printStackTrace();
+            logger.error("[Renderer] SBO initialization failed (non-fatal)", e);
         }
     }
 
@@ -320,7 +316,7 @@ public class Renderer {
         if (pendingSBOEmitter != null && com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.isInitialized()) {
             com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.getInstance().setSBOStampEmitter(pendingSBOEmitter);
             com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.getInstance().setSBOCullingService(sboCullingService);
-            System.out.println("[Renderer] SBO stamp emitter applied to MmsAPI");
+            logger.debug("[Renderer] SBO stamp emitter applied to MmsAPI");
             pendingSBOEmitter = null;
         }
     }
@@ -543,12 +539,12 @@ public class Renderer {
             try {
                 com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry.disposeAll();
             } catch (Throwable t) {
-                System.err.println("[Renderer] MTexture dispose failed: " + t.getMessage());
+                logger.error("[Renderer] MTexture dispose failed", t);
             }
             try {
                 skijaBackend.dispose();
             } catch (Throwable t) {
-                System.err.println("[Renderer] Skija dispose failed: " + t.getMessage());
+                logger.error("[Renderer] Skija dispose failed", t);
             }
         }
         if (blockRenderer != null) {

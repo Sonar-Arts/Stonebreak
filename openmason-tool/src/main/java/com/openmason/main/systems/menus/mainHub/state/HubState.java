@@ -13,12 +13,16 @@ import java.util.List;
  */
 public class HubState {
 
+    /** How the recent-projects section lays out its entries. */
+    public enum RecentViewMode { GRID, LIST }
+
     private NavigationItem.ViewType currentView = NavigationItem.ViewType.HOME;
     private NavigationItem selectedNavItem;
     private ProjectTemplate selectedTemplate;
     private RecentProject selectedRecentProject;
     private boolean newProjectSelected;
     private String searchQuery = "";
+    private RecentViewMode recentViewMode = RecentViewMode.LIST;
     private final List<StateChangeListener> listeners = new ArrayList<>();
 
     // State change listener interface
@@ -88,6 +92,17 @@ public class HubState {
         if (this.selectedRecentProject != selectedRecentProject || this.newProjectSelected) {
             this.selectedRecentProject = selectedRecentProject;
             this.newProjectSelected = false;
+            notifyListeners();
+        }
+    }
+
+    public RecentViewMode getRecentViewMode() {
+        return recentViewMode;
+    }
+
+    public void setRecentViewMode(RecentViewMode recentViewMode) {
+        if (recentViewMode != null && this.recentViewMode != recentViewMode) {
+            this.recentViewMode = recentViewMode;
             notifyListeners();
         }
     }

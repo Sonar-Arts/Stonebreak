@@ -2,7 +2,12 @@ package com.openmason.engine.audio;
 
 import static org.lwjgl.openal.AL10.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class SoundPlayer {
+    private static final Logger logger = LoggerFactory.getLogger(SoundPlayer.class);
+
     private final SoundBuffer soundBuffer;
     private final VolumeController volumeController;
 
@@ -20,7 +25,7 @@ public class SoundPlayer {
         if (soundSources != null) {
             int currentIndex = soundBuffer.getNextSourceIndex(name);
             if (currentIndex == -1) {
-                System.err.println("Failed to get source index for sound: " + name);
+                logger.warn("Failed to get source index for sound: {}", name);
                 return;
             }
 
@@ -38,10 +43,10 @@ public class SoundPlayer {
 
             int error = alGetError();
             if (error != AL_NO_ERROR) {
-                System.err.println("OpenAL error playing sound " + name + " with volume " + volume + ": " + error);
+                logger.error("OpenAL error playing sound {} with volume {}: {}", name, volume, error);
             }
         } else {
-            System.err.println("Sound not found: " + name);
+            logger.warn("Sound not found: {}", name);
         }
     }
 
@@ -50,7 +55,7 @@ public class SoundPlayer {
         if (soundSources != null) {
             int currentIndex = soundBuffer.getNextSourceIndex(name);
             if (currentIndex == -1) {
-                System.err.println("Failed to get source index for sound: " + name);
+                logger.warn("Failed to get source index for sound: {}", name);
                 return;
             }
 
@@ -71,10 +76,10 @@ public class SoundPlayer {
 
             int error = alGetError();
             if (error != AL_NO_ERROR) {
-                System.err.println("OpenAL error playing sound " + name + " with variation: " + error);
+                logger.error("OpenAL error playing sound {} with variation: {}", name, error);
             }
         } else {
-            System.err.println("Sound not found: " + name);
+            logger.warn("Sound not found: {}", name);
         }
     }
 
@@ -89,13 +94,13 @@ public class SoundPlayer {
      * @param z The Z coordinate in world space
      */
     public void playSoundAt3D(String name, float volume, float x, float y, float z) {
-        System.out.println("🔊 3D AUDIO DEBUG: Playing '" + name + "' at position (" + x + ", " + y + ", " + z + ") with volume " + volume);
+        logger.trace("Playing 3D sound '{}' at ({}, {}, {}) with volume {}", name, x, y, z, volume);
 
         Integer[] soundSources = soundBuffer.getSources(name);
         if (soundSources != null) {
             int currentIndex = soundBuffer.getNextSourceIndex(name);
             if (currentIndex == -1) {
-                System.err.println("Failed to get source index for sound: " + name);
+                logger.warn("Failed to get source index for sound: {}", name);
                 return;
             }
 
@@ -106,11 +111,9 @@ public class SoundPlayer {
 
             // Ensure the source is set to positional (not relative to listener)
             alSourcei(source, AL_SOURCE_RELATIVE, AL_FALSE);
-            System.out.println("🔊 3D AUDIO DEBUG: Set source " + source + " to world-space positioning (not relative)");
 
             // Set the source position in 3D space
             alSource3f(source, AL_POSITION, x, y, z);
-            System.out.println("🔊 3D AUDIO DEBUG: Set source " + source + " position to (" + x + ", " + y + ", " + z + ")");
 
             // Set velocity to zero (static sound emitter)
             alSource3f(source, AL_VELOCITY, 0.0f, 0.0f, 0.0f);
@@ -118,19 +121,16 @@ public class SoundPlayer {
             // For 3D audio, use the master volume and let OpenAL handle distance attenuation
             float baseVolume = volume * volumeController.getMasterVolume();
             alSourcef(source, AL_GAIN, baseVolume);
-            System.out.println("🔊 3D AUDIO DEBUG: Set source " + source + " volume to " + baseVolume + " (distance attenuation will be applied by OpenAL)");
 
             alSourcePlay(source);
-            System.out.println("🔊 3D AUDIO DEBUG: Started playing source " + source);
+            logger.trace("Playing 3D sound on source {} at volume {}", source, baseVolume);
 
             int error = alGetError();
             if (error != AL_NO_ERROR) {
-                System.err.println("OpenAL error playing 3D sound " + name + " at (" + x + ", " + y + ", " + z + "): " + error);
-            } else {
-                System.out.println("🔊 3D AUDIO DEBUG: Successfully playing 3D sound with no OpenAL errors");
+                logger.error("OpenAL error playing 3D sound {} at ({}, {}, {}): {}", name, x, y, z, error);
             }
         } else {
-            System.err.println("Sound not found: " + name);
+            logger.warn("Sound not found: {}", name);
         }
     }
 
@@ -148,7 +148,7 @@ public class SoundPlayer {
         if (soundSources != null) {
             int currentIndex = soundBuffer.getNextSourceIndex(name);
             if (currentIndex == -1) {
-                System.err.println("Failed to get source index for sound: " + name);
+                logger.warn("Failed to get source index for sound: {}", name);
                 return;
             }
 
@@ -180,10 +180,10 @@ public class SoundPlayer {
 
             int error = alGetError();
             if (error != AL_NO_ERROR) {
-                System.err.println("OpenAL error playing 3D sound " + name + " with variation at (" + x + ", " + y + ", " + z + "): " + error);
+                logger.error("OpenAL error playing 3D sound {} with variation at ({}, {}, {}): {}", name, x, y, z, error);
             }
         } else {
-            System.err.println("Sound not found: " + name);
+            logger.warn("Sound not found: {}", name);
         }
     }
 }

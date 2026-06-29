@@ -6,6 +6,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import com.stonebreak.core.Game;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Orchestrates {@link Game} shutdown: cleans up per-instance subsystems,
@@ -14,6 +16,8 @@ import com.stonebreak.core.Game;
  * Extracted from {@code Game.cleanup()} / {@code Game.cleanupStaticResources()}.
  */
 public final class GameShutdown {
+
+    private static final Logger logger = LoggerFactory.getLogger(GameShutdown.class);
 
     private GameShutdown() {
     }
@@ -25,7 +29,7 @@ public final class GameShutdown {
      * @param worldUpdateExecutor  the executor owned by {@link Game} that must be stopped
      */
     public static void shutdown(Game game, ExecutorService worldUpdateExecutor) {
-        System.out.println("Starting Game cleanup...");
+        logger.debug("Starting Game cleanup...");
 
         if (Game.getWorld() != null) {
             Game.getWorld().cleanup();
@@ -54,46 +58,46 @@ public final class GameShutdown {
 
         if (game.getSaveService() != null) {
             try {
-                System.out.println("Performing final save before shutdown...");
+                logger.debug("Performing final save before shutdown...");
                 CompletableFuture<Void> saveOperation = game.getSaveService().saveAll();
                 saveOperation.get(5, TimeUnit.SECONDS);
-                System.out.println("Final save completed successfully");
+                logger.debug("Final save completed successfully");
             } catch (TimeoutException e) {
-                System.err.println("Final save timed out after 5 seconds - proceeding with shutdown");
+                logger.warn("Final save timed out after 5 seconds - proceeding with shutdown");
             } catch (Exception e) {
-                System.err.println("Error during final save: " + e.getMessage());
+                logger.error("Error during final save", e);
             }
 
             try {
-                System.out.println("Closing SaveService...");
+                logger.debug("Closing SaveService...");
                 game.getSaveService().close();
             } catch (Exception e) {
-                System.err.println("Error closing SaveService: " + e.getMessage());
+                logger.error("Error closing SaveService", e);
             }
         }
 
-        System.out.println("Shutting down world update executor...");
+        logger.debug("Shutting down world update executor...");
         worldUpdateExecutor.shutdownNow();
         try {
             if (!worldUpdateExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
-                System.err.println("World update executor did not terminate gracefully");
+                logger.warn("World update executor did not terminate gracefully");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            System.err.println("Interrupted while waiting for world update executor shutdown");
+            logger.warn("Interrupted while waiting for world update executor shutdown");
         }
 
         cleanupStaticResources();
 
-        System.out.println("Game cleanup completed");
+        logger.debug("Game cleanup completed");
     }
 
     private static void cleanupStaticResources() {
         try {
-            System.out.println("Shutting down MMS API...");
+            logger.debug("Shutting down MMS API...");
             com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.shutdown();
         } catch (Exception e) {
-            System.err.println("Error shutting down MMS API: " + e.getMessage());
+            logger.error("Error shutting down MMS API", e);
         }
 
     }

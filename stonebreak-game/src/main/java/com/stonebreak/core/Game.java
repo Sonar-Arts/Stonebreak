@@ -29,12 +29,16 @@ import com.stonebreak.util.*;
 import com.stonebreak.world.*;
 import com.stonebreak.world.save.SaveService;
 import com.stonebreak.world.save.model.WorldData;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Central class for accessing game state and resources.
  */
 public class Game {
-    
+
+    private static final Logger logger = LoggerFactory.getLogger(Game.class);
+
     // Singleton instance
     private static Game instance;
     
@@ -193,6 +197,7 @@ public class Game {
         com.stonebreak.core.bootstrap.GameBootstrap.initializeEntityAssets();
         com.stonebreak.core.bootstrap.GameBootstrap.configureEngine(renderer.getBlockTextureArray(), renderer);
 
+        logger.debug("[STARTUP] Core components initialized (no world/player yet)");
     }
 
     /**

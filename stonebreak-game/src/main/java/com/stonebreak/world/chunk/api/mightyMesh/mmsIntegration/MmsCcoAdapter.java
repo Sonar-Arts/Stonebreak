@@ -21,6 +21,8 @@ import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsWaterGenerator;
 import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
 import com.stonebreak.world.operations.WorldConfiguration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Mighty Mesh System - CCO Integration Adapter.
@@ -36,6 +38,8 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * @since MMS 1.0
  */
 public class MmsCcoAdapter {
+
+    private static final Logger logger = LoggerFactory.getLogger(MmsCcoAdapter.class);
 
     // Water uses alpha blending, never alpha testing — flags are always zero.
     // Hoisted to avoid per-face allocation in the meshing hot path.
@@ -69,7 +73,7 @@ public class MmsCcoAdapter {
         if (world != null) {
             this.waterGenerator = new MmsWaterGenerator(world, textureMapper);
             this.shadowContext = new com.stonebreak.world.lighting.WorldLightingContext(world);
-            System.out.println("[MmsCcoAdapter] Water generator initialized with provided world instance");
+            logger.debug("[MmsCcoAdapter] Water generator initialized with provided world instance");
         }
     }
 
@@ -86,7 +90,7 @@ public class MmsCcoAdapter {
         this.world = world;
         this.waterGenerator = new MmsWaterGenerator(world, textureMapper);
         this.shadowContext = new com.stonebreak.world.lighting.WorldLightingContext(world);
-        System.out.println("[MmsCcoAdapter] World instance set successfully (water generator initialized)");
+        logger.debug("[MmsCcoAdapter] World instance set successfully (water generator initialized)");
     }
 
     /**
@@ -101,7 +105,7 @@ public class MmsCcoAdapter {
         // Deterministic at first mesh build; no seed races, no stale data.
         emitter.setLightSampler((face, vx, vy, vz, data) ->
             com.openmason.engine.voxel.lighting.VertexLightSampler.sampleCombined(shadowContext, vx, vy, vz, face));
-        System.out.println("[MmsCcoAdapter] SBO stamp emitter set (" + emitter.getCache().size() + " stamp types)");
+        logger.debug("[MmsCcoAdapter] SBO stamp emitter set ({} stamp types)", emitter.getCache().size());
     }
 
     /**
@@ -114,7 +118,7 @@ public class MmsCcoAdapter {
     public void setSBODispatcher(MmsBlockGeometryDispatcher dispatcher, MmsSBOBlockProvider provider) {
         // Legacy path: if no stamp emitter is set, this method is still called
         // The Renderer will set the stamp emitter directly via setSBOStampEmitter
-        System.out.println("[MmsCcoAdapter] SBO dispatcher set (legacy path)");
+        logger.debug("[MmsCcoAdapter] SBO dispatcher set (legacy path)");
     }
 
     /**

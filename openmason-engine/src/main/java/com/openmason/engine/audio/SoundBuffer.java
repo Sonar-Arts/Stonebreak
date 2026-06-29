@@ -2,10 +2,15 @@ package com.openmason.engine.audio;
 
 import static org.lwjgl.openal.AL10.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.HashMap;
 import java.util.Map;
 
 public class SoundBuffer {
+    private static final Logger logger = LoggerFactory.getLogger(SoundBuffer.class);
+
     private final Map<String, Integer> soundBuffers;
     private final Map<String, Integer[]> sources;
     private final Map<String, Integer> sourceIndexes;
@@ -48,7 +53,7 @@ public class SoundBuffer {
 
             int error = alGetError();
             if (error != AL_NO_ERROR) {
-                System.err.println("OpenAL error creating source " + i + " for " + name + ": " + error);
+                logger.error("OpenAL error creating source {} for {}: {}", i, name, error);
                 // Clean up any sources created so far
                 for (int j = 0; j < i; j++) {
                     alDeleteSources(soundSources[j]);
@@ -62,7 +67,7 @@ public class SoundBuffer {
         sources.put(name, soundSources);
         sourceIndexes.put(name, 0);
 
-        System.out.println("Successfully created " + sourcesPerSound + " sources for sound: " + name);
+        logger.debug("Successfully created {} sources for sound: {}", sourcesPerSound, name);
         return true;
     }
 
