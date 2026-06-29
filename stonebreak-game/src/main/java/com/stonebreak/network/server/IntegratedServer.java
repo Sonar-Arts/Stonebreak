@@ -7,6 +7,7 @@ import com.openmason.engine.net.server.ServerConnection;
 import com.openmason.engine.net.server.ServerInboundQueue;
 import com.openmason.engine.net.transport.NetAddress;
 import com.stonebreak.mobs.entities.Entity;
+import com.stonebreak.mobs.entities.EntitySpawner;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.network.StonebreakProtocol;
 import com.stonebreak.network.packet.chat.ChatMessageC2S;
@@ -90,7 +91,7 @@ public final class IntegratedServer {
         // Wire the spawner's player-position source to the live server roster. Kept here
         // (not in ServerLevel) so the mobs.entities package never imports network classes —
         // the dependency flows network -> mobs, not the reverse.
-        level.entitySpawner().setPlayerPositionSource(this::collectPlayerSpawnAnchors);
+        level.entitySpawner().setSpawnAnchorSource(this::collectPlayerSpawnAnchors);
 
         networkServer.start(localAddress, tcpAddress);
         chunkHandler.onSessionStart();
@@ -105,17 +106,19 @@ public final class IntegratedServer {
     }
 
     /**
-     * Snapshots the positions of every handshake-complete player on the server. Supplied
-     * to the entity spawner so continuous spawning and despawning consider all players,
-     * not just the local one.
+     * Snapshots a spawn anchor (position + view distance) for every player that has both completed
+     * the handshake AND reported a position (so the dynamic mob cap sizes itself to each player's
+     * actual loaded area, not the {@code (0,0,0)} default before the first PlayerStateC2S). Supplied
+     * to the entity spawner so continuous spawning/despawning consider all players, not just the local one.
      */
-    private List<Vector3f> collectPlayerSpawnAnchors() {
+    private List<EntitySpawner.SpawnAnchor> collectPlayerSpawnAnchors() {
         Collection<ServerPlayer> roster = ctx.players();
         if (roster.isEmpty()) return List.of();
-        List<Vector3f> out = new ArrayList<>(roster.size());
+        List<EntitySpawner.SpawnAnchor> out = new ArrayList<>(roster.size());
         for (ServerPlayer sp : roster) {
-            if (!sp.handshakeDone()) continue;
-            out.add(new Vector3f(sp.x(), sp.y(), sp.z()));
+            if (!sp.handshakeDone() || sp.lastStateNs() == 0L) continue;
+            out.add(new EntitySpawner.SpawnAnchor(
+                new Vector3f(sp.x(), sp.y(), sp.z()), sp.viewDistanceChunks()));
         }
         return out;
     }

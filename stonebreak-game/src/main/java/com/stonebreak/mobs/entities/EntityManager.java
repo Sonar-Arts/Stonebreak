@@ -6,9 +6,11 @@ import com.stonebreak.rendering.Renderer;
 import com.stonebreak.player.Player;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Iterator;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
@@ -150,6 +152,19 @@ public class EntityManager {
         }
     }
     private void fireRemoved(Entity e) {
+        // A persistable entity leaving the world (death/despawn) changes its chunk's saved contents
+        // but not its blocks; mark that chunk dirty so the next save rewrites it WITHOUT the entity
+        // instead of leaving a stale snapshot that would resurrect it on reload. No-op on the client
+        // world (no SaveService); shadows/transient entities aren't persisted.
+        if (world != null && !e.isNetworkShadow() && e.isPersistent()) {
+            Vector3f p = e.getPosition();
+            int cx = Math.floorDiv((int) Math.floor(p.x), 16);
+            int cz = Math.floorDiv((int) Math.floor(p.z), 16);
+            var chunk = world.getChunkIfLoaded(cx, cz);
+            if (chunk != null) {
+                chunk.markDirty();
+            }
+        }
         for (Listener l : listeners) {
             try { l.onEntityRemoved(e); } catch (Exception ex) {
                 System.err.println("[EntityManager] Listener.onEntityRemoved threw: " + ex);
@@ -772,6 +787,55 @@ public class EntityManager {
         List<Entity> out = new ArrayList<>(entities);
         synchronized (entitiesToAdd) { out.addAll(entitiesToAdd); }
         return out;
+    }
+
+    /** Chunks that held a persistable entity at the previous save, so emptied chunks are re-saved. */
+    private final Set<Long> chunksWithEntitiesLastSave = new HashSet<>();
+
+    /**
+     * Marks chunks data-dirty so the next save (autosave or exit flush) captures current entity
+     * state. Entities live in this manager, not in block data, so a chunk whose only change is the
+     * mobs/drops in it would otherwise stay clean and be skipped by the dirty-gated save.
+     *
+     * <p>Re-dirties chunks that <i>currently</i> hold a persistable entity (so additions and moved-in
+     * mobs are written with up-to-date positions) AND chunks that held one at the last save but no
+     * longer do (so a mob that <i>wandered out</i> is removed from that chunk's on-disk snapshot,
+     * preventing a stale snapshot from duplicating it on reload). Death/despawn removals are handled
+     * separately by {@link #fireRemoved} marking the chunk dirty. Bounded by the mob cap; intended
+     * for the authoritative server world.
+     */
+    public void markChunksWithLiveEntitiesDirty() {
+        if (world == null) {
+            return;
+        }
+        Set<Long> current = new HashSet<>();
+        for (Entity e : entities) {
+            if (!e.isAlive() || e.isNetworkShadow() || !e.isPersistent()) {
+                continue;
+            }
+            Vector3f p = e.getPosition();
+            int cx = Math.floorDiv((int) Math.floor(p.x), 16);
+            int cz = Math.floorDiv((int) Math.floor(p.z), 16);
+            current.add(((long) cx << 32) | (cz & 0xFFFFFFFFL));
+        }
+
+        // Re-dirty current occupants + chunks that were occupied last save (or seeded at load) but
+        // are now empty, then remember the new occupied set. Guarded so a concurrent load-seed and
+        // the autosave/flush don't corrupt the set.
+        Set<Long> toDirty = new HashSet<>(current);
+        synchronized (chunksWithEntitiesLastSave) {
+            toDirty.addAll(chunksWithEntitiesLastSave);
+            chunksWithEntitiesLastSave.clear();
+            chunksWithEntitiesLastSave.addAll(current);
+        }
+        for (long key : toDirty) {
+            int cx = (int) (key >> 32);
+            int cz = (int) (key & 0xFFFFFFFFL);
+            var chunk = world.getChunkIfLoaded(cx, cz);
+            if (chunk != null) {
+                chunk.markDirty();
+            }
+        }
     }
     public float getTotalTime() { return totalTime; }
 }

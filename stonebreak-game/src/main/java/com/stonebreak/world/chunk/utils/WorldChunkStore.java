@@ -465,14 +465,12 @@ public class WorldChunkStore {
                     if (meshPipeline != null) {
                         meshPipeline.scheduleConditionalMeshBuild(chunk);
                     }
-                    // Initial mob spawn runs HERE, not in generate(). Rationale: in generate()
-                    // the chunk isn't yet in the chunk store, its features (trees, etc.) haven't
-                    // landed, and its neighbor chunks may not exist — all of which let mobs
-                    // spawn onto unstable terrain and fall through the world. By the time the
-                    // chunk reaches this point it is resident, features-populated, and its 8
-                    // neighbors are loaded, so any mob placed on it has a stable footing.
+                    // Passive mobs are no longer spawned at chunk generation. Population is owned
+                    // entirely by the server's continuous, visibility-capped spawner (EntitySpawner),
+                    // which fills the loaded area toward a dynamic cap and lets depopulated regions
+                    // refill. We still mark the chunk entity-processed so its persisted state stays
+                    // consistent and re-loaded chunks restore their own saved entities.
                     if (!chunk.getCcoMetadata().hasEntities()) {
-                        initialMobSpawn(chunk);
                         chunk.setEntitiesGenerated(true);
                     }
                     processed++;
@@ -592,25 +590,6 @@ public class WorldChunkStore {
         chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
         chunk.markClean();
         return chunk;
-    }
-
-    /**
-     * Initial mob spawning during chunk generation.
-     * Following Minecraft rules: "Most animals spawn within chunks when they are generated"
-     * This provides initial population - continuous spawning happens via spawning cycles.
-     */
-    private void initialMobSpawn(Chunk chunk) {
-        // Mob spawning is server-authoritative: only the headless server world binds an
-        // EntitySpawner (the single source of truth), so initial chunk spawns land in the server's
-        // EntityManager. A render-only client world carries no spawner — its mobs stream in as
-        // network shadows — so this is a no-op there.
-        com.stonebreak.mobs.entities.EntitySpawner spawner =
-            (world != null) ? world.getEntitySpawner() : null;
-        if (spawner == null) {
-            return;
-        }
-        // EntitySpawner handles spawn chance and mob placement.
-        spawner.initialChunkSpawn(chunk);
     }
 
     /**
