@@ -7,6 +7,7 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
@@ -28,8 +29,11 @@ import java.util.function.Supplier;
  * populated — this is what prevents mobs from being placed onto unloaded/half-baked
  * chunks where they'd fall through the world or get stuck in soon-to-arrive features.
  *
- * <p><b>Despawning.</b> A mob despawns only when farther than {@link #DESPAWN_RADIUS}
- * from <i>every</i> connected player (so a mob near any one player survives).
+ * <p><b>Despawning.</b> A mob despawns when farther than {@link #DESPAWN_RADIUS} from
+ * <i>every</i> connected player (so a mob near any one player survives). The sweep also
+ * enforces a hard population cap ({@link #PASSIVE_POPULATION_CAP_PER_PLAYER} × player count):
+ * when exceeded it thins the in-range population from the outside in — this is what bounds a
+ * world that the uncapped initial chunk spawning would otherwise over-populate.
  *
  * <p>Public API is preserved: {@link #initialChunkSpawn}, {@link #update},
  * {@link #forceSpawnEntity}, {@link #spawnCowHerd}, {@link #getSpawnStats}.
@@ -60,6 +64,17 @@ public class EntitySpawner {
     /** Shared passive-mob cap per player; bounds total continuous spawns. */
     private static final int MAX_PASSIVE_MOBS_PER_PLAYER = 10;
     private static final int SPAWN_ATTEMPTS_PER_CYCLE = 3;
+
+    /**
+     * Hard population cap (per connected player) enforced by the despawn sweep. Initial chunk
+     * spawning ignores the continuous cap, so without this the per-chunk herds accumulate
+     * inside the despawn radius with nothing to bound them. The sweep thins anything over this.
+     */
+    private static final int PASSIVE_POPULATION_CAP_PER_PLAYER = MAX_PASSIVE_MOBS_PER_PLAYER;
+    /** Mobs nearer than this to any player are never cap-culled (so animals don't vanish in your face). */
+    private static final int CAP_PROTECTION_RADIUS = 16;
+    /** Cap-driven despawns per sweep — thins a flooded world gradually instead of popping a herd at once. */
+    private static final int MAX_CAP_DESPAWNS_PER_SWEEP = 8;
 
     private static final int MIN_SPAWN_HEIGHT = 60;
     private static final int MAX_SPAWN_HEIGHT = 120;
@@ -133,12 +148,32 @@ public class EntitySpawner {
      * features are populated (the world chunk store handles this).
      */
     public void initialChunkSpawn(Chunk chunk) {
+        // Don't keep adding herds to an already-saturated world. Best-effort only: freshly
+        // spawned mobs may still be queued (not yet in the live list) during a generation
+        // burst, so the despawn sweep is the hard bound — this just curbs spawn/despawn
+        // thrash as the player explores into new chunks.
+        if (isPassivePopulationSaturated()) {
+            return;
+        }
         // ONE roll per chunk; on success pick ONE passive type and spawn a single herd.
         if (random.nextFloat() > INITIAL_SPAWN_CHANCE) {
             return;
         }
         EntityType type = PASSIVE_SPAWN_TYPES[random.nextInt(PASSIVE_SPAWN_TYPES.length)];
         spawnInitialHerd(chunk, type);
+    }
+
+    /** True when the live passive population already meets the global cap (cap × player count). */
+    private boolean isPassivePopulationSaturated() {
+        List<Vector3f> players = collectPlayerPositions();
+        if (players.isEmpty()) return false; // no cap reference yet — let generation populate
+        int cap = PASSIVE_POPULATION_CAP_PER_PLAYER * players.size();
+        int count = 0;
+        for (EntityType type : PASSIVE_SPAWN_TYPES) {
+            count += entityManager.getEntitiesByType(type).size();
+            if (count >= cap) return true;
+        }
+        return false;
     }
 
     private void spawnInitialHerd(Chunk chunk, EntityType type) {
@@ -193,12 +228,41 @@ public class EntitySpawner {
         List<Vector3f> players = collectPlayerPositions();
         if (players.isEmpty()) return;
 
+        List<Entity> passives = new ArrayList<>();
         for (EntityType type : PASSIVE_SPAWN_TYPES) {
-            for (Entity mob : entityManager.getEntitiesByType(type)) {
-                if (distanceToNearest(mob.getPosition(), players) > DESPAWN_RADIUS) {
-                    entityManager.removeEntity(mob);
-                }
+            passives.addAll(entityManager.getEntitiesByType(type));
+        }
+
+        // 1) Distance despawn — cull anything beyond DESPAWN_RADIUS of EVERY player. These are
+        //    off-screen, so removing all of them at once causes no visible pop.
+        List<Entity> survivors = new ArrayList<>(passives.size());
+        for (Entity mob : passives) {
+            if (distanceToNearest(mob.getPosition(), players) > DESPAWN_RADIUS) {
+                entityManager.removeEntity(mob);
+            } else {
+                survivors.add(mob);
             }
+        }
+
+        // 2) Population cap — if the in-range population still exceeds the cap (per player),
+        //    thin it from the outside in: farthest from any player first, never touching mobs
+        //    within CAP_PROTECTION_RADIUS, and only a few per sweep so a flooded world drains
+        //    smoothly rather than a whole herd vanishing in one frame. This is what actually
+        //    bounds worlds that uncapped initial chunk spawning has over-populated.
+        int cap = PASSIVE_POPULATION_CAP_PER_PLAYER * players.size();
+        int excess = survivors.size() - cap;
+        if (excess <= 0) return;
+
+        survivors.sort((a, b) -> Float.compare(
+                distanceToNearest(b.getPosition(), players),
+                distanceToNearest(a.getPosition(), players)));
+        int culled = 0;
+        for (Entity mob : survivors) {
+            if (excess <= 0 || culled >= MAX_CAP_DESPAWNS_PER_SWEEP) break;
+            if (distanceToNearest(mob.getPosition(), players) <= CAP_PROTECTION_RADIUS) continue;
+            entityManager.removeEntity(mob);
+            excess--;
+            culled++;
         }
     }
 
