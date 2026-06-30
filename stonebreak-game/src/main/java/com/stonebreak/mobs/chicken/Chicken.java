@@ -133,4 +133,28 @@ public class Chicken extends LivingEntity {
     public AnimationController getAnimationController() {
         return animationController;
     }
+
+    /**
+     * Client shadow: apply the server's replicated animation state to the (otherwise frozen) AI.
+     * Entering {@code WING_FLAP} resets the AI state timer to 0 (via {@code setState}) so the
+     * one-shot flap clip plays from its start.
+     */
+    @Override
+    public void applyNetworkState(String sbeStateName) {
+        if (chickenAI != null) {
+            chickenAI.setState(com.stonebreak.mobs.sbe.ChickenStateMapping.behaviorState(sbeStateName));
+        }
+    }
+
+    /**
+     * Client shadow: keep the animation clock running so the current clip plays, and advance the
+     * AI state timer so the one-shot Wingflap clip (sampled from {@code getStateTimer()}) animates.
+     */
+    @Override
+    public void updateClientVisuals(float deltaTime) {
+        animationController.updateAnimations(deltaTime);
+        if (chickenAI != null) {
+            chickenAI.advanceClientClock(deltaTime);
+        }
+    }
 }

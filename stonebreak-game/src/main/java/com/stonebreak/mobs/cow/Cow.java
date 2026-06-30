@@ -225,7 +225,21 @@ public class Cow extends LivingEntity {
     public AnimationController getAnimationController() {
         return animationController;
     }
-    
+
+    /** Client shadow: apply the server's replicated animation state to the (otherwise frozen) AI. */
+    @Override
+    public void applyNetworkState(String sbeStateName) {
+        if (cowAI != null) {
+            cowAI.setState(com.stonebreak.mobs.sbe.CowStateMapping.behaviorState(sbeStateName));
+        }
+    }
+
+    /** Client shadow: keep the animation clock running so the current clip actually plays. */
+    @Override
+    public void updateClientVisuals(float deltaTime) {
+        animationController.updateAnimations(deltaTime);
+    }
+
     public boolean isCanBeMilked() { return canBeMilked; }
     public void setCanBeMilked(boolean canBeMilked) { this.canBeMilked = canBeMilked; }
     public float getMilkRegenTimer() { return milkRegenTimer; }

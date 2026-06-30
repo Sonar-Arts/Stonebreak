@@ -94,4 +94,18 @@ public class Sheep extends LivingEntity {
     public SheepAI getAI() { return sheepAI; }
     public AnimationController getAnimationController() { return animationController; }
     public String getTextureVariant() { return textureVariant; }
+
+    /** Client shadow: apply the server's replicated animation state to the (otherwise frozen) AI. */
+    @Override
+    public void applyNetworkState(String sbeStateName) {
+        if (sheepAI != null) {
+            sheepAI.setState(com.stonebreak.mobs.sbe.SheepStateMapping.behaviorState(sbeStateName));
+        }
+    }
+
+    /** Client shadow: keep the animation clock running so the current clip actually plays. */
+    @Override
+    public void updateClientVisuals(float deltaTime) {
+        animationController.updateAnimations(deltaTime);
+    }
 }

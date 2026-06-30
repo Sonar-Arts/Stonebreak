@@ -94,6 +94,18 @@ public final class ClientEntityHandler {
         applyAbsolute(t.networkId(), t.x(), t.y(), t.z(), t.yaw());
     }
 
+    /**
+     * Apply a server-replicated animation/behavior state to a shadow entity. The shadow's AI is
+     * otherwise frozen (shadows skip local update), so this is what makes its rendered animation,
+     * debug wireframe, and debug overlay track the authoritative server state.
+     */
+    public void applyAnim(int networkId, String sbeState) {
+        Entity e = byNetworkId.get(networkId);
+        if (e != null) {
+            e.applyNetworkState(sbeState);
+        }
+    }
+
     public void applyAbsolute(int networkId, float x, float y, float z, float yaw) {
         Entity e = byNetworkId.get(networkId);
         if (e == null) {

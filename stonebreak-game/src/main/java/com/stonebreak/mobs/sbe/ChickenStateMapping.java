@@ -24,4 +24,19 @@ public final class ChickenStateMapping {
             case IDLE -> "Idle";
         };
     }
+
+    /**
+     * Inverse of {@link #sbeState}: the chicken behaviour state for a replicated SBE state name.
+     * Unknown/null names fall back to {@code IDLE}.
+     */
+    public static ChickenAI.ChickenBehaviorState behaviorState(String sbeState) {
+        if (sbeState == null) {
+            return ChickenAI.ChickenBehaviorState.IDLE;
+        }
+        return switch (sbeState) {
+            case "Walking"  -> ChickenAI.ChickenBehaviorState.WANDERING;
+            case "Wingflap" -> ChickenAI.ChickenBehaviorState.WING_FLAP;
+            default         -> ChickenAI.ChickenBehaviorState.IDLE;
+        };
+    }
 }

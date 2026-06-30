@@ -293,6 +293,15 @@ public class SaveService implements AutoCloseable {
         if (world == null) {
             return List.of();
         }
+        // Entities (mobs, drops) live in the EntityManager, not in block data, so a chunk whose
+        // only change is the entities standing in it stays block-clean and would be skipped. Mark
+        // such chunks dirty first so every save captures current entity state. Cheap (bounded by
+        // the mob cap) and server-side (the headless world owns the SaveService + real entities).
+        var entityManager = world.getEntityManager();
+        if (entityManager != null) {
+            entityManager.markChunksWithLiveEntitiesDirty();
+        }
+
         List<Chunk> dirtyChunks = world.getDirtyChunks();
         if (dirtyChunks.isEmpty()) {
             return List.of();

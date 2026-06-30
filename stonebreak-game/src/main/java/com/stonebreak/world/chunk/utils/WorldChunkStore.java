@@ -465,14 +465,12 @@ public class WorldChunkStore {
                     if (meshPipeline != null) {
                         meshPipeline.scheduleConditionalMeshBuild(chunk);
                     }
-                    // Initial mob spawn runs HERE, not in generate(). Rationale: in generate()
-                    // the chunk isn't yet in the chunk store, its features (trees, etc.) haven't
-                    // landed, and its neighbor chunks may not exist — all of which let mobs
-                    // spawn onto unstable terrain and fall through the world. By the time the
-                    // chunk reaches this point it is resident, features-populated, and its 8
-                    // neighbors are loaded, so any mob placed on it has a stable footing.
+                    // Passive mobs are no longer spawned at chunk generation. Population is owned
+                    // entirely by the server's continuous, visibility-capped spawner (EntitySpawner),
+                    // which fills the loaded area toward a dynamic cap and lets depopulated regions
+                    // refill. We still mark the chunk entity-processed so its persisted state stays
+                    // consistent and re-loaded chunks restore their own saved entities.
                     if (!chunk.getCcoMetadata().hasEntities()) {
-                        initialMobSpawn(chunk);
                         chunk.setEntitiesGenerated(true);
                     }
                     processed++;
@@ -595,28 +593,6 @@ public class WorldChunkStore {
     }
 
     /**
-     * Initial mob spawning during chunk generation.
-     * Following Minecraft rules: "Most animals spawn within chunks when they are generated"
-     * This provides initial population - continuous spawning happens via spawning cycles.
-     */
-    private void initialMobSpawn(Chunk chunk) {
-        // Prefer this world's own spawner (the headless server world binds its own so mobs land
-        // in the server's EntityManager); fall back to the Game singleton for the co-located /
-        // single-world case.
-        com.stonebreak.mobs.entities.EntitySpawner spawner =
-            (world != null) ? world.getEntitySpawner() : null;
-        if (spawner == null) {
-            Game game = Game.getInstance();
-            spawner = (game != null) ? game.getEntitySpawner() : null;
-        }
-        if (spawner == null) {
-            return;
-        }
-        // EntitySpawner handles spawn chance and mob placement.
-        spawner.initialChunkSpawn(chunk);
-    }
-
-    /**
      * Checks if a chunk contains any flowing (non-source) water blocks.
      * Used to determine if a newly generated chunk needs to be saved to persist water metadata.
      * Queries the WaterSystem's sparse cell map — no 65k-block chunk scan.
@@ -687,7 +663,16 @@ public class WorldChunkStore {
         if (meshPipeline != null) {
             meshPipeline.addChunkForGpuCleanup(chunk);
         }
-        Game.getEntityManager().removeEntitiesInChunk(chunkX, chunkZ);
+        // Remove entities owned by THIS world's manager (two-world model): on the client render
+        // world this culls local shadows (the manager guards against removing network shadows /
+        // remote players); on a headless server world it would target the server's manager. Using
+        // the world's own manager rather than the Game singleton (which always resolves to the
+        // CLIENT) keeps the removal authority unambiguous. The server world never unloads chunks.
+        com.stonebreak.mobs.entities.EntityManager entityManager =
+            (world != null) ? world.getEntityManager() : null;
+        if (entityManager != null) {
+            entityManager.removeEntitiesInChunk(chunkX, chunkZ);
+        }
     }
 
     private void notify(Consumer<Chunk> listener, Chunk chunk) {

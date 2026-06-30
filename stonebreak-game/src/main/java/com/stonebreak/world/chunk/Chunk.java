@@ -486,17 +486,17 @@ public class Chunk {
             }
         }
 
-        // Extract entities in this chunk from EntityManager
+        // Extract entities in this chunk from the OWNING world's EntityManager. Saves run on the
+        // authoritative server, whose headless world holds the real (non-shadow) mobs; the Game
+        // singleton would resolve to the CLIENT manager (network shadows), which EntitySerializer
+        // skips — persisting zero mobs. See the two-world "Game.* resolves to CLIENT" pitfall.
         java.util.List<com.stonebreak.world.save.model.EntityData> entities = new java.util.ArrayList<>();
-        if (world != null) {
-            com.stonebreak.core.Game game = Game.getInstance();
-            if (game != null && game.getEntityManager() != null) {
-                entities = game.getEntityManager().getEntitiesInChunk(x, z);
-                logger.log(Level.FINE, String.format(
-                    "[ENTITY-SAVE] Chunk (%d,%d): Saving %d entities",
-                    x, z, entities.size()
-                ));
-            }
+        if (world != null && world.getEntityManager() != null) {
+            entities = world.getEntityManager().getEntitiesInChunk(x, z);
+            logger.log(Level.FINE, String.format(
+                "[ENTITY-SAVE] Chunk (%d,%d): Saving %d entities",
+                x, z, entities.size()
+            ));
         }
 
         // Create snapshot with copied block storage, water metadata, entities,

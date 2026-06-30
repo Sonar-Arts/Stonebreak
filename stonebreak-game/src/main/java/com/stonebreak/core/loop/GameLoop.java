@@ -193,15 +193,11 @@ public final class GameLoop {
             player.getEntitySightingTracker().update(deltaTime);
         }
 
-        // Mob spawning and the day/night clock are server-authoritative. On a render-only
-        // client they are driven by replication (entity spawns; a future TimeSyncS2C), so skip
-        // them locally to avoid the client diverging from the server.
+        // Mob spawning is server-authoritative: the sole EntitySpawner lives on ServerLevel and
+        // ticks on the server thread, replicating spawns to clients. There is no client-side
+        // spawner. The day/night clock is likewise server-authoritative; on a render-only client
+        // it is driven by replication (a future TimeSyncS2C), so skip it locally to avoid drift.
         if (!renderOnly) {
-            com.stonebreak.mobs.entities.EntitySpawner entitySpawner = game.getEntitySpawner();
-            if (entitySpawner != null) {
-                entitySpawner.update(deltaTime);
-            }
-
             TimeOfDay timeOfDay = Game.getTimeOfDay();
             if (timeOfDay != null) {
                 timeOfDay.update(deltaTime);
