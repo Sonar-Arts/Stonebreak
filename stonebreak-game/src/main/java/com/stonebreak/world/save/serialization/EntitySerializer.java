@@ -5,6 +5,7 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.chicken.Chicken;
 import com.stonebreak.mobs.cow.Cow;
+import com.stonebreak.mobs.goose.Goose;
 import com.stonebreak.mobs.sheep.Sheep;
 import com.stonebreak.mobs.entities.BlockDrop;
 import com.stonebreak.mobs.entities.Entity;
@@ -66,6 +67,7 @@ public class EntitySerializer {
             case ITEM_DROP -> serializeItemDrop((ItemDrop) entity, builder);
             case COW -> serializeCow((Cow) entity, builder);
             case CHICKEN -> serializeChicken((Chicken) entity, builder);
+            case GOOSE -> serializeGoose((Goose) entity, builder);
             case SHEEP -> serializeSheep((Sheep) entity, builder);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for serialization: " + entityType);
@@ -93,6 +95,7 @@ public class EntitySerializer {
             case ITEM_DROP -> deserializeItemDrop(entityData, world);
             case COW -> deserializeCow(entityData, world);
             case CHICKEN -> deserializeChicken(entityData, world);
+            case GOOSE -> deserializeGoose(entityData, world);
             case SHEEP -> deserializeSheep(entityData, world);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for deserialization: " + entityType);
@@ -292,6 +295,33 @@ public class EntitySerializer {
             return chicken;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to deserialize Chicken", e);
+            return null;
+        }
+    }
+
+    // ===== Goose Serialization =====
+
+    private static void serializeGoose(Goose goose, EntityData.Builder builder) {
+        String aiState = goose.getAI() != null
+                ? goose.getAI().getCurrentState().name()
+                : "IDLE";
+        builder.addCustomData("aiState", aiState);
+    }
+
+    private static Entity deserializeGoose(EntityData entityData, World world) {
+        try {
+            Vector3f position = entityData.getPosition();
+            Goose goose = new Goose(world, position);
+            goose.setPosition(position);
+            goose.setVelocity(entityData.getVelocity());
+            goose.setRotation(entityData.getRotation());
+            goose.setHealth(entityData.getHealth());
+            goose.setMaxHealth(entityData.getMaxHealth());
+            goose.setAlive(entityData.isAlive());
+            goose.setAge(entityData.getAge());
+            return goose;
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Failed to deserialize Goose", e);
             return null;
         }
     }

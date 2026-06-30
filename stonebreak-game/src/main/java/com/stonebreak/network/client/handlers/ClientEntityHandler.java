@@ -6,6 +6,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.chicken.Chicken;
 import com.stonebreak.mobs.cow.Cow;
+import com.stonebreak.mobs.goose.Goose;
 import com.stonebreak.mobs.entities.BlockDrop;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
@@ -153,6 +154,7 @@ public final class ClientEntityHandler {
                 yield new Cow(Game.getWorld(), pos, variant);
             }
             case CHICKEN -> new Chicken(Game.getWorld(), pos);
+            case GOOSE -> new Goose(Game.getWorld(), pos);
             case SHEEP -> {
                 String variant = (metadata == null || metadata.isBlank()) ? "default" : metadata;
                 yield new Sheep(Game.getWorld(), pos, variant);

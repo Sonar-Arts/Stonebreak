@@ -241,6 +241,7 @@ public final class ServerEntityHandler {
         return t == EntityType.COW
             || t == EntityType.CHICKEN
             || t == EntityType.SHEEP
+            || t == EntityType.GOOSE
             || t == EntityType.BLOCK_DROP
             || t == EntityType.ITEM_DROP;
     }

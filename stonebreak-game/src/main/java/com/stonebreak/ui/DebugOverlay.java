@@ -32,6 +32,8 @@ import com.stonebreak.mobs.chicken.Chicken;
 import com.stonebreak.mobs.chicken.ChickenAI;
 import com.stonebreak.mobs.sheep.Sheep;
 import com.stonebreak.mobs.sheep.SheepAI;
+import com.stonebreak.mobs.goose.Goose;
+import com.stonebreak.mobs.goose.GooseAI;
 import java.util.List;
 import java.util.ArrayDeque;
 
@@ -637,6 +639,7 @@ public class DebugOverlay {
         List<Entity> cowEntities = entityManager.getEntitiesByType(EntityType.COW);
         List<Entity> chickenEntities = entityManager.getEntitiesByType(EntityType.CHICKEN);
         List<Entity> sheepEntities = entityManager.getEntitiesByType(EntityType.SHEEP);
+        List<Entity> gooseEntities = entityManager.getEntitiesByType(EntityType.GOOSE);
 
         // Model wireframe overlays — each call manages its own GL state.
         for (Entity entity : cowEntities) {
@@ -652,6 +655,11 @@ public class DebugOverlay {
         for (Entity entity : sheepEntities) {
             if (entity.isAlive() && entity instanceof Sheep sheep) {
                 renderer.renderEntityWireframe(sheep, colorForState(sheep));
+            }
+        }
+        for (Entity entity : gooseEntities) {
+            if (entity.isAlive() && entity instanceof Goose goose) {
+                renderer.renderEntityWireframe(goose, colorForState(goose));
             }
         }
 
@@ -719,6 +727,28 @@ public class DebugOverlay {
             case IDLE      -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
             case WANDERING -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
             case GRAZING   -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
+        };
+    }
+
+    /**
+     * Picks the wireframe colour for a goose's current AI state. Ground states
+     * share the common palette (cyan idle / green moving / amber active) while
+     * the flight states get distinct hues so the overlay doubles as a
+     * behaviour readout.
+     */
+    private Vector4f colorForState(Goose goose) {
+        GooseAI ai = goose.getAI();
+        GooseAI.GooseBehaviorState state =
+                ai != null ? ai.getCurrentState() : GooseAI.GooseBehaviorState.IDLE;
+        return switch (state) {
+            case IDLE      -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
+            case WANDERING -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
+            case FLOATING  -> new Vector4f(0.20f, 0.55f, 1.0f, 1.0f); // blue (on water)
+            case FLEEING   -> new Vector4f(1.0f, 0.25f, 0.25f, 1.0f); // red
+            case TAKEOFF   -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
+            case FORMATION -> new Vector4f(0.75f, 0.40f, 1.0f, 1.0f); // purple
+            case FREE_FLY  -> new Vector4f(1.0f, 0.55f, 0.10f, 1.0f); // orange
+            case LANDING   -> new Vector4f(1.0f, 1.0f, 0.40f, 1.0f);  // yellow
         };
     }
 

@@ -32,6 +32,16 @@ public enum EntityType {
         "A small, fragile frame — one clean arrow does it.",
         new String[]{"Default"},
         new String[0]),
+    // legHeight is 0 for the same reason as the chicken: the SB_Goose.sbe origin
+    // sits at the feet, so the entity rests directly on the ground surface.
+    // No appearance variants and no one-shot clips (the flying clip loops).
+    GOOSE("Goose",
+        new EntityAttributes(2, 9, 3, 1, 4, 5),
+        0.6f, 0.5f, 0.8f, 0.0f, "stonebreak:goose",
+        LivingEntity.DamageSource.ARROW,
+        "Quick and flighty — an arrow brings it down mid-honk.",
+        new String[]{"Default"},
+        new String[0]),
 
     // Drop entities (small, physics-based items)
     BLOCK_DROP("Block Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false, null),
@@ -64,7 +74,7 @@ public enum EntityType {
     ;
 
     /** Entity types that appear as cards in the Glossary screen. */
-    public static final EntityType[] GLOSSARY_TYPES = {COW, SHEEP, CHICKEN};
+    public static final EntityType[] GLOSSARY_TYPES = {COW, SHEEP, CHICKEN, GOOSE};
 
     private final String displayName;
     private final float maxHealth;      // literal for non-living; unused when attributes != null

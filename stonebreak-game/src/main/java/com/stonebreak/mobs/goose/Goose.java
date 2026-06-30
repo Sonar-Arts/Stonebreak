@@ -2,9 +2,11 @@ package com.stonebreak.mobs.goose;
 
 import org.joml.Vector3f;
 
+import com.stonebreak.audio.GooseSounds;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.AnimationController;
+import com.stonebreak.mobs.entities.EntityCollision;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.Player;
@@ -35,12 +37,20 @@ public class Goose extends LivingEntity {
 
     private final GooseAI gooseAI;
     private final AnimationController animationController;
+    private final GooseSounds gooseSounds;
+    /** Per-axis world-block collision used only while airborne (thin wrapper over the world). */
+    private final EntityCollision flightCollision;
+    /** Set each airborne tick: whether the goose was blocked by a solid this tick. */
+    private boolean flightBlockedHoriz;
+    private boolean flightBlockedVert;
 
     public Goose(World world, Vector3f position) {
         super(world, position, EntityType.GOOSE);
 
         this.gooseAI = new GooseAI(this);
         this.animationController = new AnimationController(this);
+        this.gooseSounds = new GooseSounds(world);
+        this.flightCollision = new EntityCollision(world);
 
         this.interactionRange = 2.0f;
         this.turnSpeed = 200.0f;
@@ -51,6 +61,7 @@ public class Goose extends LivingEntity {
         super.update(deltaTime);
         gooseAI.update(deltaTime);
         animationController.updateAnimations(deltaTime);
+        gooseSounds.updateSounds(position, velocity, isOnGround());
     }
 
     @Override
@@ -108,19 +119,40 @@ public class Goose extends LivingEntity {
     }
 
     /**
-     * While airborne, integrate motion from velocity with no gravity (geese cruise above
-     * the terrain). On the ground, defer to the standard mob physics so behavior matches
-     * the other passive mobs exactly.
+     * While airborne, integrate motion from velocity with no gravity (geese cruise above the
+     * terrain) but resolve world-block collision per axis so the goose can never phase through
+     * solids — it slides along walls instead, and the AI's stuck-recovery steers it clear. On
+     * the ground, defer to the standard mob physics so behavior matches the other passive mobs.
      */
     @Override
     protected void applyPhysics(float deltaTime) {
         if (gooseAI.isAirborne()) {
             age += deltaTime;
-            position.add(new Vector3f(velocity).mul(deltaTime));
+            if (gooseAI.isTakeoffNoClipActive()) {
+                position.fma(deltaTime, velocity); // free flight: lift clear of launch terrain
+                flightBlockedHoriz = false;
+                flightBlockedVert = false;
+            } else {
+                boolean[] blocked = flightCollision.moveAirborneWithCollision(this, deltaTime);
+                flightBlockedHoriz = blocked[0];
+                flightBlockedVert = blocked[1];
+            }
             velocity.mul(FLIGHT_AIR_DAMPING);
         } else {
+            flightBlockedHoriz = false;
+            flightBlockedVert = false;
             super.applyPhysics(deltaTime);
         }
+    }
+
+    /** True if the goose's horizontal flight was blocked by a solid block this tick. */
+    public boolean wasFlightBlockedHorizontally() {
+        return flightBlockedHoriz;
+    }
+
+    /** True if the goose's vertical flight was blocked by a solid block (or ceiling) this tick. */
+    public boolean wasFlightBlockedVertically() {
+        return flightBlockedVert;
     }
 
     /** Makes the goose go idle - stops horizontal movement. */

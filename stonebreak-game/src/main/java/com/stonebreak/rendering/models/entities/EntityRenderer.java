@@ -385,6 +385,22 @@ public class EntityRenderer {
             return;
         }
 
+        if (entityType == EntityType.GOOSE && entity instanceof com.stonebreak.mobs.goose.Goose goose) {
+            // Goose has no appearance variants and no one-shot clips (its flying clip
+            // loops), so it drives the SBE pipeline with the continuous animation clock
+            // exactly like the sheep — only the AI-state → clip mapping is goose-specific.
+            sbeEntityRenderer.render(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
+                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                    com.stonebreak.mobs.sbe.GooseStateMapping.sbeState(goose.getAI().getCurrentState()),
+                    goose.getAnimationController().getTotalAnimationTime(),
+                    goose.getPosition(),
+                    goose.getRotation().y,
+                    goose.getScale(),
+                    viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
+
         if (entityType == EntityType.FIRE_BOLT) {
             renderFireBolt(entity, viewMatrix, projectionMatrix, world, cameraPos);
             return;
@@ -633,6 +649,20 @@ public class EntityRenderer {
                     chicken.getPosition(),
                     chicken.getRotation().y,
                     chicken.getScale(),
+                    viewMatrix, projectionMatrix, color);
+            return;
+        }
+
+        if (entityType == EntityType.GOOSE
+                && entity instanceof com.stonebreak.mobs.goose.Goose goose) {
+            sbeEntityRenderer.renderWireframe(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
+                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                    com.stonebreak.mobs.sbe.GooseStateMapping.sbeState(goose.getAI().getCurrentState()),
+                    goose.getAnimationController().getTotalAnimationTime(),
+                    goose.getPosition(),
+                    goose.getRotation().y,
+                    goose.getScale(),
                     viewMatrix, projectionMatrix, color);
         }
     }

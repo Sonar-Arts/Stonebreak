@@ -8,6 +8,7 @@ import org.joml.Vector3f;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
+import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
 
@@ -72,12 +73,19 @@ public class CowAnimal implements Animal {
                     worldZ + 0.5f
                 );
                 
+                // Defense-in-depth: reuse the modern spawner's anti-cave/overhang
+                // (sky-exposure) guard so the legacy path can't place cows underground.
+                com.stonebreak.mobs.entities.EntitySpawner spawner = world.getEntitySpawner();
+                if (spawner != null && !spawner.isValidSpawnLocation(spawnPos, EntityType.COW)) {
+                    continue;
+                }
+
                 // Select random texture variant
                 String textureVariant;
                 synchronized (randomLock) {
                     textureVariant = COW_VARIANTS[random.nextInt(COW_VARIANTS.length)];
                 }
-                
+
                 entityManager.spawnCowWithVariant(spawnPos, textureVariant);
                 spawned++;
             }

@@ -71,6 +71,13 @@ public class ChickenAnimal implements Animal {
                     worldZ + 0.5f
                 );
 
+                // Defense-in-depth: reuse the modern spawner's anti-cave/overhang
+                // (sky-exposure) guard so the legacy path can't place chickens underground.
+                com.stonebreak.mobs.entities.EntitySpawner spawner = world.getEntitySpawner();
+                if (spawner != null && !spawner.isValidSpawnLocation(spawnPos, EntityType.CHICKEN)) {
+                    continue;
+                }
+
                 entityManager.spawnEntity(EntityType.CHICKEN, spawnPos);
                 spawned++;
             }

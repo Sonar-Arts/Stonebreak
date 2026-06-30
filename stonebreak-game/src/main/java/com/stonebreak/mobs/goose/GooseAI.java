@@ -56,6 +56,9 @@ public class GooseAI {
     private static final float DEST_ARRIVE_XZ = 8.0f;
     private static final float LANDING_GROUND_CLEAR = 1.5f;
     private static final float FLIGHT_TURN_SPEED = 160.0f; // degrees/sec while flying
+    /** Brief window after takeoff where the goose phases through terrain so it can
+        lift clear of the launch point instead of embedding in rising ground. */
+    private static final float TAKEOFF_NOCLIP_DURATION = 1.0f; // seconds (~4.5 blocks of climb)
 
     // ─── Terrain look-ahead tuning (leader / lone flyer only) ─────────────────
     private static final float TERRAIN_SCAN_INTERVAL = 0.5f; // seconds between scans
@@ -65,6 +68,10 @@ public class GooseAI {
     private static final int CORRIDOR_SCAN_RANGE = 24;        // vertical window to find a peak
     private static final float GO_AROUND_DEG = 25.0f;         // heading offset while side-stepping
     private static final float GO_AROUND_DURATION = 1.5f;     // seconds a side-step stays armed
+
+    // ─── Stuck recovery (any airborne goose pinned against a block) ───────────
+    private static final float STUCK_POP_THRESHOLD = 0.8f;            // seconds pinned before a hard pop
+    private static final float STUCK_POP_SPEED = CLIMB_SPEED * 1.6f;  // burst climb to clear a wall top
 
     // ─── Migration / flocking tuning ──────────────────────────────────────────
     private static final float MIGRATE_MIN_COOLDOWN = 25.0f;
@@ -100,6 +107,8 @@ public class GooseAI {
     private float steerAltitude;      // dynamic flight altitude the flyer steers to
     private float lateralBiasTimer;   // >0 while a go-around side-step is active
     private int lateralBiasSign;      // -1 / +1 chosen clear side during go-around
+    private float stuckTimer;         // seconds the goose has been pinned against terrain
+    private float takeoffNoClipTimer; // >0 while the goose phases through terrain just after takeoff
 
     public enum GooseBehaviorState {
         IDLE,       // grounded, standing
@@ -129,6 +138,12 @@ public class GooseAI {
                 || currentState == GooseBehaviorState.FORMATION
                 || currentState == GooseBehaviorState.FREE_FLY
                 || currentState == GooseBehaviorState.LANDING;
+    }
+
+    /** True during the brief post-takeoff window where the goose phases through terrain
+        to lift clear of the launch point instead of embedding in rising ground. */
+    public boolean isTakeoffNoClipActive() {
+        return takeoffNoClipTimer > 0f;
     }
 
     // ─── Main tick ────────────────────────────────────────────────────────────
@@ -284,6 +299,9 @@ public class GooseAI {
     // ─── Airborne behavior ────────────────────────────────────────────────────
 
     private void updateAirborne(float deltaTime) {
+        if (takeoffNoClipTimer > 0f) {
+            takeoffNoClipTimer -= deltaTime;
+        }
         switch (currentState) {
             case TAKEOFF -> handleTakeoff(deltaTime);
             case FORMATION -> handleFormation(deltaTime);
@@ -291,6 +309,56 @@ public class GooseAI {
             case LANDING -> handleLanding(deltaTime);
             default -> { /* unreachable */ }
         }
+        // Last-word steering: read this tick's collision flags and un-pin a goose that the
+        // hard block-collision slid into a wall (followers and climbers included).
+        applyStuckRecovery(deltaTime);
+    }
+
+    /**
+     * Cheap, scan-free recovery for an airborne goose that flew into a solid block. Because the
+     * flight collision slides along walls (keeping forward velocity), a goose can end up pinned;
+     * here we climb the face (walls are finite, cruise leaves ~45 blocks of headroom), arc to the
+     * clearer side via the existing {@link #armGoAround}, and — if still stuck after a moment —
+     * pop straight up over the wall, or back out when a ceiling blocks the climb. Reads only the
+     * collision flags plus, at most once per {@link #GO_AROUND_DURATION}, the two existing side
+     * probes; no new world scans.
+     */
+    private void applyStuckRecovery(float deltaTime) {
+        if (!goose.wasFlightBlockedHorizontally()) {
+            stuckTimer = Math.max(0f, stuckTimer - deltaTime * 2f);
+            return;
+        }
+
+        stuckTimer += deltaTime;
+        Vector3f pos = goose.getPosition();
+        Vector3f v = goose.getVelocity();
+
+        // 1) Climb the wall face. Raise steerAltitude too so the leader's periodic scan
+        //    (which would otherwise relax altitude) doesn't immediately undo the climb.
+        v.y = Math.max(v.y, CLIMB_SPEED);
+        steerAltitude = Math.max(steerAltitude, pos.y + PATH_CLEARANCE);
+
+        // 2) Arm a lateral arc toward the clearer side if one isn't already running.
+        if (lateralBiasTimer <= 0) {
+            Vector3f heading = new Vector3f(v.x, 0, v.z);
+            if (heading.lengthSquared() < 0.01f) {
+                heading.set(flightDestination.x - pos.x, 0, flightDestination.z - pos.z);
+            }
+            if (heading.lengthSquared() > 0.01f) {
+                armGoAround(pos, heading.normalize());
+            }
+        }
+
+        // 3) Still pinned: pop over the wall (open sky), or back out (ceiling above).
+        if (stuckTimer > STUCK_POP_THRESHOLD) {
+            if (goose.wasFlightBlockedVertically()) {
+                v.x = -v.x;
+                v.z = -v.z;
+            } else {
+                v.y = STUCK_POP_SPEED;
+            }
+        }
+        goose.setVelocity(v);
     }
 
     private void handleTakeoff(float deltaTime) {
@@ -309,7 +377,9 @@ public class GooseAI {
         }
         goose.setVelocity(v);
 
-        if (pos.y >= cruiseAltitude) {
+        // Reached cruise, or a ceiling/overhang stopped the climb — switch to cruising so the
+        // goose steers out horizontally instead of grinding straight up into the block.
+        if (pos.y >= cruiseAltitude || goose.wasFlightBlockedVertically()) {
             setState(flock != null ? GooseBehaviorState.FORMATION : GooseBehaviorState.FREE_FLY);
         }
     }
@@ -368,9 +438,13 @@ public class GooseAI {
         v.z *= 0.92f;
         goose.setVelocity(v);
 
-        if (surfaceY != Float.NEGATIVE_INFINITY && (pos.y - surfaceY) <= LANDING_GROUND_CLEAR) {
+        // Touchdown when within clearance of the surface below, OR when the descent was stopped
+        // by a solid block (landing onto a ledge/cliff the column scan didn't see beneath us).
+        boolean landedOnBlock = goose.wasFlightBlockedVertically() && v.y <= 0f;
+        if ((surfaceY != Float.NEGATIVE_INFINITY && (pos.y - surfaceY) <= LANDING_GROUND_CLEAR)
+                || landedOnBlock) {
             // Touchdown: drop out of the flock and hand control back to ground physics.
-            touchDown(surfaceY);
+            touchDown(surfaceY != Float.NEGATIVE_INFINITY ? surfaceY : pos.y);
         }
     }
 
@@ -490,7 +564,7 @@ public class GooseAI {
                 pos.x + leftDir.x * LOOKAHEAD_DISTANCE, pos.z + leftDir.z * LOOKAHEAD_DISTANCE, pos.y);
         float rightPeak = corridorPeakAt(
                 pos.x + rightDir.x * LOOKAHEAD_DISTANCE, pos.z + rightDir.z * LOOKAHEAD_DISTANCE, pos.y);
-        // Lower peak (or NEGATIVE_INFINITY = clear) is the better side; ties favour left.
+        // Lower peak (or NEGATIVE_INFINITY = clear) is the better side; ties favor left.
         lateralBiasSign = (leftPeak <= rightPeak) ? 1 : -1;
         lateralBiasTimer = GO_AROUND_DURATION;
     }
@@ -788,6 +862,9 @@ public class GooseAI {
             stateTimer = 0;
             if (newState == GooseBehaviorState.WANDERING || newState == GooseBehaviorState.FLOATING) {
                 hasWanderTarget = false;
+            }
+            if (newState == GooseBehaviorState.TAKEOFF) {
+                takeoffNoClipTimer = TAKEOFF_NOCLIP_DURATION;
             }
         }
     }

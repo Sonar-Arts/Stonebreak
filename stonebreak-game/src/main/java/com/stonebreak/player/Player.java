@@ -424,6 +424,7 @@ public class Player {
     public EntitySightingTracker getEntitySightingTracker() { return sightingTracker; }
 
     // Stamina / mana
+    public boolean isSprinting() { return stamina.isSprinting(); }
     public float getStamina()    { return stamina.getStamina(); }
     public float getMaxStamina() { return stamina.getMaxStamina(); }
     public boolean canAffordStamina(float amount) { return stamina.canAfford(amount); }

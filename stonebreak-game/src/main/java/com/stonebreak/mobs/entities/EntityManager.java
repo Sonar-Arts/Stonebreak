@@ -187,10 +187,14 @@ public class EntityManager {
      * Spawns a new entity of the specified type at the given position.
      */
     public Entity spawnEntity(EntityType type, Vector3f position) {
-        Entity entity = createEntity(type, position);
+        // Spawners hand us the ground top face; position.y is the body bottom and the feet
+        // sit at position.y - legHeight, so lift by legHeight to seat the entity on the
+        // surface (matching EntityCollision's groundSurface + legHeight contract).
+        Vector3f groundPos = new Vector3f(position.x, position.y + type.getLegHeight(), position.z);
+        Entity entity = createEntity(type, groundPos);
         if (entity != null) {
             // Check if entity is spawning inside a block and push to open space
-            Vector3f safePosition = findSafeSpawnPosition(position, entity);
+            Vector3f safePosition = findSafeSpawnPosition(groundPos, entity);
             entity.setPosition(safePosition);
             
             synchronized (entitiesToAdd) {
@@ -204,10 +208,13 @@ public class EntityManager {
      * Spawns a cow entity with a specific texture variant.
      */
     public Entity spawnCowWithVariant(Vector3f position, String textureVariant) {
-        Entity entity = new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
+        // Lift by the cow's legHeight so its feet rest on the surface, not inside it
+        // (see spawnEntity above for the position contract).
+        Vector3f groundPos = new Vector3f(position.x, position.y + EntityType.COW.getLegHeight(), position.z);
+        Entity entity = new com.stonebreak.mobs.cow.Cow(world, groundPos, textureVariant);
         if (entity != null) {
             // Check if entity is spawning inside a block and push to open space
-            Vector3f safePosition = findSafeSpawnPosition(position, entity);
+            Vector3f safePosition = findSafeSpawnPosition(groundPos, entity);
             entity.setPosition(safePosition);
             
             synchronized (entitiesToAdd) {
@@ -241,6 +248,7 @@ public class EntityManager {
                 yield new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
             }
             case CHICKEN -> new com.stonebreak.mobs.chicken.Chicken(world, position);
+            case GOOSE -> new com.stonebreak.mobs.goose.Goose(world, position);
             case SHEEP -> {
                 String[] variants = type.getTextureVariants();
                 String textureVariant = variants[(int)(Math.random() * variants.length)];
@@ -412,7 +420,9 @@ public class EntityManager {
         for (int radius = 1; radius <= maxRadius; radius++) {
             // Check positions in a cube around the original position
             for (int dx = -radius; dx <= radius; dx++) {
-                for (int dy = -radius; dy <= radius; dy++) {
+                // Try upward offsets before downward so a tie within the shell lifts the
+                // entity ABOVE the obstruction rather than dropping it into a sub-surface void.
+                for (int dy = radius; dy >= -radius; dy--) {
                     for (int dz = -radius; dz <= radius; dz++) {
                         // Only check positions on the current radius boundary
                         if (Math.abs(dx) == radius || Math.abs(dy) == radius || Math.abs(dz) == radius) {
