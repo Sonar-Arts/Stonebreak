@@ -95,7 +95,9 @@ public final class Track {
      *
      * <p>If the track is empty, returns null. If {@code t} is before the first
      * keyframe, the first pose is held; after the last, the last pose is held.
-     * Between two keyframes a linear blend is applied (the sole curve in v1).
+     * Between two keyframes the parameter is remapped through the outgoing
+     * keyframe's {@link Easing} curve before blending — matching the engine
+     * sampler so the preview eases identically to the game.
      */
     public Sample sample(float t) {
         if (keyframes.isEmpty()) {
@@ -115,10 +117,12 @@ public final class Track {
             if (t >= a.time() && t <= b.time()) {
                 float span = b.time() - a.time();
                 float u = span > 1e-6f ? (t - a.time()) / span : 0f;
+                // The outgoing keyframe's easing curve governs this segment.
+                float e = a.easing().apply(u);
                 return new Sample(
-                        lerp(a.position(), b.position(), u),
-                        lerp(a.rotation(), b.rotation(), u),
-                        lerp(a.scale(), b.scale(), u)
+                        lerp(a.position(), b.position(), e),
+                        lerp(a.rotation(), b.rotation(), e),
+                        lerp(a.scale(), b.scale(), e)
                 );
             }
         }

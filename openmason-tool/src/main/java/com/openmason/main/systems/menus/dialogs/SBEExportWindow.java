@@ -316,6 +316,7 @@ public class SBEExportWindow {
                 ImGui.textDisabled("Model:");
                 ImGui.sameLine(formOffsetX + indent + slotLabelWidth);
                 renderAssetSlot(
+                        "model",
                         row.modelOverridePath,
                         "(use base OMO)",
                         slotButtonWidth,
@@ -330,6 +331,7 @@ public class SBEExportWindow {
                 ImGui.textDisabled("Clip:");
                 ImGui.sameLine(formOffsetX + indent + slotLabelWidth);
                 renderAssetSlot(
+                        "clip",
                         row.clipPath,
                         "(no animation)",
                         slotButtonWidth,
@@ -387,6 +389,7 @@ public class SBEExportWindow {
                 ImGui.textDisabled("Model:");
                 ImGui.sameLine(formOffsetX + indent + slotLabelWidth);
                 renderAssetSlot(
+                        "model",
                         row.modelOverridePath,
                         "(use base OMO)",
                         slotButtonWidth,
@@ -412,8 +415,12 @@ public class SBEExportWindow {
         ImGui.dummy(0, ROW_SPACING);
     }
 
-    private void renderAssetSlot(Path current, String emptyHint, float buttonWidth,
+    private void renderAssetSlot(String slotId, Path current, String emptyHint, float buttonWidth,
                                   Runnable onPick, Runnable onClear) {
+        // Scope by slotId so two slots in the same row (e.g. Model + Clip) don't
+        // share button IDs — otherwise ImGui flags conflicting IDs and routes
+        // every click to the first slot.
+        ImGui.pushID(slotId);
         if (current != null) {
             ImGui.text(current.getFileName().toString());
             if (ImGui.isItemHovered()) ImGui.setTooltip(current.toString());
@@ -426,6 +433,7 @@ public class SBEExportWindow {
             ImGui.sameLine();
             if (ImGui.button("Set...", buttonWidth, 0)) onPick.run();
         }
+        ImGui.popID();
     }
 
     private void renderLabeledInput(String label, String id, ImString buffer, String hint) {
