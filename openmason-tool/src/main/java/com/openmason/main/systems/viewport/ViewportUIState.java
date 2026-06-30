@@ -28,7 +28,7 @@ public class ViewportUIState {
     private final ImBoolean unrenderedMode = new ImBoolean(false);
     private final ImBoolean showVertices = new ImBoolean(false);
     private final ImBoolean showGizmo = new ImBoolean(true);
-    private final ImBoolean showBones = new ImBoolean(true);
+    private final ImBoolean showBones = new ImBoolean(false);
 
     // Window visibility state (legacy — kept for backward compat, superseded by ActiveToolPane)
     private final ImBoolean showCameraControls = new ImBoolean(false);
