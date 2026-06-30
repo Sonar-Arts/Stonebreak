@@ -176,6 +176,9 @@ public final class SBEVariantsEditor {
 
     private void renderAssetRow(String label, String sourceLabel, byte[] bytes,
                                  Runnable onPick, Runnable onClear) {
+        // Scope this slot's widget IDs by its label so multiple asset slots in a
+        // row never share button IDs (see SBEStatesEditor for the failure mode).
+        ImGui.pushID(label);
         ImGui.indent(20.0f);
         ImGui.textDisabled(label);
         ImGui.sameLine(80.0f);
@@ -194,6 +197,7 @@ public final class SBEVariantsEditor {
             if (ImGui.smallButton("Set...")) onPick.run();
         }
         ImGui.unindent(20.0f);
+        ImGui.popID();
     }
 
     // ========================================================================

@@ -6,8 +6,9 @@ import org.joml.Vector3f;
  * Pure keyframe sampling for {@link ParsedAnimTrack}s.
  *
  * <p>Stateless and side-effect free: given a track and a time it returns the
- * interpolated local pose. Only {@code LINEAR} easing is implemented; any other
- * easing name falls back to linear interpolation.
+ * interpolated local pose. The interpolation parameter is remapped through the
+ * outgoing keyframe's {@link Easing} curve, so easing applies consistently here
+ * (the game runtime) and in the Open Mason tool preview.
  */
 public final class AnimSampler {
 
@@ -56,10 +57,12 @@ public final class AnimSampler {
             if (timeSeconds >= a.time() && timeSeconds <= b.time()) {
                 float span = b.time() - a.time();
                 float u = span <= 0f ? 0f : (timeSeconds - a.time()) / span;
+                // The outgoing keyframe's easing curve governs this segment.
+                float e = Easing.fromString(a.easing()).apply(u);
                 return new PartPose(
-                        lerp(a.position(), b.position(), u),
-                        lerp(a.rotation(), b.rotation(), u),
-                        lerp(a.scale(), b.scale(), u)
+                        lerp(a.position(), b.position(), e),
+                        lerp(a.rotation(), b.rotation(), e),
+                        lerp(a.scale(), b.scale(), e)
                 );
             }
         }

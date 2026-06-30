@@ -120,12 +120,10 @@ public class Player {
     private float attackEventTime = 0f;  // seconds since attack animation started
     private float jumpEventTime = 0f;    // seconds since jump started
     private static final float WALK_SPEED_THRESHOLD = 0.5f; // blocks/frame
-    // Lower-body facing (model-space degrees, same convention as cameraYaw + 180).
-    // Tracks the last horizontal movement direction, smoothed; the head tracks the
-    // camera independently in the renderer.
-    private float bodyYaw = 0f;
-    private boolean bodyYawInitialized = false;
-    private static final float BODY_TURN_DEG_PER_SEC = 600f; // smoothing turn rate
+    // Third-person body facing + head look angles. Decoupled from the first-person
+    // camera: the camera only supplies a look yaw/pitch; this component decides how
+    // the body turns to follow movement and the look direction.
+    private final PlayerBodyOrientation bodyOrientation = new PlayerBodyOrientation();
 
     public Player(World world) {
         IBlockPlacementService blockPlacementService = new BlockPlacementValidator(world);
@@ -282,41 +280,11 @@ public class Player {
         if (attack.isAttacking()) attackEventTime += dt; else attackEventTime = 0f;
         if (!state.isOnGround()) jumpEventTime += dt; else jumpEventTime = 0f;
 
-        updateBodyYaw(dt);
-    }
-
-    /**
-     * Smoothly turns the lower-body facing ({@link #bodyYaw}) toward the current
-     * horizontal movement direction. When the player is essentially stationary the
-     * body holds its last facing, so in third person it keeps pointing where the
-     * player last walked rather than snapping to the cursor.
-     */
-    private void updateBodyYaw(float dt) {
-        if (!bodyYawInitialized) {
-            bodyYaw = camera.getYaw() + 180f;
-            bodyYawInitialized = true;
-        }
-        Vector3f vel = state.getVelocity();
-        float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-        if (horizSpeed <= WALK_SPEED_THRESHOLD) {
-            return; // idle: hold last facing
-        }
-        float targetYaw = (float) Math.toDegrees(Math.atan2(vel.z, vel.x)) + 180f;
-        float delta = wrapDegrees(targetYaw - bodyYaw);
-        float maxStep = BODY_TURN_DEG_PER_SEC * dt;
-        if (Math.abs(delta) <= maxStep) {
-            bodyYaw = targetYaw;
-        } else {
-            bodyYaw += Math.signum(delta) * maxStep;
-        }
-    }
-
-    /** Normalizes an angle in degrees to the range (-180, 180]. */
-    private static float wrapDegrees(float deg) {
-        deg %= 360f;
-        if (deg > 180f) deg -= 360f;
-        else if (deg <= -180f) deg += 360f;
-        return deg;
+        // Third-person body faces movement / look direction; the camera only
+        // supplies the look yaw, converted from its front vector into model space.
+        Vector3f front = camera.getFront();
+        float lookModelYaw = PlayerBodyOrientation.modelYawFromDirection(front.x, front.z);
+        bodyOrientation.update(dt, state.getVelocity(), lookModelYaw);
     }
 
     /**
@@ -489,11 +457,24 @@ public class Player {
     public boolean isThirdPerson() { return perspective == Perspective.THIRD_PERSON; }
 
     /**
-     * Lower-body facing in model space (degrees, same convention as
-     * {@code cameraYaw + 180}). Tracks the last horizontal movement direction,
-     * smoothed; used as the base yaw for the third-person body model.
+     * Lower-body facing in the player model's facing space (degrees); see
+     * {@link PlayerBodyOrientation#modelYawFromDirection}. Tracks movement / look
+     * direction, smoothed; the base yaw for the third-person body model.
      */
-    public float getBodyYaw() { return bodyYaw; }
+    public float getBodyYaw() { return bodyOrientation.getBodyYaw(); }
+
+    /** Third-person head yaw relative to the body, clamped to its swivel range. */
+    public float getThirdPersonHeadYaw() {
+        Vector3f front = camera.getFront();
+        return bodyOrientation.getHeadYaw(PlayerBodyOrientation.modelYawFromDirection(front.x, front.z));
+    }
+
+    /**
+     * Third-person head pitch, clamped so the head never over-rotates. Negated
+     * because the head bone's rotateX is opposite in sign to the camera pitch
+     * (camera looks up at positive pitch; the head bone pitches down).
+     */
+    public float getThirdPersonHeadPitch() { return bodyOrientation.getHeadPitch(-camera.getPitch()); }
 
     /** Continuously advancing animation clock for the body model (Walking). */
     public float getBodyAnimationTime() { return bodyAnimationTime; }

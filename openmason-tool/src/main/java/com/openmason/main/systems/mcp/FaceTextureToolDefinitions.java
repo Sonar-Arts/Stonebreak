@@ -209,7 +209,9 @@ public final class FaceTextureToolDefinitions {
                         + "has no per-face mapping yet, making it addressable via model_face_open. "
                         + "Width/height in [1,1024]; sets autoResize=false so the chosen size survives "
                         + "geometry edits. Response includes the geometry-suggested size for comparison; "
-                        + "query model_face_get_info first if unsure what dimensions to use.",
+                        + "query model_face_get_info first if unsure what dimensions to use. "
+                        + "To texture many faces, use model_face_create_textures instead — one call is "
+                        + "safer and faster than looping this one.",
                 rgbaSchema()
                         .intg("face_id", "Face identifier")
                         .intg("width", "Initial texture width in pixels")
@@ -222,6 +224,18 @@ public final class FaceTextureToolDefinitions {
                             reqInt(args, "width"), reqInt(args, "height"),
                             c[0], c[1], c[2], c[3]);
                 }));
+
+        registry.register(new McpTool(
+                "model_face_create_textures",
+                "Batch version of model_face_create_texture: allocate a new material + GPU texture for "
+                        + "MANY faces in one call. Strongly preferred over many single calls when texturing "
+                        + "lots of faces — it validates the whole batch atomically (rejected if any face is "
+                        + "invalid or already has a non-default material), regenerates the mesh UVs only once "
+                        + "(avoiding the per-face duplication artifacts seen at mass scale), and records a "
+                        + "single undo step. 'faces' is an array of objects, each "
+                        + "{face_id, width, height, color:[r,g,b,a]} with width/height in [1,1024].",
+                createTexturesSchema(),
+                args -> editor.createFaceTextures(parseCreateSpecs(args.get("faces")))));
 
         // ---------- Resize ----------
 
@@ -256,6 +270,56 @@ public final class FaceTextureToolDefinitions {
                 .intg("y", "Origin Y")
                 .intg("w", "Width in pixels")
                 .intg("h", "Height in pixels");
+    }
+
+    /** Schema for {@code model_face_create_textures}: a 'faces' array of spec objects. */
+    private JsonNode createTexturesSchema() {
+        ObjectNode root = mapper.createObjectNode();
+        root.put("type", "object");
+        ObjectNode properties = mapper.createObjectNode();
+
+        ObjectNode facesArr = mapper.createObjectNode();
+        facesArr.put("type", "array");
+        facesArr.put("description",
+                "Faces to create textures for; each an object {face_id, width, height, color:[r,g,b,a]}");
+
+        ObjectNode item = mapper.createObjectNode();
+        item.put("type", "object");
+        ObjectNode itemProps = mapper.createObjectNode();
+        itemProps.set("face_id", intNode("Face identifier"));
+        itemProps.set("width", intNode("Initial texture width in pixels [1,1024]"));
+        itemProps.set("height", intNode("Initial texture height in pixels [1,1024]"));
+        ObjectNode color = mapper.createObjectNode();
+        color.put("type", "array");
+        color.put("description", "RGBA [r,g,b,a], each 0..255");
+        color.put("minItems", 4);
+        color.put("maxItems", 4);
+        ObjectNode colorItems = mapper.createObjectNode();
+        colorItems.put("type", "integer");
+        color.set("items", colorItems);
+        itemProps.set("color", color);
+        item.set("properties", itemProps);
+        ArrayNode itemRequired = mapper.createArrayNode();
+        itemRequired.add("face_id");
+        itemRequired.add("width");
+        itemRequired.add("height");
+        itemRequired.add("color");
+        item.set("required", itemRequired);
+        facesArr.set("items", item);
+
+        properties.set("faces", facesArr);
+        root.set("properties", properties);
+        ArrayNode required = mapper.createArrayNode();
+        required.add("faces");
+        root.set("required", required);
+        return root;
+    }
+
+    private ObjectNode intNode(String description) {
+        ObjectNode def = mapper.createObjectNode();
+        def.put("type", "integer");
+        def.put("description", description);
+        return def;
     }
 
     private JsonNode pixelsArraySchema() {
@@ -349,6 +413,27 @@ public final class FaceTextureToolDefinitions {
             throw new IllegalArgumentException("pixels[" + index + "] is not a number");
         }
         return n.intValue();
+    }
+
+    /** Parse the 'faces' array for model_face_create_textures. */
+    private static List<FaceTextureEditingService.CreateSpec> parseCreateSpecs(JsonNode arr) {
+        if (arr == null || !arr.isArray() || arr.isEmpty()) {
+            throw new IllegalArgumentException("'faces' must be a non-empty array of face spec objects");
+        }
+        List<FaceTextureEditingService.CreateSpec> out = new ArrayList<>(arr.size());
+        for (int i = 0; i < arr.size(); i++) {
+            JsonNode node = arr.get(i);
+            if (node == null || !node.isObject()) {
+                throw new IllegalArgumentException("faces[" + i + "] must be an object");
+            }
+            int faceId = reqInt(node, "face_id");
+            int width = reqInt(node, "width");
+            int height = reqInt(node, "height");
+            int[] c = reqRgba(node);
+            out.add(new FaceTextureEditingService.CreateSpec(
+                    faceId, width, height, c[0], c[1], c[2], c[3]));
+        }
+        return out;
     }
 
     /** Parse the required [r,g,b,a] 'color' array argument. */

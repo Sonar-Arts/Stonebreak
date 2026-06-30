@@ -82,6 +82,14 @@ public class GenericModelRenderer extends BaseRenderer {
     // When true, doRender skips texture binding and forces solid gray color
     private boolean forceUnrendered = false;
 
+    // The part-consistent combined mesh from the last ModelPartManager rebuild.
+    // This is the authoritative geometry that the part MeshRanges describe. It is
+    // captured BEFORE the UV pipeline appends material-seam-duplicate vertices to
+    // the live render mesh, so it is what must be serialized — persisting the
+    // seam-duplicated render mesh would write vertices outside every part's range
+    // and corrupt the .OMO on reload. Null until the first part rebuild.
+    private OMOFormat.MeshData lastPartConsistentMeshData;
+
     // Engine-level material ID counter (replaces editor-specific FaceMaterialSection.allocateNextMaterialId)
     private static final java.util.concurrent.atomic.AtomicInteger materialIdCounter =
             new java.util.concurrent.atomic.AtomicInteger(100);
@@ -509,6 +517,60 @@ public class GenericModelRenderer extends BaseRenderer {
         textureOps.setFaceMaterial(faceId, materialId);
     }
 
+    /**
+     * Assign materials to several faces in a single pass, regenerating UVs and
+     * re-uploading the mesh exactly once at the end.
+     *
+     * <p>This is the safe path for bulk per-face texturing: calling
+     * {@link #setFaceMaterial(int, int)} N times runs the full-mesh UV
+     * seam-duplication + GPU upload N times (O(N²) work that compounds
+     * intermediate mesh state). Batching defers that to a single regeneration.
+     *
+     * @param faceIds    face identifiers
+     * @param materialIds material id to assign to the face at the same index
+     *                    (must be already registered via
+     *                    {@link FaceTextureManager#registerMaterial})
+     */
+    public void setFaceMaterials(int[] faceIds, int[] materialIds) {
+        if (faceIds == null || materialIds == null || faceIds.length != materialIds.length) {
+            throw new IllegalArgumentException(
+                    "faceIds and materialIds must be non-null and the same length");
+        }
+        if (faceIds.length == 0) {
+            return;
+        }
+        for (int i = 0; i < faceIds.length; i++) {
+            faceTextureManager.assignDefaultMapping(faceIds[i], materialIds[i]);
+        }
+        textureOps.regenerateUVsAndUpload();
+        rebuildPipeline.markDrawBatchesDirty();
+    }
+
+    /**
+     * Allocate a material id that is unique across both the engine-level counter
+     * and any materials already registered on this model (e.g. loaded from disk
+     * or created by another allocation path).
+     *
+     * <p>Single source of truth for material-id allocation — prevents two
+     * independent allocators from handing out the same id, which would make
+     * {@link FaceTextureManager#registerMaterial} silently overwrite an existing
+     * material and orphan its GPU texture.
+     */
+    public int allocateMaterialId() {
+        int maxExisting = 0;
+        for (MaterialDefinition m : faceTextureManager.getAllMaterials()) {
+            if (m.materialId() > maxExisting) {
+                maxExisting = m.materialId();
+            }
+        }
+        int id = materialIdCounter.getAndIncrement();
+        if (id <= maxExisting) {
+            id = maxExisting + 1;
+            materialIdCounter.set(id + 1);
+        }
+        return id;
+    }
+
     public FaceTextureManager getFaceTextureManager() {
         return faceTextureManager;
     }
@@ -553,7 +615,7 @@ public class GenericModelRenderer extends BaseRenderer {
                 continue;
             }
 
-            int materialId = materialIdCounter.getAndIncrement();
+            int materialId = allocateMaterialId();
             MaterialDefinition material = new MaterialDefinition(
                     materialId, "Face " + faceId, gpuTextureId,
                     MaterialDefinition.RenderLayer.OPAQUE,
@@ -583,6 +645,7 @@ public class GenericModelRenderer extends BaseRenderer {
             vertexCount = 0;
             indexCount = 0;
             faceMapper.clear();
+            lastPartConsistentMeshData = null;
             rebuildPipeline.rebuildFull(0, 0);
             return;
         }
@@ -603,6 +666,12 @@ public class GenericModelRenderer extends BaseRenderer {
                 result.triangleToFaceId(),
                 stateManager.getUVMode() != null ? stateManager.getUVMode().name() : "FLAT"
         );
+
+        // Capture the part-consistent mesh for serialization BEFORE the texture
+        // pipeline (updateMeshGeometry → topology rebuild → later refreshUVs)
+        // duplicates seam vertices into the live render mesh. This — not
+        // vertexManager — is what toMeshData() persists.
+        lastPartConsistentMeshData = meshData;
 
         serializationAdapter.updateMeshGeometry(meshData);
         logger.debug("Part mesh rebuild pushed to pipeline: {} vertices, {} indices",
@@ -665,6 +734,16 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     public OMOFormat.MeshData toMeshData() {
+        // Serialize the part-consistent mesh (what the part MeshRanges describe),
+        // NOT the live render mesh in vertexManager — that carries material-seam
+        // duplicate vertices appended past every part's vertex range, which would
+        // make the saved indices reference out-of-range vertices and crash on
+        // reload. The seam duplication is render-time only and is regenerated on
+        // load via refreshUVs() after parts + face mappings are restored.
+        if (lastPartConsistentMeshData != null) {
+            return lastPartConsistentMeshData;
+        }
+        // Fallback for meshes that never went through the part rebuild path.
         return serializationAdapter.toMeshData();
     }
 

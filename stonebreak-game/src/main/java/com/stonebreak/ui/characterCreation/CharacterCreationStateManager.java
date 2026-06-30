@@ -29,8 +29,10 @@ public final class CharacterCreationStateManager {
 
     public CharacterCreationStateManager() {
         this.characterStats = new CharacterStats(null);
-        this.backToWorldSelectButton = new MButton("← World Select").size(NAV_BTN_W, NAV_BTN_H);
-        this.terrainMapperButton     = new MButton("Terrain Mapper →").size(NAV_BTN_W, NAV_BTN_H);
+        this.backToWorldSelectButton = new MButton("World Select")
+                .arrow(MButton.Arrow.LEFT).size(NAV_BTN_W, NAV_BTN_H);
+        this.terrainMapperButton     = new MButton("Terrain Mapper")
+                .arrow(MButton.Arrow.RIGHT).size(NAV_BTN_W, NAV_BTN_H);
     }
 
     public CharacterStats getCharacterStats() { return characterStats; }

@@ -159,12 +159,21 @@ public final class ClassAbilitiesTabRenderer {
                 ? Optional.of(ClassRegistry.ALL.get(selIdx))
                 : Optional.empty();
 
-        String className = classOpt.map(PlayerClassDefinition::name).orElse("Select a class →");
+        String className = classOpt.map(PlayerClassDefinition::name).orElse("Select a class");
         String classDesc = classOpt.map(PlayerClassDefinition::description)
             .orElse("Click a class on the left to view its abilities.");
 
+        float titleX = cx;
+        if (classOpt.isEmpty()) {
+            // Left-pointing vector arrow toward the class list (font lacks ← glyph).
+            float arrowSize = itemFont.getSize();
+            float arrowTop = cy + 16f - arrowSize * 0.82f; // align with the text's cap height
+            MPainter.navArrow(canvas, titleX, arrowTop, arrowSize, arrowSize, true,
+                MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+            titleX += arrowSize + 6f;
+        }
         MPainter.drawStringWithShadow(canvas, className,
-            cx, cy + 16f, itemFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+            titleX, cy + 16f, itemFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
         MPainter.drawStringWithShadow(canvas, classDesc,
             cx, cy + 34f, metaFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
         drawRule(canvas, cx, cy + 42f, cw);

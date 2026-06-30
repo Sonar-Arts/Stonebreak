@@ -7,9 +7,9 @@ import org.joml.Vector3f;
  *
  * <p>Transforms are stored as the part's local pose at {@code time} seconds:
  * {@code position} and {@code scale} are absolute local values, {@code rotation}
- * is Euler degrees (XYZ order). {@code easing} names the interpolation curve
- * leading <em>into</em> the next keyframe; only {@code LINEAR} is honoured at
- * sample time and any other value falls back to linear.
+ * is Euler degrees (XYZ order). {@code easing} names the {@link Easing} curve
+ * leading <em>into</em> the next keyframe, applied by {@link AnimSampler} at
+ * sample time; unknown names fall back to {@code LINEAR}.
  *
  * @param time     keyframe time in seconds
  * @param position local translation

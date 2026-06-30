@@ -189,6 +189,29 @@ public class ViewportAdapter implements IViewportConnector {
     }
 
     @Override
+    public void setFaceTextures(int[] faceIds, int[] materialIds) {
+        if (viewport == null) {
+            return;
+        }
+        GenericModelRenderer renderer = viewport.getModelRenderer();
+        if (renderer == null) {
+            return;
+        }
+        // Single regeneration + upload for the whole batch. No per-face undo
+        // command is pushed — the MCP batch path wraps this in one snapshot.
+        renderer.setFaceMaterials(faceIds, materialIds);
+    }
+
+    @Override
+    public int allocateMaterialId() {
+        if (viewport == null) {
+            return -1;
+        }
+        GenericModelRenderer renderer = viewport.getModelRenderer();
+        return renderer != null ? renderer.allocateMaterialId() : -1;
+    }
+
+    @Override
     public boolean isInFaceEditMode() {
         return EditModeManager.getInstance().isFaceEditingAllowed();
     }

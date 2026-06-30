@@ -5,6 +5,8 @@ import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.PaintMode;
+import io.github.humbleui.skija.PaintStrokeCap;
+import io.github.humbleui.skija.PaintStrokeJoin;
 import io.github.humbleui.skija.Path;
 import io.github.humbleui.skija.PathBuilder;
 import io.github.humbleui.skija.SamplingMode;
@@ -244,6 +246,53 @@ public final class MPainter {
                 float sliceW = Math.max(1f, (1f - d) * headW);
                 canvas.drawRect(Rect.makeXYWH(x + w - sliceW, centerY - headH / 2f + i * sliceH,
                         sliceW, sliceH), fill);
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────── Navigation arrow
+
+    /**
+     * Clean horizontal navigation arrow (shaft + chevron head) drawn as a
+     * stroked vector path inside the box {@code (x, y, w, h)} — a real icon,
+     * not a font glyph. The default UI font lacks the {@code ←}/{@code →}
+     * code points, so labels that embedded them rendered as blank/tofu; nav
+     * buttons draw this instead.
+     *
+     * <p>{@code pointLeft} flips the head to the left ({@code ←}) versus the
+     * right ({@code →}). A 1px offset shadow pass matches the depth of the
+     * shadowed text labels it sits beside.
+     */
+    public static void navArrow(Canvas canvas, float x, float y, float w, float h,
+                                boolean pointLeft, int color, int shadow) {
+        if (canvas == null || w <= 0f || h <= 0f) return;
+        drawArrowGlyph(canvas, x + 1f, y + 1f, w, h, pointLeft, shadow);
+        drawArrowGlyph(canvas, x, y, w, h, pointLeft, color);
+    }
+
+    private static void drawArrowGlyph(Canvas canvas, float x, float y, float w, float h,
+                                       boolean pointLeft, int color) {
+        if ((color & 0xFF000000) == 0) return;
+        float cy = y + h / 2f;
+        float padX = w * 0.18f;
+        float tip  = pointLeft ? x + padX : x + w - padX;
+        float tail = pointLeft ? x + w - padX : x + padX;
+        float head = h * 0.30f;                       // barb reach from tip
+        float headBackX = pointLeft ? tip + head : tip - head;
+        float stroke = Math.max(2f, h * 0.13f);
+
+        try (PathBuilder pb = new PathBuilder()) {
+            pb.moveTo(tail, cy);                       // shaft
+            pb.lineTo(tip, cy);
+            pb.moveTo(headBackX, cy - head);           // upper barb → tip → lower barb
+            pb.lineTo(tip, cy);
+            pb.lineTo(headBackX, cy + head);
+            try (Path path = pb.build();
+                 Paint paint = new Paint().setColor(color).setAntiAlias(true)
+                         .setMode(PaintMode.STROKE).setStrokeWidth(stroke)
+                         .setStrokeCap(PaintStrokeCap.ROUND)
+                         .setStrokeJoin(PaintStrokeJoin.ROUND)) {
+                canvas.drawPath(path, paint);
             }
         }
     }

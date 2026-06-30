@@ -18,8 +18,10 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -124,9 +126,12 @@ public final class FaceTextureEditingService {
                 }
             }
 
-            int newMaterialId = 1;
-            for (MaterialDefinition m : ftm.getAllMaterials()) {
-                if (m.materialId() >= newMaterialId) newMaterialId = m.materialId() + 1;
+            // Allocate via the renderer's single source of truth so MCP-created
+            // materials never collide with engine-counter-allocated ones (which
+            // would silently overwrite a material and orphan its GPU texture).
+            int newMaterialId = connector.allocateMaterialId();
+            if (newMaterialId <= 0) {
+                throw new IllegalStateException("Failed to allocate a material id for face " + faceId);
             }
 
             PixelCanvas canvas = new PixelCanvas(width, height);
@@ -155,6 +160,121 @@ public final class FaceTextureEditingService {
             logger.info("Created face texture: face={} material={} gpuTex={} {}x{} (geometry suggested {}x{})",
                     faceId, newMaterialId, gpuTextureId, width, height, sw, sh);
             return new CreateResult(faceId, newMaterialId, gpuTextureId, width, height, sw, sh);
+                })));
+    }
+
+    /**
+     * Allocate per-face materials + GPU textures for several faces in one
+     * operation. Safer than issuing many {@link #createFaceTexture} calls at mass
+     * scale:
+     * <ul>
+     *   <li>The whole batch is validated up front and rejected atomically if any
+     *       face is invalid — no partial application.</li>
+     *   <li>The mesh's UVs are regenerated and re-uploaded exactly once instead of
+     *       once per face, eliminating the O(N²) regeneration and the compounding
+     *       vertex-seam duplication that produced duplication artifacts at scale.</li>
+     *   <li>Material ids come from the renderer's single allocator, so they can
+     *       never collide and silently overwrite each other.</li>
+     *   <li>The entire batch is one undo step.</li>
+     * </ul>
+     */
+    public List<CreateResult> createFaceTextures(List<CreateSpec> specs) {
+        if (specs == null || specs.isEmpty()) {
+            throw new IllegalArgumentException("No faces supplied to create textures for");
+        }
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Create Face Textures (" + specs.size() + " faces)",
+                () -> {
+            IViewportConnector connector = requireConnector();
+            FaceTextureManager ftm = requireFtm(connector);
+            GMRFaceExtractor.FaceExtractionResult faceData = connector.extractFaceData();
+            if (faceData == null) {
+                throw new IllegalStateException("Model has no face geometry");
+            }
+            int faceCount = faceData.verticesPerFace().length;
+
+            // --- Validate the entire batch before mutating anything ---
+            Set<Integer> seen = new HashSet<>();
+            for (CreateSpec spec : specs) {
+                if (spec.width() <= 0 || spec.height() <= 0
+                        || spec.width() > 1024 || spec.height() > 1024) {
+                    throw new IllegalArgumentException(
+                            "Dimensions must be in [1,1024] (face " + spec.faceId()
+                                    + "): " + spec.width() + "x" + spec.height());
+                }
+                if (spec.faceId() < 0 || spec.faceId() >= faceCount
+                        || faceData.verticesPerFace()[spec.faceId()] <= 0) {
+                    throw new IllegalArgumentException("Face " + spec.faceId() + " does not exist");
+                }
+                if (!seen.add(spec.faceId())) {
+                    throw new IllegalArgumentException("Duplicate face " + spec.faceId() + " in batch");
+                }
+                if (ftm.hasFaceMapping(spec.faceId())) {
+                    FaceTextureMapping existing = ftm.getFaceMapping(spec.faceId());
+                    MaterialDefinition existingMat = ftm.getMaterial(existing.materialId());
+                    if (existingMat != null && existingMat.materialId() != 0) {
+                        throw new IllegalStateException("Face " + spec.faceId()
+                                + " already has a non-default material (" + existing.materialId()
+                                + ") — use model_face_open instead");
+                    }
+                }
+            }
+
+            // --- Upload textures + register materials (roll back GPU on failure) ---
+            int[] faceIds = new int[specs.size()];
+            int[] materialIds = new int[specs.size()];
+            List<Integer> uploadedTextures = new ArrayList<>(specs.size());
+            try {
+                for (int i = 0; i < specs.size(); i++) {
+                    CreateSpec spec = specs.get(i);
+                    int materialId = connector.allocateMaterialId();
+                    if (materialId <= 0) {
+                        throw new IllegalStateException(
+                                "Failed to allocate a material id for face " + spec.faceId());
+                    }
+                    PixelCanvas canvas = new PixelCanvas(spec.width(), spec.height());
+                    canvas.fill(PixelCanvas.packRGBA(spec.r(), spec.g(), spec.b(), spec.a()));
+                    int gpuTextureId = textureLoader.uploadPixelCanvasToGPU(canvas);
+                    if (gpuTextureId <= 0) {
+                        throw new IllegalStateException(
+                                "Failed to upload GPU texture for face " + spec.faceId());
+                    }
+                    uploadedTextures.add(gpuTextureId);
+
+                    MaterialDefinition material = new MaterialDefinition(
+                            materialId, "Face " + spec.faceId(), gpuTextureId,
+                            MaterialDefinition.RenderLayer.OPAQUE,
+                            MaterialDefinition.MaterialProperties.NONE);
+                    ftm.registerMaterial(material);
+
+                    faceIds[i] = spec.faceId();
+                    materialIds[i] = materialId;
+                }
+            } catch (RuntimeException e) {
+                for (int tex : uploadedTextures) {
+                    org.lwjgl.opengl.GL11.glDeleteTextures(tex);
+                }
+                throw e;
+            }
+
+            // --- Single mesh regeneration + upload for the whole batch ---
+            connector.setFaceTextures(faceIds, materialIds);
+
+            // Per-face follow-up: opt out of geometry auto-resize + build results.
+            List<CreateResult> results = new ArrayList<>(specs.size());
+            for (int i = 0; i < specs.size(); i++) {
+                CreateSpec spec = specs.get(i);
+                disableAutoResize(ftm, spec.faceId());
+                int[] suggested = connector.computeFaceTextureDimensions(
+                        spec.faceId(), FaceTextureSizer.DEFAULT_PIXELS_PER_UNIT);
+                int sw = suggested != null ? suggested[0] : 0;
+                int sh = suggested != null ? suggested[1] : 0;
+                results.add(new CreateResult(spec.faceId(), materialIds[i], uploadedTextures.get(i),
+                        spec.width(), spec.height(), sw, sh));
+            }
+
+            logger.info("Created {} face textures in a single batch", specs.size());
+            return results;
                 })));
     }
 
@@ -740,6 +860,10 @@ public final class FaceTextureEditingService {
     public record CreateResult(int faceId, int materialId, int gpuTextureId,
                                 int width, int height,
                                 int suggestedWidth, int suggestedHeight) {}
+
+    /** One face's texture-creation request in a {@link #createFaceTextures} batch. */
+    public record CreateSpec(int faceId, int width, int height,
+                              int r, int g, int b, int a) {}
 
     public record SessionInfo(int faceId, int width, int height,
                                int materialId, int gpuTextureId, boolean alreadyOpen) {}
