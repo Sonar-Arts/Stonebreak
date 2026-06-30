@@ -156,6 +156,30 @@ public interface IViewportConnector {
     void setFaceTexture(int faceId, int materialId);
 
     /**
+     * Assign materials to several faces in a single batch, regenerating UVs and
+     * re-uploading the mesh only once. The safe path for bulk per-face texturing —
+     * avoids the O(N²) per-face UV regeneration of repeated
+     * {@link #setFaceTexture(int, int)} calls. Materials must already be
+     * registered on the face texture manager.
+     *
+     * <p>Does not record per-face undo commands; callers that need undo coverage
+     * should wrap the batch in a single snapshot (see the MCP face-texture path).
+     *
+     * @param faceIds     face identifiers
+     * @param materialIds material id for the face at the same index
+     */
+    void setFaceTextures(int[] faceIds, int[] materialIds);
+
+    /**
+     * Allocate a material id that is unique across all material allocation paths
+     * for the currently loaded model. Returns 0 (default material) semantics are
+     * never produced — the id is always a fresh, non-default value.
+     *
+     * @return a unique material id, or -1 if no model renderer is available
+     */
+    int allocateMaterialId();
+
+    /**
      * Check if the viewport is currently in face edit mode.
      *
      * @return true if face editing is allowed
