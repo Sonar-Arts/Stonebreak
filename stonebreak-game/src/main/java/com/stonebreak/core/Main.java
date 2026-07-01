@@ -156,6 +156,89 @@ public class Main {
     }
     
     /**
+     * Re-synchronizes render/UI state from the window's ACTUAL framebuffer size.
+     * Call after programmatically changing the window size (e.g. applying a
+     * resolution setting): GLFW/Wayland may clamp or ignore the requested size
+     * and may not deliver the framebuffer-size callback synchronously, so we
+     * read the real size back and update the viewport, projection, cursor scale,
+     * and stored dimensions to match — preventing a stale-viewport glitch.
+     */
+    public static void refreshWindowSize() {
+        if (instance != null && instance.window != 0) {
+            instance.syncFramebufferSize();
+        }
+    }
+
+    private void syncFramebufferSize() {
+        try (MemoryStack stack = stackPush()) {
+            IntBuffer fbW = stack.mallocInt(1);
+            IntBuffer fbH = stack.mallocInt(1);
+            glfwGetFramebufferSize(window, fbW, fbH);
+            this.width = fbW.get(0);
+            this.height = fbH.get(0);
+        }
+        if (glReady) {
+            glViewport(0, 0, this.width, this.height);
+            if (renderer != null) {
+                renderer.updateProjectionMatrix(this.width, this.height);
+            }
+        }
+        updateCursorScale();
+        Game.getInstance().setWindowDimensions(this.width, this.height);
+        // The window may now sit on a different monitor; keep the VSync cap in sync.
+        refreshMonitorHz();
+    }
+
+    /**
+     * Sets {@link #monitorRefreshHz} from the monitor the window currently
+     * occupies (largest window/monitor overlap), rather than always the primary
+     * monitor — so the VSync frame cap matches the display the game is shown on
+     * in multi-monitor setups. Falls back to the primary monitor when the window
+     * position is unavailable (e.g. some Wayland configurations).
+     */
+    private static void refreshMonitorHz() {
+        if (instance == null || instance.window == 0) return;
+        try (MemoryStack stack = stackPush()) {
+            IntBuffer wx = stack.mallocInt(1);
+            IntBuffer wy = stack.mallocInt(1);
+            IntBuffer ww = stack.mallocInt(1);
+            IntBuffer wh = stack.mallocInt(1);
+            glfwGetWindowPos(instance.window, wx, wy);
+            glfwGetWindowSize(instance.window, ww, wh);
+            int winX = wx.get(0), winY = wy.get(0), winW = ww.get(0), winH = wh.get(0);
+
+            long bestMonitor = glfwGetPrimaryMonitor();
+            long bestArea = -1;
+            PointerBuffer monitors = glfwGetMonitors();
+            if (monitors != null) {
+                IntBuffer mx = stack.mallocInt(1);
+                IntBuffer my = stack.mallocInt(1);
+                for (int i = 0; i < monitors.limit(); i++) {
+                    long mon = monitors.get(i);
+                    GLFWVidMode mode = glfwGetVideoMode(mon);
+                    if (mode == null) continue;
+                    glfwGetMonitorPos(mon, mx, my);
+                    int monX = mx.get(0), monY = my.get(0);
+                    // Overlap area between the window rect and this monitor rect.
+                    int ox = Math.max(0, Math.min(winX + winW, monX + mode.width())  - Math.max(winX, monX));
+                    int oy = Math.max(0, Math.min(winY + winH, monY + mode.height()) - Math.max(winY, monY));
+                    long area = (long) ox * oy;
+                    if (area > bestArea) {
+                        bestArea = area;
+                        bestMonitor = mon;
+                    }
+                }
+            }
+
+            GLFWVidMode bestMode = glfwGetVideoMode(bestMonitor);
+            if (bestMode != null && bestMode.refreshRate() > 0 && bestMode.refreshRate() != monitorRefreshHz) {
+                monitorRefreshHz = bestMode.refreshRate();
+                System.out.println("[Display] Using monitor refresh rate: " + monitorRefreshHz + " Hz");
+            }
+        }
+    }
+
+    /**
      * Recomputes the window-coordinate -> framebuffer-pixel scale used to map
      * cursor positions into UI space. Called whenever the window or framebuffer
      * size changes. width/height hold the current framebuffer size.
@@ -289,6 +372,10 @@ public class Main {
         // Window (screen-coordinate) size can change independently of the
         // framebuffer on Wayland/HiDPI; keep the cursor->UI scale in sync.
         glfwSetWindowSizeCallback(window, (win, w, h) -> updateCursorScale());
+
+        // Window moved -> it may now be on a different monitor; refresh the
+        // VSync refresh-rate target to match the current display.
+        glfwSetWindowPosCallback(window, (win, x, y) -> refreshMonitorHz());
 
         // Setup mouse button callback
         // This now directly calls InputHandler's processMouseButton method.
@@ -485,15 +572,6 @@ public class Main {
                     (vidmode.width() - pWidth.get(0)) / 2,
                     (vidmode.height() - pHeight.get(0)) / 2
                 );
-                // Capture the monitor's refresh rate as the VSync target. This
-                // is what the FPS cap uses when VSync is enabled — capping at
-                // the display rate avoids tearing without the half-rate
-                // fallback the driver's swap-interval=1 imposes on missed frames.
-                int hz = vidmode.refreshRate();
-                if (hz > 0) {
-                    monitorRefreshHz = hz;
-                    System.out.println("[Display] Monitor refresh rate: " + hz + " Hz");
-                }
             } else {
                 // Fallback or log error if vidmode is null
                 System.err.println("Could not get video mode for primary monitor. Window will not be centered.");
@@ -501,6 +579,13 @@ public class Main {
                 // For now, we just don't center it.
             }
         }
+
+        // Capture the VSync target from the monitor the window actually sits on
+        // (not always the primary monitor). The FPS cap uses this when VSync is
+        // enabled — capping at the display rate avoids tearing without the
+        // half-rate fallback the driver's swap-interval=1 imposes on missed
+        // frames. Kept in sync as the window moves via the window-pos callback.
+        refreshMonitorHz();
 
         // Make the OpenGL context current
         glfwMakeContextCurrent(window);
