@@ -42,6 +42,7 @@ public final class StateManager {
     private MSlider lodDistanceSlider;
     private MButton lodEnabledButton;
     private MButton vsyncButton;
+    private MSlider maxFpsSlider;
     private MSlider uiScaleSlider;
 
     // Confirmation popup shown after applying a UI-scale change (Keep / Revert).
@@ -166,6 +167,12 @@ public final class StateManager {
         lodEnabledButton = new MButton(lodEnabledLabel()).size(bw, bh);
         vsyncButton = new MButton(vsyncLabel()).size(bw, bh);
 
+        maxFpsSlider = new MSlider(maxFpsLabel(),
+                SettingsConfig.MIN_MAX_FPS, SettingsConfig.MAX_MAX_FPS,
+                settings.getMaxFps())
+                .trackHeight(sh).showPercent(false);
+        maxFpsSlider.size(sw, sh);
+
         uiScaleSlider = new MSlider("UI Scale",
                 SettingsConfig.MIN_UI_SCALE, SettingsConfig.MAX_UI_SCALE, settings.getUiScale())
                 .trackHeight(sh).showPercent(false);
@@ -179,7 +186,7 @@ public final class StateManager {
                 applyButton, backButton, resolutionButton, armModelButton, crosshairStyleButton,
                 volumeSlider, crosshairSizeSlider, leafTransparencyButton, waterShaderButton,
                 cloudsButton, godRaysButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
-                vsyncButton, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
+                vsyncButton, maxFpsSlider, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
             w.scaleText(true);
         }
     }
@@ -212,6 +219,7 @@ public final class StateManager {
         lodDistanceSlider.size(sw, sh);
         lodEnabledButton.size(bw, bh);
         vsyncButton.size(bw, bh);
+        maxFpsSlider.size(sw, sh);
         uiScaleSlider.size(sw, sh);
         keepUiScaleButton.size(bw, bh);
         revertUiScaleButton.size(bw, bh);
@@ -234,6 +242,7 @@ public final class StateManager {
                              java.util.function.Consumer<Float> lodDistanceAction,
                              Runnable lodEnabledAction,
                              Runnable vsyncAction,
+                             java.util.function.Consumer<Float> maxFpsAction,
                              java.util.function.Consumer<Float> uiScaleAction,
                              Runnable keepUiScaleAction,
                              Runnable revertUiScaleAction) {
@@ -252,6 +261,7 @@ public final class StateManager {
         lodDistanceSlider.setOnChange(lodDistanceAction);
         lodEnabledButton.setOnClick(lodEnabledAction);
         vsyncButton.setOnClick(vsyncAction);
+        maxFpsSlider.setOnChange(maxFpsAction);
         uiScaleSlider.setOnChange(uiScaleAction);
         keepUiScaleButton.setOnClick(keepUiScaleAction);
         revertUiScaleButton.setOnClick(revertUiScaleAction);
@@ -292,6 +302,7 @@ public final class StateManager {
         lodDistanceSlider.setSelected(false);
         lodEnabledButton.setSelected(false);
         vsyncButton.setSelected(false);
+        maxFpsSlider.setSelected(false);
         uiScaleSlider.setSelected(false);
     }
 
@@ -347,6 +358,7 @@ public final class StateManager {
         lodDistanceSlider.setLabel(lodDistanceLabel());
         lodEnabledButton.setText(lodEnabledLabel());
         vsyncButton.setText(vsyncLabel());
+        maxFpsSlider.setLabel(maxFpsLabel());
         uiScaleSlider.setLabel(uiScaleLabel());
     }
 
@@ -380,6 +392,10 @@ public final class StateManager {
 
     private String vsyncLabel() {
         return "VSync: " + (settings.isVsyncEnabled() ? "ON" : "OFF");
+    }
+
+    private String maxFpsLabel() {
+        return "Max FPS: " + (settings.isMaxFpsUnlimited() ? "Unlimited" : settings.getMaxFps());
     }
 
     private String uiScaleLabel() {
@@ -450,6 +466,7 @@ public final class StateManager {
     public MSlider getLodDistanceSlider() { return lodDistanceSlider; }
     public MButton getLodEnabledButton() { return lodEnabledButton; }
     public MButton getVsyncButton() { return vsyncButton; }
+    public MSlider getMaxFpsSlider() { return maxFpsSlider; }
     public MSlider getUiScaleSlider() { return uiScaleSlider; }
     public MButton getKeepUiScaleButton() { return keepUiScaleButton; }
     public MButton getRevertUiScaleButton() { return revertUiScaleButton; }

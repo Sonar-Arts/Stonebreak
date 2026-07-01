@@ -43,6 +43,13 @@ public class Settings {
     // ZGC keeps frame pacing stable.
     private boolean vsyncEnabled = true;
 
+    // Max FPS — upper bound enforced by the manual frame limiter, independent of
+    // VSync (the lowest active cap wins). A value of MAX_MAX_FPS means "Unlimited"
+    // (no cap). Default 240 keeps high-refresh displays fast without running wild.
+    public static final int MIN_MAX_FPS = 30;
+    public static final int MAX_MAX_FPS = 260; // sentinel: this value means Unlimited
+    private int maxFps = 240;
+
     // UI scaling factor applied to all HUD and menu elements.
     private float uiScale = 1.0f;
 
@@ -100,6 +107,7 @@ public class Settings {
             json.append("  \"lodDistance\": ").append(lodDistance).append(",\n");
             json.append("  \"lodEnabled\": ").append(lodEnabled).append(",\n");
             json.append("  \"vsyncEnabled\": ").append(vsyncEnabled).append(",\n");
+            json.append("  \"maxFps\": ").append(maxFps).append(",\n");
             json.append("  \"multiplayerPort\": ").append(multiplayerPort).append(",\n");
             json.append("  \"lastJoinHost\": \"").append(lastJoinHost).append("\",\n");
             json.append("  \"multiplayerUsername\": \"").append(multiplayerUsername).append("\",\n");
@@ -302,6 +310,17 @@ public class Settings {
                 if (value != null) {
                     vsyncEnabled = Boolean.parseBoolean(value);
                 }
+            } else if (line.contains("maxFps")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        // Route through the setter so hand-edited / out-of-range
+                        // values are clamped to the supported range.
+                        setMaxFps(Integer.parseInt(value));
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid maxFps value: " + value);
+                    }
+                }
             } else if (line.contains("multiplayerPort")) {
                 String value = extractValue(line);
                 if (value != null) {
@@ -482,6 +501,21 @@ public class Settings {
      */
     public void setVsyncEnabled(boolean value) {
         this.vsyncEnabled = value;
+    }
+
+    /** Max FPS cap. {@link #MAX_MAX_FPS} means Unlimited (no cap). */
+    public int getMaxFps() { return maxFps; }
+
+    /** True when the Max FPS setting is at its Unlimited sentinel value. */
+    public boolean isMaxFpsUnlimited() { return maxFps >= MAX_MAX_FPS; }
+
+    /**
+     * Sets the Max FPS cap, clamped to [{@link #MIN_MAX_FPS}, {@link #MAX_MAX_FPS}].
+     * The value {@link #MAX_MAX_FPS} is treated as Unlimited. The manual frame
+     * limiter picks up the new value on the next frame, so this applies live.
+     */
+    public void setMaxFps(int value) {
+        this.maxFps = Math.max(MIN_MAX_FPS, Math.min(MAX_MAX_FPS, value));
     }
 
     public float getUiScale() { return uiScale; }

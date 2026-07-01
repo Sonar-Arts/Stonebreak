@@ -50,12 +50,6 @@ public class Main {
     private int height;
 
     /**
-     * FPS cap used when VSync is disabled. Picked above common refresh rates
-     * so high-refresh monitors aren't held back by it.
-     */
-    private static final int UNCAPPED_TARGET_FPS = 240;
-
-    /**
      * Detected monitor refresh rate. Used as the target FPS when VSync
      * is enabled — capping at the display rate gives the same
      * tear-suppression benefit as driver VSync (assuming G-Sync/FreeSync
@@ -137,22 +131,33 @@ public class Main {
      */
     public static void applyVsyncSetting() {
         glfwSwapInterval(0);
-        boolean enabled = Settings.getInstance().isVsyncEnabled();
+        Settings settings = Settings.getInstance();
+        boolean enabled = settings.isVsyncEnabled();
+        String fpsCap = settings.isMaxFpsUnlimited() ? "unlimited" : settings.getMaxFps() + " FPS";
         System.out.println("[Display] VSync " + (enabled ? "enabled (cap " + monitorRefreshHz + " Hz)"
-                                                          : "disabled (cap " + UNCAPPED_TARGET_FPS + " FPS)"));
+                                                          : "disabled")
+                + ", Max FPS " + fpsCap);
     }
 
     /**
      * Returns the current per-frame nanosecond budget for the manual FPS
-     * limiter. Picks the monitor refresh rate when VSync is on, the
-     * uncapped target otherwise.
+     * limiter, or {@code 0} for fully uncapped (no sleep). The effective cap is
+     * the lowest of the active limits: the monitor refresh rate when VSync is
+     * on, and the user's Max FPS setting when it isn't set to Unlimited.
      */
     private static long currentFrameBudgetNanos() {
-        int targetHz = Settings.getInstance().isVsyncEnabled()
-                ? monitorRefreshHz
-                : UNCAPPED_TARGET_FPS;
-        if (targetHz <= 0) targetHz = 60; // defensive — never divide by zero
-        return 1_000_000_000L / targetHz;
+        Settings settings = Settings.getInstance();
+        int cap = Integer.MAX_VALUE;
+        if (settings.isVsyncEnabled() && monitorRefreshHz > 0) {
+            cap = Math.min(cap, monitorRefreshHz);
+        }
+        if (!settings.isMaxFpsUnlimited()) {
+            cap = Math.min(cap, settings.getMaxFps());
+        }
+        if (cap == Integer.MAX_VALUE || cap <= 0) {
+            return 0L; // no active cap — skip the sleep entirely
+        }
+        return 1_000_000_000L / cap;
     }
     
     /**
@@ -789,9 +794,9 @@ public class Main {
             long frameEndTime = System.nanoTime();
             long frameTimeNanos = frameEndTime - frameStartTime;
             
-            // Sleep if we're running faster than the current target.
-            // VSync = on  → target = monitor refresh rate (cap-based "VSync")
-            // VSync = off → target = UNCAPPED_TARGET_FPS
+            // Sleep if we're running faster than the current target. The budget
+            // reflects the lowest active cap (VSync refresh rate and/or Max FPS);
+            // a budget of 0 means uncapped, so the sleep below is skipped.
             long frameBudgetNanos = currentFrameBudgetNanos();
             if (frameTimeNanos < frameBudgetNanos) {
                 try {

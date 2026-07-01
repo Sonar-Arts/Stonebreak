@@ -129,6 +129,7 @@ public final class InputHandler {
             case LOD_DISTANCE -> adjustSlider(stateManager.getLodDistanceSlider(), direction);
             case LOD_ENABLED -> { if (direction != 0) actionHandler.toggleLodEnabled(); }
             case VSYNC -> { if (direction != 0) actionHandler.toggleVsync(); }
+            case MAX_FPS -> adjustSlider(stateManager.getMaxFpsSlider(), direction * SettingsConfig.MAX_FPS_STEP);
             default -> {}
         }
     }

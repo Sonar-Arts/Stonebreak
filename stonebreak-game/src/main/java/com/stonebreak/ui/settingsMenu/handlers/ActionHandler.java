@@ -55,6 +55,7 @@ public class ActionHandler {
             case GOD_RAYS -> toggleGodRays();
             case LOD_ENABLED -> toggleLodEnabled();
             case VSYNC -> toggleVsync();
+            case MAX_FPS -> {} // Max FPS handled by mouse/keyboard interaction
             case APPLY -> applySettings();
             case BACK -> goBack();
             default -> {}
@@ -239,6 +240,15 @@ public class ActionHandler {
         boolean now = !settings.isVsyncEnabled();
         settings.setVsyncEnabled(now);
         com.stonebreak.core.Main.applyVsyncSetting();
+    }
+
+    /**
+     * Callback for when the Max FPS slider value changes. The manual frame
+     * limiter reads {@code Settings.getMaxFps()} every frame, so this takes
+     * effect live; persistence still waits for Apply / save.
+     */
+    public void onMaxFpsChange(Float newValue) {
+        settings.setMaxFps(Math.round(newValue));
     }
 
     /**

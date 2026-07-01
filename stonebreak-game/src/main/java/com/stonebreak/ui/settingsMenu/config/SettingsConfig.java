@@ -49,6 +49,12 @@ public final class SettingsConfig {
     public static final float MAX_UI_SCALE = 2.0f;
     public static final float UI_SCALE_STEP = 0.1f;
 
+    // ===== FRAME RATE CONFIGURATION =====
+    // Mirrors Settings bounds; the max value is the "Unlimited" sentinel.
+    public static final float MIN_MAX_FPS = com.stonebreak.config.Settings.MIN_MAX_FPS;
+    public static final float MAX_MAX_FPS = com.stonebreak.config.Settings.MAX_MAX_FPS;
+    public static final float MAX_FPS_STEP = 5.0f;
+
     // ===== AUDIO CONFIGURATION =====
     public static final float VOLUME_STEP = 0.1f;
     public static final float MIN_VOLUME = 0.0f;
