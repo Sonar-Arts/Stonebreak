@@ -437,23 +437,65 @@ public class mainOpenMason {
     }
     
     /**
-     * Center window on screen.
+     * Center the window on the primary ("priority") monitor.
+     *
+     * <p>The primary monitor is not necessarily at virtual-screen origin (0,0): on multi-monitor
+     * setups a display placed to the left/above the primary gives the primary a positive/negative
+     * virtual offset. Centering with just the primary's {@code width/height} (as if it started at
+     * 0,0) therefore lands the window on whichever monitor occupies the origin — often the wrong
+     * screen on Linux. We anchor to the primary monitor's virtual position via
+     * {@link GLFW#glfwGetMonitorWorkarea} (which also excludes panels/taskbars) so the window is
+     * always centered on the primary display. Falls back to {@link GLFW#glfwGetVideoMode} +
+     * {@link GLFW#glfwGetMonitorPos} if the work area is unavailable.</p>
      */
     private void centerWindow() {
+        long monitor = glfwGetPrimaryMonitor();
+        if (monitor == NULL) {
+            logger.warn("No primary monitor reported; leaving window at default position");
+            return;
+        }
+
         try (MemoryStack stack = stackPush()) {
             IntBuffer pWidth = stack.mallocInt(1);
             IntBuffer pHeight = stack.mallocInt(1);
-            
             glfwGetWindowSize(window, pWidth, pHeight);
-            
-            GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-            if (vidmode != null) {
-                glfwSetWindowPos(
-                    window,
-                    (vidmode.width() - pWidth.get(0)) / 2,
-                    (vidmode.height() - pHeight.get(0)) / 2
-                );
+            int winW = pWidth.get(0);
+            int winH = pHeight.get(0);
+
+            // Primary monitor's usable area in virtual-screen coordinates (origin + size).
+            IntBuffer areaX = stack.mallocInt(1);
+            IntBuffer areaY = stack.mallocInt(1);
+            IntBuffer areaW = stack.mallocInt(1);
+            IntBuffer areaH = stack.mallocInt(1);
+            glfwGetMonitorWorkarea(monitor, areaX, areaY, areaW, areaH);
+
+            int originX = areaX.get(0);
+            int originY = areaY.get(0);
+            int monW = areaW.get(0);
+            int monH = areaH.get(0);
+
+            // Some drivers/Wayland-via-XWayland report a zero work area; fall back to the video
+            // mode for size and the raw monitor position for the virtual-screen origin.
+            if (monW <= 0 || monH <= 0) {
+                GLFWVidMode vidmode = glfwGetVideoMode(monitor);
+                if (vidmode == null) {
+                    logger.warn("Primary monitor has no video mode; leaving window at default position");
+                    return;
+                }
+                monW = vidmode.width();
+                monH = vidmode.height();
+                IntBuffer monX = stack.mallocInt(1);
+                IntBuffer monY = stack.mallocInt(1);
+                glfwGetMonitorPos(monitor, monX, monY);
+                originX = monX.get(0);
+                originY = monY.get(0);
             }
+
+            glfwSetWindowPos(
+                window,
+                originX + (monW - winW) / 2,
+                originY + (monH - winH) / 2
+            );
         }
     }
     
