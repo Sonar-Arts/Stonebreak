@@ -260,7 +260,14 @@ public class TerrainGenerationSystem {
         vegetationGenerator.generate(ctx);
         decorationGenerator.generate(ctx);
 
-        MobGenerator.processChunkMobSpawning(world, chunk, dominantBiome, animalRandom, animalRandomLock);
+        // Passive-mob population is owned entirely by EntitySpawner, which is a
+        // continuous, visibility-capped cycle (its "single source of truth").
+        // The old per-chunk generation spawn below was a second, UNCAPPED path:
+        // it rolled a fresh herd for every generated plains chunk with no global
+        // cap or density check (and wrote to a different EntityManager than the
+        // cap sweep counts against), flooding the world with animals as the
+        // player explored. Disabled so EntitySpawner is the sole spawner.
+        // MobGenerator.processChunkMobSpawning(world, chunk, dominantBiome, animalRandom, animalRandomLock);
 
         chunk.setFeaturesPopulated(true);
     }

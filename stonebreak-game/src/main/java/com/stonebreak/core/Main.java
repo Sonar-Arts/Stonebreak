@@ -67,7 +67,19 @@ public class Main {
     // Game state
     private boolean running = false;
     private boolean firstRender = true;
-    
+    // True once the GL context is current and LWJGL capabilities are created.
+    // GLFW may fire the framebuffer-size callback while the window is being
+    // shown/positioned (notably on Linux) before GL is usable, so GL calls in
+    // that callback must be gated on this flag to avoid a native abort.
+    private volatile boolean glReady = false;
+    // Framebuffer-pixels per window-coordinate. glfwGetCursorPos reports in
+    // window (screen) coordinates, but the UI is laid out in framebuffer
+    // pixels (width/height). These are 1.0 when the two spaces match (Windows,
+    // X11 non-HiDPI) and differ on Wayland / HiDPI, where UI input must be
+    // scaled by these factors to line up with rendered UI.
+    private double cursorScaleX = 1.0;
+    private double cursorScaleY = 1.0;
+
     // Game components
     private Renderer renderer;
     private InputHandler inputHandler;
@@ -143,6 +155,32 @@ public class Main {
         return 1_000_000_000L / targetHz;
     }
     
+    /**
+     * Recomputes the window-coordinate -> framebuffer-pixel scale used to map
+     * cursor positions into UI space. Called whenever the window or framebuffer
+     * size changes. width/height hold the current framebuffer size.
+     */
+    private void updateCursorScale() {
+        try (MemoryStack stack = stackPush()) {
+            IntBuffer winW = stack.mallocInt(1);
+            IntBuffer winH = stack.mallocInt(1);
+            glfwGetWindowSize(window, winW, winH);
+            cursorScaleX = winW.get(0) > 0 ? (double) width / winW.get(0) : 1.0;
+            cursorScaleY = winH.get(0) > 0 ? (double) height / winH.get(0) : 1.0;
+        }
+    }
+
+    /**
+     * Reads the cursor position converted from window coordinates into
+     * framebuffer-pixel (UI) space. Use for all UI hit-testing so clicks line
+     * up with rendered UI on Wayland/HiDPI where the two spaces differ.
+     */
+    private void getUiCursorPos(java.nio.DoubleBuffer xpos, java.nio.DoubleBuffer ypos) {
+        glfwGetCursorPos(window, xpos, ypos);
+        xpos.put(0, xpos.get(0) * cursorScaleX);
+        ypos.put(0, ypos.get(0) * cursorScaleY);
+    }
+
     private void init() {
         // Setup an error callback
         GLFWErrorCallback.createPrint(System.err).set();
@@ -232,13 +270,25 @@ public class Main {
         glfwSetFramebufferSizeCallback(window, (win, w, h) -> {
             this.width = w;
             this.height = h;
-            glViewport(0, 0, w, h);
-            if (renderer != null) {
-                renderer.updateProjectionMatrix(w, h);
+            // Guard GL calls: this callback can fire before the context is
+            // current / capabilities are created (e.g. during window show or
+            // positioning on Linux). The stored width/height are re-applied to
+            // the viewport once GL is ready (see below).
+            if (glReady) {
+                glViewport(0, 0, w, h);
+                if (renderer != null) {
+                    renderer.updateProjectionMatrix(w, h);
+                }
             }
+            // Framebuffer size changed -> refresh cursor->UI scale.
+            updateCursorScale();
             // Update the Game singleton with new dimensions
             Game.getInstance().setWindowDimensions(w, h);
         });
+
+        // Window (screen-coordinate) size can change independently of the
+        // framebuffer on Wayland/HiDPI; keep the cursor->UI scale in sync.
+        glfwSetWindowSizeCallback(window, (win, w, h) -> updateCursorScale());
 
         // Setup mouse button callback
         // This now directly calls InputHandler's processMouseButton method.
@@ -256,7 +306,7 @@ public class Main {
                     try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                         java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                         java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                        glfwGetCursorPos(window, xpos, ypos);
+                        getUiCursorPos(xpos, ypos);
                         if (game.getMainMenu() != null) {
                             game.getMainMenu().handleMouseClick(xpos.get(), ypos.get(), width, height);
                         }
@@ -267,7 +317,7 @@ public class Main {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     if (game.getWorldSelectScreen() != null) {
                         game.getWorldSelectScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
@@ -277,7 +327,7 @@ public class Main {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     if (game.getSettingsMenu() != null) {
                         game.getSettingsMenu().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
@@ -287,7 +337,7 @@ public class Main {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     if (game.getCharacterCreationScreen() != null) {
                         game.getCharacterCreationScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
@@ -297,7 +347,7 @@ public class Main {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     if (game.getTerrainMapperScreen() != null) {
                         game.getTerrainMapperScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
@@ -308,7 +358,7 @@ public class Main {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     switch (game.getState()) {
                         case MULTIPLAYER_MENU -> game.getMultiplayerMenu().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                         case HOST_WORLD_SELECT -> game.getHostWorldScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
@@ -325,45 +375,51 @@ public class Main {
         glfwSetCursorPosCallback(window, (win, xpos, ypos) -> {
             Game game = Game.getInstance();
 
-            // Process mouse movement for camera look (if mouse is captured)
+            // Process mouse movement for camera look (if mouse is captured).
+            // Camera look consumes raw deltas, so it must use unscaled coords.
             MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();
             if (mouseCaptureManager != null) {
                 mouseCaptureManager.processMouseMovement(xpos, ypos);
             }
 
+            // UI hit-testing happens in framebuffer-pixel space; convert the
+            // window-coordinate cursor position accordingly.
+            double uiX = xpos * cursorScaleX;
+            double uiY = ypos * cursorScaleY;
+
             // Update InputHandler for UI interactions (always needed for UI)
             if (inputHandler != null) {
-                inputHandler.updateMousePosition((float)xpos, (float)ypos);
+                inputHandler.updateMousePosition((float)uiX, (float)uiY);
             }
 
             // Handle main menu hover events
             if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
-                game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
+                game.getMainMenu().handleMouseMove(uiX, uiY, width, height);
             }
             // Handle world select screen hover events
             else if (game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
-                game.getWorldSelectScreen().handleMouseMove(xpos, ypos, width, height);
+                game.getWorldSelectScreen().handleMouseMove(uiX, uiY, width, height);
             }
             // Handle settings menu hover events
             else if (game.getState() == GameState.SETTINGS && game.getSettingsMenu() != null) {
-                game.getSettingsMenu().handleMouseMove(xpos, ypos, width, height);
+                game.getSettingsMenu().handleMouseMove(uiX, uiY, width, height);
             }
             // Handle character creation hover events
             else if (game.getState() == GameState.CHARACTER_CREATION && game.getCharacterCreationScreen() != null) {
-                game.getCharacterCreationScreen().handleMouseMove(xpos, ypos, width, height);
+                game.getCharacterCreationScreen().handleMouseMove(uiX, uiY, width, height);
             }
             // Handle terrain mapper hover events
             else if (game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
-                game.getTerrainMapperScreen().handleMouseMove(xpos, ypos, width, height);
+                game.getTerrainMapperScreen().handleMouseMove(uiX, uiY, width, height);
             }
             else if (game.getState() == GameState.MULTIPLAYER_MENU && game.getMultiplayerMenu() != null) {
-                game.getMultiplayerMenu().handleMouseMove(xpos, ypos, width, height);
+                game.getMultiplayerMenu().handleMouseMove(uiX, uiY, width, height);
             }
             else if (game.getState() == GameState.HOST_WORLD_SELECT && game.getHostWorldScreen() != null) {
-                game.getHostWorldScreen().handleMouseMove(xpos, ypos, width, height);
+                game.getHostWorldScreen().handleMouseMove(uiX, uiY, width, height);
             }
             else if (game.getState() == GameState.JOIN_WORLD_SCREEN && game.getJoinWorldScreen() != null) {
-                game.getJoinWorldScreen().handleMouseMove(xpos, ypos, width, height);
+                game.getJoinWorldScreen().handleMouseMove(uiX, uiY, width, height);
             }
         });
 
@@ -376,14 +432,14 @@ public class Main {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     game.getCharacterCreationScreen().handleMouseWheel(xpos.get(), ypos.get(), yoffset);
                 }
             } else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     game.getTerrainMapperScreen().handleMouseWheel(xpos.get(), ypos.get(), yoffset);
                 }
             } else if (inputHandler != null) {
@@ -463,6 +519,34 @@ public class Main {
         // creates the GLCapabilities instance and makes the OpenGL
         // bindings available for use.
         GL.createCapabilities();
+
+        // GL is now usable — allow the framebuffer-size callback to touch GL,
+        // and set the initial viewport from the actual framebuffer size (which
+        // may differ from the requested size on HiDPI displays, and covers any
+        // resize events that were skipped while GL was not yet ready).
+        glReady = true;
+        try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+            java.nio.IntBuffer fbWidth = stack.mallocInt(1);
+            java.nio.IntBuffer fbHeight = stack.mallocInt(1);
+            glfwGetFramebufferSize(window, fbWidth, fbHeight);
+            this.width = fbWidth.get(0);
+            this.height = fbHeight.get(0);
+            glViewport(0, 0, this.width, this.height);
+            Game.getInstance().setWindowDimensions(this.width, this.height);
+
+            // Diagnostic: on some platforms (notably Wayland) the framebuffer
+            // size can differ from the window (screen-coordinate) size, which
+            // is the space glfwGetCursorPos reports in. If these differ, UI
+            // click coordinates must be scaled by framebuffer/window.
+            java.nio.IntBuffer winW = stack.mallocInt(1);
+            java.nio.IntBuffer winH = stack.mallocInt(1);
+            glfwGetWindowSize(window, winW, winH);
+            System.out.println("[Display] window=" + winW.get(0) + "x" + winH.get(0)
+                    + " framebuffer=" + this.width + "x" + this.height);
+        }
+
+        // Establish the initial cursor->UI scale now that both sizes are known.
+        updateCursorScale();
 
         // Set up OpenGL state
         glEnable(GL_DEPTH_TEST);
