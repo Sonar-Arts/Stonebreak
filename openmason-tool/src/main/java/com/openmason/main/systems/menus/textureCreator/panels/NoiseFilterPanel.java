@@ -9,6 +9,7 @@ import com.openmason.main.systems.menus.textureCreator.layers.Layer;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionRegion;
 import imgui.ImColor;
 import imgui.ImDrawList;
+import com.openmason.main.systems.menus.textureCreator.utils.SafeText;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
@@ -215,7 +216,7 @@ public class NoiseFilterPanel {
         ImGui.text("Strength");
 
         ImGui.sameLine();
-        ImGui.text(String.format("%.0f%%", strength * 100));
+        SafeText.text(String.format("%.0f%%", strength * 100));
 
         ImGui.spacing();
 
@@ -364,7 +365,7 @@ public class NoiseFilterPanel {
         }
 
         ImGui.sameLine();
-        ImGui.text(String.format("%.0f%%", blur * 100));
+        SafeText.text(String.format("%.0f%%", blur * 100));
 
         ImGui.spacing();
 
@@ -415,7 +416,7 @@ public class NoiseFilterPanel {
             }
 
             ImGui.sameLine();
-            ImGui.text(String.format("%.0f%%", spread * 100));
+            SafeText.text(String.format("%.0f%%", spread * 100));
 
             ImGui.spacing();
 
@@ -439,7 +440,7 @@ public class NoiseFilterPanel {
             }
 
             ImGui.sameLine();
-            ImGui.text(String.format("%.0f%%", edgeSoftness * 100));
+            SafeText.text(String.format("%.0f%%", edgeSoftness * 100));
 
             ImGui.spacing();
 

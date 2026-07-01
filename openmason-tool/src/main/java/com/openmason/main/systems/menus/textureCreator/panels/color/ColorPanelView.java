@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.textureCreator.panels.color;
 
+import com.openmason.main.systems.menus.textureCreator.utils.SafeText;
 import imgui.ImGui;
 import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
@@ -143,7 +144,7 @@ public final class ColorPanelView implements AutoCloseable {
         ImGui.sameLine(0, 14);
         ImGui.beginGroup();
         hexAlpha.renderHexInput(state);
-        ImGui.textDisabled(String.format("A %3d (%3d%%)",
+        SafeText.textDisabled(String.format("A %3d (%3d%%)",
                 state.getAlpha(), (int) ((state.getAlpha() / 255.0f) * 100)));
         ImGui.endGroup();
     }

@@ -5,6 +5,7 @@ import com.openmason.main.systems.menus.textureCreator.TextureCreatorState;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionRegion;
 import com.openmason.main.systems.menus.textureCreator.tools.DrawingTool;
 import com.openmason.main.systems.services.StatusService;
+import com.openmason.main.systems.menus.textureCreator.utils.SafeText;
 import imgui.ImGui;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
@@ -51,7 +52,7 @@ public final class StatusBarPanel {
         if (ImGui.beginChild("##TextureEditorStatusBar", 0, HEIGHT, false, flags)) {
             ImGui.separator();
 
-            ImGui.textDisabled(statusService.getStatusMessage());
+            SafeText.textDisabled(statusService.getStatusMessage());
 
             String right = buildRightSegments();
             float textWidth = ImGui.calcTextSize(right).x;
@@ -61,7 +62,7 @@ public final class StatusBarPanel {
             } else {
                 ImGui.sameLine();
             }
-            ImGui.textDisabled(right);
+            SafeText.textDisabled(right);
         }
         ImGui.endChild();
 
