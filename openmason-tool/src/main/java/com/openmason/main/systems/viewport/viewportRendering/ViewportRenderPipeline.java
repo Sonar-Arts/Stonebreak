@@ -12,6 +12,8 @@ import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
 import com.openmason.engine.rendering.shaders.ShaderManager;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderType;
+import com.openmason.main.systems.viewport.state.EditMode;
+import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.RenderingMode;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
@@ -185,11 +187,18 @@ public class ViewportRenderPipeline {
             // (polygon mode is always GL_FILL)
 
             // PASS 3: Render mesh (vertices + edges + faces, debug overlay, Blender-style)
+            // Element visibility follows Blender's edit modes: vertex mode shows dots +
+            // wire, edge mode shows wire only, face mode shows wire + fills + face dots.
             if (viewportState.getShowVertices().get()) {
-                renderVertices(renderingState, transformState);
+                EditMode editMode = EditModeManager.getInstance().getCurrentMode();
+                // Always runs the mesh-data sync/wiring; skips the dots in EDGE/FACE modes
+                renderVertices(renderingState, transformState,
+                        editMode == EditMode.NONE || editMode == EditMode.VERTEX);
                 renderEdges(renderingState, transformState);
                 renderKnifePreview(transformState);  // Render knife preview after edges, before faces
-                renderFaces(renderingState, transformState);  // Render face overlays LAST for proper blending
+                if (editMode == EditMode.NONE || editMode == EditMode.FACE) {
+                    renderFaces(renderingState, transformState);  // Render face overlays LAST for proper blending
+                }
             }
 
             // PASS 4: Render gizmo (after content, always in fill mode)
@@ -463,8 +472,12 @@ public class ViewportRenderPipeline {
     /**
      * Render vertices pass (Blender-style vertex visualization).
      * Note: Edge rendering is handled separately in renderEdges().
+     *
+     * @param drawPoints whether to draw the vertex dots; the mesh-data sync and
+     *                   renderer wiring always run so edge/face renderers stay
+     *                   connected even when dots are hidden (EDGE/FACE modes)
      */
-    private void renderVertices(RenderingState renderingState, TransformState transformState) {
+    private void renderVertices(RenderingState renderingState, TransformState transformState, boolean drawPoints) {
         try {
             // Initialize vertex renderer if needed
             if (!vertexRenderer.isInitialized()) {
@@ -513,8 +526,10 @@ public class ViewportRenderPipeline {
                         logger.trace("Vertex data extracted in model space");
                     }
 
-                    ShaderProgram vertexShader = shaderManager.getShaderProgram(ShaderType.VERTEX);
-                    vertexRenderer.render(vertexShader, context, transformState.getTransformMatrix());
+                    if (drawPoints) {
+                        ShaderProgram vertexShader = shaderManager.getShaderProgram(ShaderType.VERTEX);
+                        vertexRenderer.render(vertexShader, context, transformState.getTransformMatrix());
+                    }
                     break;
 
                 case BLOCK:
@@ -613,8 +628,11 @@ public class ViewportRenderPipeline {
                         faceDataNeedsUpdate = false;
                     }
 
-                    ShaderProgram basicShader = shaderManager.getShaderProgram(ShaderType.BASIC);
-                    faceRenderer.render(basicShader, context, transformState.getTransformMatrix());
+                    ShaderProgram faceLineShader = shaderManager.getShaderProgram(ShaderType.BASIC);
+                    ShaderProgram faceFillShader = shaderManager.getShaderProgram(ShaderType.FACE);
+                    ShaderProgram faceDotShader = shaderManager.getShaderProgram(ShaderType.VERTEX);
+                    faceRenderer.render(faceLineShader, faceFillShader, faceDotShader,
+                            context, transformState.getTransformMatrix());
                     break;
 
                 case BLOCK:

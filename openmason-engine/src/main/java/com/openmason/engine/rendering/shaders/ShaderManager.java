@@ -310,29 +310,21 @@ public class ShaderManager {
                     discard;
                 }
 
-                // Anti-aliased circle edge
-                float outerEdge = 1.0 - smoothstep(0.85, 1.0, dist);
+                // Crisp anti-aliased disc (Blender-style flat vertex dot, no glow)
+                float alpha = 1.0 - smoothstep(0.8, 1.0, dist);
 
-                // Outline ring: dark border between 0.6 and 0.85 radius
-                float outlineRing = smoothstep(0.55, 0.65, dist) * (1.0 - smoothstep(0.8, 0.9, dist));
+                // uIntensity acts as a mild brightener for transient states (hover)
+                vec3 fillColor = clamp(vertexColor * vIntensity, 0.0, 1.0);
 
-                // Compute fill color based on intensity
-                vec3 fillColor;
-                if (vIntensity <= 1.0) {
-                    fillColor = vertexColor;
-                } else {
-                    // Blend toward white for hover/selection glow
-                    float glowFactor = clamp((vIntensity - 1.0) / 2.0, 0.0, 1.0);
-                    fillColor = mix(vertexColor, vec3(1.0), glowFactor);
-                }
+                // Thin contrast rim so dark dots stay readable on dark surfaces and
+                // light dots stay readable on light surfaces
+                float lum = dot(fillColor, vec3(0.299, 0.587, 0.114));
+                vec3 rimColor = (lum < 0.5) ? vec3(0.7) : fillColor * 0.3;
+                float rim = smoothstep(0.6, 0.85, dist);
 
-                // Dark outline color (semi-transparent dark version of the fill)
-                vec3 outlineColor = fillColor * 0.2;
+                vec3 finalColor = mix(fillColor, rimColor, rim * 0.85);
 
-                // Combine: fill with outline ring overlay
-                vec3 finalColor = mix(fillColor, outlineColor, outlineRing * 0.7);
-
-                FragColor = vec4(finalColor, outerEdge);
+                FragColor = vec4(finalColor, alpha);
             }
             """;
 
