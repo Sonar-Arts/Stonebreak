@@ -29,15 +29,16 @@ public class GridRenderer {
     private boolean initialized = false;
 
     // Grid appearance settings
-    private float gridScale = 1.0f;          // Size of each grid cell (matches Blender's 1 unit grid)
-    private float gridLineWidth = 0.02f;     // Thickness of grid lines
-    private float fadeDistance = 400.0f;     // Distance at which grid starts to fade (increased for infinite appearance)
-    private float maxDistance = 500.0f;      // Maximum distance before grid disappears (increased for infinite appearance)
+    private float gridScale = 1.0f;          // Base cell size in world units (matches Blender's 1 unit grid)
+    private float lineWidthPx = 1.0f;        // Grid line width in pixels (screen space, zoom independent)
+    private float fadeDistance = 400.0f;     // Camera distance where the grid starts to fade
+    private float maxDistance = 500.0f;      // Camera distance where the grid is fully faded
 
     // Grid colors
-    private final Vector3f primaryColor = new Vector3f(0.5f, 0.5f, 0.5f);    // Main grid lines
-    private final Vector3f axisXColor = new Vector3f(0.8f, 0.2f, 0.2f);      // X-axis (red)
-    private final Vector3f axisZColor = new Vector3f(0.2f, 0.2f, 0.8f);      // Z-axis (blue)
+    private final Vector3f minorColor = new Vector3f(0.34f, 0.34f, 0.38f);   // Fine grid lines
+    private final Vector3f majorColor = new Vector3f(0.48f, 0.48f, 0.53f);   // Every-10th grid lines
+    private final Vector3f axisXColor = new Vector3f(0.86f, 0.34f, 0.36f);   // X-axis (red)
+    private final Vector3f axisZColor = new Vector3f(0.31f, 0.45f, 0.88f);   // Z-axis (blue)
     private final Vector3f fogColor = new Vector3f(0.2f, 0.2f, 0.3f);        // Background fog color (matches viewport background)
 
     /**
@@ -116,10 +117,11 @@ public class GridRenderer {
             shader.setMat4("uViewMatrix", viewMatrix);
             shader.setMat4("uProjectionMatrix", projectionMatrix);
             shader.setFloat("uGridScale", gridScale);
-            shader.setFloat("uGridLineWidth", gridLineWidth);
+            shader.setFloat("uLineWidthPx", lineWidthPx);
             shader.setFloat("uFadeDistance", fadeDistance);
             shader.setFloat("uMaxDistance", maxDistance);
-            shader.setVec3("uPrimaryColor", primaryColor);
+            shader.setVec3("uMinorColor", minorColor);
+            shader.setVec3("uMajorColor", majorColor);
             shader.setVec3("uAxisXColor", axisXColor);
             shader.setVec3("uAxisZColor", axisZColor);
             shader.setVec3("uFogColor", fogColor);
@@ -156,5 +158,45 @@ public class GridRenderer {
 
     public boolean isInitialized() {
         return initialized;
+    }
+
+    // --- Appearance configuration (applied on the next rendered frame) ---
+
+    /** Base cell size in world units. Coarser/finer levels derive from it in powers of ten. */
+    public void setGridScale(float gridScale) {
+        this.gridScale = Math.max(0.001f, gridScale);
+    }
+
+    /** Grid line width in screen pixels, independent of zoom. */
+    public void setLineWidthPx(float lineWidthPx) {
+        this.lineWidthPx = Math.max(0.5f, lineWidthPx);
+    }
+
+    /** Camera-relative distances where the grid starts fading and fully disappears. */
+    public void setFadeRange(float fadeDistance, float maxDistance) {
+        this.fadeDistance = Math.max(0.0f, fadeDistance);
+        this.maxDistance = Math.max(this.fadeDistance + 1.0f, maxDistance);
+    }
+
+    public void setMinorColor(float r, float g, float b) {
+        minorColor.set(r, g, b);
+    }
+
+    public void setMajorColor(float r, float g, float b) {
+        majorColor.set(r, g, b);
+    }
+
+    public void setAxisColors(Vector3f xAxis, Vector3f zAxis) {
+        axisXColor.set(xAxis);
+        axisZColor.set(zAxis);
+    }
+
+    /** Should match the viewport clear color so the horizon fade blends seamlessly. */
+    public void setFogColor(float r, float g, float b) {
+        fogColor.set(r, g, b);
+    }
+
+    public float getGridScale() {
+        return gridScale;
     }
 }

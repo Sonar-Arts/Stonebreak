@@ -25,10 +25,11 @@ public enum ShaderType {
     GIZMO,
 
     /**
-     * Infinite grid shader for procedurally generated grid with distance-based fading and atmospheric fog.
-     * Uniforms: uViewMatrix, uProjectionMatrix, uGridScale, uGridLineWidth,
-     *           uFadeDistance, uMaxDistance, uPrimaryColor, uAxisXColor,
-     *           uAxisZColor, uFogColor
+     * Infinite grid shader with continuous power-of-ten LOD, screen-space anti-aliased
+     * lines, camera-relative distance fading, and atmospheric fog.
+     * Uniforms: uViewMatrix, uProjectionMatrix, uGridScale, uLineWidthPx,
+     *           uFadeDistance, uMaxDistance, uMinorColor, uMajorColor,
+     *           uAxisXColor, uAxisZColor, uFogColor
      */
     INFINITE_GRID,
 

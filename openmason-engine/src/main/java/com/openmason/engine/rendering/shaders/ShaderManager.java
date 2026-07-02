@@ -392,15 +392,19 @@ public class ShaderManager {
             in mat4 fragProj;
 
             uniform float uGridScale;
-            uniform float uGridLineWidth;
+            uniform float uLineWidthPx;
             uniform float uFadeDistance;
             uniform float uMaxDistance;
-            uniform vec3 uPrimaryColor;
+            uniform vec3 uMinorColor;
+            uniform vec3 uMajorColor;
             uniform vec3 uAxisXColor;
             uniform vec3 uAxisZColor;
             uniform vec3 uFogColor;
 
             out vec4 FragColor;
+
+            // A grid level starts fading out once its cells shrink below this many pixels
+            const float MIN_PIXELS_PER_CELL = 4.0;
 
             // Compute depth for proper depth testing
             float computeDepth(vec3 pos) {
@@ -410,60 +414,19 @@ public class ShaderManager {
                 return (ndcDepth + 1.0) / 2.0;
             }
 
-            // Compute multi-scale grid pattern with adaptive LOD like Blender
-            vec4 grid(vec3 fragPos3D, float scale) {
-                vec2 coord = fragPos3D.xz / scale;
-                vec2 derivative = fwidth(coord);
+            float log10(float x) {
+                return log(x) / log(10.0);
+            }
 
-                // Multi-scale grid (Blender-style: 1x, 10x, 100x)
-                vec2 coord1 = coord;                    // Base grid (1x)
-                vec2 coord10 = coord / 10.0;            // 10x larger grid
+            // Anti-aliased coverage of a line whose center is distPx pixels away
+            float lineAA(float distPx, float widthPx) {
+                return 1.0 - smoothstep(widthPx * 0.5, widthPx * 0.5 + 1.0, distPx);
+            }
 
-                // Calculate derivatives for each level
-                vec2 deriv1 = derivative;
-                vec2 deriv10 = derivative / 10.0;
-
-                // Compute grid lines for each scale
-                vec2 grid1 = abs(fract(coord1 - 0.5) - 0.5) / deriv1;
-                vec2 grid10 = abs(fract(coord10 - 0.5) - 0.5) / deriv10;
-
-                float line1 = min(grid1.x, grid1.y);
-                float line10 = min(grid10.x, grid10.y);
-
-                // Convert to line intensity (0 at line, 1 away from line)
-                float gridLine1 = 1.0 - min(line1, 1.0);
-                float gridLine10 = 1.0 - min(line10, 1.0);
-
-                // Fade factors based on cell size
-                // Small cells (1x) fade out when they get too small
-                float fade1 = 1.0 - smoothstep(0.5, 2.0, max(deriv1.x, deriv1.y));
-
-                // Large cells (10x) fade in when small cells fade out
-                float fade10 = 1.0 - smoothstep(2.0, 5.0, max(deriv10.x, deriv10.y));
-
-                // Apply smoothstep to create sharp lines
-                gridLine1 = smoothstep(0.0, 0.15, gridLine1) * fade1;
-                gridLine10 = smoothstep(0.0, 0.15, gridLine10) * fade10;
-
-                // Combine both grid levels
-                // 10x grid is slightly brighter/more opaque
-                float finalGridLine = max(gridLine1 * 0.6, gridLine10);
-
-                vec4 color = vec4(uPrimaryColor, finalGridLine);
-
-                // Add axis lines (X and Z) - always visible, override grid
-                // X-axis (red) - along the X direction at Z=0
-                if (abs(fragPos3D.z) < uGridLineWidth * scale) {
-                    color.rgb = uAxisXColor;
-                    color.a = 1.0;
-                }
-                // Z-axis (blue) - along the Z direction at X=0
-                if (abs(fragPos3D.x) < uGridLineWidth * scale) {
-                    color.rgb = uAxisZColor;
-                    color.a = 1.0;
-                }
-
-                return color;
+            // Coverage of grid lines for one cell size; dudv is world units per pixel
+            float gridAlpha(vec2 uv, float cellSize, vec2 dudv, float widthPx) {
+                vec2 dist = abs(mod(uv + 0.5 * cellSize, cellSize) - 0.5 * cellSize) / dudv;
+                return lineAA(min(dist.x, dist.y), widthPx);
             }
 
             void main() {
@@ -477,41 +440,59 @@ public class ShaderManager {
 
                 vec3 fragPos3D = nearPoint + t * (farPoint - nearPoint);
 
-                // Compute depth
-                float depth = computeDepth(fragPos3D);
-
                 // Clamp depth to valid range instead of discarding
                 // This allows the grid to extend beyond the far plane
-                gl_FragDepth = clamp(depth, 0.0, 1.0);
+                gl_FragDepth = clamp(computeDepth(fragPos3D), 0.0, 1.0);
 
-                // Distance-based fading (centered on world origin where object is located)
-                vec3 worldOrigin = vec3(0.0, 0.0, 0.0);
-                float distanceFromOrigin = length(fragPos3D - worldOrigin);
-                float fadeFactor = 1.0 - smoothstep(uFadeDistance, uMaxDistance, distanceFromOrigin);
+                vec2 uv = fragPos3D.xz;
+                vec2 dudv = max(fwidth(uv), vec2(1e-6)); // world units per pixel
 
-                // Compute grid
-                vec4 gridColor = grid(fragPos3D, uGridScale);
+                // Continuous LOD: pick the power-of-ten cell size that keeps cells at
+                // least MIN_PIXELS_PER_CELL wide, blending smoothly between levels so
+                // the grid subdivides on zoom-in and merges on zoom-out at any scale
+                float lod = max(0.0, log10(length(dudv) * MIN_PIXELS_PER_CELL / uGridScale) + 1.0);
+                float lodFade = fract(lod);
+                float lod0 = uGridScale * pow(10.0, floor(lod)); // finest visible level
+                float lod1 = lod0 * 10.0;
+                float lod2 = lod1 * 10.0;
 
-                // Apply distance fade to alpha
-                gridColor.a *= fadeFactor;
+                float a0 = gridAlpha(uv, lod0, dudv, uLineWidthPx);
+                float a1 = gridAlpha(uv, lod1, dudv, uLineWidthPx);
+                float a2 = gridAlpha(uv, lod2, dudv, uLineWidthPx);
 
-                // Discard only completely empty grid squares (between grid lines)
-                // This allows smooth alpha fade without hard cutoff
-                if (gridColor.a <= 0.0) {
+                // Major lines stay solid; the finest level fades out as levels merge
+                vec4 color;
+                if (a2 > 0.0) {
+                    color = vec4(uMajorColor, a2);
+                } else if (a1 > 0.0) {
+                    color = vec4(mix(uMajorColor, uMinorColor, lodFade), a1);
+                } else {
+                    color = vec4(uMinorColor, a0 * (1.0 - lodFade));
+                }
+
+                // Axis lines on top: slightly wider, anti-aliased in screen space
+                float axisWidthPx = uLineWidthPx + 1.0;
+                float xAxis = lineAA(abs(uv.y) / dudv.y, axisWidthPx); // X axis runs along z = 0
+                float zAxis = lineAA(abs(uv.x) / dudv.x, axisWidthPx); // Z axis runs along x = 0
+                color.rgb = mix(color.rgb, uAxisZColor, zAxis);
+                color.a = max(color.a, zAxis);
+                color.rgb = mix(color.rgb, uAxisXColor, xAxis);
+                color.a = max(color.a, xAxis);
+
+                // Fade relative to the camera (nearPoint sits on the near plane, which
+                // is close enough) so the grid stays visible wherever the camera goes
+                float viewDist = distance(fragPos3D, nearPoint);
+                color.a *= 1.0 - smoothstep(uFadeDistance, uMaxDistance, viewDist);
+
+                if (color.a <= 0.001) {
                     discard;
                 }
 
-                // Apply atmospheric fog - blend grid color with fog color based on distance from origin
-                // Fog starts at fadeDistance and fully covers at maxDistance
-                // This creates a vignette effect around the object at world origin
-                float fogStart = uFadeDistance * 0.5; // Start fog earlier for smoother transition
-                float fogFactor = smoothstep(fogStart, uMaxDistance, distanceFromOrigin);
+                // Atmospheric fog toward the horizon, matched to the viewport background
+                float fogFactor = smoothstep(uFadeDistance * 0.6, uMaxDistance, viewDist);
+                color.rgb = mix(color.rgb, uFogColor, fogFactor);
 
-                // Blend grid color with fog color
-                vec3 finalColor = mix(gridColor.rgb, uFogColor, fogFactor);
-
-                // Output final color with fog applied
-                FragColor = vec4(finalColor, gridColor.a);
+                FragColor = color;
             }
             """;
 
