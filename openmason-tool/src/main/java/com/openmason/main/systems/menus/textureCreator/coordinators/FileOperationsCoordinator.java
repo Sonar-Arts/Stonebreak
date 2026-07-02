@@ -41,6 +41,11 @@ public class FileOperationsCoordinator {
         this.importResolver = importResolver;
     }
 
+    /** The file dialog service backing this coordinator's save/open dialogs. */
+    public FileDialogService getFileDialogService() {
+        return fileDialogService;
+    }
+
     /**
      * Open project file (.OMT).
      */

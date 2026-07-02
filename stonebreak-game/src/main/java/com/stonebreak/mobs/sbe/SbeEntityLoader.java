@@ -170,7 +170,24 @@ public final class SbeEntityLoader {
         float[] vertices  = mesh.vertices()  != null ? mesh.vertices()  : new float[0];
         float[] texCoords = mesh.texCoords() != null ? mesh.texCoords() : new float[0];
         int[]   indices   = mesh.indices()   != null ? mesh.indices()   : new int[0];
-        return new SbeModelGeometry(vertices, texCoords, indices, parts, materials);
+        return new SbeModelGeometry(vertices, texCoords, indices, parts, materials,
+                computeRestMinY(vertices, indices));
+    }
+
+    /**
+     * Lowest model-space Y across all rendered (indexed) vertices. Vertices are
+     * stored in rest pose, so this is the resting height of the model's feet
+     * relative to its origin — the value renderers use to ground-anchor mobs.
+     */
+    private static float computeRestMinY(float[] vertices, int[] indices) {
+        float min = Float.POSITIVE_INFINITY;
+        for (int index : indices) {
+            float y = vertices[index * 3 + 1];
+            if (y < min) {
+                min = y;
+            }
+        }
+        return min == Float.POSITIVE_INFINITY ? 0f : min;
     }
 
     /**

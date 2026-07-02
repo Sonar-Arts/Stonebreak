@@ -6,11 +6,12 @@ import com.openmason.main.systems.menus.textureCreator.rendering.TextureEditorLa
 import com.openmason.main.systems.menus.textureCreator.rendering.TextureEditorStyleScope;
 import com.openmason.main.systems.services.drop.PendingFileDrops;
 import imgui.ImGui;
+import imgui.ImGuiWindowClass;
 import imgui.flag.ImGuiDockNodeFlags;
 import imgui.flag.ImGuiStyleVar;
+import imgui.flag.ImGuiViewportFlags;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
-import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,17 +28,18 @@ public class TextureEditorWindow {
 
     private final TextureCreatorImGui textureCreator;
     private final ImBoolean visible;
-    private final WindowTitleBar titleBar;
     private final TextureEditorLayoutBuilder layoutBuilder;
     private final TextureEditorStyleScope styleScope = new TextureEditorStyleScope();
 
+    // Window class that promotes the popped-out editor to a real, WM-decorated OS
+    // window: clearing NoDecoration lets the window manager (e.g. KWin) draw the
+    // title bar and own drag/resize/minimize/maximize/close — no app-driven
+    // setWindowPos, so no XWayland async-move "earthquake" shake. NoAutoMerge keeps
+    // it a standalone window instead of merging back into the main window.
+    private final ImGuiWindowClass windowClass = new ImGuiWindowClass();
+
     private boolean iniFileSet = false;
     private boolean wasVisible = false;
-
-    // Maximize/restore state
-    private boolean isMaximized = false;
-    private final float[] savedSize = new float[]{1200, 800};
-    private final float[] savedPos = new float[]{100, 100};
 
     /**
      * Create a new TextureEditorWindow.
@@ -49,8 +51,12 @@ public class TextureEditorWindow {
 
         this.textureCreator = textureCreator;
         this.visible = new ImBoolean(false);
-        this.titleBar = new WindowTitleBar(WINDOW_TITLE, true, true);
         this.layoutBuilder = new TextureEditorLayoutBuilder(PreferencesManager.getInstance());
+
+        // Decorated, standalone OS window when popped out (see field comment).
+        windowClass.setViewportFlagsOverrideClear(
+                ImGuiViewportFlags.NoDecoration | ImGuiViewportFlags.NoTaskBarIcon);
+        windowClass.setViewportFlagsOverrideSet(ImGuiViewportFlags.NoAutoMerge);
 
         textureCreator.setWindowedMode(true);
         textureCreator.setOnResetLayout(layoutBuilder::requestReset);
@@ -85,6 +91,9 @@ public class TextureEditorWindow {
         // Minimum size ensures all UI elements remain visible: the fixed left
         // chrome (Color 320 + Tools 48) plus a workable canvas and Layers column
         ImGui.setNextWindowSizeConstraints(1100, 700, Float.MAX_VALUE, Float.MAX_VALUE);
+        // Promote the popped-out window to a WM-decorated, standalone OS window so
+        // the window manager owns drag/resize/min/max/close (fixes the XWayland shake).
+        ImGui.setNextWindowClass(windowClass);
         // NoScrollWithMouse matters: if content ever overflows by a pixel,
         // a scrollable host window lets the wheel nudge the entire editor
         int windowFlags = ImGuiWindowFlags.NoDocking |
@@ -106,19 +115,10 @@ public class TextureEditorWindow {
                     textureCreator.handleKeyboardShortcuts();
                 }
 
-                titleBar.setMaximized(isMaximized);
-                WindowTitleBar.Result result = titleBar.render();
-
-                if (result.minimizeClicked()) {
-                    handleMinimize();
-                }
-                if (result.maximizeClicked()) {
-                    handleMaximize();
-                }
-                if (result.closeClicked()) {
-                    visible.set(false);
-                }
-
+                // No custom title bar: when popped out, the window is WM-decorated
+                // (see windowClass) so the compositor draws the title bar and its
+                // drag/minimize/maximize/close controls. The WM close button flips
+                // the `visible` ImBoolean via ImGui's platform close callback.
                 textureCreator.renderWindowedMenuBar();
                 textureCreator.renderWindowedToolbar();
 
@@ -141,7 +141,6 @@ public class TextureEditorWindow {
 
                 textureCreator.renderWindowedPanels();
                 textureCreator.renderStatusBar();
-                renderResizeGrip();
 
             } catch (Exception e) {
                 logger.error("Error rendering texture creator", e);
@@ -152,77 +151,6 @@ public class TextureEditorWindow {
         ImGui.end();
         ImGui.popStyleVar();
         styleScope.pop();
-    }
-
-    /**
-     * Render resize grip in bottom-right corner.
-     */
-    private void renderResizeGrip() {
-        final float triangleSize = 14.0f;
-
-        float windowX = ImGui.getWindowPosX();
-        float windowY = ImGui.getWindowPosY();
-        float windowWidth = ImGui.getWindowWidth();
-        float windowHeight = ImGui.getWindowHeight();
-
-        float cornerX = windowX + windowWidth;
-        float cornerY = windowY + windowHeight;
-
-        int color = ImGui.getColorU32(0.6f, 0.6f, 0.6f, 0.8f);
-
-        ImGui.getForegroundDrawList().addTriangleFilled(
-            cornerX, cornerY - triangleSize,
-            cornerX - triangleSize, cornerY,
-            cornerX, cornerY,
-            color
-        );
-    }
-
-    /**
-     * Handle minimize - hides window.
-     */
-    private void handleMinimize() {
-        visible.set(false);
-        logger.debug("Texture editor window minimized (hidden)");
-    }
-
-    /**
-     * Handle maximize/restore - toggles between fullscreen and saved size.
-     */
-    private void handleMaximize() {
-        if (isMaximized) {
-            ImGui.setWindowSize(WINDOW_TITLE, savedSize[0], savedSize[1]);
-            ImGui.setWindowPos(WINDOW_TITLE, savedPos[0], savedPos[1]);
-            isMaximized = false;
-            logger.debug("Texture editor window restored to {}x{} at ({}, {})",
-                savedSize[0], savedSize[1], savedPos[0], savedPos[1]);
-        } else {
-            savedSize[0] = ImGui.getWindowWidth();
-            savedSize[1] = ImGui.getWindowHeight();
-            savedPos[0] = ImGui.getWindowPosX();
-            savedPos[1] = ImGui.getWindowPosY();
-
-            long primaryMonitor = GLFW.glfwGetPrimaryMonitor();
-            if (primaryMonitor != 0) {
-                int[] workAreaX = new int[1];
-                int[] workAreaY = new int[1];
-                int[] workAreaWidth = new int[1];
-                int[] workAreaHeight = new int[1];
-                GLFW.glfwGetMonitorWorkarea(primaryMonitor, workAreaX, workAreaY, workAreaWidth, workAreaHeight);
-
-                ImGui.setWindowSize(WINDOW_TITLE, workAreaWidth[0], workAreaHeight[0]);
-                ImGui.setWindowPos(WINDOW_TITLE, workAreaX[0], workAreaY[0]);
-                isMaximized = true;
-                logger.debug("Texture editor window maximized to {}x{} at ({}, {}) - work area",
-                    workAreaWidth[0], workAreaHeight[0], workAreaX[0], workAreaY[0]);
-            } else {
-                imgui.ImGuiViewport mainViewport = ImGui.getMainViewport();
-                ImGui.setWindowSize(WINDOW_TITLE, mainViewport.getSizeX(), mainViewport.getSizeY());
-                ImGui.setWindowPos(WINDOW_TITLE, mainViewport.getPosX(), mainViewport.getPosY());
-                isMaximized = true;
-                logger.warn("Failed to get primary monitor, using viewport fallback");
-            }
-        }
     }
 
     public void show() {

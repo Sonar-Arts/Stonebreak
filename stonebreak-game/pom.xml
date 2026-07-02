@@ -76,7 +76,7 @@
         <!-- Skija (HumbleUI fork) — Skia bindings for next-gen UI rendering -->
         <dependency>
             <groupId>io.github.humbleui</groupId>
-            <artifactId>skija-windows-x64</artifactId>
+            <artifactId>${skija.artifact}</artifactId>
         </dependency>
 
         <!-- LWJGL OpenAL for audio -->

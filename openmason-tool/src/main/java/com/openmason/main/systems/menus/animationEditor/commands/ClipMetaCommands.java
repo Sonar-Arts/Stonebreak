@@ -1,7 +1,10 @@
 package com.openmason.main.systems.menus.animationEditor.commands;
 
+import com.openmason.engine.format.oma.AnimLayerMeta;
 import com.openmason.main.systems.menus.animationEditor.data.AnimationClip;
 import com.openmason.main.systems.menus.textureCreator.commands.Command;
+
+import java.util.List;
 
 /**
  * Undo/redo-able mutations for clip-level metadata (name, fps, duration, loop).
@@ -45,6 +48,56 @@ public final class ClipMetaCommands {
             @Override public void execute() { before = clip.loop(); clip.setLoop(newLoop); }
             @Override public void undo() { clip.setLoop(before); }
             @Override public String getDescription() { return "Set clip loop"; }
+        };
+    }
+
+    // ---------- layering metadata (format v1.1) ----------
+
+    public static Command setLayerType(AnimationClip clip, AnimLayerMeta.LayerType newType) {
+        return new Command() {
+            private AnimLayerMeta.LayerType before;
+            @Override public void execute() { before = clip.layerType(); clip.setLayerType(newType); }
+            @Override public void undo() { clip.setLayerType(before); }
+            @Override public String getDescription() { return "Set layer type " + newType; }
+        };
+    }
+
+    public static Command setMaskParts(AnimationClip clip, List<String> newMask) {
+        return new Command() {
+            private List<String> before;
+            @Override public void execute() {
+                before = List.copyOf(clip.maskParts());
+                clip.setMaskParts(newMask);
+            }
+            @Override public void undo() { clip.setMaskParts(before); }
+            @Override public String getDescription() { return "Set overlay mask"; }
+        };
+    }
+
+    public static Command setFadeIn(AnimationClip clip, float newFadeIn) {
+        return new Command() {
+            private float before;
+            @Override public void execute() { before = clip.fadeInSeconds(); clip.setFadeInSeconds(newFadeIn); }
+            @Override public void undo() { clip.setFadeInSeconds(before); }
+            @Override public String getDescription() { return "Set layer fade-in"; }
+        };
+    }
+
+    public static Command setFadeOut(AnimationClip clip, float newFadeOut) {
+        return new Command() {
+            private float before;
+            @Override public void execute() { before = clip.fadeOutSeconds(); clip.setFadeOutSeconds(newFadeOut); }
+            @Override public void undo() { clip.setFadeOutSeconds(before); }
+            @Override public String getDescription() { return "Set layer fade-out"; }
+        };
+    }
+
+    public static Command setLayerPriority(AnimationClip clip, int newPriority) {
+        return new Command() {
+            private int before;
+            @Override public void execute() { before = clip.layerPriority(); clip.setLayerPriority(newPriority); }
+            @Override public void undo() { clip.setLayerPriority(before); }
+            @Override public String getDescription() { return "Set layer priority"; }
         };
     }
 }

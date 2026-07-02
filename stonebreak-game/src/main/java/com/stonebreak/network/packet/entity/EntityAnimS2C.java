@@ -15,6 +15,16 @@ import io.netty.buffer.ByteBuf;
  * the client maps it back onto the shadow's AI so the renderer, debug wireframe, and debug
  * overlay all reflect the real state. Position is replicated separately via
  * {@link EntityMoveS2C} / {@link EntityTeleportS2C}.
+ *
+ * <p>FUTURE (animation mixing): this packet carries only the single BASE state. When mob
+ * clips gain authored OVERLAY layers ({@code AnimLayerMeta} in the .omanim manifest, e.g. a
+ * wing-flap over walking), replicating them minimally means appending an optional overlay
+ * state string + active flag here (bump {@code ProtocolVersion}, mirror in
+ * {@code ServerEntityHandler}'s anim packet emission and {@code ClientWorldView}'s apply
+ * path, feeding an {@code OverlayAnimState} on the shadow). Remote-player attack overlays
+ * are a separate gap: attack was never replicated at all — that needs a new
+ * {@code PlayerActionS2C(networkId, overlayState, active)} packet driving an
+ * {@code OverlayAnimState} on {@code RemotePlayer}.
  */
 public record EntityAnimS2C(int networkId, String state) implements Packet {
 

@@ -2,6 +2,7 @@ package com.openmason.main.systems.menus.textureCreator.panels.color;
 
 import com.openmason.main.systems.menus.textureCreator.color.ColorUtils;
 import imgui.ImDrawList;
+import com.openmason.main.systems.menus.textureCreator.utils.SafeText;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.flag.ImGuiInputTextFlags;
@@ -31,7 +32,7 @@ public final class HexAlphaControls {
 
         int alpha = state.getAlpha();
         int alphaPercent = (int) ((alpha / 255.0f) * 100);
-        ImGui.textDisabled(String.format("%3d (%3d%%)", alpha, alphaPercent));
+        SafeText.textDisabled(String.format("%3d (%3d%%)", alpha, alphaPercent));
 
         ImGui.sameLine();
         ImGui.dummy(10, 0);

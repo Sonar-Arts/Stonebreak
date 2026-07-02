@@ -117,13 +117,29 @@ public class SettingsManager {
         
         int newWidth = settings.getWindowWidth();
         int newHeight = settings.getWindowHeight();
-        
+
+        // Skip the resize entirely when the size is unchanged. Every "Apply"
+        // funnels through here, and forcing a redundant glfwSetWindowSize causes
+        // a needless compositor round-trip that visibly glitches on Wayland.
+        try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+            java.nio.IntBuffer curW = stack.mallocInt(1);
+            java.nio.IntBuffer curH = stack.mallocInt(1);
+            org.lwjgl.glfw.GLFW.glfwGetWindowSize(windowHandle, curW, curH);
+            if (curW.get(0) == newWidth && curH.get(0) == newHeight) {
+                return;
+            }
+        }
+
         // Apply window size change
         org.lwjgl.glfw.GLFW.glfwSetWindowSize(windowHandle, newWidth, newHeight);
-        
-        // Update game's stored dimensions
-        Game.getInstance().setWindowDimensions(newWidth, newHeight);
-        
+
+        // Re-sync render/UI state from the ACTUAL framebuffer size. The
+        // compositor may clamp/ignore the requested size (or defer the resize
+        // callback), so trusting newWidth/newHeight — which are window
+        // coordinates, not framebuffer pixels — would leave the viewport, UI
+        // layout, and cursor scale stale. Main owns all of that.
+        Main.refreshWindowSize();
+
         System.out.println("Applied window resolution: " + newWidth + "x" + newHeight);
     }
 }

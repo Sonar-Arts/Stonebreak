@@ -214,6 +214,23 @@ public enum EntityType {
     }
 
     /**
+     * Yaw offset (degrees) between world-forward (+Z) and the direction this
+     * type's model was authored facing. The single source of truth for model
+     * facing: all rotation code (navigation steering, {@code faceDirection},
+     * awareness sight cones) derives yaw as
+     * {@code atan2(dir.x, dir.z) + getModelYawOffsetDegrees()}.
+     *
+     * <p>Cow and sheep SBE models face −Z (180° offset); chicken and everything
+     * else face +Z (no offset).
+     */
+    public float getModelYawOffsetDegrees() {
+        return switch (this) {
+            case COW, SHEEP -> 180.0f;
+            default -> 0.0f;
+        };
+    }
+
+    /**
      * Checks if this entity type represents a living creature.
      */
     public boolean isLiving() {

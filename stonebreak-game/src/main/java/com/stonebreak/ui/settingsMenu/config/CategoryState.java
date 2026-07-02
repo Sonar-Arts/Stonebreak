@@ -7,8 +7,8 @@ package com.stonebreak.ui.settingsMenu.config;
 public enum CategoryState {
     // ===== CATEGORIES =====
     GENERAL(0, new SettingType[]{SettingType.RESOLUTION, SettingType.UI_SCALE}),
-    QUALITY(1, new SettingType[]{SettingType.LEAF_TRANSPARENCY, SettingType.WATER_SHADER, SettingType.CLOUDS_ENABLED, SettingType.GOD_RAYS}),
-    PERFORMANCE(2, new SettingType[]{SettingType.RENDER_DISTANCE, SettingType.VSYNC}),
+    QUALITY(1, new SettingType[]{SettingType.LEAF_TRANSPARENCY, SettingType.WATER_SHADER, SettingType.CLOUDS_ENABLED, SettingType.GOD_RAYS, SettingType.SHADOWS}),
+    PERFORMANCE(2, new SettingType[]{SettingType.RENDER_DISTANCE, SettingType.VSYNC, SettingType.MAX_FPS}),
     ADVANCED(3, new SettingType[]{SettingType.ARM_MODEL, SettingType.LOD_ENABLED, SettingType.LOD_DISTANCE}),
     EXTRAS(4, new SettingType[]{SettingType.CROSSHAIR_STYLE, SettingType.CROSSHAIR_SIZE}),
     AUDIO(5, new SettingType[]{SettingType.VOLUME});
@@ -82,7 +82,9 @@ public enum CategoryState {
         BACK(12),
         CLOUDS_ENABLED(13),
         UI_SCALE(14),
-        GOD_RAYS(15);
+        GOD_RAYS(15),
+        MAX_FPS(16),
+        SHADOWS(17);
         
         private final int index;
         

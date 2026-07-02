@@ -95,6 +95,13 @@ public final class OMASerializer {
                 trackRefs,
                 requiredParts
         );
+        manifest.layer = new LayerDTO(
+                clip.layerType().name(),
+                new ArrayList<>(clip.maskParts()),
+                clip.fadeInSeconds(),
+                clip.fadeOutSeconds(),
+                clip.layerPriority()
+        );
         byte[] json = objectMapper.writeValueAsBytes(manifest);
         ZipEntry entry = new ZipEntry(OMAFormat.MANIFEST_FILENAME);
         zos.putNextEntry(entry);
@@ -133,6 +140,8 @@ public final class OMASerializer {
         public List<TrackRef> tracks;
         /** Distinct partIds animated by this clip; derived snapshot used for compatibility checks. */
         public List<String> requiredParts;
+        /** Optional (v1.1) layering metadata; absent in v1.0 files → BASE defaults. */
+        public LayerDTO layer;
 
         public ManifestDTO() {}
 
@@ -147,6 +156,27 @@ public final class OMASerializer {
             this.modelRef = modelRef;
             this.tracks = tracks;
             this.requiredParts = requiredParts;
+        }
+    }
+
+    /** v1.1 layering metadata: BASE/OVERLAY + part-name mask + fades + priority. */
+    public static class LayerDTO {
+        public String type;
+        public List<String> maskParts;
+        // Field initializers double as JSON defaults when a layer object omits them.
+        public float fadeInSeconds = com.openmason.engine.format.oma.AnimLayerMeta.DEFAULT_FADE_SECONDS;
+        public float fadeOutSeconds = com.openmason.engine.format.oma.AnimLayerMeta.DEFAULT_FADE_SECONDS;
+        public int priority;
+
+        public LayerDTO() {}
+
+        public LayerDTO(String type, List<String> maskParts,
+                        float fadeInSeconds, float fadeOutSeconds, int priority) {
+            this.type = type;
+            this.maskParts = maskParts;
+            this.fadeInSeconds = fadeInSeconds;
+            this.fadeOutSeconds = fadeOutSeconds;
+            this.priority = priority;
         }
     }
 

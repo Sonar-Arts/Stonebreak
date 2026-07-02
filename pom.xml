@@ -21,7 +21,10 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <lwjgl.version>3.4.1</lwjgl.version>
         <joml.version>1.10.9</joml.version>
+        <!-- Default to Windows natives; OS-activated profiles below override
+             these for Linux/macOS so the build is cross-platform. -->
         <lwjgl.natives>natives-windows</lwjgl.natives>
+        <skija.artifact>skija-windows-x64</skija.artifact>
         <jackson.version>2.22.0</jackson.version>
         <jackson.version.annotations>2.22</jackson.version.annotations>
         <junit.version>6.1.1</junit.version>
@@ -94,7 +97,7 @@
                  other OSes (skija-linux-x64, skija-macos-arm64, etc.). -->
             <dependency>
                 <groupId>io.github.humbleui</groupId>
-                <artifactId>skija-windows-x64</artifactId>
+                <artifactId>${skija.artifact}</artifactId>
                 <version>${skija.version}</version>
             </dependency>
 
@@ -281,4 +284,74 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- OS-activated profiles select the correct LWJGL/Skija native artifacts.
+         The properties block above provides the Windows defaults; these override
+         them when building/running on Linux or macOS. -->
+    <profiles>
+        <profile>
+            <id>natives-windows</id>
+            <activation>
+                <os><family>windows</family></os>
+            </activation>
+            <properties>
+                <lwjgl.natives>natives-windows</lwjgl.natives>
+                <skija.artifact>skija-windows-x64</skija.artifact>
+            </properties>
+        </profile>
+        <profile>
+            <id>natives-linux</id>
+            <activation>
+                <os>
+                    <family>unix</family>
+                    <name>linux</name>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <properties>
+                <lwjgl.natives>natives-linux</lwjgl.natives>
+                <skija.artifact>skija-linux-x64</skija.artifact>
+            </properties>
+        </profile>
+        <profile>
+            <id>natives-linux-arm64</id>
+            <activation>
+                <os>
+                    <family>unix</family>
+                    <name>linux</name>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <lwjgl.natives>natives-linux-arm64</lwjgl.natives>
+                <skija.artifact>skija-linux-arm64</skija.artifact>
+            </properties>
+        </profile>
+        <profile>
+            <id>natives-macos</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>x86_64</arch>
+                </os>
+            </activation>
+            <properties>
+                <lwjgl.natives>natives-macos</lwjgl.natives>
+                <skija.artifact>skija-macos-x64</skija.artifact>
+            </properties>
+        </profile>
+        <profile>
+            <id>natives-macos-arm64</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <lwjgl.natives>natives-macos-arm64</lwjgl.natives>
+                <skija.artifact>skija-macos-arm64</skija.artifact>
+            </properties>
+        </profile>
+    </profiles>
 </project>

@@ -2,7 +2,7 @@ package com.openmason.main.systems.menus.panes.propertyPane.sections;
 
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
-import com.openmason.main.systems.themes.utils.ImGuiComponents;
+import com.openmason.main.systems.menus.panes.propertyPane.inspector.InspectorRow;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IPanelSection;
 import com.openmason.main.systems.stateHandling.ModelState;
 import imgui.ImGui;
@@ -40,38 +40,28 @@ public class TextureChooserSection implements IPanelSection {
 
     @Override
     public void render() {
-        if (!visible || currentModel == null) {
+        if (!isVisible()) {
             return;
         }
 
-        // Only show for editable models (NEW or OMO_FILE)
-        ModelState.ModelSource source = modelState.getModelSource();
-        if (source != ModelState.ModelSource.NEW && source != ModelState.ModelSource.OMO_FILE) {
-            return;
-        }
-
-        // Use compact blue header box with JetBrains Mono Bold
-        ImGuiComponents.renderCompactSectionHeader("Texture");
-
-        // Display current texture
+        // Current texture row: label | file name + inline Clear.
         Path texturePath = currentModel.getTexturePath();
+        InspectorRow.label("Texture");
         if (texturePath != null) {
-            ImGui.text("Current Texture:");
-            ImGui.sameLine();
-            ImGui.textDisabled(texturePath.getFileName().toString());
-
+            ImGui.text(texturePath.getFileName().toString());
             ImGui.sameLine();
             if (ImGui.smallButton("Clear##ClearTexture")) {
                 handleTextureClear();
             }
         } else {
-            ImGui.textDisabled("No texture selected");
+            ImGui.textDisabled("None");
         }
 
         ImGui.spacing();
 
-        // Choose texture button
-        if (ImGui.button("Choose Texture...")) {
+        // Choose button right-aligned into the field column.
+        InspectorRow.label("");
+        if (ImGui.button("Choose Texture...", -1, 0)) {
             handleTextureChoose();
         }
 
@@ -82,7 +72,12 @@ public class TextureChooserSection implements IPanelSection {
 
     @Override
     public boolean isVisible() {
-        return visible;
+        if (!visible || currentModel == null) {
+            return false;
+        }
+        // Only editable models (NEW or OMO_FILE) can have textures chosen.
+        ModelState.ModelSource source = modelState.getModelSource();
+        return source == ModelState.ModelSource.NEW || source == ModelState.ModelSource.OMO_FILE;
     }
 
     @Override

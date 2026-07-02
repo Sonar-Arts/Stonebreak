@@ -2,6 +2,8 @@ package com.openmason.main.systems.rendering.model.gmr.subrenders.face;
 
 import com.openmason.engine.rendering.model.MeshChangeListener;
 import com.openmason.engine.rendering.model.gmr.topology.MeshTopology;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.MeshOverlayTheme;
+import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.model.GenericModelRenderer;
@@ -24,14 +26,17 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 /**
- * Renders face selection highlights as edge outlines in the 3D viewport.
- * Follows the same pattern as {@link com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer}:
- * dedicated line VBO with interleaved pos+color, VBO color updates for hover/select,
- * GL_LINES draw calls with the BASIC shader.
- *
- * <p>Face boundary edges are extracted from mesh topology. When a face is hovered
- * or selected, its boundary edges are drawn as orange GL_LINES on top of the model,
- * keeping the underlying texture fully visible.
+ * Renders Blender-style face highlights in the 3D viewport:
+ * <ul>
+ *   <li><b>Translucent fills</b> — selected faces are tinted orange, the active
+ *       (last-selected) face white, and the hovered face gets a faint pre-highlight
+ *       (FACE shader, depth writes off)</li>
+ *   <li><b>Boundary outlines</b> — GL_LINES over the fill for crisp face borders
+ *       (same VBO-recolor pattern as {@link com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer})</li>
+ *   <li><b>Face dots</b> — centroid points for every face while in FACE edit mode,
+ *       colored by selection state like Blender's facedots (VERTEX point shader)</li>
+ * </ul>
+ * Colors come from {@link MeshOverlayTheme}.
  *
  * @see FaceHoverDetector
  */
@@ -49,13 +54,17 @@ public class FaceRenderer implements MeshChangeListener {
     private static final int VERTICES_PER_LINE_SEGMENT = 2;
 
     /** Line widths. */
-    private static final float HOVER_LINE_WIDTH = 2.5f;
-    private static final float SELECTED_LINE_WIDTH = 3.0f;
+    private static final float HOVER_LINE_WIDTH = 2.0f;
+    private static final float SELECTED_LINE_WIDTH = 2.0f;
 
-    /** Colors. */
+    /** Colors (Blender default theme, see MeshOverlayTheme). */
     private static final Vector3f DEFAULT_EDGE_COLOR = new Vector3f(0.0f, 0.0f, 0.0f); // invisible (won't be drawn)
-    private static final Vector3f HOVER_EDGE_COLOR = new Vector3f(1.0f, 0.6f, 0.0f);   // orange
-    private static final Vector3f SELECTED_EDGE_COLOR = new Vector3f(1.0f, 0.5f, 0.0f); // bright orange
+    private static final Vector3f HOVER_EDGE_COLOR = MeshOverlayTheme.FACE_HOVER_OUTLINE;
+    private static final Vector3f SELECTED_EDGE_COLOR = MeshOverlayTheme.FACE_SELECT_OUTLINE;
+    private static final Vector3f ACTIVE_EDGE_COLOR = MeshOverlayTheme.FACE_ACTIVE_OUTLINE;
+
+    /** Depth range far value biasing overlays toward the camera on coplanar geometry. */
+    private static final double OVERLAY_DEPTH_RANGE_FAR = 0.99999;
 
     // ── Edge highlight OpenGL resources ──
     private int lineVao = 0;
@@ -67,14 +76,34 @@ public class FaceRenderer implements MeshChangeListener {
     private int[] faceLineCounts = null;
     private int totalLineVertices = 0;
 
+    // ── Translucent fill OpenGL resources (position-only, FACE shader) ──
+    private int fillVao = 0;
+    private int fillVbo = 0;
+    private boolean fillResourcesInitialized = false;
+    private boolean fillDataDirty = true;
+
+    /** Per-face: [startFillVertex, fillVertexCount] in the fill VBO. */
+    private int[] faceFillOffsets = null;
+    private int[] faceFillCounts = null;
+    private int totalFillVertices = 0;
+
+    // ── Face dot OpenGL resources (pos+color, VERTEX point shader) ──
+    private int dotVao = 0;
+    private int dotVbo = 0;
+    private boolean dotResourcesInitialized = false;
+    private boolean dotDataDirty = true;
+    private int dotCount = 0;
+
     // ── State ──
     private boolean initialized = false;
     private boolean enabled = false;
     private int faceCount = 0;
 
-    // Hover / selection
+    // Hover / selection (insertion order preserved so the last-selected face
+    // can be shown as the "active" element, like Blender)
     private int hoveredFaceIndex = -1;
-    private Set<Integer> selectedFaceIndices = new HashSet<>();
+    private Set<Integer> selectedFaceIndices = new LinkedHashSet<>();
+    private int activeFaceIndex = -1;
     private int editingFaceIndex = -1;
 
     // Topology info for hover detection
@@ -113,16 +142,21 @@ public class FaceRenderer implements MeshChangeListener {
             return;
         }
 
-        if (!genericModelRenderer.hasTriangleToFaceMapping()) {
-            logger.warn("GenericModelRenderer has no triangle-to-face mapping");
-            return;
-        }
-
+        // An empty mesh is a benign transient: every model load clears the part
+        // set (empty rebuild) before the real rebuild repopulates it. Only warn
+        // when geometry exists without a mapping — that is the anomalous case.
         triangleCount = genericModelRenderer.getTriangleCount();
         if (triangleCount == 0) {
             faceCount = 0;
             trianglePositions = null;
             originalFaceToTriangles.clear();
+            totalFillVertices = 0;
+            dotCount = 0;
+            return;
+        }
+
+        if (!genericModelRenderer.hasTriangleToFaceMapping()) {
+            logger.warn("GenericModelRenderer has no triangle-to-face mapping");
             return;
         }
 
@@ -168,6 +202,10 @@ public class FaceRenderer implements MeshChangeListener {
 
             // Build line VBO for edge highlighting
             rebuildLineVBO();
+
+            // Fill + dot VBOs are rebuilt lazily on next render
+            fillDataDirty = true;
+            dotDataDirty = true;
 
             logger.debug("Rebuilt face data: {} faces, {} triangles", faceCount, triangleCount);
 
@@ -290,58 +328,354 @@ public class FaceRenderer implements MeshChangeListener {
     }
 
     // =========================================================================
+    // Fill VBO — translucent per-face triangle overlays (Blender face_select)
+    // =========================================================================
+
+    private void ensureFillResources() {
+        if (fillResourcesInitialized) {
+            return;
+        }
+
+        fillVao = glGenVertexArrays();
+        fillVbo = glGenBuffers();
+
+        glBindVertexArray(fillVao);
+        glBindBuffer(GL_ARRAY_BUFFER, fillVbo);
+        glBufferData(GL_ARRAY_BUFFER, 0, GL_DYNAMIC_DRAW);
+
+        // Position only (location 0) — color comes from the FACE shader's uColor/uAlpha
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
+        glEnableVertexAttribArray(0);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+
+        fillResourcesInitialized = true;
+    }
+
+    /**
+     * Build a GL_TRIANGLES VBO with every face's triangles stored contiguously,
+     * so a single face can be filled with one glDrawArrays range.
+     * Sourced from the trianglePositions cache (kept current by vertex-move updates).
+     */
+    private void rebuildFillVBO() {
+        if (trianglePositions == null || faceCount == 0) {
+            totalFillVertices = 0;
+            return;
+        }
+
+        faceFillOffsets = new int[faceCount];
+        faceFillCounts = new int[faceCount];
+        totalFillVertices = 0;
+
+        for (int f = 0; f < faceCount; f++) {
+            List<Integer> tris = originalFaceToTriangles.get(f);
+            int vertCount = (tris != null) ? tris.size() * 3 : 0;
+            faceFillOffsets[f] = totalFillVertices;
+            faceFillCounts[f] = vertCount;
+            totalFillVertices += vertCount;
+        }
+
+        if (totalFillVertices == 0) {
+            return;
+        }
+
+        float[] data = new float[totalFillVertices * 3];
+        int cursor = 0;
+        for (int f = 0; f < faceCount; f++) {
+            List<Integer> tris = originalFaceToTriangles.get(f);
+            if (tris == null) continue;
+            for (int t : tris) {
+                if (t >= 0 && t < triangleCount) {
+                    System.arraycopy(trianglePositions, t * 9, data, cursor, 9);
+                }
+                cursor += 9;
+            }
+        }
+
+        ensureFillResources();
+
+        glBindBuffer(GL_ARRAY_BUFFER, fillVbo);
+        glBufferData(GL_ARRAY_BUFFER, data, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+        logger.debug("Built face fill VBO: {} faces, {} fill vertices", faceCount, totalFillVertices);
+    }
+
+    private void drawFaceFill(int faceIndex) {
+        if (faceFillOffsets == null || faceIndex < 0 || faceIndex >= faceFillOffsets.length) {
+            return;
+        }
+        int count = faceFillCounts[faceIndex];
+        if (count > 0) {
+            glDrawArrays(GL_TRIANGLES, faceFillOffsets[faceIndex], count);
+        }
+    }
+
+    // =========================================================================
+    // Dot VBO — face centroid points (Blender facedots)
+    // =========================================================================
+
+    private void ensureDotResources() {
+        if (dotResourcesInitialized) {
+            return;
+        }
+
+        dotVao = glGenVertexArrays();
+        dotVbo = glGenBuffers();
+
+        glBindVertexArray(dotVao);
+        glBindBuffer(GL_ARRAY_BUFFER, dotVbo);
+        glBufferData(GL_ARRAY_BUFFER, 0, GL_DYNAMIC_DRAW);
+
+        // Interleaved position(3) + color(3) for the VERTEX point shader
+        int stride = 6 * Float.BYTES;
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 3, GL_FLOAT, false, stride, 3 * Float.BYTES);
+        glEnableVertexAttribArray(1);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+
+        dotResourcesInitialized = true;
+    }
+
+    /**
+     * Build one centroid point per face, colored by selection state
+     * (black default, orange selected, white active). Dot index == face index.
+     */
+    private void rebuildDotVBO() {
+        if (faceCount == 0) {
+            dotCount = 0;
+            return;
+        }
+
+        float[] data = new float[faceCount * 6];
+        Vector3f centroid = new Vector3f();
+
+        for (int f = 0; f < faceCount; f++) {
+            if (!computeFaceCentroid(f, centroid)) {
+                centroid.set(0, 0, 0);
+            }
+
+            Vector3f color = resolveFaceDotColor(f);
+            int off = f * 6;
+            data[off]     = centroid.x;
+            data[off + 1] = centroid.y;
+            data[off + 2] = centroid.z;
+            data[off + 3] = color.x;
+            data[off + 4] = color.y;
+            data[off + 5] = color.z;
+        }
+
+        dotCount = faceCount;
+
+        ensureDotResources();
+
+        glBindBuffer(GL_ARRAY_BUFFER, dotVbo);
+        glBufferData(GL_ARRAY_BUFFER, data, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    /**
+     * Compute a face centroid. Prefers the topology's ordered boundary vertices;
+     * falls back to averaging the face's cached triangle vertices.
+     */
+    private boolean computeFaceCentroid(int faceIndex, Vector3f out) {
+        if (genericModelRenderer != null) {
+            MeshTopology topology = genericModelRenderer.getTopology();
+            if (topology != null && faceIndex < topology.getFaceCount()) {
+                var face = topology.getFace(faceIndex);
+                if (face != null) {
+                    int[] vertIndices = face.vertexIndices();
+                    if (vertIndices.length > 0) {
+                        out.set(0, 0, 0);
+                        int used = 0;
+                        for (int vi : vertIndices) {
+                            Vector3f pos = genericModelRenderer.getUniqueVertexPosition(vi);
+                            if (pos != null) {
+                                out.add(pos);
+                                used++;
+                            }
+                        }
+                        if (used > 0) {
+                            out.div(used);
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: average the face's triangle vertices (duplicates weight slightly)
+        List<Integer> tris = originalFaceToTriangles.get(faceIndex);
+        if (tris == null || tris.isEmpty() || trianglePositions == null) {
+            return false;
+        }
+        out.set(0, 0, 0);
+        int used = 0;
+        for (int t : tris) {
+            if (t < 0 || t >= triangleCount) continue;
+            int off = t * 9;
+            for (int v = 0; v < 3; v++) {
+                out.add(trianglePositions[off + v * 3],
+                        trianglePositions[off + v * 3 + 1],
+                        trianglePositions[off + v * 3 + 2]);
+                used++;
+            }
+        }
+        if (used == 0) {
+            return false;
+        }
+        out.div(used);
+        return true;
+    }
+
+    private Vector3f resolveFaceDotColor(int faceIndex) {
+        if (faceIndex == activeFaceIndex && selectedFaceIndices.contains(faceIndex)) {
+            return MeshOverlayTheme.FACE_DOT_ACTIVE;
+        }
+        if (selectedFaceIndices.contains(faceIndex)) {
+            return MeshOverlayTheme.FACE_DOT_SELECT;
+        }
+        return MeshOverlayTheme.FACE_DOT;
+    }
+
+    // =========================================================================
     // Rendering — follows EdgeRenderer pattern exactly
     // =========================================================================
 
     /**
-     * Render face boundary edges for hovered/selected faces.
-     * Uses BASIC shader with VBO color updates, identical to EdgeRenderer.
+     * Render Blender-style face highlights: translucent fills for selected/active/hovered
+     * faces, crisp boundary outlines on top, and face-centroid dots in FACE edit mode.
+     *
+     * @param lineShader  BASIC shader for boundary outlines
+     * @param fillShader  FACE shader (uColor + uAlpha) for translucent fills
+     * @param pointShader VERTEX point shader for face dots
      */
-    public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
-        if (!initialized || !enabled || totalLineVertices == 0) {
+    public void render(ShaderProgram lineShader, ShaderProgram fillShader, ShaderProgram pointShader,
+                       RenderContext context, Matrix4f modelMatrix) {
+        if (!initialized || !enabled || faceCount == 0) {
             return;
         }
 
+        boolean faceMode = EditModeManager.getInstance().isFaceEditingAllowed();
         boolean hasHover = hoveredFaceIndex >= 0 && hoveredFaceIndex < faceCount;
         boolean hasSelection = !selectedFaceIndices.isEmpty();
-        if (!hasHover && !hasSelection) {
+        if (!faceMode && !hasHover && !hasSelection) {
             return;
         }
 
         try {
-            shader.use();
             Matrix4f viewMatrix = context.getCamera().getViewMatrix();
             Matrix4f projectionMatrix = context.getCamera().getProjectionMatrix();
             Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix).mul(modelMatrix);
-            shader.setMat4("uMVPMatrix", mvpMatrix);
-            shader.setFloat("uIntensity", 1.0f);
+
+            if (fillDataDirty) {
+                rebuildFillVBO();
+                fillDataDirty = false;
+            }
+            if (dotDataDirty && faceMode) {
+                rebuildDotVBO();
+                dotDataDirty = false;
+            }
 
             int prevDepthFunc = glGetInteger(GL_DEPTH_FUNC);
             glDepthFunc(GL_LEQUAL);
-            glDepthRange(0.0, 0.99999); // subtle bias to resolve coplanar z-fighting
-            glBindVertexArray(lineVao);
+            glDepthRange(0.0, OVERLAY_DEPTH_RANGE_FAR); // subtle bias to resolve coplanar z-fighting
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            // Selected faces
-            if (hasSelection) {
-                glLineWidth(SELECTED_LINE_WIDTH);
-                for (int faceIdx : selectedFaceIndices) {
-                    if (faceIdx >= 0 && faceIdx < faceCount && faceIdx != hoveredFaceIndex) {
-                        updateFaceEdgeColors(faceIdx, SELECTED_EDGE_COLOR);
-                        drawFaceEdges(faceIdx);
-                        updateFaceEdgeColors(faceIdx, DEFAULT_EDGE_COLOR);
+            // ── Layer 1: translucent fills (depth writes off) ──
+            boolean hasActive = activeFaceIndex >= 0 && activeFaceIndex < faceCount
+                    && selectedFaceIndices.contains(activeFaceIndex);
+            if ((hasSelection || hasHover) && totalFillVertices > 0 && fillResourcesInitialized) {
+                fillShader.use();
+                fillShader.setMat4("uMVPMatrix", mvpMatrix);
+                glDepthMask(false);
+                glBindVertexArray(fillVao);
+
+                if (hasSelection) {
+                    fillShader.setVec3("uColor", MeshOverlayTheme.FACE_SELECT_FILL);
+                    fillShader.setFloat("uAlpha", MeshOverlayTheme.FACE_SELECT_ALPHA);
+                    for (int faceIdx : selectedFaceIndices) {
+                        if (faceIdx >= 0 && faceIdx < faceCount && !(hasActive && faceIdx == activeFaceIndex)) {
+                            drawFaceFill(faceIdx);
+                        }
+                    }
+
+                    // Active face gets Blender's white tint instead of the orange fill
+                    if (hasActive) {
+                        fillShader.setVec3("uColor", MeshOverlayTheme.FACE_ACTIVE_FILL);
+                        fillShader.setFloat("uAlpha", MeshOverlayTheme.FACE_ACTIVE_ALPHA);
+                        drawFaceFill(activeFaceIndex);
                     }
                 }
+
+                // Hover pre-highlight on unselected faces only
+                if (hasHover && !selectedFaceIndices.contains(hoveredFaceIndex)) {
+                    fillShader.setVec3("uColor", MeshOverlayTheme.FACE_HOVER_FILL);
+                    fillShader.setFloat("uAlpha", MeshOverlayTheme.FACE_HOVER_ALPHA);
+                    drawFaceFill(hoveredFaceIndex);
+                }
+
+                glBindVertexArray(0);
+                glDepthMask(true);
             }
 
-            // Hovered face on top
-            if (hasHover) {
-                glLineWidth(HOVER_LINE_WIDTH);
-                updateFaceEdgeColors(hoveredFaceIndex, HOVER_EDGE_COLOR);
-                drawFaceEdges(hoveredFaceIndex);
-                updateFaceEdgeColors(hoveredFaceIndex, DEFAULT_EDGE_COLOR);
+            // ── Layer 2: boundary outlines ──
+            if ((hasSelection || hasHover) && totalLineVertices > 0 && lineResourcesInitialized) {
+                lineShader.use();
+                lineShader.setMat4("uMVPMatrix", mvpMatrix);
+                lineShader.setFloat("uIntensity", 1.0f);
+                glBindVertexArray(lineVao);
+
+                if (hasSelection) {
+                    glLineWidth(SELECTED_LINE_WIDTH);
+                    for (int faceIdx : selectedFaceIndices) {
+                        if (faceIdx >= 0 && faceIdx < faceCount && faceIdx != hoveredFaceIndex) {
+                            Vector3f color = (hasActive && faceIdx == activeFaceIndex)
+                                    ? ACTIVE_EDGE_COLOR : SELECTED_EDGE_COLOR;
+                            updateFaceEdgeColors(faceIdx, color);
+                            drawFaceEdges(faceIdx);
+                            updateFaceEdgeColors(faceIdx, DEFAULT_EDGE_COLOR);
+                        }
+                    }
+                }
+
+                // Hovered face on top
+                if (hasHover) {
+                    glLineWidth(HOVER_LINE_WIDTH);
+                    updateFaceEdgeColors(hoveredFaceIndex, HOVER_EDGE_COLOR);
+                    drawFaceEdges(hoveredFaceIndex);
+                    updateFaceEdgeColors(hoveredFaceIndex, DEFAULT_EDGE_COLOR);
+                }
+
+                glBindVertexArray(0);
             }
 
-            glBindVertexArray(0);
+            // ── Layer 3: face dots (FACE edit mode only, like Blender facedots) ──
+            if (faceMode && dotCount > 0 && dotResourcesInitialized && pointShader != null) {
+                pointShader.use();
+                pointShader.setMat4("uMVPMatrix", mvpMatrix);
+                pointShader.setFloat("uIntensity", 1.0f);
+                pointShader.setFloat("uPointSize", MeshOverlayTheme.FACE_DOT_SIZE);
+                glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
+                glBindVertexArray(dotVao);
+
+                glDrawArrays(GL_POINTS, 0, dotCount);
+
+                // Hovered face's dot drawn slightly larger for affordance
+                if (hasHover) {
+                    pointShader.setFloat("uPointSize", MeshOverlayTheme.FACE_DOT_HOVER_SIZE);
+                    glDrawArrays(GL_POINTS, hoveredFaceIndex, 1);
+                }
+
+                glBindVertexArray(0);
+                glDisable(GL_VERTEX_PROGRAM_POINT_SIZE);
+            }
+
             glDepthRange(0.0, 1.0);
             glDepthFunc(prevDepthFunc);
 
@@ -535,8 +869,31 @@ public class FaceRenderer implements MeshChangeListener {
             glDeleteBuffers(lineVbo);
             lineVbo = 0;
         }
+        if (fillVao != 0) {
+            glDeleteVertexArrays(fillVao);
+            fillVao = 0;
+        }
+        if (fillVbo != 0) {
+            glDeleteBuffers(fillVbo);
+            fillVbo = 0;
+        }
+        if (dotVao != 0) {
+            glDeleteVertexArrays(dotVao);
+            dotVao = 0;
+        }
+        if (dotVbo != 0) {
+            glDeleteBuffers(dotVbo);
+            dotVbo = 0;
+        }
 
         lineResourcesInitialized = false;
+        fillResourcesInitialized = false;
+        dotResourcesInitialized = false;
+        fillDataDirty = true;
+        dotDataDirty = true;
+        totalFillVertices = 0;
+        dotCount = 0;
+        activeFaceIndex = -1;
         faceCount = 0;
         totalLineVertices = 0;
         topologyFacePositions = null;
@@ -561,6 +918,10 @@ public class FaceRenderer implements MeshChangeListener {
 
         // Update line VBO positions for affected face boundary edges
         updateLinePositionsForVertex(uniqueIndex, newPosition);
+
+        // Fill geometry and dot centroids derive from the moved vertex — rebuild lazily
+        fillDataDirty = true;
+        dotDataDirty = true;
     }
 
     @Override
@@ -669,20 +1030,28 @@ public class FaceRenderer implements MeshChangeListener {
 
     public void setSelectedFace(int faceIndex) {
         selectedFaceIndices.clear();
+        activeFaceIndex = -1;
         if (faceIndex >= 0 && faceIndex < faceCount) {
             selectedFaceIndices.add(faceIndex);
+            activeFaceIndex = faceIndex;
         }
+        dotDataDirty = true;
     }
 
     public void updateSelectionSet(Set<Integer> indices) {
         selectedFaceIndices.clear();
+        activeFaceIndex = -1;
         if (indices != null) {
+            // Insertion order from the selection state is preserved (LinkedHashSet),
+            // so the last valid index is the active element, like Blender
             for (Integer index : indices) {
                 if (index >= 0 && index < faceCount) {
                     selectedFaceIndices.add(index);
+                    activeFaceIndex = index;
                 }
             }
         }
+        dotDataDirty = true;
     }
 
     public Set<Integer> getSelectedFaceIndices() {
@@ -695,6 +1064,8 @@ public class FaceRenderer implements MeshChangeListener {
 
     public void clearSelection() {
         selectedFaceIndices.clear();
+        activeFaceIndex = -1;
+        dotDataDirty = true;
     }
 
     public void setEditingFaceIndex(int faceIndex) {

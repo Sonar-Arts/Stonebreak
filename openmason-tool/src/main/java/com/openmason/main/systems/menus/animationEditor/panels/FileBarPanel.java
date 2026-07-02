@@ -2,6 +2,9 @@ package com.openmason.main.systems.menus.animationEditor.panels;
 
 import com.openmason.main.systems.menus.animationEditor.controller.AnimationEditorController;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
+import com.openmason.main.systems.mortar.core.MortarFrameResult;
+import com.openmason.main.systems.mortar.core.MortarRegion;
+import com.openmason.main.systems.mortar.parts.MortarButton;
 import imgui.ImGui;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,12 +13,21 @@ import org.slf4j.LoggerFactory;
  * New / Open / Save / Save As row plus a right-aligned save status. Routes
  * file operations through {@link FileDialogService} so the native picker is
  * used consistently with the rest of the tool.
+ *
+ * <p>Buttons are Mortar-painted when a Skija context exists (Save turns
+ * PRIMARY when there are unsaved changes); the ImGui widgets remain as the
+ * fallback path.
  */
-public final class FileBarPanel {
+public final class FileBarPanel implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(FileBarPanel.class);
 
+    private static final float BUTTON_HEIGHT = 26f;
+    private static final float BUTTON_GAP = 6f;
+    private static final float ROW_HEIGHT = BUTTON_HEIGHT + 2f;
+
     private final AnimationEditorController controller;
+    private final MortarRegion region = new MortarRegion();
     private FileDialogService fileDialogService;
 
     public FileBarPanel(AnimationEditorController controller) {
@@ -27,6 +39,45 @@ public final class FileBarPanel {
     }
 
     public void render() {
+        if (region.isAvailable()) {
+            renderMortar();
+        } else {
+            renderImGuiFallback();
+        }
+        renderStatus();
+    }
+
+    private void renderMortar() {
+        boolean hasPath = controller.state().filePath() != null;
+        boolean canSave = hasPath && controller.state().dirty();
+
+        float[] widths = {52f, 68f, 56f, 84f};
+        String[] ids = {"new", "open", "save", "saveAs"};
+        String[] labels = {"New", "Open...", "Save", "Save As..."};
+
+        float totalWidth = BUTTON_GAP * (widths.length - 1);
+        for (float w : widths) totalWidth += w;
+
+        region.begin(totalWidth, ROW_HEIGHT);
+        float x = 0f;
+        for (int i = 0; i < ids.length; i++) {
+            MortarButton.Variant variant = (i == 2 && canSave)
+                    ? MortarButton.Variant.PRIMARY
+                    : MortarButton.Variant.SECONDARY;
+            region.add(ids[i], x, 1f, widths[i], BUTTON_HEIGHT,
+                    new MortarButton(labels[i], variant));
+            x += widths[i] + BUTTON_GAP;
+        }
+        MortarFrameResult input = region.render();
+        region.update(ImGui.getIO().getDeltaTime());
+
+        if (input.isClicked("new")) controller.newClip();
+        if (input.isClicked("open")) promptOpen();
+        if (input.isClicked("save") && canSave) controller.save();
+        if (input.isClicked("saveAs")) promptSaveAs();
+    }
+
+    private void renderImGuiFallback() {
         if (ImGui.button("New")) {
             controller.newClip();
         }
@@ -36,7 +87,7 @@ public final class FileBarPanel {
         if (ImGui.button("Open...")) {
             promptOpen();
         }
-        AnimUI.tooltip("Load an .oma animation from disk.");
+        AnimUI.tooltip("Load an .omanim animation from disk.");
 
         ImGui.sameLine();
         boolean hasPath = controller.state().filePath() != null;
@@ -52,14 +103,12 @@ public final class FileBarPanel {
         if (ImGui.button("Save As...")) {
             promptSaveAs();
         }
-        AnimUI.tooltip("Save the current clip to a new .oma file.");
-
-        renderStatus();
+        AnimUI.tooltip("Save the current clip to a new .omanim file.");
     }
 
     public void promptOpen() {
         if (fileDialogService == null) {
-            logger.warn("File dialog service not available — cannot open .oma");
+            logger.warn("File dialog service not available — cannot open animation file");
             return;
         }
         fileDialogService.showOpenOMADialog(controller::load);
@@ -67,7 +116,7 @@ public final class FileBarPanel {
 
     public void promptSaveAs() {
         if (fileDialogService == null) {
-            logger.warn("File dialog service not available — cannot save .oma");
+            logger.warn("File dialog service not available — cannot save animation file");
             return;
         }
         fileDialogService.showSaveOMADialog(controller::saveAs);
@@ -85,6 +134,7 @@ public final class FileBarPanel {
             ImGui.dummy(available - textWidth - 8f, 0);
             ImGui.sameLine();
         }
+        ImGui.alignTextToFramePadding();
         ImGui.textDisabled(fullStatus);
     }
 
@@ -93,5 +143,10 @@ public final class FileBarPanel {
         boolean dirty = controller.state().dirty();
         if (!hasPath) return "[unsaved]";
         return dirty ? "[modified]" : "[saved]";
+    }
+
+    @Override
+    public void close() {
+        region.close();
     }
 }

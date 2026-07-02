@@ -1,6 +1,6 @@
 package com.openmason.main.systems.menus.panes.propertyPane.sections;
 
-import com.openmason.main.systems.themes.utils.ImGuiComponents;
+import com.openmason.main.systems.menus.panes.propertyPane.inspector.InspectorRow;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IPanelSection;
 import imgui.ImGui;
 import imgui.type.ImInt;
@@ -29,14 +29,9 @@ public class TextureVariantSection implements IPanelSection {
             return;
         }
 
-        // Use compact blue header box with JetBrains Mono Bold
-        ImGuiComponents.renderCompactSectionHeader("Texture Variants");
-
         if (availableVariants.length > 0) {
-            ImGui.text("Current Variant:");
-
-            // Set fixed combo width to prevent infinite stretching (matches ColorPanel sliders)
-            ImGui.pushItemWidth(200f);
+            InspectorRow.label("Variant");
+            ImGui.setNextItemWidth(-1);
             if (ImGui.combo("##variant", selectedVariantIndex, availableVariants)) {
                 if (selectedVariantIndex.get() >= 0 && selectedVariantIndex.get() < availableVariants.length) {
                     String newVariant = availableVariants[selectedVariantIndex.get()];
@@ -45,11 +40,9 @@ public class TextureVariantSection implements IPanelSection {
                     }
                 }
             }
-            // Restore default width
-            ImGui.popItemWidth();
 
-            ImGui.text("Available: " + availableVariants.length + " variants");
-
+            InspectorRow.label("Available");
+            ImGui.textDisabled(availableVariants.length + " variants");
         } else {
             ImGui.textDisabled("No variants available");
         }

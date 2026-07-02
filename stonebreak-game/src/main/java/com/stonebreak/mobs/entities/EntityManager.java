@@ -184,46 +184,61 @@ public class EntityManager {
     }
     
     /**
-     * Spawns a new entity of the specified type at the given position.
+     * Spawns a new entity of the specified type at the given position, or
+     * returns null when the target chunk isn't loaded yet.
      */
     public Entity spawnEntity(EntityType type, Vector3f position) {
-        // Spawners hand us the ground top face; position.y is the body bottom and the feet
-        // sit at position.y - legHeight, so lift by legHeight to seat the entity on the
-        // surface (matching EntityCollision's groundSurface + legHeight contract).
-        Vector3f groundPos = new Vector3f(position.x, position.y + type.getLegHeight(), position.z);
-        Entity entity = createEntity(type, groundPos);
+        if (!isChunkReadyForSpawn(position)) {
+            return null;
+        }
+        Entity entity = createEntity(type, position);
         if (entity != null) {
             // Check if entity is spawning inside a block and push to open space
-            Vector3f safePosition = findSafeSpawnPosition(groundPos, entity);
+            Vector3f safePosition = findSafeSpawnPosition(position, entity);
             entity.setPosition(safePosition);
-            
+
             synchronized (entitiesToAdd) {
                 entitiesToAdd.add(entity);
             }
         }
         return entity;
     }
-    
+
     /**
-     * Spawns a cow entity with a specific texture variant.
+     * Spawns a cow entity with a specific texture variant, or returns null
+     * when the target chunk isn't loaded yet.
      */
     public Entity spawnCowWithVariant(Vector3f position, String textureVariant) {
-        // Lift by the cow's legHeight so its feet rest on the surface, not inside it
-        // (see spawnEntity above for the position contract).
-        Vector3f groundPos = new Vector3f(position.x, position.y + EntityType.COW.getLegHeight(), position.z);
-        Entity entity = new com.stonebreak.mobs.cow.Cow(world, groundPos, textureVariant);
+        if (!isChunkReadyForSpawn(position)) {
+            return null;
+        }
+        Entity entity = new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
         if (entity != null) {
             // Check if entity is spawning inside a block and push to open space
-            Vector3f safePosition = findSafeSpawnPosition(groundPos, entity);
+            Vector3f safePosition = findSafeSpawnPosition(position, entity);
             entity.setPosition(safePosition);
-            
+
             synchronized (entitiesToAdd) {
                 entitiesToAdd.add(entity);
             }
         }
         return entity;
     }
-    
+
+    /**
+     * Mobs may only spawn into chunks that are resident and fully generated —
+     * placing one on missing or half-baked terrain drops it through the world.
+     * This gates every spawn entry point (spawner cycle, commands, herd/test
+     * helpers); entities restored with their chunk or replicated as network
+     * shadows go through {@link #addEntity} and are exempt.
+     */
+    private boolean isChunkReadyForSpawn(Vector3f position) {
+        var chunk = world.getChunkIfLoaded(
+                Math.floorDiv((int) Math.floor(position.x), 16),
+                Math.floorDiv((int) Math.floor(position.z), 16));
+        return chunk != null && chunk.areFeaturesPopulated();
+    }
+
     /**
      * Adds an existing entity to the manager.
      * This is used for entities created outside the spawn system, like drops.
@@ -248,7 +263,6 @@ public class EntityManager {
                 yield new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
             }
             case CHICKEN -> new com.stonebreak.mobs.chicken.Chicken(world, position);
-            case GOOSE -> new com.stonebreak.mobs.goose.Goose(world, position);
             case SHEEP -> {
                 String[] variants = type.getTextureVariants();
                 String textureVariant = variants[(int)(Math.random() * variants.length)];
@@ -420,9 +434,7 @@ public class EntityManager {
         for (int radius = 1; radius <= maxRadius; radius++) {
             // Check positions in a cube around the original position
             for (int dx = -radius; dx <= radius; dx++) {
-                // Try upward offsets before downward so a tie within the shell lifts the
-                // entity ABOVE the obstruction rather than dropping it into a sub-surface void.
-                for (int dy = radius; dy >= -radius; dy--) {
+                for (int dy = -radius; dy <= radius; dy++) {
                     for (int dz = -radius; dz <= radius; dz++) {
                         // Only check positions on the current radius boundary
                         if (Math.abs(dx) == radius || Math.abs(dy) == radius || Math.abs(dz) == radius) {
@@ -696,17 +708,12 @@ public class EntityManager {
     }
     
     /**
-     * Clears all cow path data for debug visualization.
+     * Clears all mob AI path data for debug visualization.
      */
     public void clearAllCowPaths() {
-        List<Entity> cowEntities = getEntitiesByType(EntityType.COW);
-        for (Entity entity : cowEntities) {
-            if (entity instanceof com.stonebreak.mobs.cow.Cow) {
-                com.stonebreak.mobs.cow.Cow cow = (com.stonebreak.mobs.cow.Cow) entity;
-                com.stonebreak.mobs.cow.CowAI cowAI = cow.getAI();
-                if (cowAI != null) {
-                    cowAI.clearDebugPaths();
-                }
+        for (Entity entity : entities) {
+            if (entity instanceof LivingEntity mob && mob.getAI() != null) {
+                mob.getAI().clearDebugPaths();
             }
         }
     }

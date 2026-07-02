@@ -73,7 +73,7 @@ public class ViewMenuHandler {
         ImGui.separator();
 
         // --- Panels ---
-        if (ImGui.menuItem("Model Browser", "", uiState.getShowModelBrowser().get())) {
+        if (ImGui.menuItem("Project Browser", "", uiState.getShowModelBrowser().get())) {
             uiState.toggleModelBrowser();
         }
 

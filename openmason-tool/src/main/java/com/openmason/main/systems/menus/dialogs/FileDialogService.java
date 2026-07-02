@@ -36,6 +36,9 @@ public class FileDialogService {
      */
     private final Map<String, String> lastDirectoryByType = new ConcurrentHashMap<>();
 
+    /** Supplies the open project's folder (null when no project is loaded). */
+    private java.util.function.Supplier<String> projectDirectorySupplier;
+
     public FileDialogService(StatusService statusService) {
         this.statusService = statusService;
         initializeNFD();
@@ -93,7 +96,17 @@ public class FileDialogService {
      */
     private void showNFDOpenDialog(String statusMessage, String filterName, String filterSpec,
                                    String logPrefix, OpenCallback callback) {
-        showNFDOpenDialogMultiFilter(statusMessage, new String[]{filterName}, new String[]{filterSpec}, logPrefix, callback);
+        showNFDOpenDialogMultiFilter(statusMessage, new String[]{filterName}, new String[]{filterSpec}, null, logPrefix, callback);
+    }
+
+    /**
+     * Generic open dialog with an optional preferred starting directory that
+     * takes precedence over the per-type last-used directory.
+     */
+    private void showNFDOpenDialog(String statusMessage, String filterName, String filterSpec,
+                                   String preferredDirectory, String logPrefix, OpenCallback callback) {
+        showNFDOpenDialogMultiFilter(statusMessage, new String[]{filterName}, new String[]{filterSpec},
+                preferredDirectory, logPrefix, callback);
     }
 
     /**
@@ -101,6 +114,15 @@ public class FileDialogService {
      */
     private void showNFDOpenDialogMultiFilter(String statusMessage, String[] filterNames, String[] filterSpecs,
                                               String logPrefix, OpenCallback callback) {
+        showNFDOpenDialogMultiFilter(statusMessage, filterNames, filterSpecs, null, logPrefix, callback);
+    }
+
+    /**
+     * Generic open dialog with multiple filter support and an optional preferred
+     * starting directory.
+     */
+    private void showNFDOpenDialogMultiFilter(String statusMessage, String[] filterNames, String[] filterSpecs,
+                                              String preferredDirectory, String logPrefix, OpenCallback callback) {
         if (!nfdInitialized) {
             statusService.updateStatus("Error: File dialog not initialized");
             return;
@@ -117,10 +139,13 @@ public class FileDialogService {
                     createFilter(filters, i, stack, filterNames[i], filterSpecs[i]);
                 }
 
-                // Show open dialog — seed the default path with the last directory
+                // Show open dialog — a caller-preferred directory (e.g. the open
+                // project's root) wins; otherwise seed with the last directory
                 // used for any of these filter types, so each format keeps its
                 // own navigation context across sessions.
-                String defaultPath = resolveDefaultDirectory(filterSpecs);
+                String defaultPath = (preferredDirectory != null && new File(preferredDirectory).isDirectory())
+                        ? preferredDirectory
+                        : resolveDefaultDirectory(filterSpecs);
                 int result = NFD_OpenDialog(outPath, filters, defaultPath);
 
                 if (result == NFD_OKAY) {
@@ -149,6 +174,16 @@ public class FileDialogService {
      */
     private void showNFDSaveDialog(String statusMessage, String filterName, String filterSpec,
                                    String defaultFileName, String logPrefix, SaveCallback callback) {
+        showNFDSaveDialog(statusMessage, filterName, filterSpec, defaultFileName, null, logPrefix, callback);
+    }
+
+    /**
+     * Generic save dialog with an optional preferred starting directory that
+     * takes precedence over the per-type last-used directory.
+     */
+    private void showNFDSaveDialog(String statusMessage, String filterName, String filterSpec,
+                                   String defaultFileName, String preferredDirectory,
+                                   String logPrefix, SaveCallback callback) {
         if (!nfdInitialized) {
             statusService.updateStatus("Error: File dialog not initialized");
             return;
@@ -163,9 +198,12 @@ public class FileDialogService {
             try (NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1)) {
                 createFilter(filters, 0, stack, filterName, filterSpec);
 
-                // Show save dialog — seed default path with the last directory
+                // Show save dialog — a caller-preferred directory (e.g. the open
+                // project's folder) wins; otherwise seed with the last directory
                 // used for this file type so each format has its own context.
-                String defaultPath = resolveDefaultDirectory(new String[]{filterSpec});
+                String defaultPath = preferredDirectory != null
+                        ? preferredDirectory
+                        : resolveDefaultDirectory(new String[]{filterSpec});
                 int result = NFD_SaveDialog(outPath, filters, defaultPath, defaultFileName);
 
                 if (result == NFD_OKAY) {
@@ -192,6 +230,28 @@ public class FileDialogService {
         } catch (Exception e) {
             logger.error("Error showing {} dialog", logPrefix, e);
             statusService.updateStatus("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Wire the source of the current project's directory, used to point
+     * model-save dialogs at the folder the open .OMP lives in.
+     */
+    public void setProjectDirectorySupplier(java.util.function.Supplier<String> supplier) {
+        this.projectDirectorySupplier = supplier;
+    }
+
+    /** The open project's folder, or null when none is loaded or it's gone. */
+    private String projectDirectoryOrNull() {
+        if (projectDirectorySupplier == null) {
+            return null;
+        }
+        try {
+            String dir = projectDirectorySupplier.get();
+            return dir != null && !dir.isBlank() && new File(dir).isDirectory() ? dir : null;
+        } catch (Exception e) {
+            logger.debug("Could not resolve project directory: {}", e.getMessage());
+            return null;
         }
     }
 
@@ -299,7 +359,7 @@ public class FileDialogService {
      */
     public void showSaveOMTDialog(SaveOMTCallback callback) {
         showNFDSaveDialog("Saving OMT project...", "Open Mason Texture", "omt",
-                "texture.omt", "Save OMT to file", callback::onSave);
+                "texture.omt", projectDirectoryOrNull(), "Save OMT to file", callback::onSave);
     }
 
     /**
@@ -319,12 +379,25 @@ public class FileDialogService {
     }
 
     /**
+     * Like {@link #showOpenOMODialog(OpenCallback)}, but starts in the open
+     * project's root (where the .OMP lives) when a project is loaded. Used by
+     * the SBE editor so model replacements default to the assets that belong to
+     * the entity's project.
+     */
+    public void showOpenOMOInProjectDialog(OpenCallback callback) {
+        showNFDOpenDialog("Opening OMO model...", "Open Mason Object", "omo",
+                projectDirectoryOrNull(), "Selected OMO file", callback);
+    }
+
+    /**
      * Show save OMO (Open Mason Object) dialog using native file dialog.
+     * Starts in the open project's folder (where the .OMP lives) when a
+     * project is loaded, so models land next to their project by default.
      * @param callback callback to receive selected file path
      */
     public void showSaveOMODialog(SaveOMOCallback callback) {
         showNFDSaveDialog("Saving OMO model...", "Open Mason Object", "omo",
-                "model.omo", "Save OMO to file", callback::onSave);
+                "model.omo", projectDirectoryOrNull(), "Save OMO to file", callback::onSave);
     }
 
     /**
@@ -392,20 +465,31 @@ public class FileDialogService {
 
     /**
      * Show open OMA (Open Mason Animation) dialog using native file dialog.
+     * Starts in the open project's root when a project is loaded (matching
+     * the OMO/OMT dialogs), so animation files default to project assets.
      * @param callback callback to receive selected file path
      */
     public void showOpenOMADialog(OpenCallback callback) {
         showNFDOpenDialog("Opening OMA animation...", "Open Mason Animation", "omanim",
-                "Selected OMA file", callback);
+                projectDirectoryOrNull(), "Selected OMA file", callback);
+    }
+
+    /**
+     * Alias of {@link #showOpenOMADialog(OpenCallback)}, kept for the SBE
+     * editor call site from before the plain OMA dialog was project-rooted.
+     */
+    public void showOpenOMAInProjectDialog(OpenCallback callback) {
+        showOpenOMADialog(callback);
     }
 
     /**
      * Show save OMA (Open Mason Animation) dialog using native file dialog.
+     * Starts in the open project's root when a project is loaded.
      * @param callback callback to receive selected file path
      */
     public void showSaveOMADialog(SaveOMACallback callback) {
         showNFDSaveDialog("Saving OMA animation...", "Open Mason Animation", "omanim",
-                "animation.omanim", "Save OMA to file", callback::onSave);
+                "animation.omanim", projectDirectoryOrNull(), "Save OMA to file", callback::onSave);
     }
 
     /**

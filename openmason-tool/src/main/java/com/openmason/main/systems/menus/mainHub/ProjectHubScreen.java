@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.mainHub;
 
+import com.openmason.main.omConfig;
 import com.openmason.main.systems.LogoManager;
 import com.openmason.main.systems.menus.mainHub.components.HubLandingPanel;
 import com.openmason.main.systems.menus.mainHub.components.HubSidebarNav;
@@ -9,6 +10,7 @@ import com.openmason.main.systems.menus.mainHub.components.TemplatesPanel;
 import com.openmason.main.systems.menus.mainHub.model.NavigationItem;
 import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import com.openmason.main.systems.menus.mainHub.services.HubActionService;
+import com.openmason.main.systems.menus.mainHub.services.ProjectScanService;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.menus.mainHub.services.TemplateService;
 import com.openmason.main.systems.menus.mainHub.state.HubState;
@@ -46,9 +48,11 @@ public class ProjectHubScreen {
     private static final float PANEL_GAP = 10.0f;
 
     private final ThemeManager themeManager;
+    private final omConfig config;
     private final HubState hubState;
     private final HubActionService actionService;
     private final RecentProjectsService recentProjectsService;
+    private final ProjectScanService projectScanService;
 
     private final HubSidebarNav sidebarNav;
     private final HubLandingPanel landingPanel;
@@ -58,29 +62,58 @@ public class ProjectHubScreen {
     /** Animated width of the contextual preview panel (0 = hidden). */
     private final Smoother previewWidth = new Smoother(16.0f, 0.0f);
 
-    public ProjectHubScreen(ThemeManager themeManager) {
+    public ProjectHubScreen(ThemeManager themeManager, omConfig config) {
         if (themeManager == null) {
             throw new IllegalArgumentException("ThemeManager cannot be null");
         }
+        if (config == null) {
+            throw new IllegalArgumentException("omConfig cannot be null");
+        }
         this.themeManager = themeManager;
+        this.config = config;
         LogoManager logoManager = LogoManager.getInstance();
 
         this.hubState = new HubState();
 
         TemplateService templateService = new TemplateService();
         this.recentProjectsService = new RecentProjectsService();
+        this.projectScanService = new ProjectScanService(config::getProjectsBaseFolder);
         this.actionService = new HubActionService();
 
         this.sidebarNav = new HubSidebarNav(themeManager, hubState, logoManager);
-        this.recentProjectsPanel = new RecentProjectsPanel(themeManager, hubState, recentProjectsService, actionService);
+        this.sidebarNav.setBaseFolderControl(
+                () -> config.getProjectsBaseFolder().toString(),
+                this::changeBaseFolder);
+        this.recentProjectsPanel = new RecentProjectsPanel(themeManager, hubState,
+                recentProjectsService, projectScanService, actionService);
         TemplatesPanel templatesPanel = new TemplatesPanel(themeManager, hubState, templateService);
         this.landingPanel = new HubLandingPanel(hubState, recentProjectsPanel, templatesPanel);
         this.previewPanel = new PreviewPanel(themeManager, hubState, logoManager, actionService, recentProjectsService);
+        this.previewPanel.setDefaultProjectDirectory(() -> config.getProjectsBaseFolder().toString());
+        this.previewPanel.setOnProjectsChanged(recentProjectsPanel::invalidateProjects);
 
         // Share dialog instances so popups render once at window scope.
         this.previewPanel.setDialogs(recentProjectsPanel.getRenameDialog(), recentProjectsPanel.getDeleteDialog());
 
         logger.info("Project Hub Screen initialized (MortarUI)");
+    }
+
+    /** Called when the hub becomes the visible screen: rescan the base folder. */
+    public void onShown() {
+        recentProjectsPanel.invalidateProjects();
+    }
+
+    /** Sidebar "Change" action: pick a new base projects folder and rescan. */
+    private void changeBaseFolder() {
+        actionService.pickFolder(path -> {
+            if (path == null || path.isBlank()) {
+                return;
+            }
+            config.setProjectsBaseFolder(path);
+            config.saveConfiguration();
+            recentProjectsPanel.invalidateProjects();
+            logger.info("Base projects folder changed to {}", path);
+        });
     }
 
     public void render() {

@@ -9,77 +9,59 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.mobs.entities.AnimationController;
-import com.stonebreak.mobs.entities.ai.AwarenessController;
+import com.stonebreak.mobs.entities.ai.PassiveMobAI;
 import com.stonebreak.audio.CowSounds;
 
 /**
  * Cow mob implementation - the first living entity in Stonebreak.
- * Provides basic cow behavior including wandering, idle states, and player interaction.
+ * Behaviour comes from the shared {@link PassiveMobAI} framework; this class
+ * adds the cow-specific content: milk system, sounds, and stealth awareness.
  */
 public class Cow extends LivingEntity {
-    // Cow-specific constants from our design (defined in EntityType.COW)
-    
-    // Behavior properties
-    private float wanderTimer;
-    private float idleTimer;
-    private boolean isGrazing;
-    
-    
+
+    /** Cow personality: even idle/wander split with occasional grazing; flees when hit. */
+    private static final PassiveMobAI.Config AI_CONFIG = new PassiveMobAI.Config(
+            3.0f, 8.0f,          // state duration min/max
+            3.0f, 8.0f,          // wander distance min/max
+            0.8f, 180.0f,        // move speed multiplier, rotation speed (deg/s)
+            0.4f, 0.4f, 0.2f,    // idle / wander / graze weights
+            0.0f, 0.0f,          // no wing-flap gesture
+            2.2f, 0.8f,          // hop boost: the slow, long-bodied cow needs the mid-air drive to land ledges from a standstill
+            PassiveMobAI.DamageResponse.FLEE);
+
     // Milk system (basic implementation)
     private boolean canBeMilked;
     private float milkRegenTimer;
     private static final float MILK_REGEN_TIME = 300.0f; // 5 minutes
-    
-    // AI system
-    private final CowAI cowAI;
-    
-    // Texture variant system
-    private final String textureVariant;
-    
-    // Animation system — drives the clip clock for the SBE cow renderer.
-    private final AnimationController animationController;
 
     // Sound system
     private final CowSounds cowSounds;
-    
+
     /**
      * Creates a new cow at the specified position with default texture variant.
      */
     public Cow(World world, Vector3f position) {
         this(world, position, "default");
     }
-    
+
     /**
      * Creates a new cow at the specified position with a specific texture variant.
      */
     public Cow(World world, Vector3f position, String textureVariant) {
         super(world, position, EntityType.COW);
-        
-        // Initialize texture variant
+
         this.textureVariant = textureVariant != null ? textureVariant : "default";
-        
-        // Initialize cow-specific properties
-        this.wanderTimer = 0.0f;
-        this.idleTimer = 0.0f;
-        this.isGrazing = false;
-        
-        
+
         // Initialize milk system
         this.canBeMilked = true;
         this.milkRegenTimer = 0.0f;
-        
-        // Initialize AI
-        this.cowAI = new CowAI(this);
 
-        // Stealth awareness: cows detect and react to a stealthed player (demo of the universal
-        // AwarenessController). Investigate/pursue overrides passive wander when not UNAWARE.
-        this.awareness = new AwarenessController(this);
-        
-        // Initialize animation system
-        this.animationController = new AnimationController(this);
+        // Shared passive-mob AI with cow tuning. (No AwarenessController: the
+        // investigate/pursue drive made cows slowly gravitate toward the player;
+        // awareness stays reserved for hostile mobs.)
+        this.mobAI = new PassiveMobAI(this, AI_CONFIG);
 
-        // Initialize sound system
+        // Sound system
         this.cowSounds = new CowSounds(world);
 
         // Set interaction range for cows
@@ -88,30 +70,19 @@ public class Cow extends LivingEntity {
         // Set faster turning speed for cows
         this.turnSpeed = 180.0f; // Faster rotation for more responsive movement
     }
-    
+
     /**
-     * Updates the cow's behavior, AI, and state.
+     * Updates the cow's behavior, AI, and state. AI and the animation clock run
+     * in {@code LivingEntity.update}; only cow-specific systems live here.
      */
     @Override
     public void update(float deltaTime) {
-        // Call parent update first
         super.update(deltaTime);
-        
-        // Update cow-specific systems
+
         updateMilkSystem(deltaTime);
-        updateBehaviorTimers(deltaTime);
-
-        // Stealth awareness drives movement when SUSPICIOUS/ALERTED; otherwise run passive AI.
-        awareness.update(deltaTime);
-        if (!awareness.drive(deltaTime)) {
-            cowAI.update(deltaTime);
-        }
-
-        // Advance the animation clock; the SBE cow renderer samples clips from it.
-        animationController.updateAnimations(deltaTime);
         cowSounds.updateSounds(position, velocity, isOnGround());
     }
-    
+
     /**
      * Updates the milk regeneration system.
      */
@@ -124,43 +95,31 @@ public class Cow extends LivingEntity {
             }
         }
     }
-    
-    
+
     /**
-     * Updates behavior-related timers.
-     */
-    private void updateBehaviorTimers(float deltaTime) {
-        wanderTimer += deltaTime;
-        idleTimer += deltaTime;
-    }
-    
-    /**
-     * Renders the cow using a basic model (placeholder implementation).
+     * Rendering is handled by EntityRenderer in EntityManager.
      */
     @Override
     public void render(Renderer renderer) {
-        // Rendering handled by EntityRenderer in EntityManager
+        // Rendering handled by EntityRenderer
     }
-    
-    /**
-     * Gets the cow's entity type.
-     */
+
     @Override
     public EntityType getType() {
         return EntityType.COW;
     }
-    
+
     /**
      * Handles player interaction with the cow.
      */
     @Override
     public void onInteract(Player player) {
         if (!isAlive()) return;
-        
+
         // Basic interaction - petting the cow
-        
+
     }
-    
+
     /**
      * Handles damage to the cow.
      */
@@ -169,15 +128,15 @@ public class Cow extends LivingEntity {
         if (source == DamageSource.PLAYER) {
             applyPlayerKnockback();
         }
-        cowAI.onDamaged(damage);
+        mobAI.onDamaged(damage);
     }
-    
+
     /**
      * Handles cow death and item drops.
      */
     @Override
     protected void onDeath() {
-        cowAI.cleanup();
+        mobAI.cleanup();
         cowSounds.reset();
         for (ItemStack drop : getDrops()) {
             DropUtil.createItemDrop(world, getPosition(), drop);
@@ -194,51 +153,6 @@ public class Cow extends LivingEntity {
 
     @Override
     public int getXpReward() { return 5; }
-    
-    /**
-     * Sets the cow's grazing state.
-     */
-    public void setGrazing(boolean grazing) {
-        this.isGrazing = grazing;
-    }
-    
-    
-    /**
-     * Makes the cow go idle.
-     */
-    public void startIdling() {
-        this.idleTimer = 0.0f;
-        this.velocity.set(0, velocity.y, 0); // Stop horizontal movement
-    }
-    
-    
-    /**
-     * Gets the cow's AI controller.
-     */
-    public CowAI getAI() {
-        return cowAI;
-    }
-    
-    /**
-     * Gets the cow's animation controller.
-     */
-    public AnimationController getAnimationController() {
-        return animationController;
-    }
-
-    /** Client shadow: apply the server's replicated animation state to the (otherwise frozen) AI. */
-    @Override
-    public void applyNetworkState(String sbeStateName) {
-        if (cowAI != null) {
-            cowAI.setState(com.stonebreak.mobs.sbe.CowStateMapping.behaviorState(sbeStateName));
-        }
-    }
-
-    /** Client shadow: keep the animation clock running so the current clip actually plays. */
-    @Override
-    public void updateClientVisuals(float deltaTime) {
-        animationController.updateAnimations(deltaTime);
-    }
 
     public boolean isCanBeMilked() { return canBeMilked; }
     public void setCanBeMilked(boolean canBeMilked) { this.canBeMilked = canBeMilked; }
@@ -246,36 +160,9 @@ public class Cow extends LivingEntity {
     public void setMilkRegenTimer(float timer) { this.milkRegenTimer = timer; }
 
     /**
-     * Gets the cow's texture variant.
-     */
-    public String getTextureVariant() {
-        return textureVariant;
-    }
-
-    /**
      * Gets the cow's sound system.
      */
     public CowSounds getCowSounds() {
         return cowSounds;
     }
-    
-    
-    /**
-     * Makes the cow jump by applying upward velocity.
-     * Jump height is calibrated to clear one block like the player.
-     */
-    public void jump() {
-        if (isOnGround()) {
-            Vector3f velocity = getVelocity();
-            // Jump velocity matches player's JUMP_FORCE exactly for consistent one-block jumps
-            velocity.y = 8.5f; // Same as player's JUMP_FORCE for proper one-block height
-            setVelocity(velocity);
-            // Immediately set onGround to false to prevent multiple jumps (same as player)
-            setOnGround(false);
-        }
-    }
-    
-    
-    
-    
 }

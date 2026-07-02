@@ -9,7 +9,8 @@ package com.openmason.main.systems.menus.animationEditor.io;
  */
 public final class OMAFormat {
 
-    public static final String FORMAT_VERSION = "1.0";
+    /** v1.1 added the optional manifest {@code layer} block (animation mixing). */
+    public static final String FORMAT_VERSION = "1.1";
     // .oma collides with Sony OpenMG Audio on Windows (file-association hijack); .omanim is unambiguous.
     public static final String FILE_EXTENSION = ".omanim";
     public static final String MANIFEST_FILENAME = "manifest.json";

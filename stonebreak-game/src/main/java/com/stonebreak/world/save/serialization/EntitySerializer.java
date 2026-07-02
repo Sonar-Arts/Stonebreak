@@ -247,15 +247,7 @@ public class EntitySerializer {
             cow.setCanBeMilked(cowData.canBeMilked());
             cow.setMilkRegenTimer(cowData.getMilkRegenTimer());
             cow.setAge(entityData.getAge());
-            String aiState = readAiState(entityData);
-            if (aiState != null && cow.getAI() != null) {
-                try {
-                    cow.getAI().setState(
-                        com.stonebreak.mobs.cow.CowAI.CowBehaviorState.valueOf(aiState));
-                } catch (IllegalArgumentException ignored) {
-                    // Unknown/renamed state — leave the AI at its constructor default.
-                }
-            }
+            applyAiState(cow, readAiState(entityData));
             return cow;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to deserialize Cow", e);
@@ -283,15 +275,7 @@ public class EntitySerializer {
             chicken.setMaxHealth(entityData.getMaxHealth());
             chicken.setAlive(entityData.isAlive());
             chicken.setAge(entityData.getAge());
-            String aiState = readAiState(entityData);
-            if (aiState != null && chicken.getAI() != null) {
-                try {
-                    chicken.getAI().setState(
-                        com.stonebreak.mobs.chicken.ChickenAI.ChickenBehaviorState.valueOf(aiState));
-                } catch (IllegalArgumentException ignored) {
-                    // Unknown/renamed state — leave the AI at its constructor default.
-                }
-            }
+            applyAiState(chicken, readAiState(entityData));
             return chicken;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to deserialize Chicken", e);
@@ -350,19 +334,28 @@ public class EntitySerializer {
             sheep.setMaxHealth(entityData.getMaxHealth());
             sheep.setAlive(entityData.isAlive());
             sheep.setAge(entityData.getAge());
-            String aiState = readAiState(entityData);
-            if (aiState != null && sheep.getAI() != null) {
-                try {
-                    sheep.getAI().setState(
-                        com.stonebreak.mobs.sheep.SheepAI.SheepBehaviorState.valueOf(aiState));
-                } catch (IllegalArgumentException ignored) {
-                    // Unknown/renamed state — leave the AI at its constructor default.
-                }
-            }
+            applyAiState(sheep, readAiState(entityData));
             return sheep;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to deserialize Sheep", e);
             return null;
+        }
+    }
+
+    /**
+     * Restores a persisted AI state name onto any mob using the shared
+     * {@link com.stonebreak.mobs.entities.ai.MobBehaviorState} vocabulary.
+     * Unknown/renamed states leave the AI at its constructor default.
+     */
+    private static void applyAiState(com.stonebreak.mobs.entities.LivingEntity mob, String aiState) {
+        if (aiState == null || mob.getAI() == null) {
+            return;
+        }
+        try {
+            mob.getAI().setState(
+                com.stonebreak.mobs.entities.ai.MobBehaviorState.valueOf(aiState));
+        } catch (IllegalArgumentException ignored) {
+            // Unknown/renamed state — leave the AI at its constructor default.
         }
     }
 }

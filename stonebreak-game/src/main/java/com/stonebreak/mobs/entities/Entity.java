@@ -106,25 +106,16 @@ public abstract class Entity {
      */
     protected void applyPhysics(float deltaTime) {
         age += deltaTime;
-        
-        // Apply gravity if not on ground
-        if (!onGround && !inWater) {
-            velocity.y += GRAVITY * deltaTime;
-        }
-        
+
         // Apply air resistance
         velocity.mul(AIR_RESISTANCE);
-        
-        // Update position based on velocity
-        Vector3f movement = new Vector3f(velocity).mul(deltaTime);
-        position.add(movement);
-        
+
         // Apply friction if on ground
         if (onGround) {
             velocity.x *= FRICTION;
             velocity.z *= FRICTION;
         }
-        
+
         // Stop very small movements
         if (Math.abs(velocity.x) < 0.01f) velocity.x = 0;
         if (Math.abs(velocity.z) < 0.01f) velocity.z = 0;

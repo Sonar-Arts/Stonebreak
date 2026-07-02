@@ -238,6 +238,7 @@ public final class SkijaSettingsRenderer {
                 || type == CategoryState.SettingType.CROSSHAIR_SIZE
                 || type == CategoryState.SettingType.RENDER_DISTANCE
                 || type == CategoryState.SettingType.LOD_DISTANCE
+                || type == CategoryState.SettingType.MAX_FPS
                 || type == CategoryState.SettingType.UI_SCALE;
     }
 
@@ -252,10 +253,12 @@ public final class SkijaSettingsRenderer {
             case WATER_SHADER     -> state.getWaterShaderButton();
             case CLOUDS_ENABLED   -> state.getCloudsButton();
             case GOD_RAYS         -> state.getGodRaysButton();
+            case SHADOWS          -> state.getShadowsButton();
             case RENDER_DISTANCE  -> state.getRenderDistanceSlider();
             case LOD_DISTANCE     -> state.getLodDistanceSlider();
             case LOD_ENABLED      -> state.getLodEnabledButton();
             case VSYNC            -> state.getVsyncButton();
+            case MAX_FPS          -> state.getMaxFpsSlider();
             case UI_SCALE         -> state.getUiScaleSlider();
             default -> null;
         };

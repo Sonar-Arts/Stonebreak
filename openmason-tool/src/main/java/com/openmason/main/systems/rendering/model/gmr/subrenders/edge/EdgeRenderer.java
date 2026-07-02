@@ -3,6 +3,7 @@ package com.openmason.main.systems.rendering.model.gmr.subrenders.edge;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.engine.rendering.model.MeshChangeListener;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.MeshOverlayTheme;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.engine.rendering.model.gmr.topology.MeshEdge;
 import com.openmason.engine.rendering.model.gmr.topology.MeshTopology;
@@ -16,7 +17,7 @@ import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 import static org.lwjgl.opengl.GL11.*;
@@ -36,8 +37,8 @@ import static org.lwjgl.opengl.GL30.*;
  * <p><b>Key Features:</b>
  * <ul>
  *   <li>Renders edges as GL_LINES with configurable width and colors</li>
- *   <li>Hover detection with orange highlight feedback</li>
- *   <li>Selection support with white highlight feedback</li>
+ *   <li>Blender-style colors ({@link MeshOverlayTheme}): near-black wire, orange
+ *       selection, white active (last-selected) edge, light hover pre-highlight</li>
  *   <li>Edge-to-vertex mapping for precise position updates</li>
  *   <li>Index-based edge updates via topology adjacency</li>
  *   <li>Integrates with viewport input controllers for interaction</li>
@@ -119,11 +120,17 @@ public class EdgeRenderer implements MeshChangeListener {
     /** Line width for edge rendering in pixels. */
     private float lineWidth = DEFAULT_LINE_WIDTH;
 
-    /** Default edge color (black). */
-    private final Vector3f edgeColor = new Vector3f(0.0f, 0.0f, 0.0f);
+    /** Default edge color (Blender wire_edit: near-black). */
+    private final Vector3f edgeColor = MeshOverlayTheme.EDGE;
 
-    /** Hover edge color (orange, matching vertex renderer). */
-    private final Vector3f hoverEdgeColor = new Vector3f(1.0f, 0.6f, 0.0f);
+    /** Hover edge pre-highlight color. */
+    private final Vector3f hoverEdgeColor = MeshOverlayTheme.EDGE_HOVER;
+
+    /** Selected edge color (Blender edge_select: orange). */
+    private final Vector3f selectedEdgeColor = MeshOverlayTheme.EDGE_SELECT;
+
+    /** Active edge color — last selected (Blender: white). */
+    private final Vector3f activeEdgeColor = MeshOverlayTheme.EDGE_ACTIVE;
 
     // Hover state
     /** Index of currently hovered edge, or -1 if no edge is hovered. */
@@ -132,11 +139,14 @@ public class EdgeRenderer implements MeshChangeListener {
     /** Cached edge positions for hover detection [x1,y1,z1, x2,y2,z2, ...]. */
     private float[] edgePositions = null;
 
-    // Selection state - supports multi-selection
+    // Selection state - supports multi-selection (insertion order preserved so the
+    // last-selected edge can be shown as the "active" element, like Blender)
     /** Index of currently selected edge, or -1 if no edge is selected (backward compat). */
     private int selectedEdgeIndex = NO_EDGE_SELECTED;
     /** Set of selected edge indices for multi-selection. */
-    private Set<Integer> selectedEdgeIndices = new HashSet<>();
+    private Set<Integer> selectedEdgeIndices = new LinkedHashSet<>();
+    /** Last-selected edge, rendered white. */
+    private int activeEdgeIndex = NO_EDGE_SELECTED;
 
     // Topology index for O(1) adjacency queries (replaces edgeToVertexMapping)
     private MeshTopology topology = null;
@@ -356,10 +366,12 @@ public class EdgeRenderer implements MeshChangeListener {
             int selectedCount = 0;
             int[] selectedIndices = new int[selectedEdgeIndices.size()];
 
-            // Partition edges into normal and selected (excluding hovered)
+            // Partition edges into normal and selected (excluding hovered and active)
+            boolean hasActive = activeEdgeIndex >= 0 && activeEdgeIndex < edgeCount
+                    && selectedEdgeIndices.contains(activeEdgeIndex);
             for (int i = 0; i < edgeCount; i++) {
-                if (i == hoveredEdgeIndex) {
-                    continue; // Render hovered last
+                if (i == hoveredEdgeIndex || (hasActive && i == activeEdgeIndex)) {
+                    continue; // Render hovered/active last
                 }
                 if (selectedEdgeIndices.contains(i)) {
                     selectedIndices[selectedCount++] = i;
@@ -371,14 +383,22 @@ public class EdgeRenderer implements MeshChangeListener {
             // Batch 1: Render all normal edges in one draw call per contiguous range
             renderEdgeBatch(normalIndices, normalCount);
 
-            // Batch 2: Render selected edges with white highlighting
+            // Batch 2: Render selected edges with orange highlighting (Blender edge_select)
             if (selectedCount > 0) {
-                updateEdgeColors(selectedIndices, selectedCount, new Vector3f(1.0f, 1.0f, 1.0f));
+                updateEdgeColors(selectedIndices, selectedCount, selectedEdgeColor);
                 renderEdgeBatch(selectedIndices, selectedCount);
                 updateEdgeColors(selectedIndices, selectedCount, edgeColor);
             }
 
-            // Batch 3: Render hovered edge with orange highlighting (on top)
+            // Batch 3: Render active (last-selected) edge in white, like Blender
+            if (hasActive && activeEdgeIndex != hoveredEdgeIndex) {
+                int[] activeIndex = new int[] { activeEdgeIndex };
+                updateEdgeColors(activeIndex, 1, activeEdgeColor);
+                renderEdgeBatch(activeIndex, 1);
+                updateEdgeColors(activeIndex, 1, edgeColor);
+            }
+
+            // Batch 4: Render hovered edge with pre-highlight color (on top)
             if (hoveredEdgeIndex >= 0 && hoveredEdgeIndex < edgeCount) {
                 int[] hoveredIndex = new int[] { hoveredEdgeIndex };
                 updateEdgeColors(hoveredIndex, 1, hoverEdgeColor);
@@ -591,6 +611,7 @@ public class EdgeRenderer implements MeshChangeListener {
         hoveredEdgeIndex = NO_EDGE_SELECTED;
         selectedEdgeIndex = NO_EDGE_SELECTED;
         selectedEdgeIndices.clear();
+        activeEdgeIndex = NO_EDGE_SELECTED;
 
         logger.debug("EdgeRenderer rebuilt from topology: {} edges", edgeCount);
     }
@@ -686,10 +707,14 @@ public class EdgeRenderer implements MeshChangeListener {
      */
     public void updateSelectionSet(Set<Integer> indices) {
         selectedEdgeIndices.clear();
+        activeEdgeIndex = NO_EDGE_SELECTED;
         if (indices != null) {
+            // Insertion order from the selection state is preserved (LinkedHashSet),
+            // so the last valid index is the active element, like Blender
             for (Integer index : indices) {
                 if (index >= 0 && index < edgeCount) {
                     selectedEdgeIndices.add(index);
+                    activeEdgeIndex = index;
                 }
             }
         }
@@ -709,6 +734,7 @@ public class EdgeRenderer implements MeshChangeListener {
         if (result != null) {
             this.selectedEdgeIndex = result.getSelectedIndex();
             selectedEdgeIndices.clear();
+            activeEdgeIndex = NO_EDGE_SELECTED;
         }
     }
 

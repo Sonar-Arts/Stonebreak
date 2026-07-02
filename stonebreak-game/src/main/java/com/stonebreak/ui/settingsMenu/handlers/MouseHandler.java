@@ -36,6 +36,7 @@ public final class MouseHandler {
         stateManager.getCrosshairSizeSlider().handleDrag((float) mouseX);
         stateManager.getRenderDistanceSlider().handleDrag((float) mouseX);
         stateManager.getLodDistanceSlider().handleDrag((float) mouseX);
+        stateManager.getMaxFpsSlider().handleDrag((float) mouseX);
         stateManager.getUiScaleSlider().handleDrag((float) mouseX);
     }
 
@@ -47,6 +48,7 @@ public final class MouseHandler {
             stateManager.getCrosshairSizeSlider().stopDragging();
             stateManager.getRenderDistanceSlider().stopDragging();
             stateManager.getLodDistanceSlider().stopDragging();
+            stateManager.getMaxFpsSlider().stopDragging();
             stateManager.getUiScaleSlider().stopDragging();
         }
     }
@@ -69,6 +71,7 @@ public final class MouseHandler {
         stateManager.getWaterShaderButton().updateHover(mouseX, mouseY);
         stateManager.getCloudsButton().updateHover(mouseX, mouseY);
         stateManager.getGodRaysButton().updateHover(mouseX, mouseY);
+        stateManager.getShadowsButton().updateHover(mouseX, mouseY);
         stateManager.getApplyButton().updateHover(mouseX, mouseY);
         stateManager.getBackButton().updateHover(mouseX, mouseY);
         stateManager.getVolumeSlider().updateHover(mouseX, mouseY);
@@ -78,6 +81,7 @@ public final class MouseHandler {
         stateManager.getUiScaleSlider().updateHover(mouseX, mouseY);
         stateManager.getLodEnabledButton().updateHover(mouseX, mouseY);
         stateManager.getVsyncButton().updateHover(mouseX, mouseY);
+        stateManager.getMaxFpsSlider().updateHover(mouseX, mouseY);
     }
 
     private void handlePress(float mouseX, float mouseY) {
@@ -139,10 +143,12 @@ public final class MouseHandler {
             case WATER_SHADER      -> stateManager.getWaterShaderButton().handleClick(mouseX, mouseY);
             case CLOUDS_ENABLED    -> stateManager.getCloudsButton().handleClick(mouseX, mouseY);
             case GOD_RAYS          -> stateManager.getGodRaysButton().handleClick(mouseX, mouseY);
+            case SHADOWS           -> stateManager.getShadowsButton().handleClick(mouseX, mouseY);
             case RENDER_DISTANCE   -> stateManager.getRenderDistanceSlider().handleClick(mouseX, mouseY);
             case LOD_DISTANCE      -> stateManager.getLodDistanceSlider().handleClick(mouseX, mouseY);
             case LOD_ENABLED       -> stateManager.getLodEnabledButton().handleClick(mouseX, mouseY);
             case VSYNC             -> stateManager.getVsyncButton().handleClick(mouseX, mouseY);
+            case MAX_FPS           -> stateManager.getMaxFpsSlider().handleClick(mouseX, mouseY);
             case UI_SCALE          -> stateManager.getUiScaleSlider().handleClick(mouseX, mouseY);
             default -> false;
         };

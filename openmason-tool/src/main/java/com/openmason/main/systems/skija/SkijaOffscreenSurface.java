@@ -1,45 +1,58 @@
 package com.openmason.main.systems.skija;
 
-import io.github.humbleui.skija.BackendRenderTarget;
 import io.github.humbleui.skija.Canvas;
+import io.github.humbleui.skija.ColorAlphaType;
 import io.github.humbleui.skija.ColorSpace;
 import io.github.humbleui.skija.ColorType;
-import io.github.humbleui.skija.FramebufferFormat;
+import io.github.humbleui.skija.ImageInfo;
 import io.github.humbleui.skija.Surface;
-import io.github.humbleui.skija.SurfaceOrigin;
+import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
 
 import static org.lwjgl.opengl.GL33.*;
 
 /**
- * RAII Skia surface backed by an offscreen OpenGL FBO whose color attachment
- * is a GL texture suitable for {@code ImGui.image()} composition.
+ * A small Skia raster surface composited into ImGui as a GL texture.
  *
- * Allocation is rounded up in {@link #SIZE_STEP}px steps so dock-resize drags
- * don't rebuild the surface every frame; the logical size is tracked
- * separately and painting clips to it.
+ * <p><b>Why raster (CPU) and not a GL FBO:</b> when a panel is popped out into its
+ * own OS window (ImGui multi-viewport), that window has a second GL context that
+ * shares objects with the main context. On Mesa/XWayland, sampling a texture that
+ * was rendered into via a GL <em>FBO</em> on the main context flickers in that
+ * second context — but a texture whose pixels are uploaded with
+ * {@code glTexSubImage2D} does not (the editor's main canvas proves this: it
+ * uploads every frame and never flickers). So Skia paints into a CPU buffer here
+ * (via {@link Surface#makeRasterDirect}), and each frame that buffer is uploaded
+ * into {@link #presentTextureId} with {@code glTexSubImage2D} — the exact,
+ * flicker-free path the canvas uses.
  *
- * Usage per frame:
+ * <p>Allocation is rounded up in {@link #SIZE_STEP}px steps so dock-resize drags
+ * don't rebuild the surface every frame; the logical size is tracked separately
+ * and painting clips to it. Must be created, painted, and disposed on the GL thread.
+ *
  * <pre>
  *   surface.ensureSize(w, h);
- *   Canvas c = surface.beginPaint();   // clears to transparent
+ *   Canvas c = surface.beginPaint();   // clears to transparent, clipped to w x h
  *   ... skia draws ...
- *   surface.endPaint();                // flush + GL baseline restore
+ *   surface.endPaint();                // uploads the raster pixels to the GL texture
  *   ImGui.image(surface.getTextureId(), w, h);
  * </pre>
  */
 public final class SkijaOffscreenSurface implements AutoCloseable {
 
     private static final int SIZE_STEP = 32;
-    private static final int STENCIL_BITS = 8;
 
-    private final SkijaContext context;
+    /** GL texture ImGui samples; filled from {@link #pixelBuffer} via glTexSubImage2D. */
+    private int presentTextureId = -1;
 
-    private int textureId = -1;
-    private int fboId = -1;
-    private int rboId = -1;
-    private BackendRenderTarget renderTarget;
+    /**
+     * Native buffer Skia renders directly into (top-down, tightly packed RGBA8,
+     * premultiplied). {@link #surface} wraps this memory, so it must outlive the
+     * surface and be freed only after the surface is closed.
+     */
+    private ByteBuffer pixelBuffer;
+
+    /** Skia raster surface backed by {@link #pixelBuffer}. */
     private Surface surface;
 
     /** Allocated (rounded-up) dimensions. */
@@ -53,10 +66,11 @@ public final class SkijaOffscreenSurface implements AutoCloseable {
     private boolean painting = false;
 
     public SkijaOffscreenSurface(SkijaContext context) {
+        // Raster rendering does not use the GPU DirectContext; the context is
+        // required only as a signal that Skija is initialized/available.
         if (context == null || !context.isAlive()) {
             throw new IllegalArgumentException("SkijaContext must be initialized");
         }
-        this.context = context;
     }
 
     /**
@@ -85,8 +99,14 @@ public final class SkijaOffscreenSurface implements AutoCloseable {
     private void rebuild(int w, int h) {
         disposeGpuResources();
 
-        textureId = glGenTextures();
-        glBindTexture(GL_TEXTURE_2D, textureId);
+        // Native buffer Skia renders straight into (makeRasterDirect), then the
+        // same buffer is uploaded to the GL texture — no FBO, no glReadPixels.
+        pixelBuffer = MemoryUtil.memAlloc(w * h * 4);
+        ImageInfo info = new ImageInfo(w, h, ColorType.RGBA_8888, ColorAlphaType.PREMUL, ColorSpace.getSRGB());
+        surface = Surface.makeRasterDirect(info, MemoryUtil.memAddress(pixelBuffer), (long) w * 4);
+
+        presentTextureId = glGenTextures();
+        glBindTexture(GL_TEXTURE_2D, presentTextureId);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -94,43 +114,12 @@ public final class SkijaOffscreenSurface implements AutoCloseable {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, (ByteBuffer) null);
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        fboId = glGenFramebuffers();
-        glBindFramebuffer(GL_FRAMEBUFFER, fboId);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureId, 0);
-
-        // Skia clip paths require a stencil buffer
-        rboId = glGenRenderbuffers();
-        glBindRenderbuffer(GL_RENDERBUFFER, rboId);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, w, h);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rboId);
-        glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-        int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        if (status != GL_FRAMEBUFFER_COMPLETE) {
-            disposeGpuResources();
-            throw new IllegalStateException("Skija offscreen FBO incomplete: 0x" + Integer.toHexString(status));
-        }
-
-        renderTarget = BackendRenderTarget.makeGL(
-                w, h,
-                /*samples*/ 0,
-                STENCIL_BITS,
-                fboId,
-                FramebufferFormat.GR_GL_RGBA8);
-        surface = Surface.wrapBackendRenderTarget(
-                context.get(), renderTarget,
-                SurfaceOrigin.TOP_LEFT,
-                ColorType.RGBA_8888,
-                ColorSpace.getSRGB());
-
         allocWidth = w;
         allocHeight = h;
     }
 
     /**
-     * Resync Skia with current GL state, clear to transparent, and return the
-     * canvas clipped to the logical size.
+     * Clear to transparent and return the canvas clipped to the logical size.
      */
     public Canvas beginPaint() {
         if (surface == null) {
@@ -140,7 +129,6 @@ public final class SkijaOffscreenSurface implements AutoCloseable {
             throw new IllegalStateException("beginPaint() called twice without endPaint()");
         }
         painting = true;
-        context.get().resetAll();
         Canvas canvas = surface.getCanvas();
         canvas.save();
         canvas.clipRect(io.github.humbleui.types.Rect.makeWH(width, height));
@@ -149,8 +137,9 @@ public final class SkijaOffscreenSurface implements AutoCloseable {
     }
 
     /**
-     * Flush queued Skia work into the FBO and restore GL to a clean baseline
-     * so ImGui and other LWJGL consumers see expected state.
+     * Upload the freshly painted raster pixels into the presentation texture.
+     * Raster draws land directly in {@link #pixelBuffer} (makeRasterDirect), so no
+     * GPU flush/readback is needed — just a glTexSubImage2D, exactly like the canvas.
      */
     public void endPaint() {
         if (!painting) {
@@ -158,13 +147,20 @@ public final class SkijaOffscreenSurface implements AutoCloseable {
         }
         painting = false;
         surface.getCanvas().restore();
-        context.get().flushAndSubmit(surface);
-        context.get().resetAll();
-        SkijaGLStateGuard.restoreBaseline();
+
+        if (presentTextureId != -1 && pixelBuffer != null) {
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0); // ensure no PBO hijacks the upload
+            glBindTexture(GL_TEXTURE_2D, presentTextureId);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+            pixelBuffer.clear();
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, allocWidth, allocHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixelBuffer);
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
     }
 
+    /** The GL texture ImGui should sample. */
     public int getTextureId() {
-        return textureId;
+        return presentTextureId;
     }
 
     public int getWidth() {
@@ -191,25 +187,18 @@ public final class SkijaOffscreenSurface implements AutoCloseable {
     }
 
     private void disposeGpuResources() {
+        // Close the surface before freeing the buffer it wraps.
         if (surface != null) {
             surface.close();
             surface = null;
         }
-        if (renderTarget != null) {
-            renderTarget.close();
-            renderTarget = null;
+        if (presentTextureId != -1) {
+            glDeleteTextures(presentTextureId);
+            presentTextureId = -1;
         }
-        if (rboId != -1) {
-            glDeleteRenderbuffers(rboId);
-            rboId = -1;
-        }
-        if (fboId != -1) {
-            glDeleteFramebuffers(fboId);
-            fboId = -1;
-        }
-        if (textureId != -1) {
-            glDeleteTextures(textureId);
-            textureId = -1;
+        if (pixelBuffer != null) {
+            MemoryUtil.memFree(pixelBuffer);
+            pixelBuffer = null;
         }
         allocWidth = 0;
         allocHeight = 0;

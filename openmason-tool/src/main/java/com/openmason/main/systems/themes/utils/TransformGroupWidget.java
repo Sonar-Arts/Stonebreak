@@ -71,12 +71,53 @@ public final class TransformGroupWidget {
         ImGui.spacing();
     }
 
-    /** Render a single axis row: colored pill + drag float. */
+    /** Width of the colored axis pill, for callers computing cell layouts. */
+    public static float axisPillWidth() {
+        return AXIS_PILL_WIDTH;
+    }
+
+    /** Spacing between the axis pill and its drag field. */
+    public static float axisPillSpacing() {
+        return AXIS_PILL_SPACING;
+    }
+
+    /**
+     * Render one axis cell (colored pill + drag float) with an explicit field
+     * width, so callers can lay several cells on a single line. The axis color
+     * follows the house style: red X, green Y, blue Z.
+     *
+     * @return {@code true} if the value was edited this frame
+     */
+    public static boolean renderAxisCell(String axisLabel, String id, ImFloat value,
+                                         float speed, String format, float fieldWidth) {
+        float[] rgb = axisColor(axisLabel);
+        return renderAxisField(axisLabel, id, value, speed, format,
+                rgb[0], rgb[1], rgb[2], fieldWidth);
+    }
+
+    private static float[] axisColor(String axisLabel) {
+        return switch (axisLabel) {
+            case "Y" -> new float[]{0.25f, 0.72f, 0.25f};
+            case "Z" -> new float[]{0.25f, 0.45f, 0.90f};
+            default -> new float[]{0.85f, 0.25f, 0.25f};
+        };
+    }
+
+    /** Render a single axis row: colored pill + drag float filling the remaining width. */
     private static boolean renderAxisField(String axisLabel, String id, ImFloat value,
                                            float speed, String format,
                                            float colorR, float colorG, float colorB) {
-        float pillHeight = ImGui.getFrameHeight();
         float fieldWidth = ImGui.getContentRegionAvailX() - AXIS_PILL_WIDTH - AXIS_PILL_SPACING;
+        return renderAxisField(axisLabel, id, value, speed, format,
+                colorR, colorG, colorB, fieldWidth);
+    }
+
+    /** Render a single axis cell: colored pill + drag float of {@code fieldWidth}. */
+    private static boolean renderAxisField(String axisLabel, String id, ImFloat value,
+                                           float speed, String format,
+                                           float colorR, float colorG, float colorB,
+                                           float fieldWidth) {
+        float pillHeight = ImGui.getFrameHeight();
 
         ImDrawList drawList = ImGui.getWindowDrawList();
         ImVec2 cursor = ImGui.getCursorScreenPos();

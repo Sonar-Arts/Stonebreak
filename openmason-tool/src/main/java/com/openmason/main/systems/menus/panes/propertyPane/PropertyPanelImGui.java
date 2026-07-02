@@ -3,6 +3,8 @@ package com.openmason.main.systems.menus.panes.propertyPane;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.menus.panes.propertyPane.adapters.ViewportAdapter;
+import com.openmason.main.systems.menus.panes.propertyPane.inspector.InspectorFoldout;
+import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IPanelSection;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IThemeContext;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.ITransformState;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
@@ -39,6 +41,11 @@ public class PropertyPanelImGui {
     private final TextureChooserSection textureChooserSection;  // For NEW and OMO_FILE models
     private final FaceMaterialSection faceMaterialSection;      // For per-face material assignment
     private final TransformSection transformSection;
+
+    // Collapsible section headers (Mortar-painted with ImGui fallback)
+    private final InspectorFoldout transformFoldout = new InspectorFoldout("Transform", true);
+    private final InspectorFoldout textureFoldout = new InspectorFoldout("Texture", true);
+    private final InspectorFoldout materialFoldout = new InspectorFoldout("Face Material", true);
 
     // State
     private boolean initialized = false;
@@ -130,16 +137,16 @@ public class PropertyPanelImGui {
             // Matches the pattern used in ColorPanel (texture editor)
             ImGui.beginChild("##properties_content", 0, 0, false);
 
-            // Render standard properties: texture selection + transform controls
+            // Unity-style section order: Transform first, then texture/material.
+            renderSection(transformFoldout, transformSection);
+
             ModelState.ModelSource source = modelState.getModelSource();
-            if (source == ModelState.ModelSource.BROWSER) {
-                textureVariantSection.render();
-            } else {
-                textureChooserSection.render();
-            }
-            faceMaterialSection.render();
-            ImGui.separator();
-            transformSection.render();
+            IPanelSection textureSection = source == ModelState.ModelSource.BROWSER
+                    ? textureVariantSection
+                    : textureChooserSection;
+            renderSection(textureFoldout, textureSection);
+
+            renderSection(materialFoldout, faceMaterialSection);
 
             // End bounded child region
             ImGui.endChild();
@@ -148,6 +155,17 @@ public class PropertyPanelImGui {
 
         // Restore default styling
         themeContext.restorePanelStyle();
+    }
+
+    /** Render one collapsible section: foldout header + body when open. */
+    private void renderSection(InspectorFoldout foldout, IPanelSection section) {
+        if (section == null || !section.isVisible()) {
+            return;
+        }
+        if (foldout.begin()) {
+            section.render();
+        }
+        foldout.end();
     }
 
 
@@ -207,6 +225,26 @@ public class PropertyPanelImGui {
     }
 
     /**
+     * Apply a texture file (.OMT or .PNG) to the currently loaded editable
+     * model — the same path the Texture section's "Choose Texture..." button
+     * takes. Used by the Project Browser's texture selection.
+     *
+     * @param texturePath the texture file to apply
+     * @return true if a model was loaded and the texture was applied
+     */
+    public boolean applyTextureToCurrentModel(java.nio.file.Path texturePath) {
+        if (currentEditableModel == null || texturePath == null) {
+            return false;
+        }
+        currentEditableModel.setTexturePath(texturePath);
+        if (viewportConnector != null && viewportConnector.isConnected()) {
+            viewportConnector.updateModelTexture(currentEditableModel);
+        }
+        logger.info("Applied texture to current model: {}", texturePath);
+        return true;
+    }
+
+    /**
      * Set the face editor bridge on the face material section.
      *
      * @param bridge the bridge coordinating viewport-to-texture-editor handoff
@@ -240,6 +278,16 @@ public class PropertyPanelImGui {
         if (viewportConnector != null) {
             viewportConnector.setEditingFaceIndex(-1);
         }
+    }
+
+    /**
+     * Release Skija-backed panel resources. Must run with a current GL
+     * context, before the SkijaContext is closed.
+     */
+    public void dispose() {
+        transformFoldout.close();
+        textureFoldout.close();
+        materialFoldout.close();
     }
 
     /**

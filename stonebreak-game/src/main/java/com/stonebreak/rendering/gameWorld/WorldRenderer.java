@@ -47,6 +47,7 @@ public class WorldRenderer {
     private final DropRenderer dropRenderer;
     private final SkyRenderer skyRenderer;
     private final CloudRenderer cloudRenderer;
+    private final com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer shadowMapRenderer;
     private final FastLodRenderPass lodRenderPass;
     private final ChunkFrustumCuller frustumCuller = new ChunkFrustumCuller();
     private final com.stonebreak.rendering.models.entities.FishingLineRenderer fishingLineRenderer;
@@ -77,6 +78,11 @@ public class WorldRenderer {
         this.dropRenderer = dropRenderer;
         this.skyRenderer = new SkyRenderer();
         this.cloudRenderer = new CloudRenderer();
+        this.shadowMapRenderer =
+                new com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer(projectionMatrix, blockTextureArray);
+        if (entityRenderer != null) {
+            entityRenderer.setShadowMapRenderer(shadowMapRenderer);
+        }
         this.lodRenderPass = new FastLodRenderPass();
         this.fishingLineRenderer = new com.stonebreak.rendering.models.entities.FishingLineRenderer(shaderProgram, projectionMatrix);
     }
@@ -110,6 +116,12 @@ public class WorldRenderer {
             skyColor = new Vector3f(0.53f, 0.81f, 0.92f); // Day sky
             ambientLightLevel = 1.0f;
         }
+
+        // Cascaded sun-shadow depth pre-pass. Runs before anything samples the
+        // shadow map this frame; restores the caller's framebuffer and viewport,
+        // so it is safe even when the post-fx scene FBO is already bound.
+        shadowMapRenderer.renderShadowPass(world, player, sunDirection, entityRenderer);
+        checkGLError("After shadow depth pre-pass");
 
         // Render sky first (before world geometry for proper depth testing)
         skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), sunDirection, skyColor);
@@ -272,6 +284,10 @@ public class WorldRenderer {
 
         // Set view position for specular lighting calculations
         shaderProgram.setUniform("u_viewPos", player.getCamera().getPosition());
+
+        // Cascaded sun-shadow sampling state (binds the map on its own unit;
+        // disables sampling when the pass was skipped — night, setting off).
+        shadowMapRenderer.applyToShader(shaderProgram);
 
         // Reset underwater fog uniforms for world rendering (blocks/chunks don't use fog)
         shaderProgram.setUniform("u_cameraPos", new Vector3f(0, 0, 0));
@@ -878,6 +894,9 @@ public class WorldRenderer {
         }
         if (cloudRenderer != null) {
             cloudRenderer.cleanup();
+        }
+        if (shadowMapRenderer != null) {
+            shadowMapRenderer.cleanup();
         }
     }
 }

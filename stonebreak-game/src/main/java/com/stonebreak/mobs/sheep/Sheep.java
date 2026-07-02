@@ -7,15 +7,23 @@ import com.stonebreak.rendering.Renderer;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.mobs.entities.AnimationController;
+import com.stonebreak.mobs.entities.ai.PassiveMobAI;
 
+/**
+ * Sheep mob implementation. Behaviour comes entirely from the shared
+ * {@link PassiveMobAI} framework with sheep tuning.
+ */
 public class Sheep extends LivingEntity {
 
-    private boolean isGrazing;
-
-    private final SheepAI sheepAI;
-    private final String textureVariant;
-    private final AnimationController animationController;
+    /** Sheep personality: slightly restless (more wandering, quicker turns); flees when hit. */
+    private static final PassiveMobAI.Config AI_CONFIG = new PassiveMobAI.Config(
+            2.5f, 7.0f,          // state duration min/max
+            3.0f, 8.0f,          // wander distance min/max
+            0.85f, 200.0f,       // move speed multiplier, rotation speed (deg/s)
+            0.35f, 0.45f, 0.2f,  // idle / wander / graze weights
+            0.0f, 0.0f,          // no wing-flap gesture
+            2.2f, 0.8f,          // hop boost: drive forward mid-air so the long body clears ledge edges
+            PassiveMobAI.DamageResponse.FLEE);
 
     public Sheep(World world, Vector3f position) {
         this(world, position, "default");
@@ -24,18 +32,9 @@ public class Sheep extends LivingEntity {
     public Sheep(World world, Vector3f position, String textureVariant) {
         super(world, position, EntityType.SHEEP);
         this.textureVariant = textureVariant != null ? textureVariant : "default";
-        this.isGrazing = false;
-        this.sheepAI = new SheepAI(this);
-        this.animationController = new AnimationController(this);
+        this.mobAI = new PassiveMobAI(this, AI_CONFIG);
         this.interactionRange = 2.5f;
         this.turnSpeed = 200.0f;
-    }
-
-    @Override
-    public void update(float deltaTime) {
-        super.update(deltaTime);
-        sheepAI.update(deltaTime);
-        animationController.updateAnimations(deltaTime);
     }
 
     @Override
@@ -58,12 +57,12 @@ public class Sheep extends LivingEntity {
         if (source == DamageSource.PLAYER) {
             applyPlayerKnockback();
         }
-        sheepAI.onDamaged(damage);
+        mobAI.onDamaged(damage);
     }
 
     @Override
     protected void onDeath() {
-        sheepAI.cleanup();
+        mobAI.cleanup();
     }
 
     @Override
@@ -73,39 +72,4 @@ public class Sheep extends LivingEntity {
 
     @Override
     public int getXpReward() { return 4; }
-
-    public void setGrazing(boolean grazing) {
-        this.isGrazing = grazing;
-    }
-
-    public void startIdling() {
-        this.velocity.set(0, velocity.y, 0);
-    }
-
-    public void jump() {
-        if (isOnGround()) {
-            Vector3f velocity = getVelocity();
-            velocity.y = 8.5f;
-            setVelocity(velocity);
-            setOnGround(false);
-        }
-    }
-
-    public SheepAI getAI() { return sheepAI; }
-    public AnimationController getAnimationController() { return animationController; }
-    public String getTextureVariant() { return textureVariant; }
-
-    /** Client shadow: apply the server's replicated animation state to the (otherwise frozen) AI. */
-    @Override
-    public void applyNetworkState(String sbeStateName) {
-        if (sheepAI != null) {
-            sheepAI.setState(com.stonebreak.mobs.sbe.SheepStateMapping.behaviorState(sbeStateName));
-        }
-    }
-
-    /** Client shadow: keep the animation clock running so the current clip actually plays. */
-    @Override
-    public void updateClientVisuals(float deltaTime) {
-        animationController.updateAnimations(deltaTime);
-    }
 }

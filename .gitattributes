@@ -1,0 +1,38 @@
+# Normalize line endings: store LF in the repo and check out LF on every
+# platform. Prevents CRLF/LF churn when the project moves between Windows,
+# Linux, and macOS. (Set after a Windows->Linux migration introduced a
+# whole-tree CRLF diff.)
+* text=auto eol=lf
+
+# Explicit text types (belt-and-suspenders; covered by text=auto above).
+*.java   text eol=lf
+*.xml    text eol=lf
+*.json   text eol=lf
+*.md     text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.svg    text eol=lf
+*.frag   text eol=lf
+*.vert   text eol=lf
+*.glsl   text eol=lf
+*.properties text eol=lf
+*.gitignore  text eol=lf
+
+# Binary assets — never touch line endings or attempt diffs/merges.
+*.png    binary
+*.gif    binary
+*.jpg    binary
+*.jpeg   binary
+*.wav    binary
+*.ogg    binary
+*.ttf    binary
+*.otf    binary
+
+# Custom binary formats (Stonebreak / Open Mason).
+*.sbo    binary
+*.sbt    binary
+*.sbe    binary
+*.omo    binary
+*.oma    binary
+*.omanim binary
+*.omt    binary

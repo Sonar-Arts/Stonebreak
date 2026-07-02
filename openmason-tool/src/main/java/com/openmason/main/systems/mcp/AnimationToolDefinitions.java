@@ -30,7 +30,8 @@ public final class AnimationToolDefinitions {
         registry.register(new McpTool(
                 "anim_get_info",
                 "Get the current animation clip's metadata (name, fps, duration, loop, modelRef, file path, "
-                        + "track count, dirty flag, playback state, playhead).",
+                        + "track count, dirty flag, playback state, playhead, and layer metadata — "
+                        + "BASE/OVERLAY type, part-name mask, fade in/out, priority).",
                 schema().build(),
                 args -> editor.getAnimationInfo()));
 
@@ -84,6 +85,43 @@ public final class AnimationToolDefinitions {
                 schema().bool("loop", "true to loop, false for one-shot").required("loop").build(),
                 args -> editor.setClipLoop(args.get("loop").asBoolean())));
 
+        // ---------- Mutate: layer metadata (animation mixing, format v1.1) ----------
+
+        registry.register(new McpTool(
+                "anim_set_layer_type",
+                "Set the clip's layer type. BASE clips drive the whole model (locomotion); OVERLAY clips "
+                        + "play on top of a base clip and take over only the parts in their mask "
+                        + "(e.g. an attack owning the arms while walking continues).",
+                schema().str("type", "\"BASE\" or \"OVERLAY\"").required("type").build(),
+                args -> editor.setLayerType(reqString(args, "type"))));
+
+        registry.register(new McpTool(
+                "anim_set_layer_mask",
+                "Replace the overlay's part mask with the given part names (ids are resolved to names). "
+                        + "An empty array means the overlay owns ALL parts.",
+                schema().strArray("mask_parts", "Part names the overlay owns; [] = all parts")
+                        .required("mask_parts").build(),
+                args -> editor.setLayerMask(optStringList(args, "mask_parts"))));
+
+        registry.register(new McpTool(
+                "anim_set_layer_fades",
+                "Set the overlay's blend fade durations in seconds. Omit either to leave it unchanged. "
+                        + "Fade-out applies at the natural end of a non-looping overlay and on early exit.",
+                schema()
+                        .num("fade_in_seconds", "Blend-in duration (optional)")
+                        .num("fade_out_seconds", "Blend-out duration (optional)")
+                        .build(),
+                args -> editor.setLayerFades(
+                        optFloatBoxed(args, "fade_in_seconds"),
+                        optFloatBoxed(args, "fade_out_seconds"))));
+
+        registry.register(new McpTool(
+                "anim_set_layer_priority",
+                "Set the overlay's priority. When multiple overlays mask the same part, the higher "
+                        + "priority wins.",
+                schema().num("priority", "Integer priority (higher wins)").required("priority").build(),
+                args -> editor.setLayerPriority((int) reqFloat(args, "priority"))));
+
         // ---------- Mutate: transport ----------
 
         registry.register(new McpTool(
@@ -136,7 +174,7 @@ public final class AnimationToolDefinitions {
                         .vec3("position", "Position [x,y,z]")
                         .vec3("rotation", "Euler degrees [x,y,z]")
                         .vec3("scale", "Scale [x,y,z]")
-                        .str("easing", "Easing curve (LINEAR; reserved for future curves)")
+                        .str("easing", "Easing curve: LINEAR, EASE_IN, EASE_OUT, or EASE_IN_OUT (default LINEAR)")
                         .required("part_id_or_name", "time")
                         .build(),
                 args -> editor.insertKeyframe(
@@ -260,6 +298,18 @@ public final class AnimationToolDefinitions {
         SchemaBuilder num(String name, String description) { return prop(name, "number", description); }
         SchemaBuilder bool(String name, String description) { return prop(name, "boolean", description); }
 
+        /** Variable-length string array. */
+        SchemaBuilder strArray(String name, String description) {
+            ObjectNode def = mapper.createObjectNode();
+            def.put("type", "array");
+            def.put("description", description);
+            ObjectNode items = mapper.createObjectNode();
+            items.put("type", "string");
+            def.set("items", items);
+            properties.set(name, def);
+            return this;
+        }
+
         /** Fixed-length [x,y,z] number array. */
         SchemaBuilder vec3(String name, String description) {
             ObjectNode def = mapper.createObjectNode();
@@ -321,6 +371,22 @@ public final class AnimationToolDefinitions {
     private static Float optFloatBoxed(JsonNode args, String key) {
         JsonNode n = args.get(key);
         return (n == null || n.isNull() || !n.isNumber()) ? null : n.floatValue();
+    }
+
+    /** Parse an optional string-array argument; empty list when absent. */
+    private static java.util.List<String> optStringList(JsonNode args, String key) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        JsonNode n = args.get(key);
+        if (n == null || n.isNull()) return out;
+        if (!n.isArray()) {
+            throw new IllegalArgumentException(key + " must be a string array");
+        }
+        for (JsonNode item : n) {
+            if (item != null && item.isTextual() && !item.asText().isBlank()) {
+                out.add(item.asText());
+            }
+        }
+        return out;
     }
 
     /** Parse an optional [x,y,z] array argument; null when absent. */

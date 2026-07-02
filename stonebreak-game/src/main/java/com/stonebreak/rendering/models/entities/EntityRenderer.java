@@ -21,9 +21,10 @@ import static org.lwjgl.system.MemoryUtil.*;
 /**
  * Specialized entity renderer managed by the main Renderer.
  *
- * <p>Cows are rendered from the {@code SB_Cow.sbe} asset via {@link SbeEntityRenderer};
- * remote players use {@link RemotePlayerRenderer}; any other entity type falls
- * back to a simple textured cube.
+ * <p>All AI-driven mobs render through one generic {@link SbeEntityRenderer}
+ * path keyed off {@code EntityType.getSbeObjectId()} (ground-anchored via the
+ * model's rest-pose feet); remote players use {@link RemotePlayerRenderer};
+ * any other entity type falls back to a simple textured cube.
  */
 public class EntityRenderer {
     private ShaderProgram shader;
@@ -94,6 +95,36 @@ public class EntityRenderer {
         }
     }
 
+    /**
+     * Wires the cascaded-shadow state so entities receive sun shadows.
+     * Called by WorldRenderer once at construction.
+     */
+    public void setShadowMapRenderer(com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer renderer) {
+        sbeEntityRenderer.setShadowMapRenderer(renderer);
+    }
+
+    /**
+     * Sets the simple-cube shader's lighting mode for the next draw. Lit geometry
+     * (fallback cubes, arrows) samples the world sky light at the entity position;
+     * emissive geometry (fire bolts, glow cubes) stays unlit. The shader must be bound.
+     */
+    private void applySimpleLighting(Entity entity, boolean lit) {
+        shader.setBool("u_lightingEnabled", lit);
+        if (!lit) {
+            return;
+        }
+        com.stonebreak.world.TimeOfDay timeOfDay = com.stonebreak.core.Game.getTimeOfDay();
+        if (timeOfDay != null) {
+            shader.setFloat("u_ambientLight", timeOfDay.getAmbientLightLevel());
+            shader.setVec3("u_sunDirection", timeOfDay.getSunDirection());
+        } else {
+            shader.setFloat("u_ambientLight", 1.0f);
+            shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
+        }
+        shader.setFloat("u_entityLight",
+                SbeEntityRenderer.sampleEntityLight(com.stonebreak.core.Game.getWorld(), entity.getPosition()));
+    }
+
     private void createShader() {
         String vertexShader = """
             #version 330 core
@@ -126,9 +157,24 @@ public class EntityRenderer {
             uniform vec3 cameraPos;
             uniform float underwaterFogDensity;
             uniform vec3 underwaterFogColor;
+            // Lighting is opt-in: emissive geometry (fire bolts, glow cubes)
+            // keeps rendering unlit; plain entities get sun + world lighting.
+            uniform bool u_lightingEnabled;
+            uniform float u_ambientLight;
+            uniform vec3 u_sunDirection;
+            uniform float u_entityLight;
 
             void main() {
                 vec4 texColor = texture(textureSampler, TexCoord);
+
+                if (u_lightingEnabled) {
+                    // Flat face normal from screen-space derivatives (no normal attribute).
+                    vec3 normal = normalize(cross(dFdx(FragWorldPos), dFdy(FragWorldPos)));
+                    float diff = max(dot(normal, normalize(u_sunDirection)), 0.0);
+                    float brightness = u_ambientLight * (0.5 + 0.55 * diff);
+                    brightness *= mix(0.3, 1.0, u_entityLight);
+                    texColor = vec4(texColor.rgb * min(brightness, 1.0), texColor.a);
+                }
 
                 if (underwaterFogDensity > 0.0) {
                     float distance = length(FragWorldPos - cameraPos);
@@ -154,6 +200,12 @@ public class EntityRenderer {
             shader.createUniform("cameraPos");
             shader.createUniform("underwaterFogDensity");
             shader.createUniform("underwaterFogColor");
+            shader.bind();
+            shader.setBool("u_lightingEnabled", false);
+            shader.setFloat("u_ambientLight", 1.0f);
+            shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
+            shader.setFloat("u_entityLight", 1.0f);
+            shader.unbind();
         } catch (Exception e) {
             System.err.println("Failed to create entity shader: " + e.getMessage());
         }
@@ -331,56 +383,25 @@ public class EntityRenderer {
             return;
         }
 
-        if (entityType == EntityType.COW && entity instanceof com.stonebreak.mobs.cow.Cow cow) {
-            // The SBE asset comes from the registry by the entity type's object
-            // id; only the variant and AI-state → animation-state mapping are
-            // cow-specific. The renderer itself stays entity-blind.
+        // Every SBE-driven mob with an AI renders through this single path: the
+        // asset comes from the registry by the type's object id, the clip name
+        // from the shared MobStateMapping (with MobAI.clipTime handling one-shot
+        // states like the wing flap), and the model is ground-anchored so its
+        // feet rest on the collision ground regardless of authored origin. New
+        // mobs need no renderer changes at all.
+        if (entityType.getSbeObjectId() != null
+                && entity instanceof com.stonebreak.mobs.entities.LivingEntity mob
+                && mob.getAI() != null) {
+            com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId());
             sbeEntityRenderer.render(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
-                    cow.getTextureVariant(),
-                    com.stonebreak.mobs.sbe.CowStateMapping.sbeState(cow.getAI().getCurrentState()),
-                    cow.getAnimationController().getTotalAnimationTime(),
-                    cow.getPosition(),
-                    cow.getRotation().y,
-                    cow.getScale(),
-                    viewMatrix, projectionMatrix, world, cameraPos);
-            return;
-        }
-
-        if (entityType == EntityType.SHEEP && entity instanceof com.stonebreak.mobs.sheep.Sheep sheep) {
-            sbeEntityRenderer.render(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
-                    sheep.getTextureVariant(),
-                    com.stonebreak.mobs.sbe.SheepStateMapping.sbeState(sheep.getAI().getCurrentState()),
-                    sheep.getAnimationController().getTotalAnimationTime(),
-                    sheep.getPosition(),
-                    sheep.getRotation().y,
-                    sheep.getScale(),
-                    viewMatrix, projectionMatrix, world, cameraPos);
-            return;
-        }
-
-        if (entityType == EntityType.CHICKEN && entity instanceof com.stonebreak.mobs.chicken.Chicken chicken) {
-            com.stonebreak.mobs.chicken.ChickenAI chickenAI = chicken.getAI();
-            // The Wingflap clip is one-shot: feed it flap-relative time (the AI
-            // state timer, reset when the flap starts) so it plays through once
-            // instead of freezing on its last frame. Looping states use the
-            // continuously advancing animation clock.
-            boolean flapping = chickenAI.getCurrentState()
-                    == com.stonebreak.mobs.chicken.ChickenAI.ChickenBehaviorState.WING_FLAP;
-            float animationTime = flapping
-                    ? chickenAI.getStateTimer()
-                    : chicken.getAnimationController().getTotalAnimationTime();
-
-            // Chicken has no appearance variants — render the default geometry.
-            sbeEntityRenderer.render(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
-                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                    com.stonebreak.mobs.sbe.ChickenStateMapping.sbeState(chickenAI.getCurrentState()),
-                    animationTime,
-                    chicken.getPosition(),
-                    chicken.getRotation().y,
-                    chicken.getScale(),
+                    asset,
+                    mob.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.MobStateMapping.sbeState(mob.getAI().getCurrentState()),
+                    mob.getAI().clipTime(mob.getAnimationController().getTotalAnimationTime()),
+                    groundAnchoredPosition(mob, asset),
+                    mob.getRotation().y,
+                    mob.getScale(),
                     viewMatrix, projectionMatrix, world, cameraPos);
             return;
         }
@@ -451,19 +472,38 @@ public class EntityRenderer {
                         com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER.getSbeObjectId());
         if (asset == null) return;
 
-        // One-shot clips (Attacking, Jumping) use the event-relative time so they
-        // restart each time the state is entered; looping Walking uses the
-        // continuous clock. This mirrors the chicken wing-flap pattern. Body facing
-        // and head angles are owned by the player's PlayerBodyOrientation — this
-        // path no longer reads the camera directly.
+        // The BASE clip is pure locomotion (jump one-shots use event-relative
+        // time; looping walk uses the continuous clock). Attacking plays as an
+        // OVERLAY on top: it owns only the parts its clip masks (authored in
+        // the .omanim layer metadata), so the legs keep walking mid-swing. The
+        // overlay envelope handles fade-in and pop-free early-exit fade-out.
+        // Body facing and head angles are owned by PlayerBodyOrientation.
+        String overlayState = null;
+        float overlayTime = 0f;
+        float overlayWeight = 0f;
+        com.stonebreak.mobs.sbe.OverlayAnimState attackOverlay = player.getAttackOverlay();
+        if (attackOverlay.isVisible()) {
+            overlayState = com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(
+                    com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.ATTACKING);
+            com.openmason.engine.format.oma.ParsedAnimClip attackClip = asset.clipFor(overlayState);
+            if (attackClip != null) {
+                overlayTime = attackOverlay.time();
+                overlayWeight = attackOverlay.weight(
+                        attackClip.layer().fadeInSeconds(), attackClip.layer().fadeOutSeconds());
+            }
+        }
+
         PlayerFigureRenderState figure = new PlayerFigureRenderState(
                 player.getPosition(),
                 player.getBodyYaw(),
                 new Vector3f(1f, 1f, 1f),
                 player.getThirdPersonHeadYaw(),
                 player.getThirdPersonHeadPitch(),
-                com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getMovementState()),
+                com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getBaseMovementState()),
                 player.getBodyEventTime(),
+                overlayState,
+                overlayTime,
+                overlayWeight,
                 ensureLocalPlayerColor());
 
         renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, world, cameraPos);
@@ -515,15 +555,21 @@ public class EntityRenderer {
                                     PlayerFigureRenderState figure,
                                     Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                     com.stonebreak.world.World world, Vector3f cameraPos) {
+        com.stonebreak.mobs.sbe.AnimState anim = figure.hasOverlay()
+                ? new com.stonebreak.mobs.sbe.AnimState(figure.stateName(), figure.animTime(),
+                        java.util.List.of(new com.stonebreak.mobs.sbe.AnimState.Overlay(
+                                figure.overlayState(), figure.overlayTime(), figure.overlayWeight())))
+                : com.stonebreak.mobs.sbe.AnimState.single(figure.stateName(), figure.animTime());
+
         if (isTextured(asset)) {
             sbeEntityRenderer.render(
                     asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                    figure.stateName(), figure.animTime(), figure.position(), figure.yaw(), figure.scale(),
+                    anim, figure.position(), figure.yaw(), figure.scale(),
                     viewMatrix, projectionMatrix, world, cameraPos, figure.headYaw(), figure.headPitch());
         } else {
             sbeEntityRenderer.renderColored(
                     asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                    figure.stateName(), figure.animTime(), figure.position(), figure.yaw(), figure.scale(),
+                    anim, figure.position(), figure.yaw(), figure.scale(),
                     viewMatrix, projectionMatrix, figure.tint(), figure.headYaw(), figure.headPitch());
         }
     }
@@ -615,6 +661,112 @@ public class EntityRenderer {
         renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, null, null);
     }
 
+    /** Flat white used by the depth-only shadow-caster path (color output is discarded). */
+    private static final Vector4f SHADOW_CASTER_COLOR = new Vector4f(1f, 1f, 1f, 1f);
+
+    /**
+     * Depth-only shadow-caster pass: draws every shadow-casting entity through
+     * the SBE flat-colored path into the currently bound shadow framebuffer.
+     * The shadow FBO has no color attachment, so only depth lands — the flat
+     * color is discarded. Called once per cascade by ShadowMapRenderer, with
+     * the cascade's light matrices standing in for view/projection.
+     */
+    public void renderShadowCasters(com.stonebreak.player.Player player,
+                                    Matrix4f lightView, Matrix4f lightProj,
+                                    Vector3f cascadeCenter, float cascadeRadius) {
+        if (!initialized) return;
+
+        float cullRadius = cascadeRadius + 8.0f;
+        float cullRadiusSq = cullRadius * cullRadius;
+        com.stonebreak.mobs.entities.EntityManager entityManager =
+                com.stonebreak.core.Game.getEntityManager();
+        if (entityManager != null) {
+            for (Entity entity : entityManager.getAllEntities()) {
+                if (!entity.isAlive()) continue;
+                Vector3f pos = entity.getPosition();
+                float dx = pos.x - cascadeCenter.x;
+                float dz = pos.z - cascadeCenter.z;
+                if (dx * dx + dz * dz > cullRadiusSq) continue;
+                renderEntityShadow(entity, lightView, lightProj);
+            }
+        }
+
+        // The local player always casts — including first person, where the body
+        // model isn't drawn to screen but its shadow still should be.
+        if (player != null) {
+            com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
+                            EntityType.REMOTE_PLAYER.getSbeObjectId());
+            if (asset != null) {
+                sbeEntityRenderer.renderColored(asset,
+                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getBaseMovementState()),
+                        player.getBodyEventTime(),
+                        player.getPosition(), player.getBodyYaw(), new Vector3f(1f, 1f, 1f),
+                        lightView, lightProj, SHADOW_CASTER_COLOR);
+            }
+        }
+    }
+
+    /** Depth-only draw of one entity, mirroring {@link #renderEntity}'s SBE bindings. */
+    private void renderEntityShadow(Entity entity, Matrix4f lightView, Matrix4f lightProj) {
+        EntityType type = entity.getType();
+
+        // Same generic SBE-mob path as renderEntity, through the flat-colored
+        // depth-only route (color output is discarded by the shadow FBO).
+        if (type.getSbeObjectId() != null
+                && entity instanceof com.stonebreak.mobs.entities.LivingEntity mob
+                && mob.getAI() != null) {
+            com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId());
+            sbeEntityRenderer.renderColored(
+                    asset,
+                    mob.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.MobStateMapping.sbeState(mob.getAI().getCurrentState()),
+                    mob.getAI().clipTime(mob.getAnimationController().getTotalAnimationTime()),
+                    groundAnchoredPosition(mob, asset), mob.getRotation().y, mob.getScale(),
+                    lightView, lightProj, SHADOW_CASTER_COLOR);
+            return;
+        }
+
+        if ((type == EntityType.REMOTE_PLAYER || type == EntityType.ILLUSION_DECOY)
+                && entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
+            com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
+                            EntityType.REMOTE_PLAYER.getSbeObjectId());
+            if (asset != null) {
+                sbeEntityRenderer.renderColored(asset,
+                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState()),
+                        rp.getAnimationController().getTotalAnimationTime(),
+                        rp.getPosition(), rp.getRotation().y, rp.getScale(),
+                        lightView, lightProj, SHADOW_CASTER_COLOR);
+            }
+        }
+        // Everything else (drops, projectiles, effect volumes) doesn't cast.
+    }
+
+    /**
+     * The render position that puts the mob model's rest-pose feet
+     * ({@code geometry.restMinY}) exactly on the collision ground plane at
+     * {@code position.y - legHeight}. This is the model-placement contract for
+     * all mobs: a model authored with its origin {@code legHeight} above its
+     * feet gets a zero offset; any other authoring (e.g. origin at the feet)
+     * is corrected here instead of floating or sinking.
+     */
+    private static Vector3f groundAnchoredPosition(com.stonebreak.mobs.entities.LivingEntity mob,
+                                                   com.stonebreak.mobs.sbe.SbeEntityAsset asset) {
+        Vector3f position = mob.getPosition();
+        com.stonebreak.mobs.sbe.SbeModelGeometry geometry =
+                asset == null ? null : asset.geometryFor(mob.getTextureVariant());
+        if (geometry == null) {
+            return position;
+        }
+        float offset = -mob.getLegHeight() - geometry.restMinY() * mob.getScale().y;
+        return offset == 0f ? position
+                : new Vector3f(position.x, position.y + offset, position.z);
+    }
+
     /**
      * Draws a debug wireframe overlay of an entity's actual model.
      *
@@ -631,52 +783,21 @@ public class EntityRenderer {
 
         EntityType entityType = entity.getType();
 
-        if (entityType == EntityType.COW && entity instanceof com.stonebreak.mobs.cow.Cow cow) {
+        // Same generic SBE-mob bindings (state, clip time, ground anchoring) as
+        // renderEntity, so the wireframe tracks the rendered model exactly.
+        if (entityType.getSbeObjectId() != null
+                && entity instanceof com.stonebreak.mobs.entities.LivingEntity mob
+                && mob.getAI() != null) {
+            com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId());
             sbeEntityRenderer.renderWireframe(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
-                    cow.getTextureVariant(),
-                    com.stonebreak.mobs.sbe.CowStateMapping.sbeState(cow.getAI().getCurrentState()),
-                    cow.getAnimationController().getTotalAnimationTime(),
-                    cow.getPosition(),
-                    cow.getRotation().y,
-                    cow.getScale(),
-                    viewMatrix, projectionMatrix, color);
-            return;
-        }
-
-        if (entityType == EntityType.SHEEP && entity instanceof com.stonebreak.mobs.sheep.Sheep sheep) {
-            sbeEntityRenderer.renderWireframe(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
-                    sheep.getTextureVariant(),
-                    com.stonebreak.mobs.sbe.SheepStateMapping.sbeState(sheep.getAI().getCurrentState()),
-                    sheep.getAnimationController().getTotalAnimationTime(),
-                    sheep.getPosition(),
-                    sheep.getRotation().y,
-                    sheep.getScale(),
-                    viewMatrix, projectionMatrix, color);
-            return;
-        }
-
-        if (entityType == EntityType.CHICKEN
-                && entity instanceof com.stonebreak.mobs.chicken.Chicken chicken) {
-            com.stonebreak.mobs.chicken.ChickenAI chickenAI = chicken.getAI();
-            // Match renderEntity()'s clip timing: the one-shot Wingflap clip is
-            // fed flap-relative time so the wireframe animates in step with the
-            // rendered model.
-            boolean flapping = chickenAI.getCurrentState()
-                    == com.stonebreak.mobs.chicken.ChickenAI.ChickenBehaviorState.WING_FLAP;
-            float animationTime = flapping
-                    ? chickenAI.getStateTimer()
-                    : chicken.getAnimationController().getTotalAnimationTime();
-
-            sbeEntityRenderer.renderWireframe(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
-                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                    com.stonebreak.mobs.sbe.ChickenStateMapping.sbeState(chickenAI.getCurrentState()),
-                    animationTime,
-                    chicken.getPosition(),
-                    chicken.getRotation().y,
-                    chicken.getScale(),
+                    asset,
+                    mob.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.MobStateMapping.sbeState(mob.getAI().getCurrentState()),
+                    mob.getAI().clipTime(mob.getAnimationController().getTotalAnimationTime()),
+                    groundAnchoredPosition(mob, asset),
+                    mob.getRotation().y,
+                    mob.getScale(),
                     viewMatrix, projectionMatrix, color);
             return;
         }
@@ -710,6 +831,7 @@ public class EntityRenderer {
         shader.setUniform("cameraPos", new Vector3f(0, 0, 0));
         shader.setUniform("underwaterFogDensity", 0.0f);
         shader.setUniform("underwaterFogColor", new Vector3f(0.1f, 0.3f, 0.5f));
+        applySimpleLighting(entity, true);
 
         // Elongated along local Z (direction of travel); yaw from rotation.y
         Matrix4f modelMatrix = new Matrix4f()
@@ -748,6 +870,7 @@ public class EntityRenderer {
         shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
         shader.setUniform("underwaterFogDensity", fogDensity);
         shader.setUniform("underwaterFogColor", fogColor);
+        applySimpleLighting(entity, true);
 
         Matrix4f modelMatrix = new Matrix4f()
             .translate(entity.getPosition())
@@ -794,6 +917,7 @@ public class EntityRenderer {
         shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
         shader.setUniform("underwaterFogDensity", 0.0f);
         shader.setUniform("underwaterFogColor", new Vector3f(0.1f, 0.3f, 0.5f));
+        applySimpleLighting(entity, false); // emissive — never world-lit
 
         Matrix4f modelMatrix = new Matrix4f()
                 .translate(entity.getPosition())

@@ -23,9 +23,10 @@ import com.stonebreak.blocks.waterSystem.WaterSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
-import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
+import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.cow.Cow;
 import com.stonebreak.mobs.cow.CowAI;
 import com.stonebreak.mobs.chicken.Chicken;
@@ -324,6 +325,7 @@ public class DebugOverlay {
             case TEXTURE_ATLAS   -> "Tex Atlas";
             case ENTITY_MESH     -> "Entity Meshes";
             case PLAYER_GEOMETRY -> "Player Geom";
+            case SHADOW_MAP      -> "Shadow Maps";
             case OTHER           -> "Other";
         };
     }
@@ -636,45 +638,29 @@ public class DebugOverlay {
             return;
         }
 
-        List<Entity> cowEntities = entityManager.getEntitiesByType(EntityType.COW);
-        List<Entity> chickenEntities = entityManager.getEntitiesByType(EntityType.CHICKEN);
-        List<Entity> sheepEntities = entityManager.getEntitiesByType(EntityType.SHEEP);
-        List<Entity> gooseEntities = entityManager.getEntitiesByType(EntityType.GOOSE);
+        // Every AI-driven mob gets the same treatment — no per-mob code, and
+        // future mobs appear here automatically.
+        List<Entity> mobEntities = new java.util.ArrayList<>();
+        for (Entity entity : entityManager.getAllEntities()) {
+            if (entity instanceof LivingEntity mob && mob.getAI() != null) {
+                mobEntities.add(entity);
+            }
+        }
 
         // Model wireframe overlays — each call manages its own GL state.
-        for (Entity entity : cowEntities) {
-            if (entity.isAlive() && entity instanceof Cow cow) {
-                renderer.renderEntityWireframe(cow, colorForState(cow));
-            }
-        }
-        for (Entity entity : chickenEntities) {
-            if (entity.isAlive() && entity instanceof Chicken chicken) {
-                renderer.renderEntityWireframe(chicken, colorForState(chicken));
-            }
-        }
-        for (Entity entity : sheepEntities) {
-            if (entity.isAlive() && entity instanceof Sheep sheep) {
-                renderer.renderEntityWireframe(sheep, colorForState(sheep));
-            }
-        }
-        for (Entity entity : gooseEntities) {
-            if (entity.isAlive() && entity instanceof Goose goose) {
-                renderer.renderEntityWireframe(goose, colorForState(goose));
+        for (Entity entity : mobEntities) {
+            if (entity.isAlive() && entity instanceof LivingEntity mob && mob.getAI() != null) {
+                renderer.renderEntityWireframe(mob, colorForState(mob));
             }
         }
 
-        // AI path trails — batched line drawing (cows track a path; chickens do not).
+        // AI path trails — batched line drawing.
         DebugRenderer debug = renderer.getDebugRenderer();
         debug.beginBatch();
         try {
-            for (Entity entity : cowEntities) {
-                if (entity.isAlive() && entity instanceof Cow cow) {
-                    renderCowPath(cow, debug);
-                }
-            }
-            for (Entity entity : sheepEntities) {
-                if (entity.isAlive() && entity instanceof Sheep sheep) {
-                    renderSheepPath(sheep, debug);
+            for (Entity entity : mobEntities) {
+                if (entity.isAlive() && entity instanceof LivingEntity mob && mob.getAI() != null) {
+                    debug.drawPath(mob.getAI().getPathPoints(), PATH_COLOR);
                 }
             }
         } finally {
@@ -686,92 +672,17 @@ public class DebugOverlay {
     }
 
     /**
-     * Picks the wireframe colour for a cow's current AI state, so the overlay
-     * doubles as an at-a-glance behaviour readout.
+     * Picks the wireframe colour for a mob's current AI state, so the overlay
+     * doubles as an at-a-glance behaviour readout. One palette for all mobs.
      */
-    private Vector4f colorForState(Cow cow) {
-        CowAI ai = cow.getAI();
-        CowAI.CowBehaviorState state =
-                ai != null ? ai.getCurrentState() : CowAI.CowBehaviorState.IDLE;
+    private Vector4f colorForState(LivingEntity mob) {
+        MobBehaviorState state = mob.getAI() != null
+                ? mob.getAI().getCurrentState() : MobBehaviorState.IDLE;
         return switch (state) {
-            case IDLE      -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
-            case WANDERING -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
-            case GRAZING   -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
+            case IDLE                -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
+            case WANDERING           -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
+            case GRAZING, WING_FLAP  -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
         };
-    }
-
-    /**
-     * Picks the wireframe colour for a chicken's current AI state, sharing the
-     * cow palette so behaviour reads consistently across mob types.
-     */
-    private Vector4f colorForState(Chicken chicken) {
-        ChickenAI ai = chicken.getAI();
-        ChickenAI.ChickenBehaviorState state =
-                ai != null ? ai.getCurrentState() : ChickenAI.ChickenBehaviorState.IDLE;
-        return switch (state) {
-            case IDLE      -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
-            case WANDERING -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
-            case WING_FLAP -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
-        };
-    }
-
-    /**
-     * Picks the wireframe colour for a sheep's current AI state, sharing the
-     * cow palette so behaviour reads consistently across mob types.
-     */
-    private Vector4f colorForState(Sheep sheep) {
-        SheepAI ai = sheep.getAI();
-        SheepAI.SheepBehaviorState state =
-                ai != null ? ai.getCurrentState() : SheepAI.SheepBehaviorState.IDLE;
-        return switch (state) {
-            case IDLE      -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
-            case WANDERING -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
-            case GRAZING   -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
-        };
-    }
-
-    /**
-     * Picks the wireframe colour for a goose's current AI state. Ground states
-     * share the common palette (cyan idle / green moving / amber active) while
-     * the flight states get distinct hues so the overlay doubles as a
-     * behaviour readout.
-     */
-    private Vector4f colorForState(Goose goose) {
-        GooseAI ai = goose.getAI();
-        GooseAI.GooseBehaviorState state =
-                ai != null ? ai.getCurrentState() : GooseAI.GooseBehaviorState.IDLE;
-        return switch (state) {
-            case IDLE      -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
-            case WANDERING -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
-            case FLOATING  -> new Vector4f(0.20f, 0.55f, 1.0f, 1.0f); // blue (on water)
-            case FLEEING   -> new Vector4f(1.0f, 0.25f, 0.25f, 1.0f); // red
-            case TAKEOFF   -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
-            case FORMATION -> new Vector4f(0.75f, 0.40f, 1.0f, 1.0f); // purple
-            case FREE_FLY  -> new Vector4f(1.0f, 0.55f, 0.10f, 1.0f); // orange
-            case LANDING   -> new Vector4f(1.0f, 1.0f, 0.40f, 1.0f);  // yellow
-        };
-    }
-
-    /**
-     * Draws the cow's AI pathfinding trail as connected line segments.
-     */
-    private void renderCowPath(Cow cow, DebugRenderer debug) {
-        CowAI cowAI = cow.getAI();
-        if (cowAI == null) {
-            return;
-        }
-        debug.drawPath(cowAI.getPathPoints(), PATH_COLOR);
-    }
-
-    /**
-     * Draws the sheep's AI pathfinding trail as connected line segments.
-     */
-    private void renderSheepPath(Sheep sheep, DebugRenderer debug) {
-        SheepAI sheepAI = sheep.getAI();
-        if (sheepAI == null) {
-            return;
-        }
-        debug.drawPath(sheepAI.getPathPoints(), PATH_COLOR);
     }
 
     private String getCardinalDirection(Vector3f front) {

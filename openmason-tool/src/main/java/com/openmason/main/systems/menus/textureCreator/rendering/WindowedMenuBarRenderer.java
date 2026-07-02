@@ -8,6 +8,7 @@ import com.openmason.main.systems.menus.textureCreator.dialogs.ImportPNGDialog;
 import com.openmason.main.systems.menus.textureCreator.dialogs.NewTextureDialog;
 import com.openmason.main.systems.menus.dialogs.ExportFormatDialog;
 import com.openmason.main.systems.menus.AboutMenuHandler;
+import com.openmason.main.systems.menus.textureCreator.utils.SafeText;
 import imgui.ImGui;
 import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
@@ -415,7 +416,10 @@ public class WindowedMenuBarRenderer {
             controller.getCanvasState().getZoomLevel() * 100);
 
         ImGui.sameLine(ImGui.getContentRegionAvailX() - ImGui.calcTextSize(status).x);
-        ImGui.text(status);
+        // SafeText (not ImGui.text): the string contains a literal '%' (zoom),
+        // which ImGui::Text would read as a printf directive, spilling adjacent
+        // native memory into the label.
+        SafeText.text(status);
     }
 
     private void renderSeparator() {

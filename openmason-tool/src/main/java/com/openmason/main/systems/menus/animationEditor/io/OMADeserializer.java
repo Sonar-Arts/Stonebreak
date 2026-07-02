@@ -1,6 +1,8 @@
 package com.openmason.main.systems.menus.animationEditor.io;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openmason.engine.format.oma.AnimLayerMeta;
 import com.openmason.main.systems.menus.animationEditor.data.AnimationClip;
 import com.openmason.main.systems.menus.animationEditor.data.Easing;
 import com.openmason.main.systems.menus.animationEditor.data.Keyframe;
@@ -24,7 +26,11 @@ public final class OMADeserializer {
 
     private static final Logger logger = LoggerFactory.getLogger(OMADeserializer.class);
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            // Tolerate fields from future format versions so older tool
+            // builds keep opening newer files (the engine reader is
+            // tree-based and inherently tolerant; mirror that here).
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public AnimationClip load(String filePath) {
         try (FileInputStream fis = new FileInputStream(filePath);
@@ -48,6 +54,7 @@ public final class OMADeserializer {
 
             AnimationClip clip = new AnimationClip(
                     manifest.name, manifest.fps, manifest.duration, manifest.loop, manifest.modelRef);
+            applyLayer(clip, manifest.layer);
 
             if (manifest.tracks != null) {
                 for (OMASerializer.TrackRef ref : manifest.tracks) {
@@ -87,6 +94,16 @@ public final class OMADeserializer {
             out.write(buffer, 0, n);
         }
         return out.toByteArray();
+    }
+
+    /** Apply the optional v1.1 layer block; absent → full-body BASE defaults. */
+    private static void applyLayer(AnimationClip clip, OMASerializer.LayerDTO layer) {
+        if (layer == null) return;
+        clip.setLayerType(AnimLayerMeta.LayerType.fromString(layer.type));
+        clip.setMaskParts(layer.maskParts);
+        clip.setFadeInSeconds(layer.fadeInSeconds);
+        clip.setFadeOutSeconds(layer.fadeOutSeconds);
+        clip.setLayerPriority(layer.priority);
     }
 
     private static Keyframe toKeyframe(OMASerializer.KeyframeDTO dto) {

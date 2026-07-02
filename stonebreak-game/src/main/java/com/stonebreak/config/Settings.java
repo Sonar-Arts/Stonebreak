@@ -32,6 +32,7 @@ public class Settings {
     private boolean waterShaderEnabled = true;
     private boolean cloudsEnabled = true;
     private boolean godRaysEnabled = true;
+    private boolean shadowsEnabled = true;
 
     // Performance + advanced settings — defaults sourced from WorldConfiguration to avoid drift.
     private int renderDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_RENDER_DISTANCE;
@@ -42,6 +43,13 @@ public class Settings {
     // limiter is bypassed. Default ON: most users expect tear-free output and
     // ZGC keeps frame pacing stable.
     private boolean vsyncEnabled = true;
+
+    // Max FPS — upper bound enforced by the manual frame limiter, independent of
+    // VSync (the lowest active cap wins). A value of MAX_MAX_FPS means "Unlimited"
+    // (no cap). Default 240 keeps high-refresh displays fast without running wild.
+    public static final int MIN_MAX_FPS = 30;
+    public static final int MAX_MAX_FPS = 260; // sentinel: this value means Unlimited
+    private int maxFps = 240;
 
     // UI scaling factor applied to all HUD and menu elements.
     private float uiScale = 1.0f;
@@ -96,10 +104,12 @@ public class Settings {
             json.append("  \"waterShaderEnabled\": ").append(waterShaderEnabled).append(",\n");
             json.append("  \"cloudsEnabled\": ").append(cloudsEnabled).append(",\n");
             json.append("  \"godRaysEnabled\": ").append(godRaysEnabled).append(",\n");
+            json.append("  \"shadowsEnabled\": ").append(shadowsEnabled).append(",\n");
             json.append("  \"renderDistance\": ").append(renderDistance).append(",\n");
             json.append("  \"lodDistance\": ").append(lodDistance).append(",\n");
             json.append("  \"lodEnabled\": ").append(lodEnabled).append(",\n");
             json.append("  \"vsyncEnabled\": ").append(vsyncEnabled).append(",\n");
+            json.append("  \"maxFps\": ").append(maxFps).append(",\n");
             json.append("  \"multiplayerPort\": ").append(multiplayerPort).append(",\n");
             json.append("  \"lastJoinHost\": \"").append(lastJoinHost).append("\",\n");
             json.append("  \"multiplayerUsername\": \"").append(multiplayerUsername).append("\",\n");
@@ -274,6 +284,11 @@ public class Settings {
                 if (value != null) {
                     godRaysEnabled = Boolean.parseBoolean(value);
                 }
+            } else if (line.contains("shadowsEnabled")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    shadowsEnabled = Boolean.parseBoolean(value);
+                }
             } else if (line.contains("renderDistance")) {
                 String value = extractValue(line);
                 if (value != null) {
@@ -301,6 +316,17 @@ public class Settings {
                 String value = extractValue(line);
                 if (value != null) {
                     vsyncEnabled = Boolean.parseBoolean(value);
+                }
+            } else if (line.contains("maxFps")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        // Route through the setter so hand-edited / out-of-range
+                        // values are clamped to the supported range.
+                        setMaxFps(Integer.parseInt(value));
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid maxFps value: " + value);
+                    }
                 }
             } else if (line.contains("multiplayerPort")) {
                 String value = extractValue(line);
@@ -373,6 +399,7 @@ public class Settings {
     public boolean getWaterShaderEnabled() { return waterShaderEnabled; }
     public boolean getCloudsEnabled() { return cloudsEnabled; }
     public boolean getGodRaysEnabled() { return godRaysEnabled; }
+    public boolean getShadowsEnabled() { return shadowsEnabled; }
 
     // Performance / advanced getters
     public int getRenderDistance() { return renderDistance; }
@@ -462,6 +489,10 @@ public class Settings {
         this.godRaysEnabled = godRaysEnabled;
     }
 
+    public void setShadowsEnabled(boolean shadowsEnabled) {
+        this.shadowsEnabled = shadowsEnabled;
+    }
+
     public void setRenderDistance(int value) {
         this.renderDistance = Math.max(com.stonebreak.world.operations.WorldConfiguration.MIN_RENDER_DISTANCE,
                 Math.min(com.stonebreak.world.operations.WorldConfiguration.MAX_RENDER_DISTANCE, value));
@@ -482,6 +513,21 @@ public class Settings {
      */
     public void setVsyncEnabled(boolean value) {
         this.vsyncEnabled = value;
+    }
+
+    /** Max FPS cap. {@link #MAX_MAX_FPS} means Unlimited (no cap). */
+    public int getMaxFps() { return maxFps; }
+
+    /** True when the Max FPS setting is at its Unlimited sentinel value. */
+    public boolean isMaxFpsUnlimited() { return maxFps >= MAX_MAX_FPS; }
+
+    /**
+     * Sets the Max FPS cap, clamped to [{@link #MIN_MAX_FPS}, {@link #MAX_MAX_FPS}].
+     * The value {@link #MAX_MAX_FPS} is treated as Unlimited. The manual frame
+     * limiter picks up the new value on the next frame, so this applies live.
+     */
+    public void setMaxFps(int value) {
+        this.maxFps = Math.max(MIN_MAX_FPS, Math.min(MAX_MAX_FPS, value));
     }
 
     public float getUiScale() { return uiScale; }

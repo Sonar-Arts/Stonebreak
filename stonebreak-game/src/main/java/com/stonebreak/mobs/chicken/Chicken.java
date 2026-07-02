@@ -9,22 +9,36 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.mobs.entities.AnimationController;
+import com.stonebreak.mobs.entities.ai.PassiveMobAI;
 
 /**
  * Chicken mob implementation.
  *
- * <p>A small passive mob that wanders and idles, occasionally flapping its
- * wings. Rendered from the {@code SB_Chicken.sbe} asset; see {@code Cow} for
- * the reference SBE-driven mob pattern.
+ * <p>A small passive mob driven by the shared {@link PassiveMobAI} framework:
+ * it wanders and idles (never grazes — graze weight 0), occasionally flapping
+ * its wings while idle. The obstacle-hop boost keeps the airborne chicken
+ * driving forward so its footprint fully clears ledge edges before descending.
  */
 public class Chicken extends LivingEntity {
 
-    // AI system
-    private final ChickenAI chickenAI;
+    /**
+     * Chicken personality: half idle / half wander, no grazing, occasional
+     * wing flaps (1.2s matches the SB_Chicken.sbe Wingflap clip), hop boost
+     * while airborne over obstacles; startles (freezes) when hit.
+     */
+    private static final PassiveMobAI.Config AI_CONFIG = new PassiveMobAI.Config(
+            3.0f, 8.0f,          // state duration min/max
+            3.0f, 8.0f,          // wander distance min/max
+            0.8f, 180.0f,        // move speed multiplier, rotation speed (deg/s)
+            0.5f, 0.5f, 0.0f,    // idle / wander weights; chickens never graze
+            0.15f, 1.2f,         // wing-flap chance per second, flap duration
+            2.2f, 0.8f,          // hop boost speed, hop duration cap
+            PassiveMobAI.DamageResponse.STARTLE);
 
-    // Animation system — drives the clip clock for the SBE chicken renderer.
-    private final AnimationController animationController;
+    // Apex = v²/80 blocks under entity gravity: 12.0 reaches ~1.8 blocks
+    // (vs the 10.5/~1.38 LivingEntity default), giving the chicken ample
+    // clearance and airtime to flutter-hop cleanly onto and over ledges.
+    private static final float JUMP_VELOCITY = 12.0f;
 
     /**
      * Creates a new chicken at the specified position.
@@ -32,25 +46,12 @@ public class Chicken extends LivingEntity {
     public Chicken(World world, Vector3f position) {
         super(world, position, EntityType.CHICKEN);
 
-        this.chickenAI = new ChickenAI(this);
-        this.animationController = new AnimationController(this);
+        this.mobAI = new PassiveMobAI(this, AI_CONFIG);
+        this.jumpVelocity = JUMP_VELOCITY;
 
         // Smaller interaction range than a cow; faster turning for a light mob.
         this.interactionRange = 2.0f;
         this.turnSpeed = 180.0f;
-    }
-
-    /**
-     * Updates the chicken's behavior, AI, and animation state.
-     */
-    @Override
-    public void update(float deltaTime) {
-        super.update(deltaTime);
-
-        chickenAI.update(deltaTime);
-
-        // Advance the animation clock; the SBE renderer samples clips from it.
-        animationController.updateAnimations(deltaTime);
     }
 
     /**
@@ -73,12 +74,12 @@ public class Chicken extends LivingEntity {
 
     @Override
     public void onDamage(float damage, DamageSource source) {
-        chickenAI.onDamaged(damage);
+        mobAI.onDamaged(damage);
     }
 
     @Override
     protected void onDeath() {
-        chickenAI.cleanup();
+        mobAI.cleanup();
         for (ItemStack drop : getDrops()) {
             DropUtil.createItemDrop(world, getPosition(), drop);
         }
@@ -95,66 +96,4 @@ public class Chicken extends LivingEntity {
 
     @Override
     public int getXpReward() { return 2; }
-
-    /**
-     * Makes the chicken go idle - stops horizontal movement.
-     */
-    public void startIdling() {
-        this.velocity.set(0, velocity.y, 0);
-    }
-
-    // Jump velocity for the chicken. A value of 8.5 reaches an apex of exactly
-    // one block; 12.0 reaches ~2 blocks, giving the chicken ample clearance and
-    // airtime to flutter-hop cleanly onto and over ledges.
-    private static final float JUMP_VELOCITY = 12.0f;
-
-    /**
-     * Makes the chicken hop by applying upward velocity.
-     */
-    public void jump() {
-        if (isOnGround()) {
-            Vector3f velocity = getVelocity();
-            velocity.y = JUMP_VELOCITY;
-            setVelocity(velocity);
-            setOnGround(false);
-        }
-    }
-
-    /**
-     * Gets the chicken's AI controller.
-     */
-    public ChickenAI getAI() {
-        return chickenAI;
-    }
-
-    /**
-     * Gets the chicken's animation controller.
-     */
-    public AnimationController getAnimationController() {
-        return animationController;
-    }
-
-    /**
-     * Client shadow: apply the server's replicated animation state to the (otherwise frozen) AI.
-     * Entering {@code WING_FLAP} resets the AI state timer to 0 (via {@code setState}) so the
-     * one-shot flap clip plays from its start.
-     */
-    @Override
-    public void applyNetworkState(String sbeStateName) {
-        if (chickenAI != null) {
-            chickenAI.setState(com.stonebreak.mobs.sbe.ChickenStateMapping.behaviorState(sbeStateName));
-        }
-    }
-
-    /**
-     * Client shadow: keep the animation clock running so the current clip plays, and advance the
-     * AI state timer so the one-shot Wingflap clip (sampled from {@code getStateTimer()}) animates.
-     */
-    @Override
-    public void updateClientVisuals(float deltaTime) {
-        animationController.updateAnimations(deltaTime);
-        if (chickenAI != null) {
-            chickenAI.advanceClientClock(deltaTime);
-        }
-    }
 }

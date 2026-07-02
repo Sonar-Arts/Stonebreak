@@ -39,6 +39,21 @@ public class WindowTitleBar {
     // Drag state
     private boolean isDragging = false;
     private float cachedWindowWidth = 0.0f;
+    // Grab point (mouse position relative to the window top-left) captured when
+    // the drag begins, in ImGui's absolute coordinate space.
+    private float dragGrabX = 0.0f;
+    private float dragGrabY = 0.0f;
+    // Position we drive the window toward while dragging, tracked ourselves and
+    // never read back from ImGui, so a lagged platform-window position can't feed
+    // an oscillation. Updated by damping toward the mouse target each frame.
+    private float dragPosX = 0.0f;
+    private float dragPosY = 0.0f;
+
+    // Fraction of the remaining distance to the mouse target applied per frame
+    // while dragging. Below 1.0 this low-passes the XWayland async-window-move
+    // feedback that otherwise makes an owned-viewport window shake; the small
+    // trade-off is a slight, smooth lag behind the cursor.
+    private static final float DRAG_DAMPING = 0.35f;
 
     // Maximize state (tracked externally but needed for restore icon)
     private boolean maximized = false;
@@ -105,18 +120,34 @@ public class WindowTitleBar {
             ImGui.setMouseCursor(ImGuiMouseCursor.ResizeAll);
         }
 
+        // Capture where on the window the user grabbed, and seed the driven
+        // position, the moment the drag region is pressed (before any threshold
+        // movement) so the window never jumps when the drag actually starts.
+        if (ImGui.isItemActivated()) {
+            dragGrabX = ImGui.getMousePosX() - ImGui.getWindowPosX();
+            dragGrabY = ImGui.getMousePosY() - ImGui.getWindowPosY();
+            dragPosX = ImGui.getWindowPosX();
+            dragPosY = ImGui.getWindowPosY();
+        }
+
         boolean currentlyDragging = ImGui.isItemActive() && ImGui.isMouseDragging(0);
         if (currentlyDragging) {
             if (!isDragging) {
                 isDragging = true;
                 cachedWindowWidth = ImGui.getWindowWidth();
             }
-            float deltaX = ImGui.getMouseDragDeltaX(0);
-            float deltaY = ImGui.getMouseDragDeltaY(0);
-            ImGui.setWindowPos(windowTitle,
-                    ImGui.getWindowPosX() + deltaX,
-                    ImGui.getWindowPosY() + deltaY);
-            ImGui.resetMouseDragDelta(0);
+            // Target is the absolute mouse position minus the fixed grab offset.
+            // We do NOT read getWindowPos() back (which lags a frame for an
+            // owned-viewport OS window under XWayland and drives the "earthquake").
+            // Instead we keep our own dragPos and ease it toward the target, then
+            // set the window to whole-pixel coordinates. The damping keeps the
+            // move-feedback loop's gain below 1 so any residual oscillation decays
+            // instead of building up.
+            float targetX = ImGui.getMousePosX() - dragGrabX;
+            float targetY = ImGui.getMousePosY() - dragGrabY;
+            dragPosX += (targetX - dragPosX) * DRAG_DAMPING;
+            dragPosY += (targetY - dragPosY) * DRAG_DAMPING;
+            ImGui.setWindowPos(windowTitle, Math.round(dragPosX), Math.round(dragPosY));
         } else if (isDragging) {
             isDragging = false;
         }

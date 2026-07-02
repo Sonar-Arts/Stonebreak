@@ -11,7 +11,7 @@ import com.openmason.engine.rendering.model.gmr.uv.FaceTextureSizer;
 import com.openmason.engine.rendering.model.gmr.uv.MaterialDefinition;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.rendering.model.miscComponents.TextureLoadResult;
-import com.openmason.main.systems.themes.utils.ImGuiComponents;
+import com.openmason.main.systems.menus.panes.propertyPane.inspector.InspectorRow;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import imgui.ImGui;
 import imgui.flag.ImGuiHoveredFlags;
@@ -96,8 +96,6 @@ public class FaceMaterialSection implements IPanelSection {
             return;
         }
 
-        ImGuiComponents.renderCompactSectionHeader("Face Material");
-
         FaceSelectionState selectionState = viewportConnector.getFaceSelectionState();
 
         if (selectionState == null || !selectionState.hasSelection()) {
@@ -109,19 +107,19 @@ public class FaceMaterialSection implements IPanelSection {
         int selectionCount = selectionState.getSelectionCount();
         Set<Integer> selectedFaces = selectionState.getSelectedFaceIndices();
 
-        // Selection info
+        // Selection row: label | face id(s)
+        InspectorRow.label("Selection");
         if (selectionCount == 1) {
             int faceId = selectedFaces.iterator().next();
             ImGui.text("Face " + faceId);
         } else {
-            ImGui.text(selectionCount + " faces selected");
+            ImGui.text(selectionCount + " faces");
         }
 
-        // Current material display (show material for first selected face)
+        // Material row: label | current material name (first selected face)
         int firstFaceId = selectedFaces.iterator().next();
         String materialName = getMaterialName(firstFaceId);
-        ImGui.text("Material:");
-        ImGui.sameLine();
+        InspectorRow.label("Material");
         ImGui.textDisabled(materialName);
 
         // Render layer selector (only for non-default materials)
@@ -223,8 +221,9 @@ public class FaceMaterialSection implements IPanelSection {
 
         int currentIdx = material.renderLayer().ordinal();
         ImInt selected = new ImInt(currentIdx);
-        ImGui.setNextItemWidth(120);
-        if (ImGui.combo("Render Layer", selected, RENDER_LAYER_NAMES)) {
+        InspectorRow.label("Render Layer");
+        ImGui.setNextItemWidth(-1);
+        if (ImGui.combo("##faceRenderLayer", selected, RENDER_LAYER_NAMES)) {
             int newIdx = selected.get();
             if (newIdx != currentIdx && newIdx >= 0 && newIdx < RENDER_LAYER_VALUES.length) {
                 MaterialDefinition updated = new MaterialDefinition(
@@ -259,7 +258,8 @@ public class FaceMaterialSection implements IPanelSection {
         if (firstMapping == null) return;
 
         ImBoolean state = new ImBoolean(firstMapping.autoResize());
-        if (ImGui.checkbox("Auto-resize", state)) {
+        InspectorRow.label("Auto-resize");
+        if (ImGui.checkbox("##faceAutoResize", state)) {
             boolean newValue = state.get();
             for (int faceId : selectedFaces) {
                 FaceTextureMapping mapping = ftm.getFaceMapping(faceId);

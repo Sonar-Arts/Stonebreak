@@ -50,12 +50,6 @@ public class Main {
     private int height;
 
     /**
-     * FPS cap used when VSync is disabled. Picked above common refresh rates
-     * so high-refresh monitors aren't held back by it.
-     */
-    private static final int UNCAPPED_TARGET_FPS = 240;
-
-    /**
      * Detected monitor refresh rate. Used as the target FPS when VSync
      * is enabled — capping at the display rate gives the same
      * tear-suppression benefit as driver VSync (assuming G-Sync/FreeSync
@@ -67,7 +61,19 @@ public class Main {
     // Game state
     private boolean running = false;
     private boolean firstRender = true;
-    
+    // True once the GL context is current and LWJGL capabilities are created.
+    // GLFW may fire the framebuffer-size callback while the window is being
+    // shown/positioned (notably on Linux) before GL is usable, so GL calls in
+    // that callback must be gated on this flag to avoid a native abort.
+    private volatile boolean glReady = false;
+    // Framebuffer-pixels per window-coordinate. glfwGetCursorPos reports in
+    // window (screen) coordinates, but the UI is laid out in framebuffer
+    // pixels (width/height). These are 1.0 when the two spaces match (Windows,
+    // X11 non-HiDPI) and differ on Wayland / HiDPI, where UI input must be
+    // scaled by these factors to line up with rendered UI.
+    private double cursorScaleX = 1.0;
+    private double cursorScaleY = 1.0;
+
     // Game components
     private Renderer renderer;
     private InputHandler inputHandler;
@@ -125,24 +131,169 @@ public class Main {
      */
     public static void applyVsyncSetting() {
         glfwSwapInterval(0);
-        boolean enabled = Settings.getInstance().isVsyncEnabled();
+        Settings settings = Settings.getInstance();
+        boolean enabled = settings.isVsyncEnabled();
+        String fpsCap = settings.isMaxFpsUnlimited() ? "unlimited" : settings.getMaxFps() + " FPS";
         System.out.println("[Display] VSync " + (enabled ? "enabled (cap " + monitorRefreshHz + " Hz)"
-                                                          : "disabled (cap " + UNCAPPED_TARGET_FPS + " FPS)"));
+                                                          : "disabled")
+                + ", Max FPS " + fpsCap);
     }
 
     /**
      * Returns the current per-frame nanosecond budget for the manual FPS
-     * limiter. Picks the monitor refresh rate when VSync is on, the
-     * uncapped target otherwise.
+     * limiter, or {@code 0} for fully uncapped (no sleep). The effective cap is
+     * the lowest of the active limits: the monitor refresh rate when VSync is
+     * on, and the user's Max FPS setting when it isn't set to Unlimited.
      */
     private static long currentFrameBudgetNanos() {
-        int targetHz = Settings.getInstance().isVsyncEnabled()
-                ? monitorRefreshHz
-                : UNCAPPED_TARGET_FPS;
-        if (targetHz <= 0) targetHz = 60; // defensive — never divide by zero
-        return 1_000_000_000L / targetHz;
+        Settings settings = Settings.getInstance();
+        int cap = Integer.MAX_VALUE;
+        if (settings.isVsyncEnabled() && monitorRefreshHz > 0) {
+            cap = Math.min(cap, monitorRefreshHz);
+        }
+        if (!settings.isMaxFpsUnlimited()) {
+            cap = Math.min(cap, settings.getMaxFps());
+        }
+        if (cap == Integer.MAX_VALUE || cap <= 0) {
+            return 0L; // no active cap — skip the sleep entirely
+        }
+        return 1_000_000_000L / cap;
     }
     
+    /**
+     * Re-synchronizes render/UI state from the window's ACTUAL framebuffer size.
+     * Call after programmatically changing the window size (e.g. applying a
+     * resolution setting): GLFW/Wayland may clamp or ignore the requested size
+     * and may not deliver the framebuffer-size callback synchronously, so we
+     * read the real size back and update the viewport, projection, cursor scale,
+     * and stored dimensions to match — preventing a stale-viewport glitch.
+     */
+    public static void refreshWindowSize() {
+        if (instance != null && instance.window != 0) {
+            instance.syncFramebufferSize();
+        }
+    }
+
+    private void syncFramebufferSize() {
+        try (MemoryStack stack = stackPush()) {
+            IntBuffer fbW = stack.mallocInt(1);
+            IntBuffer fbH = stack.mallocInt(1);
+            glfwGetFramebufferSize(window, fbW, fbH);
+            this.width = fbW.get(0);
+            this.height = fbH.get(0);
+        }
+        if (glReady) {
+            glViewport(0, 0, this.width, this.height);
+            if (renderer != null) {
+                renderer.updateProjectionMatrix(this.width, this.height);
+            }
+        }
+        updateCursorScale();
+        Game.getInstance().setWindowDimensions(this.width, this.height);
+        // The window may now sit on a different monitor; keep the VSync cap in sync.
+        refreshMonitorHz();
+    }
+
+    /** True when GLFW selected the native Wayland backend at init. */
+    private static boolean isWayland() {
+        return glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
+    }
+
+    /**
+     * Sets {@link #monitorRefreshHz} from the monitor the window currently
+     * occupies (largest window/monitor overlap), rather than always the primary
+     * monitor — so the VSync frame cap matches the display the game is shown on
+     * in multi-monitor setups.
+     *
+     * <p>On Wayland the compositor never exposes window positions
+     * (glfwGetWindowPos would just emit GLFW_FEATURE_UNAVAILABLE and return
+     * 0,0), so the occupied monitor cannot be determined. There we cap at the
+     * fastest connected display instead: an over-cap is harmless, while capping
+     * a 144 Hz display at a slower primary's 60 Hz would visibly degrade.
+     */
+    private static void refreshMonitorHz() {
+        if (instance == null || instance.window == 0) return;
+        try (MemoryStack stack = stackPush()) {
+            long bestMonitor = glfwGetPrimaryMonitor();
+            PointerBuffer monitors = glfwGetMonitors();
+
+            if (isWayland()) {
+                int bestHz = -1;
+                if (monitors != null) {
+                    for (int i = 0; i < monitors.limit(); i++) {
+                        long mon = monitors.get(i);
+                        GLFWVidMode mode = glfwGetVideoMode(mon);
+                        if (mode != null && mode.refreshRate() > bestHz) {
+                            bestHz = mode.refreshRate();
+                            bestMonitor = mon;
+                        }
+                    }
+                }
+            } else {
+                IntBuffer wx = stack.mallocInt(1);
+                IntBuffer wy = stack.mallocInt(1);
+                IntBuffer ww = stack.mallocInt(1);
+                IntBuffer wh = stack.mallocInt(1);
+                glfwGetWindowPos(instance.window, wx, wy);
+                glfwGetWindowSize(instance.window, ww, wh);
+                int winX = wx.get(0), winY = wy.get(0), winW = ww.get(0), winH = wh.get(0);
+
+                long bestArea = -1;
+                if (monitors != null) {
+                    IntBuffer mx = stack.mallocInt(1);
+                    IntBuffer my = stack.mallocInt(1);
+                    for (int i = 0; i < monitors.limit(); i++) {
+                        long mon = monitors.get(i);
+                        GLFWVidMode mode = glfwGetVideoMode(mon);
+                        if (mode == null) continue;
+                        glfwGetMonitorPos(mon, mx, my);
+                        int monX = mx.get(0), monY = my.get(0);
+                        // Overlap area between the window rect and this monitor rect.
+                        int ox = Math.max(0, Math.min(winX + winW, monX + mode.width())  - Math.max(winX, monX));
+                        int oy = Math.max(0, Math.min(winY + winH, monY + mode.height()) - Math.max(winY, monY));
+                        long area = (long) ox * oy;
+                        if (area > bestArea) {
+                            bestArea = area;
+                            bestMonitor = mon;
+                        }
+                    }
+                }
+            }
+
+            GLFWVidMode bestMode = glfwGetVideoMode(bestMonitor);
+            if (bestMode != null && bestMode.refreshRate() > 0 && bestMode.refreshRate() != monitorRefreshHz) {
+                monitorRefreshHz = bestMode.refreshRate();
+                System.out.println("[Display] Using monitor refresh rate: " + monitorRefreshHz + " Hz");
+            }
+        }
+    }
+
+    /**
+     * Recomputes the window-coordinate -> framebuffer-pixel scale used to map
+     * cursor positions into UI space. Called whenever the window or framebuffer
+     * size changes. width/height hold the current framebuffer size.
+     */
+    private void updateCursorScale() {
+        try (MemoryStack stack = stackPush()) {
+            IntBuffer winW = stack.mallocInt(1);
+            IntBuffer winH = stack.mallocInt(1);
+            glfwGetWindowSize(window, winW, winH);
+            cursorScaleX = winW.get(0) > 0 ? (double) width / winW.get(0) : 1.0;
+            cursorScaleY = winH.get(0) > 0 ? (double) height / winH.get(0) : 1.0;
+        }
+    }
+
+    /**
+     * Reads the cursor position converted from window coordinates into
+     * framebuffer-pixel (UI) space. Use for all UI hit-testing so clicks line
+     * up with rendered UI on Wayland/HiDPI where the two spaces differ.
+     */
+    private void getUiCursorPos(java.nio.DoubleBuffer xpos, java.nio.DoubleBuffer ypos) {
+        glfwGetCursorPos(window, xpos, ypos);
+        xpos.put(0, xpos.get(0) * cursorScaleX);
+        ypos.put(0, ypos.get(0) * cursorScaleY);
+    }
+
     private void init() {
         // Setup an error callback
         GLFWErrorCallback.createPrint(System.err).set();
@@ -151,6 +302,14 @@ public class Main {
         if (!glfwInit()) {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
+
+        System.out.println("[Display] GLFW platform: " + switch (glfwGetPlatform()) {
+            case GLFW_PLATFORM_WAYLAND -> "Wayland";
+            case GLFW_PLATFORM_X11 -> "X11";
+            case GLFW_PLATFORM_WIN32 -> "Win32";
+            case GLFW_PLATFORM_COCOA -> "Cocoa";
+            default -> "unknown";
+        });
 
         // Configure GLFW
         glfwDefaultWindowHints();
@@ -162,6 +321,10 @@ public class Main {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
+
+        // Wayland identifies applications by app_id (taskbar grouping, icon,
+        // window rules); ignored on other platforms.
+        glfwWindowHintString(GLFW_WAYLAND_APP_ID, "stonebreak");
 
         // Create the window
         String title = "Stonebreak";
@@ -232,13 +395,31 @@ public class Main {
         glfwSetFramebufferSizeCallback(window, (win, w, h) -> {
             this.width = w;
             this.height = h;
-            glViewport(0, 0, w, h);
-            if (renderer != null) {
-                renderer.updateProjectionMatrix(w, h);
+            // Guard GL calls: this callback can fire before the context is
+            // current / capabilities are created (e.g. during window show or
+            // positioning on Linux). The stored width/height are re-applied to
+            // the viewport once GL is ready (see below).
+            if (glReady) {
+                glViewport(0, 0, w, h);
+                if (renderer != null) {
+                    renderer.updateProjectionMatrix(w, h);
+                }
             }
+            // Framebuffer size changed -> refresh cursor->UI scale.
+            updateCursorScale();
             // Update the Game singleton with new dimensions
             Game.getInstance().setWindowDimensions(w, h);
         });
+
+        // Window (screen-coordinate) size can change independently of the
+        // framebuffer on Wayland/HiDPI; keep the cursor->UI scale in sync.
+        glfwSetWindowSizeCallback(window, (win, w, h) -> updateCursorScale());
+
+        // Window moved -> it may now be on a different monitor; refresh the
+        // VSync refresh-rate target to match the current display. (Never fires
+        // on Wayland — there refreshMonitorHz caps at the fastest monitor
+        // instead, so no per-move refresh is needed.)
+        glfwSetWindowPosCallback(window, (win, x, y) -> refreshMonitorHz());
 
         // Setup mouse button callback
         // This now directly calls InputHandler's processMouseButton method.
@@ -256,7 +437,7 @@ public class Main {
                     try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                         java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                         java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                        glfwGetCursorPos(window, xpos, ypos);
+                        getUiCursorPos(xpos, ypos);
                         if (game.getMainMenu() != null) {
                             game.getMainMenu().handleMouseClick(xpos.get(), ypos.get(), width, height);
                         }
@@ -267,7 +448,7 @@ public class Main {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     if (game.getWorldSelectScreen() != null) {
                         game.getWorldSelectScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
@@ -277,7 +458,7 @@ public class Main {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     if (game.getSettingsMenu() != null) {
                         game.getSettingsMenu().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
@@ -287,7 +468,7 @@ public class Main {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     if (game.getCharacterCreationScreen() != null) {
                         game.getCharacterCreationScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
@@ -297,7 +478,7 @@ public class Main {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     if (game.getTerrainMapperScreen() != null) {
                         game.getTerrainMapperScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
@@ -308,7 +489,7 @@ public class Main {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     switch (game.getState()) {
                         case MULTIPLAYER_MENU -> game.getMultiplayerMenu().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                         case HOST_WORLD_SELECT -> game.getHostWorldScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
@@ -325,45 +506,51 @@ public class Main {
         glfwSetCursorPosCallback(window, (win, xpos, ypos) -> {
             Game game = Game.getInstance();
 
-            // Process mouse movement for camera look (if mouse is captured)
+            // Process mouse movement for camera look (if mouse is captured).
+            // Camera look consumes raw deltas, so it must use unscaled coords.
             MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();
             if (mouseCaptureManager != null) {
                 mouseCaptureManager.processMouseMovement(xpos, ypos);
             }
 
+            // UI hit-testing happens in framebuffer-pixel space; convert the
+            // window-coordinate cursor position accordingly.
+            double uiX = xpos * cursorScaleX;
+            double uiY = ypos * cursorScaleY;
+
             // Update InputHandler for UI interactions (always needed for UI)
             if (inputHandler != null) {
-                inputHandler.updateMousePosition((float)xpos, (float)ypos);
+                inputHandler.updateMousePosition((float)uiX, (float)uiY);
             }
 
             // Handle main menu hover events
             if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
-                game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
+                game.getMainMenu().handleMouseMove(uiX, uiY, width, height);
             }
             // Handle world select screen hover events
             else if (game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
-                game.getWorldSelectScreen().handleMouseMove(xpos, ypos, width, height);
+                game.getWorldSelectScreen().handleMouseMove(uiX, uiY, width, height);
             }
             // Handle settings menu hover events
             else if (game.getState() == GameState.SETTINGS && game.getSettingsMenu() != null) {
-                game.getSettingsMenu().handleMouseMove(xpos, ypos, width, height);
+                game.getSettingsMenu().handleMouseMove(uiX, uiY, width, height);
             }
             // Handle character creation hover events
             else if (game.getState() == GameState.CHARACTER_CREATION && game.getCharacterCreationScreen() != null) {
-                game.getCharacterCreationScreen().handleMouseMove(xpos, ypos, width, height);
+                game.getCharacterCreationScreen().handleMouseMove(uiX, uiY, width, height);
             }
             // Handle terrain mapper hover events
             else if (game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
-                game.getTerrainMapperScreen().handleMouseMove(xpos, ypos, width, height);
+                game.getTerrainMapperScreen().handleMouseMove(uiX, uiY, width, height);
             }
             else if (game.getState() == GameState.MULTIPLAYER_MENU && game.getMultiplayerMenu() != null) {
-                game.getMultiplayerMenu().handleMouseMove(xpos, ypos, width, height);
+                game.getMultiplayerMenu().handleMouseMove(uiX, uiY, width, height);
             }
             else if (game.getState() == GameState.HOST_WORLD_SELECT && game.getHostWorldScreen() != null) {
-                game.getHostWorldScreen().handleMouseMove(xpos, ypos, width, height);
+                game.getHostWorldScreen().handleMouseMove(uiX, uiY, width, height);
             }
             else if (game.getState() == GameState.JOIN_WORLD_SCREEN && game.getJoinWorldScreen() != null) {
-                game.getJoinWorldScreen().handleMouseMove(xpos, ypos, width, height);
+                game.getJoinWorldScreen().handleMouseMove(uiX, uiY, width, height);
             }
         });
 
@@ -376,14 +563,14 @@ public class Main {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     game.getCharacterCreationScreen().handleMouseWheel(xpos.get(), ypos.get(), yoffset);
                 }
             } else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
                     java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
                     java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
+                    getUiCursorPos(xpos, ypos);
                     game.getTerrainMapperScreen().handleMouseWheel(xpos.get(), ypos.get(), yoffset);
                 }
             } else if (inputHandler != null) {
@@ -411,40 +598,42 @@ public class Main {
             running = false;
         });
 
-        // Get the thread stack and push a new frame
-        try (MemoryStack stack = stackPush()) {
-            IntBuffer pWidth = stack.mallocInt(1);
-            IntBuffer pHeight = stack.mallocInt(1);
-            
-            // Get the window size passed to glfwCreateWindow
-            glfwGetWindowSize(window, pWidth, pHeight);
-            
-            // Get the resolution of the primary monitor
-            GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+        // Center the window. Wayland forbids clients from positioning their own
+        // windows (glfwSetWindowPos would only emit GLFW_FEATURE_UNAVAILABLE);
+        // the compositor decides placement there, so skip the attempt entirely.
+        if (!isWayland()) {
+            try (MemoryStack stack = stackPush()) {
+                IntBuffer pWidth = stack.mallocInt(1);
+                IntBuffer pHeight = stack.mallocInt(1);
 
-            // Center the window
-            if (vidmode != null) {
-                glfwSetWindowPos(
-                    window,
-                    (vidmode.width() - pWidth.get(0)) / 2,
-                    (vidmode.height() - pHeight.get(0)) / 2
-                );
-                // Capture the monitor's refresh rate as the VSync target. This
-                // is what the FPS cap uses when VSync is enabled — capping at
-                // the display rate avoids tearing without the half-rate
-                // fallback the driver's swap-interval=1 imposes on missed frames.
-                int hz = vidmode.refreshRate();
-                if (hz > 0) {
-                    monitorRefreshHz = hz;
-                    System.out.println("[Display] Monitor refresh rate: " + hz + " Hz");
+                // Get the window size passed to glfwCreateWindow
+                glfwGetWindowSize(window, pWidth, pHeight);
+
+                // Get the resolution of the primary monitor
+                GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+
+                if (vidmode != null) {
+                    glfwSetWindowPos(
+                        window,
+                        (vidmode.width() - pWidth.get(0)) / 2,
+                        (vidmode.height() - pHeight.get(0)) / 2
+                    );
+                } else {
+                    System.err.println("Could not get video mode for primary monitor. Window will not be centered.");
                 }
-            } else {
-                // Fallback or log error if vidmode is null
-                System.err.println("Could not get video mode for primary monitor. Window will not be centered.");
-                // Optionally, center based on some default or last known screen size
-                // For now, we just don't center it.
             }
         }
+
+        // Capture the VSync target from the monitor the window actually sits on
+        // (not always the primary monitor). The FPS cap uses this when VSync is
+        // enabled — capping at the display rate avoids tearing without the
+        // half-rate fallback the driver's swap-interval=1 imposes on missed
+        // frames. Kept in sync as the window moves via the window-pos callback.
+        refreshMonitorHz();
+
+        // Monitor hot-plug changes both the monitor list and possibly the
+        // fastest available refresh rate; re-derive the VSync cap.
+        glfwSetMonitorCallback((mon, event) -> refreshMonitorHz());
 
         // Make the OpenGL context current
         glfwMakeContextCurrent(window);
@@ -463,6 +652,34 @@ public class Main {
         // creates the GLCapabilities instance and makes the OpenGL
         // bindings available for use.
         GL.createCapabilities();
+
+        // GL is now usable — allow the framebuffer-size callback to touch GL,
+        // and set the initial viewport from the actual framebuffer size (which
+        // may differ from the requested size on HiDPI displays, and covers any
+        // resize events that were skipped while GL was not yet ready).
+        glReady = true;
+        try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+            java.nio.IntBuffer fbWidth = stack.mallocInt(1);
+            java.nio.IntBuffer fbHeight = stack.mallocInt(1);
+            glfwGetFramebufferSize(window, fbWidth, fbHeight);
+            this.width = fbWidth.get(0);
+            this.height = fbHeight.get(0);
+            glViewport(0, 0, this.width, this.height);
+            Game.getInstance().setWindowDimensions(this.width, this.height);
+
+            // Diagnostic: on some platforms (notably Wayland) the framebuffer
+            // size can differ from the window (screen-coordinate) size, which
+            // is the space glfwGetCursorPos reports in. If these differ, UI
+            // click coordinates must be scaled by framebuffer/window.
+            java.nio.IntBuffer winW = stack.mallocInt(1);
+            java.nio.IntBuffer winH = stack.mallocInt(1);
+            glfwGetWindowSize(window, winW, winH);
+            System.out.println("[Display] window=" + winW.get(0) + "x" + winH.get(0)
+                    + " framebuffer=" + this.width + "x" + this.height);
+        }
+
+        // Establish the initial cursor->UI scale now that both sizes are known.
+        updateCursorScale();
 
         // Set up OpenGL state
         glEnable(GL_DEPTH_TEST);
@@ -620,9 +837,9 @@ public class Main {
             long frameEndTime = System.nanoTime();
             long frameTimeNanos = frameEndTime - frameStartTime;
             
-            // Sleep if we're running faster than the current target.
-            // VSync = on  → target = monitor refresh rate (cap-based "VSync")
-            // VSync = off → target = UNCAPPED_TARGET_FPS
+            // Sleep if we're running faster than the current target. The budget
+            // reflects the lowest active cap (VSync refresh rate and/or Max FPS);
+            // a budget of 0 means uncapped, so the sleep below is skipped.
             long frameBudgetNanos = currentFrameBudgetNanos();
             if (frameTimeNanos < frameBudgetNanos) {
                 try {
@@ -1019,6 +1236,10 @@ public class Main {
         Game.forceGCAndReport("Final cleanup");
 
         // Terminate GLFW and free the error callback
+        GLFWMonitorCallback monitorCallback = glfwSetMonitorCallback(null);
+        if (monitorCallback != null) {
+            monitorCallback.free();
+        }
         glfwTerminate();
         GLFWErrorCallback prevCallback = glfwSetErrorCallback(null);
         if (prevCallback != null) {

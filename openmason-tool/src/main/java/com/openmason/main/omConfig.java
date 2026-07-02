@@ -18,8 +18,7 @@ public class omConfig {
     
     private static final Logger logger = LoggerFactory.getLogger(omConfig.class);
     
-    // Configuration file paths
-    private static final String CONFIG_DIR = ".openmason";
+    // Configuration file name (directory comes from AppPaths.legacyConfigDir())
     private static final String CONFIG_FILE = "config.properties";
     
     // Default configuration values
@@ -31,10 +30,6 @@ public class omConfig {
     private static final boolean DEFAULT_DARK_THEME_ENABLED = true;
     private static final float DEFAULT_VERTEX_POINT_SIZE = 5.0f;
 
-    // Asset library defaults — relative to user.dir, created on demand.
-    private static final String DEFAULT_OMO_FOLDER = "Dev Working/DevTextures/Blocks/OMT/OMOs";
-    private static final String DEFAULT_SBT_FOLDER = "Dev Working/DevTextures/Items/SBTs";
-    
     private final Properties properties;
     private Path configFilePath;
     
@@ -51,9 +46,8 @@ public class omConfig {
      */
     private void initializeConfiguration() {
         try {
-            // Determine config file path
-            Path userHome = Paths.get(System.getProperty("user.home"));
-            Path configDir = userHome.resolve(CONFIG_DIR);
+            // Determine config file path (legacy ~/.openmason location, defined in AppPaths)
+            Path configDir = AppPaths.legacyConfigDir();
             configFilePath = configDir.resolve(CONFIG_FILE);
             
             // Create config directory if it doesn't exist
@@ -116,14 +110,7 @@ public class omConfig {
 
         // Project settings
         properties.setProperty("project.last.opened.path", "");
-
-        // Asset library paths — where the Model Browser scans for .omo / .sbt files.
-        properties.setProperty("assets.omo.folder", defaultAssetPath(DEFAULT_OMO_FOLDER));
-        properties.setProperty("assets.sbt.folder", defaultAssetPath(DEFAULT_SBT_FOLDER));
-    }
-
-    private static String defaultAssetPath(String relative) {
-        return Paths.get(System.getProperty("user.dir"), relative).toString();
+        properties.setProperty("projects.base.folder", AppPaths.defaultProjectsDir().toString());
     }
     
     /**
@@ -176,30 +163,31 @@ public class omConfig {
     }
 
     /**
-     * Returns the configured directory the Model Browser scans for .omo files.
-     * Falls back to a sensible default under the working directory if unset.
+     * Returns the base folder scanned by the Project Hub for projects; new projects are
+     * created here by default. Falls back to the platform-native appdata location if unset.
      */
-    public Path getOMOFolder() {
-        String stored = properties.getProperty("assets.omo.folder", defaultAssetPath(DEFAULT_OMO_FOLDER));
-        return Paths.get(stored);
+    public Path getProjectsBaseFolder() {
+        String stored = properties.getProperty("projects.base.folder", "");
+        return stored.isBlank() ? AppPaths.defaultProjectsDir() : Paths.get(stored);
     }
 
-    public void setOMOFolder(String path) {
-        properties.setProperty("assets.omo.folder",
-                path != null && !path.isBlank() ? path : defaultAssetPath(DEFAULT_OMO_FOLDER));
+    public void setProjectsBaseFolder(String path) {
+        properties.setProperty("projects.base.folder",
+                path != null && !path.isBlank() ? path : AppPaths.defaultProjectsDir().toString());
     }
 
     /**
-     * Returns the configured directory the Model Browser scans for .sbt files.
+     * One-time dock-layout migration flag: true once the default layout has
+     * been (re)built with the "Project Browser" window docked. Saved imgui.ini
+     * layouts from before the Model Browser rename lack the window entirely,
+     * so the first launch after the rename rebuilds the default layout once.
      */
-    public Path getSBTFolder() {
-        String stored = properties.getProperty("assets.sbt.folder", defaultAssetPath(DEFAULT_SBT_FOLDER));
-        return Paths.get(stored);
+    public boolean isProjectBrowserLayoutMigrated() {
+        return Boolean.parseBoolean(properties.getProperty("ui.layout.projectbrowser.migrated", "false"));
     }
 
-    public void setSBTFolder(String path) {
-        properties.setProperty("assets.sbt.folder",
-                path != null && !path.isBlank() ? path : defaultAssetPath(DEFAULT_SBT_FOLDER));
+    public void setProjectBrowserLayoutMigrated(boolean migrated) {
+        properties.setProperty("ui.layout.projectbrowser.migrated", String.valueOf(migrated));
     }
 
     public String getLastOpenedProjectPath() {

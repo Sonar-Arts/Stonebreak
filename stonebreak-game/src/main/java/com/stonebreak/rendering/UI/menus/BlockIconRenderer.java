@@ -247,6 +247,16 @@ public class BlockIconRenderer {
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
+        // The icon is drawn into the default framebuffer, sharing its depth
+        // buffer with the just-rendered 3D world. Without clearing, the cube is
+        // GL_LESS-tested against whatever world geometry sits behind the panel;
+        // where nearer geometry exists (e.g. the centered inventory panel over
+        // the crosshair) the cube fails the test and the opaque slot fill shows
+        // through as a black square. Scissor is already restricted to this slot
+        // (setupViewportAndScissor ran first), so this clears only the slot.
+        glDepthMask(true);
+        glClear(GL_DEPTH_BUFFER_BIT);
+
         // Handle leaf transparency - enable blending only for transparent leaf blocks
         boolean isLeafBlock = (blockType == BlockType.LEAVES || blockType == BlockType.PINE_LEAVES || blockType == BlockType.ELM_LEAVES);
         if (isLeafBlock && blockType.isTransparent()) {
@@ -273,6 +283,17 @@ public class BlockIconRenderer {
 
         // Enable UI element mode for moderate brightness (80% instead of full lighting)
         shaderProgram.setUniform("u_isUIElement", true);
+
+        // Guard against shader state left over from the preceding world/hand
+        // draws. These are not otherwise set here and persist in the program:
+        //  - u_renderPass != 0 makes the opaque fragment branch discard the
+        //    icon entirely (world transparent pass leaves it at 1).
+        //  - a non-identity modelMatrix transforms the cube out of the tiny
+        //    ortho box, clipping it away.
+        //  - a dim u_playerLight (~0) renders the icon near-black.
+        shaderProgram.setUniform("u_renderPass", 0);
+        shaderProgram.setUniform("modelMatrix", new Matrix4f().identity());
+        shaderProgram.setUniform("u_playerLight", -1.0f);
 
         // Use a small orthographic projection similar to original but aspect-correct
         float aspect = (float) screenSlotWidth / screenSlotHeight;

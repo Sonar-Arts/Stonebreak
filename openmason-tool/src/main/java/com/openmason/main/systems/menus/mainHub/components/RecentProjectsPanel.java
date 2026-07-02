@@ -2,14 +2,20 @@ package com.openmason.main.systems.menus.mainHub.components;
 
 import com.openmason.main.systems.menus.mainHub.dialogs.DeleteProjectDialog;
 import com.openmason.main.systems.menus.mainHub.dialogs.RenameProjectDialog;
+import com.openmason.main.systems.menus.mainHub.model.HubProjectEntry;
 import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import com.openmason.main.systems.menus.mainHub.services.HubActionService;
+import com.openmason.main.systems.menus.mainHub.services.HubProjectListModel;
+import com.openmason.main.systems.menus.mainHub.services.ProjectScanService;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.menus.mainHub.state.HubState;
 import com.openmason.main.systems.mortar.core.MortarFrameResult;
+import com.openmason.main.systems.mortar.core.MortarPart;
 import com.openmason.main.systems.mortar.core.MortarRegion;
+import com.openmason.main.systems.mortar.parts.MortarBadge;
 import com.openmason.main.systems.mortar.parts.MortarCard;
 import com.openmason.main.systems.mortar.parts.MortarListRow;
+import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import imgui.ImGui;
 import imgui.ImVec4;
@@ -22,11 +28,14 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
- * Recent-projects grid, painted as a single Skija {@link MortarRegion} of
- * {@link MortarCard}s with a responsive column count. Owns its data service and
- * the rename/remove dialogs; selection, double-click-to-open and a right-click
- * context menu are routed from the region's hit-test. The contextual preview
- * panel reacts to the selection this panel sets.
+ * The hub's "Projects" grid: every project found under the base projects
+ * folder merged with the recent-projects list (projects opened from elsewhere
+ * appear with an "External" badge; recents whose file vanished render dimmed).
+ * Painted as a single Skija {@link MortarRegion} of {@link MortarCard}s with a
+ * responsive column count. Owns the merged list model and the rename/remove
+ * dialogs; selection, double-click-to-open and a right-click context menu are
+ * routed from the region's hit-test. The contextual preview panel reacts to
+ * the selection this panel sets.
  */
 public class RecentProjectsPanel {
 
@@ -38,9 +47,11 @@ public class RecentProjectsPanel {
     private static final float GAP = 12f;
     private static final float TOGGLE_BTN_W = 52f;
     private static final String CTX_POPUP = "##recent_ctx";
+    private static final String EXTERNAL_BADGE = "External";
 
     private final HubState hubState;
     private final RecentProjectsService recentProjectsService;
+    private final HubProjectListModel listModel;
     private final HubActionService actionService;
     private final MortarRegion region = new MortarRegion();
 
@@ -48,44 +59,51 @@ public class RecentProjectsPanel {
     private final DeleteProjectDialog deleteDialog = new DeleteProjectDialog();
 
     /** Filtered list backing the current frame's card ids ("recent.<index>"). */
-    private List<RecentProject> frameProjects = List.of();
-    private RecentProject contextProject;
+    private List<HubProjectEntry> frameEntries = List.of();
+    private HubProjectEntry contextEntry;
 
     public RecentProjectsPanel(ThemeManager themeManager, HubState hubState,
                                RecentProjectsService recentProjectsService,
+                               ProjectScanService scanService,
                                HubActionService actionService) {
         this.hubState = hubState;
         this.recentProjectsService = recentProjectsService;
+        this.listModel = new HubProjectListModel(scanService, recentProjectsService);
         this.actionService = actionService;
+    }
+
+    /** Rescan the base folder and rebuild the merged list on next render. */
+    public void invalidateProjects() {
+        listModel.invalidate();
     }
 
     public void render() {
         String query = hubState.getSearchQuery();
-        List<RecentProject> projects = query.isEmpty()
-                ? recentProjectsService.getRecentProjects()
-                : recentProjectsService.search(query);
-        this.frameProjects = projects;
+        List<HubProjectEntry> entries = query.isEmpty()
+                ? listModel.getEntries()
+                : listModel.search(query);
+        this.frameEntries = entries;
 
-        if (projects.isEmpty()) {
+        if (entries.isEmpty()) {
             renderEmptyState(query);
             return;
         }
 
-        renderHeader(projects.size());
+        renderHeader(entries.size());
 
         float availW = ImGui.getContentRegionAvailX();
         boolean list = hubState.getRecentViewMode() == HubState.RecentViewMode.LIST;
 
         float height = list
-                ? projects.size() * (ROW_H + ROW_GAP) - ROW_GAP
-                : gridRows(projects.size(), availW) * (CARD_H + GAP) - GAP;
+                ? entries.size() * (ROW_H + ROW_GAP) - ROW_GAP
+                : gridRows(entries.size(), availW) * (CARD_H + GAP) - GAP;
 
         region.begin(availW, height);
 
         if (list) {
-            layoutList(projects, availW, 0f);
+            layoutList(entries, availW, 0f);
         } else {
-            layoutGrid(projects, availW, 0f);
+            layoutGrid(entries, availW, 0f);
         }
 
         MortarFrameResult input = region.render();
@@ -94,11 +112,12 @@ public class RecentProjectsPanel {
     }
 
     /** Responsive grid of {@link MortarCard} tiles. */
-    private void layoutGrid(List<RecentProject> projects, float availW, float top) {
+    private void layoutGrid(List<HubProjectEntry> entries, float availW, float top) {
         int cols = gridCols(availW);
         float cardW = (availW - GAP * (cols - 1)) / cols;
-        for (int i = 0; i < projects.size(); i++) {
-            RecentProject p = projects.get(i);
+        for (int i = 0; i < entries.size(); i++) {
+            HubProjectEntry entry = entries.get(i);
+            RecentProject p = entry.project();
             float x = (i % cols) * (cardW + GAP);
             float y = top + (i / cols) * (CARD_H + GAP);
             boolean selected = p.equals(hubState.getSelectedRecentProject());
@@ -106,23 +125,49 @@ public class RecentProjectsPanel {
             // folder; the file name is the faint footer.
             String meta = relativeTime(p.getLastOpened()) + "   ·   " + folderName(p.getPath());
             MortarCard card = new MortarCard(p.getName(), meta, fileName(p.getPath()));
-            region.add("recent." + i, x, y, cardW, CARD_H, selected, card);
+            region.add("recent." + i, x, y, cardW, CARD_H, selected, decorate(card, entry, CARD_H));
         }
     }
 
     /** Single-column list of informative {@link MortarListRow}s. */
-    private void layoutList(List<RecentProject> projects, float availW, float top) {
+    private void layoutList(List<HubProjectEntry> entries, float availW, float top) {
         float rowW = Math.min(availW, ROW_MAX_W);
-        for (int i = 0; i < projects.size(); i++) {
-            RecentProject p = projects.get(i);
+        for (int i = 0; i < entries.size(); i++) {
+            HubProjectEntry entry = entries.get(i);
+            RecentProject p = entry.project();
             float y = top + i * (ROW_H + ROW_GAP);
             boolean selected = p.equals(hubState.getSelectedRecentProject());
             // Title (name) on the left; the folder/file location as a dimmed
             // subtitle; relative time pinned to the right.
             String subtitle = folderName(p.getPath()) + "   ·   " + fileName(p.getPath());
+            if (entry.external()) {
+                subtitle += "   ·   " + EXTERNAL_BADGE;
+            }
             MortarListRow row = new MortarListRow(p.getName(), subtitle, relativeTime(p.getLastOpened()));
-            region.add("recent." + i, 0f, y, rowW, ROW_H, selected, row);
+            region.add("recent." + i, 0f, y, rowW, ROW_H, selected, decorate(row, entry, ROW_H));
         }
+    }
+
+    /**
+     * Wrap a part with the entry's status treatments: an "External" corner badge
+     * for card-height parts, and a translucent background wash when the file is
+     * missing on disk so the entry reads as unavailable.
+     */
+    private MortarPart decorate(MortarPart part, HubProjectEntry entry, float partH) {
+        boolean cornerBadge = entry.external() && partH == CARD_H;
+        if (!cornerBadge && !entry.missingOnDisk()) {
+            return part;
+        }
+        return (g, x, y, w, h, st) -> {
+            part.paint(g, x, y, w, h, st);
+            if (cornerBadge) {
+                float pillW = MortarBadge.measureWidth(g, EXTERNAL_BADGE);
+                MortarBadge.paint(g, x + w - pillW - 10f, y + 19f, EXTERNAL_BADGE);
+            }
+            if (entry.missingOnDisk()) {
+                g.fillRoundRect(x, y, w, h, 8f, Argb.withAlpha(g.theme().background, 0.55f));
+            }
+        };
     }
 
     private static int gridCols(float availW) {
@@ -135,8 +180,8 @@ public class RecentProjectsPanel {
     }
 
     /**
-     * The section header band: an upper-cased "RECENT PROJECTS (N)" heading on
-     * the left with the Grid/List toggle pinned to the right of the same row,
+     * The section header band: an upper-cased "PROJECTS (N)" heading on the
+     * left with the Grid/List toggle pinned to the right of the same row,
      * then a separator that distinctly divides the header from the list below.
      * {@link ImGui#alignTextToFramePadding()} centres the heading against the
      * buttons so the whole row shares one baseline.
@@ -155,7 +200,7 @@ public class RecentProjectsPanel {
         ImGui.alignTextToFramePadding();
         ImVec4 t = ImGui.getStyle().getColor(ImGuiCol.Text);
         ImGui.pushStyleColor(ImGuiCol.Text, t.x, t.y, t.z, 0.85f);
-        ImGui.text("RECENT PROJECTS  (" + count + ")");
+        ImGui.text("PROJECTS  (" + count + ")");
         ImGui.popStyleColor();
 
         // Toggle right-aligned on the same row; the two buttons stay paired via
@@ -185,55 +230,66 @@ public class RecentProjectsPanel {
     }
 
     private void handleInput(MortarFrameResult input) {
-        RecentProject clicked = resolve(input.clicked());
+        HubProjectEntry clicked = resolve(input.clicked());
         if (clicked != null) {
-            if (clicked.equals(hubState.getSelectedRecentProject())) {
+            if (clicked.project().equals(hubState.getSelectedRecentProject())) {
                 hubState.setSelectedRecentProject(null); // toggle off
             } else {
                 hubState.setSelectedTemplate(null);
-                hubState.setSelectedRecentProject(clicked);
+                hubState.setSelectedRecentProject(clicked.project());
             }
         }
-        RecentProject opened = resolve(input.doubleClicked());
-        if (opened != null) {
-            hubState.setSelectedRecentProject(opened);
-            actionService.openRecentProject(opened);
+        HubProjectEntry opened = resolve(input.doubleClicked());
+        if (opened != null && !opened.missingOnDisk()) {
+            hubState.setSelectedRecentProject(opened.project());
+            actionService.openRecentProject(opened.project());
         }
-        RecentProject ctx = resolve(input.rightClicked());
+        HubProjectEntry ctx = resolve(input.rightClicked());
         if (ctx != null) {
-            contextProject = ctx;
-            hubState.setSelectedRecentProject(ctx);
+            contextEntry = ctx;
+            hubState.setSelectedRecentProject(ctx.project());
             ImGui.openPopup(CTX_POPUP);
         }
     }
 
     private void renderContextMenu() {
-        if (contextProject == null) {
+        if (contextEntry == null) {
             return;
         }
+        RecentProject project = contextEntry.project();
+        boolean fromRecents = !isScanned(project);
         if (ImGui.beginPopup(CTX_POPUP)) {
+            ImGui.beginDisabled(contextEntry.missingOnDisk());
             if (ImGui.menuItem("Open")) {
-                actionService.openRecentProject(contextProject);
+                actionService.openRecentProject(project);
             }
+            ImGui.endDisabled();
             ImGui.separator();
-            if (ImGui.menuItem("Rename...")) {
-                renameDialog.show(contextProject.getId(), contextProject.getName(), this::handleRename);
+            // Rename rewrites the recents entry, so it only applies to
+            // recents-backed projects; scanned-only entries offer file deletion.
+            if (fromRecents && ImGui.menuItem("Rename...")) {
+                renameDialog.show(project.getId(), project.getName(), this::handleRename);
             }
-            if (ImGui.menuItem("Remove from Recent")) {
-                deleteDialog.show(contextProject, this::handleDelete);
+            if (ImGui.menuItem(fromRecents ? "Remove from Recent" : "Delete...")) {
+                deleteDialog.show(project, this::handleDelete);
             }
             ImGui.endPopup();
         }
     }
 
-    private RecentProject resolve(String partId) {
+    /** True for entries synthesized from the base-folder scan (not persisted). */
+    private static boolean isScanned(RecentProject project) {
+        return project.getId().startsWith("scan:");
+    }
+
+    private HubProjectEntry resolve(String partId) {
         if (partId == null || !partId.startsWith("recent.")) {
             return null;
         }
         try {
             int index = Integer.parseInt(partId.substring("recent.".length()));
-            if (index >= 0 && index < frameProjects.size()) {
-                return frameProjects.get(index);
+            if (index >= 0 && index < frameEntries.size()) {
+                return frameEntries.get(index);
             }
         } catch (NumberFormatException ignored) {
         }
@@ -242,7 +298,7 @@ public class RecentProjectsPanel {
 
     private void renderEmptyState(String query) {
         ImGui.dummy(0, 8f);
-        String msg = query.isEmpty() ? "No recent projects yet"
+        String msg = query.isEmpty() ? "No projects yet"
                 : "No projects match your search";
         centered(msg, 0.7f);
         ImGui.dummy(0, 4f);
@@ -313,6 +369,7 @@ public class RecentProjectsPanel {
 
     private void handleRename(String projectId, String newName) {
         recentProjectsService.renameProject(projectId, newName);
+        listModel.invalidate();
         RecentProject sel = hubState.getSelectedRecentProject();
         if (sel != null && sel.getId().equals(projectId)) {
             hubState.setSelectedRecentProject(null);
@@ -324,6 +381,7 @@ public class RecentProjectsPanel {
             recentProjectsService.deleteProjectFile(project);
         }
         recentProjectsService.removeProject(project.getId());
+        listModel.invalidate();
         if (project.equals(hubState.getSelectedRecentProject())) {
             hubState.setSelectedRecentProject(null);
         }

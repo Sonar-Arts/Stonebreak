@@ -2,6 +2,7 @@ package com.openmason.main.systems.rendering.model.gmr.subrenders.vertex;
 
 import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.engine.rendering.model.MeshChangeListener;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.MeshOverlayTheme;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
@@ -22,7 +23,8 @@ import static org.lwjgl.opengl.GL30.*;
 /**
  * Renders model vertices as colored points, similar to Blender's vertex display mode.
  * Vertex positions are extracted by MeshVertexExtractor; this class handles rendering.
- * Supports selection highlighting (white) and modification tracking (yellow).
+ * Colors follow Blender's edit-mode convention ({@link MeshOverlayTheme}): black default,
+ * orange selected, white for the active (last-selected) vertex.
  *
  * <p>Implements MeshChangeListener to receive notifications from GenericModelRenderer
  * when vertex positions change or geometry is rebuilt. This replaces position-based
@@ -42,17 +44,22 @@ public class VertexRenderer implements MeshChangeListener {
     private boolean enabled = false;
     private float pointSize = 7.0f;
     private float selectedPointSize = 10.0f;
-    private final Vector3f defaultVertexColor = new Vector3f(0.95f, 0.55f, 0.1f); // Warm orange
-    private final Vector3f selectedVertexColor = new Vector3f(1.0f, 1.0f, 1.0f);  // White
-    private final Vector3f modifiedVertexColor = new Vector3f(1.0f, 0.85f, 0.2f); // Gold
+    // Blender-style colors: black default, orange selected, white active (see MeshOverlayTheme)
+    private final Vector3f defaultVertexColor = MeshOverlayTheme.VERTEX;
+    private final Vector3f selectedVertexColor = MeshOverlayTheme.VERTEX_SELECT;
+    private final Vector3f activeVertexColor = MeshOverlayTheme.VERTEX_ACTIVE;
+    private final Vector3f hoverVertexColor = MeshOverlayTheme.VERTEX_HOVER;
+    private final Vector3f modifiedVertexColor = MeshOverlayTheme.VERTEX_MODIFIED;
 
     // Hover state
     private int hoveredVertexIndex = -1; // -1 means no vertex is hovered
     private float[] vertexPositions = null; // Store positions for hit testing (unique vertices only)
 
-    // Selection state - supports multi-selection
+    // Selection state - supports multi-selection (insertion order preserved so the
+    // last-selected vertex can be shown as the "active" element, like Blender)
     private int selectedVertexIndex = -1; // -1 means no vertex is selected (for backward compat)
-    private Set<Integer> selectedVertexIndices = new HashSet<>(); // Multi-selection support
+    private Set<Integer> selectedVertexIndices = new LinkedHashSet<>(); // Multi-selection support
+    private int activeVertexIndex = -1; // Last-selected vertex, rendered white
     private Set<Integer> modifiedVertices = new HashSet<>(); // Indices of modified vertices
 
     // Persistent vertex merge tracking (for multi-stage merges)
@@ -196,15 +203,8 @@ public class VertexRenderer implements MeshChangeListener {
                 vertexData[dataIndex + 1] = uniquePositions[posIndex + 1];
                 vertexData[dataIndex + 2] = uniquePositions[posIndex + 2];
 
-                // Determine color based on state (selected > modified > default)
-                Vector3f color;
-                if (selectedVertexIndices.contains(i)) {
-                    color = selectedVertexColor; // White for selected
-                } else if (modifiedVertices.contains(i)) {
-                    color = modifiedVertexColor; // Yellow for modified
-                } else {
-                    color = defaultVertexColor; // Orange for default
-                }
+                // Determine color based on state (active > selected > modified > default)
+                Vector3f color = resolveVertexColor(i);
 
                 // Apply color
                 vertexData[dataIndex + 3] = color.x;
@@ -309,45 +309,31 @@ public class VertexRenderer implements MeshChangeListener {
 
             glBindVertexArray(vao);
 
-            // Intensity levels for shader-based glow
-            float normalIntensity = 1.0f;
-            float modifiedIntensity = 1.5f;
-            float hoverIntensity = 2.0f;
-            float selectedIntensity = 3.0f;
+            // Flat Blender-style dots: state colors are baked into the VBO
+            // (black default, orange selected, white active), no glow
+            shader.setFloat("uIntensity", 1.0f);
 
-            // Render normal and modified vertices
-            shader.setFloat("uIntensity", normalIntensity);
+            // Base pass: every vertex in one draw call
             shader.setFloat("uPointSize", pointSize);
-            for (int i = 0; i < vertexCount; i++) {
-                if (i == hoveredVertexIndex || selectedVertexIndices.contains(i)) {
-                    continue;
-                }
+            glDrawArrays(GL_POINTS, 0, vertexCount);
 
-                if (modifiedVertices.contains(i)) {
-                    shader.setFloat("uIntensity", modifiedIntensity);
-                    glDrawArrays(GL_POINTS, i, 1);
-                    shader.setFloat("uIntensity", normalIntensity);
-                } else {
-                    glDrawArrays(GL_POINTS, i, 1);
-                }
-            }
-
-            // Render hovered vertex
-            if (hoveredVertexIndex >= 0 && !selectedVertexIndices.contains(hoveredVertexIndex)) {
-                shader.setFloat("uIntensity", hoverIntensity);
-                shader.setFloat("uPointSize", pointSize + 2.0f);
-                glDrawArrays(GL_POINTS, hoveredVertexIndex, 1);
-            }
-
-            // Render selected vertices last (always on top)
+            // Selected vertices redrawn slightly larger on top
             if (!selectedVertexIndices.isEmpty()) {
                 shader.setFloat("uPointSize", selectedPointSize);
-                shader.setFloat("uIntensity", selectedIntensity);
                 for (int selectedIndex : selectedVertexIndices) {
                     if (selectedIndex >= 0 && selectedIndex < vertexCount) {
                         glDrawArrays(GL_POINTS, selectedIndex, 1);
                     }
                 }
+            }
+
+            // Hovered vertex: transient pre-highlight color, restored after the draw
+            if (hoveredVertexIndex >= 0 && hoveredVertexIndex < vertexCount
+                    && !selectedVertexIndices.contains(hoveredVertexIndex)) {
+                writeVertexColorToBuffer(hoveredVertexIndex, hoverVertexColor);
+                shader.setFloat("uPointSize", pointSize + 2.0f);
+                glDrawArrays(GL_POINTS, hoveredVertexIndex, 1);
+                updateVertexColorInBuffer(hoveredVertexIndex);
             }
 
             glBindVertexArray(0);
@@ -509,17 +495,33 @@ public class VertexRenderer implements MeshChangeListener {
      * @param index The unique vertex index to update
      */
     private void updateVertexColorInBuffer(int index) {
+        writeVertexColorToBuffer(index, resolveVertexColor(index));
+    }
+
+    /**
+     * Resolve the persistent color for a vertex: active > selected > modified > default.
+     * Matches Blender's edit-mode convention (white active, orange selected, black default).
+     */
+    private Vector3f resolveVertexColor(int index) {
+        if (index == activeVertexIndex && selectedVertexIndices.contains(index)) {
+            return activeVertexColor;
+        }
+        if (selectedVertexIndices.contains(index)) {
+            return selectedVertexColor;
+        }
+        if (modifiedVertices.contains(index)) {
+            return modifiedVertexColor;
+        }
+        return defaultVertexColor;
+    }
+
+    /**
+     * Write an explicit color into the VBO for one vertex. Also used to paint the
+     * transient hover highlight, which is restored via {@link #updateVertexColorInBuffer}.
+     */
+    private void writeVertexColorToBuffer(int index, Vector3f color) {
         if (!initialized || index < 0 || index >= vertexCount) {
             return;
-        }
-
-        Vector3f color;
-        if (selectedVertexIndices.contains(index)) {
-            color = selectedVertexColor;
-        } else if (modifiedVertices.contains(index)) {
-            color = modifiedVertexColor;
-        } else {
-            color = defaultVertexColor;
         }
 
         // Color starts at offset 3 within each vertex's 6-float block
@@ -550,6 +552,7 @@ public class VertexRenderer implements MeshChangeListener {
             selectedVertexIndices.add(index);
         }
         selectedVertexIndex = index;
+        activeVertexIndex = index;
 
         // Update VBO colors for deselected vertices (revert to default/modified)
         for (int prev : previouslySelected) {
@@ -572,12 +575,17 @@ public class VertexRenderer implements MeshChangeListener {
     public void updateSelectionSet(Set<Integer> indices) {
         // Capture previously selected indices before clearing
         Set<Integer> previouslySelected = new HashSet<>(selectedVertexIndices);
+        int previousActive = activeVertexIndex;
 
         selectedVertexIndices.clear();
+        activeVertexIndex = -1;
         if (indices != null) {
+            // Insertion order from the selection state is preserved (LinkedHashSet),
+            // so the last valid index is the active element, like Blender
             for (Integer index : indices) {
                 if (index >= 0 && index < vertexCount) {
                     selectedVertexIndices.add(index);
+                    activeVertexIndex = index;
                 }
             }
         }
@@ -587,6 +595,9 @@ public class VertexRenderer implements MeshChangeListener {
         // Update VBO colors for all affected vertices
         Set<Integer> allAffected = new HashSet<>(previouslySelected);
         allAffected.addAll(selectedVertexIndices);
+        if (previousActive >= 0) {
+            allAffected.add(previousActive);
+        }
         for (int idx : allAffected) {
             updateVertexColorInBuffer(idx);
         }
@@ -628,6 +639,7 @@ public class VertexRenderer implements MeshChangeListener {
 
         selectedVertexIndices.clear();
         selectedVertexIndex = -1;
+        activeVertexIndex = -1;
 
         // Update VBO colors for previously selected vertices back to default
         for (int index : previouslySelected) {
@@ -881,15 +893,8 @@ public class VertexRenderer implements MeshChangeListener {
             vertexData[dataIndex + 1] = vertexPositions[posIndex + 1];
             vertexData[dataIndex + 2] = vertexPositions[posIndex + 2];
 
-            // Determine color based on state (use Set for multi-select consistency)
-            Vector3f color;
-            if (selectedVertexIndices.contains(i)) {
-                color = selectedVertexColor;
-            } else if (modifiedVertices.contains(i)) {
-                color = modifiedVertexColor;
-            } else {
-                color = defaultVertexColor;
-            }
+            // Determine color based on state (active > selected > modified > default)
+            Vector3f color = resolveVertexColor(i);
 
             vertexData[dataIndex + 3] = color.x;
             vertexData[dataIndex + 4] = color.y;

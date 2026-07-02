@@ -9,6 +9,7 @@ import com.openmason.main.systems.menus.textureCreator.dialogs.NewTextureDialog;
 import com.openmason.main.systems.menus.dialogs.ExportFormatDialog;
 import com.openmason.main.systems.menus.BaseMenuBarRenderer;
 import com.openmason.main.systems.menus.AboutMenuHandler;
+import com.openmason.main.systems.menus.textureCreator.utils.SafeText;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
 import org.lwjgl.glfw.GLFW;
@@ -430,7 +431,9 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
      */
     private void renderStatusInfo() {
         ImGui.sameLine(ImGui.getWindowSizeX() - 300);
-        ImGui.text(String.format("Canvas: %s | Zoom: %.0f%%",
+        // SafeText (not ImGui.text): the literal '%' (zoom) would otherwise be
+        // read by ImGui::Text as a printf directive and spill adjacent memory.
+        SafeText.text(String.format("Canvas: %s | Zoom: %.0f%%",
             state.getCurrentCanvasSize().getDisplayName(),
             controller.getCanvasState().getZoomLevel() * 100));
     }

@@ -1,9 +1,11 @@
 package com.stonebreak.rendering.models.entities;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
+import com.openmason.engine.format.oma.AnimLayering;
 import com.openmason.engine.format.oma.AnimSampler;
 import com.openmason.engine.format.oma.ParsedAnimClip;
 import com.openmason.engine.format.oma.ParsedAnimTrack;
+import com.stonebreak.mobs.sbe.AnimState;
 import com.stonebreak.mobs.sbe.MaterialImage;
 import com.stonebreak.mobs.sbe.SbeEntityAsset;
 import com.stonebreak.mobs.sbe.SbeFace;
@@ -23,9 +25,11 @@ import org.lwjgl.opengl.GL30;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.lwjgl.system.MemoryUtil.memAllocFloat;
@@ -52,6 +56,14 @@ public final class SbeEntityRenderer {
     private boolean initialized;
     private long trackedMeshBytes;
     private long trackedTextureBytes;
+
+    /** Sun-shadow state provider; null outside the world pipeline (UI previews). */
+    private com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer shadowMapRenderer;
+
+    /** Wires the cascaded-shadow state used when rendering entities in the world. */
+    public void setShadowMapRenderer(com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer renderer) {
+        this.shadowMapRenderer = renderer;
+    }
 
     /** GPU resources for one variant of one asset. */
     private static final class VariantGpu {
@@ -85,10 +97,12 @@ public final class SbeEntityRenderer {
 
             out vec2 TexCoord;
             out vec3 FragWorldPos;
+            out float ViewDepth;
 
             void main() {
                 vec4 worldPos = model * vec4(aPos, 1.0);
                 FragWorldPos = worldPos.xyz;
+                ViewDepth = -(view * worldPos).z;
                 gl_Position = projection * view * worldPos;
                 TexCoord = aTexCoord;
             }
@@ -100,22 +114,43 @@ public final class SbeEntityRenderer {
 
             in vec2 TexCoord;
             in vec3 FragWorldPos;
+            in float ViewDepth;
 
             uniform sampler2D textureSampler;
             uniform vec3 cameraPos;
             uniform float underwaterFogDensity;
             uniform vec3 underwaterFogColor;
-
+            uniform float u_ambientLight;
+            uniform vec3 u_sunDirection;
+            uniform float u_entityLight;
+            """
+            + com.openmason.engine.rendering.shadow.ShadowGlsl.UNIFORMS
+            + com.openmason.engine.rendering.shadow.ShadowGlsl.FUNCTIONS
+            + """
             void main() {
                 vec4 texColor = texture(textureSampler, TexCoord);
                 if (texColor.a < 0.01) discard;
 
+                // SBE meshes carry no normals — derive the flat face normal from
+                // screen-space derivatives. For visible fragments this is the
+                // outward (viewer-side) normal, which is what lighting needs.
+                vec3 normal = normalize(cross(dFdx(FragWorldPos), dFdy(FragWorldPos)));
+                vec3 sunDir = normalize(u_sunDirection);
+                float diff = max(dot(normal, sunDir), 0.0);
+                float shadowFactor = csmShadowFactor(FragWorldPos, normal, ViewDepth);
+
+                // Ambient + sun diffuse (both day/night scaled), then the sampled
+                // sky light at the entity's position so mobs darken in caves.
+                float brightness = u_ambientLight * (0.5 + 0.55 * diff * shadowFactor);
+                brightness *= mix(0.3, 1.0, u_entityLight);
+                vec3 lit = texColor.rgb * min(brightness, 1.0);
+
                 if (underwaterFogDensity > 0.0) {
                     float dist = length(FragWorldPos - cameraPos);
                     float fogFactor = clamp(exp(-underwaterFogDensity * dist), 0.0, 1.0);
-                    FragColor = mix(vec4(underwaterFogColor, texColor.a), texColor, fogFactor);
+                    FragColor = mix(vec4(underwaterFogColor, texColor.a), vec4(lit, texColor.a), fogFactor);
                 } else {
-                    FragColor = texColor;
+                    FragColor = vec4(lit, texColor.a);
                 }
             }
             """;
@@ -132,6 +167,17 @@ public final class SbeEntityRenderer {
             shader.createUniform("cameraPos");
             shader.createUniform("underwaterFogDensity");
             shader.createUniform("underwaterFogColor");
+            // Lighting defaults: fully lit so UI previews (glossary, character
+            // creation) render bright without the per-frame environment update.
+            shader.bind();
+            shader.setFloat("u_ambientLight", 1.0f);
+            shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
+            shader.setFloat("u_entityLight", 1.0f);
+            // The shadow sampler must live on its own unit even while disabled —
+            // sharing unit 0 with the 2D textureSampler is a GL error on strict drivers.
+            com.openmason.engine.rendering.shadow.ShadowUniforms.applyDisabled(shader,
+                    com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer.SHADOW_TEXTURE_UNIT);
+            shader.unbind();
         } catch (Exception e) {
             System.err.println("Failed to create SBE entity shader: " + e.getMessage());
         }
@@ -212,19 +258,31 @@ public final class SbeEntityRenderer {
                        Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                        com.stonebreak.world.World world, Vector3f cameraPos,
                        float headYawDeg, float headPitchDeg) {
+        render(asset, variantName, AnimState.single(stateName, animationTime), position,
+                yawDegrees, scale, viewMatrix, projectionMatrix, world, cameraPos,
+                headYawDeg, headPitchDeg);
+    }
+
+    /**
+     * Layered variant of {@link #render}: plays the {@link AnimState}'s base
+     * clip plus any active overlays, resolving each overlay's part mask,
+     * fades, and priority from its clip metadata.
+     */
+    public void render(SbeEntityAsset asset, String variantName, AnimState anim,
+                       Vector3f position, float yawDegrees,
+                       Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                       com.stonebreak.world.World world, Vector3f cameraPos,
+                       float headYawDeg, float headPitchDeg) {
         if (!initialized || asset == null) return;
 
         SbeModelGeometry geometry = asset.geometryFor(variantName);
         VariantGpu gpu = resolveVariantGpu(asset, variantName);
         if (geometry == null || gpu == null) return;
 
-        ParsedAnimClip clip = asset.clipFor(stateName);
-        float clipTime = 0f;
-        Map<String, ParsedAnimTrack> tracksById = Collections.emptyMap();
-        if (clip != null) {
-            clipTime = AnimSampler.wrapTime(animationTime, clip.duration(), clip.loop());
-            tracksById = clip.trackByPartId();
-        }
+        ResolvedAnim resolved = resolveAnim(asset, anim);
+        ParsedAnimClip clip = resolved.baseClip();
+        float clipTime = resolved.baseTime();
+        Map<String, ParsedAnimTrack> tracksById = resolved.baseTracks();
 
         // Save GL state.
         int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
@@ -251,6 +309,7 @@ public final class SbeEntityRenderer {
         shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f());
         shader.setUniform("underwaterFogDensity", fogDensity);
         shader.setUniform("underwaterFogColor", fogColor);
+        applyEnvironmentLighting(world, position);
 
         // Base transform: the OMO model is placed exactly as authored in the
         // SBE — its model-space origin sits at the entity position, with no
@@ -264,7 +323,7 @@ public final class SbeEntityRenderer {
         GL30.glBindVertexArray(gpu.vao);
 
         String headPartId = (headYawDeg != 0f || headPitchDeg != 0f) ? headPartId(geometry) : null;
-        forEachPartMatrix(geometry, clip, clipTime, tracksById, base,
+        forEachPartMatrix(geometry, clip, clipTime, tracksById, resolved.overlays(), base,
                 headPartId, headYawDeg, headPitchDeg, (partMatrix, part) -> {
             shader.setUniform("model", partMatrix);
             for (SbeFace face : part.faces()) {
@@ -346,7 +405,7 @@ public final class SbeEntityRenderer {
 
         GL30.glBindVertexArray(gpu.vao);
 
-        forEachPartMatrix(geometry, clip, clipTime, tracksById, base,
+        forEachPartMatrix(geometry, clip, clipTime, tracksById, List.of(), base,
                 null, 0f, 0f, (partMatrix, part) -> {
             wireShader.setUniform("model", partMatrix);
             for (SbeFace face : part.faces()) {
@@ -394,19 +453,27 @@ public final class SbeEntityRenderer {
                               float animationTime, Vector3f position, float yawDegrees,
                               Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                               Vector4f color, float headYawDeg, float headPitchDeg) {
+        renderColored(asset, variantName, AnimState.single(stateName, animationTime), position,
+                yawDegrees, scale, viewMatrix, projectionMatrix, color, headYawDeg, headPitchDeg);
+    }
+
+    /** Layered flat-coloured variant — see {@link #render(SbeEntityAsset, String, AnimState,
+     * Vector3f, float, Vector3f, Matrix4f, Matrix4f, com.stonebreak.world.World, Vector3f,
+     * float, float)}. */
+    public void renderColored(SbeEntityAsset asset, String variantName, AnimState anim,
+                              Vector3f position, float yawDegrees,
+                              Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                              Vector4f color, float headYawDeg, float headPitchDeg) {
         if (!initialized || asset == null || wireShader == null) return;
 
         SbeModelGeometry geometry = asset.geometryFor(variantName);
         VariantGpu gpu = resolveVariantGpu(asset, variantName);
         if (geometry == null || gpu == null) return;
 
-        ParsedAnimClip clip = asset.clipFor(stateName);
-        float clipTime = 0f;
-        Map<String, ParsedAnimTrack> tracksById = Collections.emptyMap();
-        if (clip != null) {
-            clipTime = AnimSampler.wrapTime(animationTime, clip.duration(), clip.loop());
-            tracksById = clip.trackByPartId();
-        }
+        ResolvedAnim resolved = resolveAnim(asset, anim);
+        ParsedAnimClip clip = resolved.baseClip();
+        float clipTime = resolved.baseTime();
+        Map<String, ParsedAnimTrack> tracksById = resolved.baseTracks();
 
         // Save GL state.
         int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
@@ -431,7 +498,7 @@ public final class SbeEntityRenderer {
         GL30.glBindVertexArray(gpu.vao);
 
         String headPartId = (headYawDeg != 0f || headPitchDeg != 0f) ? headPartId(geometry) : null;
-        forEachPartMatrix(geometry, clip, clipTime, tracksById, base,
+        forEachPartMatrix(geometry, clip, clipTime, tracksById, resolved.overlays(), base,
                 headPartId, headYawDeg, headPitchDeg, (partMatrix, part) -> {
             wireShader.setUniform("model", partMatrix);
             for (SbeFace face : part.faces()) {
@@ -450,6 +517,45 @@ public final class SbeEntityRenderer {
         GL30.glBindVertexArray(previousVertexArray);
     }
 
+    /**
+     * Pushes the per-frame lighting environment to the (bound) entity shader:
+     * time-of-day ambient + sun direction, the sampled sky light at the entity's
+     * position (so mobs darken in caves and at night), and this frame's shadow
+     * cascade state. Falls back to fully lit outside the world pipeline.
+     */
+    private void applyEnvironmentLighting(com.stonebreak.world.World world, Vector3f position) {
+        com.stonebreak.world.TimeOfDay timeOfDay = com.stonebreak.core.Game.getTimeOfDay();
+        if (timeOfDay != null) {
+            shader.setFloat("u_ambientLight", timeOfDay.getAmbientLightLevel());
+            shader.setVec3("u_sunDirection", timeOfDay.getSunDirection());
+        } else {
+            shader.setFloat("u_ambientLight", 1.0f);
+            shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
+        }
+        shader.setFloat("u_entityLight", sampleEntityLight(world, position));
+        if (shadowMapRenderer != null) {
+            shadowMapRenderer.applyToShader(shader);
+        }
+    }
+
+    /**
+     * Sky-light probe at the entity's mid-body. Fully lit when the world (or the
+     * entity's chunk) isn't available so entities are never mysteriously black.
+     */
+    static float sampleEntityLight(com.stonebreak.world.World world, Vector3f position) {
+        if (world == null || position == null) {
+            return 1.0f;
+        }
+        try {
+            com.stonebreak.world.lighting.WorldLightingContext ctx =
+                    new com.stonebreak.world.lighting.WorldLightingContext(world);
+            return com.openmason.engine.voxel.lighting.VertexLightSampler.samplePointSky(
+                    ctx, position.x, position.y + 0.5f, position.z);
+        } catch (Exception ignored) {
+            return 1.0f;
+        }
+    }
+
     /** Receives the computed world matrix for one animated part. */
     @FunctionalInterface
     private interface PartConsumer {
@@ -457,19 +563,63 @@ public final class SbeEntityRenderer {
     }
 
     /**
+     * A render-ready animation frame: the base clip with its wrapped time and
+     * track lookup, plus the active overlay frames (clip + wrapped time +
+     * effective weight) for {@link AnimLayering}.
+     */
+    private record ResolvedAnim(ParsedAnimClip baseClip, float baseTime,
+                                Map<String, ParsedAnimTrack> baseTracks,
+                                List<AnimLayering.OverlayFrame> overlays) {}
+
+    /**
+     * Resolve an {@link AnimState} against the asset's clips. Overlay weights
+     * combine the caller's envelope with the clip's own fade-in/out
+     * ({@link AnimLayering#clipWeight}); zero-weight or unknown overlays are
+     * dropped so the per-part loop stays on its fast path.
+     */
+    private static ResolvedAnim resolveAnim(SbeEntityAsset asset, AnimState anim) {
+        ParsedAnimClip baseClip = anim != null ? asset.clipFor(anim.baseState()) : null;
+        float baseTime = 0f;
+        Map<String, ParsedAnimTrack> baseTracks = Collections.emptyMap();
+        if (baseClip != null) {
+            baseTime = AnimSampler.wrapTime(anim.baseTime(), baseClip.duration(), baseClip.loop());
+            baseTracks = baseClip.trackByPartId();
+        }
+
+        List<AnimLayering.OverlayFrame> overlays = List.of();
+        if (anim != null && anim.hasOverlays()) {
+            overlays = new ArrayList<>(anim.overlays().size());
+            for (AnimState.Overlay overlay : anim.overlays()) {
+                ParsedAnimClip clip = asset.clipFor(overlay.stateName());
+                if (clip == null) continue;
+                float weight = overlay.weight() * AnimLayering.clipWeight(clip, overlay.time());
+                if (weight <= 0f) continue;
+                float wrapped = AnimSampler.wrapTime(overlay.time(), clip.duration(), clip.loop());
+                overlays.add(new AnimLayering.OverlayFrame(clip, wrapped, weight));
+            }
+        }
+        return new ResolvedAnim(baseClip, baseTime, baseTracks, overlays);
+    }
+
+    /**
      * Walks the geometry's parts, computing each part's world matrix from the
      * base transform plus its animation delta ({@code base * M_anim * M_rest^-1};
      * un-animated parts use {@code base} alone), and hands it to {@code consumer}.
-     * Shared by {@link #render}, {@link #renderWireframe} and
-     * {@link #renderColored} so the per-part transform maths live in one place.
+     * When overlays are active, the per-part pose is composed via
+     * {@link AnimLayering#blendPart} — masked parts blend toward the overlay's
+     * pose by its weight; unmasked parts keep the base pose. Shared by
+     * {@link #render}, {@link #renderWireframe} and {@link #renderColored} so
+     * the per-part transform maths live in one place.
      */
     private static void forEachPartMatrix(SbeModelGeometry geometry, ParsedAnimClip clip,
                                           float clipTime, Map<String, ParsedAnimTrack> tracksById,
+                                          List<AnimLayering.OverlayFrame> overlays,
                                           Matrix4f base, String headPartId,
                                           float headYawDeg, float headPitchDeg,
                                           PartConsumer consumer) {
         Matrix4f partMatrix = new Matrix4f();
         Matrix4f restInverse = new Matrix4f();
+        boolean layered = overlays != null && !overlays.isEmpty();
         for (SbePart part : geometry.parts()) {
             // Parts are model-root parts; the base matrix is the parent.
             ParsedAnimTrack track = tracksById.get(part.id());
@@ -480,6 +630,7 @@ public final class SbeEntityRenderer {
             // The head part may receive an extra turn about its neck pivot, in the
             // model's local frame (between base and the part transform), so the head
             // can track the cursor while the body faces the movement direction.
+            // This composes at the parent level and is orthogonal to pose layering.
             Matrix4f parent = base;
             if (headPartId != null && headPartId.equals(part.id())) {
                 Vector3f rp = part.restPos();
@@ -492,10 +643,24 @@ public final class SbeEntityRenderer {
                         .translate(-px, -py, -pz);
             }
 
-            if (track == null) {
+            AnimSampler.PartPose pose;
+            if (layered) {
+                // Rest pose references the part's own vectors — no copies. blendPart
+                // returns this same instance when nothing animates the part.
+                AnimSampler.PartPose restPose = new AnimSampler.PartPose(
+                        part.restPos(), part.restRot(), part.restScale());
+                pose = AnimLayering.blendPart(restPose, track, clipTime, overlays,
+                        part.id(), part.name());
+                if (pose == restPose && track == null) {
+                    pose = null; // nothing touches this part — fast path below
+                }
+            } else {
+                pose = track != null ? AnimSampler.sample(track, clipTime) : null;
+            }
+
+            if (pose == null) {
                 partMatrix.set(parent);
             } else {
-                AnimSampler.PartPose pose = AnimSampler.sample(track, clipTime);
                 Vector3f origin = part.restOrigin();
 
                 // M_rest^-1

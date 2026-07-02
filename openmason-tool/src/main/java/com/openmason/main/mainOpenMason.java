@@ -128,8 +128,68 @@ public class mainOpenMason {
      */
     private void initializeGLFW() {
         GLFWErrorCallback.createPrint(System.err).set();
+        boolean pinnedX11 = preferX11PlatformForViewports();
         if (!glfwInit()) {
+            // glfwPlatformSupported() only reports compile-time support, so pinning
+            // X11 can still fail at init if no X display / XWayland is reachable.
+            // Recover by letting GLFW pick any available platform (e.g. Wayland).
+            if (pinnedX11) {
+                logger.warn("GLFW init with the X11 backend failed (no reachable X display?); retrying with the default platform. Viewport pop-out may be limited.");
+                glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
+                if (glfwInit()) {
+                    return;
+                }
+            }
             throw new IllegalStateException("Unable to initialize GLFW");
+        }
+    }
+
+    /**
+     * ImGui multi-viewport lets panels (e.g. the Texture Editor) be dragged out
+     * of the main window into their own floating OS windows. That requires the
+     * windowing backend to create top-level windows and position them at
+     * arbitrary screen coordinates via {@code glfwSetWindowPos}. Wayland forbids
+     * clients from positioning their own windows, so under a native Wayland
+     * session detached viewports stay clamped inside the main window — the
+     * "stuck inside" behavior seen on Linux versus Windows.
+     *
+     * <p>To match the Windows experience we prefer the X11 backend (served by
+     * XWayland on Wayland desktops), which supports the needed window
+     * positioning. This is a no-op on Windows/macOS and when X11 is unavailable
+     * (GLFW then falls back to its default platform). Users who explicitly want
+     * native Wayland can opt out with {@code -Dopenmason.glfw.platform=wayland}
+     * (or {@code =any} to let GLFW choose).
+     *
+     * @return {@code true} if the X11 backend was pinned (so the caller can
+     *         recover if {@code glfwInit} then fails), {@code false} otherwise.
+     */
+    private boolean preferX11PlatformForViewports() {
+        if (!System.getProperty("os.name", "").toLowerCase().contains("linux")) {
+            return false; // X11/Wayland selection only matters on Linux
+        }
+
+        String requested = System.getProperty("openmason.glfw.platform", "x11").trim().toLowerCase();
+        switch (requested) {
+            case "wayland" -> {
+                if (glfwPlatformSupported(GLFW_PLATFORM_WAYLAND)) {
+                    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_WAYLAND);
+                    logger.info("GLFW platform pinned to Wayland by request; multi-viewport pop-out windows may be constrained.");
+                }
+                return false;
+            }
+            case "any" -> {
+                logger.info("GLFW platform selection left to GLFW default (openmason.glfw.platform=any).");
+                return false;
+            }
+            default -> { // "x11" and anything unrecognized: prefer X11 for working viewports
+                if (glfwPlatformSupported(GLFW_PLATFORM_X11)) {
+                    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+                    logger.info("Preferring GLFW X11 backend so ImGui viewports (e.g. Texture Editor) can pop out into their own windows.");
+                    return true;
+                }
+                logger.warn("GLFW X11 backend unavailable; detached ImGui windows may stay clamped inside the main window under Wayland.");
+                return false;
+            }
         }
     }
     
@@ -377,23 +437,65 @@ public class mainOpenMason {
     }
     
     /**
-     * Center window on screen.
+     * Center the window on the primary ("priority") monitor.
+     *
+     * <p>The primary monitor is not necessarily at virtual-screen origin (0,0): on multi-monitor
+     * setups a display placed to the left/above the primary gives the primary a positive/negative
+     * virtual offset. Centering with just the primary's {@code width/height} (as if it started at
+     * 0,0) therefore lands the window on whichever monitor occupies the origin — often the wrong
+     * screen on Linux. We anchor to the primary monitor's virtual position via
+     * {@link GLFW#glfwGetMonitorWorkarea} (which also excludes panels/taskbars) so the window is
+     * always centered on the primary display. Falls back to {@link GLFW#glfwGetVideoMode} +
+     * {@link GLFW#glfwGetMonitorPos} if the work area is unavailable.</p>
      */
     private void centerWindow() {
+        long monitor = glfwGetPrimaryMonitor();
+        if (monitor == NULL) {
+            logger.warn("No primary monitor reported; leaving window at default position");
+            return;
+        }
+
         try (MemoryStack stack = stackPush()) {
             IntBuffer pWidth = stack.mallocInt(1);
             IntBuffer pHeight = stack.mallocInt(1);
-            
             glfwGetWindowSize(window, pWidth, pHeight);
-            
-            GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-            if (vidmode != null) {
-                glfwSetWindowPos(
-                    window,
-                    (vidmode.width() - pWidth.get(0)) / 2,
-                    (vidmode.height() - pHeight.get(0)) / 2
-                );
+            int winW = pWidth.get(0);
+            int winH = pHeight.get(0);
+
+            // Primary monitor's usable area in virtual-screen coordinates (origin + size).
+            IntBuffer areaX = stack.mallocInt(1);
+            IntBuffer areaY = stack.mallocInt(1);
+            IntBuffer areaW = stack.mallocInt(1);
+            IntBuffer areaH = stack.mallocInt(1);
+            glfwGetMonitorWorkarea(monitor, areaX, areaY, areaW, areaH);
+
+            int originX = areaX.get(0);
+            int originY = areaY.get(0);
+            int monW = areaW.get(0);
+            int monH = areaH.get(0);
+
+            // Some drivers/Wayland-via-XWayland report a zero work area; fall back to the video
+            // mode for size and the raw monitor position for the virtual-screen origin.
+            if (monW <= 0 || monH <= 0) {
+                GLFWVidMode vidmode = glfwGetVideoMode(monitor);
+                if (vidmode == null) {
+                    logger.warn("Primary monitor has no video mode; leaving window at default position");
+                    return;
+                }
+                monW = vidmode.width();
+                monH = vidmode.height();
+                IntBuffer monX = stack.mallocInt(1);
+                IntBuffer monY = stack.mallocInt(1);
+                glfwGetMonitorPos(monitor, monX, monY);
+                originX = monX.get(0);
+                originY = monY.get(0);
             }
+
+            glfwSetWindowPos(
+                window,
+                originX + (monW - winW) / 2,
+                originY + (monH - winH) / 2
+            );
         }
     }
     
@@ -500,7 +602,7 @@ public class mainOpenMason {
             themeManager = new ThemeManager();
             themeManager.initializeForImGui();
 
-            projectHubScreen = new ProjectHubScreen(themeManager);
+            projectHubScreen = new ProjectHubScreen(themeManager, omConfig);
             mainInterface = new MainImGuiInterface(themeManager);
 
             projectHubScreen.setTransitionCallbacks(this::createNewProjectFile, this::openRecentProject);
@@ -525,6 +627,11 @@ public class mainOpenMason {
 
             textureCreatorInterface = TextureCreatorImGui.createDefault();
             textureEditorWindow = new TextureEditorWindow(textureCreatorInterface);
+
+            // Point the texture editor's save/open dialogs at the open project's root
+            // folder (same source the model-save dialogs use).
+            textureCreatorInterface.getFileDialogService()
+                    .setProjectDirectorySupplier(mainInterface.getProjectDirectorySupplier());
             animationEditor = new AnimationEditorImGui();
             animationEditor.setFileDialogService(mainInterface.getFileDialogService());
             mainInterface.setAnimationEditorInterface(animationEditor);
@@ -640,6 +747,17 @@ public class mainOpenMason {
             showTextureEditor = true;
             textureEditorWindow.show();
         });
+        // Clicking a .OMT in the project browser opens it in the texture editor
+        mainInterface.setOpenTextureInEditorCallback(path -> {
+            if (path == null) return;
+            boolean loaded = textureCreatorInterface.getController().loadProject(path.toString());
+            if (!loaded) {
+                logger.warn("Failed to open .OMT in texture editor: {}", path);
+                return;
+            }
+            showTextureEditor = true;
+            textureEditorWindow.show();
+        });
         mainInterface.setOpenAnimationEditorCallback(() -> {
             if (animationEditor == null) return;
             // Bind the animation editor to whatever model is currently loaded so
@@ -651,9 +769,17 @@ public class mainOpenMason {
         });
         mainInterface.setTextureCreatorInterface(textureCreatorInterface);
 
-        // Reset texture editor when a new/different model is loaded
-        mainInterface.getModelOperations().setOnModelChangedCallback(() ->
-                textureCreatorInterface.getController().resetAll());
+        // Reset texture editor when a new/different model is loaded. Single
+        // callback slot — the animation editor rebind must chain here, not
+        // replace the texture editor reset.
+        mainInterface.getModelOperations().setOnModelChangedCallback(() -> {
+            textureCreatorInterface.getController().resetAll();
+            if (animationEditor != null && animationEditor.isVisible()
+                    && mainInterface.getViewport3D() != null) {
+                animationEditor.getController()
+                        .onModelChanged(mainInterface.getViewport3D().getPartManager());
+            }
+        });
 
         textureCreatorInterface.setBackToHomeCallback(this::transitionToHomeScreen);
         textureCreatorInterface.setPreferencesCallback(mainInterface.getShowPreferencesCallback());
@@ -824,6 +950,10 @@ public class mainOpenMason {
         String fileName = safeName.replaceAll("[\\\\/:*?\"<>|]", "_") + ".omp";
         String path = java.nio.file.Path.of(directory, fileName).toString();
 
+        // First use of the base folder (or a per-project subfolder) — make sure
+        // the directory chain exists before the pre-save writes the .omp.
+        AppPaths.ensureDir(java.nio.file.Path.of(directory));
+
         transitionToMainInterface();
         boolean saved = mainInterface.saveNewProject(safeName, path);
         if (saved && projectHubScreen != null) {
@@ -858,6 +988,9 @@ public class mainOpenMason {
         }
         if (animationEditor != null) {
             animationEditor.hide();
+        }
+        if (projectHubScreen != null) {
+            projectHubScreen.onShown();
         }
     }
 
@@ -912,6 +1045,22 @@ public class mainOpenMason {
                 projectHubScreen.dispose();
             } catch (Exception e) {
                 logger.error("Error disposing Project Hub", e);
+            }
+        }
+        // Editor GPU resources: browser thumbnails + property panel Skija regions.
+        if (mainInterface != null) {
+            try {
+                mainInterface.dispose();
+            } catch (Exception e) {
+                logger.error("Error disposing main interface resources", e);
+            }
+        }
+        // Animation editor Mortar regions (FBOs) — must close before SkijaContext.
+        if (animationEditor != null) {
+            try {
+                animationEditor.dispose();
+            } catch (Exception e) {
+                logger.error("Error disposing Animation Editor", e);
             }
         }
         if (skijaContext != null) {

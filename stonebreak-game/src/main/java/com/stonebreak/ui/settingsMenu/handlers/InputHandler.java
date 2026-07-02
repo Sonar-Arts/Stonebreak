@@ -125,10 +125,12 @@ public final class InputHandler {
             case WATER_SHADER -> { if (direction != 0) actionHandler.toggleWaterShader(); }
             case CLOUDS_ENABLED -> { if (direction != 0) actionHandler.toggleClouds(); }
             case GOD_RAYS -> { if (direction != 0) actionHandler.toggleGodRays(); }
+            case SHADOWS -> { if (direction != 0) actionHandler.toggleShadows(); }
             case RENDER_DISTANCE -> adjustSlider(stateManager.getRenderDistanceSlider(), direction);
             case LOD_DISTANCE -> adjustSlider(stateManager.getLodDistanceSlider(), direction);
             case LOD_ENABLED -> { if (direction != 0) actionHandler.toggleLodEnabled(); }
             case VSYNC -> { if (direction != 0) actionHandler.toggleVsync(); }
+            case MAX_FPS -> adjustSlider(stateManager.getMaxFpsSlider(), direction * SettingsConfig.MAX_FPS_STEP);
             default -> {}
         }
     }

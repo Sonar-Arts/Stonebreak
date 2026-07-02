@@ -12,6 +12,7 @@ import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 import com.stonebreak.mobs.entities.ai.AwarenessController;
+import com.stonebreak.mobs.entities.ai.MobAI;
 import com.stonebreak.mobs.entities.status.StatusEffect;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 
@@ -37,7 +38,30 @@ public abstract class LivingEntity extends Entity {
     
     // Physical properties
     protected float legHeight; // Distance from ground to bottom of body
-    
+
+    /**
+     * Upward velocity applied by {@link #jump()}. Under entity gravity (40),
+     * the jump apex is {@code v²/80} blocks: 8.5 peaks at only ~0.90 — never
+     * clearing a full block — so the default is 10.5 (apex ~1.38), enough for
+     * every mob to mount a one-block ledge even from a standstill flush
+     * against it. Subclasses override for stronger hops (chicken: 12).
+     */
+    protected float jumpVelocity = 10.5f;
+
+    /**
+     * This mob's AI controller, or null for AI-less living entities (remote
+     * players, decoys). Subclasses assign one in their constructor; the shared
+     * update loop, renderer, save system and network replication all consume it
+     * through {@link #getAI()}.
+     */
+    protected MobAI mobAI;
+
+    /** Clip clock for SBE-driven rendering; ticked every update. */
+    protected final AnimationController animationController;
+
+    /** Appearance variant rendered from the SBE asset (case-insensitive). */
+    protected String textureVariant = "Default";
+
     // Interaction system
     protected float interactionRange;
     protected long lastInteractionTime;
@@ -92,6 +116,7 @@ public abstract class LivingEntity extends Entity {
         this.isMoving = false;
         this.interactionRange = 3.0f;
         this.lastInteractionTime = 0;
+        this.animationController = new AnimationController(this);
     }
     
     /**
@@ -143,13 +168,39 @@ public abstract class LivingEntity extends Entity {
         if (!isStunned()) {
             updateAI(deltaTime);
         }
+
+        // Advance the clip clock; SBE renderers sample animations from it.
+        animationController.updateAnimations(deltaTime);
     }
-    
+
     /**
-     * Placeholder for AI updates. Will be implemented in Phase 3.
+     * Runs this entity's AI for one tick. The default drives the shared mob
+     * framework: stealth awareness (investigate/pursue) overrides the passive
+     * {@link MobAI} while the entity is SUSPICIOUS/ALERTED. Subclasses with
+     * bespoke behaviour may override.
      */
     protected void updateAI(float deltaTime) {
-        // Override in subclasses
+        if (awareness != null) {
+            awareness.update(deltaTime);
+            if (awareness.drive(deltaTime)) {
+                return;
+            }
+        }
+        if (mobAI != null) {
+            mobAI.update(deltaTime);
+        }
+    }
+
+    /**
+     * Makes the entity jump by applying {@link #jumpVelocity} upward. Only
+     * fires on the ground; immediately clears onGround to prevent double jumps
+     * (same scheme as the player).
+     */
+    public void jump() {
+        if (isOnGround()) {
+            velocity.y = jumpVelocity;
+            setOnGround(false);
+        }
     }
     
     /**
@@ -419,30 +470,38 @@ public abstract class LivingEntity extends Entity {
     }
     
     /**
-     * Makes the entity face a specific direction.
+     * Makes the entity face a specific direction, honoring the entity type's
+     * model yaw offset so all rotation paths (AI steering, awareness pursuit)
+     * agree on which way the model points.
      */
     public void faceDirection(Vector3f direction, float deltaTime) {
         if (direction.length() < 0.1f) return;
-        
-        // Calculate target rotation
-        // Note: We use -direction.z because the model's front faces negative Z
-        float targetYaw = (float) Math.atan2(direction.x, -direction.z);
-        float currentYaw = (float) Math.toRadians(rotation.y);
-        
-        // Smoothly rotate toward target
-        float yawDiff = targetYaw - currentYaw;
-        
-        // Normalize angle difference to -PI to PI
-        while (yawDiff > Math.PI) yawDiff -= 2 * Math.PI;
-        while (yawDiff < -Math.PI) yawDiff += 2 * Math.PI;
-        
-        // Apply rotation speed limit
-        float maxRotation = (float) Math.toRadians(turnSpeed * deltaTime);
+
+        float targetYaw = (float) Math.toDegrees(Math.atan2(direction.x, direction.z))
+                + getType().getModelYawOffsetDegrees();
+
+        // Smoothly rotate toward target along the shortest arc
+        float yawDiff = targetYaw - rotation.y;
+        while (yawDiff > 180.0f) yawDiff -= 360.0f;
+        while (yawDiff < -180.0f) yawDiff += 360.0f;
+
+        float maxRotation = turnSpeed * deltaTime;
         if (Math.abs(yawDiff) > maxRotation) {
             yawDiff = Math.signum(yawDiff) * maxRotation;
         }
-        
-        rotation.y = (float) Math.toDegrees(currentYaw + yawDiff);
+
+        rotation.y += yawDiff;
+    }
+
+    /**
+     * The world-space horizontal direction this entity's model front points,
+     * derived from the current yaw and the type's model yaw offset. The inverse
+     * of {@link #faceDirection}; used by sight cones and any forward probing.
+     */
+    public Vector3f getForwardDirection() {
+        float travelYawRad = (float) Math.toRadians(
+                rotation.y - getType().getModelYawOffsetDegrees());
+        return new Vector3f((float) Math.sin(travelYawRad), 0f, (float) Math.cos(travelYawRad));
     }
     
     /**
@@ -576,7 +635,7 @@ public abstract class LivingEntity extends Entity {
         knockbackDir.y = 0;
         if (knockbackDir.length() > 0.01f) {
             knockbackDir.normalize();
-            applyKnockback(knockbackDir, 6.0f, 0.6f);
+            applyKnockback(knockbackDir, 3.0f, 1.5f);
         }
     }
 
@@ -592,6 +651,15 @@ public abstract class LivingEntity extends Entity {
         velocity.x += dir.x * horizontalForce;
         velocity.z += dir.z * horizontalForce;
         velocity.y += verticalForce;
+        if (verticalForce > 0f) {
+            setOnGround(false);
+        }
+        float horizontalSpeed = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+        if (horizontalSpeed > 8.0f) {
+            float scale = 8.0f / horizontalSpeed;
+            velocity.x *= scale;
+            velocity.z *= scale;
+        }
     }
 
     // Abstract methods that must be implemented by subclasses
@@ -617,6 +685,35 @@ public abstract class LivingEntity extends Entity {
      */
     public abstract ItemStack[] getDrops();
     
+    /** This mob's AI controller, or null for AI-less living entities. */
+    public MobAI getAI() { return mobAI; }
+
+    /** The clip clock SBE renderers sample animation time from. */
+    public AnimationController getAnimationController() { return animationController; }
+
+    /** Appearance variant rendered from the SBE asset. */
+    public String getTextureVariant() { return textureVariant; }
+
+    /** Client shadow: apply the server's replicated animation state to the (otherwise frozen) AI. */
+    @Override
+    public void applyNetworkState(String sbeStateName) {
+        if (mobAI != null) {
+            mobAI.setState(com.stonebreak.mobs.sbe.MobStateMapping.behaviorState(sbeStateName));
+        }
+    }
+
+    /**
+     * Client shadow: keep the animation clock running so the current clip plays, and advance the
+     * AI state timer so one-shot clips (sampled from {@code MobAI.getStateTimer()}) animate.
+     */
+    @Override
+    public void updateClientVisuals(float deltaTime) {
+        animationController.updateAnimations(deltaTime);
+        if (mobAI != null) {
+            mobAI.advanceClientClock(deltaTime);
+        }
+    }
+
     // Getters
     public float getMoveSpeed() { return moveSpeed; }
     public float getTurnSpeed() { return turnSpeed; }

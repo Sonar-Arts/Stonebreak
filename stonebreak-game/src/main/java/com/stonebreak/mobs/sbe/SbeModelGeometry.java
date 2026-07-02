@@ -16,13 +16,19 @@ import java.util.Map;
  * @param indices    combined triangle index buffer
  * @param parts      model parts in draw order
  * @param materials  material id → decoded texture image
+ * @param restMinY   lowest model-space Y across all rendered vertices in the
+ *                   rest pose — the model's "feet". Renderers ground-anchor a
+ *                   mob by placing this at {@code position.y - legHeight}, so
+ *                   a mob never floats or sinks regardless of where the model
+ *                   author put the origin.
  */
 public record SbeModelGeometry(
         float[] vertices,
         float[] texCoords,
         int[] indices,
         List<SbePart> parts,
-        Map<Integer, MaterialImage> materials
+        Map<Integer, MaterialImage> materials,
+        float restMinY
 ) {
     public SbeModelGeometry {
         parts = parts == null ? List.of() : List.copyOf(parts);

@@ -18,16 +18,26 @@ import java.util.Map;
  * @param duration clip length in seconds
  * @param loop     whether playback should wrap at {@code duration}
  * @param tracks   per-part keyframe tracks
+ * @param layer    layering metadata for animation mixing; never null
+ *                 (clips without an authored layer are full-body BASE)
  */
 public record ParsedAnimClip(
         String name,
         float fps,
         float duration,
         boolean loop,
-        List<ParsedAnimTrack> tracks
+        List<ParsedAnimTrack> tracks,
+        AnimLayerMeta layer
 ) {
     public ParsedAnimClip {
         tracks = tracks == null ? Collections.emptyList() : List.copyOf(tracks);
+        layer = layer == null ? AnimLayerMeta.base() : layer;
+    }
+
+    /** Convenience constructor for clips with no layering metadata (v1.0 files, tests). */
+    public ParsedAnimClip(String name, float fps, float duration, boolean loop,
+                          List<ParsedAnimTrack> tracks) {
+        this(name, fps, duration, loop, tracks, AnimLayerMeta.base());
     }
 
     /** Lookup of tracks by their {@code partId}. Insertion-ordered. */

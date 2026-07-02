@@ -553,6 +553,9 @@ public class Renderer {
         if (entityRenderer != null) {
             entityRenderer.cleanup();
         }
+        if (worldRenderer != null) {
+            worldRenderer.cleanup();
+        }
         if (overlayRenderer != null) {
             overlayRenderer.cleanup();
         }

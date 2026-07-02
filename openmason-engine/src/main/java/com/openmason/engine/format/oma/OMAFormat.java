@@ -18,8 +18,10 @@ package com.openmason.engine.format.oma;
  */
 public final class OMAFormat {
 
-    /** Current format version produced by Open Mason. */
-    public static final String FORMAT_VERSION = "1.0";
+    /** Current format version produced by Open Mason. v1.1 added the optional
+     * manifest {@code layer} block (animation mixing); readers do not gate on
+     * version — absent fields fall back to full-body BASE defaults. */
+    public static final String FORMAT_VERSION = "1.1";
 
     /** File extension for animation clips. */
     public static final String FILE_EXTENSION = ".omanim";

@@ -133,7 +133,7 @@
         <!-- Skija (Skia bindings) for high-quality 2D widget rendering composited into ImGui -->
         <dependency>
             <groupId>io.github.humbleui</groupId>
-            <artifactId>skija-windows-x64</artifactId>
+            <artifactId>${skija.artifact}</artifactId>
         </dependency>
 
         <!-- OpenMason Engine for shared rendering and format support -->

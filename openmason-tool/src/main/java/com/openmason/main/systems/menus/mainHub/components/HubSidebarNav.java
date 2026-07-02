@@ -32,6 +32,8 @@ public class HubSidebarNav {
     private final MortarRegion region = new MortarRegion();
 
     private Runnable onPreferencesClicked;
+    private Runnable onChangeBaseFolder;
+    private java.util.function.Supplier<String> baseFolderSupplier;
 
     public HubSidebarNav(ThemeManager themeManager, HubState hubState, LogoManager logoManager) {
         this.hubState = hubState;
@@ -41,6 +43,13 @@ public class HubSidebarNav {
 
     public void setOnPreferencesClicked(Runnable callback) {
         this.onPreferencesClicked = callback;
+    }
+
+    /** Wire the base projects folder display + change action (folder picker). */
+    public void setBaseFolderControl(java.util.function.Supplier<String> currentFolder,
+                                     Runnable onChange) {
+        this.baseFolderSupplier = currentFolder;
+        this.onChangeBaseFolder = onChange;
     }
 
     public void render() {
@@ -85,8 +94,18 @@ public class HubSidebarNav {
         region.add("nav.learn", x, navY + NAV_ITEM_HEIGHT + NAV_ITEM_GAP, w, NAV_ITEM_HEIGHT,
                 learnSel, new MortarNavItem("Learn"));
 
-        // Preferences pinned to the bottom.
+        // Base projects folder + Preferences pinned to the bottom.
         float prefsY = height - NAV_ITEM_HEIGHT - PAD;
+        boolean showFolder = baseFolderSupplier != null;
+        if (showFolder) {
+            float folderRowY = prefsY - NAV_ITEM_HEIGHT - NAV_ITEM_GAP;
+            float folderLabelY = folderRowY - 22f;
+            region.add("homefolder.label", x + 6f, folderLabelY, w - 6f, 16f,
+                    new MortarSectionLabel("Projects Folder"));
+            String folder = baseFolderSupplier.get();
+            region.add("homefolder", x, folderRowY, w, NAV_ITEM_HEIGHT, false,
+                    (g, px, py, pw, ph, st) -> paintFolderRow(g, px, py, pw, ph, st, folder));
+        }
         region.add("nav.prefs", x, prefsY, w, NAV_ITEM_HEIGHT, false, new MortarNavItem("Preferences"));
 
         MortarFrameResult input = region.render();
@@ -98,7 +117,35 @@ public class HubSidebarNav {
             switchView(NavigationItem.ViewType.LEARN);
         } else if (input.isClicked("nav.prefs") && onPreferencesClicked != null) {
             onPreferencesClicked.run();
+        } else if (input.isClicked("homefolder") && onChangeBaseFolder != null) {
+            onChangeBaseFolder.run();
         }
+    }
+
+    /**
+     * The projects-folder row: the folder's leaf name (full path ellipsized)
+     * with a dimmed "Change" affordance pinned right; hover tints like a nav
+     * item so it clearly reads as clickable.
+     */
+    private static void paintFolderRow(com.openmason.main.systems.mortar.paint.MortarPainter g,
+                                       float x, float y, float w, float h,
+                                       com.openmason.main.systems.mortar.core.PartState st,
+                                       String folder) {
+        float hover = st.hover();
+        if (hover > 0.01f) {
+            g.fillRoundRect(x, y, w, h, 6f,
+                    com.openmason.main.systems.mortar.theme.Argb.withAlpha(g.theme().surfaceHover, 0.55f * hover));
+        }
+        String changeLabel = "Change";
+        float changeW = g.measureWidth(changeLabel, Weight.MEDIUM, 11f);
+        float inset = 16f;
+        String display = folder == null || folder.isBlank() ? "(not set)" : folder;
+        g.textEllipsized(display, x + inset, y + h / 2f, w - inset * 2f - changeW - 8f,
+                Weight.REGULAR, 12f, g.theme().textDim);
+        int changeColor = com.openmason.main.systems.mortar.theme.Argb.lerp(
+                g.theme().textFaint, g.theme().accent, hover);
+        g.text(changeLabel, x + w - inset - changeW, y + h / 2f,
+                MortarPainter.Align.LEFT, Weight.MEDIUM, 11f, changeColor);
     }
 
     private void switchView(NavigationItem.ViewType view) {

@@ -38,10 +38,12 @@ public final class StateManager {
     private MButton waterShaderButton;
     private MButton cloudsButton;
     private MButton godRaysButton;
+    private MButton shadowsButton;
     private MSlider renderDistanceSlider;
     private MSlider lodDistanceSlider;
     private MButton lodEnabledButton;
     private MButton vsyncButton;
+    private MSlider maxFpsSlider;
     private MSlider uiScaleSlider;
 
     // Confirmation popup shown after applying a UI-scale change (Keep / Revert).
@@ -150,6 +152,7 @@ public final class StateManager {
         waterShaderButton = new MButton(waterShaderLabel()).size(bw, bh);
         cloudsButton = new MButton(cloudsLabel()).size(bw, bh);
         godRaysButton = new MButton(godRaysLabel()).size(bw, bh);
+        shadowsButton = new MButton(shadowsLabel()).size(bw, bh);
 
         renderDistanceSlider = new MSlider(renderDistanceLabel(),
                 SettingsConfig.MIN_RENDER_DISTANCE, SettingsConfig.MAX_RENDER_DISTANCE,
@@ -166,6 +169,12 @@ public final class StateManager {
         lodEnabledButton = new MButton(lodEnabledLabel()).size(bw, bh);
         vsyncButton = new MButton(vsyncLabel()).size(bw, bh);
 
+        maxFpsSlider = new MSlider(maxFpsLabel(),
+                SettingsConfig.MIN_MAX_FPS, SettingsConfig.MAX_MAX_FPS,
+                settings.getMaxFps())
+                .trackHeight(sh).showPercent(false);
+        maxFpsSlider.size(sw, sh);
+
         uiScaleSlider = new MSlider("UI Scale",
                 SettingsConfig.MIN_UI_SCALE, SettingsConfig.MAX_UI_SCALE, settings.getUiScale())
                 .trackHeight(sh).showPercent(false);
@@ -178,8 +187,8 @@ public final class StateManager {
         for (MWidget w : new MWidget[]{
                 applyButton, backButton, resolutionButton, armModelButton, crosshairStyleButton,
                 volumeSlider, crosshairSizeSlider, leafTransparencyButton, waterShaderButton,
-                cloudsButton, godRaysButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
-                vsyncButton, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
+                cloudsButton, godRaysButton, shadowsButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
+                vsyncButton, maxFpsSlider, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
             w.scaleText(true);
         }
     }
@@ -208,10 +217,12 @@ public final class StateManager {
         waterShaderButton.size(bw, bh);
         cloudsButton.size(bw, bh);
         godRaysButton.size(bw, bh);
+        shadowsButton.size(bw, bh);
         renderDistanceSlider.size(sw, sh);
         lodDistanceSlider.size(sw, sh);
         lodEnabledButton.size(bw, bh);
         vsyncButton.size(bw, bh);
+        maxFpsSlider.size(sw, sh);
         uiScaleSlider.size(sw, sh);
         keepUiScaleButton.size(bw, bh);
         revertUiScaleButton.size(bw, bh);
@@ -229,11 +240,12 @@ public final class StateManager {
                              java.util.function.Consumer<Float> volumeAction,
                              java.util.function.Consumer<Float> crosshairSizeAction,
                              Runnable leafTransparencyAction, Runnable waterShaderAction,
-                             Runnable cloudsAction, Runnable godRaysAction,
+                             Runnable cloudsAction, Runnable godRaysAction, Runnable shadowsAction,
                              java.util.function.Consumer<Float> renderDistanceAction,
                              java.util.function.Consumer<Float> lodDistanceAction,
                              Runnable lodEnabledAction,
                              Runnable vsyncAction,
+                             java.util.function.Consumer<Float> maxFpsAction,
                              java.util.function.Consumer<Float> uiScaleAction,
                              Runnable keepUiScaleAction,
                              Runnable revertUiScaleAction) {
@@ -248,10 +260,12 @@ public final class StateManager {
         waterShaderButton.setOnClick(waterShaderAction);
         cloudsButton.setOnClick(cloudsAction);
         godRaysButton.setOnClick(godRaysAction);
+        shadowsButton.setOnClick(shadowsAction);
         renderDistanceSlider.setOnChange(renderDistanceAction);
         lodDistanceSlider.setOnChange(lodDistanceAction);
         lodEnabledButton.setOnClick(lodEnabledAction);
         vsyncButton.setOnClick(vsyncAction);
+        maxFpsSlider.setOnChange(maxFpsAction);
         uiScaleSlider.setOnChange(uiScaleAction);
         keepUiScaleButton.setOnClick(keepUiScaleAction);
         revertUiScaleButton.setOnClick(revertUiScaleAction);
@@ -288,10 +302,12 @@ public final class StateManager {
         waterShaderButton.setSelected(false);
         cloudsButton.setSelected(false);
         godRaysButton.setSelected(false);
+        shadowsButton.setSelected(false);
         renderDistanceSlider.setSelected(false);
         lodDistanceSlider.setSelected(false);
         lodEnabledButton.setSelected(false);
         vsyncButton.setSelected(false);
+        maxFpsSlider.setSelected(false);
         uiScaleSlider.setSelected(false);
     }
 
@@ -343,10 +359,12 @@ public final class StateManager {
         waterShaderButton.setText(waterShaderLabel());
         cloudsButton.setText(cloudsLabel());
         godRaysButton.setText(godRaysLabel());
+        shadowsButton.setText(shadowsLabel());
         renderDistanceSlider.setLabel(renderDistanceLabel());
         lodDistanceSlider.setLabel(lodDistanceLabel());
         lodEnabledButton.setText(lodEnabledLabel());
         vsyncButton.setText(vsyncLabel());
+        maxFpsSlider.setLabel(maxFpsLabel());
         uiScaleSlider.setLabel(uiScaleLabel());
     }
 
@@ -366,6 +384,10 @@ public final class StateManager {
         return "God Rays: " + (settings.getGodRaysEnabled() ? "ON" : "OFF");
     }
 
+    private String shadowsLabel() {
+        return "Shadows: " + (settings.getShadowsEnabled() ? "ON" : "OFF");
+    }
+
     private String renderDistanceLabel() {
         return "Render Distance: " + settings.getRenderDistance() + " chunks";
     }
@@ -380,6 +402,10 @@ public final class StateManager {
 
     private String vsyncLabel() {
         return "VSync: " + (settings.isVsyncEnabled() ? "ON" : "OFF");
+    }
+
+    private String maxFpsLabel() {
+        return "Max FPS: " + (settings.isMaxFpsUnlimited() ? "Unlimited" : settings.getMaxFps());
     }
 
     private String uiScaleLabel() {
@@ -446,10 +472,12 @@ public final class StateManager {
     public MButton getWaterShaderButton() { return waterShaderButton; }
     public MButton getCloudsButton() { return cloudsButton; }
     public MButton getGodRaysButton() { return godRaysButton; }
+    public MButton getShadowsButton() { return shadowsButton; }
     public MSlider getRenderDistanceSlider() { return renderDistanceSlider; }
     public MSlider getLodDistanceSlider() { return lodDistanceSlider; }
     public MButton getLodEnabledButton() { return lodEnabledButton; }
     public MButton getVsyncButton() { return vsyncButton; }
+    public MSlider getMaxFpsSlider() { return maxFpsSlider; }
     public MSlider getUiScaleSlider() { return uiScaleSlider; }
     public MButton getKeepUiScaleButton() { return keepUiScaleButton; }
     public MButton getRevertUiScaleButton() { return revertUiScaleButton; }

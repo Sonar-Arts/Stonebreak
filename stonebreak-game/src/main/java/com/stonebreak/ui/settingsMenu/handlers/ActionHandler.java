@@ -53,8 +53,10 @@ public class ActionHandler {
             case WATER_SHADER -> toggleWaterShader();
             case CLOUDS_ENABLED -> toggleClouds();
             case GOD_RAYS -> toggleGodRays();
+            case SHADOWS -> toggleShadows();
             case LOD_ENABLED -> toggleLodEnabled();
             case VSYNC -> toggleVsync();
+            case MAX_FPS -> {} // Max FPS handled by mouse/keyboard interaction
             case APPLY -> applySettings();
             case BACK -> goBack();
             default -> {}
@@ -242,6 +244,15 @@ public class ActionHandler {
     }
 
     /**
+     * Callback for when the Max FPS slider value changes. The manual frame
+     * limiter reads {@code Settings.getMaxFps()} every frame, so this takes
+     * effect live; persistence still waits for Apply / save.
+     */
+    public void onMaxFpsChange(Float newValue) {
+        settings.setMaxFps(Math.round(newValue));
+    }
+
+    /**
      * Toggles the leaf transparency setting.
      */
     public void toggleLeafTransparency() {
@@ -296,6 +307,15 @@ public class ActionHandler {
         boolean currentValue = settings.getGodRaysEnabled();
         settings.setGodRaysEnabled(!currentValue);
         System.out.println("God rays toggled to: " + (!currentValue ? "ON" : "OFF"));
+    }
+
+    /**
+     * Toggles the shadow rendering setting.
+     */
+    public void toggleShadows() {
+        boolean currentValue = settings.getShadowsEnabled();
+        settings.setShadowsEnabled(!currentValue);
+        System.out.println("Shadows toggled to: " + (!currentValue ? "ON" : "OFF"));
     }
 
     /**

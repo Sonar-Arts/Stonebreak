@@ -62,13 +62,14 @@ public final class PlayerBodyOrientation {
      * Converts a world XZ direction into the player model's facing yaw (degrees).
      *
      * <p>This uses {@code atan2(dir.x, dir.z)} with the rotation sense of the SBE
-     * renderer (as in {@code CowAI}/{@code SheepAI}) but <em>without</em> their
-     * {@code +180} offset: the {@code SB_Player.sbe} model is authored facing the
-     * opposite way to the cow/sheep models, so it faces a direction directly with
-     * no half-turn flip.
+     * renderer and the same {@code +180} model yaw offset the mob framework uses
+     * for cow/sheep ({@code EntityType.getModelYawOffsetDegrees()}): the
+     * {@code SB_Player.sbe} model is authored facing {@code -Z} (like the
+     * cow/sheep models), so the half-turn flip aligns its forward axis with the
+     * travel/look direction.
      */
     public static float modelYawFromDirection(float dirX, float dirZ) {
-        return (float) Math.toDegrees(Math.atan2(dirX, dirZ));
+        return (float) Math.toDegrees(Math.atan2(dirX, dirZ)) + 180.0f;
     }
 
     /** Lower-body facing in model space (degrees); base yaw for the body model. */
