@@ -69,6 +69,21 @@ public final class ServerChunkHandler {
     /** Sentinel for "no cached hash" — a real hash colliding with it merely recomputes. */
     private static final int NO_HASH = Integer.MIN_VALUE;
 
+    /** Server tick counter driving the sim-edit audit grace window. */
+    private int tickCounter = 0;
+    /** Last tick a SIMULATION edit (water flow etc.) touched each chunk. A chunk that is
+     *  being actively mutated by the sim is guaranteed to fail the hash audit — the client's
+     *  hash is at least a round-trip stale against live sim state — so comparing it would
+     *  re-stream a perfectly-synced chunk every audit round for as long as the water flows
+     *  (a re-stream storm over settling water). The per-block sim batches keep clients
+     *  current there; auditing resumes once the chunk goes quiet. */
+    private final LongIntHashMap lastSimEditTick = new LongIntHashMap();
+    /** "Never sim-edited" default; far enough in the past to always be outside the grace. */
+    private static final int NEVER_TICK = -1_000_000;
+    /** Grace (ticks) after a sim edit before the audit trusts a mismatch again — a little
+     *  over the client's 10 s audit period, so the client has re-hashed post-settle state. */
+    private static final int SIM_EDIT_AUDIT_GRACE_TICKS = 240; // 12 s at 20 Hz
+
     /** Mark a chunk changed so every player re-receives its snapshot within view. */
     public void markChunkModified(int cx, int cz) {
         long key = packKey(cx, cz);
@@ -79,12 +94,16 @@ public final class ServerChunkHandler {
 
     /** Drop a chunk's cached audit hash (server-side content changed without a version bump). */
     public void invalidateHash(int cx, int cz) {
-        chunkHashes.remove(packKey(cx, cz));
+        long key = packKey(cx, cz);
+        chunkHashes.remove(key);
+        lastSimEditTick.put(key, tickCounter);
     }
 
     public void onSessionStart() {
         chunkVersions.clear();
         chunkHashes.clear();
+        lastSimEditTick.clear();
+        tickCounter = 0;
         versionsDirty = true;
     }
 
@@ -119,6 +138,12 @@ public final class ServerChunkHandler {
                 continue; // not resident server-side — nothing to compare against
             }
             long key = packKey(cx, cz);
+            // Sim-edit grace: skip chunks the simulation touched within the last audit
+            // period (see lastSimEditTick) — the mismatch would be a timing artifact,
+            // not desync, and re-streaming can't help while the sim keeps mutating.
+            if (tickCounter - lastSimEditTick.get(key, NEVER_TICK) < SIM_EDIT_AUDIT_GRACE_TICKS) {
+                continue;
+            }
             int serverHash = chunkHashes.get(key, NO_HASH);
             if (serverHash == NO_HASH) {
                 serverHash = com.stonebreak.network.bridge.ChunkHasher.hash(chunk);
@@ -134,6 +159,7 @@ public final class ServerChunkHandler {
     }
 
     public void tick(ServerWorldContext ctx) {
+        tickCounter++;
         World world = ctx.world();
         if (world == null) {
             return;

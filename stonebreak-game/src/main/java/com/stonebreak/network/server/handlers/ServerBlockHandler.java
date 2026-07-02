@@ -273,8 +273,11 @@ public final class ServerBlockHandler {
             return;
         }
         if (simEditsThisTick >= MAX_SIM_EDITS_PER_TICK) {
-            chunkHandler.markChunkModified(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
-                Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
+            int cx = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
+            int cz = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
+            chunkHandler.markChunkModified(cx, cz);
+            // Still a sim edit: record it for the audit's sim-edit grace window too.
+            chunkHandler.invalidateHash(cx, cz);
             return;
         }
         simEditsThisTick++;
