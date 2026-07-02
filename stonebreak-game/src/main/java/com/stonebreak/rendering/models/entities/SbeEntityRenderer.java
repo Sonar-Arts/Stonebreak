@@ -57,6 +57,14 @@ public final class SbeEntityRenderer {
     private long trackedMeshBytes;
     private long trackedTextureBytes;
 
+    /** Sun-shadow state provider; null outside the world pipeline (UI previews). */
+    private com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer shadowMapRenderer;
+
+    /** Wires the cascaded-shadow state used when rendering entities in the world. */
+    public void setShadowMapRenderer(com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer renderer) {
+        this.shadowMapRenderer = renderer;
+    }
+
     /** GPU resources for one variant of one asset. */
     private static final class VariantGpu {
         int vao;
@@ -89,10 +97,12 @@ public final class SbeEntityRenderer {
 
             out vec2 TexCoord;
             out vec3 FragWorldPos;
+            out float ViewDepth;
 
             void main() {
                 vec4 worldPos = model * vec4(aPos, 1.0);
                 FragWorldPos = worldPos.xyz;
+                ViewDepth = -(view * worldPos).z;
                 gl_Position = projection * view * worldPos;
                 TexCoord = aTexCoord;
             }
@@ -104,22 +114,43 @@ public final class SbeEntityRenderer {
 
             in vec2 TexCoord;
             in vec3 FragWorldPos;
+            in float ViewDepth;
 
             uniform sampler2D textureSampler;
             uniform vec3 cameraPos;
             uniform float underwaterFogDensity;
             uniform vec3 underwaterFogColor;
-
+            uniform float u_ambientLight;
+            uniform vec3 u_sunDirection;
+            uniform float u_entityLight;
+            """
+            + com.openmason.engine.rendering.shadow.ShadowGlsl.UNIFORMS
+            + com.openmason.engine.rendering.shadow.ShadowGlsl.FUNCTIONS
+            + """
             void main() {
                 vec4 texColor = texture(textureSampler, TexCoord);
                 if (texColor.a < 0.01) discard;
 
+                // SBE meshes carry no normals — derive the flat face normal from
+                // screen-space derivatives. For visible fragments this is the
+                // outward (viewer-side) normal, which is what lighting needs.
+                vec3 normal = normalize(cross(dFdx(FragWorldPos), dFdy(FragWorldPos)));
+                vec3 sunDir = normalize(u_sunDirection);
+                float diff = max(dot(normal, sunDir), 0.0);
+                float shadowFactor = csmShadowFactor(FragWorldPos, normal, ViewDepth);
+
+                // Ambient + sun diffuse (both day/night scaled), then the sampled
+                // sky light at the entity's position so mobs darken in caves.
+                float brightness = u_ambientLight * (0.5 + 0.55 * diff * shadowFactor);
+                brightness *= mix(0.3, 1.0, u_entityLight);
+                vec3 lit = texColor.rgb * min(brightness, 1.0);
+
                 if (underwaterFogDensity > 0.0) {
                     float dist = length(FragWorldPos - cameraPos);
                     float fogFactor = clamp(exp(-underwaterFogDensity * dist), 0.0, 1.0);
-                    FragColor = mix(vec4(underwaterFogColor, texColor.a), texColor, fogFactor);
+                    FragColor = mix(vec4(underwaterFogColor, texColor.a), vec4(lit, texColor.a), fogFactor);
                 } else {
-                    FragColor = texColor;
+                    FragColor = vec4(lit, texColor.a);
                 }
             }
             """;
@@ -136,6 +167,17 @@ public final class SbeEntityRenderer {
             shader.createUniform("cameraPos");
             shader.createUniform("underwaterFogDensity");
             shader.createUniform("underwaterFogColor");
+            // Lighting defaults: fully lit so UI previews (glossary, character
+            // creation) render bright without the per-frame environment update.
+            shader.bind();
+            shader.setFloat("u_ambientLight", 1.0f);
+            shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
+            shader.setFloat("u_entityLight", 1.0f);
+            // The shadow sampler must live on its own unit even while disabled —
+            // sharing unit 0 with the 2D textureSampler is a GL error on strict drivers.
+            com.openmason.engine.rendering.shadow.ShadowUniforms.applyDisabled(shader,
+                    com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer.SHADOW_TEXTURE_UNIT);
+            shader.unbind();
         } catch (Exception e) {
             System.err.println("Failed to create SBE entity shader: " + e.getMessage());
         }
@@ -267,6 +309,7 @@ public final class SbeEntityRenderer {
         shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f());
         shader.setUniform("underwaterFogDensity", fogDensity);
         shader.setUniform("underwaterFogColor", fogColor);
+        applyEnvironmentLighting(world, position);
 
         // Base transform: the OMO model is placed exactly as authored in the
         // SBE — its model-space origin sits at the entity position, with no
@@ -472,6 +515,45 @@ public final class SbeEntityRenderer {
         }
         GL20.glUseProgram(previousProgram);
         GL30.glBindVertexArray(previousVertexArray);
+    }
+
+    /**
+     * Pushes the per-frame lighting environment to the (bound) entity shader:
+     * time-of-day ambient + sun direction, the sampled sky light at the entity's
+     * position (so mobs darken in caves and at night), and this frame's shadow
+     * cascade state. Falls back to fully lit outside the world pipeline.
+     */
+    private void applyEnvironmentLighting(com.stonebreak.world.World world, Vector3f position) {
+        com.stonebreak.world.TimeOfDay timeOfDay = com.stonebreak.core.Game.getTimeOfDay();
+        if (timeOfDay != null) {
+            shader.setFloat("u_ambientLight", timeOfDay.getAmbientLightLevel());
+            shader.setVec3("u_sunDirection", timeOfDay.getSunDirection());
+        } else {
+            shader.setFloat("u_ambientLight", 1.0f);
+            shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
+        }
+        shader.setFloat("u_entityLight", sampleEntityLight(world, position));
+        if (shadowMapRenderer != null) {
+            shadowMapRenderer.applyToShader(shader);
+        }
+    }
+
+    /**
+     * Sky-light probe at the entity's mid-body. Fully lit when the world (or the
+     * entity's chunk) isn't available so entities are never mysteriously black.
+     */
+    static float sampleEntityLight(com.stonebreak.world.World world, Vector3f position) {
+        if (world == null || position == null) {
+            return 1.0f;
+        }
+        try {
+            com.stonebreak.world.lighting.WorldLightingContext ctx =
+                    new com.stonebreak.world.lighting.WorldLightingContext(world);
+            return com.openmason.engine.voxel.lighting.VertexLightSampler.samplePointSky(
+                    ctx, position.x, position.y + 0.5f, position.z);
+        } catch (Exception ignored) {
+            return 1.0f;
+        }
     }
 
     /** Receives the computed world matrix for one animated part. */

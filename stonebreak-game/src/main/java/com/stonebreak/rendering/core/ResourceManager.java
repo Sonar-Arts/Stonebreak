@@ -73,6 +73,14 @@ public class ResourceManager {
         // Default to -1 (no filter) so paths that don't split the translucent
         // pass (UI, FastLOD, etc.) keep rendering everything as before.
         shaderProgram.setUniform("u_translucentLayer", -1);
+        // Shadow map sampler MUST be moved off unit 0 immediately: it is a
+        // sampler2DArrayShadow, and leaving it on the same unit as the 2D
+        // texture_sampler makes every draw GL_INVALID_OPERATION on strict
+        // drivers even while shadows are disabled. Remaining shadow uniforms
+        // are auto-registered by ShadowUniforms' tolerant setters per frame.
+        shaderProgram.setInt("u_shadowMap",
+                com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer.SHADOW_TEXTURE_UNIT);
+        shaderProgram.setBool("u_shadowsEnabled", false);
     }
     
     private String getVertexShaderSource() {
@@ -95,6 +103,7 @@ public class ResourceManager {
                out float v_isTranslucent;
                out float v_light;
                out float v_layer;
+               out float v_viewDepth;
                uniform mat4 projectionMatrix;
                uniform mat4 viewMatrix;
                uniform mat4 modelMatrix;
@@ -167,6 +176,8 @@ public class ResourceManager {
                    }
                    outNormal = normal;
                    fragPos = (modelMatrix * vec4(pos, 1.0)).xyz;
+                   // Positive view-space distance — drives shadow cascade selection.
+                   v_viewDepth = -(viewMatrix * vec4(fragPos, 1.0)).z;
                    v_waterHeight = waterHeight;
                    v_isAlphaTested = isAlphaTested;
                    v_isTranslucent = isTranslucent;
@@ -186,7 +197,12 @@ public class ResourceManager {
                in float v_isTranslucent;
                in float v_light;
                in float v_layer;
+               in float v_viewDepth;
                out vec4 fragColor;
+               """
+               + com.openmason.engine.rendering.shadow.ShadowGlsl.UNIFORMS
+               + com.openmason.engine.rendering.shadow.ShadowGlsl.FUNCTIONS
+               + """
                uniform sampler2D texture_sampler;
                // Block texture array — sampled when u_useTextureArray is true.
                uniform sampler2DArray block_sampler;
@@ -221,7 +237,7 @@ public class ResourceManager {
                        // Voxelized held sprites draw per-voxel solid colors — darken
                        // by player world light so held tools fade out in caves too.
                        float playerFactor = (u_playerLight >= 0.0)
-                           ? mix(0.15, 1.0, u_playerLight)
+                           ? mix(0.30, 1.0, u_playerLight)
                            : 1.0;
                        fragColor = vec4(u_color.rgb * playerFactor, u_color.a);
                    } else {
@@ -236,7 +252,7 @@ public class ResourceManager {
                        // the player's current world light so the arm darkens in caves.
                        if (u_isUIElement) {
                            float playerWorldFactor = (u_playerLight >= 0.0)
-                               ? mix(0.15, 1.0, u_playerLight)
+                               ? mix(0.30, 1.0, u_playerLight)
                                : 1.0;
                            float brightness = 0.9 * playerWorldFactor;
 
@@ -265,11 +281,19 @@ public class ResourceManager {
                        float ambientStrength = u_ambientLight * 0.4; // Scale down ambient
                        vec3 ambient = ambientStrength * textureColor.rgb;
 
+                       // Cascaded sun-shadow visibility — attenuates direct light only
+                       // (diffuse + specular); ambient stays so shadows never go black.
+                       // Player-held geometry (u_playerLight >= 0) renders in arm-local
+                       // coordinates, so its fragPos is meaningless in light space — skip.
+                       float shadowFactor = (u_playerLight >= 0.0)
+                           ? 1.0
+                           : csmShadowFactor(fragPos, norm, v_viewDepth);
+
                        // Diffuse component (directional sunlight)
                        float diff = max(dot(norm, lightDir), 0.0);
                        // Only apply full diffuse during daytime
                        float diffuseStrength = 0.6 * u_ambientLight;
-                       vec3 diffuse = diff * diffuseStrength * textureColor.rgb;
+                       vec3 diffuse = diff * diffuseStrength * shadowFactor * textureColor.rgb;
 
                        // Specular component (shiny highlights)
                        float specularStrength = 0.3;
@@ -277,7 +301,7 @@ public class ResourceManager {
                        float spec = pow(max(dot(norm, halfwayDir), 0.0), 32.0);
                        // Only water and ice get strong specular
                        float specularIntensity = (v_waterHeight > 0.0) ? 0.5 : 0.1;
-                       vec3 specular = specularIntensity * spec * specularStrength * u_ambientLight * vec3(1.0);
+                       vec3 specular = specularIntensity * spec * specularStrength * u_ambientLight * shadowFactor * vec3(1.0);
 
                        // Combine lighting components
                        vec3 result = ambient + diffuse + specular;
@@ -285,10 +309,11 @@ public class ResourceManager {
                        // World light — per-vertex by default. Player-held geometry (arm, held item)
                        // overrides via u_playerLight so it shades with whatever cell the player is in.
                        float worldLight = (u_playerLight >= 0.0) ? u_playerLight : clamp(v_light, 0.0, 1.0);
-                       // Linear ramp with a 15% floor: per-vertex shadow values already
-                       // encode sky × AO, so the shader just lifts the darkest corners
-                       // enough to stay visible in caves without muddying mid-tones.
-                       float worldLightFactor = mix(0.15, 1.0, worldLight);
+                       // Linear ramp with a 30% floor: per-vertex shadow values already
+                       // encode sky × AO, and real sun shadows now come from the shadow
+                       // map — the baked term only needs to suggest occlusion, so keep
+                       // it light or the two stack into pitch-black corners.
+                       float worldLightFactor = mix(0.30, 1.0, worldLight);
                        result *= worldLightFactor;
 
                        if (v_isAlphaTested > 0.5) {

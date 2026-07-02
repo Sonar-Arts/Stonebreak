@@ -322,6 +322,7 @@ public class DebugOverlay {
             case TEXTURE_ATLAS   -> "Tex Atlas";
             case ENTITY_MESH     -> "Entity Meshes";
             case PLAYER_GEOMETRY -> "Player Geom";
+            case SHADOW_MAP      -> "Shadow Maps";
             case OTHER           -> "Other";
         };
     }

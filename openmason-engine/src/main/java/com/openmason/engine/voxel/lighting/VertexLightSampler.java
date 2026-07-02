@@ -10,7 +10,7 @@ package com.openmason.engine.voxel.lighting;
  *       vertex on the face's air side whose heightmap is at or below the
  *       vertex's Y.</li>
  *   <li><b>Ambient occlusion</b> — classic 3-neighbor solid count on the air
- *       side of the face; 0..3 neighbors maps to 1.0 / 0.8 / 0.6 / 0.4.</li>
+ *       side of the face; 0..3 neighbors maps to 1.0 / 0.87 / 0.74 / 0.61.</li>
  * </ul>
  *
  * <p>Both are pure functions of current world state exposed via
@@ -25,8 +25,8 @@ package com.openmason.engine.voxel.lighting;
  */
 public final class VertexLightSampler {
 
-    /** How much each solid AO neighbor dims the vertex. 3 neighbors → 0.4. */
-    private static final float AO_PER_NEIGHBOR = 0.2f;
+    /** How much each solid AO neighbor dims the vertex. 3 neighbors → 0.61. */
+    private static final float AO_PER_NEIGHBOR = 0.13f;
     /** Minimum sky factor for a fully-shaded vertex before AO multiplies. */
     private static final float SKY_FLOOR = 0.0f;
 
@@ -51,7 +51,7 @@ public final class VertexLightSampler {
         int iz = (int) Math.floor(wz);
         int h = ctx.getColumnHeight(ix, iz);
         if (h < 0) return 1.0f; // unloaded
-        return iy >= h ? 1.0f : Math.max(SKY_FLOOR, 0.35f);
+        return iy >= h ? 1.0f : Math.max(SKY_FLOOR, 0.5f);
     }
 
     // ─── Sky factor ────────────────────────────────────────────────────────

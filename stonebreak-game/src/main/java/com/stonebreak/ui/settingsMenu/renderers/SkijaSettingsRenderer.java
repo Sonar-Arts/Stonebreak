@@ -253,6 +253,7 @@ public final class SkijaSettingsRenderer {
             case WATER_SHADER     -> state.getWaterShaderButton();
             case CLOUDS_ENABLED   -> state.getCloudsButton();
             case GOD_RAYS         -> state.getGodRaysButton();
+            case SHADOWS          -> state.getShadowsButton();
             case RENDER_DISTANCE  -> state.getRenderDistanceSlider();
             case LOD_DISTANCE     -> state.getLodDistanceSlider();
             case LOD_ENABLED      -> state.getLodEnabledButton();

@@ -94,6 +94,36 @@ public class EntityRenderer {
         }
     }
 
+    /**
+     * Wires the cascaded-shadow state so entities receive sun shadows.
+     * Called by WorldRenderer once at construction.
+     */
+    public void setShadowMapRenderer(com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer renderer) {
+        sbeEntityRenderer.setShadowMapRenderer(renderer);
+    }
+
+    /**
+     * Sets the simple-cube shader's lighting mode for the next draw. Lit geometry
+     * (fallback cubes, arrows) samples the world sky light at the entity position;
+     * emissive geometry (fire bolts, glow cubes) stays unlit. The shader must be bound.
+     */
+    private void applySimpleLighting(Entity entity, boolean lit) {
+        shader.setBool("u_lightingEnabled", lit);
+        if (!lit) {
+            return;
+        }
+        com.stonebreak.world.TimeOfDay timeOfDay = com.stonebreak.core.Game.getTimeOfDay();
+        if (timeOfDay != null) {
+            shader.setFloat("u_ambientLight", timeOfDay.getAmbientLightLevel());
+            shader.setVec3("u_sunDirection", timeOfDay.getSunDirection());
+        } else {
+            shader.setFloat("u_ambientLight", 1.0f);
+            shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
+        }
+        shader.setFloat("u_entityLight",
+                SbeEntityRenderer.sampleEntityLight(com.stonebreak.core.Game.getWorld(), entity.getPosition()));
+    }
+
     private void createShader() {
         String vertexShader = """
             #version 330 core
@@ -126,9 +156,24 @@ public class EntityRenderer {
             uniform vec3 cameraPos;
             uniform float underwaterFogDensity;
             uniform vec3 underwaterFogColor;
+            // Lighting is opt-in: emissive geometry (fire bolts, glow cubes)
+            // keeps rendering unlit; plain entities get sun + world lighting.
+            uniform bool u_lightingEnabled;
+            uniform float u_ambientLight;
+            uniform vec3 u_sunDirection;
+            uniform float u_entityLight;
 
             void main() {
                 vec4 texColor = texture(textureSampler, TexCoord);
+
+                if (u_lightingEnabled) {
+                    // Flat face normal from screen-space derivatives (no normal attribute).
+                    vec3 normal = normalize(cross(dFdx(FragWorldPos), dFdy(FragWorldPos)));
+                    float diff = max(dot(normal, normalize(u_sunDirection)), 0.0);
+                    float brightness = u_ambientLight * (0.5 + 0.55 * diff);
+                    brightness *= mix(0.3, 1.0, u_entityLight);
+                    texColor = vec4(texColor.rgb * min(brightness, 1.0), texColor.a);
+                }
 
                 if (underwaterFogDensity > 0.0) {
                     float distance = length(FragWorldPos - cameraPos);
@@ -154,6 +199,12 @@ public class EntityRenderer {
             shader.createUniform("cameraPos");
             shader.createUniform("underwaterFogDensity");
             shader.createUniform("underwaterFogColor");
+            shader.bind();
+            shader.setBool("u_lightingEnabled", false);
+            shader.setFloat("u_ambientLight", 1.0f);
+            shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
+            shader.setFloat("u_entityLight", 1.0f);
+            shader.unbind();
         } catch (Exception e) {
             System.err.println("Failed to create entity shader: " + e.getMessage());
         }
@@ -624,6 +675,118 @@ public class EntityRenderer {
         renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, null, null);
     }
 
+    /** Flat white used by the depth-only shadow-caster path (color output is discarded). */
+    private static final Vector4f SHADOW_CASTER_COLOR = new Vector4f(1f, 1f, 1f, 1f);
+
+    /**
+     * Depth-only shadow-caster pass: draws every shadow-casting entity through
+     * the SBE flat-colored path into the currently bound shadow framebuffer.
+     * The shadow FBO has no color attachment, so only depth lands — the flat
+     * color is discarded. Called once per cascade by ShadowMapRenderer, with
+     * the cascade's light matrices standing in for view/projection.
+     */
+    public void renderShadowCasters(com.stonebreak.player.Player player,
+                                    Matrix4f lightView, Matrix4f lightProj,
+                                    Vector3f cascadeCenter, float cascadeRadius) {
+        if (!initialized) return;
+
+        float cullRadius = cascadeRadius + 8.0f;
+        float cullRadiusSq = cullRadius * cullRadius;
+        com.stonebreak.mobs.entities.EntityManager entityManager =
+                com.stonebreak.core.Game.getEntityManager();
+        if (entityManager != null) {
+            for (Entity entity : entityManager.getAllEntities()) {
+                if (!entity.isAlive()) continue;
+                Vector3f pos = entity.getPosition();
+                float dx = pos.x - cascadeCenter.x;
+                float dz = pos.z - cascadeCenter.z;
+                if (dx * dx + dz * dz > cullRadiusSq) continue;
+                renderEntityShadow(entity, lightView, lightProj);
+            }
+        }
+
+        // The local player always casts — including first person, where the body
+        // model isn't drawn to screen but its shadow still should be.
+        if (player != null) {
+            com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
+                            EntityType.REMOTE_PLAYER.getSbeObjectId());
+            if (asset != null) {
+                sbeEntityRenderer.renderColored(asset,
+                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getBaseMovementState()),
+                        player.getBodyEventTime(),
+                        player.getPosition(), player.getBodyYaw(), new Vector3f(1f, 1f, 1f),
+                        lightView, lightProj, SHADOW_CASTER_COLOR);
+            }
+        }
+    }
+
+    /** Depth-only draw of one entity, mirroring {@link #renderEntity}'s SBE bindings. */
+    private void renderEntityShadow(Entity entity, Matrix4f lightView, Matrix4f lightProj) {
+        EntityType type = entity.getType();
+
+        if (type == EntityType.COW && entity instanceof com.stonebreak.mobs.cow.Cow cow) {
+            sbeEntityRenderer.renderColored(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId()),
+                    cow.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.CowStateMapping.sbeState(cow.getAI().getCurrentState()),
+                    cow.getAnimationController().getTotalAnimationTime(),
+                    cow.getPosition(), cow.getRotation().y, cow.getScale(),
+                    lightView, lightProj, SHADOW_CASTER_COLOR);
+            return;
+        }
+
+        if (type == EntityType.SHEEP && entity instanceof com.stonebreak.mobs.sheep.Sheep sheep) {
+            sbeEntityRenderer.renderColored(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId()),
+                    sheep.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.SheepStateMapping.sbeState(sheep.getAI().getCurrentState()),
+                    sheep.getAnimationController().getTotalAnimationTime(),
+                    sheep.getPosition(), sheep.getRotation().y, sheep.getScale(),
+                    lightView, lightProj, SHADOW_CASTER_COLOR);
+            return;
+        }
+
+        if (type == EntityType.CHICKEN && entity instanceof com.stonebreak.mobs.chicken.Chicken chicken) {
+            sbeEntityRenderer.renderColored(
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId()),
+                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                    com.stonebreak.mobs.sbe.ChickenStateMapping.sbeState(chicken.getAI().getCurrentState()),
+                    chickenAnimationTime(chicken),
+                    chicken.getPosition(), chicken.getRotation().y, chicken.getScale(),
+                    lightView, lightProj, SHADOW_CASTER_COLOR);
+            return;
+        }
+
+        if ((type == EntityType.REMOTE_PLAYER || type == EntityType.ILLUSION_DECOY)
+                && entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
+            com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
+                            EntityType.REMOTE_PLAYER.getSbeObjectId());
+            if (asset != null) {
+                sbeEntityRenderer.renderColored(asset,
+                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState()),
+                        rp.getAnimationController().getTotalAnimationTime(),
+                        rp.getPosition(), rp.getRotation().y, rp.getScale(),
+                        lightView, lightProj, SHADOW_CASTER_COLOR);
+            }
+        }
+        // Everything else (drops, projectiles, effect volumes) doesn't cast.
+    }
+
+    /**
+     * Clip time for the chicken, matching {@link #renderEntity}'s handling of the
+     * one-shot Wingflap clip (flap-relative time so it plays through once).
+     */
+    private static float chickenAnimationTime(com.stonebreak.mobs.chicken.Chicken chicken) {
+        com.stonebreak.mobs.chicken.ChickenAI ai = chicken.getAI();
+        boolean flapping = ai.getCurrentState()
+                == com.stonebreak.mobs.chicken.ChickenAI.ChickenBehaviorState.WING_FLAP;
+        return flapping ? ai.getStateTimer() : chicken.getAnimationController().getTotalAnimationTime();
+    }
+
     /**
      * Draws a debug wireframe overlay of an entity's actual model.
      *
@@ -705,6 +868,7 @@ public class EntityRenderer {
         shader.setUniform("cameraPos", new Vector3f(0, 0, 0));
         shader.setUniform("underwaterFogDensity", 0.0f);
         shader.setUniform("underwaterFogColor", new Vector3f(0.1f, 0.3f, 0.5f));
+        applySimpleLighting(entity, true);
 
         // Elongated along local Z (direction of travel); yaw from rotation.y
         Matrix4f modelMatrix = new Matrix4f()
@@ -743,6 +907,7 @@ public class EntityRenderer {
         shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
         shader.setUniform("underwaterFogDensity", fogDensity);
         shader.setUniform("underwaterFogColor", fogColor);
+        applySimpleLighting(entity, true);
 
         Matrix4f modelMatrix = new Matrix4f()
             .translate(entity.getPosition())
@@ -789,6 +954,7 @@ public class EntityRenderer {
         shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
         shader.setUniform("underwaterFogDensity", 0.0f);
         shader.setUniform("underwaterFogColor", new Vector3f(0.1f, 0.3f, 0.5f));
+        applySimpleLighting(entity, false); // emissive — never world-lit
 
         Matrix4f modelMatrix = new Matrix4f()
                 .translate(entity.getPosition())

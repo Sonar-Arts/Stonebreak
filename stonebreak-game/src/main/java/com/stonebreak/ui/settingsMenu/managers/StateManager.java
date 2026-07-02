@@ -38,6 +38,7 @@ public final class StateManager {
     private MButton waterShaderButton;
     private MButton cloudsButton;
     private MButton godRaysButton;
+    private MButton shadowsButton;
     private MSlider renderDistanceSlider;
     private MSlider lodDistanceSlider;
     private MButton lodEnabledButton;
@@ -151,6 +152,7 @@ public final class StateManager {
         waterShaderButton = new MButton(waterShaderLabel()).size(bw, bh);
         cloudsButton = new MButton(cloudsLabel()).size(bw, bh);
         godRaysButton = new MButton(godRaysLabel()).size(bw, bh);
+        shadowsButton = new MButton(shadowsLabel()).size(bw, bh);
 
         renderDistanceSlider = new MSlider(renderDistanceLabel(),
                 SettingsConfig.MIN_RENDER_DISTANCE, SettingsConfig.MAX_RENDER_DISTANCE,
@@ -185,7 +187,7 @@ public final class StateManager {
         for (MWidget w : new MWidget[]{
                 applyButton, backButton, resolutionButton, armModelButton, crosshairStyleButton,
                 volumeSlider, crosshairSizeSlider, leafTransparencyButton, waterShaderButton,
-                cloudsButton, godRaysButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
+                cloudsButton, godRaysButton, shadowsButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
                 vsyncButton, maxFpsSlider, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
             w.scaleText(true);
         }
@@ -215,6 +217,7 @@ public final class StateManager {
         waterShaderButton.size(bw, bh);
         cloudsButton.size(bw, bh);
         godRaysButton.size(bw, bh);
+        shadowsButton.size(bw, bh);
         renderDistanceSlider.size(sw, sh);
         lodDistanceSlider.size(sw, sh);
         lodEnabledButton.size(bw, bh);
@@ -237,7 +240,7 @@ public final class StateManager {
                              java.util.function.Consumer<Float> volumeAction,
                              java.util.function.Consumer<Float> crosshairSizeAction,
                              Runnable leafTransparencyAction, Runnable waterShaderAction,
-                             Runnable cloudsAction, Runnable godRaysAction,
+                             Runnable cloudsAction, Runnable godRaysAction, Runnable shadowsAction,
                              java.util.function.Consumer<Float> renderDistanceAction,
                              java.util.function.Consumer<Float> lodDistanceAction,
                              Runnable lodEnabledAction,
@@ -257,6 +260,7 @@ public final class StateManager {
         waterShaderButton.setOnClick(waterShaderAction);
         cloudsButton.setOnClick(cloudsAction);
         godRaysButton.setOnClick(godRaysAction);
+        shadowsButton.setOnClick(shadowsAction);
         renderDistanceSlider.setOnChange(renderDistanceAction);
         lodDistanceSlider.setOnChange(lodDistanceAction);
         lodEnabledButton.setOnClick(lodEnabledAction);
@@ -298,6 +302,7 @@ public final class StateManager {
         waterShaderButton.setSelected(false);
         cloudsButton.setSelected(false);
         godRaysButton.setSelected(false);
+        shadowsButton.setSelected(false);
         renderDistanceSlider.setSelected(false);
         lodDistanceSlider.setSelected(false);
         lodEnabledButton.setSelected(false);
@@ -354,6 +359,7 @@ public final class StateManager {
         waterShaderButton.setText(waterShaderLabel());
         cloudsButton.setText(cloudsLabel());
         godRaysButton.setText(godRaysLabel());
+        shadowsButton.setText(shadowsLabel());
         renderDistanceSlider.setLabel(renderDistanceLabel());
         lodDistanceSlider.setLabel(lodDistanceLabel());
         lodEnabledButton.setText(lodEnabledLabel());
@@ -376,6 +382,10 @@ public final class StateManager {
 
     private String godRaysLabel() {
         return "God Rays: " + (settings.getGodRaysEnabled() ? "ON" : "OFF");
+    }
+
+    private String shadowsLabel() {
+        return "Shadows: " + (settings.getShadowsEnabled() ? "ON" : "OFF");
     }
 
     private String renderDistanceLabel() {
@@ -462,6 +472,7 @@ public final class StateManager {
     public MButton getWaterShaderButton() { return waterShaderButton; }
     public MButton getCloudsButton() { return cloudsButton; }
     public MButton getGodRaysButton() { return godRaysButton; }
+    public MButton getShadowsButton() { return shadowsButton; }
     public MSlider getRenderDistanceSlider() { return renderDistanceSlider; }
     public MSlider getLodDistanceSlider() { return lodDistanceSlider; }
     public MButton getLodEnabledButton() { return lodEnabledButton; }

@@ -29,6 +29,8 @@ public final class GpuMemoryTracker {
         ENTITY_MESH,
         /** Held-item / first-person arm geometry. */
         PLAYER_GEOMETRY,
+        /** Shadow map depth textures (cascaded sun shadows). */
+        SHADOW_MAP,
         /** UI quads, font atlases, anything not otherwise categorized. */
         OTHER
     }

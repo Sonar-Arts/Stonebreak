@@ -58,6 +58,7 @@ public final class SettingsMenu {
                 actionHandler::toggleWaterShader,
                 actionHandler::toggleClouds,
                 actionHandler::toggleGodRays,
+                actionHandler::toggleShadows,
                 actionHandler::onRenderDistanceChange,
                 actionHandler::onLodDistanceChange,
                 actionHandler::toggleLodEnabled,
