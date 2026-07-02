@@ -32,14 +32,20 @@ public final class ClientPlayerHandler {
         applyRemoteState(ps.playerId(), ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch(), ps.flags());
     }
 
+    /** Players that LEFT (PlayerLeaveS2C) and haven't rejoined: late in-flight state packets
+     *  for these ids must not resurrect a ghost figure (they'd linger forever). */
+    private final java.util.Set<Integer> departed = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     public void handleJoin(int localPlayerId, PlayerJoinS2C j) {
         if (j.playerId() == localPlayerId) {
             return;
         }
+        departed.remove(j.playerId());
         spawnRemote(j.playerId(), j.username(), j.x(), j.y(), j.z());
     }
 
     public void handleLeave(PlayerLeaveS2C l) {
+        departed.add(l.playerId());
         despawnRemote(l.playerId());
     }
 
@@ -104,6 +110,7 @@ public final class ClientPlayerHandler {
             }
         }
         remotePlayers.clear();
+        departed.clear();
     }
 
     // ─── Remote-player lifecycle ────────────────────────────────────────────────
@@ -140,6 +147,13 @@ public final class ClientPlayerHandler {
             rp = null;
         }
         if (rp == null) {
+            // A state packet racing behind a PlayerLeaveS2C must NOT resurrect the figure —
+            // that ghost would linger forever (its player is gone; no leave will follow).
+            // A rejoin lifts the block via handleJoin before any of its state arrives
+            // (PlayerJoinS2C is non-droppable and sent first).
+            if (departed.contains(playerId)) {
+                return;
+            }
             spawnRemote(playerId, "Player" + playerId, x, y, z);
             rp = remotePlayers.get(playerId);
         }

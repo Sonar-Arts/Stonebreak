@@ -39,6 +39,7 @@ import com.stonebreak.network.packet.world.ChunkResyncRequestC2S;
 import com.stonebreak.network.packet.world.FurnaceSlotsC2S;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
 import com.stonebreak.network.packet.world.SnowLayerC2S;
+import com.stonebreak.network.packet.world.TimeSetC2S;
 import com.stonebreak.network.packet.world.TimeSyncS2C;
 
 import static com.openmason.engine.net.protocol.PacketDirection.CLIENTBOUND;
@@ -87,6 +88,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 15, ChunkHashesC2S.class, ChunkHashesC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 16, DropItemC2S.class, DropItemC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 17, EntityResyncC2S.class, EntityResyncC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 18, TimeSetC2S.class, TimeSetC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);

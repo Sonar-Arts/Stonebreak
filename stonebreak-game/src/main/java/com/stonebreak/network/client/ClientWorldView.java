@@ -369,6 +369,14 @@ public final class ClientWorldView {
         }
     }
 
+    /** /timeset intent: ask the server to set the authoritative world clock. */
+    public void sendTimeSet(long ticks) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(new com.stonebreak.network.packet.world.TimeSetC2S(ticks), false);
+        }
+    }
+
     /** Snow-layer intent for a layer change with no block change (see {@code SnowLayerC2S}). */
     public void sendSnowLayer(int x, int y, int z, int layers) {
         ClientConnection conn = connection;
@@ -439,7 +447,19 @@ public final class ClientWorldView {
         lastInboundNs = System.nanoTime();
         switch (e.kind()) {
             case CONNECT -> { /* nothing — handshake already sent on connect() */ }
-            case PACKET -> route(e.packet());
+            case PACKET -> {
+                // Per-packet guard: this runs unguarded on the MAIN thread (Game.update →
+                // MultiplayerSession.tick), where an escaping handler exception kills the
+                // process with no crash log — the classic silent disconnect/reconnect crash.
+                // One bad packet is logged and skipped; the stream continues.
+                try {
+                    route(e.packet());
+                } catch (Exception ex) {
+                    System.err.println("[CLIENT] Packet handler failed for "
+                        + e.packet().getClass().getSimpleName() + ": " + ex);
+                    ex.printStackTrace();
+                }
+            }
             case DISCONNECT -> disconnected = true;
         }
     }

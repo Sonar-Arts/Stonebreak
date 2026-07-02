@@ -365,7 +365,9 @@ public class EntityRenderer {
         if (entityType == EntityType.REMOTE_PLAYER
                 && entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
             // Untextured fallback hue is stable per remote player (same scheme as the cylinder).
-            renderPlayerModel(rp, rp.getRotation().y, 0f, 0f,
+            // Body/head come from the shared PlayerBodyOrientation (model space) — the raw
+            // replicated rotation.y is a camera yaw and faces the figure the wrong way.
+            renderPlayerModel(rp, rp.getBodyYaw(), rp.getHeadYaw(), rp.getHeadPitch(),
                     new Vector4f(RemotePlayerRenderer.colorFor(rp.getPlayerId()), 1f),
                     viewMatrix, projectionMatrix, world, cameraPos);
             return;
@@ -377,7 +379,7 @@ public class EntityRenderer {
         // untextured decoy matches the caster instead of an obvious "illusion" hue.
         if (entityType == EntityType.ILLUSION_DECOY
                 && entity instanceof com.stonebreak.mobs.entities.IllusionDecoy decoy) {
-            renderPlayerModel(decoy, decoy.getRotation().y, 0f, 0f,
+            renderPlayerModel(decoy, decoy.getBodyYaw(), decoy.getHeadYaw(), decoy.getHeadPitch(),
                     ensureLocalPlayerColor(),
                     viewMatrix, projectionMatrix, world, cameraPos);
             return;
@@ -746,7 +748,7 @@ public class EntityRenderer {
                         com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
                         com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState()),
                         rp.getAnimationController().getTotalAnimationTime(),
-                        rp.getPosition(), rp.getRotation().y, rp.getScale(),
+                        rp.getPosition(), rp.getBodyYaw(), rp.getScale(),
                         lightView, lightProj, SHADOW_CASTER_COLOR);
             }
         }

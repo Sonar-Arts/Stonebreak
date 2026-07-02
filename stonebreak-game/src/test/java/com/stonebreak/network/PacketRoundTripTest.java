@@ -100,6 +100,9 @@ class PacketRoundTripTest {
         assertEquals(new KeepAliveS2C(Long.MIN_VALUE, 250), roundTrip(KeepAliveS2C.CODEC, new KeepAliveS2C(Long.MIN_VALUE, 250)));
         assertEquals(new TimeSyncS2C(23_999L, 1.0f, false), roundTrip(TimeSyncS2C.CODEC, new TimeSyncS2C(23_999L, 1.0f, false)));
         assertEquals(new TimeSyncS2C(0L, 2.5f, true), roundTrip(TimeSyncS2C.CODEC, new TimeSyncS2C(0L, 2.5f, true)));
+        assertEquals(new com.stonebreak.network.packet.world.TimeSetC2S(18_000L),
+            roundTrip(com.stonebreak.network.packet.world.TimeSetC2S.CODEC,
+                new com.stonebreak.network.packet.world.TimeSetC2S(18_000L)));
         assertEquals(new DropItemC2S(12, 64), roundTrip(DropItemC2S.CODEC, new DropItemC2S(12, 64)));
         assertEquals(new SnowLayerC2S(10, 64, -5, (byte) 8), roundTrip(SnowLayerC2S.CODEC, new SnowLayerC2S(10, 64, -5, (byte) 8)));
         assertEquals(new SnowLayerC2S(0, 0, 0, (byte) 0), roundTrip(SnowLayerC2S.CODEC, new SnowLayerC2S(0, 0, 0, (byte) 0)));

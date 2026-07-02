@@ -17,7 +17,8 @@ import com.openmason.engine.util.LongIntHashMap;
 public final class ServerPlayer {
 
     private final ServerConnection connection;
-    private final int playerId;
+    /** Provisional (negative) until the handshake resolves the stable username-derived id. */
+    private int playerId;
     private String username = "Player";
     /** True once a valid HandshakeC2S has been accepted (gates PLAY packet handling). */
     private boolean handshakeDone = false;
@@ -57,6 +58,8 @@ public final class ServerPlayer {
 
     public ServerConnection connection() { return connection; }
     public int playerId() { return playerId; }
+    /** Assign the stable id at handshake time, BEFORE the player enters the roster. */
+    public void assignPlayerId(int playerId) { this.playerId = playerId; }
     public String username() { return username; }
     public void setUsername(String username) { this.username = username; }
     public boolean handshakeDone() { return handshakeDone; }

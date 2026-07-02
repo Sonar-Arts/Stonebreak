@@ -17,6 +17,14 @@ public class TimeOfDay {
     public static final int TICKS_PER_DAY = 24000;
     public static final int TICKS_PER_HOUR = TICKS_PER_DAY / 24;
 
+    /**
+     * Real-time seconds for one full day/night cycle at timeSpeed 1.0. The single knob for
+     * day length: 2400 s = 40 min (20 min of daylight). NOTE: before the multiplayer clock
+     * work, sub-tick truncation silently froze time at frame rates above 20 FPS, so the
+     * "old day length" players remember was an artifact, not a tuned value.
+     */
+    public static final float DAY_LENGTH_SECONDS = 2400.0f;
+
     // Time of day milestones
     public static final int DAWN = 0;           // 6:00 AM
     public static final int SUNRISE = 1000;     // ~6:40 AM
@@ -55,15 +63,13 @@ public class TimeOfDay {
 
     /**
      * Updates the time of day based on delta time.
-     * With default settings, a full day/night cycle takes 20 minutes real-time.
+     * With default settings, a full day/night cycle takes {@link #DAY_LENGTH_SECONDS}
+     * seconds of real time.
      * @param deltaTime Time elapsed since last update in seconds
      */
     public void update(float deltaTime) {
         if (!frozen) {
-            // Calculate ticks per second for a 20-minute full cycle (10 min day, 10 min night)
-            // 20 minutes = 1200 seconds
-            // 24000 ticks per day / 1200 seconds = 20 ticks per second
-            float ticksPerSecond = (TICKS_PER_DAY / 1200.0f) * timeSpeed;
+            float ticksPerSecond = (TICKS_PER_DAY / DAY_LENGTH_SECONDS) * timeSpeed;
             float ticksToAdd = ticksPerSecond * deltaTime + subTick;
 
             long whole = (long) ticksToAdd;

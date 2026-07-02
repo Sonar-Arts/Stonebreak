@@ -216,6 +216,29 @@ public final class IntegratedServer {
         }
     }
 
+    /**
+     * C2S: /timeset — set the authoritative world clock. Host-only for now (the client-side
+     * cheats gate can't be trusted from remote peers). Applies on the server tick thread and
+     * broadcasts an immediate TimeSyncS2C so every client snaps at once instead of waiting
+     * for (and previously being reverted by) the 5 s periodic sample.
+     */
+    private void handleTimeSet(ServerPlayer sp, com.stonebreak.network.packet.world.TimeSetC2S ts) {
+        if (!sp.isLocal()) {
+            return; // remote clients may not set server time
+        }
+        ServerLevel level = ctx.serverLevel();
+        if (level == null || level.timeOfDay() == null) {
+            return;
+        }
+        long ticks = Math.floorMod(ts.ticks(), com.stonebreak.world.TimeOfDay.TICKS_PER_DAY);
+        level.timeOfDay().setTicks(ticks);
+        TimeSyncS2C sync = currentTimeSync();
+        if (sync != null) {
+            ctx.broadcast(sync, false);
+        }
+        System.out.println("[SERVER] World time set to " + ticks + " by " + sp.username());
+    }
+
     /** Authoritative time sample for TimeSyncS2C, or null before the level is booted. */
     private TimeSyncS2C currentTimeSync() {
         ServerLevel level = ctx.serverLevel();
@@ -272,6 +295,7 @@ public final class IntegratedServer {
                     entityHandler.onPeerJoined(sp); // idempotent client-side (known ids ignored)
                 }
             }
+            case com.stonebreak.network.packet.world.TimeSetC2S ts -> handleTimeSet(sp, ts);
             case PlayerStateC2S ps -> playerHandler.handlePlayerState(sp, ps, ctx);
             case PlayerHeldItemC2S h -> playerHandler.handleHeldItem(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
@@ -297,6 +321,36 @@ public final class IntegratedServer {
             return;
         }
         sp.setUsername(hs.username());
+
+        // Stable identity: the id is derived from the username, so the same player keeps
+        // the same id across reconnects and server restarts (saves, kill credit, and
+        // client rosters keyed by id all survive a rejoin).
+        int stableId = ServerWorldContext.stablePlayerIdFor(hs.username());
+        ServerPlayer existing = ctx.player(stableId);
+        if (existing != null) {
+            if (existing.username().equals(hs.username())) {
+                // Session takeover: the same player reconnected before their old channel
+                // died (or is deliberately re-logging). Kick the stale session cleanly so
+                // the roster and every client's remote-player figure converge on the new
+                // one. The old channel's late DISCONNECT is instance-guarded in
+                // handleDisconnect/removePlayer and can't evict the new session.
+                System.out.println("[SERVER] " + hs.username()
+                    + " reconnected — replacing the previous session (id " + stableId + ").");
+                existing.send(new KickS2C("You logged in from another location."));
+                persistPlayer(existing);
+                ctx.removePlayer(existing);
+                ctx.broadcastExcept(sp, new PlayerLeaveS2C(stableId), false);
+                existing.disconnect();
+            } else {
+                // Different name hashing to the same id — refuse the newcomer clearly
+                // rather than corrupting the roster.
+                sp.send(new KickS2C("That name is unavailable on this server (id collision with '"
+                    + existing.username() + "')."));
+                sp.disconnect();
+                return;
+            }
+        }
+        sp.assignPlayerId(stableId);
         ctx.addPlayer(sp);
 
         Vector3f spawn = ctx.spawn();
@@ -372,10 +426,16 @@ public final class IntegratedServer {
         if (sp == null) {
             return;
         }
-        boolean wasRostered = ctx.player(sp.playerId()) != null;
-        persistPlayer(sp); // save the leaving remote player's last inventory/stats
+        // Instance check, not id check: after a session takeover (same player reconnected,
+        // stable id reused) the roster maps this id to the NEW session — the stale channel's
+        // disconnect must neither broadcast a leave (it would despawn the live figure on
+        // every client) nor evict the new session (removePlayer is instance-guarded too).
+        boolean wasRostered = ctx.player(sp.playerId()) == sp;
         ctx.removePlayer(sp);
         if (wasRostered) {
+            // Persist only the LIVE session's data — a stale takeover victim persisting here
+            // would overwrite the new session's fresher blob (takeover already saved it once).
+            persistPlayer(sp);
             ctx.broadcast(new PlayerLeaveS2C(sp.playerId()), false);
             System.out.println("[SERVER] Player " + sp.playerId() + " (" + sp.username() + ") left.");
         }

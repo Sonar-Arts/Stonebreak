@@ -62,7 +62,12 @@ public class IllusionDecoy extends RemotePlayer {
         // Face the same way the owner's body does, rotated by this decoy's offset so the
         // fanned-out figures stay oriented with their mirrored movement. While the owner is
         // attacking, face the look direction instead so the cast pose reads correctly.
-        rotation.y = (fakeCasting ? ownerPlayer.getCamera().getYaw() : ownerPlayer.getBodyYaw()) + angle;
+        // Both branches are MODEL-space yaw: the camera yaw must go through
+        // modelYawFromDirection (raw camera degrees are a different angle space).
+        float lookModelYaw = com.stonebreak.player.PlayerBodyOrientation.modelYawFromDirection(
+                (float) Math.cos(Math.toRadians(ownerPlayer.getCamera().getYaw())),
+                (float) Math.sin(Math.toRadians(ownerPlayer.getCamera().getYaw())));
+        rotation.y = (fakeCasting ? lookModelYaw : ownerPlayer.getBodyYaw()) + angle;
 
         age += deltaTime;
         // Drive the SBE model: derive walk/idle from the move just applied and advance the clip.
@@ -76,6 +81,18 @@ public class IllusionDecoy extends RemotePlayer {
 
     @Override
     public EntityType getType() { return EntityType.ILLUSION_DECOY; }
+
+    // A decoy's rotation.y is already MODEL-space yaw (set from the owner's body yaw /
+    // converted look yaw above), unlike a networked RemotePlayer whose rotation.y is a raw
+    // camera yaw. Renderers call these accessors uniformly for every player-shaped figure.
+    @Override
+    public float getBodyYaw() { return rotation.y; }
+
+    @Override
+    public float getHeadYaw() { return 0f; }
+
+    @Override
+    public float getHeadPitch() { return 0f; }
 
     @Override
     public boolean isPersistent() {

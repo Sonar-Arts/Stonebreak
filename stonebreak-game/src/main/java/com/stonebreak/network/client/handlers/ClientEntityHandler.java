@@ -58,7 +58,15 @@ public final class ClientEntityHandler {
         if (byNetworkId.containsKey(s.networkId())) {
             return;
         }
-        EntityType type = EntityType.values()[s.entityTypeOrdinal()];
+        EntityType[] types = EntityType.values();
+        if (s.entityTypeOrdinal() < 0 || s.entityTypeOrdinal() >= types.length) {
+            // Malformed/mis-decoded spawn (e.g. around channel teardown) — never let it
+            // throw out of the main-thread dispatch.
+            System.err.println("[CLIENT-ENTITY] Spawn with invalid type ordinal "
+                + s.entityTypeOrdinal() + " (netId=" + s.networkId() + ") — ignored.");
+            return;
+        }
+        EntityType type = types[s.entityTypeOrdinal()];
         Entity entity = createShadow(type, new Vector3f(s.x(), s.y(), s.z()), s.metadata());
         if (entity == null) {
             // A replicated type without a shadow factory is a wiring bug, not a normal case —

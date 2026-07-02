@@ -158,6 +158,23 @@ public final class MultiplayerSession {
     }
 
     /**
+     * Route a /timeset to the authoritative server clock. Returns false when this client
+     * has no authority to set time (a remote JOIN client — the server would ignore it),
+     * so the command can tell the user instead of silently being snapped back.
+     */
+    public static boolean requestServerTimeSet(long ticks) {
+        if (mode == Mode.JOIN) {
+            return false; // host-only: the server rejects non-local time sets
+        }
+        ClientWorldView c = client;
+        if (c == null || c.isDisconnected()) {
+            return mode == Mode.MENU; // no session at all — the local clock is the only clock
+        }
+        c.sendTimeSet(ticks);
+        return true;
+    }
+
+    /**
      * True once the local player's saved data has been restored (or there's nothing to restore).
      * The world bootstrap waits on this before entering PLAY so the player never appears with a
      * momentarily-empty inventory while the restore is still in flight.
@@ -264,6 +281,14 @@ public final class MultiplayerSession {
     }
 
     public static synchronized void shutdown() {
+        // Abort any in-flight client-world build FIRST: a stale "ClientWorld-Build" thread
+        // finishing after this teardown would flip the game back to PLAYING with no session
+        // (and race the next session's build) — the disconnect/reconnect crash chain.
+        Game game = Game.getInstance();
+        if (game != null) {
+            game.cancelClientWorldBuild();
+        }
+
         // Stop the server tick thread before tearing down its world/connections.
         serverRunning = false;
         Thread t = serverThread;

@@ -35,6 +35,20 @@ public class RemotePlayer extends LivingEntity {
     private PlayerStateMapping.PlayerMovementState movementState = PlayerStateMapping.PlayerMovementState.IDLE;
     private Vector3f prevPosition;
 
+    /**
+     * Body facing / head-swivel logic, shared with the local player's third-person view.
+     * The replicated {@code rotation.y} is a raw CAMERA yaw (front = (cos, 0, sin)), which
+     * is NOT the SBE model's yaw space — rendering it directly pointed the figure in a
+     * wrong (mirrored) direction. This converts the camera yaw into model space each
+     * visual tick and drives body-faces-movement / head-leads-look exactly like the
+     * local third-person path.
+     */
+    private final com.stonebreak.player.PlayerBodyOrientation bodyOrientation =
+        new com.stonebreak.player.PlayerBodyOrientation();
+    /** Look yaw in model space, updated every visual tick (input to head swivel). */
+    private float lookModelYaw;
+    private final Vector3f velocityEstimate = new Vector3f();
+
     /** Latest replicated movement/action flags ({@code PlayerStateFlags} bits). */
     private volatile byte stateFlags;
     /**
@@ -84,6 +98,15 @@ public class RemotePlayer extends LivingEntity {
 
     public PlayerStateMapping.PlayerMovementState getMovementState() { return movementState; }
 
+    /** Body facing in SBE model space (degrees) — what renderers should rotate the figure by. */
+    public float getBodyYaw() { return bodyOrientation.getBodyYaw(); }
+
+    /** Head yaw relative to the body, clamped to the comfortable swivel range. */
+    public float getHeadYaw() { return bodyOrientation.getHeadYaw(lookModelYaw); }
+
+    /** Head pitch from the replicated camera pitch, clamped. */
+    public float getHeadPitch() { return bodyOrientation.getHeadPitch(pitch); }
+
     /**
      * Apply an authoritative state update from the network.
      * If an interpolator is attached the new state is queued as the next
@@ -120,6 +143,17 @@ public class RemotePlayer extends LivingEntity {
         float horizDist = (float) Math.sqrt(dx * dx + dz * dz);
         boolean moving = horizDist > WALK_THRESHOLD;
         prevPosition.set(position);
+
+        // Convert the replicated camera yaw to model space and drive the body/head
+        // orientation from it plus the displacement-estimated velocity. Renderers read
+        // getBodyYaw()/getHeadYaw()/getHeadPitch() instead of the raw rotation.
+        float yawRad = (float) Math.toRadians(rotation.y);
+        lookModelYaw = com.stonebreak.player.PlayerBodyOrientation.modelYawFromDirection(
+                (float) Math.cos(yawRad), (float) Math.sin(yawRad));
+        if (deltaTime > 0f) {
+            velocityEstimate.set(dx / deltaTime, 0f, dz / deltaTime);
+            bodyOrientation.update(deltaTime, velocityEstimate, lookModelYaw);
+        }
 
         // Replicated flags pick the clip; the displacement heuristic remains the walk/idle
         // fallback (local-only figures like IllusionDecoy never set flags). Airborne maps to
