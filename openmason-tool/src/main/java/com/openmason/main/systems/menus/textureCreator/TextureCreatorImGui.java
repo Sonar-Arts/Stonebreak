@@ -554,6 +554,11 @@ public class TextureCreatorImGui {
         return controller;
     }
 
+    /** The file dialog service used by this editor's save/open dialogs. */
+    public FileDialogService getFileDialogService() {
+        return fileOperations.getFileDialogService();
+    }
+
     /**
      * Gets the texture creator preferences instance.
      * <p>

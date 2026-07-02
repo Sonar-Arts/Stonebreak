@@ -627,6 +627,11 @@ public class mainOpenMason {
 
             textureCreatorInterface = TextureCreatorImGui.createDefault();
             textureEditorWindow = new TextureEditorWindow(textureCreatorInterface);
+
+            // Point the texture editor's save/open dialogs at the open project's root
+            // folder (same source the model-save dialogs use).
+            textureCreatorInterface.getFileDialogService()
+                    .setProjectDirectorySupplier(mainInterface.getProjectDirectorySupplier());
             animationEditor = new AnimationEditorImGui();
             animationEditor.setFileDialogService(mainInterface.getFileDialogService());
             mainInterface.setAnimationEditorInterface(animationEditor);
@@ -739,6 +744,17 @@ public class mainOpenMason {
             // Standalone open: reset to a fresh blank canvas so previous
             // per-face edits don't leak into the standalone session
             textureCreatorInterface.getController().resetAll();
+            showTextureEditor = true;
+            textureEditorWindow.show();
+        });
+        // Clicking a .OMT in the project browser opens it in the texture editor
+        mainInterface.setOpenTextureInEditorCallback(path -> {
+            if (path == null) return;
+            boolean loaded = textureCreatorInterface.getController().loadProject(path.toString());
+            if (!loaded) {
+                logger.warn("Failed to open .OMT in texture editor: {}", path);
+                return;
+            }
             showTextureEditor = true;
             textureEditorWindow.show();
         });

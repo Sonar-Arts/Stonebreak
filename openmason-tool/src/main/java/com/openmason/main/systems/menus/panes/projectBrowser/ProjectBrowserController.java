@@ -152,7 +152,7 @@ public class ProjectBrowserController {
     private void selectTexture(AssetEntry entry) {
         try {
             state.setSelectedAssetInfo("Selected: " + entry.name() + " (" + entry.type().label() + ")");
-            statusService.updateStatus("Applying .OMT texture: " + entry.name());
+            statusService.updateStatus("Opening .OMT in texture editor: " + entry.name());
 
             TextureSelectedEvent event = new TextureSelectedEvent(entry);
             for (ProjectBrowserListener l : listeners) {

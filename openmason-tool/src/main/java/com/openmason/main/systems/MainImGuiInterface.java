@@ -66,6 +66,9 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     private RiggingPaneImGui riggingPaneImGui;
     private ProjectBrowserImGui projectBrowserImGui;
 
+    /** Invoked with a .OMT file path to open it in the texture editor (wired in mainOpenMason). */
+    private java.util.function.Consumer<java.nio.file.Path> openTextureInEditorCallback;
+
     private PreferencesWindow preferencesWindow; // Initialized after components
     private SBOExportWindow sboExportWindow; // Initialized after components
     private SBEExportWindow sbeExportWindow; // Initialized after components
@@ -143,17 +146,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         this.projectService = new ProjectService();
 
         // Model-save dialogs start in the open project's folder (.OMP location)
-        fileDialogService.setProjectDirectorySupplier(() -> {
-            if (projectService == null || !projectService.hasCurrentProject()) {
-                return null;
-            }
-            String ompPath = projectService.getCurrentProjectPath();
-            if (ompPath == null || ompPath.isBlank()) {
-                return null;
-            }
-            java.nio.file.Path parent = java.nio.file.Path.of(ompPath).getParent();
-            return parent != null ? parent.toString() : null;
-        });
+        fileDialogService.setProjectDirectorySupplier(getProjectDirectorySupplier());
 
         // Initialize dialogs
         this.aboutDialog = new AboutDialog(uiVisibilityState, logoManager, "Model Editor");
@@ -508,15 +501,14 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         logger.debug(".OMO selected: {}", event.entry().name());
     }
 
-    /** Single-click on a .OMT applies it to the currently loaded editable model. */
+    /** Clicking a .OMT opens it in the texture editor for editing. */
     @Override
     public void onTextureSelected(TextureSelectedEvent event) {
         try {
-            if (propertyPanelImGui != null) {
-                boolean applied = propertyPanelImGui.applyTextureToCurrentModel(event.entry().path());
-                if (!applied) {
-                    statusService.updateStatus("No editable model loaded — texture not applied");
-                }
+            if (openTextureInEditorCallback != null) {
+                openTextureInEditorCallback.accept(event.entry().path());
+            } else {
+                logger.warn("No texture-editor open callback wired; cannot open {}", event.entry().name());
             }
         } catch (Exception e) {
             logger.error("Failed to handle OMT selection event", e);
@@ -576,6 +568,25 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         return fileDialogService;
     }
 
+    /**
+     * Supplier of the open project's root folder (the directory the .OMP lives in),
+     * or null when no project is loaded. Shared with other save dialogs (e.g. the
+     * texture editor) so their file dialogs start in the project root too.
+     */
+    public java.util.function.Supplier<String> getProjectDirectorySupplier() {
+        return () -> {
+            if (projectService == null || !projectService.hasCurrentProject()) {
+                return null;
+            }
+            String ompPath = projectService.getCurrentProjectPath();
+            if (ompPath == null || ompPath.isBlank()) {
+                return null;
+            }
+            java.nio.file.Path parent = java.nio.file.Path.of(ompPath).getParent();
+            return parent != null ? parent.toString() : null;
+        };
+    }
+
     public PropertyPanelImGui getPropertyPanel() {
         return propertyPanelImGui;
     }
@@ -632,6 +643,14 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         if (toolsMenuHandler != null) {
             toolsMenuHandler.setOpenTextureEditorCallback(callback);
         }
+    }
+
+    /**
+     * Set the callback that opens a specific .OMT file in the texture editor.
+     * Invoked when a .OMT is clicked in the project browser.
+     */
+    public void setOpenTextureInEditorCallback(java.util.function.Consumer<java.nio.file.Path> callback) {
+        this.openTextureInEditorCallback = callback;
     }
 
     /**

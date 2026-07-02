@@ -337,7 +337,7 @@ public class FileDialogService {
      */
     public void showSaveOMTDialog(SaveOMTCallback callback) {
         showNFDSaveDialog("Saving OMT project...", "Open Mason Texture", "omt",
-                "texture.omt", "Save OMT to file", callback::onSave);
+                "texture.omt", projectDirectoryOrNull(), "Save OMT to file", callback::onSave);
     }
 
     /**
