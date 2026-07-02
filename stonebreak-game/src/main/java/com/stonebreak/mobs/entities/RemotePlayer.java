@@ -32,7 +32,6 @@ public class RemotePlayer extends LivingEntity {
      */
     private volatile Item heldItem;
 
-    private final AnimationController animationController;
     private PlayerStateMapping.PlayerMovementState movementState = PlayerStateMapping.PlayerMovementState.IDLE;
     private Vector3f prevPosition;
 
@@ -40,7 +39,6 @@ public class RemotePlayer extends LivingEntity {
         super(world, position, EntityType.REMOTE_PLAYER);
         this.playerId = playerId;
         this.username = username;
-        this.animationController = new AnimationController(this);
         this.prevPosition = new Vector3f(position);
     }
 
@@ -63,7 +61,6 @@ public class RemotePlayer extends LivingEntity {
         this.heldItemId = item == null ? 0 : item.getId();
     }
 
-    public AnimationController getAnimationController() { return animationController; }
     public PlayerStateMapping.PlayerMovementState getMovementState() { return movementState; }
 
     /**
@@ -111,6 +108,16 @@ public class RemotePlayer extends LivingEntity {
     @Override
     protected void updateAI(float deltaTime) {
         // No AI.
+    }
+
+    /**
+     * Client shadow path (network shadows never run {@link #update}): derive
+     * walk/idle from the freshly interpolated position and advance the
+     * animation clock so the remote player's clips actually play.
+     */
+    @Override
+    public void updateClientVisuals(float deltaTime) {
+        updateMovementAnimation(deltaTime);
     }
 
     @Override

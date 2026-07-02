@@ -230,9 +230,7 @@ public class EntityCollision {
                 entity.setOnGround(true);
             }
         } else {
-            if (velocity.y < 0) {
-                entity.setOnGround(false);
-            }
+            entity.setOnGround(false);
         }
     }
     

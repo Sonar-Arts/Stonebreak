@@ -21,9 +21,10 @@ import static org.lwjgl.system.MemoryUtil.*;
 /**
  * Specialized entity renderer managed by the main Renderer.
  *
- * <p>Cows are rendered from the {@code SB_Cow.sbe} asset via {@link SbeEntityRenderer};
- * remote players use {@link RemotePlayerRenderer}; any other entity type falls
- * back to a simple textured cube.
+ * <p>All AI-driven mobs render through one generic {@link SbeEntityRenderer}
+ * path keyed off {@code EntityType.getSbeObjectId()} (ground-anchored via the
+ * model's rest-pose feet); remote players use {@link RemotePlayerRenderer};
+ * any other entity type falls back to a simple textured cube.
  */
 public class EntityRenderer {
     private ShaderProgram shader;
@@ -382,56 +383,25 @@ public class EntityRenderer {
             return;
         }
 
-        if (entityType == EntityType.COW && entity instanceof com.stonebreak.mobs.cow.Cow cow) {
-            // The SBE asset comes from the registry by the entity type's object
-            // id; only the variant and AI-state → animation-state mapping are
-            // cow-specific. The renderer itself stays entity-blind.
+        // Every SBE-driven mob with an AI renders through this single path: the
+        // asset comes from the registry by the type's object id, the clip name
+        // from the shared MobStateMapping (with MobAI.clipTime handling one-shot
+        // states like the wing flap), and the model is ground-anchored so its
+        // feet rest on the collision ground regardless of authored origin. New
+        // mobs need no renderer changes at all.
+        if (entityType.getSbeObjectId() != null
+                && entity instanceof com.stonebreak.mobs.entities.LivingEntity mob
+                && mob.getAI() != null) {
+            com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId());
             sbeEntityRenderer.render(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
-                    cow.getTextureVariant(),
-                    com.stonebreak.mobs.sbe.CowStateMapping.sbeState(cow.getAI().getCurrentState()),
-                    cow.getAnimationController().getTotalAnimationTime(),
-                    cow.getPosition(),
-                    cow.getRotation().y,
-                    cow.getScale(),
-                    viewMatrix, projectionMatrix, world, cameraPos);
-            return;
-        }
-
-        if (entityType == EntityType.SHEEP && entity instanceof com.stonebreak.mobs.sheep.Sheep sheep) {
-            sbeEntityRenderer.render(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
-                    sheep.getTextureVariant(),
-                    com.stonebreak.mobs.sbe.SheepStateMapping.sbeState(sheep.getAI().getCurrentState()),
-                    sheep.getAnimationController().getTotalAnimationTime(),
-                    sheep.getPosition(),
-                    sheep.getRotation().y,
-                    sheep.getScale(),
-                    viewMatrix, projectionMatrix, world, cameraPos);
-            return;
-        }
-
-        if (entityType == EntityType.CHICKEN && entity instanceof com.stonebreak.mobs.chicken.Chicken chicken) {
-            com.stonebreak.mobs.chicken.ChickenAI chickenAI = chicken.getAI();
-            // The Wingflap clip is one-shot: feed it flap-relative time (the AI
-            // state timer, reset when the flap starts) so it plays through once
-            // instead of freezing on its last frame. Looping states use the
-            // continuously advancing animation clock.
-            boolean flapping = chickenAI.getCurrentState()
-                    == com.stonebreak.mobs.chicken.ChickenAI.ChickenBehaviorState.WING_FLAP;
-            float animationTime = flapping
-                    ? chickenAI.getStateTimer()
-                    : chicken.getAnimationController().getTotalAnimationTime();
-
-            // Chicken has no appearance variants — render the default geometry.
-            sbeEntityRenderer.render(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
-                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                    com.stonebreak.mobs.sbe.ChickenStateMapping.sbeState(chickenAI.getCurrentState()),
-                    animationTime,
-                    chicken.getPosition(),
-                    chicken.getRotation().y,
-                    chicken.getScale(),
+                    asset,
+                    mob.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.MobStateMapping.sbeState(mob.getAI().getCurrentState()),
+                    mob.getAI().clipTime(mob.getAnimationController().getTotalAnimationTime()),
+                    groundAnchoredPosition(mob, asset),
+                    mob.getRotation().y,
+                    mob.getScale(),
                     viewMatrix, projectionMatrix, world, cameraPos);
             return;
         }
@@ -726,35 +696,19 @@ public class EntityRenderer {
     private void renderEntityShadow(Entity entity, Matrix4f lightView, Matrix4f lightProj) {
         EntityType type = entity.getType();
 
-        if (type == EntityType.COW && entity instanceof com.stonebreak.mobs.cow.Cow cow) {
+        // Same generic SBE-mob path as renderEntity, through the flat-colored
+        // depth-only route (color output is discarded by the shadow FBO).
+        if (type.getSbeObjectId() != null
+                && entity instanceof com.stonebreak.mobs.entities.LivingEntity mob
+                && mob.getAI() != null) {
+            com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId());
             sbeEntityRenderer.renderColored(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId()),
-                    cow.getTextureVariant(),
-                    com.stonebreak.mobs.sbe.CowStateMapping.sbeState(cow.getAI().getCurrentState()),
-                    cow.getAnimationController().getTotalAnimationTime(),
-                    cow.getPosition(), cow.getRotation().y, cow.getScale(),
-                    lightView, lightProj, SHADOW_CASTER_COLOR);
-            return;
-        }
-
-        if (type == EntityType.SHEEP && entity instanceof com.stonebreak.mobs.sheep.Sheep sheep) {
-            sbeEntityRenderer.renderColored(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId()),
-                    sheep.getTextureVariant(),
-                    com.stonebreak.mobs.sbe.SheepStateMapping.sbeState(sheep.getAI().getCurrentState()),
-                    sheep.getAnimationController().getTotalAnimationTime(),
-                    sheep.getPosition(), sheep.getRotation().y, sheep.getScale(),
-                    lightView, lightProj, SHADOW_CASTER_COLOR);
-            return;
-        }
-
-        if (type == EntityType.CHICKEN && entity instanceof com.stonebreak.mobs.chicken.Chicken chicken) {
-            sbeEntityRenderer.renderColored(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId()),
-                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                    com.stonebreak.mobs.sbe.ChickenStateMapping.sbeState(chicken.getAI().getCurrentState()),
-                    chickenAnimationTime(chicken),
-                    chicken.getPosition(), chicken.getRotation().y, chicken.getScale(),
+                    asset,
+                    mob.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.MobStateMapping.sbeState(mob.getAI().getCurrentState()),
+                    mob.getAI().clipTime(mob.getAnimationController().getTotalAnimationTime()),
+                    groundAnchoredPosition(mob, asset), mob.getRotation().y, mob.getScale(),
                     lightView, lightProj, SHADOW_CASTER_COLOR);
             return;
         }
@@ -777,14 +731,24 @@ public class EntityRenderer {
     }
 
     /**
-     * Clip time for the chicken, matching {@link #renderEntity}'s handling of the
-     * one-shot Wingflap clip (flap-relative time so it plays through once).
+     * The render position that puts the mob model's rest-pose feet
+     * ({@code geometry.restMinY}) exactly on the collision ground plane at
+     * {@code position.y - legHeight}. This is the model-placement contract for
+     * all mobs: a model authored with its origin {@code legHeight} above its
+     * feet gets a zero offset; any other authoring (e.g. origin at the feet)
+     * is corrected here instead of floating or sinking.
      */
-    private static float chickenAnimationTime(com.stonebreak.mobs.chicken.Chicken chicken) {
-        com.stonebreak.mobs.chicken.ChickenAI ai = chicken.getAI();
-        boolean flapping = ai.getCurrentState()
-                == com.stonebreak.mobs.chicken.ChickenAI.ChickenBehaviorState.WING_FLAP;
-        return flapping ? ai.getStateTimer() : chicken.getAnimationController().getTotalAnimationTime();
+    private static Vector3f groundAnchoredPosition(com.stonebreak.mobs.entities.LivingEntity mob,
+                                                   com.stonebreak.mobs.sbe.SbeEntityAsset asset) {
+        Vector3f position = mob.getPosition();
+        com.stonebreak.mobs.sbe.SbeModelGeometry geometry =
+                asset == null ? null : asset.geometryFor(mob.getTextureVariant());
+        if (geometry == null) {
+            return position;
+        }
+        float offset = -mob.getLegHeight() - geometry.restMinY() * mob.getScale().y;
+        return offset == 0f ? position
+                : new Vector3f(position.x, position.y + offset, position.z);
     }
 
     /**
@@ -803,52 +767,21 @@ public class EntityRenderer {
 
         EntityType entityType = entity.getType();
 
-        if (entityType == EntityType.COW && entity instanceof com.stonebreak.mobs.cow.Cow cow) {
+        // Same generic SBE-mob bindings (state, clip time, ground anchoring) as
+        // renderEntity, so the wireframe tracks the rendered model exactly.
+        if (entityType.getSbeObjectId() != null
+                && entity instanceof com.stonebreak.mobs.entities.LivingEntity mob
+                && mob.getAI() != null) {
+            com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId());
             sbeEntityRenderer.renderWireframe(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
-                    cow.getTextureVariant(),
-                    com.stonebreak.mobs.sbe.CowStateMapping.sbeState(cow.getAI().getCurrentState()),
-                    cow.getAnimationController().getTotalAnimationTime(),
-                    cow.getPosition(),
-                    cow.getRotation().y,
-                    cow.getScale(),
-                    viewMatrix, projectionMatrix, color);
-            return;
-        }
-
-        if (entityType == EntityType.SHEEP && entity instanceof com.stonebreak.mobs.sheep.Sheep sheep) {
-            sbeEntityRenderer.renderWireframe(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
-                    sheep.getTextureVariant(),
-                    com.stonebreak.mobs.sbe.SheepStateMapping.sbeState(sheep.getAI().getCurrentState()),
-                    sheep.getAnimationController().getTotalAnimationTime(),
-                    sheep.getPosition(),
-                    sheep.getRotation().y,
-                    sheep.getScale(),
-                    viewMatrix, projectionMatrix, color);
-            return;
-        }
-
-        if (entityType == EntityType.CHICKEN
-                && entity instanceof com.stonebreak.mobs.chicken.Chicken chicken) {
-            com.stonebreak.mobs.chicken.ChickenAI chickenAI = chicken.getAI();
-            // Match renderEntity()'s clip timing: the one-shot Wingflap clip is
-            // fed flap-relative time so the wireframe animates in step with the
-            // rendered model.
-            boolean flapping = chickenAI.getCurrentState()
-                    == com.stonebreak.mobs.chicken.ChickenAI.ChickenBehaviorState.WING_FLAP;
-            float animationTime = flapping
-                    ? chickenAI.getStateTimer()
-                    : chicken.getAnimationController().getTotalAnimationTime();
-
-            sbeEntityRenderer.renderWireframe(
-                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
-                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                    com.stonebreak.mobs.sbe.ChickenStateMapping.sbeState(chickenAI.getCurrentState()),
-                    animationTime,
-                    chicken.getPosition(),
-                    chicken.getRotation().y,
-                    chicken.getScale(),
+                    asset,
+                    mob.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.MobStateMapping.sbeState(mob.getAI().getCurrentState()),
+                    mob.getAI().clipTime(mob.getAnimationController().getTotalAnimationTime()),
+                    groundAnchoredPosition(mob, asset),
+                    mob.getRotation().y,
+                    mob.getScale(),
                     viewMatrix, projectionMatrix, color);
         }
     }

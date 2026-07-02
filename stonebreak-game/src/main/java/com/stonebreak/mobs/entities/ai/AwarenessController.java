@@ -75,9 +75,9 @@ public class AwarenessController {
         if (toPlayer.lengthSquared() < 0.0001f) return true; // on top of us
         toPlayer.normalize();
 
-        // Forward from yaw (model front faces -Z, matching LivingEntity.faceDirection).
-        float yaw = (float) Math.toRadians(self.getRotation().y);
-        Vector3f forward = new Vector3f((float) Math.sin(yaw), 0f, (float) -Math.cos(yaw));
+        // Forward from yaw, honoring the entity type's model yaw offset
+        // (matches LivingEntity.faceDirection and MobNavigator steering).
+        Vector3f forward = self.getForwardDirection();
 
         float halfAngleCos = (float) Math.cos(Math.toRadians(PlayerConstants.ENEMY_SIGHT_ANGLE_DEG * 0.5f));
         if (forward.dot(toPlayer) < halfAngleCos) return false;
