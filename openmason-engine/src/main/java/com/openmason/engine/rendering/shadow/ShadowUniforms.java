@@ -28,13 +28,15 @@ public final class ShadowUniforms {
      * @param cascades     computed cascades, length {@link ShadowSettings#CASCADE_COUNT}
      * @param sunDirection normalized, pointing toward the sun
      * @param strength     effective shadow strength (already faded for sun elevation)
+     * @param pcfRadius    receiver PCF kernel radius in texels (see {@link ShadowSettings#pcfRadius()})
      * @param textureUnit  unit the shadow map array is bound to
      */
     public static void apply(ShaderProgram shader, ShadowCascade[] cascades,
-                             Vector3f sunDirection, float strength, int textureUnit) {
+                             Vector3f sunDirection, float strength, int pcfRadius, int textureUnit) {
         shader.setInt("u_shadowMap", textureUnit);
         shader.setBool("u_shadowsEnabled", true);
         shader.setFloat("u_shadowStrength", strength);
+        shader.setInt("u_shadowPcfRadius", pcfRadius);
         shader.setVec3("u_shadowSunDir", sunDirection);
         shader.setVec3("u_cascadeSplits", new Vector3f(
                 cascades[0].splitFar, cascades[1].splitFar, cascades[2].splitFar));

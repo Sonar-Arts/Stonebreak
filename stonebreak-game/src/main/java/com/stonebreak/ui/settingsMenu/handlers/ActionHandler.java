@@ -54,6 +54,9 @@ public class ActionHandler {
             case CLOUDS_ENABLED -> toggleClouds();
             case GOD_RAYS -> toggleGodRays();
             case SHADOWS -> toggleShadows();
+            case SHADOW_QUALITY -> stateManager.getShadowQualityButton().toggle();
+            case SHADOW_DISTANCE -> {} // Shadow distance handled by mouse/keyboard interaction
+            case SMOOTH_LIGHTING -> toggleSmoothLighting();
             case LOD_ENABLED -> toggleLodEnabled();
             case VSYNC -> toggleVsync();
             case MAX_FPS -> {} // Max FPS handled by mouse/keyboard interaction
@@ -316,6 +319,47 @@ public class ActionHandler {
         boolean currentValue = settings.getShadowsEnabled();
         settings.setShadowsEnabled(!currentValue);
         System.out.println("Shadows toggled to: " + (!currentValue ? "ON" : "OFF"));
+    }
+
+    /**
+     * Callback for when the shadow quality dropdown selection changes. The shadow
+     * pass reads the setting live each frame and rebuilds its depth maps as needed,
+     * so this applies immediately; persistence still waits for Apply / save.
+     */
+    public void onShadowQualityChange() {
+        int newIndex = stateManager.getShadowQualityButton().selectedIndex();
+        settings.setShadowQuality(com.stonebreak.ui.settingsMenu.config.SettingsConfig.SHADOW_QUALITY_VALUES[newIndex]);
+        stateManager.setSelectedShadowQualityIndex(newIndex);
+    }
+
+    /**
+     * Callback for when the shadow distance slider value changes. Read live by the
+     * shadow pass, so it applies on the next frame; persistence waits for Apply.
+     */
+    public void onShadowDistanceChange(Float newValue) {
+        settings.setShadowDistance(Math.round(newValue));
+    }
+
+    /**
+     * Toggles baked smooth lighting (per-vertex AO + soft sky gradients). The
+     * setter pushes the flag to the engine mesh sampler; loaded chunks are then
+     * rebuilt so the change is visible immediately, mirroring leaf transparency.
+     */
+    public void toggleSmoothLighting() {
+        boolean now = !settings.getSmoothLightingEnabled();
+        settings.setSmoothLightingEnabled(now);
+        System.out.println("Smooth lighting toggled to: " + (now ? "ON" : "OFF"));
+
+        try {
+            if (Game.getWorld() != null && Game.getPlayer() != null) {
+                Vector3f playerPos = Game.getPlayer().getPosition();
+                int playerChunkX = (int) Math.floor(playerPos.x / 16);
+                int playerChunkZ = (int) Math.floor(playerPos.z / 16);
+                Game.getWorld().rebuildAllLoadedChunks(playerChunkX, playerChunkZ);
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to rebuild chunks after smooth lighting change: " + e.getMessage());
+        }
     }
 
     /**

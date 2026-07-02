@@ -16,13 +16,28 @@ import io.github.humbleui.types.Rect;
  */
 public final class MScrollContainer {
 
-    private final MScrollMath math;
+    /** Extra horizontal grab room around the scrollbar so the thumb is easy to hit. */
+    private static final float GRAB_SLOP = 4f;
+
+    private MScrollMath math;
     private float x, y, width, height;
     private float scrollbarWidth = 12f;
     private float inset = 5f;
 
+    private boolean draggingThumb;
+    private float dragGrabDY; // distance from thumb top to the grab point
+
     public MScrollContainer(MScrollMath math) {
         this.math = math;
+    }
+
+    /** Rebinds the scroll math (e.g. when the active category changes). Ends any drag. */
+    public MScrollContainer math(MScrollMath math) {
+        if (this.math != math) {
+            this.math = math;
+            draggingThumb = false;
+        }
+        return this;
     }
 
     public MScrollContainer bounds(float x, float y, float width, float height) {
@@ -60,6 +75,64 @@ public final class MScrollContainer {
     }
 
     /**
+     * Route a mouse press; returns true if it landed on the scrollbar (thumb
+     * starts dragging, a track click jumps there and keeps dragging).
+     */
+    public boolean handleMousePress(float mouseX, float mouseY) {
+        if (!math.isScrollNeeded()) return false;
+        float sbX = x + width - scrollbarWidth - inset;
+        float sbY = y + inset;
+        float sbH = height - inset * 2f;
+        if (mouseX < sbX - GRAB_SLOP || mouseX > sbX + scrollbarWidth + inset + GRAB_SLOP
+                || mouseY < sbY || mouseY > sbY + sbH) {
+            return false;
+        }
+        float thumbH = thumbHeight(sbH);
+        float thumbY = thumbTop(sbY, sbH, thumbH);
+        draggingThumb = true;
+        if (mouseY >= thumbY && mouseY <= thumbY + thumbH) {
+            dragGrabDY = mouseY - thumbY;
+        } else {
+            // Track click: center the thumb on the cursor and drag from there.
+            dragGrabDY = thumbH / 2f;
+            applyThumbDrag(mouseY, sbY, sbH, thumbH);
+        }
+        return true;
+    }
+
+    /** Continues a thumb drag; no-op unless a press landed on the scrollbar. */
+    public void handleMouseDrag(float mouseY) {
+        if (!draggingThumb) return;
+        float sbY = y + inset;
+        float sbH = height - inset * 2f;
+        applyThumbDrag(mouseY, sbY, sbH, thumbHeight(sbH));
+    }
+
+    public void handleMouseRelease() {
+        draggingThumb = false;
+    }
+
+    public boolean isDraggingThumb() {
+        return draggingThumb;
+    }
+
+    private void applyThumbDrag(float mouseY, float sbY, float sbH, float thumbH) {
+        float travel = sbH - thumbH;
+        if (travel <= 0f) return;
+        float t = (mouseY - dragGrabDY - sbY) / travel;
+        math.scrollTo(Math.max(0f, Math.min(1f, t)) * math.maxOffset());
+    }
+
+    private float thumbHeight(float sbH) {
+        return Math.max(20f, sbH * (height / math.contentHeight()));
+    }
+
+    private float thumbTop(float sbY, float sbH, float thumbH) {
+        return sbY + (math.maxOffset() > 0 ? (math.offset() / math.maxOffset()) : 0f)
+                * (sbH - thumbH);
+    }
+
+    /**
      * Draws the container background, clips to its viewport, invokes the
      * content painter, then draws the scrollbar outside the clip.
      */
@@ -86,9 +159,8 @@ public final class MScrollContainer {
         float sbH = height - inset * 2f;
         MPainter.fillRect(canvas, sbX, sbY, scrollbarWidth, sbH, MStyle.SCROLLBAR_TRACK);
 
-        float thumbH = Math.max(20f, sbH * (height / math.contentHeight()));
-        float thumbY = sbY + (math.maxOffset() > 0 ? (math.offset() / math.maxOffset()) : 0f)
-                * (sbH - thumbH);
+        float thumbH = thumbHeight(sbH);
+        float thumbY = thumbTop(sbY, sbH, thumbH);
         MPainter.fillRect(canvas, sbX + 2f, thumbY, scrollbarWidth - 4f, thumbH, MStyle.SCROLLBAR_THUMB);
         MPainter.strokeRect(canvas, sbX + 2f, thumbY, scrollbarWidth - 4f, thumbH,
                 MStyle.SCROLLBAR_THUMB_EDGE, 1f);

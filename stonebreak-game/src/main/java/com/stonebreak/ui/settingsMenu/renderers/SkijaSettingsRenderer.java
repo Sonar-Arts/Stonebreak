@@ -236,6 +236,7 @@ public final class SkijaSettingsRenderer {
     private static boolean isSlider(CategoryState.SettingType type) {
         return type == CategoryState.SettingType.VOLUME
                 || type == CategoryState.SettingType.CROSSHAIR_SIZE
+                || type == CategoryState.SettingType.SHADOW_DISTANCE
                 || type == CategoryState.SettingType.RENDER_DISTANCE
                 || type == CategoryState.SettingType.LOD_DISTANCE
                 || type == CategoryState.SettingType.MAX_FPS
@@ -254,6 +255,9 @@ public final class SkijaSettingsRenderer {
             case CLOUDS_ENABLED   -> state.getCloudsButton();
             case GOD_RAYS         -> state.getGodRaysButton();
             case SHADOWS          -> state.getShadowsButton();
+            case SHADOW_QUALITY   -> state.getShadowQualityButton();
+            case SHADOW_DISTANCE  -> state.getShadowDistanceSlider();
+            case SMOOTH_LIGHTING  -> state.getSmoothLightingButton();
             case RENDER_DISTANCE  -> state.getRenderDistanceSlider();
             case LOD_DISTANCE     -> state.getLodDistanceSlider();
             case LOD_ENABLED      -> state.getLodEnabledButton();

@@ -30,6 +30,20 @@ public final class SettingsConfig {
     public static final float MIN_CROSSHAIR_SIZE = 4.0f;
     public static final float MAX_CROSSHAIR_SIZE = 64.0f;
     public static final float CROSSHAIR_SIZE_STEP = 2.0f;
+
+    // ===== LIGHTING CONFIGURATION =====
+    public static final String[] SHADOW_QUALITY_VALUES = {
+        "LOW", "MEDIUM", "HIGH"
+    };
+
+    public static final String[] SHADOW_QUALITY_NAMES = {
+        "Low (1024px)", "Medium (2048px)", "High (4096px)"
+    };
+
+    // Mirrors Settings bounds so UI and shadow pass agree on valid ranges.
+    public static final float MIN_SHADOW_DISTANCE = com.stonebreak.config.Settings.MIN_SHADOW_DISTANCE;
+    public static final float MAX_SHADOW_DISTANCE = com.stonebreak.config.Settings.MAX_SHADOW_DISTANCE;
+    public static final float SHADOW_DISTANCE_STEP = 16.0f;
     
     // ===== UI DIMENSIONS =====
     public static final float BUTTON_WIDTH = 400;
@@ -141,6 +155,20 @@ public final class SettingsConfig {
         return 0; // Default to first type if not found
     }
     
+    /**
+     * Gets the shadow quality index for the specified tier.
+     * @param currentQuality the shadow quality value to find
+     * @return the index, or 1 (Medium) if not found
+     */
+    public static int findShadowQualityIndex(String currentQuality) {
+        for (int i = 0; i < SHADOW_QUALITY_VALUES.length; i++) {
+            if (SHADOW_QUALITY_VALUES[i].equals(currentQuality)) {
+                return i;
+            }
+        }
+        return 1; // Default to Medium if not found
+    }
+
     /**
      * Gets the crosshair style index for the specified style.
      * @param currentStyle the crosshair style to find

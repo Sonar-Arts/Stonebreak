@@ -34,6 +34,16 @@ public class Settings {
     private boolean godRaysEnabled = true;
     private boolean shadowsEnabled = true;
 
+    // Lighting quality — shadow map tier ("LOW"/"MEDIUM"/"HIGH"), shadow reach in
+    // blocks, and baked smooth lighting (per-vertex AO + soft sky gradients).
+    // Shadow quality/distance are read live by the shadow pass each frame; smooth
+    // lighting is pushed to the engine mesh sampler and needs a chunk rebuild.
+    public static final int MIN_SHADOW_DISTANCE = 48;
+    public static final int MAX_SHADOW_DISTANCE = 160;
+    private String shadowQuality = "MEDIUM";
+    private int shadowDistance = 100;
+    private boolean smoothLightingEnabled = true;
+
     // Performance + advanced settings — defaults sourced from WorldConfiguration to avoid drift.
     private int renderDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_RENDER_DISTANCE;
     private int lodDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_LOD_RANGE;
@@ -105,6 +115,9 @@ public class Settings {
             json.append("  \"cloudsEnabled\": ").append(cloudsEnabled).append(",\n");
             json.append("  \"godRaysEnabled\": ").append(godRaysEnabled).append(",\n");
             json.append("  \"shadowsEnabled\": ").append(shadowsEnabled).append(",\n");
+            json.append("  \"shadowQuality\": \"").append(shadowQuality).append("\",\n");
+            json.append("  \"shadowDistance\": ").append(shadowDistance).append(",\n");
+            json.append("  \"smoothLightingEnabled\": ").append(smoothLightingEnabled).append(",\n");
             json.append("  \"renderDistance\": ").append(renderDistance).append(",\n");
             json.append("  \"lodDistance\": ").append(lodDistance).append(",\n");
             json.append("  \"lodEnabled\": ").append(lodEnabled).append(",\n");
@@ -289,6 +302,25 @@ public class Settings {
                 if (value != null) {
                     shadowsEnabled = Boolean.parseBoolean(value);
                 }
+            } else if (line.contains("shadowQuality")) {
+                String value = extractStringValue(line);
+                if (value != null) {
+                    setShadowQuality(value);
+                }
+            } else if (line.contains("shadowDistance")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        setShadowDistance(Integer.parseInt(value));
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid shadowDistance value: " + value);
+                    }
+                }
+            } else if (line.contains("smoothLightingEnabled")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    setSmoothLightingEnabled(Boolean.parseBoolean(value));
+                }
             } else if (line.contains("renderDistance")) {
                 String value = extractValue(line);
                 if (value != null) {
@@ -400,6 +432,9 @@ public class Settings {
     public boolean getCloudsEnabled() { return cloudsEnabled; }
     public boolean getGodRaysEnabled() { return godRaysEnabled; }
     public boolean getShadowsEnabled() { return shadowsEnabled; }
+    public String getShadowQuality() { return shadowQuality; }
+    public int getShadowDistance() { return shadowDistance; }
+    public boolean getSmoothLightingEnabled() { return smoothLightingEnabled; }
 
     // Performance / advanced getters
     public int getRenderDistance() { return renderDistance; }
@@ -491,6 +526,31 @@ public class Settings {
 
     public void setShadowsEnabled(boolean shadowsEnabled) {
         this.shadowsEnabled = shadowsEnabled;
+    }
+
+    /** Shadow map quality tier; invalid values fall back to MEDIUM. Read live by the shadow pass. */
+    public void setShadowQuality(String quality) {
+        if ("LOW".equals(quality) || "MEDIUM".equals(quality) || "HIGH".equals(quality)) {
+            this.shadowQuality = quality;
+        } else {
+            System.err.println("Invalid shadow quality: " + quality + ". Defaulting to MEDIUM.");
+            this.shadowQuality = "MEDIUM";
+        }
+    }
+
+    /** Shadow reach in blocks, clamped to [MIN_SHADOW_DISTANCE, MAX_SHADOW_DISTANCE]. Applies live. */
+    public void setShadowDistance(int value) {
+        this.shadowDistance = Math.max(MIN_SHADOW_DISTANCE, Math.min(MAX_SHADOW_DISTANCE, value));
+    }
+
+    /**
+     * Toggles baked smooth lighting (per-vertex AO + soft sky gradients). Pushes the
+     * flag to the engine mesh sampler immediately; already-built chunk meshes keep
+     * their old lighting until rebuilt (the settings menu triggers that rebuild).
+     */
+    public void setSmoothLightingEnabled(boolean value) {
+        this.smoothLightingEnabled = value;
+        com.openmason.engine.voxel.lighting.VertexLightSampler.setSmoothLightingEnabled(value);
     }
 
     public void setRenderDistance(int value) {
