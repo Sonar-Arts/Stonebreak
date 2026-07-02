@@ -1,18 +1,16 @@
-package com.openmason.main.systems.menus.panes.modelBrowser.thumbnails;
+package com.openmason.main.systems.menus.panes.projectBrowser.thumbnails;
 
 import com.openmason.engine.format.mesh.ParsedMaterialData;
-import com.openmason.engine.format.omo.OMOFileManager;
 import com.openmason.engine.format.omo.OMOReader;
 import com.openmason.engine.format.omt.OMTArchive;
 import com.openmason.engine.format.omt.OMTReader;
+import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Generates thumbnails for .OMO models by extracting the main face texture.
@@ -21,19 +19,18 @@ import java.util.List;
  * <ol>
  *   <li>The first per-face material PNG (face id 0 if present)</li>
  *   <li>Any material PNG in the model</li>
- *   <li>The composited layers of the embedded texture.omt (default texture)</li>
+ *   <li>The first visible layer of the embedded texture.omt (default texture)</li>
  * </ol>
- * Falls back to a coloured placeholder if none of those load.
  */
 public class ModelThumbnailRenderer {
 
     private static final Logger logger = LoggerFactory.getLogger(ModelThumbnailRenderer.class);
 
-    private final ModelBrowserThumbnailCache cache;
+    private final ThumbnailCache cache;
     private final OMOReader omoReader = new OMOReader();
     private final OMTReader omtReader = new OMTReader();
 
-    public ModelThumbnailRenderer(ModelBrowserThumbnailCache cache) {
+    public ModelThumbnailRenderer(ThumbnailCache cache) {
         this.cache = cache;
     }
 
@@ -42,17 +39,17 @@ public class ModelThumbnailRenderer {
      * file's last-modified time as the cache version, so re-saved models
      * pick up new texture content automatically.
      */
-    public int getThumbnail(OMOFileManager.OMOFileEntry entry, int size) {
+    public int getThumbnail(AssetEntry entry, int size) {
         if (entry == null) {
             return 0;
         }
-        String key = ModelBrowserThumbnailCache.omoKey(entry.getFilePathString(), size);
-        long version = readMtime(entry.filePath());
+        String key = ThumbnailCache.omoKey(entry.pathString(), size);
+        long version = readMtime(entry.path());
         return cache.getOrCreate(key, version, () -> generate(entry, size));
     }
 
-    private int generate(OMOFileManager.OMOFileEntry entry, int size) {
-        Path file = entry.filePath();
+    private int generate(AssetEntry entry, int size) {
+        Path file = entry.path();
         if (file == null || !Files.exists(file)) {
             return 0;
         }
@@ -77,7 +74,7 @@ public class ModelThumbnailRenderer {
     /**
      * Picks the most representative PNG: prefer the material that face 0
      * (typically the front face) is mapped to, fall back to the first
-     * available material PNG, then the composited default OMT layers.
+     * available material PNG, then the default OMT's first visible layer.
      */
     private byte[] pickPrimaryPng(OMOReader.ReadResult result) throws Exception {
         if (result.materials() != null && !result.materials().isEmpty()) {
@@ -105,27 +102,14 @@ public class ModelThumbnailRenderer {
         }
         if (result.defaultTextureBytes() != null && result.defaultTextureBytes().length > 0) {
             OMTArchive archive = omtReader.read(result.defaultTextureBytes());
-            return compositeArchive(archive);
+            for (OMTArchive.Layer layer : archive.layers()) {
+                if (layer.visible() && layer.pngBytes() != null && layer.pngBytes().length > 0) {
+                    return layer.pngBytes();
+                }
+            }
+            return archive.layers().isEmpty() ? null : archive.layers().get(0).pngBytes();
         }
         return null;
-    }
-
-    /**
-     * Flatten a multi-layer OMT into a single PNG-ready composite.
-     * We re-use {@link ThumbnailGL#uploadComposite} indirectly by emitting
-     * the visible layer PNGs and letting the upload helper draw them.
-     */
-    private byte[] compositeArchive(OMTArchive archive) {
-        // ThumbnailGL.uploadComposite expects raw PNGs; we don't have a way
-        // to round-trip a composite to PNG bytes without re-encoding, so we
-        // collapse by handing the upload path directly. Returning the first
-        // visible layer keeps this pure-byte for the cache path.
-        for (OMTArchive.Layer layer : archive.layers()) {
-            if (layer.visible() && layer.pngBytes() != null && layer.pngBytes().length > 0) {
-                return layer.pngBytes();
-            }
-        }
-        return archive.layers().isEmpty() ? null : archive.layers().get(0).pngBytes();
     }
 
     private static long readMtime(Path file) {
@@ -134,17 +118,5 @@ public class ModelThumbnailRenderer {
         } catch (Exception e) {
             return 0L;
         }
-    }
-
-    /** Unused helper kept to silence compiler if future composite path is wanted. */
-    @SuppressWarnings("unused")
-    private static List<byte[]> visibleLayers(OMTArchive archive) {
-        List<byte[]> out = new ArrayList<>();
-        for (OMTArchive.Layer layer : archive.layers()) {
-            if (layer.visible() && layer.pngBytes() != null) {
-                out.add(layer.pngBytes());
-            }
-        }
-        return out;
     }
 }

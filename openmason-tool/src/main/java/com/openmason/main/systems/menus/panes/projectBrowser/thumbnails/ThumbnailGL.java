@@ -1,4 +1,4 @@
-package com.openmason.main.systems.menus.panes.modelBrowser.thumbnails;
+package com.openmason.main.systems.menus.panes.projectBrowser.thumbnails;
 
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -16,7 +16,7 @@ import java.nio.ByteBuffer;
 
 /**
  * Shared helpers for converting PNG bytes into a square OpenGL thumbnail
- * texture used by the Model Browser. Pixel-art textures are upscaled with
+ * texture used by the Project Browser. Pixel-art textures are upscaled with
  * nearest-neighbour filtering to keep edges crisp; transparent areas land
  * on a checker so empty regions read as empty rather than as solid black.
  */

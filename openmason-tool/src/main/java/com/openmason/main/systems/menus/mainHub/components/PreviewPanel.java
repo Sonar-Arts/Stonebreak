@@ -54,6 +54,12 @@ public class PreviewPanel {
     // Create-form inputs (shared by the New Project and Blank Template previews).
     private final ImString projectName = new ImString(128);
     private final ImString projectDir = new ImString(512);
+    private final imgui.type.ImBoolean createSubfolder = new imgui.type.ImBoolean(true);
+
+    /** Supplies the base projects folder used to prefill the directory field. */
+    private java.util.function.Supplier<String> defaultProjectDirectory;
+    /** Notified after rename/delete so the merged projects list rebuilds. */
+    private Runnable onProjectsChanged;
 
     public PreviewPanel(ThemeManager themeManager, HubState hubState, LogoManager logoManager,
                         HubActionService actionService, RecentProjectsService recentProjectsService) {
@@ -65,6 +71,14 @@ public class PreviewPanel {
     public void setDialogs(RenameProjectDialog renameDialog, DeleteProjectDialog deleteDialog) {
         this.renameDialog = renameDialog;
         this.deleteDialog = deleteDialog;
+    }
+
+    public void setDefaultProjectDirectory(java.util.function.Supplier<String> supplier) {
+        this.defaultProjectDirectory = supplier;
+    }
+
+    public void setOnProjectsChanged(Runnable callback) {
+        this.onProjectsChanged = callback;
     }
 
     public void render() {
@@ -102,6 +116,15 @@ public class PreviewPanel {
      * name and a directory are provided, then pre-saves the project there.
      */
     private void renderCreateForm() {
+        // Prefill with the base projects folder so the default "just create it"
+        // path lands new projects in the user's home folder for Open Mason.
+        if (projectDir.get().isBlank() && defaultProjectDirectory != null) {
+            String base = defaultProjectDirectory.get();
+            if (base != null && !base.isBlank()) {
+                projectDir.set(base);
+            }
+        }
+
         fieldLabel("Project Name");
         ImGui.setNextItemWidth(-1);
         ImGui.inputTextWithHint("##np_name", "My Project", projectName, ImGuiInputTextFlags.None);
@@ -116,14 +139,31 @@ public class PreviewPanel {
             actionService.pickFolder(projectDir::set);
         }
 
+        ImGui.dummy(0, 4f);
+        ImGui.checkbox("Create project subfolder", createSubfolder);
+
         ImGui.dummy(0, 8f);
         boolean valid = !projectName.get().isBlank() && !projectDir.get().isBlank();
         ImGui.beginDisabled(!valid);
         boolean create = accentButton("Create Project");
         ImGui.endDisabled();
         if (create && valid) {
-            actionService.createProject(projectName.get(), projectDir.get());
+            actionService.createProject(projectName.get(), effectiveDirectory());
         }
+    }
+
+    /**
+     * The directory the project is actually created in: the chosen folder, plus
+     * a per-project subfolder named after the (sanitized) project when the
+     * checkbox is on — the default layout the hub's base-folder scan expects.
+     */
+    private String effectiveDirectory() {
+        String dir = projectDir.get().trim();
+        if (!createSubfolder.get()) {
+            return dir;
+        }
+        String folderName = projectName.get().trim().replaceAll("[\\\\/:*?\"<>|]", "_");
+        return java.nio.file.Path.of(dir, folderName).toString();
     }
 
     private void fieldLabel(String text) {
@@ -224,9 +264,14 @@ public class PreviewPanel {
             openContainingFolder(project.getPath());
         }
         ImGui.sameLine(0, 8f);
+        // Rename rewrites the recents entry, so it only applies to
+        // recents-backed projects (scanned-only entries carry a "scan:" id).
+        boolean scannedOnly = project.getId().startsWith("scan:");
+        ImGui.beginDisabled(scannedOnly);
         if (ImGui.button("Rename", halfW, BUTTON_HEIGHT) && renameDialog != null) {
             renameDialog.show(project.getId(), project.getName(), this::handleRename);
         }
+        ImGui.endDisabled();
         ImGui.dummy(0, 6f);
         ImGui.pushStyleColor(ImGuiCol.Button, 0.45f, 0.12f, 0.12f, 0.5f);
         ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.6f, 0.15f, 0.15f, 0.8f);
@@ -319,6 +364,9 @@ public class PreviewPanel {
         if (selected != null && selected.getId().equals(projectId)) {
             hubState.setSelectedRecentProject(null);
         }
+        if (onProjectsChanged != null) {
+            onProjectsChanged.run();
+        }
     }
 
     private void handleDelete(RecentProject project, boolean deleteFile) {
@@ -328,6 +376,9 @@ public class PreviewPanel {
         recentProjectsService.removeProject(project.getId());
         if (project.equals(hubState.getSelectedRecentProject())) {
             hubState.setSelectedRecentProject(null);
+        }
+        if (onProjectsChanged != null) {
+            onProjectsChanged.run();
         }
     }
 

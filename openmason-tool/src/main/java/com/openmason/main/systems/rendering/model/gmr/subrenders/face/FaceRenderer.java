@@ -113,16 +113,19 @@ public class FaceRenderer implements MeshChangeListener {
             return;
         }
 
-        if (!genericModelRenderer.hasTriangleToFaceMapping()) {
-            logger.warn("GenericModelRenderer has no triangle-to-face mapping");
-            return;
-        }
-
+        // An empty mesh is a benign transient: every model load clears the part
+        // set (empty rebuild) before the real rebuild repopulates it. Only warn
+        // when geometry exists without a mapping — that is the anomalous case.
         triangleCount = genericModelRenderer.getTriangleCount();
         if (triangleCount == 0) {
             faceCount = 0;
             trianglePositions = null;
             originalFaceToTriangles.clear();
+            return;
+        }
+
+        if (!genericModelRenderer.hasTriangleToFaceMapping()) {
+            logger.warn("GenericModelRenderer has no triangle-to-face mapping");
             return;
         }
 

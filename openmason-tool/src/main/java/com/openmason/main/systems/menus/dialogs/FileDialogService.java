@@ -36,6 +36,9 @@ public class FileDialogService {
      */
     private final Map<String, String> lastDirectoryByType = new ConcurrentHashMap<>();
 
+    /** Supplies the open project's folder (null when no project is loaded). */
+    private java.util.function.Supplier<String> projectDirectorySupplier;
+
     public FileDialogService(StatusService statusService) {
         this.statusService = statusService;
         initializeNFD();
@@ -149,6 +152,16 @@ public class FileDialogService {
      */
     private void showNFDSaveDialog(String statusMessage, String filterName, String filterSpec,
                                    String defaultFileName, String logPrefix, SaveCallback callback) {
+        showNFDSaveDialog(statusMessage, filterName, filterSpec, defaultFileName, null, logPrefix, callback);
+    }
+
+    /**
+     * Generic save dialog with an optional preferred starting directory that
+     * takes precedence over the per-type last-used directory.
+     */
+    private void showNFDSaveDialog(String statusMessage, String filterName, String filterSpec,
+                                   String defaultFileName, String preferredDirectory,
+                                   String logPrefix, SaveCallback callback) {
         if (!nfdInitialized) {
             statusService.updateStatus("Error: File dialog not initialized");
             return;
@@ -163,9 +176,12 @@ public class FileDialogService {
             try (NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1)) {
                 createFilter(filters, 0, stack, filterName, filterSpec);
 
-                // Show save dialog — seed default path with the last directory
+                // Show save dialog — a caller-preferred directory (e.g. the open
+                // project's folder) wins; otherwise seed with the last directory
                 // used for this file type so each format has its own context.
-                String defaultPath = resolveDefaultDirectory(new String[]{filterSpec});
+                String defaultPath = preferredDirectory != null
+                        ? preferredDirectory
+                        : resolveDefaultDirectory(new String[]{filterSpec});
                 int result = NFD_SaveDialog(outPath, filters, defaultPath, defaultFileName);
 
                 if (result == NFD_OKAY) {
@@ -192,6 +208,28 @@ public class FileDialogService {
         } catch (Exception e) {
             logger.error("Error showing {} dialog", logPrefix, e);
             statusService.updateStatus("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Wire the source of the current project's directory, used to point
+     * model-save dialogs at the folder the open .OMP lives in.
+     */
+    public void setProjectDirectorySupplier(java.util.function.Supplier<String> supplier) {
+        this.projectDirectorySupplier = supplier;
+    }
+
+    /** The open project's folder, or null when none is loaded or it's gone. */
+    private String projectDirectoryOrNull() {
+        if (projectDirectorySupplier == null) {
+            return null;
+        }
+        try {
+            String dir = projectDirectorySupplier.get();
+            return dir != null && !dir.isBlank() && new File(dir).isDirectory() ? dir : null;
+        } catch (Exception e) {
+            logger.debug("Could not resolve project directory: {}", e.getMessage());
+            return null;
         }
     }
 
@@ -320,11 +358,13 @@ public class FileDialogService {
 
     /**
      * Show save OMO (Open Mason Object) dialog using native file dialog.
+     * Starts in the open project's folder (where the .OMP lives) when a
+     * project is loaded, so models land next to their project by default.
      * @param callback callback to receive selected file path
      */
     public void showSaveOMODialog(SaveOMOCallback callback) {
         showNFDSaveDialog("Saving OMO model...", "Open Mason Object", "omo",
-                "model.omo", "Save OMO to file", callback::onSave);
+                "model.omo", projectDirectoryOrNull(), "Save OMO to file", callback::onSave);
     }
 
     /**

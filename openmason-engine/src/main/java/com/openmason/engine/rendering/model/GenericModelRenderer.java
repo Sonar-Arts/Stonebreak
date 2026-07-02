@@ -734,17 +734,55 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     public OMOFormat.MeshData toMeshData() {
-        // Serialize the part-consistent mesh (what the part MeshRanges describe),
-        // NOT the live render mesh in vertexManager — that carries material-seam
-        // duplicate vertices appended past every part's vertex range, which would
-        // make the saved indices reference out-of-range vertices and crash on
-        // reload. The seam duplication is render-time only and is regenerated on
-        // load via refreshUVs() after parts + face mappings are restored.
-        if (lastPartConsistentMeshData != null) {
+        // Serialize the LIVE mesh — the only complete record of the user's
+        // edits. Vertex drags sync into part geometry, but edge/face drags and
+        // topology ops mutate only the live mesh, so any part-derived snapshot
+        // (lastPartConsistentMeshData) silently drops those edits.
+        //
+        // The live mesh may carry material-seam duplicate vertices appended
+        // past the part-consistent range (render-time only; regenerated on
+        // load). Strip them using the duplication record so the saved indices
+        // stay within the part MeshRanges. When the record doesn't match the
+        // live mesh (e.g. a topology op baked older duplicates in as real
+        // vertices), the live mesh is already self-consistent — save as-is.
+        OMOFormat.MeshData live = serializationAdapter.toMeshData();
+        if (live == null || !live.hasCustomGeometry()) {
             return lastPartConsistentMeshData;
         }
-        // Fallback for meshes that never went through the part rebuild path.
-        return serializationAdapter.toMeshData();
+
+        int base = textureOps.getSeamBaseVertexCount();
+        int duplicates = textureOps.getSeamDuplicateCount();
+        if (duplicates == 0 || base < 0 || base + duplicates != live.getVertexCount()) {
+            return live;
+        }
+        return stripSeamDuplicates(live, base, textureOps.getSeamDuplicateSources());
+    }
+
+    /**
+     * Remove recorded seam-duplicate vertices (appended at the tail of the
+     * live mesh) and remap indices back to their source vertices. Sources may
+     * chain through duplicates from earlier regeneration passes.
+     */
+    private static OMOFormat.MeshData stripSeamDuplicates(OMOFormat.MeshData live,
+                                                          int baseVertexCount,
+                                                          int[] duplicateSources) {
+        float[] vertices = java.util.Arrays.copyOf(live.vertices(), baseVertexCount * 3);
+        float[] texCoords = live.texCoords() != null
+                ? java.util.Arrays.copyOf(live.texCoords(), baseVertexCount * 2)
+                : null;
+
+        int[] indices = live.indices().clone();
+        for (int i = 0; i < indices.length; i++) {
+            int idx = indices[i];
+            int safety = duplicateSources.length + 1;
+            while (idx >= baseVertexCount && safety-- > 0) {
+                idx = duplicateSources[idx - baseVertexCount];
+            }
+            indices[i] = idx;
+        }
+
+        return new OMOFormat.MeshData(vertices, texCoords, indices,
+                live.triangleToFaceId(), live.uvMode());
     }
 
     public void restoreFromSnapshot(float[] vertices, float[] texCoords, int[] indices,

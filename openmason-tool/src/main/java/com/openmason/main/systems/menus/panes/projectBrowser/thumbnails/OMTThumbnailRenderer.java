@@ -1,9 +1,8 @@
-package com.openmason.main.systems.menus.panes.modelBrowser.thumbnails;
+package com.openmason.main.systems.menus.panes.projectBrowser.thumbnails;
 
 import com.openmason.engine.format.omt.OMTArchive;
 import com.openmason.engine.format.omt.OMTReader;
-import com.openmason.engine.format.sbt.SBTFileManager;
-import com.openmason.engine.format.sbt.SBTParser;
+import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,39 +13,36 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Generates thumbnails for .SBT textures by compositing the embedded OMT's
- * visible layers. SBTs are flat textures; the composite is the canonical
- * "what does this texture look like" preview.
+ * Generates thumbnails for .OMT textures by compositing the archive's visible
+ * layers — the canonical "what does this texture look like" preview.
  */
-public class SBTThumbnailRenderer {
+public class OMTThumbnailRenderer {
 
-    private static final Logger logger = LoggerFactory.getLogger(SBTThumbnailRenderer.class);
+    private static final Logger logger = LoggerFactory.getLogger(OMTThumbnailRenderer.class);
 
-    private final ModelBrowserThumbnailCache cache;
-    private final SBTParser sbtParser = new SBTParser();
+    private final ThumbnailCache cache;
     private final OMTReader omtReader = new OMTReader();
 
-    public SBTThumbnailRenderer(ModelBrowserThumbnailCache cache) {
+    public OMTThumbnailRenderer(ThumbnailCache cache) {
         this.cache = cache;
     }
 
-    public int getThumbnail(SBTFileManager.SBTFileEntry entry, int size) {
+    public int getThumbnail(AssetEntry entry, int size) {
         if (entry == null) {
             return 0;
         }
-        String key = ModelBrowserThumbnailCache.sbtKey(entry.getFilePathString(), size);
-        long version = readMtime(entry.filePath());
+        String key = ThumbnailCache.omtKey(entry.pathString(), size);
+        long version = readMtime(entry.path());
         return cache.getOrCreate(key, version, () -> generate(entry, size));
     }
 
-    private int generate(SBTFileManager.SBTFileEntry entry, int size) {
-        Path file = entry.filePath();
+    private int generate(AssetEntry entry, int size) {
+        Path file = entry.path();
         if (file == null || !Files.exists(file)) {
             return 0;
         }
         try (InputStream in = Files.newInputStream(file)) {
-            SBTParser.Result result = sbtParser.read(in);
-            OMTArchive archive = omtReader.read(result.omtBytes());
+            OMTArchive archive = omtReader.read(in);
 
             List<byte[]> visible = new ArrayList<>();
             for (OMTArchive.Layer layer : archive.layers()) {
@@ -61,7 +57,7 @@ public class SBTThumbnailRenderer {
             int h = archive.canvasSize().height();
             return ThumbnailGL.uploadComposite(visible, w, h, size);
         } catch (Exception e) {
-            logger.warn("Failed to generate SBT thumbnail for {}: {}", entry.name(), e.getMessage());
+            logger.warn("Failed to generate OMT thumbnail for {}: {}", entry.name(), e.getMessage());
             return 0;
         }
     }

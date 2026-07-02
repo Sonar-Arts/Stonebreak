@@ -43,6 +43,12 @@ public class TextureGPUOperations implements ITextureGPUOperations {
     private int textureId = 0;
     private boolean useTexture = false;
 
+    // Seam-duplication record — lets serialization strip render-only duplicate
+    // vertices (appended past the part-consistent mesh) and remap indices back
+    // to their sources. base < 0 means "no live duplicates recorded".
+    private int seamBaseVertexCount = -1;
+    private final List<Integer> seamDuplicateSources = new ArrayList<>();
+
     // Callback to update vertexCount on the renderer
     private final VertexCountAccess vertexCountAccess;
 
@@ -283,6 +289,17 @@ public class TextureGPUOperations implements ITextureGPUOperations {
         }
 
         int currentVertexCount = vertices.length / 3;
+
+        // Maintain the duplicate record. If the mesh changed outside this path
+        // (part rebuild, topology op), any previously recorded duplicates were
+        // either wiped or baked in as real vertices — start a fresh record with
+        // the current mesh as the base.
+        if (seamBaseVertexCount < 0
+                || seamBaseVertexCount + seamDuplicateSources.size() != currentVertexCount) {
+            seamBaseVertexCount = currentVertexCount;
+            seamDuplicateSources.clear();
+        }
+
         vertexManager.expandVertexArrays(additionalVertices);
         vertices = vertexManager.getVertices();
 
@@ -303,6 +320,7 @@ public class TextureGPUOperations implements ITextureGPUOperations {
                 vertices[newIdx * 3] = vertices[originalIdx * 3];
                 vertices[newIdx * 3 + 1] = vertices[originalIdx * 3 + 1];
                 vertices[newIdx * 3 + 2] = vertices[originalIdx * 3 + 2];
+                seamDuplicateSources.add(originalIdx);
 
                 for (int[] triRef : materialEntry.getValue()) {
                     newIndices[triRef[0] * 3 + triRef[1]] = newIdx;
@@ -315,5 +333,32 @@ public class TextureGPUOperations implements ITextureGPUOperations {
         logger.debug("Duplicated {} vertices at {} material boundary seams",
             additionalVertices, conflicts.size());
         return true;
+    }
+
+    /**
+     * The part-consistent vertex count recorded before seam duplicates were
+     * appended, or -1 when no live duplicate record exists.
+     */
+    public int getSeamBaseVertexCount() {
+        return seamBaseVertexCount;
+    }
+
+    /** Number of recorded seam-duplicate vertices appended past the base. */
+    public int getSeamDuplicateCount() {
+        return seamDuplicateSources.size();
+    }
+
+    /**
+     * Source mesh index for each recorded duplicate: entry {@code i} is the
+     * vertex that duplicate {@code base + i} was copied from. Sources may
+     * themselves be duplicates from an earlier pass — follow the chain until
+     * the index drops below the base to reach the part-consistent vertex.
+     */
+    public int[] getSeamDuplicateSources() {
+        int[] sources = new int[seamDuplicateSources.size()];
+        for (int i = 0; i < sources.length; i++) {
+            sources[i] = seamDuplicateSources.get(i);
+        }
+        return sources;
     }
 }

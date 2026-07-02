@@ -1,7 +1,7 @@
-package com.openmason.main.systems.menus.panes.modelBrowser.views;
+package com.openmason.main.systems.menus.panes.projectBrowser.views;
 
 /**
- * Model Browser view modes: GRID (thumbnails), LIST (table with sorting), COMPACT (dense list).
+ * Project Browser view modes: GRID (thumbnails), LIST (table with sorting), COMPACT (dense list).
  */
 public enum ViewMode {
 
@@ -22,20 +22,12 @@ public enum ViewMode {
         this.description = description;
     }
 
-    /** @return Human-readable view mode name */
     public String getDisplayName() {
         return displayName;
     }
 
-    /** @return View mode description for tooltips */
     public String getDescription() {
         return description;
-    }
-
-    /** @return Next view mode in rotation */
-    public ViewMode next() {
-        ViewMode[] values = values();
-        return values[(this.ordinal() + 1) % values.length];
     }
 
     @Override

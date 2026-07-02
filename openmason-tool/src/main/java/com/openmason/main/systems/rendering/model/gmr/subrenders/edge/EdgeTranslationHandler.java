@@ -265,6 +265,22 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             logger.debug("Committed edge drag to ModelRenderer{}", !indexRemapping.isEmpty() ? " (with merge)" : "");
         }
 
+        // Sync partGeometry so edits survive a subsequent part transform rebuild
+        if (hasMovedDuringDrag && modelRenderer != null) {
+            com.openmason.engine.rendering.model.gmr.parts.ModelPartManager pm =
+                    modelRenderer.getPartManager();
+            if (pm != null) {
+                for (int ui : selectionState.getAllSelectedVertexIndices()) {
+                    int[] mis = modelRenderer.getMeshIndicesForUniqueVertex(ui);
+                    if (mis == null) continue;
+                    for (int mi : mis) {
+                        Vector3f p = modelRenderer.getVertexPosition(mi);
+                        if (p != null) pm.syncPartVertexFromWorldPos(mi, p);
+                    }
+                }
+            }
+        }
+
         // Record undo command after commit
         if (hasMovedDuringDrag && commandHistory != null && synchronizer != null) {
             if (!indexRemapping.isEmpty() && preDragSnapshot != null) {

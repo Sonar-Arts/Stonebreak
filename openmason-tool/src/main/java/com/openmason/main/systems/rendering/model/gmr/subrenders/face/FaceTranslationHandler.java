@@ -286,6 +286,18 @@ public class FaceTranslationHandler extends TranslationHandlerBase {
         faceRenderer.rebuildFromGenericModelRenderer();
         logger.debug("Committed face drag");
 
+        // Sync partGeometry so edits survive a subsequent part transform rebuild
+        if (hasMovedDuringDrag && modelRenderer != null && currentVertexIndices != null) {
+            com.openmason.engine.rendering.model.gmr.parts.ModelPartManager pm =
+                    modelRenderer.getPartManager();
+            if (pm != null) {
+                for (int vertIdx : currentVertexIndices) {
+                    Vector3f p = modelRenderer.getVertexPosition(vertIdx);
+                    if (p != null) pm.syncPartVertexFromWorldPos(vertIdx, p);
+                }
+            }
+        }
+
         // Record undo command before clearing state (need original positions)
         if (hasMovedDuringDrag && commandHistory != null && synchronizer != null
                 && currentVertexIndices != null) {

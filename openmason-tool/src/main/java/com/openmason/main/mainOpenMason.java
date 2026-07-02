@@ -602,7 +602,7 @@ public class mainOpenMason {
             themeManager = new ThemeManager();
             themeManager.initializeForImGui();
 
-            projectHubScreen = new ProjectHubScreen(themeManager);
+            projectHubScreen = new ProjectHubScreen(themeManager, omConfig);
             mainInterface = new MainImGuiInterface(themeManager);
 
             projectHubScreen.setTransitionCallbacks(this::createNewProjectFile, this::openRecentProject);
@@ -926,6 +926,10 @@ public class mainOpenMason {
         String fileName = safeName.replaceAll("[\\\\/:*?\"<>|]", "_") + ".omp";
         String path = java.nio.file.Path.of(directory, fileName).toString();
 
+        // First use of the base folder (or a per-project subfolder) — make sure
+        // the directory chain exists before the pre-save writes the .omp.
+        AppPaths.ensureDir(java.nio.file.Path.of(directory));
+
         transitionToMainInterface();
         boolean saved = mainInterface.saveNewProject(safeName, path);
         if (saved && projectHubScreen != null) {
@@ -960,6 +964,9 @@ public class mainOpenMason {
         }
         if (animationEditor != null) {
             animationEditor.hide();
+        }
+        if (projectHubScreen != null) {
+            projectHubScreen.onShown();
         }
     }
 
@@ -1014,6 +1021,14 @@ public class mainOpenMason {
                 projectHubScreen.dispose();
             } catch (Exception e) {
                 logger.error("Error disposing Project Hub", e);
+            }
+        }
+        // Editor GPU resources: browser thumbnails + property panel Skija regions.
+        if (mainInterface != null) {
+            try {
+                mainInterface.dispose();
+            } catch (Exception e) {
+                logger.error("Error disposing main interface resources", e);
             }
         }
         if (skijaContext != null) {

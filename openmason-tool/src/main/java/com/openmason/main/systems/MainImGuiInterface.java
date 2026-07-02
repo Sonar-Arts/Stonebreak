@@ -1,12 +1,12 @@
 package com.openmason.main.systems;
 
 import com.openmason.main.systems.menus.*;
-import com.openmason.main.systems.menus.panes.modelBrowser.ModelBrowserController;
-import com.openmason.main.systems.menus.panes.modelBrowser.ModelBrowserImGui;
+import com.openmason.main.systems.menus.panes.projectBrowser.ProjectBrowserController;
+import com.openmason.main.systems.menus.panes.projectBrowser.ProjectBrowserImGui;
 import com.openmason.main.systems.menus.preferences.config.WindowConfig;
-import com.openmason.main.systems.menus.panes.modelBrowser.events.ModelBrowserListener;
-import com.openmason.main.systems.menus.panes.modelBrowser.events.OMOSelectedEvent;
-import com.openmason.main.systems.menus.panes.modelBrowser.events.SBTSelectedEvent;
+import com.openmason.main.systems.menus.panes.projectBrowser.events.ProjectBrowserListener;
+import com.openmason.main.systems.menus.panes.projectBrowser.events.ModelSelectedEvent;
+import com.openmason.main.systems.menus.panes.projectBrowser.events.TextureSelectedEvent;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.project.ProjectService;
 import com.openmason.main.systems.services.LayoutService;
@@ -45,7 +45,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Main ImGui interface
  */
-public class MainImGuiInterface implements ModelBrowserListener {
+public class MainImGuiInterface implements ProjectBrowserListener {
 
     private static final Logger logger = LoggerFactory.getLogger(MainImGuiInterface.class);
 
@@ -64,7 +64,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private final PreferencesManager preferencesManager;
     private PropertyPanelImGui propertyPanelImGui;
     private RiggingPaneImGui riggingPaneImGui;
-    private ModelBrowserImGui modelBrowserImGui;
+    private ProjectBrowserImGui projectBrowserImGui;
 
     private PreferencesWindow preferencesWindow; // Initialized after components
     private SBOExportWindow sboExportWindow; // Initialized after components
@@ -142,6 +142,19 @@ public class MainImGuiInterface implements ModelBrowserListener {
         // Initialize project service
         this.projectService = new ProjectService();
 
+        // Model-save dialogs start in the open project's folder (.OMP location)
+        fileDialogService.setProjectDirectorySupplier(() -> {
+            if (projectService == null || !projectService.hasCurrentProject()) {
+                return null;
+            }
+            String ompPath = projectService.getCurrentProjectPath();
+            if (ompPath == null || ompPath.isBlank()) {
+                return null;
+            }
+            java.nio.file.Path parent = java.nio.file.Path.of(ompPath).getParent();
+            return parent != null ? parent.toString() : null;
+        });
+
         // Initialize dialogs
         this.aboutDialog = new AboutDialog(uiVisibilityState, logoManager, "Model Editor");
 
@@ -173,6 +186,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         fileMenuHandler.setThemeManager(themeManager);
         fileMenuHandler.setProjectService(projectService);
         fileMenuHandler.setUIVisibilityState(uiVisibilityState);
+        fileMenuHandler.setOnProjectPathChanged(this::refreshProjectBrowserRoot);
         editMenu.setViewport(viewport3D);
         viewMenu.setViewport(viewport3D);
         toolbarRenderer.setViewport(viewport3D);
@@ -204,7 +218,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
             setupViewport();
             setupPropertiesPanel();
             setupRiggingPane();
-            setupModelBrowser();
+            setupProjectBrowser();
 
             // Initialize unified preferences window after components are created
             // (needs viewport and property panel for real-time updates)
@@ -322,26 +336,27 @@ public class MainImGuiInterface implements ModelBrowserListener {
     }
 
     /**
-     * Setup model browser component.
+     * Setup project browser component (browses the open project's folder).
      */
-    private void setupModelBrowser() {
+    private void setupProjectBrowser() {
         try {
             // Create controller with required dependencies
-            ModelBrowserController controller = new ModelBrowserController(modelOperations, statusService);
+            ProjectBrowserController controller =
+                    new ProjectBrowserController(projectService, modelOperations, statusService);
 
             // Create UI component with controller, visibility state, and new model callback
-            modelBrowserImGui = new ModelBrowserImGui(
+            projectBrowserImGui = new ProjectBrowserImGui(
                 controller,
                 uiVisibilityState.getShowModelBrowser(),
                 this::createNewModel  // Callback for "New Model" button
             );
 
-            // Register this as a listener to receive model browser events
+            // Register this as a listener to receive project browser events
             controller.addListener(this);
 
-            logger.debug("Model Browser initialized successfully");
+            logger.debug("Project Browser initialized successfully");
         } catch (Exception e) {
-            logger.error("Failed to setup model browser", e);
+            logger.error("Failed to setup project browser", e);
         }
     }
 
@@ -353,7 +368,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         menuBarCoordinator.render();
 
         if (uiVisibilityState.getShowModelBrowser().get()) {
-            renderModelBrowser();
+            renderProjectBrowser();
         }
 
         if (uiVisibilityState.getShowPropertyPanel().get()) {
@@ -428,12 +443,24 @@ public class MainImGuiInterface implements ModelBrowserListener {
      */
     private void buildDefaultLayout(int dockspaceId) {
         var node = imgui.internal.ImGui.dockBuilderGetNode(dockspaceId);
-        if (node != null && node.isSplitNode()) {
+        boolean hasSavedLayout = node != null && node.isSplitNode();
+
+        com.openmason.main.omConfig config = new com.openmason.main.omConfig();
+        if (hasSavedLayout && config.isProjectBrowserLayoutMigrated()) {
             // Dockspace already has a saved layout from imgui.ini — don't override
             return;
         }
 
-        logger.info("No saved layout found — building default docking layout");
+        if (hasSavedLayout) {
+            // Saved layout predates the Model Browser → Project Browser rename,
+            // so it has no dock slot for the new window. Rebuild the default
+            // layout once so the browser lands in its bottom grid position.
+            logger.info("Migrating saved layout: rebuilding default so Project Browser docks at the bottom");
+        } else {
+            logger.info("No saved layout found — building default docking layout");
+        }
+        config.setProjectBrowserLayoutMigrated(true);
+        config.saveConfiguration();
 
         imgui.internal.ImGui.dockBuilderRemoveNode(dockspaceId);
         imgui.internal.ImGui.dockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags.PassthruCentralNode);
@@ -455,7 +482,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         imgui.internal.ImGui.dockBuilderDockWindow("Model Properties", dockLeft.get());
         imgui.internal.ImGui.dockBuilderDockWindow(RiggingPaneImGui.WINDOW_TITLE, dockLeft.get());
         imgui.internal.ImGui.dockBuilderDockWindow("3D Viewport", dockCenter.get());
-        imgui.internal.ImGui.dockBuilderDockWindow("Model Browser", dockBottom.get());
+        imgui.internal.ImGui.dockBuilderDockWindow(ProjectBrowserImGui.WINDOW_TITLE, dockBottom.get());
 
         imgui.internal.ImGui.dockBuilderFinish(dockspaceId);
 
@@ -463,33 +490,36 @@ public class MainImGuiInterface implements ModelBrowserListener {
     }
 
     /**
-     * Render model browser panel.
+     * Render project browser panel.
      */
-    private void renderModelBrowser() {
-        if (modelBrowserImGui != null) {
-            modelBrowserImGui.render();
+    private void renderProjectBrowser() {
+        if (projectBrowserImGui != null) {
+            projectBrowserImGui.render();
         }
     }
 
     // ===========================
-    // ModelBrowserListener Implementation (Observer Pattern)
+    // ProjectBrowserListener Implementation (Observer Pattern)
     // ===========================
 
     /** ModelOperationService.loadOMOModel handles the actual viewport load; this hook is for logging/UI sync. */
     @Override
-    public void onOMOSelected(OMOSelectedEvent event) {
+    public void onModelSelected(ModelSelectedEvent event) {
         logger.debug(".OMO selected: {}", event.entry().name());
     }
 
+    /** Single-click on a .OMT applies it to the currently loaded editable model. */
     @Override
-    public void onSBTSelected(SBTSelectedEvent event) {
+    public void onTextureSelected(TextureSelectedEvent event) {
         try {
-            if (viewport3D != null) {
-                viewport3D.setSelectedSBT(event.entry().filePath());
-                logger.debug(".SBT selected: {}", event.entry().name());
+            if (propertyPanelImGui != null) {
+                boolean applied = propertyPanelImGui.applyTextureToCurrentModel(event.entry().path());
+                if (!applied) {
+                    statusService.updateStatus("No editable model loaded — texture not applied");
+                }
             }
         } catch (Exception e) {
-            logger.error("Failed to handle SBT selection event", e);
+            logger.error("Failed to handle OMT selection event", e);
         }
     }
 
@@ -787,6 +817,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         if (projectService != null) {
             projectService.clearCurrentProject();
         }
+        refreshProjectBrowserRoot();
 
         logger.info("Editor state reset to defaults for new project");
     }
@@ -817,6 +848,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         } else {
             statusService.updateStatus("Failed to create project: " + ompFilePath);
         }
+        refreshProjectBrowserRoot();
         return success;
     }
 
@@ -833,6 +865,28 @@ public class MainImGuiInterface implements ModelBrowserListener {
             logger.info("Project loaded from hub: {}", ompFilePath);
         } else {
             statusService.updateStatus("Failed to open project: " + ompFilePath);
+        }
+        refreshProjectBrowserRoot();
+    }
+
+    /** Re-root the project browser after the current project path changed. */
+    private void refreshProjectBrowserRoot() {
+        if (projectBrowserImGui != null) {
+            projectBrowserImGui.getController().refreshRoot();
+        }
+    }
+
+    /**
+     * Release GPU-backed resources (project browser thumbnails, property panel
+     * Skija regions). Must run with a current GL context, before the
+     * SkijaContext is closed.
+     */
+    public void dispose() {
+        if (projectBrowserImGui != null) {
+            projectBrowserImGui.cleanup();
+        }
+        if (propertyPanelImGui != null) {
+            propertyPanelImGui.dispose();
         }
     }
 }

@@ -86,9 +86,8 @@ public class PreferencesPageRenderer {
     private final ImInt themeIndex = new ImInt();
     private final ImInt densityIndex = new ImInt();
 
-    // Assets ImGui state holders
-    private final imgui.type.ImString omoFolderInput = new imgui.type.ImString("", 512);
-    private final imgui.type.ImString sbtFolderInput = new imgui.type.ImString("", 512);
+    // Folders ImGui state holders
+    private final imgui.type.ImString projectsFolderInput = new imgui.type.ImString("", 512);
 
     // Dependencies
     private final PreferencesManager preferencesManager;
@@ -659,20 +658,13 @@ public class PreferencesPageRenderer {
     // ========================================
 
     private void renderAssetsPage() {
-        ImGuiComponents.renderSectionHeader("Asset Library Folders");
-        ImGui.textWrapped("The Model Browser scans these directories for .OMO models and .SBT textures. "
-                + "Changes are applied when you click OK or Apply.");
+        ImGuiComponents.renderSectionHeader("Projects Folder");
+        ImGui.textWrapped("The Project Hub scans this folder for projects, and new projects are "
+                + "created here by default. Changes are applied when you click OK or Apply.");
         ImGui.spacing();
 
-        ImGui.text(".OMO Folder");
         ImGui.pushItemWidth(-1);
-        ImGui.inputText("##omoFolder", omoFolderInput);
-        ImGui.popItemWidth();
-        ImGui.spacing();
-
-        ImGui.text(".SBT Folder");
-        ImGui.pushItemWidth(-1);
-        ImGui.inputText("##sbtFolder", sbtFolderInput);
+        ImGui.inputText("##projectsFolder", projectsFolderInput);
         ImGui.popItemWidth();
         ImGui.spacing();
 
@@ -689,23 +681,18 @@ public class PreferencesPageRenderer {
 
     private void syncAssetsState() {
         com.openmason.main.omConfig config = new com.openmason.main.omConfig();
-        omoFolderInput.set(config.getOMOFolder().toString());
-        sbtFolderInput.set(config.getSBTFolder().toString());
+        projectsFolderInput.set(config.getProjectsBaseFolder().toString());
     }
 
     private void applyAssetsSettings() {
         com.openmason.main.omConfig config = new com.openmason.main.omConfig();
-        config.setOMOFolder(omoFolderInput.get());
-        config.setSBTFolder(sbtFolderInput.get());
+        config.setProjectsBaseFolder(projectsFolderInput.get());
         config.saveConfiguration();
-        logger.debug("Asset folders saved: omo={}, sbt={}", omoFolderInput.get(), sbtFolderInput.get());
+        logger.debug("Projects folder saved: {}", projectsFolderInput.get());
     }
 
     private void resetAssetsToDefaults() {
-        omoFolderInput.set(java.nio.file.Paths.get(System.getProperty("user.dir"),
-                "Dev Working/DevTextures/Blocks/OMT/OMOs").toString());
-        sbtFolderInput.set(java.nio.file.Paths.get(System.getProperty("user.dir"),
-                "Dev Working/DevTextures/Items/SBTs").toString());
+        projectsFolderInput.set(com.openmason.main.AppPaths.defaultProjectsDir().toString());
     }
 
     // ========================================

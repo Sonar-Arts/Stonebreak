@@ -38,6 +38,7 @@ public class FileMenuHandler {
     private Runnable exitCallback;
 
     private ProjectService projectService;
+    private Runnable onProjectPathChanged;
     private UIVisibilityState uiVisibilityState;
     private RecentProjectsService recentProjectsService;
 
@@ -118,6 +119,20 @@ public class FileMenuHandler {
      */
     public void setRecentProjectsService(RecentProjectsService recentProjectsService) {
         this.recentProjectsService = recentProjectsService;
+    }
+
+    /**
+     * Set the callback fired whenever the current project path changes
+     * (open, save-as), so dependents like the Project Browser can re-root.
+     */
+    public void setOnProjectPathChanged(Runnable callback) {
+        this.onProjectPathChanged = callback;
+    }
+
+    private void notifyProjectPathChanged() {
+        if (onProjectPathChanged != null) {
+            onProjectPathChanged.run();
+        }
     }
 
     /**
@@ -216,6 +231,7 @@ public class FileMenuHandler {
             if (success) {
                 statusService.updateStatus("Project opened: " + projectService.getCurrentProjectName());
                 addToRecentProjects(projectService.getCurrentProjectName(), filePath);
+                notifyProjectPathChanged();
             } else {
                 statusService.updateStatus("Failed to open project");
             }
@@ -263,6 +279,7 @@ public class FileMenuHandler {
             if (success) {
                 statusService.updateStatus("Project saved as: " + projectService.getCurrentProjectName());
                 addToRecentProjects(projectService.getCurrentProjectName(), projectService.getCurrentProjectPath());
+                notifyProjectPathChanged();
             } else {
                 statusService.updateStatus("Failed to save project");
             }

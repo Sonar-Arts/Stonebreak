@@ -816,6 +816,18 @@ public class ModelPartManager implements IModelPartManager {
         return addPartFromGeometry(name, geometry, new Vector3f(0, 0, 0));
     }
 
+    /**
+     * Force a combined-mesh rebuild from the current part-local geometry.
+     *
+     * <p>Viewport vertex/edge/face edits back-propagate into part geometry via
+     * {@link #syncPartVertexFromWorldPos} without triggering a rebuild, so
+     * downstream part-consistent snapshots (used by serialization) can go
+     * stale. Call this before reading such a snapshot to bring it current.
+     */
+    public void refreshCombinedMesh() {
+        rebuildCombinedMesh();
+    }
+
     // ========== Internal ==========
 
     /**
