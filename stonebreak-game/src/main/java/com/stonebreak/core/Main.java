@@ -194,43 +194,68 @@ public class Main {
         refreshMonitorHz();
     }
 
+    /** True when GLFW selected the native Wayland backend at init. */
+    private static boolean isWayland() {
+        return glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
+    }
+
     /**
      * Sets {@link #monitorRefreshHz} from the monitor the window currently
      * occupies (largest window/monitor overlap), rather than always the primary
      * monitor — so the VSync frame cap matches the display the game is shown on
-     * in multi-monitor setups. Falls back to the primary monitor when the window
-     * position is unavailable (e.g. some Wayland configurations).
+     * in multi-monitor setups.
+     *
+     * <p>On Wayland the compositor never exposes window positions
+     * (glfwGetWindowPos would just emit GLFW_FEATURE_UNAVAILABLE and return
+     * 0,0), so the occupied monitor cannot be determined. There we cap at the
+     * fastest connected display instead: an over-cap is harmless, while capping
+     * a 144 Hz display at a slower primary's 60 Hz would visibly degrade.
      */
     private static void refreshMonitorHz() {
         if (instance == null || instance.window == 0) return;
         try (MemoryStack stack = stackPush()) {
-            IntBuffer wx = stack.mallocInt(1);
-            IntBuffer wy = stack.mallocInt(1);
-            IntBuffer ww = stack.mallocInt(1);
-            IntBuffer wh = stack.mallocInt(1);
-            glfwGetWindowPos(instance.window, wx, wy);
-            glfwGetWindowSize(instance.window, ww, wh);
-            int winX = wx.get(0), winY = wy.get(0), winW = ww.get(0), winH = wh.get(0);
-
             long bestMonitor = glfwGetPrimaryMonitor();
-            long bestArea = -1;
             PointerBuffer monitors = glfwGetMonitors();
-            if (monitors != null) {
-                IntBuffer mx = stack.mallocInt(1);
-                IntBuffer my = stack.mallocInt(1);
-                for (int i = 0; i < monitors.limit(); i++) {
-                    long mon = monitors.get(i);
-                    GLFWVidMode mode = glfwGetVideoMode(mon);
-                    if (mode == null) continue;
-                    glfwGetMonitorPos(mon, mx, my);
-                    int monX = mx.get(0), monY = my.get(0);
-                    // Overlap area between the window rect and this monitor rect.
-                    int ox = Math.max(0, Math.min(winX + winW, monX + mode.width())  - Math.max(winX, monX));
-                    int oy = Math.max(0, Math.min(winY + winH, monY + mode.height()) - Math.max(winY, monY));
-                    long area = (long) ox * oy;
-                    if (area > bestArea) {
-                        bestArea = area;
-                        bestMonitor = mon;
+
+            if (isWayland()) {
+                int bestHz = -1;
+                if (monitors != null) {
+                    for (int i = 0; i < monitors.limit(); i++) {
+                        long mon = monitors.get(i);
+                        GLFWVidMode mode = glfwGetVideoMode(mon);
+                        if (mode != null && mode.refreshRate() > bestHz) {
+                            bestHz = mode.refreshRate();
+                            bestMonitor = mon;
+                        }
+                    }
+                }
+            } else {
+                IntBuffer wx = stack.mallocInt(1);
+                IntBuffer wy = stack.mallocInt(1);
+                IntBuffer ww = stack.mallocInt(1);
+                IntBuffer wh = stack.mallocInt(1);
+                glfwGetWindowPos(instance.window, wx, wy);
+                glfwGetWindowSize(instance.window, ww, wh);
+                int winX = wx.get(0), winY = wy.get(0), winW = ww.get(0), winH = wh.get(0);
+
+                long bestArea = -1;
+                if (monitors != null) {
+                    IntBuffer mx = stack.mallocInt(1);
+                    IntBuffer my = stack.mallocInt(1);
+                    for (int i = 0; i < monitors.limit(); i++) {
+                        long mon = monitors.get(i);
+                        GLFWVidMode mode = glfwGetVideoMode(mon);
+                        if (mode == null) continue;
+                        glfwGetMonitorPos(mon, mx, my);
+                        int monX = mx.get(0), monY = my.get(0);
+                        // Overlap area between the window rect and this monitor rect.
+                        int ox = Math.max(0, Math.min(winX + winW, monX + mode.width())  - Math.max(winX, monX));
+                        int oy = Math.max(0, Math.min(winY + winH, monY + mode.height()) - Math.max(winY, monY));
+                        long area = (long) ox * oy;
+                        if (area > bestArea) {
+                            bestArea = area;
+                            bestMonitor = mon;
+                        }
                     }
                 }
             }
@@ -278,6 +303,14 @@ public class Main {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
 
+        System.out.println("[Display] GLFW platform: " + switch (glfwGetPlatform()) {
+            case GLFW_PLATFORM_WAYLAND -> "Wayland";
+            case GLFW_PLATFORM_X11 -> "X11";
+            case GLFW_PLATFORM_WIN32 -> "Win32";
+            case GLFW_PLATFORM_COCOA -> "Cocoa";
+            default -> "unknown";
+        });
+
         // Configure GLFW
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
@@ -288,6 +321,10 @@ public class Main {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
+
+        // Wayland identifies applications by app_id (taskbar grouping, icon,
+        // window rules); ignored on other platforms.
+        glfwWindowHintString(GLFW_WAYLAND_APP_ID, "stonebreak");
 
         // Create the window
         String title = "Stonebreak";
@@ -379,7 +416,9 @@ public class Main {
         glfwSetWindowSizeCallback(window, (win, w, h) -> updateCursorScale());
 
         // Window moved -> it may now be on a different monitor; refresh the
-        // VSync refresh-rate target to match the current display.
+        // VSync refresh-rate target to match the current display. (Never fires
+        // on Wayland — there refreshMonitorHz caps at the fastest monitor
+        // instead, so no per-move refresh is needed.)
         glfwSetWindowPosCallback(window, (win, x, y) -> refreshMonitorHz());
 
         // Setup mouse button callback
@@ -559,29 +598,29 @@ public class Main {
             running = false;
         });
 
-        // Get the thread stack and push a new frame
-        try (MemoryStack stack = stackPush()) {
-            IntBuffer pWidth = stack.mallocInt(1);
-            IntBuffer pHeight = stack.mallocInt(1);
-            
-            // Get the window size passed to glfwCreateWindow
-            glfwGetWindowSize(window, pWidth, pHeight);
-            
-            // Get the resolution of the primary monitor
-            GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+        // Center the window. Wayland forbids clients from positioning their own
+        // windows (glfwSetWindowPos would only emit GLFW_FEATURE_UNAVAILABLE);
+        // the compositor decides placement there, so skip the attempt entirely.
+        if (!isWayland()) {
+            try (MemoryStack stack = stackPush()) {
+                IntBuffer pWidth = stack.mallocInt(1);
+                IntBuffer pHeight = stack.mallocInt(1);
 
-            // Center the window
-            if (vidmode != null) {
-                glfwSetWindowPos(
-                    window,
-                    (vidmode.width() - pWidth.get(0)) / 2,
-                    (vidmode.height() - pHeight.get(0)) / 2
-                );
-            } else {
-                // Fallback or log error if vidmode is null
-                System.err.println("Could not get video mode for primary monitor. Window will not be centered.");
-                // Optionally, center based on some default or last known screen size
-                // For now, we just don't center it.
+                // Get the window size passed to glfwCreateWindow
+                glfwGetWindowSize(window, pWidth, pHeight);
+
+                // Get the resolution of the primary monitor
+                GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+
+                if (vidmode != null) {
+                    glfwSetWindowPos(
+                        window,
+                        (vidmode.width() - pWidth.get(0)) / 2,
+                        (vidmode.height() - pHeight.get(0)) / 2
+                    );
+                } else {
+                    System.err.println("Could not get video mode for primary monitor. Window will not be centered.");
+                }
             }
         }
 
@@ -591,6 +630,10 @@ public class Main {
         // half-rate fallback the driver's swap-interval=1 imposes on missed
         // frames. Kept in sync as the window moves via the window-pos callback.
         refreshMonitorHz();
+
+        // Monitor hot-plug changes both the monitor list and possibly the
+        // fastest available refresh rate; re-derive the VSync cap.
+        glfwSetMonitorCallback((mon, event) -> refreshMonitorHz());
 
         // Make the OpenGL context current
         glfwMakeContextCurrent(window);
@@ -1193,6 +1236,10 @@ public class Main {
         Game.forceGCAndReport("Final cleanup");
 
         // Terminate GLFW and free the error callback
+        GLFWMonitorCallback monitorCallback = glfwSetMonitorCallback(null);
+        if (monitorCallback != null) {
+            monitorCallback.free();
+        }
         glfwTerminate();
         GLFWErrorCallback prevCallback = glfwSetErrorCallback(null);
         if (prevCallback != null) {

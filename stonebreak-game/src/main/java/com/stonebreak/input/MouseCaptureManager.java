@@ -88,20 +88,31 @@ public class MouseCaptureManager {
     private void captureMouse() {
         // Check if window is focused
         boolean windowFocused = glfwGetWindowAttrib(window, GLFW_FOCUSED) == GLFW_TRUE;
-        
+
         if (!windowFocused) {
             glfwRequestWindowAttention(window);
-            glfwFocusWindow(window);
-            
-            // Give a small delay for the focus to take effect
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            // Wayland compositors do not let clients steal input focus;
+            // glfwFocusWindow would only emit GLFW_FEATURE_UNAVAILABLE (the
+            // attention request above is the supported path there).
+            if (glfwGetPlatform() != GLFW_PLATFORM_WAYLAND) {
+                glfwFocusWindow(window);
+
+                // Give a small delay for the focus to take effect
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             }
         }
-        
+
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        // Unfiltered deltas for camera look — keeps mouse feel consistent
+        // across backends (on Wayland the accelerated relative-pointer stream
+        // is used otherwise).
+        if (glfwRawMouseMotionSupported()) {
+            glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+        }
         isMouseCaptured = true;
         firstMouseMovement = true; // Reset to prevent jump on capture
         
