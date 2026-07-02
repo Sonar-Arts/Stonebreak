@@ -1,9 +1,11 @@
 package com.stonebreak.rendering.models.entities;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
+import com.openmason.engine.format.oma.AnimLayering;
 import com.openmason.engine.format.oma.AnimSampler;
 import com.openmason.engine.format.oma.ParsedAnimClip;
 import com.openmason.engine.format.oma.ParsedAnimTrack;
+import com.stonebreak.mobs.sbe.AnimState;
 import com.stonebreak.mobs.sbe.MaterialImage;
 import com.stonebreak.mobs.sbe.SbeEntityAsset;
 import com.stonebreak.mobs.sbe.SbeFace;
@@ -23,9 +25,11 @@ import org.lwjgl.opengl.GL30;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.lwjgl.system.MemoryUtil.memAllocFloat;
@@ -212,19 +216,31 @@ public final class SbeEntityRenderer {
                        Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                        com.stonebreak.world.World world, Vector3f cameraPos,
                        float headYawDeg, float headPitchDeg) {
+        render(asset, variantName, AnimState.single(stateName, animationTime), position,
+                yawDegrees, scale, viewMatrix, projectionMatrix, world, cameraPos,
+                headYawDeg, headPitchDeg);
+    }
+
+    /**
+     * Layered variant of {@link #render}: plays the {@link AnimState}'s base
+     * clip plus any active overlays, resolving each overlay's part mask,
+     * fades, and priority from its clip metadata.
+     */
+    public void render(SbeEntityAsset asset, String variantName, AnimState anim,
+                       Vector3f position, float yawDegrees,
+                       Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                       com.stonebreak.world.World world, Vector3f cameraPos,
+                       float headYawDeg, float headPitchDeg) {
         if (!initialized || asset == null) return;
 
         SbeModelGeometry geometry = asset.geometryFor(variantName);
         VariantGpu gpu = resolveVariantGpu(asset, variantName);
         if (geometry == null || gpu == null) return;
 
-        ParsedAnimClip clip = asset.clipFor(stateName);
-        float clipTime = 0f;
-        Map<String, ParsedAnimTrack> tracksById = Collections.emptyMap();
-        if (clip != null) {
-            clipTime = AnimSampler.wrapTime(animationTime, clip.duration(), clip.loop());
-            tracksById = clip.trackByPartId();
-        }
+        ResolvedAnim resolved = resolveAnim(asset, anim);
+        ParsedAnimClip clip = resolved.baseClip();
+        float clipTime = resolved.baseTime();
+        Map<String, ParsedAnimTrack> tracksById = resolved.baseTracks();
 
         // Save GL state.
         int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
@@ -264,7 +280,7 @@ public final class SbeEntityRenderer {
         GL30.glBindVertexArray(gpu.vao);
 
         String headPartId = (headYawDeg != 0f || headPitchDeg != 0f) ? headPartId(geometry) : null;
-        forEachPartMatrix(geometry, clip, clipTime, tracksById, base,
+        forEachPartMatrix(geometry, clip, clipTime, tracksById, resolved.overlays(), base,
                 headPartId, headYawDeg, headPitchDeg, (partMatrix, part) -> {
             shader.setUniform("model", partMatrix);
             for (SbeFace face : part.faces()) {
@@ -346,7 +362,7 @@ public final class SbeEntityRenderer {
 
         GL30.glBindVertexArray(gpu.vao);
 
-        forEachPartMatrix(geometry, clip, clipTime, tracksById, base,
+        forEachPartMatrix(geometry, clip, clipTime, tracksById, List.of(), base,
                 null, 0f, 0f, (partMatrix, part) -> {
             wireShader.setUniform("model", partMatrix);
             for (SbeFace face : part.faces()) {
@@ -394,19 +410,27 @@ public final class SbeEntityRenderer {
                               float animationTime, Vector3f position, float yawDegrees,
                               Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                               Vector4f color, float headYawDeg, float headPitchDeg) {
+        renderColored(asset, variantName, AnimState.single(stateName, animationTime), position,
+                yawDegrees, scale, viewMatrix, projectionMatrix, color, headYawDeg, headPitchDeg);
+    }
+
+    /** Layered flat-coloured variant — see {@link #render(SbeEntityAsset, String, AnimState,
+     * Vector3f, float, Vector3f, Matrix4f, Matrix4f, com.stonebreak.world.World, Vector3f,
+     * float, float)}. */
+    public void renderColored(SbeEntityAsset asset, String variantName, AnimState anim,
+                              Vector3f position, float yawDegrees,
+                              Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                              Vector4f color, float headYawDeg, float headPitchDeg) {
         if (!initialized || asset == null || wireShader == null) return;
 
         SbeModelGeometry geometry = asset.geometryFor(variantName);
         VariantGpu gpu = resolveVariantGpu(asset, variantName);
         if (geometry == null || gpu == null) return;
 
-        ParsedAnimClip clip = asset.clipFor(stateName);
-        float clipTime = 0f;
-        Map<String, ParsedAnimTrack> tracksById = Collections.emptyMap();
-        if (clip != null) {
-            clipTime = AnimSampler.wrapTime(animationTime, clip.duration(), clip.loop());
-            tracksById = clip.trackByPartId();
-        }
+        ResolvedAnim resolved = resolveAnim(asset, anim);
+        ParsedAnimClip clip = resolved.baseClip();
+        float clipTime = resolved.baseTime();
+        Map<String, ParsedAnimTrack> tracksById = resolved.baseTracks();
 
         // Save GL state.
         int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
@@ -431,7 +455,7 @@ public final class SbeEntityRenderer {
         GL30.glBindVertexArray(gpu.vao);
 
         String headPartId = (headYawDeg != 0f || headPitchDeg != 0f) ? headPartId(geometry) : null;
-        forEachPartMatrix(geometry, clip, clipTime, tracksById, base,
+        forEachPartMatrix(geometry, clip, clipTime, tracksById, resolved.overlays(), base,
                 headPartId, headYawDeg, headPitchDeg, (partMatrix, part) -> {
             wireShader.setUniform("model", partMatrix);
             for (SbeFace face : part.faces()) {
@@ -457,19 +481,63 @@ public final class SbeEntityRenderer {
     }
 
     /**
+     * A render-ready animation frame: the base clip with its wrapped time and
+     * track lookup, plus the active overlay frames (clip + wrapped time +
+     * effective weight) for {@link AnimLayering}.
+     */
+    private record ResolvedAnim(ParsedAnimClip baseClip, float baseTime,
+                                Map<String, ParsedAnimTrack> baseTracks,
+                                List<AnimLayering.OverlayFrame> overlays) {}
+
+    /**
+     * Resolve an {@link AnimState} against the asset's clips. Overlay weights
+     * combine the caller's envelope with the clip's own fade-in/out
+     * ({@link AnimLayering#clipWeight}); zero-weight or unknown overlays are
+     * dropped so the per-part loop stays on its fast path.
+     */
+    private static ResolvedAnim resolveAnim(SbeEntityAsset asset, AnimState anim) {
+        ParsedAnimClip baseClip = anim != null ? asset.clipFor(anim.baseState()) : null;
+        float baseTime = 0f;
+        Map<String, ParsedAnimTrack> baseTracks = Collections.emptyMap();
+        if (baseClip != null) {
+            baseTime = AnimSampler.wrapTime(anim.baseTime(), baseClip.duration(), baseClip.loop());
+            baseTracks = baseClip.trackByPartId();
+        }
+
+        List<AnimLayering.OverlayFrame> overlays = List.of();
+        if (anim != null && anim.hasOverlays()) {
+            overlays = new ArrayList<>(anim.overlays().size());
+            for (AnimState.Overlay overlay : anim.overlays()) {
+                ParsedAnimClip clip = asset.clipFor(overlay.stateName());
+                if (clip == null) continue;
+                float weight = overlay.weight() * AnimLayering.clipWeight(clip, overlay.time());
+                if (weight <= 0f) continue;
+                float wrapped = AnimSampler.wrapTime(overlay.time(), clip.duration(), clip.loop());
+                overlays.add(new AnimLayering.OverlayFrame(clip, wrapped, weight));
+            }
+        }
+        return new ResolvedAnim(baseClip, baseTime, baseTracks, overlays);
+    }
+
+    /**
      * Walks the geometry's parts, computing each part's world matrix from the
      * base transform plus its animation delta ({@code base * M_anim * M_rest^-1};
      * un-animated parts use {@code base} alone), and hands it to {@code consumer}.
-     * Shared by {@link #render}, {@link #renderWireframe} and
-     * {@link #renderColored} so the per-part transform maths live in one place.
+     * When overlays are active, the per-part pose is composed via
+     * {@link AnimLayering#blendPart} — masked parts blend toward the overlay's
+     * pose by its weight; unmasked parts keep the base pose. Shared by
+     * {@link #render}, {@link #renderWireframe} and {@link #renderColored} so
+     * the per-part transform maths live in one place.
      */
     private static void forEachPartMatrix(SbeModelGeometry geometry, ParsedAnimClip clip,
                                           float clipTime, Map<String, ParsedAnimTrack> tracksById,
+                                          List<AnimLayering.OverlayFrame> overlays,
                                           Matrix4f base, String headPartId,
                                           float headYawDeg, float headPitchDeg,
                                           PartConsumer consumer) {
         Matrix4f partMatrix = new Matrix4f();
         Matrix4f restInverse = new Matrix4f();
+        boolean layered = overlays != null && !overlays.isEmpty();
         for (SbePart part : geometry.parts()) {
             // Parts are model-root parts; the base matrix is the parent.
             ParsedAnimTrack track = tracksById.get(part.id());
@@ -480,6 +548,7 @@ public final class SbeEntityRenderer {
             // The head part may receive an extra turn about its neck pivot, in the
             // model's local frame (between base and the part transform), so the head
             // can track the cursor while the body faces the movement direction.
+            // This composes at the parent level and is orthogonal to pose layering.
             Matrix4f parent = base;
             if (headPartId != null && headPartId.equals(part.id())) {
                 Vector3f rp = part.restPos();
@@ -492,10 +561,24 @@ public final class SbeEntityRenderer {
                         .translate(-px, -py, -pz);
             }
 
-            if (track == null) {
+            AnimSampler.PartPose pose;
+            if (layered) {
+                // Rest pose references the part's own vectors — no copies. blendPart
+                // returns this same instance when nothing animates the part.
+                AnimSampler.PartPose restPose = new AnimSampler.PartPose(
+                        part.restPos(), part.restRot(), part.restScale());
+                pose = AnimLayering.blendPart(restPose, track, clipTime, overlays,
+                        part.id(), part.name());
+                if (pose == restPose && track == null) {
+                    pose = null; // nothing touches this part — fast path below
+                }
+            } else {
+                pose = track != null ? AnimSampler.sample(track, clipTime) : null;
+            }
+
+            if (pose == null) {
                 partMatrix.set(parent);
             } else {
-                AnimSampler.PartPose pose = AnimSampler.sample(track, clipTime);
                 Vector3f origin = part.restOrigin();
 
                 // M_rest^-1

@@ -45,6 +45,13 @@ public final class AnimationEditorImGui {
     public void hide() { visible.set(false); controller.endSession(); }
     public boolean isVisible() { return visible.get(); }
 
+    /** Release the panels' Mortar regions (FBOs). Call before Skija teardown. */
+    public void dispose() {
+        fileBar.close();
+        transport.close();
+        partList.close();
+    }
+
     public void bindViewport(ModelPartManager partManager) {
         controller.bindViewport(partManager);
     }
@@ -92,6 +99,7 @@ public final class AnimationEditorImGui {
         if (!ImGui.isWindowFocused() && !ImGui.isWindowHovered()) return;
 
         boolean ctrl = ImGui.getIO().getKeyCtrl();
+        boolean shift = ImGui.getIO().getKeyShift();
         if (ctrl && ImGui.isKeyPressed(ImGuiKey.Z)) {
             controller.undo();
         } else if (ctrl && ImGui.isKeyPressed(ImGuiKey.Y)) {
@@ -99,7 +107,24 @@ public final class AnimationEditorImGui {
         } else if (ctrl && ImGui.isKeyPressed(ImGuiKey.S)) {
             if (controller.state().filePath() != null) controller.save();
             else fileBar.promptSaveAs();
+        } else if (ctrl && ImGui.isKeyPressed(ImGuiKey.C)) {
+            controller.copySelection();
+        } else if (ctrl && ImGui.isKeyPressed(ImGuiKey.V)) {
+            controller.pasteAtPlayhead();
         }
+
+        // Everything below is a bare-key shortcut — suppress while a text
+        // field owns the keyboard so typing doesn't trigger edits.
+        if (ImGui.getIO().getWantTextInput()) return;
+
+        int stride = shift ? 5 : 1;
+        if (ImGui.isKeyPressed(ImGuiKey.LeftArrow)) {
+            controller.stepFrames(-stride);
+        }
+        if (ImGui.isKeyPressed(ImGuiKey.RightArrow)) {
+            controller.stepFrames(stride);
+        }
+
         if (ImGui.isKeyPressed(ImGuiKey.Space)) {
             controller.state().setPlaying(!controller.state().playing());
         }
@@ -108,11 +133,15 @@ public final class AnimationEditorImGui {
             if (partId != null) controller.insertKeyframeAtPlayhead(partId);
         }
         if (ImGui.isKeyPressed(ImGuiKey.Delete)) {
-            String partId = controller.state().selectedPartId();
-            int idx = controller.state().selectedKeyframeIndex();
-            if (partId != null && idx >= 0) {
-                controller.deleteKeyframe(partId, idx);
-                controller.state().setSelectedKeyframeIndex(-1);
+            if (controller.state().selection().size() > 1) {
+                controller.deleteSelectedKeyframes();
+            } else {
+                String partId = controller.state().selectedPartId();
+                int idx = controller.state().selectedKeyframeIndex();
+                if (partId != null && idx >= 0) {
+                    controller.deleteKeyframe(partId, idx);
+                    controller.state().setSelectedKeyframeIndex(-1);
+                }
             }
         }
     }

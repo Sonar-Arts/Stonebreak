@@ -97,8 +97,85 @@ public final class KeyframeCommands {
     }
 
     /**
+     * Delete an entire track. The removed track (keyframes + name hint) is
+     * snapshotted so undo can recreate it. Re-insertion appends at the end of
+     * the clip's track map — ordering is presentational only.
+     */
+    public static Command deleteTrack(AnimationClip clip, String partId) {
+        return new Command() {
+            private java.util.List<Keyframe> removedKeyframes;
+            private String removedNameHint;
+
+            @Override
+            public void execute() {
+                Track track = clip.trackFor(partId);
+                if (track == null) return;
+                removedKeyframes = new java.util.ArrayList<>(track.keyframes());
+                removedNameHint = track.partNameHint();
+                clip.removeTrack(partId);
+            }
+
+            @Override
+            public void undo() {
+                if (removedKeyframes == null) return;
+                Track track = clip.ensureTrack(partId);
+                track.setPartNameHint(removedNameHint);
+                for (Keyframe kf : removedKeyframes) {
+                    track.upsert(kf);
+                }
+            }
+
+            @Override
+            public String getDescription() {
+                return "Delete track " + partId;
+            }
+        };
+    }
+
+    /**
+     * Replace a track's entire keyframe list with a new one; undo restores the
+     * old list wholesale. The safe primitive for bulk moves (timeline drags,
+     * paste) where per-keyframe time-based undo would be ambiguous.
+     */
+    public static Command replaceTrackKeyframes(AnimationClip clip, String partId,
+                                                java.util.List<Keyframe> before,
+                                                java.util.List<Keyframe> after) {
+        java.util.List<Keyframe> beforeCopy = java.util.List.copyOf(before);
+        java.util.List<Keyframe> afterCopy = java.util.List.copyOf(after);
+        return new Command() {
+            private void apply(java.util.List<Keyframe> target) {
+                Track track = clip.ensureTrack(partId);
+                track.keyframes().clear();
+                for (Keyframe kf : target) {
+                    track.upsert(kf);
+                }
+                if (track.isEmpty()) {
+                    clip.removeTrack(partId);
+                }
+            }
+
+            @Override
+            public void execute() {
+                apply(afterCopy);
+            }
+
+            @Override
+            public void undo() {
+                apply(beforeCopy);
+            }
+
+            @Override
+            public String getDescription() {
+                return "Move keyframes on " + partId;
+            }
+        };
+    }
+
+    /**
      * Replace the keyframe at {@code index} with a new pose at the same or
-     * different time. Used by the inspector and by drag-on-timeline.
+     * different time. Used by the inspector for single-keyframe edits.
+     * <p>Undo locates the keyframe by its new time — do NOT use for bulk moves;
+     * use {@link #replaceTrackKeyframes} instead.
      */
     public static Command edit(AnimationClip clip, String partId, int index, Keyframe newKf) {
         return new Command() {

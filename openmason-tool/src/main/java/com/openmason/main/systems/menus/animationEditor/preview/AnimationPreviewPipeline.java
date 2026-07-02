@@ -82,6 +82,16 @@ public final class AnimationPreviewPipeline {
     }
 
     /**
+     * Drop the rest-pose snapshot WITHOUT writing it back. For when the model
+     * was replaced under the editor — the snapshotted parts no longer exist,
+     * so restoring them would corrupt the new model's transforms.
+     */
+    public void abandon() {
+        restPose.clear();
+        captured = false;
+    }
+
+    /**
      * Restore the rest pose snapshot. Idempotent.
      */
     public void release() {

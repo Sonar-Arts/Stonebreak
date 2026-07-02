@@ -55,9 +55,10 @@ public final class OMAClipIO {
     /**
      * For each track whose partId is missing on the current model, look up by
      * name hint and rewrite the track's key. Tracks with no match are kept as
-     * orphans so the user can rebind manually.
+     * orphans so the user can rebind manually. Public so the controller can
+     * re-run it when the active model changes while the editor is open.
      */
-    private static void rebindTracksByName(AnimationClip clip, ModelPartManager partManager) {
+    public static void rebindTracksByName(AnimationClip clip, ModelPartManager partManager) {
         if (partManager == null) return;
         Map<String, Track> remap = new LinkedHashMap<>();
         for (var entry : new ArrayList<>(clip.tracks().entrySet())) {

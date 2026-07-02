@@ -119,6 +119,8 @@ public class Player {
     private float bodyAnimationTime = 0f;
     private float attackEventTime = 0f;  // seconds since attack animation started
     private float jumpEventTime = 0f;    // seconds since jump started
+    private final com.stonebreak.mobs.sbe.OverlayAnimState attackOverlay =
+            new com.stonebreak.mobs.sbe.OverlayAnimState();
     private static final float WALK_SPEED_THRESHOLD = 0.5f; // blocks/frame
     // Third-person body facing + head look angles. Decoupled from the first-person
     // camera: the camera only supplies a look yaw/pitch; this component decides how
@@ -279,6 +281,9 @@ public class Player {
         bodyAnimationTime += dt;
         if (attack.isAttacking()) attackEventTime += dt; else attackEventTime = 0f;
         if (!state.isOnGround()) jumpEventTime += dt; else jumpEventTime = 0f;
+        // Attack overlay envelope: attack plays on top of the locomotion clip,
+        // masked to the parts the attack clip owns, with fade in/out.
+        attackOverlay.update(dt, attack.isAttacking());
 
         // Third-person body faces movement / look direction; the camera only
         // supplies the look yaw, converted from its front vector into model space.
@@ -482,24 +487,39 @@ public class Player {
     public float getBodyAnimationTime() { return bodyAnimationTime; }
 
     /**
-     * Animation time to feed for one-shot clips (Attacking, Jumping).
-     * Resets when the triggering condition clears, so the clip restarts on the
-     * next event — matching the chicken wing-flap pattern.
+     * Animation time to feed for one-shot BASE clips (Jumping). Attack is no
+     * longer part of the base state — it plays as an overlay with its own
+     * clock (see {@link #getAttackOverlay()}).
      */
     public float getBodyEventTime() {
-        if (attack.isAttacking()) return attackEventTime;
         if (!state.isOnGround()) return jumpEventTime;
         return bodyAnimationTime;
     }
 
-    public com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState getMovementState() {
-        if (attack.isAttacking()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.ATTACKING;
+    /**
+     * The base locomotion state: JUMPING &gt; WALKING &gt; IDLE. Attacking is
+     * NOT considered — it renders as an overlay on top of this, so the legs
+     * keep walking mid-swing.
+     */
+    public com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState getBaseMovementState() {
         if (!state.isOnGround()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.JUMPING;
         Vector3f vel = state.getVelocity();
         float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
         if (horizSpeed > WALK_SPEED_THRESHOLD) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.WALKING;
         return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.IDLE;
     }
+
+    /**
+     * Single collapsed state, kept for callers that predate animation mixing
+     * (attack still wins here).
+     */
+    public com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState getMovementState() {
+        if (attack.isAttacking()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.ATTACKING;
+        return getBaseMovementState();
+    }
+
+    /** Envelope tracker for the attack overlay animation (time + fade weight). */
+    public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return attackOverlay; }
 
     /** Returns the melee damage for the player's currently held item (1.0 for bare fist). */
     public float getAttackDamage() {

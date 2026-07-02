@@ -2,6 +2,7 @@ package com.openmason.main.systems.menus.animationEditor.panels;
 
 import com.openmason.main.systems.menus.animationEditor.controller.AnimationEditorController;
 import com.openmason.main.systems.menus.animationEditor.data.AnimationClip;
+import com.openmason.main.systems.menus.animationEditor.data.Easing;
 import com.openmason.main.systems.menus.animationEditor.data.Keyframe;
 import com.openmason.main.systems.menus.animationEditor.data.Track;
 import imgui.ImGui;
@@ -37,12 +38,17 @@ public final class KeyframeInspectorPanel {
     // *before* re-rendering the widget on the current frame.
     private boolean nameActivePrev, fpsActivePrev, durationActivePrev;
 
+    private final LayerPanel layerPanel;
+
     public KeyframeInspectorPanel(AnimationEditorController controller) {
         this.controller = controller;
+        this.layerPanel = new LayerPanel(controller);
     }
 
     public void render() {
         renderClipMeta();
+        ImGui.spacing();
+        layerPanel.render();
         ImGui.spacing();
         renderSelectedKeyframe();
     }
@@ -91,6 +97,11 @@ public final class KeyframeInspectorPanel {
             return;
         }
 
+        int selectionCount = controller.state().selection().size();
+        if (selectionCount > 1) {
+            ImGui.textDisabled("(" + selectionCount + " selected — pose fields edit the primary)");
+        }
+
         Keyframe kf = track.get(kfIdx);
         if (kf != lastSnapshot) {
             snapshotInto(kf);
@@ -103,7 +114,7 @@ public final class KeyframeInspectorPanel {
         if (ImGui.inputFloat3("Rotation", kfRotArr)) changed = true;
         if (ImGui.inputFloat3("Scale", kfScaleArr)) changed = true;
 
-        ImGui.textDisabled("Easing: " + kf.easing().name());
+        renderEasingCombo(kf, selectionCount);
 
         if (changed) {
             controller.editKeyframe(partId, kfIdx, new Keyframe(
@@ -115,11 +126,33 @@ public final class KeyframeInspectorPanel {
         }
 
         ImGui.spacing();
-        if (ImGui.button("Delete Keyframe")) {
-            controller.deleteKeyframe(partId, kfIdx);
-            controller.state().setSelectedKeyframeIndex(-1);
+        if (ImGui.button(selectionCount > 1 ? "Delete Selected (" + selectionCount + ")" : "Delete Keyframe")) {
+            if (selectionCount > 1) {
+                controller.deleteSelectedKeyframes();
+            } else {
+                controller.deleteKeyframe(partId, kfIdx);
+                controller.state().setSelectedKeyframeIndex(-1);
+            }
         }
-        AnimUI.tooltip("Remove this keyframe (Delete).");
+        AnimUI.tooltip("Remove the selected keyframe(s) (Delete).");
+    }
+
+    /**
+     * Easing dropdown. With a multi-selection the change applies to every
+     * selected keyframe as one undo step.
+     */
+    private void renderEasingCombo(Keyframe kf, int selectionCount) {
+        Easing current = kf.easing();
+        String label = selectionCount > 1 ? "Easing (all selected)" : "Easing";
+        if (ImGui.beginCombo(label, current.name())) {
+            for (Easing easing : Easing.values()) {
+                if (ImGui.selectable(easing.name(), easing == current) && easing != current) {
+                    controller.setSelectionEasing(easing);
+                }
+            }
+            ImGui.endCombo();
+        }
+        AnimUI.tooltip("Interpolation curve leading into the next keyframe.");
     }
 
     private void snapshotInto(Keyframe kf) {

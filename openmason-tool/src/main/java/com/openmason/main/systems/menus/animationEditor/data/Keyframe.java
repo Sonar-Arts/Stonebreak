@@ -57,4 +57,8 @@ public record Keyframe(
     public Keyframe withPose(Vector3f newPos, Vector3f newRot, Vector3f newScale) {
         return new Keyframe(time, newPos, newRot, newScale, easing);
     }
+
+    public Keyframe withEasing(Easing newEasing) {
+        return new Keyframe(time, position, rotation, scale, newEasing != null ? newEasing : Easing.LINEAR);
+    }
 }

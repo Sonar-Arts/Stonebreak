@@ -435,19 +435,38 @@ public class EntityRenderer {
                         com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER.getSbeObjectId());
         if (asset == null) return;
 
-        // One-shot clips (Attacking, Jumping) use the event-relative time so they
-        // restart each time the state is entered; looping Walking uses the
-        // continuous clock. This mirrors the chicken wing-flap pattern. Body facing
-        // and head angles are owned by the player's PlayerBodyOrientation — this
-        // path no longer reads the camera directly.
+        // The BASE clip is pure locomotion (jump one-shots use event-relative
+        // time; looping walk uses the continuous clock). Attacking plays as an
+        // OVERLAY on top: it owns only the parts its clip masks (authored in
+        // the .omanim layer metadata), so the legs keep walking mid-swing. The
+        // overlay envelope handles fade-in and pop-free early-exit fade-out.
+        // Body facing and head angles are owned by PlayerBodyOrientation.
+        String overlayState = null;
+        float overlayTime = 0f;
+        float overlayWeight = 0f;
+        com.stonebreak.mobs.sbe.OverlayAnimState attackOverlay = player.getAttackOverlay();
+        if (attackOverlay.isVisible()) {
+            overlayState = com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(
+                    com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.ATTACKING);
+            com.openmason.engine.format.oma.ParsedAnimClip attackClip = asset.clipFor(overlayState);
+            if (attackClip != null) {
+                overlayTime = attackOverlay.time();
+                overlayWeight = attackOverlay.weight(
+                        attackClip.layer().fadeInSeconds(), attackClip.layer().fadeOutSeconds());
+            }
+        }
+
         PlayerFigureRenderState figure = new PlayerFigureRenderState(
                 player.getPosition(),
                 player.getBodyYaw(),
                 new Vector3f(1f, 1f, 1f),
                 player.getThirdPersonHeadYaw(),
                 player.getThirdPersonHeadPitch(),
-                com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getMovementState()),
+                com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getBaseMovementState()),
                 player.getBodyEventTime(),
+                overlayState,
+                overlayTime,
+                overlayWeight,
                 ensureLocalPlayerColor());
 
         renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, world, cameraPos);
@@ -499,15 +518,21 @@ public class EntityRenderer {
                                     PlayerFigureRenderState figure,
                                     Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                     com.stonebreak.world.World world, Vector3f cameraPos) {
+        com.stonebreak.mobs.sbe.AnimState anim = figure.hasOverlay()
+                ? new com.stonebreak.mobs.sbe.AnimState(figure.stateName(), figure.animTime(),
+                        java.util.List.of(new com.stonebreak.mobs.sbe.AnimState.Overlay(
+                                figure.overlayState(), figure.overlayTime(), figure.overlayWeight())))
+                : com.stonebreak.mobs.sbe.AnimState.single(figure.stateName(), figure.animTime());
+
         if (isTextured(asset)) {
             sbeEntityRenderer.render(
                     asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                    figure.stateName(), figure.animTime(), figure.position(), figure.yaw(), figure.scale(),
+                    anim, figure.position(), figure.yaw(), figure.scale(),
                     viewMatrix, projectionMatrix, world, cameraPos, figure.headYaw(), figure.headPitch());
         } else {
             sbeEntityRenderer.renderColored(
                     asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                    figure.stateName(), figure.animTime(), figure.position(), figure.yaw(), figure.scale(),
+                    anim, figure.position(), figure.yaw(), figure.scale(),
                     viewMatrix, projectionMatrix, figure.tint(), figure.headYaw(), figure.headPitch());
         }
     }

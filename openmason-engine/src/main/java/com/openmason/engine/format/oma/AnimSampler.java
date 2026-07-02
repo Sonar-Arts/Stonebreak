@@ -61,7 +61,7 @@ public final class AnimSampler {
                 float e = Easing.fromString(a.easing()).apply(u);
                 return new PartPose(
                         lerp(a.position(), b.position(), e),
-                        lerp(a.rotation(), b.rotation(), e),
+                        lerpAnglesDeg(a.rotation(), b.rotation(), e),
                         lerp(a.scale(), b.scale(), e)
                 );
             }
@@ -85,6 +85,41 @@ public final class AnimSampler {
             return t < 0f ? t + duration : t;
         }
         return Math.min(Math.max(elapsed, 0f), duration);
+    }
+
+    /**
+     * Interpolate between two angles in degrees taking the shortest path
+     * around the circle (350° → 10° passes through 0°, not 180°). Deliberate
+     * long-way spins need an intermediate keyframe.
+     */
+    public static float lerpAngleDeg(float a, float b, float u) {
+        float delta = ((b - a) % 360f + 540f) % 360f - 180f;
+        return a + delta * u;
+    }
+
+    /** Componentwise shortest-path Euler lerp in degrees. */
+    public static Vector3f lerpAnglesDeg(Vector3f a, Vector3f b, float u) {
+        return new Vector3f(
+                lerpAngleDeg(a.x, b.x, u),
+                lerpAngleDeg(a.y, b.y, u),
+                lerpAngleDeg(a.z, b.z, u)
+        );
+    }
+
+    /**
+     * Blend two poses: position/scale lerp linearly, rotation takes the
+     * shortest path per Euler component. {@code w == 0} returns {@code a},
+     * {@code w == 1} returns {@code b}. The blending primitive for animation
+     * layering — see {@link AnimLayering}.
+     */
+    public static PartPose lerpPose(PartPose a, PartPose b, float w) {
+        if (w <= 0f) return a;
+        if (w >= 1f) return b;
+        return new PartPose(
+                lerp(a.position(), b.position(), w),
+                lerpAnglesDeg(a.rotationDeg(), b.rotationDeg(), w),
+                lerp(a.scale(), b.scale(), w)
+        );
     }
 
     private static PartPose poseOf(ParsedKeyframe kf) {

@@ -769,9 +769,17 @@ public class mainOpenMason {
         });
         mainInterface.setTextureCreatorInterface(textureCreatorInterface);
 
-        // Reset texture editor when a new/different model is loaded
-        mainInterface.getModelOperations().setOnModelChangedCallback(() ->
-                textureCreatorInterface.getController().resetAll());
+        // Reset texture editor when a new/different model is loaded. Single
+        // callback slot — the animation editor rebind must chain here, not
+        // replace the texture editor reset.
+        mainInterface.getModelOperations().setOnModelChangedCallback(() -> {
+            textureCreatorInterface.getController().resetAll();
+            if (animationEditor != null && animationEditor.isVisible()
+                    && mainInterface.getViewport3D() != null) {
+                animationEditor.getController()
+                        .onModelChanged(mainInterface.getViewport3D().getPartManager());
+            }
+        });
 
         textureCreatorInterface.setBackToHomeCallback(this::transitionToHomeScreen);
         textureCreatorInterface.setPreferencesCallback(mainInterface.getShowPreferencesCallback());
@@ -1045,6 +1053,14 @@ public class mainOpenMason {
                 mainInterface.dispose();
             } catch (Exception e) {
                 logger.error("Error disposing main interface resources", e);
+            }
+        }
+        // Animation editor Mortar regions (FBOs) — must close before SkijaContext.
+        if (animationEditor != null) {
+            try {
+                animationEditor.dispose();
+            } catch (Exception e) {
+                logger.error("Error disposing Animation Editor", e);
             }
         }
         if (skijaContext != null) {

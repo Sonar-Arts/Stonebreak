@@ -119,9 +119,11 @@ public final class Track {
                 float u = span > 1e-6f ? (t - a.time()) / span : 0f;
                 // The outgoing keyframe's easing curve governs this segment.
                 float e = a.easing().apply(u);
+                // Rotation delegates to the engine sampler's shortest-path lerp
+                // so the preview matches in-game playback exactly.
                 return new Sample(
                         lerp(a.position(), b.position(), e),
-                        lerp(a.rotation(), b.rotation(), e),
+                        com.openmason.engine.format.oma.AnimSampler.lerpAnglesDeg(a.rotation(), b.rotation(), e),
                         lerp(a.scale(), b.scale(), e)
                 );
             }

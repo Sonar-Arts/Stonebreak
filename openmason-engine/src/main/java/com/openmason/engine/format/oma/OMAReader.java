@@ -102,9 +102,36 @@ public class OMAReader {
             }
         }
 
-        logger.info("Parsed OMA clip '{}' ({} tracks, duration={}s, fps={}, loop={})",
-                name, tracks.size(), duration, fps, loop);
-        return new ParsedAnimClip(name, fps, duration, loop, tracks);
+        AnimLayerMeta layer = parseLayer(root.get("layer"));
+
+        logger.info("Parsed OMA clip '{}' ({} tracks, duration={}s, fps={}, loop={}, layer={})",
+                name, tracks.size(), duration, fps, loop, layer.type());
+        return new ParsedAnimClip(name, fps, duration, loop, tracks, layer);
+    }
+
+    /**
+     * Parse the optional v1.1 {@code layer} object. Absent (all v1.0 files)
+     * or malformed nodes fall back to a full-body BASE layer.
+     */
+    private static AnimLayerMeta parseLayer(JsonNode layerNode) {
+        if (layerNode == null || !layerNode.isObject()) {
+            return AnimLayerMeta.base();
+        }
+        AnimLayerMeta.LayerType type =
+                AnimLayerMeta.LayerType.fromString(textOrDefault(layerNode, "type", null));
+        List<String> maskParts = new ArrayList<>();
+        JsonNode maskNode = layerNode.get("maskParts");
+        if (maskNode != null && maskNode.isArray()) {
+            for (JsonNode part : maskNode) {
+                if (part != null && !part.isNull() && !part.asText().isBlank()) {
+                    maskParts.add(part.asText());
+                }
+            }
+        }
+        float fadeIn = floatOrDefault(layerNode, "fadeInSeconds", AnimLayerMeta.DEFAULT_FADE_SECONDS);
+        float fadeOut = floatOrDefault(layerNode, "fadeOutSeconds", AnimLayerMeta.DEFAULT_FADE_SECONDS);
+        int priority = layerNode.hasNonNull("priority") ? layerNode.get("priority").asInt(0) : 0;
+        return new AnimLayerMeta(type, maskParts, fadeIn, fadeOut, priority);
     }
 
     private ParsedAnimTrack parseTrack(String partId, String partName, byte[] trackBytes)

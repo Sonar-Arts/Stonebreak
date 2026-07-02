@@ -44,15 +44,8 @@ public final class AnimationEditingService {
     public AnimationInfo getAnimationInfo() {
         return await(MainThreadExecutor.submit(() -> {
             AnimationEditorController c = optController();
-            if (c == null) return new AnimationInfo(false, null, 0, 0, false, null, null, 0, false, false, 0);
-            AnimationEditorState s = c.state();
-            AnimationClip clip = s.clip();
-            return new AnimationInfo(
-                    true,
-                    clip.name(), clip.fps(), clip.duration(), clip.loop(), clip.modelRef(),
-                    s.filePath(),
-                    clip.tracks().size(),
-                    s.dirty(), s.playing(), s.playhead());
+            if (c == null) return new AnimationInfo(false, null, 0, 0, false, null, null, 0, false, false, 0, null);
+            return describeOnThread(c);
         }));
     }
 
@@ -115,6 +108,48 @@ public final class AnimationEditingService {
 
     public AnimationInfo setClipLoop(boolean loop) {
         return runAndDescribe(c -> c.setClipLoop(loop));
+    }
+
+    // ===================== Mutate: layer metadata =====================
+
+    /** Set the clip's layer type: "BASE" or "OVERLAY". */
+    public AnimationInfo setLayerType(String type) {
+        return runAndDescribe(c -> c.setLayerType(
+                com.openmason.engine.format.oma.AnimLayerMeta.LayerType.fromString(type)));
+    }
+
+    /**
+     * Replace the overlay's part mask. Entries are part NAMES (ids are
+     * accepted and resolved to names when possible); empty/null = all parts.
+     */
+    public AnimationInfo setLayerMask(List<String> maskParts) {
+        return runAndDescribe(c -> {
+            List<String> names = new ArrayList<>();
+            if (maskParts != null) {
+                ModelPartManager pm = c.partManager();
+                for (String entry : maskParts) {
+                    if (entry == null || entry.isBlank()) continue;
+                    String name = entry;
+                    if (pm != null) {
+                        name = pm.getPartById(entry).map(ModelPartDescriptor::name).orElse(entry);
+                    }
+                    names.add(name);
+                }
+            }
+            c.setMaskParts(names);
+        });
+    }
+
+    /** Set the overlay fade durations; pass null to leave a value unchanged. */
+    public AnimationInfo setLayerFades(Float fadeInSeconds, Float fadeOutSeconds) {
+        return runAndDescribe(c -> {
+            if (fadeInSeconds != null) c.setLayerFadeIn(fadeInSeconds);
+            if (fadeOutSeconds != null) c.setLayerFadeOut(fadeOutSeconds);
+        });
+    }
+
+    public AnimationInfo setLayerPriority(int priority) {
+        return runAndDescribe(c -> c.setLayerPriority(priority));
     }
 
     // ===================== Mutate: transport =====================
@@ -237,11 +272,7 @@ public final class AnimationEditingService {
             AnimationEditorController c = requireController();
             String partId = resolvePartId(c, partIdOrName);
             if (partId == null) return false;
-            if (!c.state().clip().tracks().containsKey(partId)) return false;
-            c.state().clip().removeTrack(partId);
-            c.state().markDirty();
-            c.applyCurrentPose();
-            return true;
+            return c.deleteTrack(partId);
         }));
     }
 
@@ -319,7 +350,8 @@ public final class AnimationEditingService {
                 clip.name(), clip.fps(), clip.duration(), clip.loop(), clip.modelRef(),
                 s.filePath(),
                 clip.tracks().size(),
-                s.dirty(), s.playing(), s.playhead());
+                s.dirty(), s.playing(), s.playhead(),
+                LayerInfo.from(clip));
     }
 
     private static <T> T await(CompletableFuture<T> future) {
@@ -341,8 +373,18 @@ public final class AnimationEditingService {
             String name, float fps, float duration, boolean loop, String modelRef,
             String filePath,
             int trackCount,
-            boolean dirty, boolean playing, float playhead
+            boolean dirty, boolean playing, float playhead,
+            LayerInfo layer
     ) {}
+
+    /** Layering metadata (format v1.1): BASE/OVERLAY, part-name mask, fades, priority. */
+    public record LayerInfo(String type, List<String> maskParts,
+                            float fadeInSeconds, float fadeOutSeconds, int priority) {
+        static LayerInfo from(AnimationClip clip) {
+            return new LayerInfo(clip.layerType().name(), List.copyOf(clip.maskParts()),
+                    clip.fadeInSeconds(), clip.fadeOutSeconds(), clip.layerPriority());
+        }
+    }
 
     /** Serializes as a compact {@code [x, y, z]} array to keep MCP responses small. */
     public record Vec3(float x, float y, float z) {

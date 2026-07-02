@@ -465,30 +465,31 @@ public class FileDialogService {
 
     /**
      * Show open OMA (Open Mason Animation) dialog using native file dialog.
+     * Starts in the open project's root when a project is loaded (matching
+     * the OMO/OMT dialogs), so animation files default to project assets.
      * @param callback callback to receive selected file path
      */
     public void showOpenOMADialog(OpenCallback callback) {
-        showNFDOpenDialog("Opening OMA animation...", "Open Mason Animation", "omanim",
-                "Selected OMA file", callback);
-    }
-
-    /**
-     * Like {@link #showOpenOMADialog(OpenCallback)}, but starts in the open
-     * project's root when a project is loaded. Used by the SBE editor so
-     * animation replacements default to the entity's project assets.
-     */
-    public void showOpenOMAInProjectDialog(OpenCallback callback) {
         showNFDOpenDialog("Opening OMA animation...", "Open Mason Animation", "omanim",
                 projectDirectoryOrNull(), "Selected OMA file", callback);
     }
 
     /**
+     * Alias of {@link #showOpenOMADialog(OpenCallback)}, kept for the SBE
+     * editor call site from before the plain OMA dialog was project-rooted.
+     */
+    public void showOpenOMAInProjectDialog(OpenCallback callback) {
+        showOpenOMADialog(callback);
+    }
+
+    /**
      * Show save OMA (Open Mason Animation) dialog using native file dialog.
+     * Starts in the open project's root when a project is loaded.
      * @param callback callback to receive selected file path
      */
     public void showSaveOMADialog(SaveOMACallback callback) {
         showNFDSaveDialog("Saving OMA animation...", "Open Mason Animation", "omanim",
-                "animation.omanim", "Save OMA to file", callback::onSave);
+                "animation.omanim", projectDirectoryOrNull(), "Save OMA to file", callback::onSave);
     }
 
     /**
