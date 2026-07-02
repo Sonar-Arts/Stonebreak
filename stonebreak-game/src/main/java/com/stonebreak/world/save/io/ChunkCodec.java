@@ -54,6 +54,11 @@ import java.util.zip.InflaterInputStream;
  *   blockStateCount (int)
  *     repeated: localX (unsigned byte), y (unsigned short), localZ (unsigned byte),
  *               stateNameLen (unsigned short), stateNameBytes (utf-8)
+ *
+ *   v3+ only (snow layer counts):
+ *   snowCount (int)
+ *     repeated: localX (unsigned byte), y (unsigned short), localZ (unsigned byte),
+ *               layers (unsigned byte, 1-8)
  * </pre>
  *
  * <p>Version history:
@@ -62,13 +67,17 @@ import java.util.zip.InflaterInputStream;
  *   <li>2 — adds optional per-block SBO state map at the end of the body.
  *       v1 chunks load without states; v2 writers always emit the section
  *       (count=0 when no block carries a non-default state).</li>
+ *   <li>3 — adds snow layer counts at the end of the body (previously in-memory
+ *       only, so stacked snow reset on reload). v1/v2 chunks load with no
+ *       tracked layers (every snow block reads as the 1-layer default).
+ *       NOTE: v3 saves are unreadable by pre-v3 builds — one-way migration.</li>
  * </ul>
  */
 public final class ChunkCodec {
 
     private static final int MAGIC = 0x5342434B; // 'SBCK'
     /** Current write version. */
-    private static final int VERSION = 2;
+    private static final int VERSION = 3;
     /** Earliest readable version. */
     private static final int MIN_READ_VERSION = 1;
     private static final int CHUNK_WIDTH = 16;
@@ -99,6 +108,7 @@ public final class ChunkCodec {
             writeWaterMetadata(out, chunk.getWaterMetadata());
             writeEntities(out, chunk.getEntities());
             writeBlockStates(out, chunk.getBlockStates());
+            writeSnowLayers(out, chunk.getSnowLayers());
         }
         return buffer.toByteArray();
     }
@@ -141,6 +151,9 @@ public final class ChunkCodec {
             // and load with an empty map (everything renders as default).
             Map<Integer, String> blockStates = (version >= 2) ? readBlockStates(in) : new HashMap<>();
 
+            // v3+: snow layer counts. Older saves load with none tracked (1-layer default).
+            Map<Integer, Integer> snowLayers = (version >= 3) ? readSnowLayers(in) : new HashMap<>();
+
             return ChunkData.builder()
                 .chunkX(chunkX)
                 .chunkZ(chunkZ)
@@ -153,6 +166,7 @@ public final class ChunkCodec {
                 .waterMetadata(waterMeta)
                 .entities(entities)
                 .blockStates(blockStates)
+                .snowLayers(snowLayers)
                 .build();
         }
     }
@@ -184,6 +198,30 @@ public final class ChunkCodec {
             }
             String state = new String(nameBytes, java.nio.charset.StandardCharsets.UTF_8);
             result.put(LocalBlockKey.pack(localX, y, localZ), state);
+        }
+        return result;
+    }
+
+    private static void writeSnowLayers(DataOutputStream out, Map<Integer, Integer> snowLayers) throws IOException {
+        out.writeInt(snowLayers.size());
+        for (Map.Entry<Integer, Integer> entry : snowLayers.entrySet()) {
+            int key = entry.getKey();
+            out.writeByte(LocalBlockKey.x(key));
+            out.writeShort(LocalBlockKey.y(key));
+            out.writeByte(LocalBlockKey.z(key));
+            out.writeByte(Math.max(1, Math.min(8, entry.getValue())));
+        }
+    }
+
+    private static Map<Integer, Integer> readSnowLayers(DataInputStream in) throws IOException {
+        int count = in.readInt();
+        Map<Integer, Integer> result = new HashMap<>(Math.max(count, 0));
+        for (int i = 0; i < count; i++) {
+            int localX = Byte.toUnsignedInt(in.readByte());
+            int y = Short.toUnsignedInt(in.readShort());
+            int localZ = Byte.toUnsignedInt(in.readByte());
+            int layers = Byte.toUnsignedInt(in.readByte());
+            result.put(LocalBlockKey.pack(localX, y, localZ), Math.max(1, Math.min(8, layers)));
         }
         return result;
     }

@@ -44,7 +44,10 @@ public class CaltropCluster extends Entity {
             return;
         }
 
-        EntityManager entityManager = Game.getEntityManager();
+        EntityManager entityManager = world.getEntityManager(); // server-spawned: scan the OWNING world
+        if (entityManager == null) {
+            entityManager = Game.getEntityManager();
+        }
         if (entityManager == null) return;
 
         for (LivingEntity entity : entityManager.getLivingEntities()) {

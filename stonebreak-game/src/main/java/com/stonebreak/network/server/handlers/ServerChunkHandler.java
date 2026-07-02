@@ -62,16 +62,75 @@ public final class ServerChunkHandler {
     /** Set when any chunk version bumps; the next tick re-arms every player's view scan. */
     private boolean versionsDirty = false;
 
+    /** Lazily-computed content hash per chunk for the desync audit. Invalidated on ANY
+     *  server-side mutation (player edits via markChunkModified, sim edits via
+     *  {@link #invalidateHash}); recomputed only when a client audit asks. */
+    private final LongIntHashMap chunkHashes = new LongIntHashMap();
+    /** Sentinel for "no cached hash" — a real hash colliding with it merely recomputes. */
+    private static final int NO_HASH = Integer.MIN_VALUE;
+
     /** Mark a chunk changed so every player re-receives its snapshot within view. */
     public void markChunkModified(int cx, int cz) {
         long key = packKey(cx, cz);
         chunkVersions.put(key, chunkVersions.get(key, 0) + 1);
         versionsDirty = true;
+        chunkHashes.remove(key);
+    }
+
+    /** Drop a chunk's cached audit hash (server-side content changed without a version bump). */
+    public void invalidateHash(int cx, int cz) {
+        chunkHashes.remove(packKey(cx, cz));
     }
 
     public void onSessionStart() {
         chunkVersions.clear();
+        chunkHashes.clear();
         versionsDirty = true;
+    }
+
+    /**
+     * C2S: the client's copy of a chunk is unusable — forget it for that player so the
+     * streaming scan re-sends. Rate-limited per player ({@code ServerPlayer.allowResync}).
+     */
+    public void handleResyncRequest(ServerPlayer sp, int cx, int cz) {
+        if (!sp.allowResync()) {
+            return;
+        }
+        sp.forgetChunk(packKey(cx, cz));
+        sp.markViewScanPending();
+    }
+
+    /**
+     * C2S: periodic client desync audit. Compares each reported hash against the server's
+     * cached (lazily recomputed) hash; a mismatch re-streams the chunk to that player.
+     * Steady-state cost is a map probe per entry; hashing happens only after invalidation.
+     */
+    public void handleChunkHashes(ServerPlayer sp, int[] entries, ServerWorldContext ctx) {
+        World world = ctx.world();
+        if (world == null) {
+            return;
+        }
+        for (int i = 0; i + 2 < entries.length; i += 3) {
+            int cx = entries[i];
+            int cz = entries[i + 1];
+            int clientHash = entries[i + 2];
+            Chunk chunk = world.getChunkIfLoaded(cx, cz);
+            if (chunk == null || !chunk.areFeaturesPopulated()) {
+                continue; // not resident server-side — nothing to compare against
+            }
+            long key = packKey(cx, cz);
+            int serverHash = chunkHashes.get(key, NO_HASH);
+            if (serverHash == NO_HASH) {
+                serverHash = com.stonebreak.network.bridge.ChunkHasher.hash(chunk);
+                chunkHashes.put(key, serverHash);
+            }
+            if (serverHash != clientHash) {
+                System.out.println("[SERVER-CHUNK] Audit mismatch at (" + cx + "," + cz
+                    + ") for player " + sp.playerId() + " — re-streaming.");
+                sp.forgetChunk(key);
+                sp.markViewScanPending();
+            }
+        }
     }
 
     public void tick(ServerWorldContext ctx) {
@@ -158,7 +217,8 @@ public final class ServerChunkHandler {
                             continue; // not ready — retry next tick (do NOT mark sent)
                         }
                         byte[] payload = VoxelChunkCodec.encode(new ChunkDataAdapter(chunk));
-                        sp.send(new ChunkDataS2C(cx + dx, cz + dz, payload), false);
+                        byte[] metaPayload = encodeChunkMeta(world, chunk, cx + dx, cz + dz);
+                        sp.send(new ChunkDataS2C(cx + dx, cz + dz, payload, metaPayload), false);
                         sp.markChunkSent(key, version);
                         if (--budget <= 0) {
                             viewComplete = false; // out of budget — outer rings unverified
@@ -171,6 +231,23 @@ public final class ServerChunkHandler {
                 sp.clearViewScanPending();
             }
         }
+    }
+
+    /**
+     * Game-side chunk metadata blob for the snapshot: snow layer counts (gathered from the
+     * server world's SnowLayerManager, re-keyed to chunk-local) + per-block SBO state map.
+     * Empty array (zero extra wire bytes) for the common no-metadata chunk.
+     */
+    private static byte[] encodeChunkMeta(World world, Chunk chunk, int cx, int cz) {
+        java.util.Map<Integer, Integer> snow = null;
+        if (world.getSnowLayerManager() != null) {
+            java.util.Map<Integer, Integer> collected = new java.util.HashMap<>();
+            world.getSnowLayerManager().forEachInChunk(cx, cz, (x, y, z, layers) ->
+                collected.put(com.stonebreak.world.chunk.utils.LocalBlockKey.pack(
+                    x - cx * 16, y, z - cz * 16), layers));
+            snow = collected;
+        }
+        return com.stonebreak.network.bridge.GameChunkMetaCodec.encode(snow, chunk.getBlockStates());
     }
 
     private static long packKey(int cx, int cz) {

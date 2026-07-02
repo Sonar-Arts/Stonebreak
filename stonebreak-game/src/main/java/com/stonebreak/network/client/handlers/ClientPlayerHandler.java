@@ -2,7 +2,6 @@ package com.stonebreak.network.client.handlers;
 
 import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.core.Game;
-import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.network.client.NetworkInterpolator;
@@ -30,7 +29,7 @@ public final class ClientPlayerHandler {
         if (ps.playerId() == localPlayerId) {
             return;
         }
-        applyRemoteState(ps.playerId(), ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch());
+        applyRemoteState(ps.playerId(), ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch(), ps.flags());
     }
 
     public void handleJoin(int localPlayerId, PlayerJoinS2C j) {
@@ -59,10 +58,41 @@ public final class ClientPlayerHandler {
         if (local == null || local.getInventory() == null) {
             return;
         }
-        local.getInventory().addItem(new ItemStack(g.itemId(), g.count()));
-        SoundSystem ss = Game.getInstance().getSoundSystem();
-        if (ss != null) {
-            ss.playSound("blockpickup");
+        // Capacity-aware add: anything that doesn't fit is returned to the server as a
+        // re-drop at our position instead of silently vanishing into a full inventory.
+        int added = local.getInventory().addItemsAndReturnCount(g.itemId(), g.count());
+        int leftover = g.count() - added;
+        if (leftover > 0) {
+            com.stonebreak.network.MultiplayerSession.sendDropItem(g.itemId(), leftover);
+        }
+        if (added > 0) {
+            SoundSystem ss = Game.getInstance().getSoundSystem();
+            if (ss != null) {
+                ss.playSound("blockpickup");
+            }
+        }
+    }
+
+    /**
+     * Server-attributed hit/kill credit: apply the stat/XP grant to the LOCAL player. This
+     * replaces the old server-side local-credit path (which could only ever credit the
+     * host); every client — host included — is credited through this uniform packet.
+     */
+    public void handleKillCredit(com.stonebreak.network.packet.player.KillCreditS2C k) {
+        Player local = Game.getPlayer();
+        if (local == null) {
+            return;
+        }
+        local.getStats().addDamageDealt(k.damageDealt());
+        if (k.killed()) {
+            local.getStats().incrementEntitiesKilled();
+            com.stonebreak.mobs.entities.EntityType[] types = com.stonebreak.mobs.entities.EntityType.values();
+            if (k.entityTypeOrdinal() >= 0 && k.entityTypeOrdinal() < types.length) {
+                local.getStats().incrementKillsForType(types[k.entityTypeOrdinal()]);
+            }
+            if (k.xpReward() > 0) {
+                local.getCharacterStats().addXp(k.xpReward());
+            }
         }
     }
 
@@ -101,7 +131,7 @@ public final class ClientPlayerHandler {
         }
     }
 
-    private void applyRemoteState(int playerId, float x, float y, float z, float yaw, float pitch) {
+    private void applyRemoteState(int playerId, float x, float y, float z, float yaw, float pitch, byte flags) {
         RemotePlayer rp = remotePlayers.get(playerId);
         // Defensive: if the entity died via another path (chunk unload, world reload), drop
         // the stale reference and respawn from the latest state.
@@ -115,6 +145,7 @@ public final class ClientPlayerHandler {
         }
         if (rp != null) {
             rp.applyNetworkState(x, y, z, yaw, pitch);
+            rp.setStateFlags(flags);
         }
     }
 }

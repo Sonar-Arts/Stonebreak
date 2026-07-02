@@ -1,17 +1,12 @@
 package com.stonebreak.network.server.handlers;
 
 import com.openmason.engine.net.protocol.codec.EntityDeltaCodec;
-import com.stonebreak.mobs.cow.Cow;
-import com.stonebreak.mobs.entities.BlockDrop;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.mobs.entities.ItemDrop;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.mobs.sbe.EntityAnimResolver;
-import com.stonebreak.mobs.sheep.Sheep;
-import com.stonebreak.items.ItemStack;
 import com.stonebreak.network.packet.entity.EntityAnimS2C;
 import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
@@ -85,6 +80,13 @@ public final class ServerEntityHandler {
             return;
         }
         registerHostEntity(e);
+        // Drops are rare enough to trace individually — this line is the server half of the
+        // drop-replication diagnosis (pairs with the client's "Drop shadow" line).
+        if (e.getType() == EntityType.BLOCK_DROP || e.getType() == EntityType.ITEM_DROP) {
+            Vector3f dp = e.getPosition();
+            System.out.printf("[SERVER-ENTITY] Broadcast %s spawn netId=%d at (%.1f, %.1f, %.1f) to %d connection(s)%n",
+                e.getType(), e.getNetworkId(), dp.x, dp.y, dp.z, ctx.connections().size());
+        }
         ctx.broadcast(spawnPacketFor(e), false);
         // Send the initial animation state so the shadow starts in the right clip, not the default.
         EntityAnimS2C anim = animPacketFor(e);
@@ -204,9 +206,124 @@ public final class ServerEntityHandler {
         amount = Math.min(amount, MAX_DAMAGE_AMOUNT);
 
         LivingEntity.DamageSource source = decodeSource(pkt.sourceOrdinal());
-        // Stats/XP credit only the same-JVM local player; remote attackers credit nobody
-        // rather than mis-crediting the host (per-player attribution is a follow-up).
-        le.damage(amount, source, new Vector3f(sp.x(), sp.y(), sp.z()), sp.isLocal());
+        // Never credit through the local-player path (on the server thread that would be
+        // the HOST's player object regardless of attacker). Credit routes back to the
+        // actual attacker via KillCreditS2C — uniform for host (Local channel) and remotes.
+        float healthBefore = le.getHealth();
+        le.damage(amount, source, new Vector3f(sp.x(), sp.y(), sp.z()), false);
+        float dealt = healthBefore - Math.max(0f, le.getHealth());
+        if (dealt > 0f) {
+            boolean killed = !le.isAlive();
+            sp.send(new com.stonebreak.network.packet.player.KillCreditS2C(
+                le.getType().ordinal(), dealt, killed, killed ? le.getXpReward() : 0), false);
+        }
+    }
+
+    /**
+     * Server-side hit credit from an OWNED projectile (see {@code ProjectileDamage}):
+     * forwards the stat/XP grant to the launching player's client.
+     */
+    public void sendKillCredit(ServerPlayer sp, LivingEntity victim, float dealt, boolean killed) {
+        sp.send(new com.stonebreak.network.packet.player.KillCreditS2C(
+            victim.getType().ordinal(), dealt, killed, killed ? victim.getXpReward() : 0), false);
+    }
+
+    /** Spawn position must be near the claiming player (zones cast at range get more slack). */
+    private static final float MAX_PROJECTILE_SPAWN_DIST_SQ = 8f * 8f;
+    private static final float MAX_ZONE_SPAWN_DIST_SQ = 32f * 32f;
+    /** Per-kind clamps on client-supplied sim params (hostile-client containment). */
+    private static final float MAX_PARAM_DAMAGE = 100f;
+    private static final float MAX_PARAM_DURATION = 120f;
+    private static final float MAX_PARAM_RADIUS = 16f;
+    private static final float MAX_ARROW_SPEED = 60f;
+
+    /**
+     * C2S: a player launches a projectile / places an ability entity. Validates and spawns
+     * the AUTHORITATIVE entity on the server EntityManager — the entity-add listener
+     * replicates it to everyone (originator included; there is no client-local spawn).
+     */
+    public void handleProjectileSpawn(ServerPlayer sp, com.stonebreak.network.packet.entity.ProjectileSpawnC2S pkt,
+                                      ServerWorldContext ctx) {
+        EntityManager em = ctx.entityManager();
+        if (em == null) {
+            return;
+        }
+        if (!Float.isFinite(pkt.x()) || !Float.isFinite(pkt.y()) || !Float.isFinite(pkt.z())
+            || !Float.isFinite(pkt.vx()) || !Float.isFinite(pkt.vy()) || !Float.isFinite(pkt.vz())) {
+            return;
+        }
+        for (float p : pkt.params()) {
+            if (!Float.isFinite(p)) {
+                return;
+            }
+        }
+        if (sp.lastStateNs() != 0L) {
+            float dx = pkt.x() - sp.x();
+            float dy = pkt.y() - sp.y();
+            float dz = pkt.z() - sp.z();
+            float distSq = dx * dx + dy * dy + dz * dz;
+            boolean zoneKind = pkt.kind() == com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_LEYLINE_BREACH
+                || pkt.kind() == com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_CALTROP;
+            if (distSq > (zoneKind ? MAX_ZONE_SPAWN_DIST_SQ : MAX_PROJECTILE_SPAWN_DIST_SQ)) {
+                return;
+            }
+        }
+        Vector3f pos = new Vector3f(pkt.x(), pkt.y(), pkt.z());
+        Vector3f v = new Vector3f(pkt.vx(), pkt.vy(), pkt.vz());
+        float[] params = pkt.params();
+        Entity spawned = switch (pkt.kind()) {
+            case com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_ARROW -> {
+                if (v.lengthSquared() < 1e-6f) {
+                    yield null;
+                }
+                if (v.length() > MAX_ARROW_SPEED) {
+                    v.normalize(MAX_ARROW_SPEED);
+                }
+                yield em.spawnArrow(pos, v);
+            }
+            case com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_FIRE_BOLT -> {
+                if (v.lengthSquared() < 1e-6f) {
+                    yield null;
+                }
+                yield em.spawnFireBolt(pos, v.normalize());
+            }
+            case com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_NULL_SPIKE -> {
+                if (v.lengthSquared() < 1e-6f || params.length < 4) {
+                    yield null;
+                }
+                yield em.spawnNullSpike(pos, v.normalize(),
+                    clamp(params[0], 0f, MAX_PARAM_DAMAGE),
+                    clamp(params[1], 0f, MAX_PARAM_DURATION),
+                    params[2] != 0f,
+                    clamp(params[3], 0f, MAX_PARAM_DAMAGE));
+            }
+            case com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_LEYLINE_BREACH -> {
+                if (params.length < 5) {
+                    yield null;
+                }
+                yield em.spawnLeylineBreachZone(pos,
+                    clamp(params[0], 0.5f, MAX_PARAM_RADIUS),
+                    clamp(params[1], 0f, MAX_PARAM_DAMAGE),
+                    clamp(params[2], 0f, MAX_PARAM_DAMAGE),
+                    clamp(params[3], 0f, MAX_PARAM_DURATION),
+                    params[4] != 0f);
+            }
+            case com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_CALTROP -> {
+                if (params.length < 1) {
+                    yield null;
+                }
+                yield em.spawnCaltropCluster(pos, clamp(params[0], 1f, MAX_PARAM_DURATION));
+            }
+            default -> null;
+        };
+        if (spawned != null) {
+            // Route hit/kill credit for this projectile back to the launching player.
+            spawned.setOwnerPlayerId(sp.playerId());
+        }
+    }
+
+    private static float clamp(float v, float min, float max) {
+        return Math.max(min, Math.min(max, v));
     }
 
     private static LivingEntity.DamageSource decodeSource(byte ordinal) {
@@ -234,15 +351,9 @@ public final class ServerEntityHandler {
     }
 
     private static boolean isReplicable(Entity e) {
-        if (e == null || e instanceof RemotePlayer) {
-            return false;
-        }
-        EntityType t = e.getType();
-        return t == EntityType.COW
-            || t == EntityType.CHICKEN
-            || t == EntityType.SHEEP
-            || t == EntityType.BLOCK_DROP
-            || t == EntityType.ITEM_DROP;
+        // RemotePlayer subclasses (IllusionDecoy) report their own type; the instanceof
+        // guard keeps any player-shaped display entity off the entity channel regardless.
+        return e != null && !(e instanceof RemotePlayer) && e.getType().replicates();
     }
 
     /** Broadcast an {@link EntityAnimS2C} when an entity's SBE animation state has changed. */
@@ -266,19 +377,9 @@ public final class ServerEntityHandler {
 
     private static EntitySpawnS2C spawnPacketFor(Entity e) {
         Vector3f p = e.getPosition();
-        String metadata = "";
-        if (e instanceof Cow cow) {
-            metadata = cow.getTextureVariant();
-        } else if (e instanceof Sheep sheep) {
-            metadata = sheep.getTextureVariant();
-        } else if (e instanceof BlockDrop bd) {
-            metadata = Integer.toString(bd.getBlockType().getId());
-        } else if (e instanceof ItemDrop id) {
-            ItemStack stack = id.getItemStack();
-            metadata = stack.getBlockTypeId() + ":" + stack.getCount();
-        }
         return new EntitySpawnS2C(
             e.getNetworkId(), e.getType().ordinal(),
-            p.x, p.y, p.z, e.getRotation().y, metadata);
+            p.x, p.y, p.z, e.getRotation().y,
+            com.stonebreak.network.EntityReplicationRegistry.metadataFor(e));
     }
 }

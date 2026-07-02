@@ -269,7 +269,12 @@ public class BlockDrop extends Entity {
         drop.velocity.set(initialVelocity);
         return drop;
     }
-    
+
+    /** Extend the pickup lock-out (a deliberate toss must not be instantly re-collected). */
+    public void setPickupDelay(float seconds) {
+        this.pickupDelay = seconds;
+    }
+
     /**
      * Updates visual compression by checking for nearby drops of the same type.
      */

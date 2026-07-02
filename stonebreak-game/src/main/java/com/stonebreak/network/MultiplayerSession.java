@@ -71,6 +71,93 @@ public final class MultiplayerSession {
     public static ClientWorldView getClient() { return client; }
 
     /**
+     * Latest authoritative world-time sample buffered by the client, or null when no session /
+     * no sample yet. Used by the client world bootstrap to seed the render clock at the
+     * server's actual time-of-day instead of a NOON default.
+     */
+    public static Long pendingServerTimeTicks() {
+        ClientWorldView c = client;
+        return c != null ? c.pendingServerTimeTicks() : null;
+    }
+
+    /** Last server-measured RTT for the local client in ms, or -1 when unknown / no session. */
+    public static int lastRttMs() {
+        ClientWorldView c = client;
+        return c != null ? c.lastRttMs() : -1;
+    }
+
+    /**
+     * Server-tick-thread hook from {@code ProjectileDamage}: credit a projectile hit/kill
+     * back to the player who launched it. No-op without an integrated server.
+     */
+    public static void sendKillCredit(int ownerPlayerId, com.stonebreak.mobs.entities.LivingEntity victim,
+                                      float dealt, boolean killed) {
+        IntegratedServer s = server;
+        if (s != null) {
+            s.sendKillCreditTo(ownerPlayerId, victim, dealt, killed);
+        }
+    }
+
+    /** Ask the server to re-stream one chunk (client-side decode/apply failure). */
+    public static void requestChunkResync(int cx, int cz) {
+        ClientWorldView c = client;
+        if (c != null && !c.isDisconnected()) {
+            c.requestChunkResync(cx, cz);
+        }
+    }
+
+    /** Ask the server to re-send the full entity spawn snapshot. */
+    public static void requestEntityResync() {
+        ClientWorldView c = client;
+        if (c != null && !c.isDisconnected()) {
+            c.requestEntityResync();
+        }
+    }
+
+    /** Snow-layer intent (the increment-on-existing-snow case with no block change). */
+    public static void sendSnowLayer(int x, int y, int z, int layers) {
+        ClientWorldView c = client;
+        if (c != null && !c.isDisconnected()) {
+            c.sendSnowLayer(x, y, z, layers);
+        }
+    }
+
+    /** Furnace slot intent: the open furnace UI's slots changed (see {@code FurnaceSlotsC2S}). */
+    public static void sendFurnaceSlots(int x, int y, int z, String slots) {
+        ClientWorldView c = client;
+        if (c != null && !c.isDisconnected()) {
+            c.sendFurnaceSlots(x, y, z, slots);
+        }
+    }
+
+    /**
+     * Projectile / ability-entity launch intent — the SERVER spawns + simulates the
+     * authoritative entity and replicates it to everyone (originator included). Returns
+     * false when there is no live client connection (caller falls back to a local spawn).
+     */
+    public static boolean sendProjectileSpawn(byte kind, Vector3f pos, Vector3f v, float... params) {
+        ClientWorldView c = client;
+        if (c == null || c.isDisconnected()) {
+            return false;
+        }
+        c.sendProjectileSpawn(kind, pos, v, params);
+        return true;
+    }
+
+    /**
+     * Toss/return an item stack as a world drop via the server (authoritative, replicated).
+     * Returns false when there is no live client connection (caller may fall back locally).
+     */
+    public static boolean sendDropItem(int itemId, int count) {
+        ClientWorldView c = client;
+        if (c == null || c.isDisconnected()) {
+            return false;
+        }
+        c.sendDropItem(itemId, count);
+        return true;
+    }
+
+    /**
      * True once the local player's saved data has been restored (or there's nothing to restore).
      * The world bootstrap waits on this before entering PLAY so the player never appears with a
      * momentarily-empty inventory while the restore is still in flight.
@@ -282,17 +369,29 @@ public final class MultiplayerSession {
         if (s == null) {
             return false;
         }
+        // Nearest-player-wins: when several players stand in range, the closest one gets the
+        // stack (roster iteration order is arbitrary and previously decided ties unfairly).
         float rangeSq = range * range;
+        ServerPlayer nearest = null;
+        float nearestSq = Float.MAX_VALUE;
         for (ServerPlayer sp : s.worldContext().players()) {
+            if (!sp.handshakeDone() || sp.lastStateNs() == 0L) {
+                continue; // no reported position yet — (0,0,0) default must not win pickups
+            }
             float dx = pos.x - sp.x();
             float dy = pos.y - sp.y();
             float dz = pos.z - sp.z();
-            if (dx * dx + dy * dy + dz * dz <= rangeSq) {
-                s.giveItemTo(sp.playerId(), itemId, count);
-                return true;
+            float distSq = dx * dx + dy * dy + dz * dz;
+            if (distSq <= rangeSq && distSq < nearestSq) {
+                nearest = sp;
+                nearestSq = distSq;
             }
         }
-        return false;
+        if (nearest == null) {
+            return false;
+        }
+        s.giveItemTo(nearest.playerId(), itemId, count);
+        return true;
     }
 
     // ─── Per-tick pump (called from the game loop) ───────────────────────────────

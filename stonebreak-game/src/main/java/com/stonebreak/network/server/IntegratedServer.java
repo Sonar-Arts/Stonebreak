@@ -14,8 +14,11 @@ import com.stonebreak.network.packet.chat.ChatMessageC2S;
 import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.handshake.DisconnectC2S;
 import com.stonebreak.network.packet.handshake.HandshakeC2S;
+import com.stonebreak.network.packet.handshake.KeepAliveC2S;
+import com.stonebreak.network.packet.handshake.KeepAliveS2C;
 import com.stonebreak.network.packet.handshake.KickS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
+import com.stonebreak.network.packet.player.DropItemC2S;
 import com.stonebreak.network.packet.player.GiveItemS2C;
 import com.stonebreak.network.packet.player.PlayerDataC2S;
 import com.stonebreak.network.packet.player.PlayerDataS2C;
@@ -25,6 +28,7 @@ import com.stonebreak.network.packet.player.PlayerJoinS2C;
 import com.stonebreak.network.packet.player.PlayerLeaveS2C;
 import com.stonebreak.network.packet.player.PlayerStateC2S;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
+import com.stonebreak.network.packet.world.TimeSyncS2C;
 import com.stonebreak.network.server.handlers.ServerBlockHandler;
 import com.stonebreak.network.server.handlers.ServerChatHandler;
 import com.stonebreak.network.server.handlers.ServerChunkHandler;
@@ -41,7 +45,8 @@ import java.util.List;
  * owns the {@link ServerWorldContext} plus the per-domain handlers. Every player —
  * including the co-located host — is a client; this server holds the truth.
  *
- * <p>{@link #tick()} runs on the host's game/tick thread: it drains the inbound queue
+ * <p>{@link #tick()} runs on the dedicated {@code <Mode>-Server} daemon thread (see
+ * {@code MultiplayerSession.startWithServer}): it drains the inbound queue
  * (connect/disconnect/handshake inline, PLAY packets routed to handlers) and then advances
  * a fixed <b>20 Hz</b> replication step (the 50 ms accumulator + 5-tick spiral-of-death
  * clamp inherited from the old session pump). Netty event-loop threads only ever enqueue.
@@ -53,6 +58,13 @@ public final class IntegratedServer {
     /** Persist connected remote players' inventories this often (~30 s at 20 Hz) for crash safety. */
     private static final int REMOTE_PLAYER_SAVE_INTERVAL_TICKS = 600;
     private int remotePlayerSaveCounter = 0;
+
+    /** Keepalive probe + authoritative time sample cadence (100 ticks = 5 s at 20 Hz). */
+    private static final int KEEPALIVE_INTERVAL_TICKS = 100;
+    /** Kick a REMOTE player after this much total inbound silence (dead TCP peer). */
+    private static final long INBOUND_SILENCE_TIMEOUT_NS = 30_000_000_000L; // 30 s
+    private int keepaliveCounter = 0;
+    private long nextKeepaliveNonce = 1L;
 
     private final NetworkServer networkServer;
     private final ServerWorldContext ctx;
@@ -92,6 +104,21 @@ public final class IntegratedServer {
         // (not in ServerLevel) so the mobs.entities package never imports network classes —
         // the dependency flows network -> mobs, not the reverse.
         level.entitySpawner().setSpawnAnchorSource(this::collectPlayerSpawnAnchors);
+
+        // Replication funnel for authoritative SIM block mutations (water flow etc.):
+        // installed on the HEADLESS world only, so server-side chunk.setBlock writes reach
+        // clients live instead of waiting for an accidental chunk re-stream. Runs on the
+        // server tick thread inside level.tick(), before blockHandler.tick flushes — same-tick.
+        level.world().setServerMutationCallback(blockHandler::onServerBlockChange);
+        // Same funnel pattern for snow-layer mutations → BlockMetaS2C broadcasts.
+        level.world().setServerSnowCallback(blockHandler::onServerSnowChange);
+        // Furnace state-string changes (lit flips, contents, cook progress) → BlockStateS2C.
+        // The registry dedups (fires only on actual string change), so idle furnaces are free.
+        if (level.world().getFurnaceRegistry() != null) {
+            level.world().getFurnaceRegistry().setStateChangeListener((pos, state) ->
+                ctx.broadcast(new com.stonebreak.network.packet.world.BlockStateS2C(
+                    pos.x(), pos.y(), pos.z(), state), false));
+        }
 
         networkServer.start(localAddress, tcpAddress);
         chunkHandler.onSessionStart();
@@ -157,6 +184,29 @@ public final class IntegratedServer {
         entityHandler.tick(ctx);
         chunkHandler.tick(ctx);
 
+        // Keepalive probes + authoritative time sample, every 5 s. Local channels get probes
+        // too (free RTT signal) but are exempt from the silence kick — a same-JVM stall
+        // (debugger, world-gen hitch on the game thread) must not tear down SP/host.
+        if (++keepaliveCounter >= KEEPALIVE_INTERVAL_TICKS) {
+            keepaliveCounter = 0;
+            long now = System.nanoTime();
+            TimeSyncS2C timeSync = currentTimeSync();
+            for (ServerPlayer sp : ctx.players()) {
+                if (!sp.isLocal() && now - sp.lastInboundNs() > INBOUND_SILENCE_TIMEOUT_NS) {
+                    System.out.println("[SERVER] Kicking " + sp.username() + " (id "
+                        + sp.playerId() + "): connection timed out.");
+                    sp.disconnect(); // channelInactive → normal DISCONNECT flow (persist + leave)
+                    continue;
+                }
+                long nonce = nextKeepaliveNonce++;
+                sp.markKeepaliveSent(nonce, now);
+                sp.send(new KeepAliveS2C(nonce, sp.rttMs()), false);
+                if (timeSync != null) {
+                    sp.send(timeSync, true); // droppable — the next sample self-heals
+                }
+            }
+        }
+
         // Periodically persist connected remote players' inventories (crash safety).
         if (++remotePlayerSaveCounter >= REMOTE_PLAYER_SAVE_INTERVAL_TICKS) {
             remotePlayerSaveCounter = 0;
@@ -164,6 +214,16 @@ public final class IntegratedServer {
                 persistPlayer(sp);
             }
         }
+    }
+
+    /** Authoritative time sample for TimeSyncS2C, or null before the level is booted. */
+    private TimeSyncS2C currentTimeSync() {
+        ServerLevel level = ctx.serverLevel();
+        if (level == null || level.timeOfDay() == null) {
+            return null;
+        }
+        var time = level.timeOfDay();
+        return new TimeSyncS2C(time.getTicks(), time.getTimeSpeed(), time.isFrozen());
     }
 
     // ─── Inbound dispatch (tick thread) ───────────────────────────────────────────
@@ -188,6 +248,7 @@ public final class IntegratedServer {
         if (sp == null) {
             return;
         }
+        sp.touchInbound();
         if (!sp.handshakeDone()) {
             if (packet instanceof HandshakeC2S hs) {
                 handleHandshake(sp, hs);
@@ -200,12 +261,27 @@ public final class IntegratedServer {
     private void routePlay(ServerPlayer sp, Packet packet) {
         switch (packet) {
             case BlockChangeC2S c -> blockHandler.handleBlockChange(sp, c, ctx);
+            case com.stonebreak.network.packet.world.SnowLayerC2S s -> blockHandler.handleSnowLayer(sp, s, ctx);
+            case com.stonebreak.network.packet.world.FurnaceSlotsC2S f -> blockHandler.handleFurnaceSlots(sp, f, ctx);
+            case com.stonebreak.network.packet.world.ChunkResyncRequestC2S cr ->
+                chunkHandler.handleResyncRequest(sp, cr.chunkX(), cr.chunkZ());
+            case com.stonebreak.network.packet.world.ChunkHashesC2S ch ->
+                chunkHandler.handleChunkHashes(sp, ch.entries(), ctx);
+            case com.stonebreak.network.packet.entity.EntityResyncC2S ignored2 -> {
+                if (sp.allowResync()) {
+                    entityHandler.onPeerJoined(sp); // idempotent client-side (known ids ignored)
+                }
+            }
             case PlayerStateC2S ps -> playerHandler.handlePlayerState(sp, ps, ctx);
             case PlayerHeldItemC2S h -> playerHandler.handleHeldItem(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
             case EntityDamageC2S ed -> entityHandler.handleEntityDamage(sp, ed, ctx);
+            case com.stonebreak.network.packet.entity.ProjectileSpawnC2S ps2 ->
+                entityHandler.handleProjectileSpawn(sp, ps2, ctx);
             case PlayerDataC2S pd -> { if (!sp.isLocal()) sp.setPlayerDataBlob(pd.json()); }
             case ViewDistanceC2S vd -> sp.setViewDistanceChunks(vd.chunks());
+            case KeepAliveC2S ka -> sp.answerKeepalive(ka.nonce(), System.nanoTime());
+            case DropItemC2S di -> playerHandler.handleDropItem(sp, di, ctx);
             case DisconnectC2S ignored -> sp.disconnect();
             default -> { /* unknown / unexpected serverbound packet — ignore */ }
         }
@@ -225,8 +301,14 @@ public final class IntegratedServer {
 
         Vector3f spawn = ctx.spawn();
 
-        // 1. Welcome: who you are + the seed + the authoritative spawn.
+        // 1. Welcome: who you are + the seed + the authoritative spawn. Followed immediately
+        //    by the authoritative time-of-day so the joining client's clock starts at the
+        //    server's actual time instead of a NOON default (non-droppable — join snapshot).
         sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), spawn.x, spawn.y, spawn.z));
+        TimeSyncS2C timeSync = currentTimeSync();
+        if (timeSync != null) {
+            sp.send(timeSync, false);
+        }
 
         // 2. Roster bootstrap: every player already present (no synthetic host — the local
         //    player is a normal client that announced itself like any other).
@@ -311,6 +393,15 @@ public final class IntegratedServer {
 
     public void onLocalBlockChange(int x, int y, int z, BlockType type) {
         blockHandler.onLocalBlockChange(x, y, z, type, ctx);
+    }
+
+    /** Server-side: forward projectile hit/kill credit to the launching player's client. */
+    public void sendKillCreditTo(int playerId, com.stonebreak.mobs.entities.LivingEntity victim,
+                                 float dealt, boolean killed) {
+        ServerPlayer sp = ctx.player(playerId);
+        if (sp != null) {
+            entityHandler.sendKillCredit(sp, victim, dealt, killed);
+        }
     }
 
     /** Server-side: hand a connected client an item stack (drop pickup, command-give). */

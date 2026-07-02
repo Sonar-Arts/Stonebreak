@@ -93,6 +93,54 @@ public final class ServerPlayer {
         }
     }
 
+    // ─── Keepalive / liveness (all touched on the server tick thread) ────────────
+    /** When the outstanding keepalive was sent; 0 = none outstanding. */
+    private long keepaliveSentNs = 0L;
+    /** Nonce of the outstanding keepalive; the echo must match to count. */
+    private long pendingKeepaliveNonce = 0L;
+    /** Last time ANY packet arrived from this client (touched on every routed packet). */
+    private long lastInboundNs = System.nanoTime();
+    /** Last measured round-trip time (ms). 0 until the first echo. */
+    private int rttMs = 0;
+
+    public long keepaliveSentNs() { return keepaliveSentNs; }
+    public long pendingKeepaliveNonce() { return pendingKeepaliveNonce; }
+    public long lastInboundNs() { return lastInboundNs; }
+    public int rttMs() { return rttMs; }
+    public void touchInbound() { this.lastInboundNs = System.nanoTime(); }
+
+    public void markKeepaliveSent(long nonce, long nowNs) {
+        this.pendingKeepaliveNonce = nonce;
+        this.keepaliveSentNs = nowNs;
+    }
+
+    /** Answer the outstanding keepalive; returns false (ignored) on a stale/unknown nonce. */
+    public boolean answerKeepalive(long nonce, long nowNs) {
+        if (keepaliveSentNs == 0L || nonce != pendingKeepaliveNonce) {
+            return false;
+        }
+        this.rttMs = (int) Math.min(Integer.MAX_VALUE, (nowNs - keepaliveSentNs) / 1_000_000L);
+        this.keepaliveSentNs = 0L;
+        return true;
+    }
+
+    // ─── Resync rate limiting (chunk resync requests + entity resyncs) ──────────
+    /** Max resync-type requests per rolling window (hostile/buggy client containment). */
+    private static final int MAX_RESYNCS_PER_WINDOW = 32;
+    private static final long RESYNC_WINDOW_NS = 10_000_000_000L; // 10 s
+    private long resyncWindowStartNs = 0L;
+    private int resyncCount = 0;
+
+    /** Debits one resync-request permit; false = over budget, drop the request. */
+    public boolean allowResync() {
+        long now = System.nanoTime();
+        if (now - resyncWindowStartNs > RESYNC_WINDOW_NS) {
+            resyncWindowStartNs = now;
+            resyncCount = 0;
+        }
+        return ++resyncCount <= MAX_RESYNCS_PER_WINDOW;
+    }
+
     // Latest serialized PlayerData (inventory + position + stats) reported by a REMOTE client,
     // persisted per username on disconnect / autosave / shutdown. Null until the client sends one.
     private volatile byte[] playerDataBlob;

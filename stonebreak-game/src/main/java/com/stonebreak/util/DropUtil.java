@@ -120,13 +120,23 @@ public class DropUtil {
         if (player == null || itemStack == null || itemStack.isEmpty()) {
             return;
         }
-        
+
+        // Drops are server-authoritative: send the toss intent so the SERVER spawns the drop
+        // and replicates it to every client (including us, as a normal shadow). Spawning
+        // locally here would create a client-only drop no other player can see —
+        // Game.getEntityManager() is the render world's manager in the two-world model.
+        if (com.stonebreak.network.MultiplayerSession.sendDropItem(
+                itemStack.getBlockTypeId(), itemStack.getCount())) {
+            return;
+        }
+
+        // Fallback (no live session — shouldn't happen in-world): legacy local spawn.
         // Access world through Game since Player doesn't have getWorld method
         World world = Game.getWorld();
         if (world == null) {
             return;
         }
-        
+
         // Calculate drop position safely in front of player
         Vector3f playerPosition = player.getPosition();
         // Get player's forward direction from camera

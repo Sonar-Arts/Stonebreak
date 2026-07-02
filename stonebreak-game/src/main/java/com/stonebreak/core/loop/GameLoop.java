@@ -195,13 +195,12 @@ public final class GameLoop {
 
         // Mob spawning is server-authoritative: the sole EntitySpawner lives on ServerLevel and
         // ticks on the server thread, replicating spawns to clients. There is no client-side
-        // spawner. The day/night clock is likewise server-authoritative; on a render-only client
-        // it is driven by replication (a future TimeSyncS2C), so skip it locally to avoid drift.
-        if (!renderOnly) {
-            TimeOfDay timeOfDay = Game.getTimeOfDay();
-            if (timeOfDay != null) {
-                timeOfDay.update(deltaTime);
-            }
+        // spawner. The day/night clock is server-authoritative too, but the client copy
+        // free-runs locally between TimeSyncS2C samples (which snap/converge it), so it must
+        // tick on render-only worlds as well.
+        TimeOfDay timeOfDay = Game.getTimeOfDay();
+        if (timeOfDay != null) {
+            timeOfDay.update(deltaTime);
         }
     }
 }

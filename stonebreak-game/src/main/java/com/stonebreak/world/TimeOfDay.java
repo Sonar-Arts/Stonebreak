@@ -28,6 +28,11 @@ public class TimeOfDay {
     // Current time in ticks
     private long ticks = DAWN;
 
+    // Fractional-tick carry between updates. Without it, per-frame updates (ticksToAdd < 1)
+    // truncate to zero and time never advances at frame rates above the tick rate; the
+    // 20 Hz server (exactly 1.0 tick/step) is unaffected.
+    private float subTick = 0.0f;
+
     // Time progression speed multiplier (1.0 = normal speed)
     private float timeSpeed = 1.0f;
 
@@ -59,9 +64,42 @@ public class TimeOfDay {
             // 20 minutes = 1200 seconds
             // 24000 ticks per day / 1200 seconds = 20 ticks per second
             float ticksPerSecond = (TICKS_PER_DAY / 1200.0f) * timeSpeed;
-            float ticksToAdd = ticksPerSecond * deltaTime;
+            float ticksToAdd = ticksPerSecond * deltaTime + subTick;
 
-            ticks = (long)((ticks + ticksToAdd) % TICKS_PER_DAY);
+            long whole = (long) ticksToAdd;
+            subTick = ticksToAdd - whole;
+            ticks = (ticks + whole) % TICKS_PER_DAY;
+        }
+    }
+
+    /** Client-side error above which {@link #nudgeTo} snaps instead of converging. */
+    public static final long SNAP_THRESHOLD_TICKS = 200;
+    /** Fraction of the remaining error corrected per sync when converging. */
+    private static final float CONVERGE_FRACTION = 0.10f;
+
+    /**
+     * Corrects this (client) clock toward an authoritative server sample. Large error
+     * (join, long stall) snaps outright; small error converges a fraction per call so the
+     * sky/lighting never visibly jumps while 20 Hz drift is steered out.
+     */
+    public void nudgeTo(long serverTicks) {
+        long target = Math.floorMod(serverTicks, TICKS_PER_DAY);
+        long delta = target - ticks;
+        // Shortest wrapped distance, so 23900 -> 100 converges forward across midnight.
+        if (delta > TICKS_PER_DAY / 2) {
+            delta -= TICKS_PER_DAY;
+        } else if (delta < -TICKS_PER_DAY / 2) {
+            delta += TICKS_PER_DAY;
+        }
+        if (Math.abs(delta) > SNAP_THRESHOLD_TICKS) {
+            ticks = target;
+            subTick = 0.0f;
+        } else if (delta != 0) {
+            long step = Math.round(delta * CONVERGE_FRACTION);
+            if (step == 0) {
+                step = Long.signum(delta); // always make progress on tiny error
+            }
+            ticks = Math.floorMod(ticks + step, TICKS_PER_DAY);
         }
     }
 

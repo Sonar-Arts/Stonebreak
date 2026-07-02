@@ -192,6 +192,43 @@ public final class FurnaceState {
         return s;
     }
 
+    /**
+     * Overwrites this state IN PLACE from a state string (server echo) — same object
+     * identity, so an open furnace UI bound to this state sees the update live.
+     */
+    public void applyStateString(String raw) {
+        FurnaceState parsed = fromStateString(pos, raw);
+        this.ingredient = parsed.ingredient;
+        this.fuel = parsed.fuel;
+        this.output = parsed.output;
+        this.burnTimeRemaining = parsed.burnTimeRemaining;
+        this.currentBurnUnitTotal = parsed.currentBurnUnitTotal;
+        this.cookProgress = parsed.cookProgress;
+        this.cooking = parsed.cookProgress > 0;
+    }
+
+    /** Encodes only the three slots ({@code ing|fuel|out}), for the client slot intent. */
+    public String encodeSlots() {
+        return encodeStack(ingredient) + "|" + encodeStack(fuel) + "|" + encodeStack(output);
+    }
+
+    /** Applies a client slot intent onto this (authoritative) state — slots only, never
+     *  timers; burn/cook progress stays server-owned. Malformed input leaves slots empty. */
+    public void applySlots(String encoded) {
+        String[] parts = encoded != null ? encoded.split("\\|", -1) : new String[0];
+        this.ingredient = parts.length > 0 ? clampStack(decodeStack(parts[0])) : new ItemStack(0, 0);
+        this.fuel       = parts.length > 1 ? clampStack(decodeStack(parts[1])) : new ItemStack(0, 0);
+        this.output     = parts.length > 2 ? clampStack(decodeStack(parts[2])) : new ItemStack(0, 0);
+    }
+
+    private static ItemStack clampStack(ItemStack s) {
+        if (s == null || s.isEmpty()) return new ItemStack(0, 0);
+        if (s.getCount() > s.getMaxStackSize()) {
+            s.setCount(s.getMaxStackSize());
+        }
+        return s;
+    }
+
     /** Returns just the renderable state name ({@code "Lit"} / {@code "Unlit"}). */
     public static String extractRenderState(String raw) {
         if (raw == null || !raw.startsWith(STATE_PREFIX)) return null;

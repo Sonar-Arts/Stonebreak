@@ -69,7 +69,6 @@ public class Game {
     private ChatSystem chatSystem; // Chat system
     private CraftingManager craftingManager; // Crafting manager
     private SmeltingManager smeltingManager; // Smelting manager for furnace
-    private com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry; // Per-position furnace state
     private com.stonebreak.audio.emitters.SoundEmitterManager soundEmitterManager; // Sound emitter management
     private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
     private DebugOverlay debugOverlay; // Debug overlay (F3)
@@ -184,7 +183,8 @@ public class Game {
         this.smeltingManager = new SmeltingManager();
         initializeSmeltingRecipes();
         initializeCraftingRecipes();
-        this.furnaceRegistry = new com.stonebreak.blocks.furnace.FurnaceStateRegistry(this.smeltingManager);
+        // Furnace registries are PER-WORLD now (each World constructs its own with this
+        // smelting manager); getFurnaceRegistry() delegates to the current world.
 
         this.chatSystem = new ChatSystem();
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f});
@@ -519,8 +519,14 @@ public class Game {
         return smeltingManager;
     }
 
+    /**
+     * The CURRENT world's furnace registry (per-world since the two-world furnace split),
+     * or null before a world exists. On a client render world this is the display registry
+     * fed by server echoes; the smelting registry lives on the headless server world.
+     */
     public com.stonebreak.blocks.furnace.FurnaceStateRegistry getFurnaceRegistry() {
-        return furnaceRegistry;
+        World w = getWorld();
+        return w != null ? w.getFurnaceRegistry() : null;
     }
     
     /**
@@ -916,10 +922,12 @@ public class Game {
             // (the data arrives via PlayerDataS2C and is applied by the client view).
             com.stonebreak.network.MultiplayerSession.restoreLocalPlayer(p);
 
-            if (this.timeOfDay == null) {
-                // Client clock is server-authoritative; seed a sane default until TimeSync lands.
-                setTimeOfDay(new TimeOfDay(TimeOfDay.NOON));
-            }
+            // Client clock is server-authoritative. Seed from the TimeSyncS2C the server sends
+            // right after WelcomeS2C when it already arrived (buffered by the client view);
+            // otherwise start at NOON and let the first periodic sync snap it. Always replace —
+            // a leftover clock from a previous session belongs to a different world.
+            Long serverTicks = com.stonebreak.network.MultiplayerSession.pendingServerTimeTicks();
+            setTimeOfDay(new TimeOfDay(serverTicks != null ? serverTicks : TimeOfDay.NOON));
 
             // Wait (bounded) for the spawn chunk to stream in so the player doesn't fall into
             // void before terrain arrives. The client tick (which installs chunks) runs during

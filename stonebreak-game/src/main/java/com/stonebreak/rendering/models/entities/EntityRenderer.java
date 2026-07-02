@@ -515,6 +515,26 @@ public class EntityRenderer {
             remotePlayerRenderer.render(rp, viewMatrix, projectionMatrix);
             return;
         }
+        // Attack overlay from the replicated ATTACKING flag — same envelope + clip-fade
+        // computation as the local player's third-person path (renderLocalPlayer), so
+        // remote swings render identically to your own.
+        String overlayState = null;
+        float overlayTime = 0f;
+        float overlayWeight = 0f;
+        com.stonebreak.mobs.sbe.OverlayAnimState attackOverlay = rp.getAttackOverlay();
+        if (attackOverlay.isVisible()) {
+            overlayState = com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(
+                    com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.ATTACKING);
+            com.openmason.engine.format.oma.ParsedAnimClip attackClip = asset.clipFor(overlayState);
+            if (attackClip != null) {
+                overlayTime = attackOverlay.time();
+                overlayWeight = attackOverlay.weight(
+                        attackClip.layer().fadeInSeconds(), attackClip.layer().fadeOutSeconds());
+            } else {
+                overlayState = null;
+            }
+        }
+
         PlayerFigureRenderState figure = new PlayerFigureRenderState(
                 rp.getPosition(),
                 yaw,
@@ -523,6 +543,9 @@ public class EntityRenderer {
                 headPitch,
                 com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState()),
                 rp.getAnimationController().getTotalAnimationTime(),
+                overlayState,
+                overlayTime,
+                overlayWeight,
                 untexturedTint);
 
         renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, world, cameraPos);

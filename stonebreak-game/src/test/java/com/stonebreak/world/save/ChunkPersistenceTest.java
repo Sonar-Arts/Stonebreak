@@ -144,6 +144,11 @@ class ChunkPersistenceTest {
             .addCustomData("aiState", "GRAZING")
             .build());
 
+        java.util.Map<Integer, Integer> snowLayers = new java.util.HashMap<>();
+        snowLayers.put(com.stonebreak.world.chunk.utils.LocalBlockKey.pack(0, 64, 0), 1);
+        snowLayers.put(com.stonebreak.world.chunk.utils.LocalBlockKey.pack(15, 200, 15), 8);
+        snowLayers.put(com.stonebreak.world.chunk.utils.LocalBlockKey.pack(4, 70, 11), 5);
+
         return ChunkData.builder()
             .chunkX(chunkX)
             .chunkZ(chunkZ)
@@ -153,6 +158,7 @@ class ChunkPersistenceTest {
             .hasEntitiesGenerated(true)
             .waterMetadata(water)
             .entities(entities)
+            .snowLayers(snowLayers)
             .build();
     }
 
@@ -162,6 +168,7 @@ class ChunkPersistenceTest {
         assertEquals(expected.isFeaturesPopulated(), actual.isFeaturesPopulated(), "Features flag mismatch");
         assertEquals(expected.hasEntitiesGenerated(), actual.hasEntitiesGenerated(), "Entity generation flag mismatch");
         assertEquals(expected.getWaterMetadata(), actual.getWaterMetadata(), "Water metadata mismatch");
+        assertEquals(expected.getSnowLayers(), actual.getSnowLayers(), "Snow layers mismatch (v3)");
         assertEquals(expected.getEntities().size(), actual.getEntities().size(), "Entity count mismatch");
 
         for (int i = 0; i < expected.getEntities().size(); i++) {

@@ -67,7 +67,10 @@ public class FireBolt extends Entity {
         // Advance the bolt in small sub-steps so collision is checked along the
         // whole travel segment rather than only at the destination point.
         float remaining = BOLT_SPEED * deltaTime;
-        EntityManager em = Game.getEntityManager();
+        EntityManager em = world.getEntityManager(); // server-spawned: scan the OWNING world
+        if (em == null) {
+            em = Game.getEntityManager();
+        }
         while (remaining > 0.0f && !impacted) {
             float stepLen = Math.min(COLLISION_STEP, remaining);
             remaining -= stepLen;
@@ -91,7 +94,7 @@ public class FireBolt extends Entity {
                 for (Entity e : em.getEntitiesInRange(position, HIT_RADIUS)) {
                     if (e == this) continue;
                     if (e instanceof LivingEntity le) {
-                        le.damage(DAMAGE, LivingEntity.DamageSource.FIRE);
+                        ProjectileDamage.deal(this, le, DAMAGE, LivingEntity.DamageSource.FIRE);
                         impact();
                         return;
                     }

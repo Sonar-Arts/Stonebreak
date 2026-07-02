@@ -54,7 +54,10 @@ public class LeylineBreachZone extends Entity {
             return;
         }
 
-        EntityManager em = Game.getEntityManager();
+        EntityManager em = world.getEntityManager(); // server-spawned: scan the OWNING world
+        if (em == null) {
+            em = Game.getEntityManager();
+        }
         if (em == null) return;
 
         boolean pulse = false;
@@ -75,7 +78,7 @@ public class LeylineBreachZone extends Entity {
             if (pulse) {
                 // Damage before applying Amplified: the first pulse is unamplified, later
                 // pulses benefit (2.5s debuff > 1.2s interval keeps it refreshed in-zone).
-                entity.damage(pulseDamage, LivingEntity.DamageSource.ARCANE);
+                ProjectileDamage.deal(this, entity, pulseDamage, LivingEntity.DamageSource.ARCANE);
                 entity.applyStatusEffect(StatusEffectType.AMPLIFIED,
                     LEYLINE_BREACH_AMPLIFY_DURATION, LEYLINE_BREACH_AMPLIFY_BONUS);
             }

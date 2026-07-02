@@ -35,6 +35,20 @@ public class RemotePlayer extends LivingEntity {
     private PlayerStateMapping.PlayerMovementState movementState = PlayerStateMapping.PlayerMovementState.IDLE;
     private Vector3f prevPosition;
 
+    /** Latest replicated movement/action flags ({@code PlayerStateFlags} bits). */
+    private volatile byte stateFlags;
+    /**
+     * Attack-overlay envelope driven by the replicated ATTACKING flag — the exact pattern
+     * the local {@code Player} uses, so remote swings render with the same pop-free
+     * fade-in/out through the overlay-capable render path.
+     */
+    private final com.stonebreak.mobs.sbe.OverlayAnimState attackOverlay =
+        new com.stonebreak.mobs.sbe.OverlayAnimState();
+
+    public void setStateFlags(byte flags) { this.stateFlags = flags; }
+    public byte getStateFlags() { return stateFlags; }
+    public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return attackOverlay; }
+
     public RemotePlayer(World world, Vector3f position, int playerId, String username) {
         super(world, position, EntityType.REMOTE_PLAYER);
         this.playerId = playerId;
@@ -48,9 +62,16 @@ public class RemotePlayer extends LivingEntity {
     public int getHeldItemId() { return heldItemId; }
     public void setHeldItemId(int id) {
         this.heldItemId = id;
-        // Networked held items are block ids; resolve to a BlockType for in-hand rendering.
+        // Block ids and item ids share one id space (mirrors ItemStack.setBlockTypeId):
+        // resolve BlockType first, then ItemType — previously only blocks resolved, so a
+        // remote player holding a tool rendered empty-handed.
         BlockType block = BlockType.getById(id);
-        this.heldItem = (block == null || block == BlockType.AIR) ? null : block;
+        if (block != null && block != BlockType.AIR) {
+            this.heldItem = block;
+        } else {
+            com.stonebreak.items.ItemType itemType = com.stonebreak.items.ItemType.getById(id);
+            this.heldItem = itemType;
+        }
     }
 
     /** Held item identity for third-person hand rendering. {@code null} = empty-handed. */
@@ -97,10 +118,27 @@ public class RemotePlayer extends LivingEntity {
         float dx = position.x - prevPosition.x;
         float dz = position.z - prevPosition.z;
         float horizDist = (float) Math.sqrt(dx * dx + dz * dz);
-        movementState = horizDist > WALK_THRESHOLD
-                ? PlayerStateMapping.PlayerMovementState.WALKING
-                : PlayerStateMapping.PlayerMovementState.IDLE;
+        boolean moving = horizDist > WALK_THRESHOLD;
         prevPosition.set(position);
+
+        // Replicated flags pick the clip; the displacement heuristic remains the walk/idle
+        // fallback (local-only figures like IllusionDecoy never set flags). Airborne maps to
+        // the jumping clip; sprint/sneak/swim flags are replicated but render as walking
+        // until those clips are authored in SB_Player.sbe.
+        byte flags = stateFlags;
+        if (com.stonebreak.network.packet.player.PlayerStateFlags.has(
+                flags, com.stonebreak.network.packet.player.PlayerStateFlags.AIRBORNE)) {
+            movementState = PlayerStateMapping.PlayerMovementState.JUMPING;
+        } else {
+            movementState = moving
+                    ? PlayerStateMapping.PlayerMovementState.WALKING
+                    : PlayerStateMapping.PlayerMovementState.IDLE;
+        }
+
+        // Attack overlay from the replicated flag (~6 packets across a swing at 20 Hz —
+        // a dropped droppable packet delays an edge by ≤50 ms, invisible under the fades).
+        attackOverlay.update(deltaTime, com.stonebreak.network.packet.player.PlayerStateFlags.has(
+                flags, com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING));
 
         animationController.updateAnimations(deltaTime);
     }

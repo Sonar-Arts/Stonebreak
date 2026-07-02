@@ -389,7 +389,12 @@ public class ItemDrop extends Entity {
         drop.velocity.set(initialVelocity);
         return drop;
     }
-    
+
+    /** Extend the pickup lock-out (a deliberate toss must not be instantly re-collected). */
+    public void setPickupDelay(float seconds) {
+        this.pickupDelay = seconds;
+    }
+
     /**
      * Factory method to create a simple item drop from item type and count.
      */

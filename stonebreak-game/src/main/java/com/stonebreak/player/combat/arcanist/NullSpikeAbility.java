@@ -76,8 +76,14 @@ public class NullSpikeAbility implements AbilitySpell {
         Vector3f direction = new Vector3f(player.getCamera().getFront()).normalize();
         Vector3f spawnPos = new Vector3f(player.getCamera().getPosition())
             .add(new Vector3f(direction).mul(0.5f));
-        entityManager.spawnNullSpike(spawnPos, direction, damagePerHit, spellmarkDuration,
-            cast.overloaded(), burstDamage);
+        // Server-authoritative spawn (replicated to all); local fallback only with no session.
+        if (!com.stonebreak.network.MultiplayerSession.sendProjectileSpawn(
+                com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_NULL_SPIKE,
+                spawnPos, direction,
+                damagePerHit, spellmarkDuration, cast.overloaded() ? 1f : 0f, burstDamage)) {
+            entityManager.spawnNullSpike(spawnPos, direction, damagePerHit, spellmarkDuration,
+                cast.overloaded(), burstDamage);
+        }
 
         state = State.COOLDOWN;
         cooldownRemaining = NULL_SPIKE_COOLDOWN;
