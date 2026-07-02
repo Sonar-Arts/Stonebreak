@@ -573,6 +573,13 @@ public class Main {
                     getUiCursorPos(xpos, ypos);
                     game.getTerrainMapperScreen().handleMouseWheel(xpos.get(), ypos.get(), yoffset);
                 }
+            } else if (game != null && game.getState() == GameState.SETTINGS && game.getSettingsMenu() != null) {
+                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
+                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
+                    getUiCursorPos(xpos, ypos);
+                    game.getSettingsMenu().handleMouseWheel(xpos.get(), ypos.get(), yoffset);
+                }
             } else if (inputHandler != null) {
                 // Forward scroll events to InputHandler for hotbar selection and other UI interactions
                 inputHandler.handleScroll(yoffset);
