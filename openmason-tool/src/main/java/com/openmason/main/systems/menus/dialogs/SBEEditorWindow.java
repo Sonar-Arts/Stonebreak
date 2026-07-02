@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -52,6 +53,8 @@ public class SBEEditorWindow {
     private Path currentPath;
     private SBEFormat.Document loadedManifest;
     private byte[] loadedOmoBytes;
+    /** Human-readable source of the base OMO ("(original)" or a picked filename). */
+    private String baseModelLabel;
     private boolean dirty;
 
     // Form buffers
@@ -103,6 +106,7 @@ public class SBEEditorWindow {
             this.currentPath = path;
             this.loadedManifest = raw.manifest();
             this.loadedOmoBytes = raw.omoBytes();
+            this.baseModelLabel = "(original)";
             populateBuffers(raw.manifest(), raw.stateAssetBytes());
             this.dirty = false;
             this.visible.set(true);
@@ -197,6 +201,60 @@ public class SBEEditorWindow {
         if (ImGui.inputText("Author", author))          dirty = true;
         ImGui.text("Description");
         if (ImGui.inputTextMultiline("##desc", description, -1, 80)) dirty = true;
+
+        ImGui.dummy(0, 6);
+        ImGui.separator();
+        ImGui.dummy(0, 4);
+        renderBaseModelRow();
+    }
+
+    /**
+     * Base OMO slot. The base model applies to the whole entity (variants/states
+     * layer their own overrides on top). Replacing it swaps {@link #loadedOmoBytes},
+     * which the serializer re-embeds as {@code model.omo} on save.
+     */
+    private void renderBaseModelRow() {
+        ImGui.text("Base Model");
+        ImGui.textDisabled("Embedded OMO applied to every variant/state unless overridden.");
+
+        ImGui.textDisabled("Model:");
+        ImGui.sameLine(80.0f);
+        if (loadedOmoBytes != null) {
+            ImGui.text(baseModelLabel != null ? baseModelLabel : "(loaded)");
+            ImGui.sameLine();
+            ImGui.textDisabled("(" + humanBytes(loadedOmoBytes.length) + ")");
+        } else {
+            ImGui.textDisabled("(none)");
+        }
+        ImGui.sameLine();
+        if (ImGui.smallButton("Replace...")) pickBaseModel();
+    }
+
+    private void pickBaseModel() {
+        if (fileDialogService == null) return;
+        fileDialogService.showOpenOMODialog(this::readBaseModelFrom);
+    }
+
+    private void readBaseModelFrom(String picked) {
+        if (picked == null || picked.isBlank()) return;
+        try {
+            Path path = Path.of(picked);
+            loadedOmoBytes = Files.readAllBytes(path);
+            baseModelLabel = path.getFileName().toString();
+            dirty = true;
+            if (statusService != null) {
+                statusService.updateStatus("Base model set to " + baseModelLabel);
+            }
+        } catch (IOException e) {
+            logger.error("Failed to read OMO {}", picked, e);
+            if (statusService != null) statusService.updateStatus("Failed to read OMO file");
+        }
+    }
+
+    private static String humanBytes(int n) {
+        if (n < 1024) return n + " B";
+        if (n < 1024 * 1024) return String.format("%.1f KB", n / 1024.0);
+        return String.format("%.1f MB", n / (1024.0 * 1024.0));
     }
 
     // ========================================================================
