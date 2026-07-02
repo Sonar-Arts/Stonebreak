@@ -70,11 +70,11 @@ public class SBEEditorWindow {
         this.statusService = statusService;
         this.statesEditor = new SBEStatesEditor(
                 () -> dirty = true,
-                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMODialog(cb::accept); },
-                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMADialog(cb::accept); });
+                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMOInProjectDialog(cb::accept); },
+                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMAInProjectDialog(cb::accept); });
         this.variantsEditor = new SBEVariantsEditor(
                 () -> dirty = true,
-                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMODialog(cb::accept); });
+                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMOInProjectDialog(cb::accept); });
     }
 
     // ========================================================================
@@ -232,7 +232,7 @@ public class SBEEditorWindow {
 
     private void pickBaseModel() {
         if (fileDialogService == null) return;
-        fileDialogService.showOpenOMODialog(this::readBaseModelFrom);
+        fileDialogService.showOpenOMOInProjectDialog(this::readBaseModelFrom);
     }
 
     private void readBaseModelFrom(String picked) {

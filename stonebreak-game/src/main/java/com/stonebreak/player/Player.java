@@ -469,11 +469,14 @@ public class Player {
     }
 
     /**
-     * Third-person head pitch, clamped so the head never over-rotates. Negated
-     * because the head bone's rotateX is opposite in sign to the camera pitch
-     * (camera looks up at positive pitch; the head bone pitches down).
+     * Third-person head pitch, clamped so the head never over-rotates. The
+     * camera pitch is passed through directly: the third-person body's 180°
+     * facing flip (see {@link PlayerBodyOrientation#modelYawFromDirection}) puts
+     * a {@code rotateY(180°)} in the model's base transform, which inverts the
+     * head bone's local X axis — so {@code rotateX(cameraPitch)} already tilts
+     * the head the same way the camera looks (up→up, down→down).
      */
-    public float getThirdPersonHeadPitch() { return bodyOrientation.getHeadPitch(-camera.getPitch()); }
+    public float getThirdPersonHeadPitch() { return bodyOrientation.getHeadPitch(camera.getPitch()); }
 
     /** Continuously advancing animation clock for the body model (Walking). */
     public float getBodyAnimationTime() { return bodyAnimationTime; }

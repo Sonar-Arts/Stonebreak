@@ -96,7 +96,17 @@ public class FileDialogService {
      */
     private void showNFDOpenDialog(String statusMessage, String filterName, String filterSpec,
                                    String logPrefix, OpenCallback callback) {
-        showNFDOpenDialogMultiFilter(statusMessage, new String[]{filterName}, new String[]{filterSpec}, logPrefix, callback);
+        showNFDOpenDialogMultiFilter(statusMessage, new String[]{filterName}, new String[]{filterSpec}, null, logPrefix, callback);
+    }
+
+    /**
+     * Generic open dialog with an optional preferred starting directory that
+     * takes precedence over the per-type last-used directory.
+     */
+    private void showNFDOpenDialog(String statusMessage, String filterName, String filterSpec,
+                                   String preferredDirectory, String logPrefix, OpenCallback callback) {
+        showNFDOpenDialogMultiFilter(statusMessage, new String[]{filterName}, new String[]{filterSpec},
+                preferredDirectory, logPrefix, callback);
     }
 
     /**
@@ -104,6 +114,15 @@ public class FileDialogService {
      */
     private void showNFDOpenDialogMultiFilter(String statusMessage, String[] filterNames, String[] filterSpecs,
                                               String logPrefix, OpenCallback callback) {
+        showNFDOpenDialogMultiFilter(statusMessage, filterNames, filterSpecs, null, logPrefix, callback);
+    }
+
+    /**
+     * Generic open dialog with multiple filter support and an optional preferred
+     * starting directory.
+     */
+    private void showNFDOpenDialogMultiFilter(String statusMessage, String[] filterNames, String[] filterSpecs,
+                                              String preferredDirectory, String logPrefix, OpenCallback callback) {
         if (!nfdInitialized) {
             statusService.updateStatus("Error: File dialog not initialized");
             return;
@@ -120,10 +139,13 @@ public class FileDialogService {
                     createFilter(filters, i, stack, filterNames[i], filterSpecs[i]);
                 }
 
-                // Show open dialog — seed the default path with the last directory
+                // Show open dialog — a caller-preferred directory (e.g. the open
+                // project's root) wins; otherwise seed with the last directory
                 // used for any of these filter types, so each format keeps its
                 // own navigation context across sessions.
-                String defaultPath = resolveDefaultDirectory(filterSpecs);
+                String defaultPath = (preferredDirectory != null && new File(preferredDirectory).isDirectory())
+                        ? preferredDirectory
+                        : resolveDefaultDirectory(filterSpecs);
                 int result = NFD_OpenDialog(outPath, filters, defaultPath);
 
                 if (result == NFD_OKAY) {
@@ -357,6 +379,17 @@ public class FileDialogService {
     }
 
     /**
+     * Like {@link #showOpenOMODialog(OpenCallback)}, but starts in the open
+     * project's root (where the .OMP lives) when a project is loaded. Used by
+     * the SBE editor so model replacements default to the assets that belong to
+     * the entity's project.
+     */
+    public void showOpenOMOInProjectDialog(OpenCallback callback) {
+        showNFDOpenDialog("Opening OMO model...", "Open Mason Object", "omo",
+                projectDirectoryOrNull(), "Selected OMO file", callback);
+    }
+
+    /**
      * Show save OMO (Open Mason Object) dialog using native file dialog.
      * Starts in the open project's folder (where the .OMP lives) when a
      * project is loaded, so models land next to their project by default.
@@ -437,6 +470,16 @@ public class FileDialogService {
     public void showOpenOMADialog(OpenCallback callback) {
         showNFDOpenDialog("Opening OMA animation...", "Open Mason Animation", "omanim",
                 "Selected OMA file", callback);
+    }
+
+    /**
+     * Like {@link #showOpenOMADialog(OpenCallback)}, but starts in the open
+     * project's root when a project is loaded. Used by the SBE editor so
+     * animation replacements default to the entity's project assets.
+     */
+    public void showOpenOMAInProjectDialog(OpenCallback callback) {
+        showNFDOpenDialog("Opening OMA animation...", "Open Mason Animation", "omanim",
+                projectDirectoryOrNull(), "Selected OMA file", callback);
     }
 
     /**
