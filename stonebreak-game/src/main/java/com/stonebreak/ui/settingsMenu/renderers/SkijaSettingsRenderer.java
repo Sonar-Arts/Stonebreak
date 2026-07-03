@@ -250,6 +250,7 @@ public final class SkijaSettingsRenderer {
             case ARM_MODEL        -> state.getArmModelButton();
             case CROSSHAIR_STYLE  -> state.getCrosshairStyleButton();
             case CROSSHAIR_SIZE   -> state.getCrosshairSizeSlider();
+            case PLAYER_NAME_TAGS -> state.getPlayerNameTagsButton();
             case LEAF_TRANSPARENCY -> state.getLeafTransparencyButton();
             case WATER_SHADER     -> state.getWaterShaderButton();
             case CLOUDS_ENABLED   -> state.getCloudsButton();

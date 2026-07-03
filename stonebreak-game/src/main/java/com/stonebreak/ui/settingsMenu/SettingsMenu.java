@@ -54,6 +54,7 @@ public final class SettingsMenu {
                 actionHandler::onCrosshairStyleChange,
                 actionHandler::onVolumeChange,
                 actionHandler::onCrosshairSizeChange,
+                actionHandler::togglePlayerNameTags,
                 actionHandler::toggleLeafTransparency,
                 actionHandler::toggleWaterShader,
                 actionHandler::toggleClouds,

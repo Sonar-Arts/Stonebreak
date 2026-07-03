@@ -34,6 +34,9 @@ public class Settings {
     private boolean godRaysEnabled = true;
     private boolean shadowsEnabled = true;
 
+    // HUD / multiplayer — show floating username tags above remote players' heads.
+    private boolean playerNameTagsEnabled = true;
+
     // Lighting quality — shadow map tier ("LOW"/"MEDIUM"/"HIGH"), shadow reach in
     // blocks, and baked smooth lighting (per-vertex AO + soft sky gradients).
     // Shadow quality/distance are read live by the shadow pass each frame; smooth
@@ -115,6 +118,7 @@ public class Settings {
             json.append("  \"cloudsEnabled\": ").append(cloudsEnabled).append(",\n");
             json.append("  \"godRaysEnabled\": ").append(godRaysEnabled).append(",\n");
             json.append("  \"shadowsEnabled\": ").append(shadowsEnabled).append(",\n");
+            json.append("  \"playerNameTagsEnabled\": ").append(playerNameTagsEnabled).append(",\n");
             json.append("  \"shadowQuality\": \"").append(shadowQuality).append("\",\n");
             json.append("  \"shadowDistance\": ").append(shadowDistance).append(",\n");
             json.append("  \"smoothLightingEnabled\": ").append(smoothLightingEnabled).append(",\n");
@@ -302,6 +306,11 @@ public class Settings {
                 if (value != null) {
                     shadowsEnabled = Boolean.parseBoolean(value);
                 }
+            } else if (line.contains("playerNameTagsEnabled")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    playerNameTagsEnabled = Boolean.parseBoolean(value);
+                }
             } else if (line.contains("shadowQuality")) {
                 String value = extractStringValue(line);
                 if (value != null) {
@@ -432,6 +441,7 @@ public class Settings {
     public boolean getCloudsEnabled() { return cloudsEnabled; }
     public boolean getGodRaysEnabled() { return godRaysEnabled; }
     public boolean getShadowsEnabled() { return shadowsEnabled; }
+    public boolean getPlayerNameTagsEnabled() { return playerNameTagsEnabled; }
     public String getShadowQuality() { return shadowQuality; }
     public int getShadowDistance() { return shadowDistance; }
     public boolean getSmoothLightingEnabled() { return smoothLightingEnabled; }
@@ -526,6 +536,10 @@ public class Settings {
 
     public void setShadowsEnabled(boolean shadowsEnabled) {
         this.shadowsEnabled = shadowsEnabled;
+    }
+
+    public void setPlayerNameTagsEnabled(boolean playerNameTagsEnabled) {
+        this.playerNameTagsEnabled = playerNameTagsEnabled;
     }
 
     /** Shadow map quality tier; invalid values fall back to MEDIUM. Read live by the shadow pass. */

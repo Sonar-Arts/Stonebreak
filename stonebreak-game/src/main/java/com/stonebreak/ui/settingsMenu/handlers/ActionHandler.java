@@ -49,6 +49,7 @@ public class ActionHandler {
             case ARM_MODEL -> stateManager.getArmModelButton().toggle();
             case CROSSHAIR_STYLE -> stateManager.getCrosshairStyleButton().toggle();
             case CROSSHAIR_SIZE -> {} // Crosshair size handled by mouse/keyboard interaction
+            case PLAYER_NAME_TAGS -> togglePlayerNameTags();
             case LEAF_TRANSPARENCY -> toggleLeafTransparency();
             case WATER_SHADER -> toggleWaterShader();
             case CLOUDS_ENABLED -> toggleClouds();
@@ -283,6 +284,15 @@ public class ActionHandler {
         } catch (Exception e) {
             System.err.println("Failed to rebuild chunks after leaf transparency change: " + e.getMessage());
         }
+    }
+
+    /**
+     * Toggles floating player name tags above remote players in multiplayer.
+     */
+    public void togglePlayerNameTags() {
+        boolean currentValue = settings.getPlayerNameTagsEnabled();
+        settings.setPlayerNameTagsEnabled(!currentValue);
+        System.out.println("Player name tags toggled to: " + (!currentValue ? "ON" : "OFF"));
     }
 
     /**

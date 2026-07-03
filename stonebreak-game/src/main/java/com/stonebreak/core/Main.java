@@ -1048,6 +1048,8 @@ public class Main {
                         .render(renderer.getProjectionMatrix(), player.getViewMatrix(), width, height);
                 com.stonebreak.rendering.UI.components.EnemyAwarenessRenderer.getInstance()
                         .render(renderer.getProjectionMatrix(), player.getViewMatrix(), width, height);
+                com.stonebreak.rendering.UI.components.PlayerNameTagRenderer.getInstance()
+                        .render(renderer.getProjectionMatrix(), player.getViewMatrix(), width, height);
                 com.stonebreak.rendering.UI.components.StealthHudRenderer.getInstance()
                         .render(width, height);
             }
