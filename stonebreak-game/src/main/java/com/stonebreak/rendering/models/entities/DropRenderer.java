@@ -344,7 +344,9 @@ public class DropRenderer {
             if (held == null) continue;
 
             Vector3f pos = rp.getPosition();
-            float yawRad = (float) Math.toRadians(rp.getRotation().y);
+            // Model-space body yaw — must match the figure the item is parented to
+            // (the raw rotation.y is camera-space for networked remote players).
+            float yawRad = (float) Math.toRadians(rp.getBodyYaw());
             float cos = (float) Math.cos(yawRad);
             float sin = (float) Math.sin(yawRad);
             // World vectors: forward = (-sin, 0, -cos), right = (cos, 0, -sin).

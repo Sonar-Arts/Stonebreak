@@ -32,6 +32,12 @@ public final class ChunkData {
      * here — default-state blocks keep this empty for minimal save footprint.
      */
     private final Map<Integer, String> blockStates;
+    /**
+     * Sparse snow layer counts (save v3+). Keyed by packed local coordinates
+     * ({@code LocalBlockKey}), value 1-8. Untracked snow blocks read as the
+     * 1-layer default, so most snow never appears here.
+     */
+    private final Map<Integer, Integer> snowLayers;
 
     private ChunkData(Builder builder) {
         this.chunkX = builder.chunkX;
@@ -43,6 +49,7 @@ public final class ChunkData {
         this.waterMetadata = builder.waterMetadata != null ? new HashMap<>(builder.waterMetadata) : new HashMap<>();
         this.entities = builder.entities != null ? new ArrayList<>(builder.entities) : new ArrayList<>();
         this.blockStates = builder.blockStates != null ? new HashMap<>(builder.blockStates) : new HashMap<>();
+        this.snowLayers = builder.snowLayers != null ? new HashMap<>(builder.snowLayers) : new HashMap<>();
     }
 
     // Getters
@@ -56,6 +63,7 @@ public final class ChunkData {
     public Map<String, WaterBlockData> getWaterMetadata() { return new HashMap<>(waterMetadata); }
     public List<EntityData> getEntities() { return new ArrayList<>(entities); }
     public Map<Integer, String> getBlockStates() { return new HashMap<>(blockStates); }
+    public Map<Integer, Integer> getSnowLayers() { return new HashMap<>(snowLayers); }
 
     public static Builder builder() {
         return new Builder();
@@ -71,6 +79,7 @@ public final class ChunkData {
         private Map<String, WaterBlockData> waterMetadata = new HashMap<>();
         private List<EntityData> entities = new ArrayList<>();
         private Map<Integer, String> blockStates = new HashMap<>();
+        private Map<Integer, Integer> snowLayers = new HashMap<>();
 
         public Builder chunkX(int chunkX) {
             this.chunkX = chunkX;
@@ -115,6 +124,11 @@ public final class ChunkData {
 
         public Builder blockStates(Map<Integer, String> blockStates) {
             this.blockStates = blockStates != null ? new HashMap<>(blockStates) : new HashMap<>();
+            return this;
+        }
+
+        public Builder snowLayers(Map<Integer, Integer> snowLayers) {
+            this.snowLayers = snowLayers != null ? new HashMap<>(snowLayers) : new HashMap<>();
             return this;
         }
 

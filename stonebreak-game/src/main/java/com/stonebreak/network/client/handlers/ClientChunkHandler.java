@@ -28,7 +28,11 @@ public final class ClientChunkHandler {
             pending.add(cd);
             return;
         }
-        world.installNetworkChunk(cd.chunkX(), cd.chunkZ(), cd.payload());
+        if (!world.installNetworkChunk(cd.chunkX(), cd.chunkZ(), cd.payload(), cd.metaPayload())) {
+            // Decode/install failed but the server marked this chunk sent — without a resync
+            // request the hole is permanent (the version never changes for us again).
+            com.stonebreak.network.MultiplayerSession.requestChunkResync(cd.chunkX(), cd.chunkZ());
+        }
     }
 
     public void tick() {
@@ -41,7 +45,9 @@ public final class ClientChunkHandler {
         }
         ChunkDataS2C cd;
         while ((cd = pending.poll()) != null) {
-            world.installNetworkChunk(cd.chunkX(), cd.chunkZ(), cd.payload());
+            if (!world.installNetworkChunk(cd.chunkX(), cd.chunkZ(), cd.payload(), cd.metaPayload())) {
+                com.stonebreak.network.MultiplayerSession.requestChunkResync(cd.chunkX(), cd.chunkZ());
+            }
         }
     }
 

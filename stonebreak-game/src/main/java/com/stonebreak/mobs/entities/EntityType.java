@@ -231,6 +231,27 @@ public enum EntityType {
     }
 
     /**
+     * True when server-side entities of this type replicate to clients as network shadows.
+     * The single source of truth for replication scope — {@code EntityReplicationRegistry}
+     * holds the matching metadata + shadow factories. Excluded:
+     * <ul>
+     *   <li>REMOTE_PLAYER — players ride the dedicated PlayerState channel</li>
+     *   <li>BOBBER — owner-driven (the fishing controller holds and reads the instance
+     *       per frame); making it server-authoritative is a documented follow-up</li>
+     *   <li>ILLUSION_DECOY — the ability mirrors the owner's movement client-side each
+     *       frame; there is no server-side driver yet (documented follow-up)</li>
+     * </ul>
+     */
+    public boolean replicates() {
+        return switch (this) {
+            case COW, SHEEP, CHICKEN, BLOCK_DROP, ITEM_DROP,
+                 ARROW, FIRE_BOLT, NULL_SPIKE, LEYLINE_BREACH_ZONE,
+                 CALTROP_CLUSTER -> true;
+            case REMOTE_PLAYER, BOBBER, ILLUSION_DECOY -> false;
+        };
+    }
+
+    /**
      * Checks if this entity type represents a living creature.
      */
     public boolean isLiving() {

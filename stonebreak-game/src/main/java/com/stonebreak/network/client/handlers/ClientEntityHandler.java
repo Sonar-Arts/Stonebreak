@@ -1,7 +1,6 @@
 package com.stonebreak.network.client.handlers;
 
 import com.openmason.engine.net.protocol.codec.EntityDeltaCodec;
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.chicken.Chicken;
@@ -11,8 +10,6 @@ import com.stonebreak.mobs.entities.BlockDrop;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.mobs.entities.ItemDrop;
-import com.stonebreak.mobs.sheep.Sheep;
 import com.stonebreak.network.client.NetworkInterpolator;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
@@ -39,6 +36,25 @@ public final class ClientEntityHandler {
     /** Spawn packets that arrived before the local world/entity manager was ready. */
     private final Deque<EntitySpawnS2C> pendingSpawns = new ArrayDeque<>();
 
+    /** Moves for unknown ids in the current window — a sustained burst means the shadow map
+     *  diverged (a spawn was somehow lost), so ask for a full entity resync. Occasional
+     *  strays are normal (a despawn racing in-flight moves). */
+    private static final int UNKNOWN_MOVE_RESYNC_THRESHOLD = 20;
+    private static final long UNKNOWN_MOVE_WINDOW_NS = 5_000_000_000L; // 5 s
+    private int unknownMoveCount = 0;
+    private long unknownMoveWindowStartNs = 0L;
+
+    private void noteUnknownMove() {
+        long now = System.nanoTime();
+        if (now - unknownMoveWindowStartNs > UNKNOWN_MOVE_WINDOW_NS) {
+            unknownMoveWindowStartNs = now;
+            unknownMoveCount = 0;
+        }
+        if (++unknownMoveCount == UNKNOWN_MOVE_RESYNC_THRESHOLD) {
+            com.stonebreak.network.MultiplayerSession.requestEntityResync();
+        }
+    }
+
     public void applySpawn(EntitySpawnS2C s) {
         if (Game.getWorld() == null || Game.getEntityManager() == null) {
             pendingSpawns.add(s);
@@ -47,10 +63,27 @@ public final class ClientEntityHandler {
         if (byNetworkId.containsKey(s.networkId())) {
             return;
         }
-        EntityType type = EntityType.values()[s.entityTypeOrdinal()];
+        EntityType[] types = EntityType.values();
+        if (s.entityTypeOrdinal() < 0 || s.entityTypeOrdinal() >= types.length) {
+            // Malformed/mis-decoded spawn (e.g. around channel teardown) — never let it
+            // throw out of the main-thread dispatch.
+            System.err.println("[CLIENT-ENTITY] Spawn with invalid type ordinal "
+                + s.entityTypeOrdinal() + " (netId=" + s.networkId() + ") — ignored.");
+            return;
+        }
+        EntityType type = types[s.entityTypeOrdinal()];
         Entity entity = createShadow(type, new Vector3f(s.x(), s.y(), s.z()), s.metadata());
         if (entity == null) {
+            // A replicated type without a shadow factory is a wiring bug, not a normal case —
+            // this entity would silently never exist on this client.
+            System.err.println("[CLIENT-ENTITY] No shadow factory for replicated type " + type
+                + " (netId=" + s.networkId() + ") — entity will be invisible on this client!");
             return;
+        }
+        if (type == EntityType.BLOCK_DROP || type == EntityType.ITEM_DROP) {
+            // Client half of the drop-replication diagnosis (pairs with the server line).
+            System.out.printf("[CLIENT-ENTITY] Drop shadow %s netId=%d at (%.1f, %.1f, %.1f)%n",
+                type, s.networkId(), s.x(), s.y(), s.z());
         }
         entity.setNetworkId(s.networkId());
         entity.setNetworkShadow(true);
@@ -72,6 +105,7 @@ public final class ClientEntityHandler {
     public void applyDelta(EntityMoveS2C m) {
         Entity e = byNetworkId.get(m.networkId());
         if (e == null) {
+            noteUnknownMove();
             return;
         }
         NetworkInterpolator interp = e.getInterpolator();
@@ -121,6 +155,11 @@ public final class ClientEntityHandler {
         }
     }
 
+    /** Number of live replicated entity shadows this client tracks (debug overlay). */
+    public int trackedShadowCount() {
+        return byNetworkId.size();
+    }
+
     public void tick() {
         if (pendingSpawns.isEmpty() || Game.getWorld() == null || Game.getEntityManager() == null) {
             return;
@@ -148,46 +187,7 @@ public final class ClientEntityHandler {
     // ─── Shadow construction ──────────────────────────────────────────────────
 
     private static Entity createShadow(EntityType type, Vector3f pos, String metadata) {
-        return switch (type) {
-            case COW -> {
-                String variant = (metadata == null || metadata.isBlank()) ? "default" : metadata;
-                yield new Cow(Game.getWorld(), pos, variant);
-            }
-            case CHICKEN -> new Chicken(Game.getWorld(), pos);
-            case GOOSE -> new Goose(Game.getWorld(), pos);
-            case SHEEP -> {
-                String variant = (metadata == null || metadata.isBlank()) ? "default" : metadata;
-                yield new Sheep(Game.getWorld(), pos, variant);
-            }
-            case BLOCK_DROP -> {
-                BlockType bt = BlockType.getById(parseInt(metadata, 0));
-                if (bt == null) {
-                    bt = BlockType.AIR;
-                }
-                yield new BlockDrop(Game.getWorld(), pos, bt);
-            }
-            case ITEM_DROP -> {
-                int itemId = 0;
-                int count = 1;
-                if (metadata != null && metadata.contains(":")) {
-                    String[] parts = metadata.split(":", 2);
-                    itemId = parseInt(parts[0], 0);
-                    count = Math.max(1, parseInt(parts[1], 1));
-                }
-                yield new ItemDrop(Game.getWorld(), pos, new ItemStack(itemId, count));
-            }
-            default -> null;
-        };
-    }
-
-    private static int parseInt(String s, int fallback) {
-        if (s == null) {
-            return fallback;
-        }
-        try {
-            return Integer.parseInt(s.trim());
-        } catch (NumberFormatException ignored) {
-            return fallback;
-        }
+        return com.stonebreak.network.EntityReplicationRegistry.createShadow(
+            type, Game.getWorld(), pos, metadata);
     }
 }

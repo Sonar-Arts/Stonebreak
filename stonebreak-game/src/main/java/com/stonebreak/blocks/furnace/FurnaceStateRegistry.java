@@ -30,8 +30,34 @@ public class FurnaceStateRegistry {
     private final Map<BlockPos, FurnaceState> states = new ConcurrentHashMap<>();
     private final SmeltingManager smeltingManager;
 
+    /**
+     * Fired whenever a furnace's persisted state STRING actually changes (contents, timers,
+     * lit flip). The integrated server installs this on the authoritative world's registry to
+     * broadcast {@code BlockStateS2C}; null elsewhere. Deduped in {@link #writeChunkState},
+     * so an idle furnace fires nothing.
+     */
+    @FunctionalInterface
+    public interface StateChangeListener {
+        void onFurnaceStateChanged(BlockPos pos, String stateString);
+    }
+
+    private volatile StateChangeListener stateChangeListener;
+
+    public void setStateChangeListener(StateChangeListener listener) {
+        this.stateChangeListener = listener;
+    }
+
     public FurnaceStateRegistry(SmeltingManager smeltingManager) {
         this.smeltingManager = smeltingManager;
+    }
+
+    /**
+     * Applies an authoritative server state (from {@code BlockStateS2C}) onto the LOCAL
+     * registry entry in place — same object identity, so an open furnace UI bound to this
+     * state sees contents/progress update live. Client-side only.
+     */
+    public void applyAuthoritativeState(BlockPos pos, String stateString) {
+        getOrCreate(pos).applyStateString(stateString);
     }
 
     /** Look up the furnace at {@code pos}, or {@code null} if none. */
@@ -137,7 +163,15 @@ public class FurnaceStateRegistry {
         if (chunk == null) return;
         int lx = Math.floorMod(pos.x(), CHUNK_SIZE);
         int lz = Math.floorMod(pos.z(), CHUNK_SIZE);
+        String previous = chunk.getBlockStates()
+            .get(LocalBlockKey.pack(lx, pos.y(), lz));
         chunk.setBlockState(lx, pos.y(), lz, stateString);
+        if (!stateString.equals(previous)) {
+            StateChangeListener l = stateChangeListener;
+            if (l != null) {
+                l.onFurnaceStateChanged(pos, stateString);
+            }
+        }
     }
 
 }

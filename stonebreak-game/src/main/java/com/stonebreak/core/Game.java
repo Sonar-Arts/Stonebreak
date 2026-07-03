@@ -43,8 +43,12 @@ public class Game {
     private static Game instance;
     
     // Game components
-    private World world;
-    private Player player;
+    // world/player/entityManager are volatile: the "ClientWorld-Build" thread swaps them
+    // (replaceWorldInstance) while the main thread, render path, and worldUpdateExecutor
+    // read them — without safe publication a reader could observe a torn mix of the old
+    // session's manager with the new session's world during a reconnect.
+    private volatile World world;
+    private volatile Player player;
     private Renderer renderer;
     private BlockTextureArray textureAtlas;
     private PauseMenu pauseMenu;
@@ -69,7 +73,6 @@ public class Game {
     private ChatSystem chatSystem; // Chat system
     private CraftingManager craftingManager; // Crafting manager
     private SmeltingManager smeltingManager; // Smelting manager for furnace
-    private com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry; // Per-position furnace state
     private com.stonebreak.audio.emitters.SoundEmitterManager soundEmitterManager; // Sound emitter management
     private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
     private DebugOverlay debugOverlay; // Debug overlay (F3)
@@ -87,7 +90,7 @@ public class Game {
     private final java.util.Queue<Runnable> mainThreadTasks = new java.util.concurrent.ConcurrentLinkedQueue<>();
     
     // Entity system components
-    private com.stonebreak.mobs.entities.EntityManager entityManager; // Entity management system
+    private volatile com.stonebreak.mobs.entities.EntityManager entityManager; // Entity management system
     // NOTE: mob spawning is server-authoritative — the sole EntitySpawner lives on the
     // ServerLevel (two-world model). The local client world is render-only and never spawns.
 
@@ -184,7 +187,8 @@ public class Game {
         this.smeltingManager = new SmeltingManager();
         initializeSmeltingRecipes();
         initializeCraftingRecipes();
-        this.furnaceRegistry = new com.stonebreak.blocks.furnace.FurnaceStateRegistry(this.smeltingManager);
+        // Furnace registries are PER-WORLD now (each World constructs its own with this
+        // smelting manager); getFurnaceRegistry() delegates to the current world.
 
         this.chatSystem = new ChatSystem();
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f});
@@ -519,8 +523,14 @@ public class Game {
         return smeltingManager;
     }
 
+    /**
+     * The CURRENT world's furnace registry (per-world since the two-world furnace split),
+     * or null before a world exists. On a client render world this is the display registry
+     * fed by server echoes; the smelting registry lives on the headless server world.
+     */
     public com.stonebreak.blocks.furnace.FurnaceStateRegistry getFurnaceRegistry() {
-        return furnaceRegistry;
+        World w = getWorld();
+        return w != null ? w.getFurnaceRegistry() : null;
     }
     
     /**
@@ -881,6 +891,23 @@ public class Game {
      * {@code WelcomeS2C}. Shows the loading screen until the spawn chunk has streamed in, then
      * enters play (the loading screen's hide() transitions to PLAYING).
      */
+    /**
+     * Generation stamp for client-world builds. Bumped by every {@link #startClientWorld}
+     * and by {@link #cancelClientWorldBuild} (session teardown), so an in-flight
+     * "ClientWorld-Build" thread whose session died or was superseded detects it and aborts
+     * instead of (a) flipping the game back to PLAYING from the background after a
+     * disconnect returned to the menu, or (b) racing a second build's world swap.
+     */
+    private final java.util.concurrent.atomic.AtomicInteger clientWorldBuildGeneration =
+            new java.util.concurrent.atomic.AtomicInteger();
+    /** Serializes the world swap between competing build threads. */
+    private final Object clientWorldBuildLock = new Object();
+
+    /** Invalidate any in-flight client-world build (called from session shutdown). */
+    public void cancelClientWorldBuild() {
+        clientWorldBuildGeneration.incrementAndGet();
+    }
+
     public void startClientWorld(String worldName, long seed, org.joml.Vector3f spawn) {
         // The client never persists — drop any save service so the chunk store stays read-only.
         SaveService prev = this.saveService;
@@ -896,13 +923,27 @@ public class Game {
         if (ls != null) {
             ls.show();
         }
-        new Thread(() -> buildClientWorld(seed, spawn), "ClientWorld-Build").start();
+        final int generation = clientWorldBuildGeneration.incrementAndGet();
+        new Thread(() -> buildClientWorld(generation, seed, spawn), "ClientWorld-Build").start();
     }
 
-    private void buildClientWorld(long seed, org.joml.Vector3f spawn) {
+    /** True while {@code generation} is still the latest build AND the session is alive. */
+    private boolean buildStillCurrent(int generation) {
+        return generation == clientWorldBuildGeneration.get()
+                && com.stonebreak.network.MultiplayerSession.isInWorld();
+    }
+
+    private void buildClientWorld(int generation, long seed, org.joml.Vector3f spawn) {
         try {
             World renderWorld = worldLifecycle.createClientWorldInstance(seed);
-            worldLifecycle.replaceWorldInstance(renderWorld); // fresh player + world components
+            synchronized (clientWorldBuildLock) {
+                if (!buildStillCurrent(generation)) {
+                    System.out.println("[CLIENT-WORLD] Build superseded/cancelled before install — aborting.");
+                    try { renderWorld.cleanup(); } catch (Exception ignored) { }
+                    return;
+                }
+                worldLifecycle.replaceWorldInstance(renderWorld); // fresh player + world components
+            }
             renderWorld.setSpawnPosition(spawn);
             Player p = Game.getPlayer();
             if (p != null) {
@@ -916,10 +957,12 @@ public class Game {
             // (the data arrives via PlayerDataS2C and is applied by the client view).
             com.stonebreak.network.MultiplayerSession.restoreLocalPlayer(p);
 
-            if (this.timeOfDay == null) {
-                // Client clock is server-authoritative; seed a sane default until TimeSync lands.
-                setTimeOfDay(new TimeOfDay(TimeOfDay.NOON));
-            }
+            // Client clock is server-authoritative. Seed from the TimeSyncS2C the server sends
+            // right after WelcomeS2C when it already arrived (buffered by the client view);
+            // otherwise start at NOON and let the first periodic sync snap it. Always replace —
+            // a leftover clock from a previous session belongs to a different world.
+            Long serverTicks = com.stonebreak.network.MultiplayerSession.pendingServerTimeTicks();
+            setTimeOfDay(new TimeOfDay(serverTicks != null ? serverTicks : TimeOfDay.NOON));
 
             // Wait (bounded) for the spawn chunk to stream in so the player doesn't fall into
             // void before terrain arrives. The client tick (which installs chunks) runs during
@@ -934,9 +977,18 @@ public class Game {
             int scz = (int) Math.floor(spawn.z / 16.0);
             long deadline = System.currentTimeMillis() + 10_000L;
             while (System.currentTimeMillis() < deadline
+                    && buildStillCurrent(generation)
                     && (renderWorld.getChunkIfLoaded(scx, scz) == null
                         || !com.stonebreak.network.MultiplayerSession.isLocalPlayerDataReady())) {
                 Thread.sleep(50);
+            }
+
+            // The session may have died (disconnect → menu) or been superseded while we
+            // waited: entering PLAYING from this stale thread would resurrect gameplay with
+            // no session (mode=MENU, client=null) — the crash-on-reconnect chain.
+            if (!buildStillCurrent(generation)) {
+                System.out.println("[CLIENT-WORLD] Build superseded/cancelled before enter-play — aborting.");
+                return;
             }
 
             LoadingScreen ls = getLoadingScreen();
@@ -950,7 +1002,7 @@ public class Game {
             System.err.println("[CLIENT-WORLD] Failed to build render world: " + e.getMessage());
             e.printStackTrace();
             LoadingScreen ls = getLoadingScreen();
-            if (ls != null) {
+            if (ls != null && buildStillCurrent(generation)) {
                 ls.hide();
             }
         }

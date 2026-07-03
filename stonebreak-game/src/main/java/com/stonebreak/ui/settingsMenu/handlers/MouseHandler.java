@@ -32,8 +32,10 @@ public final class MouseHandler {
             return;
         }
         updateHoverStates((float) mouseX, (float) mouseY);
+        if (scrollableContainer != null) scrollableContainer.handleMouseDrag((float) mouseY);
         stateManager.getVolumeSlider().handleDrag((float) mouseX);
         stateManager.getCrosshairSizeSlider().handleDrag((float) mouseX);
+        stateManager.getShadowDistanceSlider().handleDrag((float) mouseX);
         stateManager.getRenderDistanceSlider().handleDrag((float) mouseX);
         stateManager.getLodDistanceSlider().handleDrag((float) mouseX);
         stateManager.getMaxFpsSlider().handleDrag((float) mouseX);
@@ -44,8 +46,10 @@ public final class MouseHandler {
         if (action == GLFW_PRESS) {
             handlePress((float) mouseX, (float) mouseY);
         } else if (action == GLFW_RELEASE) {
+            if (scrollableContainer != null) scrollableContainer.handleMouseRelease();
             stateManager.getVolumeSlider().stopDragging();
             stateManager.getCrosshairSizeSlider().stopDragging();
+            stateManager.getShadowDistanceSlider().stopDragging();
             stateManager.getRenderDistanceSlider().stopDragging();
             stateManager.getLodDistanceSlider().stopDragging();
             stateManager.getMaxFpsSlider().stopDragging();
@@ -72,6 +76,9 @@ public final class MouseHandler {
         stateManager.getCloudsButton().updateHover(mouseX, mouseY);
         stateManager.getGodRaysButton().updateHover(mouseX, mouseY);
         stateManager.getShadowsButton().updateHover(mouseX, mouseY);
+        stateManager.getShadowQualityButton().updateHover(mouseX, mouseY);
+        stateManager.getShadowDistanceSlider().updateHover(mouseX, mouseY);
+        stateManager.getSmoothLightingButton().updateHover(mouseX, mouseY);
         stateManager.getApplyButton().updateHover(mouseX, mouseY);
         stateManager.getBackButton().updateHover(mouseX, mouseY);
         stateManager.getVolumeSlider().updateHover(mouseX, mouseY);
@@ -94,6 +101,9 @@ public final class MouseHandler {
 
         // Open dropdowns consume clicks first (they own an overlay hit area).
         if (routeClickToOpenDropdown(mouseX, mouseY)) return;
+
+        // Scrollbar next — it overlaps the settings column's right edge.
+        if (scrollableContainer != null && scrollableContainer.handleMousePress(mouseX, mouseY)) return;
 
         for (MCategoryButton<CategoryState> button : stateManager.getCategoryButtons()) {
             if (button.handleClick(mouseX, mouseY)) return;
@@ -129,6 +139,9 @@ public final class MouseHandler {
         if (stateManager.getCrosshairStyleButton().isOpen()) {
             return stateManager.getCrosshairStyleButton().handleClick(mouseX, mouseY);
         }
+        if (stateManager.getShadowQualityButton().isOpen()) {
+            return stateManager.getShadowQualityButton().handleClick(mouseX, mouseY);
+        }
         return false;
     }
 
@@ -144,6 +157,9 @@ public final class MouseHandler {
             case CLOUDS_ENABLED    -> stateManager.getCloudsButton().handleClick(mouseX, mouseY);
             case GOD_RAYS          -> stateManager.getGodRaysButton().handleClick(mouseX, mouseY);
             case SHADOWS           -> stateManager.getShadowsButton().handleClick(mouseX, mouseY);
+            case SHADOW_QUALITY    -> stateManager.getShadowQualityButton().handleClick(mouseX, mouseY);
+            case SHADOW_DISTANCE   -> stateManager.getShadowDistanceSlider().handleClick(mouseX, mouseY);
+            case SMOOTH_LIGHTING   -> stateManager.getSmoothLightingButton().handleClick(mouseX, mouseY);
             case RENDER_DISTANCE   -> stateManager.getRenderDistanceSlider().handleClick(mouseX, mouseY);
             case LOD_DISTANCE      -> stateManager.getLodDistanceSlider().handleClick(mouseX, mouseY);
             case LOD_ENABLED       -> stateManager.getLodEnabledButton().handleClick(mouseX, mouseY);

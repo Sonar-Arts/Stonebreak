@@ -39,6 +39,9 @@ public final class StateManager {
     private MButton cloudsButton;
     private MButton godRaysButton;
     private MButton shadowsButton;
+    private MDropdown shadowQualityButton;
+    private MSlider shadowDistanceSlider;
+    private MButton smoothLightingButton;
     private MSlider renderDistanceSlider;
     private MSlider lodDistanceSlider;
     private MButton lodEnabledButton;
@@ -67,6 +70,7 @@ public final class StateManager {
     private int selectedResolutionIndex = 0;
     private int selectedArmModelIndex = 0;
     private int selectedCrosshairStyleIndex = 0;
+    private int selectedShadowQualityIndex = 1;
 
     // ─────────────────────────────────────────────── Scroll state
     private final Map<CategoryState, MScrollMath> scrollMathByCategory = new EnumMap<>(CategoryState.class);
@@ -86,6 +90,7 @@ public final class StateManager {
         selectedResolutionIndex = settings.getCurrentResolutionIndex();
         selectedArmModelIndex = SettingsConfig.findArmModelIndex(settings.getArmModelType());
         selectedCrosshairStyleIndex = SettingsConfig.findCrosshairStyleIndex(settings.getCrosshairStyle());
+        selectedShadowQualityIndex = SettingsConfig.findShadowQualityIndex(settings.getShadowQuality());
     }
 
     private void initScrollMaths() {
@@ -154,6 +159,18 @@ public final class StateManager {
         godRaysButton = new MButton(godRaysLabel()).size(bw, bh);
         shadowsButton = new MButton(shadowsLabel()).size(bw, bh);
 
+        shadowQualityButton = new MDropdown("Shadow Quality", SettingsConfig.SHADOW_QUALITY_NAMES).itemHeight(dih);
+        shadowQualityButton.size(bw, bh);
+        shadowQualityButton.setSelectedIndex(selectedShadowQualityIndex);
+
+        shadowDistanceSlider = new MSlider(shadowDistanceLabel(),
+                SettingsConfig.MIN_SHADOW_DISTANCE, SettingsConfig.MAX_SHADOW_DISTANCE,
+                settings.getShadowDistance())
+                .trackHeight(sh).showPercent(false);
+        shadowDistanceSlider.size(sw, sh);
+
+        smoothLightingButton = new MButton(smoothLightingLabel()).size(bw, bh);
+
         renderDistanceSlider = new MSlider(renderDistanceLabel(),
                 SettingsConfig.MIN_RENDER_DISTANCE, SettingsConfig.MAX_RENDER_DISTANCE,
                 settings.getRenderDistance())
@@ -187,7 +204,8 @@ public final class StateManager {
         for (MWidget w : new MWidget[]{
                 applyButton, backButton, resolutionButton, armModelButton, crosshairStyleButton,
                 volumeSlider, crosshairSizeSlider, leafTransparencyButton, waterShaderButton,
-                cloudsButton, godRaysButton, shadowsButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
+                cloudsButton, godRaysButton, shadowsButton, shadowQualityButton, shadowDistanceSlider,
+                smoothLightingButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
                 vsyncButton, maxFpsSlider, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
             w.scaleText(true);
         }
@@ -218,6 +236,9 @@ public final class StateManager {
         cloudsButton.size(bw, bh);
         godRaysButton.size(bw, bh);
         shadowsButton.size(bw, bh);
+        shadowQualityButton.size(bw, bh).itemHeight(dih);
+        shadowDistanceSlider.size(sw, sh);
+        smoothLightingButton.size(bw, bh);
         renderDistanceSlider.size(sw, sh);
         lodDistanceSlider.size(sw, sh);
         lodEnabledButton.size(bw, bh);
@@ -241,6 +262,9 @@ public final class StateManager {
                              java.util.function.Consumer<Float> crosshairSizeAction,
                              Runnable leafTransparencyAction, Runnable waterShaderAction,
                              Runnable cloudsAction, Runnable godRaysAction, Runnable shadowsAction,
+                             Runnable shadowQualityAction,
+                             java.util.function.Consumer<Float> shadowDistanceAction,
+                             Runnable smoothLightingAction,
                              java.util.function.Consumer<Float> renderDistanceAction,
                              java.util.function.Consumer<Float> lodDistanceAction,
                              Runnable lodEnabledAction,
@@ -261,6 +285,9 @@ public final class StateManager {
         cloudsButton.setOnClick(cloudsAction);
         godRaysButton.setOnClick(godRaysAction);
         shadowsButton.setOnClick(shadowsAction);
+        shadowQualityButton.setOnSelectionChanged(shadowQualityAction);
+        shadowDistanceSlider.setOnChange(shadowDistanceAction);
+        smoothLightingButton.setOnClick(smoothLightingAction);
         renderDistanceSlider.setOnChange(renderDistanceAction);
         lodDistanceSlider.setOnChange(lodDistanceAction);
         lodEnabledButton.setOnClick(lodEnabledAction);
@@ -303,6 +330,9 @@ public final class StateManager {
         cloudsButton.setSelected(false);
         godRaysButton.setSelected(false);
         shadowsButton.setSelected(false);
+        shadowQualityButton.setSelected(false);
+        shadowDistanceSlider.setSelected(false);
+        smoothLightingButton.setSelected(false);
         renderDistanceSlider.setSelected(false);
         lodDistanceSlider.setSelected(false);
         lodEnabledButton.setSelected(false);
@@ -315,6 +345,7 @@ public final class StateManager {
         if (resolutionButton != null) resolutionButton.close();
         if (armModelButton != null) armModelButton.close();
         if (crosshairStyleButton != null) crosshairStyleButton.close();
+        if (shadowQualityButton != null) shadowQualityButton.close();
     }
 
     public void setSelectedCategory(CategoryState category) {
@@ -360,6 +391,9 @@ public final class StateManager {
         cloudsButton.setText(cloudsLabel());
         godRaysButton.setText(godRaysLabel());
         shadowsButton.setText(shadowsLabel());
+        shadowQualityButton.setText("Shadow Quality: " + SettingsConfig.SHADOW_QUALITY_NAMES[selectedShadowQualityIndex]);
+        shadowDistanceSlider.setLabel(shadowDistanceLabel());
+        smoothLightingButton.setText(smoothLightingLabel());
         renderDistanceSlider.setLabel(renderDistanceLabel());
         lodDistanceSlider.setLabel(lodDistanceLabel());
         lodEnabledButton.setText(lodEnabledLabel());
@@ -386,6 +420,14 @@ public final class StateManager {
 
     private String shadowsLabel() {
         return "Shadows: " + (settings.getShadowsEnabled() ? "ON" : "OFF");
+    }
+
+    private String shadowDistanceLabel() {
+        return "Shadow Distance: " + settings.getShadowDistance() + " blocks";
+    }
+
+    private String smoothLightingLabel() {
+        return "Smooth Lighting: " + (settings.getSmoothLightingEnabled() ? "ON" : "OFF");
     }
 
     private String renderDistanceLabel() {
@@ -461,6 +503,9 @@ public final class StateManager {
     public int getSelectedCrosshairStyleIndex() { return selectedCrosshairStyleIndex; }
     public void setSelectedCrosshairStyleIndex(int i) { this.selectedCrosshairStyleIndex = i; }
 
+    public int getSelectedShadowQualityIndex() { return selectedShadowQualityIndex; }
+    public void setSelectedShadowQualityIndex(int i) { this.selectedShadowQualityIndex = i; }
+
     public MButton getApplyButton() { return applyButton; }
     public MButton getBackButton() { return backButton; }
     public MDropdown getResolutionButton() { return resolutionButton; }
@@ -473,6 +518,9 @@ public final class StateManager {
     public MButton getCloudsButton() { return cloudsButton; }
     public MButton getGodRaysButton() { return godRaysButton; }
     public MButton getShadowsButton() { return shadowsButton; }
+    public MDropdown getShadowQualityButton() { return shadowQualityButton; }
+    public MSlider getShadowDistanceSlider() { return shadowDistanceSlider; }
+    public MButton getSmoothLightingButton() { return smoothLightingButton; }
     public MSlider getRenderDistanceSlider() { return renderDistanceSlider; }
     public MSlider getLodDistanceSlider() { return lodDistanceSlider; }
     public MButton getLodEnabledButton() { return lodEnabledButton; }

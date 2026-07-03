@@ -30,7 +30,25 @@ public final class VertexLightSampler {
     /** Minimum sky factor for a fully-shaded vertex before AO multiplies. */
     private static final float SKY_FLOOR = 0.0f;
 
+    /**
+     * Smooth-lighting quality switch. When on (default), vertices blend a 2x2
+     * sky-column neighborhood and apply 3-tap ambient occlusion — soft gradients
+     * and darkened creases. When off, each vertex takes a single sky sample and
+     * skips AO entirely: flat, blocky lighting at roughly 1/7th the context
+     * queries per vertex. Read by mesh-builder threads; hosts must remesh loaded
+     * chunks after flipping it for the change to become visible.
+     */
+    private static volatile boolean smoothLightingEnabled = true;
+
     private VertexLightSampler() {}
+
+    public static void setSmoothLightingEnabled(boolean enabled) {
+        smoothLightingEnabled = enabled;
+    }
+
+    public static boolean isSmoothLightingEnabled() {
+        return smoothLightingEnabled;
+    }
 
     /** Combined per-vertex brightness factor: {@code skyFactor * aoFactor} ∈ [0,1]. */
     public static float sampleCombined(LightingContext ctx, float vx, float vy, float vz, int face) {
@@ -38,7 +56,9 @@ public final class VertexLightSampler {
         int ivx = Math.round(vx);
         int ivy = Math.round(vy);
         int ivz = Math.round(vz);
-        float sky = sampleSkyFactor(ctx, ivx, ivy, ivz, face);
+        boolean smooth = smoothLightingEnabled;
+        float sky = sampleSkyFactor(ctx, ivx, ivy, ivz, face, smooth);
+        if (!smooth) return sky;
         float ao = sampleAoFactor(ctx, ivx, ivy, ivz, face);
         return sky * ao;
     }
@@ -56,11 +76,14 @@ public final class VertexLightSampler {
 
     // ─── Sky factor ────────────────────────────────────────────────────────
 
-    private static float sampleSkyFactor(LightingContext ctx, int ivx, int ivy, int ivz, int face) {
+    private static float sampleSkyFactor(LightingContext ctx, int ivx, int ivy, int ivz, int face,
+                                         boolean smooth) {
         int litCount = 0;
         int sampled = 0;
-        for (int a = -1; a <= 0; a++) {
-            for (int b = -1; b <= 0; b++) {
+        // Flat lighting samples only the (0, 0) column — one lookup instead of four.
+        int lo = smooth ? -1 : 0;
+        for (int a = lo; a <= 0; a++) {
+            for (int b = lo; b <= 0; b++) {
                 int cx, cy, cz;
                 switch (face) {
                     case 0 -> { cx = ivx + a; cy = ivy;     cz = ivz + b; } // top

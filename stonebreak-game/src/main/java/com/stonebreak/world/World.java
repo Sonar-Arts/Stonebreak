@@ -35,6 +35,7 @@ public class World {
     private final TerrainGenerationSystem terrainSystem;
     private final ChunkManager chunkManager;
     private final SnowLayerManager snowLayerManager;
+    private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
     
     // World spawn position
     private Vector3f spawnPosition = new Vector3f(0, 100, 0);
@@ -71,6 +72,45 @@ public class World {
     // The headless server world sets its own so restored mobs go to the server (not the Game
     // singleton's manager, which during server boot is the previous session's terminated one).
     private volatile com.stonebreak.mobs.entities.EntityManager entityManager;
+
+    /**
+     * Sink for authoritative SIMULATION block mutations (water flow, and any future server-side
+     * system that writes via {@code chunk.setBlock} instead of {@code setBlockAt}). Installed by
+     * the integrated server on the HEADLESS world only, so flowing water etc. replicates to
+     * clients live; null everywhere else (client render worlds must never feed it — that would
+     * loop server echoes back out).
+     */
+    public interface ServerBlockMutationCallback {
+        void onServerBlockChange(int x, int y, int z, com.stonebreak.blocks.BlockType type);
+    }
+
+    private volatile ServerBlockMutationCallback serverMutationCallback;
+
+    /** Install the server-side sim mutation sink (headless server world only). */
+    public void setServerMutationCallback(ServerBlockMutationCallback callback) {
+        this.serverMutationCallback = callback;
+    }
+
+    /** The sim mutation sink, or null on client/render worlds. */
+    public ServerBlockMutationCallback serverMutationCallback() {
+        return serverMutationCallback;
+    }
+
+    /**
+     * Sink for authoritative snow-layer mutations ({@code layers == 0} = removed), installed
+     * by the integrated server on the HEADLESS world only so layer changes replicate to
+     * clients as {@code BlockMetaS2C}. Null everywhere else.
+     */
+    public interface ServerSnowMutationCallback {
+        void onServerSnowChange(int x, int y, int z, int layers);
+    }
+
+    private volatile ServerSnowMutationCallback serverSnowCallback;
+
+    /** Install the server-side snow mutation sink (headless server world only). */
+    public void setServerSnowCallback(ServerSnowMutationCallback callback) {
+        this.serverSnowCallback = callback;
+    }
 
     public World() {
         this(new WorldConfiguration());
@@ -137,6 +177,33 @@ public class World {
 
         this.terrainSystem = new TerrainGenerationSystem(seed);
         this.snowLayerManager = new SnowLayerManager();
+        // Per-world furnace registry (see getFurnaceRegistry). The smelting manager comes
+        // from the Game singleton when available; in bare unit tests it is null and the
+        // registry's tick loop no-ops.
+        com.stonebreak.crafting.SmeltingManager smelting = null;
+        try {
+            Game g = Game.getInstance();
+            if (g != null) {
+                smelting = g.getSmeltingManager();
+            }
+        } catch (Exception ignored) {
+            // very early bootstrap / tests
+        }
+        this.furnaceRegistry = new com.stonebreak.blocks.furnace.FurnaceStateRegistry(smelting);
+        // Gameplay snow mutations (not putRaw hydration): mark the chunk save-dirty so the
+        // layer counts persist (v3 save format), and forward to the server snow replication
+        // sink when installed (headless server world only).
+        this.snowLayerManager.setMutationListener((x, y, z, layers) -> {
+            var chunk = getChunkIfLoaded(Math.floorDiv(x, com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE),
+                                         Math.floorDiv(z, com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE));
+            if (chunk != null) {
+                chunk.markDirty();
+            }
+            ServerSnowMutationCallback sink = serverSnowCallback;
+            if (sink != null) {
+                sink.onServerSnowChange(x, y, z, layers);
+            }
+        });
 
         // Initialize modular components
         this.errorReporter = new ChunkErrorReporter();
@@ -188,15 +255,18 @@ public class World {
             System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
         }
 
-        // Chunk listeners (wired for BOTH the headless server world and rendered worlds). The
-        // authoritative water/furnace round-trip runs on every world EXCEPT a render-only client
-        // view — there the server owns that state, so firing these would corrupt the shared
-        // registry. Mesh-seam rebuilds run only where there's a mesh pipeline.
+        // Chunk listeners (wired for BOTH the headless server world and rendered worlds).
+        // Water simulation load runs only on authoritative worlds (a render-only client
+        // receives water via streamed chunks/block changes). The furnace registry is now
+        // PER-WORLD, so its chunk hooks run everywhere — on a client they hydrate the
+        // display registry from streamed chunk block-states. Mesh-seam rebuilds run only
+        // where there's a mesh pipeline.
         this.chunkStore.setChunkListeners(chunk -> {
             if (!renderOnly) {
                 waterSystem.onChunkLoaded(chunk);
-                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
-                if (fr != null) fr.onChunkLoaded(chunk);
+            }
+            if (furnaceRegistry != null) {
+                furnaceRegistry.onChunkLoaded(chunk);
             }
             if (meshPipeline != null) {
                 int cx = chunk.getX();
@@ -207,14 +277,15 @@ public class World {
                 markMeshedNeighborDirty(cx, cz + 1);
             }
         }, chunk -> {
-            if (!renderOnly) {
-                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
-                if (fr != null) fr.onChunkUnloaded(chunk);
-                waterSystem.onChunkUnloaded(chunk);
-                // Purge snow layers with the chunk — without this the snow map
-                // grows unbounded for the lifetime of the world.
-                snowLayerManager.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
+            if (furnaceRegistry != null) {
+                furnaceRegistry.onChunkUnloaded(chunk);
             }
+            // Water cells and snow layers accumulate on EVERY world — the render-only client
+            // feeds them via setBlockAt(..., false) applies of streamed changes — so both must
+            // purge with the chunk everywhere or the maps grow unbounded as streamed chunks
+            // come and go.
+            waterSystem.onChunkUnloaded(chunk);
+            snowLayerManager.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
         });
     }
     
@@ -281,8 +352,8 @@ public class World {
         // empty all-air placeholder chunks the server never streams — their empty meshes get
         // treated as failed builds and spam the retry path. The client only meshes chunks the
         // server installs (installNetworkChunk schedules their build directly); we just pump the
-        // build queue. (Distant streamed chunks are not yet unloaded — memory grows; add
-        // client-side unloading later.)
+        // build queue. Distant streamed chunks unload via unloadClientChunksOutsideView
+        // below, so client memory stays bounded to the keep radius.
         meshPipeline.requeueFailedChunks();
         meshPipeline.processChunkMeshBuildRequests(this);
         unloadClientChunksOutsideView();
@@ -904,8 +975,20 @@ public class World {
      * modifications (player builds, etc.) are reflected exactly. Returns
      * silently if the world hasn't loaded enough infrastructure yet.
      */
-    public void installNetworkChunk(int chunkX, int chunkZ, byte[] payload) {
-        if (chunkStore == null) return;
+    public boolean installNetworkChunk(int chunkX, int chunkZ, byte[] payload) {
+        return installNetworkChunk(chunkX, chunkZ, payload, null);
+    }
+
+    /**
+     * As {@link #installNetworkChunk(int, int, byte[])}, additionally applying the game-side
+     * chunk metadata blob (snow layers, per-block SBO states — {@code GameChunkMetaCodec})
+     * after the block install. Null/empty {@code metaPayload} skips the metadata step.
+     *
+     * @return false when the payload could not be decoded/installed — the caller should
+     *         request a chunk resync, since the server has marked this chunk as sent.
+     */
+    public boolean installNetworkChunk(int chunkX, int chunkZ, byte[] payload, byte[] metaPayload) {
+        if (chunkStore == null) return false;
         // Synchronous slot creation — the render-only client has no disk-load or terrain-gen,
         // so the chunk arrives ready in the same call. No async machinery, no race conditions,
         // no chance of dropping the payload because the slot "isn't ready yet".
@@ -926,9 +1009,46 @@ public class World {
                     com.stonebreak.network.bridge.GameBlockTypeResolver.INSTANCE);
         } catch (Exception e) {
             System.err.println("[NETWORK] Failed to decode chunk (" + chunkX + "," + chunkZ + "): " + e.getMessage());
-            return;
+            return false; // caller requests a resync — the server thinks this chunk was sent
         }
         chunk.replaceAllBlocks(decoded);
+
+        // Apply streamed chunk metadata: snow layer heights + per-block SBO states. Replaces
+        // (not merges) this chunk's previous entries so a re-stream is a clean resync.
+        if (metaPayload != null && metaPayload.length > 0) {
+            try {
+                var meta = com.stonebreak.network.bridge.GameChunkMetaCodec.decode(metaPayload);
+                snowLayerManager.onChunkUnloaded(chunkX, chunkZ); // clear stale entries first
+                int baseX = chunkX * WorldConfiguration.CHUNK_SIZE;
+                int baseZ = chunkZ * WorldConfiguration.CHUNK_SIZE;
+                for (var e : meta.snowLayers().entrySet()) {
+                    int key = e.getKey();
+                    snowLayerManager.putRaw(
+                        baseX + com.stonebreak.world.chunk.utils.LocalBlockKey.x(key),
+                        com.stonebreak.world.chunk.utils.LocalBlockKey.y(key),
+                        baseZ + com.stonebreak.world.chunk.utils.LocalBlockKey.z(key),
+                        e.getValue());
+                }
+                for (var e : meta.blockStates().entrySet()) {
+                    int key = e.getKey();
+                    chunk.setBlockState(
+                        com.stonebreak.world.chunk.utils.LocalBlockKey.x(key),
+                        com.stonebreak.world.chunk.utils.LocalBlockKey.y(key),
+                        com.stonebreak.world.chunk.utils.LocalBlockKey.z(key),
+                        e.getValue());
+                }
+                // Hydrate the DISPLAY furnace registry from the states just applied. The
+                // chunk-load listener fired at slot creation, BEFORE this meta landed, so
+                // without this an idle furnace opens empty on a joiner — and their first
+                // slot edit would then overwrite the server's real contents.
+                if (!meta.blockStates().isEmpty() && furnaceRegistry != null) {
+                    furnaceRegistry.onChunkLoaded(chunk);
+                }
+            } catch (Exception e) {
+                System.err.println("[NETWORK] Failed to decode chunk meta (" + chunkX + "," + chunkZ + "): " + e.getMessage());
+            }
+        }
+
         // The chunk was an empty placeholder (all-air heightmap). Now that real blocks are in,
         // rebuild the heightmap so sky-shadow/lighting and the mesher's Y-scan are correct —
         // generated/loaded chunks do this; streamed chunks must too.
@@ -950,6 +1070,7 @@ public class World {
                         meshPipeline::scheduleConditionalMeshBuild);
             }
         }
+        return true;
     }
 
     /**
@@ -1065,10 +1186,21 @@ public class World {
         chunkStore.setChunk(x, z, chunk);
     }
 
-    /** Returns the furnace registry, or {@code null} if Game isn't fully initialised yet. */
-    private static com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistryOrNull() {
-        Game g = Game.getInstance();
-        return g == null ? null : g.getFurnaceRegistry();
+    /** This world's furnace registry (per-world since the two-world furnace split). */
+    private com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistryOrNull() {
+        return furnaceRegistry;
+    }
+
+    /**
+     * This world's furnace registry. PER-WORLD: the authoritative server world owns the
+     * only registry that actually smelts (ticked in {@link #updateSimulation}); each client
+     * render world holds a display copy hydrated from streamed chunk states and live
+     * {@code BlockStateS2C} echoes. Previously this was a process-global singleton shared
+     * between the host's render world and the server world — a host-only asymmetry that
+     * remote clients could never match.
+     */
+    public com.stonebreak.blocks.furnace.FurnaceStateRegistry getFurnaceRegistry() {
+        return furnaceRegistry;
     }
 
     /**

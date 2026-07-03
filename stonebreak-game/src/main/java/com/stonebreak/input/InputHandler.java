@@ -968,13 +968,19 @@ public class InputHandler {
                         if (!staffCheck.isEmpty() && staffCheck.getItem() == com.stonebreak.items.ItemType.STAFF) {
                             long now = System.nanoTime();
                             if (now - lastFireBoltCastNanos >= STAFF_CAST_COOLDOWN_NANOS) {
-                                com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
-                                if (em != null) {
-                                    org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
-                                    org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
-                                    em.spawnFireBolt(spawnPos, dir);
-                                    lastFireBoltCastNanos = now;
+                                org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
+                                org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
+                                // Server-authoritative spawn (replicated to all); local fallback
+                                // only when there is no session at all.
+                                if (!com.stonebreak.network.MultiplayerSession.sendProjectileSpawn(
+                                        com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_FIRE_BOLT,
+                                        spawnPos, dir)) {
+                                    com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+                                    if (em != null) {
+                                        em.spawnFireBolt(spawnPos, dir);
+                                    }
                                 }
+                                lastFireBoltCastNanos = now;
                             }
                             return;
                         }
@@ -1046,12 +1052,18 @@ public class InputHandler {
                         if (player.getBowController().releaseAndFire()
                                 && player.getInventory().hasItem(com.stonebreak.items.ItemType.ARROW)) {
                             player.getInventory().removeItem(com.stonebreak.items.ItemType.ARROW);
-                            com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
-                            if (em != null) {
-                                org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
-                                org.joml.Vector3f vel = new org.joml.Vector3f(dir).mul(arrowSpeed);
-                                org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
-                                em.spawnArrow(spawnPos, vel);
+                            org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
+                            org.joml.Vector3f vel = new org.joml.Vector3f(dir).mul(arrowSpeed);
+                            org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
+                            // Server-authoritative spawn (replicated to all); local fallback
+                            // only when there is no session at all.
+                            if (!com.stonebreak.network.MultiplayerSession.sendProjectileSpawn(
+                                    com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_ARROW,
+                                    spawnPos, vel)) {
+                                com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+                                if (em != null) {
+                                    em.spawnArrow(spawnPos, vel);
+                                }
                             }
                         }
                     }

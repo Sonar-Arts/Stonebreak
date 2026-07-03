@@ -29,6 +29,9 @@ public class FurnaceController {
     private FurnaceState state;
     private boolean visible;
 
+    /** Last slot snapshot sent to the server, for the per-frame dirty check. */
+    private String lastSentSlots;
+
     private ItemStack hoveredItemStack;
 
     // ── Furnace slot identifiers (for input manager) ─────────
@@ -55,6 +58,9 @@ public class FurnaceController {
         FurnaceStateRegistry registry = game.getFurnaceRegistry();
         this.state = (registry != null) ? registry.getOrCreate(pos) : new FurnaceState(pos);
         this.visible = true;
+        // Baseline for the slot dirty check: the state as it stands when the UI opens is
+        // already what the server knows (streamed/echoed), so don't re-send it.
+        this.lastSentSlots = state.encodeSlots();
     }
 
     public void close() {
@@ -70,7 +76,20 @@ public class FurnaceController {
 
     public void update(float deltaTime) {
         hotbarScreen.update(deltaTime);
-        // Smelting is ticked by FurnaceStateRegistry — no UI-side tick here.
+        // Smelting is ticked by the AUTHORITATIVE (server-world) FurnaceStateRegistry; this
+        // UI is bound to the client display registry, updated by BlockStateS2C echoes.
+
+        // Slot intent: whatever mutation path the UI took (drag, split, place, take), the
+        // per-frame dirty check catches it and ships the full slot snapshot to the server.
+        // BlockStateS2C echoes then confirm/correct — including the smelting results.
+        if (visible && state != null) {
+            String slots = state.encodeSlots();
+            if (!slots.equals(lastSentSlots)) {
+                lastSentSlots = slots;
+                com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(
+                    state.getPos().x(), state.getPos().y(), state.getPos().z(), slots);
+            }
+        }
     }
 
     /* ── Input / rendering delegates ─────────────────────── */

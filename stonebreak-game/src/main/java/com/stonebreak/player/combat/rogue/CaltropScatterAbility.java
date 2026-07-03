@@ -77,7 +77,12 @@ public class CaltropScatterAbility {
             float y = findGroundY(world, x, z, origin.y);
 
             Vector3f clusterPos = new Vector3f(x, y, z);
-            entityManager.spawnCaltropCluster(clusterPos, CALTROP_DURATION);
+            // Server-authoritative spawn (replicated to all); local fallback only with no session.
+            if (!com.stonebreak.network.MultiplayerSession.sendProjectileSpawn(
+                    com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_CALTROP,
+                    clusterPos, new Vector3f(), CALTROP_DURATION)) {
+                entityManager.spawnCaltropCluster(clusterPos, CALTROP_DURATION);
+            }
         }
 
         state = State.COOLDOWN;

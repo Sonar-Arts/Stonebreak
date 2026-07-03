@@ -32,6 +32,9 @@ public class BlockDrop extends Entity {
     private boolean hasInitialStackCount = false; // Whether this drop was created with an intentional stack count
     
     // Physics constants for drops (reworked for moderately floaty effect)
+    /** Downward bias on the ground probe so a drop resting exactly on a block surface
+     *  still samples the block below it (see checkWorldCollision). */
+    private static final float GROUND_PROBE_BIAS = 0.01f;
     private static final float DROP_GRAVITY = 12.0f; // Moderate downward acceleration
     private static final float DROP_AIR_RESISTANCE = 0.995f; // Much less air resistance than default 0.98f
     private static final float DROP_BOUNCE = 0.4f; // Slightly more bouncy
@@ -94,6 +97,16 @@ public class BlockDrop extends Entity {
     }
     
     /**
+     * Network shadows skip {@link #update} entirely, but the renderer's bob + spin
+     * animation derives from {@link #getAge()} — advance it here so replicated drops
+     * still hover and spin on clients.
+     */
+    @Override
+    public void updateClientVisuals(float deltaTime) {
+        age += deltaTime;
+    }
+
+    /**
      * Applies physics specific to dropped items with custom floaty behavior.
      */
     private void applyDropPhysics(float deltaTime) {
@@ -136,9 +149,13 @@ public class BlockDrop extends Entity {
      * Simple collision detection with the world.
      */
     private void checkWorldCollision(Vector3f oldPosition) {
-        // Check if we hit the ground (simplified)
+        // Check if we hit the ground (simplified). The probe is biased down a hair:
+        // the rest snap below puts the drop's bottom at exactly blockY + 1.0, where an
+        // unbiased floor(bottom) sampled the AIR block above the ground — onGround
+        // flipped false every other tick and the drop oscillated ~3 cm forever at the
+        // server's 20 Hz (broadcast to clients as visible jitter).
         int blockX = (int) Math.floor(position.x);
-        int blockY = (int) Math.floor(position.y - height/2);
+        int blockY = (int) Math.floor(position.y - height/2 - GROUND_PROBE_BIAS);
         int blockZ = (int) Math.floor(position.z);
 
         // Check if there's a solid block below
@@ -269,27 +286,33 @@ public class BlockDrop extends Entity {
         drop.velocity.set(initialVelocity);
         return drop;
     }
-    
+
+    /** Extend the pickup lock-out (a deliberate toss must not be instantly re-collected). */
+    public void setPickupDelay(float seconds) {
+        this.pickupDelay = seconds;
+    }
+
     /**
      * Updates visual compression by checking for nearby drops of the same type.
      */
     private void updateCompression() {
         if (world == null || isCompressed || hasInitialStackCount) return;
 
-        // Get entity manager to find nearby drops
-        com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
-        if (game == null) return;
-
-        com.stonebreak.mobs.entities.EntityManager entityManager = game.getEntityManager();
+        // THIS world's entity manager, never the Game singleton: the singleton always
+        // resolves to the client render world, so an authoritative server drop scanning
+        // it would find (and compress) its own replicated network shadow — hiding the
+        // drop from the host's renderer.
+        com.stonebreak.mobs.entities.EntityManager entityManager = world.getEntityManager();
         if (entityManager == null) return;
 
         // Reset stack count only for drops that weren't created with an initial count
         stackCount = 1;
-        
+
         // Find nearby drops of the same type
         java.util.List<Entity> entities = entityManager.getAllEntities();
         for (Entity entity : entities) {
-            if (entity instanceof BlockDrop otherDrop && entity != this && entity.isAlive()) {
+            if (entity instanceof BlockDrop otherDrop && entity != this && entity.isAlive()
+                    && !entity.isNetworkShadow()) {
                 if (otherDrop.blockType == this.blockType && !otherDrop.isCompressed) {
                     float distance = position.distance(otherDrop.position);
                     if (distance <= COMPRESSION_RANGE) {
@@ -331,18 +354,16 @@ public class BlockDrop extends Entity {
      */
     @Override
     protected void onDeath() {
-        // If this drop had compressed drops, handle their pickup too
-        if (stackCount > 1) {
-            com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
-            if (game != null) {
-                com.stonebreak.mobs.entities.EntityManager entityManager = game.getEntityManager();
-                if (entityManager != null) {
-                    // Find and remove all compressed drops
-                    java.util.List<Entity> entities = new java.util.ArrayList<>(entityManager.getAllEntities());
-                    for (Entity entity : entities) {
-                        if (entity instanceof BlockDrop otherDrop && otherDrop.parentDrop == this) {
-                            otherDrop.alive = false;
-                        }
+        // If this drop had compressed drops, handle their pickup too. Same manager rule
+        // as updateCompression: THIS world's manager, never the Game singleton.
+        if (stackCount > 1 && world != null) {
+            com.stonebreak.mobs.entities.EntityManager entityManager = world.getEntityManager();
+            if (entityManager != null) {
+                // Find and remove all compressed drops
+                java.util.List<Entity> entities = new java.util.ArrayList<>(entityManager.getAllEntities());
+                for (Entity entity : entities) {
+                    if (entity instanceof BlockDrop otherDrop && otherDrop.parentDrop == this) {
+                        otherDrop.alive = false;
                     }
                 }
             }

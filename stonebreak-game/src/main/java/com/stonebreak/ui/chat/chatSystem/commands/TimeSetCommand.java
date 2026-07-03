@@ -43,23 +43,19 @@ public class TimeSetCommand implements ChatCommand {
         // Handle preset time names
         switch (timeArg) {
             case "day", "noon" -> {
-                timeOfDay.setTicks(TimeOfDay.NOON);
-                messageManager.addMessage("Time set to noon (12:00 PM)", ChatColors.GREEN);
+                applyTime(TimeOfDay.NOON, "Time set to noon (12:00 PM)", timeOfDay, messageManager);
                 return;
             }
             case "night", "midnight" -> {
-                timeOfDay.setTicks(TimeOfDay.MIDNIGHT);
-                messageManager.addMessage("Time set to midnight (12:00 AM)", ChatColors.GREEN);
+                applyTime(TimeOfDay.MIDNIGHT, "Time set to midnight (12:00 AM)", timeOfDay, messageManager);
                 return;
             }
             case "dawn", "sunrise" -> {
-                timeOfDay.setTicks(TimeOfDay.DAWN);
-                messageManager.addMessage("Time set to dawn (6:00 AM)", ChatColors.GREEN);
+                applyTime(TimeOfDay.DAWN, "Time set to dawn (6:00 AM)", timeOfDay, messageManager);
                 return;
             }
             case "dusk", "sunset" -> {
-                timeOfDay.setTicks(TimeOfDay.DUSK);
-                messageManager.addMessage("Time set to dusk (6:00 PM)", ChatColors.GREEN);
+                applyTime(TimeOfDay.DUSK, "Time set to dusk (6:00 PM)", timeOfDay, messageManager);
                 return;
             }
         }
@@ -74,14 +70,32 @@ public class TimeSetCommand implements ChatCommand {
                 return;
             }
 
-            timeOfDay.setTicks(ticks);
-            messageManager.addMessage("Time set to " + ticks + " ticks (" +
-                timeOfDay.getTimeString() + ")", ChatColors.GREEN);
+            applyTime(ticks, null, timeOfDay, messageManager);
 
         } catch (NumberFormatException e) {
             messageManager.addMessage("Invalid time value: " + timeArg, ChatColors.RED);
             showUsage(messageManager);
         }
+    }
+
+    /**
+     * Applies a time set: the day/night clock is SERVER-authoritative, so the set must
+     * route to the server (otherwise the next periodic TimeSyncS2C snaps the local clock
+     * right back — the old "command succeeds, then reverts after a second" bug). The local
+     * display clock is also set for instant feedback; the server's echo broadcast confirms.
+     * On a remote JOIN client the set is refused (host-only).
+     */
+    private void applyTime(long ticks, String successMsg, TimeOfDay timeOfDay,
+                           ChatMessageManager messageManager) {
+        if (!com.stonebreak.network.MultiplayerSession.requestServerTimeSet(ticks)) {
+            messageManager.addMessage("Time is server-controlled — only the host can set it.",
+                ChatColors.RED);
+            return;
+        }
+        timeOfDay.setTicks(ticks);
+        messageManager.addMessage(successMsg != null ? successMsg
+            : "Time set to " + ticks + " ticks (" + timeOfDay.getTimeString() + ")",
+            ChatColors.GREEN);
     }
 
     @Override

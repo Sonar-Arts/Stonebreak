@@ -598,6 +598,21 @@ public class DebugOverlay {
         panel.row("Chunks", String.format("%d loaded", world.getLoadedChunkCount()));
         panel.row("Pending Mesh", String.valueOf(world.getPendingMeshBuildCount()));
         panel.row("Pending GL", String.valueOf(world.getPendingGLUploadCount()));
+        com.stonebreak.world.TimeOfDay clock = Game.getTimeOfDay();
+        if (clock != null) {
+            panel.row("Time", clock.getTimeString());
+        }
+        if (com.stonebreak.network.MultiplayerSession.isInWorld()) {
+            int rtt = com.stonebreak.network.MultiplayerSession.lastRttMs();
+            panel.section("Network");
+            panel.row("Mode", com.stonebreak.network.MultiplayerSession.getMode().name());
+            panel.row("Ping", rtt >= 0 ? rtt + " ms" : "…");
+            com.stonebreak.network.client.ClientWorldView cwv =
+                com.stonebreak.network.MultiplayerSession.getClient();
+            if (cwv != null) {
+                panel.row("Entity Shadows", String.valueOf(cwv.trackedEntityShadows()));
+            }
+        }
 
         panel.section("Graphics");
         queryGPUInfo();

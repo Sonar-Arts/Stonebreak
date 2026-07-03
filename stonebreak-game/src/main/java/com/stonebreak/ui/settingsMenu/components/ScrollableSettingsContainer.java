@@ -53,9 +53,9 @@ public final class ScrollableSettingsContainer {
             container = new MScrollContainer(math)
                     .scrollbarWidth(SettingsConfig.SCROLLBAR_WIDTH);
         } else {
-            // Rebind container to the active category's scroll math.
-            container = new MScrollContainer(math)
-                    .scrollbarWidth(SettingsConfig.SCROLLBAR_WIDTH);
+            // Rebind to the active category's scroll math; the container itself
+            // persists so an in-progress scrollbar drag survives across frames.
+            container.math(math);
         }
         container.bounds(viewportX, viewportY, viewportW, viewportH);
     }
@@ -67,6 +67,19 @@ public final class ScrollableSettingsContainer {
 
     public boolean handleMouseWheel(float mouseX, float mouseY, float scrollDelta) {
         return container != null && container.handleWheel(mouseX, mouseY, scrollDelta);
+    }
+
+    /** Returns true if the press landed on the scrollbar (and started a drag). */
+    public boolean handleMousePress(float mouseX, float mouseY) {
+        return container != null && container.handleMousePress(mouseX, mouseY);
+    }
+
+    public void handleMouseDrag(float mouseY) {
+        if (container != null) container.handleMouseDrag(mouseY);
+    }
+
+    public void handleMouseRelease() {
+        if (container != null) container.handleMouseRelease();
     }
 
     public float getContainerX()       { return container != null ? container.x() : 0f; }

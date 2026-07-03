@@ -35,12 +35,34 @@ public final class ServerBlockHandler {
      *  Insertion-ordered so wire order matches edit order. */
     private final Map<Long, SectionBatch> pendingByTick = new LinkedHashMap<>();
 
+    /** Ticks an accepted edit may wait for its server chunk to load before being reverted. */
+    private static final int RETRY_TTL_TICKS = 20; // 1 s at 20 Hz
+
+    /** Validated edits whose target chunk wasn't loaded server-side yet: the chunk load has
+     *  been kicked off and the edit retries each tick until it applies or its TTL expires
+     *  (then the originator gets a corrective revert). Without this, an edit racing the
+     *  server's chunk load was silently dropped while the originator kept it locally —
+     *  a permanent one-block divergence. */
+    private final java.util.ArrayDeque<PendingEdit> retryQueue = new java.util.ArrayDeque<>();
+
+    private static final class PendingEdit {
+        final ServerPlayer sp;
+        final BlockChangeC2S change;
+        int ticksLeft = RETRY_TTL_TICKS;
+        PendingEdit(ServerPlayer sp, BlockChangeC2S change) { this.sp = sp; this.change = change; }
+    }
+
+    /** Snow-layer changes buffered this tick, per section — flushed as {@code BlockMetaS2C}. */
+    private final Map<Long, SectionBatch> pendingSnowByTick = new LinkedHashMap<>();
+
     public ServerBlockHandler(ServerChunkHandler chunkHandler) {
         this.chunkHandler = chunkHandler;
     }
 
     public void onSessionEnd() {
         pendingByTick.clear();
+        pendingSnowByTick.clear();
+        retryQueue.clear();
     }
 
     // ─── Inbound (client edit) ───────────────────────────────────────────────────
@@ -66,23 +88,159 @@ public final class ServerBlockHandler {
         BlockType prev = (clientPrev != null && clientPrev != BlockType.AIR) ? clientPrev : serverPrev;
         boolean applied = applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId());
         if (!applied) {
-            // Host chunk not loaded — don't broadcast (originator applied locally; a
-            // re-broadcast would worsen divergence with other clients).
+            // Server chunk not loaded yet (the reach check bounds this to a near-player chunk,
+            // so it's a load race, not garbage). Kick off the load and retry for a bounded
+            // window; expiry reverts the originator instead of silently diverging.
+            world.getChunkAt(Math.floorDiv(c.x(), 16), Math.floorDiv(c.z(), 16));
+            retryQueue.add(new PendingEdit(sp, c));
             return;
         }
+        applyAccepted(c, incoming, prev, world);
+    }
+
+    /** Post-apply effects of an accepted edit: break drops/cleanup, version bump, broadcast. */
+    private void applyAccepted(BlockChangeC2S c, BlockType incoming, BlockType prev, World world) {
         // Break (non-air → air): spawn drops authoritatively and run per-break cleanup. The
         // EntityManager listener broadcasts the resulting drop entities (see ServerEntityHandler).
         if (prev != null && prev != BlockType.AIR && incoming == BlockType.AIR) {
-            if (prev == BlockType.FURNACE) {
-                com.stonebreak.blocks.furnace.FurnaceStateRegistry fr =
-                    com.stonebreak.core.Game.getInstance().getFurnaceRegistry();
-                if (fr != null) fr.onBlockBroken(world, c.x(), c.y(), c.z());
+            if (prev == BlockType.FURNACE && world.getFurnaceRegistry() != null) {
+                // The SERVER world's registry (per-world) — drops contents authoritatively.
+                world.getFurnaceRegistry().onBlockBroken(world, c.x(), c.y(), c.z());
             }
             Vector3f dropPos = new Vector3f(c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f);
             com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev);
         }
+        // Furnace placement: register the authoritative state (Unlit, empty). The client's
+        // own BlockPlacer only touched ITS display registry.
+        if (incoming == BlockType.FURNACE && world.getFurnaceRegistry() != null) {
+            world.getFurnaceRegistry().onBlockPlaced(world, c.x(), c.y(), c.z(), incoming);
+        }
+        // Snow layer bookkeeping derived from the block change (the SnowLayerC2S intent only
+        // covers layer increments on an EXISTING snow block): a placed SNOW block starts at
+        // 1 layer; a broken one drops its tracking. The manager's mutation listener then
+        // dirties the chunk and queues the BlockMetaS2C broadcast.
+        if (world.getSnowLayerManager() != null) {
+            if (incoming == BlockType.SNOW) {
+                world.getSnowLayerManager().setSnowLayers(c.x(), c.y(), c.z(), 1);
+            } else if (prev == BlockType.SNOW && incoming == BlockType.AIR) {
+                world.getSnowLayerManager().removeSnowLayers(c.x(), c.y(), c.z());
+            }
+        }
         chunkHandler.markChunkModified(Math.floorDiv(c.x(), 16), Math.floorDiv(c.z(), 16));
         queueOutgoing(c.x(), c.y(), c.z(), c.blockTypeId());
+    }
+
+    /**
+     * C2S: a player claims a snow-layer change at a position (the increment-on-existing-snow
+     * case that carries no block change). Validates like a block edit, then applies to the
+     * authoritative SnowLayerManager — its mutation listener dirties the chunk for save and
+     * feeds {@link #onServerSnowChange} for the broadcast (echoed to the originator too, so
+     * an over-optimistic client self-corrects).
+     */
+    public void handleSnowLayer(ServerPlayer sp, com.stonebreak.network.packet.world.SnowLayerC2S s,
+                                ServerWorldContext ctx) {
+        World world = ctx.world();
+        if (world == null || world.getSnowLayerManager() == null) {
+            return;
+        }
+        int layers = s.layers();
+        if (layers < 0 || layers > 8 || s.y() < 0 || s.y() >= WorldConfiguration.WORLD_HEIGHT) {
+            return;
+        }
+        if (sp.lastStateNs() != 0L) {
+            float dx = (s.x() + 0.5f) - sp.x();
+            float dy = (s.y() + 0.5f) - sp.y();
+            float dz = (s.z() + 0.5f) - sp.z();
+            if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
+                return;
+            }
+        }
+        if (layers == 0) {
+            world.getSnowLayerManager().removeSnowLayers(s.x(), s.y(), s.z());
+        } else if (world.getBlockAt(s.x(), s.y(), s.z()) == BlockType.SNOW) {
+            world.getSnowLayerManager().setSnowLayers(s.x(), s.y(), s.z(), layers);
+        }
+    }
+
+    /**
+     * C2S: the player edited the slots of an open furnace UI. Validates (reach, furnace
+     * exists on the server world), then applies SLOTS ONLY onto the authoritative
+     * {@code FurnaceState} — burn/cook timers stay server-owned. The registry's next tick
+     * writes the new state string, whose change listener broadcasts the {@code BlockStateS2C}
+     * echo that corrects everyone (originator included).
+     */
+    public void handleFurnaceSlots(ServerPlayer sp, com.stonebreak.network.packet.world.FurnaceSlotsC2S f,
+                                   ServerWorldContext ctx) {
+        World world = ctx.world();
+        if (world == null || world.getFurnaceRegistry() == null) {
+            return;
+        }
+        if (f.y() < 0 || f.y() >= WorldConfiguration.WORLD_HEIGHT) {
+            return;
+        }
+        if (sp.lastStateNs() != 0L) {
+            float dx = (f.x() + 0.5f) - sp.x();
+            float dy = (f.y() + 0.5f) - sp.y();
+            float dz = (f.z() + 0.5f) - sp.z();
+            if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
+                return;
+            }
+        }
+        if (world.getBlockAt(f.x(), f.y(), f.z()) != BlockType.FURNACE) {
+            return;
+        }
+        world.getFurnaceRegistry()
+            .getOrCreate(new com.openmason.engine.util.BlockPos(f.x(), f.y(), f.z()))
+            .applySlots(f.slots());
+    }
+
+    /**
+     * Authoritative snow mutation ({@code layers == 0} = removed) from the server world's
+     * SnowLayerManager listener. Batched per section and flushed each tick as
+     * {@link com.stonebreak.network.packet.world.BlockMetaS2C} (KIND_SNOW_LAYERS).
+     */
+    public void onServerSnowChange(int x, int y, int z, int layers) {
+        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+            return;
+        }
+        int sx = Math.floorDiv(x, 16);
+        int sy = Math.floorDiv(y, 16);
+        int sz = Math.floorDiv(z, 16);
+        long key = sectionKey(sx, sy, sz);
+        SectionBatch batch = pendingSnowByTick.computeIfAbsent(key, k -> new SectionBatch(sx, sy, sz));
+        batch.add(x - sx * 16, y - sy * 16, z - sz * 16, (short) layers);
+    }
+
+    /** Retry edits that were waiting on a server chunk load; revert the originator on expiry. */
+    private void drainRetries(ServerWorldContext ctx) {
+        if (retryQueue.isEmpty()) {
+            return;
+        }
+        World world = ctx.world();
+        if (world == null) {
+            retryQueue.clear();
+            return;
+        }
+        int n = retryQueue.size();
+        for (int i = 0; i < n; i++) {
+            PendingEdit pe = retryQueue.poll();
+            if (pe == null) {
+                break;
+            }
+            BlockChangeC2S c = pe.change;
+            BlockType clientPrev = BlockType.getById(c.prevBlockTypeId() & 0xFFFF);
+            BlockType serverPrev = world.getBlockAt(c.x(), c.y(), c.z()); // before apply
+            if (applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId())) {
+                BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
+                BlockType prev = (clientPrev != null && clientPrev != BlockType.AIR)
+                    ? clientPrev : serverPrev;
+                applyAccepted(c, incoming, prev, world);
+            } else if (--pe.ticksLeft <= 0) {
+                sendRevert(pe.sp, c.x(), c.y(), c.z(), ctx);
+            } else {
+                retryQueue.add(pe); // still loading — try again next tick
+            }
+        }
     }
 
     /** Host-originated edit (wired from {@code World.setBlockAt} in the lifecycle phase). */
@@ -93,25 +251,72 @@ public final class ServerBlockHandler {
         queueOutgoing(x, y, z, id);
     }
 
+    /** Sim edits accepted per tick before falling back to whole-chunk re-streams. Flowing
+     *  water peaks well under this; the cap only bites on pathological floods. */
+    private static final int MAX_SIM_EDITS_PER_TICK = 2048;
+    private int simEditsThisTick = 0;
+
+    /**
+     * Authoritative SIMULATION mutation (water flow etc., via the {@code World} mutation
+     * callback on the server tick thread). Rides the same per-section batches as player
+     * edits ({@code MultiBlockChangeS2C}) but does NOT bump the chunk version — a version
+     * bump would re-stream the whole chunk to every viewer continuously under flowing water.
+     * Clients that don't hold the chunk drop the apply harmlessly and receive a fresh
+     * snapshot (encoded from live state at send time) when it enters view.
+     *
+     * <p>Overflow guardrail: past {@link #MAX_SIM_EDITS_PER_TICK} queued sim edits in one
+     * tick, fall back to marking the chunk modified (one full re-stream self-heals it) and
+     * skip per-block queuing for the rest of the tick.
+     */
+    public void onServerBlockChange(int x, int y, int z, BlockType type) {
+        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+            return;
+        }
+        if (simEditsThisTick >= MAX_SIM_EDITS_PER_TICK) {
+            int cx = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
+            int cz = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
+            chunkHandler.markChunkModified(cx, cz);
+            // Still a sim edit: record it for the audit's sim-edit grace window too.
+            chunkHandler.invalidateHash(cx, cz);
+            return;
+        }
+        simEditsThisTick++;
+        // Sim edits change chunk contents without a version bump, so the audit hash cache
+        // must be invalidated here (player edits invalidate via markChunkModified).
+        chunkHandler.invalidateHash(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
+            Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
+        queueOutgoing(x, y, z, (short) (type == null ? 0 : type.getId()));
+    }
+
     // ─── Per-tick flush ──────────────────────────────────────────────────────────
 
     public void tick(ServerWorldContext ctx) {
-        if (pendingByTick.isEmpty()) {
-            return;
-        }
-        for (SectionBatch sb : pendingByTick.values()) {
-            if (sb.size() == 1) {
-                int packed = sb.packed[0];
-                int lx = (packed >>> 24) & 0xF;
-                int ly = (packed >>> 20) & 0xF;
-                int lz = (packed >>> 16) & 0xF;
-                short blockId = (short) (packed & 0xFFFF);
-                ctx.broadcast(new BlockChangeS2C(sb.sx * 16 + lx, sb.sy * 16 + ly, sb.sz * 16 + lz, blockId), false);
-            } else {
-                ctx.broadcast(new MultiBlockChangeS2C(sb.sx, sb.sy, sb.sz, sb.toPackedArray()), false);
+        simEditsThisTick = 0;
+        drainRetries(ctx);
+        if (!pendingByTick.isEmpty()) {
+            for (SectionBatch sb : pendingByTick.values()) {
+                if (sb.size() == 1) {
+                    int packed = sb.packed[0];
+                    int lx = (packed >>> 24) & 0xF;
+                    int ly = (packed >>> 20) & 0xF;
+                    int lz = (packed >>> 16) & 0xF;
+                    short blockId = (short) (packed & 0xFFFF);
+                    ctx.broadcast(new BlockChangeS2C(sb.sx * 16 + lx, sb.sy * 16 + ly, sb.sz * 16 + lz, blockId), false);
+                } else {
+                    ctx.broadcast(new MultiBlockChangeS2C(sb.sx, sb.sy, sb.sz, sb.toPackedArray()), false);
+                }
             }
+            pendingByTick.clear();
         }
-        pendingByTick.clear();
+        if (!pendingSnowByTick.isEmpty()) {
+            for (SectionBatch sb : pendingSnowByTick.values()) {
+                ctx.broadcast(new com.stonebreak.network.packet.world.BlockMetaS2C(
+                    sb.sx, sb.sy, sb.sz,
+                    com.stonebreak.network.packet.world.BlockMetaS2C.KIND_SNOW_LAYERS,
+                    sb.toPackedArray()), false);
+            }
+            pendingSnowByTick.clear();
+        }
     }
 
     // ─── Outgoing batching ─────────────────────────────────────────────────────────

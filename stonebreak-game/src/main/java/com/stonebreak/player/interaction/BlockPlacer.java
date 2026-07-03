@@ -181,6 +181,10 @@ public class BlockPlacer {
         int currentLayers = world.getSnowLayers(placePos.x, placePos.y, placePos.z);
         if (currentLayers < 8) {
             world.getSnowLayerManager().addSnowLayer(placePos.x, placePos.y, placePos.z);
+            // Layer increment changes no block id, so BlockChangeC2S never fires — send the
+            // dedicated snow intent (optimistic apply above; server echo self-corrects).
+            com.stonebreak.network.MultiplayerSession.sendSnowLayer(
+                placePos.x, placePos.y, placePos.z, currentLayers + 1);
             inventory.removeItem(selectedItem.getItem(), 1);
             world.triggerChunkRebuild(placePos.x, placePos.y, placePos.z);
             return;

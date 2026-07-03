@@ -10,8 +10,9 @@ package com.openmason.engine.net.protocol;
  */
 public final class ProtocolVersion {
 
-    /** Current wire protocol version. */
-    public static final int CURRENT = 1;
+    /** Current wire protocol version. 2 = multiplayer refinement batch (keepalive,
+     *  time sync, chunk meta payload, player state flags, projectile replication). */
+    public static final int CURRENT = 2;
 
     private ProtocolVersion() {}
 }

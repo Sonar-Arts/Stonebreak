@@ -113,6 +113,13 @@ public class EntityManager {
                 // in update() and must skip the external physics step.
                 if (entity.isSelfPropelled()) {
                     // self-managed projectile, no external physics
+                } else if (entity instanceof BlockDrop || entity instanceof ItemDrop) {
+                    // Drops fully self-manage physics (custom gravity/bounce/ground snap in
+                    // update()). The external step double-integrated their velocity AND its
+                    // checkGroundBeneath treats position.y as the entity's bottom while drops
+                    // treat it as their center — it knocked resting drops off the ground every
+                    // tick, leaving them oscillating ~3 cm forever at the server's 20 Hz
+                    // (replicated to every client as visible jitter).
                 } else if (entity.getType() == EntityType.BOBBER) {
                     if (!((FishingBobber) entity).isSettled()) {
                         collision.applyEntityPhysics(entity, deltaTime);

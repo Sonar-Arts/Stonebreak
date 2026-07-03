@@ -207,10 +207,9 @@ public final class StateConverter {
      */
     public static void applyChunkData(Chunk chunk, ChunkData data, World world) {
         // Convert ChunkData back to CCO snapshot (includes water metadata, entities,
-        // entity generation flag, AND per-block SBO state map).
-        // CRITICAL: must use the 9-arg constructor — the 8-arg overload silently
-        // drops blockStates, which loses things like the furnace's lit/unlit
-        // variant and its persisted inventory payload.
+        // entity generation flag, per-block SBO state map, AND snow layers).
+        // CRITICAL: pass every trailing map — dropping one silently loses that state
+        // on load (e.g. the furnace's lit/unlit variant or stacked snow heights).
         CcoSerializableSnapshot snapshot = new CcoSerializableSnapshot(
             data.getChunkX(),
             data.getChunkZ(),
@@ -220,7 +219,8 @@ public final class StateConverter {
             data.hasEntitiesGenerated(),
             data.getWaterMetadata(),
             data.getEntities(),
-            data.getBlockStates()         // SBO 1.3 per-block state map
+            data.getBlockStates(),        // SBO 1.3 per-block state map
+            data.getSnowLayers()          // v3 snow layer counts
         );
 
         // Load from snapshot (automatically applies water metadata to WaterSystem)

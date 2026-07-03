@@ -25,6 +25,7 @@ public final class ShadowGlsl {
             uniform float u_shadowStrength;    // 0..1 max darkening of direct light
             uniform float u_shadowTexelWorld[3]; // world size of one texel per cascade
             uniform vec3 u_shadowSunDir;       // normalized, toward the sun
+            uniform int u_shadowPcfRadius;     // PCF radius in texels: 0=hw 2x2, 1=3x3, 2=5x5
             """;
 
     /** {@code csmSampleCascade} + {@code csmShadowFactor}. Paste above {@code main()}. */
@@ -34,16 +35,18 @@ public final class ShadowGlsl {
                 vec3 proj = ls.xyz / ls.w * 0.5 + 0.5;
                 if (proj.z >= 1.0) return 1.0;
                 float texel = 1.0 / float(textureSize(u_shadowMap, 0).x);
-                // 3x3 PCF on top of the hardware 2x2 — soft penumbra at low cost.
+                // PCF on top of the hardware 2x2 — kernel radius set by the quality tier.
+                int r = clamp(u_shadowPcfRadius, 0, 2);
                 float sum = 0.0;
-                for (int x = -1; x <= 1; x++) {
-                    for (int y = -1; y <= 1; y++) {
+                for (int x = -r; x <= r; x++) {
+                    for (int y = -r; y <= r; y++) {
                         sum += texture(u_shadowMap, vec4(
                             proj.xy + vec2(float(x), float(y)) * texel,
                             float(idx), proj.z - 0.0005));
                     }
                 }
-                return sum / 9.0;
+                float side = float(2 * r + 1);
+                return sum / (side * side);
             }
 
             // Sun visibility in [1 - u_shadowStrength, 1]. Multiply into diffuse and

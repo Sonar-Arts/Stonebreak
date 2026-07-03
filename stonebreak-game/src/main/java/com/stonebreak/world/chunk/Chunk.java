@@ -499,8 +499,20 @@ public class Chunk {
             ));
         }
 
+        // Gather this chunk's snow layer counts (sparse; 1-layer defaults are tracked only
+        // if explicitly set). Persisted from v3 so stacked snow survives reloads.
+        java.util.Map<Integer, Integer> snowLayers = new java.util.HashMap<>();
+        if (world != null && world.getSnowLayerManager() != null) {
+            world.getSnowLayerManager().forEachInChunk(x, z, (worldX, y, worldZ, layers) -> {
+                int localX = worldX - x * 16;
+                int localZ = worldZ - z * 16;
+                snowLayers.put(
+                    com.stonebreak.world.chunk.utils.LocalBlockKey.pack(localX, y, localZ), layers);
+            });
+        }
+
         // Create snapshot with copied block storage, water metadata, entities,
-        // entity generation flag, and per-block SBO state map.
+        // entity generation flag, per-block SBO state map, and snow layers.
         return new CcoSerializableSnapshot(
             metadata.getChunkX(),
             metadata.getChunkZ(),
@@ -510,7 +522,8 @@ public class Chunk {
             metadata.hasEntities(),
             waterMetadata,
             entities,
-            new java.util.HashMap<>(blockStates)
+            new java.util.HashMap<>(blockStates),
+            snowLayers
         );
     }
 
@@ -546,6 +559,22 @@ public class Chunk {
         // Restore per-block SBO state map (1.3+). Empty for v1 saves.
         blockStates.clear();
         blockStates.putAll(snapshot.getBlockStates());
+
+        // Restore snow layer counts (v3+). Empty for older saves — snow reads as 1 layer.
+        if (world != null && world.getSnowLayerManager() != null
+                && !snapshot.getSnowLayers().isEmpty()) {
+            var snow = world.getSnowLayerManager();
+            int baseX = snapshot.getChunkX() * 16;
+            int baseZ = snapshot.getChunkZ() * 16;
+            for (var e : snapshot.getSnowLayers().entrySet()) {
+                int key = e.getKey();
+                snow.putRaw(
+                    baseX + com.stonebreak.world.chunk.utils.LocalBlockKey.x(key),
+                    com.stonebreak.world.chunk.utils.LocalBlockKey.y(key),
+                    baseZ + com.stonebreak.world.chunk.utils.LocalBlockKey.z(key),
+                    e.getValue());
+            }
+        }
 
         // Apply water metadata to WaterSystem BEFORE onChunkLoaded is called
         if (world != null && world.getWaterSystem() != null && !snapshot.getWaterMetadata().isEmpty()) {

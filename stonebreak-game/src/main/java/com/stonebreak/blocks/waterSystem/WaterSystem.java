@@ -767,6 +767,15 @@ public final class WaterSystem {
         int localZ = Math.floorMod(posZ, WorldConfiguration.CHUNK_SIZE);
 
         chunk.setBlock(localX, posY, localZ, type);
+
+        // Report the mutation to the integrated server's replication funnel (installed on the
+        // headless server world only). Without this, water flow was invisible to clients:
+        // chunk.setBlock marks the chunk dirty for save/mesh but never broadcasts, so clients
+        // kept the water exactly as it was when the chunk first streamed.
+        com.stonebreak.world.World.ServerBlockMutationCallback sink = world.serverMutationCallback();
+        if (sink != null) {
+            sink.onServerBlockChange(posX, posY, posZ, type);
+        }
     }
 
     // ===== POSITION KEY PACKING =====

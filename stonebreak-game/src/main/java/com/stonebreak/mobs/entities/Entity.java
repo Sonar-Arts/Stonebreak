@@ -226,6 +226,12 @@ public abstract class Entity {
     public int getNetworkId() { return networkId; }
     public void setAge(float age) { this.age = age; }
     public void setNetworkId(int networkId) { this.networkId = networkId; }
+
+    /** Player id that launched/owns this entity (projectiles), or -1. Server-side only —
+     *  used to route kill/damage credit back to the right client. */
+    private int ownerPlayerId = -1;
+    public int getOwnerPlayerId() { return ownerPlayerId; }
+    public void setOwnerPlayerId(int ownerPlayerId) { this.ownerPlayerId = ownerPlayerId; }
     public boolean isNetworkShadow() { return networkShadow; }
     public void setNetworkShadow(boolean shadow) { this.networkShadow = shadow; }
     public boolean isCommandSpawned() { return commandSpawned; }

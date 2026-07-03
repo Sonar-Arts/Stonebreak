@@ -126,6 +126,9 @@ public final class InputHandler {
             case CLOUDS_ENABLED -> { if (direction != 0) actionHandler.toggleClouds(); }
             case GOD_RAYS -> { if (direction != 0) actionHandler.toggleGodRays(); }
             case SHADOWS -> { if (direction != 0) actionHandler.toggleShadows(); }
+            case SHADOW_QUALITY -> adjustShadowQuality(direction);
+            case SHADOW_DISTANCE -> adjustSlider(stateManager.getShadowDistanceSlider(), direction * SettingsConfig.SHADOW_DISTANCE_STEP);
+            case SMOOTH_LIGHTING -> { if (direction != 0) actionHandler.toggleSmoothLighting(); }
             case RENDER_DISTANCE -> adjustSlider(stateManager.getRenderDistanceSlider(), direction);
             case LOD_DISTANCE -> adjustSlider(stateManager.getLodDistanceSlider(), direction);
             case LOD_ENABLED -> { if (direction != 0) actionHandler.toggleLodEnabled(); }
@@ -176,6 +179,21 @@ public final class InputHandler {
             int next = Math.max(0, Math.min(max, currentIndex + direction));
             settings.setCrosshairStyle(SettingsConfig.CROSSHAIR_STYLES[next]);
             stateManager.setSelectedCrosshairStyleIndex(next);
+            dropdown.setSelectedIndex(next);
+        }
+    }
+
+    private void adjustShadowQuality(int direction) {
+        MDropdown dropdown = stateManager.getShadowQualityButton();
+        if (dropdown.isOpen()) {
+            dropdown.adjustSelection(direction);
+            stateManager.setSelectedShadowQualityIndex(dropdown.selectedIndex());
+        } else {
+            int currentIndex = stateManager.getSelectedShadowQualityIndex();
+            int max = SettingsConfig.SHADOW_QUALITY_VALUES.length - 1;
+            int next = Math.max(0, Math.min(max, currentIndex + direction));
+            settings.setShadowQuality(SettingsConfig.SHADOW_QUALITY_VALUES[next]);
+            stateManager.setSelectedShadowQualityIndex(next);
             dropdown.setSelectedIndex(next);
         }
     }

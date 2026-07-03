@@ -60,9 +60,35 @@ public final class ServerWorldContext {
     public void setServerLevel(ServerLevel serverLevel) { this.serverLevel = serverLevel; }
 
     // ─── Player registry ──────────────────────────────────────────────────────
-    public int allocatePlayerId() { return nextPlayerId.getAndIncrement(); }
+
+    /**
+     * Provisional connection id, assigned at CONNECT before the handshake reveals the
+     * username. Always negative so it can never collide with a real (stable) player id;
+     * the handshake replaces it via {@link ServerPlayer#assignPlayerId}.
+     */
+    public int allocatePlayerId() { return -nextPlayerId.getAndIncrement(); }
+
+    /**
+     * Stable player id derived from the username (FNV-1a, masked positive): the same name
+     * always maps to the same id, across reconnects AND server restarts — so saves, kill
+     * credit, and client-side rosters keyed by id survive a rejoin. Collisions between two
+     * DIFFERENT names are astronomically unlikely at co-op scale; the handshake resolves
+     * them by refusing the second name while the first is online.
+     */
+    public static int stablePlayerIdFor(String username) {
+        int h = 0x811C9DC5;
+        for (int i = 0; i < username.length(); i++) {
+            h ^= username.charAt(i);
+            h *= 0x01000193;
+        }
+        h &= 0x7FFFFFFF; // ids are positive; negatives are provisional/synthetic (decoys)
+        return h == 0 ? 1 : h;
+    }
+
     public void addPlayer(ServerPlayer p) { players.put(p.playerId(), p); }
-    public void removePlayer(ServerPlayer p) { players.remove(p.playerId()); }
+    /** Instance-guarded: a stale session must never evict the live session that took
+     *  over its id (same player reconnecting before the old channel died). */
+    public void removePlayer(ServerPlayer p) { players.remove(p.playerId(), p); }
     public ServerPlayer player(int id) { return players.get(id); }
     public Collection<ServerPlayer> players() { return players.values(); }
 

@@ -86,6 +86,14 @@ public class DeathHandler {
     }
 
     private void dropItemStack(ItemStack stack) {
+        // Death drops are server-authoritative like every other drop: the toss intent makes
+        // the SERVER spawn + replicate the entity. The local paths below spawn into the
+        // passed world's EntityManager, which on a client render world is null — death drops
+        // would silently vanish in the two-world model.
+        if (com.stonebreak.network.MultiplayerSession.sendDropItem(
+                stack.getBlockTypeId(), stack.getCount())) {
+            return;
+        }
         Vector3f p = state.getPosition();
         Vector3f dropPosition = new Vector3f(p.x, p.y + 0.5f, p.z);
         if (stack.isPlaceable()) {

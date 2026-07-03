@@ -365,7 +365,9 @@ public class EntityRenderer {
         if (entityType == EntityType.REMOTE_PLAYER
                 && entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
             // Untextured fallback hue is stable per remote player (same scheme as the cylinder).
-            renderPlayerModel(rp, rp.getRotation().y, 0f, 0f,
+            // Body/head come from the shared PlayerBodyOrientation (model space) — the raw
+            // replicated rotation.y is a camera yaw and faces the figure the wrong way.
+            renderPlayerModel(rp, rp.getBodyYaw(), rp.getHeadYaw(), rp.getHeadPitch(),
                     new Vector4f(RemotePlayerRenderer.colorFor(rp.getPlayerId()), 1f),
                     viewMatrix, projectionMatrix, world, cameraPos);
             return;
@@ -377,7 +379,7 @@ public class EntityRenderer {
         // untextured decoy matches the caster instead of an obvious "illusion" hue.
         if (entityType == EntityType.ILLUSION_DECOY
                 && entity instanceof com.stonebreak.mobs.entities.IllusionDecoy decoy) {
-            renderPlayerModel(decoy, decoy.getRotation().y, 0f, 0f,
+            renderPlayerModel(decoy, decoy.getBodyYaw(), decoy.getHeadYaw(), decoy.getHeadPitch(),
                     ensureLocalPlayerColor(),
                     viewMatrix, projectionMatrix, world, cameraPos);
             return;
@@ -534,6 +536,26 @@ public class EntityRenderer {
             remotePlayerRenderer.render(rp, viewMatrix, projectionMatrix);
             return;
         }
+        // Attack overlay from the replicated ATTACKING flag — same envelope + clip-fade
+        // computation as the local player's third-person path (renderLocalPlayer), so
+        // remote swings render identically to your own.
+        String overlayState = null;
+        float overlayTime = 0f;
+        float overlayWeight = 0f;
+        com.stonebreak.mobs.sbe.OverlayAnimState attackOverlay = rp.getAttackOverlay();
+        if (attackOverlay.isVisible()) {
+            overlayState = com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(
+                    com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.ATTACKING);
+            com.openmason.engine.format.oma.ParsedAnimClip attackClip = asset.clipFor(overlayState);
+            if (attackClip != null) {
+                overlayTime = attackOverlay.time();
+                overlayWeight = attackOverlay.weight(
+                        attackClip.layer().fadeInSeconds(), attackClip.layer().fadeOutSeconds());
+            } else {
+                overlayState = null;
+            }
+        }
+
         PlayerFigureRenderState figure = new PlayerFigureRenderState(
                 rp.getPosition(),
                 yaw,
@@ -542,6 +564,9 @@ public class EntityRenderer {
                 headPitch,
                 com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState()),
                 rp.getAnimationController().getTotalAnimationTime(),
+                overlayState,
+                overlayTime,
+                overlayWeight,
                 untexturedTint);
 
         renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, world, cameraPos);
@@ -758,7 +783,7 @@ public class EntityRenderer {
                         com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
                         com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState()),
                         rp.getAnimationController().getTotalAnimationTime(),
-                        rp.getPosition(), rp.getRotation().y, rp.getScale(),
+                        rp.getPosition(), rp.getBodyYaw(), rp.getScale(),
                         lightView, lightProj, SHADOW_CASTER_COLOR);
             }
         }

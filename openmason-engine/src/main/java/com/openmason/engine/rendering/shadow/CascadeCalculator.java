@@ -36,6 +36,17 @@ public final class CascadeCalculator {
      */
     public void update(ShadowCascade[] cascades, Matrix4f viewMatrix, Matrix4f projMatrix,
                        Vector3f sunDirection, ShadowSettings settings) {
+        update(cascades, viewMatrix, projMatrix, sunDirection, settings, null);
+    }
+
+    /**
+     * Recomputes the cascades selected by {@code updateMask} (null = all). Skipped
+     * cascades keep their previous matrices, which stay consistent with the depth
+     * already rendered into their map layer — callers that stagger cascade updates
+     * across frames must also skip re-rendering the same cascades.
+     */
+    public void update(ShadowCascade[] cascades, Matrix4f viewMatrix, Matrix4f projMatrix,
+                       Vector3f sunDirection, ShadowSettings settings, boolean[] updateMask) {
         // Extract fov/aspect from the projection: m11 = 1/tan(fovY/2), aspect = m11/m00.
         float tanHalfFovY = 1.0f / projMatrix.m11();
         float aspect = projMatrix.m11() / projMatrix.m00();
@@ -53,6 +64,9 @@ public final class CascadeCalculator {
 
         float texel;
         for (int i = 0; i < cascades.length; i++) {
+            if (updateMask != null && !updateMask[i]) {
+                continue;
+            }
             ShadowCascade c = cascades[i];
             float near = i == 0 ? CASCADE_NEAR : settings.splitFar(i - 1);
             float far = settings.splitFar(i);

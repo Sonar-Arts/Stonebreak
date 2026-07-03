@@ -42,6 +42,8 @@ public final class CcoSerializableSnapshot {
      * (LocalBlockKey); only blocks with non-default state appear here.
      */
     private final Map<Integer, String> blockStates;
+    /** Sparse snow layer counts (save v3+), keyed by packed local coordinates, value 1-8. */
+    private final Map<Integer, Integer> snowLayers;
 
     /**
      * Creates a serializable snapshot.
@@ -55,13 +57,15 @@ public final class CcoSerializableSnapshot {
      * @param waterMetadata Water flow level metadata (defensive copy made)
      * @param entities Entity data for this chunk (defensive copy made)
      * @param blockStates Per-block SBO state map (defensive copy made)
+     * @param snowLayers Snow layer counts, packed local keys (defensive copy made)
      */
     public CcoSerializableSnapshot(int chunkX, int chunkZ, CcoBlockStorage blocks,
                                    LocalDateTime lastModified, boolean featuresPopulated,
                                    boolean hasEntitiesGenerated,
                                    Map<String, ChunkData.WaterBlockData> waterMetadata,
                                    List<EntityData> entities,
-                                   Map<Integer, String> blockStates) {
+                                   Map<Integer, String> blockStates,
+                                   Map<Integer, Integer> snowLayers) {
         this.chunkX = chunkX;
         this.chunkZ = chunkZ;
         this.blocks = Objects.requireNonNull(blocks, "blocks cannot be null");
@@ -71,6 +75,7 @@ public final class CcoSerializableSnapshot {
         this.waterMetadata = waterMetadata != null ? new HashMap<>(waterMetadata) : new HashMap<>();
         this.entities = entities != null ? new ArrayList<>(entities) : new ArrayList<>();
         this.blockStates = blockStates != null ? new HashMap<>(blockStates) : new HashMap<>();
+        this.snowLayers = snowLayers != null ? new HashMap<>(snowLayers) : new HashMap<>();
     }
 
     /**
@@ -97,6 +102,7 @@ public final class CcoSerializableSnapshot {
                 .waterMetadata(waterMetadata)  // CCO-integrated water metadata
                 .entities(entities)  // CCO-integrated entity data
                 .blockStates(blockStates)  // SBO 1.3 per-block states
+                .snowLayers(snowLayers)    // v3 snow layer counts
                 .build();
     }
 
@@ -132,6 +138,11 @@ public final class CcoSerializableSnapshot {
     /** Per-block SBO state map (1.3+), packed-coordinate keys. Unmodifiable view. */
     public Map<Integer, String> getBlockStates() {
         return Collections.unmodifiableMap(blockStates);
+    }
+
+    /** Snow layer counts (v3+), packed-coordinate keys. Unmodifiable view. */
+    public Map<Integer, Integer> getSnowLayers() {
+        return Collections.unmodifiableMap(snowLayers);
     }
 
     @Override

@@ -87,10 +87,16 @@ public class LeylineBreachAbility implements AbilitySpell {
             rootEnemiesInZone(center, radius);
         }
 
-        EntityManager entityManager = Game.getEntityManager();
-        if (entityManager == null) return false;
-        entityManager.spawnLeylineBreachZone(center, radius, pullForce, pulseDamage,
-            duration, cast.overloaded());
+        // Server-authoritative spawn (replicated to all); local fallback only with no session.
+        if (!com.stonebreak.network.MultiplayerSession.sendProjectileSpawn(
+                com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_LEYLINE_BREACH,
+                center, new Vector3f(),
+                radius, pullForce, pulseDamage, duration, cast.overloaded() ? 1f : 0f)) {
+            EntityManager entityManager = Game.getEntityManager();
+            if (entityManager == null) return false;
+            entityManager.spawnLeylineBreachZone(center, radius, pullForce, pulseDamage,
+                duration, cast.overloaded());
+        }
 
         state = State.COOLDOWN;
         cooldownRemaining = LEYLINE_BREACH_COOLDOWN;

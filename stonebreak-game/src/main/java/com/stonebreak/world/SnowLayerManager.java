@@ -28,6 +28,30 @@ public class SnowLayerManager {
     // Map from packed world position to snow layer count (1-8)
     private final Map<Long, Integer> snowLayers = new ConcurrentHashMap<>();
 
+    /**
+     * Observer for gameplay snow mutations ({@code layers == 0} means removed). Fired by
+     * {@link #setSnowLayers}/{@link #removeSnowLayers} but NOT by {@link #putRaw} hydration —
+     * loading a chunk must not re-dirty it or re-broadcast its snow. The owning {@code World}
+     * wires this to save-dirty marking (+ server replication on the headless world).
+     */
+    @FunctionalInterface
+    public interface SnowMutationListener {
+        void onSnowChanged(int x, int y, int z, int layers);
+    }
+
+    private volatile SnowMutationListener mutationListener;
+
+    public void setMutationListener(SnowMutationListener listener) {
+        this.mutationListener = listener;
+    }
+
+    private void fireChanged(int x, int y, int z, int layers) {
+        SnowMutationListener l = mutationListener;
+        if (l != null) {
+            l.onSnowChanged(x, y, z, layers);
+        }
+    }
+
     private static long packKey(int x, int y, int z) {
         return ((long) (x & 0xFFFFFF) << X_SHIFT)
              | ((long) (z & 0xFFFFFF) << Z_SHIFT)
@@ -66,7 +90,10 @@ public class SnowLayerManager {
         if (layers < 1 || layers > 8) {
             throw new IllegalArgumentException("Snow layers must be between 1 and 8");
         }
-        snowLayers.put(packKey(x, y, z), layers);
+        Integer previous = snowLayers.put(packKey(x, y, z), layers);
+        if (previous == null || previous != layers) {
+            fireChanged(x, y, z, layers);
+        }
     }
 
     /**
@@ -76,7 +103,9 @@ public class SnowLayerManager {
      * @param z World Z coordinate
      */
     public void removeSnowLayers(int x, int y, int z) {
-        snowLayers.remove(packKey(x, y, z));
+        if (snowLayers.remove(packKey(x, y, z)) != null) {
+            fireChanged(x, y, z, 0);
+        }
     }
 
     /**
@@ -105,6 +134,37 @@ public class SnowLayerManager {
     public float getSnowHeight(int x, int y, int z) {
         int layers = getSnowLayers(x, y, z);
         return layers * 0.125f;
+    }
+
+    /** Visitor for per-chunk snow iteration (world coords + layer count). */
+    @FunctionalInterface
+    public interface SnowEntryConsumer {
+        void accept(int x, int y, int z, int layers);
+    }
+
+    /**
+     * Visits every tracked snow entry inside one chunk (world coordinates). Used by chunk
+     * save gathering and network chunk-meta encoding.
+     */
+    public void forEachInChunk(int chunkX, int chunkZ, SnowEntryConsumer consumer) {
+        for (Map.Entry<Long, Integer> e : snowLayers.entrySet()) {
+            long key = e.getKey();
+            int x = unpackX(key);
+            int z = unpackZ(key);
+            if (Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE) == chunkX
+                && Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE) == chunkZ) {
+                consumer.accept(x, (int) (key & Y_MASK), z, e.getValue());
+            }
+        }
+    }
+
+    /**
+     * Hydrates one entry from persistence / the network without range ceremony (still
+     * clamped 1-8 defensively). Layer 1 entries are stored too — absence means "untracked",
+     * which also READS as 1, but keeping the entry preserves save/wire round-trip fidelity.
+     */
+    public void putRaw(int x, int y, int z, int layers) {
+        snowLayers.put(packKey(x, y, z), Math.max(1, Math.min(8, layers)));
     }
 
     /**
