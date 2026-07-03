@@ -731,6 +731,20 @@ public class EntityRenderer {
     public void renderPlayerPreview(String stateName, float animationTime,
                                     Vector3f position, float yawDegrees, Vector3f scale,
                                     Matrix4f viewMatrix, Matrix4f projectionMatrix) {
+        renderPlayerPreview(stateName, animationTime, position, yawDegrees, scale,
+                viewMatrix, projectionMatrix, null);
+    }
+
+    /**
+     * Variant with an attachment key so previews can include socket-mounted
+     * accessories — the character creation Looks tab passes
+     * {@link com.stonebreak.mobs.sbe.EntityAttachments#LOCAL_PLAYER} so the
+     * equipped hat shows on the preview model. Null skips attachments.
+     */
+    public void renderPlayerPreview(String stateName, float animationTime,
+                                    Vector3f position, float yawDegrees, Vector3f scale,
+                                    Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                    Object attachmentKey) {
         if (!initialized) return;
         com.stonebreak.mobs.sbe.SbeEntityAsset asset =
                 com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
@@ -739,7 +753,8 @@ public class EntityRenderer {
         PlayerFigureRenderState figure = new PlayerFigureRenderState(
                 position, yawDegrees, scale, 0f, 0f, stateName, animationTime,
                 ensureLocalPlayerColor());
-        renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, null, null);
+        renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, null, null,
+                attachmentKey);
     }
 
     /** Flat white used by the depth-only shadow-caster path (color output is discarded). */

@@ -198,6 +198,10 @@ public class Game {
         com.stonebreak.core.bootstrap.GameBootstrap.initializeEntityAssets();
         com.stonebreak.core.bootstrap.GameBootstrap.configureEngine(renderer.getBlockTextureArray(), renderer);
 
+        // Mount the settings-persisted cosmetic hat (Looks tab) on the local
+        // player's hat socket — a static attachment that outlives world loads.
+        com.stonebreak.player.PlayerLooks.applySelectedHat();
+
         logger.debug("[STARTUP] Core components initialized (no world/player yet)");
     }
 
