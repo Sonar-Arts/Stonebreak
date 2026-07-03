@@ -244,7 +244,7 @@ public enum EntityType {
      */
     public boolean replicates() {
         return switch (this) {
-            case COW, SHEEP, CHICKEN, BLOCK_DROP, ITEM_DROP,
+            case COW, SHEEP, CHICKEN, GOOSE, BLOCK_DROP, ITEM_DROP,
                  ARROW, FIRE_BOLT, NULL_SPIKE, LEYLINE_BREACH_ZONE,
                  CALTROP_CLUSTER -> true;
             case REMOTE_PLAYER, BOBBER, ILLUSION_DECOY -> false;
