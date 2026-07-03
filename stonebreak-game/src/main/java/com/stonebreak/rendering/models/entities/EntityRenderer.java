@@ -388,10 +388,13 @@ public class EntityRenderer {
         // from the shared MobStateMapping (with MobAI.clipTime handling one-shot
         // states like the wing flap), and the model is ground-anchored so its
         // feet rest on the collision ground regardless of authored origin. New
-        // mobs need no renderer changes at all.
+        // mobs need no renderer changes at all. The goose is excluded here: it flies,
+        // and MobStateMapping has no "flying" clip, so it must use its own GooseStateMapping
+        // branch below regardless of whether it carries a shared mobAI.
         if (entityType.getSbeObjectId() != null
                 && entity instanceof com.stonebreak.mobs.entities.LivingEntity mob
-                && mob.getAI() != null) {
+                && mob.getAI() != null
+                && !(entity instanceof com.stonebreak.mobs.goose.Goose)) {
             com.stonebreak.mobs.sbe.SbeEntityAsset asset =
                     com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId());
             sbeEntityRenderer.render(
@@ -413,7 +416,7 @@ public class EntityRenderer {
             sbeEntityRenderer.render(
                     com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
                     com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                    com.stonebreak.mobs.sbe.GooseStateMapping.sbeState(goose.getAI().getCurrentState()),
+                    com.stonebreak.mobs.sbe.GooseStateMapping.sbeState(goose.getGooseAI().getCurrentState()),
                     goose.getAnimationController().getTotalAnimationTime(),
                     goose.getPosition(),
                     goose.getRotation().y,
@@ -716,7 +719,8 @@ public class EntityRenderer {
         // depth-only route (color output is discarded by the shadow FBO).
         if (type.getSbeObjectId() != null
                 && entity instanceof com.stonebreak.mobs.entities.LivingEntity mob
-                && mob.getAI() != null) {
+                && mob.getAI() != null
+                && !(entity instanceof com.stonebreak.mobs.goose.Goose)) {
             com.stonebreak.mobs.sbe.SbeEntityAsset asset =
                     com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId());
             sbeEntityRenderer.renderColored(
@@ -725,6 +729,21 @@ public class EntityRenderer {
                     com.stonebreak.mobs.sbe.MobStateMapping.sbeState(mob.getAI().getCurrentState()),
                     mob.getAI().clipTime(mob.getAnimationController().getTotalAnimationTime()),
                     groundAnchoredPosition(mob, asset), mob.getRotation().y, mob.getScale(),
+                    lightView, lightProj, SHADOW_CASTER_COLOR);
+            return;
+        }
+
+        // Goose shadow: uses GooseStateMapping so the flying pose is shadowed correctly
+        // (mirrors the visible goose branch in renderEntity).
+        if (type == EntityType.GOOSE && entity instanceof com.stonebreak.mobs.goose.Goose goose) {
+            com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId());
+            sbeEntityRenderer.renderColored(
+                    asset,
+                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                    com.stonebreak.mobs.sbe.GooseStateMapping.sbeState(goose.getGooseAI().getCurrentState()),
+                    goose.getAnimationController().getTotalAnimationTime(),
+                    goose.getPosition(), goose.getRotation().y, goose.getScale(),
                     lightView, lightProj, SHADOW_CASTER_COLOR);
             return;
         }
@@ -784,10 +803,12 @@ public class EntityRenderer {
         EntityType entityType = entity.getType();
 
         // Same generic SBE-mob bindings (state, clip time, ground anchoring) as
-        // renderEntity, so the wireframe tracks the rendered model exactly.
+        // renderEntity, so the wireframe tracks the rendered model exactly. Goose excluded
+        // (flies via GooseStateMapping — see renderEntity note).
         if (entityType.getSbeObjectId() != null
                 && entity instanceof com.stonebreak.mobs.entities.LivingEntity mob
-                && mob.getAI() != null) {
+                && mob.getAI() != null
+                && !(entity instanceof com.stonebreak.mobs.goose.Goose)) {
             com.stonebreak.mobs.sbe.SbeEntityAsset asset =
                     com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId());
             sbeEntityRenderer.renderWireframe(
@@ -807,7 +828,7 @@ public class EntityRenderer {
             sbeEntityRenderer.renderWireframe(
                     com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId()),
                     com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
-                    com.stonebreak.mobs.sbe.GooseStateMapping.sbeState(goose.getAI().getCurrentState()),
+                    com.stonebreak.mobs.sbe.GooseStateMapping.sbeState(goose.getGooseAI().getCurrentState()),
                     goose.getAnimationController().getTotalAnimationTime(),
                     goose.getPosition(),
                     goose.getRotation().y,

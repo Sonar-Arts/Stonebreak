@@ -5,7 +5,6 @@ import org.joml.Vector3f;
 import com.stonebreak.audio.GooseSounds;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
-import com.stonebreak.mobs.entities.AnimationController;
 import com.stonebreak.mobs.entities.EntityCollision;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.LivingEntity;
@@ -36,7 +35,6 @@ public class Goose extends LivingEntity {
     private static final float FLIGHT_AIR_DAMPING = 0.99f;
 
     private final GooseAI gooseAI;
-    private final AnimationController animationController;
     private final GooseSounds gooseSounds;
     /** Per-axis world-block collision used only while airborne (thin wrapper over the world). */
     private final EntityCollision flightCollision;
@@ -48,7 +46,6 @@ public class Goose extends LivingEntity {
         super(world, position, EntityType.GOOSE);
 
         this.gooseAI = new GooseAI(this);
-        this.animationController = new AnimationController(this);
         this.gooseSounds = new GooseSounds(world);
         this.flightCollision = new EntityCollision(world);
 
@@ -60,7 +57,6 @@ public class Goose extends LivingEntity {
     public void update(float deltaTime) {
         super.update(deltaTime);
         gooseAI.update(deltaTime);
-        animationController.updateAnimations(deltaTime);
         gooseSounds.updateSounds(position, velocity, isOnGround());
     }
 
@@ -170,11 +166,14 @@ public class Goose extends LivingEntity {
         }
     }
 
-    public GooseAI getAI() {
+    public GooseAI getGooseAI() {
         return gooseAI;
     }
 
-    public AnimationController getAnimationController() {
-        return animationController;
+    /** Client shadow: apply the server's replicated animation state to the (otherwise frozen) AI. */
+    @Override
+    public void applyNetworkState(String sbeStateName) {
+        gooseAI.applyReplicatedState(
+                com.stonebreak.mobs.sbe.GooseStateMapping.behaviorState(sbeStateName));
     }
 }

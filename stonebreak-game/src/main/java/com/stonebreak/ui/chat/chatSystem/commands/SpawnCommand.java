@@ -86,6 +86,7 @@ public class SpawnCommand implements ChatCommand {
             Vector3f pos = new Vector3f(base).add(jitterX, 0f, jitterZ);
             Entity entity = entityManager.spawnEntity(type, pos);
             if (entity != null) {
+                entity.setCommandSpawned(true);
                 spawned++;
             }
         }

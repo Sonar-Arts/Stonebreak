@@ -286,8 +286,8 @@ public class EntitySerializer {
     // ===== Goose Serialization =====
 
     private static void serializeGoose(Goose goose, EntityData.Builder builder) {
-        String aiState = goose.getAI() != null
-                ? goose.getAI().getCurrentState().name()
+        String aiState = goose.getGooseAI() != null
+                ? goose.getGooseAI().getCurrentState().name()
                 : "IDLE";
         builder.addCustomData("aiState", aiState);
     }

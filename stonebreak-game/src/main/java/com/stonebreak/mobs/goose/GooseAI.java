@@ -54,7 +54,13 @@ public class GooseAI {
     private static final float CRUISE_ALT_ABOVE_GROUND = 45.0f;
     private static final float SLOT_ARRIVE = 1.5f;
     private static final float DEST_ARRIVE_XZ = 8.0f;
-    private static final float LANDING_GROUND_CLEAR = 1.5f;
+    /** Sub-visual float-precision guard only — not a real safety margin. */
+    private static final float TOUCHDOWN_EPSILON = 0.02f;
+    /** Proactive water touchdown tolerance. Water landings have no collision backstop
+        (moveAirborneWithCollision treats WATER as passable), so this remains the sole
+        stop signal — but any residual gap is smoothed away by handleFloating()'s
+        spring-to-surface correction, so a small fixed tolerance is safe here. */
+    private static final float WATER_LANDING_CLEAR = 0.5f;
     private static final float FLIGHT_TURN_SPEED = 160.0f; // degrees/sec while flying
     /** Brief window after takeoff where the goose phases through terrain so it can
         lift clear of the launch point instead of embedding in rising ground. */
@@ -431,19 +437,33 @@ public class GooseAI {
         Vector3f pos = goose.getPosition();
         Vector3f v = goose.getVelocity();
 
-        float surfaceY = landingSurfaceBelow();
+        float groundY = findGroundLevel(pos.x, pos.z, pos.y);
+        float waterY = findWaterSurface();
         v.y = -DESCEND_SPEED;
         // Bleed off horizontal speed as we settle.
         v.x *= 0.92f;
         v.z *= 0.92f;
         goose.setVelocity(v);
 
-        // Touchdown when within clearance of the surface below, OR when the descent was stopped
-        // by a solid block (landing onto a ledge/cliff the column scan didn't see beneath us).
+        // Primary ground touchdown: the flight-collision system already snaps the goose flush
+        // onto a solid surface (zeroing v.y) the instant its per-tick descent step would cross
+        // into it, so this fires with the goose already at true zero clearance.
         boolean landedOnBlock = goose.wasFlightBlockedVertically() && v.y <= 0f;
-        if ((surfaceY != Float.NEGATIVE_INFINITY && (pos.y - surfaceY) <= LANDING_GROUND_CLEAR)
-                || landedOnBlock) {
+
+        // Ground backstop: bounded by exactly one tick's worth of descent (self-adjusting to
+        // frame time) rather than a fixed altitude, so it can only fire once the goose is at
+        // most one physics step away from the surface — a fallback for edge cases the column
+        // scan catches that the collision shape might not (e.g. partial-height blocks).
+        float groundClearance = DESCEND_SPEED * deltaTime + TOUCHDOWN_EPSILON;
+        boolean overGround = groundY != Float.NEGATIVE_INFINITY && (pos.y - groundY) <= groundClearance;
+
+        // Water: no solid collision ever stops descent here, so this stays a proactive check,
+        // just with a much smaller, still-safe tolerance (handleFloating() erases any gap).
+        boolean overWaterSurface = waterY != Float.NEGATIVE_INFINITY && (pos.y - waterY) <= WATER_LANDING_CLEAR;
+
+        if (landedOnBlock || overGround || overWaterSurface) {
             // Touchdown: drop out of the flock and hand control back to ground physics.
+            float surfaceY = Math.max(groundY, waterY);
             touchDown(surfaceY != Float.NEGATIVE_INFINITY ? surfaceY : pos.y);
         }
     }
@@ -648,7 +668,7 @@ public class GooseAI {
         flock.markLanding();
         // Land every member; copy the list defensively in case landing mutates membership.
         for (Goose member : flockMembersSnapshot()) {
-            member.getAI().requestLanding();
+            member.getGooseAI().requestLanding();
         }
     }
 
@@ -664,7 +684,7 @@ public class GooseAI {
         EntityManager em = entityManager();
         if (em == null || flock == null) return result;
         for (Entity e : em.getEntitiesByType(EntityType.GOOSE)) {
-            if (e instanceof Goose g && g.getAI().flock == flock) {
+            if (e instanceof Goose g && g.getGooseAI().flock == flock) {
                 result.add(g);
             }
         }
@@ -691,7 +711,7 @@ public class GooseAI {
         float bestDist = Float.MAX_VALUE;
         for (Entity e : em.getEntitiesByType(EntityType.GOOSE)) {
             if (!(e instanceof Goose other) || other == goose) continue;
-            GooseAI otherAI = other.getAI();
+            GooseAI otherAI = other.getGooseAI();
             GooseFlock f = otherAI.flock;
             if (f == null || f == this.flock || !otherAI.isAirborne()) continue;
             // A flock that has begun its landing descent is no longer joinable.
@@ -714,6 +734,15 @@ public class GooseAI {
         if (!isAirborne()) {
             setState(GooseBehaviorState.FLEEING);
         }
+    }
+
+    /**
+     * Applies a server-replicated behaviour state to this (otherwise frozen) AI. Only used
+     * on network-shadow geese, which never tick {@link #update} — the bare assignment keeps
+     * the rendered clip in sync without triggering local side effects like takeoff no-clip.
+     */
+    public void applyReplicatedState(GooseBehaviorState state) {
+        this.currentState = state;
     }
 
     public void cleanup() {
@@ -836,14 +865,6 @@ public class GooseAI {
 
     private boolean overWater() {
         return findWaterSurface() != Float.NEGATIVE_INFINITY;
-    }
-
-    /** Highest landable surface (solid ground or water top) beneath the goose. */
-    private float landingSurfaceBelow() {
-        Vector3f pos = goose.getPosition();
-        float ground = findGroundLevel(pos.x, pos.z, pos.y);
-        float water = findWaterSurface();
-        return Math.max(ground, water);
     }
 
     private static float horizontalDistance(Vector3f a, Vector3f b) {
