@@ -122,7 +122,16 @@ public final class SbeEntityLoader {
     /** Decode one embedded OMO into render-ready geometry. */
     private static SbeModelGeometry buildGeometry(OMOReader omoReader, byte[] omoBytes)
             throws IOException {
-        OMOReader.ReadResult omo = omoReader.read(new ByteArrayInputStream(omoBytes));
+        return buildGeometry(omoReader.read(new ByteArrayInputStream(omoBytes)));
+    }
+
+    /**
+     * Build render-ready geometry from an already-parsed OMO. Public so
+     * non-SBE callers with a {@link OMOReader.ReadResult} in hand (e.g. the
+     * animated-block renderer, which gets per-state OMOs from an SBO parse)
+     * can reuse the exact mob geometry pipeline.
+     */
+    public static SbeModelGeometry buildGeometry(OMOReader.ReadResult omo) throws IOException {
         ParsedMeshData mesh = omo.meshData();
         if (mesh == null || !mesh.hasGeometry()) {
             throw new IOException("OMO model has no mesh geometry");
@@ -163,6 +172,30 @@ public final class SbeEntityLoader {
                     new Vector3f(pe.scaleX(), pe.scaleY(), pe.scaleZ()),
                     faces);
             parts.add(part);
+        }
+
+        // Partless OMOs (single-cube block models don't persist a parts array):
+        // synthesize one identity-rest part covering every face, named after
+        // the model so clips authored in the tool still bind — the tool's
+        // per-session part UUIDs aren't stable, but clip tracks carry the part
+        // NAME as a hint and the renderer falls back to name matching.
+        if (parts.isEmpty()) {
+            List<SbeFace> allFaces = new ArrayList<>();
+            for (Map.Entry<Integer, int[]> e : faceIndexRange.entrySet()) {
+                int faceId = e.getKey();
+                int[] range = e.getValue();
+                allFaces.add(new SbeFace(faceId, faceMaterial.getOrDefault(faceId, -1),
+                        range[0], range[1]));
+            }
+            String name = omo.document() != null && omo.document().objectName() != null
+                    ? omo.document().objectName() : "root";
+            parts.add(new SbePart(
+                    "synthetic:root", name, null,
+                    new Vector3f(0, 0, 0),   // pivot at the model origin
+                    new Vector3f(0, 0, 0),
+                    new Vector3f(0, 0, 0),
+                    new Vector3f(1, 1, 1),
+                    allFaces));
         }
 
         // Mesh and UVs are used exactly as authored in the OMO — no remapping.

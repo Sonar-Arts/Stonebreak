@@ -48,12 +48,21 @@ import java.util.Objects;
  *       (input is referenced by {@code objectId}). The fuel block describes the
  *       burn time of the SBO's own item when used as furnace fuel. Both fields
  *       are nullable; older readers ignore them.</li>
+ *   <li>1.6 - Optional per-state animation clips (mirrors the SBE format).
+ *       A state may embed a raw {@code .omanim} clip under
+ *       {@code states/<name>/clip.omanim}; the manifest state entry gains an
+ *       {@code animation} ref ({@link AnimationRef}: file, checksum, clipName,
+ *       duration, fps, loop, requiredParts). The loop flag is resolved at
+ *       export via {@link LoopMode} (clip default, forced loop, or play-once)
+ *       so the game can play one-shot clips that hold their final pose (e.g.
+ *       a door opening) or looping clips (e.g. a spinning fan). Model-bearing
+ *       SBOs only; older readers ignore both the field and the ZIP entry.</li>
  * </ul>
  */
 public final class SBOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.5";
+    public static final String FORMAT_VERSION = "1.6";
 
     /** File extension for SBO files */
     public static final String FILE_EXTENSION = ".sbo";
@@ -69,6 +78,9 @@ public final class SBOFormat {
 
     /** Prefix for per-state embedded assets (1.3+): {@code states/<name>/model.omo|texture.omt}. */
     public static final String STATES_DIR_PREFIX = "states/";
+
+    /** Per-state embedded animation clip filename (1.6+): {@code states/<name>/clip.omanim}. */
+    public static final String STATE_CLIP_FILENAME = "clip.omanim";
 
     /** Checksum algorithm used for integrity verification */
     public static final String CHECKSUM_ALGORITHM = "SHA-256";
@@ -107,6 +119,11 @@ public final class SBOFormat {
             return false;
         }
         return filePath.trim().toLowerCase().endsWith(FILE_EXTENSION);
+    }
+
+    /** ZIP entry path for a state's embedded animation clip (1.6+). */
+    public static String stateClipPath(String stateName) {
+        return STATES_DIR_PREFIX + stateName + "/" + STATE_CLIP_FILENAME;
     }
 
     /**
@@ -149,20 +166,81 @@ public final class SBOFormat {
     }
 
     /**
+     * How a state clip's loop behaviour is resolved at export time (1.6+).
+     *
+     * <p>The {@code .omanim} clip carries its own loop flag; this mode lets
+     * the export deliberately override it. {@code ONCE} clips play through a
+     * single time and hold their final pose (via the runtime sampler's clamp
+     * semantics) — the door open/close case. {@code LOOP} clips wrap forever.
+     */
+    public enum LoopMode {
+        /** Use the loop flag stored inside the clip itself. */
+        CLIP_DEFAULT,
+        /** Force looping playback regardless of the clip's own flag. */
+        LOOP,
+        /** Force one-shot playback: play once, hold the final pose. */
+        ONCE;
+
+        /** Resolve to a concrete loop flag given the clip's own default. */
+        public boolean resolve(boolean clipDefault) {
+            return switch (this) {
+                case LOOP -> true;
+                case ONCE -> false;
+                case CLIP_DEFAULT -> clipDefault;
+            };
+        }
+    }
+
+    /**
+     * Reference to a state's embedded animation clip (1.6+). Mirrors the SBE
+     * format's animation ref: a metadata snapshot of the raw {@code .omanim}
+     * so the game can pick and schedule clips without unpacking every track.
+     *
+     * @param filename      ZIP entry path ({@code states/<name>/clip.omanim})
+     * @param checksum      SHA-256 of the embedded clip bytes ("" for tool-side
+     *                      stubs; the serializer recomputes it on save)
+     * @param clipName      display name from the clip's own manifest (nullable)
+     * @param duration      clip duration in seconds (snapshot)
+     * @param fps           authored frames-per-second (snapshot)
+     * @param loop          resolved loop flag: {@code true} = wrap forever,
+     *                      {@code false} = play once and hold the final pose
+     * @param requiredParts partIds the clip animates; used for model
+     *                      compatibility checks (never null, may be empty)
+     */
+    public record AnimationRef(
+            String filename,
+            String checksum,
+            String clipName,
+            float duration,
+            float fps,
+            boolean loop,
+            List<String> requiredParts
+    ) {
+        public AnimationRef {
+            Objects.requireNonNull(filename, "animation filename cannot be null");
+            Objects.requireNonNull(checksum, "animation checksum cannot be null");
+            requiredParts = requiredParts == null ? List.of() : List.copyOf(requiredParts);
+        }
+    }
+
+    /**
      * Per-state asset descriptor (1.3+).
      *
-     * @param name     unique state name within this SBO (e.g. "empty", "water", "milk")
-     * @param filename ZIP entry path for this state's bytes
-     *                 ({@code states/<name>/model.omo} or {@code states/<name>/texture.omt})
-     * @param model    {@code true} if the embedded asset is an OMO,
-     *                 {@code false} if it is an OMT
-     * @param checksum SHA-256 of the embedded asset bytes
+     * @param name      unique state name within this SBO (e.g. "empty", "water", "milk")
+     * @param filename  ZIP entry path for this state's bytes
+     *                  ({@code states/<name>/model.omo} or {@code states/<name>/texture.omt})
+     * @param model     {@code true} if the embedded asset is an OMO,
+     *                  {@code false} if it is an OMT
+     * @param checksum  SHA-256 of the embedded asset bytes
+     * @param animation optional embedded animation clip ref (1.6+); null when
+     *                  the state is static. Model-bearing SBOs only.
      */
     public record StateEntry(
             String name,
             String filename,
             boolean model,
-            String checksum
+            String checksum,
+            AnimationRef animation
     ) {
         public StateEntry {
             Objects.requireNonNull(name, "state name cannot be null");
@@ -171,6 +249,16 @@ public final class SBOFormat {
             if (name.isBlank()) {
                 throw new IllegalArgumentException("state name cannot be blank");
             }
+        }
+
+        /** Pre-1.6 convenience constructor: static state, no animation. */
+        public StateEntry(String name, String filename, boolean model, String checksum) {
+            this(name, filename, model, checksum, null);
+        }
+
+        /** True when this state embeds an animation clip (1.6+). */
+        public boolean hasAnimation() {
+            return animation != null;
         }
     }
 
@@ -259,6 +347,11 @@ public final class SBOFormat {
                                 "state '" + e.name() + "' kind (model=" + e.model()
                                         + ") does not match SBO payload kind (model=" + hasOmo + ")");
                     }
+                    if (e.hasAnimation() && !hasOmo) {
+                        throw new IllegalArgumentException(
+                                "state '" + e.name() + "' carries an animation clip but the SBO"
+                                        + " is texture-only — clips require a model payload");
+                    }
                 }
                 if (!defaultFound) {
                     throw new IllegalArgumentException(
@@ -280,6 +373,15 @@ public final class SBOFormat {
         /** True when this SBO declares one or more named states (1.3+). */
         public boolean hasStates() {
             return states != null && !states.isEmpty();
+        }
+
+        /** True when any state embeds an animation clip (1.6+). */
+        public boolean hasAnimations() {
+            if (states == null) return false;
+            for (StateEntry e : states) {
+                if (e.hasAnimation()) return true;
+            }
+            return false;
         }
 
         /** True when this SBO declares one or more crafting recipes (1.4+). */
@@ -486,15 +588,30 @@ public final class SBOFormat {
     }
 
     /**
-     * One named state's source asset, supplied by the export UI (1.3+).
+     * One named state's source assets, supplied by the export UI (1.3+).
      *
-     * @param name       state name (e.g. "empty", "water", "milk")
-     * @param sourcePath absolute path to the OMO or OMT file to embed for this state
+     * @param name           state name (e.g. "empty", "water", "milk")
+     * @param sourcePath     absolute path to the OMO or OMT file to embed for this state
+     * @param clipSourcePath optional absolute path to a {@code .omanim} clip to
+     *                       embed for this state (1.6+); null/blank = no clip
+     * @param loopMode       how the clip's loop flag is resolved at export;
+     *                       ignored when there is no clip
      */
-    public record StateSpec(String name, String sourcePath) {
+    public record StateSpec(String name, String sourcePath, String clipSourcePath, LoopMode loopMode) {
         public StateSpec {
             Objects.requireNonNull(name, "state name cannot be null");
             Objects.requireNonNull(sourcePath, "state sourcePath cannot be null");
+            loopMode = loopMode == null ? LoopMode.CLIP_DEFAULT : loopMode;
+        }
+
+        /** Pre-1.6 convenience constructor: static state, no clip. */
+        public StateSpec(String name, String sourcePath) {
+            this(name, sourcePath, null, LoopMode.CLIP_DEFAULT);
+        }
+
+        /** True when this state supplies an animation clip. */
+        public boolean hasClip() {
+            return clipSourcePath != null && !clipSourcePath.isBlank();
         }
     }
 
@@ -579,7 +696,16 @@ public final class SBOFormat {
             if (objectPack.isBlank()) return "Object Pack is required";
             if (author.isBlank()) return "Author is required";
             if (statesEnabled) {
-                if (states.size() < 2) return "At least 2 states are required when states are enabled";
+                boolean anyClip = false;
+                for (StateSpec s : states) {
+                    if (s.hasClip()) { anyClip = true; break; }
+                }
+                // A single state is meaningful when it carries a clip (an
+                // always-animating block); static variants need at least two.
+                if (states.size() < 2 && !(states.size() == 1 && anyClip)) {
+                    return "At least 2 states are required when states are enabled"
+                            + " (or 1 state with an animation clip)";
+                }
                 if (defaultStateName.isBlank()) return "A default state must be selected";
                 java.util.Set<String> seen = new java.util.HashSet<>();
                 boolean defaultFound = false;

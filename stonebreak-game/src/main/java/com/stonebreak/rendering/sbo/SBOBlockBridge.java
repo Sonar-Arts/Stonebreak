@@ -1,15 +1,20 @@
 package com.stonebreak.rendering.sbo;
 
 import com.openmason.engine.format.mesh.ParsedMaterialData;
+import com.openmason.engine.format.oma.OMAReader;
+import com.openmason.engine.format.oma.ParsedAnimClip;
 import com.openmason.engine.format.omo.OMOReader;
+import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.BlockType;
 import com.openmason.engine.rendering.cbr.models.BlockDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Bridges SBO object IDs to BlockType instances.
@@ -28,6 +33,16 @@ public class SBOBlockBridge {
     private final Map<BlockType, SBOParseResult> sboByBlockType = new HashMap<>();
 
     /**
+     * Lazily-parsed animation clips (1.6+), keyed "{blockTypeName}/{stateName}".
+     * Raw {@code .omanim} bytes live in the parse result; decoding to a
+     * {@link ParsedAnimClip} happens once on first request. A parse failure is
+     * cached as absent so a corrupt clip doesn't re-log every frame.
+     */
+    private final Map<String, java.util.Optional<ParsedAnimClip>> clipCache = new ConcurrentHashMap<>();
+
+    private final OMAReader omaReader = new OMAReader();
+
+    /**
      * Initialize the bridge from a populated registry.
      * Maps each SBO's objectId to the corresponding BlockType via
      * {@link BlockType#getByObjectId(String)}.
@@ -36,6 +51,7 @@ public class SBOBlockBridge {
      */
     public void initialize(SBOBlockRegistry registry) {
         sboByBlockType.clear();
+        clipCache.clear();
 
         for (SBOParseResult result : registry.getAll()) {
             String objectId = result.getObjectId();
@@ -110,6 +126,57 @@ public class SBOBlockBridge {
     public String getDefaultStateName(BlockType blockType) {
         SBOParseResult result = sboByBlockType.get(blockType);
         return (result != null && result.hasStates()) ? result.defaultStateName() : null;
+    }
+
+    /**
+     * True when the BlockType's SBO embeds at least one animation clip (1.6+).
+     * Cheap manifest check — no clip decoding happens here. The renderer uses
+     * this to decide whether a block needs the dynamic (entity-style) draw
+     * path instead of being baked statically into the chunk mesh.
+     */
+    public boolean hasStateAnimations(BlockType blockType) {
+        SBOParseResult result = sboByBlockType.get(blockType);
+        return result != null && result.hasAnimations();
+    }
+
+    /**
+     * The animation ref (metadata snapshot incl. the resolved loop flag) for a
+     * BlockType's state, or {@code null} when that state has no clip (1.6+).
+     * {@code loop() == false} means play-once-and-hold (door open/close);
+     * {@code true} means wrap forever (fan spin, machine idle).
+     */
+    public SBOFormat.AnimationRef getStateAnimationRef(BlockType blockType, String stateName) {
+        SBOParseResult result = sboByBlockType.get(blockType);
+        return (result != null && stateName != null) ? result.animationFor(stateName) : null;
+    }
+
+    /**
+     * The parsed animation clip for a BlockType's state, or {@code null} when
+     * the state has no clip or it fails to decode (1.6+). Decoded lazily from
+     * the embedded {@code .omanim} bytes and cached. The clip's tracks key by
+     * partId with part-name hints, ready for {@code AnimSampler}/{@code
+     * AnimLayering} exactly like SBE entity clips.
+     *
+     * <p>Note: the clip's own {@code loop()} flag is superseded by
+     * {@link #getStateAnimationRef}'s loop flag, which carries the authored
+     * loop/play-once choice from the export.
+     */
+    public ParsedAnimClip getStateClip(BlockType blockType, String stateName) {
+        SBOParseResult result = sboByBlockType.get(blockType);
+        if (result == null || stateName == null) return null;
+        byte[] bytes = result.clipBytesFor(stateName);
+        if (bytes == null) return null;
+
+        String key = blockType.name() + "/" + stateName;
+        return clipCache.computeIfAbsent(key, k -> {
+            try {
+                return java.util.Optional.of(omaReader.read(bytes));
+            } catch (IOException e) {
+                logger.error("Failed to decode animation clip for {} state '{}'",
+                        blockType.name(), stateName, e);
+                return java.util.Optional.empty();
+            }
+        }).orElse(null);
     }
 
     /**

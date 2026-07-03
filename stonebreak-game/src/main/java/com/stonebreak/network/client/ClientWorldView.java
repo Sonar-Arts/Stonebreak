@@ -393,6 +393,20 @@ public final class ClientWorldView {
         }
     }
 
+    /**
+     * Toggleable-block interaction intent (door open/close — see {@code BlockToggleC2S}).
+     *
+     * @return true when the intent was sent (the server will echo the new state)
+     */
+    public boolean sendBlockToggle(int x, int y, int z) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(new com.stonebreak.network.packet.world.BlockToggleC2S(x, y, z), false);
+            return true;
+        }
+        return false;
+    }
+
     /** Projectile / ability-entity launch intent (see {@code ProjectileSpawnC2S}). */
     public void sendProjectileSpawn(byte kind, Vector3f pos, Vector3f v, float... params) {
         ClientConnection conn = connection;

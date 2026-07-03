@@ -95,6 +95,25 @@ public class CollisionHandler {
             }
         }
 
+        // Door panels: model-tied boxes (thin, 2 tall, possibly crossing the
+        // hinge-side cell boundary when open). Merged into the same correction
+        // so cell and panel hits resolve together. No step-up — panels are walls.
+        for (float[] b : nearbyDoorPanels()) {
+            if (!overlapsPanel(b, position.x - halfWidth, playerFootY, checkMinZ,
+                    position.x + halfWidth, playerHeadY, checkMaxZ)) {
+                continue;
+            }
+            if (velocity.x < 0) {
+                float candidate = b[3] + halfWidth;
+                if (!collisionOccurred || candidate > correctedPositionX) correctedPositionX = candidate;
+                collisionOccurred = true;
+            } else if (velocity.x > 0) {
+                float candidate = b[0] - halfWidth;
+                if (!collisionOccurred || candidate < correctedPositionX) correctedPositionX = candidate;
+                collisionOccurred = true;
+            }
+        }
+
         if (stepUpHeight > 0.0f && !collisionOccurred && state.isOnGround()) {
             position.y += stepUpHeight + 0.01f;
         } else if (collisionOccurred) {
@@ -143,6 +162,31 @@ public class CollisionHandler {
                         }
                         collisionOccurred = true;
                     }
+                }
+            }
+        }
+
+        // Door panels: land on top of / bump under a panel. Gated to near the
+        // panel surface so a lateral overlap (e.g. a door closed onto the
+        // player) never teleports them the panel's full 2-block height.
+        for (float[] b : nearbyDoorPanels()) {
+            if (!(playerMaxX > b[0] && playerMinX < b[3] && playerMaxZ > b[2] && playerMinZ < b[5])) {
+                continue;
+            }
+            if (velocity.y < 0 && position.y < b[4] && position.y > b[4] - 0.5f) {
+                if (!collisionOccurred || b[4] > correctedPositionY) {
+                    correctedPositionY = b[4];
+                }
+                collisionOccurred = true;
+                downwardCollision = true;
+            } else if (velocity.y > 0) {
+                float head = position.y + PLAYER_HEIGHT;
+                if (head > b[1] && head < b[1] + 0.5f) {
+                    float candidate = b[1] - PLAYER_HEIGHT;
+                    if (!collisionOccurred || candidate < correctedPositionY) {
+                        correctedPositionY = candidate;
+                    }
+                    collisionOccurred = true;
                 }
             }
         }
@@ -228,6 +272,23 @@ public class CollisionHandler {
             }
         }
 
+        // Door panels — see resolveX for semantics.
+        for (float[] b : nearbyDoorPanels()) {
+            if (!overlapsPanel(b, checkMinX, playerFootY, position.z - halfWidth,
+                    checkMaxX, playerHeadY, position.z + halfWidth)) {
+                continue;
+            }
+            if (velocity.z < 0) {
+                float candidate = b[5] + halfWidth;
+                if (!collisionOccurred || candidate > correctedPositionZ) correctedPositionZ = candidate;
+                collisionOccurred = true;
+            } else if (velocity.z > 0) {
+                float candidate = b[2] - halfWidth;
+                if (!collisionOccurred || candidate < correctedPositionZ) correctedPositionZ = candidate;
+                collisionOccurred = true;
+            }
+        }
+
         if (stepUpHeight > 0.0f && !collisionOccurred && state.isOnGround()) {
             position.y += stepUpHeight + 0.01f;
         } else if (collisionOccurred) {
@@ -255,10 +316,19 @@ public class CollisionHandler {
         for (int x = minX; x < maxX; x++) {
             for (int y = minY; y < maxY; y++) {
                 for (int z = minZ; z < maxZ; z++) {
-                    if (world.getBlockAt(x, y, z).isSolid()) {
+                    // Route through the position-aware height so state-aware
+                    // exceptions (doors, snow layers) agree with the sweep.
+                    if (getBlockCollisionHeight(x, y, z) > 0.0f) {
                         return true;
                     }
                 }
+            }
+        }
+        // Door panels collide as model boxes, not cells.
+        for (float[] b : nearbyDoorPanels()) {
+            if (overlapsPanel(b, position.x - halfWidth, position.y, position.z - halfWidth,
+                    position.x + halfWidth, position.y + PLAYER_HEIGHT, position.z + halfWidth)) {
+                return true;
             }
         }
         return false;
@@ -269,6 +339,50 @@ public class CollisionHandler {
         if (block == BlockType.SNOW) {
             return world.getSnowHeight(x, y, z);
         }
+        if (block == BlockType.OAK_DOOR) {
+            // Doors never collide as cells — the panel AABB pass below
+            // resolves against the actual model box (thin, 2 blocks tall,
+            // swung across the hinge boundary when open).
+            return 0.0f;
+        }
         return block.getCollisionHeight();
+    }
+
+    // ─── Door panel collision (model-tied AABBs) ─────────────────────────────
+
+    /**
+     * World AABBs of door panels near enough to touch the player. Boxes come
+     * from {@link com.stonebreak.blocks.door.DoorState#panelWorldAabb} — the
+     * exact settled pose of the rendered model (during the swing animation
+     * the target pose collides). Doors are indexed by the world's
+     * AnimatedBlockRegistry, so this is a short sparse list, not a scan.
+     */
+    private java.util.List<float[]> nearbyDoorPanels() {
+        java.util.List<float[]> panels = new java.util.ArrayList<>(2);
+        Vector3f position = state.getPosition();
+        for (com.openmason.engine.util.BlockPos pos : world.getAnimatedBlockRegistry().positions()) {
+            // Quick reject: a panel reaches at most 1 block outside its cell.
+            if (Math.abs(pos.x() + 0.5f - position.x) > 3f
+                    || Math.abs(pos.z() + 0.5f - position.z) > 3f
+                    || position.y - pos.y() > com.stonebreak.blocks.door.DoorState.PANEL_HEIGHT + 1f
+                    || pos.y() - position.y > PLAYER_HEIGHT + 1f) {
+                continue;
+            }
+            if (world.getBlockAt(pos.x(), pos.y(), pos.z()) != BlockType.OAK_DOOR) {
+                continue;
+            }
+            panels.add(com.stonebreak.blocks.door.DoorState
+                    .parse(world.getBlockStateAt(pos.x(), pos.y(), pos.z()))
+                    .panelWorldAabb(pos.x(), pos.y(), pos.z()));
+        }
+        return panels;
+    }
+
+    /** Player AABB vs panel box overlap. Box layout: {minX,minY,minZ,maxX,maxY,maxZ}. */
+    private static boolean overlapsPanel(float[] b, float minX, float minY, float minZ,
+                                         float maxX, float maxY, float maxZ) {
+        return maxX > b[0] && minX < b[3]
+                && maxY > b[1] && minY < b[4]
+                && maxZ > b[2] && minZ < b[5];
     }
 }

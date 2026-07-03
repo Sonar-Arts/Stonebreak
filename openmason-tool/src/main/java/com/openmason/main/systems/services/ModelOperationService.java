@@ -809,8 +809,11 @@ public class ModelOperationService {
      */
     private List<OMOFormat.PartEntry> extractPartEntries(ViewportController viewport) {
         ModelPartManager partManager = viewport.getPartManager();
-        if (partManager == null || partManager.getPartCount() <= 1) {
-            return null; // Single-part models don't need explicit part entries
+        if (partManager == null) {
+            return null;
+        }
+        if (partManager.getPartCount() <= 1 && !hasNonDefaultTransform(partManager.getAllParts())) {
+            return null; // Single default-transform part: partless synthesis on load covers it
         }
 
         List<OMOFormat.PartEntry> entries = new ArrayList<>();
@@ -836,6 +839,23 @@ public class ModelOperationService {
         }
 
         return entries;
+    }
+
+    /**
+     * True if any part has a non-identity origin/position/rotation/scale or a parent.
+     * A lone part with an identity transform is covered by the partless-synthesis
+     * load path, so its entry can be safely omitted.
+     */
+    private boolean hasNonDefaultTransform(Iterable<ModelPartDescriptor> parts) {
+        for (ModelPartDescriptor part : parts) {
+            PartTransform t = part.transform();
+            if (part.parentId() != null) return true;
+            if (!t.origin().equals(0f, 0f, 0f)) return true;
+            if (!t.position().equals(0f, 0f, 0f)) return true;
+            if (!t.rotation().equals(0f, 0f, 0f)) return true;
+            if (!t.scale().equals(1f, 1f, 1f)) return true;
+        }
+        return false;
     }
 
     // =========================================================================

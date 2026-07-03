@@ -9,6 +9,7 @@ import com.openmason.main.systems.menus.animationEditor.data.AnimationClip;
 import com.openmason.main.systems.menus.animationEditor.data.Easing;
 import com.openmason.main.systems.menus.animationEditor.data.Keyframe;
 import com.openmason.main.systems.menus.animationEditor.io.OMAClipIO;
+import com.openmason.main.systems.menus.animationEditor.io.OMAFormat;
 import com.openmason.main.systems.menus.animationEditor.preview.AnimationPreviewPipeline;
 import com.openmason.main.systems.menus.animationEditor.state.AnimationEditorState;
 import com.openmason.main.systems.menus.animationEditor.state.KeyframeClipboard;
@@ -389,9 +390,13 @@ public final class AnimationEditorController {
     }
 
     public boolean saveAs(String filePath) {
-        boolean ok = io.save(state.clip(), filePath, partManager);
+        // Normalize before recording: the native save dialog may return a path
+        // without the .omanim extension, but the serializer always writes with
+        // it — the stored path must match the file that actually exists.
+        String resolved = OMAFormat.ensureExtension(filePath);
+        boolean ok = io.save(state.clip(), resolved, partManager);
         if (ok) {
-            state.setFilePath(filePath);
+            state.setFilePath(resolved);
             state.markClean();
         }
         return ok;

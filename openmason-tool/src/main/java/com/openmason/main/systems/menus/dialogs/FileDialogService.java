@@ -341,6 +341,17 @@ public class FileDialogService {
     }
 
     /**
+     * Like {@link #showOpenOMTDialog(OpenCallback)}, but starts in the open
+     * project's root (where the .OMP lives) when a project is loaded. Used by
+     * the SBO editor/export screens so texture replacements default to the
+     * assets that belong to the object's project.
+     */
+    public void showOpenOMTInProjectDialog(OpenCallback callback) {
+        showNFDOpenDialog("Opening OMT project...", "Open Mason Texture", "omt",
+                projectDirectoryOrNull(), "Selected OMT file", callback);
+    }
+
+    /**
      * Show open texture dialog supporting both .OMT and .PNG files.
      * Used for selecting textures for editable models.
      *

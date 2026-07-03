@@ -39,12 +39,14 @@ public record SBOParseResult(
         byte[] embeddedOmtBytes,
         Map<String, byte[]> stateOmoBytes,
         Map<String, byte[]> stateOmtBytes,
-        Map<String, OMOReader.ReadResult> stateOmoData
+        Map<String, OMOReader.ReadResult> stateOmoData,
+        Map<String, byte[]> stateClipBytes
 ) {
     public SBOParseResult {
         stateOmoBytes = stateOmoBytes == null ? Collections.emptyMap() : Map.copyOf(stateOmoBytes);
         stateOmtBytes = stateOmtBytes == null ? Collections.emptyMap() : Map.copyOf(stateOmtBytes);
         stateOmoData = stateOmoData == null ? Collections.emptyMap() : Map.copyOf(stateOmoData);
+        stateClipBytes = stateClipBytes == null ? Collections.emptyMap() : Map.copyOf(stateClipBytes);
     }
 
     public String getObjectId() { return manifest.objectId(); }
@@ -62,4 +64,22 @@ public record SBOParseResult(
 
     /** Default state name (1.3+); null when {@link #hasStates()} is false. */
     public String defaultStateName() { return manifest.defaultStateName(); }
+
+    /** True when any state embeds an animation clip (1.6+). */
+    public boolean hasAnimations() { return !stateClipBytes.isEmpty(); }
+
+    /** Raw {@code .omanim} bytes for a state's clip, or null when the state has none (1.6+). */
+    public byte[] clipBytesFor(String stateName) { return stateClipBytes.get(stateName); }
+
+    /**
+     * The manifest {@link SBOFormat.AnimationRef} for a state (clip metadata
+     * snapshot incl. the resolved loop flag), or null when the state has no
+     * clip (1.6+).
+     */
+    public SBOFormat.AnimationRef animationFor(String stateName) {
+        for (SBOFormat.StateEntry e : manifest.states()) {
+            if (e.name().equals(stateName)) return e.animation();
+        }
+        return null;
+    }
 }

@@ -286,6 +286,7 @@ public final class IntegratedServer {
             case BlockChangeC2S c -> blockHandler.handleBlockChange(sp, c, ctx);
             case com.stonebreak.network.packet.world.SnowLayerC2S s -> blockHandler.handleSnowLayer(sp, s, ctx);
             case com.stonebreak.network.packet.world.FurnaceSlotsC2S f -> blockHandler.handleFurnaceSlots(sp, f, ctx);
+            case com.stonebreak.network.packet.world.BlockToggleC2S bt -> blockHandler.handleBlockToggle(sp, bt, ctx);
             case com.stonebreak.network.packet.world.ChunkResyncRequestC2S cr ->
                 chunkHandler.handleResyncRequest(sp, cr.chunkX(), cr.chunkZ());
             case com.stonebreak.network.packet.world.ChunkHashesC2S ch ->

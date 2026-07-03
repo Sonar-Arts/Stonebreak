@@ -26,14 +26,25 @@ import java.util.function.Supplier;
  * <p>Each row's asset is either an OMO (model SBO) or an OMT (texture SBO);
  * the dialog kind is fixed at construction via the {@code modelKind} flag and
  * the supplied file-picker callback.
+ *
+ * <p>Model-kind sections may additionally attach an optional {@code .omanim}
+ * animation clip per state (SBO 1.6+), with a loop-mode selector — clip
+ * default, forced loop, or play-once (e.g. a door swing that holds its final
+ * pose). Texture-kind sections never show clip controls.
  */
 public final class SBOStatesSection {
+
+    /** Loop-mode combo labels; index-aligned with {@link SBOFormat.LoopMode#values()}. */
+    private static final String[] LOOP_MODE_LABELS = { "Clip default", "Loop", "Play once" };
 
     /** True when this section gathers OMO paths (model SBO), false for OMT. */
     private final boolean modelKind;
 
     /** File-picker invoker — called with a Consumer that receives the chosen path. */
     private final Consumer<Consumer<String>> filePicker;
+
+    /** Optional .omanim picker (model SBOs only); null disables clip controls. */
+    private final Consumer<Consumer<String>> clipPicker;
 
     /**
      * Source for the "current asset" path so the default-state row can be
@@ -50,10 +61,17 @@ public final class SBOStatesSection {
 
     public SBOStatesSection(boolean modelKind,
                             Consumer<Consumer<String>> filePicker,
+                            Consumer<Consumer<String>> clipPicker,
                             Supplier<String> currentAssetPath) {
         this.modelKind = modelKind;
         this.filePicker = filePicker;
+        this.clipPicker = clipPicker;
         this.currentAssetPath = currentAssetPath;
+    }
+
+    /** True when this section offers per-state animation clips. */
+    private boolean clipsSupported() {
+        return modelKind && clipPicker != null;
     }
 
     public boolean isEnabled() { return enabled.get(); }
@@ -140,6 +158,37 @@ public final class SBOStatesSection {
                 });
             }
 
+            // Row 3 (model SBOs only): optional animation clip + loop mode
+            if (clipsSupported()) {
+                ImGui.setCursorPosX(formOffsetX);
+                float clipWidth = totalWidth - 80.0f - 118.0f;
+                ImGui.pushItemWidth(clipWidth);
+                ImGui.inputTextWithHint("##sbo_state_clip_" + i,
+                        "animation clip (.omanim, optional)", row.clipPath);
+                ImGui.popItemWidth();
+
+                ImGui.sameLine();
+                if (ImGui.button("Clip...##sbo_state_clip_browse_" + i, 70.0f, 0.0f)) {
+                    clipPicker.accept(picked -> {
+                        if (picked != null && !picked.isBlank()) {
+                            rows.get(rowIdx).clipPath.set(picked);
+                        }
+                    });
+                }
+
+                if (!row.clipPath.get().isBlank()) {
+                    ImGui.sameLine();
+                    ImGui.pushItemWidth(110.0f);
+                    ImGui.combo("##sbo_state_loop_" + i, row.loopMode, LOOP_MODE_LABELS);
+                    ImGui.popItemWidth();
+                    if (ImGui.isItemHovered()) {
+                        ImGui.setTooltip("Loop: wrap forever (e.g. a spinning fan).\n"
+                                + "Play once: run through a single time and hold the final pose\n"
+                                + "(e.g. a door opening). Clip default uses the clip's own flag.");
+                    }
+                }
+            }
+
             ImGui.dummy(0, rowSpacing);
         }
 
@@ -185,7 +234,12 @@ public final class SBOStatesSection {
     public List<SBOFormat.StateSpec> toStateSpecs() {
         List<SBOFormat.StateSpec> specs = new ArrayList<>(rows.size());
         for (Row r : rows) {
-            specs.add(new SBOFormat.StateSpec(r.name.get().trim(), r.path.get().trim()));
+            String clip = clipsSupported() ? r.clipPath.get().trim() : "";
+            specs.add(new SBOFormat.StateSpec(
+                    r.name.get().trim(),
+                    r.path.get().trim(),
+                    clip.isBlank() ? null : clip,
+                    SBOFormat.LoopMode.values()[r.loopMode.get()]));
         }
         return specs;
     }
@@ -215,6 +269,8 @@ public final class SBOStatesSection {
     private static final class Row {
         final ImString name = new ImString(64);
         final ImString path = new ImString(512);
+        final ImString clipPath = new ImString(512);
+        final imgui.type.ImInt loopMode = new imgui.type.ImInt(0); // LoopMode ordinal
 
         Row(String n, String p) {
             if (n != null) name.set(n);

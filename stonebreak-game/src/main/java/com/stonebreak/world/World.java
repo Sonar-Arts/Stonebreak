@@ -36,6 +36,8 @@ public class World {
     private final ChunkManager chunkManager;
     private final SnowLayerManager snowLayerManager;
     private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
+    private final com.stonebreak.blocks.anim.AnimatedBlockRegistry animatedBlockRegistry =
+            new com.stonebreak.blocks.anim.AnimatedBlockRegistry();
     
     // World spawn position
     private Vector3f spawnPosition = new Vector3f(0, 100, 0);
@@ -268,6 +270,7 @@ public class World {
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkLoaded(chunk);
             }
+            animatedBlockRegistry.onChunkLoaded(chunk);
             if (meshPipeline != null) {
                 int cx = chunk.getX();
                 int cz = chunk.getZ();
@@ -280,6 +283,7 @@ public class World {
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkUnloaded(chunk);
             }
+            animatedBlockRegistry.onChunkUnloaded(chunk);
             // Water cells and snow layers accumulate on EVERY world — the render-only client
             // feeds them via setBlockAt(..., false) applies of streamed changes — so both must
             // purge with the chunk everywhere or the maps grow unbounded as streamed chunks
@@ -617,6 +621,7 @@ public class World {
         }
 
         waterSystem.onBlockChanged(x, y, z, previous, blockType);
+        animatedBlockRegistry.onBlockChanged(x, y, z, previous, blockType);
 
         // Multiplayer: forward locally-driven block edits (player modifications) to the local
         // client, which sends them to the authoritative server as intents. Inbound network
@@ -1044,6 +1049,12 @@ public class World {
                 if (!meta.blockStates().isEmpty() && furnaceRegistry != null) {
                     furnaceRegistry.onChunkLoaded(chunk);
                 }
+                // Same re-hydration for animated blocks (doors): the load-time
+                // scan saw an all-air placeholder with no states, so streamed
+                // doors were never indexed — and rendered invisible.
+                if (!meta.blockStates().isEmpty()) {
+                    animatedBlockRegistry.onChunkLoaded(chunk);
+                }
             } catch (Exception e) {
                 System.err.println("[NETWORK] Failed to decode chunk meta (" + chunkX + "," + chunkZ + "): " + e.getMessage());
             }
@@ -1201,6 +1212,11 @@ public class World {
      */
     public com.stonebreak.blocks.furnace.FurnaceStateRegistry getFurnaceRegistry() {
         return furnaceRegistry;
+    }
+
+    /** This world's index of animated (dynamically rendered) block positions. */
+    public com.stonebreak.blocks.anim.AnimatedBlockRegistry getAnimatedBlockRegistry() {
+        return animatedBlockRegistry;
     }
 
     /**

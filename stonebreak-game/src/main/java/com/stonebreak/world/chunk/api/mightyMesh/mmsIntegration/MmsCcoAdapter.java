@@ -166,6 +166,14 @@ public class MmsCcoAdapter {
                             continue;
                         }
 
+                        // Skip animated blocks (doors): drawn per-frame by
+                        // AnimatedBlockRenderer. They have no SBO stamp, and
+                        // without this guard the legacy cube fallback below
+                        // would bake a bogus full cube into their cell.
+                        if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(blockType)) {
+                            continue;
+                        }
+
                         // Handle SBO blocks via stamp emitter
                         if (sboStampEmitter != null && sboStampEmitter.hasBlock(blockType)) {
                             float worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE + 0.5f;

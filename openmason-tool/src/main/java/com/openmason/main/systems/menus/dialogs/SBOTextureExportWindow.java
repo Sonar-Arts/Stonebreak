@@ -131,7 +131,8 @@ public class SBOTextureExportWindow {
         this.titleBar = new WindowTitleBar(WINDOW_TITLE, true, false);
         this.statesSection = new SBOStatesSection(
                 /* modelKind */ false,
-                callback -> fileDialogService.showOpenOMTDialog(callback::accept),
+                callback -> fileDialogService.showOpenOMTInProjectDialog(callback::accept),
+                /* clipPicker */ null, // texture-only SBOs cannot carry animation clips
                 () -> omtPathSupplier.get()
         );
         objectPack.set("default");

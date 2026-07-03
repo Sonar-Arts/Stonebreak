@@ -20,6 +20,7 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.player.Player;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.WaterEffects;
+import com.stonebreak.rendering.models.blocks.AnimatedBlockRenderer;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.models.entities.DropRenderer;
@@ -45,6 +46,7 @@ public class WorldRenderer {
     private final PlayerArmRenderer playerArmRenderer;
     private final EntityRenderer entityRenderer;
     private final DropRenderer dropRenderer;
+    private final AnimatedBlockRenderer animatedBlockRenderer;
     private final SkyRenderer skyRenderer;
     private final CloudRenderer cloudRenderer;
     private final com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer shadowMapRenderer;
@@ -68,7 +70,7 @@ public class WorldRenderer {
     public WorldRenderer(ShaderProgram shaderProgram, BlockTextureArray blockTextureArray,
                         Matrix4f projectionMatrix,
                         BlockRenderer blockRenderer, PlayerArmRenderer playerArmRenderer, EntityRenderer entityRenderer,
-                        DropRenderer dropRenderer) {
+                        DropRenderer dropRenderer, AnimatedBlockRenderer animatedBlockRenderer) {
         this.shaderProgram = shaderProgram;
         this.blockTextureArray = blockTextureArray;
         this.projectionMatrix = projectionMatrix;
@@ -76,12 +78,16 @@ public class WorldRenderer {
         this.playerArmRenderer = playerArmRenderer;
         this.entityRenderer = entityRenderer;
         this.dropRenderer = dropRenderer;
+        this.animatedBlockRenderer = animatedBlockRenderer;
         this.skyRenderer = new SkyRenderer();
         this.cloudRenderer = new CloudRenderer();
         this.shadowMapRenderer =
                 new com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer(projectionMatrix, blockTextureArray);
         if (entityRenderer != null) {
             entityRenderer.setShadowMapRenderer(shadowMapRenderer);
+        }
+        if (animatedBlockRenderer != null) {
+            animatedBlockRenderer.setShadowMapRenderer(shadowMapRenderer);
         }
         this.lodRenderPass = new FastLodRenderPass();
         this.fishingLineRenderer = new com.stonebreak.rendering.models.entities.FishingLineRenderer(shaderProgram, projectionMatrix);
@@ -183,6 +189,13 @@ public class WorldRenderer {
         // Render entities after opaque blocks but before transparent water
         // This allows water to blend over entities when viewing through water
         renderEntities(player);
+
+        // Animated blocks (doors etc.) draw entity-style right after the mobs:
+        // they depth-sort against opaque terrain and water still blends over them.
+        if (animatedBlockRenderer != null) {
+            animatedBlockRenderer.render(world, player.getViewMatrix(), projectionMatrix,
+                    player.getCamera().getPosition(), totalTime);
+        }
 
         // Render opaque drops BEFORE the transparent pass so they write depth
         // Water can then occlude them properly (water renders with glDepthMask(false))

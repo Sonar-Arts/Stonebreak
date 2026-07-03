@@ -1031,6 +1031,11 @@ public class InputHandler {
                                 // Interacted with a Furnace
                                 Game.getInstance().openFurnaceScreen(
                                         new com.openmason.engine.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
+                            } else if (targetedBlockType == BlockType.OAK_DOOR) {
+                                // Toggle the door open/closed — plays the target
+                                // state's one-shot clip and holds the final pose.
+                                com.stonebreak.blocks.door.DoorInteraction.toggle(
+                                        targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z);
                             } else {
                                 // Not a workbench, proceed with normal block placement
                                 player.placeBlock();

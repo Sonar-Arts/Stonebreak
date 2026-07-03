@@ -1,6 +1,7 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.main.systems.menus.windows.WindowTitleBar;
+import com.openmason.engine.format.sbe.AnimationCompatibility;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParser;
 import com.openmason.engine.format.sbo.SBOSerializer;
@@ -121,7 +122,8 @@ public class SBOExportWindow {
         this.titleBar = new WindowTitleBar(WINDOW_TITLE, true, false);
         this.statesSection = new SBOStatesSection(
                 /* modelKind */ true,
-                callback -> fileDialogService.showOpenOMODialog(callback::accept),
+                callback -> fileDialogService.showOpenOMOInProjectDialog(callback::accept),
+                callback -> fileDialogService.showOpenOMADialog(callback::accept),
                 modelState::getCurrentOMOFilePath
         );
 
@@ -576,6 +578,15 @@ public class SBOExportWindow {
 
         Path omoPath = Path.of(omoPathStr);
 
+        // Validate per-state clip compatibility (1.6+): every clip must only
+        // animate parts that exist in its own state's model.
+        String compatError = validateClipCompatibility(params);
+        if (compatError != null) {
+            validationMessage = compatError;
+            statusService.updateStatus("Export blocked: animation/model mismatch");
+            return;
+        }
+
         // Show save dialog for the .SBO file
         fileDialogService.showSaveSBODialog(filePath -> {
             boolean success = serializer.export(params, omoPath, filePath);
@@ -588,6 +599,39 @@ public class SBOExportWindow {
                 statusService.updateStatus("SBO export failed");
             }
         });
+    }
+
+    /**
+     * Validate each state clip's required parts against that state's own OMO
+     * (unlike SBE, every SBO state carries a full model, so each clip is
+     * checked against exactly the model it will animate). Returns null when
+     * compatible. Falls open on read errors, mirroring the SBE export window.
+     */
+    private String validateClipCompatibility(SBOFormat.ExportParameters params) {
+        for (SBOFormat.StateSpec spec : params.getStates()) {
+            if (!spec.hasClip()) continue;
+
+            java.util.List<String> requiredParts;
+            java.util.List<String> availableParts;
+            try {
+                requiredParts = AnimationCompatibility.readOMARequiredParts(Path.of(spec.clipSourcePath()));
+                availableParts = AnimationCompatibility.readOMOPartIds(Path.of(spec.sourcePath()));
+            } catch (IOException e) {
+                logger.warn("Could not check clip compatibility for state '{}': {}",
+                        spec.name(), e.getMessage());
+                continue;
+            }
+            if (availableParts.isEmpty()) continue;
+
+            AnimationCompatibility.Result result =
+                    AnimationCompatibility.check(requiredParts, availableParts);
+            if (!result.isCompatible()) {
+                return "State '" + spec.name()
+                        + "' clip references parts missing from its model: "
+                        + result.describeMissing();
+            }
+        }
+        return null;
     }
 
     /**

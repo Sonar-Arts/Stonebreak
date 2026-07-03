@@ -77,6 +77,7 @@ public class Renderer {
     private final WorldRenderer worldRenderer;
     private final OverlayRenderer overlayRenderer;
     private final DropRenderer dropRenderer;
+    private final com.stonebreak.rendering.models.blocks.AnimatedBlockRenderer animatedBlockRenderer;
 
     // Post-processing (scene FBO + screen-space effects, e.g. god rays)
     private final PostProcessingPipeline postPipeline;
@@ -161,10 +162,16 @@ public class Renderer {
 
         dropRenderer = new DropRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, resourceManager.getShaderProgram());
 
+        // Animated SBO blocks (doors) — excluded from chunk meshing in
+        // initializeSBOBlocks and drawn per-frame instead.
+        animatedBlockRenderer = new com.stonebreak.rendering.models.blocks.AnimatedBlockRenderer();
+        animatedBlockRenderer.initialize(sboBlockBridge);
+
         worldRenderer = new WorldRenderer(resourceManager.getShaderProgram(),
                                          blockTextureArray,
                                          configManager.getProjectionMatrix(),
-                                         blockRenderer, playerArmRenderer, entityRenderer, dropRenderer);
+                                         blockRenderer, playerArmRenderer, entityRenderer, dropRenderer,
+                                         animatedBlockRenderer);
         
         overlayRenderer = new OverlayRenderer(uiRenderer.getBlockIconRenderer(), 
                                              uiRenderer.getItemIconRenderer());
@@ -198,6 +205,12 @@ public class Renderer {
                 java.util.Map<com.stonebreak.blocks.BlockType, SBOParseResult> sboBlockMap = new java.util.LinkedHashMap<>();
                 for (com.stonebreak.blocks.BlockType blockType : com.stonebreak.blocks.BlockType.values()) {
                     if (bridge.isSBOBlock(blockType)) {
+                        // Blocks with animation clips are never baked into the
+                        // chunk mesh — no stamp means the mesher skips them and
+                        // AnimatedBlockRenderer draws them per-frame instead.
+                        if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(blockType)) {
+                            continue;
+                        }
                         sboBlockMap.put(blockType, bridge.getSBODefinition(blockType));
                     }
                 }
@@ -562,7 +575,10 @@ public class Renderer {
         if (dropRenderer != null) {
             dropRenderer.cleanup();
         }
-        
+        if (animatedBlockRenderer != null) {
+            animatedBlockRenderer.cleanup();
+        }
+
         // Cleanup pause menu
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null) {

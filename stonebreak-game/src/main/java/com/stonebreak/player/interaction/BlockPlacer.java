@@ -117,6 +117,16 @@ public class BlockPlacer {
                 com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = com.stonebreak.core.Game.getInstance().getFurnaceRegistry();
                 if (fr != null) fr.onBlockPlaced(world, placePos.x, placePos.y, placePos.z, selectedBlockType);
             }
+            if (selectedBlockType == BlockType.OAK_DOOR) {
+                // Predictive local state: closed, panel on the placer's edge. The
+                // authoritative server derives the same state from the placement
+                // packet and echoes it via BlockStateS2C.
+                Vector3f playerPos = state.getPosition();
+                world.setBlockStateAt(placePos.x, placePos.y, placePos.z,
+                        com.stonebreak.blocks.door.DoorState
+                                .placed(playerPos.x, playerPos.z, placePos.x, placePos.z)
+                                .toStateString());
+            }
         }
     }
 

@@ -1,0 +1,176 @@
+package com.stonebreak.blocks.door;
+
+/**
+ * Immutable parsed form of a door block's per-position state string.
+ *
+ * <p>Format: {@code door:state=<Open|Closed>;facing=<NORTH|SOUTH|EAST|WEST>}
+ * — same {@code prefix:key=value;...} convention as the furnace state string.
+ * The {@code state} value is the SBO state name (must match the state names
+ * authored in {@code SB_Oak_Door.sbo}), which selects the animation clip; the
+ * facing is fixed at placement and orients the dynamically drawn model.
+ *
+ * <p>Unknown keys are ignored and missing keys fall back to defaults
+ * (Closed / NORTH), so the format is forward-compatible.
+ */
+public record DoorState(String renderState, Facing facing) {
+
+    public static final String STATE_PREFIX = "door:";
+    /** SBO state names — must match the states inside the door's .sbo. */
+    public static final String OPEN = "Open";
+    public static final String CLOSED = "Closed";
+
+    /**
+     * Which cell edge the closed panel rests against. {@code yawDegrees} spins
+     * the model about the cell's vertical center axis; since the renderer's
+     * base transform rotates about the model origin (the cell corner), the
+     * anchor offset re-positions that origin so the rotation is effectively
+     * center-of-cell: {@code position = corner + C - R(yaw)*C, C = (0.5, 0, 0.5)}.
+     */
+    public enum Facing {
+        NORTH(0f, 0f, 0f),    // panel on the min-Z edge
+        WEST(90f, 0f, 1f),    // min-X edge
+        SOUTH(180f, 1f, 1f),  // max-Z edge
+        EAST(270f, 1f, 0f);   // max-X edge
+
+        private final float yawDegrees;
+        private final float anchorOffsetX;
+        private final float anchorOffsetZ;
+
+        Facing(float yawDegrees, float anchorOffsetX, float anchorOffsetZ) {
+            this.yawDegrees = yawDegrees;
+            this.anchorOffsetX = anchorOffsetX;
+            this.anchorOffsetZ = anchorOffsetZ;
+        }
+
+        public float yawDegrees() { return yawDegrees; }
+        public float anchorOffsetX() { return anchorOffsetX; }
+        public float anchorOffsetZ() { return anchorOffsetZ; }
+
+        public static Facing fromString(String s) {
+            if (s != null) {
+                for (Facing f : values()) {
+                    if (f.name().equalsIgnoreCase(s)) return f;
+                }
+            }
+            return NORTH;
+        }
+
+        /**
+         * The cell edge nearest to a viewer at {@code (fromX, fromZ)} —
+         * placement puts the closed panel against the edge the placer is
+         * standing on, so the door hugs the opening from their side.
+         */
+        public static Facing nearestEdge(double fromX, double fromZ, int cellX, int cellZ) {
+            double dx = fromX - (cellX + 0.5);
+            double dz = fromZ - (cellZ + 0.5);
+            if (Math.abs(dx) > Math.abs(dz)) {
+                return dx > 0 ? EAST : WEST;
+            }
+            return dz > 0 ? SOUTH : NORTH;
+        }
+    }
+
+    public DoorState {
+        renderState = OPEN.equalsIgnoreCase(renderState) ? OPEN : CLOSED;
+        facing = facing == null ? Facing.NORTH : facing;
+    }
+
+    /** True when {@code raw} is a door state string. */
+    public static boolean isDoorState(String raw) {
+        return raw != null && raw.startsWith(STATE_PREFIX);
+    }
+
+    /**
+     * Parse a raw state string; tolerant of nulls, foreign prefixes and
+     * unknown keys — anything unreadable falls back to Closed / NORTH.
+     */
+    public static DoorState parse(String raw) {
+        String state = CLOSED;
+        Facing facing = Facing.NORTH;
+        if (isDoorState(raw)) {
+            for (String pair : raw.substring(STATE_PREFIX.length()).split(";")) {
+                int eq = pair.indexOf('=');
+                if (eq <= 0) continue;
+                String key = pair.substring(0, eq).trim();
+                String value = pair.substring(eq + 1).trim();
+                switch (key) {
+                    case "state" -> state = value;
+                    case "facing" -> facing = Facing.fromString(value);
+                    default -> { /* forward-compat: ignore unknown keys */ }
+                }
+            }
+        }
+        return new DoorState(state, facing);
+    }
+
+    public String toStateString() {
+        return STATE_PREFIX + "state=" + renderState + ";facing=" + facing.name();
+    }
+
+    public boolean isOpen() {
+        return OPEN.equals(renderState);
+    }
+
+    /** The opposite door state with the same facing. */
+    public DoorState toggled() {
+        return new DoorState(isOpen() ? CLOSED : OPEN, facing);
+    }
+
+    /** Initial state written at placement: closed, panel on the placer's edge. */
+    public static DoorState placed(double placerX, double placerZ, int cellX, int cellZ) {
+        return new DoorState(CLOSED, Facing.nearestEdge(placerX, placerZ, cellX, cellZ));
+    }
+
+    // ---------- model-tied collision ----------
+
+    /** Panel dimensions, mirroring SB_Oak_Door's mesh (1 wide × 2 tall × 0.1 thick). */
+    public static final float PANEL_THICKNESS = 0.1f;
+    public static final float PANEL_HEIGHT = 2.0f;
+
+    /**
+     * World-space AABB {@code {minX, minY, minZ, maxX, maxY, maxZ}} of the
+     * door panel in this state's settled pose — collision follows the model,
+     * not the block cell. The open pose is the clip's end pose: +90° about
+     * the hinge corner, which swings the panel across the hinge-side cell
+     * boundary (matching exactly what is rendered).
+     */
+    public float[] panelWorldAabb(int blockX, int blockY, int blockZ) {
+        // Settled pose in model space (hinge corner at the model origin).
+        float x0;
+        float x1;
+        float z0;
+        float z1;
+        if (isOpen()) {
+            // +90° about Y at the hinge: (x, z) -> (z, -x).
+            x0 = 0f;
+            x1 = PANEL_THICKNESS;
+            z0 = -1f;
+            z1 = 0f;
+        } else {
+            x0 = 0f;
+            x1 = 1f;
+            z0 = 0f;
+            z1 = PANEL_THICKNESS;
+        }
+        // Same transform the renderer applies: facing rotation about the model
+        // origin, then the cell anchor offset.
+        float[] a = rotateByFacing(x0, z0);
+        float[] b = rotateByFacing(x1, z1);
+        float baseX = blockX + facing.anchorOffsetX();
+        float baseZ = blockZ + facing.anchorOffsetZ();
+        return new float[]{
+                baseX + Math.min(a[0], b[0]), blockY, baseZ + Math.min(a[1], b[1]),
+                baseX + Math.max(a[0], b[0]), blockY + PANEL_HEIGHT, baseZ + Math.max(a[1], b[1])
+        };
+    }
+
+    /** Rotate a model-space (x, z) by the facing yaw (JOML rotateY convention). */
+    private float[] rotateByFacing(float x, float z) {
+        return switch (facing) {
+            case NORTH -> new float[]{x, z};
+            case WEST -> new float[]{z, -x};   // +90°
+            case SOUTH -> new float[]{-x, -z}; // 180°
+            case EAST -> new float[]{-z, x};   // 270°
+        };
+    }
+}

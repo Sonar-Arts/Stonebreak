@@ -131,6 +131,19 @@ public final class MultiplayerSession {
     }
 
     /**
+     * Toggleable-block interaction intent (door open/close — see {@code BlockToggleC2S}).
+     * The server flips the authoritative state and echoes {@code BlockStateS2C} to all
+     * clients. Returns false when there is no live connection (caller flips locally).
+     */
+    public static boolean sendBlockToggle(int x, int y, int z) {
+        ClientWorldView c = client;
+        if (c != null && !c.isDisconnected()) {
+            return c.sendBlockToggle(x, y, z);
+        }
+        return false;
+    }
+
+    /**
      * Projectile / ability-entity launch intent — the SERVER spawns + simulates the
      * authoritative entity and replicates it to everyone (originator included). Returns
      * false when there is no live client connection (caller falls back to a local spawn).
