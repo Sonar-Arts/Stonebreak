@@ -337,15 +337,15 @@ public class BlockIconRenderer {
             throw new IllegalStateException("BlockIconRenderer requires CBR support. BlockRenderer must be initialized with BlockDefinitionRegistry.");
         }
 
-        // Flowers render as their SBO cross geometry; other blocks as cubes.
-        boolean isFlower = type.isFlower() && sboHandMeshRegistry != null
-                && sboHandMeshRegistry.getMesh(type) != null;
-        MeshManager.MeshResource mesh = isFlower
+        // Blocks with an SBO display mesh (flower crosses, the door panel)
+        // render as their actual model geometry; other blocks as cubes.
+        MeshManager.MeshResource sboMesh = sboHandMeshRegistry != null
                 ? sboHandMeshRegistry.getMesh(type)
-                : getIconCubeMesh(type);
+                : null;
+        MeshManager.MeshResource mesh = sboMesh != null ? sboMesh : getIconCubeMesh(type);
 
         // Flower cross meshes carry no per-vertex alpha flag — force alpha test.
-        shaderProgram.setUniform("u_forceAlphaTest", isFlower);
+        shaderProgram.setUniform("u_forceAlphaTest", sboMesh != null && type.isFlower());
         mesh.bind();
         glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
         mesh.unbind();

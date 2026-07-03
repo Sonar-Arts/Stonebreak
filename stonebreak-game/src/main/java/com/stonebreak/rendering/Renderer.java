@@ -116,7 +116,7 @@ public class Renderer {
             sboHandMeshRegistry = new SBOHandMeshRegistry(
                     blockRenderer.getCBRResourceManager(),
                     blockTextureArray);
-            int built = sboHandMeshRegistry.buildFlowerMeshes(sboBlockBridge);
+            int built = sboHandMeshRegistry.buildMeshes(sboBlockBridge);
             logger.debug("[Renderer] SBO hand-mesh registry: built {} flower meshes", built);
         }
 
