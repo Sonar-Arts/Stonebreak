@@ -205,23 +205,25 @@ public class WorldRenderer {
         // self-occlude — no water visible through water), so anything drawn
         // after it is hidden behind that surface. Drawing these first keeps
         // underwater drops and cracks visible, correctly tinted by the water
-        // that blends over them.
+        // that blends over them. ORDER MATTERS within this trio: the crack
+        // overlay samples a 2D texture through the world shader and needs
+        // restoreGLStateAfterPasses to flip u_useTextureArray off first
+        // (drops manage their own texture state and ran pre-restore before).
         renderTransparentDrops(player);
+        restoreGLStateAfterPasses();
         renderWorldOverlays(player);
 
         // Dedicated water pass — draws every chunk's water mesh with the water
         // shader, in the compositing slot the old water sub-pass held (after
         // ice). Reuses the back-to-front order renderTransparentPass computed.
-        // NOTE: leaves the nearest water surface's depth in the depth buffer,
-        // so later passes (fire bolts, particles) are occluded by water in
-        // front of them — physically correct compositing.
+        // State-neutral (saves/restores all GL state it touches), but leaves
+        // the nearest water surface's depth in the depth buffer, so later
+        // passes (fire bolts, particles) are occluded by water in front of
+        // them — physically correct compositing.
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, sunDirection,
                 ambientLightLevel, waterAnimationEnabled);
         checkGLError("After water pass");
-
-        // Restore OpenGL state after passes
-        restoreGLStateAfterPasses();
 
         // Render fire bolt cores after the water pass: bolts in front of water
         // draw over it; bolts behind a water surface are depth-occluded by the

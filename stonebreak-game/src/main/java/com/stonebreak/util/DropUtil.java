@@ -243,6 +243,10 @@ public class DropUtil {
             return null;
         }
         
+        // Fluids never drop: a water→air edit reaches the server's break path
+        // when a bucket scoops a source (the scoop routes through the block
+        // edit funnel), and dropping a WATER block for it is nonsense.
+        if (brokenBlock == BlockType.WATER) return null;
         // Mining substitutions: a few blocks drop something other than
         // themselves. Most fall through to the brokenBlock itself.
         if (brokenBlock == BlockType.STONE) return BlockType.COBBLESTONE;

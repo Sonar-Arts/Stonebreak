@@ -83,10 +83,11 @@ void main() {
         N = -N;
     }
 
-    // Tuned to land near the legacy water tile (~RGB 45,155,232) once the
-    // ambient+diffuse lighting factor (~1.15 at noon) is applied.
-    vec3 deep = vec3(0.12, 0.36, 0.62);
-    vec3 shallow = vec3(0.22, 0.58, 0.88);
+    // Tuned to the legacy renderer's bright sky-blue look (light ~RGB
+    // 100-140,175-200,225-235 on screen) once the ambient+diffuse lighting
+    // factor (~1.15 at noon) is applied.
+    vec3 deep = vec3(0.24, 0.50, 0.78);
+    vec3 shallow = vec3(0.42, 0.68, 0.92);
     vec3 baseColor = mix(deep, shallow, pattern);
 
     vec3 L = normalize(uSunDirection);
@@ -100,9 +101,10 @@ void main() {
     // White rivulet highlights on falling sheets.
     float streaks = smoothstep(0.60, 0.85, n) * vFalling * 0.30 * uAmbientLight;
 
-    // Fresnel-style soft-edge transparency.
+    // Fresnel-style soft-edge transparency. Higher floor keeps the water
+    // reading as a bright surface (legacy look) instead of tinted terrain.
     float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-    float alpha = mix(0.52, 0.88, fres);
+    float alpha = mix(0.62, 0.90, fres);
     // Falling columns read better slightly denser; streaks denser still.
     alpha = max(alpha, vFalling * 0.62);
     alpha = clamp(alpha + streaks * 0.4, 0.0, 0.92);
