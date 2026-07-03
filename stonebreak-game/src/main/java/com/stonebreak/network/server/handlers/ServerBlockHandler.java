@@ -55,6 +55,11 @@ public final class ServerBlockHandler {
     /** Snow-layer changes buffered this tick, per section — flushed as {@code BlockMetaS2C}. */
     private final Map<Long, SectionBatch> pendingSnowByTick = new LinkedHashMap<>();
 
+    /** Water flow-level changes buffered this tick, per section — flushed as
+     *  {@code BlockMetaS2C} (KIND_WATER_LEVEL) AFTER the block batches, so a cell's
+     *  same-tick WATER block change lands before its level meta. */
+    private final Map<Long, SectionBatch> pendingWaterByTick = new LinkedHashMap<>();
+
     /** Block-state echoes (door placement facing) queued behind this tick's block batches
      *  so a state packet can never overtake — and be wiped by — its own block change. */
     private final java.util.List<com.stonebreak.network.packet.world.BlockStateS2C> pendingStateEchoes =
@@ -67,6 +72,7 @@ public final class ServerBlockHandler {
     public void onSessionEnd() {
         pendingByTick.clear();
         pendingSnowByTick.clear();
+        pendingWaterByTick.clear();
         pendingStateEchoes.clear();
         retryQueue.clear();
     }
@@ -264,6 +270,27 @@ public final class ServerBlockHandler {
         batch.add(x - sx * 16, y - sy * 16, z - sz * 16, (short) layers);
     }
 
+    /**
+     * Authoritative water flow-level mutation from the sim ({@code value} = layer byte:
+     * 1..7 flowing, 8 falling, 0 = entry removed / became source). Batched per section and
+     * flushed each tick as {@link com.stonebreak.network.packet.world.BlockMetaS2C}
+     * (KIND_WATER_LEVEL), after the block batches. No hash invalidation needed: the desync
+     * audit hashes block ids only, and the accompanying WATER/AIR block changes already
+     * invalidate via {@link #onServerBlockChange}. Repeated same-tick writes to one cell
+     * coalesce to the last value in the section batch.
+     */
+    public void onServerWaterChange(int x, int y, int z, int value) {
+        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+            return;
+        }
+        int sx = Math.floorDiv(x, 16);
+        int sy = Math.floorDiv(y, 16);
+        int sz = Math.floorDiv(z, 16);
+        long key = sectionKey(sx, sy, sz);
+        SectionBatch batch = pendingWaterByTick.computeIfAbsent(key, k -> new SectionBatch(sx, sy, sz));
+        batch.add(x - sx * 16, y - sy * 16, z - sz * 16, (short) value);
+    }
+
     /** Retry edits that were waiting on a server chunk load; revert the originator on expiry. */
     private void drainRetries(ServerWorldContext ctx) {
         if (retryQueue.isEmpty()) {
@@ -369,6 +396,17 @@ public final class ServerBlockHandler {
                     sb.toPackedArray()), false);
             }
             pendingSnowByTick.clear();
+        }
+        // AFTER the block batches: a cell's same-tick WATER placement must apply on the
+        // client before its flow-level meta (meta on a non-WATER cell would be stale).
+        if (!pendingWaterByTick.isEmpty()) {
+            for (SectionBatch sb : pendingWaterByTick.values()) {
+                ctx.broadcast(new com.stonebreak.network.packet.world.BlockMetaS2C(
+                    sb.sx, sb.sy, sb.sz,
+                    com.stonebreak.network.packet.world.BlockMetaS2C.KIND_WATER_LEVEL,
+                    sb.toPackedArray()), false);
+            }
+            pendingWaterByTick.clear();
         }
         // AFTER the block batches: state echoes for blocks placed this tick
         // (see pendingStateEchoes — order matters, block apply clears state).

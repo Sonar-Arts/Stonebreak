@@ -84,8 +84,6 @@ public class DropRenderer {
         shaderProgram.bind();
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("u_renderPass", 0);
-        shaderProgram.setUniform("u_translucentLayer", -1);
-        shaderProgram.setUniform("u_waterDepthOffset", 0.0f);
         shaderProgram.setUniform("texture_sampler", 0);
         shaderProgram.setUniform("u_isText", false);
 
@@ -152,8 +150,6 @@ public class DropRenderer {
         shaderProgram.bind();
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("u_renderPass", 0);
-        shaderProgram.setUniform("u_translucentLayer", -1);
-        shaderProgram.setUniform("u_waterDepthOffset", 0.0f);
         shaderProgram.setUniform("texture_sampler", 0);
         shaderProgram.setUniform("u_isText", false);
 
@@ -317,7 +313,6 @@ public class DropRenderer {
         shaderProgram.bind();
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("u_renderPass", 0);
-        shaderProgram.setUniform("u_translucentLayer", -1);
         shaderProgram.setUniform("texture_sampler", 0);
         shaderProgram.setUniform("u_useTextureArray", false); // CBR meshes use the 2D atlas
         shaderProgram.setUniform("u_isText", false);

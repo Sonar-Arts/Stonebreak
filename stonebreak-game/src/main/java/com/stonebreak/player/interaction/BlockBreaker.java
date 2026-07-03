@@ -1,7 +1,6 @@
 package com.stonebreak.player.interaction;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.blocks.Water;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
@@ -116,9 +115,6 @@ public class BlockBreaker {
     }
 
     private void completeBreak(Vector3i pos, BlockType blockType) {
-        if (blockType == BlockType.WATER) {
-            Water.removeWaterSource(pos.x, pos.y, pos.z);
-        }
         if (blockType == BlockType.SNOW) {
             world.getSnowLayerManager().removeSnowLayers(pos.x, pos.y, pos.z);
         }
@@ -130,7 +126,6 @@ public class BlockBreaker {
         // own server's LocalChannel client. Running DropUtil here too would create a duplicate
         // local drop (in the client EM) alongside the server-spawned shadow.
         world.setBlockAt(pos.x, pos.y, pos.z, BlockType.AIR, true);
-        Water.onBlockBroken(pos.x, pos.y, pos.z);
     }
 
     private static boolean isWoodenBlock(BlockType blockType) {

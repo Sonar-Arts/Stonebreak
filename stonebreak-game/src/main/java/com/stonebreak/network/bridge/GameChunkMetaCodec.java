@@ -19,19 +19,22 @@ import java.util.Map;
  * an empty array (zero wire bytes beyond the length prefix).
  *
  * <pre>
- * version (byte) = 1
+ * version (byte) = 2
  * snowCount (varint-free int)
  *   repeated: localX u8, y u16, localZ u8, layers u8
  * blockStateCount (int)
  *   repeated: localX u8, y u16, localZ u8, stateLen u16, stateBytes utf-8
+ * waterCount (int)                                   — v2+
+ *   repeated: localX u8, y u16, localZ u8, value u8  — 1..7 flowing, 8 falling
  * </pre>
  *
  * The leading version byte lets the blob grow (new trailing sections) without an engine or
- * packet-shape change — bump it and gate reads exactly like the chunk save codec.
+ * packet-shape change — bump it and gate reads exactly like the chunk save codec. A v1 blob
+ * decodes with an empty water section.
  */
 public final class GameChunkMetaCodec {
 
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
     private static final byte[] EMPTY = new byte[0];
     /** Sanity bound on entry counts (a chunk column holds 65 536 cells). */
     private static final int MAX_ENTRIES = 16 * 16 * 256;
@@ -39,16 +42,19 @@ public final class GameChunkMetaCodec {
     private GameChunkMetaCodec() {}
 
     /** Decoded metadata sections. Maps are keyed by {@link LocalBlockKey}. */
-    public record ChunkMeta(Map<Integer, Integer> snowLayers, Map<Integer, String> blockStates) {
+    public record ChunkMeta(Map<Integer, Integer> snowLayers, Map<Integer, String> blockStates,
+                            Map<Integer, Integer> waterLevels) {
         public boolean isEmpty() {
-            return snowLayers.isEmpty() && blockStates.isEmpty();
+            return snowLayers.isEmpty() && blockStates.isEmpty() && waterLevels.isEmpty();
         }
     }
 
     /** Encode; returns an empty array when there is nothing to carry. */
-    public static byte[] encode(Map<Integer, Integer> snowLayers, Map<Integer, String> blockStates) {
+    public static byte[] encode(Map<Integer, Integer> snowLayers, Map<Integer, String> blockStates,
+                                Map<Integer, Integer> waterLevels) {
         if ((snowLayers == null || snowLayers.isEmpty())
-                && (blockStates == null || blockStates.isEmpty())) {
+                && (blockStates == null || blockStates.isEmpty())
+                && (waterLevels == null || waterLevels.isEmpty())) {
             return EMPTY;
         }
         try {
@@ -77,6 +83,16 @@ public final class GameChunkMetaCodec {
                 out.writeShort(state.length);
                 out.write(state);
             }
+
+            Map<Integer, Integer> water = waterLevels != null ? waterLevels : Map.of();
+            out.writeInt(water.size());
+            for (Map.Entry<Integer, Integer> e : water.entrySet()) {
+                int key = e.getKey();
+                out.writeByte(LocalBlockKey.x(key));
+                out.writeShort(LocalBlockKey.y(key));
+                out.writeByte(LocalBlockKey.z(key));
+                out.writeByte(Math.max(1, Math.min(8, e.getValue())));
+            }
             return buffer.toByteArray();
         } catch (IOException e) {
             throw new UncheckedIOException(e); // ByteArrayOutputStream cannot actually throw
@@ -86,7 +102,7 @@ public final class GameChunkMetaCodec {
     /** Decode; an empty/null payload yields empty maps. */
     public static ChunkMeta decode(byte[] payload) throws IOException {
         if (payload == null || payload.length == 0) {
-            return new ChunkMeta(Map.of(), Map.of());
+            return new ChunkMeta(Map.of(), Map.of(), Map.of());
         }
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(payload));
         int version = in.readUnsignedByte();
@@ -123,6 +139,24 @@ public final class GameChunkMetaCodec {
             }
             states.put(LocalBlockKey.pack(x, y, z), new String(bytes, StandardCharsets.UTF_8));
         }
-        return new ChunkMeta(snow, states);
+
+        Map<Integer, Integer> water;
+        if (version >= 2) {
+            int waterCount = in.readInt();
+            if (waterCount < 0 || waterCount > MAX_ENTRIES) {
+                throw new IOException("Invalid chunk-meta water count: " + waterCount);
+            }
+            water = new HashMap<>(Math.max(waterCount, 0));
+            for (int i = 0; i < waterCount; i++) {
+                int x = in.readUnsignedByte();
+                int y = in.readUnsignedShort();
+                int z = in.readUnsignedByte();
+                int value = in.readUnsignedByte();
+                water.put(LocalBlockKey.pack(x, y, z), Math.max(1, Math.min(8, value)));
+            }
+        } else {
+            water = Map.of();
+        }
+        return new ChunkMeta(snow, states, water);
     }
 }

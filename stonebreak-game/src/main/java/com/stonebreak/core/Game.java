@@ -60,7 +60,6 @@ public class Game {
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
     private FurnaceScreen furnaceScreen; // Furnace smelting GUI
     private RecipeScreen recipeScreen; // Added RecipeBookScreen
-    private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
     private MouseCaptureManager mouseCaptureManager; // Mouse capture system
     private MainMenu mainMenu; // Main menu
@@ -165,7 +164,6 @@ public class Game {
         this.statisticsScreen = new com.stonebreak.ui.statisticsScreen.StatisticsScreen(this.renderer.getSkijaBackend());
         this.glossaryScreen = new com.stonebreak.ui.glossaryScreen.GlossaryScreen(this.renderer.getSkijaBackend());
         this.deathMenu = new DeathMenu(this.renderer.getSkijaBackend());
-        this.waterEffects = new WaterEffects();
 
         this.soundSystem = SoundSystem.getInstance();
         com.stonebreak.core.bootstrap.GameBootstrap.configureSoundSystem(this.soundSystem);
@@ -240,11 +238,6 @@ public class Game {
         // Set camera for mouse capture system
         if (mouseCaptureManager != null && player != null) {
             mouseCaptureManager.setCamera(player.getCamera());
-        }
-
-        // Initialize water simulation with any existing water blocks
-        if (waterEffects != null) {
-            waterEffects.detectExistingWater();
         }
 
         // Initialize the client-side entity system. This EntityManager holds network-shadow
@@ -432,13 +425,6 @@ public class Game {
      */
     public static Renderer getRenderer() {
         return getInstance().renderer;
-    }
-    
-    /**
-     * Gets the water effects manager.
-     */
-    public static WaterEffects getWaterEffects() {
-        return getInstance().waterEffects;
     }
     
     /**

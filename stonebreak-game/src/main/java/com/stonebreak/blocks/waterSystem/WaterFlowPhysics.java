@@ -1,6 +1,5 @@
 package com.stonebreak.blocks.waterSystem;
 
-import com.stonebreak.blocks.Water;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
@@ -28,7 +27,7 @@ public final class WaterFlowPhysics {
      * @return Flow direction vector (normalized), or zero vector if no flow
      */
     public static Vector3f calculateFlowDirection(World world, int x, int y, int z) {
-        WaterBlock current = Water.getWaterBlock(x, y, z);
+        WaterBlock current = world.getWaterStateAt(x, y, z);
         if (current == null) {
             return new Vector3f(0, 0, 0);
         }
@@ -57,7 +56,7 @@ public final class WaterFlowPhysics {
             int nx = x + dir[0];
             int nz = z + dir[1];
 
-            WaterBlock neighbor = Water.getWaterBlock(nx, y, nz);
+            WaterBlock neighbor = world.getWaterStateAt(nx, y, nz);
             int neighborLevel;
 
             if (neighbor == null) {
@@ -127,7 +126,7 @@ public final class WaterFlowPhysics {
                 int blockX = (int) Math.floor(position.x + offset[0]);
                 int blockZ = (int) Math.floor(position.z + offset[1]);
 
-                WaterBlock waterBlock = Water.getWaterBlock(blockX, blockY, blockZ);
+                WaterBlock waterBlock = world.getWaterStateAt(blockX, blockY, blockZ);
                 if (waterBlock != null) {
                     Vector3f flowDir = calculateFlowDirection(world, blockX, blockY, blockZ);
 

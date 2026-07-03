@@ -176,11 +176,6 @@ public final class GameLoop {
             }
         }
 
-        com.stonebreak.rendering.WaterEffects waterEffects = Game.getWaterEffects();
-        if (waterEffects != null && player != null) {
-            waterEffects.update(player, deltaTime);
-        }
-
         // Entity manager always ticks: on a render-only client it advances only shadow
         // interpolation (EntityManager.update already skips AI/physics for network shadows).
         com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();

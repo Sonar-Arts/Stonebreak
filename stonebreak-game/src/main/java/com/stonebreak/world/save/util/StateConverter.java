@@ -223,7 +223,7 @@ public final class StateConverter {
             data.getSnowLayers()          // v3 snow layer counts
         );
 
-        // Load from snapshot (automatically applies water metadata to WaterSystem)
+        // Load from snapshot (hydrates the chunk's water layer from water metadata)
         chunk.loadFromSnapshot(snapshot, world);
 
         // NOTE: Do NOT call markClean() here!

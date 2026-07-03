@@ -152,6 +152,19 @@ class PacketRoundTripTest {
     }
 
     @Test
+    void blockMetaWaterLevelRoundTrips() {
+        // Water layer values: 1..7 flowing, 8 falling, 0 = removed/became-source.
+        int[] packed = {(0x0F0 << 16) | 1, (0xFFF << 16) | 8, (0x001 << 16) | 7, (0x234 << 16)};
+        BlockMetaS2C decoded = roundTrip(BlockMetaS2C.CODEC,
+            new BlockMetaS2C(-4, 2, 9, BlockMetaS2C.KIND_WATER_LEVEL, packed));
+        assertEquals(-4, decoded.sectionX());
+        assertEquals(2, decoded.sectionY());
+        assertEquals(9, decoded.sectionZ());
+        assertEquals(BlockMetaS2C.KIND_WATER_LEVEL, decoded.metaKind());
+        assertArrayEquals(packed, decoded.packed());
+    }
+
+    @Test
     void chunkDataRoundTrips() {
         byte[] payload = {1, 2, 3, 4, 5, -1, 127, -128};
         ChunkDataS2C decoded = roundTrip(ChunkDataS2C.CODEC, new ChunkDataS2C(3, -7, payload));

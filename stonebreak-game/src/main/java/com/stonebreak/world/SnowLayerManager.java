@@ -10,7 +10,7 @@ import java.util.Map;
  *
  * <p>Keyed by packed world coordinates (no string allocation per access) and
  * purged per chunk on unload — previously this map grew unbounded for the
- * lifetime of the world. Layout matches WaterSystem's packing: [x:24][z:24][y:16].
+ * lifetime of the world. Layout matches the water sim's packing: [x:24][z:24][y:16].
  *
  * <p>Note: snow layers are not persisted, so purging on unload means layer
  * counts reset to the 1-layer default when a chunk reloads (previously they

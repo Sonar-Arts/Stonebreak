@@ -57,9 +57,6 @@ public class ResourceManager {
         shaderProgram.createUniform("u_atlasUVScale");
         shaderProgram.createUniform("u_renderPass");
         shaderProgram.createUniform("u_isUIElement");
-        shaderProgram.createUniform("u_time");
-        shaderProgram.createUniform("u_waterAnimationEnabled");
-        shaderProgram.createUniform("u_waterDepthOffset");
         shaderProgram.createUniform("u_cameraPos");
         shaderProgram.createUniform("u_underwaterFogDensity");
         shaderProgram.createUniform("u_underwaterFogColor");
@@ -69,10 +66,6 @@ public class ResourceManager {
         shaderProgram.createUniform("u_playerLight");
         // Default to -1 so terrain (which never sets this) falls through to the per-vertex light.
         shaderProgram.setUniform("u_playerLight", -1.0f);
-        shaderProgram.createUniform("u_translucentLayer");
-        // Default to -1 (no filter) so paths that don't split the translucent
-        // pass (UI, FastLOD, etc.) keep rendering everything as before.
-        shaderProgram.setUniform("u_translucentLayer", -1);
         // Shadow map sampler MUST be moved off unit 0 immediately: it is a
         // sampler2DArrayShadow, and leaving it on the same unit as the 2D
         // texture_sampler makes every draw GL_INVALID_OPERATION on strict
@@ -89,7 +82,8 @@ public class ResourceManager {
                layout (location=0) in vec3 position;
                layout (location=1) in vec2 texCoord;
                layout (location=2) in vec3 normal;
-               // Packed flags attribute: x=waterHeight, y=alphaTest, z=translucent, w=light.
+               // Packed flags attribute: x=reserved (was water-height; water now has
+               // its own mesh + shader), y=alphaTest, z=translucent, w=light.
                // GL provides this as a normalized [0,1] vec4 from 4 unsigned bytes — saves
                // 12 bytes per vertex compared to 4 separate float attributes.
                layout (location=3) in vec4 aFlags;
@@ -98,7 +92,6 @@ public class ResourceManager {
                out vec2 outTexCoord;
                out vec3 outNormal;
                out vec3 fragPos;
-               out float v_waterHeight;
                out float v_isAlphaTested;
                out float v_isTranslucent;
                out float v_light;
@@ -110,78 +103,21 @@ public class ResourceManager {
                uniform bool u_transformUVsForItem;
                uniform vec2 u_atlasUVOffset;
                uniform vec2 u_atlasUVScale;
-               uniform float u_time;
-               uniform bool u_waterAnimationEnabled;
                uniform bool u_isUIElement;
-               uniform float u_waterDepthOffset;
                void main() {
-                   // Unpack the interleaved flag attributes.
-                   float waterHeight = aFlags.x;
-                   float isAlphaTested = aFlags.y;
-                   float isTranslucent = aFlags.z;
-                   float aLight = aFlags.w;
-
-                   // Compute world-space position first for stable, seamless waves
-                   vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
-                   vec3 pos = position;
-                   // Apply GPU-side water surface displacement to avoid remeshing for waves
-                   // Use threshold of 0.01 to distinguish actual water from epsilon flags
-                   if (waterHeight > 0.01 && !u_isUIElement && u_waterAnimationEnabled) {
-                       const float MIN_WATER_SURFACE = 0.125;
-                       const float MAX_WAVE_DELTA = 0.18;
-                       // World-space wave using simple, seamless functions
-                       float s = 0.50;             // spatial scale
-                       float speed1 = 1.5;         // primary speed
-                       float speed2 = 2.0;         // secondary speed
-                       float amp1 = 0.12;          // primary amplitude
-                       float amp2 = 0.04;          // secondary amplitude
-                       float wave = sin(worldPos.x * s + u_time * speed1) * cos(worldPos.z * s * 0.8 + u_time * speed1 * 0.9) * amp1
-                                 + sin((worldPos.x + worldPos.z) * s * 1.7 + u_time * speed2) * amp2;
-                       float topFactor = clamp(normal.y, 0.0, 1.0);
-                       bool isBottomFace = normal.y < -0.5;
-                       if (topFactor > 0.5) {
-                           // Top faces ride the full wave height without dipping below adjacent sides
-                           float blockBaseWorld = floor(worldPos.y + 0.0001);
-                           float minAllowedWorld = blockBaseWorld + max(MIN_WATER_SURFACE, waterHeight - MAX_WAVE_DELTA);
-                           float maxAllowedWorld = blockBaseWorld + min(0.875, waterHeight + MAX_WAVE_DELTA);
-                           float targetWorld = clamp(blockBaseWorld + waterHeight + wave, minAllowedWorld, maxAllowedWorld);
-                           float delta = targetWorld - worldPos.y;
-                           pos.y = position.y + delta;
-                       } else if (!isBottomFace) {
-                           // Stretch side faces so their top edge follows the displaced surface
-                           float blockBaseY = floor(worldPos.y + 0.0001);
-                           float normalizedHeight = 0.0;
-                           if (waterHeight > 0.0001) {
-                               normalizedHeight = clamp((worldPos.y - blockBaseY) / waterHeight, 0.0, 1.0);
-                           }
-                           float minAllowed = blockBaseY + max(MIN_WATER_SURFACE, waterHeight - MAX_WAVE_DELTA);
-                           float maxAllowed = blockBaseY + waterHeight + MAX_WAVE_DELTA;
-                           float displacedTopY = clamp(blockBaseY + waterHeight + wave, minAllowed, maxAllowed);
-                           float target = mix(blockBaseY, displacedTopY, normalizedHeight);
-                           float minInterpolated = blockBaseY + normalizedHeight * MIN_WATER_SURFACE;
-                           pos.y = max(target, minInterpolated);
-                       }
-                   }
-
-                   // Apply depth offset for water blocks to prevent z-fighting
-                   vec4 clipPos = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);
-                   if (waterHeight > 0.01 && u_waterDepthOffset != 0.0) {
-                       clipPos.z += u_waterDepthOffset * clipPos.w;
-                   }
-                   gl_Position = clipPos;
+                   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
                    if (u_transformUVsForItem) {
                        outTexCoord = u_atlasUVOffset + texCoord * u_atlasUVScale;
                    } else {
                        outTexCoord = texCoord;
                    }
                    outNormal = normal;
-                   fragPos = (modelMatrix * vec4(pos, 1.0)).xyz;
+                   fragPos = (modelMatrix * vec4(position, 1.0)).xyz;
                    // Positive view-space distance — drives shadow cascade selection.
                    v_viewDepth = -(viewMatrix * vec4(fragPos, 1.0)).z;
-                   v_waterHeight = waterHeight;
-                   v_isAlphaTested = isAlphaTested;
-                   v_isTranslucent = isTranslucent;
-                   v_light = aLight;
+                   v_isAlphaTested = aFlags.y;
+                   v_isTranslucent = aFlags.z;
+                   v_light = aFlags.w;
                    v_layer = aLayer;
                }""";
     }
@@ -192,7 +128,6 @@ public class ResourceManager {
                in vec2 outTexCoord;
                in vec3 outNormal;
                in vec3 fragPos;
-               in float v_waterHeight;
                in float v_isAlphaTested;
                in float v_isTranslucent;
                in float v_light;
@@ -223,12 +158,6 @@ public class ResourceManager {
                uniform vec3 u_sunDirection;
                uniform vec3 u_viewPos;
                uniform float u_playerLight;
-               // Translucent sub-layer filter for the transparent pass.
-               // -1 = no filter (default); 0 = only translucent solids (e.g. ice);
-               // 1 = only water. Lets the transparent pass render ice first with
-               // depth-write enabled (occludes distant water/translucents) and
-               // water second with depth-write off (proper blending over ice).
-               uniform int u_translucentLayer;
                void main() {
                    if (u_isText) {
                        float alpha = texture(texture_sampler, outTexCoord).a;
@@ -260,9 +189,6 @@ public class ResourceManager {
                                if (sampledAlpha < 0.1) discard;
                                fragColor = vec4(textureColor.rgb * brightness, 1.0);
                            } else if (v_isTranslucent > 0.5) {
-                               if (u_renderPass == 0) discard;
-                               else fragColor = vec4(textureColor.rgb * brightness, sampledAlpha);
-                           } else if (v_waterHeight > 0.0) {
                                if (u_renderPass == 0) discard;
                                else fragColor = vec4(textureColor.rgb * brightness, sampledAlpha);
                            } else {
@@ -299,8 +225,8 @@ public class ResourceManager {
                        float specularStrength = 0.3;
                        vec3 halfwayDir = normalize(lightDir + viewDir);
                        float spec = pow(max(dot(norm, halfwayDir), 0.0), 32.0);
-                       // Only water and ice get strong specular
-                       float specularIntensity = (v_waterHeight > 0.0) ? 0.5 : 0.1;
+                       // Only ice gets strong specular (water has its own shader now)
+                       float specularIntensity = (v_isTranslucent > 0.5) ? 0.5 : 0.1;
                        vec3 specular = specularIntensity * spec * specularStrength * u_ambientLight * shadowFactor * vec3(1.0);
 
                        // Combine lighting components
@@ -328,25 +254,10 @@ public class ResourceManager {
                            }
                        } else if (v_isTranslucent > 0.5) {
                            // Translucent blocks (e.g. ice): rendered in transparent
-                           // pass only, and only during the translucent-solid
-                           // sub-layer (depth-write ON) so they occlude distant
-                           // water/translucents — same approach Minecraft uses.
+                           // pass only, depth-write ON so they occlude distant
+                           // translucents. Water no longer renders through this
+                           // shader — it has its own mesh + WaterRenderer pass.
                            if (u_renderPass == 0) {
-                               discard;
-                           } else if (u_translucentLayer == 1) {
-                               discard;
-                           } else {
-                               fragColor = vec4(result, sampledAlpha);
-                           }
-                       } else if (v_waterHeight > 0.01) {
-                           // Water blocks are rendered in transparent pass only
-                           // Use threshold of 0.01 to distinguish actual water from epsilon flags.
-                           // Skipped during the translucent-solid sub-layer so it
-                           // doesn't compete with ice (which is drawn first with
-                           // depth-write enabled).
-                           if (u_renderPass == 0) {
-                               discard;
-                           } else if (u_translucentLayer == 0) {
                                discard;
                            } else {
                                fragColor = vec4(result, sampledAlpha);

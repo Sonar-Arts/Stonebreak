@@ -1,12 +1,10 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
 
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator;
-import com.stonebreak.blocks.Water;
-import com.stonebreak.blocks.waterSystem.WaterBlock;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
+import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
-import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
 
 /**
  * Mighty Mesh System - Water block geometry generator.
@@ -41,11 +39,12 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
     private static final float MIN_DISPLAYED_WATER_HEIGHT = 0.0625f; // 1/16th block - allows level 7 to render properly
     private static final float MAX_WATER_HEIGHT = 0.875f; // 7/8 block height for source blocks
     private static final float WATER_ATTACHMENT_EPSILON = 0.001f;
+    /** Matches MAX_WAVE_DELTA in water.vert — waves push a surface down by at most this. */
+    private static final float SIDE_CLIP_WAVE_OVERLAP = 0.2f;
     private static final float WATER_FLAG_EPSILON = 0.0001f;
     private static final float HEIGHT_ALIGNMENT_EPSILON = 0.0001f;
 
     private final World world;
-    private final float[] waterTopTextureBounds; // [uMin, uMax, vMin, vMax]
 
     /**
      * Per-thread memo for {@link #getSewnCornerHeights}. The mesh pipeline runs many builder
@@ -71,25 +70,19 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
         ThreadLocal.withInitial(() -> new float[MmsBufferLayout.POSITION_SIZE * MmsBufferLayout.VERTICES_PER_QUAD]);
     private static final ThreadLocal<float[]> SCRATCH_WATER_FLAGS =
         ThreadLocal.withInitial(() -> new float[MmsBufferLayout.VERTICES_PER_QUAD]);
-    private static final ThreadLocal<float[]> SCRATCH_WATER_TEXCOORDS =
-        ThreadLocal.withInitial(() -> new float[8]);
 
     /**
      * Creates a water generator with world reference for neighbor lookups.
+     * Texture coordinates are no longer this class's concern — the water mesh
+     * carries face-local UVs and the dedicated water shader is fully procedural.
      *
      * @param world World instance for accessing water blocks
-     * @param textureMapper Texture mapper for resolving top-face UV data
      */
-    public MmsWaterGenerator(World world, MmsTextureMapper textureMapper) {
+    public MmsWaterGenerator(World world) {
         if (world == null) {
             throw new IllegalArgumentException("World cannot be null for water generator");
         }
-        if (textureMapper == null) {
-            throw new IllegalArgumentException("Texture mapper cannot be null for water generator");
-        }
         this.world = world;
-        float[] topFaceTex = textureMapper.generateFaceTextureCoordinates(BlockType.WATER, BlockType.Face.TOP.getIndex());
-        this.waterTopTextureBounds = extractTextureBounds(topFaceTex);
     }
 
     /**
@@ -113,6 +106,9 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
         float[] cornerHeights = getSewnCornerHeights(blockX, blockY, blockZ);
 
         float waterBottomY = computeWaterBottomAttachmentHeight(blockX, blockY, blockZ, worldY);
+        if (face >= 2) {
+            waterBottomY = sealSideBottomToNeighborSurface(face, blockX, blockY, blockZ, waterBottomY);
+        }
 
         float[] vertices = SCRATCH_WATER_VERTS.get();
         int idx = 0;
@@ -157,54 +153,6 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
         }
 
         return vertices;
-    }
-
-    /**
-     * Generates texture coordinates for water face with proper height-based V coordinate adjustment.
-     * This prevents texture stretching on side faces when water has variable heights.
-     *
-     * Side Face Vertex Layout (looking at the face from outside):
-     * v3 (top-left) ---- v2 (top-right)
-     * |                   |
-     * |                   |
-     * v0 (bottom-left) -- v1 (bottom-right)
-     *
-     * Texture Coordinate Mapping:
-     * - U: 0 (left) to 1 (right)
-     * - V: 0 (top) to 1 (bottom)
-     *
-     * @param face Face index (0-5)
-     * @param blockX Block X coordinate
-     * @param blockY Block Y coordinate
-     * @param blockZ Block Z coordinate
-     * @param baseTexCoords Base texture coordinates from texture mapper
-     * @return Adjusted texture coordinates (8 floats = 4 vertices × 2 coords)
-     */
-    public float[] generateWaterTextureCoordinates(int face, int blockX, int blockY, int blockZ, float[] baseTexCoords) {
-        if (baseTexCoords.length != 8) {
-            throw new IllegalArgumentException("Base texture coordinates must have 8 floats (4 vertices × 2 coords)");
-        }
-
-        // Side faces remap to the water top-face texture; top/bottom pass through.
-        // Returns a per-thread scratch buffer — caller must consume before the next
-        // call on the same thread overwrites it.
-        if (face < 2 || face > 5) {
-            return baseTexCoords;
-        }
-
-        float[] texCoords = SCRATCH_WATER_TEXCOORDS.get();
-        float[] bounds = waterTopTextureBounds;
-        float uMin = bounds[0];
-        float uMax = bounds[1];
-        float vTop = bounds[2];
-        float vBottom = bounds[3];
-
-        texCoords[0] = uMin;    texCoords[1] = vBottom;
-        texCoords[2] = uMax;    texCoords[3] = vBottom;
-        texCoords[4] = uMax;    texCoords[5] = vTop;
-        texCoords[6] = uMin;    texCoords[7] = vTop;
-
-        return texCoords;
     }
 
     /**
@@ -320,8 +268,7 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
                 if (!Float.isNaN(h)) {
                     waterCount++;
                     maxWaterHeight = Math.max(maxWaterHeight, h);
-                    WaterBlock wb = Water.getWaterBlock(bx, blockY, bz);
-                    if (wb == null || wb.isSource()) {
+                    if (world.getWaterLevelAt(bx, blockY, bz) == ChunkWaterLayer.SOURCE) {
                         sourceCount++;
                     }
                 } else {
@@ -331,8 +278,7 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
                     }
                 }
 
-                WaterBlock below = Water.getWaterBlock(bx, blockY - 1, bz);
-                if (below != null && below.isSource()) {
+                if (world.getWaterLevelAt(bx, blockY - 1, bz) == ChunkWaterLayer.SOURCE) {
                     sourcesBelow++;
                 }
             }
@@ -387,21 +333,12 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
             return worldY;
         }
 
-        // Connect seamlessly to water below. On the render-only client, WaterSystem never runs
-        // onChunkLoaded — Water.getWaterBlock returns null for SOURCE cells (only flowing levels
-        // are streamed over the wire), so a null lookup with belowType==WATER means a source.
-        // Treat it identically here as resolveWaterHeight / computeCanonicalCornerHeight already
-        // do; otherwise this falls through to getNeighborBlockHeight(WATER, ...) and yields a
-        // 1/8-block gap that stacks into visible walls at chunk borders.
+        // Connect seamlessly to water below.
         if (belowType == BlockType.WATER) {
-            WaterBlock waterBelow = Water.getWaterBlock(blockX, belowY, blockZ);
-            float waterBelowHeight;
-            if (waterBelow == null || waterBelow.level() == WaterBlock.SOURCE_LEVEL) {
+            float waterBelowHeight = resolveWaterHeight(blockX, belowY, blockZ);
+            if (Float.isNaN(waterBelowHeight)) {
                 waterBelowHeight = MAX_WATER_HEIGHT;
-            } else {
-                waterBelowHeight = (8 - waterBelow.level()) * MAX_WATER_HEIGHT / 8.0f;
             }
-            waterBelowHeight = clampWaterHeight(waterBelowHeight);
             return belowY + waterBelowHeight;
         }
 
@@ -419,31 +356,53 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
     }
 
     /**
-     * Resolves water height at a specific position.
+     * Seals a side face's bottom edge against the water surface of the column
+     * the face looks into (waterfall junctions, pool rims, source walls).
      *
-     * @param x Block X coordinate
-     * @param y Block Y coordinate
-     * @param z Block Z coordinate
-     * @return Water height or NaN if no water
+     * <p>When the cell below the face's neighbor holds water, that neighbor's
+     * top surface is what visually meets this face — but GPU waves displace
+     * that surface downward by up to MAX_WAVE_DELTA, so a face bottom sitting
+     * exactly on the attachment height opens a flickering slit at the seam.
+     * If this cell itself stands on water (the face bottom is interior to our
+     * own column), the bottom is extended {@link #SIDE_CLIP_WAVE_OVERLAP}
+     * below the neighbor's rest surface so no wave can expose a gap. When the
+     * cell stands on a solid block instead, the solid's own side face covers
+     * the band below, so the bottom is left untouched (extending it would
+     * z-fight with that solid face).
+     */
+    private float sealSideBottomToNeighborSurface(int face, int blockX, int blockY, int blockZ,
+                                                  float defaultBottom) {
+        if (blockY <= 0) {
+            return defaultBottom;
+        }
+        int nx = blockX + switch (face) { case 4 -> 1; case 5 -> -1; default -> 0; };
+        int nz = blockZ + switch (face) { case 2 -> -1; case 3 -> 1; default -> 0; };
+        float neighborBelowHeight = resolveWaterHeight(nx, blockY - 1, nz);
+        if (Float.isNaN(neighborBelowHeight)) {
+            return defaultBottom;
+        }
+        boolean standsOnWater = !Float.isNaN(resolveWaterHeight(blockX, blockY - 1, blockZ));
+        if (!standsOnWater) {
+            return defaultBottom;
+        }
+        float sealed = (blockY - 1) + neighborBelowHeight - SIDE_CLIP_WAVE_OVERLAP;
+        return Math.min(defaultBottom, sealed);
+    }
+
+    /**
+     * Resolves water height at a specific position from the chunk-owned water
+     * layer: sources and falling columns render at full height, flowing water
+     * steps down with its level. NaN when the position is not water.
      */
     private float resolveWaterHeight(int x, int y, int z) {
-        WaterBlock waterBlock = Water.getWaterBlock(x, y, z);
-        if (waterBlock != null) {
-            float height = waterBlock.level() == WaterBlock.SOURCE_LEVEL ?
-                MAX_WATER_HEIGHT : (8 - waterBlock.level()) * MAX_WATER_HEIGHT / 8.0f;
-            return clampWaterHeight(height);
+        int value = world.getWaterLevelAt(x, y, z);
+        if (value < 0) {
+            return Float.NaN;
         }
-
-        float level = Water.getWaterLevel(x, y, z);
-        if (level > 0.0f) {
-            return clampWaterHeight(level * MAX_WATER_HEIGHT);
-        }
-
-        if (world.getBlockAt(x, y, z) == BlockType.WATER) {
-            return clampWaterHeight(MAX_WATER_HEIGHT);
-        }
-
-        return Float.NaN;
+        float height = (value == ChunkWaterLayer.SOURCE || value == ChunkWaterLayer.FALLING)
+            ? MAX_WATER_HEIGHT
+            : (8 - value) * MAX_WATER_HEIGHT / 8.0f;
+        return clampWaterHeight(height);
     }
 
     /**
@@ -480,19 +439,6 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
      */
     private float encodeWaterHeight(float height) {
         return height > WATER_FLAG_EPSILON ? height : WATER_FLAG_EPSILON;
-    }
-
-    private float[] extractTextureBounds(float[] texCoords) {
-        if (texCoords == null || texCoords.length != 8) {
-            throw new IllegalArgumentException("Water top texture coordinates must contain 8 floats");
-        }
-
-        float uMin = Math.min(Math.min(texCoords[0], texCoords[2]), Math.min(texCoords[4], texCoords[6]));
-        float uMax = Math.max(Math.max(texCoords[0], texCoords[2]), Math.max(texCoords[4], texCoords[6]));
-        float vMin = Math.min(Math.min(texCoords[1], texCoords[3]), Math.min(texCoords[5], texCoords[7]));
-        float vMax = Math.max(Math.max(texCoords[1], texCoords[3]), Math.max(texCoords[5], texCoords[7]));
-
-        return new float[]{uMin, uMax, vMin, vMax};
     }
 
     private void normalizeCornerHeights(float[] heights) {

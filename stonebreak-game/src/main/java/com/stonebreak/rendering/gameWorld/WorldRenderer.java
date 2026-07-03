@@ -19,7 +19,6 @@ import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.player.Player;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
-import com.stonebreak.rendering.WaterEffects;
 import com.stonebreak.rendering.models.blocks.AnimatedBlockRenderer;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
@@ -49,6 +48,7 @@ public class WorldRenderer {
     private final AnimatedBlockRenderer animatedBlockRenderer;
     private final SkyRenderer skyRenderer;
     private final CloudRenderer cloudRenderer;
+    private final com.stonebreak.rendering.gameWorld.water.WaterRenderer waterRenderer;
     private final com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer shadowMapRenderer;
     private final FastLodRenderPass lodRenderPass;
     private final ChunkFrustumCuller frustumCuller = new ChunkFrustumCuller();
@@ -91,6 +91,7 @@ public class WorldRenderer {
         }
         this.lodRenderPass = new FastLodRenderPass();
         this.fishingLineRenderer = new com.stonebreak.rendering.models.entities.FishingLineRenderer(shaderProgram, projectionMatrix);
+        this.waterRenderer = new com.stonebreak.rendering.gameWorld.water.WaterRenderer();
     }
     
     /**
@@ -150,19 +151,14 @@ public class WorldRenderer {
         
         // Set common uniforms for world rendering
         setupWorldUniforms(player);
-        // Animate water waves in the vertex shader without remeshing (only if water shader is enabled)
+        // Water animation setting — consumed by the dedicated water renderer
+        // (waves + flow scroll); the world shader no longer animates anything.
         boolean waterAnimationEnabled = com.stonebreak.config.Settings.getInstance().getWaterShaderEnabled();
-        shaderProgram.setUniform("u_time", totalTime);
-        shaderProgram.setUniform("u_waterAnimationEnabled", waterAnimationEnabled);
         checkGLError("After setting uniforms");
         
         // Bind texture atlas once before passes
         bindTextureAtlas();
         checkGLError("After texture binding");
-        
-        // Update animated textures now that atlas is properly bound
-        updateAnimatedTextures(totalTime, player);
-        checkGLError("After updateAnimatedWater");
         
         // Visit chunks around the player, culling those outside the view frustum
         List<Chunk> visibleChunks = cullChunksToFrustum(world, player);
@@ -201,8 +197,17 @@ public class WorldRenderer {
         // Water can then occlude them properly (water renders with glDepthMask(false))
         renderOpaqueDrops(player);
 
-        // Render transparent pass (water blends over entities correctly)
+        // Render transparent pass (translucent solids like ice)
         renderTransparentPass(visibleChunks, player);
+
+        // Dedicated water pass — draws every chunk's water mesh with the water
+        // shader, in the exact compositing slot the old water sub-pass held
+        // (after ice, before transparent drops so drops in water tint right).
+        // Reuses the back-to-front order renderTransparentPass just computed.
+        waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
+                player.getCamera().getPosition(), totalTime, sunDirection,
+                ambientLightLevel, waterAnimationEnabled);
+        checkGLError("After water pass");
 
         // Render transparent drops AFTER the transparent pass
         renderTransparentDrops(player);
@@ -212,9 +217,6 @@ public class WorldRenderer {
 
         // Render world-specific overlays and effects
         renderWorldOverlays(player);
-
-        // Render water particles
-        renderWaterParticles();
 
         // Render fire bolt cores after the transparent water pass so they draw
         // over water instead of being blended under it. Depth testing still
@@ -319,13 +321,6 @@ public class WorldRenderer {
     }
 
     /**
-     * Update animated textures.
-     */
-    private void updateAnimatedTextures(float totalTime, Player player) {
-        blockTextureArray.updateAnimatedWater(totalTime);
-    }
-    
-    /**
      * Visits the chunks around the player and collects those intersecting the camera view
      * frustum. Returns a reused list; the visit itself is allocation-free (no intermediate
      * map of nearby chunks — at 24-chunk render distance that map was ~2,401 entries of
@@ -345,7 +340,6 @@ public class WorldRenderer {
      */
     private void renderOpaquePass(List<Chunk> visibleChunks) {
         shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
-        shaderProgram.setUniform("u_waterDepthOffset", 0.0f); // No depth offset for opaque pass
         glDepthMask(true);  // Enable depth writing for opaque objects
         glDisable(GL_BLEND); // Opaque objects typically don't need blending
 
@@ -390,36 +384,22 @@ public class WorldRenderer {
      */
     private void renderTransparentPass(List<Chunk> visibleChunks, Player player) {
         shaderProgram.bind(); // re-bind in case entity rendering left a different shader active
-        shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
-        shaderProgram.setUniform("u_waterDepthOffset", -0.0001f); // Negative offset to pull water slightly closer
+        shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent pass
         glEnable(GL_BLEND); // Enable blending
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
 
         // Sort chunks from back to front for transparent pass
         sortChunksBackToFront(visibleChunks, player);
 
-        // Sub-pass A: translucent solids (e.g. ice). Depth-write ON so they
-        // occlude any farther translucent surface (most importantly distant
-        // water seen through ice — that's the artifact this fixes). The
-        // shader's water/translucent paths key off u_translucentLayer to
-        // pick which sub-layer they emit in.
-        shaderProgram.setUniform("u_translucentLayer", 0);
+        // Translucent solids (e.g. ice) only. Depth-write ON so they occlude
+        // any farther translucent surface. Water no longer lives in the atlas
+        // mesh — it has its own per-chunk mesh drawn by the dedicated
+        // WaterRenderer right after this pass, which also made the old
+        // two-sub-layer scheme (u_translucentLayer 0/1) unnecessary.
         glDepthMask(true);
         for (Chunk chunk : reusableSortedChunks) {
             chunk.render();
         }
-
-        // Sub-pass B: water and remaining translucents. Depth-write OFF so
-        // multiple water layers blend correctly without occluding each other.
-        shaderProgram.setUniform("u_translucentLayer", 1);
-        glDepthMask(false);
-        for (Chunk chunk : reusableSortedChunks) {
-            chunk.render();
-        }
-
-        // Reset for downstream passes (drops, particles, etc.) that expect
-        // the legacy "no filter" behavior.
-        shaderProgram.setUniform("u_translucentLayer", -1);
     }
     
     /**
@@ -490,69 +470,6 @@ public class WorldRenderer {
         }
     }
 
-    /**
-     * Render water particles in the 3D world.
-     */
-    private void renderWaterParticles() {
-        WaterEffects waterEffects = Game.getWaterEffects();
-        if (waterEffects == null || waterEffects.getParticles().isEmpty()) {
-            return;
-        }
-        
-        // Get player's camera view matrix
-        Matrix4f viewMatrix = Game.getPlayer().getViewMatrix();
-        
-        // Use the shader program
-        shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
-        shaderProgram.setUniform("viewMatrix", viewMatrix);
-        
-        // Set up for particle rendering
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        
-        // Enable blending
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        
-        // Disable depth writing but keep depth testing
-        glDepthMask(false);
-        
-        // Use point rendering for particles
-        glPointSize(5.0f);
-        
-        // Start drawing points
-        glBegin(GL_POINTS);
-        
-        // Draw each particle
-        for (WaterEffects.WaterParticle particle : waterEffects.getParticles()) {
-            float opacity = particle.getOpacity();
-            
-            // Set particle color (light blue with variable opacity)
-            shaderProgram.setUniform("u_color", new org.joml.Vector4f(0.7f, 0.85f, 1.0f, opacity * 0.7f));
-            
-            // Draw particle at its position
-            glVertex3f(
-                particle.getPosition().x,
-                particle.getPosition().y,
-                particle.getPosition().z
-            );
-        }
-        
-        glEnd();
-        
-        // Reset OpenGL state
-        glPointSize(1.0f);
-        glDepthMask(true);
-        glDisable(GL_BLEND);
-        
-        // Reset shader state
-        shaderProgram.setUniform("u_useSolidColor", false);
-        
-        // Unbind shader
-        shaderProgram.unbind();
-    }
-    
     /**
      * Render fire bolt core cubes after the transparent water pass so they are
      * not blended under water. Drawn via the entity renderer, which skips bolts
@@ -914,6 +831,9 @@ public class WorldRenderer {
         }
         if (shadowMapRenderer != null) {
             shadowMapRenderer.cleanup();
+        }
+        if (waterRenderer != null) {
+            waterRenderer.cleanup();
         }
     }
 }

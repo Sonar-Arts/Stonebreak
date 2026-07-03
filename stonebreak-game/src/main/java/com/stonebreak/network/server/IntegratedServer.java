@@ -112,6 +112,9 @@ public final class IntegratedServer {
         level.world().setServerMutationCallback(blockHandler::onServerBlockChange);
         // Same funnel pattern for snow-layer mutations → BlockMetaS2C broadcasts.
         level.world().setServerSnowCallback(blockHandler::onServerSnowChange);
+        // And for water flow-level mutations → BlockMetaS2C (KIND_WATER_LEVEL), so clients
+        // render live flow heights instead of full-height columns.
+        level.world().setServerWaterCallback(blockHandler::onServerWaterChange);
         // Furnace state-string changes (lit flips, contents, cook progress) → BlockStateS2C.
         // The registry dedups (fires only on actual string change), so idle furnaces are free.
         if (level.world().getFurnaceRegistry() != null) {

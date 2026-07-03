@@ -1,7 +1,6 @@
 package com.stonebreak.player.interaction;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.blocks.Water;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.player.Camera;
 import com.stonebreak.player.IBlockPlacementService;
@@ -66,7 +65,6 @@ public class ItemDropInteraction {
         if (blockToPlace == BlockType.SNOW) {
             world.getSnowLayerManager().setSnowLayers(dropPos.x, dropPos.y, dropPos.z, 1);
         }
-        Water.onBlockPlaced(dropPos.x, dropPos.y, dropPos.z);
         System.out.println("Player dropped item " + blockToPlace.getName() + " at " + dropPos.x + ", " + dropPos.y + ", " + dropPos.z);
         return true;
     }

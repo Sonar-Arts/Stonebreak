@@ -316,9 +316,9 @@ public class WorldChunkStore {
             return;
         }
 
-        // CRITICAL FIX: Save chunk BEFORE notifying unload listener!
-        // The unload listener (waterSystem.onChunkUnloaded) deletes water cells from WaterSystem.
-        // We must save the chunk first so extractWaterMetadata() can access those cells.
+        // Save chunk BEFORE notifying the unload listener so the snapshot captures
+        // final state (water layer travels with the chunk; the listener only drops
+        // the sim's pending queue entries and other per-chunk registrations).
 
         // OPTIMIZATION: Async save - don't block main thread
         // Save dirty chunks asynchronously, cleanup after save completes.
@@ -602,13 +602,10 @@ public class WorldChunkStore {
     /**
      * Checks if a chunk contains any flowing (non-source) water blocks.
      * Used to determine if a newly generated chunk needs to be saved to persist water metadata.
-     * Queries the WaterSystem's sparse cell map — no 65k-block chunk scan.
+     * Reads the chunk-owned water layer directly — no world scan.
      */
     private boolean chunkHasFlowingWater(Chunk chunk) {
-        if (world == null || world.getWaterSystem() == null) {
-            return false;
-        }
-        return world.getWaterSystem().hasFlowingCellInChunk(chunk.getChunkX(), chunk.getChunkZ());
+        return !chunk.getWaterLayer().isEmpty();
     }
 
     private void prepareLoadedChunk(Chunk chunk) {

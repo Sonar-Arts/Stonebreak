@@ -29,7 +29,6 @@ public final class FastLodRenderPass {
         int inner = manager.innerRadius();
 
         shader.setUniform("u_renderPass", 0);
-        shader.setUniform("u_waterDepthOffset", 0.0f);
 
         for (FastLodManager.Entry entry : entries) {
             int dx = Math.abs(entry.key.chunkX() - playerChunkX);

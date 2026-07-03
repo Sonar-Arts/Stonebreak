@@ -261,8 +261,9 @@ public final class ServerChunkHandler {
 
     /**
      * Game-side chunk metadata blob for the snapshot: snow layer counts (gathered from the
-     * server world's SnowLayerManager, re-keyed to chunk-local) + per-block SBO state map.
-     * Empty array (zero extra wire bytes) for the common no-metadata chunk.
+     * server world's SnowLayerManager, re-keyed to chunk-local), per-block SBO state map,
+     * and non-source water cells (flowing levels / falling flags) from the chunk's water
+     * layer. Empty array (zero extra wire bytes) for the common no-metadata chunk.
      */
     private static byte[] encodeChunkMeta(World world, Chunk chunk, int cx, int cz) {
         java.util.Map<Integer, Integer> snow = null;
@@ -273,7 +274,14 @@ public final class ServerChunkHandler {
                     x - cx * 16, y, z - cz * 16), layers));
             snow = collected;
         }
-        return com.stonebreak.network.bridge.GameChunkMetaCodec.encode(snow, chunk.getBlockStates());
+        java.util.Map<Integer, Integer> water = null;
+        if (!chunk.getWaterLayer().isEmpty()) {
+            java.util.Map<Integer, Integer> collected = new java.util.HashMap<>();
+            chunk.getWaterLayer().forEach((lx, y, lz, value) ->
+                collected.put(com.stonebreak.world.chunk.utils.LocalBlockKey.pack(lx, y, lz), value));
+            water = collected;
+        }
+        return com.stonebreak.network.bridge.GameChunkMetaCodec.encode(snow, chunk.getBlockStates(), water);
     }
 
     private static long packKey(int cx, int cz) {

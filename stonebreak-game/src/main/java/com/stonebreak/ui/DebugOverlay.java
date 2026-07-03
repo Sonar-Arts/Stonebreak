@@ -17,9 +17,6 @@ import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.Camera;
 import com.stonebreak.world.World;
-import com.stonebreak.blocks.Water;
-import com.stonebreak.blocks.waterSystem.WaterBlock;
-import com.stonebreak.blocks.waterSystem.WaterSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
@@ -150,20 +147,16 @@ public class DebugOverlay {
 
             BlockType bt = world.getBlockAt(bx, by, bz);
             if (bt == BlockType.WATER) {
-                WaterBlock wb = Water.getWaterBlock(bx, by, bz);
-                float fill = Water.getWaterLevel(bx, by, bz);
-                String type = (wb != null && wb.isSource()) ? "Source" : "Flowing";
-
-                WaterSystem ws = world.getWaterSystem();
-                String tracked = (ws != null)
-                        ? String.format(" (%d tracked)", ws.getTrackedWaterCount())
+                int value = world.getWaterLevelAt(bx, by, bz);
+                String type = switch (value) {
+                    case com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE -> "Source";
+                    case com.stonebreak.world.chunk.ChunkWaterLayer.FALLING -> "Falling";
+                    default -> "Flowing " + value;
+                };
+                String queued = (world.getWaterSim() != null)
+                        ? String.format(" (%d queued)", world.getWaterSim().getQueuedUpdateCount())
                         : "";
-
-                if (wb != null) {
-                    return String.format("Water %s [%.3f]%s ~ (%d,%d,%d)",
-                            type, fill, tracked, bx, by, bz);
-                }
-                return String.format("Water [%.3f]%s ~ (%d,%d,%d)", fill, tracked, bx, by, bz);
+                return String.format("Water %s%s ~ (%d,%d,%d)", type, queued, bx, by, bz);
             }
             if (bt != null && bt != BlockType.AIR) break;
         }

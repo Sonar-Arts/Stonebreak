@@ -9,7 +9,8 @@ import com.stonebreak.world.chunk.utils.ChunkManager;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
 import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.blocks.waterSystem.WaterSystem;
+import com.stonebreak.blocks.waterSystem.WaterSim;
+import com.stonebreak.blocks.waterSystem.WorldFlowWorld;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.*;
 import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoNeighborCoordinator;
@@ -47,7 +48,7 @@ public class World {
     private final CcoNeighborCoordinator neighborCoordinator;
     private final MmsMeshPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
-    private final WaterSystem waterSystem;
+    private final WaterSim waterSim;
     private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
 
     // Lazily constructed once the render-thread hands us a texture atlas.
@@ -112,6 +113,29 @@ public class World {
     /** Install the server-side snow mutation sink (headless server world only). */
     public void setServerSnowCallback(ServerSnowMutationCallback callback) {
         this.serverSnowCallback = callback;
+    }
+
+    /**
+     * Sink for authoritative water-layer mutations (value = layer byte: 1..7 flowing,
+     * 8 falling, 0 = entry removed / became source), installed by the integrated server
+     * on the HEADLESS world only so flow levels replicate to clients as
+     * {@code BlockMetaS2C} (KIND_WATER_LEVEL). Null everywhere else. Fired from
+     * {@code WorldFlowWorld.markWaterChanged} on the server tick thread.
+     */
+    public interface ServerWaterMutationCallback {
+        void onServerWaterChange(int x, int y, int z, int value);
+    }
+
+    private volatile ServerWaterMutationCallback serverWaterCallback;
+
+    /** Install the server-side water mutation sink (headless server world only). */
+    public void setServerWaterCallback(ServerWaterMutationCallback callback) {
+        this.serverWaterCallback = callback;
+    }
+
+    /** The water mutation sink, or null on client/render worlds. */
+    public ServerWaterMutationCallback serverWaterCallback() {
+        return serverWaterCallback;
     }
 
     public World() {
@@ -233,7 +257,7 @@ public class World {
         if (testMode) {
             // Test mode: Minimal initialization for save/load testing
             this.neighborCoordinator = null;
-            this.waterSystem = new WaterSystem(this);
+            this.waterSim = new WaterSim(new WorldFlowWorld(this));
             this.chunkManager = null;
             System.out.println("[TEST MODE] World created with seed: " + terrainSystem.getSeed() + " (rendering disabled)");
         } else {
@@ -251,7 +275,7 @@ public class World {
                 }
             }, config);
 
-            this.waterSystem = new WaterSystem(this);
+            this.waterSim = new WaterSim(new WorldFlowWorld(this));
             this.chunkManager = new ChunkManager(this, config.getRenderDistance());
 
             System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
@@ -265,7 +289,7 @@ public class World {
         // where there's a mesh pipeline.
         this.chunkStore.setChunkListeners(chunk -> {
             if (!renderOnly) {
-                waterSystem.onChunkLoaded(chunk);
+                waterSim.onChunkLoaded(chunk);
             }
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkLoaded(chunk);
@@ -284,11 +308,11 @@ public class World {
                 furnaceRegistry.onChunkUnloaded(chunk);
             }
             animatedBlockRegistry.onChunkUnloaded(chunk);
-            // Water cells and snow layers accumulate on EVERY world — the render-only client
-            // feeds them via setBlockAt(..., false) applies of streamed changes — so both must
-            // purge with the chunk everywhere or the maps grow unbounded as streamed chunks
-            // come and go.
-            waterSystem.onChunkUnloaded(chunk);
+            // Water state is chunk-owned (ChunkWaterLayer) and leaves with the chunk;
+            // the sim just drops its pending queue entries. Snow layers remain a
+            // world-global map and must still purge everywhere (render-only clients
+            // included) or they grow unbounded as streamed chunks come and go.
+            waterSim.onChunkUnloaded(chunk);
             snowLayerManager.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
         });
     }
@@ -307,7 +331,7 @@ public class World {
     public void update(com.stonebreak.rendering.Renderer renderer) {
         if (meshPipeline == null) return; // Test mode - skip rendering updates
 
-        waterSystem.tick(Game.getDeltaTime());
+        waterSim.tick(Game.getDeltaTime());
         com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
         if (fr != null) fr.tick(this, Game.getDeltaTime());
         meshPipeline.requeueFailedChunks();
@@ -331,7 +355,7 @@ public class World {
      * is a no-op. Safe to call with no render infrastructure.
      */
     public void updateSimulation(float deltaTime) {
-        waterSystem.tick(deltaTime);
+        waterSim.tick(deltaTime);
         com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
         if (fr != null) fr.tick(this, deltaTime);
         if (chunkStore != null) {
@@ -554,6 +578,51 @@ public class World {
         chunk.setBlockState(localX, y, localZ, state);
     }
 
+    // ===== Water state (chunk-owned water layer) =====
+
+    /**
+     * Water flow value at a world position, read from the chunk's water layer:
+     * 0 = source, 1-7 = flowing level, {@link com.stonebreak.world.chunk.ChunkWaterLayer#FALLING}
+     * (8) = falling, -1 = not water or chunk not loaded.
+     */
+    public int getWaterLevelAt(int x, int y, int z) {
+        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+            return -1;
+        }
+        Chunk chunk = getChunkIfLoaded(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
+                                       Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
+        if (chunk == null) {
+            return -1;
+        }
+        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
+        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
+        if (chunk.getBlock(localX, y, localZ) != BlockType.WATER) {
+            return -1;
+        }
+        return chunk.getWaterLayer().get(localX, y, localZ);
+    }
+
+    /** True when the block is WATER and its water-layer entry is absent (level 0). */
+    public boolean isWaterSourceAt(int x, int y, int z) {
+        return getWaterLevelAt(x, y, z) == com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE;
+    }
+
+    /**
+     * Water cell state as a {@link com.stonebreak.blocks.waterSystem.WaterBlock},
+     * or {@code null} when the position is not water. Falling cells report
+     * level 0 (full strength) with the falling flag set.
+     */
+    public com.stonebreak.blocks.waterSystem.WaterBlock getWaterStateAt(int x, int y, int z) {
+        int value = getWaterLevelAt(x, y, z);
+        if (value < 0) {
+            return null;
+        }
+        if (value == com.stonebreak.world.chunk.ChunkWaterLayer.FALLING) {
+            return com.stonebreak.blocks.waterSystem.WaterBlock.falling(0);
+        }
+        return new com.stonebreak.blocks.waterSystem.WaterBlock(value, false);
+    }
+
     /**
      * Checks if the specified world position is underwater (contains a water block).
      * @param x World X coordinate
@@ -620,7 +689,11 @@ public class World {
             }
         }
 
-        waterSystem.onBlockChanged(x, y, z, previous, blockType);
+        // Only authoritative worlds simulate flow; a render-only client applying
+        // streamed changes must not queue sim work (its layer is display-only).
+        if (!renderOnly) {
+            waterSim.onBlockChanged(x, y, z, previous, blockType);
+        }
         animatedBlockRegistry.onBlockChanged(x, y, z, previous, blockType);
 
         // Multiplayer: forward locally-driven block edits (player modifications) to the local
@@ -636,8 +709,9 @@ public class World {
         return true;
     }
 
-    public WaterSystem getWaterSystem() {
-        return waterSystem;
+    /** The water flow simulation engine (debug/inspection; state lives in the chunks). */
+    public WaterSim getWaterSim() {
+        return waterSim;
     }
 
     /** Per-world save service, or null if this world is not persisted (e.g. a client view). */
@@ -1022,9 +1096,14 @@ public class World {
             return false; // caller requests a resync — the server thinks this chunk was sent
         }
         chunk.replaceAllBlocks(decoded);
+        // The bulk block install bypasses Chunk.setBlock, so stale water-layer entries from a
+        // previous stream of this chunk would survive it — clear unconditionally; the meta
+        // below re-hydrates the authoritative set (absence = source, per the layer invariant).
+        chunk.getWaterLayer().clear();
 
-        // Apply streamed chunk metadata: snow layer heights + per-block SBO states. Replaces
-        // (not merges) this chunk's previous entries so a re-stream is a clean resync.
+        // Apply streamed chunk metadata: snow layer heights + per-block SBO states + water
+        // flow levels. Replaces (not merges) this chunk's previous entries so a re-stream is
+        // a clean resync.
         if (metaPayload != null && metaPayload.length > 0) {
             try {
                 var meta = com.stonebreak.network.bridge.GameChunkMetaCodec.decode(metaPayload);
@@ -1042,6 +1121,14 @@ public class World {
                 for (var e : meta.blockStates().entrySet()) {
                     int key = e.getKey();
                     chunk.setBlockState(
+                        com.stonebreak.world.chunk.utils.LocalBlockKey.x(key),
+                        com.stonebreak.world.chunk.utils.LocalBlockKey.y(key),
+                        com.stonebreak.world.chunk.utils.LocalBlockKey.z(key),
+                        e.getValue());
+                }
+                for (var e : meta.waterLevels().entrySet()) {
+                    int key = e.getKey();
+                    chunk.getWaterLayer().set(
                         com.stonebreak.world.chunk.utils.LocalBlockKey.x(key),
                         com.stonebreak.world.chunk.utils.LocalBlockKey.y(key),
                         com.stonebreak.world.chunk.utils.LocalBlockKey.z(key),
