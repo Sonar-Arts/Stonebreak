@@ -339,41 +339,41 @@ public class CollisionHandler {
         if (block == BlockType.SNOW) {
             return world.getSnowHeight(x, y, z);
         }
-        if (block == BlockType.OAK_DOOR) {
-            // Doors never collide as cells — the panel AABB pass below
-            // resolves against the actual model box (thin, 2 blocks tall,
-            // swung across the hinge boundary when open).
+        if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(block)) {
+            // Animated blocks (doors) never collide as cells — the panel AABB
+            // pass below resolves against the actual posed model box.
             return 0.0f;
         }
         return block.getCollisionHeight();
     }
 
-    // ─── Door panel collision (model-tied AABBs) ─────────────────────────────
+    // ─── Animated-block collision (model-tied AABBs) ─────────────────────────
 
     /**
-     * World AABBs of door panels near enough to touch the player. Boxes come
-     * from {@link com.stonebreak.blocks.door.DoorState#panelWorldAabb} — the
-     * exact settled pose of the rendered model (during the swing animation
-     * the target pose collides). Doors are indexed by the world's
-     * AnimatedBlockRegistry, so this is a short sparse list, not a scan.
+     * World AABBs of animated-block models (door panels) near enough to touch
+     * the player. Boxes come from {@code AnimatedBlockShapes.worldAabb} — the
+     * geometry posed at the current state clip's end pose, so collision always
+     * wraps exactly what is rendered (during the swing the target pose
+     * collides). Positions come from the world's AnimatedBlockRegistry, so
+     * this is a short sparse list, not a scan.
      */
     private java.util.List<float[]> nearbyDoorPanels() {
         java.util.List<float[]> panels = new java.util.ArrayList<>(2);
         Vector3f position = state.getPosition();
         for (com.openmason.engine.util.BlockPos pos : world.getAnimatedBlockRegistry().positions()) {
-            // Quick reject: a panel reaches at most 1 block outside its cell.
-            if (Math.abs(pos.x() + 0.5f - position.x) > 3f
-                    || Math.abs(pos.z() + 0.5f - position.z) > 3f
-                    || position.y - pos.y() > com.stonebreak.blocks.door.DoorState.PANEL_HEIGHT + 1f
-                    || pos.y() - position.y > PLAYER_HEIGHT + 1f) {
+            // Quick reject: a posed model reaches at most ~2 blocks from its anchor.
+            if (Math.abs(pos.x() + 0.5f - position.x) > 4f
+                    || Math.abs(pos.z() + 0.5f - position.z) > 4f
+                    || position.y - pos.y() > 4f
+                    || pos.y() - position.y > PLAYER_HEIGHT + 2f) {
                 continue;
             }
-            if (world.getBlockAt(pos.x(), pos.y(), pos.z()) != BlockType.OAK_DOOR) {
+            BlockType type = world.getBlockAt(pos.x(), pos.y(), pos.z());
+            if (!com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(type)) {
                 continue;
             }
-            panels.add(com.stonebreak.blocks.door.DoorState
-                    .parse(world.getBlockStateAt(pos.x(), pos.y(), pos.z()))
-                    .panelWorldAabb(pos.x(), pos.y(), pos.z()));
+            panels.add(com.stonebreak.blocks.anim.AnimatedBlockShapes
+                    .worldAabb(world, pos.x(), pos.y(), pos.z(), type));
         }
         return panels;
     }

@@ -84,56 +84,51 @@ class DoorStateTest {
         }
     }
 
-    /** Closed panels: thin 2-tall box inside the cell, hugging the facing edge. */
-    @Test
-    void closedPanelAabbHugsFacingEdgeInsideCell() {
-        int bx = 10;
-        int by = 64;
-        int bz = 20;
-        float t = DoorState.PANEL_THICKNESS;
-        for (DoorState.Facing f : DoorState.Facing.values()) {
-            float[] b = new DoorState(DoorState.CLOSED, f).panelWorldAabb(bx, by, bz);
-            assertEquals(by, b[1], 1e-4);
-            assertEquals(by + DoorState.PANEL_HEIGHT, b[4], 1e-4);
-            // Fully inside the cell footprint.
-            assertTrue(b[0] >= bx - 1e-4 && b[3] <= bx + 1 + 1e-4, f.name());
-            assertTrue(b[2] >= bz - 1e-4 && b[5] <= bz + 1 + 1e-4, f.name());
-            switch (f) {
-                case NORTH -> { assertEquals(bz, b[2], 1e-4); assertEquals(bz + t, b[5], 1e-4); }
-                case SOUTH -> { assertEquals(bz + 1 - t, b[2], 1e-4); assertEquals(bz + 1, b[5], 1e-4); }
-                case WEST -> { assertEquals(bx, b[0], 1e-4); assertEquals(bx + t, b[3], 1e-4); }
-                case EAST -> { assertEquals(bx + 1 - t, b[0], 1e-4); assertEquals(bx + 1, b[3], 1e-4); }
-            }
-        }
-    }
-
     /**
-     * Open panels: the +90° hinge swing carries the panel across the
-     * hinge-side cell boundary — the box must track that, not the cell.
+     * {@code modelBoxToWorld} must transform a model-space box exactly like
+     * the renderer's base transform (facing rotation about the model origin,
+     * then the cell anchor): NORTH closed-panel-style box hugs the min-Z edge,
+     * and every facing preserves the box's dimensions (axes swapped for the
+     * 90°/270° facings) and passes Y through untouched.
      */
     @Test
-    void openPanelAabbFollowsTheSwungModel() {
+    void modelBoxToWorldMatchesRendererBaseTransform() {
         int bx = 10;
         int by = 64;
         int bz = 20;
-        float t = DoorState.PANEL_THICKNESS;
+        // Asymmetric box so mirror errors can't cancel out.
+        float[] model = {0.2f, 0.0f, 0.0f, 1.0f, 2.0f, 0.1f};
+        float dx = model[3] - model[0];
+        float dz = model[5] - model[2];
 
-        // NORTH: closed panel spans x along the min-Z edge, hinge at the cell
-        // corner (bx, bz); +90° swings it north into z ∈ [bz-1, bz].
-        float[] b = new DoorState(DoorState.OPEN, DoorState.Facing.NORTH).panelWorldAabb(bx, by, bz);
-        assertEquals(bx, b[0], 1e-4);
-        assertEquals(bx + t, b[3], 1e-4);
-        assertEquals(bz - 1, b[2], 1e-4);
-        assertEquals(bz, b[5], 1e-4);
-        assertEquals(by + DoorState.PANEL_HEIGHT, b[4], 1e-4);
-
-        // Every open box must be thin on one horizontal axis and 1 long on the other.
         for (DoorState.Facing f : DoorState.Facing.values()) {
-            float[] box = new DoorState(DoorState.OPEN, f).panelWorldAabb(bx, by, bz);
-            float dx = box[3] - box[0];
-            float dz = box[5] - box[2];
-            assertTrue((Math.abs(dx - t) < 1e-4 && Math.abs(dz - 1f) < 1e-4)
-                    || (Math.abs(dx - 1f) < 1e-4 && Math.abs(dz - t) < 1e-4), f.name());
+            float[] w = new DoorState(DoorState.CLOSED, f).modelBoxToWorld(model, bx, by, bz);
+            assertEquals(by + model[1], w[1], 1e-4, f.name());
+            assertEquals(by + model[4], w[4], 1e-4, f.name());
+
+            float wx = w[3] - w[0];
+            float wz = w[5] - w[2];
+            boolean swapped = f == DoorState.Facing.WEST || f == DoorState.Facing.EAST;
+            assertEquals(swapped ? dz : dx, wx, 1e-4, f.name());
+            assertEquals(swapped ? dx : dz, wz, 1e-4, f.name());
+
+            // Verify against the actual JOML transform the renderer uses:
+            // world = T(corner + anchor) * rotY(yaw) applied to the corners.
+            Matrix4f base = new Matrix4f()
+                    .translate(bx + f.anchorOffsetX(), by, bz + f.anchorOffsetZ())
+                    .rotateY((float) Math.toRadians(f.yawDegrees()));
+            Vector3f c0 = base.transformPosition(new Vector3f(model[0], model[1], model[2]));
+            Vector3f c1 = base.transformPosition(new Vector3f(model[3], model[4], model[5]));
+            assertEquals(Math.min(c0.x, c1.x), w[0], 1e-4, f.name());
+            assertEquals(Math.max(c0.x, c1.x), w[3], 1e-4, f.name());
+            assertEquals(Math.min(c0.z, c1.z), w[2], 1e-4, f.name());
+            assertEquals(Math.max(c0.z, c1.z), w[5], 1e-4, f.name());
         }
+
+        // NORTH keeps the box exactly where the model put it.
+        float[] north = new DoorState(DoorState.CLOSED, DoorState.Facing.NORTH)
+                .modelBoxToWorld(model, bx, by, bz);
+        assertEquals(bx + model[0], north[0], 1e-4);
+        assertEquals(bz + model[2], north[2], 1e-4);
     }
 }

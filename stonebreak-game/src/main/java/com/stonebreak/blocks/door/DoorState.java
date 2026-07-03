@@ -123,44 +123,24 @@ public record DoorState(String renderState, Facing facing) {
 
     // ---------- model-tied collision ----------
 
-    /** Panel dimensions, mirroring SB_Oak_Door's mesh (1 wide × 2 tall × 0.1 thick). */
-    public static final float PANEL_THICKNESS = 0.1f;
-    public static final float PANEL_HEIGHT = 2.0f;
-
     /**
-     * World-space AABB {@code {minX, minY, minZ, maxX, maxY, maxZ}} of the
-     * door panel in this state's settled pose — collision follows the model,
-     * not the block cell. The open pose is the clip's end pose: +90° about
-     * the hinge corner, which swings the panel across the hinge-side cell
-     * boundary (matching exactly what is rendered).
+     * Transform a model-space AABB (from {@code AnimatedBlockShapes} — the
+     * geometry posed at this state's clip end pose) into world space: the
+     * facing rotation about the model origin, then the cell anchor offset.
+     * Exactly the base transform the renderer places the model with, so the
+     * box always wraps what is drawn.
+     *
+     * @param modelBox {@code {minX,minY,minZ,maxX,maxY,maxZ}} in model space
+     * @return world-space {@code {minX,minY,minZ,maxX,maxY,maxZ}}
      */
-    public float[] panelWorldAabb(int blockX, int blockY, int blockZ) {
-        // Settled pose in model space (hinge corner at the model origin).
-        float x0;
-        float x1;
-        float z0;
-        float z1;
-        if (isOpen()) {
-            // +90° about Y at the hinge: (x, z) -> (z, -x).
-            x0 = 0f;
-            x1 = PANEL_THICKNESS;
-            z0 = -1f;
-            z1 = 0f;
-        } else {
-            x0 = 0f;
-            x1 = 1f;
-            z0 = 0f;
-            z1 = PANEL_THICKNESS;
-        }
-        // Same transform the renderer applies: facing rotation about the model
-        // origin, then the cell anchor offset.
-        float[] a = rotateByFacing(x0, z0);
-        float[] b = rotateByFacing(x1, z1);
+    public float[] modelBoxToWorld(float[] modelBox, int blockX, int blockY, int blockZ) {
+        float[] a = rotateByFacing(modelBox[0], modelBox[2]);
+        float[] b = rotateByFacing(modelBox[3], modelBox[5]);
         float baseX = blockX + facing.anchorOffsetX();
         float baseZ = blockZ + facing.anchorOffsetZ();
         return new float[]{
-                baseX + Math.min(a[0], b[0]), blockY, baseZ + Math.min(a[1], b[1]),
-                baseX + Math.max(a[0], b[0]), blockY + PANEL_HEIGHT, baseZ + Math.max(a[1], b[1])
+                baseX + Math.min(a[0], b[0]), blockY + modelBox[1], baseZ + Math.min(a[1], b[1]),
+                baseX + Math.max(a[0], b[0]), blockY + modelBox[4], baseZ + Math.max(a[1], b[1])
         };
     }
 
