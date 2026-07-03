@@ -60,53 +60,145 @@ public final class SbeEntityLoader {
         return CACHE.computeIfAbsent(resourcePath, SbeEntityLoader::decode);
     }
 
+    /**
+     * Loads (or returns the cached) attachable accessory asset from a file on
+     * disk (see {@code EntityAttachments}). Dispatches on extension:
+     * <ul>
+     *   <li>{@code .omo} — bare model; single-variant, clipless asset</li>
+     *   <li>{@code .sbe} — full entity asset (variants + clips); attachments
+     *       render its Default variant at rest pose</li>
+     *   <li>{@code .sbo} — the embedded {@code model.omo} is extracted (for
+     *       stated SBOs this is the default state's model, thanks to the
+     *       format's 1.3 legacy mirror); texture-only SBOs are rejected</li>
+     * </ul>
+     *
+     * @throws IllegalStateException if the file is missing or cannot be decoded
+     */
+    public static SbeEntityAsset loadAttachable(java.nio.file.Path file) {
+        String key = file.toAbsolutePath().toString();
+        return CACHE.computeIfAbsent(key, k -> {
+            try (InputStream in = java.nio.file.Files.newInputStream(file)) {
+                return decodeAttachable(k, in);
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to load attachable asset: " + k, e);
+            }
+        });
+    }
+
+    /**
+     * Classpath twin of {@link #loadAttachable(java.nio.file.Path)}.
+     *
+     * @param resourcePath absolute classpath path,
+     *                     e.g. {@code /models/accessories/mustache.sbo}
+     * @throws IllegalStateException if the resource is missing or cannot be decoded
+     */
+    public static SbeEntityAsset loadAttachableResource(String resourcePath) {
+        return CACHE.computeIfAbsent(resourcePath, k -> {
+            try (InputStream in = SbeEntityLoader.class.getResourceAsStream(k)) {
+                if (in == null) {
+                    throw new IllegalStateException("Attachable resource not found: " + k);
+                }
+                return decodeAttachable(k, in);
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to load attachable asset: " + k, e);
+            }
+        });
+    }
+
+    private static SbeEntityAsset decodeAttachable(String id, InputStream in) throws IOException {
+        String lower = id.toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith(SBEFormat.FILE_EXTENSION)) {
+            return decodeSbe(id, in);
+        }
+        if (lower.endsWith(com.openmason.engine.format.sbo.SBOFormat.FILE_EXTENSION)) {
+            return decodeSboModel(id, in);
+        }
+        return decodeOmo(id, in);
+    }
+
+    private static SbeEntityAsset decodeOmo(String id, InputStream in) throws IOException {
+        SbeModelGeometry geometry = buildGeometry(new OMOReader().read(in));
+        return new SbeEntityAsset(id,
+                Map.of(SbeEntityAsset.DEFAULT_VARIANT, geometry), Map.of());
+    }
+
+    /**
+     * Extract the SBO's embedded {@code model.omo} and decode it like a bare
+     * OMO. Model-bearing SBOs always carry this entry — for stated SBOs it
+     * mirrors the default state's model (format 1.3+ legacy mirror) — so this
+     * covers both stateless and stated files without a full SBO parse.
+     */
+    private static SbeEntityAsset decodeSboModel(String id, InputStream in) throws IOException {
+        byte[] omoBytes = null;
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(in)) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (com.openmason.engine.format.sbo.SBOFormat.EMBEDDED_OMO_FILENAME
+                        .equals(entry.getName())) {
+                    omoBytes = zis.readAllBytes();
+                }
+                zis.closeEntry();
+            }
+        }
+        if (omoBytes == null) {
+            throw new IOException("SBO has no embedded model — texture-only SBOs "
+                    + "cannot be attached: " + id);
+        }
+        return decodeOmo(id, new ByteArrayInputStream(omoBytes));
+    }
+
     private static SbeEntityAsset decode(String resourcePath) {
         try (InputStream in = SbeEntityLoader.class.getResourceAsStream(resourcePath)) {
             if (in == null) {
                 throw new IllegalStateException("SBE resource not found: " + resourcePath);
             }
-            SBEParser.ParsedSBE parsed = new SBEParser().parse(in);
-            SBEFormat.Document doc = parsed.document();
-
-            OMOReader omoReader = new OMOReader();
-
-            // Variants: the base OMO is the Default appearance; each manifest
-            // variant supplies its own retextured OMO.
-            Map<String, SbeModelGeometry> variants = new LinkedHashMap<>();
-            variants.put(SbeEntityAsset.DEFAULT_VARIANT, buildGeometry(omoReader, parsed.omoBytes()));
-            for (SBEFormat.VariantEntry variant : doc.variants()) {
-                byte[] bytes = parsed.variantModelFor(variant.name());
-                if (bytes != null) {
-                    variants.put(variant.name(), buildGeometry(omoReader, bytes));
-                }
-            }
-
-            // States: keep the animation clip; the per-state OMO geometry is a
-            // pose snapshot of the same skeleton and is intentionally ignored —
-            // clips are played against the variant geometry.
-            OMAReader omaReader = new OMAReader();
-            List<String> basePartIds = partIds(variants.get(SbeEntityAsset.DEFAULT_VARIANT));
-            Map<String, ParsedAnimClip> clips = new LinkedHashMap<>();
-            for (SBEFormat.StateEntry state : doc.states()) {
-                byte[] clipBytes = parsed.clipFor(state.name());
-                if (clipBytes == null) continue;
-                ParsedAnimClip clip = omaReader.read(clipBytes);
-                clips.put(state.name(), clip);
-
-                AnimationCompatibility.Result compat =
-                        AnimationCompatibility.check(clip.requiredParts(), basePartIds);
-                if (!compat.isCompatible()) {
-                    logger.warn("SBE '{}' state '{}' clip animates parts missing from the model: {}",
-                            doc.objectName(), state.name(), compat.describeMissing());
-                }
-            }
-
-            logger.info("Loaded SBE '{}' ({}) from {}: {} variant(s), {} animation state(s)",
-                    doc.objectName(), doc.objectId(), resourcePath, variants.size(), clips.size());
-            return new SbeEntityAsset(doc.objectId(), variants, clips);
+            return decodeSbe(resourcePath, in);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load SBE asset: " + resourcePath, e);
         }
+    }
+
+    /** Decode a full SBE (variants + clips) from an already-open stream. */
+    private static SbeEntityAsset decodeSbe(String sourceId, InputStream in) throws IOException {
+        SBEParser.ParsedSBE parsed = new SBEParser().parse(in);
+        SBEFormat.Document doc = parsed.document();
+
+        OMOReader omoReader = new OMOReader();
+
+        // Variants: the base OMO is the Default appearance; each manifest
+        // variant supplies its own retextured OMO.
+        Map<String, SbeModelGeometry> variants = new LinkedHashMap<>();
+        variants.put(SbeEntityAsset.DEFAULT_VARIANT, buildGeometry(omoReader, parsed.omoBytes()));
+        for (SBEFormat.VariantEntry variant : doc.variants()) {
+            byte[] bytes = parsed.variantModelFor(variant.name());
+            if (bytes != null) {
+                variants.put(variant.name(), buildGeometry(omoReader, bytes));
+            }
+        }
+
+        // States: keep the animation clip; the per-state OMO geometry is a
+        // pose snapshot of the same skeleton and is intentionally ignored —
+        // clips are played against the variant geometry.
+        OMAReader omaReader = new OMAReader();
+        List<String> basePartIds = partIds(variants.get(SbeEntityAsset.DEFAULT_VARIANT));
+        Map<String, ParsedAnimClip> clips = new LinkedHashMap<>();
+        for (SBEFormat.StateEntry state : doc.states()) {
+            byte[] clipBytes = parsed.clipFor(state.name());
+            if (clipBytes == null) continue;
+            ParsedAnimClip clip = omaReader.read(clipBytes);
+            clips.put(state.name(), clip);
+
+            AnimationCompatibility.Result compat =
+                    AnimationCompatibility.check(clip.requiredParts(), basePartIds);
+            if (!compat.isCompatible()) {
+                logger.warn("SBE '{}' state '{}' clip animates parts missing from the model: {}",
+                        doc.objectName(), state.name(), compat.describeMissing());
+            }
+        }
+
+        logger.info("Loaded SBE '{}' ({}) from {}: {} variant(s), {} animation state(s)",
+                doc.objectName(), doc.objectId(), sourceId, variants.size(), clips.size());
+        return new SbeEntityAsset(doc.objectId(), variants, clips);
     }
 
     private static List<String> partIds(SbeModelGeometry geometry) {
@@ -203,8 +295,19 @@ public final class SbeEntityLoader {
         float[] vertices  = mesh.vertices()  != null ? mesh.vertices()  : new float[0];
         float[] texCoords = mesh.texCoords() != null ? mesh.texCoords() : new float[0];
         int[]   indices   = mesh.indices()   != null ? mesh.indices()   : new int[0];
+
+        // Attachment points (OMO v1.7+)
+        List<SbeAttachmentPoint> attachmentPoints = new ArrayList<>();
+        for (OMOFormat.AttachmentPointEntry ap : omo.attachmentPoints()) {
+            attachmentPoints.add(new SbeAttachmentPoint(
+                    ap.id(), ap.name(), ap.parentPartId(), ap.parentPartName(),
+                    new Vector3f(ap.posX(), ap.posY(), ap.posZ()),
+                    new Vector3f(ap.rotX(), ap.rotY(), ap.rotZ()),
+                    new Vector3f(ap.scaleX(), ap.scaleY(), ap.scaleZ())));
+        }
+
         return new SbeModelGeometry(vertices, texCoords, indices, parts, materials,
-                computeRestMinY(vertices, indices));
+                computeRestMinY(vertices, indices), attachmentPoints);
     }
 
     /**

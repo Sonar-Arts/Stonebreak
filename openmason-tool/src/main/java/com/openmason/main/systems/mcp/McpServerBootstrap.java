@@ -41,6 +41,9 @@ public final class McpServerBootstrap {
             BoneEditingService boneEditor = new BoneEditingService(mainInterface);
             new BoneToolDefinitions(boneEditor, mapper).registerAll(registry);
 
+            AttachmentEditingService attachmentEditor = new AttachmentEditingService(mainInterface);
+            new AttachmentToolDefinitions(attachmentEditor, mapper).registerAll(registry);
+
             AnimationEditingService animationEditor = new AnimationEditingService(mainInterface);
             new AnimationToolDefinitions(animationEditor, mapper).registerAll(registry);
 

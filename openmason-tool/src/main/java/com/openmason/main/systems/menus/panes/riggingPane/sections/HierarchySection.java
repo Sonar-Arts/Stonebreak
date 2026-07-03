@@ -44,6 +44,10 @@ public class HierarchySection {
 
     private ModelPartManager partManager;
     private BoneStore boneStore;
+    private com.openmason.main.systems.skeleton.AttachmentStore attachmentStore;
+    private com.openmason.main.systems.skeleton.AttachmentPreviewStore attachmentPreviewStore;
+    /** Opens the "Test Model..." file dialog for the given socket id. */
+    private Consumer<String> onTestModelRequested;
 
     private Consumer<ModelPartDescriptor> onPartCreated;
     private Runnable onViewportInvalidationNeeded;
@@ -55,6 +59,12 @@ public class HierarchySection {
      * newly-selected bone id, or {@code null} when selection moves to a part / clears.
      */
     private Consumer<String> onBoneSelectionChanged;
+    /**
+     * Notifies the viewport when the attachment point (socket) selection changes.
+     * The argument is the newly-selected socket id, or {@code null} when selection
+     * moves to a part/bone or clears.
+     */
+    private Consumer<String> onAttachmentSelectionChanged;
 
     /** Currently selected bone (parts use the part manager's own selection set). */
     private String selectedBoneId;
@@ -67,14 +77,36 @@ public class HierarchySection {
         this.boneStore = boneStore;
     }
 
+    public void setAttachmentStore(com.openmason.main.systems.skeleton.AttachmentStore store) {
+        this.attachmentStore = store;
+    }
+
+    public void setAttachmentPreviewStore(com.openmason.main.systems.skeleton.AttachmentPreviewStore store) {
+        this.attachmentPreviewStore = store;
+    }
+
+    public void setOnTestModelRequested(Consumer<String> cb) {
+        this.onTestModelRequested = cb;
+    }
+
     public void setOnPartCreated(Consumer<ModelPartDescriptor> cb) { this.onPartCreated = cb; }
     public void setOnViewportInvalidationNeeded(Runnable cb) { this.onViewportInvalidationNeeded = cb; }
     public void setOnOpenAddPartSlideout(Runnable cb) { this.onOpenAddPartSlideout = cb; }
     public void setOnOpenAddBoneSlideout(Runnable cb) { this.onOpenAddBoneSlideout = cb; }
     public void setOnOpenPartTransformSlideout(Runnable cb) { this.onOpenPartTransformSlideout = cb; }
     public void setOnBoneSelectionChanged(Consumer<String> cb) { this.onBoneSelectionChanged = cb; }
+    public void setOnAttachmentSelectionChanged(Consumer<String> cb) { this.onAttachmentSelectionChanged = cb; }
 
     public String getSelectedBoneId() { return selectedBoneId; }
+
+    /**
+     * The selected socket id. Read from the {@link AttachmentStore} (the single
+     * source of truth) so selections made elsewhere — the socket list, the face
+     * panel's "Add Socket", MCP {@code attach_select} — highlight here too.
+     */
+    public String getSelectedAttachmentId() {
+        return attachmentStore != null ? attachmentStore.getSelectedAttachmentId() : null;
+    }
 
     public void render() {
         if (partManager == null || boneStore == null) {
@@ -83,8 +115,11 @@ public class HierarchySection {
 
         List<ModelPartDescriptor> parts = partManager.getAllParts();
         List<OMOFormat.BoneEntry> bones = boneStore.getBones();
+        List<OMOFormat.AttachmentPointEntry> sockets = attachmentStore != null
+                ? attachmentStore.getPoints() : List.of();
 
-        String headerText = "Hierarchy (" + parts.size() + " parts, " + bones.size() + " bones)";
+        String headerText = "Hierarchy (" + parts.size() + " parts, " + bones.size() + " bones"
+                + (sockets.isEmpty() ? "" : ", " + sockets.size() + " sockets") + ")";
         ImGuiComponents.renderCompactSectionHeader(headerText);
         ImGui.spacing();
 
@@ -104,6 +139,12 @@ public class HierarchySection {
                 renderBoneNode(b, parts, bones, allNodeIds, 0);
             }
         }
+        // Root sockets (model-root bound or orphaned parent) at top level.
+        for (OMOFormat.AttachmentPointEntry s : sockets) {
+            if (s.isModelRoot() || !allNodeIds.contains(s.parentPartId())) {
+                renderAttachmentNode(s, 0);
+            }
+        }
 
         ImGui.spacing();
         renderAddButtons();
@@ -112,7 +153,7 @@ public class HierarchySection {
     // ========== Add buttons ==========
 
     private void renderAddButtons() {
-        float w = (ImGui.getContentRegionAvailX() - ImGui.getStyle().getItemSpacingX()) * 0.5f;
+        float w = (ImGui.getContentRegionAvailX() - 2 * ImGui.getStyle().getItemSpacingX()) / 3f;
 
         ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
         ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 0.20f);
@@ -126,6 +167,10 @@ public class HierarchySection {
         ImGui.sameLine();
         if (ImGui.button("+ Bone", w, 0) && onOpenAddBoneSlideout != null) {
             onOpenAddBoneSlideout.run();
+        }
+        ImGui.sameLine();
+        if (ImGui.button("+ Socket", w, 0)) {
+            onSocketAdded();
         }
 
         ImGui.popStyleColor(4);
@@ -179,6 +224,7 @@ public class HierarchySection {
                     if (onBoneSelectionChanged != null) onBoneSelectionChanged.accept(null);
                 }
             }
+            clearAttachmentSelection();
             if (onOpenPartTransformSlideout != null) onOpenPartTransformSlideout.run();
         }
         if (isHidden) ImGui.popStyleColor();
@@ -226,7 +272,8 @@ public class HierarchySection {
 
         if (depth > 0) ImGui.unindent(depth * 12.0f);
 
-        // Children: parts whose parentId == this part, then bones whose parentBoneId == this part
+        // Children: parts whose parentId == this part, then bones whose parentBoneId == this part,
+        // then sockets whose parentPartId == this part
         for (ModelPartDescriptor child : allParts) {
             if (part.id().equals(child.parentId())) {
                 renderPartNode(child, allParts, allBones, allIds, depth + 1);
@@ -237,8 +284,141 @@ public class HierarchySection {
                 renderBoneNode(bone, allParts, allBones, allIds, depth + 1);
             }
         }
+        if (attachmentStore != null) {
+            for (OMOFormat.AttachmentPointEntry socket : attachmentStore.getPoints()) {
+                if (part.id().equals(socket.parentPartId())) {
+                    renderAttachmentNode(socket, depth + 1);
+                }
+            }
+        }
 
         ImGui.popID();
+    }
+
+    // ========== Attachment point (socket) rendering ==========
+
+    private void renderAttachmentNode(OMOFormat.AttachmentPointEntry socket, int depth) {
+        boolean isSelected = socket.id().equals(getSelectedAttachmentId());
+
+        ImGui.pushID(socket.id());
+        if (depth > 0) ImGui.indent(depth * 12.0f);
+
+        drawSelectionStripe(isSelected);
+
+        // Socket marker — cyan diamond-ish symbol via colored small button
+        ImGui.pushStyleColor(ImGuiCol.Text, 0.35f, 0.80f, 0.95f, 1.0f);
+        ImGui.smallButton(" <> ");
+        ImGui.popStyleColor();
+        ImGui.sameLine();
+
+        if (ImGui.selectable(socket.name(), isSelected)) {
+            selectAttachment(socket.id());
+        }
+
+        if (ImGui.beginPopupContextItem()) {
+            renderTestModelMenuItems(socket.id());
+            if (ImGui.menuItem("Copy ID")) {
+                ImGui.setClipboardText(socket.id());
+            }
+            if (ImGui.menuItem("Delete")) {
+                boolean wasSelected = socket.id().equals(getSelectedAttachmentId());
+                if (attachmentStore.remove(socket.id())) {
+                    if (attachmentPreviewStore != null) {
+                        attachmentPreviewStore.clear(socket.id());
+                    }
+                    if (wasSelected) {
+                        selectAttachment(null);
+                    }
+                    invalidateViewport();
+                }
+            }
+            ImGui.endPopup();
+        }
+
+        if (depth > 0) ImGui.unindent(depth * 12.0f);
+        ImGui.popID();
+    }
+
+    /**
+     * "Test Model..." / "Clear Test" context items for a socket — previews an
+     * attachable asset mounted on the socket so its transform can be tuned
+     * against the real model.
+     */
+    private void renderTestModelMenuItems(String socketId) {
+        if (onTestModelRequested != null && ImGui.menuItem("Test Model...")) {
+            onTestModelRequested.accept(socketId);
+        }
+        var preview = attachmentPreviewStore != null ? attachmentPreviewStore.get(socketId) : null;
+        if (preview != null && ImGui.menuItem("Clear Test (" + preview.label() + ")")) {
+            attachmentPreviewStore.clear(socketId);
+        }
+    }
+
+    /** Clears any socket selection when a part or bone is picked instead. */
+    private void clearAttachmentSelection() {
+        if (getSelectedAttachmentId() != null) {
+            if (attachmentStore != null) {
+                attachmentStore.setSelectedAttachmentId(null);
+            }
+            if (onAttachmentSelectionChanged != null) onAttachmentSelectionChanged.accept(null);
+        }
+    }
+
+    /**
+     * Select a socket (null clears), keeping part/bone selection mutually
+     * exclusive. Public so the socket list section routes its clicks through
+     * the same path. Selection state itself lives in the {@link AttachmentStore};
+     * the callback lets the viewport swap the gizmo target.
+     */
+    public void selectAttachment(String socketId) {
+        if (attachmentStore != null) {
+            attachmentStore.setSelectedAttachmentId(socketId);
+        }
+        if (socketId != null) {
+            partManager.deselectAllParts();
+            if (selectedBoneId != null) {
+                selectedBoneId = null;
+                if (onBoneSelectionChanged != null) onBoneSelectionChanged.accept(null);
+            }
+        }
+        if (onAttachmentSelectionChanged != null) onAttachmentSelectionChanged.accept(socketId);
+    }
+
+    /** Invoked by the "+ Socket" button: adds a socket bound to the selected part (or model root). */
+    private void onSocketAdded() {
+        if (attachmentStore == null) return;
+
+        String parentPartId = null;
+        String parentPartName = null;
+        Vector3f pos = new Vector3f();
+        var selectedIds = partManager.getSelectedPartIds();
+        if (!selectedIds.isEmpty()) {
+            String partId = selectedIds.iterator().next();
+            var partOpt = partManager.getPartById(partId);
+            if (partOpt.isPresent()) {
+                parentPartId = partId;
+                parentPartName = partOpt.get().name();
+                // Default the socket to the part's pivot so it appears on the part.
+                Matrix4f partWorld = partManager.getEffectiveWorldMatrix(partId);
+                if (partWorld != null) {
+                    pos = partWorld.transformPosition(new Vector3f());
+                }
+            }
+        }
+
+        OMOFormat.AttachmentPointEntry entry = new OMOFormat.AttachmentPointEntry(
+                UUID.randomUUID().toString(),
+                "socket_" + (attachmentStore.size() + 1),
+                parentPartId, parentPartName,
+                pos.x, pos.y, pos.z,
+                0f, 0f, 0f
+        );
+        attachmentStore.put(entry);
+        selectAttachment(entry.id());
+        invalidateViewport();
+
+        logger.info("Added socket '{}' (parent={})", entry.name(),
+                parentPartName == null ? "root" : parentPartName);
     }
 
     // ========== Bone rendering ==========
@@ -264,6 +444,7 @@ public class HierarchySection {
         if (ImGui.selectable(bone.name(), isSelected)) {
             selectedBoneId = bone.id();
             partManager.deselectAllParts();
+            clearAttachmentSelection();
             if (onBoneSelectionChanged != null) onBoneSelectionChanged.accept(bone.id());
         }
 

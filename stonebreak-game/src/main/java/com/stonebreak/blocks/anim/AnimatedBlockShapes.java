@@ -168,7 +168,7 @@ public final class AnimatedBlockShapes {
 
     /**
      * Part-local TRS: {@code T(pos) · T(origin) · R(rotXYZ°) · S(scale) · T(-origin)}.
-     * Mirrors {@code SbeEntityRenderer.partTransform} — the two must stay in
+     * Mirrors {@code SbePoseSolver.partTransform} — the two must stay in
      * lockstep or collision drifts from what is rendered.
      */
     private static Matrix4f partTransform(Matrix4f dest, Vector3f pos, Vector3f rotDeg,

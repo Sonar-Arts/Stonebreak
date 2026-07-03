@@ -15,12 +15,13 @@ import java.util.Objects;
  *   <li>1.4 - Added model-level transform (position, rotation, scale)</li>
  *   <li>1.5 - Added optional part hierarchy (parentId on PartEntry)</li>
  *   <li>1.6 - Added optional bone skeleton (BoneEntry list, boneId on PartEntry)</li>
+ *   <li>1.7 - Added optional attachment points (AttachmentPointEntry list)</li>
  * </ul>
  */
 public final class OMOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.6";
+    public static final String FORMAT_VERSION = "1.7";
 
     /** Minimum supported format version for reading */
     public static final String MIN_SUPPORTED_VERSION = "1.0";
@@ -341,6 +342,72 @@ public final class OMOFormat {
         /** True if this bone has no parent (i.e. it is a skeleton root). */
         public boolean isRoot() {
             return parentBoneId == null || parentBoneId.isBlank();
+        }
+    }
+
+    /**
+     * Attachment point (socket) entry (v1.7+).
+     *
+     * <p>Attachment points are pure transform markers; they carry no mesh. Each one
+     * names a local frame where another model can be visually mounted at runtime
+     * (accessories, armor pieces, stuck projectiles), following its host part
+     * through animation.
+     *
+     * <p>{@code pos}/{@code rot}/{@code scale} are authored in <b>rest-pose model
+     * space</b> — the same space the mesh vertices and part pivots live in (what
+     * the editor viewport shows), NOT relative to the host part's pivot. At runtime
+     * the socket's world frame — the model matrix an attached model is drawn with —
+     * is the host part's animated world matrix times
+     * {@code T(pos) · R_xyz(rot) · S(scale)}: the socket therefore translates,
+     * rotates, AND scales whatever is mounted on it (e.g. shrink a generic
+     * accessory model to fit a small mob's head).
+     *
+     * <p>The host part is resolved by {@code parentPartId} first, then by
+     * {@code parentPartName} as a fallback (the same id-then-name convention
+     * animation tracks use, since tool part UUIDs are not stable across re-imports).
+     * A null parent binds the socket to the model root frame.
+     *
+     * @param id             Stable unique identifier (UUID string)
+     * @param name           User-facing name and the runtime lookup key (e.g. "face")
+     * @param parentPartId   Host part id, or {@code null} for the model root
+     * @param parentPartName Host part name fallback, or {@code null}
+     * @param posX           Socket position X in rest-pose model space
+     * @param posY           Socket position Y
+     * @param posZ           Socket position Z
+     * @param rotX           Socket Euler rotation X in degrees (XYZ order)
+     * @param rotY           Socket Euler rotation Y in degrees
+     * @param rotZ           Socket Euler rotation Z in degrees
+     * @param scaleX         Scale X applied to the attached model (1 = unchanged)
+     * @param scaleY         Scale Y
+     * @param scaleZ         Scale Z
+     */
+    public record AttachmentPointEntry(
+            String id, String name,
+            String parentPartId, String parentPartName,
+            float posX, float posY, float posZ,
+            float rotX, float rotY, float rotZ,
+            float scaleX, float scaleY, float scaleZ
+    ) {
+        public AttachmentPointEntry {
+            Objects.requireNonNull(id, "attachment point id cannot be null");
+            Objects.requireNonNull(name, "attachment point name cannot be null");
+        }
+
+        /** Backward-compatible constructor for callers that don't set a scale (unit scale). */
+        public AttachmentPointEntry(
+                String id, String name,
+                String parentPartId, String parentPartName,
+                float posX, float posY, float posZ,
+                float rotX, float rotY, float rotZ
+        ) {
+            this(id, name, parentPartId, parentPartName,
+                    posX, posY, posZ, rotX, rotY, rotZ, 1f, 1f, 1f);
+        }
+
+        /** True if this socket is bound to the model root rather than a part. */
+        public boolean isModelRoot() {
+            return (parentPartId == null || parentPartId.isBlank())
+                    && (parentPartName == null || parentPartName.isBlank());
         }
     }
 

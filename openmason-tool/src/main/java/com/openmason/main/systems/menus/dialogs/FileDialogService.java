@@ -552,6 +552,18 @@ public class FileDialogService {
     }
 
     /**
+     * Show an open dialog for any attachable model asset — the formats the
+     * game's socket system can mount ({@code .sbe}, {@code .sbo}, {@code .omo}).
+     * Used by the rigging pane's "Test Model..." socket action.
+     */
+    public void showOpenAttachableModelDialog(OpenCallback callback) {
+        showNFDOpenDialogMultiFilter("Opening model file...",
+                new String[]{"Attachable Model", "Stonebreak Entity", "Stonebreak Object", "Open Mason Object"},
+                new String[]{"sbe,sbo,omo", "sbe", "sbo", "omo"},
+                "Selected attachable model", callback);
+    }
+
+    /**
      * Callback interface for SBE save operations.
      */
     public interface SaveSBECallback {

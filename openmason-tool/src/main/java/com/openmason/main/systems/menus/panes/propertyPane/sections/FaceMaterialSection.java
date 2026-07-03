@@ -152,7 +152,117 @@ public class FaceMaterialSection implements IPanelSection {
         // Edit Texture button — opens the face in the texture editor
         renderEditTextureButton(selectionCount, firstFaceId, materialName);
 
+        // Add Socket button — creates an attachment point on this face
+        renderAddSocketButton(selectionCount, firstFaceId);
+
         ImGui.spacing();
+    }
+
+    /**
+     * Render the "Add Socket" button: creates an attachment point (socket) at
+     * the selected face's centroid, oriented so the socket's forward (+Z) axis
+     * points along the face normal, parented to the part that owns the face.
+     * The new socket is selected so the gizmo can adjust it immediately.
+     *
+     * @param selectionCount number of selected faces
+     * @param faceId         first selected face ID
+     */
+    private void renderAddSocketButton(int selectionCount, int faceId) {
+        boolean canAdd = selectionCount == 1 && viewportConnector.getAttachmentStore() != null;
+
+        if (!canAdd) {
+            ImGui.beginDisabled();
+        }
+
+        if (ImGui.button("Add Socket")) {
+            handleAddSocket(faceId);
+        }
+
+        if (!canAdd) {
+            ImGui.endDisabled();
+        }
+
+        if (ImGui.isItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) {
+            if (selectionCount != 1) {
+                ImGui.setTooltip("Select exactly one face to place a socket on it");
+            } else {
+                ImGui.setTooltip("Create an attachment point at this face's center,\n"
+                        + "facing along the face normal. Other models attach to\n"
+                        + "sockets at runtime (accessories, armor, ...).");
+            }
+        }
+    }
+
+    /**
+     * Create a socket on the given face: centroid position, normal-aligned
+     * rotation (roll-free Euler XYZ mapping the socket's local +Z onto the
+     * face normal), host part resolved from the face's mesh range.
+     */
+    private void handleAddSocket(int faceId) {
+        var store = viewportConnector.getAttachmentStore();
+        var faceData = viewportConnector.extractFaceData();
+        if (store == null || faceData == null || faceId < 0 || faceId >= faceData.faceCount()) {
+            logger.warn("Cannot add socket — face data unavailable for face {}", faceId);
+            return;
+        }
+
+        int startFloat = faceData.faceOffsets()[faceId];
+        int vertexCount = faceData.verticesPerFace()[faceId];
+        if (vertexCount < 3) {
+            logger.warn("Cannot add socket — face {} has fewer than 3 vertices", faceId);
+            return;
+        }
+        float[] facePositions = new float[vertexCount * 3];
+        System.arraycopy(faceData.positions(), startFloat, facePositions, 0, vertexCount * 3);
+
+        // Centroid of the face's boundary vertices (rest-pose model space —
+        // the same space sockets are authored in).
+        org.joml.Vector3f center = new org.joml.Vector3f();
+        for (int v = 0; v < vertexCount; v++) {
+            center.add(facePositions[v * 3], facePositions[v * 3 + 1], facePositions[v * 3 + 2]);
+        }
+        center.div(vertexCount);
+
+        // Roll-free Euler XYZ rotation aligning the socket's local +Z (its
+        // forward tick, the axis an attached model faces along) with the face
+        // normal n: rotX = atan2(-n.y, n.z), rotY = atan2(n.x, sqrt(n.y²+n.z²)).
+        org.joml.Vector3f n = com.openmason.engine.rendering.model.gmr.uv.FaceProjectionUtil
+                .computeRobustFaceNormal(facePositions, vertexCount);
+        float rotX = (float) Math.toDegrees(Math.atan2(-n.y, n.z));
+        float rotY = (float) Math.toDegrees(Math.atan2(n.x, Math.sqrt(n.y * n.y + n.z * n.z)));
+
+        String partId = viewportConnector.getPartIdForFace(faceId);
+        String partName = viewportConnector.getPartNameForFace(faceId);
+
+        var entry = new com.openmason.engine.format.omo.OMOFormat.AttachmentPointEntry(
+                java.util.UUID.randomUUID().toString(),
+                uniqueSocketName(store, "socket_face_" + faceId),
+                partId, partName,
+                center.x, center.y, center.z,
+                rotX, rotY, 0f);
+        store.put(entry);
+        viewportConnector.selectAttachment(entry.id());
+
+        logger.info("Added socket '{}' on face {} (part={}, normal=({}, {}, {}))",
+                entry.name(), faceId, partName == null ? "root" : partName, n.x, n.y, n.z);
+    }
+
+    /** Appends _2, _3, ... if the base name is already taken (names are runtime lookup keys). */
+    private static String uniqueSocketName(com.openmason.main.systems.skeleton.AttachmentStore store,
+                                           String baseName) {
+        java.util.Set<String> taken = new java.util.HashSet<>();
+        for (var p : store.getPoints()) {
+            taken.add(p.name().toLowerCase());
+        }
+        if (!taken.contains(baseName.toLowerCase())) {
+            return baseName;
+        }
+        for (int i = 2; ; i++) {
+            String candidate = baseName + "_" + i;
+            if (!taken.contains(candidate.toLowerCase())) {
+                return candidate;
+            }
+        }
     }
 
     @Override

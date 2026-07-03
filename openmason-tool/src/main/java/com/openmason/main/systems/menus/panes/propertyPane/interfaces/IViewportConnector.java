@@ -252,6 +252,28 @@ public interface IViewportConnector {
     String getPartNameForFace(int faceId);
 
     /**
+     * Resolve which model part a face belongs to, by stable part id.
+     *
+     * @param faceId face identifier
+     * @return part id (UUID string), or null if the face has no part mapping
+     */
+    String getPartIdForFace(int faceId);
+
+    /**
+     * The active session's attachment point (socket) store, or null when the
+     * viewport is not connected. Used by face-mode UI to create sockets.
+     */
+    com.openmason.main.systems.skeleton.AttachmentStore getAttachmentStore();
+
+    /**
+     * Select an attachment point (socket) in the viewport — swaps the gizmo's
+     * transform target so the new socket can be adjusted immediately.
+     *
+     * @param attachmentId socket id, or null to clear the selection
+     */
+    void selectAttachment(String attachmentId);
+
+    /**
      * Compute the 2D polygon outline for a face, projected into normalized local space.
      *
      * <p>Projects the face's 3D vertices onto its tangent frame and normalizes

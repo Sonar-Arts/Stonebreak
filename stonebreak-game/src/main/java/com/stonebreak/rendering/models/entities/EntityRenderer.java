@@ -397,14 +397,23 @@ public class EntityRenderer {
                 && mob.getAI() != null) {
             com.stonebreak.mobs.sbe.SbeEntityAsset asset =
                     com.stonebreak.mobs.sbe.SbeEntityRegistry.get(entityType.getSbeObjectId());
+            String stateName =
+                    com.stonebreak.mobs.sbe.MobStateMapping.sbeState(mob.getAI().getCurrentState());
+            float clipTime =
+                    mob.getAI().clipTime(mob.getAnimationController().getTotalAnimationTime());
+            Vector3f anchoredPos = groundAnchoredPosition(mob, asset);
             sbeEntityRenderer.render(
                     asset,
                     mob.getTextureVariant(),
-                    com.stonebreak.mobs.sbe.MobStateMapping.sbeState(mob.getAI().getCurrentState()),
-                    mob.getAI().clipTime(mob.getAnimationController().getTotalAnimationTime()),
-                    groundAnchoredPosition(mob, asset),
+                    stateName,
+                    clipTime,
+                    anchoredPos,
                     mob.getRotation().y,
                     mob.getScale(),
+                    viewMatrix, projectionMatrix, world, cameraPos);
+            renderAttachments(mob, asset, mob.getTextureVariant(),
+                    com.stonebreak.mobs.sbe.AnimState.single(stateName, clipTime),
+                    anchoredPos, mob.getRotation().y, mob.getScale(), 0f, 0f,
                     viewMatrix, projectionMatrix, world, cameraPos);
             return;
         }
@@ -493,7 +502,8 @@ public class EntityRenderer {
                 overlayWeight,
                 ensureLocalPlayerColor());
 
-        renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, world, cameraPos);
+        renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, world, cameraPos,
+                com.stonebreak.mobs.sbe.EntityAttachments.LOCAL_PLAYER);
     }
 
     /**
@@ -551,7 +561,7 @@ public class EntityRenderer {
                 overlayWeight,
                 untexturedTint);
 
-        renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, world, cameraPos);
+        renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, world, cameraPos, rp);
     }
 
     /**
@@ -565,6 +575,19 @@ public class EntityRenderer {
                                     PlayerFigureRenderState figure,
                                     Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                     com.stonebreak.world.World world, Vector3f cameraPos) {
+        renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, world, cameraPos, null);
+    }
+
+    /**
+     * Variant with an attachment key: models attached to that key's sockets
+     * ({@link com.stonebreak.mobs.sbe.EntityAttachments}) render after the
+     * figure; null skips attachments (UI previews).
+     */
+    private void renderPlayerFigure(com.stonebreak.mobs.sbe.SbeEntityAsset asset,
+                                    PlayerFigureRenderState figure,
+                                    Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                    com.stonebreak.world.World world, Vector3f cameraPos,
+                                    Object attachmentKey) {
         com.stonebreak.mobs.sbe.AnimState anim = figure.hasOverlay()
                 ? new com.stonebreak.mobs.sbe.AnimState(figure.stateName(), figure.animTime(),
                         java.util.List.of(new com.stonebreak.mobs.sbe.AnimState.Overlay(
@@ -581,6 +604,54 @@ public class EntityRenderer {
                     asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
                     anim, figure.position(), figure.yaw(), figure.scale(),
                     viewMatrix, projectionMatrix, figure.tint(), figure.headYaw(), figure.headPitch());
+        }
+
+        if (attachmentKey != null) {
+            renderAttachments(attachmentKey, asset,
+                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT, anim,
+                    figure.position(), figure.yaw(), figure.scale(),
+                    figure.headYaw(), figure.headPitch(),
+                    viewMatrix, projectionMatrix, world, cameraPos);
+        }
+    }
+
+    /** Flat fallback tint for attached models whose OMO carries no materials. */
+    private static final Vector4f ATTACHMENT_FALLBACK_COLOR = new Vector4f(0.85f, 0.85f, 0.85f, 1f);
+
+    /**
+     * Draws every model attached to {@code entityKey}'s sockets
+     * ({@link com.stonebreak.mobs.sbe.EntityAttachments}), posed at the socket's
+     * world frame for the host's current animation state — so attachments track
+     * walk/graze/head-turn exactly. Sockets that no longer resolve to a host
+     * part are skipped (never drawn at the model origin).
+     */
+    private void renderAttachments(Object entityKey,
+                                   com.stonebreak.mobs.sbe.SbeEntityAsset hostAsset,
+                                   String variantName, com.stonebreak.mobs.sbe.AnimState anim,
+                                   Vector3f position, float yawDegrees, Vector3f scale,
+                                   float headYawDeg, float headPitchDeg,
+                                   Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                   com.stonebreak.world.World world, Vector3f cameraPos) {
+        java.util.List<com.stonebreak.mobs.sbe.EntityAttachments.Attached> attached =
+                com.stonebreak.mobs.sbe.EntityAttachments.get(entityKey);
+        if (attached.isEmpty() || hostAsset == null) return;
+
+        Matrix4f base = SbePoseSolver.baseMatrix(position, yawDegrees, scale);
+        Matrix4f socket = new Matrix4f();
+        for (com.stonebreak.mobs.sbe.EntityAttachments.Attached a : attached) {
+            if (SbePoseSolver.socketWorldMatrix(hostAsset, variantName, anim, base,
+                    headYawDeg, headPitchDeg, a.socketName(), socket) == null) {
+                continue;
+            }
+            if (isTextured(a.asset())) {
+                sbeEntityRenderer.render(a.asset(),
+                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT, null, socket,
+                        viewMatrix, projectionMatrix, world, cameraPos, 0f, 0f);
+            } else {
+                sbeEntityRenderer.renderColored(a.asset(),
+                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT, null, socket,
+                        viewMatrix, projectionMatrix, ATTACHMENT_FALLBACK_COLOR, 0f, 0f);
+            }
         }
     }
 

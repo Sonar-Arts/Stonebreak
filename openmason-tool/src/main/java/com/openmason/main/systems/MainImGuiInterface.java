@@ -322,6 +322,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     private void setupRiggingPane() {
         try {
             riggingPaneImGui = new RiggingPaneImGui();
+            riggingPaneImGui.setFileDialogService(fileDialogService);
             riggingPaneImGui.setViewport(viewport3D);
         } catch (Exception e) {
             logger.error("Failed to setup rigging pane", e);

@@ -118,6 +118,8 @@ public class ModelOperationService {
             // Load into viewport if available
             if (viewport != null) {
                 viewport.getBoneStore().clear();
+                viewport.getAttachmentStore().clear();
+                viewport.getAttachmentPreviewStore().clearAll();
                 viewport.loadModel(currentEditableModel);
                 statusService.updateStatus("Blank model created and loaded: " + currentEditableModel.getName());
             } else {
@@ -254,6 +256,16 @@ public class ModelOperationService {
                 if (boneStore != null && !boneStore.isEmpty()) {
                     omoSerializer.setBoneEntries(boneStore.getBones());
                     logger.info("Saving {} bone entries", boneStore.size());
+                }
+            }
+
+            // Extract and set attachment points (v1.7+)
+            if (viewport != null) {
+                com.openmason.main.systems.skeleton.AttachmentStore attachmentStore =
+                        viewport.getAttachmentStore();
+                if (attachmentStore != null && !attachmentStore.isEmpty()) {
+                    omoSerializer.setAttachmentPointEntries(attachmentStore.getPoints());
+                    logger.info("Saving {} attachment point entries", attachmentStore.size());
                 }
             }
 
@@ -404,6 +416,18 @@ public class ModelOperationService {
                     viewport.getBoneStore().setBones(boneEntries);
                     if (boneEntries != null && !boneEntries.isEmpty()) {
                         logger.info("Loaded {} bone entries", boneEntries.size());
+                    }
+                }
+
+                // Restore attachment points (v1.7+) — empty/null wipes any prior session sockets
+                if (viewport != null) {
+                    List<OMOFormat.AttachmentPointEntry> attachmentPoints =
+                            omoDeserializer.getLastLoadedAttachmentPointEntries();
+                    viewport.getAttachmentStore().setPoints(attachmentPoints);
+                    // Socket test previews belong to the previous model's sockets
+                    viewport.getAttachmentPreviewStore().clearAll();
+                    if (attachmentPoints != null && !attachmentPoints.isEmpty()) {
+                        logger.info("Loaded {} attachment point entries", attachmentPoints.size());
                     }
                 }
 

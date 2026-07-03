@@ -298,6 +298,30 @@ public class ViewportAdapter implements IViewportConnector {
     }
 
     @Override
+    public String getPartIdForFace(int faceId) {
+        if (viewport == null) return null;
+        var renderer = viewport.getModelRenderer();
+        if (renderer == null) return null;
+        var partManager = renderer.getPartManager();
+        if (partManager == null) return null;
+        return partManager.getPartForFace(faceId)
+                .map(com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor::id)
+                .orElse(null);
+    }
+
+    @Override
+    public com.openmason.main.systems.skeleton.AttachmentStore getAttachmentStore() {
+        return viewport != null ? viewport.getAttachmentStore() : null;
+    }
+
+    @Override
+    public void selectAttachment(String attachmentId) {
+        if (viewport != null) {
+            viewport.onAttachmentSelectionChanged(attachmentId);
+        }
+    }
+
+    @Override
     public float[][] computeFacePolygon2D(int faceId) {
         if (viewport == null) {
             return null;
