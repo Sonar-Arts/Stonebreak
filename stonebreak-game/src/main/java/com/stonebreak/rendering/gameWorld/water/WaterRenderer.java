@@ -31,6 +31,15 @@ import static org.lwjgl.opengl.GL11.*;
  * {@code CloudRenderer} pattern: owns its shader, saves/restores all GL state
  * it touches. Face culling is disabled so the surface is visible from below
  * ({@code gl_FrontFacing} flips the normal in the fragment shader).
+ *
+ * <p>Draws in two sub-passes so water is self-occluding (like ice): a
+ * depth-only prepass writes the nearest water surface, then the color pass
+ * (depth writes off, LEQUAL) blends exactly one water layer — water faces are
+ * never visible through other water. Side effect: the nearest water surface's
+ * depth remains in the depth buffer, so passes drawn after this one are
+ * correctly occluded by water in front of them (WorldRenderer orders
+ * see-through-water content — transparent drops, crack overlay — before this
+ * pass).
  */
 public class WaterRenderer {
 
@@ -88,15 +97,25 @@ public class WaterRenderer {
         int currentDepthFunc = glGetInteger(GL_DEPTH_FUNC);
         int currentBlendSrc = glGetInteger(GL_BLEND_SRC);
         int currentBlendDst = glGetInteger(GL_BLEND_DST);
+        boolean polygonOffsetEnabled = glIsEnabled(GL_POLYGON_OFFSET_FILL);
+        float currentOffsetFactor = glGetFloat(GL_POLYGON_OFFSET_FACTOR);
+        float currentOffsetUnits = glGetFloat(GL_POLYGON_OFFSET_UNITS);
 
-        // Translucent water: depth-test against the world, no depth writes,
-        // standard alpha blend, no culling (underwater views see back faces).
+        // Translucent water: depth-test against the world, standard alpha
+        // blend, no culling (underwater views see back faces).
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL);
-        glDepthMask(false);
         glDisable(GL_CULL_FACE);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        // Pull water fragments a hair toward the camera: water side faces lie
+        // exactly on cell-boundary planes shared with depth-written cutout
+        // geometry (leaf/glass side faces) and bottom faces can coincide with
+        // partial-block tops — without a bias those coplanar pairs z-fight as
+        // sparkling speckles. Sub-texel offset, invisible otherwise. Applied
+        // to both sub-passes below so their depths match exactly.
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(-1.0f, -1.0f);
 
         shader.bind();
         shader.setUniform("uProjection", projection);
@@ -107,11 +126,22 @@ public class WaterRenderer {
         shader.setUniform("uAmbientLight", ambientLight);
         shader.setUniform("uCameraPos", cameraPos);
 
-        for (Chunk chunk : chunksBackToFront) {
-            if (chunk.hasWaterMesh()) {
-                chunk.renderWater();
-            }
-        }
+        // Two sub-passes make water self-occluding, like ice: looking through
+        // water never shows other water faces (flowing step faces, far walls,
+        // sealed junction overlaps).
+        //
+        // Pass 1 — depth-only prepass: writes the nearest water surface into
+        // the depth buffer (no color output).
+        glColorMask(false, false, false, false);
+        glDepthMask(true);
+        drawWaterMeshes(chunksBackToFront);
+
+        // Pass 2 — color pass: no depth writes; LEQUAL passes only fragments
+        // on that nearest surface, so exactly one water layer blends.
+        glColorMask(true, true, true, true);
+        glDepthMask(false);
+        drawWaterMeshes(chunksBackToFront);
+
         GL30.glBindVertexArray(0);
 
         shader.unbind();
@@ -135,6 +165,20 @@ public class WaterRenderer {
         }
         glDepthMask(depthMaskEnabled);
         glDepthFunc(currentDepthFunc);
+        if (polygonOffsetEnabled) {
+            glEnable(GL_POLYGON_OFFSET_FILL);
+        } else {
+            glDisable(GL_POLYGON_OFFSET_FILL);
+        }
+        glPolygonOffset(currentOffsetFactor, currentOffsetUnits);
+    }
+
+    private void drawWaterMeshes(List<Chunk> chunksBackToFront) {
+        for (Chunk chunk : chunksBackToFront) {
+            if (chunk.hasWaterMesh()) {
+                chunk.renderWater();
+            }
+        }
     }
 
     /** Releases the shader. Water mesh handles are owned by their chunks. */

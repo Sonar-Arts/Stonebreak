@@ -385,7 +385,13 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
         if (!standsOnWater) {
             return defaultBottom;
         }
-        float sealed = (blockY - 1) + neighborBelowHeight - SIDE_CLIP_WAVE_OVERLAP;
+        // Never seal below the cell directly under us: deeper regions are
+        // unknown geometry (a solid two below would put this face coplanar
+        // with that solid's side face — z-fighting). The GPU wave clamp keeps
+        // every surface at or above its block base + MIN_WATER_SURFACE, so
+        // the cell floor is always deep enough to stay sealed.
+        float sealed = Math.max(blockY - 1,
+                (blockY - 1) + neighborBelowHeight - SIDE_CLIP_WAVE_OVERLAP);
         return Math.min(defaultBottom, sealed);
     }
 

@@ -291,10 +291,11 @@ public class MmsCcoAdapter {
 
     /**
      * Face-local texture coordinates for water faces. The dedicated water
-     * shader generates its surface pattern procedurally, so UVs only need to
-     * parameterize the face for flow scrolling: U spans the face horizontally,
-     * V runs DOWNWARD on side faces (v=0 at the top edge) so a falling column
-     * scrolls with simple {@code v - time}. Vertex winding in
+     * shader generates its surface pattern procedurally and derives its flow
+     * coordinates in WORLD space (seamless across neighboring columns), so
+     * these UVs are currently unread by the fragment stage — they stay in the
+     * layout as the face-local parameterization (U across, V downward, v=0 at
+     * the top edge) for debugging/future use. Vertex winding in
      * {@link MmsWaterGenerator#generateFaceVertices}: top face and all side
      * faces share the (v0,v1,v2,v3) = (·,·,top,top) order below; the bottom
      * face winds the other way.

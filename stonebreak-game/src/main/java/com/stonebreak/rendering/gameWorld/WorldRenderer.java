@@ -200,27 +200,33 @@ public class WorldRenderer {
         // Render transparent pass (translucent solids like ice)
         renderTransparentPass(visibleChunks, player);
 
+        // Transparent drops and the crack overlay draw BEFORE water: the water
+        // pass depth-prepasses its nearest surface into the depth buffer (to
+        // self-occlude — no water visible through water), so anything drawn
+        // after it is hidden behind that surface. Drawing these first keeps
+        // underwater drops and cracks visible, correctly tinted by the water
+        // that blends over them.
+        renderTransparentDrops(player);
+        renderWorldOverlays(player);
+
         // Dedicated water pass — draws every chunk's water mesh with the water
-        // shader, in the exact compositing slot the old water sub-pass held
-        // (after ice, before transparent drops so drops in water tint right).
-        // Reuses the back-to-front order renderTransparentPass just computed.
+        // shader, in the compositing slot the old water sub-pass held (after
+        // ice). Reuses the back-to-front order renderTransparentPass computed.
+        // NOTE: leaves the nearest water surface's depth in the depth buffer,
+        // so later passes (fire bolts, particles) are occluded by water in
+        // front of them — physically correct compositing.
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, sunDirection,
                 ambientLightLevel, waterAnimationEnabled);
         checkGLError("After water pass");
 
-        // Render transparent drops AFTER the transparent pass
-        renderTransparentDrops(player);
-
         // Restore OpenGL state after passes
         restoreGLStateAfterPasses();
 
-        // Render world-specific overlays and effects
-        renderWorldOverlays(player);
-
-        // Render fire bolt cores after the transparent water pass so they draw
-        // over water instead of being blended under it. Depth testing still
-        // lets opaque blocks in front occlude them correctly.
+        // Render fire bolt cores after the water pass: bolts in front of water
+        // draw over it; bolts behind a water surface are depth-occluded by the
+        // water prepass (physically correct). Opaque blocks in front still
+        // occlude them via depth testing.
         renderFireBoltCores(player);
 
         // Render fire bolt trail particles

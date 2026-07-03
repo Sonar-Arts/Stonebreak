@@ -3,8 +3,9 @@
 //
 // Consumes the water mesh emitted by MmsCcoAdapter.addWaterBlockWithCulling.
 // Attribute slots reuse the MmsBufferLayout locations with WATER semantics:
-//   location 1 (tex)   = face-local UV in [0,1], V running DOWNWARD on side
-//                        faces so flow scroll is a simple v - time
+//   location 1 (tex)   = face-local UV in [0,1] (V downward on side faces);
+//                        currently unread by the fragment stage, which derives
+//                        flow coordinates in world space instead
 //   location 3 (flags) = x: surface-height fraction (0..0.875, sewn corner
 //                        heights baked by MmsWaterGenerator), y: falling flag,
 //                        z: source flag, w: light (currently 1.0)
