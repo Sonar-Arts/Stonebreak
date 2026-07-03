@@ -903,9 +903,30 @@ public class Game {
     /** Serializes the world swap between competing build threads. */
     private final Object clientWorldBuildLock = new Object();
 
+    /**
+     * True from {@link #startClientWorld} until the build thread has swapped the new world
+     * in via {@code replaceWorldInstance} (world + entity manager fully replaced). While
+     * pending, {@code Game.getWorld()}/{@code getEntityManager()} may still point at the
+     * PREVIOUS session's instances — applying inbound network state against them would
+     * orphan it (added to a world/manager that is about to be discarded). Client handlers
+     * gate on {@link #isClientWorldReady()} and buffer until the swap lands.
+     */
+    private volatile boolean clientWorldBuildPending = false;
+
     /** Invalidate any in-flight client-world build (called from session shutdown). */
     public void cancelClientWorldBuild() {
         clientWorldBuildGeneration.incrementAndGet();
+        clientWorldBuildPending = false;
+    }
+
+    /**
+     * True when inbound network state can be applied to {@code Game.getWorld()} /
+     * {@code Game.getEntityManager()}: both exist AND no client-world build is mid-swap.
+     */
+    public static boolean isClientWorldReady() {
+        Game g = instance;
+        return g != null && !g.clientWorldBuildPending
+                && g.world != null && g.entityManager != null;
     }
 
     public void startClientWorld(String worldName, long seed, org.joml.Vector3f spawn) {
@@ -924,6 +945,7 @@ public class Game {
             ls.show();
         }
         final int generation = clientWorldBuildGeneration.incrementAndGet();
+        clientWorldBuildPending = true;
         new Thread(() -> buildClientWorld(generation, seed, spawn), "ClientWorld-Build").start();
     }
 
@@ -943,6 +965,7 @@ public class Game {
                     return;
                 }
                 worldLifecycle.replaceWorldInstance(renderWorld); // fresh player + world components
+                clientWorldBuildPending = false; // world + entity manager are now the new session's
             }
             renderWorld.setSpawnPosition(spawn);
             Player p = Game.getPlayer();
@@ -1001,9 +1024,16 @@ public class Game {
         } catch (Exception e) {
             System.err.println("[CLIENT-WORLD] Failed to build render world: " + e.getMessage());
             e.printStackTrace();
-            LoadingScreen ls = getLoadingScreen();
-            if (ls != null && buildStillCurrent(generation)) {
-                ls.hide();
+            if (buildStillCurrent(generation)) {
+                // The render world is unusable and Game.getWorld() still points at the
+                // PREVIOUS session's world — clearing the pending flag here would let the
+                // client handlers drain buffered chunks/spawns into it. Tear the session
+                // down and return to the menu instead (mirrors the disconnect path; the
+                // session shutdown also clears clientWorldBuildPending).
+                runOnMainThread(() -> {
+                    com.stonebreak.network.MultiplayerSession.shutdown();
+                    setState(GameState.MAIN_MENU);
+                });
             }
         }
     }

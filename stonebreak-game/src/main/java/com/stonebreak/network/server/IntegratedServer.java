@@ -293,7 +293,7 @@ public final class IntegratedServer {
                 chunkHandler.handleChunkHashes(sp, ch.entries(), ctx);
             case com.stonebreak.network.packet.entity.EntityResyncC2S ignored2 -> {
                 if (sp.allowResync()) {
-                    entityHandler.onPeerJoined(sp); // idempotent client-side (known ids ignored)
+                    entityHandler.onPeerResync(sp, ctx); // idempotent client-side (known ids ignored)
                 }
             }
             case com.stonebreak.network.packet.world.TimeSetC2S ts -> handleTimeSet(sp, ts);
@@ -340,6 +340,7 @@ public final class IntegratedServer {
                 existing.send(new KickS2C("You logged in from another location."));
                 persistPlayer(existing);
                 ctx.removePlayer(existing);
+                entityHandler.onPeerLeft(existing);
                 ctx.broadcastExcept(sp, new PlayerLeaveS2C(stableId), false);
                 existing.disconnect();
             } else {
@@ -378,7 +379,7 @@ public final class IntegratedServer {
 
         // 4. Mark handshaked and deliver per-domain join snapshots.
         sp.markHandshakeDone();
-        entityHandler.onPeerJoined(sp);
+        entityHandler.onPeerJoined(sp, ctx);
         playerHandler.onPeerJoined(sp, ctx);
 
         // 5. Restore a REMOTE player's saved inventory/stats (the local player is restored
@@ -437,6 +438,7 @@ public final class IntegratedServer {
             // Persist only the LIVE session's data — a stale takeover victim persisting here
             // would overwrite the new session's fresher blob (takeover already saved it once).
             persistPlayer(sp);
+            entityHandler.onPeerLeft(sp);
             ctx.broadcast(new PlayerLeaveS2C(sp.playerId()), false);
             System.out.println("[SERVER] Player " + sp.playerId() + " (" + sp.username() + ") left.");
         }

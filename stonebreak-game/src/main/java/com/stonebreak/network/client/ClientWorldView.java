@@ -183,6 +183,7 @@ public final class ClientWorldView {
     private void clientTick() {
         chunkHandler.tick();
         entityHandler.tick();
+        playerHandler.tick();
         sendLocalPlayerState();
         sendPlayerDataIfDue();
         if (++auditCounter >= AUDIT_PERIOD_TICKS) {
@@ -323,6 +324,12 @@ public final class ClientWorldView {
     private void sendLocalPlayerState() {
         Player p = Game.getPlayer();
         if (p == null || connection == null) {
+            return;
+        }
+        // During a client-world rebuild (rejoin) Game.getPlayer() is still the PREVIOUS
+        // session's player — reporting its stale position would misdirect the server's
+        // chunk streaming and reach checks until the swap lands.
+        if (!Game.isClientWorldReady()) {
             return;
         }
         Vector3f pos = p.getPosition();

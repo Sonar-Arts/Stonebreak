@@ -371,9 +371,16 @@ public class WorldChunkStore {
             Thread.currentThread().interrupt();
         }
 
-        // Clean up loaded chunks
-        chunks.values().forEach(chunk -> {
-            if (chunk != null) chunk.cleanupGpuResources();
+        // Clean up loaded chunks. GL deletion MUST happen on the main OpenGL thread —
+        // cleanup() can be reached from the "ClientWorld-Build" thread (world swap on
+        // reconnect), where an inline glDeleteVertexArrays aborts the JVM ("No context is
+        // current"). runOnMainThread runs the loop inline when we're already on the main
+        // thread (shutdown / quit-to-menu), so those paths keep their exact old behavior.
+        final List<Chunk> chunksToRelease = new ArrayList<>(chunks.values());
+        Game.getInstance().runOnMainThread(() -> {
+            for (Chunk chunk : chunksToRelease) {
+                if (chunk != null) chunk.cleanupGpuResources();
+            }
         });
         chunks.clear();
         positionCache.clear();

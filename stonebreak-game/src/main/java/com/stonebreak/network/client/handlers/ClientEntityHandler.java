@@ -51,7 +51,10 @@ public final class ClientEntityHandler {
     }
 
     public void applySpawn(EntitySpawnS2C s) {
-        if (Game.getWorld() == null || Game.getEntityManager() == null) {
+        // isClientWorldReady (not bare null checks): during a world REBUILD (rejoin) the
+        // old world/manager are still non-null — spawning into them orphans the shadow in
+        // an entity manager that is about to be replaced (permanently invisible entity).
+        if (!Game.isClientWorldReady()) {
             pendingSpawns.add(s);
             return;
         }
@@ -91,6 +94,10 @@ public final class ClientEntityHandler {
     }
 
     public void applyDespawn(int networkId) {
+        // A despawn can arrive while its spawn is still buffered (world rebuild, or a fast
+        // interest enter/exit flap) — drop the buffered spawn too or it would later create
+        // a ghost the server considers gone.
+        pendingSpawns.removeIf(s -> s.networkId() == networkId);
         Entity e = byNetworkId.remove(networkId);
         if (e != null && Game.getEntityManager() != null) {
             Game.getEntityManager().removeEntity(e);
@@ -98,6 +105,12 @@ public final class ClientEntityHandler {
     }
 
     public void applyDelta(EntityMoveS2C m) {
+        // While the world is rebuilding, spawns sit buffered in pendingSpawns — every move
+        // would look like an "unknown id" and trip the resync heuristic for nothing. Drop
+        // them; the ≤2 s periodic teleport rebases the shadow once the spawn drains.
+        if (!Game.isClientWorldReady()) {
+            return;
+        }
         Entity e = byNetworkId.get(m.networkId());
         if (e == null) {
             noteUnknownMove();
@@ -156,7 +169,7 @@ public final class ClientEntityHandler {
     }
 
     public void tick() {
-        if (pendingSpawns.isEmpty() || Game.getWorld() == null || Game.getEntityManager() == null) {
+        if (pendingSpawns.isEmpty() || !Game.isClientWorldReady()) {
             return;
         }
         Iterator<EntitySpawnS2C> it = pendingSpawns.iterator();

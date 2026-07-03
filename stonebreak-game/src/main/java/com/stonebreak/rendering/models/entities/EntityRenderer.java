@@ -359,6 +359,7 @@ public class EntityRenderer {
     public void renderEntity(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                             com.stonebreak.world.World world, Vector3f cameraPos) {
         if (!initialized || !entity.isAlive()) return;
+        if (!isInRenderableChunk(entity, world)) return;
 
         EntityType entityType = entity.getType();
 
@@ -689,9 +690,11 @@ public class EntityRenderer {
         float cullRadiusSq = cullRadius * cullRadius;
         com.stonebreak.mobs.entities.EntityManager entityManager =
                 com.stonebreak.core.Game.getEntityManager();
+        com.stonebreak.world.World world = com.stonebreak.core.Game.getWorld();
         if (entityManager != null) {
             for (Entity entity : entityManager.getAllEntities()) {
                 if (!entity.isAlive()) continue;
+                if (!isInRenderableChunk(entity, world)) continue;
                 Vector3f pos = entity.getPosition();
                 float dx = pos.x - cascadeCenter.x;
                 float dz = pos.z - cascadeCenter.z;
@@ -715,6 +718,24 @@ public class EntityRenderer {
                         lightView, lightProj, SHADOW_CASTER_COLOR);
             }
         }
+    }
+
+    /**
+     * Network-shadow entities (remote players, replicated mobs/drops) are intentionally
+     * NOT removed when their chunk unloads client-side (the server owns their lifecycle —
+     * see EntityManager.removeEntitiesInChunk), so they must be hidden at render time when
+     * standing in a chunk this client hasn't streamed/meshed yet. Otherwise they draw
+     * floating in the void. Locally-owned entities (bobber, decoy) always render.
+     */
+    public static boolean isInRenderableChunk(Entity entity, com.stonebreak.world.World world) {
+        if (world == null || !entity.isNetworkShadow()) {
+            return true;
+        }
+        Vector3f p = entity.getPosition();
+        int cs = com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE;
+        int cx = Math.floorDiv((int) Math.floor(p.x), cs);
+        int cz = Math.floorDiv((int) Math.floor(p.z), cs);
+        return world.isChunkRenderableAt(cx, cz);
     }
 
     /** Depth-only draw of one entity, mirroring {@link #renderEntity}'s SBE bindings. */

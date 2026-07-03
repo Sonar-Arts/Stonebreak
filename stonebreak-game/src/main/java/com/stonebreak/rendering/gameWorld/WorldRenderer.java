@@ -773,8 +773,12 @@ public class WorldRenderer {
         com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return;
 
+        World world = Game.getWorld();
         for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
             if (!entity.isAlive()) continue;
+            // Same not-yet-streamed-chunk cull as the entity pass — a drop or a remote
+            // player's held item must not float in the void either.
+            if (!com.stonebreak.rendering.models.entities.EntityRenderer.isInRenderableChunk(entity, world)) continue;
             if (isDropEntity(entity)) {
                 drops.add(entity);
             } else if (entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {

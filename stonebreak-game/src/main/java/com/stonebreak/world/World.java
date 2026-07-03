@@ -794,10 +794,15 @@ public class World {
 
         if (meshPipeline != null) {
             meshPipeline.shutdown();
+        }
+        chunkStore.cleanup();
+        // Deferred AFTER chunkStore.cleanup() so anything it queued is included in the
+        // final main-thread drain (nothing ticks this pipeline's queue once the world is
+        // swapped out).
+        if (meshPipeline != null) {
             final MmsMeshPipeline mp = meshPipeline;
             com.stonebreak.core.Game.getInstance().runOnMainThread(mp::processGpuCleanupQueue);
         }
-        chunkStore.cleanup();
     }
 
     /**

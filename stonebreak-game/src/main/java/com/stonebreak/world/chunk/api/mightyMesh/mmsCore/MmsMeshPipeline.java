@@ -511,10 +511,9 @@ public final class MmsMeshPipeline {
      * MUST be called from OpenGL thread.
      */
     public void processGpuCleanupQueue() {
-        if (shutdown) {
-            return;
-        }
-
+        // Intentionally NOT gated on `shutdown`: World.cleanup shuts the pipeline down and
+        // THEN defers a final drain to the main thread — skipping it would leak every handle
+        // still queued from recent chunk unloads.
         MmsRenderableHandle handle;
         int cleaned = 0;
 
@@ -716,7 +715,9 @@ public final class MmsMeshPipeline {
     }
 
     /**
-     * Clears all pipeline queues.
+     * Clears all pipeline queues. Deliberately does NOT drain the GPU cleanup queue:
+     * shutdown() can run on a non-GL thread (world swap on the "ClientWorld-Build" thread),
+     * and World.cleanup defers a processGpuCleanupQueue() to the main thread afterwards.
      */
     private void clearQueues() {
         chunksToGenerateMesh.clear();
@@ -725,9 +726,6 @@ public final class MmsMeshPipeline {
         chunksFailedToGenerateMesh.clear();
         chunkRetryCount.clear();
         chunkPriorityMap.clear();
-
-        // Clean up pending GPU resources
-        processGpuCleanupQueue();
     }
 
     // === Debug/Statistics ===

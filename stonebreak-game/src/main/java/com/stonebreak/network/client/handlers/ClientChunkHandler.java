@@ -23,11 +23,14 @@ public final class ClientChunkHandler {
     private final Deque<ChunkDataS2C> pending = new ArrayDeque<>();
 
     public void apply(ChunkDataS2C cd) {
-        World world = Game.getWorld();
-        if (world == null) {
+        // isClientWorldReady (not a bare null check): during a world REBUILD (rejoin),
+        // Game.getWorld() still returns the previous session's world — installing there
+        // would silently lose the chunk (the server marks it sent exactly once).
+        if (!Game.isClientWorldReady()) {
             pending.add(cd);
             return;
         }
+        World world = Game.getWorld();
         if (!world.installNetworkChunk(cd.chunkX(), cd.chunkZ(), cd.payload(), cd.metaPayload())) {
             // Decode/install failed but the server marked this chunk sent — without a resync
             // request the hole is permanent (the version never changes for us again).
@@ -36,13 +39,10 @@ public final class ClientChunkHandler {
     }
 
     public void tick() {
-        if (pending.isEmpty()) {
+        if (pending.isEmpty() || !Game.isClientWorldReady()) {
             return;
         }
         World world = Game.getWorld();
-        if (world == null) {
-            return;
-        }
         ChunkDataS2C cd;
         while ((cd = pending.poll()) != null) {
             if (!world.installNetworkChunk(cd.chunkX(), cd.chunkZ(), cd.payload(), cd.metaPayload())) {
