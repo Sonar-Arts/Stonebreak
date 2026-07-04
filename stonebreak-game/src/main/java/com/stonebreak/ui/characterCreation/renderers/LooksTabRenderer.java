@@ -42,7 +42,7 @@ public final class LooksTabRenderer {
                        float mx, float my) {
         Font metaFont = ui.fonts().get(MStyle.FONT_META);
 
-        MPainter.drawStringWithShadow(canvas, "Hat",
+        MPainter.drawStringWithShadow(canvas, "Head",
             content.x() + ROW_PAD_X, content.y() + 22f,
             metaFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
         drawRule(canvas, content.x() + ROW_PAD_X, content.y() + 28f,

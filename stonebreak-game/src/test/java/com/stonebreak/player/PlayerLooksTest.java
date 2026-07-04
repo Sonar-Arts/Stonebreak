@@ -56,15 +56,19 @@ class PlayerLooksTest {
     }
 
     @Test
-    void playerModelHasTheHatSocket() {
+    void playerModelHasEverySocketOptionsMountTo() {
         SbeEntityAsset player = SbeEntityLoader.loadAttachableResource("/sbe/Mobs/SB_Player.sbe");
         SbeModelGeometry geometry = player.geometryFor(SbeEntityAsset.DEFAULT_VARIANT);
         assertNotNull(geometry);
-        assertTrue(geometry.attachmentPoints().stream()
-                        .map(SbeAttachmentPoint::name)
-                        .anyMatch(name -> name.equalsIgnoreCase(PlayerLooks.HAT_SOCKET)),
-                "player model has no '" + PlayerLooks.HAT_SOCKET + "' socket; sockets: "
-                        + geometry.attachmentPoints().stream()
-                                .map(SbeAttachmentPoint::name).toList());
+        Set<String> playerSockets = new HashSet<>();
+        for (SbeAttachmentPoint point : geometry.attachmentPoints()) {
+            playerSockets.add(point.name().toUpperCase());
+        }
+        for (PlayerLooks.HatOption option : PlayerLooks.HAT_OPTIONS) {
+            if (option.socket() == null) continue;
+            assertTrue(playerSockets.contains(option.socket().toUpperCase()),
+                    option.id() + " mounts on '" + option.socket()
+                            + "' but the player model has no such socket; sockets: " + playerSockets);
+        }
     }
 }
