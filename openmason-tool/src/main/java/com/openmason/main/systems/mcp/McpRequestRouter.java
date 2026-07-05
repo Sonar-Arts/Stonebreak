@@ -30,6 +30,74 @@ public final class McpRequestRouter {
     private static final String SERVER_NAME = "open-mason";
     private static final String SERVER_VERSION = "1.0";
 
+    /** Pointer the LLM reads before anything else — kept to two sentences. */
+    private static final String INSTRUCTIONS =
+            "Call model_summary to orient yourself and describe_api for conventions, "
+                    + "the Python om cheatsheet, and workflow recipes. Prefer run_python_script "
+                    + "or run_model_ops for multi-step edits (one call, one undo entry, atomic); "
+                    + "single-op tools are for inspection and small tweaks.";
+
+    /** Retired tool names → what replaced them, so post-rename calls self-heal. */
+    private static final Map<String, String> RETIRED_TOOLS = Map.ofEntries(
+            Map.entry("get_model_info", "use model_summary"),
+            Map.entry("get_selection", "use model_summary (selection field)"),
+            Map.entry("focus_camera_on", "use select_part (identical behavior)"),
+            Map.entry("set_part_transform", "merged into part_transform"),
+            Map.entry("translate_part", "merged into part_transform (translate field)"),
+            Map.entry("rotate_part", "merged into part_transform (rotate field)"),
+            Map.entry("scale_part", "merged into part_transform (scale_by field)"),
+            Map.entry("list_part_vertices", "merged into part_mesh (include:[\"vertices\"])"),
+            Map.entry("list_part_edges", "merged into part_mesh (include:[\"edges\"])"),
+            Map.entry("list_part_faces", "merged into part_mesh (include:[\"faces\"])"),
+            Map.entry("move_vertex", "merged into part_move (element:\"vertex\")"),
+            Map.entry("move_edge", "merged into part_move (element:\"edge\")"),
+            Map.entry("move_face", "merged into part_move (element:\"face\")"),
+            Map.entry("model_undo", "use undo (domain defaults to model)"),
+            Map.entry("model_redo", "use redo (domain defaults to model)"),
+            Map.entry("tex_get_pixel", "use tex_get_region with w=h=1"),
+            Map.entry("tex_set_pixel", "use tex_set_pixels with one entry"),
+            Map.entry("tex_fill_canvas", "merged into tex_fill (omit rect)"),
+            Map.entry("tex_clear_canvas", "use tex_fill with color [0,0,0,0]"),
+            Map.entry("tex_fill_rect", "merged into tex_fill (rect field)"),
+            Map.entry("tex_set_active_layer", "merged into tex_set_layer (active:true)"),
+            Map.entry("tex_set_layer_visibility", "merged into tex_set_layer (visible field)"),
+            Map.entry("tex_rename_layer", "merged into tex_set_layer (name field)"),
+            Map.entry("tex_undo", "use undo with domain:\"texture\""),
+            Map.entry("tex_redo", "use redo with domain:\"texture\""),
+            Map.entry("model_face_get_info", "use model_face_list_textures with face_ids + detail:true"),
+            Map.entry("model_face_get_pixel", "use model_face_get_region with w=h=1"),
+            Map.entry("model_face_set_pixel", "use model_face_set_pixels with one entry"),
+            Map.entry("model_face_clear", "use model_face_fill with color [0,0,0,0]"),
+            Map.entry("model_face_fill_rect", "merged into model_face_fill (rect field)"),
+            Map.entry("model_face_create_texture", "use model_face_create_textures (works for one face)"),
+            Map.entry("bone_get_skeleton_info", "use model_summary"),
+            Map.entry("bone_get_selected", "use model_summary"),
+            Map.entry("bone_get_head_world", "use bone_get (includes world head/tail)"),
+            Map.entry("bone_get_tail_world", "use bone_get (includes world head/tail)"),
+            Map.entry("bone_undo", "use undo with domain:\"bone\""),
+            Map.entry("bone_redo", "use redo with domain:\"bone\""),
+            Map.entry("attach_get_info", "use model_summary"),
+            Map.entry("attach_get_selected", "use model_summary"),
+            Map.entry("attach_undo", "use undo with domain:\"attach\""),
+            Map.entry("attach_redo", "use redo with domain:\"attach\""),
+            Map.entry("anim_get_keyframe", "use anim_list_keyframes"),
+            Map.entry("anim_set_clip_name", "merged into anim_set_clip"),
+            Map.entry("anim_set_clip_fps", "merged into anim_set_clip"),
+            Map.entry("anim_set_clip_duration", "merged into anim_set_clip"),
+            Map.entry("anim_set_clip_loop", "merged into anim_set_clip"),
+            Map.entry("anim_set_layer_type", "merged into anim_set_layer"),
+            Map.entry("anim_set_layer_mask", "merged into anim_set_layer"),
+            Map.entry("anim_set_layer_fades", "merged into anim_set_layer"),
+            Map.entry("anim_set_layer_priority", "merged into anim_set_layer"),
+            Map.entry("anim_play", "use anim_transport with action:\"play\""),
+            Map.entry("anim_pause", "use anim_transport with action:\"pause\""),
+            Map.entry("anim_stop", "use anim_transport with action:\"stop\""),
+            Map.entry("anim_set_playhead", "use anim_transport with action:\"seek\" + time"),
+            Map.entry("anim_insert_keyframe_at_playhead", "use anim_insert_keyframe without time"),
+            Map.entry("anim_save_as", "use anim_save with file_path"),
+            Map.entry("anim_undo", "use undo with domain:\"anim\""),
+            Map.entry("anim_redo", "use redo with domain:\"anim\""));
+
     private final McpToolRegistry registry;
     private final ObjectMapper mapper;
 
@@ -81,6 +149,7 @@ public final class McpRequestRouter {
         result.put("protocolVersion", PROTOCOL_VERSION);
         result.put("capabilities", capabilities);
         result.put("serverInfo", serverInfo);
+        result.put("instructions", INSTRUCTIONS);
         return result;
     }
 
@@ -106,7 +175,10 @@ public final class McpRequestRouter {
         }
         McpTool tool = registry.get(name);
         if (tool == null) {
-            throw new IllegalArgumentException("Unknown tool: " + name);
+            String hint = RETIRED_TOOLS.get(name);
+            throw new IllegalArgumentException(hint != null
+                    ? "Tool '" + name + "' was retired: " + hint
+                    : "Unknown tool: " + name);
         }
         JsonNode arguments = params.has("arguments") ? params.get("arguments")
                 : mapper.createObjectNode();
@@ -127,6 +199,11 @@ public final class McpRequestRouter {
             content.put("type", "image");
             content.put("data", img.base64Data());
             content.put("mimeType", img.mimeType());
+        } else if (result instanceof String s) {
+            // Raw text (markdown guides etc.) — no JSON quoting/escaping overhead.
+            content = mapper.createObjectNode();
+            content.put("type", "text");
+            content.put("text", s);
         } else {
             content = mapper.createObjectNode();
             content.put("type", "text");

@@ -51,6 +51,7 @@ module openmason.engine {
     exports com.openmason.engine.rendering.model.gmr.uv;
     exports com.openmason.engine.rendering.model.gmr.topology;
     exports com.openmason.engine.rendering.model.gmr.editable;
+    exports com.openmason.engine.rendering.model.gmr.editable.ops;
     exports com.openmason.engine.rendering.model.gmr.mesh.edgeOperations;
     exports com.openmason.engine.rendering.model.gmr.extraction;
     exports com.openmason.engine.rendering.model.gmr.notification;

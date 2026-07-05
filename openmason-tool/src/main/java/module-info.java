@@ -32,6 +32,17 @@ module com.openmason {
     requires org.apache.xmlgraphics.batik.transcoder;
     requires org.apache.xmlgraphics.batik.codec;
 
+    // GraalPy for the scripting system (sandboxed Python `om` API).
+    // The language/runtime modules are named explicitly — Graal does not support
+    // MIXED placement (polyglot on the module path, Truffle on the classpath;
+    // fails with "cannot access AbstractPolyglotImpl"), and IDE run configs only
+    // put jars on the module path when a module-info requires them. The requires
+    // closure drags truffle-api and friends along.
+    requires org.graalvm.polyglot;
+    requires org.graalvm.py;             // python-language
+    requires org.graalvm.py.resources;   // embedded Python stdlib resources
+    requires org.graalvm.truffle.runtime;
+
     // Logging
     requires org.slf4j;
     requires ch.qos.logback.classic;
@@ -56,6 +67,14 @@ module com.openmason {
     opens com.openmason.main.systems.menus.animationEditor.io to com.fasterxml.jackson.databind;
     opens com.openmason.main.systems.rendering.model.io.omo to com.fasterxml.jackson.databind;
     opens com.openmason.main.systems.mcp to com.fasterxml.jackson.databind;
+
+    // Scripting system: Jackson serializes the script result/summary records;
+    // GraalPy host interop reflects on the @HostAccess.Export bridge methods.
+    opens com.openmason.main.systems.scripting to com.fasterxml.jackson.databind;
+    opens com.openmason.main.systems.scripting.commands to com.fasterxml.jackson.databind;
+    // Unqualified: the reflecting module differs across Graal versions
+    // (org.graalvm.polyglot vs the Truffle host runtime).
+    opens com.openmason.main.systems.scripting.python;
 
     // Export packages for potential future extensions
     exports com.openmason.main;

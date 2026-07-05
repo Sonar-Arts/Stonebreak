@@ -178,6 +178,34 @@
             <version>1.5.37</version>
         </dependency>
 
+        <!-- GraalPy: sandboxed Python for the scripting system (om API).
+             Runs in Truffle interpreter mode on stock OpenJDK — fine for short
+             modeling scripts. Tool-module only; the game never sees this.
+             NOTE: the jars are declared DIRECTLY (compile scope) instead of via
+             the python-community meta-pom (runtime scope) because module-info
+             requires org.graalvm.py & co. — javac must see the whole module
+             closure, and Graal forbids mixed module-path/classpath placement. -->
+        <dependency>
+            <groupId>org.graalvm.polyglot</groupId>
+            <artifactId>polyglot</artifactId>
+            <version>25.0.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.graalvm.python</groupId>
+            <artifactId>python-language</artifactId>
+            <version>25.0.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.graalvm.python</groupId>
+            <artifactId>python-resources</artifactId>
+            <version>25.0.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.graalvm.truffle</groupId>
+            <artifactId>truffle-runtime</artifactId>
+            <version>25.0.1</version>
+        </dependency>
+
         <!-- Testing (versions managed by parent POM) -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -241,6 +269,10 @@
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.openmason.main.mainOpenMason</mainClass>
                                 </transformer>
+                                <!-- Truffle languages (GraalPy) are discovered via
+                                     META-INF/services — merging them is required or the
+                                     shaded jar loses Python support. -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
                         </configuration>
                     </execution>

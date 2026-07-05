@@ -10,6 +10,7 @@ import com.openmason.engine.rendering.model.gmr.core.IGPUBufferUploader;
 import com.openmason.engine.rendering.model.gmr.core.MeshMutationCoordinator;
 import com.openmason.engine.rendering.model.gmr.core.MeshRebuildPipeline;
 import com.openmason.engine.rendering.model.gmr.core.MeshSerializationAdapter;
+import com.openmason.engine.rendering.model.gmr.core.PartMeshBridge;
 import com.openmason.engine.rendering.model.gmr.core.VertexDataManager;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
 import com.openmason.engine.rendering.model.gmr.parts.PartMeshRebuilder;
@@ -74,6 +75,7 @@ public class GenericModelRenderer extends BaseRenderer {
     private final TextureGPUOperations textureOps;
     private final DrawBatchManager drawBatchManager;
     private final MeshSerializationAdapter serializationAdapter;
+    private final PartMeshBridge partMeshBridge;
 
     // Part management
     private final ModelPartManager partManager;
@@ -175,6 +177,10 @@ public class GenericModelRenderer extends BaseRenderer {
         // Wire serialization adapter
         this.serializationAdapter = new MeshSerializationAdapter(
             this.faceTextureManager, stateManager, rebuildPipeline);
+
+        // Wire part→pipeline bridge (shared with headless model documents)
+        this.partMeshBridge = new PartMeshBridge(
+            rebuildPipeline, this.faceTextureManager, serializationAdapter, stateManager);
 
         // Wire part manager with mesh consumer that pushes data through the serialization pipeline
         this.partManager = new ModelPartManager();
@@ -661,34 +667,7 @@ public class GenericModelRenderer extends BaseRenderer {
      * Bridges part-level changes into the existing serialization/render pipeline.
      */
     private void onPartMeshRebuilt(PartMeshRebuilder.RebuildResult result) {
-        // When all parts are hidden, clear the rendered mesh instead of keeping stale geometry
-        if (result.totalVertexCount() == 0) {
-            logger.debug("Part mesh rebuild produced empty result — clearing mesh");
-            rebuildPipeline.setEditableMesh(new EditableMesh());
-            rebuildPipeline.rebuildFromEditable();
-            return;
-        }
-
-        // Remap face texture mappings if face IDs shifted (e.g. after part deletion)
-        if (result.faceIdRemap() != null && !result.faceIdRemap().isEmpty()) {
-            faceTextureManager.remapFaceIds(result.faceIdRemap());
-            logger.debug("Remapped {} face texture IDs after part change", result.faceIdRemap().size());
-        }
-
-        // Wrap the rebuilt data as MeshData and feed through the geometry-only path.
-        // Uses updateMeshGeometry() instead of loadMeshData() to preserve existing
-        // face texture mappings — critical when parts are added/moved/removed.
-        OMOFormat.MeshData meshData = new OMOFormat.MeshData(
-                result.combinedVertices(),
-                result.combinedTexCoords(),
-                result.combinedIndices(),
-                result.triangleToFaceId(),
-                stateManager.getUVMode() != null ? stateManager.getUVMode().name() : "FLAT"
-        );
-
-        serializationAdapter.updateMeshGeometry(meshData);
-        logger.debug("Part mesh rebuild pushed to pipeline: {} vertices, {} indices",
-                result.totalVertexCount(), result.totalIndexCount());
+        partMeshBridge.onPartMeshRebuilt(result);
     }
 
     /**

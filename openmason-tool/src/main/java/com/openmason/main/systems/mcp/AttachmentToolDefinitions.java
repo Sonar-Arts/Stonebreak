@@ -2,9 +2,10 @@ package com.openmason.main.systems.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.joml.Vector3f;
+
+import static com.openmason.main.systems.mcp.McpArgs.optString;
+import static com.openmason.main.systems.mcp.McpArgs.optVec3;
+import static com.openmason.main.systems.mcp.McpArgs.reqString;
 
 /**
  * Wires the {@link AttachmentEditingService} surface as MCP tools for the
@@ -29,13 +30,6 @@ public final class AttachmentToolDefinitions {
         // ---------- Read ----------
 
         registry.register(new McpTool(
-                "attach_get_info",
-                "Get high-level info about the current attachment points / sockets "
-                        + "(availability, socket count, currently selected socket id).",
-                schema().build(),
-                args -> editor.getAttachmentsInfo()));
-
-        registry.register(new McpTool(
                 "attach_list",
                 "List every attachment point (socket) with id, name, host part binding, and its "
                         + "rest-pose-model-space position, rotation (Euler degrees), and scale. The scale "
@@ -48,12 +42,6 @@ public final class AttachmentToolDefinitions {
                 "Get a single attachment point (socket) by id or name.",
                 idOrNameSchema(),
                 args -> editor.getAttachment(reqString(args, "id_or_name")).orElse(null)));
-
-        registry.register(new McpTool(
-                "attach_get_selected",
-                "Get the id of the currently-selected attachment point (null if none).",
-                schema().build(),
-                args -> editor.getSelectedAttachment().orElse(null)));
 
         // ---------- Mutate ----------
 
@@ -146,106 +134,15 @@ public final class AttachmentToolDefinitions {
                 schema().build(),
                 args -> editor.clearAttachments()));
 
-        // ---------- Undo / redo ----------
-
-        registry.register(new McpTool(
-                "attach_undo",
-                "Undo the most recent socket create/delete/rename/transform/parent/clear operation.",
-                schema().build(),
-                args -> editor.undo()));
-
-        registry.register(new McpTool(
-                "attach_redo",
-                "Redo the most recently undone socket operation.",
-                schema().build(),
-                args -> editor.redo()));
     }
 
     // ===================== Schema helpers =====================
 
-    private SchemaBuilder schema() {
-        return new SchemaBuilder(mapper);
+    private McpSchema schema() {
+        return McpSchema.of(mapper);
     }
 
     private JsonNode idOrNameSchema() {
         return schema().str("id_or_name", "Socket id or name").required("id_or_name").build();
-    }
-
-    private static final class SchemaBuilder {
-        private final ObjectMapper mapper;
-        private final ObjectNode root;
-        private final ObjectNode properties;
-        private final ArrayNode required;
-
-        SchemaBuilder(ObjectMapper mapper) {
-            this.mapper = mapper;
-            this.root = mapper.createObjectNode();
-            this.properties = mapper.createObjectNode();
-            this.required = mapper.createArrayNode();
-            root.put("type", "object");
-            root.set("properties", properties);
-        }
-
-        SchemaBuilder str(String name, String description) { return prop(name, "string", description); }
-
-        /** Fixed-length [x,y,z] number array. */
-        SchemaBuilder vec3(String name, String description) {
-            ObjectNode def = mapper.createObjectNode();
-            def.put("type", "array");
-            def.put("description", description);
-            ObjectNode items = mapper.createObjectNode();
-            items.put("type", "number");
-            def.set("items", items);
-            def.put("minItems", 3);
-            def.put("maxItems", 3);
-            properties.set(name, def);
-            return this;
-        }
-
-        SchemaBuilder prop(String name, String type, String description) {
-            ObjectNode def = mapper.createObjectNode();
-            def.put("type", type);
-            def.put("description", description);
-            properties.set(name, def);
-            return this;
-        }
-
-        SchemaBuilder required(String... names) {
-            for (String n : names) required.add(n);
-            return this;
-        }
-
-        JsonNode build() {
-            if (!required.isEmpty()) root.set("required", required);
-            return root;
-        }
-    }
-
-    // ===================== Arg parsing =====================
-
-    private static String reqString(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || n.isNull() || !n.isTextual() || n.asText().isBlank()) {
-            throw new IllegalArgumentException("Missing required string argument: " + key);
-        }
-        return n.asText();
-    }
-
-    private static String optString(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || n.isNull() || !n.isTextual()) return null;
-        String s = n.asText();
-        return s.isBlank() ? null : s;
-    }
-
-    /** Parse an optional [x,y,z] array argument; null when absent. */
-    private static Vector3f optVec3(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || n.isNull()) return null;
-        if (!n.isArray() || n.size() != 3
-                || !n.get(0).isNumber() || !n.get(1).isNumber() || !n.get(2).isNumber()) {
-            throw new IllegalArgumentException(key + " must be a [x,y,z] number array");
-        }
-        return new Vector3f(n.get(0).floatValue(), n.get(1).floatValue(), n.get(2).floatValue());
     }
 }

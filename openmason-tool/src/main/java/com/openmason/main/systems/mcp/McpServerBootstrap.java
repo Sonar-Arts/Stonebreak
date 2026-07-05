@@ -50,6 +50,15 @@ public final class McpServerBootstrap {
             ViewportCaptureService viewportCapture = new ViewportCaptureService(mainInterface);
             new ViewportToolDefinitions(viewportCapture, mapper).registerAll(registry);
 
+            com.openmason.main.systems.scripting.mcp.ScriptingService scripting =
+                    new com.openmason.main.systems.scripting.mcp.ScriptingService(mainInterface, mapper);
+            new com.openmason.main.systems.scripting.mcp.ScriptingToolDefinitions(scripting, mapper)
+                    .registerAll(registry);
+
+            new MetaToolDefinitions(new ModelSummaryService(mainInterface),
+                    editor, textureEditor, boneEditor, attachmentEditor, animationEditor, mapper)
+                    .registerAll(registry);
+
             McpRequestRouter router = new McpRequestRouter(registry, mapper);
             server = new McpHttpServer(PORT, router, mapper);
             server.start();

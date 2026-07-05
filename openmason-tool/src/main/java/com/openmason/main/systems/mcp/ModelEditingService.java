@@ -62,6 +62,23 @@ public final class ModelEditingService {
         }));
     }
 
+    /**
+     * Token-efficient part listing: compact rows by default, full
+     * {@link PartView}s with {@code detail}, optional case-insensitive
+     * substring filter on the name.
+     */
+    public List<?> listParts(boolean detail, String nameFilter) {
+        return await(MainThreadExecutor.submit(() -> {
+            ModelPartManager pm = requirePartManager();
+            String filter = nameFilter != null ? nameFilter.toLowerCase() : null;
+            var stream = pm.getAllParts().stream()
+                    .filter(p -> filter == null || p.name().toLowerCase().contains(filter));
+            return detail
+                    ? stream.map(PartView::from).toList()
+                    : stream.map(PartSummary::from).toList();
+        }));
+    }
+
     public Optional<PartView> getPart(String idOrName) {
         return await(MainThreadExecutor.submit(() -> resolve(idOrName).map(PartView::from)));
     }
@@ -387,7 +404,7 @@ public final class ModelEditingService {
 
     /**
      * Insert a vertex on a part-local edge at parametric position {@code t}
-     * (exclusive 0..1). The edge index comes from {@code list_part_edges};
+     * (exclusive 0..1). The edge index comes from {@code part_mesh};
      * its part-local vertex pair is resolved to unique vertex indices and the
      * subdivision runs through the GMR topology op.
      */
@@ -659,11 +676,19 @@ public final class ModelEditingService {
         return pm;
     }
 
+    /**
+     * Resolve a part by id or name. Never returns empty for an unknown part —
+     * throws a teaching error instead (silent nulls read as success to LLMs).
+     */
     private Optional<ModelPartDescriptor> resolve(String idOrName) {
         ModelPartManager pm = requirePartManager();
         Optional<ModelPartDescriptor> byId = pm.getPartById(idOrName);
         if (byId.isPresent()) return byId;
-        return pm.getPartByName(idOrName);
+        Optional<ModelPartDescriptor> byName = pm.getPartByName(idOrName);
+        if (byName.isPresent()) return byName;
+        throw McpErrors.unknownEntity("part", idOrName,
+                pm.getAllParts().stream().map(ModelPartDescriptor::name).toList(),
+                "list_parts");
     }
 
     private static PartShapeFactory.Shape parseShape(String name) {
@@ -793,6 +818,15 @@ public final class ModelEditingService {
      * and global.
      */
     public record FacesOpResult(int[] newLocalFaceIds, int[] newGlobalFaceIds, PartView part) {}
+
+    /** Compact list row: enough to address the part and see its weight. */
+    public record PartSummary(String name, String id, int verts, int tris, boolean visible) {
+        public static PartSummary from(ModelPartDescriptor d) {
+            int vc = d.meshRange() != null ? d.meshRange().vertexCount() : 0;
+            int ic = d.meshRange() != null ? d.meshRange().indexCount() : 0;
+            return new PartSummary(d.name(), d.id(), vc, ic / 3, d.visible());
+        }
+    }
 
     public record PartView(String id, String name, boolean visible, boolean locked,
                            Vec3 origin, Vec3 position, Vec3 rotation, Vec3 scale,
