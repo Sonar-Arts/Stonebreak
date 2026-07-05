@@ -14,9 +14,6 @@ import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
 
 import static com.stonebreak.player.PlayerConstants.SPAWN_PROTECTION_DURATION;
-import static com.stonebreak.player.PlayerConstants.SPAWN_X;
-import static com.stonebreak.player.PlayerConstants.SPAWN_Y;
-import static com.stonebreak.player.PlayerConstants.SPAWN_Z;
 
 /**
  * Owns new-world spawn setup and the load-from-save flag. When a fresh world starts,
@@ -61,7 +58,11 @@ public class PlayerSpawnService {
 
     public void giveStartingItems() {
         if (!loadedFromSave) {
-            state.getPosition().set(SPAWN_X, SPAWN_Y, SPAWN_Z);
+            // Position is already set to the authoritative world spawn (via WelcomeS2C ->
+            // Game.buildClientWorld -> player.setPosition) before this runs; this method only
+            // hands out items and resets physics/state. Snap fall bookkeeping to the current
+            // spawn so a low-surface spawn doesn't register phantom fall damage.
+            state.setPreviousY(state.getPosition().y);
             state.getVelocity().set(0, 0, 0);
             state.setOnGround(false);
 

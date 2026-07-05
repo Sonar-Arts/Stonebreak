@@ -114,7 +114,14 @@ public class DeathHandler {
         health.restoreFullHealth();
         deathHandled = false;
 
-        state.getPosition().set(SPAWN_X, SPAWN_Y, SPAWN_Z);
+        // Respawn at the world spawn (the host-selected/random spawn frozen into the world),
+        // falling back to the fixed constant only if the world/spawn isn't available.
+        Vector3f worldSpawn = (world != null) ? world.getSpawnPosition() : null;
+        if (worldSpawn != null) {
+            state.getPosition().set(worldSpawn);
+        } else {
+            state.getPosition().set(SPAWN_X, SPAWN_Y, SPAWN_Z);
+        }
         state.getVelocity().set(0, 0, 0);
         state.setPreviousY(state.getPosition().y);
         state.setWasFalling(false);
