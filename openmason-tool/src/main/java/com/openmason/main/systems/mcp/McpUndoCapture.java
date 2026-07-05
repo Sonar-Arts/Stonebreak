@@ -25,8 +25,8 @@ import java.util.function.Supplier;
  * });
  * }</pre>
  *
- * <p>If the snapshot before/after are byte-for-byte identical (the mutation
- * was a no-op), nothing is recorded.
+ * <p>If the snapshot before/after are content-identical (the mutation was a
+ * no-op), nothing is recorded.
  */
 public final class McpUndoCapture {
 
@@ -80,11 +80,6 @@ public final class McpUndoCapture {
 
     private static boolean snapshotsEqual(MeshSnapshot a, MeshSnapshot b) {
         if (a == null || b == null) return a == b;
-        return java.util.Arrays.equals(a.vertices(), b.vertices())
-                && java.util.Arrays.equals(a.texCoords(), b.texCoords())
-                && java.util.Arrays.equals(a.indices(), b.indices())
-                && java.util.Arrays.equals(a.triangleToFaceId(), b.triangleToFaceId())
-                && java.util.Objects.equals(a.faceMappings(), b.faceMappings())
-                && java.util.Objects.equals(a.materials(), b.materials());
+        return a.snapshot().contentEquals(b.snapshot());
     }
 }

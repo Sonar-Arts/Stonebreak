@@ -2,6 +2,7 @@ package com.openmason.main.systems.viewport;
 
 import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.KnifePreviewRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.ToolPreviewRenderer;
 import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.services.commands.RendererSynchronizer;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
@@ -41,6 +42,9 @@ public class ViewportInputHandler {
     private final EdgeInputController edgeController;
     private final FaceInputController faceController;
     private final KnifeToolController knifeController;
+    private final ScaleToolController scaleController;
+    private final BoxSelectController boxSelectController;
+    private final FaceModalToolController faceModalController;
 
     // Translation coordinator for mutual exclusion
     private TranslationCoordinator translationCoordinator;
@@ -65,6 +69,9 @@ public class ViewportInputHandler {
         this.edgeController = new EdgeInputController();
         this.faceController = new FaceInputController();
         this.knifeController = new KnifeToolController();
+        this.scaleController = new ScaleToolController();
+        this.boxSelectController = new BoxSelectController();
+        this.faceModalController = new FaceModalToolController();
     }
 
     /**
@@ -89,6 +96,8 @@ public class ViewportInputHandler {
         edgeController.setVertexRenderer(vertexRenderer); // Edge controller needs vertex renderer for priority
         faceController.setVertexRenderer(vertexRenderer); // Face controller needs vertex renderer for priority
         gizmoController.setVertexRenderer(vertexRenderer); // Gizmo controller needs vertex renderer for priority
+        scaleController.setVertexRenderer(vertexRenderer); // Scale tool needs it for wireframe sync
+        boxSelectController.setVertexRenderer(vertexRenderer); // Box select needs it for vertex positions
     }
 
     /**
@@ -96,6 +105,8 @@ public class ViewportInputHandler {
      */
     public void setVertexSelectionState(VertexSelectionState vertexSelectionState) {
         vertexController.setVertexSelectionState(vertexSelectionState);
+        scaleController.setVertexSelectionState(vertexSelectionState);
+        boxSelectController.setVertexSelectionState(vertexSelectionState);
     }
 
     /**
@@ -125,6 +136,8 @@ public class ViewportInputHandler {
         faceController.setEdgeRenderer(edgeRenderer); // Face controller needs edge renderer for priority
         gizmoController.setEdgeRenderer(edgeRenderer); // Gizmo controller needs edge renderer for priority
         knifeController.setEdgeRenderer(edgeRenderer); // Knife tool needs edge renderer for hover detection
+        scaleController.setEdgeRenderer(edgeRenderer); // Scale tool needs it for wireframe sync
+        boxSelectController.setEdgeRenderer(edgeRenderer); // Box select needs it for edge positions
     }
 
     /**
@@ -132,6 +145,8 @@ public class ViewportInputHandler {
      */
     public void setEdgeSelectionState(EdgeSelectionState edgeSelectionState) {
         edgeController.setEdgeSelectionState(edgeSelectionState);
+        scaleController.setEdgeSelectionState(edgeSelectionState);
+        boxSelectController.setEdgeSelectionState(edgeSelectionState);
     }
 
     /**
@@ -140,6 +155,9 @@ public class ViewportInputHandler {
     public void setFaceRenderer(FaceRenderer faceRenderer) {
         faceController.setFaceRenderer(faceRenderer);
         gizmoController.setFaceRenderer(faceRenderer); // Gizmo controller needs face renderer for priority
+        scaleController.setFaceRenderer(faceRenderer); // Scale tool needs it for face selection + overlay rebuild
+        boxSelectController.setFaceRenderer(faceRenderer); // Box select needs it for face positions
+        faceModalController.setFaceRenderer(faceRenderer); // Inset/extrude need it for loop fallback + selection clearing
     }
 
     /**
@@ -147,6 +165,9 @@ public class ViewportInputHandler {
      */
     public void setFaceSelectionState(FaceSelectionState faceSelectionState) {
         faceController.setFaceSelectionState(faceSelectionState);
+        scaleController.setFaceSelectionState(faceSelectionState);
+        boxSelectController.setFaceSelectionState(faceSelectionState);
+        faceModalController.setFaceSelectionState(faceSelectionState);
     }
 
     /**
@@ -157,15 +178,22 @@ public class ViewportInputHandler {
         edgeController.setTransformState(transformState);
         faceController.setTransformState(transformState);
         knifeController.setTransformState(transformState);
+        scaleController.setTransformState(transformState);
+        boxSelectController.setTransformState(transformState);
+        faceModalController.setTransformState(transformState);
     }
 
     /**
-     * Set the generic model renderer for mesh operations (J key edge insert, F key face create, X key face delete, K knife tool).
+     * Set the generic model renderer for mesh operations (J key edge insert, F key face create, X key face delete, K knife tool, Ctrl+Click vertex insert, S scale, B box select, I inset, E extrude).
      */
     public void setModelRenderer(GenericModelRenderer modelRenderer) {
         vertexController.setModelRenderer(modelRenderer);
+        edgeController.setModelRenderer(modelRenderer);
         faceController.setModelRenderer(modelRenderer);
         knifeController.setModelRenderer(modelRenderer);
+        scaleController.setModelRenderer(modelRenderer);
+        boxSelectController.setModelRenderer(modelRenderer);
+        faceModalController.setModelRenderer(modelRenderer);
     }
 
     /**
@@ -176,10 +204,19 @@ public class ViewportInputHandler {
     }
 
     /**
-     * Set the viewport UI state so the knife tool uses the global grid snapping settings.
+     * Set the shared modal tool preview renderer (inset/extrude overlay lines).
+     */
+    public void setToolPreviewRenderer(ToolPreviewRenderer previewRenderer) {
+        faceModalController.setPreviewRenderer(previewRenderer);
+    }
+
+    /**
+     * Set the viewport UI state so the knife tool and Ctrl+Click vertex insertion
+     * use the global grid snapping settings.
      */
     public void setKnifeViewportState(com.openmason.main.systems.viewport.ViewportUIState viewportState) {
         knifeController.setViewportState(viewportState);
+        edgeController.setViewportState(viewportState);
     }
 
     /**
@@ -187,9 +224,12 @@ public class ViewportInputHandler {
      */
     public void setCommandHistory(ModelCommandHistory commandHistory, RendererSynchronizer synchronizer) {
         vertexController.setCommandHistory(commandHistory, synchronizer);
+        edgeController.setCommandHistory(commandHistory, synchronizer);
         faceController.setCommandHistory(commandHistory, synchronizer);
         knifeController.setCommandHistory(commandHistory, synchronizer);
-        logger.debug("Command history distributed to vertex, face, and knife controllers");
+        scaleController.setCommandHistory(commandHistory, synchronizer);
+        faceModalController.setCommandHistory(commandHistory, synchronizer);
+        logger.debug("Command history distributed to vertex, edge, face, knife, scale, and inset/extrude controllers");
     }
 
     /**
@@ -205,6 +245,73 @@ public class ViewportInputHandler {
      */
     public boolean isKnifeToolActive() {
         return knifeController.isActive();
+    }
+
+    /**
+     * Start scale mode, or confirm an in-progress scale (S key).
+     * Delegates to ScaleToolController.
+     */
+    public void startScaleMode() {
+        scaleController.startOrConfirm();
+    }
+
+    /**
+     * @return true if the scale tool is currently active
+     */
+    public boolean isScaleToolActive() {
+        return scaleController.isActive();
+    }
+
+    /**
+     * Toggle box select on/off (B key).
+     * Delegates to BoxSelectController.
+     */
+    public void toggleBoxSelect() {
+        boxSelectController.toggle();
+    }
+
+    /**
+     * @return true if box select is currently active (armed or dragging)
+     */
+    public boolean isBoxSelectActive() {
+        return boxSelectController.isActive();
+    }
+
+    /**
+     * @return The active box select rect (viewport-relative {minX, minY, maxX, maxY}), or null
+     */
+    public float[] getBoxSelectRect() {
+        return boxSelectController.getActiveRect();
+    }
+
+    /**
+     * Start inset mode, or confirm an in-progress inset (I key).
+     * Delegates to FaceModalToolController.
+     */
+    public void startInsetMode() {
+        faceModalController.startOrConfirm(FaceModalToolController.Kind.INSET);
+    }
+
+    /**
+     * Start extrude mode, or confirm an in-progress extrude (E key).
+     * Delegates to FaceModalToolController.
+     */
+    public void startExtrudeMode() {
+        faceModalController.startOrConfirm(FaceModalToolController.Kind.EXTRUDE);
+    }
+
+    /**
+     * @return true if the inset tool is currently active
+     */
+    public boolean isInsetToolActive() {
+        return faceModalController.isActive(FaceModalToolController.Kind.INSET);
+    }
+
+    /**
+     * @return true if the extrude tool is currently active
+     */
+    public boolean isExtrudeToolActive() {
+        return faceModalController.isActive(FaceModalToolController.Kind.EXTRUDE);
     }
 
     /**
@@ -307,6 +414,21 @@ public class ViewportInputHandler {
             return; // Knife tool handled input, block all lower-priority controllers
         }
 
+        // Priority 0b: Scale tool (modal, consumes all input while active)
+        if (scaleController.handleInput(context)) {
+            return; // Scale tool handled input, block all lower-priority controllers
+        }
+
+        // Priority 0c: Box select (modal, consumes all input while armed/dragging)
+        if (boxSelectController.handleInput(context)) {
+            return; // Box select handled input, block all lower-priority controllers
+        }
+
+        // Priority 0d: Inset/extrude (modal, consumes all input while active)
+        if (faceModalController.handleInput(context)) {
+            return; // Inset/extrude handled input, block all lower-priority controllers
+        }
+
         // Priority 1: Vertex
         // Vertex selection and manipulation gets highest priority (most precise editing)
         if (vertexController.handleInput(context)) {
@@ -347,6 +469,15 @@ public class ViewportInputHandler {
         if (!lastViewportHovered) {
             return;
         }
+
+        // Modal-tool guard: while a modal tool (knife/scale/box select/inset/extrude) is
+        // active, keyboard input belongs to the tool — e.g. S must not fly the first-person
+        // camera backward while confirming a scale, and E must not move it while extruding.
+        if (knifeController.isActive() || scaleController.isActive()
+                || boxSelectController.isActive() || faceModalController.isActive()) {
+            return;
+        }
+
         cameraController.handleKeyboardInput(deltaTime);
     }
 

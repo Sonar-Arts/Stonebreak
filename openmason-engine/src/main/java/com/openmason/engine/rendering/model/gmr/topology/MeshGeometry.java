@@ -1,5 +1,6 @@
 package com.openmason.engine.rendering.model.gmr.topology;
 
+import com.openmason.engine.rendering.model.gmr.GMRConstants;
 import org.joml.Vector3f;
 
 import java.util.List;
@@ -44,7 +45,7 @@ public final class MeshGeometry {
 
         Vector3f result = new Vector3f(normalX, normalY, normalZ);
         float len = result.length();
-        if (len > 1e-8f) {
+        if (len > GMRConstants.DEGENERATE_NORMAL_EPSILON) {
             result.div(len);
         }
         return result;
@@ -126,7 +127,7 @@ public final class MeshGeometry {
 
         Vector3f result = new Vector3f(nx, ny, nz);
         float len = result.length();
-        if (len > 1e-8f) {
+        if (len > GMRConstants.DEGENERATE_NORMAL_EPSILON) {
             result.div(len);
         }
         return result;
@@ -168,7 +169,7 @@ public final class MeshGeometry {
         }
 
         float normalLen = normal.lengthSquared();
-        if (normalLen < 1e-16f) {
+        if (normalLen < GMRConstants.DEGENERATE_NORMAL_EPSILON_SQ) {
             return 0.0f;
         }
 

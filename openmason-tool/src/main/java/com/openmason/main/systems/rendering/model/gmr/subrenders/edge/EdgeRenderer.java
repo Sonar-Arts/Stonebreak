@@ -9,7 +9,6 @@ import com.openmason.engine.rendering.model.gmr.topology.MeshEdge;
 import com.openmason.engine.rendering.model.gmr.topology.MeshTopology;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.operations.EdgeSelectionManager;
-import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.engine.rendering.model.gmr.mesh.edgeOperations.MeshEdgeBufferUpdater;
 import com.openmason.engine.rendering.model.gmr.mesh.edgeOperations.MeshEdgeGeometryQuery;
 import org.joml.Matrix4f;
@@ -159,10 +158,9 @@ public class EdgeRenderer implements MeshChangeListener {
     private final EdgeSelectionManager selectionManager = new EdgeSelectionManager();
 
     /**
-     * Unified mesh manager for all mesh operations.
-     * Handles buffer updates, position updates, remapping, and geometry queries.
+     * Stateless GPU edge-buffer updater (interleaved position + color VBO).
      */
-    private final MeshManager meshManager = MeshManager.getInstance();
+    private final MeshEdgeBufferUpdater edgeBufferUpdater = new MeshEdgeBufferUpdater();
 
     /**
      * Reference to GenericModelRenderer for observer pattern.
@@ -295,8 +293,8 @@ public class EdgeRenderer implements MeshChangeListener {
             // Extract edges from GMR (single source of truth)
             float[] extractedPositions = modelRenderer.extractEdgePositions();
 
-            // Update buffer with extracted edge data (delegated to MeshManager)
-            MeshEdgeBufferUpdater.UpdateResult result = meshManager.updateEdgeBuffer(vbo, extractedPositions, VERTICES_PER_EDGE, edgeColor);
+            // Update buffer with extracted edge data
+            MeshEdgeBufferUpdater.UpdateResult result = edgeBufferUpdater.updateBuffer(vbo, extractedPositions, VERTICES_PER_EDGE, edgeColor);
 
             if (result != null) {
                 edgeCount = result.getEdgeCount();
@@ -605,7 +603,7 @@ public class EdgeRenderer implements MeshChangeListener {
         edgeCount = newEdgeCount;
 
         // Rebuild VBO
-        meshManager.updateEdgeBuffer(vbo, edgePositions, VERTICES_PER_EDGE, edgeColor);
+        edgeBufferUpdater.updateBuffer(vbo, edgePositions, VERTICES_PER_EDGE, edgeColor);
 
         // Clear selection/hover (indices may have changed)
         hoveredEdgeIndex = NO_EDGE_SELECTED;
@@ -740,7 +738,7 @@ public class EdgeRenderer implements MeshChangeListener {
 
     /**
      * Returns the endpoint positions of an edge.
-     * Delegates to MeshManager for data retrieval.
+     * Queries the GMR topology directly.
      *
      * @param edgeIndex the index of the edge to query
      * @return array containing [endpoint1, endpoint2], or null if index is invalid
@@ -838,29 +836,6 @@ public class EdgeRenderer implements MeshChangeListener {
             return null;
         }
         return new int[] { edge.vertexA(), edge.vertexB() };
-    }
-
-    /**
-     * Updates edges connected to specific vertex indices.
-     * Uses topology O(1) lookup to find and update connected edges for both vertices.
-     *
-     * @param vertexIndex1 the first unique vertex index that was moved
-     * @param newPosition1 the new position for the first vertex
-     * @param vertexIndex2 the second unique vertex index that was moved
-     * @param newPosition2 the new position for the second vertex
-     */
-    public void updateEdgesByVertexIndices(int vertexIndex1, Vector3f newPosition1,
-                                           int vertexIndex2, Vector3f newPosition2) {
-        if (!initialized) {
-            logger.warn("Cannot update edges: renderer not initialized");
-            return;
-        }
-
-        // Update both vertices via topology-backed method
-        updateEdgesConnectedToVertexByIndex(vertexIndex1, newPosition1);
-        if (vertexIndex1 != vertexIndex2) {
-            updateEdgesConnectedToVertexByIndex(vertexIndex2, newPosition2);
-        }
     }
 
 }

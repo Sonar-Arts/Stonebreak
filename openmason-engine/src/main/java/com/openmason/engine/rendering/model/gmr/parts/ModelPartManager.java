@@ -1,6 +1,7 @@
 package com.openmason.engine.rendering.model.gmr.parts;
 
 import com.openmason.engine.rendering.model.ModelPart;
+import com.openmason.engine.rendering.model.gmr.GMRConstants;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -33,6 +34,18 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * Listeners are stored in a CopyOnWriteArrayList for safe iteration during notification.
  */
 public class ModelPartManager implements IModelPartManager {
+
+    // Translates a LIVE render-mesh vertex index (corner) into ALL of its
+    // combined-soup vertex indices (the space MeshRange describes). Identity by
+    // default; GMR installs a resolver because the derived render mesh
+    // duplicates corners per face AND welds coincident soup vertices — a shared
+    // seam vertex maps into several parts' ranges. Empty array = unknown vertex.
+    private java.util.function.IntFunction<int[]> combinedVertexResolver = i -> new int[]{i};
+
+    /** Install the live-index → combined-soup-indices translator (see field doc). */
+    public void setCombinedVertexResolver(java.util.function.IntFunction<int[]> resolver) {
+        this.combinedVertexResolver = resolver != null ? resolver : (i -> new int[]{i});
+    }
 
     private static final Logger logger = LoggerFactory.getLogger(ModelPartManager.class);
 
@@ -122,9 +135,11 @@ public class ModelPartManager implements IModelPartManager {
 
     @Override
     public Optional<ModelPartDescriptor> getPartForVertex(int globalVertexIndex) {
-        for (ModelPartDescriptor part : parts.values()) {
-            if (part.meshRange() != null && part.meshRange().containsVertex(globalVertexIndex)) {
-                return Optional.of(part);
+        for (int soupIndex : combinedVertexResolver.apply(globalVertexIndex)) {
+            for (ModelPartDescriptor part : parts.values()) {
+                if (part.meshRange() != null && part.meshRange().containsVertex(soupIndex)) {
+                    return Optional.of(part);
+                }
             }
         }
         return Optional.empty();
@@ -558,7 +573,7 @@ public class ModelPartManager implements IModelPartManager {
         final float oldX = verts[localVertexIndex * 3];
         final float oldY = verts[localVertexIndex * 3 + 1];
         final float oldZ = verts[localVertexIndex * 3 + 2];
-        final float epsSq = 1e-8f;
+        final float epsSq = GMRConstants.POSITION_EPSILON_SQ;
         int updated = 0;
         int count = verts.length / 3;
         for (int i = 0; i < count; i++) {
@@ -592,30 +607,37 @@ public class ModelPartManager implements IModelPartManager {
      * @param newWorldPos  New position in combined-mesh (world) space
      */
     public void syncPartVertexFromWorldPos(int globalIndex, Vector3f newWorldPos) {
-        for (Map.Entry<String, ModelPartDescriptor> entry : parts.entrySet()) {
-            MeshRange range = entry.getValue().meshRange();
-            if (range == null || !range.containsVertex(globalIndex)) continue;
+        // A welded vertex can occur in SEVERAL parts' ranges (touching seams) —
+        // every owning part's geometry must receive the update, or the next
+        // part rebuild snaps the shared vertex back for the parts that missed it.
+        java.util.Set<String> syncedParts = new java.util.HashSet<>();
+        for (int soupIndex : combinedVertexResolver.apply(globalIndex)) {
+            for (Map.Entry<String, ModelPartDescriptor> entry : parts.entrySet()) {
+                MeshRange range = entry.getValue().meshRange();
+                if (range == null || !range.containsVertex(soupIndex)) continue;
+                if (!syncedParts.add(entry.getKey())) break;
 
-            PartMeshRebuilder.PartGeometry geo = partGeometry.get(entry.getKey());
-            if (geo == null || geo.vertices() == null) return;
+                PartMeshRebuilder.PartGeometry geo = partGeometry.get(entry.getKey());
+                if (geo == null || geo.vertices() == null) break;
 
-            Matrix4f inv = new Matrix4f(getEffectiveWorldMatrix(entry.getKey())).invert();
-            Vector4f local = new Vector4f(newWorldPos.x, newWorldPos.y, newWorldPos.z, 1f);
-            inv.transform(local);
+                Matrix4f inv = new Matrix4f(getEffectiveWorldMatrix(entry.getKey())).invert();
+                Vector4f local = new Vector4f(newWorldPos.x, newWorldPos.y, newWorldPos.z, 1f);
+                inv.transform(local);
 
-            int li = range.toLocalVertex(globalIndex);
-            float[] verts = geo.vertices();
-            final float ox = verts[li * 3], oy = verts[li * 3 + 1], oz = verts[li * 3 + 2];
-            final float epsSq = 1e-8f;
-            for (int i = 0, n = verts.length / 3; i < n; i++) {
-                float dx = verts[i * 3] - ox, dy = verts[i * 3 + 1] - oy, dz = verts[i * 3 + 2] - oz;
-                if (dx * dx + dy * dy + dz * dz < epsSq) {
-                    verts[i * 3] = local.x;
-                    verts[i * 3 + 1] = local.y;
-                    verts[i * 3 + 2] = local.z;
+                int li = range.toLocalVertex(soupIndex);
+                float[] verts = geo.vertices();
+                final float ox = verts[li * 3], oy = verts[li * 3 + 1], oz = verts[li * 3 + 2];
+                final float epsSq = GMRConstants.POSITION_EPSILON_SQ;
+                for (int i = 0, n = verts.length / 3; i < n; i++) {
+                    float dx = verts[i * 3] - ox, dy = verts[i * 3 + 1] - oy, dz = verts[i * 3 + 2] - oz;
+                    if (dx * dx + dy * dy + dz * dz < epsSq) {
+                        verts[i * 3] = local.x;
+                        verts[i * 3 + 1] = local.y;
+                        verts[i * 3 + 2] = local.z;
+                    }
                 }
+                break;
             }
-            return;
         }
     }
 

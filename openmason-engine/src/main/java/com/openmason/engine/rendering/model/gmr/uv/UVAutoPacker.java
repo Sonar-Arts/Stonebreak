@@ -38,7 +38,7 @@ public final class UVAutoPacker {
     private static final Logger logger = LoggerFactory.getLogger(UVAutoPacker.class);
 
     /** Minimum face dimension to prevent degenerate zero-area regions. */
-    private static final float EPSILON = 0.0001f;
+    private static final float EPSILON = com.openmason.engine.rendering.model.gmr.GMRConstants.POSITION_EPSILON;
 
     /** Canvas width oversize factor to reduce shelf overflow into a tall strip. */
     private static final float CANVAS_WIDTH_MARGIN = 1.1f;

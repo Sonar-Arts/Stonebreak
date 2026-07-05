@@ -4,7 +4,6 @@ import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.rendering.core.SBTRenderer;
-import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.bones.BoneGizmoRenderer;
 import com.openmason.main.systems.skeleton.BoneStore;
@@ -20,6 +19,7 @@ import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.KnifePreviewRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.ToolPreviewRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
 import org.joml.Matrix4f;
@@ -84,6 +84,9 @@ public class ViewportRenderPipeline {
     // Knife tool preview renderer
     private final KnifePreviewRenderer knifePreviewRenderer;
 
+    // Modal tool preview renderer (inset/extrude overlay lines)
+    private final ToolPreviewRenderer toolPreviewRenderer;
+
     // Bone gizmo overlay (Maya-style joints + shafts, x-ray)
     private final BoneGizmoRenderer boneGizmoRenderer = new BoneGizmoRenderer();
     private BoneStore boneStore;
@@ -132,6 +135,7 @@ public class ViewportRenderPipeline {
         this.modelRenderer = modelRenderer;
         this.gizmoRenderer = gizmoRenderer;
         this.knifePreviewRenderer = new KnifePreviewRenderer();
+        this.toolPreviewRenderer = new ToolPreviewRenderer();
         this.sbtRenderer.initialize();
     }
 
@@ -234,6 +238,7 @@ public class ViewportRenderPipeline {
                         editMode == EditMode.NONE || editMode == EditMode.VERTEX);
                 renderEdges(renderingState, transformState);
                 renderKnifePreview(transformState);  // Render knife preview after edges, before faces
+                renderToolPreview(transformState);   // Render inset/extrude preview alongside the knife overlay
                 if (editMode == EditMode.NONE || editMode == EditMode.FACE) {
                     renderFaces(renderingState, transformState);  // Render face overlays LAST for proper blending
                 }
@@ -586,33 +591,23 @@ public class ViewportRenderPipeline {
                     if (vertexDataNeedsUpdate) {
                         vertexRenderer.updateVertexDataFromGMR();
 
-                        // CRITICAL FIX: Sync MeshManager with GenericModelRenderer's actual vertices
-                        // This ensures coordinate consistency between all systems (VertexRenderer,
-                        // EdgeRenderer, FaceRenderer, MeshManager, GenericModelRenderer) for subdivision
-                        // to work correctly at any level (n+1 subdivisions).
-                        if (modelRenderer != null && modelRenderer.isInitialized()) {
-                            float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
-                            if (modelMeshVertices != null) {
-                                var meshManager = MeshManager.getInstance();
-                                meshManager.setMeshVertices(modelMeshVertices);
-                                logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices", modelMeshVertices.length / 3);
-
-                                // Initialize edge and face renderers BEFORE connecting to model
-                                // This ensures rebuildFromModel() doesn't return early due to !initialized
-                                if (!edgeRenderer.isInitialized()) {
-                                    edgeRenderer.initialize();
-                                }
-                                if (!faceRenderer.isInitialized()) {
-                                    faceRenderer.initialize();
-                                }
-
-                                // Wire all renderers to GenericModelRenderer as MeshChangeListeners
-                                // This enables index-based updates (Observer pattern) instead of position matching
-                                // GenericModelRenderer now owns the unique-to-mesh mapping
-                                vertexRenderer.setModelRenderer(modelRenderer);
-                                edgeRenderer.setModelRenderer(modelRenderer);
-                                faceRenderer.setGenericModelRenderer(modelRenderer);
+                        if (modelRenderer != null && modelRenderer.isInitialized()
+                                && modelRenderer.getAllMeshVertexPositions() != null) {
+                            // Initialize edge and face renderers BEFORE connecting to model
+                            // This ensures rebuildFromModel() doesn't return early due to !initialized
+                            if (!edgeRenderer.isInitialized()) {
+                                edgeRenderer.initialize();
                             }
+                            if (!faceRenderer.isInitialized()) {
+                                faceRenderer.initialize();
+                            }
+
+                            // Wire all renderers to GenericModelRenderer as MeshChangeListeners
+                            // This enables index-based updates (Observer pattern) instead of position matching
+                            // GenericModelRenderer owns the unique-to-mesh mapping
+                            vertexRenderer.setModelRenderer(modelRenderer);
+                            edgeRenderer.setModelRenderer(modelRenderer);
+                            faceRenderer.setGenericModelRenderer(modelRenderer);
                         }
 
                         vertexDataNeedsUpdate = false;
@@ -788,6 +783,27 @@ public class ViewportRenderPipeline {
     }
 
     /**
+     * Render the modal tool preview (inset/extrude overlay lines).
+     * Renders after edges (same layering as the knife preview).
+     */
+    private void renderToolPreview(TransformState transformState) {
+        if (toolPreviewRenderer == null || !toolPreviewRenderer.isActive()) {
+            return;
+        }
+
+        try {
+            if (!toolPreviewRenderer.isInitialized()) {
+                toolPreviewRenderer.initialize();
+            }
+
+            ShaderProgram basicShader = shaderManager.getShaderProgram(ShaderType.BASIC);
+            toolPreviewRenderer.render(basicShader, context, transformState.getTransformMatrix());
+        } catch (Exception e) {
+            logger.error("Error rendering tool preview", e);
+        }
+    }
+
+    /**
      * Check if diagnostic logging should occur (throttled).
      */
     private boolean shouldLogDiagnostics() {
@@ -835,6 +851,13 @@ public class ViewportRenderPipeline {
     }
 
     /**
+     * Gets the modal tool preview renderer for external access (inset/extrude wiring).
+     */
+    public ToolPreviewRenderer getToolPreviewRenderer() {
+        return toolPreviewRenderer;
+    }
+
+    /**
      * Clean up all render pipeline resources.
      */
     public void cleanup() {
@@ -852,6 +875,9 @@ public class ViewportRenderPipeline {
         }
         if (knifePreviewRenderer != null && knifePreviewRenderer.isInitialized()) {
             knifePreviewRenderer.cleanup();
+        }
+        if (toolPreviewRenderer != null && toolPreviewRenderer.isInitialized()) {
+            toolPreviewRenderer.cleanup();
         }
         if (boneGizmoRenderer.isInitialized()) {
             boneGizmoRenderer.cleanup();

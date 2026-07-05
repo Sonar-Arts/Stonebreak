@@ -167,6 +167,24 @@ public class ViewportKeybindActions {
                 actions::startGrabMode
         ));
 
+        // S: Scale Selection (Blender-style) - modal uniform scale, S again confirms
+        registry.registerAction(new KeybindAction(
+                "viewport.scale_selection",
+                "Scale Selection",
+                EDITING,
+                ShortcutKey.simple(GLFW.GLFW_KEY_S),
+                actions::startScaleMode
+        ));
+
+        // B: Box Select (Blender-style) - drag a rectangle to select, B/Esc cancels
+        registry.registerAction(new KeybindAction(
+                "viewport.box_select",
+                "Box Select",
+                EDITING,
+                ShortcutKey.simple(GLFW.GLFW_KEY_B),
+                actions::toggleBoxSelect
+        ));
+
         // Ctrl+Shift+S: Toggle Grid Snapping
         registry.registerAction(new KeybindAction(
                 "viewport.toggle_grid_snapping",
@@ -199,6 +217,24 @@ public class ViewportKeybindActions {
                 actions::toggleKnifeTool
         ));
 
-        logger.info("Registered {} viewport keybind actions", 14);
+        // I: Inset Faces (Face mode only) - modal per-face inset, I again confirms
+        registry.registerAction(new KeybindAction(
+                "viewport.inset_faces",
+                "Inset Faces",
+                MESH_TOOLS,
+                ShortcutKey.simple(GLFW.GLFW_KEY_I),
+                actions::startInsetMode
+        ));
+
+        // E: Extrude Faces (Face mode only) - modal per-face extrude along normals, E again confirms
+        registry.registerAction(new KeybindAction(
+                "viewport.extrude_faces",
+                "Extrude Faces",
+                MESH_TOOLS,
+                ShortcutKey.simple(GLFW.GLFW_KEY_E),
+                actions::startExtrudeMode
+        ));
+
+        logger.info("Registered {} viewport keybind actions", 18);
     }
 }

@@ -4,28 +4,24 @@ import com.openmason.engine.rendering.model.gmr.topology.MeshTopology;
 
 /**
  * Interface for the shared post-mutation rebuild pipeline.
- * Encapsulates the sequence: rebuild mappings → rebuild topology →
- * regenerate UVs → upload GPU buffers → notify listeners.
- *
- * Eliminates the 6x copy-pasted rebuild boilerplate in GenericModelRenderer.
+ * Encapsulates the sequence: derive render mesh (corners + UVs + triangulation)
+ * → write GPU-facing caches → rebuild topology → upload GPU buffers →
+ * notify listeners.
  */
 public interface IMeshRebuildPipeline {
 
     /**
-     * Full rebuild after topology-changing operations (subdivision, edge insertion,
-     * face creation/deletion, snapshot restore, mesh load).
-     * Rebuilds unique vertex mapping, topology, UVs, and uploads both VBO and EBO.
-     *
-     * @param newVertexCount Updated vertex count to set on the renderer
-     * @param newIndexCount  Updated index count to set on the renderer
+     * Full re-derivation after topology-changing operations (subdivision,
+     * face split/creation/deletion, snapshot restore, mesh load).
+     * Uploads both VBO and EBO.
      */
-    void rebuildFull(int newVertexCount, int newIndexCount);
+    void rebuildFromEditable();
 
     /**
-     * Partial rebuild after vertex position changes only (no EBO change).
-     * Rebuilds unique vertex mapping, topology, UVs, and uploads VBO only.
+     * Re-derivation after vertex position changes only — uploads the VBO but
+     * not the index buffer (loops unchanged).
      */
-    void rebuildPositionsOnly();
+    void refreshPositionsFromEditable();
 
     /**
      * Get the most recently built topology.

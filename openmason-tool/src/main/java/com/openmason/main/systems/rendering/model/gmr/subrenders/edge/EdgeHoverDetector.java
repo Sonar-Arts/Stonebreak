@@ -1,8 +1,8 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.edge;
 
+import com.openmason.main.systems.viewport.util.ScreenProjectionUtil;
 import org.joml.Matrix4f;
-import org.joml.Vector2f;
-import org.joml.Vector4f;
+import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,55 +91,21 @@ public final class EdgeHoverDetector {
             // Line width threshold (slightly larger for easier selection)
             float thresholdPixels = lineWidth * 2.0f;
 
-            // Test each edge
-            Vector4f modelPos1 = new Vector4f();
-            Vector4f modelPos2 = new Vector4f();
-            Vector2f screenPos1 = new Vector2f();
-            Vector2f screenPos2 = new Vector2f();
-
             for (int i = 0; i < edgeCount; i++) {
                 int posIndex = i * 6; // Each edge has 2 endpoints × 3 coords = 6 floats
 
-                // Get edge endpoints in MODEL SPACE
-                modelPos1.set(
-                    edgePositions[posIndex + 0],
-                    edgePositions[posIndex + 1],
-                    edgePositions[posIndex + 2],
-                    1.0f
-                );
-                modelPos2.set(
-                    edgePositions[posIndex + 3],
-                    edgePositions[posIndex + 4],
-                    edgePositions[posIndex + 5],
-                    1.0f
-                );
+                // Project both endpoints from MODEL SPACE to screen space (with NDC depth)
+                Vector3f screenPos1 = ScreenProjectionUtil.projectToScreenWithDepth(
+                    edgePositions[posIndex], edgePositions[posIndex + 1], edgePositions[posIndex + 2],
+                    mvpMatrix, viewportWidth, viewportHeight);
+                Vector3f screenPos2 = ScreenProjectionUtil.projectToScreenWithDepth(
+                    edgePositions[posIndex + 3], edgePositions[posIndex + 4], edgePositions[posIndex + 5],
+                    mvpMatrix, viewportWidth, viewportHeight);
 
-                // Project both endpoints from model space to clip space
-                Vector4f clipPos1 = new Vector4f();
-                Vector4f clipPos2 = new Vector4f();
-                mvpMatrix.transform(modelPos1, clipPos1);
-                mvpMatrix.transform(modelPos2, clipPos2);
-
-                // Check if either endpoint is behind camera
-                if (clipPos1.w <= 0 || clipPos2.w <= 0) {
+                // Skip if either endpoint is behind camera
+                if (screenPos1 == null || screenPos2 == null) {
                     continue;
                 }
-
-                // Convert to NDC
-                float ndcX1 = clipPos1.x / clipPos1.w;
-                float ndcY1 = clipPos1.y / clipPos1.w;
-                float depth1 = clipPos1.z / clipPos1.w;
-
-                float ndcX2 = clipPos2.x / clipPos2.w;
-                float ndcY2 = clipPos2.y / clipPos2.w;
-                float depth2 = clipPos2.z / clipPos2.w;
-
-                // Convert NDC to screen space
-                screenPos1.x = (ndcX1 + 1.0f) * 0.5f * viewportWidth;
-                screenPos1.y = (1.0f - ndcY1) * 0.5f * viewportHeight; // Flip Y
-
-                screenPos2.x = (ndcX2 + 1.0f) * 0.5f * viewportWidth;
-                screenPos2.y = (1.0f - ndcY2) * 0.5f * viewportHeight; // Flip Y
 
                 // Calculate point-to-line-segment distance with parameter
                 DistanceResult result = pointToLineSegmentWithParameter(
@@ -149,7 +115,7 @@ public final class EdgeHoverDetector {
                 );
 
                 // Average depth of the edge
-                float avgDepth = (depth1 + depth2) * 0.5f;
+                float avgDepth = (screenPos1.z + screenPos2.z) * 0.5f;
 
                 // Check if mouse is within threshold and this edge is closer
                 if (result.distance() <= thresholdPixels) {
@@ -254,45 +220,19 @@ public final class EdgeHoverDetector {
 
             float thresholdPixels = lineWidth * 2.0f;
 
-            Vector4f modelPos1 = new Vector4f();
-            Vector4f modelPos2 = new Vector4f();
-            Vector2f screenPos1 = new Vector2f();
-            Vector2f screenPos2 = new Vector2f();
-
             for (int i = 0; i < edgeCount; i++) {
                 int posIndex = i * 6;
 
-                modelPos1.set(
-                    edgePositions[posIndex], edgePositions[posIndex + 1],
-                    edgePositions[posIndex + 2], 1.0f
-                );
-                modelPos2.set(
-                    edgePositions[posIndex + 3], edgePositions[posIndex + 4],
-                    edgePositions[posIndex + 5], 1.0f
-                );
+                Vector3f screenPos1 = ScreenProjectionUtil.projectToScreenWithDepth(
+                    edgePositions[posIndex], edgePositions[posIndex + 1], edgePositions[posIndex + 2],
+                    mvpMatrix, viewportWidth, viewportHeight);
+                Vector3f screenPos2 = ScreenProjectionUtil.projectToScreenWithDepth(
+                    edgePositions[posIndex + 3], edgePositions[posIndex + 4], edgePositions[posIndex + 5],
+                    mvpMatrix, viewportWidth, viewportHeight);
 
-                Vector4f clipPos1 = new Vector4f();
-                Vector4f clipPos2 = new Vector4f();
-                mvpMatrix.transform(modelPos1, clipPos1);
-                mvpMatrix.transform(modelPos2, clipPos2);
-
-                if (clipPos1.w <= 0 || clipPos2.w <= 0) {
+                if (screenPos1 == null || screenPos2 == null) {
                     continue;
                 }
-
-                float ndcX1 = clipPos1.x / clipPos1.w;
-                float ndcY1 = clipPos1.y / clipPos1.w;
-                float depth1 = clipPos1.z / clipPos1.w;
-
-                float ndcX2 = clipPos2.x / clipPos2.w;
-                float ndcY2 = clipPos2.y / clipPos2.w;
-                float depth2 = clipPos2.z / clipPos2.w;
-
-                screenPos1.x = (ndcX1 + 1.0f) * 0.5f * viewportWidth;
-                screenPos1.y = (1.0f - ndcY1) * 0.5f * viewportHeight;
-
-                screenPos2.x = (ndcX2 + 1.0f) * 0.5f * viewportWidth;
-                screenPos2.y = (1.0f - ndcY2) * 0.5f * viewportHeight;
 
                 DistanceResult result = pointToLineSegmentWithParameter(
                     mouseX, mouseY,
@@ -300,7 +240,7 @@ public final class EdgeHoverDetector {
                     screenPos2.x, screenPos2.y
                 );
 
-                float avgDepth = (depth1 + depth2) * 0.5f;
+                float avgDepth = (screenPos1.z + screenPos2.z) * 0.5f;
 
                 if (result.distance() <= thresholdPixels) {
                     if (result.distance() < closestDistance - 0.5f ||

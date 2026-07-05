@@ -268,6 +268,70 @@ public final class OpenMasonToolDefinitions {
                         (int) reqFloat(args, "local_face_id"),
                         reqVec3(args, "delta")).orElse(null)));
 
+        registry.register(new McpTool(
+                "subdivide_edge",
+                "Insert a vertex on an edge at parametric position t (exclusive 0..1 from the edge's "
+                        + "first vertex). Edge index comes from list_part_edges. Returns the new vertex's "
+                        + "unique id plus a best-effort part-local vertex index.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .num("edge_index", "Edge index from list_part_edges")
+                        .num("t", "Parametric position along the edge, 0 < t < 1 (0.5 = midpoint)")
+                        .required("id_or_name", "edge_index", "t")
+                        .build(),
+                args -> editor.subdivideEdge(
+                        reqString(args, "id_or_name"),
+                        (int) reqFloat(args, "edge_index"),
+                        reqFloat(args, "t")).orElse(null)));
+
+        registry.register(new McpTool(
+                "scale_faces",
+                "Uniformly scale the given faces about the selection's area-weighted centroid. "
+                        + "Vertices shared with unselected faces move too (Blender face-scale semantics). "
+                        + "Face ids come from list_part_faces.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .arr("local_face_ids", "number", "Local face ids from list_part_faces")
+                        .num("factor", "Uniform scale factor (1 = unchanged)")
+                        .required("id_or_name", "local_face_ids", "factor")
+                        .build(),
+                args -> editor.scaleFaces(
+                        reqString(args, "id_or_name"),
+                        reqIntArray(args, "local_face_ids"),
+                        reqFloat(args, "factor")).orElse(null)));
+
+        registry.register(new McpTool(
+                "inset_faces",
+                "Inset each of the given faces individually (per-face, even-thickness border of new "
+                        + "quads; each original face id keeps its inner cap). Face ids come from "
+                        + "list_part_faces. Returns the new border-quad face ids.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .arr("local_face_ids", "number", "Local face ids from list_part_faces")
+                        .num("amount", "Inset distance in model units (> 0)")
+                        .required("id_or_name", "local_face_ids", "amount")
+                        .build(),
+                args -> editor.insetFaces(
+                        reqString(args, "id_or_name"),
+                        reqIntArray(args, "local_face_ids"),
+                        reqFloat(args, "amount")).orElse(null)));
+
+        registry.register(new McpTool(
+                "extrude_faces",
+                "Extrude each of the given faces individually along its own normal (per-face; each "
+                        + "original face id keeps the moved cap, new side quads are created). Face ids "
+                        + "come from list_part_faces. Returns the new side-quad face ids.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .arr("local_face_ids", "number", "Local face ids from list_part_faces")
+                        .num("distance", "Signed extrude distance in model units (negative = inward)")
+                        .required("id_or_name", "local_face_ids", "distance")
+                        .build(),
+                args -> editor.extrudeFaces(
+                        reqString(args, "id_or_name"),
+                        reqIntArray(args, "local_face_ids"),
+                        reqFloat(args, "distance")).orElse(null)));
+
         // ---------- Undo / redo (model + face-texture share this history) ----------
 
         registry.register(new McpTool(
@@ -409,6 +473,14 @@ public final class OpenMasonToolDefinitions {
                 throw new IllegalArgumentException(key + "[" + i + "] is not a number");
             }
             out[i] = item.floatValue();
+        }
+        return out;
+    }
+
+    private static int[] reqIntArray(JsonNode args, String key) {
+        int[] out = optIntArray(args, key);
+        if (out == null || out.length == 0) {
+            throw new IllegalArgumentException("Missing required non-empty array argument: " + key);
         }
         return out;
     }

@@ -306,6 +306,12 @@ public class ViewportController {
                 logger.debug("Knife preview renderer connected to input handler");
             }
 
+            // Connect modal tool preview renderer (inset/extrude overlay lines)
+            if (viewportRenderPipeline.getToolPreviewRenderer() != null) {
+                inputHandler.setToolPreviewRenderer(viewportRenderPipeline.getToolPreviewRenderer());
+                logger.debug("Tool preview renderer connected to input handler");
+            }
+
             // Connect viewport state so knife tool uses global grid snapping
             inputHandler.setKnifeViewportState(viewportState);
 
@@ -820,6 +826,81 @@ public class ViewportController {
      */
     public boolean isKnifeToolActive() {
         return inputHandler != null && inputHandler.isKnifeToolActive();
+    }
+
+    /**
+     * Start scale mode from keybind (S key), or confirm an in-progress scale.
+     * Delegates to ViewportInputHandler → ScaleToolController.
+     */
+    public void startScaleMode() {
+        if (inputHandler != null) {
+            inputHandler.startScaleMode();
+        }
+    }
+
+    /**
+     * @return true if the scale tool is currently active
+     */
+    public boolean isScaleToolActive() {
+        return inputHandler != null && inputHandler.isScaleToolActive();
+    }
+
+    /**
+     * Toggle box select from keybind (B key).
+     * Delegates to ViewportInputHandler → BoxSelectController.
+     */
+    public void toggleBoxSelect() {
+        if (inputHandler != null) {
+            inputHandler.toggleBoxSelect();
+        }
+    }
+
+    /**
+     * @return true if box select is currently active (armed or dragging)
+     */
+    public boolean isBoxSelectActive() {
+        return inputHandler != null && inputHandler.isBoxSelectActive();
+    }
+
+    /**
+     * @return The active box select rect (viewport-relative {minX, minY, maxX, maxY}), or null
+     */
+    public float[] getBoxSelectRect() {
+        return inputHandler != null ? inputHandler.getBoxSelectRect() : null;
+    }
+
+    /**
+     * Start inset mode from keybind (I key), or confirm an in-progress inset.
+     * Delegates to ViewportInputHandler → FaceModalToolController.
+     */
+    public void startInsetMode() {
+        if (inputHandler != null) {
+            inputHandler.startInsetMode();
+        }
+    }
+
+    /**
+     * Start extrude mode from keybind (E key), or confirm an in-progress extrude.
+     * Delegates to ViewportInputHandler → FaceModalToolController.
+     */
+    public void startExtrudeMode() {
+        if (inputHandler != null) {
+            inputHandler.startExtrudeMode();
+        }
+    }
+
+    /**
+     * @return true if the inset tool is currently active
+     */
+    public boolean isInsetToolActive() {
+        return inputHandler != null && inputHandler.isInsetToolActive();
+    }
+
+    /**
+     * @return true if the extrude tool is currently active
+     */
+    public boolean isExtrudeToolActive() {
+        return inputHandler != null && inputHandler.isExtrudeToolActive();
     }
 
     /**

@@ -705,6 +705,32 @@ public class PreferencesPageRenderer {
             "texture", "Texture Editor"
     );
 
+    /**
+     * Fixed viewport controls handled directly by the input controllers —
+     * shown read-only so the page covers more than the rebindable shortcuts.
+     * ASCII only (the UI font has no em-dash glyph).
+     * Grouped as {group, {control, description}...}.
+     */
+    private static final String[][][] BUILTIN_CONTROLS = {
+            {{"Mesh Editing"},
+                    {"Ctrl+Click edge", "Insert vertex (Edge mode)"},
+                    {"J", "Connect selected vertices (Vertex mode)"},
+                    {"F", "Fill face from selection (Vertex mode)"},
+                    {"X", "Delete face (Face mode)"},
+                    {"Drag onto vertex", "Merge vertices"}},
+            {{"Modal Tools (G/S/I/E/K/B)"},
+                    {"Click / Enter", "Confirm"},
+                    {"Esc / Right click", "Cancel"},
+                    {"Mouse move", "Adjust"},
+                    {"Shift", "Box select: add to selection"}},
+            {{"Camera"},
+                    {"Left drag", "Orbit"},
+                    {"Middle drag", "Pan"},
+                    {"Scroll", "Zoom"},
+                    {"W/A/S/D", "Move (first-person)"},
+                    {"Space / Ctrl", "Up / down (first-person)"}},
+    };
+
     private void renderKeybindsPage() {
         keyCaptureDialog.render();
         conflictDialog.render();
@@ -739,6 +765,8 @@ public class PreferencesPageRenderer {
             ImGuiComponents.addSectionSeparator();
         }
 
+        renderBuiltinControlsSection();
+
         ImGui.spacing();
         ImGuiComponents.renderButton(
                 "Reset All to Defaults",
@@ -746,6 +774,30 @@ public class PreferencesPageRenderer {
                 0.0f,
                 this::resetAllKeybinds
         );
+    }
+
+    /** Read-only reference for the viewport's non-rebindable controls. */
+    private void renderBuiltinControlsSection() {
+        ImGuiComponents.renderSectionHeader("Built-in Controls (fixed)");
+        ImGui.indent();
+
+        for (String[][] group : BUILTIN_CONTROLS) {
+            ImGuiComponents.renderSubHeader(group[0][0]);
+            ImGuiComponents.renderSettingSeparator();
+
+            for (int i = 1; i < group.length; i++) {
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 0.75f, 0.78f, 0.85f, 1.0f);
+                ImGui.text(group[i][0]);
+                ImGui.popStyleColor();
+                ImGui.sameLine(210.0f);
+                ImGui.textWrapped(group[i][1]);
+            }
+
+            ImGuiComponents.addSpacing();
+        }
+
+        ImGui.unindent();
+        ImGuiComponents.addSectionSeparator();
     }
 
     private void renderKeybindRow(com.openmason.main.systems.keybinds.KeybindAction action) {

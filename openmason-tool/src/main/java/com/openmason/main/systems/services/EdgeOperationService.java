@@ -8,7 +8,6 @@ import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
-import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.engine.rendering.model.GenericModelRenderer;
 import org.joml.Vector3f;
@@ -108,7 +107,7 @@ public class EdgeOperationService {
         );
 
         if (meshVertexIndex >= 0) {
-            // Synchronize MeshManager and FaceRenderer with updated geometry
+            // Synchronize FaceRenderer with updated geometry
             synchronizeRenderersAfterSubdivision(modelRenderer);
 
             // Record undo command
@@ -233,18 +232,9 @@ public class EdgeOperationService {
     }
 
     /**
-     * Synchronize MeshManager and FaceRenderer with updated model geometry.
+     * Synchronize the FaceRenderer with updated model geometry.
      */
     private void synchronizeRenderersAfterSubdivision(GenericModelRenderer modelRenderer) {
-        // Sync MeshManager with GenericModelRenderer's actual vertices
-        MeshManager meshManager = MeshManager.getInstance();
-        float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
-        if (modelMeshVertices != null) {
-            meshManager.setMeshVertices(modelMeshVertices);
-            logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices",
-                modelMeshVertices.length / 3);
-        }
-
         // Rebuild FaceRenderer data from GenericModelRenderer's triangles
         FaceRenderer faceRenderer = viewportRenderPipeline.getFaceRenderer();
         if (faceRenderer != null) {

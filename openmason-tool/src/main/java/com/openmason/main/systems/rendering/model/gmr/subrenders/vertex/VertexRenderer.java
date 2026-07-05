@@ -5,8 +5,6 @@ import com.openmason.engine.rendering.model.MeshChangeListener;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.MeshOverlayTheme;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
-import com.openmason.engine.rendering.model.gmr.mesh.vertexOperations.MeshVertexMerger;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -61,12 +59,6 @@ public class VertexRenderer implements MeshChangeListener {
     private Set<Integer> selectedVertexIndices = new LinkedHashSet<>(); // Multi-selection support
     private int activeVertexIndex = -1; // Last-selected vertex, rendered white
     private Set<Integer> modifiedVertices = new HashSet<>(); // Indices of modified vertices
-
-    // Persistent vertex merge tracking (for multi-stage merges)
-    private Map<Integer, Integer> originalToCurrentMapping = new HashMap<>(); // Maps original cube vertex (0-7) to current unique vertex
-
-    // Mesh management - delegate to MeshManager
-    private final MeshManager meshManager = MeshManager.getInstance();
 
     // Reference to GenericModelRenderer for observer pattern
     private GenericModelRenderer modelRenderer;
@@ -165,30 +157,16 @@ public class VertexRenderer implements MeshChangeListener {
             logger.warn("GenericModelRenderer not set");
             vertexCount = 0;
             vertexPositions = null;
-            meshManager.clearMeshData();
             return;
         }
 
         try {
-            // Extract ALL mesh vertices from GMR (e.g., 24 for cube) for mapping
-            float[] allMeshVertices = modelRenderer.getAllMeshVertexPositions();
-
             // Extract UNIQUE vertices from GMR (e.g., 8 for cube) for rendering
             float[] uniquePositions = modelRenderer.getAllUniqueVertexPositions();
 
             // Store unique positions for hit testing
             vertexPositions = uniquePositions;
             vertexCount = uniquePositions.length / 3;
-
-            // Sync mesh vertices with MeshManager (mapping is owned by GenericModelRenderer)
-            meshManager.setMeshVertices(allMeshVertices);
-
-            // Initialize original-to-current mapping (identity for fresh load)
-            // For a cube, this maps original vertices 0-7 to themselves initially
-            originalToCurrentMapping.clear();
-            for (int i = 0; i < vertexCount; i++) {
-                originalToCurrentMapping.put(i, i);
-            }
 
             // Create interleaved vertex data (position + color) using UNIQUE vertices
             // Color varies based on state: selected (white), modified (yellow), default (orange)
@@ -445,18 +423,6 @@ public class VertexRenderer implements MeshChangeListener {
         vertexPositions = uniquePositions;
         vertexCount = newVertexCount;
 
-        // Update original-to-current mapping (identity for fresh rebuild)
-        originalToCurrentMapping.clear();
-        for (int i = 0; i < vertexCount; i++) {
-            originalToCurrentMapping.put(i, i);
-        }
-
-        // Sync MeshManager with the new data (mapping is owned by GenericModelRenderer)
-        float[] allMeshVertices = modelRenderer.getAllMeshVertexPositions();
-        if (allMeshVertices != null) {
-            meshManager.setMeshVertices(allMeshVertices);
-        }
-
         // Rebuild VBO
         rebuildVBO();
 
@@ -650,10 +616,10 @@ public class VertexRenderer implements MeshChangeListener {
     }
 
     /**
-     * Update a single UNIQUE vertex position (for live preview during drag).
-     * This updates ALL mesh instances of this vertex to eliminate duplication.
-     * For example, when dragging corner vertex 0 on a cube, all 3 mesh instances
-     * at that corner are updated simultaneously.
+     * Update a single UNIQUE vertex position (live preview of the vertex dot
+     * during a drag). Only this renderer's overlay data is touched — the
+     * translation handlers commit the moved corners to the
+     * GenericModelRenderer (single source of truth) each mouse move.
      *
      * @param uniqueIndex Unique vertex index to update (0-7 for cube)
      * @param position New position in model space
@@ -663,29 +629,19 @@ public class VertexRenderer implements MeshChangeListener {
             logger.warn("Cannot update vertex position: renderer not initialized");
             return;
         }
-
-        // Update VertexRenderer's positions and VBO
-        meshManager.updateVertexPosition(uniqueIndex, position, vertexPositions, vbo, vertexCount);
-
-        // Sync mesh vertices in MeshManager using GenericModelRenderer's mapping
-        // This ensures MeshManager.getAllMeshVertices() returns updated positions
-        // for the solid model to follow the wireframe
-        if (modelRenderer != null) {
-            int[] meshIndices = modelRenderer.getMeshIndicesForUniqueVertex(uniqueIndex);
-            if (meshIndices != null) {
-                float[] allMeshVertices = meshManager.getAllMeshVertices();
-                if (allMeshVertices != null) {
-                    for (int meshIndex : meshIndices) {
-                        int offset = meshIndex * 3;
-                        if (offset + 2 < allMeshVertices.length) {
-                            allMeshVertices[offset] = position.x;
-                            allMeshVertices[offset + 1] = position.y;
-                            allMeshVertices[offset + 2] = position.z;
-                        }
-                    }
-                }
-            }
+        if (position == null || vertexPositions == null
+                || uniqueIndex < 0 || uniqueIndex >= vertexCount) {
+            logger.warn("Cannot update vertex position: invalid index {} (count: {})",
+                    uniqueIndex, vertexCount);
+            return;
         }
+
+        // Update in-memory positions and the VBO position floats
+        int posIndex = uniqueIndex * 3;
+        vertexPositions[posIndex] = position.x;
+        vertexPositions[posIndex + 1] = position.y;
+        vertexPositions[posIndex + 2] = position.z;
+        updateVertexInBuffer(uniqueIndex, position);
     }
 
     /**
@@ -731,145 +687,6 @@ public class VertexRenderer implements MeshChangeListener {
      */
     public int getVertexCount() {
         return vertexCount;
-    }
-
-    /**
-     * Apply vertex addition from a subdivision operation.
-     * Updates vertex data structures with new vertex positions and count.
-     * Used when subdivision creates a new midpoint vertex.
-     *
-     * @param newVertexPositions Updated vertex positions array
-     * @param newVertexCount Updated vertex count
-     */
-    public void applyVertexAddition(float[] newVertexPositions, int newVertexCount) {
-        if (!initialized) {
-            logger.warn("Cannot apply vertex addition: renderer not initialized");
-            return;
-        }
-
-        if (newVertexPositions == null || newVertexCount <= 0) {
-            logger.warn("Cannot apply vertex addition: invalid parameters");
-            return;
-        }
-
-        // Update vertex data
-        this.vertexPositions = newVertexPositions;
-        this.vertexCount = newVertexCount;
-
-        // Update original-to-current mapping for new vertex (identity mapping)
-        int newVertexIndex = newVertexCount - 1;
-        originalToCurrentMapping.put(newVertexIndex, newVertexIndex);
-
-        // Rebuild VBO with new vertex data
-        rebuildVBO();
-
-        // Note: GenericModelRenderer owns the unique-to-mesh mapping and will
-        // rebuild it automatically when notifyGeometryRebuilt() is called
-
-        logger.debug("Applied vertex addition: now {} vertices (new vertex at index {})",
-                    vertexCount, newVertexIndex);
-    }
-
-    /**
-     * Update multiple unique vertices by their indices and new positions.
-     * FIX: Index-based update prevents vertex unification bug.
-     * Uses uniqueToMeshMapping to update all mesh instances correctly.
-     *
-     * @param vertexIndex1 First unique vertex index
-     * @param newPosition1 New position for first vertex
-     * @param vertexIndex2 Second unique vertex index
-     * @param newPosition2 New position for second vertex
-     */
-    public void updateVerticesByIndices(int vertexIndex1, Vector3f newPosition1,
-                                        int vertexIndex2, Vector3f newPosition2) {
-        if (!initialized || vertexPositions == null || vertexCount == 0) {
-            logger.warn("Cannot update vertices: renderer not initialized or no vertices");
-            return;
-        }
-
-        if (newPosition1 == null || newPosition2 == null) {
-            logger.warn("Cannot update vertices: positions are null");
-            return;
-        }
-
-        if (vertexIndex1 < 0 || vertexIndex1 >= vertexCount ||
-            vertexIndex2 < 0 || vertexIndex2 >= vertexCount) {
-            logger.warn("Cannot update vertices: invalid indices {}, {} (count: {})",
-                    vertexIndex1, vertexIndex2, vertexCount);
-            return;
-        }
-
-        try {
-            // Update first vertex using index-based method
-            updateVertexPosition(vertexIndex1, newPosition1);
-
-            // Update second vertex using index-based method
-            updateVertexPosition(vertexIndex2, newPosition2);
-
-            logger.trace("Updated vertices {} and {} to new positions (index-based)",
-                    vertexIndex1, vertexIndex2);
-
-        } catch (Exception e) {
-            logger.error("Error updating vertices by indices", e);
-        }
-    }
-
-    /**
-     * Merge overlapping vertices by removing duplicates and updating all references.
-     * This is a TRUE merge operation that:
-     * 1. Identifies groups of vertices at the same position
-     * 2. Keeps the first vertex in each group, removes the rest
-     * 3. Returns a mapping of old indices to new indices for updating edges
-     *
-     * @param epsilon Distance threshold for considering vertices overlapping
-     * @return Mapping of old vertex indices to new vertex indices (for updating edges)
-     */
-    public Map<Integer, Integer> mergeOverlappingVertices(float epsilon) {
-        if (!initialized || vertexPositions == null || vertexCount == 0) {
-            return new HashMap<>();
-        }
-
-        // Step 1: Perform the merge operation via MeshManager
-        MeshVertexMerger.MergeResult result = meshManager.mergeOverlappingVertices(
-                vertexPositions,
-                vertexCount,
-                epsilon,
-                originalToCurrentMapping
-        );
-
-        // If no merge occurred, return existing mapping
-        if (result == null) {
-            return new HashMap<>(originalToCurrentMapping);
-        }
-
-        // Step 2: Update renderer state with merge results (Single Responsibility)
-        // Note: GenericModelRenderer now owns the unique-to-mesh mapping, so we pass
-        // empty/no-op values for the deprecated mapping parameters
-        RendererStateUpdater.UpdateContext context = new RendererStateUpdater.UpdateContext(
-                meshManager.getAllMeshVertices(),
-                java.util.Collections.emptyMap() // Mapping now owned by GenericModelRenderer
-        );
-
-        RendererStateUpdater stateUpdater = new RendererStateUpdater(
-                context,
-                () -> {}, // Empty VBO rebuilder - we'll rebuild after updating fields
-                (positions, mesh) -> {} // No-op - mapping owned by GenericModelRenderer
-        );
-
-        RendererStateUpdater.UpdateContext updatedContext = stateUpdater.applyMergeResult(result);
-
-        // Step 3: Apply updated state back to renderer
-        this.vertexPositions = updatedContext.vertexPositions;
-        this.vertexCount = updatedContext.vertexCount;
-        this.originalToCurrentMapping = updatedContext.originalToCurrentMapping;
-        this.selectedVertexIndex = updatedContext.selectedVertexIndex;
-
-        // Step 4: Rebuild VBO now that fields are updated
-        // FIX: Must rebuild AFTER fields are updated, not during applyMergeResult
-        rebuildVBO();
-
-        // Return the persistent original-to-current mapping (all 8 original vertices)
-        return new HashMap<>(originalToCurrentMapping);
     }
 
     /**

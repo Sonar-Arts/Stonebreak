@@ -1,84 +1,39 @@
 package com.openmason.engine.rendering.model.gmr.uv;
 
-import com.openmason.engine.rendering.model.gmr.core.IGPUBufferUploader;
 import com.openmason.engine.rendering.model.gmr.core.MeshRebuildPipeline;
-import com.openmason.engine.rendering.model.gmr.geometry.IGeometryDataBuilder;
-import com.openmason.engine.rendering.model.gmr.mapping.ITriangleFaceMapper;
-import com.openmason.engine.rendering.model.gmr.mapping.IUniqueVertexMapper;
-import com.openmason.engine.rendering.model.gmr.topology.MeshTopologyBuilder;
 import org.lwjgl.BufferUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
-import java.util.*;
 
 import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL15.*;
 
 /**
- * Handles all GPU texture I/O and UV management operations.
- * Extracted from GenericModelRenderer to satisfy Single Responsibility.
+ * Handles GPU texture I/O and material state.
  *
- * Responsibilities:
- * - Texture state (global texture ID, per-face materials)
- * - GPU texture read/write (glTexSubImage2D, glGetTexImage)
- * - UV regeneration with vertex duplication at material seams
- * - Preserving user-painted transparency across UV regeneration
+ * <p>UV generation is no longer a responsibility of this class: corner UVs
+ * are projected during render-mesh derivation ({@code RenderMeshBuilder}),
+ * and material seams cannot occur because render corners are per-face by
+ * construction — the legacy seam-duplication machinery is gone.
+ * {@link #regenerateUVsAndUpload()} simply re-derives the render mesh.
  */
 public class TextureGPUOperations implements ITextureGPUOperations {
 
     private static final Logger logger = LoggerFactory.getLogger(TextureGPUOperations.class);
 
-    private final IVertexDataManager vertexManager;
-    private final ITriangleFaceMapper faceMapper;
-    private final IUniqueVertexMapper uniqueMapper;
-    private final IUVCoordinateGenerator uvGenerator;
-    private final IGeometryDataBuilder geometryBuilder;
     private final FaceTextureManager faceTextureManager;
-    private final IGPUBufferUploader gpuUploader;
     private final MeshRebuildPipeline rebuildPipeline;
 
     // Texture state
     private int textureId = 0;
     private boolean useTexture = false;
 
-    // Seam-duplication record — lets serialization strip render-only duplicate
-    // vertices (appended past the part-consistent mesh) and remap indices back
-    // to their sources. base < 0 means "no live duplicates recorded".
-    private int seamBaseVertexCount = -1;
-    private final List<Integer> seamDuplicateSources = new ArrayList<>();
-
-    // Callback to update vertexCount on the renderer
-    private final VertexCountAccess vertexCountAccess;
-
-    /**
-     * Callback for reading/writing the renderer's vertexCount.
-     */
-    public interface VertexCountAccess {
-        int getVertexCount();
-        void setVertexCount(int count);
-    }
-
     public TextureGPUOperations(
-            IVertexDataManager vertexManager,
-            ITriangleFaceMapper faceMapper,
-            IUniqueVertexMapper uniqueMapper,
-            IUVCoordinateGenerator uvGenerator,
-            IGeometryDataBuilder geometryBuilder,
             FaceTextureManager faceTextureManager,
-            IGPUBufferUploader gpuUploader,
-            MeshRebuildPipeline rebuildPipeline,
-            VertexCountAccess vertexCountAccess) {
-        this.vertexManager = vertexManager;
-        this.faceMapper = faceMapper;
-        this.uniqueMapper = uniqueMapper;
-        this.uvGenerator = uvGenerator;
-        this.geometryBuilder = geometryBuilder;
+            MeshRebuildPipeline rebuildPipeline) {
         this.faceTextureManager = faceTextureManager;
-        this.gpuUploader = gpuUploader;
         this.rebuildPipeline = rebuildPipeline;
-        this.vertexCountAccess = vertexCountAccess;
     }
 
     @Override
@@ -174,191 +129,7 @@ public class TextureGPUOperations implements ITextureGPUOperations {
 
     @Override
     public void regenerateUVsAndUpload() {
-        float[] vertices = vertexManager.getVertices();
-        int[] indices = vertexManager.getIndices();
-        float[] existingTexCoords = vertexManager.getTexCoords();
-        if (vertices == null || indices == null) {
-            return;
-        }
-
-        // Duplicate shared vertices at material boundaries to avoid UV conflicts
-        boolean verticesDuplicated = duplicateSharedUVSeamVertices();
-        if (verticesDuplicated) {
-            vertices = vertexManager.getVertices();
-            indices = vertexManager.getIndices();
-            existingTexCoords = vertexManager.getTexCoords();
-            vertexCountAccess.setVertexCount(vertices.length / 3);
-
-            // Rebuild topology so subsequent operations see the duplicated vertices
-            uniqueMapper.buildMapping(vertices);
-            rebuildPipeline.setTopology(
-                MeshTopologyBuilder.build(vertices, indices, faceMapper, uniqueMapper));
-
-            // Indices changed — update EBO immediately
-            gpuUploader.uploadEBO(indices);
-            rebuildPipeline.markDrawBatchesDirty();
-        }
-
-        // Generate per-face UVs (conflict-free after vertex duplication)
-        float[] generatedTexCoords = uvGenerator.generatePerFaceUVs(vertices, indices, faceMapper);
-
-        // Merge: use generated UVs for ALL vertices belonging to non-default-material faces
-        float[] finalTexCoords;
-        if (existingTexCoords != null && existingTexCoords.length == generatedTexCoords.length) {
-            finalTexCoords = existingTexCoords.clone();
-
-            int triangleCount = indices.length / 3;
-            Set<Integer> nonDefaultVertices = new HashSet<>();
-            for (int t = 0; t < triangleCount; t++) {
-                int faceId = faceMapper.getOriginalFaceIdForTriangle(t);
-                if (faceId < 0) continue;
-                FaceTextureMapping mapping = faceTextureManager.getFaceMapping(faceId);
-                if (mapping != null
-                    && (mapping.materialId() != MaterialDefinition.DEFAULT.materialId()
-                        || !mapping.uvRegion().equals(FaceTextureMapping.FULL_REGION))) {
-                    for (int v = 0; v < 3; v++) {
-                        nonDefaultVertices.add(indices[t * 3 + v]);
-                    }
-                }
-            }
-
-            for (int idx : nonDefaultVertices) {
-                finalTexCoords[idx * 2] = generatedTexCoords[idx * 2];
-                finalTexCoords[idx * 2 + 1] = generatedTexCoords[idx * 2 + 1];
-            }
-        } else {
-            finalTexCoords = generatedTexCoords;
-        }
-
-        vertexManager.setData(vertices, finalTexCoords, indices);
-
-        if (gpuUploader.isGPUReady()) {
-            float[] interleavedData = geometryBuilder.buildInterleavedData(vertices, finalTexCoords);
-            gpuUploader.uploadVBO(interleavedData);
-        }
-
-        // NOTE: flood-fill of GPU textures removed — it was destroying
-        // intentional transparency (erased/transparent pixels) on every
-        // UV regeneration. Transparent regions in textures are now preserved.
-    }
-
-    /**
-     * Duplicate mesh vertices shared between faces with different materials.
-     * Prevents UV coordinate conflicts at material boundary seams.
-     *
-     * @return true if any vertices were duplicated
-     */
-    private boolean duplicateSharedUVSeamVertices() {
-        int[] indices = vertexManager.getIndices();
-        float[] vertices = vertexManager.getVertices();
-        if (indices == null || vertices == null) {
-            return false;
-        }
-
-        int triangleCount = indices.length / 3;
-
-        Map<Integer, Map<Integer, List<int[]>>> vertexMaterialRefs = new LinkedHashMap<>();
-
-        for (int t = 0; t < triangleCount; t++) {
-            int faceId = faceMapper.getOriginalFaceIdForTriangle(t);
-            if (faceId < 0) continue;
-
-            FaceTextureMapping mapping = faceTextureManager.getFaceMapping(faceId);
-            int materialId = (mapping != null) ? mapping.materialId() : MaterialDefinition.DEFAULT.materialId();
-
-            for (int v = 0; v < 3; v++) {
-                int meshIdx = indices[t * 3 + v];
-                vertexMaterialRefs
-                    .computeIfAbsent(meshIdx, k -> new LinkedHashMap<>())
-                    .computeIfAbsent(materialId, k -> new ArrayList<>())
-                    .add(new int[]{t, v});
-            }
-        }
-
-        List<Map.Entry<Integer, Map<Integer, List<int[]>>>> conflicts = new ArrayList<>();
-        int additionalVertices = 0;
-        for (Map.Entry<Integer, Map<Integer, List<int[]>>> entry : vertexMaterialRefs.entrySet()) {
-            if (entry.getValue().size() > 1) {
-                conflicts.add(entry);
-                additionalVertices += entry.getValue().size() - 1;
-            }
-        }
-
-        if (conflicts.isEmpty()) {
-            return false;
-        }
-
-        int currentVertexCount = vertices.length / 3;
-
-        // Maintain the duplicate record. If the mesh changed outside this path
-        // (part rebuild, topology op), any previously recorded duplicates were
-        // either wiped or baked in as real vertices — start a fresh record with
-        // the current mesh as the base.
-        if (seamBaseVertexCount < 0
-                || seamBaseVertexCount + seamDuplicateSources.size() != currentVertexCount) {
-            seamBaseVertexCount = currentVertexCount;
-            seamDuplicateSources.clear();
-        }
-
-        vertexManager.expandVertexArrays(additionalVertices);
-        vertices = vertexManager.getVertices();
-
-        int[] newIndices = indices.clone();
-        int nextNewVertex = currentVertexCount;
-
-        for (Map.Entry<Integer, Map<Integer, List<int[]>>> conflict : conflicts) {
-            int originalIdx = conflict.getKey();
-            boolean first = true;
-
-            for (Map.Entry<Integer, List<int[]>> materialEntry : conflict.getValue().entrySet()) {
-                if (first) {
-                    first = false;
-                    continue;
-                }
-
-                int newIdx = nextNewVertex++;
-                vertices[newIdx * 3] = vertices[originalIdx * 3];
-                vertices[newIdx * 3 + 1] = vertices[originalIdx * 3 + 1];
-                vertices[newIdx * 3 + 2] = vertices[originalIdx * 3 + 2];
-                seamDuplicateSources.add(originalIdx);
-
-                for (int[] triRef : materialEntry.getValue()) {
-                    newIndices[triRef[0] * 3 + triRef[1]] = newIdx;
-                }
-            }
-        }
-
-        vertexManager.setIndices(newIndices);
-
-        logger.debug("Duplicated {} vertices at {} material boundary seams",
-            additionalVertices, conflicts.size());
-        return true;
-    }
-
-    /**
-     * The part-consistent vertex count recorded before seam duplicates were
-     * appended, or -1 when no live duplicate record exists.
-     */
-    public int getSeamBaseVertexCount() {
-        return seamBaseVertexCount;
-    }
-
-    /** Number of recorded seam-duplicate vertices appended past the base. */
-    public int getSeamDuplicateCount() {
-        return seamDuplicateSources.size();
-    }
-
-    /**
-     * Source mesh index for each recorded duplicate: entry {@code i} is the
-     * vertex that duplicate {@code base + i} was copied from. Sources may
-     * themselves be duplicates from an earlier pass — follow the chain until
-     * the index drops below the base to reach the part-consistent vertex.
-     */
-    public int[] getSeamDuplicateSources() {
-        int[] sources = new int[seamDuplicateSources.size()];
-        for (int i = 0; i < sources.length; i++) {
-            sources[i] = seamDuplicateSources.get(i);
-        }
-        return sources;
+        // Corner UVs are projected from face regions during derivation.
+        rebuildPipeline.rebuildFromEditable();
     }
 }

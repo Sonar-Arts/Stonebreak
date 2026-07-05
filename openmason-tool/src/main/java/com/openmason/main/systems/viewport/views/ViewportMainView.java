@@ -98,6 +98,9 @@ public class ViewportMainView {
         // Display the rendered texture directly without any widgets
         ImGui.image(colorTexture, viewportSize.x, viewportSize.y, 0, 1, 1, 0);
 
+        // Render box select rectangle overlay on top of the viewport image
+        renderBoxSelectRect(imagePos);
+
         // Render sliding tool pane overlay on the left edge of the viewport image
         toolPaneRenderer.render(imagePos.x, imagePos.y, viewportSize.x, viewportSize.y);
 
@@ -161,7 +164,40 @@ public class ViewportMainView {
         // Render stacked indicators below the edit mode overlay
         float indicatorBottom = rectY + rectHeight;
         indicatorBottom = renderGridSnappingIndicator(drawList, imagePos, indicatorBottom);
-        renderKnifeToolIndicator(drawList, imagePos, indicatorBottom);
+        indicatorBottom = renderModalToolIndicator(drawList, imagePos, indicatorBottom,
+            viewport.isKnifeToolActive(), "Knife Tool  |  Esc to cancel");
+        indicatorBottom = renderModalToolIndicator(drawList, imagePos, indicatorBottom,
+            viewport.isScaleToolActive(), "Scale  |  Click/Enter/S to confirm, Esc to cancel");
+        indicatorBottom = renderModalToolIndicator(drawList, imagePos, indicatorBottom,
+            viewport.isBoxSelectActive(), "Box Select  |  Drag to select, Esc to cancel");
+        indicatorBottom = renderModalToolIndicator(drawList, imagePos, indicatorBottom,
+            viewport.isInsetToolActive(), "Inset Faces  |  Move toward face; Click/Enter/I to confirm, Esc to cancel");
+        renderModalToolIndicator(drawList, imagePos, indicatorBottom,
+            viewport.isExtrudeToolActive(), "Extrude Faces  |  Drag along normal; Click/Enter/E to confirm, Esc to cancel");
+    }
+
+    /**
+     * Render the box select rectangle overlay while a box drag is in progress.
+     * The rect from the controller is viewport-relative; offset by the image position.
+     */
+    private void renderBoxSelectRect(ImVec2 imagePos) {
+        float[] rect = viewport.getBoxSelectRect();
+        if (rect == null) {
+            return;
+        }
+
+        float minX = imagePos.x + rect[0];
+        float minY = imagePos.y + rect[1];
+        float maxX = imagePos.x + rect[2];
+        float maxY = imagePos.y + rect[3];
+
+        // Colors - translucent blue fill with a brighter border
+        int fillColor = ImGui.colorConvertFloat4ToU32(0.3f, 0.5f, 1.0f, 0.15f);
+        int borderColor = ImGui.colorConvertFloat4ToU32(0.5f, 0.7f, 1.0f, 0.8f);
+
+        ImDrawList drawList = ImGui.getWindowDrawList();
+        drawList.addRectFilled(minX, minY, maxX, maxY, fillColor);
+        drawList.addRect(minX, minY, maxX, maxY, borderColor);
     }
 
     /**
@@ -216,19 +252,20 @@ public class ViewportMainView {
     }
 
     /**
-     * Render knife tool indicator below the previous indicator.
-     * Only visible when the knife tool is active. Shows "Knife Tool | Esc to cancel".
+     * Render a modal tool indicator below the previous indicator (knife, scale, box select).
+     * Only visible when the tool is active.
+     *
+     * @return Bottom Y of the rendered indicator, or {@code aboveBottom} if not rendered
      */
-    private void renderKnifeToolIndicator(ImDrawList drawList, ImVec2 imagePos, float aboveBottom) {
-        if (!viewport.isKnifeToolActive()) {
-            return;
+    private float renderModalToolIndicator(ImDrawList drawList, ImVec2 imagePos, float aboveBottom,
+                                           boolean active, String text) {
+        if (!active) {
+            return aboveBottom;
         }
-
-        String knifeText = "Knife Tool  |  Esc to cancel";
 
         // Calculate text size
         ImVec2 textSize = new ImVec2();
-        ImGui.calcTextSize(textSize, knifeText);
+        ImGui.calcTextSize(textSize, text);
 
         // Padding around text
         float paddingX = 8.0f;
@@ -258,7 +295,9 @@ public class ViewportMainView {
         // Draw text
         float textX = rectX + paddingX;
         float textY = rectY + paddingY;
-        drawList.addText(textX, textY, textColor, knifeText);
+        drawList.addText(textX, textY, textColor, text);
+
+        return rectY + rectHeight;
     }
 
 }

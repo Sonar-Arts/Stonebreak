@@ -52,16 +52,6 @@ public final class DihedralAngleCache {
     }
 
     /**
-     * Mark an edge as needing dihedral angle recomputation.
-     * Package-private — called by {@link MeshTopology#onVertexPositionChanged}.
-     */
-    void markEdgeDirty(int edgeId) {
-        if (edgeId >= 0 && edgeId < edgeDirty.length) {
-            edgeDirty[edgeId] = true;
-        }
-    }
-
-    /**
      * Ensure the dihedral angle for an edge is up-to-date.
      * Ensures adjacent face normals are clean first, recomputes the angle,
      * then triggers edge reclassification.

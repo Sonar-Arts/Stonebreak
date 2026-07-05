@@ -287,30 +287,6 @@ public class EdgeSelectionState {
         return new Vector3f(current[0]).add(current[1]).mul(0.5f);
     }
 
-    /**
-     * Remap vertex indices after a vertex merge operation.
-     *
-     * @param indexRemapping Mapping from old vertex indices to new vertex indices
-     */
-    public synchronized void remapVertexIndices(Map<Integer, Integer> indexRemapping) {
-        if (selectedEdgeIndices.isEmpty() || indexRemapping == null || indexRemapping.isEmpty()) {
-            return;
-        }
-
-        for (Integer edgeIndex : selectedEdgeIndices) {
-            int[] vertIndices = edgeVertexIndices.get(edgeIndex);
-            if (vertIndices != null && vertIndices.length == 2) {
-                Integer newV1 = indexRemapping.get(vertIndices[0]);
-                Integer newV2 = indexRemapping.get(vertIndices[1]);
-                if (newV1 != null && newV2 != null) {
-                    edgeVertexIndices.put(edgeIndex, new int[]{newV1, newV2});
-                    logger.debug("Remapped edge {} vertices: ({}, {}) -> ({}, {})",
-                            edgeIndex, vertIndices[0], vertIndices[1], newV1, newV2);
-                }
-            }
-        }
-    }
-
     // Getters
 
     /**
