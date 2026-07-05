@@ -39,6 +39,23 @@ class HeadlessModelDocumentTest {
     }
 
     @Test
+    void inconsistentGeometryIsRejectedBeforeRegistration() {
+        // Indices referencing vertices past the array must be refused up front —
+        // once registered, such a part poisons every later combined rebuild
+        // (out-of-bounds deep in MeshImporter, long after the bad data entered).
+        HeadlessModelDocument doc = new HeadlessModelDocument();
+        var badGeo = com.openmason.engine.rendering.model.gmr.parts.PartMeshRebuilder.PartGeometry.of(
+                new float[]{0, 0, 0, 1, 0, 0, 0, 1, 0}, // 3 vertices
+                new float[6],
+                new int[]{0, 1, 3},                       // index 3 out of range
+                new int[]{0});
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> doc.parts().addPartFromGeometry("bad", badGeo, new Vector3f()));
+        assertEquals(0, doc.parts().getPartCount(), "nothing may be registered on rejection");
+        assertNull(doc.extractMeshData());
+    }
+
+    @Test
     void removingTheOnlyPartClearsMeshData() {
         HeadlessModelDocument doc = new HeadlessModelDocument();
         ModelPartDescriptor part = doc.parts().addPartFromGeometry(

@@ -234,7 +234,7 @@ public class ModelOperationService {
             // Extract and set part entries (v1.3+)
             if (viewport != null) {
                 List<OMOFormat.PartEntry> partEntries =
-                        OmoExportAssembler.extractPartEntries(viewport.getPartManager());
+                        OmoExportAssembler.extractPartEntries(viewport.getPartManager(), meshData);
                 if (partEntries != null && !partEntries.isEmpty()) {
                     omoSerializer.setPartEntries(partEntries);
                     logger.info("Saving {} model parts", partEntries.size());
@@ -550,7 +550,19 @@ public class ModelOperationService {
         // Map saved (file) part IDs to the new UUIDs the manager assigns on add.
         Map<String, String> savedIdToNewId = new HashMap<>();
 
+        List<String> skippedParts = new ArrayList<>();
         for (OMOFormat.PartEntry entry : sortedEntries) {
+            // Validate the saved spans against the saved arrays BEFORE slicing.
+            // Files written with stale ranges (pre-2026-07 save bug) would
+            // otherwise register garbage parts that poison every later mesh
+            // rebuild — skip the corrupt part and keep loading the rest.
+            String rangeError = validatePartEntrySpans(entry, allVertices, allIndices);
+            if (rangeError != null) {
+                logger.error("Skipping part '{}' from .OMO: {}", entry.name(), rangeError);
+                skippedParts.add(entry.name());
+                continue;
+            }
+
             // Slice vertices for this part
             int vStart = entry.vertexStart() * 3;
             int vLen = entry.vertexCount() * 3;
@@ -618,7 +630,15 @@ public class ModelOperationService {
             // references that key by partId (e.g., .omanim animation tracks) keep
             // binding to the same part across model save/load cycles.
             org.joml.Vector3f origin = new org.joml.Vector3f(entry.originX(), entry.originY(), entry.originZ());
-            ModelPartDescriptor part = partManager.addPartFromGeometry(entry.id(), entry.name(), geo, origin);
+            ModelPartDescriptor part;
+            try {
+                part = partManager.addPartFromGeometry(entry.id(), entry.name(), geo, origin);
+            } catch (IllegalArgumentException e) {
+                // The manager refused inconsistent geometry — skip, keep loading.
+                logger.error("Skipping part '{}' from .OMO: {}", entry.name(), e.getMessage());
+                skippedParts.add(entry.name());
+                continue;
+            }
 
             if (part != null) {
                 savedIdToNewId.put(entry.id(), part.id());
@@ -639,7 +659,44 @@ public class ModelOperationService {
             }
         }
 
-        logger.info("Restored {} parts from .OMO file", entries.size());
+        if (skippedParts.isEmpty()) {
+            logger.info("Restored {} parts from .OMO file", entries.size());
+        } else {
+            logger.warn("Restored {}/{} parts from .OMO file — skipped corrupt parts: {}",
+                    entries.size() - skippedParts.size(), entries.size(), skippedParts);
+            statusService.updateStatus("Model loaded with " + skippedParts.size()
+                    + " corrupt part(s) skipped: " + String.join(", ", skippedParts)
+                    + " — re-save to repair the file");
+        }
+    }
+
+    /**
+     * Null when the entry's spans index cleanly into the saved arrays;
+     * otherwise a description of the violation. Guards against files whose
+     * ranges disagree with their mesh (they would slice garbage).
+     */
+    private static String validatePartEntrySpans(OMOFormat.PartEntry entry,
+                                                 float[] allVertices, int[] allIndices) {
+        int vertexTotal = allVertices.length / 3;
+        long vertexEnd = (long) entry.vertexStart() + entry.vertexCount();
+        if (entry.vertexStart() < 0 || entry.vertexCount() < 0 || vertexEnd > vertexTotal) {
+            return "vertex span " + entry.vertexStart() + "+" + entry.vertexCount()
+                    + " exceeds the saved mesh (" + vertexTotal + " vertices)";
+        }
+        long indexEnd = (long) entry.indexStart() + entry.indexCount();
+        if (entry.indexStart() < 0 || entry.indexCount() < 0 || indexEnd > allIndices.length) {
+            return "index span " + entry.indexStart() + "+" + entry.indexCount()
+                    + " exceeds the saved mesh (" + allIndices.length + " indices)";
+        }
+        for (int i = entry.indexStart(); i < indexEnd; i++) {
+            int vertex = allIndices[i];
+            if (vertex < entry.vertexStart() || vertex >= vertexEnd) {
+                return "index " + vertex + " at position " + i
+                        + " escapes the part's vertex span " + entry.vertexStart()
+                        + ".." + (vertexEnd - 1) + " (stale ranges from an older save)";
+            }
+        }
+        return null;
     }
 
     /**

@@ -42,16 +42,27 @@ public final class PartManagerSnapshot {
         return new PartManagerSnapshot(out);
     }
 
-    /** Clear the manager and rebuild it to exactly this snapshot's state. */
+    /**
+     * Clear the manager and rebuild it to this snapshot's state. Best-effort
+     * per part: a part that fails to restore (e.g. inconsistent geometry that
+     * predates the engine's registration guard) is logged and skipped so a
+     * rollback can never make things worse than the failure it is undoing.
+     */
     public void restore(ModelPartManager pm) {
         pm.clear();
         for (PartState state : parts) {
-            ModelPartDescriptor added = pm.addPartFromGeometry(
-                    state.id(), state.name(), copy(state.geometry()),
-                    new Vector3f(state.transform().origin()));
-            pm.setPartTransform(added.id(), copy(state.transform()));
-            pm.setPartVisible(added.id(), state.visible());
-            pm.setPartLocked(added.id(), state.locked());
+            try {
+                ModelPartDescriptor added = pm.addPartFromGeometry(
+                        state.id(), state.name(), copy(state.geometry()),
+                        new Vector3f(state.transform().origin()));
+                pm.setPartTransform(added.id(), copy(state.transform()));
+                pm.setPartVisible(added.id(), state.visible());
+                pm.setPartLocked(added.id(), state.locked());
+            } catch (RuntimeException e) {
+                org.slf4j.LoggerFactory.getLogger(PartManagerSnapshot.class)
+                        .error("Could not restore part '{}' from snapshot: {}",
+                                state.name(), e.getMessage());
+            }
         }
         // Parents in a second pass so every target exists.
         for (PartState state : parts) {

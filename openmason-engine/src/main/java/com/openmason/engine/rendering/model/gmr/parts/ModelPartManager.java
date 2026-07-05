@@ -201,6 +201,7 @@ public class ModelPartManager implements IModelPartManager {
     public ModelPartDescriptor addPartFromGeometry(String requestedId, String name,
                                                     PartMeshRebuilder.PartGeometry geometry,
                                                     Vector3f origin) {
+        requireConsistent(geometry, name);
         String id = (requestedId != null && !requestedId.isBlank() && !parts.containsKey(requestedId))
                 ? requestedId : UUID.randomUUID().toString();
         String partName = (name != null && !name.isBlank()) ? name : generatePartName();
@@ -537,9 +538,42 @@ public class ModelPartManager implements IModelPartManager {
         ModelPartDescriptor existing = parts.get(partId);
         if (existing == null || existing.locked()) return false;
         if (geometry == null) return false;
+        requireConsistent(geometry, existing.name());
         partGeometry.put(partId, geometry);
         rebuildCombinedMesh();
         return true;
+    }
+
+    /**
+     * Reject internally inconsistent geometry BEFORE it is registered — a part
+     * whose indices reference vertices past its own array would poison every
+     * subsequent combined rebuild (out-of-bounds deep in the mesh importer,
+     * long after the bad data entered). Sources: corrupted files, buggy
+     * callers, hand-built geometry.
+     *
+     * @throws IllegalArgumentException with the first offending index
+     */
+    private static void requireConsistent(PartMeshRebuilder.PartGeometry geometry, String partName) {
+        if (geometry == null || geometry.vertices() == null || geometry.indices() == null) {
+            throw new IllegalArgumentException(
+                    "Part '" + partName + "' geometry is missing vertices or indices");
+        }
+        int vertexCount = geometry.vertices().length / 3;
+        int[] indices = geometry.indices();
+        for (int i = 0; i < indices.length; i++) {
+            if (indices[i] < 0 || indices[i] >= vertexCount) {
+                throw new IllegalArgumentException("Part '" + partName + "' geometry is inconsistent: "
+                        + "index " + indices[i] + " at position " + i
+                        + " references a vertex outside 0.." + (vertexCount - 1)
+                        + " — refusing to register it (this would corrupt every later mesh rebuild)");
+            }
+        }
+        int[] triToFace = geometry.triangleToFaceId();
+        if (triToFace != null && triToFace.length != indices.length / 3) {
+            throw new IllegalArgumentException("Part '" + partName + "' geometry is inconsistent: "
+                    + "triangleToFaceId has " + triToFace.length + " entries for "
+                    + indices.length / 3 + " triangles");
+        }
     }
 
     // ========== Vertex edits ==========
