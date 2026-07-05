@@ -59,6 +59,7 @@ public final class SkijaCharacterCreationRenderer {
     private final ClassAbilitiesTabRenderer  classAbilitiesTab;
     private final SkillsTabRenderer          skillsTab;
     private final FeatsTabRenderer           featsTab;
+    private final LooksTabRenderer           looksTab;
 
     // One MButton per tab for hover tracking and click detection
     private final MButton[] tabButtons = new MButton[CharacterCreationTab.values().length];
@@ -86,6 +87,7 @@ public final class SkijaCharacterCreationRenderer {
         this.classAbilitiesTab  = new ClassAbilitiesTabRenderer();
         this.skillsTab          = new SkillsTabRenderer();
         this.featsTab           = new FeatsTabRenderer();
+        this.looksTab           = new LooksTabRenderer();
 
         CharacterCreationTab[] tabs = CharacterCreationTab.values();
         for (int i = 0; i < tabs.length; i++) {
@@ -216,7 +218,12 @@ public final class SkijaCharacterCreationRenderer {
         if (radius <= 0f) radius = 1f;
 
         // Frame to the model's height (portrait viewport), so the full body fits.
-        float dist = radius / halfFovTan * 1.15f;
+        // The AABB is the bare player's — zoom out a little extra when a hat
+        // (Looks tab) is mounted so it doesn't poke out of frame.
+        float margin = com.stonebreak.mobs.sbe.EntityAttachments.get(
+                com.stonebreak.mobs.sbe.EntityAttachments.LOCAL_PLAYER).isEmpty()
+                ? 1.15f : 1.3f;
+        float dist = radius / halfFovTan * margin;
         float horiz = dist * (float) Math.cos(el);
         float eyeX = ctrX + horiz * (float) Math.sin(az);
         float eyeZ = ctrZ + horiz * (float) Math.cos(az);
@@ -232,8 +239,11 @@ public final class SkijaCharacterCreationRenderer {
         GL11.glScissor(vx, vy, vw, vh);
         GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
 
+        // LOCAL_PLAYER as the attachment key so the equipped hat (Looks tab)
+        // shows on the preview model exactly as it will in-game.
         entityRenderer.renderPlayerPreview(null, time, new Vector3f(0f, 0f, 0f), 0f,
-                new Vector3f(1f, 1f, 1f), view, proj);
+                new Vector3f(1f, 1f, 1f), view, proj,
+                com.stonebreak.mobs.sbe.EntityAttachments.LOCAL_PLAYER);
 
         // Restore a clean GL baseline matching SkiaContext.restoreGLDefaults().
         GL11.glScissor(0, 0, windowWidth, windowHeight);
@@ -282,13 +292,17 @@ public final class SkijaCharacterCreationRenderer {
     private void drawTabBar(Canvas canvas, Rect tabBar, float mx, float my) {
         CharacterCreationTab[] tabs = CharacterCreationTab.values();
         float startX = tabBar.x() + 8f;
+        // Shrink below the preferred width when the bar can't fit every tab.
+        float avail = tabBar.width() - 16f;
+        float tabW = Math.min(TAB_W,
+            (avail - (tabs.length - 1) * TAB_GAP) / tabs.length);
 
         for (int i = 0; i < tabs.length; i++) {
             CharacterCreationTab tab = tabs[i];
-            float tx = startX + i * (TAB_W + TAB_GAP);
+            float tx = startX + i * (tabW + TAB_GAP);
             float ty = tabBar.y();
 
-            tabButtons[i].bounds(tx, ty, TAB_W, TAB_H);
+            tabButtons[i].bounds(tx, ty, tabW, TAB_H);
             tabButtons[i].updateHover(mx, my);
 
             boolean active  = state.getActiveTab() == tab;
@@ -298,7 +312,7 @@ public final class SkijaCharacterCreationRenderer {
                 : hovered ? MStyle.BUTTON_FILL_HI
                 : MStyle.BUTTON_FILL;
 
-            MPainter.stoneSurface(canvas, tx, ty, TAB_W, TAB_H, MStyle.BUTTON_RADIUS,
+            MPainter.stoneSurface(canvas, tx, ty, tabW, TAB_H, MStyle.BUTTON_RADIUS,
                 fill, MStyle.BUTTON_BORDER,
                 MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
@@ -307,7 +321,7 @@ public final class SkijaCharacterCreationRenderer {
             int tabColor = active ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
             float textY  = ty + TAB_H * 0.5f + MStyle.FONT_META * 0.38f;
             MPainter.drawCenteredStringWithShadow(canvas, tab.displayName(),
-                tx + TAB_W / 2f, textY, font, tabColor, MStyle.TEXT_SHADOW);
+                tx + tabW / 2f, textY, font, tabColor, MStyle.TEXT_SHADOW);
         }
     }
 
@@ -321,6 +335,7 @@ public final class SkijaCharacterCreationRenderer {
             case CLASS_ABILITIES -> classAbilitiesTab.render(canvas, ui, stats, state, tabContent, mx, my);
             case SKILLS          -> skillsTab.render(canvas, ui, stats, state, tabContent, mx, my);
             case FEATS           -> featsTab.render(canvas, ui, stats, state, tabContent, mx, my);
+            case LOOKS           -> looksTab.render(canvas, ui, tabContent, mx, my);
         }
     }
 
@@ -371,6 +386,7 @@ public final class SkijaCharacterCreationRenderer {
             case CLASS_ABILITIES -> classAbilitiesTab.handleClick(mx, my, stats, state, actions, tabContent);
             case SKILLS          -> skillsTab.handleClick(mx, my, stats, state, actions);
             case FEATS           -> featsTab.handleClick(mx, my, stats, state, actions);
+            case LOOKS           -> looksTab.handleClick(mx, my, actions);
         };
     }
 

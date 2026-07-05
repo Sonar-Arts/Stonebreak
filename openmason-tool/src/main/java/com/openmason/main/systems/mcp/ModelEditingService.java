@@ -1,6 +1,7 @@
 package com.openmason.main.systems.mcp;
 
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.engine.rendering.model.ModelPart;
 import com.openmason.engine.rendering.model.gmr.parts.MeshRange;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
@@ -58,6 +59,23 @@ public final class ModelEditingService {
         return await(MainThreadExecutor.submit(() -> {
             ModelPartManager pm = requirePartManager();
             return pm.getAllParts().stream().map(PartView::from).toList();
+        }));
+    }
+
+    /**
+     * Token-efficient part listing: compact rows by default, full
+     * {@link PartView}s with {@code detail}, optional case-insensitive
+     * substring filter on the name.
+     */
+    public List<?> listParts(boolean detail, String nameFilter) {
+        return await(MainThreadExecutor.submit(() -> {
+            ModelPartManager pm = requirePartManager();
+            String filter = nameFilter != null ? nameFilter.toLowerCase() : null;
+            var stream = pm.getAllParts().stream()
+                    .filter(p -> filter == null || p.name().toLowerCase().contains(filter));
+            return detail
+                    ? stream.map(PartView::from).toList()
+                    : stream.map(PartSummary::from).toList();
         }));
     }
 
@@ -384,6 +402,103 @@ public final class ModelEditingService {
                 })));
     }
 
+    /**
+     * Insert a vertex on a part-local edge at parametric position {@code t}
+     * (exclusive 0..1). The edge index comes from {@code part_mesh};
+     * its part-local vertex pair is resolved to unique vertex indices and the
+     * subdivision runs through the GMR topology op.
+     */
+    public Optional<SubdivideEdgeResult> subdivideEdge(String idOrName, int edgeIndex, float t) {
+        if (!(t > 0.0f && t < 1.0f)) {
+            throw new IllegalArgumentException("t must be strictly between 0 and 1, got " + t);
+        }
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Insert Vertex on Edge", () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return Optional.<SubdivideEdgeResult>empty();
+                    int[] localVerts = edgeVertexIndices(p.get(), edgeIndex);
+                    GenericModelRenderer gmr = requireModelRenderer();
+                    MeshRange range = requireMeshRange(p.get());
+                    int uniqueA = toUniqueVertex(gmr, range, localVerts[0]);
+                    int uniqueB = toUniqueVertex(gmr, range, localVerts[1]);
+                    int newVertex = gmr.subdivideEdgeAtParameter(uniqueA, uniqueB, t);
+                    if (newVertex < 0) {
+                        throw new IllegalStateException("Edge subdivision failed for edge "
+                                + edgeIndex + " at t=" + t);
+                    }
+                    ModelPartManager pm = requirePartManager();
+                    Optional<ModelPartDescriptor> refreshed = pm.getPartById(p.get().id());
+                    int newLocal = localVertexForUnique(gmr, refreshed.orElse(null), newVertex);
+                    return Optional.of(new SubdivideEdgeResult(
+                            newVertex, newLocal, refreshed.map(PartView::from).orElse(null)));
+                })));
+    }
+
+    /**
+     * Uniformly scale the given part-local faces about the selection's
+     * area-weighted centroid (vertices shared with unselected faces move too —
+     * Blender face-scale semantics).
+     */
+    public Optional<PartView> scaleFaces(String idOrName, int[] localFaceIds, float factor) {
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, "Scale Faces", () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return Optional.<PartView>empty();
+                    int[] globalIds = toGlobalFaceIds(p.get(), localFaceIds);
+                    if (!requireModelRenderer().scaleFaces(globalIds, factor, null)) {
+                        throw new IllegalStateException("Scale faces failed for "
+                                + globalIds.length + " faces at factor " + factor);
+                    }
+                    return requirePartManager().getPartById(p.get().id()).map(PartView::from);
+                })));
+    }
+
+    /**
+     * Inset each of the given part-local faces individually (even-thickness
+     * border of quads; each original face id keeps its inner cap). Returns the
+     * new border-quad face ids.
+     */
+    public Optional<FacesOpResult> insetFaces(String idOrName, int[] localFaceIds, float amount) {
+        return facesTopologyOp(idOrName, localFaceIds, "Inset Faces",
+                (gmr, globalIds) -> gmr.insetFaces(globalIds, amount));
+    }
+
+    /**
+     * Extrude each of the given part-local faces individually along its normal
+     * (each original face id keeps the moved cap). Returns the new side-quad
+     * face ids.
+     */
+    public Optional<FacesOpResult> extrudeFaces(String idOrName, int[] localFaceIds, float distance) {
+        return facesTopologyOp(idOrName, localFaceIds, "Extrude Faces",
+                (gmr, globalIds) -> gmr.extrudeFaces(globalIds, distance));
+    }
+
+    /** Shared inset/extrude plumbing: resolve, run, localize the new face ids. */
+    private Optional<FacesOpResult> facesTopologyOp(String idOrName, int[] localFaceIds,
+                                                    String label, FacesOp op) {
+        return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
+                mainInterface, label, () -> {
+                    Optional<ModelPartDescriptor> p = resolve(idOrName);
+                    if (p.isEmpty()) return Optional.<FacesOpResult>empty();
+                    int[] globalIds = toGlobalFaceIds(p.get(), localFaceIds);
+                    int[] newGlobalIds = op.apply(requireModelRenderer(), globalIds);
+                    if (newGlobalIds == null) {
+                        throw new IllegalStateException(label + " failed for "
+                                + globalIds.length + " faces");
+                    }
+                    ModelPartManager pm = requirePartManager();
+                    Optional<ModelPartDescriptor> refreshed = pm.getPartById(p.get().id());
+                    int[] newLocalIds = localizeFaceIds(refreshed.orElse(null), newGlobalIds);
+                    return Optional.of(new FacesOpResult(
+                            newLocalIds, newGlobalIds, refreshed.map(PartView::from).orElse(null)));
+                })));
+    }
+
+    @FunctionalInterface
+    private interface FacesOp {
+        int[] apply(GenericModelRenderer gmr, int[] globalFaceIds);
+    }
+
     private void applyVertexMove(ModelPartDescriptor part, int[] localIndices, Vector3f vec, boolean absolute) {
         MeshRange range = part.meshRange();
         if (range == null) throw new IllegalStateException("Part has no mesh range: " + part.id());
@@ -464,6 +579,82 @@ public final class ModelEditingService {
         return ((long) lo << 32) | (hi & 0xFFFFFFFFL);
     }
 
+    private GenericModelRenderer requireModelRenderer() {
+        ViewportController vp = mainInterface.getViewport3D();
+        GenericModelRenderer gmr = vp != null ? vp.getModelRenderer() : null;
+        if (gmr == null) throw new IllegalStateException("Model renderer not available");
+        return gmr;
+    }
+
+    private static MeshRange requireMeshRange(ModelPartDescriptor part) {
+        MeshRange range = part.meshRange();
+        if (range == null) throw new IllegalStateException("Part has no mesh range: " + part.id());
+        return range;
+    }
+
+    /** Resolve a part-local vertex index to its GMR unique vertex index. */
+    private static int toUniqueVertex(GenericModelRenderer gmr, MeshRange range, int localVertex) {
+        int unique = gmr.getUniqueIndexForMeshVertex(range.toGlobalVertex(localVertex));
+        if (unique < 0) {
+            throw new IllegalStateException("No unique vertex for part-local vertex " + localVertex);
+        }
+        return unique;
+    }
+
+    /**
+     * Resolve part-local face ids to global face ids ({@code faceStart + local}
+     * — the ids in a part's MeshRange are global-contiguous).
+     */
+    private static int[] toGlobalFaceIds(ModelPartDescriptor part, int[] localFaceIds) {
+        if (localFaceIds == null || localFaceIds.length == 0) {
+            throw new IllegalArgumentException("local_face_ids must be a non-empty array");
+        }
+        MeshRange range = requireMeshRange(part);
+        int[] globalIds = new int[localFaceIds.length];
+        for (int i = 0; i < localFaceIds.length; i++) {
+            int local = localFaceIds[i];
+            if (local < 0 || local >= range.faceCount()) {
+                throw new IllegalArgumentException("Local face id out of bounds: " + local
+                        + " (part has " + range.faceCount() + " faces)");
+            }
+            globalIds[i] = range.faceStart() + local;
+        }
+        return globalIds;
+    }
+
+    /**
+     * Map global face ids back to part-local ids against the part's refreshed
+     * (post-op) mesh range; -1 for ids that fall outside the part.
+     */
+    private static int[] localizeFaceIds(ModelPartDescriptor refreshedPart, int[] globalFaceIds) {
+        int[] localIds = new int[globalFaceIds.length];
+        MeshRange range = refreshedPart != null ? refreshedPart.meshRange() : null;
+        for (int i = 0; i < globalFaceIds.length; i++) {
+            localIds[i] = (range != null && range.containsFace(globalFaceIds[i]))
+                    ? range.toLocalFace(globalFaceIds[i])
+                    : -1;
+        }
+        return localIds;
+    }
+
+    /**
+     * Best-effort part-local vertex index for a unique vertex against the
+     * part's refreshed (post-op) mesh range; -1 when it cannot be mapped.
+     */
+    private static int localVertexForUnique(GenericModelRenderer gmr,
+                                            ModelPartDescriptor refreshedPart, int uniqueVertex) {
+        MeshRange range = refreshedPart != null ? refreshedPart.meshRange() : null;
+        if (range == null) return -1;
+        int[] meshIndices = gmr.getMeshIndicesForUniqueVertex(uniqueVertex);
+        if (meshIndices == null) return -1;
+        for (int meshIndex : meshIndices) {
+            if (range.containsVertex(meshIndex)) {
+                return range.toLocalVertex(meshIndex);
+            }
+        }
+        return -1;
+    }
+
     // ===================== Helpers =====================
 
     private void ensureModelLoaded() {
@@ -485,11 +676,19 @@ public final class ModelEditingService {
         return pm;
     }
 
+    /**
+     * Resolve a part by id or name. Never returns empty for an unknown part —
+     * throws a teaching error instead (silent nulls read as success to LLMs).
+     */
     private Optional<ModelPartDescriptor> resolve(String idOrName) {
         ModelPartManager pm = requirePartManager();
         Optional<ModelPartDescriptor> byId = pm.getPartById(idOrName);
         if (byId.isPresent()) return byId;
-        return pm.getPartByName(idOrName);
+        Optional<ModelPartDescriptor> byName = pm.getPartByName(idOrName);
+        if (byName.isPresent()) return byName;
+        throw McpErrors.unknownEntity("part", idOrName,
+                pm.getAllParts().stream().map(ModelPartDescriptor::name).toList(),
+                "list_parts");
     }
 
     private static PartShapeFactory.Shape parseShape(String name) {
@@ -606,6 +805,28 @@ public final class ModelEditingService {
     public record EdgesView(int count, int[] vertexPairs) {}
 
     public record FaceView(int faceId, int[] vertices) {}
+
+    /**
+     * Result of subdivide_edge: the new vertex's GMR unique index plus a
+     * best-effort part-local index (-1 when it could not be mapped back).
+     */
+    public record SubdivideEdgeResult(int newUniqueVertexId, int newLocalVertexIndex, PartView part) {}
+
+    /**
+     * Result of inset_faces / extrude_faces: the newly created face ids, both
+     * part-local (-1 where a new face fell outside the part's refreshed range)
+     * and global.
+     */
+    public record FacesOpResult(int[] newLocalFaceIds, int[] newGlobalFaceIds, PartView part) {}
+
+    /** Compact list row: enough to address the part and see its weight. */
+    public record PartSummary(String name, String id, int verts, int tris, boolean visible) {
+        public static PartSummary from(ModelPartDescriptor d) {
+            int vc = d.meshRange() != null ? d.meshRange().vertexCount() : 0;
+            int ic = d.meshRange() != null ? d.meshRange().indexCount() : 0;
+            return new PartSummary(d.name(), d.id(), vc, ic / 3, d.visible());
+        }
+    }
 
     public record PartView(String id, String name, boolean visible, boolean locked,
                            Vec3 origin, Vec3 position, Vec3 rotation, Vec3 scale,

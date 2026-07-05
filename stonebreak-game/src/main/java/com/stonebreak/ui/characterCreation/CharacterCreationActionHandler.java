@@ -54,4 +54,8 @@ public final class CharacterCreationActionHandler {
     public void onSelectBackground(String id) {
         state.getCharacterStats().setSelectedBackground(id);
     }
+
+    public void onSelectHat(String hatId) {
+        com.stonebreak.player.PlayerLooks.selectHat(hatId);
+    }
 }

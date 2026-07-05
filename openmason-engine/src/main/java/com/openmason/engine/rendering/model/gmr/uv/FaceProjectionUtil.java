@@ -1,5 +1,6 @@
 package com.openmason.engine.rendering.model.gmr.uv;
 
+import com.openmason.engine.rendering.model.gmr.GMRConstants;
 import org.joml.Vector3f;
 
 /**
@@ -30,7 +31,7 @@ import org.joml.Vector3f;
 public final class FaceProjectionUtil {
 
     /** Position-matching tolerance for degenerate detection. */
-    public static final float EPSILON = 0.0001f;
+    public static final float EPSILON = GMRConstants.POSITION_EPSILON;
 
     private FaceProjectionUtil() {
         // Stateless utility — no instantiation
@@ -158,38 +159,6 @@ public final class FaceProjectionUtil {
         for (int i = 1; i < vertexCount - 1; i++) {
             for (int j = i + 1; j < vertexCount; j++) {
                 Vector3f candidate = computeFaceNormal(positions, 0, i, j);
-                float lenSq = candidate.lengthSquared();
-                if (lenSq > bestLenSq) {
-                    bestNormal = candidate;
-                    bestLenSq = lenSq;
-                }
-            }
-        }
-
-        return bestNormal;
-    }
-
-    /**
-     * Compute a robust face normal from an indexed vertex list.
-     *
-     * <p>Same algorithm as {@link #computeRobustFaceNormal(float[], int)} but
-     * operates on mesh vertex indices (e.g., from {@code groupVerticesByFace})
-     * rather than sequential packed positions.
-     *
-     * @param vertices      Full vertex position buffer (x,y,z interleaved)
-     * @param vertexIndices Mesh vertex indices for this face
-     * @return The best normal found, or a zero-length vector if all triples are degenerate
-     */
-    public static Vector3f computeRobustFaceNormal(float[] vertices, java.util.List<Integer> vertexIndices) {
-        Vector3f bestNormal = new Vector3f();
-        float bestLenSq = 0.0f;
-        int count = vertexIndices.size();
-        int anchor = vertexIndices.get(0);
-
-        for (int i = 1; i < count - 1; i++) {
-            for (int j = i + 1; j < count; j++) {
-                Vector3f candidate = computeFaceNormal(vertices,
-                    anchor, vertexIndices.get(i), vertexIndices.get(j));
                 float lenSq = candidate.lengthSquared();
                 if (lenSq > bestLenSq) {
                     bestNormal = candidate;

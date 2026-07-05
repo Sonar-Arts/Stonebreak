@@ -121,6 +121,7 @@ public final class InputHandler {
             case ARM_MODEL -> adjustArmModel(direction);
             case CROSSHAIR_STYLE -> adjustCrosshairStyle(direction);
             case CROSSHAIR_SIZE -> adjustSlider(stateManager.getCrosshairSizeSlider(), direction * SettingsConfig.CROSSHAIR_SIZE_STEP);
+            case PLAYER_NAME_TAGS -> { if (direction != 0) actionHandler.togglePlayerNameTags(); }
             case LEAF_TRANSPARENCY -> { if (direction != 0) actionHandler.toggleLeafTransparency(); }
             case WATER_SHADER -> { if (direction != 0) actionHandler.toggleWaterShader(); }
             case CLOUDS_ENABLED -> { if (direction != 0) actionHandler.toggleClouds(); }

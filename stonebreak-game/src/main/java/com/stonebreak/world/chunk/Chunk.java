@@ -59,6 +59,9 @@ public class Chunk {
     private MmsMeshData pendingMmsMeshData;
     private ChunkMeshResult pendingChunkMeshResult;
     private MmsRenderableHandle renderableHandle;
+    // Water geometry lives in its own handle, drawn by the dedicated
+    // WaterRenderer after the world's transparent pass (never by render()).
+    private MmsRenderableHandle waterRenderableHandle;
     private List<com.openmason.engine.voxel.sbo.SBORenderData> sboRenderDataList;
     private boolean meshGenerated = false;
 
@@ -76,6 +79,13 @@ public class Chunk {
      * keep memory and save footprint minimal.
      */
     private final java.util.Map<Integer, String> blockStates = new java.util.HashMap<>();
+
+    /**
+     * Per-chunk water flow state (single source of truth). Holds entries only
+     * for non-source water cells; a WATER block with no entry is a source.
+     * See {@link ChunkWaterLayer} for the full invariant.
+     */
+    private final ChunkWaterLayer waterLayer = new ChunkWaterLayer();
 
     /**
      * Creates a new chunk at the specified position using CCO API.
@@ -140,6 +150,13 @@ public class Chunk {
             // this, breaking a water-bucket-placed block and replacing it with
             // a different block would leak the bucket's "water" state.
             blockStates.remove(com.stonebreak.world.chunk.utils.LocalBlockKey.pack(x, y, z));
+            // Water layer invariant: only WATER cells may carry a flow entry.
+            // Newly-set WATER keeps whatever entry the writer manages (absence
+            // = source); anything else must drop stale flow state here so every
+            // write path — player, sim, network, worldgen — stays consistent.
+            if (blockType != BlockType.WATER) {
+                waterLayer.remove(x, y, z);
+            }
             heightMap.onBlockChanged(x, y, z,
                     BlockOpacity.isOpaque(blockType),
                     BlockOpacity.isOpaque(previous),
@@ -181,6 +198,11 @@ public class Chunk {
      */
     public java.util.Map<Integer, String> getBlockStates() {
         return java.util.Collections.unmodifiableMap(blockStates);
+    }
+
+    /** Per-chunk water flow state. Writers: sim, network apply, save hydration. */
+    public ChunkWaterLayer getWaterLayer() {
+        return waterLayer;
     }
 
     /** Returns the engine opacity probe bound to this chunk — used by recomputeAll callers. */
@@ -260,6 +282,10 @@ public class Chunk {
                     renderableHandle = null;
                     meshGenerated = false;
                 }
+                if (waterRenderableHandle != null) {
+                    waterRenderableHandle.close();
+                    waterRenderableHandle = null;
+                }
                 stateManager.removeState(CcoChunkState.MESH_CPU_READY);
                 stateManager.addState(CcoChunkState.BLOCKS_POPULATED);
                 return;
@@ -273,6 +299,16 @@ public class Chunk {
 
             renderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingMmsMeshData);
             meshGenerated = true;
+
+            // Upload the water mesh; clear the handle when this rebuild
+            // produced no water so drained water can't ghost.
+            if (waterRenderableHandle != null) {
+                waterRenderableHandle.close();
+                waterRenderableHandle = null;
+            }
+            if (pendingChunkMeshResult != null && pendingChunkMeshResult.hasWaterMesh()) {
+                waterRenderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingChunkMeshResult.waterMesh());
+            }
 
             // Upload SBO meshes if present (one per block type)
             if (pendingChunkMeshResult != null && pendingChunkMeshResult.hasSBOMesh()) {
@@ -328,6 +364,22 @@ public class Chunk {
         }
 
         renderableHandle.render();
+    }
+
+    /** Whether this chunk currently has uploaded water geometry. */
+    public boolean hasWaterMesh() {
+        return waterRenderableHandle != null;
+    }
+
+    /**
+     * Renders the chunk's water mesh. Called only by the dedicated water
+     * renderer (with the water shader bound) — never part of {@link #render()}.
+     */
+    public void renderWater() {
+        if (!stateManager.isRenderable() || !meshGenerated || waterRenderableHandle == null) {
+            return;
+        }
+        waterRenderableHandle.render();
     }
 
     private static int debugRenderCallCount = 0;
@@ -432,7 +484,7 @@ public class Chunk {
 
     /**
      * Creates a serializable snapshot of this chunk using CCO API.
-     * Extracts water metadata from the World's WaterSystem and entities from EntityManager.
+     * Extracts water metadata from the chunk's water layer and entities from EntityManager.
      *
      * CRITICAL: Creates an ATOMIC snapshot by copying the block storage immediately.
      * This prevents race conditions where the chunk is modified after the snapshot is created
@@ -456,35 +508,22 @@ public class Chunk {
         // the exact state at the moment checkAndClearDataDirty() was called.
         CcoBlockStorage blocksCopy = blocks.copy();
 
-        // Extract water metadata from WaterSystem's sparse cell map — no 65k-cell
-        // block scan. Only non-source (flowing) water is saved; source is default.
+        // Extract water metadata from this chunk's own water layer. Only
+        // non-source (flowing/falling) cells exist there; sources re-derive
+        // from the block array on load. Falling persists as (level 1, true).
         java.util.Map<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> waterMetadata = new java.util.HashMap<>();
-
-        if (world != null && world.getWaterSystem() != null) {
-            world.getWaterSystem().forEachCellInChunk(x, z, (worldX, y, worldZ, waterBlock) -> {
-                if (waterBlock.isSource()) {
-                    return;
-                }
-                int localX = worldX - x * 16;
-                int localZ = worldZ - z * 16;
-                // Guard against drift between the cell map and block data: only
-                // persist cells whose block (in this atomic copy) is still water.
-                if (blocksCopy.get(localX, y, localZ) == BlockType.WATER) {
-                    waterMetadata.put(localX + "," + y + "," + localZ,
-                        new com.stonebreak.world.save.model.ChunkData.WaterBlockData(
-                            waterBlock.level(),
-                            waterBlock.falling()
-                        ));
-                }
-            });
-
-            if (!waterMetadata.isEmpty()) {
-                logger.log(Level.FINE, String.format(
-                    "[WATER-SAVE] Chunk (%d,%d): %d flowing water blocks saved",
-                    x, z, waterMetadata.size()
-                ));
+        waterLayer.forEach((localX, y, localZ, value) -> {
+            // Guard against racing the sim: only persist cells whose block
+            // (in this atomic copy) is still water.
+            if (blocksCopy.get(localX, y, localZ) == BlockType.WATER) {
+                boolean falling = value == ChunkWaterLayer.FALLING;
+                waterMetadata.put(localX + "," + y + "," + localZ,
+                    new com.stonebreak.world.save.model.ChunkData.WaterBlockData(
+                        falling ? 1 : value,
+                        falling
+                    ));
             }
-        }
+        });
 
         // Extract entities in this chunk from the OWNING world's EntityManager. Saves run on the
         // authoritative server, whose headless world holds the real (non-shadow) mobs; the Game
@@ -535,11 +574,6 @@ public class Chunk {
      * @param world World instance to apply water metadata and entities to
      */
     public void loadFromSnapshot(CcoSerializableSnapshot snapshot, World world) {
-        logger.log(Level.FINE, String.format(
-            "[LOAD-SEQUENCE] Chunk (%d,%d): loadFromSnapshot() called with %d water metadata entries and %d entities",
-            snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getWaterMetadata().size(), snapshot.getEntities().size()
-        ));
-
         // Update metadata from snapshot
         this.metadata = new CcoChunkMetadata(
             snapshot.getChunkX(),
@@ -576,25 +610,21 @@ public class Chunk {
             }
         }
 
-        // Apply water metadata to WaterSystem BEFORE onChunkLoaded is called
-        if (world != null && world.getWaterSystem() != null && !snapshot.getWaterMetadata().isEmpty()) {
-            logger.log(Level.FINE, String.format(
-                "[WATER-LOAD-SEQUENCE] Chunk (%d,%d): Calling loadWaterMetadata() with %d entries",
-                snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getWaterMetadata().size()
-            ));
-            world.getWaterSystem().loadWaterMetadata(snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getWaterMetadata());
-            logger.log(Level.FINE, String.format(
-                "[WATER-LOAD-SEQUENCE] Chunk (%d,%d): loadWaterMetadata() completed",
-                snapshot.getChunkX(), snapshot.getChunkZ()
-            ));
-        } else {
-            logger.log(Level.FINE, String.format(
-                "[WATER-LOAD-SEQUENCE] Chunk (%d,%d): Skipping loadWaterMetadata() - world=%s, waterSystem=%s, metadataSize=%d",
-                snapshot.getChunkX(), snapshot.getChunkZ(),
-                world != null ? "present" : "null",
-                (world != null && world.getWaterSystem() != null) ? "present" : "null",
-                snapshot.getWaterMetadata().size()
-            ));
+        // Hydrate this chunk's water layer BEFORE the chunk-load listener runs
+        // (the sim's load scan schedules — never overwrites — existing flow state).
+        waterLayer.clear();
+        for (var entry : snapshot.getWaterMetadata().entrySet()) {
+            String[] coords = entry.getKey().split(",");
+            int localX = Integer.parseInt(coords[0]);
+            int y = Integer.parseInt(coords[1]);
+            int localZ = Integer.parseInt(coords[2]);
+            var data = entry.getValue();
+            int value = data.falling()
+                ? ChunkWaterLayer.FALLING
+                : Math.min(ChunkWaterLayer.MAX_FLOW_LEVEL, Math.max(0, data.level()));
+            if (value > 0) {
+                waterLayer.set(localX, y, localZ, value);
+            }
         }
 
         // Load entities from snapshot into THIS world's entity manager. Critically, prefer the
@@ -708,6 +738,10 @@ public class Chunk {
             renderableHandle.close();
             renderableHandle = null;
         }
+        if (waterRenderableHandle != null) {
+            waterRenderableHandle.close();
+            waterRenderableHandle = null;
+        }
         closeSBORenderData();
         meshGenerated = false;
 
@@ -786,6 +820,27 @@ public class Chunk {
     public void setMmsRenderableHandle(MmsRenderableHandle handle) {
         this.renderableHandle = handle;
         if (handle != null) {
+            this.meshGenerated = true;
+        }
+    }
+
+    /**
+     * Gets the water mesh handle, or null when the chunk holds no water
+     * geometry. Managed by MmsMeshPipeline alongside the atlas handle.
+     */
+    public MmsRenderableHandle getWaterRenderableHandle() {
+        return waterRenderableHandle;
+    }
+
+    /**
+     * Sets the water mesh handle (null when a rebuild produced no water —
+     * mandatory so drained water doesn't ghost with a stale handle).
+     */
+    public void setWaterRenderableHandle(MmsRenderableHandle handle) {
+        this.waterRenderableHandle = handle;
+        if (handle != null) {
+            // A water-only chunk (empty atlas mesh) must still pass the
+            // renderWater() meshGenerated gate.
             this.meshGenerated = true;
         }
     }

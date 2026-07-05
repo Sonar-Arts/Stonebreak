@@ -46,10 +46,17 @@ public class HandItemRenderer {
 
     /**
      * Renders a block in the player's hand using appropriate rendering method.
+     * Blocks with an SBO display mesh (flower crosses, the door panel) draw
+     * their actual model geometry; everything else draws as a cube.
      */
     public void renderBlockInHand(BlockType blockType) {
-        if (blockType != null && blockType.isFlower()) {
-            renderFlowerInHand(blockType);
+        MeshManager.MeshResource sboMesh = blockType != null && sboHandMeshRegistry != null
+                ? sboHandMeshRegistry.getMesh(blockType)
+                : null;
+        if (sboMesh != null) {
+            renderSboMeshInHand(blockType, sboMesh);
+        } else if (blockType != null && blockType.isFlower()) {
+            // Flower without an SBO mesh: nothing sensible to draw.
         } else {
             renderCubeBlockInHand(blockType);
         }
@@ -115,25 +122,19 @@ public class HandItemRenderer {
     }
 
     /**
-     * Renders flowers as a cross pattern in the player's hand, using the SBO's
-     * own geometry so in-hand matches in-world.
+     * Renders a block's SBO display mesh (flower cross, door panel) in the
+     * player's hand, so in-hand matches the in-world model.
      */
-    private void renderFlowerInHand(BlockType flowerType) {
-        MeshManager.MeshResource sboMesh = sboHandMeshRegistry != null
-                ? sboHandMeshRegistry.getMesh(flowerType)
-                : null;
-        if (sboMesh == null) {
-            return; // No SBO hand mesh — nothing to draw.
-        }
-
+    private void renderSboMeshInHand(BlockType blockType, MeshManager.MeshResource sboMesh) {
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", true);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
         bindArray();
-        // Flower cross meshes have no per-vertex alpha flag — force alpha test.
-        shaderProgram.setUniform("u_forceAlphaTest", true);
+        // Cross meshes have no per-vertex alpha flag — force alpha test for
+        // flowers; harmless for opaque-textured models like the door.
+        shaderProgram.setUniform("u_forceAlphaTest", blockType.isFlower());
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

@@ -305,4 +305,64 @@ public class ViewportActions {
             logger.info("Grab mode started (G key)");
         }
     }
+
+    // ========== Scale Mode (S Key) ==========
+
+    /**
+     * Start scale mode from keybind (S key), or confirm an in-progress scale.
+     * Blender-style: Press S to scale the selection, press S again to confirm.
+     * Works in Vertex, Edge, or Face edit mode with active selection.
+     */
+    public void startScaleMode() {
+        if (!EditModeManager.getInstance().isEditingAllowed()) {
+            logger.debug("Scale mode requires an active edit mode");
+            return;
+        }
+        viewport.startScaleMode();
+    }
+
+    // ========== Box Select (B Key) ==========
+
+    /**
+     * Toggle box select from keybind (B key).
+     * Blender-style: Press B, then drag a rectangle to select; Esc or B cancels.
+     * Works in Vertex, Edge, or Face edit mode.
+     */
+    public void toggleBoxSelect() {
+        if (!EditModeManager.getInstance().isEditingAllowed()) {
+            logger.debug("Box select requires an active edit mode");
+            return;
+        }
+        viewport.toggleBoxSelect();
+    }
+
+    // ========== Inset Faces (I Key) ==========
+
+    /**
+     * Start inset mode from keybind (I key), or confirm an in-progress inset.
+     * Blender-style: Press I to inset the selected faces, press I again to confirm.
+     * Requires Face edit mode with a non-empty face selection.
+     */
+    public void startInsetMode() {
+        if (!EditModeManager.getInstance().isFaceEditingAllowed()) {
+            logger.debug("Inset requires Face edit mode");
+            return;
+        }
+        viewport.startInsetMode();
+    }
+
+    // ========== Extrude Faces (E Key) ==========
+
+    /**
+     * Start extrude mode from keybind (E key), or confirm an in-progress extrude.
+     * Blender-style: Press E to extrude the selected faces, press E again to confirm.
+     * Requires Face edit mode with a non-empty face selection.
+     */
+    public void startExtrudeMode() {
+        if (!EditModeManager.getInstance().isFaceEditingAllowed()) {
+            logger.debug("Extrude requires Face edit mode");
+            return;
+        }
+        viewport.startExtrudeMode();
+    }
 }

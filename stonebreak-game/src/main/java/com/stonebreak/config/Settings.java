@@ -15,7 +15,12 @@ public class Settings {
     
     // Player model settings
     private String armModelType = "REGULAR"; // "REGULAR" or "SLIM"
-    
+
+    // Cosmetic hat mounted on the player model's hat socket ("NONE" = bare head).
+    // Valid ids are defined by com.stonebreak.player.PlayerLooks.HAT_OPTIONS;
+    // unknown ids fall back to NONE at apply time.
+    private String selectedHat = "NONE";
+
     // Crosshair settings
     private String crosshairStyle = "SIMPLE_CROSS";
     private float crosshairSize = 16.0f;
@@ -33,6 +38,9 @@ public class Settings {
     private boolean cloudsEnabled = true;
     private boolean godRaysEnabled = true;
     private boolean shadowsEnabled = true;
+
+    // HUD / multiplayer — show floating username tags above remote players' heads.
+    private boolean playerNameTagsEnabled = true;
 
     // Lighting quality — shadow map tier ("LOW"/"MEDIUM"/"HIGH"), shadow reach in
     // blocks, and baked smooth lighting (per-vertex AO + soft sky gradients).
@@ -101,6 +109,7 @@ public class Settings {
             json.append("  \"windowHeight\": ").append(windowHeight).append(",\n");
             json.append("  \"masterVolume\": ").append(masterVolume).append(",\n");
             json.append("  \"armModelType\": \"").append(armModelType).append("\",\n");
+            json.append("  \"selectedHat\": \"").append(selectedHat).append("\",\n");
             json.append("  \"crosshairStyle\": \"").append(crosshairStyle).append("\",\n");
             json.append("  \"crosshairSize\": ").append(crosshairSize).append(",\n");
             json.append("  \"crosshairThickness\": ").append(crosshairThickness).append(",\n");
@@ -115,6 +124,7 @@ public class Settings {
             json.append("  \"cloudsEnabled\": ").append(cloudsEnabled).append(",\n");
             json.append("  \"godRaysEnabled\": ").append(godRaysEnabled).append(",\n");
             json.append("  \"shadowsEnabled\": ").append(shadowsEnabled).append(",\n");
+            json.append("  \"playerNameTagsEnabled\": ").append(playerNameTagsEnabled).append(",\n");
             json.append("  \"shadowQuality\": \"").append(shadowQuality).append("\",\n");
             json.append("  \"shadowDistance\": ").append(shadowDistance).append(",\n");
             json.append("  \"smoothLightingEnabled\": ").append(smoothLightingEnabled).append(",\n");
@@ -191,6 +201,11 @@ public class Settings {
                 String value = extractStringValue(line);
                 if (value != null) {
                     armModelType = value;
+                }
+            } else if (line.contains("selectedHat")) {
+                String value = extractStringValue(line);
+                if (value != null) {
+                    selectedHat = value;
                 }
             } else if (line.contains("crosshairStyle")) {
                 String value = extractStringValue(line);
@@ -301,6 +316,11 @@ public class Settings {
                 String value = extractValue(line);
                 if (value != null) {
                     shadowsEnabled = Boolean.parseBoolean(value);
+                }
+            } else if (line.contains("playerNameTagsEnabled")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    playerNameTagsEnabled = Boolean.parseBoolean(value);
                 }
             } else if (line.contains("shadowQuality")) {
                 String value = extractStringValue(line);
@@ -414,6 +434,7 @@ public class Settings {
     // Player model getters
     public String getArmModelType() { return armModelType; }
     public boolean isSlimArms() { return "SLIM".equals(armModelType); }
+    public String getSelectedHat() { return selectedHat; }
     
     // Crosshair getters
     public String getCrosshairStyle() { return crosshairStyle; }
@@ -432,6 +453,7 @@ public class Settings {
     public boolean getCloudsEnabled() { return cloudsEnabled; }
     public boolean getGodRaysEnabled() { return godRaysEnabled; }
     public boolean getShadowsEnabled() { return shadowsEnabled; }
+    public boolean getPlayerNameTagsEnabled() { return playerNameTagsEnabled; }
     public String getShadowQuality() { return shadowQuality; }
     public int getShadowDistance() { return shadowDistance; }
     public boolean getSmoothLightingEnabled() { return smoothLightingEnabled; }
@@ -474,6 +496,10 @@ public class Settings {
     
     public void setSlimArms(boolean slim) {
         this.armModelType = slim ? "SLIM" : "REGULAR";
+    }
+
+    public void setSelectedHat(String hatId) {
+        this.selectedHat = (hatId == null || hatId.isBlank()) ? "NONE" : hatId;
     }
     
     // Crosshair setters
@@ -526,6 +552,10 @@ public class Settings {
 
     public void setShadowsEnabled(boolean shadowsEnabled) {
         this.shadowsEnabled = shadowsEnabled;
+    }
+
+    public void setPlayerNameTagsEnabled(boolean playerNameTagsEnabled) {
+        this.playerNameTagsEnabled = playerNameTagsEnabled;
     }
 
     /** Shadow map quality tier; invalid values fall back to MEDIUM. Read live by the shadow pass. */

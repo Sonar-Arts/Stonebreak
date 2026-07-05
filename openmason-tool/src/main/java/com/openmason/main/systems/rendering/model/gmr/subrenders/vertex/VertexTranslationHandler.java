@@ -13,7 +13,6 @@ import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRender
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
 import com.openmason.main.systems.viewport.viewportRendering.common.TranslationHandlerBase;
-import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -186,11 +185,13 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
 
             // Compute new position for each vertex from original + delta,
             // then push directly to the renderer (single source of truth)
+            Map<Integer, Vector3f> newPositions = new HashMap<>();
             for (int vertexIndex : selectedIndices) {
                 Vector3f original = selectionState.getOriginalPosition(vertexIndex);
                 if (original == null) continue;
 
                 Vector3f newPos = new Vector3f(original).add(modelSpaceDelta);
+                newPositions.put(vertexIndex, newPos);
 
                 // Update visual preview (model space for VBO)
                 vertexRenderer.updateVertexPosition(vertexIndex, newPos);
@@ -199,14 +200,9 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
                 edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, newPos);
             }
 
-            // REALTIME VISUAL UPDATE: Update ModelRenderer during drag (no merging)
-            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-            if (meshVertices != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(meshVertices);
-
-                // Face overlays need to be rebuilt from GenericModelRenderer
-                faceRenderer.rebuildFromGenericModelRenderer();
-            }
+            // REALTIME VISUAL UPDATE: commit moved corners to the
+            // GenericModelRenderer (single source of truth) during the drag
+            pushVertexPositionsToModel(modelRenderer, faceRenderer, newPositions);
 
             logger.trace("Dragging {} vertices by delta ({}, {}, {})",
                     selectedIndices.size(),
@@ -222,25 +218,11 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        // Only merge if actual movement occurred during the drag
-        // This prevents accidental merges when clicking without moving
-        java.util.Map<Integer, Integer> indexRemapping = new java.util.HashMap<>();
-        if (hasMovedDuringDrag) {
-            // TRUE MERGE: Remove duplicate vertices that ended up at the same position
-            float mergeEpsilon = 0.001f; // 1mm threshold for merging
-            indexRemapping = vertexRenderer.mergeOverlappingVertices(mergeEpsilon);
-        }
+        // The GenericModelRenderer already holds the final positions — every
+        // mouse move committed them via pushVertexPositionsToModel().
 
-        // COMMIT: Update ModelRenderer with mesh vertices
-        // Topology rebuild in updateVertexPositions() handles edge/face updates via observer pattern
-        float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-        if (meshVertices != null && modelRenderer != null) {
-            modelRenderer.updateVertexPositions(meshVertices);
-            faceRenderer.rebuildFromGenericModelRenderer();
-            logger.debug("Committed vertex drag to ModelRenderer{}", !indexRemapping.isEmpty() ? " (with merge)" : "");
-        }
-
-        // Sync partGeometry so edits survive a subsequent part transform rebuild
+        // Sync partGeometry so edits survive a subsequent part transform
+        // rebuild. Must run BEFORE any merge (merged vertices lose corners).
         if (hasMovedDuringDrag && modelRenderer != null) {
             com.openmason.engine.rendering.model.gmr.parts.ModelPartManager pm =
                     modelRenderer.getPartManager();
@@ -256,14 +238,23 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
             }
         }
 
+        // TRUE MERGE: dragged vertices resting on a stationary vertex are
+        // topologically merged into it (only when actual movement occurred —
+        // prevents accidental merges when clicking without moving)
+        boolean mergedTopology = false;
+        if (hasMovedDuringDrag) {
+            mergedTopology = mergeCoincidentDraggedVertices(
+                modelRenderer, selectionState.getSelectedVertexIndices());
+        }
+
         // Record undo command after commit
         if (hasMovedDuringDrag && commandHistory != null && synchronizer != null) {
-            if (!indexRemapping.isEmpty() && preDragSnapshot != null) {
+            if (mergedTopology && preDragSnapshot != null) {
                 // Merge changed topology — use snapshot-based undo
                 MeshSnapshot postDragSnapshot = MeshSnapshot.capture(modelRenderer);
                 commandHistory.pushCompleted(SnapshotCommand.vertexMerge(
                     preDragSnapshot, postDragSnapshot, modelRenderer, synchronizer));
-            } else {
+            } else if (!mergedTopology) {
                 // No merge — use delta-based undo (lighter weight)
                 Set<Integer> uniqueIndices = selectionState.getSelectedVertexIndices();
                 Map<Integer, VertexMoveCommand.VertexDelta> deltas = new HashMap<>();
@@ -288,16 +279,24 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         }
         preDragSnapshot = null;
 
-        // Commit final positions from the renderer (single source of truth) back to selection state
-        Set<Integer> selectedIndices = selectionState.getSelectedVertexIndices();
-        Map<Integer, Vector3f> committedPositions = new HashMap<>();
-        for (int vertexIndex : selectedIndices) {
-            Vector3f pos = vertexRenderer.getVertexPosition(vertexIndex);
-            if (pos != null) {
-                committedPositions.put(vertexIndex, pos);
+        if (mergedTopology) {
+            // Structural change — vertex ids are stale, clear like other
+            // topology ops (overlay renderers already rebuilt via listeners)
+            selectionState.clearSelection();
+            vertexRenderer.clearSelection();
+            logger.debug("Committed vertex drag with topological merge");
+        } else {
+            // Commit final positions from the renderer (single source of truth) back to selection state
+            Set<Integer> selectedIndices = selectionState.getSelectedVertexIndices();
+            Map<Integer, Vector3f> committedPositions = new HashMap<>();
+            for (int vertexIndex : selectedIndices) {
+                Vector3f pos = vertexRenderer.getVertexPosition(vertexIndex);
+                if (pos != null) {
+                    committedPositions.put(vertexIndex, pos);
+                }
             }
+            selectionState.endDrag(committedPositions);
         }
-        selectionState.endDrag(committedPositions);
 
         isDragging = false;
         clearInitialDragHitPoint();
@@ -322,10 +321,12 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         Set<Integer> selectedIndices = selectionState.getSelectedVertexIndices();
 
         // Revert each selected vertex to original position from selection state
+        Map<Integer, Vector3f> originalPositions = new HashMap<>();
         for (int vertexIndex : selectedIndices) {
             Vector3f originalPosition = selectionState.getOriginalPosition(vertexIndex);
 
             if (originalPosition != null) {
+                originalPositions.put(vertexIndex, originalPosition);
                 vertexRenderer.updateVertexPosition(vertexIndex, originalPosition);
 
                 // Revert connected edges using INDEX-BASED matching
@@ -336,13 +337,8 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         // Clear drag state in selection
         selectionState.cancelDrag();
 
-        // REVERT: Update ModelRenderer with original mesh vertices
-        float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-        if (meshVertices != null && modelRenderer != null) {
-            modelRenderer.updateVertexPositions(meshVertices);
-            faceRenderer.rebuildFromGenericModelRenderer();
-            logger.debug("Reverted ModelRenderer to original positions (cancel)");
-        }
+        // REVERT: push the original positions back to the ModelRenderer
+        pushVertexPositionsToModel(modelRenderer, faceRenderer, originalPositions);
 
         isDragging = false;
         preDragSnapshot = null;

@@ -49,16 +49,6 @@ public final class VertexNormalCache {
         return vertexNormals[uniqueVertexIdx];
     }
 
-    /**
-     * Mark a vertex normal as needing recomputation.
-     * Package-private — called by {@link MeshTopology#onVertexPositionChanged}.
-     */
-    void markDirty(int uniqueVertexIdx) {
-        if (uniqueVertexIdx >= 0 && uniqueVertexIdx < vertexNormalDirty.length) {
-            vertexNormalDirty[uniqueVertexIdx] = true;
-        }
-    }
-
     private void ensureClean(int uniqueVertexIdx) {
         if (!vertexNormalDirty[uniqueVertexIdx]) {
             return;

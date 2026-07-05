@@ -2,9 +2,13 @@ package com.openmason.main.systems.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.joml.Vector3f;
+
+import static com.openmason.main.systems.mcp.McpArgs.optFloatBoxed;
+import static com.openmason.main.systems.mcp.McpArgs.optString;
+import static com.openmason.main.systems.mcp.McpArgs.optStringList;
+import static com.openmason.main.systems.mcp.McpArgs.optVec3;
+import static com.openmason.main.systems.mcp.McpArgs.reqFloat;
+import static com.openmason.main.systems.mcp.McpArgs.reqString;
 
 /**
  * Wires the {@link AnimationEditingService} surface as MCP tools for the
@@ -47,106 +51,83 @@ public final class AnimationToolDefinitions {
                 partSchema(),
                 args -> editor.listKeyframes(reqString(args, "part_id_or_name")).orElse(null)));
 
+        // ---------- Mutate: clip + layer metadata ----------
+
         registry.register(new McpTool(
-                "anim_get_keyframe",
-                "Get a single keyframe on the given part's track by index.",
+                "anim_set_clip",
+                "Update clip metadata: any of name, fps (>= 1), duration (seconds, >= 0.05), "
+                        + "loop. Omitted fields keep their value; pass at least one.",
                 schema()
-                        .str("part_id_or_name", "Part id or name")
-                        .num("index", "Keyframe index from anim_list_keyframes")
-                        .required("part_id_or_name", "index")
+                        .str("name", "New clip name")
+                        .num("fps", "Frames per second")
+                        .num("duration", "Duration in seconds")
+                        .bool("loop", "true to loop, false for one-shot")
                         .build(),
-                args -> editor.getKeyframe(
-                        reqString(args, "part_id_or_name"),
-                        (int) reqFloat(args, "index")).orElse(null)));
-
-        // ---------- Mutate: clip metadata ----------
-
-        registry.register(new McpTool(
-                "anim_set_clip_name",
-                "Set the current clip's display name.",
-                schema().str("name", "New clip name").required("name").build(),
-                args -> editor.setClipName(reqString(args, "name"))));
-
-        registry.register(new McpTool(
-                "anim_set_clip_fps",
-                "Set the clip's playback fps (>= 1).",
-                schema().num("fps", "Frames per second").required("fps").build(),
-                args -> editor.setClipFps(reqFloat(args, "fps"))));
+                args -> {
+                    Object last = null;
+                    String name = optString(args, "name");
+                    if (name != null) last = editor.setClipName(name);
+                    Float fps = optFloatBoxed(args, "fps");
+                    if (fps != null) last = editor.setClipFps(fps);
+                    Float duration = optFloatBoxed(args, "duration");
+                    if (duration != null) last = editor.setClipDuration(duration);
+                    JsonNode loop = args.get("loop");
+                    if (loop != null && loop.isBoolean()) last = editor.setClipLoop(loop.asBoolean());
+                    if (last == null) {
+                        throw new IllegalArgumentException("pass at least one of name, fps, duration, loop");
+                    }
+                    return last;
+                }));
 
         registry.register(new McpTool(
-                "anim_set_clip_duration",
-                "Set the clip's total duration in seconds (>= 0.05).",
-                schema().num("duration", "Duration in seconds").required("duration").build(),
-                args -> editor.setClipDuration(reqFloat(args, "duration"))));
-
-        registry.register(new McpTool(
-                "anim_set_clip_loop",
-                "Set whether the clip loops on playback.",
-                schema().bool("loop", "true to loop, false for one-shot").required("loop").build(),
-                args -> editor.setClipLoop(args.get("loop").asBoolean())));
-
-        // ---------- Mutate: layer metadata (animation mixing, format v1.1) ----------
-
-        registry.register(new McpTool(
-                "anim_set_layer_type",
-                "Set the clip's layer type. BASE clips drive the whole model (locomotion); OVERLAY clips "
-                        + "play on top of a base clip and take over only the parts in their mask "
-                        + "(e.g. an attack owning the arms while walking continues).",
-                schema().str("type", "\"BASE\" or \"OVERLAY\"").required("type").build(),
-                args -> editor.setLayerType(reqString(args, "type"))));
-
-        registry.register(new McpTool(
-                "anim_set_layer_mask",
-                "Replace the overlay's part mask with the given part names (ids are resolved to names). "
-                        + "An empty array means the overlay owns ALL parts.",
-                schema().strArray("mask_parts", "Part names the overlay owns; [] = all parts")
-                        .required("mask_parts").build(),
-                args -> editor.setLayerMask(optStringList(args, "mask_parts"))));
-
-        registry.register(new McpTool(
-                "anim_set_layer_fades",
-                "Set the overlay's blend fade durations in seconds. Omit either to leave it unchanged. "
-                        + "Fade-out applies at the natural end of a non-looping overlay and on early exit.",
+                "anim_set_layer",
+                "Update the clip's mixing-layer metadata: type (BASE drives the whole model, "
+                        + "OVERLAY plays on top owning only its masked parts), mask_parts (part names; "
+                        + "[] = all), fade_in/fade_out seconds, priority (higher overlay wins). Omitted "
+                        + "fields keep their value; pass at least one.",
                 schema()
-                        .num("fade_in_seconds", "Blend-in duration (optional)")
-                        .num("fade_out_seconds", "Blend-out duration (optional)")
+                        .enumStr("type", "Layer type", "BASE", "OVERLAY")
+                        .strArray("mask_parts", "Part names the overlay owns; [] = all parts")
+                        .num("fade_in_seconds", "Blend-in duration")
+                        .num("fade_out_seconds", "Blend-out duration")
+                        .num("priority", "Integer priority (higher wins)")
                         .build(),
-                args -> editor.setLayerFades(
-                        optFloatBoxed(args, "fade_in_seconds"),
-                        optFloatBoxed(args, "fade_out_seconds"))));
-
-        registry.register(new McpTool(
-                "anim_set_layer_priority",
-                "Set the overlay's priority. When multiple overlays mask the same part, the higher "
-                        + "priority wins.",
-                schema().num("priority", "Integer priority (higher wins)").required("priority").build(),
-                args -> editor.setLayerPriority((int) reqFloat(args, "priority"))));
+                args -> {
+                    Object last = null;
+                    String type = optString(args, "type");
+                    if (type != null) last = editor.setLayerType(type);
+                    if (args.has("mask_parts")) last = editor.setLayerMask(optStringList(args, "mask_parts"));
+                    Float fadeIn = optFloatBoxed(args, "fade_in_seconds");
+                    Float fadeOut = optFloatBoxed(args, "fade_out_seconds");
+                    if (fadeIn != null || fadeOut != null) last = editor.setLayerFades(fadeIn, fadeOut);
+                    Float priority = optFloatBoxed(args, "priority");
+                    if (priority != null) last = editor.setLayerPriority(priority.intValue());
+                    if (last == null) {
+                        throw new IllegalArgumentException(
+                                "pass at least one of type, mask_parts, fade_in_seconds, fade_out_seconds, priority");
+                    }
+                    return last;
+                }));
 
         // ---------- Mutate: transport ----------
 
         registry.register(new McpTool(
-                "anim_set_playhead",
-                "Move the playhead to a specific time in seconds and apply the resulting pose to the model.",
-                schema().num("time", "Time in seconds").required("time").build(),
-                args -> editor.setPlayhead(reqFloat(args, "time"))));
-
-        registry.register(new McpTool(
-                "anim_play",
-                "Begin (or resume) playback from the current playhead position.",
-                schema().build(),
-                args -> editor.play()));
-
-        registry.register(new McpTool(
-                "anim_pause",
-                "Pause playback, leaving the playhead in place.",
-                schema().build(),
-                args -> editor.pause()));
-
-        registry.register(new McpTool(
-                "anim_stop",
-                "Stop playback and reset the playhead to 0.",
-                schema().build(),
-                args -> editor.stop()));
+                "anim_transport",
+                "Control playback: action=play (resume from playhead), pause, stop (reset to 0), "
+                        + "or seek (move the playhead to 'time' seconds and apply the pose).",
+                schema()
+                        .enumStr("action", "Transport action", "play", "pause", "stop", "seek")
+                        .num("time", "Playhead time in seconds (required for seek)")
+                        .required("action")
+                        .build(),
+                args -> switch (reqString(args, "action")) {
+                    case "play" -> editor.play();
+                    case "pause" -> editor.pause();
+                    case "stop" -> editor.stop();
+                    case "seek" -> editor.setPlayhead(reqFloat(args, "time"));
+                    default -> throw new IllegalArgumentException(
+                            "unknown action — valid: play, pause, stop, seek");
+                }));
 
         registry.register(new McpTool(
                 "anim_apply_pose",
@@ -158,32 +139,38 @@ public final class AnimationToolDefinitions {
         // ---------- Mutate: keyframes ----------
 
         registry.register(new McpTool(
-                "anim_insert_keyframe_at_playhead",
-                "Capture the part's current transform as a keyframe at the current playhead time.",
-                partSchema(),
-                args -> editor.insertKeyframeAtPlayhead(reqString(args, "part_id_or_name")).orElse(null)));
-
-        registry.register(new McpTool(
                 "anim_insert_keyframe",
-                "Insert (or upsert) a keyframe on the part's track at the given time with the supplied pose. "
-                        + "Any of position/rotation/scale may be omitted — omitted components are taken from the "
-                        + "part's current local transform. Rotation is Euler degrees. Easing defaults to LINEAR.",
+                "Insert (or upsert) a keyframe on the part's track. time omitted = the current "
+                        + "playhead. Any of position/rotation/scale may be omitted — omitted components "
+                        + "come from the part's current local transform. Rotation is Euler degrees. "
+                        + "Easing defaults to LINEAR.",
                 schema()
                         .str("part_id_or_name", "Part id or name")
-                        .num("time", "Keyframe time in seconds")
+                        .num("time", "Keyframe time in seconds (omit for the playhead)")
                         .vec3("position", "Position [x,y,z]")
                         .vec3("rotation", "Euler degrees [x,y,z]")
                         .vec3("scale", "Scale [x,y,z]")
                         .str("easing", "Easing curve: LINEAR, EASE_IN, EASE_OUT, or EASE_IN_OUT (default LINEAR)")
-                        .required("part_id_or_name", "time")
+                        .required("part_id_or_name")
                         .build(),
-                args -> editor.insertKeyframe(
-                        reqString(args, "part_id_or_name"),
-                        reqFloat(args, "time"),
-                        optVec3(args, "position"),
-                        optVec3(args, "rotation"),
-                        optVec3(args, "scale"),
-                        optString(args, "easing")).orElse(null)));
+                args -> {
+                    String part = reqString(args, "part_id_or_name");
+                    Float time = optFloatBoxed(args, "time");
+                    if (time == null) {
+                        if (args.has("position") || args.has("rotation")
+                                || args.has("scale") || args.has("easing")) {
+                            throw new IllegalArgumentException(
+                                    "pass time when supplying a pose; omitting time captures the "
+                                            + "part's current transform at the playhead");
+                        }
+                        return editor.insertKeyframeAtPlayhead(part).orElse(null);
+                    }
+                    return editor.insertKeyframe(part, time,
+                            optVec3(args, "position"),
+                            optVec3(args, "rotation"),
+                            optVec3(args, "scale"),
+                            optString(args, "easing")).orElse(null);
+                }));
 
         registry.register(new McpTool(
                 "anim_edit_keyframe",
@@ -226,20 +213,6 @@ public final class AnimationToolDefinitions {
                 partSchema(),
                 args -> editor.deleteTrack(reqString(args, "part_id_or_name"))));
 
-        // ---------- Undo / Redo ----------
-
-        registry.register(new McpTool(
-                "anim_undo",
-                "Undo the most recent animation-editor mutation.",
-                schema().build(),
-                args -> editor.undo()));
-
-        registry.register(new McpTool(
-                "anim_redo",
-                "Redo the most recently undone animation-editor mutation.",
-                schema().build(),
-                args -> editor.redo()));
-
         // ---------- File I/O ----------
 
         registry.register(new McpTool(
@@ -250,16 +223,13 @@ public final class AnimationToolDefinitions {
 
         registry.register(new McpTool(
                 "anim_save",
-                "Save the current clip to its existing file path. Returns false if the clip has no path yet.",
-                schema().build(),
-                args -> editor.save()));
-
-        registry.register(new McpTool(
-                "anim_save_as",
-                "Save the current clip to the given absolute file path.",
-                schema().str("file_path", "Absolute file path (typically ending in .oma)")
-                        .required("file_path").build(),
-                args -> editor.saveAs(reqString(args, "file_path"))));
+                "Save the current clip: to file_path when given, else to its existing path "
+                        + "(false if the clip has no path yet).",
+                schema().str("file_path", "Absolute file path (typically ending in .oma)").build(),
+                args -> {
+                    String path = optString(args, "file_path");
+                    return path != null ? editor.saveAs(path) : editor.save();
+                }));
 
         registry.register(new McpTool(
                 "anim_load",
@@ -271,132 +241,11 @@ public final class AnimationToolDefinitions {
 
     // ===================== Schema helpers =====================
 
-    private SchemaBuilder schema() {
-        return new SchemaBuilder(mapper);
+    private McpSchema schema() {
+        return McpSchema.of(mapper);
     }
 
     private JsonNode partSchema() {
         return schema().str("part_id_or_name", "Part id or name").required("part_id_or_name").build();
-    }
-
-    private static final class SchemaBuilder {
-        private final ObjectMapper mapper;
-        private final ObjectNode root;
-        private final ObjectNode properties;
-        private final ArrayNode required;
-
-        SchemaBuilder(ObjectMapper mapper) {
-            this.mapper = mapper;
-            this.root = mapper.createObjectNode();
-            this.properties = mapper.createObjectNode();
-            this.required = mapper.createArrayNode();
-            root.put("type", "object");
-            root.set("properties", properties);
-        }
-
-        SchemaBuilder str(String name, String description) { return prop(name, "string", description); }
-        SchemaBuilder num(String name, String description) { return prop(name, "number", description); }
-        SchemaBuilder bool(String name, String description) { return prop(name, "boolean", description); }
-
-        /** Variable-length string array. */
-        SchemaBuilder strArray(String name, String description) {
-            ObjectNode def = mapper.createObjectNode();
-            def.put("type", "array");
-            def.put("description", description);
-            ObjectNode items = mapper.createObjectNode();
-            items.put("type", "string");
-            def.set("items", items);
-            properties.set(name, def);
-            return this;
-        }
-
-        /** Fixed-length [x,y,z] number array. */
-        SchemaBuilder vec3(String name, String description) {
-            ObjectNode def = mapper.createObjectNode();
-            def.put("type", "array");
-            def.put("description", description);
-            ObjectNode items = mapper.createObjectNode();
-            items.put("type", "number");
-            def.set("items", items);
-            def.put("minItems", 3);
-            def.put("maxItems", 3);
-            properties.set(name, def);
-            return this;
-        }
-
-        SchemaBuilder prop(String name, String type, String description) {
-            ObjectNode def = mapper.createObjectNode();
-            def.put("type", type);
-            def.put("description", description);
-            properties.set(name, def);
-            return this;
-        }
-
-        SchemaBuilder required(String... names) {
-            for (String n : names) required.add(n);
-            return this;
-        }
-
-        JsonNode build() {
-            if (!required.isEmpty()) root.set("required", required);
-            return root;
-        }
-    }
-
-    // ===================== Arg parsing =====================
-
-    private static String reqString(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || n.isNull() || !n.isTextual() || n.asText().isBlank()) {
-            throw new IllegalArgumentException("Missing required string argument: " + key);
-        }
-        return n.asText();
-    }
-
-    private static String optString(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || n.isNull() || !n.isTextual()) return null;
-        String s = n.asText();
-        return s.isBlank() ? null : s;
-    }
-
-    private static float reqFloat(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || !n.isNumber()) {
-            throw new IllegalArgumentException("Missing required numeric argument: " + key);
-        }
-        return n.floatValue();
-    }
-
-    private static Float optFloatBoxed(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        return (n == null || n.isNull() || !n.isNumber()) ? null : n.floatValue();
-    }
-
-    /** Parse an optional string-array argument; empty list when absent. */
-    private static java.util.List<String> optStringList(JsonNode args, String key) {
-        java.util.List<String> out = new java.util.ArrayList<>();
-        JsonNode n = args.get(key);
-        if (n == null || n.isNull()) return out;
-        if (!n.isArray()) {
-            throw new IllegalArgumentException(key + " must be a string array");
-        }
-        for (JsonNode item : n) {
-            if (item != null && item.isTextual() && !item.asText().isBlank()) {
-                out.add(item.asText());
-            }
-        }
-        return out;
-    }
-
-    /** Parse an optional [x,y,z] array argument; null when absent. */
-    private static Vector3f optVec3(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || n.isNull()) return null;
-        if (!n.isArray() || n.size() != 3
-                || !n.get(0).isNumber() || !n.get(1).isNumber() || !n.get(2).isNumber()) {
-            throw new IllegalArgumentException(key + " must be a [x,y,z] number array");
-        }
-        return new Vector3f(n.get(0).floatValue(), n.get(1).floatValue(), n.get(2).floatValue());
     }
 }

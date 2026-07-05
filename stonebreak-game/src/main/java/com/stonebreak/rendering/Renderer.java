@@ -77,6 +77,7 @@ public class Renderer {
     private final WorldRenderer worldRenderer;
     private final OverlayRenderer overlayRenderer;
     private final DropRenderer dropRenderer;
+    private final com.stonebreak.rendering.models.blocks.AnimatedBlockRenderer animatedBlockRenderer;
 
     // Post-processing (scene FBO + screen-space effects, e.g. god rays)
     private final PostProcessingPipeline postPipeline;
@@ -115,7 +116,7 @@ public class Renderer {
             sboHandMeshRegistry = new SBOHandMeshRegistry(
                     blockRenderer.getCBRResourceManager(),
                     blockTextureArray);
-            int built = sboHandMeshRegistry.buildFlowerMeshes(sboBlockBridge);
+            int built = sboHandMeshRegistry.buildMeshes(sboBlockBridge);
             logger.debug("[Renderer] SBO hand-mesh registry: built {} flower meshes", built);
         }
 
@@ -151,6 +152,7 @@ public class Renderer {
         QuarryMarkerRenderer.getInstance().setBackend(skijaBackend);
         com.stonebreak.rendering.UI.components.DoubtMarkerRenderer.getInstance().setBackend(skijaBackend);
         com.stonebreak.rendering.UI.components.EnemyAwarenessRenderer.getInstance().setBackend(skijaBackend);
+        com.stonebreak.rendering.UI.components.PlayerNameTagRenderer.getInstance().setBackend(skijaBackend);
         com.stonebreak.rendering.UI.components.StealthHudRenderer.getInstance().setBackend(skijaBackend);
 
         debugRenderer = new DebugRenderer(resourceManager.getShaderProgram(), configManager.getProjectionMatrix());
@@ -161,10 +163,16 @@ public class Renderer {
 
         dropRenderer = new DropRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, resourceManager.getShaderProgram());
 
+        // Animated SBO blocks (doors) — excluded from chunk meshing in
+        // initializeSBOBlocks and drawn per-frame instead.
+        animatedBlockRenderer = new com.stonebreak.rendering.models.blocks.AnimatedBlockRenderer();
+        animatedBlockRenderer.initialize(sboBlockBridge);
+
         worldRenderer = new WorldRenderer(resourceManager.getShaderProgram(),
                                          blockTextureArray,
                                          configManager.getProjectionMatrix(),
-                                         blockRenderer, playerArmRenderer, entityRenderer, dropRenderer);
+                                         blockRenderer, playerArmRenderer, entityRenderer, dropRenderer,
+                                         animatedBlockRenderer);
         
         overlayRenderer = new OverlayRenderer(uiRenderer.getBlockIconRenderer(), 
                                              uiRenderer.getItemIconRenderer());
@@ -198,6 +206,12 @@ public class Renderer {
                 java.util.Map<com.stonebreak.blocks.BlockType, SBOParseResult> sboBlockMap = new java.util.LinkedHashMap<>();
                 for (com.stonebreak.blocks.BlockType blockType : com.stonebreak.blocks.BlockType.values()) {
                     if (bridge.isSBOBlock(blockType)) {
+                        // Blocks with animation clips are never baked into the
+                        // chunk mesh — no stamp means the mesher skips them and
+                        // AnimatedBlockRenderer draws them per-frame instead.
+                        if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(blockType)) {
+                            continue;
+                        }
                         sboBlockMap.put(blockType, bridge.getSBODefinition(blockType));
                     }
                 }
@@ -448,6 +462,18 @@ public class Renderer {
      * UI elements have been stripped from this method and should be rendered separately.
      */
     public void renderWorld(World world, Player player, float totalTime) {
+        // Far plane tracks the LOD outer ring: at max settings the ring reaches
+        // (24 + 48) * 16 = 1152 blocks — past the 1000-block default — and its
+        // square corners lie √2 farther out still. Change-detected inside
+        // setFarPlane, so this is free while settings are stable. Must run
+        // before any per-frame consumer of the projection matrix (shadow
+        // cascades, frustum culling) inside worldRenderer.renderWorld.
+        com.stonebreak.config.Settings settings = com.stonebreak.config.Settings.getInstance();
+        float outerBlocks = (settings.getRenderDistance()
+                + (settings.getLodEnabled() ? settings.getLodDistance() : 0))
+                * (float) com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE;
+        configManager.setFarPlane(Math.max(1000.0f, outerBlocks * 1.4142f + 64.0f));
+
         com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
         org.joml.Vector3f sunDirection = timeOfDay != null
                 ? timeOfDay.getSunDirection()
@@ -562,7 +588,10 @@ public class Renderer {
         if (dropRenderer != null) {
             dropRenderer.cleanup();
         }
-        
+        if (animatedBlockRenderer != null) {
+            animatedBlockRenderer.cleanup();
+        }
+
         // Cleanup pause menu
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null) {

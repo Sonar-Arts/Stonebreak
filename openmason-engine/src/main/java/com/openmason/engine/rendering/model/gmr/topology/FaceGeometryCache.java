@@ -105,16 +105,6 @@ public final class FaceGeometryCache {
     }
 
     /**
-     * Mark a face as needing geometry recomputation.
-     * Package-private — called by {@link MeshTopology#onVertexPositionChanged}.
-     */
-    void markFaceDirty(int faceId) {
-        if (faceId >= 0 && faceId < faceDirty.length) {
-            faceDirty[faceId] = true;
-        }
-    }
-
-    /**
      * Ensure face geometry is up-to-date, recomputing if dirty.
      * Package-private — called by sibling caches before reading face data.
      */
@@ -127,14 +117,6 @@ public final class FaceGeometryCache {
             faceAreas[faceId] = MeshGeometry.computeArea(verts, uniqueToMeshIndices, verticesRef);
             faceDirty[faceId] = false;
         }
-    }
-
-    /**
-     * Update the vertex positions reference after a vertex move.
-     * Package-private — called by {@link MeshTopology#onVertexPositionChanged}.
-     */
-    void updateVerticesRef(float[] vertices) {
-        this.verticesRef = vertices;
     }
 
     /**

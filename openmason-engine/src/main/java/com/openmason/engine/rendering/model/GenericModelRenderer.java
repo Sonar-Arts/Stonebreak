@@ -4,11 +4,13 @@ import com.openmason.engine.rendering.api.BaseRenderer;
 import com.openmason.engine.rendering.api.GeometryData;
 import com.openmason.engine.rendering.api.RenderPass;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.model.gmr.GMRConstants;
 import com.openmason.engine.rendering.model.gmr.core.DrawBatchManager;
 import com.openmason.engine.rendering.model.gmr.core.IGPUBufferUploader;
 import com.openmason.engine.rendering.model.gmr.core.MeshMutationCoordinator;
 import com.openmason.engine.rendering.model.gmr.core.MeshRebuildPipeline;
 import com.openmason.engine.rendering.model.gmr.core.MeshSerializationAdapter;
+import com.openmason.engine.rendering.model.gmr.core.PartMeshBridge;
 import com.openmason.engine.rendering.model.gmr.core.VertexDataManager;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
 import com.openmason.engine.rendering.model.gmr.parts.PartMeshRebuilder;
@@ -18,10 +20,11 @@ import com.openmason.engine.rendering.model.gmr.extraction.GMREdgeExtractor;
 import com.openmason.engine.rendering.model.gmr.extraction.GMRFaceExtractor;
 import com.openmason.engine.rendering.model.gmr.geometry.GeometryDataBuilder;
 import com.openmason.engine.rendering.model.gmr.geometry.IGeometryDataBuilder;
+import com.openmason.engine.rendering.model.gmr.editable.EditableMesh;
+import com.openmason.engine.rendering.model.gmr.mapping.EditableMeshVertexMapper;
 import com.openmason.engine.rendering.model.gmr.mapping.ITriangleFaceMapper;
 import com.openmason.engine.rendering.model.gmr.mapping.IUniqueVertexMapper;
 import com.openmason.engine.rendering.model.gmr.mapping.TriangleFaceMapper;
-import com.openmason.engine.rendering.model.gmr.mapping.UniqueVertexMapper;
 import com.openmason.engine.rendering.model.gmr.notification.IMeshChangeNotifier;
 import com.openmason.engine.rendering.model.gmr.notification.MeshChangeNotifier;
 import com.openmason.engine.rendering.model.gmr.topology.MeshTopology;
@@ -72,6 +75,7 @@ public class GenericModelRenderer extends BaseRenderer {
     private final TextureGPUOperations textureOps;
     private final DrawBatchManager drawBatchManager;
     private final MeshSerializationAdapter serializationAdapter;
+    private final PartMeshBridge partMeshBridge;
 
     // Part management
     private final ModelPartManager partManager;
@@ -81,14 +85,6 @@ public class GenericModelRenderer extends BaseRenderer {
 
     // When true, doRender skips texture binding and forces solid gray color
     private boolean forceUnrendered = false;
-
-    // The part-consistent combined mesh from the last ModelPartManager rebuild.
-    // This is the authoritative geometry that the part MeshRanges describe. It is
-    // captured BEFORE the UV pipeline appends material-seam-duplicate vertices to
-    // the live render mesh, so it is what must be serialized — persisting the
-    // seam-duplicated render mesh would write vertices outside every part's range
-    // and corrupt the .OMO on reload. Null until the first part rebuild.
-    private OMOFormat.MeshData lastPartConsistentMeshData;
 
     // Engine-level material ID counter (replaces editor-specific FaceMaterialSection.allocateNextMaterialId)
     private static final java.util.concurrent.atomic.AtomicInteger materialIdCounter =
@@ -110,12 +106,10 @@ public class GenericModelRenderer extends BaseRenderer {
     private GenericModelRenderer(FaceTextureManager faceTextureManager) {
         this(
             new VertexDataManager(),
-            new UniqueVertexMapper(),
+            new EditableMeshVertexMapper(),
             new MeshChangeNotifier(),
             new TriangleFaceMapper(),
-            new SubdivisionProcessor(),
             new GeometryDataBuilder(),
-            new PerFaceUVCoordinateGenerator(faceTextureManager),
             new ModelStateManager(),
             new GMRFaceExtractor(),
             new GMREdgeExtractor(),
@@ -128,12 +122,10 @@ public class GenericModelRenderer extends BaseRenderer {
      */
     public GenericModelRenderer(
             IVertexDataManager vertexManager,
-            IUniqueVertexMapper uniqueMapper,
+            EditableMeshVertexMapper uniqueMapper,
             IMeshChangeNotifier changeNotifier,
             ITriangleFaceMapper faceMapper,
-            ISubdivisionProcessor subdivisionProcessor,
             IGeometryDataBuilder geometryBuilder,
-            IUVCoordinateGenerator uvGenerator,
             IModelStateManager stateManager,
             GMRFaceExtractor faceExtractor,
             GMREdgeExtractor edgeExtractor,
@@ -164,40 +156,38 @@ public class GenericModelRenderer extends BaseRenderer {
             @Override public boolean isInitialized() { return initialized; }
         };
 
-        // Wire rebuild pipeline
+        // Wire rebuild pipeline (owner of the authoritative EditableMesh)
         this.rebuildPipeline = new MeshRebuildPipeline(
             vertexManager, uniqueMapper, faceMapper, changeNotifier, geometryBuilder, gpuUploader);
         this.rebuildPipeline.setBoundsInvalidator(() -> cachedBounds = null);
+        this.rebuildPipeline.setFaceTextureManager(this.faceTextureManager);
+        this.rebuildPipeline.setRendererStateAccess(rendererState);
 
         // Wire texture operations
-        this.textureOps = new TextureGPUOperations(
-            vertexManager, faceMapper, uniqueMapper, uvGenerator, geometryBuilder,
-            this.faceTextureManager, gpuUploader, rebuildPipeline,
-            new TextureGPUOperations.VertexCountAccess() {
-                @Override public int getVertexCount() { return vertexCount; }
-                @Override public void setVertexCount(int count) { vertexCount = count; }
-            });
-
-        // Connect UV regeneration to pipeline
-        this.rebuildPipeline.setUVRegenerator(textureOps::regenerateUVsAndUpload);
+        this.textureOps = new TextureGPUOperations(this.faceTextureManager, rebuildPipeline);
 
         // Wire draw batch manager
         this.drawBatchManager = new DrawBatchManager(vertexManager, faceMapper, this.faceTextureManager);
 
         // Wire mutation coordinator
         this.mutationCoordinator = new MeshMutationCoordinator(
-            vertexManager, uniqueMapper, faceMapper, subdivisionProcessor,
-            changeNotifier, geometryBuilder, this.faceTextureManager,
-            rebuildPipeline, gpuUploader, rendererState);
+            vertexManager, uniqueMapper, changeNotifier, geometryBuilder,
+            this.faceTextureManager, rebuildPipeline, gpuUploader, rendererState);
 
         // Wire serialization adapter
         this.serializationAdapter = new MeshSerializationAdapter(
-            vertexManager, faceMapper, this.faceTextureManager, stateManager,
-            rebuildPipeline, textureOps, rendererState);
+            this.faceTextureManager, stateManager, rebuildPipeline);
+
+        // Wire part→pipeline bridge (shared with headless model documents)
+        this.partMeshBridge = new PartMeshBridge(
+            rebuildPipeline, this.faceTextureManager, serializationAdapter, stateManager);
 
         // Wire part manager with mesh consumer that pushes data through the serialization pipeline
         this.partManager = new ModelPartManager();
         this.partManager.setMeshConsumer(this::onPartMeshRebuilt);
+        // Render corners diverge from combined-soup indices for shapes that
+        // share vertices across faces — translate before part-range lookups.
+        this.partManager.setCombinedVertexResolver(rebuildPipeline::cornerToSoupIndices);
 
         logger.debug("GenericModelRenderer created with subsystems");
     }
@@ -488,6 +478,45 @@ public class GenericModelRenderer extends BaseRenderer {
         return mutationCoordinator.createFaceFromVertices(selectedUniqueVertices, activeMaterialId);
     }
 
+    /**
+     * Topologically merge vertices into {@code keepUniqueVertexId} — faces
+     * genuinely share the kept vertex afterward (edges between merged
+     * vertices collapse; degenerated faces are removed). Move the vertices
+     * together first; this op does not touch positions.
+     */
+    public boolean mergeVertices(int keepUniqueVertexId, int[] mergedUniqueVertexIds) {
+        return mutationCoordinator.mergeVertices(keepUniqueVertexId, mergedUniqueVertexIds);
+    }
+
+    /**
+     * Scale the selected faces' vertices about a pivot ({@code null} = the
+     * selection's area-weighted centroid). Vertices shared with unselected
+     * faces move too (Blender face-scale semantics).
+     */
+    public boolean scaleFaces(int[] faceIds, float factor, Vector3f pivotOrNull) {
+        return mutationCoordinator.scaleFaces(faceIds, factor, pivotOrNull);
+    }
+
+    /**
+     * Inset each selected face individually (even-thickness border of quads;
+     * the original face id keeps the inner cap).
+     *
+     * @return the new border-quad face ids, or {@code null} on failure
+     */
+    public int[] insetFaces(int[] faceIds, float amount) {
+        return mutationCoordinator.insetFaces(faceIds, amount);
+    }
+
+    /**
+     * Extrude each selected face individually along its normal (the original
+     * face id keeps the moved cap).
+     *
+     * @return the new side-quad face ids, or {@code null} on failure
+     */
+    public int[] extrudeFaces(int[] faceIds, float offset) {
+        return mutationCoordinator.extrudeFaces(faceIds, offset);
+    }
+
     // =========================================================================
     // TEXTURE MANAGEMENT (delegates to TextureGPUOperations)
     // =========================================================================
@@ -638,44 +667,7 @@ public class GenericModelRenderer extends BaseRenderer {
      * Bridges part-level changes into the existing serialization/render pipeline.
      */
     private void onPartMeshRebuilt(PartMeshRebuilder.RebuildResult result) {
-        // When all parts are hidden, clear the rendered mesh instead of keeping stale geometry
-        if (result.totalVertexCount() == 0) {
-            logger.debug("Part mesh rebuild produced empty result — clearing mesh");
-            vertexManager.setData(new float[0], new float[0], new int[0]);
-            vertexCount = 0;
-            indexCount = 0;
-            faceMapper.clear();
-            lastPartConsistentMeshData = null;
-            rebuildPipeline.rebuildFull(0, 0);
-            return;
-        }
-
-        // Remap face texture mappings if face IDs shifted (e.g. after part deletion)
-        if (result.faceIdRemap() != null && !result.faceIdRemap().isEmpty()) {
-            faceTextureManager.remapFaceIds(result.faceIdRemap());
-            logger.debug("Remapped {} face texture IDs after part change", result.faceIdRemap().size());
-        }
-
-        // Wrap the rebuilt data as MeshData and feed through the geometry-only path.
-        // Uses updateMeshGeometry() instead of loadMeshData() to preserve existing
-        // face texture mappings — critical when parts are added/moved/removed.
-        OMOFormat.MeshData meshData = new OMOFormat.MeshData(
-                result.combinedVertices(),
-                result.combinedTexCoords(),
-                result.combinedIndices(),
-                result.triangleToFaceId(),
-                stateManager.getUVMode() != null ? stateManager.getUVMode().name() : "FLAT"
-        );
-
-        // Capture the part-consistent mesh for serialization BEFORE the texture
-        // pipeline (updateMeshGeometry → topology rebuild → later refreshUVs)
-        // duplicates seam vertices into the live render mesh. This — not
-        // vertexManager — is what toMeshData() persists.
-        lastPartConsistentMeshData = meshData;
-
-        serializationAdapter.updateMeshGeometry(meshData);
-        logger.debug("Part mesh rebuild pushed to pipeline: {} vertices, {} indices",
-                result.totalVertexCount(), result.totalIndexCount());
+        partMeshBridge.onPartMeshRebuilt(result);
     }
 
     /**
@@ -734,63 +726,65 @@ public class GenericModelRenderer extends BaseRenderer {
     }
 
     public OMOFormat.MeshData toMeshData() {
-        // Serialize the LIVE mesh — the only complete record of the user's
-        // edits. Vertex drags sync into part geometry, but edge/face drags and
-        // topology ops mutate only the live mesh, so any part-derived snapshot
-        // (lastPartConsistentMeshData) silently drops those edits.
-        //
-        // The live mesh may carry material-seam duplicate vertices appended
-        // past the part-consistent range (render-time only; regenerated on
-        // load). Strip them using the duplication record so the saved indices
-        // stay within the part MeshRanges. When the record doesn't match the
-        // live mesh (e.g. a topology op baked older duplicates in as real
-        // vertices), the live mesh is already self-consistent — save as-is.
-        OMOFormat.MeshData live = serializationAdapter.toMeshData();
-        if (live == null || !live.hasCustomGeometry()) {
-            return lastPartConsistentMeshData;
-        }
-
-        int base = textureOps.getSeamBaseVertexCount();
-        int duplicates = textureOps.getSeamDuplicateCount();
-        if (duplicates == 0 || base < 0 || base + duplicates != live.getVertexCount()) {
-            return live;
-        }
-        return stripSeamDuplicates(live, base, textureOps.getSeamDuplicateSources());
+        // Serialize the derived render mesh — always self-consistent: corners
+        // are per-face by construction, so there are no seam-duplicate
+        // vertices to strip and indices always stay within part MeshRanges.
+        return serializationAdapter.toMeshData();
     }
 
     /**
-     * Remove recorded seam-duplicate vertices (appended at the tail of the
-     * live mesh) and remap indices back to their source vertices. Sources may
-     * chain through duplicates from earlier regeneration passes.
+     * @deprecated Array-based restore re-imports (and re-welds) the mesh; use
+     *             {@link #captureSnapshot()} / {@link #restoreSnapshot} for an
+     *             exact restore.
      */
-    private static OMOFormat.MeshData stripSeamDuplicates(OMOFormat.MeshData live,
-                                                          int baseVertexCount,
-                                                          int[] duplicateSources) {
-        float[] vertices = java.util.Arrays.copyOf(live.vertices(), baseVertexCount * 3);
-        float[] texCoords = live.texCoords() != null
-                ? java.util.Arrays.copyOf(live.texCoords(), baseVertexCount * 2)
-                : null;
-
-        int[] indices = live.indices().clone();
-        for (int i = 0; i < indices.length; i++) {
-            int idx = indices[i];
-            int safety = duplicateSources.length + 1;
-            while (idx >= baseVertexCount && safety-- > 0) {
-                idx = duplicateSources[idx - baseVertexCount];
-            }
-            indices[i] = idx;
-        }
-
-        return new OMOFormat.MeshData(vertices, texCoords, indices,
-                live.triangleToFaceId(), live.uvMode());
-    }
-
+    @Deprecated
     public void restoreFromSnapshot(float[] vertices, float[] texCoords, int[] indices,
                                      int[] triangleToFaceId,
                                      Map<Integer, FaceTextureMapping> faceMappings,
                                      Map<Integer, MaterialDefinition> materials) {
         serializationAdapter.restoreFromSnapshot(vertices, texCoords, indices,
             triangleToFaceId, faceMappings, materials);
+    }
+
+    /**
+     * Exact snapshot of the authoritative mesh + per-face texture state —
+     * the engine-side undo unit. Restoring never re-welds, so vertices
+     * dragged within welding distance of each other survive an undo intact.
+     */
+    public com.openmason.engine.rendering.model.gmr.editable.EditableMeshSnapshot captureSnapshot() {
+        Map<Integer, FaceTextureMapping> mappings = new java.util.LinkedHashMap<>();
+        for (FaceTextureMapping m : faceTextureManager.getAllMappings()) {
+            mappings.put(m.faceId(), m);
+        }
+        Map<Integer, MaterialDefinition> materials = new java.util.LinkedHashMap<>();
+        for (MaterialDefinition md : faceTextureManager.getAllMaterials()) {
+            materials.put(md.materialId(), md);
+        }
+        return com.openmason.engine.rendering.model.gmr.editable.EditableMeshSnapshot.capture(
+            rebuildPipeline.getEditableMesh(), mappings, materials,
+            rebuildPipeline.getImportSoupMapping());
+    }
+
+    /**
+     * Restore a {@link #captureSnapshot()} exactly (mesh, textures, part
+     * index mapping). Part GEOMETRY is not captured — same as the legacy
+     * array-based restore — so undo commands that span part-structure changes
+     * must keep using the part-driven paths.
+     */
+    public void restoreSnapshot(com.openmason.engine.rendering.model.gmr.editable.EditableMeshSnapshot snapshot) {
+        faceTextureManager.clear();
+        for (MaterialDefinition mat : snapshot.materials().values()) {
+            if (mat.materialId() != MaterialDefinition.DEFAULT.materialId()) {
+                faceTextureManager.registerMaterial(mat);
+            }
+        }
+        for (FaceTextureMapping mapping : snapshot.faceMappings().values()) {
+            faceTextureManager.setFaceMapping(mapping);
+        }
+
+        rebuildPipeline.setEditableMesh(snapshot.meshCopy());
+        rebuildPipeline.setImportSoupMapping(snapshot.vertexIdToSoupIndices());
+        rebuildPipeline.rebuildFromEditable();
     }
 
     public void refreshUVs() {
@@ -837,18 +831,24 @@ public class GenericModelRenderer extends BaseRenderer {
         }
         FaceTextureMapping.UVRegion uvRegion = mapping.uvRegion();
 
+        // The render mesh emits each face's corners as a contiguous ascending
+        // run in loop order, so the sorted unique corner set IS the polygon
+        // boundary in winding order.
+        java.util.TreeSet<Integer> cornerSet = new java.util.TreeSet<>();
         List<Integer> triangles = FaceTriangleQuery.findTrianglesForFace(faceId, indices, faceMapper);
-        if (triangles.isEmpty()) {
+        for (int triIdx : triangles) {
+            cornerSet.add(indices[triIdx * 3]);
+            cornerSet.add(indices[triIdx * 3 + 1]);
+            cornerSet.add(indices[triIdx * 3 + 2]);
+        }
+        if (cornerSet.size() < 3) {
             return null;
         }
-        Integer[] boundaryIndices = FaceTriangleQuery.extractFaceVertexIndices(triangles, indices);
-        if (boundaryIndices.length < 3) {
-            return null;
-        }
+        Integer[] boundaryIndices = cornerSet.toArray(new Integer[0]);
 
         float regionW = uvRegion.width();
         float regionH = uvRegion.height();
-        if (regionW < 1e-6f || regionH < 1e-6f) {
+        if (regionW < GMRConstants.UV_REGION_MIN || regionH < GMRConstants.UV_REGION_MIN) {
             return null;
         }
 

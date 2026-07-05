@@ -25,10 +25,11 @@ import java.util.Map;
  * source material's [0..1] space to the block's atlas region (so sampling
  * hits the integrator-overlaid SBO pixels on the atlas).
  *
- * <p>Current scope: cross-plane flowers. Cube blocks already render as
- * cubes in-hand via {@code HandBlockGeometry} with per-face atlas UVs,
- * which matches the in-world cube geometry — no mismatch to fix there.
- * Can be extended to cubes if SBO-driven non-cube cube replacements appear.
+ * <p>Scope: cross-plane flowers (single texture layer, shared vertices) and
+ * animated non-cube blocks like the oak door (per-face texture layers derived
+ * from {@code triangleToFaceId}, de-indexed so each triangle can carry its own
+ * layer). Cube blocks already render as cubes in-hand with per-face layers —
+ * no mismatch to fix there.
  */
 public class SBOHandMeshRegistry {
 
@@ -44,12 +45,13 @@ public class SBOHandMeshRegistry {
     }
 
     /**
-     * Build hand-rendering meshes for all SBO-bridged flowers.
+     * Build hand-rendering meshes for all SBO blocks whose in-world shape is
+     * not a plain cube: flowers (cross planes) and animated blocks (doors).
      *
      * @param bridge the populated SBO bridge
      * @return number of meshes built
      */
-    public int buildFlowerMeshes(SBOBlockBridge bridge) {
+    public int buildMeshes(SBOBlockBridge bridge) {
         meshesByBlock.clear();
         if (cbrManager == null) {
             logger.warn("CBRResourceManager unavailable — SBO hand meshes will not be built");
@@ -59,28 +61,37 @@ public class SBOHandMeshRegistry {
         int built = 0;
 
         for (BlockType type : BlockType.values()) {
-            if (!type.isFlower()) continue;
+            boolean animated = com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(type);
+            if (!type.isFlower() && !animated) continue;
             if (!bridge.isSBOBlock(type)) continue;
 
             SBOParseResult sbo = bridge.getSBODefinition(type);
             ParsedMeshData mesh = sbo.meshData();
             if (mesh == null || !mesh.hasGeometry() || mesh.indices() == null) {
-                logger.debug("No SBO geometry for {} — falling back to CBR cross", type);
+                logger.debug("No SBO geometry for {} — falling back to CBR cross/cube", type);
                 continue;
             }
 
-            int layer = textureArray.getBlockFaceLayer(type, 0);
-            float[] interleaved = buildInterleaved(mesh, layer);
             String name = "sbo_hand_" + type.name().toLowerCase();
-            MeshManager.MeshResource resource =
-                    meshManager.createCustomLayeredMesh(name, interleaved, mesh.indices());
+            MeshManager.MeshResource resource;
+            if (animated && mesh.triangleToFaceId() != null
+                    && mesh.triangleToFaceId().length * 3 == mesh.indices().length) {
+                // Multi-face model (door): per-triangle texture layers.
+                resource = meshManager.createCustomLayeredMesh(name,
+                        buildInterleavedPerFace(type, mesh), sequentialIndices(mesh.indices().length));
+            } else {
+                // Cross-plane flowers: one layer everywhere (unchanged path).
+                int layer = textureArray.getBlockFaceLayer(type, 0);
+                resource = meshManager.createCustomLayeredMesh(name,
+                        buildInterleaved(mesh, layer), mesh.indices());
+            }
             meshesByBlock.put(type, resource);
             built++;
             logger.info("Built SBO hand mesh for {} — {} verts, {} tris",
                     type, mesh.getVertexCount(), mesh.getTriangleCount());
         }
 
-        logger.info("SBO hand mesh registry: built {} flower meshes", built);
+        logger.info("SBO hand mesh registry: built {} meshes", built);
         return built;
     }
 
@@ -143,6 +154,72 @@ public class SBOHandMeshRegistry {
             out[d + 5] = layer;
         }
         return out;
+    }
+
+    /**
+     * De-indexed variant of {@link #buildInterleaved} for multi-face models
+     * (the door): each triangle's vertices carry the texture-array layer of
+     * that triangle's face ({@code triangleToFaceId} → GMR→MMS →
+     * {@code getBlockFaceLayer}). Vertices shared between faces are duplicated
+     * because the layer is a per-vertex attribute. Geometry is normalized to
+     * the same -0.5..0.5 viewport cube, preserving aspect (a 1×2×0.1 door
+     * shows as a tall thin panel).
+     */
+    private float[] buildInterleavedPerFace(BlockType type, ParsedMeshData mesh) {
+        float[] verts = mesh.vertices();
+        float[] uvs = mesh.texCoords();
+        int[] indices = mesh.indices();
+        int[] triFace = mesh.triangleToFaceId();
+        int vCount = mesh.getVertexCount();
+
+        float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY, minZ = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY, maxZ = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < vCount; i++) {
+            float x = verts[i * 3];
+            float y = verts[i * 3 + 1];
+            float z = verts[i * 3 + 2];
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+            if (z < minZ) minZ = z;
+            if (z > maxZ) maxZ = z;
+        }
+        float maxSize = Math.max(maxX - minX, Math.max(maxY - minY, maxZ - minZ));
+        if (maxSize <= 0.0001f) maxSize = 1.0f;
+        float scale = 1.0f / maxSize;
+        float cx = (minX + maxX) * 0.5f;
+        float cy = (minY + maxY) * 0.5f;
+        float cz = (minZ + maxZ) * 0.5f;
+
+        float[] out = new float[indices.length * 6];
+        for (int tri = 0; tri < triFace.length; tri++) {
+            int mmsFace = com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions
+                    .gmrToMms(triFace[tri]);
+            float layer = textureArray.getBlockFaceLayer(type, mmsFace);
+            for (int corner = 0; corner < 3; corner++) {
+                int vi = indices[tri * 3 + corner];
+                int s = vi * 3;
+                int t = vi * 2;
+                int d = (tri * 3 + corner) * 6;
+                out[d]     = (verts[s]     - cx) * scale;
+                out[d + 1] = (verts[s + 1] - cy) * scale;
+                out[d + 2] = (verts[s + 2] - cz) * scale;
+                out[d + 3] = (uvs != null && t     < uvs.length) ? uvs[t]     : 0f;
+                out[d + 4] = (uvs != null && t + 1 < uvs.length) ? uvs[t + 1] : 0f;
+                out[d + 5] = layer;
+            }
+        }
+        return out;
+    }
+
+    /** 0..n-1 index buffer for de-indexed geometry. */
+    private static int[] sequentialIndices(int count) {
+        int[] indices = new int[count];
+        for (int i = 0; i < count; i++) {
+            indices[i] = i;
+        }
+        return indices;
     }
 
     /**

@@ -2,9 +2,16 @@ package com.openmason.main.systems.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.joml.Vector3f;
+
+import static com.openmason.main.systems.mcp.McpArgs.optBool;
+import static com.openmason.main.systems.mcp.McpArgs.optFloatArray;
+import static com.openmason.main.systems.mcp.McpArgs.optIntArray;
+import static com.openmason.main.systems.mcp.McpArgs.optVec3;
+import static com.openmason.main.systems.mcp.McpArgs.reqFloat;
+import static com.openmason.main.systems.mcp.McpArgs.reqIntArray;
+import static com.openmason.main.systems.mcp.McpArgs.reqString;
+import static com.openmason.main.systems.mcp.McpArgs.reqVec3;
 
 /**
  * Wires the {@link ModelEditingService} surface as MCP tools.
@@ -26,16 +33,16 @@ public final class OpenMasonToolDefinitions {
         // ---------- Read ----------
 
         registry.register(new McpTool(
-                "get_model_info",
-                "Get high-level info about the currently loaded model (whether one is loaded and total part count).",
-                schema().build(),
-                args -> editor.getModelInfo()));
-
-        registry.register(new McpTool(
                 "list_parts",
-                "List all parts in the current model, including id, name, transform, visibility, lock state, and vertex/triangle counts.",
-                schema().build(),
-                args -> editor.listParts()));
+                "List parts as compact rows {name, id, verts, tris, visible}. Pass detail=true "
+                        + "for full transforms; name_filter narrows by substring.",
+                schema()
+                        .bool("detail", "Include full transforms and flags per part")
+                        .str("name_filter", "Case-insensitive substring filter on part names")
+                        .build(),
+                args -> editor.listParts(
+                        optBool(args, "detail", false),
+                        McpArgs.optString(args, "name_filter"))));
 
         registry.register(new McpTool(
                 "get_part",
@@ -63,12 +70,6 @@ public final class OpenMasonToolDefinitions {
                         optBool(args, "include_indices", false),
                         optBool(args, "include_face_mapping", false)).orElse(null)));
 
-        registry.register(new McpTool(
-                "get_selection",
-                "Get the set of currently selected part ids.",
-                schema().build(),
-                args -> editor.getSelection()));
-
         // ---------- Mutate: parts ----------
 
         registry.register(new McpTool(
@@ -78,12 +79,15 @@ public final class OpenMasonToolDefinitions {
                         .str("shape", "One of: CUBE, PYRAMID, PANE, SPRITE")
                         .str("name", "Display name for the new part")
                         .vec3("size", "[x,y,z] size (default [1,1,1])")
+                        .bool("verbose", "Return the full part view instead of a terse ack")
                         .required("shape", "name")
                         .build(),
                 args -> {
                     Vector3f size = optVec3(args, "size");
                     if (size == null) size = new Vector3f(1.0f);
-                    return editor.createPart(reqString(args, "shape"), reqString(args, "name"), size);
+                    return ack(java.util.Optional.ofNullable(
+                                    editor.createPart(reqString(args, "shape"), reqString(args, "name"), size)),
+                            optBool(args, "verbose", false));
                 }));
 
         registry.register(new McpTool(
@@ -94,9 +98,14 @@ public final class OpenMasonToolDefinitions {
 
         registry.register(new McpTool(
                 "duplicate_part",
-                "Duplicate an existing part (geometry + transform). Returns the new part.",
-                idOrNameSchema(),
-                args -> editor.duplicatePart(reqString(args, "id_or_name")).orElse(null)));
+                "Duplicate an existing part (geometry + transform). Returns the new part's name.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .bool("verbose", "Return the full part view instead of a terse ack")
+                        .required("id_or_name")
+                        .build(),
+                args -> ack(editor.duplicatePart(reqString(args, "id_or_name")),
+                        optBool(args, "verbose", false))));
 
         registry.register(new McpTool(
                 "rename_part",
@@ -104,47 +113,30 @@ public final class OpenMasonToolDefinitions {
                 schema()
                         .str("id_or_name", "Part id or current name")
                         .str("new_name", "New display name")
+                        .bool("verbose", "Return the full part view instead of a terse ack")
                         .required("id_or_name", "new_name")
                         .build(),
-                args -> editor.renamePart(reqString(args, "id_or_name"), reqString(args, "new_name"))
-                        .orElse(null)));
+                args -> ack(editor.renamePart(reqString(args, "id_or_name"), reqString(args, "new_name")),
+                        optBool(args, "verbose", false))));
 
         registry.register(new McpTool(
-                "set_part_transform",
-                "Set the local transform for a part. Any of origin/position/rotation/scale may be omitted to keep its current value. Rotation is Euler degrees.",
+                "part_transform",
+                "Transform a part. Absolute fields: origin/position/rotation/scale (omit to keep). "
+                        + "Delta fields: translate (added to position), rotate (Euler degree deltas), "
+                        + "scale_by (per-axis factors). Rotation is Euler XYZ degrees. Pass at least one field.",
                 schema()
                         .str("id_or_name", "Part id or name")
-                        .vec3("origin", "Pivot [x,y,z]")
-                        .vec3("position", "Translation [x,y,z]")
-                        .vec3("rotation", "Euler degrees [x,y,z]")
-                        .vec3("scale", "Scale [x,y,z]")
+                        .vec3("origin", "Absolute pivot [x,y,z]")
+                        .vec3("position", "Absolute translation [x,y,z]")
+                        .vec3("rotation", "Absolute Euler degrees [x,y,z]")
+                        .vec3("scale", "Absolute scale [x,y,z]")
+                        .vec3("translate", "Delta added to position [x,y,z]")
+                        .vec3("rotate", "Euler degree deltas [x,y,z]")
+                        .vec3("scale_by", "Per-axis scale factors [x,y,z]")
+                        .bool("verbose", "Return the full part view instead of a terse ack")
                         .required("id_or_name")
                         .build(),
-                args -> editor.setPartTransform(
-                        reqString(args, "id_or_name"),
-                        optVec3(args, "origin"), optVec3(args, "position"),
-                        optVec3(args, "rotation"), optVec3(args, "scale")).orElse(null)));
-
-        registry.register(new McpTool(
-                "translate_part",
-                "Translate a part by a delta offset (added to current position).",
-                deltaSchema("Delta [x,y,z]"),
-                args -> editor.translatePart(
-                        reqString(args, "id_or_name"), reqVec3(args, "delta")).orElse(null)));
-
-        registry.register(new McpTool(
-                "rotate_part",
-                "Rotate a part by Euler degree deltas (added to current rotation).",
-                deltaSchema("Euler degree deltas [x,y,z]"),
-                args -> editor.rotatePart(
-                        reqString(args, "id_or_name"), reqVec3(args, "delta")).orElse(null)));
-
-        registry.register(new McpTool(
-                "scale_part",
-                "Multiply a part's scale by per-axis factors.",
-                deltaSchema("Per-axis factors [x,y,z]"),
-                args -> editor.scalePart(
-                        reqString(args, "id_or_name"), reqVec3(args, "delta")).orElse(null)));
+                args -> partTransform(args)));
 
         registry.register(new McpTool(
                 "set_part_visibility",
@@ -152,10 +144,12 @@ public final class OpenMasonToolDefinitions {
                 schema()
                         .str("id_or_name", "Part id or name")
                         .bool("visible", "true to show, false to hide")
+                        .bool("verbose", "Return the full part view instead of a terse ack")
                         .required("id_or_name", "visible")
                         .build(),
-                args -> editor.setPartVisibility(
-                        reqString(args, "id_or_name"), args.get("visible").asBoolean()).orElse(null)));
+                args -> ack(editor.setPartVisibility(
+                        reqString(args, "id_or_name"), McpArgs.reqBool(args, "visible")),
+                        optBool(args, "verbose", false))));
 
         registry.register(new McpTool(
                 "select_part",
@@ -169,67 +163,36 @@ public final class OpenMasonToolDefinitions {
                         reqString(args, "id_or_name"),
                         args.has("additive") && args.get("additive").asBoolean(false))));
 
-        registry.register(new McpTool(
-                "focus_camera_on",
-                "Select a part as the camera focus target. (Camera-framing follows whatever the editor's selection-focus binding does.)",
-                idOrNameSchema(),
-                args -> editor.focusCameraOn(reqString(args, "id_or_name"))));
-
         // ---------- Mutate: mesh elements ----------
 
         registry.register(new McpTool(
-                "list_part_vertices",
-                "Get a part's vertices as {count, positions} where positions is a flat [x,y,z, ...] array; "
-                        + "vertex i is at positions[3i]. Local indices are stable across structural edits; "
-                        + "use them with move_vertex.",
-                idOrNameSchema(),
-                args -> editor.listPartVertices(reqString(args, "id_or_name")).orElse(null)));
-
-        registry.register(new McpTool(
-                "list_part_edges",
-                "Get a part's unique edges as {count, vertexPairs} where vertexPairs is a flat "
-                        + "[a,b, a,b, ...] array of part-local vertex indices; edge i is at vertexPairs[2i]. "
-                        + "Ordering is stable for a given mesh topology.",
-                idOrNameSchema(),
-                args -> editor.listPartEdges(reqString(args, "id_or_name")).orElse(null)));
-
-        registry.register(new McpTool(
-                "list_part_faces",
-                "List the logical faces of a part as {faceId, vertices} entries (part-local vertex indices). "
-                        + "A face groups one or more triangles sharing a face id.",
-                idOrNameSchema(),
-                args -> editor.listPartFaces(reqString(args, "id_or_name")).orElse(null)));
-
-        registry.register(new McpTool(
-                "move_vertex",
-                "Move a single vertex by part-local index. xyz is a delta by default; "
-                        + "set absolute=true to treat it as the new position.",
+                "part_mesh",
+                "Read a part's topology: vertices as {count, positions} (flat [x,y,z,...], "
+                        + "vertex i at positions[3i]), edges as {count, vertexPairs} (flat [a,b,...]), "
+                        + "faces as [{faceId, vertices}] (part-local vertex indices). 'include' picks "
+                        + "sections (default all three). Indices are stable across positional edits.",
                 schema()
                         .str("id_or_name", "Part id or name")
-                        .num("local_index", "Part-local vertex index from list_part_vertices")
+                        .strArray("include", "Sections to return: vertices, edges, faces (default all)")
+                        .required("id_or_name")
+                        .build(),
+                args -> partMesh(args)));
+
+        registry.register(new McpTool(
+                "part_move",
+                "Translate a mesh element of a part: element=vertex|edge|face with its part-local "
+                        + "index (from part_mesh). xyz is a delta; absolute=true (vertex only) treats "
+                        + "it as the new position.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .enumStr("element", "What to move", "vertex", "edge", "face")
+                        .num("index", "Part-local vertex/edge/face index from part_mesh")
                         .vec3("xyz", "Delta (default) or absolute position [x,y,z]")
-                        .bool("absolute", "Treat xyz as the new position (default false: delta)")
-                        .required("id_or_name", "local_index", "xyz")
+                        .bool("absolute", "Treat xyz as the new position (vertex only)")
+                        .bool("verbose", "Return the full part view instead of a terse ack")
+                        .required("id_or_name", "element", "index", "xyz")
                         .build(),
-                args -> editor.moveVertex(
-                        reqString(args, "id_or_name"),
-                        (int) reqFloat(args, "local_index"),
-                        reqVec3(args, "xyz"),
-                        optBool(args, "absolute", false)).orElse(null)));
-
-        registry.register(new McpTool(
-                "move_edge",
-                "Translate both endpoints of an edge by a delta. Edge index comes from list_part_edges.",
-                schema()
-                        .str("id_or_name", "Part id or name")
-                        .num("edge_index", "Edge index from list_part_edges")
-                        .vec3("delta", "Delta [x,y,z]")
-                        .required("id_or_name", "edge_index", "delta")
-                        .build(),
-                args -> editor.moveEdge(
-                        reqString(args, "id_or_name"),
-                        (int) reqFloat(args, "edge_index"),
-                        reqVec3(args, "delta")).orElse(null)));
+                args -> partMove(args)));
 
         registry.register(new McpTool(
                 "set_part_geometry",
@@ -245,202 +208,198 @@ public final class OpenMasonToolDefinitions {
                         .arr("indices", "number", "Flat triangle index array; length must be divisible by 3")
                         .arr("tex_coords", "number", "Optional flat [u,v, u,v, ...] UVs; length must be 2 × vertex count if supplied")
                         .arr("triangle_to_face_id", "number", "Optional one face id per triangle; length must equal triangle count if supplied")
+                        .bool("verbose", "Return the full part view instead of a terse ack")
                         .required("id_or_name", "vertices", "indices")
                         .build(),
-                args -> editor.setPartGeometry(
+                args -> ack(editor.setPartGeometry(
                         reqString(args, "id_or_name"),
                         optFloatArray(args, "vertices"),
                         optIntArray(args, "indices"),
                         optFloatArray(args, "tex_coords"),
-                        optIntArray(args, "triangle_to_face_id")).orElse(null)));
+                        optIntArray(args, "triangle_to_face_id")),
+                        optBool(args, "verbose", false))));
 
         registry.register(new McpTool(
-                "move_face",
-                "Translate every unique vertex of a face by a delta. Face id comes from list_part_faces.",
+                "subdivide_edge",
+                "Insert a vertex on an edge at parametric position t (exclusive 0..1 from the edge's "
+                        + "first vertex). Edge index comes from part_mesh. Returns the new vertex's "
+                        + "unique id plus a best-effort part-local vertex index.",
                 schema()
                         .str("id_or_name", "Part id or name")
-                        .num("local_face_id", "Local face id from list_part_faces")
-                        .vec3("delta", "Delta [x,y,z]")
-                        .required("id_or_name", "local_face_id", "delta")
+                        .num("edge_index", "Edge index from part_mesh")
+                        .num("t", "Parametric position along the edge, 0 < t < 1 (0.5 = midpoint)")
+                        .required("id_or_name", "edge_index", "t")
                         .build(),
-                args -> editor.moveFace(
+                args -> editor.subdivideEdge(
                         reqString(args, "id_or_name"),
-                        (int) reqFloat(args, "local_face_id"),
-                        reqVec3(args, "delta")).orElse(null)));
-
-        // ---------- Undo / redo (model + face-texture share this history) ----------
+                        (int) reqFloat(args, "edge_index"),
+                        reqFloat(args, "t")).orElse(null)));
 
         registry.register(new McpTool(
-                "model_undo",
-                "Undo the most recent model or face-texture mutation. Covers part/geometry "
-                        + "operations and per-face texture commits/creates/resizes from the MCP "
-                        + "surface plus interactive UI edits in the viewport.",
-                schema().build(),
-                args -> editor.undo()));
+                "scale_faces",
+                "Uniformly scale the given faces about the selection's area-weighted centroid. "
+                        + "Vertices shared with unselected faces move too (Blender face-scale semantics). "
+                        + "Face ids come from part_mesh.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .arr("local_face_ids", "number", "Local face ids from part_mesh")
+                        .num("factor", "Uniform scale factor (1 = unchanged)")
+                        .bool("verbose", "Return the full part view instead of a terse ack")
+                        .required("id_or_name", "local_face_ids", "factor")
+                        .build(),
+                args -> ack(editor.scaleFaces(
+                        reqString(args, "id_or_name"),
+                        reqIntArray(args, "local_face_ids"),
+                        reqFloat(args, "factor")),
+                        optBool(args, "verbose", false))));
 
         registry.register(new McpTool(
-                "model_redo",
-                "Redo the most recently undone model or face-texture mutation.",
-                schema().build(),
-                args -> editor.redo()));
+                "inset_faces",
+                "Inset each of the given faces individually (per-face, even-thickness border of new "
+                        + "quads; each original face id keeps its inner cap). Face ids come from "
+                        + "part_mesh. Returns the new border-quad face ids.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .arr("local_face_ids", "number", "Local face ids from part_mesh")
+                        .num("amount", "Inset distance in model units (> 0)")
+                        .required("id_or_name", "local_face_ids", "amount")
+                        .build(),
+                args -> editor.insetFaces(
+                        reqString(args, "id_or_name"),
+                        reqIntArray(args, "local_face_ids"),
+                        reqFloat(args, "amount")).orElse(null)));
+
+        registry.register(new McpTool(
+                "extrude_faces",
+                "Extrude each of the given faces individually along its own normal (per-face; each "
+                        + "original face id keeps the moved cap, new side quads are created). Face ids "
+                        + "come from part_mesh. Returns the new side-quad face ids.",
+                schema()
+                        .str("id_or_name", "Part id or name")
+                        .arr("local_face_ids", "number", "Local face ids from part_mesh")
+                        .num("distance", "Signed extrude distance in model units (negative = inward)")
+                        .required("id_or_name", "local_face_ids", "distance")
+                        .build(),
+                args -> editor.extrudeFaces(
+                        reqString(args, "id_or_name"),
+                        reqIntArray(args, "local_face_ids"),
+                        reqFloat(args, "distance")).orElse(null)));
+
     }
 
-    // ===================== Schema builder =====================
+    // ===================== Merged-tool handlers =====================
 
-    private SchemaBuilder schema() {
-        return new SchemaBuilder(mapper);
+    /** part_transform: absolute channels + delta channels, applied in order. */
+    private Object partTransform(JsonNode args) {
+        String idOrName = reqString(args, "id_or_name");
+        Vector3f origin = optVec3(args, "origin");
+        Vector3f position = optVec3(args, "position");
+        Vector3f rotation = optVec3(args, "rotation");
+        Vector3f scale = optVec3(args, "scale");
+        Vector3f translate = optVec3(args, "translate");
+        Vector3f rotate = optVec3(args, "rotate");
+        Vector3f scaleBy = optVec3(args, "scale_by");
+
+        if (position != null && translate != null) {
+            throw new IllegalArgumentException("pass either position (absolute) or translate (delta), not both");
+        }
+        if (rotation != null && rotate != null) {
+            throw new IllegalArgumentException("pass either rotation (absolute) or rotate (delta), not both");
+        }
+        if (scale != null && scaleBy != null) {
+            throw new IllegalArgumentException("pass either scale (absolute) or scale_by (factors), not both");
+        }
+
+        java.util.Optional<ModelEditingService.PartView> last = java.util.Optional.empty();
+        if (origin != null || position != null || rotation != null || scale != null) {
+            last = editor.setPartTransform(idOrName, origin, position, rotation, scale);
+        }
+        if (translate != null) last = editor.translatePart(idOrName, translate);
+        if (rotate != null) last = editor.rotatePart(idOrName, rotate);
+        if (scaleBy != null) last = editor.scalePart(idOrName, scaleBy);
+        if (last.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "pass at least one of origin, position, rotation, scale, translate, rotate, scale_by");
+        }
+        return ack(last, optBool(args, "verbose", false));
+    }
+
+    /** part_mesh: vertices/edges/faces sections in one response. */
+    private Object partMesh(JsonNode args) {
+        String idOrName = reqString(args, "id_or_name");
+        java.util.List<String> include = McpArgs.optStringList(args, "include");
+        boolean all = include.isEmpty();
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        for (String section : all ? java.util.List.of("vertices", "edges", "faces") : include) {
+            switch (section.toLowerCase()) {
+                case "vertices" -> out.put("vertices",
+                        editor.listPartVertices(idOrName).orElse(null));
+                case "edges" -> out.put("edges",
+                        editor.listPartEdges(idOrName).orElse(null));
+                case "faces" -> out.put("faces",
+                        editor.listPartFaces(idOrName).orElse(null));
+                default -> throw new IllegalArgumentException(
+                        "unknown include section '" + section + "' — valid: vertices, edges, faces");
+            }
+        }
+        return out;
+    }
+
+    /** part_move: element-dispatched vertex/edge/face translation. */
+    private Object partMove(JsonNode args) {
+        String idOrName = reqString(args, "id_or_name");
+        String element = reqString(args, "element").toLowerCase();
+        int index = (int) reqFloat(args, "index");
+        Vector3f xyz = reqVec3(args, "xyz");
+        boolean absolute = optBool(args, "absolute", false);
+        boolean verbose = optBool(args, "verbose", false);
+
+        return switch (element) {
+            case "vertex" -> ack(editor.moveVertex(idOrName, index, xyz, absolute), verbose);
+            case "edge" -> {
+                requireDelta(absolute, "edge");
+                yield ack(editor.moveEdge(idOrName, index, xyz), verbose);
+            }
+            case "face" -> {
+                requireDelta(absolute, "face");
+                yield ack(editor.moveFace(idOrName, index, xyz), verbose);
+            }
+            default -> throw new IllegalArgumentException(
+                    "unknown element '" + element + "' — valid: vertex, edge, face");
+        };
+    }
+
+    private static void requireDelta(boolean absolute, String element) {
+        if (absolute) {
+            throw new IllegalArgumentException(
+                    "absolute=true is only supported for element=vertex, not " + element);
+        }
+    }
+
+    // ===================== Schema helpers =====================
+
+    private McpSchema schema() {
+        return McpSchema.of(mapper);
     }
 
     private JsonNode idOrNameSchema() {
         return schema().str("id_or_name", "Part id or name").required("id_or_name").build();
     }
 
-    private JsonNode deltaSchema(String deltaDescription) {
-        return schema()
-                .str("id_or_name", "Part id or name")
-                .vec3("delta", deltaDescription)
-                .required("id_or_name", "delta")
-                .build();
-    }
-
-    private static final class SchemaBuilder {
-        private final ObjectMapper mapper;
-        private final ObjectNode root;
-        private final ObjectNode properties;
-        private final ArrayNode required;
-
-        SchemaBuilder(ObjectMapper mapper) {
-            this.mapper = mapper;
-            this.root = mapper.createObjectNode();
-            this.properties = mapper.createObjectNode();
-            this.required = mapper.createArrayNode();
-            root.put("type", "object");
-            root.set("properties", properties);
+    /**
+     * Terse mutation ack ({@code {ok, part, verts, tris}}) by default; the
+     * full refreshed {@link ModelEditingService.PartView} with
+     * {@code verbose:true}. Keeps mutation loops cheap for LLM callers.
+     */
+    private static Object ack(java.util.Optional<ModelEditingService.PartView> view, boolean verbose) {
+        if (verbose) {
+            return view.orElse(null);
         }
-
-        SchemaBuilder str(String name, String description) {
-            return prop(name, "string", description);
-        }
-
-        SchemaBuilder num(String name, String description) {
-            return prop(name, "number", description);
-        }
-
-        SchemaBuilder bool(String name, String description) {
-            return prop(name, "boolean", description);
-        }
-
-        SchemaBuilder arr(String name, String itemType, String description) {
-            ObjectNode def = mapper.createObjectNode();
-            def.put("type", "array");
-            def.put("description", description);
-            ObjectNode items = mapper.createObjectNode();
-            items.put("type", itemType);
-            def.set("items", items);
-            properties.set(name, def);
-            return this;
-        }
-
-        /** Fixed-length [x,y,z] number array. */
-        SchemaBuilder vec3(String name, String description) {
-            ObjectNode def = mapper.createObjectNode();
-            def.put("type", "array");
-            def.put("description", description);
-            ObjectNode items = mapper.createObjectNode();
-            items.put("type", "number");
-            def.set("items", items);
-            def.put("minItems", 3);
-            def.put("maxItems", 3);
-            properties.set(name, def);
-            return this;
-        }
-
-        SchemaBuilder prop(String name, String type, String description) {
-            ObjectNode def = mapper.createObjectNode();
-            def.put("type", type);
-            def.put("description", description);
-            properties.set(name, def);
-            return this;
-        }
-
-        SchemaBuilder required(String... names) {
-            for (String n : names) required.add(n);
-            return this;
-        }
-
-        JsonNode build() {
-            if (!required.isEmpty()) {
-                root.set("required", required);
-            }
-            return root;
-        }
-    }
-
-    // ===================== Argument parsing =====================
-
-    private static String reqString(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || n.isNull() || !n.isTextual() || n.asText().isBlank()) {
-            throw new IllegalArgumentException("Missing required string argument: " + key);
-        }
-        return n.asText();
-    }
-
-    private static float reqFloat(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || !n.isNumber()) {
-            throw new IllegalArgumentException("Missing required numeric argument: " + key);
-        }
-        return n.floatValue();
-    }
-
-    private static boolean optBool(JsonNode args, String key, boolean fallback) {
-        JsonNode n = args.get(key);
-        return (n == null || n.isNull() || !n.isBoolean()) ? fallback : n.asBoolean();
-    }
-
-    private static float[] optFloatArray(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || n.isNull() || !n.isArray()) return null;
-        float[] out = new float[n.size()];
-        for (int i = 0; i < n.size(); i++) {
-            JsonNode item = n.get(i);
-            if (item == null || !item.isNumber()) {
-                throw new IllegalArgumentException(key + "[" + i + "] is not a number");
-            }
-            out[i] = item.floatValue();
-        }
-        return out;
-    }
-
-    private static int[] optIntArray(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || n.isNull() || !n.isArray()) return null;
-        int[] out = new int[n.size()];
-        for (int i = 0; i < n.size(); i++) {
-            JsonNode item = n.get(i);
-            if (item == null || !item.isNumber()) {
-                throw new IllegalArgumentException(key + "[" + i + "] is not a number");
-            }
-            out[i] = item.intValue();
-        }
-        return out;
-    }
-
-    /** Parse an optional [x,y,z] array argument; null when absent. */
-    private static Vector3f optVec3(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || n.isNull()) return null;
-        if (!n.isArray() || n.size() != 3
-                || !n.get(0).isNumber() || !n.get(1).isNumber() || !n.get(2).isNumber()) {
-            throw new IllegalArgumentException(key + " must be a [x,y,z] number array");
-        }
-        return new Vector3f(n.get(0).floatValue(), n.get(1).floatValue(), n.get(2).floatValue());
-    }
-
-    private static Vector3f reqVec3(JsonNode args, String key) {
-        Vector3f v = optVec3(args, key);
-        if (v == null) throw new IllegalArgumentException("Missing required [x,y,z] argument: " + key);
-        return v;
+        return view
+                .map(v -> McpAck.ok()
+                        .with("part", v.name())
+                        .with("verts", v.vertexCount())
+                        .with("tris", v.triangleCount()))
+                .orElse(null);
     }
 }

@@ -41,11 +41,23 @@ public final class McpServerBootstrap {
             BoneEditingService boneEditor = new BoneEditingService(mainInterface);
             new BoneToolDefinitions(boneEditor, mapper).registerAll(registry);
 
+            AttachmentEditingService attachmentEditor = new AttachmentEditingService(mainInterface);
+            new AttachmentToolDefinitions(attachmentEditor, mapper).registerAll(registry);
+
             AnimationEditingService animationEditor = new AnimationEditingService(mainInterface);
             new AnimationToolDefinitions(animationEditor, mapper).registerAll(registry);
 
             ViewportCaptureService viewportCapture = new ViewportCaptureService(mainInterface);
             new ViewportToolDefinitions(viewportCapture, mapper).registerAll(registry);
+
+            com.openmason.main.systems.scripting.mcp.ScriptingService scripting =
+                    new com.openmason.main.systems.scripting.mcp.ScriptingService(mainInterface, mapper);
+            new com.openmason.main.systems.scripting.mcp.ScriptingToolDefinitions(scripting, mapper)
+                    .registerAll(registry);
+
+            new MetaToolDefinitions(new ModelSummaryService(mainInterface),
+                    editor, textureEditor, boneEditor, attachmentEditor, animationEditor, mapper)
+                    .registerAll(registry);
 
             McpRequestRouter router = new McpRequestRouter(registry, mapper);
             server = new McpHttpServer(PORT, router, mapper);

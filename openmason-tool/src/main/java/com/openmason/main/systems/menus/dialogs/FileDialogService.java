@@ -341,6 +341,17 @@ public class FileDialogService {
     }
 
     /**
+     * Like {@link #showOpenOMTDialog(OpenCallback)}, but starts in the open
+     * project's root (where the .OMP lives) when a project is loaded. Used by
+     * the SBO editor/export screens so texture replacements default to the
+     * assets that belong to the object's project.
+     */
+    public void showOpenOMTInProjectDialog(OpenCallback callback) {
+        showNFDOpenDialog("Opening OMT project...", "Open Mason Texture", "omt",
+                projectDirectoryOrNull(), "Selected OMT file", callback);
+    }
+
+    /**
      * Show open texture dialog supporting both .OMT and .PNG files.
      * Used for selecting textures for editable models.
      *
@@ -538,6 +549,18 @@ public class FileDialogService {
     public void showOpenSBEDialog(OpenCallback callback) {
         showNFDOpenDialog("Opening SBE file...", "Stonebreak Entity", "sbe",
                 "Selected SBE file", callback);
+    }
+
+    /**
+     * Show an open dialog for any attachable model asset — the formats the
+     * game's socket system can mount ({@code .sbe}, {@code .sbo}, {@code .omo}).
+     * Used by the rigging pane's "Test Model..." socket action.
+     */
+    public void showOpenAttachableModelDialog(OpenCallback callback) {
+        showNFDOpenDialogMultiFilter("Opening model file...",
+                new String[]{"Attachable Model", "Stonebreak Entity", "Stonebreak Object", "Open Mason Object"},
+                new String[]{"sbe,sbo,omo", "sbe", "sbo", "omo"},
+                "Selected attachable model", callback);
     }
 
     /**

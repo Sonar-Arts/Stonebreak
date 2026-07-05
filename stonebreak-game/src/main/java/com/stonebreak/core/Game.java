@@ -60,7 +60,6 @@ public class Game {
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
     private FurnaceScreen furnaceScreen; // Furnace smelting GUI
     private RecipeScreen recipeScreen; // Added RecipeBookScreen
-    private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
     private MouseCaptureManager mouseCaptureManager; // Mouse capture system
     private MainMenu mainMenu; // Main menu
@@ -165,7 +164,6 @@ public class Game {
         this.statisticsScreen = new com.stonebreak.ui.statisticsScreen.StatisticsScreen(this.renderer.getSkijaBackend());
         this.glossaryScreen = new com.stonebreak.ui.glossaryScreen.GlossaryScreen(this.renderer.getSkijaBackend());
         this.deathMenu = new DeathMenu(this.renderer.getSkijaBackend());
-        this.waterEffects = new WaterEffects();
 
         this.soundSystem = SoundSystem.getInstance();
         com.stonebreak.core.bootstrap.GameBootstrap.configureSoundSystem(this.soundSystem);
@@ -199,6 +197,10 @@ public class Game {
         this.debugOverlay = com.stonebreak.core.bootstrap.GameBootstrap.createDebugOverlay();
         com.stonebreak.core.bootstrap.GameBootstrap.initializeEntityAssets();
         com.stonebreak.core.bootstrap.GameBootstrap.configureEngine(renderer.getBlockTextureArray(), renderer);
+
+        // Mount the settings-persisted cosmetic hat (Looks tab) on the local
+        // player's hat socket — a static attachment that outlives world loads.
+        com.stonebreak.player.PlayerLooks.applySelectedHat();
 
         logger.debug("[STARTUP] Core components initialized (no world/player yet)");
     }
@@ -240,11 +242,6 @@ public class Game {
         // Set camera for mouse capture system
         if (mouseCaptureManager != null && player != null) {
             mouseCaptureManager.setCamera(player.getCamera());
-        }
-
-        // Initialize water simulation with any existing water blocks
-        if (waterEffects != null) {
-            waterEffects.detectExistingWater();
         }
 
         // Initialize the client-side entity system. This EntityManager holds network-shadow
@@ -432,13 +429,6 @@ public class Game {
      */
     public static Renderer getRenderer() {
         return getInstance().renderer;
-    }
-    
-    /**
-     * Gets the water effects manager.
-     */
-    public static WaterEffects getWaterEffects() {
-        return getInstance().waterEffects;
     }
     
     /**
@@ -903,9 +893,30 @@ public class Game {
     /** Serializes the world swap between competing build threads. */
     private final Object clientWorldBuildLock = new Object();
 
+    /**
+     * True from {@link #startClientWorld} until the build thread has swapped the new world
+     * in via {@code replaceWorldInstance} (world + entity manager fully replaced). While
+     * pending, {@code Game.getWorld()}/{@code getEntityManager()} may still point at the
+     * PREVIOUS session's instances — applying inbound network state against them would
+     * orphan it (added to a world/manager that is about to be discarded). Client handlers
+     * gate on {@link #isClientWorldReady()} and buffer until the swap lands.
+     */
+    private volatile boolean clientWorldBuildPending = false;
+
     /** Invalidate any in-flight client-world build (called from session shutdown). */
     public void cancelClientWorldBuild() {
         clientWorldBuildGeneration.incrementAndGet();
+        clientWorldBuildPending = false;
+    }
+
+    /**
+     * True when inbound network state can be applied to {@code Game.getWorld()} /
+     * {@code Game.getEntityManager()}: both exist AND no client-world build is mid-swap.
+     */
+    public static boolean isClientWorldReady() {
+        Game g = instance;
+        return g != null && !g.clientWorldBuildPending
+                && g.world != null && g.entityManager != null;
     }
 
     public void startClientWorld(String worldName, long seed, org.joml.Vector3f spawn) {
@@ -924,6 +935,7 @@ public class Game {
             ls.show();
         }
         final int generation = clientWorldBuildGeneration.incrementAndGet();
+        clientWorldBuildPending = true;
         new Thread(() -> buildClientWorld(generation, seed, spawn), "ClientWorld-Build").start();
     }
 
@@ -943,6 +955,7 @@ public class Game {
                     return;
                 }
                 worldLifecycle.replaceWorldInstance(renderWorld); // fresh player + world components
+                clientWorldBuildPending = false; // world + entity manager are now the new session's
             }
             renderWorld.setSpawnPosition(spawn);
             Player p = Game.getPlayer();
@@ -1001,9 +1014,16 @@ public class Game {
         } catch (Exception e) {
             System.err.println("[CLIENT-WORLD] Failed to build render world: " + e.getMessage());
             e.printStackTrace();
-            LoadingScreen ls = getLoadingScreen();
-            if (ls != null && buildStillCurrent(generation)) {
-                ls.hide();
+            if (buildStillCurrent(generation)) {
+                // The render world is unusable and Game.getWorld() still points at the
+                // PREVIOUS session's world — clearing the pending flag here would let the
+                // client handlers drain buffered chunks/spawns into it. Tear the session
+                // down and return to the menu instead (mirrors the disconnect path; the
+                // session shutdown also clears clientWorldBuildPending).
+                runOnMainThread(() -> {
+                    com.stonebreak.network.MultiplayerSession.shutdown();
+                    setState(GameState.MAIN_MENU);
+                });
             }
         }
     }

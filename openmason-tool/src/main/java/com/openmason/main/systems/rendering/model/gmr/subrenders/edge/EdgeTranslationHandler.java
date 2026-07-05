@@ -6,7 +6,6 @@ import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.services.commands.RendererSynchronizer;
 import com.openmason.main.systems.services.commands.SnapshotCommand;
 import com.openmason.main.systems.services.commands.VertexMoveCommand;
-import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
@@ -14,7 +13,6 @@ import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipel
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.common.TranslationHandlerBase;
-import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -190,22 +188,21 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             Set<Integer> allVertexIndices = selectionState.getAllSelectedVertexIndices();
 
             // Update each unique vertex position
+            Map<Integer, Vector3f> newPositions = new HashMap<>();
             for (int vertexIndex : allVertexIndices) {
                 // Get the original position for this vertex from any edge that uses it
                 Vector3f originalPos = getOriginalVertexPosition(vertexIndex);
                 if (originalPos != null) {
                     Vector3f newPos = new Vector3f(originalPos).add(modelSpaceDelta);
+                    newPositions.put(vertexIndex, newPos);
                     vertexRenderer.updateVertexPosition(vertexIndex, newPos);
                     edgeRenderer.updateEdgesConnectedToVertexByIndex(vertexIndex, newPos);
                 }
             }
 
-            // REALTIME VISUAL UPDATE: Update ModelRenderer during drag
-            float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-            if (meshVertices != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(meshVertices);
-                faceRenderer.rebuildFromGenericModelRenderer();
-            }
+            // REALTIME VISUAL UPDATE: commit moved corners to the
+            // GenericModelRenderer (single source of truth) during the drag
+            pushVertexPositionsToModel(modelRenderer, faceRenderer, newPositions);
 
             dragStartDelta.set(modelSpaceDelta);
 
@@ -242,30 +239,11 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        // Only merge if actual movement occurred during the drag
-        // This prevents accidental merges when clicking without moving
-        java.util.Map<Integer, Integer> indexRemapping = new java.util.HashMap<>();
-        if (hasMovedDuringDrag) {
-            // TRUE MERGE: Remove duplicate vertices that ended up at the same position
-            float mergeEpsilon = 0.001f; // 1mm threshold for merging
-            indexRemapping = vertexRenderer.mergeOverlappingVertices(mergeEpsilon);
-        }
+        // The GenericModelRenderer already holds the final positions — every
+        // mouse move committed them via pushVertexPositionsToModel().
 
-        if (!indexRemapping.isEmpty()) {
-            // Remap selection state vertex indices FIRST (before using them)
-            selectionState.remapVertexIndices(indexRemapping);
-        }
-
-        // COMMIT: Update ModelRenderer with mesh vertices
-        // Topology rebuild in updateVertexPositions() handles edge/face updates via observer pattern
-        float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-        if (meshVertices != null && modelRenderer != null) {
-            modelRenderer.updateVertexPositions(meshVertices);
-            faceRenderer.rebuildFromGenericModelRenderer();
-            logger.debug("Committed edge drag to ModelRenderer{}", !indexRemapping.isEmpty() ? " (with merge)" : "");
-        }
-
-        // Sync partGeometry so edits survive a subsequent part transform rebuild
+        // Sync partGeometry so edits survive a subsequent part transform
+        // rebuild. Must run BEFORE any merge (merged vertices lose corners).
         if (hasMovedDuringDrag && modelRenderer != null) {
             com.openmason.engine.rendering.model.gmr.parts.ModelPartManager pm =
                     modelRenderer.getPartManager();
@@ -281,14 +259,23 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             }
         }
 
+        // TRUE MERGE: dragged vertices resting on a stationary vertex are
+        // topologically merged into it (only when actual movement occurred —
+        // prevents accidental merges when clicking without moving)
+        boolean mergedTopology = false;
+        if (hasMovedDuringDrag) {
+            mergedTopology = mergeCoincidentDraggedVertices(
+                modelRenderer, selectionState.getAllSelectedVertexIndices());
+        }
+
         // Record undo command after commit
         if (hasMovedDuringDrag && commandHistory != null && synchronizer != null) {
-            if (!indexRemapping.isEmpty() && preDragSnapshot != null) {
+            if (mergedTopology && preDragSnapshot != null) {
                 // Merge changed topology — use snapshot-based undo
                 MeshSnapshot postDragSnapshot = MeshSnapshot.capture(modelRenderer);
                 commandHistory.pushCompleted(SnapshotCommand.vertexMerge(
                     preDragSnapshot, postDragSnapshot, modelRenderer, synchronizer));
-            } else {
+            } else if (!mergedTopology) {
                 // No merge — use delta-based undo (lighter weight)
                 Set<Integer> uniqueIndices = selectionState.getAllSelectedVertexIndices();
                 Map<Integer, VertexMoveCommand.VertexDelta> deltas = new HashMap<>();
@@ -313,7 +300,15 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         }
         preDragSnapshot = null;
 
-        selectionState.endDrag();
+        if (mergedTopology) {
+            // Structural change — edge/vertex indices are stale, clear like
+            // other topology ops (overlay renderers already rebuilt via listeners)
+            selectionState.clearSelection();
+            edgeRenderer.clearSelection();
+            logger.debug("Committed edge drag with topological merge");
+        } else {
+            selectionState.endDrag();
+        }
         isDragging = false;
         clearInitialDragHitPoint();
 
@@ -351,13 +346,8 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             }
         }
 
-        // REVERT: Update ModelRenderer with original mesh vertices
-        float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-        if (meshVertices != null && modelRenderer != null) {
-            modelRenderer.updateVertexPositions(meshVertices);
-            faceRenderer.rebuildFromGenericModelRenderer();
-            logger.debug("Reverted ModelRenderer to original positions (cancel)");
-        }
+        // REVERT: push the original positions back to the ModelRenderer
+        pushVertexPositionsToModel(modelRenderer, faceRenderer, originalPositions);
 
         isDragging = false;
         preDragSnapshot = null;
@@ -365,62 +355,4 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
                 allVertexIndices.size() / 2);
     }
 
-    /**
-     * Update edge and all connected geometry (vertices, edges, faces).
-     * Uses index-based updates to prevent vertex unification bug.
-     *
-     * @param newPoint1 New position of endpoint 1 (calculated)
-     * @param newPoint2 New position of endpoint 2 (calculated)
-     * @param edgeIndex Index of the selected edge
-     */
-    private void updateEdgeAndConnectedGeometry(Vector3f newPoint1, Vector3f newPoint2, int edgeIndex) {
-        if (newPoint1 == null || newPoint2 == null) {
-            logger.warn("Cannot update geometry: null positions");
-            return;
-        }
-
-        // Get the unique vertex indices for this edge from selection state
-        int vertexIndex1 = selectionState.getVertexIndex1();
-        int vertexIndex2 = selectionState.getVertexIndex2();
-
-        if (vertexIndex1 < 0 || vertexIndex2 < 0) {
-            logger.warn("Cannot update geometry: invalid vertex indices {}, {}", vertexIndex1, vertexIndex2);
-            return;
-        }
-
-        // Update specific vertices by index (prevents unification)
-        vertexRenderer.updateVerticesByIndices(vertexIndex1, newPoint1, vertexIndex2, newPoint2);
-
-        // Update edges by vertex indices (prevents unification)
-        edgeRenderer.updateEdgesByVertexIndices(vertexIndex1, newPoint1, vertexIndex2, newPoint2);
-
-        // REALTIME VISUAL UPDATE: Update ModelRenderer during drag (no merging)
-        float[] meshVertices = MeshManager.getInstance().getAllMeshVertices();
-        if (meshVertices != null && modelRenderer != null) {
-            modelRenderer.updateVertexPositions(meshVertices);
-            faceRenderer.rebuildFromGenericModelRenderer();
-        }
-
-        logger.trace("Updated edge {} and connected geometry using indices {} and {} (prevents unification)",
-                edgeIndex, vertexIndex1, vertexIndex2);
-    }
-
-    /**
-     * Calculates the new edge midpoint position by intersecting mouse ray with working plane.
-     */
-    private Vector3f calculateEdgePosition(float mouseX, float mouseY) {
-        Vector3f planeNormal = selectionState.getPlaneNormal();
-        Vector3f planePoint = selectionState.getPlanePoint();
-
-        if (planeNormal == null || planePoint == null) {
-            logger.warn("Cannot calculate edge position: plane not defined");
-            return null;
-        }
-
-        // Create ray using base class utility
-        CoordinateSystem.Ray ray = createMouseRay(mouseX, mouseY);
-
-        // Intersect ray with plane using base class utility
-        return intersectRayPlane(ray, planePoint, planeNormal, selectionState.getMidpoint());
-    }
 }

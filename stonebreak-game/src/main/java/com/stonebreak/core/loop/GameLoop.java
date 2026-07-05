@@ -149,8 +149,10 @@ public final class GameLoop {
         World world = Game.getWorld();
         Renderer renderer = Game.getRenderer();
         // A render-only client world (two-world model) is driven by server packets: run the
-        // reduced client update (mesh + chunk streaming around the local player), never the
-        // authoritative sim. The co-located singleplayer/host world stays on the full update.
+        // reduced client update (mesh building, client chunk unload sweep, FastLOD ring),
+        // never the authoritative sim. Every playable world — singleplayer included — is a
+        // createClientView world (SP = integrated server + local client), so updateClient is
+        // the live path; the full update() branch remains for non-networked/legacy worlds.
         final boolean renderOnly = world != null && world.isRenderOnly();
         if (world != null) {
             if (renderOnly) {
@@ -174,11 +176,6 @@ public final class GameLoop {
                     mouseCaptureManager.updateCaptureState();
                 }
             }
-        }
-
-        com.stonebreak.rendering.WaterEffects waterEffects = Game.getWaterEffects();
-        if (waterEffects != null && player != null) {
-            waterEffects.update(player, deltaTime);
         }
 
         // Entity manager always ticks: on a render-only client it advances only shadow

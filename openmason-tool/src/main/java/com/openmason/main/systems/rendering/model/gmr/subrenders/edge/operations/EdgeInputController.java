@@ -1,14 +1,22 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.edge.operations;
 
+import com.openmason.engine.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.gmr.topology.MeshEdge;
+import com.openmason.engine.rendering.model.gmr.topology.MeshTopology;
+import com.openmason.main.systems.services.commands.MeshSnapshot;
+import com.openmason.main.systems.services.commands.ModelCommandHistory;
+import com.openmason.main.systems.services.commands.RendererSynchronizer;
+import com.openmason.main.systems.services.commands.SnapshotCommand;
 import com.openmason.main.systems.viewport.input.InputContext;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.state.EditModeManager;
+import com.openmason.main.systems.viewport.util.EdgeCutMath;
+import com.openmason.main.systems.viewport.util.SnappingUtil;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeHoverDetector;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
-import imgui.ImGui;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.glfw.GLFW;
@@ -41,6 +49,12 @@ public class EdgeInputController {
     private TranslationCoordinator translationCoordinator = null;
     private com.openmason.main.systems.viewport.state.TransformState transformState = null;
     private VertexRenderer vertexRenderer = null; // For priority check!
+    private GenericModelRenderer modelRenderer = null; // For Ctrl+Click vertex insertion
+    private com.openmason.main.systems.viewport.ViewportUIState viewportState = null; // Grid snapping
+
+    // Undo/redo support (Ctrl+Click vertex insertion)
+    private ModelCommandHistory commandHistory = null;
+    private RendererSynchronizer synchronizer = null;
 
     /**
      * Set the edge renderer for hover detection.
@@ -82,6 +96,29 @@ public class EdgeInputController {
     public void setVertexRenderer(VertexRenderer vertexRenderer) {
         this.vertexRenderer = vertexRenderer;
         logger.debug("Vertex renderer set in EdgeInputController for priority checking");
+    }
+
+    /**
+     * Set the generic model renderer for Ctrl+Click vertex insertion on edges.
+     */
+    public void setModelRenderer(GenericModelRenderer modelRenderer) {
+        this.modelRenderer = modelRenderer;
+        logger.debug("Model renderer set in EdgeInputController for vertex insertion");
+    }
+
+    /**
+     * Set the viewport UI state so vertex insertion uses the global grid snapping settings.
+     */
+    public void setViewportState(com.openmason.main.systems.viewport.ViewportUIState viewportState) {
+        this.viewportState = viewportState;
+    }
+
+    /**
+     * Set the command history for undo/redo recording of vertex insertions.
+     */
+    public void setCommandHistory(ModelCommandHistory commandHistory, RendererSynchronizer synchronizer) {
+        this.commandHistory = commandHistory;
+        this.synchronizer = synchronizer;
     }
 
     /**
@@ -135,6 +172,14 @@ public class EdgeInputController {
 
         // NOTE: Click-to-drag removed. Use G key for grab mode (Blender-style).
 
+        // Ctrl+Click on a hovered edge inserts a vertex at the clicked parametric position.
+        // Checked BEFORE selection toggling so the click never doubles as a selection change.
+        if (context.mouseInBounds && context.mouseClicked && context.ctrlDown) {
+            if (handleCtrlClickInsertVertex(context)) {
+                return true; // Consume the click — do not toggle selection
+            }
+        }
+
         // Handle mouse click for edge selection (if not dragging)
         // CRITICAL: Only select edge if NOT hovering over a vertex (vertices have priority)
         if (context.mouseInBounds && context.mouseClicked) {
@@ -172,6 +217,124 @@ public class EdgeInputController {
         }
 
         return false; // No edge input handled
+    }
+
+    /**
+     * Insert a vertex on the hovered edge at the clicked parametric position (Ctrl+Click).
+     * Reuses the knife tool's hover-with-parameter detection and grid snapping, then
+     * subdivides via {@link GenericModelRenderer#subdivideEdgeAtParameter} with
+     * snapshot-based undo.
+     *
+     * @param context Input context with mouse state
+     * @return true if the click hit an edge (consumed), false to fall through
+     */
+    private boolean handleCtrlClickInsertVertex(InputContext context) {
+        // Only in EDGE edit mode (hover detection below bypasses the mode-gated hover state)
+        if (!EditModeManager.getInstance().isEdgeEditingAllowed()) {
+            return false;
+        }
+
+        if (modelRenderer == null || !modelRenderer.isInitialized()) {
+            return false;
+        }
+
+        // PRIORITY: vertices take precedence over edge operations
+        int hoveredVertex = (vertexRenderer != null) ? vertexRenderer.getHoveredVertexIndex() : -1;
+        if (hoveredVertex >= 0) {
+            return false;
+        }
+
+        // Detect the hovered edge with its parametric t (knife tool mechanism)
+        EdgeHoverDetector.EdgeHitResult hitResult = detectEdgeWithParameter(context);
+        if (!hitResult.isHit()) {
+            return false;
+        }
+
+        // Resolve the topology edge for unique vertex indices
+        MeshTopology topology = modelRenderer.getTopology();
+        if (topology == null) {
+            return false;
+        }
+        MeshEdge edge = topology.getEdge(hitResult.edgeIndex());
+        if (edge == null) {
+            return false;
+        }
+
+        Vector3f posA = modelRenderer.getUniqueVertexPosition(edge.vertexA());
+        Vector3f posB = modelRenderer.getUniqueVertexPosition(edge.vertexB());
+        if (posA == null || posB == null) {
+            return false;
+        }
+
+        // Apply grid snapping to the cut position and recompute t to match (same as knife)
+        float t = hitResult.t();
+        if (isGridSnappingEnabled()) {
+            Vector3f cutPos = snapToGrid(EdgeCutMath.pointOnEdge(posA, posB, t));
+            t = EdgeCutMath.recomputeT(cutPos, posA, posB);
+        }
+
+        // Capture snapshot before the topology change for undo
+        MeshSnapshot before = (commandHistory != null && synchronizer != null)
+            ? MeshSnapshot.capture(modelRenderer) : null;
+
+        int newVertexIndex = modelRenderer.subdivideEdgeAtParameter(edge.vertexA(), edge.vertexB(), t);
+        if (newVertexIndex < 0) {
+            logger.warn("Ctrl+Click vertex insertion failed on edge {} at t={}", hitResult.edgeIndex(), t);
+            return true; // Still consume — the user targeted an edge
+        }
+
+        if (before != null) {
+            MeshSnapshot after = MeshSnapshot.capture(modelRenderer);
+            commandHistory.pushCompleted(SnapshotCommand.custom(
+                "Insert Vertex on Edge", before, after, modelRenderer, synchronizer));
+        }
+
+        logger.info("Inserted vertex {} on edge {} at t={}", newVertexIndex, hitResult.edgeIndex(), t);
+        return true;
+    }
+
+    /**
+     * Run edge hover detection with parameter using EdgeHoverDetector.
+     */
+    private EdgeHoverDetector.EdgeHitResult detectEdgeWithParameter(InputContext context) {
+        float[] edgePositions = edgeRenderer.getEdgePositions();
+        int edgeCount = edgeRenderer.getEdgeCount();
+        float lineWidth = edgeRenderer.getLineWidth();
+
+        if (edgePositions == null || edgeCount == 0) {
+            return EdgeHoverDetector.EdgeHitResult.NONE;
+        }
+
+        Matrix4f modelMatrix = (transformState != null)
+            ? transformState.getTransformMatrix()
+            : new Matrix4f();
+
+        return EdgeHoverDetector.detectHoveredEdgeWithParameter(
+            context.mouseX, context.mouseY,
+            context.viewportWidth, context.viewportHeight,
+            context.viewMatrix, context.projectionMatrix,
+            modelMatrix,
+            edgePositions, edgeCount, lineWidth
+        );
+    }
+
+    /**
+     * @return true if grid snapping is currently enabled in the viewport
+     */
+    private boolean isGridSnappingEnabled() {
+        return viewportState != null && viewportState.getGridSnappingEnabled().get();
+    }
+
+    /**
+     * Snap a position to the grid using the viewport's global snapping increment.
+     */
+    private Vector3f snapToGrid(Vector3f pos) {
+        float increment = viewportState.getGridSnappingIncrement().get();
+        return new Vector3f(
+            SnappingUtil.snapToGrid(pos.x, increment),
+            SnappingUtil.snapToGrid(pos.y, increment),
+            SnappingUtil.snapToGrid(pos.z, increment)
+        );
     }
 
     /**

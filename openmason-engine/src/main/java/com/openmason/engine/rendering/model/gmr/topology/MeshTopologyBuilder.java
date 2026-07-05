@@ -1,8 +1,8 @@
 package com.openmason.engine.rendering.model.gmr.topology;
 
-import com.openmason.engine.rendering.model.gmr.extraction.FaceTriangleQuery;
-import com.openmason.engine.rendering.model.gmr.mapping.ITriangleFaceMapper;
-import com.openmason.engine.rendering.model.gmr.mapping.IUniqueVertexMapper;
+import com.openmason.engine.rendering.model.gmr.editable.EditableFace;
+import com.openmason.engine.rendering.model.gmr.editable.EditableMesh;
+import com.openmason.engine.rendering.model.gmr.editable.RenderMesh;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,19 +10,17 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
- * Static factory that builds {@link MeshTopology} from GMR's flat vertex/index arrays.
+ * Static factory that builds {@link MeshTopology} from the authoritative
+ * {@link EditableMesh} and its derived {@link RenderMesh}.
  *
- * <p>Centralizes the edge-building logic previously duplicated in
- * {@code EdgeRenderer.rebuildFromModel()} (lines 613-672). The algorithm:
- * <ol>
- *   <li>Iterates triangles from {@code indices[]} + {@link ITriangleFaceMapper}</li>
- *   <li>For each triangle edge, computes canonical key and collects face IDs</li>
- *   <li>Uses {@link FaceTriangleQuery#extractFaceVertexIndices} per face for ordered polygon vertices</li>
- *   <li>Filters edges: keeps boundary (2+ faces) and open-mesh outline edges</li>
- *   <li>Assigns stable edgeId (0..N-1), builds adjacency indices</li>
- *   <li>Constructs all 15 sub-services</li>
- *   <li>Returns immutable {@link MeshTopology}</li>
- * </ol>
+ * <p>Face loops and winding come from the editable mesh VERBATIM — nothing is
+ * reconstructed from triangles, so the legacy boundary-walk/insertion-order
+ * winding hazards and the "drop fan diagonals" edge-filter heuristic are gone:
+ * every edge in the topology is a real polygon-boundary edge, including hole
+ * outlines on multi-face open meshes (which the legacy filter wrongly dropped).
+ *
+ * <p>Index-mapping data ("unique" = editable vertex id, "mesh" = render corner
+ * index) comes from the render mesh's exact corner maps — no epsilon welding.
  *
  * <p>Thread-safe: stateless factory methods.
  */
@@ -35,114 +33,69 @@ public final class MeshTopologyBuilder {
     }
 
     /**
-     * Build a MeshTopology from GMR's flat arrays.
+     * Build a MeshTopology.
      *
-     * @param vertices     Vertex positions (x,y,z interleaved)
-     * @param indices      Triangle index buffer
-     * @param faceMapper   Triangle-to-face mapping
-     * @param uniqueMapper Unique vertex mapping
-     * @return Immutable MeshTopology, or null if input is invalid
+     * @param mesh       Authoritative mesh (loops + winding)
+     * @param renderMesh Derived render mesh (corner maps, triangle→face, positions)
+     * @return Immutable MeshTopology, or null for an empty mesh
      */
-    public static MeshTopology build(float[] vertices, int[] indices,
-                                     ITriangleFaceMapper faceMapper,
-                                     IUniqueVertexMapper uniqueMapper) {
-        if (vertices == null || vertices.length == 0 ||
-            indices == null || indices.length == 0 ||
-            faceMapper == null || !faceMapper.hasMapping() ||
-            uniqueMapper == null || !uniqueMapper.hasMapping()) {
-            logger.debug("Cannot build topology: missing input data");
+    public static MeshTopology build(EditableMesh mesh, RenderMesh renderMesh) {
+        if (mesh == null || renderMesh == null || mesh.faceCount() == 0
+                || renderMesh.cornerCount() == 0) {
+            logger.debug("Cannot build topology: empty mesh");
             return null;
         }
 
-        int triangleCount = indices.length / 3;
-        int originalFaceCount = faceMapper.getOriginalFaceCount();
-        int faceIdUpperBound = faceMapper.getFaceIdUpperBound();
+        int faceIdUpperBound = mesh.faceIdUpperBound();
+        int uniqueVertexCount = mesh.vertexCount();
+        float[] vertices = renderMesh.vertices();
+        int triangleCount = renderMesh.triangleCount();
 
-        // Step 1: Build edge -> face ID sets (same logic as EdgeRenderer.rebuildFromModel)
-        Map<Long, Set<Integer>> edgeToFaceIds = new HashMap<>();
+        // Step 1: Collect edges from face loops (undirected, keyed by vertex ids).
+        Map<Long, Set<Integer>> edgeToFaceIds = new LinkedHashMap<>();
         Map<Long, int[]> edgeToVertices = new HashMap<>();
 
-        for (int t = 0; t < triangleCount; t++) {
-            int i0 = indices[t * 3];
-            int i1 = indices[t * 3 + 1];
-            int i2 = indices[t * 3 + 2];
-
-            int u0 = uniqueMapper.getUniqueIndexForMeshVertex(i0);
-            int u1 = uniqueMapper.getUniqueIndexForMeshVertex(i1);
-            int u2 = uniqueMapper.getUniqueIndexForMeshVertex(i2);
-
-            int faceId = faceMapper.getOriginalFaceIdForTriangle(t);
-
-            trackEdgeFace(edgeToFaceIds, edgeToVertices, u0, u1, faceId);
-            trackEdgeFace(edgeToFaceIds, edgeToVertices, u1, u2, faceId);
-            trackEdgeFace(edgeToFaceIds, edgeToVertices, u2, u0, faceId);
-        }
-
-        // Step 2: Filter edges - keep boundary (shared by 2+ faces) and open-mesh outline edges
-        List<long[]> filteredEdgeKeys = new ArrayList<>(); // [canonicalKey]
-        for (Map.Entry<Long, Set<Integer>> entry : edgeToFaceIds.entrySet()) {
-            int faceUsageCount = entry.getValue().size();
-            if (faceUsageCount > 1) {
-                // Boundary edge between different faces - always keep
-                filteredEdgeKeys.add(new long[] { entry.getKey() });
-            } else {
-                // Single-face edge: keep on single-face meshes (open outline),
-                // skip on multi-face meshes (internal diagonal from fan triangulation)
-                if (originalFaceCount <= 1) {
-                    filteredEdgeKeys.add(new long[] { entry.getKey() });
-                }
+        for (EditableFace face : mesh.faces()) {
+            int n = face.loopLength();
+            for (int i = 0; i < n; i++) {
+                int a = face.vertexAt(i);
+                int b = face.vertexAt((i + 1) % n);
+                long key = MeshEdge.canonicalKey(a, b);
+                edgeToFaceIds.computeIfAbsent(key, k -> new HashSet<>()).add(face.faceId());
+                edgeToVertices.putIfAbsent(key, new int[]{Math.min(a, b), Math.max(a, b)});
             }
         }
 
-        // Step 3: Build MeshEdge array with stable IDs
-        int edgeCount = filteredEdgeKeys.size();
+        // Step 2: Build MeshEdge array with stable IDs — every loop edge is real.
+        int edgeCount = edgeToFaceIds.size();
         MeshEdge[] edges = new MeshEdge[edgeCount];
         Map<Long, Integer> edgeKeyToId = new HashMap<>(edgeCount * 2);
 
-        for (int e = 0; e < edgeCount; e++) {
-            long key = filteredEdgeKeys.get(e)[0];
+        int e = 0;
+        for (Map.Entry<Long, Set<Integer>> entry : edgeToFaceIds.entrySet()) {
+            long key = entry.getKey();
             int[] verts = edgeToVertices.get(key);
-            Set<Integer> faceIds = edgeToFaceIds.get(key);
-
-            int[] adjacentFaceArray = faceIds.stream().mapToInt(Integer::intValue).toArray();
+            int[] adjacentFaceArray = entry.getValue().stream().mapToInt(Integer::intValue).toArray();
             edges[e] = MeshEdge.of(e, verts[0], verts[1], adjacentFaceArray);
             edgeKeyToId.put(key, e);
+            e++;
         }
 
-        // Step 4: Build MeshFace array with vertex indices and edge IDs
-        // Use FaceTriangleQuery to get ordered polygon vertices per face
-        List<MeshFace> faceList = new ArrayList<>();
-        for (int faceId = 0; faceId < faceIdUpperBound; faceId++) {
-            List<Integer> triangles = FaceTriangleQuery.findTrianglesForFace(faceId, indices, faceMapper);
-            if (triangles.isEmpty()) {
-                continue;
-            }
-
-            Integer[] meshVertexIndices = FaceTriangleQuery.extractFaceVertexIndices(triangles, indices);
-
-            // Convert mesh vertex indices to unique vertex indices
-            int[] uniqueVertexIndices = new int[meshVertexIndices.length];
-            for (int i = 0; i < meshVertexIndices.length; i++) {
-                uniqueVertexIndices[i] = uniqueMapper.getUniqueIndexForMeshVertex(meshVertexIndices[i]);
-            }
-
-            // Find edge IDs for this face's outline
-            int[] faceEdgeIds = new int[uniqueVertexIndices.length];
-            for (int i = 0; i < uniqueVertexIndices.length; i++) {
-                int v0 = uniqueVertexIndices[i];
-                int v1 = uniqueVertexIndices[(i + 1) % uniqueVertexIndices.length];
-                long edgeKey = MeshEdge.canonicalKey(v0, v1);
+        // Step 3: Build MeshFace array directly from authoritative loops.
+        List<MeshFace> faceList = new ArrayList<>(mesh.faceCount());
+        for (EditableFace face : mesh.faces()) {
+            int[] loop = face.loop();
+            int[] faceEdgeIds = new int[loop.length];
+            for (int i = 0; i < loop.length; i++) {
+                long edgeKey = MeshEdge.canonicalKey(loop[i], loop[(i + 1) % loop.length]);
                 Integer edgeId = edgeKeyToId.get(edgeKey);
                 faceEdgeIds[i] = edgeId != null ? edgeId : -1;
             }
-
-            faceList.add(new MeshFace(faceId, uniqueVertexIndices, faceEdgeIds));
+            faceList.add(new MeshFace(face.faceId(), loop, faceEdgeIds));
         }
-
         MeshFace[] faces = faceList.toArray(new MeshFace[0]);
 
-        // Step 5: Build vertex adjacency indices
-        int uniqueVertexCount = uniqueMapper.getUniqueVertexCount();
+        // Step 4: Build vertex adjacency indices.
         List<List<Integer>> vertexToEdges = new ArrayList<>(uniqueVertexCount);
         List<List<Integer>> vertexToFaces = new ArrayList<>(uniqueVertexCount);
         for (int i = 0; i < uniqueVertexCount; i++) {
@@ -178,7 +131,7 @@ public final class MeshTopologyBuilder {
             immutableVertexToFaces.add(Collections.unmodifiableList(vertexToFaces.get(i)));
         }
 
-        // Step 5b: Build face-to-face adjacency from edge adjacency
+        // Step 4b: Build face-to-face adjacency from edge adjacency.
         // Sized by faceIdUpperBound (not faces.length) to handle non-contiguous face IDs
         // after face deletion. Gap entries remain as empty sets.
         List<Set<Integer>> faceAdjSets = new ArrayList<>(faceIdUpperBound);
@@ -208,7 +161,7 @@ public final class MeshTopologyBuilder {
             faceToAdjacentFaces.add(Collections.unmodifiableList(new ArrayList<>(faceAdjSets.get(i))));
         }
 
-        // Step 6: Detect uniform topology
+        // Step 5: Detect uniform topology
         boolean uniform = true;
         int firstCount = faces.length > 0 ? faces[0].vertexCount() : 0;
         for (int i = 1; i < faces.length; i++) {
@@ -218,26 +171,17 @@ public final class MeshTopologyBuilder {
             }
         }
 
-        // Step 7: Extract mapper data into topology
-        int meshVertexCount = vertices.length / 3;
-
-        // Copy mesh-to-unique mapping
-        int[] meshToUniqueMapping = new int[meshVertexCount];
-        for (int i = 0; i < meshVertexCount; i++) {
-            meshToUniqueMapping[i] = uniqueMapper.getUniqueIndexForMeshVertex(i);
-        }
-
-        // Copy unique-to-mesh mapping
+        // Step 6: Index mapping — exact corner maps from the render mesh.
+        int[] meshToUniqueMapping = renderMesh.cornerToVertexId().clone();
+        int[][] vertexIdToCorners = renderMesh.vertexIdToCorners();
         int[][] uniqueToMeshIndices = new int[uniqueVertexCount][];
         for (int i = 0; i < uniqueVertexCount; i++) {
-            int[] meshIndices = uniqueMapper.getMeshIndicesForUniqueVertex(i);
-            uniqueToMeshIndices[i] = meshIndices != null ? meshIndices.clone() : new int[0];
+            uniqueToMeshIndices[i] = i < vertexIdToCorners.length
+                ? vertexIdToCorners[i].clone() : new int[0];
         }
+        int[] triangleToFaceId = renderMesh.triangleToFaceId().clone();
 
-        // Copy triangle-to-face mapping
-        int[] triangleToFaceId = faceMapper.getMappingCopy();
-
-        // Step 8: Compute per-face normals, centroids, and areas
+        // Step 7: Compute per-face normals, centroids, and areas.
         // Sized by faceIdUpperBound and indexed by face ID to handle gaps from deletion.
         // Gap entries remain null/0.0 (consumers must handle nulls).
         Vector3f[] faceNormals = new Vector3f[faceIdUpperBound];
@@ -251,7 +195,7 @@ public final class MeshTopologyBuilder {
             faceAreas[fid] = MeshGeometry.computeArea(verts, uniqueToMeshIndices, vertices);
         }
 
-        // Step 9: Compute per-vertex smooth normals (area-weighted average of adjacent face normals)
+        // Step 8: Compute per-vertex smooth normals (area-weighted average of adjacent face normals)
         Vector3f[] vertexNormals = new Vector3f[uniqueVertexCount];
         for (int v = 0; v < uniqueVertexCount; v++) {
             vertexNormals[v] = MeshGeometry.computeVertexNormal(
@@ -259,13 +203,11 @@ public final class MeshTopologyBuilder {
             );
         }
 
-        // Step 10: Construct all 15 sub-services
-        // Immutable shared references
+        // Step 9: Construct all 15 sub-services
         Map<Long, Integer> immutableEdgeKeyToId = Collections.unmodifiableMap(edgeKeyToId);
         List<List<Integer>> immutableFaceToAdjacentFaces = Collections.unmodifiableList(faceToAdjacentFaces);
         Map<Long, Integer> immutableFacePairToEdgeId = Collections.unmodifiableMap(facePairToEdgeId);
 
-        // Independent sub-services (no inter-service dependencies)
         IndexMappingQuery indexMappingQuery = new IndexMappingQuery(
                 meshToUniqueMapping, uniqueToMeshIndices, uniqueVertexCount,
                 triangleToFaceId, triangleCount);
@@ -310,20 +252,15 @@ public final class MeshTopologyBuilder {
             }
         }
 
-        // Dihedral angle cache (needs FaceGeometryCache + EdgeClassifier)
         DihedralAngleCache dihedralAngleCache = new DihedralAngleCache(
                 edges, dihedralAngles, faceGeometryCache, edgeClassifier);
 
-        // Vertex normal cache (needs FaceGeometryCache)
         VertexNormalCache vertexNormalCache = new VertexNormalCache(
                 vertexNormals, faceGeometryCache, immutableVertexToFaces);
 
-        // Existing sub-services (unchanged construction)
         VertexClassifier vertexClassifier = new VertexClassifier(
                 edges, immutableVertexToEdges, uniform, firstCount);
 
-        // All face-ID-indexed sub-services receive facesById (sparse) so that
-        // face IDs from edges/adjacency correctly index into the array.
         FaceEdgeTraversal faceEdgeTraversal = new FaceEdgeTraversal(facesById);
 
         EdgeLoopTracer edgeLoopTracer = new EdgeLoopTracer(edges, facesById);
@@ -343,8 +280,6 @@ public final class MeshTopologyBuilder {
         VertexBoundaryWalker vertexBoundaryWalker = new VertexBoundaryWalker(
                 edges, immutableVertexToEdges);
 
-        // Construct MeshTopology with all 15 sub-services
-        // Pass facesById (sparse, indexed by face ID) so getFace(faceId) works with non-contiguous IDs
         MeshTopology topology = new MeshTopology(
                 edges, facesById, immutableEdgeKeyToId,
                 indexMappingQuery, topologyMetadataQuery, elementAdjacencyQuery,
@@ -353,26 +288,9 @@ public final class MeshTopologyBuilder {
                 edgeLoopTracer, faceLoopTracer, faceIslandDetector,
                 vertexRingQuery, vertexAdjacencyQuery, vertexBoundaryWalker);
 
-        logger.debug("Built MeshTopology: {} edges, {} faces, {} unique verts, {} triangles, uniform={} (vpf={})",
+        logger.debug("Built MeshTopology: {} edges, {} faces, {} vertices, {} triangles, uniform={} (vpf={})",
             edgeCount, faces.length, uniqueVertexCount, triangleCount, uniform, firstCount);
 
         return topology;
-    }
-
-    /**
-     * Track which faces use an edge. Same canonical key approach as EdgeRenderer.
-     */
-    private static void trackEdgeFace(Map<Long, Set<Integer>> edgeToFaceIds,
-                                       Map<Long, int[]> edgeToVertices,
-                                       int u0, int u1, int faceId) {
-        if (u0 < 0 || u1 < 0 || u0 == u1) {
-            return;
-        }
-        int min = Math.min(u0, u1);
-        int max = Math.max(u0, u1);
-        long key = ((long) min << 32) | (max & 0xFFFFFFFFL);
-
-        edgeToFaceIds.computeIfAbsent(key, k -> new HashSet<>()).add(faceId);
-        edgeToVertices.putIfAbsent(key, new int[] { min, max });
     }
 }

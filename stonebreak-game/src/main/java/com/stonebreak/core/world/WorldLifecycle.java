@@ -71,18 +71,6 @@ public final class WorldLifecycle {
             System.out.println("[BACKGROUND-SYSTEMS] ⚠ No EntityManager to stop (unexpected)");
         }
 
-        com.stonebreak.rendering.WaterEffects waterEffects = Game.getWaterEffects();
-        if (waterEffects != null) {
-            try {
-                waterEffects.detectExistingWater();
-                System.out.println("[BACKGROUND-SYSTEMS] ✓ Reset WaterEffects - cleared water simulation data");
-            } catch (Exception e) {
-                System.err.println("[BACKGROUND-SYSTEMS] ✗ Error resetting WaterEffects: " + e.getMessage());
-            }
-        } else {
-            System.out.println("[BACKGROUND-SYSTEMS] ⚠ No WaterEffects to reset (unexpected)");
-        }
-
         game.setCurrentWorldName(null);
         game.setCurrentWorldSeed(0);
         game.setCurrentWorldData(null);

@@ -136,10 +136,17 @@ public class RaycastEngine {
      * {@link Float#MAX_VALUE} if the ray is clear out to {@code maxDistance}.
      */
     public float distanceToFirstSolid(Vector3f origin, Vector3f direction, float maxDistance) {
+        List<PanelTarget> panels = doorPanelsNear(origin, maxDistance);
         for (float d = 0; d < maxDistance; d += STEP_SIZE) {
             Vector3f p = new Vector3f(direction).mul(d).add(origin);
+            for (PanelTarget panel : panels) {
+                if (insidePanel(panel.box, p)) {
+                    return d; // a door blocks line-of-sight exactly where its panel is
+                }
+            }
             BlockType bt = world.getBlockAt((int) Math.floor(p.x), (int) Math.floor(p.y), (int) Math.floor(p.z));
-            if (bt != BlockType.AIR && bt != BlockType.WATER) {
+            if (bt != BlockType.AIR && bt != BlockType.WATER
+                    && !com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(bt)) {
                 return d;
             }
         }
@@ -190,16 +197,73 @@ public class RaycastEngine {
     }
 
     private Vector3i marchToFirstSolid(Vector3f origin, Vector3f direction, float maxDistance) {
+        List<PanelTarget> panels = doorPanelsNear(origin, maxDistance);
         for (float d = 0; d < maxDistance; d += STEP_SIZE) {
             Vector3f p = new Vector3f(direction).mul(d).add(origin);
+
+            // Model-centric door targeting: hitting the panel anywhere —
+            // either block of its 2-tall model, open or closed pose — targets
+            // the door's anchor cell (break, toggle, crack overlay all key on it).
+            for (PanelTarget panel : panels) {
+                if (insidePanel(panel.box, p)) {
+                    return new Vector3i(panel.anchor);
+                }
+            }
+
             int bx = (int) Math.floor(p.x);
             int by = (int) Math.floor(p.y);
             int bz = (int) Math.floor(p.z);
             BlockType bt = world.getBlockAt(bx, by, bz);
-            if (bt != BlockType.AIR && bt != BlockType.WATER) {
+            if (bt != BlockType.AIR && bt != BlockType.WATER
+                    && !com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(bt)) {
+                // Animated cells are never colliders themselves — the ray
+                // passes through an open doorway and hits what's behind.
                 return new Vector3i(bx, by, bz);
             }
         }
         return null;
+    }
+
+    // ─── Door panel targets (model-tied AABBs) ───────────────────────────────
+
+    private static final class PanelTarget {
+        final float[] box;
+        final Vector3i anchor;
+
+        PanelTarget(float[] box, Vector3i anchor) {
+            this.box = box;
+            this.anchor = anchor;
+        }
+    }
+
+    /**
+     * Animated-block models (door panels) close enough for the ray to reach,
+     * as world AABBs from {@code AnimatedBlockShapes.worldAabb} — the geometry
+     * posed at the current state's clip end pose, i.e. exactly what is
+     * rendered. Doors are sparse, so this is normally an empty list.
+     */
+    private List<PanelTarget> doorPanelsNear(Vector3f origin, float maxDistance) {
+        List<PanelTarget> panels = null;
+        float reach = maxDistance + 3f; // a posed model extends at most ~2 blocks from its anchor
+        float reachSq = reach * reach;
+        for (com.openmason.engine.util.BlockPos pos : world.getAnimatedBlockRegistry().positions()) {
+            float dx = pos.x() + 0.5f - origin.x;
+            float dy = pos.y() + 1.0f - origin.y;
+            float dz = pos.z() + 0.5f - origin.z;
+            if (dx * dx + dy * dy + dz * dz > reachSq) continue;
+            BlockType type = world.getBlockAt(pos.x(), pos.y(), pos.z());
+            if (!com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(type)) continue;
+            float[] box = com.stonebreak.blocks.anim.AnimatedBlockShapes
+                    .worldAabb(world, pos.x(), pos.y(), pos.z(), type);
+            if (panels == null) panels = new java.util.ArrayList<>(2);
+            panels.add(new PanelTarget(box, new Vector3i(pos.x(), pos.y(), pos.z())));
+        }
+        return panels == null ? List.of() : panels;
+    }
+
+    private static boolean insidePanel(float[] b, Vector3f p) {
+        return p.x >= b[0] && p.x <= b[3]
+                && p.y >= b[1] && p.y <= b[4]
+                && p.z >= b[2] && p.z <= b[5];
     }
 }

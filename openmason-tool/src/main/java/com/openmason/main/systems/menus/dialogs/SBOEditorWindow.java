@@ -50,6 +50,7 @@ public class SBOEditorWindow {
     private SBOFormat.Document loadedManifest;
     private byte[] loadedDefaultBytes;
     private java.util.Map<String, byte[]> loadedStateBytes;
+    private java.util.Map<String, byte[]> loadedStateClipBytes;
     private boolean dirty;
 
     // Form buffers (mirror manifest)
@@ -94,8 +95,9 @@ public class SBOEditorWindow {
         this.smeltingSection = new SBOSmeltingSection(() -> dirty = true);
         this.statesEditor = new SBOStatesEditor(
                 () -> dirty = true,
-                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMODialog(cb::accept); },
-                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMTDialog(cb::accept); });
+                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMOInProjectDialog(cb::accept); },
+                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMTInProjectDialog(cb::accept); },
+                cb -> { if (fileDialogService != null) fileDialogService.showOpenOMADialog(cb::accept); });
     }
 
     /**
@@ -126,6 +128,7 @@ public class SBOEditorWindow {
             this.loadedManifest = raw.manifest();
             this.loadedDefaultBytes = raw.defaultBytes();
             this.loadedStateBytes = raw.stateBytes();
+            this.loadedStateClipBytes = raw.stateClipBytes();
             populateBuffers(raw.manifest());
             this.dirty = false;
             this.visible.set(true);
@@ -168,7 +171,7 @@ public class SBOEditorWindow {
         smeltingSection.setFromSmeltingData(doc.smeltingRecipes());
         isFuel = doc.fuel() != null;
         fuelBurnTicks.set(doc.fuel() != null ? doc.fuel().burnTicks() : 1600);
-        statesEditor.load(doc, loadedStateBytes, loadedDefaultBytes);
+        statesEditor.load(doc, loadedStateBytes, loadedStateClipBytes, loadedDefaultBytes);
     }
 
     public void render() {
@@ -341,12 +344,17 @@ public class SBOEditorWindow {
         java.util.Map<String, byte[]> effectiveStateBytes = statesEditor.hasStates()
                 ? statesEditor.stateBytesByName()
                 : loadedStateBytes;
-        boolean ok = serializer.exportFromDocument(edited, effectiveDefaultBytes, effectiveStateBytes, pathStr);
+        java.util.Map<String, byte[]> effectiveClipBytes = statesEditor.hasStates()
+                ? statesEditor.stateClipBytesByName()
+                : loadedStateClipBytes;
+        boolean ok = serializer.exportFromDocument(edited, effectiveDefaultBytes, effectiveStateBytes,
+                effectiveClipBytes, pathStr);
         if (ok) {
             currentPath = Path.of(pathStr);
             loadedManifest = edited;
             loadedDefaultBytes = effectiveDefaultBytes;
             loadedStateBytes = effectiveStateBytes;
+            loadedStateClipBytes = effectiveClipBytes;
             dirty = false;
             if (statusService != null) {
                 statusService.updateStatus("Saved SBO: " + currentPath.getFileName());

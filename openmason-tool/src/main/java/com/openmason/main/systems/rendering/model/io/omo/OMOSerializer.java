@@ -75,6 +75,9 @@ public class OMOSerializer {
     // Optional bone skeleton entries (v1.6+)
     private List<OMOFormat.BoneEntry> pendingBones;
 
+    // Optional attachment point (socket) entries (v1.7+)
+    private List<OMOFormat.AttachmentPointEntry> pendingAttachmentPoints;
+
     /**
      * Creates a new .OMO serializer with JSON support.
      */
@@ -140,6 +143,14 @@ public class OMOSerializer {
      */
     public void setBoneEntries(List<OMOFormat.BoneEntry> bones) {
         this.pendingBones = bones;
+    }
+
+    /**
+     * Set the attachment point (socket) entries to be saved with the next model (v1.7+).
+     * Null or empty means the file carries no sockets (backward-compatible).
+     */
+    public void setAttachmentPointEntries(List<OMOFormat.AttachmentPointEntry> attachmentPoints) {
+        this.pendingAttachmentPoints = attachmentPoints;
     }
 
     /**
@@ -214,6 +225,7 @@ public class OMOSerializer {
             pendingParts = null;
             pendingModelTransform = null;
             pendingBones = null;
+            pendingAttachmentPoints = null;
 
             // Move temp file to final location (atomic on most filesystems)
             Path finalPath = Path.of(filePath);
@@ -250,7 +262,8 @@ public class OMOSerializer {
 
         // Serialize to JSON (pass pending data explicitly since DTO is static)
         String json = objectMapper.writeValueAsString(
-                new ExtendedManifestDTO(document, pendingParts, pendingModelTransform, pendingBones));
+                new ExtendedManifestDTO(document, pendingParts, pendingModelTransform, pendingBones,
+                        pendingAttachmentPoints));
         byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8);
 
         // Write JSON to ZIP
@@ -352,11 +365,13 @@ public class OMOSerializer {
         public List<PartEntryDTO> parts; // Optional, null for single-part models
         public ModelTransformDTO modelTransform; // Optional, null for identity (v1.4+)
         public List<BoneEntryDTO> bones; // Optional, null or empty for files without a skeleton (v1.6+)
+        public List<AttachmentPointEntryDTO> attachmentPoints; // Optional, null or empty for files without sockets (v1.7+)
 
         public ExtendedManifestDTO(OMOFormat.ExtendedDocument document,
                                    List<OMOFormat.PartEntry> partEntries,
                                    OMOFormat.ModelTransform modelTransform,
-                                   List<OMOFormat.BoneEntry> boneEntries) {
+                                   List<OMOFormat.BoneEntry> boneEntries,
+                                   List<OMOFormat.AttachmentPointEntry> attachmentPointEntries) {
             this.version = document.version();
             this.objectName = document.objectName();
             this.modelType = document.modelType();
@@ -371,6 +386,8 @@ public class OMOSerializer {
                     ? new ModelTransformDTO(modelTransform) : null;
             this.bones = boneEntries != null && !boneEntries.isEmpty()
                     ? boneEntries.stream().map(BoneEntryDTO::new).toList() : null;
+            this.attachmentPoints = attachmentPointEntries != null && !attachmentPointEntries.isEmpty()
+                    ? attachmentPointEntries.stream().map(AttachmentPointEntryDTO::new).toList() : null;
         }
     }
 
@@ -578,6 +595,39 @@ public class OMOSerializer {
             this.endpointX = entry.endpointX();
             this.endpointY = entry.endpointY();
             this.endpointZ = entry.endpointZ();
+        }
+    }
+
+    /**
+     * DTO for attachment point (socket) entries (v1.7+).
+     * Pure transform markers in rest-pose model space; {@code parentPartId}/
+     * {@code parentPartName} bind the socket to a part for runtime animation.
+     */
+    private static class AttachmentPointEntryDTO {
+        public String id;
+        public String name;
+        public String parentPartId;
+        public String parentPartName;
+        public float posX, posY, posZ;
+        public float rotX, rotY, rotZ;
+        // Scale applied to the attached model (1 = unchanged). Absent in early v1.7
+        // files; readers default missing values to 1 for backward compatibility.
+        public float scaleX, scaleY, scaleZ;
+
+        public AttachmentPointEntryDTO(OMOFormat.AttachmentPointEntry entry) {
+            this.id = entry.id();
+            this.name = entry.name();
+            this.parentPartId = entry.parentPartId();
+            this.parentPartName = entry.parentPartName();
+            this.posX = entry.posX();
+            this.posY = entry.posY();
+            this.posZ = entry.posZ();
+            this.rotX = entry.rotX();
+            this.rotY = entry.rotY();
+            this.rotZ = entry.rotZ();
+            this.scaleX = entry.scaleX();
+            this.scaleY = entry.scaleY();
+            this.scaleZ = entry.scaleZ();
         }
     }
 }

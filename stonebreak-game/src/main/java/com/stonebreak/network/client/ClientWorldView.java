@@ -183,6 +183,7 @@ public final class ClientWorldView {
     private void clientTick() {
         chunkHandler.tick();
         entityHandler.tick();
+        playerHandler.tick();
         sendLocalPlayerState();
         sendPlayerDataIfDue();
         if (++auditCounter >= AUDIT_PERIOD_TICKS) {
@@ -325,6 +326,12 @@ public final class ClientWorldView {
         if (p == null || connection == null) {
             return;
         }
+        // During a client-world rebuild (rejoin) Game.getPlayer() is still the PREVIOUS
+        // session's player — reporting its stale position would misdirect the server's
+        // chunk streaming and reach checks until the swap lands.
+        if (!Game.isClientWorldReady()) {
+            return;
+        }
         Vector3f pos = p.getPosition();
         float yaw = p.getCamera() != null ? p.getCamera().getYaw() : 0f;
         float pitch = p.getCamera() != null ? p.getCamera().getPitch() : 0f;
@@ -391,6 +398,20 @@ public final class ClientWorldView {
         if (conn != null && conn.isActive() && slots != null) {
             conn.send(new com.stonebreak.network.packet.world.FurnaceSlotsC2S(x, y, z, slots), false);
         }
+    }
+
+    /**
+     * Toggleable-block interaction intent (door open/close — see {@code BlockToggleC2S}).
+     *
+     * @return true when the intent was sent (the server will echo the new state)
+     */
+    public boolean sendBlockToggle(int x, int y, int z) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(new com.stonebreak.network.packet.world.BlockToggleC2S(x, y, z), false);
+            return true;
+        }
+        return false;
     }
 
     /** Projectile / ability-entity launch intent (see {@code ProjectileSpawnC2S}). */

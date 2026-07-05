@@ -49,7 +49,8 @@ public final class FileBarPanel implements AutoCloseable {
 
     private void renderMortar() {
         boolean hasPath = controller.state().filePath() != null;
-        boolean canSave = hasPath && controller.state().dirty();
+        // A never-saved clip must still be saveable — Save falls back to Save As.
+        boolean canSave = !hasPath || controller.state().dirty();
 
         float[] widths = {52f, 68f, 56f, 84f};
         String[] ids = {"new", "open", "save", "saveAs"};
@@ -73,7 +74,7 @@ public final class FileBarPanel implements AutoCloseable {
 
         if (input.isClicked("new")) controller.newClip();
         if (input.isClicked("open")) promptOpen();
-        if (input.isClicked("save") && canSave) controller.save();
+        if (input.isClicked("save") && canSave) requestSave();
         if (input.isClicked("saveAs")) promptSaveAs();
     }
 
@@ -91,19 +92,34 @@ public final class FileBarPanel implements AutoCloseable {
 
         ImGui.sameLine();
         boolean hasPath = controller.state().filePath() != null;
-        boolean canSave = hasPath && controller.state().dirty();
+        boolean canSave = !hasPath || controller.state().dirty();
         AnimUI.beginDisabled(!canSave);
         if (ImGui.button("Save")) {
-            controller.save();
+            requestSave();
         }
         AnimUI.endDisabled(!canSave);
-        AnimUI.tooltip(hasPath ? "Save changes to the current file (Ctrl+S)." : "No file path set — use Save As.");
+        AnimUI.tooltip(hasPath
+                ? "Save changes to the current file (Ctrl+S)."
+                : "Save the clip — prompts for a file path (Ctrl+S).");
 
         ImGui.sameLine();
         if (ImGui.button("Save As...")) {
             promptSaveAs();
         }
         AnimUI.tooltip("Save the current clip to a new .omanim file.");
+    }
+
+    /**
+     * Save to the current file, falling back to the Save As dialog when the
+     * clip has never been saved. Single save entry point shared by the Save
+     * button (both render paths) and the Ctrl+S shortcut.
+     */
+    public void requestSave() {
+        if (controller.state().filePath() != null) {
+            controller.save();
+        } else {
+            promptSaveAs();
+        }
     }
 
     public void promptOpen() {

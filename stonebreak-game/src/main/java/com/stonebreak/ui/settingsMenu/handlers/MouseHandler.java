@@ -71,6 +71,7 @@ public final class MouseHandler {
         stateManager.getResolutionButton().updateHover(mouseX, mouseY);
         stateManager.getArmModelButton().updateHover(mouseX, mouseY);
         stateManager.getCrosshairStyleButton().updateHover(mouseX, mouseY);
+        stateManager.getPlayerNameTagsButton().updateHover(mouseX, mouseY);
         stateManager.getLeafTransparencyButton().updateHover(mouseX, mouseY);
         stateManager.getWaterShaderButton().updateHover(mouseX, mouseY);
         stateManager.getCloudsButton().updateHover(mouseX, mouseY);
@@ -152,6 +153,7 @@ public final class MouseHandler {
             case ARM_MODEL         -> stateManager.getArmModelButton().handleClick(mouseX, mouseY);
             case CROSSHAIR_STYLE   -> stateManager.getCrosshairStyleButton().handleClick(mouseX, mouseY);
             case CROSSHAIR_SIZE    -> stateManager.getCrosshairSizeSlider().handleClick(mouseX, mouseY);
+            case PLAYER_NAME_TAGS  -> stateManager.getPlayerNameTagsButton().handleClick(mouseX, mouseY);
             case LEAF_TRANSPARENCY -> stateManager.getLeafTransparencyButton().handleClick(mouseX, mouseY);
             case WATER_SHADER      -> stateManager.getWaterShaderButton().handleClick(mouseX, mouseY);
             case CLOUDS_ENABLED    -> stateManager.getCloudsButton().handleClick(mouseX, mouseY);

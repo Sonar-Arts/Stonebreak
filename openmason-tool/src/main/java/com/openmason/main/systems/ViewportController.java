@@ -74,9 +74,16 @@ public class ViewportController {
     private final com.openmason.main.systems.skeleton.BoneStore boneStore =
             new com.openmason.main.systems.skeleton.BoneStore();
 
+    // ========== Attachment points (sockets) ==========
+    private final com.openmason.main.systems.skeleton.AttachmentStore attachmentStore =
+            new com.openmason.main.systems.skeleton.AttachmentStore();
+    private final com.openmason.main.systems.skeleton.AttachmentPreviewStore attachmentPreviewStore =
+            new com.openmason.main.systems.skeleton.AttachmentPreviewStore();
+
     // ========== Gizmo Targets ==========
     private com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.PartTransformTarget partTransformTarget;
     private com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.BoneTransformTarget boneTransformTarget;
+    private com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.AttachmentTransformTarget attachmentTransformTarget;
 
     // ========== Input & UI ==========
     private final ViewportInputHandler inputHandler;
@@ -140,6 +147,11 @@ public class ViewportController {
         this.boneTransformTarget =
                 new com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.BoneTransformTarget(
                         boneStore, transformState
+                );
+        // Attachment target — same gizmo, writes into AttachmentStore for a selected socket.
+        this.attachmentTransformTarget =
+                new com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction.AttachmentTransformTarget(
+                        attachmentStore, transformState
                 );
         gizmoRenderer.setTransformTarget(partTransformTarget);
 
@@ -236,6 +248,8 @@ public class ViewportController {
                     modelRenderer, gizmoRenderer
             );
             this.viewportRenderPipeline.setBoneStore(boneStore);
+            this.viewportRenderPipeline.setAttachmentStore(attachmentStore);
+            this.viewportRenderPipeline.setAttachmentPreviewStore(attachmentPreviewStore);
 
             // Initialize EdgeOperationService after ViewportRenderPipeline is ready
             this.edgeOperationService = new com.openmason.main.systems.services.EdgeOperationService(
@@ -290,6 +304,12 @@ public class ViewportController {
             if (viewportRenderPipeline.getKnifePreviewRenderer() != null) {
                 inputHandler.setKnifePreviewRenderer(viewportRenderPipeline.getKnifePreviewRenderer());
                 logger.debug("Knife preview renderer connected to input handler");
+            }
+
+            // Connect modal tool preview renderer (inset/extrude overlay lines)
+            if (viewportRenderPipeline.getToolPreviewRenderer() != null) {
+                inputHandler.setToolPreviewRenderer(viewportRenderPipeline.getToolPreviewRenderer());
+                logger.debug("Tool preview renderer connected to input handler");
             }
 
             // Connect viewport state so knife tool uses global grid snapping
@@ -730,6 +750,33 @@ public class ViewportController {
     /** Session-level skeleton owned by this viewport. */
     public com.openmason.main.systems.skeleton.BoneStore getBoneStore() { return boneStore; }
 
+    /** Session-level attachment points (sockets) owned by this viewport. */
+    public com.openmason.main.systems.skeleton.AttachmentStore getAttachmentStore() { return attachmentStore; }
+
+    /** Session-level socket test models (never serialized) owned by this viewport. */
+    public com.openmason.main.systems.skeleton.AttachmentPreviewStore getAttachmentPreviewStore() {
+        return attachmentPreviewStore;
+    }
+
+    /**
+     * Hook called by the rigging hierarchy when the user picks an attachment
+     * point (socket) in the tree. Swaps the gizmo's transform target to the
+     * socket target; passing {@code null} reverts to the part transform target.
+     */
+    public void onAttachmentSelectionChanged(String attachmentId) {
+        attachmentStore.setSelectedAttachmentId(attachmentId);
+        if (attachmentId != null) {
+            modelRenderer.getPartManager().deselectAllParts();
+            gizmoRenderer.setTransformTarget(attachmentTransformTarget);
+            updateGizmoVisibilityForSelection(true);
+        } else {
+            gizmoRenderer.setTransformTarget(partTransformTarget);
+            updateGizmoVisibilityForSelection(
+                    !modelRenderer.getPartManager().getSelectedPartIds().isEmpty()
+            );
+        }
+    }
+
     /**
      * Hook called by the rigging hierarchy when the user picks a bone in the tree.
      * Swaps the gizmo's transform target to a bone target (so drags edit the bone's
@@ -779,6 +826,81 @@ public class ViewportController {
      */
     public boolean isKnifeToolActive() {
         return inputHandler != null && inputHandler.isKnifeToolActive();
+    }
+
+    /**
+     * Start scale mode from keybind (S key), or confirm an in-progress scale.
+     * Delegates to ViewportInputHandler → ScaleToolController.
+     */
+    public void startScaleMode() {
+        if (inputHandler != null) {
+            inputHandler.startScaleMode();
+        }
+    }
+
+    /**
+     * @return true if the scale tool is currently active
+     */
+    public boolean isScaleToolActive() {
+        return inputHandler != null && inputHandler.isScaleToolActive();
+    }
+
+    /**
+     * Toggle box select from keybind (B key).
+     * Delegates to ViewportInputHandler → BoxSelectController.
+     */
+    public void toggleBoxSelect() {
+        if (inputHandler != null) {
+            inputHandler.toggleBoxSelect();
+        }
+    }
+
+    /**
+     * @return true if box select is currently active (armed or dragging)
+     */
+    public boolean isBoxSelectActive() {
+        return inputHandler != null && inputHandler.isBoxSelectActive();
+    }
+
+    /**
+     * @return The active box select rect (viewport-relative {minX, minY, maxX, maxY}), or null
+     */
+    public float[] getBoxSelectRect() {
+        return inputHandler != null ? inputHandler.getBoxSelectRect() : null;
+    }
+
+    /**
+     * Start inset mode from keybind (I key), or confirm an in-progress inset.
+     * Delegates to ViewportInputHandler → FaceModalToolController.
+     */
+    public void startInsetMode() {
+        if (inputHandler != null) {
+            inputHandler.startInsetMode();
+        }
+    }
+
+    /**
+     * Start extrude mode from keybind (E key), or confirm an in-progress extrude.
+     * Delegates to ViewportInputHandler → FaceModalToolController.
+     */
+    public void startExtrudeMode() {
+        if (inputHandler != null) {
+            inputHandler.startExtrudeMode();
+        }
+    }
+
+    /**
+     * @return true if the inset tool is currently active
+     */
+    public boolean isInsetToolActive() {
+        return inputHandler != null && inputHandler.isInsetToolActive();
+    }
+
+    /**
+     * @return true if the extrude tool is currently active
+     */
+    public boolean isExtrudeToolActive() {
+        return inputHandler != null && inputHandler.isExtrudeToolActive();
     }
 
     /**

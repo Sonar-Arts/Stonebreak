@@ -21,6 +21,8 @@ import java.util.Map;
  *                   mob by placing this at {@code position.y - legHeight}, so
  *                   a mob never floats or sinks regardless of where the model
  *                   author put the origin.
+ * @param attachmentPoints authored attachment points (sockets) where other
+ *                   models can be mounted at runtime; empty for most models
  */
 public record SbeModelGeometry(
         float[] vertices,
@@ -28,10 +30,12 @@ public record SbeModelGeometry(
         int[] indices,
         List<SbePart> parts,
         Map<Integer, MaterialImage> materials,
-        float restMinY
+        float restMinY,
+        List<SbeAttachmentPoint> attachmentPoints
 ) {
     public SbeModelGeometry {
         parts = parts == null ? List.of() : List.copyOf(parts);
         materials = materials == null ? Map.of() : Map.copyOf(materials);
+        attachmentPoints = attachmentPoints == null ? List.of() : List.copyOf(attachmentPoints);
     }
 }

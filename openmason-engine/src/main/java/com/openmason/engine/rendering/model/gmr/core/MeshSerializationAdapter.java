@@ -1,8 +1,13 @@
 package com.openmason.engine.rendering.model.gmr.core;
 
 import com.openmason.engine.rendering.model.UVMode;
-import com.openmason.engine.rendering.model.gmr.mapping.ITriangleFaceMapper;
-import com.openmason.engine.rendering.model.gmr.uv.*;
+import com.openmason.engine.rendering.model.gmr.editable.EditableMesh;
+import com.openmason.engine.rendering.model.gmr.editable.MeshImporter;
+import com.openmason.engine.rendering.model.gmr.editable.RenderMesh;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureManager;
+import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping;
+import com.openmason.engine.rendering.model.gmr.uv.IModelStateManager;
+import com.openmason.engine.rendering.model.gmr.uv.MaterialDefinition;
 import com.openmason.engine.format.omo.OMOFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,40 +15,28 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 
 /**
- * Handles mesh serialization: OMO file loading/saving and undo/redo snapshot restore.
- * Each operation sets data on shared subsystems then triggers the rebuild pipeline.
- *
- * Extracted from GenericModelRenderer to satisfy Single Responsibility.
+ * Handles mesh serialization: OMO file loading/saving and undo/redo snapshot
+ * restore. Loading imports triangle soup into the authoritative
+ * {@link EditableMesh} (position weld + polygon-loop reconstruction); saving
+ * exports the derived {@link RenderMesh} arrays, which are always
+ * self-consistent — the legacy seam-duplicate stripping is unnecessary by
+ * construction.
  */
 public class MeshSerializationAdapter implements IMeshSerializationAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(MeshSerializationAdapter.class);
 
-    private final IVertexDataManager vertexManager;
-    private final ITriangleFaceMapper faceMapper;
     private final FaceTextureManager faceTextureManager;
     private final IModelStateManager stateManager;
     private final MeshRebuildPipeline rebuildPipeline;
-    private final ITextureGPUOperations textureOps;
-
-    // Callback for renderer state
-    private final MeshMutationCoordinator.RendererStateAccess rendererState;
 
     public MeshSerializationAdapter(
-            IVertexDataManager vertexManager,
-            ITriangleFaceMapper faceMapper,
             FaceTextureManager faceTextureManager,
             IModelStateManager stateManager,
-            MeshRebuildPipeline rebuildPipeline,
-            ITextureGPUOperations textureOps,
-            MeshMutationCoordinator.RendererStateAccess rendererState) {
-        this.vertexManager = vertexManager;
-        this.faceMapper = faceMapper;
+            MeshRebuildPipeline rebuildPipeline) {
         this.faceTextureManager = faceTextureManager;
         this.stateManager = stateManager;
         this.rebuildPipeline = rebuildPipeline;
-        this.textureOps = textureOps;
-        this.rendererState = rendererState;
     }
 
     @Override
@@ -56,49 +49,12 @@ public class MeshSerializationAdapter implements IMeshSerializationAdapter {
         // Clear stale face texture data from any previously loaded model
         faceTextureManager.clear();
 
-        float[] vertices = meshData.vertices();
-        float[] texCoords = meshData.texCoords();
-        int[] indices = meshData.indices();
-        int[] triangleToFaceId = meshData.triangleToFaceId();
-        String uvModeStr = meshData.uvMode();
+        importAndRebuild(meshData);
 
-        // Update UV mode
-        if (uvModeStr != null) {
-            try {
-                stateManager.setUVMode(UVMode.valueOf(uvModeStr));
-            } catch (IllegalArgumentException e) {
-                logger.warn("Unknown UV mode '{}', defaulting to FLAT", uvModeStr);
-                stateManager.setUVMode(UVMode.FLAT);
-            }
-        }
-
-        // Clear parts (we're loading direct mesh data, not part-based)
-        stateManager.clearParts();
-
-        // Set vertex data
-        vertexManager.setData(vertices.clone(), texCoords != null ? texCoords.clone() : null,
-            indices != null ? indices.clone() : null);
-
-        // Update counts
-        int newVertexCount = vertices.length / 3;
-        int newIndexCount = indices != null ? indices.length : 0;
-        rendererState.setVertexCount(newVertexCount);
-        rendererState.setIndexCount(newIndexCount);
-
-        // Restore face mapping
-        if (triangleToFaceId != null && triangleToFaceId.length > 0) {
-            faceMapper.setMapping(triangleToFaceId.clone());
-        } else if (indices != null) {
-            faceMapper.initializeStandardMapping(indices.length / 3);
-        } else {
-            faceMapper.clear();
-        }
-
-        // Trigger full rebuild
-        rebuildPipeline.rebuildFull(newVertexCount, newIndexCount);
-
-        logger.info("Loaded custom mesh data: {} vertices, {} triangles, uvMode={}",
-                newVertexCount, newIndexCount / 3, stateManager.getUVMode());
+        logger.info("Loaded custom mesh data: {} shared vertices, {} faces, uvMode={}",
+                rebuildPipeline.getEditableMesh().vertexCount(),
+                rebuildPipeline.getEditableMesh().faceCount(),
+                stateManager.getUVMode());
     }
 
     @Override
@@ -108,77 +64,57 @@ public class MeshSerializationAdapter implements IMeshSerializationAdapter {
             return;
         }
 
-        float[] vertices = meshData.vertices();
-        float[] texCoords = meshData.texCoords();
-        int[] indices = meshData.indices();
-        int[] triangleToFaceId = meshData.triangleToFaceId();
-        String uvModeStr = meshData.uvMode();
+        // NOTE: faceTextureManager is NOT cleared — existing mappings are
+        // preserved. This is the key difference from loadMeshData().
+        importAndRebuild(meshData);
 
-        // Update UV mode
-        if (uvModeStr != null) {
-            try {
-                stateManager.setUVMode(UVMode.valueOf(uvModeStr));
-            } catch (IllegalArgumentException e) {
-                logger.warn("Unknown UV mode '{}', defaulting to FLAT", uvModeStr);
-                stateManager.setUVMode(UVMode.FLAT);
-            }
-        }
+        logger.debug("Updated mesh geometry (face textures preserved): {} shared vertices, {} faces",
+                rebuildPipeline.getEditableMesh().vertexCount(),
+                rebuildPipeline.getEditableMesh().faceCount());
+    }
 
-        // Clear parts (we're loading direct mesh data)
+    private void importAndRebuild(OMOFormat.MeshData meshData) {
+        applyUvMode(meshData.uvMode());
         stateManager.clearParts();
 
-        // Set vertex data
-        vertexManager.setData(vertices.clone(), texCoords != null ? texCoords.clone() : null,
-            indices != null ? indices.clone() : null);
+        MeshImporter.ImportResult result = MeshImporter.importSoup(
+            meshData.vertices(), meshData.texCoords(),
+            meshData.indices(), meshData.triangleToFaceId());
+        rebuildPipeline.setEditableMesh(result.mesh());
+        rebuildPipeline.setImportSoupMapping(result.vertexIdToSoupIndices());
+        rebuildPipeline.rebuildFromEditable();
+    }
 
-        // Update counts
-        int newVertexCount = vertices.length / 3;
-        int newIndexCount = indices != null ? indices.length : 0;
-        rendererState.setVertexCount(newVertexCount);
-        rendererState.setIndexCount(newIndexCount);
-
-        // Restore face mapping
-        if (triangleToFaceId != null && triangleToFaceId.length > 0) {
-            faceMapper.setMapping(triangleToFaceId.clone());
-        } else if (indices != null) {
-            faceMapper.initializeStandardMapping(indices.length / 3);
-        } else {
-            faceMapper.clear();
+    private void applyUvMode(String uvModeStr) {
+        if (uvModeStr == null) {
+            return;
         }
-
-        // NOTE: faceTextureManager is NOT cleared — existing mappings are preserved
-        // This is the key difference from loadMeshData()
-
-        // Trigger full rebuild
-        rebuildPipeline.rebuildFull(newVertexCount, newIndexCount);
-
-        logger.debug("Updated mesh geometry (face textures preserved): {} vertices, {} triangles",
-                newVertexCount, newIndexCount / 3);
+        try {
+            stateManager.setUVMode(UVMode.valueOf(uvModeStr));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Unknown UV mode '{}', defaulting to FLAT", uvModeStr);
+            stateManager.setUVMode(UVMode.FLAT);
+        }
     }
 
     @Override
     public OMOFormat.MeshData toMeshData() {
-        float[] vertices = vertexManager.getVertices();
-        if (vertices == null || vertices.length == 0) {
-            logger.warn("No vertex data available to snapshot");
+        RenderMesh rm = rebuildPipeline.getLastRenderMesh();
+        if (rm == null || rm.cornerCount() == 0) {
+            logger.warn("No mesh data available to snapshot");
             return null;
         }
 
-        float[] texCoords = vertexManager.getTexCoords();
-        int[] indices = vertexManager.getIndices();
-        int[] triangleToFaceId = faceMapper.getMappingCopy();
         String uvModeStr = stateManager.getUVMode() != null ? stateManager.getUVMode().name() : "FLAT";
 
-        logger.debug("Created mesh data snapshot: {} vertices, {} indices, uvMode={}",
-                vertices.length / 3,
-                indices != null ? indices.length : 0,
-                uvModeStr);
+        logger.debug("Created mesh data snapshot: {} corners, {} indices, uvMode={}",
+                rm.cornerCount(), rm.indices().length, uvModeStr);
 
         return new OMOFormat.MeshData(
-                vertices.clone(),
-                texCoords != null ? texCoords.clone() : null,
-                indices != null ? indices.clone() : null,
-                triangleToFaceId,
+                rm.vertices().clone(),
+                rm.texCoords().clone(),
+                rm.indices().clone(),
+                rm.triangleToFaceId().clone(),
                 uvModeStr);
     }
 
@@ -187,27 +123,7 @@ public class MeshSerializationAdapter implements IMeshSerializationAdapter {
                                      int[] triangleToFaceId,
                                      Map<Integer, FaceTextureMapping> faceMappings,
                                      Map<Integer, MaterialDefinition> materials) {
-        // Set vertex data
-        vertexManager.setData(
-            vertices != null ? vertices.clone() : null,
-            texCoords != null ? texCoords.clone() : null,
-            indices != null ? indices.clone() : null
-        );
-
-        // Update counts
-        int newVertexCount = vertices != null ? vertices.length / 3 : 0;
-        int newIndexCount = indices != null ? indices.length : 0;
-        rendererState.setVertexCount(newVertexCount);
-        rendererState.setIndexCount(newIndexCount);
-
-        // Restore face mapping
-        if (triangleToFaceId != null && triangleToFaceId.length > 0) {
-            faceMapper.setMapping(triangleToFaceId.clone());
-        } else {
-            faceMapper.clear();
-        }
-
-        // Restore face texture state
+        // Restore face texture state first — the rebuild projects UVs from it.
         faceTextureManager.clear();
         if (materials != null) {
             for (MaterialDefinition mat : materials.values()) {
@@ -222,16 +138,19 @@ public class MeshSerializationAdapter implements IMeshSerializationAdapter {
             }
         }
 
-        // Trigger full rebuild
-        rebuildPipeline.rebuildFull(newVertexCount, newIndexCount);
+        MeshImporter.ImportResult result = MeshImporter.importSoup(
+            vertices, texCoords, indices, triangleToFaceId);
+        rebuildPipeline.setEditableMesh(result.mesh());
+        rebuildPipeline.setImportSoupMapping(result.vertexIdToSoupIndices());
+        rebuildPipeline.rebuildFromEditable();
 
-        logger.debug("Restored from snapshot: {} vertices, {} triangles",
-            newVertexCount, newIndexCount / 3);
+        logger.debug("Restored from snapshot: {} shared vertices, {} faces",
+            result.mesh().vertexCount(), result.mesh().faceCount());
     }
 
     @Override
     public void refreshUVs() {
-        textureOps.regenerateUVsAndUpload();
-        rebuildPipeline.markDrawBatchesDirty();
+        // UVs are projected during render-mesh derivation.
+        rebuildPipeline.rebuildFromEditable();
     }
 }

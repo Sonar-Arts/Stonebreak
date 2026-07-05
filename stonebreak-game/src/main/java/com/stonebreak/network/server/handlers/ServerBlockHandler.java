@@ -55,6 +55,16 @@ public final class ServerBlockHandler {
     /** Snow-layer changes buffered this tick, per section — flushed as {@code BlockMetaS2C}. */
     private final Map<Long, SectionBatch> pendingSnowByTick = new LinkedHashMap<>();
 
+    /** Water flow-level changes buffered this tick, per section — flushed as
+     *  {@code BlockMetaS2C} (KIND_WATER_LEVEL) AFTER the block batches, so a cell's
+     *  same-tick WATER block change lands before its level meta. */
+    private final Map<Long, SectionBatch> pendingWaterByTick = new LinkedHashMap<>();
+
+    /** Block-state echoes (door placement facing) queued behind this tick's block batches
+     *  so a state packet can never overtake — and be wiped by — its own block change. */
+    private final java.util.List<com.stonebreak.network.packet.world.BlockStateS2C> pendingStateEchoes =
+            new java.util.ArrayList<>();
+
     public ServerBlockHandler(ServerChunkHandler chunkHandler) {
         this.chunkHandler = chunkHandler;
     }
@@ -62,6 +72,8 @@ public final class ServerBlockHandler {
     public void onSessionEnd() {
         pendingByTick.clear();
         pendingSnowByTick.clear();
+        pendingWaterByTick.clear();
+        pendingStateEchoes.clear();
         retryQueue.clear();
     }
 
@@ -95,11 +107,12 @@ public final class ServerBlockHandler {
             retryQueue.add(new PendingEdit(sp, c));
             return;
         }
-        applyAccepted(c, incoming, prev, world);
+        applyAccepted(sp, c, incoming, prev, world, ctx);
     }
 
     /** Post-apply effects of an accepted edit: break drops/cleanup, version bump, broadcast. */
-    private void applyAccepted(BlockChangeC2S c, BlockType incoming, BlockType prev, World world) {
+    private void applyAccepted(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
+                               World world, ServerWorldContext ctx) {
         // Break (non-air → air): spawn drops authoritatively and run per-break cleanup. The
         // EntityManager listener broadcasts the resulting drop entities (see ServerEntityHandler).
         if (prev != null && prev != BlockType.AIR && incoming == BlockType.AIR) {
@@ -114,6 +127,18 @@ public final class ServerBlockHandler {
         // own BlockPlacer only touched ITS display registry.
         if (incoming == BlockType.FURNACE && world.getFurnaceRegistry() != null) {
             world.getFurnaceRegistry().onBlockPlaced(world, c.x(), c.y(), c.z(), incoming);
+        }
+        // Door placement: initialize the authoritative state (closed, panel on the placer's
+        // edge) and echo it so every client — the placer included — agrees on the facing.
+        // The echo is QUEUED, not broadcast immediately: block changes flush in per-tick
+        // batches, and a state packet overtaking its block change would be wiped when the
+        // late-arriving block apply clears the cell's state entry.
+        if (incoming == BlockType.OAK_DOOR) {
+            com.stonebreak.blocks.door.DoorState placed =
+                    com.stonebreak.blocks.door.DoorState.placed(sp.x(), sp.z(), c.x(), c.z());
+            world.setBlockStateAt(c.x(), c.y(), c.z(), placed.toStateString());
+            pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
+                    c.x(), c.y(), c.z(), placed.toStateString()));
         }
         // Snow layer bookkeeping derived from the block change (the SnowLayerC2S intent only
         // covers layer increments on an EXISTING snow block): a placed SNOW block starts at
@@ -195,6 +220,40 @@ public final class ServerBlockHandler {
     }
 
     /**
+     * C2S: the player right-clicked a toggleable block (door). Validates (reach, target is
+     * a door on the server world), flips the authoritative door state, and echoes the
+     * result to ALL clients — originator included — as {@link com.stonebreak.network.packet.world.BlockStateS2C}.
+     * Clients play the new state's animation clip when they observe the flip.
+     */
+    public void handleBlockToggle(ServerPlayer sp, com.stonebreak.network.packet.world.BlockToggleC2S t,
+                                  ServerWorldContext ctx) {
+        World world = ctx.world();
+        if (world == null) {
+            return;
+        }
+        if (t.y() < 0 || t.y() >= WorldConfiguration.WORLD_HEIGHT) {
+            return;
+        }
+        if (sp.lastStateNs() != 0L) {
+            float dx = (t.x() + 0.5f) - sp.x();
+            float dy = (t.y() + 0.5f) - sp.y();
+            float dz = (t.z() + 0.5f) - sp.z();
+            if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
+                return;
+            }
+        }
+        if (world.getBlockAt(t.x(), t.y(), t.z()) != BlockType.OAK_DOOR) {
+            return;
+        }
+        com.stonebreak.blocks.door.DoorState next = com.stonebreak.blocks.door.DoorState
+                .parse(world.getBlockStateAt(t.x(), t.y(), t.z()))
+                .toggled();
+        world.setBlockStateAt(t.x(), t.y(), t.z(), next.toStateString());
+        ctx.broadcast(new com.stonebreak.network.packet.world.BlockStateS2C(
+                t.x(), t.y(), t.z(), next.toStateString()), false);
+    }
+
+    /**
      * Authoritative snow mutation ({@code layers == 0} = removed) from the server world's
      * SnowLayerManager listener. Batched per section and flushed each tick as
      * {@link com.stonebreak.network.packet.world.BlockMetaS2C} (KIND_SNOW_LAYERS).
@@ -209,6 +268,27 @@ public final class ServerBlockHandler {
         long key = sectionKey(sx, sy, sz);
         SectionBatch batch = pendingSnowByTick.computeIfAbsent(key, k -> new SectionBatch(sx, sy, sz));
         batch.add(x - sx * 16, y - sy * 16, z - sz * 16, (short) layers);
+    }
+
+    /**
+     * Authoritative water flow-level mutation from the sim ({@code value} = layer byte:
+     * 1..7 flowing, 8 falling, 0 = entry removed / became source). Batched per section and
+     * flushed each tick as {@link com.stonebreak.network.packet.world.BlockMetaS2C}
+     * (KIND_WATER_LEVEL), after the block batches. No hash invalidation needed: the desync
+     * audit hashes block ids only, and the accompanying WATER/AIR block changes already
+     * invalidate via {@link #onServerBlockChange}. Repeated same-tick writes to one cell
+     * coalesce to the last value in the section batch.
+     */
+    public void onServerWaterChange(int x, int y, int z, int value) {
+        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+            return;
+        }
+        int sx = Math.floorDiv(x, 16);
+        int sy = Math.floorDiv(y, 16);
+        int sz = Math.floorDiv(z, 16);
+        long key = sectionKey(sx, sy, sz);
+        SectionBatch batch = pendingWaterByTick.computeIfAbsent(key, k -> new SectionBatch(sx, sy, sz));
+        batch.add(x - sx * 16, y - sy * 16, z - sz * 16, (short) value);
     }
 
     /** Retry edits that were waiting on a server chunk load; revert the originator on expiry. */
@@ -234,7 +314,7 @@ public final class ServerBlockHandler {
                 BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
                 BlockType prev = (clientPrev != null && clientPrev != BlockType.AIR)
                     ? clientPrev : serverPrev;
-                applyAccepted(c, incoming, prev, world);
+                applyAccepted(pe.sp, c, incoming, prev, world, ctx);
             } else if (--pe.ticksLeft <= 0) {
                 sendRevert(pe.sp, c.x(), c.y(), c.z(), ctx);
             } else {
@@ -316,6 +396,25 @@ public final class ServerBlockHandler {
                     sb.toPackedArray()), false);
             }
             pendingSnowByTick.clear();
+        }
+        // AFTER the block batches: a cell's same-tick WATER placement must apply on the
+        // client before its flow-level meta (meta on a non-WATER cell would be stale).
+        if (!pendingWaterByTick.isEmpty()) {
+            for (SectionBatch sb : pendingWaterByTick.values()) {
+                ctx.broadcast(new com.stonebreak.network.packet.world.BlockMetaS2C(
+                    sb.sx, sb.sy, sb.sz,
+                    com.stonebreak.network.packet.world.BlockMetaS2C.KIND_WATER_LEVEL,
+                    sb.toPackedArray()), false);
+            }
+            pendingWaterByTick.clear();
+        }
+        // AFTER the block batches: state echoes for blocks placed this tick
+        // (see pendingStateEchoes — order matters, block apply clears state).
+        if (!pendingStateEchoes.isEmpty()) {
+            for (com.stonebreak.network.packet.world.BlockStateS2C echo : pendingStateEchoes) {
+                ctx.broadcast(echo, false);
+            }
+            pendingStateEchoes.clear();
         }
     }
 

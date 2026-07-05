@@ -104,10 +104,38 @@ public class BlockRenderer {
         shaderProgram.setUniform("u_atlasUVOffset", new Vector2f(0.0f, vOffset));
         shaderProgram.setUniform("u_atlasUVScale", new Vector2f(1.0f, vScale));
         
-        // Create model matrix to position the overlay at the breaking block
+        // Overlay volume: the unit cell by default; animated blocks (doors)
+        // stretch the crack over the whole model's AABB — the full 2-tall
+        // panel in its current pose, not just the anchor cell.
+        float minX = breakingBlock.x;
+        float minY = breakingBlock.y;
+        float minZ = breakingBlock.z;
+        float sizeX = 1.0f;
+        float sizeY = 1.0f;
+        float sizeZ = 1.0f;
+        com.stonebreak.world.World world = com.stonebreak.core.Game.getWorld();
+        if (world != null) {
+            com.stonebreak.blocks.BlockType bt =
+                    world.getBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z);
+            if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(bt)) {
+                float[] b = com.stonebreak.blocks.anim.AnimatedBlockShapes
+                        .worldAabb(world, breakingBlock.x, breakingBlock.y, breakingBlock.z, bt);
+                minX = b[0];
+                minY = b[1];
+                minZ = b[2];
+                sizeX = b[3] - b[0];
+                sizeY = b[4] - b[1];
+                sizeZ = b[5] - b[2];
+            }
+        }
+
+        // Center-inflate slightly so the overlay never z-fights the surface it
+        // wraps — an absolute margin, because relative scaling is useless on
+        // the door panel's 0.1-thin axis.
+        final float inflate = 0.012f;
         Matrix4f modelMatrix = new Matrix4f()
-            .translate(breakingBlock.x, breakingBlock.y, breakingBlock.z)
-            .scale(1.002f); // Slightly larger to avoid z-fighting
+            .translate(minX - inflate * 0.5f, minY - inflate * 0.5f, minZ - inflate * 0.5f)
+            .scale(sizeX + inflate, sizeY + inflate, sizeZ + inflate);
         
         // Combine view and model matrices
         Matrix4f modelViewMatrix = new Matrix4f(player.getViewMatrix()).mul(modelMatrix);

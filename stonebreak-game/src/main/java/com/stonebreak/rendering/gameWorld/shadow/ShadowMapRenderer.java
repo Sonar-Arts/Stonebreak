@@ -150,8 +150,10 @@ public final class ShadowMapRenderer {
                     v_uv = texCoord;
                     v_layer = aLayer;
                     v_alphaTested = aFlags.y;
-                    // Water and translucent solids don't cast shadows.
-                    v_skip = max(step(0.01, aFlags.x), step(0.5, aFlags.z));
+                    // Translucent solids (ice) don't cast shadows. Water no
+                    // longer rides the atlas mesh at all — its dedicated mesh
+                    // never enters the shadow pass.
+                    v_skip = step(0.5, aFlags.z);
                 }
                 """);
         shader.createFragmentShader("""

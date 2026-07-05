@@ -112,6 +112,9 @@ public final class IntegratedServer {
         level.world().setServerMutationCallback(blockHandler::onServerBlockChange);
         // Same funnel pattern for snow-layer mutations → BlockMetaS2C broadcasts.
         level.world().setServerSnowCallback(blockHandler::onServerSnowChange);
+        // And for water flow-level mutations → BlockMetaS2C (KIND_WATER_LEVEL), so clients
+        // render live flow heights instead of full-height columns.
+        level.world().setServerWaterCallback(blockHandler::onServerWaterChange);
         // Furnace state-string changes (lit flips, contents, cook progress) → BlockStateS2C.
         // The registry dedups (fires only on actual string change), so idle furnaces are free.
         if (level.world().getFurnaceRegistry() != null) {
@@ -286,13 +289,14 @@ public final class IntegratedServer {
             case BlockChangeC2S c -> blockHandler.handleBlockChange(sp, c, ctx);
             case com.stonebreak.network.packet.world.SnowLayerC2S s -> blockHandler.handleSnowLayer(sp, s, ctx);
             case com.stonebreak.network.packet.world.FurnaceSlotsC2S f -> blockHandler.handleFurnaceSlots(sp, f, ctx);
+            case com.stonebreak.network.packet.world.BlockToggleC2S bt -> blockHandler.handleBlockToggle(sp, bt, ctx);
             case com.stonebreak.network.packet.world.ChunkResyncRequestC2S cr ->
                 chunkHandler.handleResyncRequest(sp, cr.chunkX(), cr.chunkZ());
             case com.stonebreak.network.packet.world.ChunkHashesC2S ch ->
                 chunkHandler.handleChunkHashes(sp, ch.entries(), ctx);
             case com.stonebreak.network.packet.entity.EntityResyncC2S ignored2 -> {
                 if (sp.allowResync()) {
-                    entityHandler.onPeerJoined(sp); // idempotent client-side (known ids ignored)
+                    entityHandler.onPeerResync(sp, ctx); // idempotent client-side (known ids ignored)
                 }
             }
             case com.stonebreak.network.packet.world.TimeSetC2S ts -> handleTimeSet(sp, ts);
@@ -339,6 +343,7 @@ public final class IntegratedServer {
                 existing.send(new KickS2C("You logged in from another location."));
                 persistPlayer(existing);
                 ctx.removePlayer(existing);
+                entityHandler.onPeerLeft(existing);
                 ctx.broadcastExcept(sp, new PlayerLeaveS2C(stableId), false);
                 existing.disconnect();
             } else {
@@ -377,7 +382,7 @@ public final class IntegratedServer {
 
         // 4. Mark handshaked and deliver per-domain join snapshots.
         sp.markHandshakeDone();
-        entityHandler.onPeerJoined(sp);
+        entityHandler.onPeerJoined(sp, ctx);
         playerHandler.onPeerJoined(sp, ctx);
 
         // 5. Restore a REMOTE player's saved inventory/stats (the local player is restored
@@ -436,6 +441,7 @@ public final class IntegratedServer {
             // Persist only the LIVE session's data — a stale takeover victim persisting here
             // would overwrite the new session's fresher blob (takeover already saved it once).
             persistPlayer(sp);
+            entityHandler.onPeerLeft(sp);
             ctx.broadcast(new PlayerLeaveS2C(sp.playerId()), false);
             System.out.println("[SERVER] Player " + sp.playerId() + " (" + sp.username() + ") left.");
         }

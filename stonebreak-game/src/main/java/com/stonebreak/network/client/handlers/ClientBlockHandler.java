@@ -69,14 +69,25 @@ public final class ClientBlockHandler {
     }
 
     /**
-     * Applies authoritative per-block metadata (currently snow layer counts; value 0 =
-     * entry removed). Uses {@code putRaw} — the raw hydration path — so applying a server
-     * echo never re-fires the client's own mutation listener.
+     * Applies authoritative per-block metadata: snow layer counts or water flow levels
+     * (value 0 = entry removed). Snow uses {@code putRaw} — the raw hydration path — so
+     * applying a server echo never re-fires the client's own mutation listener; water
+     * writes the chunk's water layer directly (the render world runs no sim).
      */
     public void applyBlockMeta(BlockMetaS2C m) {
         World world = Game.getWorld();
-        if (world == null || m.metaKind() != BlockMetaS2C.KIND_SNOW_LAYERS
-                || world.getSnowLayerManager() == null) {
+        if (world == null) {
+            return;
+        }
+        switch (m.metaKind()) {
+            case BlockMetaS2C.KIND_SNOW_LAYERS -> applySnowMeta(world, m);
+            case BlockMetaS2C.KIND_WATER_LEVEL -> applyWaterMeta(world, m);
+            default -> { }
+        }
+    }
+
+    private static void applySnowMeta(World world, BlockMetaS2C m) {
+        if (world.getSnowLayerManager() == null) {
             return;
         }
         int baseX = m.sectionX() * 16;
@@ -94,6 +105,47 @@ public final class ClientBlockHandler {
                 world.getSnowLayerManager().putRaw(x, y, z, layers);
             }
             world.triggerChunkRebuild(x, y, z);
+        }
+    }
+
+    /**
+     * Water flow levels (1..7 flowing, 8 falling, 0 = entry removed / became source),
+     * written straight into the owning chunk's water layer. Dropped silently when the
+     * chunk isn't resident — a fresh snapshot (chunk meta v2 carries the water section)
+     * arrives when it enters view. Border cells also remesh the adjacent chunk, since
+     * water corner heights are sewn across chunk seams.
+     */
+    private static void applyWaterMeta(World world, BlockMetaS2C m) {
+        // A 16³ section lies within one chunk column.
+        var chunk = world.getChunkIfLoaded(m.sectionX(), m.sectionZ());
+        if (chunk == null) {
+            return;
+        }
+        int baseX = m.sectionX() * 16;
+        int baseY = m.sectionY() * 16;
+        int baseZ = m.sectionZ() * 16;
+        for (int v : m.packed()) {
+            int localPos = (v >>> 16) & 0xFFFF;
+            int lx = (localPos >> 8) & 0xF;
+            int ly = (localPos >> 4) & 0xF;
+            int lz = localPos & 0xF;
+            int value = v & 0xFFFF;
+            if (value > com.stonebreak.world.chunk.ChunkWaterLayer.FALLING) {
+                continue; // out-of-range — never write garbage into the layer
+            }
+            int y = baseY + ly;
+            chunk.getWaterLayer().set(lx, y, lz, value);
+            world.triggerChunkRebuild(baseX + lx, y, baseZ + lz);
+            if (lx == 0) {
+                world.triggerChunkRebuild(baseX - 1, y, baseZ + lz);
+            } else if (lx == 15) {
+                world.triggerChunkRebuild(baseX + 16, y, baseZ + lz);
+            }
+            if (lz == 0) {
+                world.triggerChunkRebuild(baseX + lx, y, baseZ - 1);
+            } else if (lz == 15) {
+                world.triggerChunkRebuild(baseX + lx, y, baseZ + 16);
+            }
         }
     }
 

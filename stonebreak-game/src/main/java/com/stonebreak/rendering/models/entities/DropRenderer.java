@@ -84,8 +84,6 @@ public class DropRenderer {
         shaderProgram.bind();
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("u_renderPass", 0);
-        shaderProgram.setUniform("u_translucentLayer", -1);
-        shaderProgram.setUniform("u_waterDepthOffset", 0.0f);
         shaderProgram.setUniform("texture_sampler", 0);
         shaderProgram.setUniform("u_isText", false);
 
@@ -152,8 +150,6 @@ public class DropRenderer {
         shaderProgram.bind();
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("u_renderPass", 0);
-        shaderProgram.setUniform("u_translucentLayer", -1);
-        shaderProgram.setUniform("u_waterDepthOffset", 0.0f);
         shaderProgram.setUniform("texture_sampler", 0);
         shaderProgram.setUniform("u_isText", false);
 
@@ -317,7 +313,6 @@ public class DropRenderer {
         shaderProgram.bind();
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("u_renderPass", 0);
-        shaderProgram.setUniform("u_translucentLayer", -1);
         shaderProgram.setUniform("texture_sampler", 0);
         shaderProgram.setUniform("u_useTextureArray", false); // CBR meshes use the 2D atlas
         shaderProgram.setUniform("u_isText", false);
@@ -357,17 +352,17 @@ public class DropRenderer {
             float handZ = pos.z + worldDz;
 
             if (held instanceof BlockType blockType && blockType != BlockType.AIR) {
-                boolean isFlower = blockType.isFlower() && sboHandMeshRegistry != null
-                        && sboHandMeshRegistry.getMesh(blockType) != null;
+                MeshManager.MeshResource sboMesh = sboHandMeshRegistry != null
+                        ? sboHandMeshRegistry.getMesh(blockType)
+                        : null;
+                boolean isFlower = sboMesh != null && blockType.isFlower();
                 dropModelMatrix.identity()
                         .translate(handX, handY, handZ)
                         .rotateY(yawRad)
                         .scale(HAND_SCALE);
                 shaderProgram.setUniform("viewMatrix", new Matrix4f(viewMatrix).mul(dropModelMatrix));
 
-                MeshManager.MeshResource mesh = isFlower
-                        ? sboHandMeshRegistry.getMesh(blockType)
-                        : getDropCubeMesh(blockType);
+                MeshManager.MeshResource mesh = sboMesh != null ? sboMesh : getDropCubeMesh(blockType);
                 boolean isTransparent = isTransparentBlock(blockType);
                 if (isFlower || isTransparent) {
                     glEnable(GL_BLEND);
@@ -486,12 +481,13 @@ public class DropRenderer {
             return;
         }
 
-        // Flowers render as their SBO cross geometry; other blocks as cubes.
-        boolean isFlowerMesh = blockType.isFlower() && sboHandMeshRegistry != null
-                && sboHandMeshRegistry.getMesh(blockType) != null;
-        MeshManager.MeshResource mesh = isFlowerMesh
+        // Blocks with an SBO display mesh (flower crosses, the door panel)
+        // render as their actual model geometry; other blocks as cubes.
+        MeshManager.MeshResource sboMesh = sboHandMeshRegistry != null
                 ? sboHandMeshRegistry.getMesh(blockType)
-                : getDropCubeMesh(blockType);
+                : null;
+        boolean isFlowerMesh = sboMesh != null && blockType.isFlower();
+        MeshManager.MeshResource mesh = sboMesh != null ? sboMesh : getDropCubeMesh(blockType);
 
         // Note: blending and depth mask are now controlled by the caller
         // (renderOpaqueDrops sets glDepthMask(true)/blend OFF, renderTransparentDrops sets glDepthMask(false)/blend ON)

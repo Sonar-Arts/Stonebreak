@@ -14,13 +14,14 @@ import io.netty.buffer.ByteBuf;
  * <p>{@code metaKind} selects the metadata channel:
  * <ul>
  *   <li>{@link #KIND_SNOW_LAYERS} — value = layer count 1-8 (0 = entry removed)</li>
- *   <li>{@link #KIND_WATER_LEVEL} — reserved (flow-height cosmetics, not yet emitted)</li>
+ *   <li>{@link #KIND_WATER_LEVEL} — value = water layer byte: 1-7 flowing, 8 falling
+ *       (0 = entry removed / became source)</li>
  * </ul>
  */
 public record BlockMetaS2C(int sectionX, int sectionY, int sectionZ, byte metaKind, int[] packed) implements Packet {
 
     public static final byte KIND_SNOW_LAYERS = 1;
-    public static final byte KIND_WATER_LEVEL = 2; // reserved
+    public static final byte KIND_WATER_LEVEL = 2;
 
     public static final PacketCodec<BlockMetaS2C> CODEC = new PacketCodec<>() {
         @Override

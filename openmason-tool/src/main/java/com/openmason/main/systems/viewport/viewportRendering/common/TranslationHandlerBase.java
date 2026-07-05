@@ -1,5 +1,8 @@
 package com.openmason.main.systems.viewport.viewportRendering.common;
 
+import com.openmason.engine.rendering.model.GenericModelRenderer;
+import com.openmason.engine.rendering.model.gmr.GMRConstants;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.util.RaycastUtil;
@@ -10,6 +13,12 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Abstract base class for translation handlers.
@@ -316,5 +325,124 @@ public abstract class TranslationHandlerBase implements ITranslationHandler {
      */
     protected void clearInitialDragHitPoint() {
         initialDragHitPoint = null;
+    }
+
+    /**
+     * Push a set of moved unique-vertex positions into the GenericModelRenderer
+     * (the single source of truth) as one bulk update, then rebuild the face
+     * overlay. Shared commit path for vertex/edge drags: the current corner
+     * array is fetched fresh from the GMR, the dragged vertices' corners are
+     * overwritten, and the whole array is pushed back.
+     *
+     * @param gmr          The model renderer (single source of truth)
+     * @param faceRenderer The face overlay renderer to rebuild afterwards
+     * @param newPositions Moved unique vertex id → new model-space position
+     */
+    protected static void pushVertexPositionsToModel(GenericModelRenderer gmr,
+                                                     FaceRenderer faceRenderer,
+                                                     Map<Integer, Vector3f> newPositions) {
+        if (gmr == null || newPositions == null || newPositions.isEmpty()) {
+            return;
+        }
+        float[] meshVertices = gmr.getAllMeshVertexPositions();
+        if (meshVertices == null) {
+            return;
+        }
+        for (Map.Entry<Integer, Vector3f> entry : newPositions.entrySet()) {
+            int[] corners = gmr.getMeshIndicesForUniqueVertex(entry.getKey());
+            if (corners == null) {
+                continue;
+            }
+            Vector3f pos = entry.getValue();
+            for (int corner : corners) {
+                int offset = corner * 3;
+                if (offset + 2 < meshVertices.length) {
+                    meshVertices[offset] = pos.x;
+                    meshVertices[offset + 1] = pos.y;
+                    meshVertices[offset + 2] = pos.z;
+                }
+            }
+        }
+        gmr.updateVertexPositions(meshVertices);
+        if (faceRenderer != null) {
+            faceRenderer.rebuildFromGenericModelRenderer();
+        }
+    }
+
+    /**
+     * Commit a drag-vertex-onto-vertex merge: every dragged vertex resting
+     * within {@link GMRConstants#POSITION_MATCH_EPSILON} of a stationary
+     * vertex is TOPOLOGICALLY merged into that vertex via
+     * {@link GenericModelRenderer#mergeVertices} — faces genuinely share the
+     * kept vertex afterward. Positions are untouched (the drag already moved
+     * them together); orphan vertices (no render corners) are never targets.
+     *
+     * <p>Call after the final positions are committed to the GMR. A merge is
+     * a structural change: the GMR fires a geometry rebuild, so callers must
+     * clear stale selections afterwards.
+     *
+     * @param gmr              The model renderer (single source of truth)
+     * @param draggedVertexIds Unique vertex ids that were dragged
+     * @return true if at least one merge was applied
+     */
+    protected static boolean mergeCoincidentDraggedVertices(GenericModelRenderer gmr,
+                                                            Set<Integer> draggedVertexIds) {
+        if (gmr == null || draggedVertexIds == null || draggedVertexIds.isEmpty()) {
+            return false;
+        }
+        float[] positions = gmr.getAllUniqueVertexPositions();
+        if (positions == null) {
+            return false;
+        }
+        int vertexCount = positions.length / 3;
+        float epsilonSq = GMRConstants.POSITION_MATCH_EPSILON * GMRConstants.POSITION_MATCH_EPSILON;
+
+        // Dragged vertex → nearest coincident stationary vertex, grouped by target.
+        Map<Integer, List<Integer>> mergedByTarget = new LinkedHashMap<>();
+        for (int dragged : draggedVertexIds) {
+            if (dragged < 0 || dragged >= vertexCount) {
+                continue;
+            }
+            float dx0 = positions[dragged * 3];
+            float dy0 = positions[dragged * 3 + 1];
+            float dz0 = positions[dragged * 3 + 2];
+
+            int target = -1;
+            float bestDistSq = epsilonSq;
+            for (int v = 0; v < vertexCount; v++) {
+                if (v == dragged || draggedVertexIds.contains(v)) {
+                    continue;
+                }
+                float dx = positions[v * 3] - dx0;
+                float dy = positions[v * 3 + 1] - dy0;
+                float dz = positions[v * 3 + 2] - dz0;
+                float distSq = dx * dx + dy * dy + dz * dz;
+                if (distSq <= bestDistSq && isLiveVertex(gmr, v)) {
+                    target = v;
+                    bestDistSq = distSq;
+                }
+            }
+            if (target >= 0) {
+                mergedByTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(dragged);
+            }
+        }
+
+        // EditableMesh vertex ids are stable (orphans are kept, ids never
+        // shift), so groups computed up front stay valid across merges.
+        boolean merged = false;
+        for (Map.Entry<Integer, List<Integer>> entry : mergedByTarget.entrySet()) {
+            int[] mergedIds = new int[entry.getValue().size()];
+            for (int i = 0; i < mergedIds.length; i++) {
+                mergedIds[i] = entry.getValue().get(i);
+            }
+            merged |= gmr.mergeVertices(entry.getKey(), mergedIds);
+        }
+        return merged;
+    }
+
+    /** A vertex still referenced by faces (orphans have no render corners). */
+    private static boolean isLiveVertex(GenericModelRenderer gmr, int uniqueVertexId) {
+        int[] corners = gmr.getMeshIndicesForUniqueVertex(uniqueVertexId);
+        return corners != null && corners.length > 0;
     }
 }

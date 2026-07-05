@@ -177,6 +177,8 @@ public class SBOSerializer {
         List<byte[]> stateBytes;
         String defaultStateName = null;
 
+        List<byte[]> stateClipBytes;
+
         if (params.isStatesEnabled()) {
             // Resolve all state assets to (entry, bytes, checksum). The default
             // state's bytes must equal defaultBytes; if a separate file is given
@@ -184,6 +186,7 @@ public class SBOSerializer {
             defaultStateName = params.getDefaultStateName();
             stateEntries = new ArrayList<>(params.getStates().size());
             stateBytes = new ArrayList<>(params.getStates().size());
+            stateClipBytes = new ArrayList<>(params.getStates().size());
 
             for (SBOFormat.StateSpec spec : params.getStates()) {
                 String entryName = SBOFormat.STATES_DIR_PREFIX + spec.name() + "/" + legacyEntry;
@@ -198,12 +201,33 @@ public class SBOSerializer {
                     }
                     bytes = Files.readAllBytes(src);
                 }
-                stateEntries.add(new SBOFormat.StateEntry(spec.name(), entryName, model, computeChecksum(bytes)));
+
+                SBOFormat.AnimationRef animRef = null;
+                byte[] clipBytes = null;
+                if (spec.hasClip()) {
+                    if (!model) {
+                        logger.error("State '{}' declares an animation clip but the SBO is texture-only",
+                                spec.name());
+                        return false;
+                    }
+                    Path clipSrc = Path.of(spec.clipSourcePath());
+                    if (!Files.exists(clipSrc)) {
+                        logger.error("State '{}' clip file does not exist: {}", spec.name(), clipSrc);
+                        return false;
+                    }
+                    clipBytes = Files.readAllBytes(clipSrc);
+                    animRef = buildAnimationRef(spec.name(), clipBytes, spec.loopMode(), clipSrc.toString());
+                }
+
+                stateEntries.add(new SBOFormat.StateEntry(
+                        spec.name(), entryName, model, computeChecksum(bytes), animRef));
                 stateBytes.add(bytes);
+                stateClipBytes.add(clipBytes);
             }
         } else {
             stateEntries = Collections.emptyList();
             stateBytes = Collections.emptyList();
+            stateClipBytes = Collections.emptyList();
         }
 
         SBOFormat.Document document = new SBOFormat.Document(
@@ -235,8 +259,14 @@ public class SBOSerializer {
 
             for (int i = 0; i < stateEntries.size(); i++) {
                 SBOFormat.StateEntry e = stateEntries.get(i);
-                if (e.name().equals(defaultStateName)) continue; // legacy entry already written
-                writeEntry(zos, e.filename(), stateBytes.get(i));
+                if (!e.name().equals(defaultStateName)) { // legacy entry already written
+                    writeEntry(zos, e.filename(), stateBytes.get(i));
+                }
+                // Clips always live under states/<name>/ — including the
+                // default state's (there is no legacy clip entry).
+                if (e.hasAnimation()) {
+                    writeEntry(zos, e.animation().filename(), stateClipBytes.get(i));
+                }
             }
         }
 
@@ -268,6 +298,25 @@ public class SBOSerializer {
                                        byte[] defaultBytes,
                                        java.util.Map<String, byte[]> stateBytesByName,
                                        String outputPath) {
+        return exportFromDocument(document, defaultBytes, stateBytesByName, null, outputPath);
+    }
+
+    /**
+     * Variant of {@link #exportFromDocument(SBOFormat.Document, byte[], java.util.Map, String)}
+     * that also carries per-state animation clip bytes (1.6+). Every state entry
+     * with an {@link SBOFormat.AnimationRef} must have its raw {@code .omanim}
+     * bytes in {@code stateClipBytesByName}; the ref's file/checksum/metadata are
+     * recomputed from the bytes on save while the ref's <em>loop</em> flag is
+     * preserved (it is an authored choice, not clip-derived).
+     *
+     * @param stateClipBytesByName per-state clip bytes keyed by state name; may be
+     *                             null/empty when no state carries a clip
+     */
+    public boolean exportFromDocument(SBOFormat.Document document,
+                                       byte[] defaultBytes,
+                                       java.util.Map<String, byte[]> stateBytesByName,
+                                       java.util.Map<String, byte[]> stateClipBytesByName,
+                                       String outputPath) {
         if (document == null) {
             logger.error("exportFromDocument: document is null");
             return false;
@@ -284,6 +333,7 @@ public class SBOSerializer {
         // Rebuild state entries with recomputed checksums (state filenames preserved).
         java.util.List<SBOFormat.StateEntry> rebuiltStates = Collections.emptyList();
         java.util.Map<String, byte[]> resolvedStateBytes = new java.util.LinkedHashMap<>();
+        java.util.Map<String, byte[]> resolvedClipBytes = new java.util.LinkedHashMap<>();
         if (document.hasStates()) {
             rebuiltStates = new ArrayList<>(document.states().size());
             for (SBOFormat.StateEntry e : document.states()) {
@@ -298,11 +348,30 @@ public class SBOSerializer {
                     }
                 }
                 resolvedStateBytes.put(e.name(), bytes);
+
+                SBOFormat.AnimationRef animRef = null;
+                if (e.hasAnimation()) {
+                    byte[] clipBytes = stateClipBytesByName != null
+                            ? stateClipBytesByName.get(e.name()) : null;
+                    if (clipBytes == null) {
+                        logger.error("exportFromDocument: missing clip bytes for state '{}'", e.name());
+                        return false;
+                    }
+                    resolvedClipBytes.put(e.name(), clipBytes);
+                    // Re-probe metadata from the bytes but keep the entry's
+                    // loop flag — it is an authored choice, not clip-derived.
+                    SBOFormat.LoopMode preserved = e.animation().loop()
+                            ? SBOFormat.LoopMode.LOOP : SBOFormat.LoopMode.ONCE;
+                    animRef = buildAnimationRef(e.name(), clipBytes, preserved,
+                            "state '" + e.name() + "'");
+                }
+
                 rebuiltStates.add(new SBOFormat.StateEntry(
                         e.name(),
                         SBOFormat.STATES_DIR_PREFIX + e.name() + "/" + legacyEntry,
                         model,
-                        computeChecksum(bytes)
+                        computeChecksum(bytes),
+                        animRef
                 ));
             }
         }
@@ -337,8 +406,12 @@ public class SBOSerializer {
                 writeEntry(zos, legacyEntry, defaultBytes);
 
                 for (SBOFormat.StateEntry e : rebuiltStates) {
-                    if (e.name().equals(finalDoc.defaultStateName())) continue;
-                    writeEntry(zos, e.filename(), resolvedStateBytes.get(e.name()));
+                    if (!e.name().equals(finalDoc.defaultStateName())) {
+                        writeEntry(zos, e.filename(), resolvedStateBytes.get(e.name()));
+                    }
+                    if (e.hasAnimation()) {
+                        writeEntry(zos, e.animation().filename(), resolvedClipBytes.get(e.name()));
+                    }
                 }
             }
             Files.move(tempFile, Path.of(outputPath), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -398,6 +471,79 @@ public class SBOSerializer {
             // SHA-256 is guaranteed to be available in all JVMs
             throw new RuntimeException("SHA-256 algorithm not available", e);
         }
+    }
+
+    /**
+     * Build an {@link SBOFormat.AnimationRef} for a state's clip: checksum the
+     * raw bytes, probe the clip's inner manifest for name/fps/duration/loop/
+     * requiredParts, and resolve the loop flag through {@code loopMode}.
+     *
+     * <p>Mirrors the SBE serializer's OMA probe — the clip is embedded
+     * verbatim, never re-encoded; only its metadata is snapshotted into the
+     * SBO manifest so the game can schedule clips without unpacking tracks.
+     */
+    private SBOFormat.AnimationRef buildAnimationRef(String stateName, byte[] clipBytes,
+                                                     SBOFormat.LoopMode loopMode, String sourceLabel) {
+        String name = null;
+        float fps = 30f;
+        float duration = 1f;
+        boolean clipLoop = true;
+        List<String> requiredParts = new ArrayList<>();
+
+        try (java.util.zip.ZipInputStream zis =
+                     new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(clipBytes))) {
+            ZipEntry entry;
+            boolean found = false;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (!"manifest.json".equals(entry.getName())) {
+                    zis.closeEntry();
+                    continue;
+                }
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                int n;
+                while ((n = zis.read(buffer)) > 0) out.write(buffer, 0, n);
+                zis.closeEntry();
+
+                com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(out.toByteArray());
+                if (root.hasNonNull("name")) name = root.get("name").asText();
+                if (root.hasNonNull("fps")) fps = (float) root.get("fps").asDouble();
+                if (root.hasNonNull("duration")) duration = (float) root.get("duration").asDouble();
+                if (root.hasNonNull("loop")) clipLoop = root.get("loop").asBoolean();
+
+                com.fasterxml.jackson.databind.JsonNode parts = root.get("requiredParts");
+                if (parts != null && parts.isArray()) {
+                    for (com.fasterxml.jackson.databind.JsonNode p : parts) {
+                        if (p != null && !p.isNull()) requiredParts.add(p.asText());
+                    }
+                } else {
+                    com.fasterxml.jackson.databind.JsonNode tracks = root.get("tracks");
+                    if (tracks != null && tracks.isArray()) {
+                        for (com.fasterxml.jackson.databind.JsonNode t : tracks) {
+                            com.fasterxml.jackson.databind.JsonNode partId = t.get("partId");
+                            if (partId != null && !partId.isNull()) requiredParts.add(partId.asText());
+                        }
+                    }
+                }
+                found = true;
+                break;
+            }
+            if (!found) {
+                logger.warn("No manifest.json in animation clip for {} — using defaults", sourceLabel);
+            }
+        } catch (IOException e) {
+            logger.warn("Failed to probe animation clip for {}: {}", sourceLabel, e.getMessage());
+        }
+
+        return new SBOFormat.AnimationRef(
+                SBOFormat.stateClipPath(stateName),
+                computeChecksum(clipBytes),
+                name != null ? name : stateName,
+                duration,
+                fps,
+                loopMode.resolve(clipLoop),
+                requiredParts
+        );
     }
 
     /**
@@ -517,12 +663,35 @@ public class SBOSerializer {
         public String file;
         public boolean model;
         public String checksum;
+        public AnimationRefDTO animation;
 
         public StateEntryDTO(SBOFormat.StateEntry e) {
             this.name = e.name();
             this.file = e.filename();
             this.model = e.model();
             this.checksum = e.checksum();
+            this.animation = e.hasAnimation() ? new AnimationRefDTO(e.animation()) : null;
+        }
+    }
+
+    /** DTO mirror of {@link SBOFormat.AnimationRef} (1.6+). */
+    private static class AnimationRefDTO {
+        public String file;
+        public String checksum;
+        public String clipName;
+        public float duration;
+        public float fps;
+        public boolean loop;
+        public List<String> requiredParts;
+
+        public AnimationRefDTO(SBOFormat.AnimationRef a) {
+            this.file = a.filename();
+            this.checksum = a.checksum();
+            this.clipName = a.clipName();
+            this.duration = a.duration();
+            this.fps = a.fps();
+            this.loop = a.loop();
+            this.requiredParts = new ArrayList<>(a.requiredParts());
         }
     }
 

@@ -599,33 +599,4 @@ public class MeshTopology {
     public int getTriangleCount() {
         return indexMappingQuery.getTriangleCount();
     }
-
-    // =========================================================================
-    // VERTEX MOVE — DIRTY MARKING (coordinator method)
-    // =========================================================================
-
-    /**
-     * Mark all caches dirty for faces adjacent to a moved vertex.
-     * Face geometry, vertex normals, dihedral angles, and edge classifications
-     * will be lazily recomputed on the next query.
-     *
-     * @param uniqueVertexIndex The unique vertex that moved
-     * @param vertices          Current vertex positions (x,y,z interleaved)
-     */
-    public void onVertexPositionChanged(int uniqueVertexIndex, float[] vertices) {
-        faceGeometryCache.updateVerticesRef(vertices);
-        List<Integer> affectedFaces = elementAdjacencyQuery.getFacesForVertex(uniqueVertexIndex);
-        for (int faceId : affectedFaces) {
-            faceGeometryCache.markFaceDirty(faceId);
-
-            MeshFace face = faces[faceId];
-            if (face == null) continue;
-            for (int v : face.vertexIndices()) {
-                vertexNormalCache.markDirty(v);
-            }
-            for (int eid : face.edgeIds()) {
-                dihedralAngleCache.markEdgeDirty(eid);
-            }
-        }
-    }
 }

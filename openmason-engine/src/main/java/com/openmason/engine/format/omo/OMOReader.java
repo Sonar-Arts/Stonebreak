@@ -36,7 +36,8 @@ public class OMOReader {
             List<ParsedFaceMapping> faceMappings,
             List<ParsedMaterialData> materials,
             byte[] defaultTextureBytes,
-            List<OMOFormat.PartEntry> parts
+            List<OMOFormat.PartEntry> parts,
+            List<OMOFormat.AttachmentPointEntry> attachmentPoints
     ) {}
 
     /**
@@ -52,6 +53,7 @@ public class OMOReader {
         List<ParsedFaceMapping> faceMappings = new ArrayList<>();
         List<OMOFormat.MaterialEntry> materialEntries = new ArrayList<>();
         List<OMOFormat.PartEntry> parts = new ArrayList<>();
+        List<OMOFormat.AttachmentPointEntry> attachmentPoints = new ArrayList<>();
         Map<String, byte[]> materialTextures = new HashMap<>();
         byte[] defaultTextureBytes = null;
 
@@ -68,6 +70,7 @@ public class OMOReader {
                     faceMappings = result.faceMappings;
                     materialEntries = result.materialEntries;
                     parts = result.parts;
+                    attachmentPoints = result.attachmentPoints;
 
                 } else if (OMOFormat.DEFAULT_TEXTURE_FILENAME.equals(entryName)) {
                     defaultTextureBytes = readBytes(zis);
@@ -94,7 +97,8 @@ public class OMOReader {
             ));
         }
 
-        return new ReadResult(document, meshData, faceMappings, materials, defaultTextureBytes, parts);
+        return new ReadResult(document, meshData, faceMappings, materials, defaultTextureBytes, parts,
+                attachmentPoints);
     }
 
     private record ManifestResult(
@@ -102,7 +106,8 @@ public class OMOReader {
             ParsedMeshData meshData,
             List<ParsedFaceMapping> faceMappings,
             List<OMOFormat.MaterialEntry> materialEntries,
-            List<OMOFormat.PartEntry> parts
+            List<OMOFormat.PartEntry> parts,
+            List<OMOFormat.AttachmentPointEntry> attachmentPoints
     ) {}
 
     private ManifestResult parseManifest(byte[] jsonBytes) throws IOException {
@@ -207,7 +212,39 @@ public class OMOReader {
             }
         }
 
-        return new ManifestResult(document, meshData, faceMappings, materialEntries, parts);
+        // Parse attachment points (v1.7+)
+        List<OMOFormat.AttachmentPointEntry> attachmentPoints = new ArrayList<>();
+        JsonNode attachmentsNode = root.get("attachmentPoints");
+        if (attachmentsNode != null && attachmentsNode.isArray()) {
+            for (JsonNode a : attachmentsNode) {
+                attachmentPoints.add(new OMOFormat.AttachmentPointEntry(
+                        a.get("id").asText(),
+                        a.get("name").asText(),
+                        textOrNull(a, "parentPartId"),
+                        textOrNull(a, "parentPartName"),
+                        floatOrZero(a, "posX"),
+                        floatOrZero(a, "posY"),
+                        floatOrZero(a, "posZ"),
+                        floatOrZero(a, "rotX"),
+                        floatOrZero(a, "rotY"),
+                        floatOrZero(a, "rotZ"),
+                        floatOr(a, "scaleX", 1f),
+                        floatOr(a, "scaleY", 1f),
+                        floatOr(a, "scaleZ", 1f)
+                ));
+            }
+        }
+
+        return new ManifestResult(document, meshData, faceMappings, materialEntries, parts, attachmentPoints);
+    }
+
+    private static float floatOrZero(JsonNode parent, String field) {
+        return floatOr(parent, field, 0f);
+    }
+
+    private static float floatOr(JsonNode parent, String field, float fallback) {
+        JsonNode node = parent.get(field);
+        return node == null || node.isNull() ? fallback : (float) node.asDouble();
     }
 
     private static String textOrNull(JsonNode parent, String field) {

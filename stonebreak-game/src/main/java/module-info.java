@@ -63,6 +63,10 @@ module stonebreak.game {
     // Export item voxelization system for OpenMason
     exports com.stonebreak.rendering.player.items.voxelization;
 
+    // Export the SBE asset pipeline for OpenMason's socket test previews
+    // (loadAttachable + the decoded geometry records the preview renderer draws)
+    exports com.stonebreak.mobs.sbe;
+
     // Open packages for Jackson JSON processing
     opens com.stonebreak.blocks to com.fasterxml.jackson.databind;
     opens com.stonebreak.items to com.fasterxml.jackson.databind;

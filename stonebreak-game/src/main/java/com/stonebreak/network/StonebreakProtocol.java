@@ -33,6 +33,7 @@ import com.stonebreak.network.packet.world.BlockChangeC2S;
 import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.BlockMetaS2C;
 import com.stonebreak.network.packet.world.BlockStateS2C;
+import com.stonebreak.network.packet.world.BlockToggleC2S;
 import com.stonebreak.network.packet.world.ChunkDataS2C;
 import com.stonebreak.network.packet.world.ChunkHashesC2S;
 import com.stonebreak.network.packet.world.ChunkResyncRequestC2S;
@@ -89,6 +90,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 16, DropItemC2S.class, DropItemC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 17, EntityResyncC2S.class, EntityResyncC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 18, TimeSetC2S.class, TimeSetC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 19, BlockToggleC2S.class, BlockToggleC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);

@@ -66,6 +66,14 @@ public class FaceRenderer implements MeshChangeListener {
     /** Depth range far value biasing overlays toward the camera on coplanar geometry. */
     private static final double OVERLAY_DEPTH_RANGE_FAR = 0.99999;
 
+    // ── Socket (attachment point) demarcation ──
+    /** Cyan matching the socket viewport markers and the rigging tree glyph. */
+    private static final Vector3f SOCKET_FACE_FILL = new Vector3f(0.35f, 0.80f, 0.95f);
+    private static final float SOCKET_FACE_ALPHA = 0.18f;
+    private static final Vector3f SOCKET_FACE_DOT = new Vector3f(0.35f, 0.80f, 0.95f);
+    /** A face is "socketed" when a socket sits at its centroid within this distance. */
+    private static final float SOCKET_FACE_MATCH_DISTANCE = 0.01f;
+
     // ── Edge highlight OpenGL resources ──
     private int lineVao = 0;
     private int lineVbo = 0;
@@ -105,6 +113,13 @@ public class FaceRenderer implements MeshChangeListener {
     private Set<Integer> selectedFaceIndices = new LinkedHashSet<>();
     private int activeFaceIndex = -1;
     private int editingFaceIndex = -1;
+
+    // Socket demarcation: model-space socket positions pushed by the pipeline
+    // each frame; face ids re-derived (socket at face centroid) when either
+    // the sockets or the face geometry change.
+    private final List<Vector3f> socketPositions = new ArrayList<>();
+    private final Set<Integer> socketFaceIds = new HashSet<>();
+    private boolean socketFacesDirty = false;
 
     // Topology info for hover detection
     private int[] storedVerticesPerFace = null;
@@ -203,9 +218,11 @@ public class FaceRenderer implements MeshChangeListener {
             // Build line VBO for edge highlighting
             rebuildLineVBO();
 
-            // Fill + dot VBOs are rebuilt lazily on next render
+            // Fill + dot VBOs are rebuilt lazily on next render; socket-face
+            // matching re-derives against the new centroids
             fillDataDirty = true;
             dotDataDirty = true;
+            socketFacesDirty = true;
 
             logger.debug("Rebuilt face data: {} faces, {} triangles", faceCount, triangleCount);
 
@@ -539,7 +556,59 @@ public class FaceRenderer implements MeshChangeListener {
         if (selectedFaceIndices.contains(faceIndex)) {
             return MeshOverlayTheme.FACE_DOT_SELECT;
         }
+        if (socketFaceIds.contains(faceIndex)) {
+            return SOCKET_FACE_DOT;
+        }
         return MeshOverlayTheme.FACE_DOT;
+    }
+
+    // =========================================================================
+    // Socket (attachment point) demarcation
+    // =========================================================================
+
+    /**
+     * Push the current model-space socket positions (from the attachment
+     * store). Cheap when unchanged; a change re-derives which faces are
+     * "socketed" and recolors the face dots on the next render.
+     */
+    public void setSocketPositions(List<Vector3f> positions) {
+        List<Vector3f> incoming = positions != null ? positions : List.of();
+        if (incoming.equals(socketPositions)) {
+            return;
+        }
+        socketPositions.clear();
+        for (Vector3f p : incoming) {
+            socketPositions.add(new Vector3f(p));
+        }
+        socketFacesDirty = true;
+        dotDataDirty = true;
+    }
+
+    /**
+     * Re-derive which faces carry a socket: a face is marked when a socket sits
+     * at its centroid (where the "Add Socket" face action places them, within
+     * {@link #SOCKET_FACE_MATCH_DISTANCE}). Sockets moved off a face stop
+     * marking it — the demarcation reflects where sockets actually are, and
+     * survives topology edits without persisting fragile face ids.
+     */
+    private void refreshSocketFaceIds() {
+        socketFaceIds.clear();
+        if (socketPositions.isEmpty() || faceCount == 0) {
+            return;
+        }
+        float maxDistSq = SOCKET_FACE_MATCH_DISTANCE * SOCKET_FACE_MATCH_DISTANCE;
+        Vector3f centroid = new Vector3f();
+        for (int f = 0; f < faceCount; f++) {
+            if (!computeFaceCentroid(f, centroid)) {
+                continue;
+            }
+            for (Vector3f socket : socketPositions) {
+                if (socket.distanceSquared(centroid) <= maxDistSq) {
+                    socketFaceIds.add(f);
+                    break;
+                }
+            }
+        }
     }
 
     // =========================================================================
@@ -576,6 +645,11 @@ public class FaceRenderer implements MeshChangeListener {
                 rebuildFillVBO();
                 fillDataDirty = false;
             }
+            // Socket-face matching feeds dot colors — resolve before the dot rebuild.
+            if (socketFacesDirty) {
+                refreshSocketFaceIds();
+                socketFacesDirty = false;
+            }
             if (dotDataDirty && faceMode) {
                 rebuildDotVBO();
                 dotDataDirty = false;
@@ -590,11 +664,27 @@ public class FaceRenderer implements MeshChangeListener {
             // ── Layer 1: translucent fills (depth writes off) ──
             boolean hasActive = activeFaceIndex >= 0 && activeFaceIndex < faceCount
                     && selectedFaceIndices.contains(activeFaceIndex);
-            if ((hasSelection || hasHover) && totalFillVertices > 0 && fillResourcesInitialized) {
+            boolean hasSocketFaces = faceMode && !socketFaceIds.isEmpty();
+            if ((hasSelection || hasHover || hasSocketFaces)
+                    && totalFillVertices > 0 && fillResourcesInitialized) {
                 fillShader.use();
                 fillShader.setMat4("uMVPMatrix", mvpMatrix);
                 glDepthMask(false);
                 glBindVertexArray(fillVao);
+
+                // Socketed faces: cyan demarcation, drawn first so selection/hover
+                // tints paint over it (a selected socketed face still reads selected).
+                if (hasSocketFaces) {
+                    fillShader.setVec3("uColor", SOCKET_FACE_FILL);
+                    fillShader.setFloat("uAlpha", SOCKET_FACE_ALPHA);
+                    for (int faceIdx : socketFaceIds) {
+                        if (faceIdx >= 0 && faceIdx < faceCount
+                                && !selectedFaceIndices.contains(faceIdx)
+                                && faceIdx != hoveredFaceIndex) {
+                            drawFaceFill(faceIdx);
+                        }
+                    }
+                }
 
                 if (hasSelection) {
                     fillShader.setVec3("uColor", MeshOverlayTheme.FACE_SELECT_FILL);
@@ -891,6 +981,8 @@ public class FaceRenderer implements MeshChangeListener {
         dotResourcesInitialized = false;
         fillDataDirty = true;
         dotDataDirty = true;
+        socketFaceIds.clear();
+        socketFacesDirty = true;
         totalFillVertices = 0;
         dotCount = 0;
         activeFaceIndex = -1;
@@ -919,9 +1011,11 @@ public class FaceRenderer implements MeshChangeListener {
         // Update line VBO positions for affected face boundary edges
         updateLinePositionsForVertex(uniqueIndex, newPosition);
 
-        // Fill geometry and dot centroids derive from the moved vertex — rebuild lazily
+        // Fill geometry and dot centroids derive from the moved vertex — rebuild
+        // lazily; socket-face matching re-derives against the moved centroids
         fillDataDirty = true;
         dotDataDirty = true;
+        socketFacesDirty = true;
     }
 
     @Override

@@ -1,7 +1,6 @@
 package com.stonebreak.player.interaction;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.blocks.Water;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
@@ -92,7 +91,10 @@ public class BlockPlacer {
         if (!validationResult.canPlace()) return;
 
         if (blockAtPos == BlockType.WATER && selectedBlockType == BlockType.WATER) {
-            if (!Water.isWaterSource(placePos.x, placePos.y, placePos.z)) {
+            if (!world.isWaterSourceAt(placePos.x, placePos.y, placePos.z)) {
+                // Break-then-place resets a flowing cell to a source: setting AIR
+                // clears the water-layer entry, and a WATER block with no entry
+                // IS a source. World.setBlockAt feeds the sim on both writes.
                 world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR, true);
                 world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER, true);
                 inventory.removeItem(selectedItem.getItem(), 1);
@@ -100,22 +102,24 @@ public class BlockPlacer {
             return;
         }
 
-        if (blockAtPos == BlockType.WATER) {
-            Water.removeWaterSource(placePos.x, placePos.y, placePos.z);
-        }
-
         if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType, true)) {
             inventory.removeItem(selectedItem.getItem(), 1);
-            if (selectedBlockType == BlockType.WATER) {
-                Water.addWaterSource(placePos.x, placePos.y, placePos.z);
-            }
-            Water.onBlockPlaced(placePos.x, placePos.y, placePos.z);
             if (selectedBlockType == BlockType.SNOW) {
                 world.getSnowLayerManager().setSnowLayers(placePos.x, placePos.y, placePos.z, 1);
             }
             if (selectedBlockType == BlockType.FURNACE) {
                 com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = com.stonebreak.core.Game.getInstance().getFurnaceRegistry();
                 if (fr != null) fr.onBlockPlaced(world, placePos.x, placePos.y, placePos.z, selectedBlockType);
+            }
+            if (selectedBlockType == BlockType.OAK_DOOR) {
+                // Predictive local state: closed, panel on the placer's edge. The
+                // authoritative server derives the same state from the placement
+                // packet and echoes it via BlockStateS2C.
+                Vector3f playerPos = state.getPosition();
+                world.setBlockStateAt(placePos.x, placePos.y, placePos.z,
+                        com.stonebreak.blocks.door.DoorState
+                                .placed(playerPos.x, playerPos.z, placePos.x, placePos.z)
+                                .toStateString());
             }
         }
     }
@@ -125,10 +129,9 @@ public class BlockPlacer {
         if (targetBlock == null) return;
         BlockType blockType = world.getBlockAt(targetBlock.x, targetBlock.y, targetBlock.z);
         if (blockType != BlockType.WATER) return;
-        if (!Water.isWaterSource(targetBlock.x, targetBlock.y, targetBlock.z)) return;
+        if (!world.isWaterSourceAt(targetBlock.x, targetBlock.y, targetBlock.z)) return;
 
         world.setBlockAt(targetBlock.x, targetBlock.y, targetBlock.z, BlockType.AIR, true);
-        Water.onBlockPlaced(targetBlock.x, targetBlock.y, targetBlock.z);
 
         int currentSlot = inventory.getSelectedHotbarSlotIndex();
         int currentCount = selectedItem.getCount();
@@ -157,12 +160,11 @@ public class BlockPlacer {
         if (blockAtPos != BlockType.AIR && blockAtPos != BlockType.WATER) return;
 
         if (blockAtPos == BlockType.WATER) {
-            if (Water.isWaterSource(placePos.x, placePos.y, placePos.z)) return;
+            if (world.isWaterSourceAt(placePos.x, placePos.y, placePos.z)) return;
             world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR, true);
             world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER, true);
         } else {
             if (!world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER, true)) return;
-            Water.onBlockPlaced(placePos.x, placePos.y, placePos.z);
         }
 
         int currentSlot = inventory.getSelectedHotbarSlotIndex();
@@ -197,7 +199,6 @@ public class BlockPlacer {
         if (!world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW, true)) return;
         world.getSnowLayerManager().setSnowLayers(abovePos.x, abovePos.y, abovePos.z, 1);
         inventory.removeItem(selectedItem.getItem(), 1);
-        Water.onBlockPlaced(abovePos.x, abovePos.y, abovePos.z);
     }
 
     private Vector3i findPlacePosition(Vector3i hitBlock) {

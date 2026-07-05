@@ -10,7 +10,7 @@ public enum CategoryState {
     QUALITY(1, new SettingType[]{SettingType.LEAF_TRANSPARENCY, SettingType.WATER_SHADER, SettingType.CLOUDS_ENABLED, SettingType.GOD_RAYS, SettingType.SHADOWS, SettingType.SHADOW_QUALITY, SettingType.SHADOW_DISTANCE, SettingType.SMOOTH_LIGHTING}),
     PERFORMANCE(2, new SettingType[]{SettingType.RENDER_DISTANCE, SettingType.VSYNC, SettingType.MAX_FPS}),
     ADVANCED(3, new SettingType[]{SettingType.ARM_MODEL, SettingType.LOD_ENABLED, SettingType.LOD_DISTANCE}),
-    EXTRAS(4, new SettingType[]{SettingType.CROSSHAIR_STYLE, SettingType.CROSSHAIR_SIZE}),
+    EXTRAS(4, new SettingType[]{SettingType.CROSSHAIR_STYLE, SettingType.CROSSHAIR_SIZE, SettingType.PLAYER_NAME_TAGS}),
     AUDIO(5, new SettingType[]{SettingType.VOLUME});
     
     private final int index;
@@ -87,7 +87,8 @@ public enum CategoryState {
         SHADOWS(17),
         SHADOW_QUALITY(18),
         SHADOW_DISTANCE(19),
-        SMOOTH_LIGHTING(20);
+        SMOOTH_LIGHTING(20),
+        PLAYER_NAME_TAGS(21);
         
         private final int index;
         

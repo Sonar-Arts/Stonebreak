@@ -40,9 +40,11 @@ import java.util.Map;
  * textures are de-duplicated by decoded-pixel content, so a uniform block
  * collapses its six faces to a single layer.
  *
- * <p>{@code WATER} is the one non-SBO block: it gets a dedicated mutable layer
- * (excluded from de-duplication) that {@link #updateAnimatedWater} refreshes
- * each frame. Layer 0 is a magenta error texture for unresolved faces.
+ * <p>{@code WATER} is the one non-SBO block: it keeps a dedicated STATIC layer
+ * (excluded from de-duplication) used only by UI block icons and FastLOD
+ * distant sea sheets — in-world water renders through the dedicated
+ * WaterRenderer with a fully procedural shader. Layer 0 is a magenta error
+ * texture for unresolved faces.
  */
 public class BlockTextureArray {
 
@@ -66,9 +68,6 @@ public class BlockTextureArray {
 
     /** Decoded ARGB pixels of every layer, retained for UI icon creation. */
     private final List<int[]> layerPixels;
-
-    /** Reusable buffer for animated-water uploads. */
-    private final ByteBuffer waterUploadBuffer = BufferUtils.createByteBuffer(TILE_BYTES);
 
     /**
      * Builds the block texture array from all SBO-backed blocks.
@@ -432,20 +431,6 @@ public class BlockTextureArray {
     /** Layer index of the magenta error texture. */
     public int getErrorLayer() {
         return errorLayer;
-    }
-
-    /**
-     * Regenerates the animated water frame and uploads it to the water layer.
-     * The texture array must be bound (or is rebound here defensively).
-     *
-     * @param time current animation time in seconds
-     */
-    public void updateAnimatedWater(float time) {
-        fillWaterBuffer(time, waterUploadBuffer);
-        GL11.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, textureId);
-        GL12.glTexSubImage3D(GL30.GL_TEXTURE_2D_ARRAY, 0,
-                0, 0, waterLayer, TILE, TILE, 1,
-                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, waterUploadBuffer);
     }
 
     /**

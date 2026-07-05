@@ -102,6 +102,9 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType RED_SAND_COBBLESTONE = fromRegistry("stonebreak:red_sand_cobblestone", "RED_SAND_COBBLESTONE");
     public static final BlockType SAND_COBBLESTONE = fromRegistry("stonebreak:sand_cobblestone", "SAND_COBBLESTONE");
     public static final BlockType WILDGRASS = fromRegistry("stonebreak:wildgrass", "WILDGRASS");
+    // Animated door (SBO 1.6 per-state clips); interaction special-cased in
+    // InputHandler, rendered dynamically by AnimatedBlockRenderer.
+    public static final BlockType OAK_DOOR = fromRegistry("stonebreak:oak_door", "OAK_DOOR");
 
     // ----- Promote any SBO entries that didn't match a static-final field
     //       above. New SBOs dropped into sbo/blocks/ become BlockType
@@ -290,8 +293,11 @@ public final class BlockType implements Item, IBlockType {
                 return true;
             }
         }
+        // OAK_DOOR is transparent for meshing purposes: its thin panel is
+        // drawn dynamically (AnimatedBlockRenderer), so neighbouring blocks
+        // must keep the faces that border the door cell.
         return this == AIR || this == WATER || this == ROSE || this == DANDELION
-                || this == WILDGRASS || this == ICE || this == SNOW;
+                || this == WILDGRASS || this == ICE || this == SNOW || this == OAK_DOOR;
     }
 
     @Override

@@ -105,8 +105,7 @@ public final class AnimationEditorImGui {
         } else if (ctrl && ImGui.isKeyPressed(ImGuiKey.Y)) {
             controller.redo();
         } else if (ctrl && ImGui.isKeyPressed(ImGuiKey.S)) {
-            if (controller.state().filePath() != null) controller.save();
-            else fileBar.promptSaveAs();
+            fileBar.requestSave();
         } else if (ctrl && ImGui.isKeyPressed(ImGuiKey.C)) {
             controller.copySelection();
         } else if (ctrl && ImGui.isKeyPressed(ImGuiKey.V)) {

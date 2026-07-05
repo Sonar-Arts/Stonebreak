@@ -286,7 +286,12 @@ public final class MmsMeshPipeline {
             // geometry — a chunk with no visible faces (fully enclosed, all-air, or off-view
             // border) legitimately yields an empty mesh. Only thrown exceptions are retried.
             success = true;
-            boolean hasGeometry = meshData != null && !meshData.isEmpty();
+            // Any part counts: a rebuild that empties one part (e.g. the last
+            // water in a chunk drained) must still reach the upload step so the
+            // stale handle for that part gets cleared.
+            boolean hasGeometry = (meshData != null && !meshData.isEmpty())
+                || meshResult.hasWaterMesh()
+                || meshResult.hasSBOMesh();
 
             if (hasGeometry) {
                 // Store the full mesh result on the chunk so SBO mesh also gets uploaded
@@ -423,8 +428,12 @@ public final class MmsMeshPipeline {
             }
 
             try {
-                // Upload mesh to GPU using MMS API
-                MmsRenderableHandle handle = MmsAPI.getInstance().uploadMeshToGPU(task.meshData);
+                // Upload the atlas mesh. It may legitimately be empty when the
+                // result reached upload only for its water/SBO parts — in that
+                // case the stale atlas handle is cleared instead.
+                MmsRenderableHandle handle = (task.meshData != null && !task.meshData.isEmpty())
+                    ? MmsAPI.getInstance().uploadMeshToGPU(task.meshData)
+                    : null;
 
                 // Store handle in chunk for rendering
                 synchronized (task.chunk) {
@@ -437,8 +446,22 @@ public final class MmsMeshPipeline {
                     // Set new handle and mark GPU ready
                     task.chunk.setMmsRenderableHandle(handle);
 
-                    // Upload SBO meshes if the chunk has any (one per block type)
                     com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult meshResult = task.chunk.getPendingChunkMeshResult();
+
+                    // Water mesh: swap inside the SAME synchronized block as the
+                    // atlas handle so a frame can never draw new atlas + stale
+                    // water. When this rebuild produced no water, the handle is
+                    // nulled — mandatory, or drained water ghosts forever.
+                    MmsRenderableHandle oldWater = task.chunk.getWaterRenderableHandle();
+                    if (oldWater != null) {
+                        handlesPendingGpuCleanup.offer(oldWater);
+                    }
+                    task.chunk.setWaterRenderableHandle(
+                        meshResult != null && meshResult.hasWaterMesh()
+                            ? MmsAPI.getInstance().uploadMeshToGPU(meshResult.waterMesh())
+                            : null);
+
+                    // Upload SBO meshes if the chunk has any (one per block type)
                     if (meshResult != null && meshResult.hasSBOMesh()) {
                         // Clean up old SBO handles
                         java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> oldSboList = task.chunk.getSBORenderDataList();
@@ -511,10 +534,9 @@ public final class MmsMeshPipeline {
      * MUST be called from OpenGL thread.
      */
     public void processGpuCleanupQueue() {
-        if (shutdown) {
-            return;
-        }
-
+        // Intentionally NOT gated on `shutdown`: World.cleanup shuts the pipeline down and
+        // THEN defers a final drain to the main thread — skipping it would leak every handle
+        // still queued from recent chunk unloads.
         MmsRenderableHandle handle;
         int cleaned = 0;
 
@@ -551,6 +573,11 @@ public final class MmsMeshPipeline {
                 handlesPendingGpuCleanup.offer(handle);
                 chunk.setMmsRenderableHandle(null);
                 chunk.getCcoStateManager().removeState(CcoChunkState.MESH_GPU_UPLOADED);
+            }
+            MmsRenderableHandle waterHandle = chunk.getWaterRenderableHandle();
+            if (waterHandle != null) {
+                handlesPendingGpuCleanup.offer(waterHandle);
+                chunk.setWaterRenderableHandle(null);
             }
         }
     }
@@ -716,7 +743,9 @@ public final class MmsMeshPipeline {
     }
 
     /**
-     * Clears all pipeline queues.
+     * Clears all pipeline queues. Deliberately does NOT drain the GPU cleanup queue:
+     * shutdown() can run on a non-GL thread (world swap on the "ClientWorld-Build" thread),
+     * and World.cleanup defers a processGpuCleanupQueue() to the main thread afterwards.
      */
     private void clearQueues() {
         chunksToGenerateMesh.clear();
@@ -725,9 +754,6 @@ public final class MmsMeshPipeline {
         chunksFailedToGenerateMesh.clear();
         chunkRetryCount.clear();
         chunkPriorityMap.clear();
-
-        // Clean up pending GPU resources
-        processGpuCleanupQueue();
     }
 
     // === Debug/Statistics ===

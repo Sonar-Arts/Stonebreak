@@ -12,9 +12,9 @@ import com.openmason.main.systems.services.commands.RendererSynchronizer;
 import com.openmason.main.systems.services.commands.SnapshotCommand;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.TransformState;
+import com.openmason.main.systems.viewport.util.EdgeCutMath;
 import com.openmason.main.systems.viewport.util.SnappingUtil;
 import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
-import imgui.ImGui;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.glfw.GLFW;
@@ -213,16 +213,12 @@ public class KnifeToolController {
                 return true;
             }
 
-            Vector3f cutPos = new Vector3f(
-                posA.x * (1f - hitResult.t()) + posB.x * hitResult.t(),
-                posA.y * (1f - hitResult.t()) + posB.y * hitResult.t(),
-                posA.z * (1f - hitResult.t()) + posB.z * hitResult.t()
-            );
+            Vector3f cutPos = EdgeCutMath.pointOnEdge(posA, posB, hitResult.t());
 
             // Snap cut position to grid and recompute t to keep parameter consistent
             cutPos = snapToGrid(cutPos);
             float firstT = isGridSnappingEnabled()
-                ? recomputeT(cutPos, posA, posB)
+                ? EdgeCutMath.recomputeT(cutPos, posA, posB)
                 : hitResult.t();
 
             // Transition to AWAITING_SECOND_CLICK
@@ -271,16 +267,12 @@ public class KnifeToolController {
                         Vector3f posA = modelRenderer.getUniqueVertexPosition(secondEdge.vertexA());
                         Vector3f posB = modelRenderer.getUniqueVertexPosition(secondEdge.vertexB());
                         if (posA != null && posB != null) {
-                            secondCutPos = new Vector3f(
-                                posA.x * (1f - hitResult.t()) + posB.x * hitResult.t(),
-                                posA.y * (1f - hitResult.t()) + posB.y * hitResult.t(),
-                                posA.z * (1f - hitResult.t()) + posB.z * hitResult.t()
-                            );
+                            secondCutPos = EdgeCutMath.pointOnEdge(posA, posB, hitResult.t());
 
                             // Snap to grid and recompute t for consistent parameter
                             secondCutPos = snapToGrid(secondCutPos);
                             if (isGridSnappingEnabled()) {
-                                secondT = recomputeT(secondCutPos, posA, posB);
+                                secondT = EdgeCutMath.recomputeT(secondCutPos, posA, posB);
                             }
                         }
                     }
@@ -405,12 +397,7 @@ public class KnifeToolController {
             return null;
         }
 
-        float t = hitResult.t();
-        return new Vector3f(
-            posA.x * (1f - t) + posB.x * t,
-            posA.y * (1f - t) + posB.y * t,
-            posA.z * (1f - t) + posB.z * t
-        );
+        return EdgeCutMath.pointOnEdge(posA, posB, hitResult.t());
     }
 
     /**
@@ -466,29 +453,6 @@ public class KnifeToolController {
             SnappingUtil.snapToGrid(pos.y, increment),
             SnappingUtil.snapToGrid(pos.z, increment)
         );
-    }
-
-    /**
-     * Recompute the parametric t value from a snapped position projected back onto the edge.
-     * Uses dot-product projection to find the closest point on the edge line.
-     *
-     * @param snappedPos The grid-snapped position
-     * @param posA       Edge start vertex position
-     * @param posB       Edge end vertex position
-     * @return Clamped t in [0, 1]
-     */
-    private static float recomputeT(Vector3f snappedPos, Vector3f posA, Vector3f posB) {
-        float dx = posB.x - posA.x;
-        float dy = posB.y - posA.y;
-        float dz = posB.z - posA.z;
-        float lengthSq = dx * dx + dy * dy + dz * dz;
-        if (lengthSq < 1e-12f) {
-            return 0.5f;
-        }
-        float t = ((snappedPos.x - posA.x) * dx
-                 + (snappedPos.y - posA.y) * dy
-                 + (snappedPos.z - posA.z) * dz) / lengthSq;
-        return Math.max(0f, Math.min(1f, t));
     }
 
     /**

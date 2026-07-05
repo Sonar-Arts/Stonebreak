@@ -9,7 +9,8 @@ import com.stonebreak.world.chunk.utils.ChunkManager;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
 import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.blocks.waterSystem.WaterSystem;
+import com.stonebreak.blocks.waterSystem.WaterSim;
+import com.stonebreak.blocks.waterSystem.WorldFlowWorld;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.*;
 import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoNeighborCoordinator;
@@ -36,6 +37,8 @@ public class World {
     private final ChunkManager chunkManager;
     private final SnowLayerManager snowLayerManager;
     private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
+    private final com.stonebreak.blocks.anim.AnimatedBlockRegistry animatedBlockRegistry =
+            new com.stonebreak.blocks.anim.AnimatedBlockRegistry();
     
     // World spawn position
     private Vector3f spawnPosition = new Vector3f(0, 100, 0);
@@ -45,7 +48,7 @@ public class World {
     private final CcoNeighborCoordinator neighborCoordinator;
     private final MmsMeshPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
-    private final WaterSystem waterSystem;
+    private final WaterSim waterSim;
     private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
 
     // Lazily constructed once the render-thread hands us a texture atlas.
@@ -110,6 +113,29 @@ public class World {
     /** Install the server-side snow mutation sink (headless server world only). */
     public void setServerSnowCallback(ServerSnowMutationCallback callback) {
         this.serverSnowCallback = callback;
+    }
+
+    /**
+     * Sink for authoritative water-layer mutations (value = layer byte: 1..7 flowing,
+     * 8 falling, 0 = entry removed / became source), installed by the integrated server
+     * on the HEADLESS world only so flow levels replicate to clients as
+     * {@code BlockMetaS2C} (KIND_WATER_LEVEL). Null everywhere else. Fired from
+     * {@code WorldFlowWorld.markWaterChanged} on the server tick thread.
+     */
+    public interface ServerWaterMutationCallback {
+        void onServerWaterChange(int x, int y, int z, int value);
+    }
+
+    private volatile ServerWaterMutationCallback serverWaterCallback;
+
+    /** Install the server-side water mutation sink (headless server world only). */
+    public void setServerWaterCallback(ServerWaterMutationCallback callback) {
+        this.serverWaterCallback = callback;
+    }
+
+    /** The water mutation sink, or null on client/render worlds. */
+    public ServerWaterMutationCallback serverWaterCallback() {
+        return serverWaterCallback;
     }
 
     public World() {
@@ -231,7 +257,7 @@ public class World {
         if (testMode) {
             // Test mode: Minimal initialization for save/load testing
             this.neighborCoordinator = null;
-            this.waterSystem = new WaterSystem(this);
+            this.waterSim = new WaterSim(new WorldFlowWorld(this));
             this.chunkManager = null;
             System.out.println("[TEST MODE] World created with seed: " + terrainSystem.getSeed() + " (rendering disabled)");
         } else {
@@ -249,7 +275,7 @@ public class World {
                 }
             }, config);
 
-            this.waterSystem = new WaterSystem(this);
+            this.waterSim = new WaterSim(new WorldFlowWorld(this));
             this.chunkManager = new ChunkManager(this, config.getRenderDistance());
 
             System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
@@ -263,11 +289,12 @@ public class World {
         // where there's a mesh pipeline.
         this.chunkStore.setChunkListeners(chunk -> {
             if (!renderOnly) {
-                waterSystem.onChunkLoaded(chunk);
+                waterSim.onChunkLoaded(chunk);
             }
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkLoaded(chunk);
             }
+            animatedBlockRegistry.onChunkLoaded(chunk);
             if (meshPipeline != null) {
                 int cx = chunk.getX();
                 int cz = chunk.getZ();
@@ -280,11 +307,12 @@ public class World {
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkUnloaded(chunk);
             }
-            // Water cells and snow layers accumulate on EVERY world — the render-only client
-            // feeds them via setBlockAt(..., false) applies of streamed changes — so both must
-            // purge with the chunk everywhere or the maps grow unbounded as streamed chunks
-            // come and go.
-            waterSystem.onChunkUnloaded(chunk);
+            animatedBlockRegistry.onChunkUnloaded(chunk);
+            // Water state is chunk-owned (ChunkWaterLayer) and leaves with the chunk;
+            // the sim just drops its pending queue entries. Snow layers remain a
+            // world-global map and must still purge everywhere (render-only clients
+            // included) or they grow unbounded as streamed chunks come and go.
+            waterSim.onChunkUnloaded(chunk);
             snowLayerManager.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
         });
     }
@@ -303,7 +331,7 @@ public class World {
     public void update(com.stonebreak.rendering.Renderer renderer) {
         if (meshPipeline == null) return; // Test mode - skip rendering updates
 
-        waterSystem.tick(Game.getDeltaTime());
+        waterSim.tick(Game.getDeltaTime());
         com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
         if (fr != null) fr.tick(this, Game.getDeltaTime());
         meshPipeline.requeueFailedChunks();
@@ -327,7 +355,7 @@ public class World {
      * is a no-op. Safe to call with no render infrastructure.
      */
     public void updateSimulation(float deltaTime) {
-        waterSystem.tick(deltaTime);
+        waterSim.tick(deltaTime);
         com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
         if (fr != null) fr.tick(this, deltaTime);
         if (chunkStore != null) {
@@ -357,6 +385,23 @@ public class World {
         meshPipeline.requeueFailedChunks();
         meshPipeline.processChunkMeshBuildRequests(this);
         unloadClientChunksOutsideView();
+
+        // FastLOD ring tick. On a full world ChunkManager.update drives this,
+        // but render-only worlds skip the chunk manager entirely (chunks
+        // stream from the server), so without this call the LOD manager is
+        // created by the render pass yet never schedules a single node —
+        // distant terrain simply never appears. The sampler reads the local
+        // deterministic TerrainGenerationSystem (seeded from the server's
+        // WelcomeS2C world seed), so client-side LOD matches server terrain
+        // without any chunk streaming. Runs on the same logic-thread executor
+        // that ticks full-world updateRing — threading contract unchanged.
+        var lodPlayer = Game.getPlayer();
+        if (lodPlayer != null && fastLodManager != null) {
+            Vector3f lodPos = lodPlayer.getPosition();
+            fastLodManager.updateRing(
+                    (int) Math.floor(lodPos.x / WorldConfiguration.CHUNK_SIZE),
+                    (int) Math.floor(lodPos.z / WorldConfiguration.CHUNK_SIZE));
+        }
     }
 
     /**
@@ -550,6 +595,51 @@ public class World {
         chunk.setBlockState(localX, y, localZ, state);
     }
 
+    // ===== Water state (chunk-owned water layer) =====
+
+    /**
+     * Water flow value at a world position, read from the chunk's water layer:
+     * 0 = source, 1-7 = flowing level, {@link com.stonebreak.world.chunk.ChunkWaterLayer#FALLING}
+     * (8) = falling, -1 = not water or chunk not loaded.
+     */
+    public int getWaterLevelAt(int x, int y, int z) {
+        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+            return -1;
+        }
+        Chunk chunk = getChunkIfLoaded(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
+                                       Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
+        if (chunk == null) {
+            return -1;
+        }
+        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
+        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
+        if (chunk.getBlock(localX, y, localZ) != BlockType.WATER) {
+            return -1;
+        }
+        return chunk.getWaterLayer().get(localX, y, localZ);
+    }
+
+    /** True when the block is WATER and its water-layer entry is absent (level 0). */
+    public boolean isWaterSourceAt(int x, int y, int z) {
+        return getWaterLevelAt(x, y, z) == com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE;
+    }
+
+    /**
+     * Water cell state as a {@link com.stonebreak.blocks.waterSystem.WaterBlock},
+     * or {@code null} when the position is not water. Falling cells report
+     * level 0 (full strength) with the falling flag set.
+     */
+    public com.stonebreak.blocks.waterSystem.WaterBlock getWaterStateAt(int x, int y, int z) {
+        int value = getWaterLevelAt(x, y, z);
+        if (value < 0) {
+            return null;
+        }
+        if (value == com.stonebreak.world.chunk.ChunkWaterLayer.FALLING) {
+            return com.stonebreak.blocks.waterSystem.WaterBlock.falling(0);
+        }
+        return new com.stonebreak.blocks.waterSystem.WaterBlock(value, false);
+    }
+
     /**
      * Checks if the specified world position is underwater (contains a water block).
      * @param x World X coordinate
@@ -616,7 +706,12 @@ public class World {
             }
         }
 
-        waterSystem.onBlockChanged(x, y, z, previous, blockType);
+        // Only authoritative worlds simulate flow; a render-only client applying
+        // streamed changes must not queue sim work (its layer is display-only).
+        if (!renderOnly) {
+            waterSim.onBlockChanged(x, y, z, previous, blockType);
+        }
+        animatedBlockRegistry.onBlockChanged(x, y, z, previous, blockType);
 
         // Multiplayer: forward locally-driven block edits (player modifications) to the local
         // client, which sends them to the authoritative server as intents. Inbound network
@@ -631,8 +726,9 @@ public class World {
         return true;
     }
 
-    public WaterSystem getWaterSystem() {
-        return waterSystem;
+    /** The water flow simulation engine (debug/inspection; state lives in the chunks). */
+    public WaterSim getWaterSim() {
+        return waterSim;
     }
 
     /** Per-world save service, or null if this world is not persisted (e.g. a client view). */
@@ -789,10 +885,15 @@ public class World {
 
         if (meshPipeline != null) {
             meshPipeline.shutdown();
+        }
+        chunkStore.cleanup();
+        // Deferred AFTER chunkStore.cleanup() so anything it queued is included in the
+        // final main-thread drain (nothing ticks this pipeline's queue once the world is
+        // swapped out).
+        if (meshPipeline != null) {
             final MmsMeshPipeline mp = meshPipeline;
             com.stonebreak.core.Game.getInstance().runOnMainThread(mp::processGpuCleanupQueue);
         }
-        chunkStore.cleanup();
     }
 
     /**
@@ -811,14 +912,32 @@ public class World {
     }
 
     private static FastLodStore openFastLodStoreIfPossible() {
-        // Resolves the save directory through Game so World stays agnostic of
-        // how save state is plumbed. Any failure (no save service, bad path,
-        // SQLite driver missing) falls through to pure in-memory LOD.
+        // Resolves the save directory without coupling World to how save state
+        // is plumbed. Any failure (no save path, SQLite driver missing) falls
+        // through to pure in-memory LOD.
         try {
+            String worldPath = null;
             com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
             com.stonebreak.world.save.SaveService svc = (game != null) ? game.getSaveService() : null;
-            if (svc == null) return null;
-            String worldPath = svc.getWorldPath();
+            if (svc != null) {
+                worldPath = svc.getWorldPath();
+            }
+            if (worldPath == null || worldPath.isEmpty()) {
+                // Two-world model: the client RENDER world carries no
+                // SaveService — the authoritative one lives on the co-located
+                // integrated server (singleplayer + LAN host). Only the render
+                // world ever opens a FastLOD store (the headless server world
+                // is never rendered), so there is no double-open on the file.
+                // Remote-join clients have no integrated server and correctly
+                // fall through to in-memory LOD.
+                var server = com.stonebreak.network.MultiplayerSession.getServer();
+                var ctx = (server != null) ? server.worldContext() : null;
+                var level = (ctx != null) ? ctx.serverLevel() : null;
+                var save = (level != null) ? level.saveService() : null;
+                if (save != null) {
+                    worldPath = save.getWorldPath();
+                }
+            }
             if (worldPath == null || worldPath.isEmpty()) return null;
             Path dbPath = Paths.get(worldPath, "fastlod", "cache.sqlite");
             return FastLodStore.open(dbPath);
@@ -1012,9 +1131,14 @@ public class World {
             return false; // caller requests a resync — the server thinks this chunk was sent
         }
         chunk.replaceAllBlocks(decoded);
+        // The bulk block install bypasses Chunk.setBlock, so stale water-layer entries from a
+        // previous stream of this chunk would survive it — clear unconditionally; the meta
+        // below re-hydrates the authoritative set (absence = source, per the layer invariant).
+        chunk.getWaterLayer().clear();
 
-        // Apply streamed chunk metadata: snow layer heights + per-block SBO states. Replaces
-        // (not merges) this chunk's previous entries so a re-stream is a clean resync.
+        // Apply streamed chunk metadata: snow layer heights + per-block SBO states + water
+        // flow levels. Replaces (not merges) this chunk's previous entries so a re-stream is
+        // a clean resync.
         if (metaPayload != null && metaPayload.length > 0) {
             try {
                 var meta = com.stonebreak.network.bridge.GameChunkMetaCodec.decode(metaPayload);
@@ -1037,12 +1161,26 @@ public class World {
                         com.stonebreak.world.chunk.utils.LocalBlockKey.z(key),
                         e.getValue());
                 }
+                for (var e : meta.waterLevels().entrySet()) {
+                    int key = e.getKey();
+                    chunk.getWaterLayer().set(
+                        com.stonebreak.world.chunk.utils.LocalBlockKey.x(key),
+                        com.stonebreak.world.chunk.utils.LocalBlockKey.y(key),
+                        com.stonebreak.world.chunk.utils.LocalBlockKey.z(key),
+                        e.getValue());
+                }
                 // Hydrate the DISPLAY furnace registry from the states just applied. The
                 // chunk-load listener fired at slot creation, BEFORE this meta landed, so
                 // without this an idle furnace opens empty on a joiner — and their first
                 // slot edit would then overwrite the server's real contents.
                 if (!meta.blockStates().isEmpty() && furnaceRegistry != null) {
                     furnaceRegistry.onChunkLoaded(chunk);
+                }
+                // Same re-hydration for animated blocks (doors): the load-time
+                // scan saw an all-air placeholder with no states, so streamed
+                // doors were never indexed — and rendered invisible.
+                if (!meta.blockStates().isEmpty()) {
+                    animatedBlockRegistry.onChunkLoaded(chunk);
                 }
             } catch (Exception e) {
                 System.err.println("[NETWORK] Failed to decode chunk meta (" + chunkX + "," + chunkZ + "): " + e.getMessage());
@@ -1201,6 +1339,11 @@ public class World {
      */
     public com.stonebreak.blocks.furnace.FurnaceStateRegistry getFurnaceRegistry() {
         return furnaceRegistry;
+    }
+
+    /** This world's index of animated (dynamically rendered) block positions. */
+    public com.stonebreak.blocks.anim.AnimatedBlockRegistry getAnimatedBlockRegistry() {
+        return animatedBlockRegistry;
     }
 
     /**

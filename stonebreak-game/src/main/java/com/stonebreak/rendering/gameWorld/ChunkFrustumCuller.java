@@ -38,4 +38,14 @@ public class ChunkFrustumCuller {
         float maxZ = minZ + WorldConfiguration.CHUNK_SIZE;
         return frustum.testAab(minX, 0.0f, minZ, maxX, WorldConfiguration.WORLD_HEIGHT, maxZ);
     }
+
+    /**
+     * Tests an arbitrary axis-aligned box against the frustum. Used by the
+     * FastLOD pass with each node's tight mesh Y bounds — full-height boxes
+     * would barely cull vertically when looking at the horizon.
+     */
+    public boolean isBoxVisible(float minX, float minY, float minZ,
+                                float maxX, float maxY, float maxZ) {
+        return frustum.testAab(minX, minY, minZ, maxX, maxY, maxZ);
+    }
 }

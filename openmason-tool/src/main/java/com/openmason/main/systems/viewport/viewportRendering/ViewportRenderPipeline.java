@@ -4,7 +4,6 @@ import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.rendering.core.SBTRenderer;
-import com.openmason.engine.rendering.model.gmr.mesh.MeshManager;
 import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.bones.BoneGizmoRenderer;
 import com.openmason.main.systems.skeleton.BoneStore;
@@ -20,8 +19,10 @@ import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.KnifePreviewRenderer;
+import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.ToolPreviewRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
+import org.joml.Matrix4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -83,9 +84,24 @@ public class ViewportRenderPipeline {
     // Knife tool preview renderer
     private final KnifePreviewRenderer knifePreviewRenderer;
 
+    // Modal tool preview renderer (inset/extrude overlay lines)
+    private final ToolPreviewRenderer toolPreviewRenderer;
+
     // Bone gizmo overlay (Maya-style joints + shafts, x-ray)
     private final BoneGizmoRenderer boneGizmoRenderer = new BoneGizmoRenderer();
     private BoneStore boneStore;
+
+    // Attachment point (socket) marker overlay (x-ray, shares the rigging toggle)
+    private final com.openmason.main.systems.viewport.viewportRendering.bones.AttachmentGizmoRenderer
+            attachmentGizmoRenderer =
+            new com.openmason.main.systems.viewport.viewportRendering.bones.AttachmentGizmoRenderer();
+    private com.openmason.main.systems.skeleton.AttachmentStore attachmentStore;
+
+    // Socket test models — accessory assets previewed at socket world frames
+    private final com.openmason.main.systems.viewport.viewportRendering.attachments.AttachmentPreviewRenderer
+            attachmentPreviewRenderer =
+            new com.openmason.main.systems.viewport.viewportRendering.attachments.AttachmentPreviewRenderer();
+    private com.openmason.main.systems.skeleton.AttachmentPreviewStore attachmentPreviewStore;
 
     // Diagnostic throttling
     private long lastDiagnosticLogTime = 0;
@@ -119,6 +135,7 @@ public class ViewportRenderPipeline {
         this.modelRenderer = modelRenderer;
         this.gizmoRenderer = gizmoRenderer;
         this.knifePreviewRenderer = new KnifePreviewRenderer();
+        this.toolPreviewRenderer = new ToolPreviewRenderer();
         this.sbtRenderer.initialize();
     }
 
@@ -137,6 +154,23 @@ public class ViewportRenderPipeline {
 
     public BoneStore getBoneStore() {
         return boneStore;
+    }
+
+    /**
+     * Inject the active session's attachment points (sockets). Read each frame when
+     * the rigging overlay is enabled; null disables socket rendering.
+     */
+    public void setAttachmentStore(com.openmason.main.systems.skeleton.AttachmentStore store) {
+        this.attachmentStore = store;
+    }
+
+    public com.openmason.main.systems.skeleton.AttachmentStore getAttachmentStore() {
+        return attachmentStore;
+    }
+
+    /** Inject the socket test-model state; null disables preview rendering. */
+    public void setAttachmentPreviewStore(com.openmason.main.systems.skeleton.AttachmentPreviewStore store) {
+        this.attachmentPreviewStore = store;
     }
 
     public void invalidateMeshData() {
@@ -184,6 +218,14 @@ public class ViewportRenderPipeline {
             // PASS 2: Render content (model/block/item)
             renderContent(viewportState, renderingState, transformState);
 
+            // PASS 2.5: Socket test models — accessory previews posed at their
+            // socket's world frame (normal depth-tested geometry, not overlay)
+            if (renderingState.getMode() == RenderingMode.BLOCK_MODEL
+                    && attachmentPreviewStore != null && !attachmentPreviewStore.isEmpty()
+                    && attachmentStore != null) {
+                renderAttachmentPreviews(transformState);
+            }
+
             // (polygon mode is always GL_FILL)
 
             // PASS 3: Render mesh (vertices + edges + faces, debug overlay, Blender-style)
@@ -196,6 +238,7 @@ public class ViewportRenderPipeline {
                         editMode == EditMode.NONE || editMode == EditMode.VERTEX);
                 renderEdges(renderingState, transformState);
                 renderKnifePreview(transformState);  // Render knife preview after edges, before faces
+                renderToolPreview(transformState);   // Render inset/extrude preview alongside the knife overlay
                 if (editMode == EditMode.NONE || editMode == EditMode.FACE) {
                     renderFaces(renderingState, transformState);  // Render face overlays LAST for proper blending
                 }
@@ -206,11 +249,15 @@ public class ViewportRenderPipeline {
                 renderGizmo();
             }
 
-            // PASS 5: Bone gizmos (editor-only overlay, x-ray)
+            // PASS 5: Bone gizmos + attachment point markers (editor-only overlay, x-ray)
             if (viewportState.getShowBones().get()
-                    && renderingState.getMode() == RenderingMode.BLOCK_MODEL
-                    && boneStore != null && !boneStore.isEmpty()) {
-                renderBoneGizmos(transformState);
+                    && renderingState.getMode() == RenderingMode.BLOCK_MODEL) {
+                if (boneStore != null && !boneStore.isEmpty()) {
+                    renderBoneGizmos(transformState);
+                }
+                if (attachmentStore != null && !attachmentStore.isEmpty()) {
+                    renderAttachmentGizmos(transformState);
+                }
             }
 
             // Unbind framebuffer
@@ -446,6 +493,57 @@ public class ViewportRenderPipeline {
     }
 
     /**
+     * Render each socket's test model at the socket's world frame
+     * ({@code modelTransform · T(pos)·R(rot)·S(scale)}) — the same matrix the
+     * game mounts attachments with at rest pose, so what the author sees here
+     * is what {@code /attach} produces. Sockets that were deleted keep their
+     * (skipped) entry until a new preview replaces it or the model reloads.
+     */
+    private void renderAttachmentPreviews(TransformState transformState) {
+        try {
+            if (!attachmentPreviewRenderer.isInitialized()) {
+                attachmentPreviewRenderer.initialize();
+            }
+            Matrix4f viewMatrix = context.getCamera().getViewMatrix();
+            Matrix4f projectionMatrix = context.getCamera().getProjectionMatrix();
+
+            for (var entry : attachmentPreviewStore.snapshot().entrySet()) {
+                Matrix4f socketFrame = attachmentStore.getWorldTransform(entry.getKey());
+                if (socketFrame == null) continue; // socket deleted — stale preview
+                Matrix4f model = new Matrix4f(transformState.getTransformMatrix()).mul(socketFrame);
+                var geometry = entry.getValue().asset()
+                        .geometryFor(com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT);
+                attachmentPreviewRenderer.render(geometry, model, viewMatrix, projectionMatrix);
+            }
+        } catch (Exception e) {
+            logger.error("Error rendering socket test models", e);
+        }
+    }
+
+    /**
+     * Render the attachment point (socket) markers using the gizmo shader. Drawn in
+     * the same rigging-overlay pass as bones, with depth-test disabled inside the
+     * renderer for x-ray display.
+     */
+    private void renderAttachmentGizmos(TransformState transformState) {
+        try {
+            if (!attachmentGizmoRenderer.isInitialized()) {
+                attachmentGizmoRenderer.initialize();
+            }
+            ShaderProgram gizmoShader = shaderManager.getShaderProgram(ShaderType.GIZMO);
+            attachmentGizmoRenderer.render(
+                    gizmoShader,
+                    context.getCamera().getViewMatrix(),
+                    context.getCamera().getProjectionMatrix(),
+                    transformState.getTransformMatrix(),
+                    attachmentStore
+            );
+        } catch (Exception e) {
+            logger.error("Error rendering attachment gizmos", e);
+        }
+    }
+
+    /**
      * Build a map of bone id → world pivots of parts that are direct children of that bone.
      * Used by {@link BoneGizmoRenderer} to draw the connecting shafts that emanate from a
      * bone's tail toward the parts it visually anchors. (The bone gizmo draws the shaft
@@ -493,33 +591,23 @@ public class ViewportRenderPipeline {
                     if (vertexDataNeedsUpdate) {
                         vertexRenderer.updateVertexDataFromGMR();
 
-                        // CRITICAL FIX: Sync MeshManager with GenericModelRenderer's actual vertices
-                        // This ensures coordinate consistency between all systems (VertexRenderer,
-                        // EdgeRenderer, FaceRenderer, MeshManager, GenericModelRenderer) for subdivision
-                        // to work correctly at any level (n+1 subdivisions).
-                        if (modelRenderer != null && modelRenderer.isInitialized()) {
-                            float[] modelMeshVertices = modelRenderer.getAllMeshVertexPositions();
-                            if (modelMeshVertices != null) {
-                                var meshManager = MeshManager.getInstance();
-                                meshManager.setMeshVertices(modelMeshVertices);
-                                logger.debug("Synced MeshManager with GenericModelRenderer: {} mesh vertices", modelMeshVertices.length / 3);
-
-                                // Initialize edge and face renderers BEFORE connecting to model
-                                // This ensures rebuildFromModel() doesn't return early due to !initialized
-                                if (!edgeRenderer.isInitialized()) {
-                                    edgeRenderer.initialize();
-                                }
-                                if (!faceRenderer.isInitialized()) {
-                                    faceRenderer.initialize();
-                                }
-
-                                // Wire all renderers to GenericModelRenderer as MeshChangeListeners
-                                // This enables index-based updates (Observer pattern) instead of position matching
-                                // GenericModelRenderer now owns the unique-to-mesh mapping
-                                vertexRenderer.setModelRenderer(modelRenderer);
-                                edgeRenderer.setModelRenderer(modelRenderer);
-                                faceRenderer.setGenericModelRenderer(modelRenderer);
+                        if (modelRenderer != null && modelRenderer.isInitialized()
+                                && modelRenderer.getAllMeshVertexPositions() != null) {
+                            // Initialize edge and face renderers BEFORE connecting to model
+                            // This ensures rebuildFromModel() doesn't return early due to !initialized
+                            if (!edgeRenderer.isInitialized()) {
+                                edgeRenderer.initialize();
                             }
+                            if (!faceRenderer.isInitialized()) {
+                                faceRenderer.initialize();
+                            }
+
+                            // Wire all renderers to GenericModelRenderer as MeshChangeListeners
+                            // This enables index-based updates (Observer pattern) instead of position matching
+                            // GenericModelRenderer owns the unique-to-mesh mapping
+                            vertexRenderer.setModelRenderer(modelRenderer);
+                            edgeRenderer.setModelRenderer(modelRenderer);
+                            faceRenderer.setGenericModelRenderer(modelRenderer);
                         }
 
                         vertexDataNeedsUpdate = false;
@@ -628,6 +716,10 @@ public class ViewportRenderPipeline {
                         faceDataNeedsUpdate = false;
                     }
 
+                    // Feed current socket positions so faces carrying an attachment
+                    // point get their cyan demarcation (no-op when unchanged).
+                    faceRenderer.setSocketPositions(collectSocketPositions());
+
                     ShaderProgram faceLineShader = shaderManager.getShaderProgram(ShaderType.BASIC);
                     ShaderProgram faceFillShader = shaderManager.getShaderProgram(ShaderType.FACE);
                     ShaderProgram faceDotShader = shaderManager.getShaderProgram(ShaderType.VERTEX);
@@ -653,6 +745,21 @@ public class ViewportRenderPipeline {
         }
     }
 
+    /**
+     * Model-space positions of every attachment point (socket), for the face
+     * renderer's socketed-face demarcation. Empty when no store or no sockets.
+     */
+    private java.util.List<org.joml.Vector3f> collectSocketPositions() {
+        if (attachmentStore == null || attachmentStore.isEmpty()) {
+            return java.util.List.of();
+        }
+        java.util.List<org.joml.Vector3f> out = new java.util.ArrayList<>(attachmentStore.size());
+        for (com.openmason.engine.format.omo.OMOFormat.AttachmentPointEntry p : attachmentStore.getPoints()) {
+            out.add(new org.joml.Vector3f(p.posX(), p.posY(), p.posZ()));
+        }
+        return out;
+    }
+
 
     /**
      * Render knife tool preview (cut point + preview line).
@@ -672,6 +779,27 @@ public class ViewportRenderPipeline {
             knifePreviewRenderer.render(basicShader, context, transformState.getTransformMatrix());
         } catch (Exception e) {
             logger.error("Error rendering knife preview", e);
+        }
+    }
+
+    /**
+     * Render the modal tool preview (inset/extrude overlay lines).
+     * Renders after edges (same layering as the knife preview).
+     */
+    private void renderToolPreview(TransformState transformState) {
+        if (toolPreviewRenderer == null || !toolPreviewRenderer.isActive()) {
+            return;
+        }
+
+        try {
+            if (!toolPreviewRenderer.isInitialized()) {
+                toolPreviewRenderer.initialize();
+            }
+
+            ShaderProgram basicShader = shaderManager.getShaderProgram(ShaderType.BASIC);
+            toolPreviewRenderer.render(basicShader, context, transformState.getTransformMatrix());
+        } catch (Exception e) {
+            logger.error("Error rendering tool preview", e);
         }
     }
 
@@ -723,6 +851,13 @@ public class ViewportRenderPipeline {
     }
 
     /**
+     * Gets the modal tool preview renderer for external access (inset/extrude wiring).
+     */
+    public ToolPreviewRenderer getToolPreviewRenderer() {
+        return toolPreviewRenderer;
+    }
+
+    /**
      * Clean up all render pipeline resources.
      */
     public void cleanup() {
@@ -741,8 +876,13 @@ public class ViewportRenderPipeline {
         if (knifePreviewRenderer != null && knifePreviewRenderer.isInitialized()) {
             knifePreviewRenderer.cleanup();
         }
+        if (toolPreviewRenderer != null && toolPreviewRenderer.isInitialized()) {
+            toolPreviewRenderer.cleanup();
+        }
         if (boneGizmoRenderer.isInitialized()) {
             boneGizmoRenderer.cleanup();
+            attachmentGizmoRenderer.cleanup();
+            attachmentPreviewRenderer.cleanup();
         }
         logger.debug("ViewportRenderPipeline cleanup complete");
     }

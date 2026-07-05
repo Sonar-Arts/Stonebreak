@@ -2,11 +2,15 @@ package com.openmason.main.systems.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import static com.openmason.main.systems.mcp.McpArgs.intAt;
+import static com.openmason.main.systems.mcp.McpArgs.optBool;
+import static com.openmason.main.systems.mcp.McpArgs.optDouble;
+import static com.openmason.main.systems.mcp.McpArgs.reqInt;
+import static com.openmason.main.systems.mcp.McpArgs.reqString;
 
 /**
  * Wires the {@link TextureEditingService} surface as MCP tools for the
@@ -36,15 +40,9 @@ public final class TextureToolDefinitions {
                 args -> editor.getCanvasInfo()));
 
         registry.register(new McpTool(
-                "tex_get_pixel",
-                "Read the RGBA color of a single pixel on the active layer.",
-                schema().intg("x", "Pixel X").intg("y", "Pixel Y").required("x", "y").build(),
-                args -> editor.getPixel(reqInt(args, "x"), reqInt(args, "y"))));
-
-        registry.register(new McpTool(
                 "tex_get_region",
                 "Read a rectangular region of the active layer as a flat [r,g,b,a, ...] array, "
-                        + "row-major from (x,y). Far cheaper than per-pixel tex_get_pixel calls.",
+                        + "row-major from (x,y). Use w=h=1 for a single pixel.",
                 schema()
                         .intg("x", "Origin X").intg("y", "Origin Y")
                         .intg("w", "Width in pixels").intg("h", "Height in pixels")
@@ -63,50 +61,34 @@ public final class TextureToolDefinitions {
         // ---------- Mutate: pixel-level drawing ----------
 
         registry.register(new McpTool(
-                "tex_set_pixel",
-                "Set a single pixel on the active layer. Recorded as one undoable step.",
-                rgbaSchema()
-                        .intg("x", "Pixel X").intg("y", "Pixel Y")
-                        .required("x", "y", "color")
-                        .build(),
-                args -> {
-                    int[] c = reqRgba(args);
-                    return editor.setPixel(
-                            reqInt(args, "x"), reqInt(args, "y"), c[0], c[1], c[2], c[3]);
-                }));
-
-        registry.register(new McpTool(
                 "tex_set_pixels",
-                "Bulk per-pixel write. 'pixels' is a flat int array [x,y,r,g,b,a, x,y,r,g,b,a, ...] "
-                        + "(6 values per pixel). All recorded as a single undo step.",
+                "Per-pixel write (single or bulk). 'pixels' is a flat int array "
+                        + "[x,y,r,g,b,a, x,y,r,g,b,a, ...] (6 values per pixel), one undo step.",
                 pixelsArraySchema(),
                 args -> editor.setPixels(parsePixels(args.get("pixels")))));
 
         registry.register(new McpTool(
-                "tex_fill_canvas",
-                "Fill every editable pixel of the active layer with a solid RGBA color.",
-                rgbaSchema().required("color").build(),
+                "tex_fill",
+                "Fill with a solid RGBA color: the whole active layer, or just 'rect' [x,y,w,h] "
+                        + "when given. color [0,0,0,0] clears to transparent.",
+                rgbaSchema()
+                        .intArr("rect", "Optional [x,y,w,h] rectangle; omit to fill the whole layer")
+                        .required("color")
+                        .build(),
                 args -> {
                     int[] c = reqRgba(args);
+                    int[] rect = McpArgs.optIntArray(args, "rect");
+                    if (rect != null) {
+                        if (rect.length != 4) {
+                            throw new IllegalArgumentException("rect must be [x,y,w,h]");
+                        }
+                        return editor.fillRect(rect[0], rect[1], rect[2], rect[3],
+                                c[0], c[1], c[2], c[3]);
+                    }
+                    if (c[0] == 0 && c[1] == 0 && c[2] == 0 && c[3] == 0) {
+                        return editor.clearCanvas();
+                    }
                     return editor.fillCanvas(c[0], c[1], c[2], c[3]);
-                }));
-
-        registry.register(new McpTool(
-                "tex_clear_canvas",
-                "Clear the active layer to transparent (RGBA 0,0,0,0).",
-                schema().build(),
-                args -> editor.clearCanvas()));
-
-        registry.register(new McpTool(
-                "tex_fill_rect",
-                "Fill a solid rectangle (origin x,y with width w and height h) with an RGBA color.",
-                rectSchema().required("x", "y", "w", "h", "color").build(),
-                args -> {
-                    int[] c = reqRgba(args);
-                    return editor.fillRect(
-                            reqInt(args, "x"), reqInt(args, "y"),
-                            reqInt(args, "w"), reqInt(args, "h"),
-                            c[0], c[1], c[2], c[3]);
                 }));
 
         registry.register(new McpTool(
@@ -180,20 +162,6 @@ public final class TextureToolDefinitions {
                         (float) optDouble(args, "spread", 0.5),
                         (float) optDouble(args, "edge_softness", 0.0))));
 
-        // ---------- Undo / redo ----------
-
-        registry.register(new McpTool(
-                "tex_undo",
-                "Undo the most recent texture-editor command on the active project.",
-                schema().build(),
-                args -> editor.undo()));
-
-        registry.register(new McpTool(
-                "tex_redo",
-                "Redo the most recently undone texture-editor command.",
-                schema().build(),
-                args -> editor.redo()));
-
         // ---------- Layers ----------
 
         registry.register(new McpTool(
@@ -209,30 +177,32 @@ public final class TextureToolDefinitions {
                 args -> editor.removeLayer(reqInt(args, "index"))));
 
         registry.register(new McpTool(
-                "tex_set_active_layer",
-                "Make the layer at the given index the active drawing target.",
-                schema().intg("index", "Layer index").required("index").build(),
-                args -> editor.setActiveLayer(reqInt(args, "index"))));
-
-        registry.register(new McpTool(
-                "tex_set_layer_visibility",
-                "Show or hide the layer at the given index.",
-                schema()
-                        .intg("index", "Layer index")
-                        .bool("visible", "true to show, false to hide")
-                        .required("index", "visible")
-                        .build(),
-                args -> editor.setLayerVisibility(reqInt(args, "index"), args.get("visible").asBoolean())));
-
-        registry.register(new McpTool(
-                "tex_rename_layer",
-                "Rename the layer at the given index.",
+                "tex_set_layer",
+                "Update the layer at 'index': any of name (rename), visible (show/hide), "
+                        + "active=true (make it the drawing target). Omitted fields keep their value.",
                 schema()
                         .intg("index", "Layer index")
                         .str("name", "New layer name")
-                        .required("index", "name")
+                        .bool("visible", "true to show, false to hide")
+                        .bool("active", "true to make this the active drawing layer")
+                        .required("index")
                         .build(),
-                args -> editor.renameLayer(reqInt(args, "index"), reqString(args, "name"))));
+                args -> {
+                    int index = reqInt(args, "index");
+                    Object last = null;
+                    String name = McpArgs.optString(args, "name");
+                    if (name != null) last = editor.renameLayer(index, name);
+                    JsonNode visible = args.get("visible");
+                    if (visible != null && visible.isBoolean()) {
+                        last = editor.setLayerVisibility(index, visible.asBoolean());
+                    }
+                    if (optBool(args, "active", false)) last = editor.setActiveLayer(index);
+                    if (last == null) {
+                        throw new IllegalArgumentException(
+                                "pass at least one of name, visible, active");
+                    }
+                    return last;
+                }));
 
         // ---------- Resize ----------
 
@@ -258,17 +228,17 @@ public final class TextureToolDefinitions {
                 args -> editor.exportPng(reqString(args, "file_path"))));
     }
 
-    // ===================== Schema builder =====================
+    // ===================== Schema helpers =====================
 
-    private SchemaBuilder schema() {
-        return new SchemaBuilder(mapper);
+    private McpSchema schema() {
+        return McpSchema.of(mapper);
     }
 
-    private SchemaBuilder rgbaSchema() {
+    private McpSchema rgbaSchema() {
         return schema().rgba("color", "RGBA [r,g,b,a], each 0..255");
     }
 
-    private SchemaBuilder rectSchema() {
+    private McpSchema rectSchema() {
         return rgbaSchema()
                 .intg("x", "Origin X")
                 .intg("y", "Origin Y")
@@ -283,70 +253,6 @@ public final class TextureToolDefinitions {
                 .build();
     }
 
-    private static final class SchemaBuilder {
-        private final ObjectMapper mapper;
-        private final ObjectNode root;
-        private final ObjectNode properties;
-        private final ArrayNode required;
-
-        SchemaBuilder(ObjectMapper mapper) {
-            this.mapper = mapper;
-            this.root = mapper.createObjectNode();
-            this.properties = mapper.createObjectNode();
-            this.required = mapper.createArrayNode();
-            root.put("type", "object");
-            root.set("properties", properties);
-        }
-
-        SchemaBuilder str(String name, String description) { return prop(name, "string", description); }
-        SchemaBuilder num(String name, String description) { return prop(name, "number", description); }
-        SchemaBuilder intg(String name, String description) { return prop(name, "integer", description); }
-        SchemaBuilder bool(String name, String description) { return prop(name, "boolean", description); }
-
-        /** Fixed-length [r,g,b,a] integer array. */
-        SchemaBuilder rgba(String name, String description) {
-            ObjectNode def = intArrNode(description);
-            def.put("minItems", 4);
-            def.put("maxItems", 4);
-            properties.set(name, def);
-            return this;
-        }
-
-        /** Variable-length integer array. */
-        SchemaBuilder intArr(String name, String description) {
-            properties.set(name, intArrNode(description));
-            return this;
-        }
-
-        private ObjectNode intArrNode(String description) {
-            ObjectNode def = mapper.createObjectNode();
-            def.put("type", "array");
-            def.put("description", description);
-            ObjectNode items = mapper.createObjectNode();
-            items.put("type", "integer");
-            def.set("items", items);
-            return def;
-        }
-
-        SchemaBuilder prop(String name, String type, String description) {
-            ObjectNode def = mapper.createObjectNode();
-            def.put("type", type);
-            def.put("description", description);
-            properties.set(name, def);
-            return this;
-        }
-
-        SchemaBuilder required(String... names) {
-            for (String n : names) required.add(n);
-            return this;
-        }
-
-        JsonNode build() {
-            if (!required.isEmpty()) root.set("required", required);
-            return root;
-        }
-    }
-
     // ===================== Argument parsing =====================
 
     /** Parse a flat [x,y,r,g,b,a, ...] array (6 ints per pixel). */
@@ -358,61 +264,15 @@ public final class TextureToolDefinitions {
         List<TextureEditingService.PixelEntry> out = new ArrayList<>(arr.size() / 6);
         for (int i = 0; i < arr.size(); i += 6) {
             out.add(new TextureEditingService.PixelEntry(
-                    intAt(arr, i), intAt(arr, i + 1),
-                    intAt(arr, i + 2), intAt(arr, i + 3),
-                    intAt(arr, i + 4), intAt(arr, i + 5)));
+                    intAt(arr, i, "pixels"), intAt(arr, i + 1, "pixels"),
+                    intAt(arr, i + 2, "pixels"), intAt(arr, i + 3, "pixels"),
+                    intAt(arr, i + 4, "pixels"), intAt(arr, i + 5, "pixels")));
         }
         return out;
-    }
-
-    private static int intAt(JsonNode arr, int index) {
-        JsonNode n = arr.get(index);
-        if (n == null || !n.isNumber()) {
-            throw new IllegalArgumentException("pixels[" + index + "] is not a number");
-        }
-        return n.intValue();
     }
 
     /** Parse the required [r,g,b,a] 'color' array argument. */
     private static int[] reqRgba(JsonNode args) {
-        JsonNode n = args.get("color");
-        if (n == null || !n.isArray() || n.size() != 4) {
-            throw new IllegalArgumentException("Missing required [r,g,b,a] argument: color");
-        }
-        int[] out = new int[4];
-        for (int i = 0; i < 4; i++) {
-            JsonNode c = n.get(i);
-            if (c == null || !c.isNumber()) {
-                throw new IllegalArgumentException("color[" + i + "] is not a number");
-            }
-            out[i] = c.intValue();
-        }
-        return out;
-    }
-
-    private static String reqString(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || n.isNull() || !n.isTextual() || n.asText().isBlank()) {
-            throw new IllegalArgumentException("Missing required string argument: " + key);
-        }
-        return n.asText();
-    }
-
-    private static int reqInt(JsonNode args, String key) {
-        JsonNode n = args.get(key);
-        if (n == null || !n.isNumber()) {
-            throw new IllegalArgumentException("Missing required integer argument: " + key);
-        }
-        return n.intValue();
-    }
-
-    private static double optDouble(JsonNode args, String key, double fallback) {
-        JsonNode n = args.get(key);
-        return (n == null || n.isNull() || !n.isNumber()) ? fallback : n.doubleValue();
-    }
-
-    private static boolean optBool(JsonNode args, String key, boolean fallback) {
-        JsonNode n = args.get(key);
-        return (n == null || n.isNull() || !n.isBoolean()) ? fallback : n.asBoolean();
+        return McpArgs.reqRgba(args, "color");
     }
 }

@@ -25,6 +25,17 @@ public final class ClientPlayerHandler {
 
     private final Map<Integer, RemotePlayer> remotePlayers = new ConcurrentHashMap<>();
 
+    /**
+     * Roster joins that arrived before the client world was ready. The server sends the
+     * roster bootstrap right after WelcomeS2C, while the client is still building/swapping
+     * its render world on the "ClientWorld-Build" thread — spawning then would add the
+     * figure to the PREVIOUS session's entity manager (permanently invisible on a rejoin).
+     * Replayed by {@link #tick()} once {@code Game.isClientWorldReady()}.
+     */
+    private final java.util.Deque<PlayerJoinS2C> pendingJoins = new java.util.ArrayDeque<>();
+    /** Held-item snapshots for players whose figure doesn't exist yet (join buffered). */
+    private final Map<Integer, Integer> pendingHeldItems = new ConcurrentHashMap<>();
+
     public void handlePlayerState(int localPlayerId, PlayerStateS2C ps) {
         if (ps.playerId() == localPlayerId) {
             return;
@@ -41,11 +52,17 @@ public final class ClientPlayerHandler {
             return;
         }
         departed.remove(j.playerId());
+        if (!com.stonebreak.core.Game.isClientWorldReady()) {
+            pendingJoins.add(j);
+            return;
+        }
         spawnRemote(j.playerId(), j.username(), j.x(), j.y(), j.z());
     }
 
     public void handleLeave(PlayerLeaveS2C l) {
         departed.add(l.playerId());
+        pendingJoins.removeIf(j -> j.playerId() == l.playerId());
+        pendingHeldItems.remove(l.playerId());
         despawnRemote(l.playerId());
     }
 
@@ -56,6 +73,27 @@ public final class ClientPlayerHandler {
         RemotePlayer rp = remotePlayers.get(h.playerId());
         if (rp != null) {
             rp.setHeldItemId(h.itemId());
+        } else if (!departed.contains(h.playerId())) {
+            // Figure not spawned yet (join buffered during a world rebuild) — the held-item
+            // snapshot is sent once at join, so keep it for when the figure appears.
+            pendingHeldItems.put(h.playerId(), h.itemId());
+        }
+    }
+
+    /** Replay joins buffered while the client world was being built/swapped. */
+    public void tick() {
+        drainPendingJoins();
+    }
+
+    private void drainPendingJoins() {
+        if (pendingJoins.isEmpty() || !com.stonebreak.core.Game.isClientWorldReady()) {
+            return;
+        }
+        PlayerJoinS2C j;
+        while ((j = pendingJoins.poll()) != null) {
+            if (!departed.contains(j.playerId())) {
+                spawnRemote(j.playerId(), j.username(), j.x(), j.y(), j.z());
+            }
         }
     }
 
@@ -111,12 +149,16 @@ public final class ClientPlayerHandler {
         }
         remotePlayers.clear();
         departed.clear();
+        pendingJoins.clear();
+        pendingHeldItems.clear();
     }
 
     // ─── Remote-player lifecycle ────────────────────────────────────────────────
 
     private void spawnRemote(int playerId, String username, float x, float y, float z) {
-        if (Game.getWorld() == null || Game.getEntityManager() == null) {
+        // Never spawn against a not-yet-swapped world (see pendingJoins): the figure would
+        // land in the previous session's entity manager and never render.
+        if (!Game.isClientWorldReady()) {
             return;
         }
         if (remotePlayers.containsKey(playerId)) {
@@ -129,6 +171,10 @@ public final class ClientPlayerHandler {
         rp.setInterpolator(interp);
         Game.getEntityManager().addEntity(rp);
         remotePlayers.put(playerId, rp);
+        Integer heldItem = pendingHeldItems.remove(playerId);
+        if (heldItem != null) {
+            rp.setHeldItemId(heldItem);
+        }
     }
 
     private void despawnRemote(int playerId) {
@@ -139,6 +185,13 @@ public final class ClientPlayerHandler {
     }
 
     private void applyRemoteState(int playerId, float x, float y, float z, float yaw, float pitch, byte flags) {
+        // Droppable 20 Hz stream: while the world is rebuilding just drop the packet (the
+        // next one is 50 ms away). Replay buffered joins first so the on-demand fallback
+        // below never beats a real join to the spawn (it would lose the username).
+        if (!Game.isClientWorldReady()) {
+            return;
+        }
+        drainPendingJoins();
         RemotePlayer rp = remotePlayers.get(playerId);
         // Defensive: if the entity died via another path (chunk unload, world reload), drop
         // the stale reference and respawn from the latest state.

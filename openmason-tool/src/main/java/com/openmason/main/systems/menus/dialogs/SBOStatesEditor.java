@@ -35,17 +35,26 @@ public final class SBOStatesEditor {
         final ImString name = new ImString(64);
         byte[] bytes;
         String sourceLabel;
+        // Optional animation clip (1.6+, model SBOs only)
+        byte[] clipBytes;
+        String clipLabel;
+        boolean clipLoop;
 
         Row(String n, byte[] b, String label) {
             if (n != null) name.set(n);
             this.bytes = b;
             this.sourceLabel = label;
         }
+
+        boolean hasClip() {
+            return clipBytes != null && clipBytes.length > 0;
+        }
     }
 
     private final Runnable onDirty;
     private final Consumer<Consumer<String>> omoPicker;
     private final Consumer<Consumer<String>> omtPicker;
+    private final Consumer<Consumer<String>> clipPicker;
 
     private final List<Row> rows = new ArrayList<>();
     private int defaultRowIndex = 0;
@@ -53,14 +62,17 @@ public final class SBOStatesEditor {
 
     public SBOStatesEditor(Runnable onDirty,
                            Consumer<Consumer<String>> omoPicker,
-                           Consumer<Consumer<String>> omtPicker) {
+                           Consumer<Consumer<String>> omtPicker,
+                           Consumer<Consumer<String>> clipPicker) {
         this.onDirty = onDirty != null ? onDirty : () -> {};
         this.omoPicker = omoPicker;
         this.omtPicker = omtPicker;
+        this.clipPicker = clipPicker;
     }
 
     public void load(SBOFormat.Document doc,
                      Map<String, byte[]> stateBytes,
+                     Map<String, byte[]> stateClipBytes,
                      byte[] defaultBytes) {
         rows.clear();
         defaultRowIndex = 0;
@@ -72,7 +84,14 @@ public final class SBOStatesEditor {
                 if (bytes == null && e.name().equals(doc.defaultStateName())) {
                     bytes = defaultBytes;
                 }
-                rows.add(new Row(e.name(), bytes, "(original)"));
+                Row row = new Row(e.name(), bytes, "(original)");
+                if (e.hasAnimation()) {
+                    row.clipBytes = stateClipBytes != null ? stateClipBytes.get(e.name()) : null;
+                    row.clipLabel = e.animation().clipName() != null
+                            ? e.animation().clipName() : "(original)";
+                    row.clipLoop = e.animation().loop();
+                }
+                rows.add(row);
                 if (e.name().equals(doc.defaultStateName())) defaultRowIndex = i;
                 i++;
             }
@@ -112,7 +131,14 @@ public final class SBOStatesEditor {
             String name = r.name.get().trim();
             String filename = SBOFormat.STATES_DIR_PREFIX + name + "/"
                     + (modelKind ? SBOFormat.EMBEDDED_OMO_FILENAME : SBOFormat.EMBEDDED_OMT_FILENAME);
-            out.add(new SBOFormat.StateEntry(name, filename, modelKind, ""));
+            // Animation ref stub: only the loop flag is authored here — the
+            // serializer re-probes file/checksum/clipName/duration/fps from
+            // the bytes on save but preserves this loop value.
+            SBOFormat.AnimationRef anim = r.hasClip()
+                    ? new SBOFormat.AnimationRef(SBOFormat.stateClipPath(name), "", null,
+                            0f, 0f, r.clipLoop, List.of())
+                    : null;
+            out.add(new SBOFormat.StateEntry(name, filename, modelKind, "", anim));
         }
         return out;
     }
@@ -122,6 +148,15 @@ public final class SBOStatesEditor {
         Map<String, byte[]> out = new LinkedHashMap<>();
         for (Row r : rows) {
             out.put(r.name.get().trim(), r.bytes);
+        }
+        return out;
+    }
+
+    /** Per-state clip byte map for {@code exportFromDocument} (1.6+). */
+    public Map<String, byte[]> stateClipBytesByName() {
+        Map<String, byte[]> out = new LinkedHashMap<>();
+        for (Row r : rows) {
+            if (r.hasClip()) out.put(r.name.get().trim(), r.clipBytes);
         }
         return out;
     }
@@ -194,6 +229,40 @@ public final class SBOStatesEditor {
             ImGui.textDisabled("  source: " + (row.sourceLabel != null ? row.sourceLabel : "?")
                     + "  (" + size + ")");
 
+            // Animation clip line (1.6+, model SBOs only)
+            if (modelKind && clipPicker != null) {
+                if (row.hasClip()) {
+                    ImGui.text("  Clip: " + (row.clipLabel != null ? row.clipLabel : "?")
+                            + "  (" + humanBytes(row.clipBytes.length) + ")");
+                    ImGui.sameLine();
+                    boolean loopBefore = row.clipLoop;
+                    if (ImGui.radioButton("Loop##clip_loop", row.clipLoop)) row.clipLoop = true;
+                    ImGui.sameLine();
+                    if (ImGui.radioButton("Play once##clip_once", !row.clipLoop)) row.clipLoop = false;
+                    if (loopBefore != row.clipLoop) onDirty.run();
+                    if (ImGui.isItemHovered()) {
+                        ImGui.setTooltip("Play once: run through a single time and hold the final pose"
+                                + " (e.g. a door opening).");
+                    }
+                    ImGui.sameLine();
+                    if (ImGui.button("Replace clip...")) {
+                        pickClip(row);
+                    }
+                    ImGui.sameLine();
+                    if (ImGui.button("Clear clip")) {
+                        row.clipBytes = null;
+                        row.clipLabel = null;
+                        onDirty.run();
+                    }
+                } else {
+                    ImGui.textDisabled("  Clip: none");
+                    ImGui.sameLine();
+                    if (ImGui.button("Set clip...")) {
+                        pickClip(row);
+                    }
+                }
+            }
+
             ImGui.dummy(0, 4);
             ImGui.popID();
         }
@@ -227,6 +296,21 @@ public final class SBOStatesEditor {
             } catch (IOException ex) {
                 logger.error("Failed to read state asset {}", picked, ex);
                 row.sourceLabel = "(read failed)";
+            }
+        });
+    }
+
+    private void pickClip(Row row) {
+        if (clipPicker == null) return;
+        clipPicker.accept(picked -> {
+            if (picked == null || picked.isBlank()) return;
+            try {
+                Path path = Path.of(picked);
+                row.clipBytes = Files.readAllBytes(path);
+                row.clipLabel = path.getFileName().toString();
+                onDirty.run();
+            } catch (IOException ex) {
+                logger.error("Failed to read animation clip {}", picked, ex);
             }
         });
     }

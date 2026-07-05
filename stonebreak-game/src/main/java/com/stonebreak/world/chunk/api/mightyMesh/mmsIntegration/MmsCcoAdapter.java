@@ -1,7 +1,6 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.blocks.Water;
 import com.stonebreak.world.World;
 import com.openmason.engine.voxel.cco.core.CcoChunkData;
 import com.openmason.engine.voxel.cco.data.CcoChunkState;
@@ -41,10 +40,6 @@ public class MmsCcoAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(MmsCcoAdapter.class);
 
-    // Water uses alpha blending, never alpha testing — flags are always zero.
-    // Hoisted to avoid per-face allocation in the meshing hot path.
-    private static final float[] WATER_ALPHA_FLAGS = {0.0f, 0.0f, 0.0f, 0.0f};
-
     private final MmsGeometryService cuboidGenerator;
     private final MmsCrossGenerator crossGenerator;
     private final MmsTextureMapper textureMapper;
@@ -71,7 +66,7 @@ public class MmsCcoAdapter {
         this.world = world;
 
         if (world != null) {
-            this.waterGenerator = new MmsWaterGenerator(world, textureMapper);
+            this.waterGenerator = new MmsWaterGenerator(world);
             this.shadowContext = new com.stonebreak.world.lighting.WorldLightingContext(world);
             logger.debug("[MmsCcoAdapter] Water generator initialized with provided world instance");
         }
@@ -88,7 +83,7 @@ public class MmsCcoAdapter {
             throw new IllegalArgumentException("World cannot be null when setting");
         }
         this.world = world;
-        this.waterGenerator = new MmsWaterGenerator(world, textureMapper);
+        this.waterGenerator = new MmsWaterGenerator(world);
         this.shadowContext = new com.stonebreak.world.lighting.WorldLightingContext(world);
         logger.debug("[MmsCcoAdapter] World instance set successfully (water generator initialized)");
     }
@@ -144,6 +139,13 @@ public class MmsCcoAdapter {
         MmsMeshBuilder atlasBuilder = builderPool.acquire(
             WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE * 64
         );
+        // Water geometry builds into its own mesh, drawn by the dedicated
+        // WaterRenderer (own shader) instead of riding the atlas mesh through
+        // the world shader's per-fragment pass discards. Water is sparse, so
+        // the estimate is deliberately small.
+        MmsMeshBuilder waterBuilder = builderPool.acquire(
+            WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE * 8
+        );
 
         try {
             int chunkX = chunkData.getChunkX();
@@ -163,6 +165,14 @@ public class MmsCcoAdapter {
 
                         // Skip air blocks
                         if (blockType == BlockType.AIR) {
+                            continue;
+                        }
+
+                        // Skip animated blocks (doors): drawn per-frame by
+                        // AnimatedBlockRenderer. They have no SBO stamp, and
+                        // without this guard the legacy cube fallback below
+                        // would bake a bogus full cube into their cell.
+                        if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(blockType)) {
                             continue;
                         }
 
@@ -193,9 +203,9 @@ public class MmsCcoAdapter {
                             continue;
                         }
 
-                        // Handle water blocks with special geometry
+                        // Handle water blocks with special geometry (own mesh)
                         if (blockType == BlockType.WATER) {
-                            addWaterBlockWithCulling(atlasBuilder, lx, ly, lz, chunkX, chunkZ, chunkData);
+                            addWaterBlockWithCulling(waterBuilder, lx, ly, lz, chunkX, chunkZ, chunkData);
                             continue;
                         }
 
@@ -205,9 +215,10 @@ public class MmsCcoAdapter {
                 }
             }
 
-            // Build final mesh (all geometry in one atlas mesh)
+            // Build final meshes (solids in the atlas mesh, water in its own)
             MmsMeshData atlasMesh = atlasBuilder.build();
-            ChunkMeshResult meshResult = new ChunkMeshResult(atlasMesh);
+            MmsMeshData waterMesh = waterBuilder.build();
+            ChunkMeshResult meshResult = new ChunkMeshResult(atlasMesh, waterMesh, null);
 
             // Update CCO state
             stateManager.removeState(CcoChunkState.MESH_GENERATING);
@@ -222,8 +233,9 @@ public class MmsCcoAdapter {
             throw new RuntimeException("Mesh generation failed for chunk (" +
                 chunkData.getChunkX() + ", " + chunkData.getChunkZ() + ")", e);
         } finally {
-            // Builder's data has been copied out by build(); safe to recycle.
+            // Builders' data has been copied out by build(); safe to recycle.
             builderPool.release(atlasBuilder);
+            builderPool.release(waterBuilder);
         }
     }
 
@@ -278,7 +290,25 @@ public class MmsCcoAdapter {
     }
 
     /**
-     * Adds a water block with face culling and variable height geometry.
+     * Face-local texture coordinates for water faces. The dedicated water
+     * shader generates its surface pattern procedurally and derives its flow
+     * coordinates in WORLD space (seamless across neighboring columns), so
+     * these UVs are currently unread by the fragment stage — they stay in the
+     * layout as the face-local parameterization (U across, V downward, v=0 at
+     * the top edge) for debugging/future use. Vertex winding in
+     * {@link MmsWaterGenerator#generateFaceVertices}: top face and all side
+     * faces share the (v0,v1,v2,v3) = (·,·,top,top) order below; the bottom
+     * face winds the other way.
+     */
+    private static final float[] WATER_UVS_TOP_AND_SIDES = {0, 1, 1, 1, 1, 0, 0, 0};
+    private static final float[] WATER_UVS_BOTTOM = {0, 0, 1, 0, 1, 1, 0, 1};
+
+    /**
+     * Adds a water block to the WATER mesh builder with face culling and
+     * variable height geometry. Water-mesh vertex semantics (consumed by the
+     * dedicated water shader, not the world shader): tex = face-local UV,
+     * flags.x = surface-height fraction, flags.y = falling flag,
+     * flags.z = source flag, flags.w = light, layer = unused (0).
      */
     private void addWaterBlockWithCulling(MmsMeshBuilder builder,
                                          int lx, int ly, int lz, int chunkX, int chunkZ,
@@ -296,6 +326,12 @@ public class MmsCcoAdapter {
         int blockY = (int) Math.floor(worldY);
         int blockZ = (int) Math.floor(worldZ);
 
+        // Per-cell flow state from the chunk-owned water layer (the sim SOT).
+        int flowValue = world != null ? world.getWaterLevelAt(blockX, blockY, blockZ)
+                                      : com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE;
+        float fallingFlag = flowValue == com.stonebreak.world.chunk.ChunkWaterLayer.FALLING ? 1.0f : 0.0f;
+        float sourceFlag = flowValue == com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE ? 1.0f : 0.0f;
+
         // Check each face for culling (water has special culling rules)
         for (int face = 0; face < 6; face++) {
             if (!shouldRenderWaterFace(lx, ly, lz, face, chunkData)) {
@@ -305,11 +341,7 @@ public class MmsCcoAdapter {
             // Generate water-specific geometry with variable heights
             float[] vertices = waterGenerator.generateFaceVertices(face, worldX, worldY, worldZ);
             float[] normals = waterGenerator.generateFaceNormals(face);
-
-            // Generate texture coordinates with water height adjustment
-            float[] baseTexCoords = textureMapper.generateFaceTextureCoordinates(BlockType.WATER, face);
-            float[] texCoords = waterGenerator.generateWaterTextureCoordinates(face, blockX, blockY, blockZ, baseTexCoords);
-            float[] waterLayers = textureMapper.generateFaceLayers(BlockType.WATER, face);
+            float[] texCoords = face == 1 ? WATER_UVS_BOTTOM : WATER_UVS_TOP_AND_SIDES;
 
             // generateWaterFlags ignores its blockHeight parameter; one call is sufficient.
             // Returns a per-thread scratch array — read it before the next call.
@@ -325,7 +357,7 @@ public class MmsCcoAdapter {
                     vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
                     texCoords[tIdx], texCoords[tIdx + 1],
                     normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                    waterFlags[i], WATER_ALPHA_FLAGS[i], 0.0f, 1.0f, waterLayers[i] // Water flags encode height
+                    waterFlags[i], fallingFlag, sourceFlag, 1.0f, 0.0f
                 );
             }
             builder.endFace();
@@ -436,38 +468,18 @@ public class MmsCcoAdapter {
             if (face == 0) { // Top face
                 return !adjacentBlock.isTransparent() || adjacentBlock == BlockType.AIR;
             }
-            // Submerged-continuous cull: surface heights are sewn continuous across
-            // cells (MmsWaterGenerator.getSewnCornerHeights), but this culling is
-            // per-cell. The top cell of a variable-height column next to an AIR
-            // neighbor whose column holds water one cell BELOW is interior to one
-            // continuous water body — rendering that side face paints a spurious
-            // vertical sheet at the column/chunk border. Beach and waterfall edges
-            // (neighbor-below dry) must still render.
-            if (face >= 2 && adjacentBlock == BlockType.AIR
-                    && isWaterCell(adjX, adjY - 1, adjZ, chunkData)) {
-                return false;
-            }
+            // Side faces vs air/transparent always render. There is deliberately
+            // NO submerged-continuous heuristic here: any per-cell rule that
+            // culls a side face because water sits below the neighbor punches
+            // holes at waterfall junctions, pool rims and source walls (the
+            // cases are not distinguishable at cull time). Instead the geometry
+            // itself is honest — side faces only ever span their cell's actual
+            // water extent, and MmsWaterGenerator seals their bottom edge
+            // against the neighbor column's water surface (wave-proof overlap)
+            // so junctions can't open slits. Surface continuity across cells is
+            // guaranteed by the sewn corner heights (getSewnCornerHeights).
             return adjacentBlock.isTransparent() && adjacentBlock != BlockType.WATER;
         }
-    }
-
-    /**
-     * Water lives in two representations: the chunk block array and the dynamic
-     * WaterSystem (per-cell flow levels). The geometry side reads both
-     * (MmsWaterGenerator.resolveWaterHeight), so face culling must agree with
-     * both or the two disagree and spurious faces get drawn.
-     */
-    private boolean isWaterCell(int adjX, int adjY, int adjZ, CcoChunkData chunkData) {
-        if (adjY < 0 || adjY >= WorldConfiguration.WORLD_HEIGHT) {
-            return false;
-        }
-        if (getAdjacentBlock(adjX, adjY, adjZ, chunkData) == BlockType.WATER) {
-            return true;
-        }
-        int worldX = adjX + chunkData.getChunkX() * WorldConfiguration.CHUNK_SIZE;
-        int worldZ = adjZ + chunkData.getChunkZ() * WorldConfiguration.CHUNK_SIZE;
-        return Water.getWaterBlock(worldX, adjY, worldZ) != null
-            || Water.getWaterLevel(worldX, adjY, worldZ) > 0.0f;
     }
 
     /**

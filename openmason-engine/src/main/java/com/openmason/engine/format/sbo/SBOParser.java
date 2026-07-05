@@ -81,6 +81,7 @@ public class SBOParser {
         Map<String, byte[]> stateOmoBytes = new LinkedHashMap<>();
         Map<String, byte[]> stateOmtBytes = new LinkedHashMap<>();
         Map<String, OMOReader.ReadResult> stateOmoData = new LinkedHashMap<>();
+        Map<String, byte[]> stateClipBytes = new LinkedHashMap<>();
 
         if (manifest.hasStates()) {
             for (SBOFormat.StateEntry e : manifest.states()) {
@@ -103,6 +104,16 @@ public class SBOParser {
                 } else {
                     stateOmtBytes.put(e.name(), data);
                 }
+
+                if (e.hasAnimation()) {
+                    byte[] clip = rawEntries.get(e.animation().filename());
+                    if (clip == null) {
+                        throw new IOException("State '" + e.name() + "' missing clip entry "
+                                + e.animation().filename() + " in SBO: " + sboPath);
+                    }
+                    validateNamedChecksum(e.name() + " clip", e.animation().checksum(), clip, sboPath);
+                    stateClipBytes.put(e.name(), clip);
+                }
             }
         }
 
@@ -110,7 +121,8 @@ public class SBOParser {
             if (omoBytes == null) {
                 throw new IOException("Manifest declares omoFile but model.omo missing: " + sboPath);
             }
-            return parseModelBearing(manifest, omoBytes, sboPath, stateOmoBytes, stateOmtBytes, stateOmoData);
+            return parseModelBearing(manifest, omoBytes, sboPath, stateOmoBytes, stateOmtBytes,
+                    stateOmoData, stateClipBytes);
         }
 
         if (manifest.isTextureOnly()) {
@@ -121,7 +133,7 @@ public class SBOParser {
             logger.info("Parsed texture-only SBO: {} ({}) - {} OMT bytes, states={}",
                     manifest.objectName(), manifest.objectId(), omtBytes.length, stateOmtBytes.size());
             return new SBOParseResult(manifest, null, null, null, null, null, omtBytes,
-                    stateOmoBytes, stateOmtBytes, stateOmoData);
+                    stateOmoBytes, stateOmtBytes, stateOmoData, stateClipBytes);
         }
 
         throw new IOException("SBO manifest declares neither omoFile nor textureFile: " + sboPath);
@@ -130,7 +142,8 @@ public class SBOParser {
     private SBOParseResult parseModelBearing(SBOFormat.Document manifest, byte[] omoBytes, Path sboPath,
                                               Map<String, byte[]> stateOmoBytes,
                                               Map<String, byte[]> stateOmtBytes,
-                                              Map<String, OMOReader.ReadResult> stateOmoData) throws IOException {
+                                              Map<String, OMOReader.ReadResult> stateOmoData,
+                                              Map<String, byte[]> stateClipBytes) throws IOException {
         validateChecksum(manifest, omoBytes, sboPath);
 
         OMOReader.ReadResult omoResult;
@@ -138,11 +151,12 @@ public class SBOParser {
             omoResult = omoReader.read(bais);
         }
 
-        logger.info("Parsed SBO: {} ({}) - {} vertices, {} materials, states={}",
+        logger.info("Parsed SBO: {} ({}) - {} vertices, {} materials, states={}, clips={}",
                 manifest.objectName(), manifest.objectId(),
                 omoResult.meshData() != null ? omoResult.meshData().getVertexCount() : 0,
                 omoResult.materials().size(),
-                stateOmoBytes.size());
+                stateOmoBytes.size(),
+                stateClipBytes.size());
 
         return new SBOParseResult(
                 manifest,
@@ -154,7 +168,8 @@ public class SBOParser {
                 null,
                 stateOmoBytes,
                 stateOmtBytes,
-                stateOmoData
+                stateOmoData,
+                stateClipBytes
         );
     }
 
@@ -210,7 +225,27 @@ public class SBOParser {
                 String file = node.get("file").asText();
                 boolean model = node.has("model") && node.get("model").asBoolean();
                 String stateChecksum = node.has("checksum") ? node.get("checksum").asText() : "";
-                states.add(new SBOFormat.StateEntry(name, file, model, stateChecksum));
+                SBOFormat.AnimationRef animation = null;
+                if (node.has("animation") && !node.get("animation").isNull()) {
+                    var a = node.get("animation");
+                    List<String> requiredParts = new ArrayList<>();
+                    if (a.has("requiredParts") && a.get("requiredParts").isArray()) {
+                        for (var p : a.get("requiredParts")) {
+                            if (p != null && !p.isNull()) requiredParts.add(p.asText());
+                        }
+                    }
+                    animation = new SBOFormat.AnimationRef(
+                            a.has("file") ? a.get("file").asText() : SBOFormat.stateClipPath(name),
+                            a.has("checksum") ? a.get("checksum").asText() : "",
+                            a.has("clipName") && !a.get("clipName").isNull()
+                                    ? a.get("clipName").asText() : null,
+                            a.has("duration") ? (float) a.get("duration").asDouble() : 0f,
+                            a.has("fps") ? (float) a.get("fps").asDouble() : 30f,
+                            a.has("loop") && a.get("loop").asBoolean(),
+                            requiredParts
+                    );
+                }
+                states.add(new SBOFormat.StateEntry(name, file, model, stateChecksum, animation));
             }
             defaultState = root.has("defaultState") && !root.get("defaultState").isNull()
                     ? root.get("defaultState").asText() : null;
@@ -318,14 +353,17 @@ public class SBOParser {
      * Result of {@link #parseRaw(Path)} — manifest plus raw embedded asset bytes,
      * suitable for re-packing via {@link SBOSerializer#exportFromDocument}.
      *
-     * @param manifest      parsed manifest (includes recipes, gameProperties, states)
-     * @param defaultBytes  bytes of the legacy {@code model.omo} or {@code texture.omt} entry
-     * @param stateBytes    per-state asset bytes keyed by state name; empty when no states
+     * @param manifest       parsed manifest (includes recipes, gameProperties, states)
+     * @param defaultBytes   bytes of the legacy {@code model.omo} or {@code texture.omt} entry
+     * @param stateBytes     per-state asset bytes keyed by state name; empty when no states
+     * @param stateClipBytes per-state raw {@code .omanim} clip bytes keyed by state
+     *                       name (1.6+); empty when no state carries a clip
      */
     public record RawParse(
             SBOFormat.Document manifest,
             byte[] defaultBytes,
-            java.util.Map<String, byte[]> stateBytes
+            java.util.Map<String, byte[]> stateBytes,
+            java.util.Map<String, byte[]> stateClipBytes
     ) {}
 
     /**
@@ -371,6 +409,7 @@ public class SBOParser {
         }
 
         Map<String, byte[]> stateBytes = new LinkedHashMap<>();
+        Map<String, byte[]> stateClipBytes = new LinkedHashMap<>();
         if (manifest.hasStates()) {
             for (SBOFormat.StateEntry e : manifest.states()) {
                 if (e.name().equals(manifest.defaultStateName())) {
@@ -382,10 +421,18 @@ public class SBOParser {
                     }
                     stateBytes.put(e.name(), data);
                 }
+                if (e.hasAnimation()) {
+                    byte[] clip = rawEntries.get(e.animation().filename());
+                    if (clip == null) {
+                        throw new IOException("State '" + e.name() + "' missing clip entry "
+                                + e.animation().filename());
+                    }
+                    stateClipBytes.put(e.name(), clip);
+                }
             }
         }
 
-        return new RawParse(manifest, defaultBytes, stateBytes);
+        return new RawParse(manifest, defaultBytes, stateBytes, stateClipBytes);
     }
 
     private byte[] readBytes(ZipInputStream zis) throws IOException {
