@@ -254,6 +254,56 @@ public final class ClientWorldView {
         System.out.println("[CLIENT] Requested chunk resync for (" + cx + "," + cz + ")");
     }
 
+    /**
+     * User-initiated full resync (pause-menu button): hash EVERY resident chunk in render
+     * distance and ship the batches at once — the server re-streams any that mismatch — plus
+     * one entity-snapshot resync. Routed through the hash-audit path rather than per-chunk
+     * {@code ChunkResyncRequestC2S} because explicit resync requests share the server's
+     * 32-per-10s budget while hash audits are compared server-side for free.
+     *
+     * @return number of chunks audited, or -1 when there is no live connection
+     */
+    public int requestFullResync() {
+        ClientConnection conn = connection;
+        com.stonebreak.world.World world = Game.getWorld();
+        Player p = Game.getPlayer();
+        if (conn == null || !conn.isActive() || world == null || p == null) {
+            return -1;
+        }
+        int pcx = (int) Math.floor(p.getPosition().x / 16.0);
+        int pcz = (int) Math.floor(p.getPosition().z / 16.0);
+        int radius = com.stonebreak.config.Settings.getInstance().getRenderDistance();
+        int maxPerPacket = com.stonebreak.network.packet.world.ChunkHashesC2S.MAX_ENTRIES;
+
+        int[] entries = new int[maxPerPacket * 3];
+        int n = 0;
+        int audited = 0;
+        for (int cz = pcz - radius; cz <= pcz + radius; cz++) {
+            for (int cx = pcx - radius; cx <= pcx + radius; cx++) {
+                var chunk = world.getChunkIfLoaded(cx, cz);
+                if (chunk == null) {
+                    continue;
+                }
+                entries[n * 3] = cx;
+                entries[n * 3 + 1] = cz;
+                entries[n * 3 + 2] = com.stonebreak.network.bridge.ChunkHasher.hash(chunk);
+                audited++;
+                if (++n == maxPerPacket) {
+                    conn.send(new com.stonebreak.network.packet.world.ChunkHashesC2S(
+                            entries.clone()), false);
+                    n = 0;
+                }
+            }
+        }
+        if (n > 0) {
+            conn.send(new com.stonebreak.network.packet.world.ChunkHashesC2S(
+                    java.util.Arrays.copyOf(entries, n * 3)), false);
+        }
+        requestEntityResync();
+        System.out.println("[CLIENT] Manual full resync: audited " + audited + " chunks.");
+        return audited;
+    }
+
     /** Ask the server to re-send the full entity spawn snapshot (shadow map inconsistency). */
     public void requestEntityResync() {
         ClientConnection conn = connection;

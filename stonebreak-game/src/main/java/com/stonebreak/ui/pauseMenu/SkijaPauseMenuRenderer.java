@@ -18,6 +18,8 @@ public final class SkijaPauseMenuRenderer {
 
     public static final float BUTTON_WIDTH  = 360f;
     public static final float BUTTON_HEIGHT = 50f;
+    /** Vertical distance between consecutive button tops (base, pre-UI-scale). */
+    public static final float BUTTON_SPACING = 70f;
 
     private static final float BASE_BUTTON_WIDTH  = BUTTON_WIDTH;
     private static final float BASE_BUTTON_HEIGHT = BUTTON_HEIGHT;
@@ -42,8 +44,18 @@ public final class SkijaPauseMenuRenderer {
         this.backend = backend;
     }
 
+    /**
+     * Base (pre-UI-scale) vertical offset of a button's top from screen center, for a
+     * column of {@code count} buttons centered on the screen. Single source of the layout —
+     * {@code PauseMenu}'s hit-tests use the same formula, so they can never drift apart.
+     */
+    public static float buttonOffset(int slot, int count) {
+        return (slot - (count - 1) / 2f) * BUTTON_SPACING;
+    }
+
     public void render(int windowWidth, int windowHeight,
-                       boolean statisticsHovered, boolean glossaryHovered, boolean settingsHovered, boolean quitHovered) {
+                       boolean statisticsHovered, boolean glossaryHovered, boolean settingsHovered,
+                       boolean resyncVisible, boolean resyncHovered, boolean quitHovered) {
         if (backend == null || !backend.isAvailable()) return;
         float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
         ensureFonts(scale);
@@ -71,11 +83,16 @@ public final class SkijaPauseMenuRenderer {
             drawTitle(canvas, centerX, panelY + 70f * scale, "GAME PAUSED");
 
             float buttonX = centerX - buttonWidth / 2f;
-            drawButton(canvas, "Resume Game",       buttonX, centerY - 140f * scale, false,             buttonWidth, buttonHeight);
-            drawButton(canvas, "Statistics",        buttonX, centerY -  70f * scale, statisticsHovered, buttonWidth, buttonHeight);
-            drawButton(canvas, "Glossary",          buttonX, centerY +   0f * scale, glossaryHovered,   buttonWidth, buttonHeight);
-            drawButton(canvas, "Settings",          buttonX, centerY +  70f * scale, settingsHovered,   buttonWidth, buttonHeight);
-            drawButton(canvas, "Quit to Main Menu", buttonX, centerY + 140f * scale, quitHovered,       buttonWidth, buttonHeight);
+            int count = resyncVisible ? 6 : 5;
+            int slot = 0;
+            drawButton(canvas, "Resume Game", buttonX, centerY + buttonOffset(slot++, count) * scale, false,             buttonWidth, buttonHeight);
+            drawButton(canvas, "Statistics",  buttonX, centerY + buttonOffset(slot++, count) * scale, statisticsHovered, buttonWidth, buttonHeight);
+            drawButton(canvas, "Glossary",    buttonX, centerY + buttonOffset(slot++, count) * scale, glossaryHovered,   buttonWidth, buttonHeight);
+            drawButton(canvas, "Settings",    buttonX, centerY + buttonOffset(slot++, count) * scale, settingsHovered,   buttonWidth, buttonHeight);
+            if (resyncVisible) {
+                drawButton(canvas, "Resync World", buttonX, centerY + buttonOffset(slot++, count) * scale, resyncHovered, buttonWidth, buttonHeight);
+            }
+            drawButton(canvas, "Quit to Main Menu", buttonX, centerY + buttonOffset(slot, count) * scale, quitHovered, buttonWidth, buttonHeight);
         } finally {
             backend.endFrame();
         }
