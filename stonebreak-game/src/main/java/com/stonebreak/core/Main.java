@@ -45,19 +45,23 @@ public class Main {
     /**
      * NVIDIA driver versions whose native-Wayland EGL path is broken badly enough
      * that we switch to the X11 (XWayland) backend instead. Every other driver
-     * stays on native Wayland. Matched against the version parsed out of the
-     * OpenGL {@code GL_VERSION} string (the same value the F3 debug overlay shows).
+     * stays on native Wayland. Matched against the version read from
+     * /proc/driver/nvidia/version, which is the same version the F3 debug overlay
+     * shows via {@code GL_VERSION}.
      */
     private static final java.util.Set<String> WAYLAND_BLOCKED_NVIDIA_DRIVERS = java.util.Set.of(
             "595.71.05"
     );
 
     /**
-     * Extracts the driver version from an NVIDIA {@code GL_VERSION} string such as
-     * {@code "4.6.0 NVIDIA 595.71.05"}.
+     * Extracts the dotted driver version (e.g. "595.71.05", "550.120") from the
+     * "NVRM version:" line of /proc/driver/nvidia/version. It is the first dotted
+     * number on that line, which works across driver flavors that word the line
+     * differently ("... Kernel Module  595.71.05 ..." for the proprietary module,
+     * "... Open Kernel Module for x86_64  610.43.02 ..." for the open module).
      */
-    private static final java.util.regex.Pattern NVIDIA_GL_VERSION_PATTERN =
-            java.util.regex.Pattern.compile("NVIDIA\\s+([0-9]+(?:\\.[0-9]+)+)");
+    private static final java.util.regex.Pattern NVIDIA_DRIVER_VERSION_PATTERN =
+            java.util.regex.Pattern.compile("([0-9]+(?:\\.[0-9]+)+)");
 
     // Window handle
     private long window;
@@ -322,123 +326,128 @@ public class Main {
     }
 
     /**
-     * Chooses the GLFW display backend on Linux. GLFW auto-selects native Wayland
+     * Chooses the GLFW display backend on Linux, BEFORE {@code glfwInit()}, by
+     * setting the platform init hint. GLFW otherwise auto-selects native Wayland
      * under a Wayland session; we keep that unless the loaded NVIDIA driver is on
-     * {@link #WAYLAND_BLOCKED_NVIDIA_DRIVERS}, in which case we switch to X11.
-     * Override with {@code -Dstonebreak.glfw.platform=wayland|x11|any} (default
-     * {@code auto}). Must be called right after the initial {@code glfwInit()};
-     * it may re-initialize GLFW to change the backend.
+     * {@link #WAYLAND_BLOCKED_NVIDIA_DRIVERS}, in which case we pin X11.
+     *
+     * <p>Crucially the driver version is read context-free from
+     * /proc/driver/nvidia/version rather than from an OpenGL {@code GL_VERSION}
+     * probe: on NVIDIA, initializing EGL (which reading GL_VERSION requires) and
+     * then using X11/GLX in the same process makes the driver reject
+     * {@code glXMakeCurrent} with BadAccess. /proc reports the identical version
+     * the F3 debug overlay shows, without touching any GL context.
+     *
+     * <p>Override with {@code -Dstonebreak.glfw.platform=wayland|x11|any} (default
+     * {@code auto}).
+     *
+     * @return {@code true} if the X11 backend was pinned (so the caller can
+     *         recover if {@code glfwInit()} then fails).
      */
-    private void selectDisplayBackend() {
+    private static boolean selectDisplayBackend() {
         boolean linux = System.getProperty("os.name", "").toLowerCase().contains("linux");
         if (!linux) {
-            return;
+            return false;
         }
 
         String pref = System.getProperty("stonebreak.glfw.platform", "auto").trim().toLowerCase();
-        switch (pref) {
-            case "x11" -> switchToX11("requested via -Dstonebreak.glfw.platform=x11");
-            case "wayland", "any" -> { /* honor the explicit request; skip driver detection */ }
-            default -> {
-                // auto: driver detection only matters when GLFW landed on Wayland.
-                if (glfwGetPlatform() != GLFW_PLATFORM_WAYLAND) {
-                    return;
-                }
-                String driver = probeGlDriverVersion();
-                if (driver != null) {
-                    System.out.println("[Display] Detected GPU driver version (GL_VERSION): " + driver);
-                    if (WAYLAND_BLOCKED_NVIDIA_DRIVERS.contains(driver)) {
-                        switchToX11("NVIDIA driver " + driver + " has a broken Wayland EGL path");
-                    }
+        if (pref.equals("wayland") || pref.equals("any")) {
+            return false; // honor the explicit request; skip driver detection
+        }
+
+        boolean wantX11 = pref.equals("x11");
+        String reason = "requested via -Dstonebreak.glfw.platform=x11";
+        if (!wantX11) {
+            String driver = detectNvidiaDriverVersion();
+            if (driver != null) {
+                System.out.println("[Display] Detected NVIDIA driver version: " + driver);
+                if (WAYLAND_BLOCKED_NVIDIA_DRIVERS.contains(driver)) {
+                    wantX11 = true;
+                    reason = "NVIDIA driver " + driver + " has a broken Wayland EGL path";
                 }
             }
         }
+
+        if (wantX11 && glfwPlatformSupported(GLFW_PLATFORM_X11)) {
+            System.out.println("[Display] Pinning GLFW backend to X11: " + reason + ".");
+            glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+            return true;
+        }
+        if (wantX11) {
+            System.err.println("[Display] Wanted X11 (" + reason + ") but the X11 backend is unavailable; using the default platform.");
+        }
+        return false;
     }
 
     /**
-     * Re-initializes GLFW pinned to the X11 backend. If X11 is unsupported or its
-     * runtime init fails (no reachable X display), it degrades gracefully rather
-     * than aborting startup.
+     * Reads the loaded NVIDIA driver version (e.g. "595.71.05") from
+     * {@code /proc/driver/nvidia/version} - the same version the F3 debug overlay
+     * derives from {@code GL_VERSION}, but obtained WITHOUT creating a GL/EGL
+     * context (which on NVIDIA would break a later X11/GLX fallback). Returns
+     * {@code null} when the file is absent (no proprietary NVIDIA driver, or
+     * nouveau) or the version can't be parsed. Safe to call before {@code glfwInit()}.
      */
-    private void switchToX11(String reason) {
-        if (!glfwPlatformSupported(GLFW_PLATFORM_X11)) {
-            System.err.println("[Display] Wanted X11 (" + reason + ") but the X11 backend is unavailable; staying on the current platform.");
-            return;
-        }
-        System.out.println("[Display] Switching GLFW backend to X11: " + reason + ".");
-        glfwTerminate();
-        // glfwTerminate() freed the error callback; re-install it.
-        GLFWErrorCallback.createPrint(System.err).set();
-        glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
-        if (!glfwInit()) {
-            System.err.println("[Display] X11 init failed (no reachable X display?); reverting to the default platform.");
-            glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
-            if (!glfwInit()) {
-                throw new IllegalStateException("Unable to initialize GLFW");
-            }
-        }
-    }
-
-    /**
-     * Reads the GPU driver version from a throwaway hidden GLFW window's OpenGL
-     * context by parsing the {@code GL_VERSION} string - the exact source the F3
-     * debug overlay uses (see {@code DebugOverlay.queryGPUInfo}). The probe window
-     * is created and destroyed here; it leaves no context current and no LWJGL
-     * capabilities set, so the normal setup path re-binds cleanly. Returns
-     * {@code null} if the probe context can't be created or the version can't be
-     * parsed (e.g. non-NVIDIA GPUs).
-     */
-    private static String probeGlDriverVersion() {
-        glfwDefaultWindowHints();
-        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-        long probe = glfwCreateWindow(1, 1, "driver-probe", 0, 0);
-        if (probe == 0) {
-            return null;
-        }
+    private static String detectNvidiaDriverVersion() {
+        java.nio.file.Path path = java.nio.file.Path.of("/proc/driver/nvidia/version");
         try {
-            glfwMakeContextCurrent(probe);
-            GL.createCapabilities();
-            return parseNvidiaDriverVersion(glGetString(GL_VERSION));
-        } catch (Throwable t) {
-            logger.debug("GL driver probe failed: {}", t.toString());
+            if (!java.nio.file.Files.isReadable(path)) {
+                return null;
+            }
+            return parseNvidiaDriverVersion(java.nio.file.Files.readAllLines(path));
+        } catch (Exception e) {
+            logger.debug("Could not read NVIDIA driver version: {}", e.toString());
             return null;
-        } finally {
-            try { glfwMakeContextCurrent(0); } catch (Throwable ignored) { }
-            try { GL.setCapabilities(null); } catch (Throwable ignored) { }
-            glfwDestroyWindow(probe);
         }
     }
 
     /**
-     * Extracts the NVIDIA driver version from an OpenGL {@code GL_VERSION} string
-     * such as {@code "4.6.0 NVIDIA 595.71.05"} -> {@code "595.71.05"}. Returns
-     * {@code null} when the string is null or carries no NVIDIA driver token
-     * (non-NVIDIA GPUs). Package-private for testing.
+     * Parses the driver version (e.g. "595.71.05") from the lines of
+     * {@code /proc/driver/nvidia/version}. Returns {@code null} if no NVRM version
+     * line is present. Package-private for testing.
      */
-    static String parseNvidiaDriverVersion(String glVersion) {
-        if (glVersion == null) {
-            return null;
+    static String parseNvidiaDriverVersion(Iterable<String> procVersionLines) {
+        for (String line : procVersionLines) {
+            // Only the NVRM line carries the driver version; other lines (e.g. the
+            // GCC version) also contain dotted numbers we must not pick up.
+            //   "NVRM version: NVIDIA UNIX x86_64 Kernel Module  595.71.05  Wed ..."
+            //   "NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  610.43.02  ..."
+            if (!line.contains("NVRM")) {
+                continue;
+            }
+            java.util.regex.Matcher m = NVIDIA_DRIVER_VERSION_PATTERN.matcher(line);
+            if (m.find()) {
+                return m.group(1);
+            }
         }
-        java.util.regex.Matcher m = NVIDIA_GL_VERSION_PATTERN.matcher(glVersion);
-        return m.find() ? m.group(1) : null;
+        return null;
     }
 
     private void init() {
         // Setup an error callback
         GLFWErrorCallback.createPrint(System.err).set();
 
+        // Choose the display backend BEFORE initializing GLFW. On NVIDIA we must
+        // not create any GL/EGL context before this decision: initializing EGL on
+        // Wayland and then using X11/GLX in the same process makes the driver
+        // reject glXMakeCurrent (BadAccess). So the driver version is read
+        // context-free from /proc/driver/nvidia/version (the same version the F3
+        // debug overlay shows), and a broken driver is pinned to X11 up front.
+        boolean pinnedX11 = selectDisplayBackend();
+
         // Initialize GLFW
         if (!glfwInit()) {
-            throw new IllegalStateException("Unable to initialize GLFW");
+            // A pinned X11 backend can still fail if no X display is reachable;
+            // recover by letting GLFW auto-select any available platform.
+            if (pinnedX11) {
+                System.err.println("[Display] X11 init failed (no reachable X display?); reverting to the default platform.");
+                glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
+                if (!glfwInit()) {
+                    throw new IllegalStateException("Unable to initialize GLFW");
+                }
+            } else {
+                throw new IllegalStateException("Unable to initialize GLFW");
+            }
         }
-
-        // On Linux, a few NVIDIA driver versions have a broken native-Wayland EGL
-        // path; for those we switch the backend to X11 (XWayland) and leave every
-        // other driver on Wayland. The driver version is read from the OpenGL
-        // GL_VERSION string - the same value the F3 debug overlay shows - so the
-        // detection and the debug menu agree. This may re-init GLFW, so it runs
-        // before we log the final platform or create the real window.
-        selectDisplayBackend();
 
         logGlfwPlatform();
 
