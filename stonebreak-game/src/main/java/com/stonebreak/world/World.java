@@ -385,6 +385,23 @@ public class World {
         meshPipeline.requeueFailedChunks();
         meshPipeline.processChunkMeshBuildRequests(this);
         unloadClientChunksOutsideView();
+
+        // FastLOD ring tick. On a full world ChunkManager.update drives this,
+        // but render-only worlds skip the chunk manager entirely (chunks
+        // stream from the server), so without this call the LOD manager is
+        // created by the render pass yet never schedules a single node —
+        // distant terrain simply never appears. The sampler reads the local
+        // deterministic TerrainGenerationSystem (seeded from the server's
+        // WelcomeS2C world seed), so client-side LOD matches server terrain
+        // without any chunk streaming. Runs on the same logic-thread executor
+        // that ticks full-world updateRing — threading contract unchanged.
+        var lodPlayer = Game.getPlayer();
+        if (lodPlayer != null && fastLodManager != null) {
+            Vector3f lodPos = lodPlayer.getPosition();
+            fastLodManager.updateRing(
+                    (int) Math.floor(lodPos.x / WorldConfiguration.CHUNK_SIZE),
+                    (int) Math.floor(lodPos.z / WorldConfiguration.CHUNK_SIZE));
+        }
     }
 
     /**
@@ -895,14 +912,32 @@ public class World {
     }
 
     private static FastLodStore openFastLodStoreIfPossible() {
-        // Resolves the save directory through Game so World stays agnostic of
-        // how save state is plumbed. Any failure (no save service, bad path,
-        // SQLite driver missing) falls through to pure in-memory LOD.
+        // Resolves the save directory without coupling World to how save state
+        // is plumbed. Any failure (no save path, SQLite driver missing) falls
+        // through to pure in-memory LOD.
         try {
+            String worldPath = null;
             com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
             com.stonebreak.world.save.SaveService svc = (game != null) ? game.getSaveService() : null;
-            if (svc == null) return null;
-            String worldPath = svc.getWorldPath();
+            if (svc != null) {
+                worldPath = svc.getWorldPath();
+            }
+            if (worldPath == null || worldPath.isEmpty()) {
+                // Two-world model: the client RENDER world carries no
+                // SaveService — the authoritative one lives on the co-located
+                // integrated server (singleplayer + LAN host). Only the render
+                // world ever opens a FastLOD store (the headless server world
+                // is never rendered), so there is no double-open on the file.
+                // Remote-join clients have no integrated server and correctly
+                // fall through to in-memory LOD.
+                var server = com.stonebreak.network.MultiplayerSession.getServer();
+                var ctx = (server != null) ? server.worldContext() : null;
+                var level = (ctx != null) ? ctx.serverLevel() : null;
+                var save = (level != null) ? level.saveService() : null;
+                if (save != null) {
+                    worldPath = save.getWorldPath();
+                }
+            }
             if (worldPath == null || worldPath.isEmpty()) return null;
             Path dbPath = Paths.get(worldPath, "fastlod", "cache.sqlite");
             return FastLodStore.open(dbPath);

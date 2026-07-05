@@ -23,9 +23,18 @@ uniform float uAmbientLight;
 uniform vec3 uCameraPos;
 uniform float uTime;
 uniform bool uWavesEnabled;
+// Atmospheric distance fog — same parameters the world shader gets, so far
+// diagonal water fades into the sky in step with the terrain around it.
+// uFogEnd <= uFogStart disables.
+uniform vec3 uFogColor;
+uniform float uFogStart;
+uniform float uFogEnd;
 
 out vec4 fragColor;
 
+// NOTE: hash/vnoise/fbm constants are mirrored in the world shader's LOD
+// distant-water branch (ResourceManager, lodw_* helpers) — the patterns must
+// align at the render-distance boundary; change both together.
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
@@ -110,5 +119,14 @@ void main() {
     alpha = clamp(alpha + streaks * 0.4, 0.0, 0.92);
 
     vec3 color = baseColor * (ambient + diffuse) + vec3(1.0) * spec + vec3(streaks);
+
+    // Distance fog toward the sky color (horizontal distance, matching the
+    // world shader) — alpha untouched so the blend over terrain stays correct.
+    if (uFogEnd > uFogStart) {
+        float horizDist = length(vWorldPos.xz - uCameraPos.xz);
+        float fogF = smoothstep(uFogStart, uFogEnd, horizDist);
+        color = mix(color, uFogColor, fogF);
+    }
+
     fragColor = vec4(color, alpha);
 }

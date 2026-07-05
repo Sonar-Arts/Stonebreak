@@ -59,6 +59,9 @@ public class WaterRenderer {
             shader.createUniform("uSunDirection");
             shader.createUniform("uAmbientLight");
             shader.createUniform("uCameraPos");
+            shader.createUniform("uFogColor");
+            shader.createUniform("uFogStart");
+            shader.createUniform("uFogEnd");
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize water shader", e);
         }
@@ -85,10 +88,14 @@ public class WaterRenderer {
      * @param sunDirection      normalized sun direction (world shader convention)
      * @param ambientLight      ambient light level 0..1 from TimeOfDay
      * @param wavesEnabled      water animation setting (freezes waves + scroll)
+     * @param fogColor          atmospheric fog color (sky color from TimeOfDay)
+     * @param fogStart          horizontal distance where fog begins (blocks)
+     * @param fogEnd            horizontal distance of full fog; {@code <= fogStart} disables
      */
     public void render(List<Chunk> chunksBackToFront, Matrix4f projection, Matrix4f view,
                        Vector3f cameraPos, float time, Vector3f sunDirection,
-                       float ambientLight, boolean wavesEnabled) {
+                       float ambientLight, boolean wavesEnabled,
+                       Vector3f fogColor, float fogStart, float fogEnd) {
         // Save GL state we touch.
         boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
@@ -125,6 +132,9 @@ public class WaterRenderer {
         shader.setUniform("uSunDirection", sunDirection);
         shader.setUniform("uAmbientLight", ambientLight);
         shader.setUniform("uCameraPos", cameraPos);
+        shader.setUniform("uFogColor", fogColor);
+        shader.setUniform("uFogStart", fogStart);
+        shader.setUniform("uFogEnd", fogEnd);
 
         // Two sub-passes make water self-occluding, like ice: looking through
         // water never shows other water faces (flowing step faces, far walls,

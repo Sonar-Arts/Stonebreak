@@ -57,6 +57,12 @@ public final class FastLodManager {
     private final FastLodMesher mesher;
     private final ExecutorService executor;
     private final FastLodStore store;   // may be null when persistence is disabled
+    private final Uploader uploader;
+
+    /** GL upload seam — injectable so manager bookkeeping is testable headlessly. */
+    interface Uploader {
+        MmsRenderableHandle upload(MmsMeshData mesh);
+    }
 
     private final Set<FastLodKey> inFlight = ConcurrentHashMap.newKeySet();
     private final Queue<Ready> readyToUpload = new ConcurrentLinkedQueue<>();
@@ -68,25 +74,45 @@ public final class FastLodManager {
     private final Map<FastLodKey, FastLodKey> pendingSupersede = new ConcurrentHashMap<>();
 
     private volatile boolean shutdown = false;
+    /**
+     * Player chunk column from the most recent {@link #updateRing} tick,
+     * packed via {@link #packColumn}. Lets the upload path re-validate a
+     * finished mesh against the CURRENT ring instead of blindly uploading
+     * work for a column the player has already left (fast-travel churn).
+     */
+    private volatile long lastPlayerColumn = packColumn(0, 0);
 
     public FastLodManager(WorldConfiguration config,
                           TerrainGenerationSystem terrain,
                           BlockTextureArray textureArray,
                           FastLodStore store) {
-        this.config  = config;
-        this.sampler = new FastLodSampler(terrain);
-        this.mesher  = new FastLodMesher(textureArray);
-        this.store   = store;
-        this.executor = Executors.newFixedThreadPool(config.getChunkBuildThreads(),
-            new ThreadFactory() {
-                private int i = 0;
-                @Override public Thread newThread(Runnable r) {
-                    Thread t = new Thread(r, "FastLod-Worker-" + i++);
-                    t.setDaemon(true);
-                    t.setPriority(Thread.NORM_PRIORITY - 1);
-                    return t;
-                }
-            });
+        this(config, terrain, textureArray, store,
+            Executors.newFixedThreadPool(config.getChunkBuildThreads(),
+                new ThreadFactory() {
+                    private int i = 0;
+                    @Override public Thread newThread(Runnable r) {
+                        Thread t = new Thread(r, "FastLod-Worker-" + i++);
+                        t.setDaemon(true);
+                        t.setPriority(Thread.NORM_PRIORITY - 1);
+                        return t;
+                    }
+                }),
+            MmsRenderableHandle::upload);
+    }
+
+    /** Test seam: injectable executor (e.g. same-thread) and GL-free uploader. */
+    FastLodManager(WorldConfiguration config,
+                   TerrainGenerationSystem terrain,
+                   BlockTextureArray textureArray,
+                   FastLodStore store,
+                   ExecutorService executor,
+                   Uploader uploader) {
+        this.config   = config;
+        this.sampler  = new FastLodSampler(terrain);
+        this.mesher   = new FastLodMesher(textureArray);
+        this.store    = store;
+        this.executor = executor;
+        this.uploader = uploader;
     }
 
     public void updateRing(int playerCx, int playerCz) {
@@ -98,6 +124,7 @@ public final class FastLodManager {
         }
         int inner = config.getRenderDistance();
         int outer = inner + range;
+        lastPlayerColumn = packColumn(playerCx, playerCz);
 
         // Pass 1: evict anything that has fallen outside the ring entirely.
         // Band-change transitions (wanted != key.level but wanted != null) are
@@ -131,6 +158,15 @@ public final class FastLodManager {
             }
             return false;
         });
+
+        // Purge supersede records whose target is no longer wanted at all —
+        // covers records orphaned by a failed/empty generate (the job left
+        // inFlight without ever reaching the upload path, so neither the
+        // cancellation pass above nor applyGLUpdates would ever clean them).
+        pendingSupersede.keySet().removeIf(key ->
+                FastLodBandPolicy.levelFor(
+                        chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range)
+                != key.level());
 
         // Pass 2: enumerate desired nodes in the ring. For each column pick
         // the detail level the band policy wants. If the resident node is
@@ -193,8 +229,8 @@ public final class FastLodManager {
                     pendingSupersede.remove(r.key);
                 } else {
                     try {
-                        MmsRenderableHandle h = MmsRenderableHandle.upload(r.meshData);
-                        handles.put(r.key, new Entry(r.key, h));
+                        MmsRenderableHandle h = uploader.upload(r.meshData);
+                        handles.put(r.key, new Entry(r.key, h, r.minY, r.maxY));
                         residentByColumn.put(packColumn(r.key.chunkX(), r.key.chunkZ()), r.key);
                         retireSupersededFor(r.key);
                     } catch (Exception e) {
@@ -236,18 +272,24 @@ public final class FastLodManager {
     }
 
     private boolean isStillWanted(FastLodKey key) {
-        // Mesh was generated; we only abandon it if the ring has moved so far
-        // that this key's column is out of range entirely. Band-change
-        // supersedes are always honoured so transitions stay seamless.
+        // Band-change supersedes are always honoured so transitions stay
+        // seamless — the supersede record is dropped by updateRing the moment
+        // its target stops being wanted, so its presence means "still valid".
         if (pendingSupersede.containsKey(key)) return true;
         int range = config.getLodRange();
         if (!config.isLodEnabled() || range <= 0) return false;
-        // We don't have player coords here, so fall back to "in handles map or
-        // resident-by-column was expecting us". Either condition means a tick
-        // validated this key recently. If neither, the key was cancelled.
-        long col = packColumn(key.chunkX(), key.chunkZ());
-        FastLodKey resident = residentByColumn.get(col);
-        return resident == null || resident.level() == key.level() || resident.equals(key);
+        // Re-validate against the ring as of the latest updateRing tick.
+        // Rejecting here skips the GPU upload entirely — without this, a mesh
+        // finished for a column the player has already left gets uploaded and
+        // then immediately evicted next tick (wasted budget + handle churn
+        // during fast travel).
+        long col = lastPlayerColumn;
+        int playerCx = (int) (col >> 32);
+        int playerCz = (int) col;
+        FastLodLevel wanted = FastLodBandPolicy.levelFor(
+                chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz),
+                config.getRenderDistance(), range);
+        return wanted == key.level();
     }
 
     public Collection<Entry> visibleHandles() {
@@ -294,11 +336,16 @@ public final class FastLodManager {
     }
 
     private void runGenerate(FastLodKey key) {
-        if (shutdown) return;
+        // Cooperative cancellation: updateRing edits inFlight when a job's
+        // target level stops being wanted, but the submitted task itself was
+        // never cancelled — without these checks it would still burn a full
+        // store load + terrain sample + mesh build for a node nobody wants.
+        if (shutdown || !inFlight.contains(key)) return;
         try {
             FastLodChunkData data = null;
             if (store != null) {
                 data = store.tryLoad(key);
+                if (shutdown || !inFlight.contains(key)) return;
             }
             if (data == null) {
                 data = sampler.sample(key);
@@ -306,14 +353,16 @@ public final class FastLodManager {
                     store.saveAsync(data);
                 }
             }
-            MmsMeshData mesh = mesher.build(data);
-            if (mesh.isEmpty()) {
+            FastLodMesher.Result result = mesher.build(data);
+            if (result.mesh().isEmpty()) {
                 inFlight.remove(key);
+                pendingSupersede.remove(key);
                 return;
             }
-            readyToUpload.offer(new Ready(key, mesh));
+            readyToUpload.offer(new Ready(key, result.mesh(), result.minY(), result.maxY()));
         } catch (Exception e) {
             inFlight.remove(key);
+            pendingSupersede.remove(key);
             System.err.println("[FastLodManager] Generate failed for " + key + ": " + e.getMessage());
         }
     }
@@ -345,18 +394,25 @@ public final class FastLodManager {
     public static final class Entry {
         public final FastLodKey key;
         public final MmsRenderableHandle handle;
-        Entry(FastLodKey key, MmsRenderableHandle handle) {
+        /** Exact vertex Y bounds of the node's mesh — feed per-node frustum AABBs. */
+        public final float minY, maxY;
+        Entry(FastLodKey key, MmsRenderableHandle handle, float minY, float maxY) {
             this.key = key;
             this.handle = handle;
+            this.minY = minY;
+            this.maxY = maxY;
         }
     }
 
     private static final class Ready {
         final FastLodKey key;
         final MmsMeshData meshData;
-        Ready(FastLodKey key, MmsMeshData meshData) {
+        final float minY, maxY;
+        Ready(FastLodKey key, MmsMeshData meshData, float minY, float maxY) {
             this.key = key;
             this.meshData = meshData;
+            this.minY = minY;
+            this.maxY = maxY;
         }
     }
 }

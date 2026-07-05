@@ -462,6 +462,18 @@ public class Renderer {
      * UI elements have been stripped from this method and should be rendered separately.
      */
     public void renderWorld(World world, Player player, float totalTime) {
+        // Far plane tracks the LOD outer ring: at max settings the ring reaches
+        // (24 + 48) * 16 = 1152 blocks — past the 1000-block default — and its
+        // square corners lie √2 farther out still. Change-detected inside
+        // setFarPlane, so this is free while settings are stable. Must run
+        // before any per-frame consumer of the projection matrix (shadow
+        // cascades, frustum culling) inside worldRenderer.renderWorld.
+        com.stonebreak.config.Settings settings = com.stonebreak.config.Settings.getInstance();
+        float outerBlocks = (settings.getRenderDistance()
+                + (settings.getLodEnabled() ? settings.getLodDistance() : 0))
+                * (float) com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE;
+        configManager.setFarPlane(Math.max(1000.0f, outerBlocks * 1.4142f + 64.0f));
+
         com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
         org.joml.Vector3f sunDirection = timeOfDay != null
                 ? timeOfDay.getSunDirection()

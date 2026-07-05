@@ -148,12 +148,28 @@ public class WorldRenderer {
         // Use shader program
         shaderProgram.bind();
         checkGLError("After shader bind");
-        
+
+        // Atmospheric distance fog: fades world geometry into the sky color
+        // from the native ring edge out to the LOD outer ring, so the distant
+        // terrain dissolves at the horizon instead of ending in a hard edge.
+        // Disabled (fogEnd=0) when LOD is off or the camera is underwater —
+        // the underwater fog owns the look there.
+        com.stonebreak.config.Settings settings = com.stonebreak.config.Settings.getInstance();
+        float fogStart = 0f, fogEnd = 0f;
+        Vector3f cameraPos = player.getCamera().getPosition();
+        boolean cameraUnderwater = world.isPositionUnderwater(
+                (int) Math.floor(cameraPos.x), (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z));
+        if (settings.getLodEnabled() && settings.getLodDistance() > 0 && !cameraUnderwater) {
+            fogStart = settings.getRenderDistance() * (float) WorldConfiguration.CHUNK_SIZE;
+            fogEnd = (settings.getRenderDistance() + settings.getLodDistance())
+                    * (float) WorldConfiguration.CHUNK_SIZE;
+        }
+
         // Set common uniforms for world rendering
-        setupWorldUniforms(player);
+        setupWorldUniforms(player, skyColor, fogStart, fogEnd, totalTime);
         // Water animation setting — consumed by the dedicated water renderer
-        // (waves + flow scroll); the world shader no longer animates anything.
-        boolean waterAnimationEnabled = com.stonebreak.config.Settings.getInstance().getWaterShaderEnabled();
+        // (waves + flow scroll) and the LOD sea-sheet drift (u_time).
+        boolean waterAnimationEnabled = settings.getWaterShaderEnabled();
         checkGLError("After setting uniforms");
         
         // Bind texture atlas once before passes
@@ -174,10 +190,12 @@ public class WorldRenderer {
         renderOpaquePass(visibleChunks);
 
         // Render distant-terrain LOD between detail opaque and SBO; shares shader/atlas state.
+        // frustumCuller was updated for this frame's camera by cullChunksToFrustum above —
+        // the LOD pass reuses those planes, so keep this call after it.
         world.ensureFastLodManager(blockTextureArray);
         int lodPlayerCx = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int lodPlayerCz = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
-        lodRenderPass.render(shaderProgram, world.getFastLodManager(), lodPlayerCx, lodPlayerCz);
+        lodRenderPass.render(shaderProgram, world.getFastLodManager(), lodPlayerCx, lodPlayerCz, frustumCuller);
 
         // Render SBO blocks (blocks with SBO textures, rendered separately from atlas)
         renderSBOPass(visibleChunks);
@@ -222,7 +240,7 @@ public class WorldRenderer {
         // them — physically correct compositing.
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, sunDirection,
-                ambientLightLevel, waterAnimationEnabled);
+                ambientLightLevel, waterAnimationEnabled, skyColor, fogStart, fogEnd);
         checkGLError("After water pass");
 
         // Render fire bolt cores after the water pass: bolts in front of water
@@ -281,7 +299,8 @@ public class WorldRenderer {
     /**
      * Set up common uniforms for world rendering.
      */
-    private void setupWorldUniforms(Player player) {
+    private void setupWorldUniforms(Player player, Vector3f skyColor,
+                                    float fogStart, float fogEnd, float totalTime) {
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
         shaderProgram.setUniform("modelMatrix", new Matrix4f()); // Identity for world chunks
@@ -316,6 +335,15 @@ public class WorldRenderer {
         shaderProgram.setUniform("u_cameraPos", new Vector3f(0, 0, 0));
         shaderProgram.setUniform("u_underwaterFogDensity", 0.0f);
         shaderProgram.setUniform("u_underwaterFogColor", new Vector3f(0, 0, 0));
+
+        // LOD sea-sheet pattern drift — frozen together with the water-animation setting.
+        boolean waterAnim = com.stonebreak.config.Settings.getInstance().getWaterShaderEnabled();
+        shaderProgram.setUniform("u_time", waterAnim ? totalTime : 0.0f);
+
+        // Atmospheric distance fog toward the sky color (fogEnd <= fogStart disables).
+        shaderProgram.setUniform("u_fogColor", skyColor);
+        shaderProgram.setUniform("u_fogStart", fogStart);
+        shaderProgram.setUniform("u_fogEnd", fogEnd);
     }
     
     /**
