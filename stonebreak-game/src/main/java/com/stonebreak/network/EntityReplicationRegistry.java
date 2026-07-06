@@ -11,6 +11,7 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.FireBolt;
 import com.stonebreak.mobs.entities.ItemDrop;
+import com.stonebreak.mobs.goose.Goose;
 import com.stonebreak.mobs.entities.LeylineBreachZone;
 import com.stonebreak.mobs.entities.NullSpikeProjectile;
 import com.stonebreak.mobs.sheep.Sheep;
@@ -65,6 +66,7 @@ public final class EntityReplicationRegistry {
             case COW -> new Cow(world, pos, orDefault(metadata, "default"));
             case SHEEP -> new Sheep(world, pos, orDefault(metadata, "default"));
             case CHICKEN -> new Chicken(world, pos);
+            case GOOSE -> new Goose(world, pos);
             case BLOCK_DROP -> {
                 BlockType bt = BlockType.getById(parseInt(metadata, 0));
                 yield new BlockDrop(world, pos, bt != null ? bt : BlockType.AIR);

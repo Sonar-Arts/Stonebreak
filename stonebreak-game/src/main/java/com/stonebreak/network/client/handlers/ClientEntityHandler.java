@@ -2,11 +2,6 @@ package com.stonebreak.network.client.handlers;
 
 import com.openmason.engine.net.protocol.codec.EntityDeltaCodec;
 import com.stonebreak.core.Game;
-import com.stonebreak.items.ItemStack;
-import com.stonebreak.mobs.chicken.Chicken;
-import com.stonebreak.mobs.cow.Cow;
-import com.stonebreak.mobs.goose.Goose;
-import com.stonebreak.mobs.entities.BlockDrop;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
