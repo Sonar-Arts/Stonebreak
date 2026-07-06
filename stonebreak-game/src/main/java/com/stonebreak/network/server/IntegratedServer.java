@@ -304,6 +304,7 @@ public final class IntegratedServer {
             case com.stonebreak.network.packet.entity.EntityResyncC2S ignored2 -> {
                 if (sp.allowResync()) {
                     entityHandler.onPeerResync(sp, ctx); // idempotent client-side (known ids ignored)
+                    playerHandler.onPeerResync(sp, ctx); // roster refresh — players aren't entities
                 }
             }
             case com.stonebreak.network.packet.world.TimeSetC2S ts -> handleTimeSet(sp, ts);
@@ -411,7 +412,11 @@ public final class IntegratedServer {
         // 2. Roster bootstrap: every player already present.
         for (ServerPlayer other : ctx.players()) {
             if (other.playerId() != sp.playerId()) {
-                sp.send(new PlayerJoinS2C(other.playerId(), other.username(), other.x(), other.y(), other.z()));
+                boolean reported = other.lastStateNs() != 0L;
+                sp.send(new PlayerJoinS2C(other.playerId(), other.username(),
+                    reported ? other.x() : spawn.x,
+                    reported ? other.y() : spawn.y,
+                    reported ? other.z() : spawn.z));
             }
         }
 

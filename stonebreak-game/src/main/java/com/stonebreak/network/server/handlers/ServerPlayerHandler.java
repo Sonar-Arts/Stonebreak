@@ -8,6 +8,7 @@ import com.stonebreak.mobs.entities.ItemDrop;
 import com.stonebreak.network.packet.player.DropItemC2S;
 import com.stonebreak.network.packet.player.PlayerHeldItemC2S;
 import com.stonebreak.network.packet.player.PlayerHeldItemS2C;
+import com.stonebreak.network.packet.player.PlayerJoinS2C;
 import com.stonebreak.network.packet.player.PlayerStateC2S;
 import com.stonebreak.network.packet.player.PlayerStateS2C;
 import com.stonebreak.network.server.ServerPlayer;
@@ -35,8 +36,19 @@ public final class ServerPlayerHandler {
     // ─── Inbound ───────────────────────────────────────────────────────────────
 
     public void handlePlayerState(ServerPlayer sp, PlayerStateC2S ps, ServerWorldContext ctx) {
+        boolean firstReport = sp.lastStateNs() == 0L;
         if (!validateAndCache(sp, ps)) {
             return;
+        }
+        if (firstReport) {
+            // Re-announce with the first REAL position, non-droppable. Peers who received the
+            // roster join before this player reported state (the re-host window: the host's
+            // client world is still rebuilding when someone rejoins) have its figure parked at
+            // the placeholder spawn, and the droppable 20 Hz state stream below is discarded
+            // while their channel is saturated by the join chunk burst. The duplicate join is
+            // idempotent client-side (existing figures are repositioned, missing ones spawned).
+            ctx.broadcastExcept(sp,
+                new PlayerJoinS2C(sp.playerId(), sp.username(), ps.x(), ps.y(), ps.z()), false);
         }
         ctx.broadcastExcept(sp,
             new PlayerStateS2C(sp.playerId(), ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch(), ps.flags()), true);
@@ -98,6 +110,26 @@ public final class ServerPlayerHandler {
                 continue;
             }
             joined.send(new PlayerHeldItemS2C(other.playerId(), other.heldItemId()), false);
+        }
+    }
+
+    /**
+     * Re-send the full player roster (join + held item, current positions) to a resyncing
+     * client — players aren't entities, so the entity resync alone can't restore a missing
+     * remote-player figure. Joins are idempotent client-side.
+     */
+    public void onPeerResync(ServerPlayer sp, ServerWorldContext ctx) {
+        Vector3f spawn = ctx.spawn();
+        for (ServerPlayer other : ctx.players()) {
+            if (other.playerId() == sp.playerId() || !other.handshakeDone()) {
+                continue;
+            }
+            boolean reported = other.lastStateNs() != 0L;
+            sp.send(new PlayerJoinS2C(other.playerId(), other.username(),
+                reported ? other.x() : spawn.x,
+                reported ? other.y() : spawn.y,
+                reported ? other.z() : spawn.z), false);
+            sp.send(new PlayerHeldItemS2C(other.playerId(), other.heldItemId()), false);
         }
     }
 

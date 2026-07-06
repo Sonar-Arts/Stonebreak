@@ -57,7 +57,8 @@ public final class HeadlessOmoWriter {
             serializer.setFaceTextureData(faceTextureData, Map.of());
         }
 
-        List<OMOFormat.PartEntry> partEntries = OmoExportAssembler.extractPartEntries(doc.parts());
+        List<OMOFormat.PartEntry> partEntries =
+                OmoExportAssembler.extractPartEntries(doc.parts(), meshData);
         if (partEntries != null && !partEntries.isEmpty()) {
             serializer.setPartEntries(partEntries);
         }

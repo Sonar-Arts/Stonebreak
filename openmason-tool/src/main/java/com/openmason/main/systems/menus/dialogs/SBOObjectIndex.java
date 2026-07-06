@@ -26,9 +26,18 @@ public final class SBOObjectIndex {
 
     private SBOObjectIndex() {}
 
-    public record Entry(String objectId, String displayName, String objectType) {
+    public record Entry(String objectId, String displayName, String objectType, Path sourcePath) {
         public boolean isBlock() { return "block".equalsIgnoreCase(objectType); }
         public boolean isItem()  { return "item".equalsIgnoreCase(objectType); }
+    }
+
+    /** Look up an entry by exact objectId, or null when unknown. */
+    public static Entry find(String objectId) {
+        if (objectId == null || objectId.isEmpty()) return null;
+        for (Entry e : listAll()) {
+            if (e.objectId().equals(objectId)) return e;
+        }
+        return null;
     }
 
     public static List<Entry> listAll() {
@@ -58,7 +67,8 @@ public final class SBOObjectIndex {
                     out.add(new Entry(
                             raw.manifest().objectId(),
                             raw.manifest().objectName(),
-                            raw.manifest().objectType()
+                            raw.manifest().objectType(),
+                            p
                     ));
                 } catch (IOException ignored) {
                     // best-effort enumeration; skip unreadable files

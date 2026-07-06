@@ -894,6 +894,17 @@ public class InputHandler {
                     Game.getInstance().setState(GameState.SETTINGS);
                     Game.getInstance().getPauseMenu().setVisible(false);
                 }
+                // Check resync button (multiplayer only)
+                else if (pauseMenu.isResyncButtonClicked(currentMouseX, currentMouseY, w, h)) {
+                    int audited = com.stonebreak.network.MultiplayerSession.requestFullResync();
+                    com.stonebreak.ui.chat.ChatSystem chat = Game.getInstance().getChatSystem();
+                    if (chat != null) {
+                        chat.addMessage(audited >= 0
+                            ? "Resyncing with server (" + audited + " chunks audited)..."
+                            : "Resync failed: not connected to a server.");
+                    }
+                    Game.getInstance().togglePauseMenu(); // resume so the re-stream is visible
+                }
                 // Check quit button
                 else if (pauseMenu.isQuitButtonClicked(currentMouseX, currentMouseY, w, h)) {
                     // Clean up world state before returning to main menu

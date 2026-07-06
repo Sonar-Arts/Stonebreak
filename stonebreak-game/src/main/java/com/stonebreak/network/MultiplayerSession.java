@@ -120,6 +120,19 @@ public final class MultiplayerSession {
         }
     }
 
+    /**
+     * User-initiated full resync (pause-menu button): audit every resident chunk against the
+     * server plus re-request the entity snapshot. Returns the number of chunks audited, or
+     * -1 when there is no live session.
+     */
+    public static int requestFullResync() {
+        ClientWorldView c = client;
+        if (c != null && !c.isDisconnected()) {
+            return c.requestFullResync();
+        }
+        return -1;
+    }
+
     /** Ask the server to re-send the full entity spawn snapshot. */
     public static void requestEntityResync() {
         ClientWorldView c = client;

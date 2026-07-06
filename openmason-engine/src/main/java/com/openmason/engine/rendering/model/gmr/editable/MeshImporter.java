@@ -98,10 +98,20 @@ public final class MeshImporter {
         int triangleCount = indices.length / 3;
         int[] soupToWelded = weld.soupToWelded();
 
+        int skippedOutOfRange = 0;
         for (int t = 0; t < triangleCount; t++) {
             int sa = indices[t * 3];
             int sb = indices[t * 3 + 1];
             int sc = indices[t * 3 + 2];
+            if (sa < 0 || sa >= soupToWelded.length
+                    || sb < 0 || sb >= soupToWelded.length
+                    || sc < 0 || sc >= soupToWelded.length) {
+                // Corrupt input (indices past the vertex array) — dropping the
+                // triangle keeps the rest of the mesh usable instead of
+                // aborting the whole rebuild deep inside the pipeline.
+                skippedOutOfRange++;
+                continue;
+            }
             int a = soupToWelded[sa];
             int b = soupToWelded[sb];
             int c = soupToWelded[sc];
@@ -121,6 +131,11 @@ public final class MeshImporter {
                 weldedToSoup.putIfAbsent(b, sb);
                 weldedToSoup.putIfAbsent(c, sc);
             }
+        }
+        if (skippedOutOfRange > 0) {
+            logger.error("Import dropped {} triangle(s) whose indices exceed the {}-vertex soup "
+                    + "— the input geometry is corrupt (stale part ranges?)",
+                    skippedOutOfRange, soupToWelded.length);
         }
 
         for (Map.Entry<Integer, List<int[]>> entry : faceTriangles.entrySet()) {

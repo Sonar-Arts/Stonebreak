@@ -161,7 +161,21 @@ public final class ClientPlayerHandler {
         if (!Game.isClientWorldReady()) {
             return;
         }
-        if (remotePlayers.containsKey(playerId)) {
+        RemotePlayer existing = remotePlayers.get(playerId);
+        if (existing != null) {
+            // Duplicate join = authoritative position snapshot (first-state re-announce or
+            // manual-resync roster refresh): correct a badly-parked figure — e.g. one
+            // rostered at spawn before its player reported state, whose droppable state
+            // stream was then discarded under our own join chunk burst. Small offsets are
+            // left to the 20 Hz stream; repositioning mid-walk would visibly hitch.
+            Vector3f cur = existing.getPosition();
+            float dx = cur.x - x, dy = cur.y - y, dz = cur.z - z;
+            if (dx * dx + dy * dy + dz * dz > 4.0f) {
+                NetworkInterpolator interp = existing.getInterpolator();
+                float yaw = interp != null ? interp.currentTargetYaw() : existing.getRotation().y;
+                float pitch = interp != null ? interp.currentTargetPitch() : 0f;
+                existing.applyNetworkState(x, y, z, yaw, pitch);
+            }
             return;
         }
         RemotePlayer rp = new RemotePlayer(Game.getWorld(), new Vector3f(x, y, z), playerId, username);

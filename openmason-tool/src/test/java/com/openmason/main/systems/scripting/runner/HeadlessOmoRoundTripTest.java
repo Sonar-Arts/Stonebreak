@@ -81,6 +81,60 @@ class HeadlessOmoRoundTripTest {
     }
 
     @Test
+    void partEntrySpansMatchTheSavedMeshExactly(@TempDir Path tmp) {
+        // Regression: part ranges must be computed FROM the saved arrays.
+        // Topology-heavy edits can make the exported mesh layout differ from
+        // the part manager's soup ranges — stale ranges made re-opened models
+        // crash in MeshImporter with out-of-bounds indices.
+        HeadlessModelDocument doc = new HeadlessModelDocument();
+        ScriptResult result = executor.run(doc,
+                new ScriptSource(Language.JSON_OPS, "heavy.json", """
+                        {"ops":[
+                          {"op":"create_part","shape":"cube","name":"body","size":[8,3,6],"position":[0,3,0]},
+                          {"op":"create_part","shape":"cube","name":"arm","size":[1,4,1],"position":[5,3,0],"parent":"body"},
+                          {"op":"extrude_faces","part":"body","faces":{"facing":"+y"},"offset":1,"as":"cap"},
+                          {"op":"inset_faces","part":"body","faces":{"ref":"cap"},"amount":0.2},
+                          {"op":"extrude_faces","part":"arm","faces":{"facing":"-y"},"offset":0.5},
+                          {"op":"scale_faces","part":"arm","faces":{"facing":"+y"},"factor":0.5},
+                          {"op":"mirror_part","part":"arm","axis":"x","name":"arm_R"}
+                        ]}"""),
+                RunOptions.defaults());
+        assertTrue(result.ok(), () -> "script failed: " + result.error());
+
+        Path out = tmp.resolve("heavy.omo");
+        HeadlessOmoWriter.write(doc, out.toString(), "heavy");
+
+        OMODeserializer deserializer = new OMODeserializer();
+        assertNotNull(deserializer.load(out.toString()));
+        OMOFormat.MeshData mesh = deserializer.getLastLoadedMeshData();
+        List<OMOFormat.PartEntry> parts = deserializer.getLastLoadedPartEntries();
+        assertNotNull(parts);
+        assertEquals(3, parts.size());
+
+        int vertexTotal = mesh.vertices().length / 3;
+        for (OMOFormat.PartEntry entry : parts) {
+            assertTrue(entry.vertexStart() + entry.vertexCount() <= vertexTotal,
+                    entry.name() + " vertex span exceeds the saved mesh");
+            assertTrue(entry.indexStart() + entry.indexCount() <= mesh.indices().length,
+                    entry.name() + " index span exceeds the saved mesh");
+            for (int i = entry.indexStart(); i < entry.indexStart() + entry.indexCount(); i++) {
+                int vertex = mesh.indices()[i];
+                assertTrue(vertex >= entry.vertexStart()
+                                && vertex < entry.vertexStart() + entry.vertexCount(),
+                        entry.name() + " index " + vertex + " escapes its vertex span");
+            }
+            int triStart = entry.indexStart() / 3;
+            int triEnd = (entry.indexStart() + entry.indexCount()) / 3;
+            for (int t = triStart; t < triEnd; t++) {
+                int faceId = mesh.triangleToFaceId()[t];
+                assertTrue(faceId >= entry.faceStart()
+                                && faceId < entry.faceStart() + entry.faceCount(),
+                        entry.name() + " face id " + faceId + " escapes its face range");
+            }
+        }
+    }
+
+    @Test
     void twoRunsAreDeterministic() {
         OMOFormat.MeshData a = runCrab().extractMeshData();
         OMOFormat.MeshData b = runCrab().extractMeshData();

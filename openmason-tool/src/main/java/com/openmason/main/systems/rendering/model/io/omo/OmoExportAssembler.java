@@ -31,19 +31,34 @@ public final class OmoExportAssembler {
      * Extract part entries for serialization (transform + mesh range + flags
      * per part). Returns null when a lone identity-transform part makes
      * entries unnecessary (the partless-synthesis load path covers it).
+     *
+     * <p>Vertex/index spans are recomputed FROM {@code meshData} — the exact
+     * arrays being written — via each part's stable face-id range in
+     * {@code triangleToFaceId}. The part manager's {@code MeshRange} indexes
+     * the combined soup, but the live save exports the DERIVED render mesh,
+     * whose layout can legitimately differ after topology edits (welded
+     * degenerate faces are skipped, coincident in-face vertices shrink
+     * loops); ranges computed against the saved arrays align by construction,
+     * so the load-time slicing can never run out of bounds.
      */
-    public static List<OMOFormat.PartEntry> extractPartEntries(ModelPartManager partManager) {
-        if (partManager == null) {
+    public static List<OMOFormat.PartEntry> extractPartEntries(ModelPartManager partManager,
+                                                               OMOFormat.MeshData meshData) {
+        if (partManager == null || meshData == null) {
             return null;
         }
         if (partManager.getPartCount() <= 1 && !hasNonDefaultTransform(partManager.getAllParts())) {
             return null; // Single default-transform part: partless synthesis on load covers it
         }
 
+        List<ModelPartDescriptor> parts = partManager.getAllParts();
+        int[][] spans = computeSpans(parts, meshData);
+
         List<OMOFormat.PartEntry> entries = new ArrayList<>();
-        for (ModelPartDescriptor part : partManager.getAllParts()) {
+        for (int i = 0; i < parts.size(); i++) {
+            ModelPartDescriptor part = parts.get(i);
             PartTransform t = part.transform();
             MeshRange range = part.meshRange();
+            int[] span = spans[i]; // {vertexStart, vertexCount, indexStart, indexCount}
 
             entries.add(new OMOFormat.PartEntry(
                     part.id(), part.name(),
@@ -51,10 +66,7 @@ public final class OmoExportAssembler {
                     t.position().x, t.position().y, t.position().z,
                     t.rotation().x, t.rotation().y, t.rotation().z,
                     t.scale().x, t.scale().y, t.scale().z,
-                    range != null ? range.vertexStart() : 0,
-                    range != null ? range.vertexCount() : 0,
-                    range != null ? range.indexStart() : 0,
-                    range != null ? range.indexCount() : 0,
+                    span[0], span[1], span[2], span[3],
                     range != null ? range.faceStart() : 0,
                     range != null ? range.faceCount() : 0,
                     part.visible(), part.locked(),
@@ -63,6 +75,58 @@ public final class OmoExportAssembler {
         }
 
         return entries;
+    }
+
+    /**
+     * Per-part {vertexStart, vertexCount, indexStart, indexCount} in the
+     * saved mesh's own layout. Triangles carry global face ids and each part
+     * owns the contiguous id range {@code [faceStart, faceStart+faceCount)};
+     * a part with no triangles in the mesh (hidden) gets a zero span.
+     */
+    private static int[][] computeSpans(List<ModelPartDescriptor> parts, OMOFormat.MeshData meshData) {
+        int[][] spans = new int[parts.size()][4];
+        int[] triToFace = meshData.triangleToFaceId();
+        int[] indices = meshData.indices();
+        if (triToFace == null || indices == null) {
+            // No face mapping — fall back to the part manager's soup ranges.
+            for (int i = 0; i < parts.size(); i++) {
+                MeshRange r = parts.get(i).meshRange();
+                spans[i] = r == null ? new int[4] : new int[]{
+                        r.vertexStart(), r.vertexCount(), r.indexStart(), r.indexCount()};
+            }
+            return spans;
+        }
+
+        int triangleCount = Math.min(triToFace.length, indices.length / 3);
+        for (int i = 0; i < parts.size(); i++) {
+            MeshRange r = parts.get(i).meshRange();
+            if (r == null || r.faceCount() == 0) {
+                continue; // zero span
+            }
+            int faceStart = r.faceStart();
+            int faceEnd = faceStart + r.faceCount();
+            int triFirst = -1, triLast = -1;
+            int minVertex = Integer.MAX_VALUE, maxVertex = -1;
+            for (int tri = 0; tri < triangleCount; tri++) {
+                int faceId = triToFace[tri];
+                if (faceId < faceStart || faceId >= faceEnd) continue;
+                if (triFirst < 0) triFirst = tri;
+                triLast = tri;
+                for (int c = 0; c < 3; c++) {
+                    int vertex = indices[tri * 3 + c];
+                    if (vertex < minVertex) minVertex = vertex;
+                    if (vertex > maxVertex) maxVertex = vertex;
+                }
+            }
+            if (triFirst < 0) {
+                continue; // hidden part: reserves its face ids, contributes no geometry
+            }
+            spans[i][0] = minVertex;
+            spans[i][1] = maxVertex - minVertex + 1;
+            spans[i][2] = triFirst * 3;
+            spans[i][3] = (triLast - triFirst + 1) * 3;
+        }
+        return spans;
     }
 
     /**
