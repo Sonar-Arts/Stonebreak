@@ -22,6 +22,10 @@ public final class ServerPlayer {
     private String username = "Player";
     /** True once a valid HandshakeC2S has been accepted (gates PLAY packet handling). */
     private boolean handshakeDone = false;
+    /** True while waiting for the client to submit character creation data. */
+    private boolean waitingForCharacterCreation = false;
+    /** JSON blob of the client's submitted character creation (set by CharacterCreationC2S). */
+    private volatile byte[] characterCreationBlob;
 
     // Last reported transform (cached from PlayerStateC2S) for reach checks + chunk targeting.
     private float x, y, z, yaw, pitch;
@@ -64,6 +68,11 @@ public final class ServerPlayer {
     public void setUsername(String username) { this.username = username; }
     public boolean handshakeDone() { return handshakeDone; }
     public void markHandshakeDone() { this.handshakeDone = true; }
+
+    public boolean waitingForCharacterCreation() { return waitingForCharacterCreation; }
+    public void setWaitingForCharacterCreation(boolean waiting) { this.waitingForCharacterCreation = waiting; }
+    public byte[] characterCreationBlob() { return characterCreationBlob; }
+    public void setCharacterCreationBlob(byte[] blob) { this.characterCreationBlob = blob; }
 
     public float x() { return x; }
     public float y() { return y; }
