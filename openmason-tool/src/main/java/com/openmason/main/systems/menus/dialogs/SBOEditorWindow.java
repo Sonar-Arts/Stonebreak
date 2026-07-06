@@ -91,8 +91,8 @@ public class SBOEditorWindow {
         this.visible = new ImBoolean(false);
         this.fileDialogService = fileDialogService;
         this.statusService = statusService;
-        this.recipeSection = new SBORecipeSection(() -> dirty = true);
-        this.smeltingSection = new SBOSmeltingSection(() -> dirty = true);
+        this.recipeSection = new SBORecipeSection(() -> dirty = true, () -> objectId.get().trim());
+        this.smeltingSection = new SBOSmeltingSection(() -> dirty = true, () -> objectId.get().trim());
         this.statesEditor = new SBOStatesEditor(
                 () -> dirty = true,
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenOMOInProjectDialog(cb::accept); },
@@ -415,5 +415,15 @@ public class SBOEditorWindow {
             if (arr[i].equalsIgnoreCase(value)) return i;
         }
         return 0;
+    }
+
+    /**
+     * Release GPU-backed resources (recipe Mortar regions, ingredient icon
+     * textures). Must run with a current GL context, before the SkijaContext
+     * closes.
+     */
+    public void close() {
+        recipeSection.close();
+        SBOIngredientIcons.clear();
     }
 }

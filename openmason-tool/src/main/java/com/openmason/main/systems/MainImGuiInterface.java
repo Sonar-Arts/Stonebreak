@@ -908,5 +908,8 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         if (propertyPanelImGui != null) {
             propertyPanelImGui.dispose();
         }
+        if (sboEditorWindow != null) {
+            sboEditorWindow.close();
+        }
     }
 }
