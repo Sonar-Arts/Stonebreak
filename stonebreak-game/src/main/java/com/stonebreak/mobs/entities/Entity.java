@@ -41,6 +41,15 @@ public abstract class Entity {
     // networkShadow=true means a remote-owned entity that should skip local AI/physics.
     private int networkId = -1;
     private boolean networkShadow = false;
+    /**
+     * True when this entity was placed by the /spawn chat command (or another explicit
+     * command/test spawn) rather than by natural world generation or the passive-mob spawn cycle.
+     * Command-spawned mobs still count toward EntitySpawner's dynamic population cap (reducing
+     * headroom for future natural spawns), but they are exempt from the cap-driven despawn cull;
+     * ordinary distance-based despawn still applies to them. Not persisted across save/load —
+     * resets to false on reload.
+     */
+    private boolean commandSpawned = false;
     private com.stonebreak.network.client.NetworkInterpolator interpolator;
     
     /**
@@ -225,6 +234,8 @@ public abstract class Entity {
     public void setOwnerPlayerId(int ownerPlayerId) { this.ownerPlayerId = ownerPlayerId; }
     public boolean isNetworkShadow() { return networkShadow; }
     public void setNetworkShadow(boolean shadow) { this.networkShadow = shadow; }
+    public boolean isCommandSpawned() { return commandSpawned; }
+    public void setCommandSpawned(boolean commandSpawned) { this.commandSpawned = commandSpawned; }
     public com.stonebreak.network.client.NetworkInterpolator getInterpolator() { return interpolator; }
     public void setInterpolator(com.stonebreak.network.client.NetworkInterpolator interp) { this.interpolator = interp; }
 

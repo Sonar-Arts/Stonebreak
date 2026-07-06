@@ -27,6 +27,7 @@ import com.stonebreak.network.packet.handshake.HandshakeC2S;
 import com.stonebreak.network.packet.handshake.KeepAliveC2S;
 import com.stonebreak.network.packet.handshake.KeepAliveS2C;
 import com.stonebreak.network.packet.handshake.KickS2C;
+import com.stonebreak.network.packet.handshake.NeedsCharacterCreationS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.network.packet.player.GiveItemS2C;
 import com.stonebreak.network.packet.player.PlayerHeldItemC2S;
@@ -89,6 +90,14 @@ public final class ClientWorldView {
     // client world/clock exists (the world builds async after WelcomeS2C); the world
     // bootstrap seeds the clock from it. null until the first sample.
     private volatile Long pendingServerTimeTicks = null;
+
+    // Late-join character creation flow: server sent NeedsCharacterCreationS2C instead of
+    // WelcomeS2C, so we show the character creation screen before building the world.
+    private volatile boolean needsCharacterCreation = false;
+    private volatile long pendingWorldSeed = 0L;
+    private volatile int pendingPlayerId = -1;
+    /** True while waiting for the server's welcome after character creation submit. */
+    private volatile boolean characterCreationSubmitted = false;
 
     // ─── Desync detection ────────────────────────────────────────────────────
     /** Per-chunk cooldown between resync requests (prevents request storms on a bad chunk). */
@@ -328,19 +337,31 @@ public final class ClientWorldView {
         }
         byte[] blob = restoreBlob;
         if (blob != null && blob.length > 0) {
-            try {
-                com.stonebreak.world.save.util.StateConverter.applyPlayerData(
-                        p, playerSerializer.deserialize(blob));
-                System.out.println("[CLIENT] Restored saved player data from server.");
-            } catch (Exception e) {
-                System.err.println("[CLIENT] Failed to apply restored player data: " + e.getMessage());
-                p.giveStartingItems();
+            // Check if this is a character creation blob (has "background" key) or a full save
+            if (isCharacterCreationBlob(blob)) {
+                p.getCharacterStats().applyFromJoinData(blob);
+                System.out.println("[CLIENT] Applied character creation data from server.");
+            } else {
+                try {
+                    com.stonebreak.world.save.util.StateConverter.applyPlayerData(
+                            p, playerSerializer.deserialize(blob));
+                    System.out.println("[CLIENT] Restored saved player data from server.");
+                } catch (Exception e) {
+                    System.err.println("[CLIENT] Failed to apply restored player data: " + e.getMessage());
+                    p.giveStartingItems();
+                }
             }
         } else {
             p.giveStartingItems(); // first time on this server
             System.out.println("[CLIENT] New player on this server — gave starting items.");
         }
         restoreApplied = true;
+    }
+
+    /** Check if JSON blob is a character creation payload (vs. a full PlayerData save). */
+    private boolean isCharacterCreationBlob(byte[] blob) {
+        String s = new String(blob, java.nio.charset.StandardCharsets.UTF_8);
+        return s.contains("\"background\"");
     }
 
     /** Periodically push our full inventory/stats to the server so it can persist them (remote). */
@@ -538,6 +559,7 @@ public final class ClientWorldView {
     private void route(Packet packet) {
         switch (packet) {
             case WelcomeS2C w -> handleWelcome(w);
+            case NeedsCharacterCreationS2C ncc -> handleNeedsCharacterCreation(ncc);
             case KickS2C k -> { kickReason = k.reason(); disconnected = true; }
             case ChunkDataS2C cd -> chunkHandler.apply(cd);
             case BlockChangeS2C b -> blockHandler.applyBlockChange(b);
@@ -577,6 +599,35 @@ public final class ClientWorldView {
      * builds async after WelcomeS2C) the sample is buffered for the bootstrap to seed the
      * clock; afterwards the local clock free-runs and each sample snaps/converges it.
      */
+    /** Called when the server tells us we need to create a character before entering the world. */
+    private void handleNeedsCharacterCreation(NeedsCharacterCreationS2C ncc) {
+        pendingPlayerId = ncc.playerId();
+        pendingWorldSeed = ncc.worldSeed();
+        needsCharacterCreation = true;
+        // Signal the game to enter the character creation screen.
+        Game.getInstance().setState(com.stonebreak.core.GameState.CHARACTER_CREATION);
+        System.out.println("[CLIENT] Needs character creation, world seed " + pendingWorldSeed);
+    }
+
+    /** Submit the player's character creation data to the server. */
+    public void submitCharacterCreation(byte[] json) {
+        if (connection == null || !connection.isActive()) {
+            return;
+        }
+        connection.send(new com.stonebreak.network.packet.player.CharacterCreationC2S(json), false);
+        characterCreationSubmitted = true;
+        System.out.println("[CLIENT] Submitted character creation data to server.");
+    }
+
+    /** True when the server asked for character creation and we haven't submitted yet. */
+    public boolean isNeedsCharacterCreation() { return needsCharacterCreation; }
+
+    /** True while waiting for the server's welcome after submitting character creation. */
+    public boolean isCharacterCreationSubmitted() { return characterCreationSubmitted; }
+
+    /** World seed to use after character creation is complete. */
+    public long getPendingWorldSeed() { return pendingWorldSeed; }
+
     private void handleTimeSync(TimeSyncS2C ts) {
         pendingServerTimeTicks = ts.worldTimeTicks();
         com.stonebreak.world.TimeOfDay clock = Game.getTimeOfDay();
@@ -590,6 +641,9 @@ public final class ClientWorldView {
     private void handleWelcome(WelcomeS2C w) {
         localPlayerId = w.playerId();
         Vector3f spawn = new Vector3f(w.spawnX(), w.spawnY(), w.spawnZ());
+        // Clear character creation flow state — we're now in the world.
+        needsCharacterCreation = false;
+        characterCreationSubmitted = false;
         // Build the client RENDER world: no terrain generation, no save service — chunks stream
         // in from the server. The local player is positioned at the authoritative spawn.
         String label = Game.getInstance().getCurrentWorldName() != null

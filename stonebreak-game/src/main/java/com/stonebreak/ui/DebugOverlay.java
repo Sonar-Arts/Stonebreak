@@ -24,6 +24,7 @@ import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
+import com.stonebreak.mobs.goose.Goose;
 import java.util.List;
 import java.util.ArrayDeque;
 
@@ -642,14 +643,15 @@ public class DebugOverlay {
         // future mobs appear here automatically.
         List<Entity> mobEntities = new java.util.ArrayList<>();
         for (Entity entity : entityManager.getAllEntities()) {
-            if (entity instanceof LivingEntity mob && mob.getAI() != null) {
+            if (entity instanceof LivingEntity mob && (mob.getAI() != null || mob instanceof Goose)) {
                 mobEntities.add(entity);
             }
         }
 
         // Model wireframe overlays — each call manages its own GL state.
         for (Entity entity : mobEntities) {
-            if (entity.isAlive() && entity instanceof LivingEntity mob && mob.getAI() != null) {
+            if (entity.isAlive() && entity instanceof LivingEntity mob
+                    && (mob.getAI() != null || mob instanceof Goose)) {
                 renderer.renderEntityWireframe(mob, colorForState(mob));
             }
         }
@@ -676,6 +678,13 @@ public class DebugOverlay {
      * doubles as an at-a-glance behaviour readout. One palette for all mobs.
      */
     private Vector4f colorForState(LivingEntity mob) {
+        if (mob instanceof Goose goose) {
+            return switch (goose.getGooseAI().getCurrentState()) {
+                case IDLE, FLOATING                        -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
+                case WANDERING, FLEEING                    -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
+                case TAKEOFF, FORMATION, FREE_FLY, LANDING -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
+            };
+        }
         MobBehaviorState state = mob.getAI() != null
                 ? mob.getAI().getCurrentState() : MobBehaviorState.IDLE;
         return switch (state) {

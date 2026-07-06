@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.nio.charset.StandardCharsets;
 import java.util.stream.Collectors;
 
 /**
@@ -285,32 +286,212 @@ public class CharacterStats {
 
   // ─────────────────────────────────────────────── Bulk restore (used by save system)
 
-  /**
-   * Restores all RPG state from saved data. Called during world load.
-   */
-  public void restore(String classId,
-                      Map<String, Integer> abilityCp,
-                      Map<String, Integer> skills,
-                      Set<String> feats,
-                      int cp, int sp, int fp,
-                      int[] scores, int ap,
-                      int level, int xp) {
-    this.selectedClassId = classId;
-    this.spentAbilityCp.clear();
-    this.spentAbilityCp.putAll(abilityCp);
-    this.skillLevels.clear();
-    this.skillLevels.putAll(skills);
-    this.acquiredFeatIds.clear();
-    this.acquiredFeatIds.addAll(feats);
-    this.remainingCp = cp;
-    this.remainingSp = sp;
-    this.remainingFp = fp;
-    if (scores != null && scores.length == 6) {
-      this.abilityScores = java.util.Arrays.copyOf(scores, 6);
+    /**
+     * Restores all RPG state from saved data. Called during world load.
+     */
+    public void restore(String classId,
+                        Map<String, Integer> abilityCp,
+                        Map<String, Integer> skills,
+                        Set<String> feats,
+                        int cp, int sp, int fp,
+                        int[] scores, int ap,
+                        int level, int xp) {
+        this.selectedClassId = classId;
+        this.spentAbilityCp.clear();
+        this.spentAbilityCp.putAll(abilityCp);
+        this.skillLevels.clear();
+        this.skillLevels.putAll(skills);
+        this.acquiredFeatIds.clear();
+        this.acquiredFeatIds.addAll(feats);
+        this.remainingCp = cp;
+        this.remainingSp = sp;
+        this.remainingFp = fp;
+        if (scores != null && scores.length == 6) {
+          this.abilityScores = java.util.Arrays.copyOf(scores, 6);
+        }
+        this.remainingAp = ap;
+        this.level = Math.max(1, level);
+        this.xp    = Math.max(0, xp);
+        if (player != null) player.updateDerivedStats();
     }
-    this.remainingAp = ap;
-    this.level = Math.max(1, level);
-    this.xp    = Math.max(0, xp);
-    if (player != null) player.updateDerivedStats();
-  }
+
+    // ─────────────────────────────────────────────── Network serialization
+
+    /**
+     * Serializes all character creation data to JSON for transmission to the server
+     * on late-join character creation. Covers: background, class, ability scores,
+     * CP spending, skill levels, feats, and point budgets.
+     */
+    public byte[] toCreationJson() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+        sb.append("\"background\":\"").append(escapeJson(selectedBackground)).append("\",");
+        sb.append("\"class\":").append(selectedClassId != null ? "\"" + escapeJson(selectedClassId) + "\"" : "null");
+
+        // Ability scores
+        sb.append(",\"abilityScores\":[");
+        for (int i = 0; i < 6; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(abilityScores[i]);
+        }
+        sb.append("]");
+
+        // Point budgets
+        sb.append(",\"remainingAp\":").append(remainingAp);
+        sb.append(",\"remainingCp\":").append(remainingCp);
+        sb.append(",\"remainingSp\":").append(remainingSp);
+        sb.append(",\"remainingFp\":").append(remainingFp);
+
+        // CP spending map
+        sb.append(",\"spentAbilityCp\":{");
+        boolean first = true;
+        for (Map.Entry<String, Integer> e : spentAbilityCp.entrySet()) {
+            if (!first) sb.append(',');
+            sb.append('"').append(escapeJson(e.getKey())).append("\":").append(e.getValue());
+            first = false;
+        }
+        sb.append("}");
+
+        // Skill levels map
+        sb.append(",\"skillLevels\":{");
+        first = true;
+        for (Map.Entry<String, Integer> e : skillLevels.entrySet()) {
+            if (!first) sb.append(',');
+            sb.append('"').append(escapeJson(e.getKey())).append("\":").append(e.getValue());
+            first = false;
+        }
+        sb.append("}");
+
+        // Acquired feats array
+        sb.append(",\"acquiredFeats\":[");
+        first = true;
+        for (String f : acquiredFeatIds) {
+            if (!first) sb.append(',');
+            sb.append('"').append(escapeJson(f)).append('"');
+            first = false;
+        }
+        sb.append("]");
+
+        sb.append("}");
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Applies character creation data received from the server on late join.
+     * This is a subset of {@link #restore} — it does NOT touch level/xp.
+     */
+    public void applyFromJoinData(byte[] json) {
+        if (json == null || json.length == 0) return;
+        String s = new String(json, StandardCharsets.UTF_8);
+
+        // Background
+        String bg = extractString(s, "background");
+        if (bg != null) this.selectedBackground = bg;
+
+        // Class
+        String cls = extractString(s, "class");
+        if (cls != null && !"null".equals(cls)) {
+            this.selectedClassId = cls;
+        }
+
+        // Ability scores
+        int[] scores = extractIntArray(s, "abilityScores");
+        if (scores != null && scores.length == 6) {
+            this.abilityScores = java.util.Arrays.copyOf(scores, 6);
+        }
+
+        // Point budgets
+        int ap = extractInt(s, "remainingAp");
+        if (ap >= 0) this.remainingAp = ap;
+        int cp = extractInt(s, "remainingCp");
+        if (cp >= 0) this.remainingCp = cp;
+        int sp = extractInt(s, "remainingSp");
+        if (sp >= 0) this.remainingSp = sp;
+        int fp = extractInt(s, "remainingFp");
+        if (fp >= 0) this.remainingFp = fp;
+
+        // CP spending
+        Map<String, Integer> cpMap = extractStringIntMap(s, "spentAbilityCp");
+        if (cpMap != null) {
+            this.spentAbilityCp.clear();
+            this.spentAbilityCp.putAll(cpMap);
+        }
+
+        // Skill levels
+        Map<String, Integer> skillMap = extractStringIntMap(s, "skillLevels");
+        if (skillMap != null) {
+            this.skillLevels.clear();
+            this.skillLevels.putAll(skillMap);
+        }
+
+        // Acquired feats
+        Set<String> feats = extractStringSet(s, "acquiredFeats");
+        if (feats != null) {
+            this.acquiredFeatIds.clear();
+            this.acquiredFeatIds.addAll(feats);
+        }
+
+        if (player != null) player.updateDerivedStats();
+    }
+
+    // ── Lightweight JSON helpers (mirrors JsonParsingUtil patterns) ──
+
+    static String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    static String extractString(String json, String key) {
+        String pattern = "\"" + key + "\"\\s*:\\s*\"([^\"]*)\"";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(pattern).matcher(json);
+        return m.find() ? m.group(1) : null;
+    }
+
+    static int extractInt(String json, String key) {
+        String pattern = "\"" + key + "\"\\s*:\\s*(-?\\d+)";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(pattern).matcher(json);
+        return m.find() ? Integer.parseInt(m.group(1)) : -1;
+    }
+
+    static int[] extractIntArray(String json, String key) {
+        String pattern = "\"" + key + "\"\\s*:\\s*\\[([^\\]]+)\\]";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(pattern).matcher(json);
+        if (!m.find()) return null;
+        String[] parts = m.group(1).split(",");
+        int[] arr = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            try { arr[i] = Integer.parseInt(parts[i].trim()); }
+            catch (NumberFormatException ex) { arr[i] = 10; }
+        }
+        return arr;
+    }
+
+    static Map<String, Integer> extractStringIntMap(String json, String key) {
+        String pattern = "\"" + key + "\"\\s*:\\s*\\{([^}]*)\\}";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(pattern).matcher(json);
+        if (!m.find()) return null;
+        Map<String, Integer> result = new HashMap<>();
+        String content = m.group(1);
+        if (content.trim().isEmpty()) return result;
+        java.util.regex.Matcher em = java.util.regex.Pattern.compile(
+                "\"([^\"]+)\"\\s*:\\s*(\\d+)").matcher(content);
+        while (em.find()) {
+            result.put(em.group(1), Integer.parseInt(em.group(2)));
+        }
+        return result;
+    }
+
+    static Set<String> extractStringSet(String json, String key) {
+        String pattern = "\"" + key + "\"\\s*:\\s*\\[([^\\]]*)\\]";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(pattern).matcher(json);
+        if (!m.find()) return null;
+        Set<String> result = new HashSet<>();
+        String content = m.group(1).trim();
+        if (content.isEmpty()) return result;
+        java.util.regex.Matcher em = java.util.regex.Pattern.compile("\"([^\"]*)\"").matcher(content);
+        while (em.find()) {
+            result.add(em.group(1));
+        }
+        return result;
+    }
 }

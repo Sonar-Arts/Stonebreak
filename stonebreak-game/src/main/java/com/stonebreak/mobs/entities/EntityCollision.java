@@ -665,8 +665,44 @@ public class EntityCollision {
     public void applyLivingEntityPhysics(LivingEntity entity, float deltaTime) {
         // Apply basic entity physics
         applyEntityPhysics(entity, deltaTime);
-        
+
         // Additional living entity physics can be added here
         // such as breathing air bubbles in water, stamina-based movement, etc.
+    }
+
+    /**
+     * Integrates an airborne, self-propelled entity (e.g. a flying goose) for one tick using
+     * the same per-axis world-block resolvers as {@link #applyEntityPhysics}, but with NO
+     * gravity, friction, buoyancy or ground-snap — the caller's AI owns all velocity.
+     *
+     * <p>The directional resolvers slide along walls (horizontal velocity is preserved) and
+     * treat AIR/WATER as passable, so geese still cruise over and splash-land on water.
+     *
+     * @return {@code {blockedHorizontal, blockedVertical}} so the AI can react to a wall/ceiling.
+     */
+    public boolean[] moveAirborneWithCollision(LivingEntity entity, float deltaTime) {
+        Vector3f position = entity.getPosition();
+        Vector3f velocity = entity.getVelocity();
+
+        float targetX = position.x + velocity.x * deltaTime;
+        position.x = targetX;
+        handleCollisionX(entity, position, velocity);
+        boolean blockedX = Math.abs(position.x - targetX) > 1e-4f;
+
+        float targetY = position.y + velocity.y * deltaTime;
+        float velYBefore = velocity.y;
+        position.y = targetY;
+        handleCollisionY(entity, position, velocity); // zeroes velocity.y / sets onGround on a hit
+        boolean blockedY = Math.abs(position.y - targetY) > 1e-4f
+                || (velYBefore != 0f && velocity.y == 0f);
+
+        float targetZ = position.z + velocity.z * deltaTime;
+        position.z = targetZ;
+        handleCollisionZ(entity, position, velocity);
+        boolean blockedZ = Math.abs(position.z - targetZ) > 1e-4f;
+
+        entity.setPosition(position);
+        entity.setVelocity(velocity);
+        return new boolean[] { blockedX || blockedZ, blockedY };
     }
 }

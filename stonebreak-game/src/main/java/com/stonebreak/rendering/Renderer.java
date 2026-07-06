@@ -81,7 +81,7 @@ public class Renderer {
 
     // Post-processing (scene FBO + screen-space effects, e.g. god rays)
     private final PostProcessingPipeline postPipeline;
-    
+
 
     /**
      * Creates and initializes the renderer.

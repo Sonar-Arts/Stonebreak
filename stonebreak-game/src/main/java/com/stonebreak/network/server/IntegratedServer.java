@@ -10,6 +10,9 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntitySpawner;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.network.StonebreakProtocol;
+import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
+import com.stonebreak.rpg.classes.ClassRegistry;
+import com.stonebreak.rpg.feats.FeatRegistry;
 import com.stonebreak.network.packet.chat.ChatMessageC2S;
 import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.handshake.DisconnectC2S;
@@ -17,6 +20,7 @@ import com.stonebreak.network.packet.handshake.HandshakeC2S;
 import com.stonebreak.network.packet.handshake.KeepAliveC2S;
 import com.stonebreak.network.packet.handshake.KeepAliveS2C;
 import com.stonebreak.network.packet.handshake.KickS2C;
+import com.stonebreak.network.packet.handshake.NeedsCharacterCreationS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.network.packet.player.DropItemC2S;
 import com.stonebreak.network.packet.player.GiveItemS2C;
@@ -24,6 +28,7 @@ import com.stonebreak.network.packet.player.PlayerDataC2S;
 import com.stonebreak.network.packet.player.PlayerDataS2C;
 import com.stonebreak.network.packet.player.PlayerHeldItemC2S;
 import com.stonebreak.network.packet.player.ViewDistanceC2S;
+import com.stonebreak.network.packet.player.CharacterCreationC2S;
 import com.stonebreak.network.packet.player.PlayerJoinS2C;
 import com.stonebreak.network.packet.player.PlayerLeaveS2C;
 import com.stonebreak.network.packet.player.PlayerStateC2S;
@@ -278,6 +283,8 @@ public final class IntegratedServer {
         if (!sp.handshakeDone()) {
             if (packet instanceof HandshakeC2S hs) {
                 handleHandshake(sp, hs);
+            } else if (packet instanceof CharacterCreationC2S cc) {
+                handleCharacterCreation(sp, cc);
             }
             return; // ignore anything else until the handshake is accepted
         }
@@ -359,23 +366,50 @@ public final class IntegratedServer {
         sp.assignPlayerId(stableId);
         ctx.addPlayer(sp);
 
+        // Late-join character creation: remote players with no saved data must create a
+        // character before entering the world. Local players are handled same-JVM.
+        if (!sp.isLocal() && !playerHasSavedData(sp)) {
+            sp.setWaitingForCharacterCreation(true);
+            sp.send(new NeedsCharacterCreationS2C(sp.playerId(), ctx.worldSeed()));
+            System.out.println("[SERVER] " + hs.username() + " (id " + sp.playerId()
+                    + ") — no saved data, waiting for character creation.");
+            return;
+        }
+
+        // Standard welcome flow (player has saved data or is local).
+        sendWelcomeSnapshot(sp);
+
+        System.out.println("[SERVER] " + hs.username() + " joined as id " + sp.playerId());
+    }
+
+    /** Check if a remote player has any saved data in the per-username store. */
+    private boolean playerHasSavedData(ServerPlayer sp) {
+        if (sp.isLocal()) return false; // local handled same-JVM
+        ServerLevel level = ctx.serverLevel();
+        if (level == null || level.saveService() == null) return false;
+        try {
+            byte[] blob = level.saveService().loadNamedPlayer(sp.username())
+                    .get(5, java.util.concurrent.TimeUnit.SECONDS);
+            return blob != null;
+        } catch (Exception e) {
+            System.err.println("[SERVER] Failed to check saved data for "
+                    + sp.username() + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    /** Send the full welcome snapshot (welcome, time, roster, snapshots, saved data). */
+    private void sendWelcomeSnapshot(ServerPlayer sp) {
         Vector3f spawn = ctx.spawn();
 
-        // 1. Welcome: who you are + the seed + the authoritative spawn. Followed immediately
-        //    by the authoritative time-of-day so the joining client's clock starts at the
-        //    server's actual time instead of a NOON default (non-droppable — join snapshot).
+        // 1. Welcome: who you are + the seed + the authoritative spawn.
         sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), spawn.x, spawn.y, spawn.z));
         TimeSyncS2C timeSync = currentTimeSync();
         if (timeSync != null) {
             sp.send(timeSync, false);
         }
 
-        // 2. Roster bootstrap: every player already present (no synthetic host — the local
-        //    player is a normal client that announced itself like any other). A player that
-        //    hasn't reported a position yet (the HOST while its own client world is still
-        //    rebuilding after a re-host) rosters at the world spawn instead of the (0,0,0)
-        //    default; its first PlayerStateC2S re-announces the real position (non-droppable,
-        //    see ServerPlayerHandler.handlePlayerState).
+        // 2. Roster bootstrap: every player already present.
         for (ServerPlayer other : ctx.players()) {
             if (other.playerId() != sp.playerId()) {
                 boolean reported = other.lastStateNs() != 0L;
@@ -387,7 +421,7 @@ public final class IntegratedServer {
         }
 
         // 3. Tell existing clients about the newcomer.
-        ctx.broadcastExcept(sp, new PlayerJoinS2C(sp.playerId(), hs.username(), spawn.x, spawn.y, spawn.z), false);
+        ctx.broadcastExcept(sp, new PlayerJoinS2C(sp.playerId(), sp.username(), spawn.x, spawn.y, spawn.z), false);
 
         // 4. Mark handshaked and deliver per-domain join snapshots.
         sp.markHandshakeDone();
@@ -397,8 +431,133 @@ public final class IntegratedServer {
         // 5. Restore a REMOTE player's saved inventory/stats (the local player is restored
         //    same-JVM). An empty payload tells the client to use fresh starting items.
         sendInitialPlayerData(sp);
+    }
 
-        System.out.println("[SERVER] " + hs.username() + " joined as id " + sp.playerId());
+    /** Handle the client's character creation submission. Validates data, then completes welcome. */
+    private void handleCharacterCreation(ServerPlayer sp, CharacterCreationC2S cc) {
+        if (!sp.waitingForCharacterCreation()) {
+            return; // unexpected — only handle while waiting
+        }
+        byte[] json = cc.json();
+        if (json == null || json.length == 0) {
+            sp.send(new KickS2C("Empty character creation data."));
+            sp.disconnect();
+            return;
+        }
+        String error = validateCharacterCreation(json);
+        if (error != null) {
+            sp.send(new KickS2C("Invalid character data: " + error));
+            sp.disconnect();
+            return;
+        }
+        // Store the validated blob so we can send it back to the client and persist it.
+        sp.setCharacterCreationBlob(json);
+        sp.setWaitingForCharacterCreation(false);
+        // Complete the welcome sequence.
+        sendWelcomeSnapshot(sp);
+        // Send the character creation data as PlayerData so the client can apply it.
+        sp.send(new com.stonebreak.network.packet.player.PlayerDataS2C(json), false);
+        System.out.println("[SERVER] " + sp.username() + " (id " + sp.playerId()
+                + ") — character creation accepted.");
+    }
+
+    /** Validate character creation JSON. Returns null on success, or an error message. */
+    private String validateCharacterCreation(byte[] json) {
+        String s = new String(json, java.nio.charset.StandardCharsets.UTF_8);
+
+        // Validate ability scores
+        String scoresPattern = "\"abilityScores\"\\s*:\\s*\\[([^\\]]+)\\]";
+        java.util.regex.Matcher scoresM = java.util.regex.Pattern.compile(scoresPattern).matcher(s);
+        if (scoresM.find()) {
+            String[] parts = scoresM.group(1).split(",");
+            if (parts.length != 6) return "abilityScores must have 6 values";
+            int sum = 0;
+            for (String p : parts) {
+                int v;
+                try { v = Integer.parseInt(p.trim()); }
+                catch (NumberFormatException e) { return "abilityScores contains non-integer values"; }
+                if (v < 1 || v > 30) return "ability scores must be 1-30, got " + v;
+                sum += v;
+            }
+            // 6*10 = 60 base + 27 AP = 87 max total
+            if (sum > 87) return "ability scores sum too high (" + sum + "), max is 87";
+            if (sum < 60) return "ability scores sum too low (" + sum + "), min is 60";
+        } else {
+            return "missing abilityScores";
+        }
+
+        // Validate remaining AP
+        String apPattern = "\"remainingAp\"\\s*:\\s*(-?\\d+)";
+        java.util.regex.Matcher apM = java.util.regex.Pattern.compile(apPattern).matcher(s);
+        if (apM.find()) {
+            int ap = Integer.parseInt(apM.group(1));
+            if (ap < 0 || ap > 27) return "remainingAp out of range (0-27), got " + ap;
+        }
+
+        // Validate remaining CP
+        String cpPattern = "\"remainingCp\"\\s*:\\s*(-?\\d+)";
+        java.util.regex.Matcher cpM = java.util.regex.Pattern.compile(cpPattern).matcher(s);
+        if (cpM.find()) {
+            int cp = Integer.parseInt(cpM.group(1));
+            if (cp < 0 || cp > 100) return "remainingCp out of range (0-100), got " + cp;
+        }
+
+        // Validate remaining SP
+        String spPattern = "\"remainingSp\"\\s*:\\s*(-?\\d+)";
+        java.util.regex.Matcher spM = java.util.regex.Pattern.compile(spPattern).matcher(s);
+        if (spM.find()) {
+            int sp = Integer.parseInt(spM.group(1));
+            if (sp < 0 || sp > 100) return "remainingSp out of range (0-100), got " + sp;
+        }
+
+        // Validate remaining FP
+        String fpPattern = "\"remainingFp\"\\s*:\\s*(-?\\d+)";
+        java.util.regex.Matcher fpM = java.util.regex.Pattern.compile(fpPattern).matcher(s);
+        if (fpM.find()) {
+            int fp = Integer.parseInt(fpM.group(1));
+            if (fp < 0 || fp > 100) return "remainingFp out of range (0-100), got " + fp;
+        }
+
+        // Validate class (if present, must be in registry)
+        String classPattern = "\"class\"\\s*:\\s*(\"[^\"]*\"|null)";
+        java.util.regex.Matcher classM = java.util.regex.Pattern.compile(classPattern).matcher(s);
+        if (classM.find()) {
+            String classVal = classM.group(1);
+            if (!"null".equals(classVal)) {
+                String classId = classVal.substring(1, classVal.length() - 1); // strip quotes
+                if (!ClassRegistry.findById(classId).isPresent()) {
+                    return "unknown class: " + classId;
+                }
+            }
+        }
+
+        // Validate background (if present, must be in registry)
+        String bgPattern = "\"background\"\\s*:\\s*\"([^\"]*)\"";
+        java.util.regex.Matcher bgM = java.util.regex.Pattern.compile(bgPattern).matcher(s);
+        if (bgM.find()) {
+            String bgId = bgM.group(1);
+            if (!BackgroundRegistry.findById(bgId).isPresent()) {
+                return "unknown background: " + bgId;
+            }
+        }
+
+        // Validate feats (each must be in registry)
+        String featsPattern = "\"acquiredFeats\"\\s*:\\s*\\[([^\\]]*)\\]";
+        java.util.regex.Matcher featsM = java.util.regex.Pattern.compile(featsPattern).matcher(s);
+        if (featsM.find()) {
+            String content = featsM.group(1).trim();
+            if (!content.isEmpty()) {
+                java.util.regex.Matcher featM = java.util.regex.Pattern.compile("\"([^\"]*)\"").matcher(content);
+                while (featM.find()) {
+                    String featId = featM.group(1);
+                    boolean found = FeatRegistry.ALL.stream()
+                            .anyMatch(f -> f.id().equals(featId));
+                    if (!found) return "unknown feat: " + featId;
+                }
+            }
+        }
+
+        return null; // valid
     }
 
     /** Load a remote player's saved PlayerData blob from per-username storage and send it. */

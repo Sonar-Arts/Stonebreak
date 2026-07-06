@@ -70,6 +70,20 @@ public final class MultiplayerSession {
     public static IntegratedServer getServer() { return server; }
     public static ClientWorldView getClient() { return client; }
 
+    /** True when the session is in the given mode. */
+    public static boolean isInMode(Mode m) { return mode == m; }
+
+    /**
+     * Submit character creation data to the server (late-join flow).
+     * No-op if not in JOIN mode or the client is unavailable.
+     */
+    public static void submitCharacterCreation(byte[] json) {
+        ClientWorldView c = client;
+        if (c != null) {
+            c.submitCharacterCreation(json);
+        }
+    }
+
     /**
      * Latest authoritative world-time sample buffered by the client, or null when no session /
      * no sample yet. Used by the client world bootstrap to seed the render clock at the

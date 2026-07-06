@@ -1,5 +1,6 @@
 package com.stonebreak.ui.characterCreation;
 
+import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
@@ -68,6 +69,17 @@ public final class CharacterCreationScreen {
     }
 
     // ─────────────────────────────────────────────── Lifecycle
+
+    /** Update navigation button labels for JOIN mode. */
+    public void updateLabelsForMode() {
+        if (MultiplayerSession.isInMode(MultiplayerSession.Mode.JOIN)) {
+            state.getBackToWorldSelectButton().text("Main Menu");
+            state.getTerrainMapperButton().text("Enter World");
+        } else {
+            state.getBackToWorldSelectButton().text("World Select");
+            state.getTerrainMapperButton().text("Terrain Mapper");
+        }
+    }
 
     public void render(int windowWidth, int windowHeight) {
         renderer.render(windowWidth, windowHeight);

@@ -29,6 +29,7 @@ public class ChatCommandExecutor {
         registerCommand(new SpectatorCommand());
         registerCommand(new HelpCommand());
         registerCommand(new ObtainCommand());
+        registerCommand(new SpawnCommand());
         registerCommand(new SpawnSoundEmitCommand());
         registerCommand(new Test3DAudioCommand());
         registerCommand(new Test3DNearCommand());

@@ -79,7 +79,8 @@ public class EntitySpawner {
     private static final int MAX_SPAWN_HEIGHT = 120;
 
     /** The passive types this spawner manages. */
-    private static final EntityType[] PASSIVE_SPAWN_TYPES = {EntityType.COW, EntityType.CHICKEN, EntityType.SHEEP};
+    private static final EntityType[] PASSIVE_SPAWN_TYPES =
+            {EntityType.COW, EntityType.CHICKEN, EntityType.SHEEP, EntityType.GOOSE};
 
     /** Cow texture variants — delegates to EntityType to kill duplication. */
     private static final String[] COW_TEXTURE_VARIANTS = EntityType.COW.getTextureVariants();
@@ -272,6 +273,9 @@ public class EntitySpawner {
             if (excess <= 0 || culled >= MAX_CAP_DESPAWNS_PER_SWEEP) {
                 break;
             }
+            if (mob.isCommandSpawned()) {
+                continue;
+            }
             if (nearestAnchorDistance(mob.getPosition(), anchors) <= CAP_PROTECTION_RADIUS) {
                 continue;
             }
@@ -306,7 +310,8 @@ public class EntitySpawner {
     }
 
     private static boolean isPassive(EntityType type) {
-        return type == EntityType.COW || type == EntityType.CHICKEN || type == EntityType.SHEEP;
+        return type == EntityType.COW || type == EntityType.CHICKEN
+                || type == EntityType.SHEEP || type == EntityType.GOOSE;
     }
 
     private static boolean withinAnyViewRadius(Vector3f point, List<SpawnAnchor> anchors, int extraBlocks) {
@@ -396,7 +401,7 @@ public class EntitySpawner {
         int y = (int) Math.floor(position.y);
         int z = (int) Math.floor(position.z);
         return switch (type) {
-            case COW, CHICKEN, SHEEP -> isValidGroundSpawn(x, y, z, position);
+            case COW, CHICKEN, SHEEP, GOOSE -> isValidGroundSpawn(x, y, z, position);
             default -> false;
         };
     }
@@ -442,7 +447,9 @@ public class EntitySpawner {
             if (pos == null || !isValidSpawnLocation(pos, EntityType.COW)) continue;
 
             String variant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
-            if (entityManager.spawnCowWithVariant(pos, variant) != null) {
+            Entity cow = entityManager.spawnCowWithVariant(pos, variant);
+            if (cow != null) {
+                cow.setCommandSpawned(true);
                 spawned++;
             }
         }
@@ -450,15 +457,20 @@ public class EntitySpawner {
 
     /** Test/command hook — unconditional spawn, no validation. */
     public Entity forceSpawnEntity(EntityType type, Vector3f position) {
-        return entityManager.spawnEntity(type, position);
+        Entity entity = entityManager.spawnEntity(type, position);
+        if (entity != null) {
+            entity.setCommandSpawned(true);
+        }
+        return entity;
     }
 
     public String getSpawnStats() {
         int cows = entityManager.getEntitiesByType(EntityType.COW).size();
         int chickens = entityManager.getEntitiesByType(EntityType.CHICKEN).size();
         int sheep = entityManager.getEntitiesByType(EntityType.SHEEP).size();
+        int geese = entityManager.getEntitiesByType(EntityType.GOOSE).size();
         int cap = computeCap(countEligibleChunks(collectAnchors()));
-        return String.format("Cows: %d | Chickens: %d | Sheep: %d | Cap: %d | Next cycle: %.1fs",
-                cows, chickens, sheep, cap, PASSIVE_SPAWN_INTERVAL_SECONDS - spawnTimer);
+        return String.format("Cows: %d | Chickens: %d | Sheep: %d | Geese: %d | Cap: %d | Next cycle: %.1fs",
+                cows, chickens, sheep, geese, cap, PASSIVE_SPAWN_INTERVAL_SECONDS - spawnTimer);
     }
 }

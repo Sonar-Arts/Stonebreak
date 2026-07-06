@@ -8,6 +8,7 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
 import com.stonebreak.world.generation.terrain.animals.animalRegistry.ChickenAnimal;
 import com.stonebreak.world.generation.terrain.animals.animalRegistry.CowAnimal;
+import com.stonebreak.world.generation.terrain.animals.animalRegistry.GooseAnimal;
 import com.stonebreak.world.generation.terrain.animals.animalRegistry.SheepAnimal;
 
 /**
@@ -23,6 +24,7 @@ public class AnimalGenerator {
         registerAnimal(new CowAnimal());
         registerAnimal(new ChickenAnimal());
         registerAnimal(new SheepAnimal());
+        registerAnimal(new GooseAnimal());
         // Future animals can be added here:
         // registerAnimal(new PigAnimal());
     }

@@ -245,7 +245,7 @@ public class EntityManager {
                 Math.floorDiv((int) Math.floor(position.z), 16));
         return chunk != null && chunk.areFeaturesPopulated();
     }
-    
+
     /**
      * Adds an existing entity to the manager.
      * This is used for entities created outside the spawn system, like drops.
@@ -270,6 +270,7 @@ public class EntityManager {
                 yield new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
             }
             case CHICKEN -> new com.stonebreak.mobs.chicken.Chicken(world, position);
+            case GOOSE -> new com.stonebreak.mobs.goose.Goose(world, position);
             case SHEEP -> {
                 String[] variants = type.getTextureVariants();
                 String textureVariant = variants[(int)(Math.random() * variants.length)];

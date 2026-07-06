@@ -1029,7 +1029,10 @@ public class Main {
             }
             case CHARACTER_CREATION -> {
                 com.stonebreak.ui.characterCreation.CharacterCreationScreen ccs = game.getCharacterCreationScreen();
-                if (ccs != null) ccs.render(width, height);
+                if (ccs != null) {
+                    ccs.updateLabelsForMode();
+                    ccs.render(width, height);
+                }
             }
             case TERRAIN_MAPPER -> {
                 // Skija-backed MasonryUI; brackets GL itself.

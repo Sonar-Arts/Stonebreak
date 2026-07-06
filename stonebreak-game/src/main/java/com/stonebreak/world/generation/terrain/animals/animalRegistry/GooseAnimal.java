@@ -12,11 +12,18 @@ import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
 
-public class SheepAnimal implements Animal {
+/**
+ * Goose animal implementation for world generation spawning.
+ *
+ * <p>Geese spawn grounded on grass in small flocks; the {@link com.stonebreak.mobs.goose.GooseAI}
+ * handles takeoff and V-formation flight afterwards. Unlike the cow there are no appearance
+ * variants, so spawning routes through the generic {@code EntityManager.spawnEntity} path.
+ */
+public class GooseAnimal implements Animal {
 
     @Override
     public String getName() {
-        return "sheep";
+        return "goose";
     }
 
     @Override
@@ -27,18 +34,20 @@ public class SheepAnimal implements Animal {
         int chunkX = chunk.getChunkX();
         int chunkZ = chunk.getChunkZ();
 
-        int sheepCount;
+        // Determine number of geese to spawn (a small flock)
+        int gooseCount;
         synchronized (randomLock) {
-            sheepCount = getMinSpawnCount() + random.nextInt(getMaxSpawnCount() - getMinSpawnCount() + 1);
+            gooseCount = getMinSpawnCount() + random.nextInt(getMaxSpawnCount() - getMinSpawnCount() + 1);
         }
 
         int spawned = 0;
         int attempts = 0;
         int maxAttempts = 20;
 
-        while (spawned < sheepCount && attempts < maxAttempts) {
+        while (spawned < gooseCount && attempts < maxAttempts) {
             attempts++;
 
+            // Random position within chunk
             int localX, localZ;
             synchronized (randomLock) {
                 localX = random.nextInt(WorldConfiguration.CHUNK_SIZE);
@@ -48,6 +57,7 @@ public class SheepAnimal implements Animal {
             int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + localX;
             int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + localZ;
 
+            // Find surface height
             int surfaceY = 0;
             for (int y = WorldConfiguration.WORLD_HEIGHT - 1; y >= 0; y--) {
                 if (chunk.getBlock(localX, y, localZ) != BlockType.AIR) {
@@ -56,6 +66,7 @@ public class SheepAnimal implements Animal {
                 }
             }
 
+            // Check if valid spawn location
             if (isValidSpawnLocation(chunk, localX, surfaceY, localZ)) {
                 Vector3f spawnPos = new Vector3f(
                     worldX + 0.5f,
@@ -64,13 +75,13 @@ public class SheepAnimal implements Animal {
                 );
 
                 // Defense-in-depth: reuse the modern spawner's anti-cave/overhang
-                // (sky-exposure) guard so the legacy path can't place sheep underground.
+                // (sky-exposure) guard so the legacy path can't place geese underground.
                 com.stonebreak.mobs.entities.EntitySpawner spawner = world.getEntitySpawner();
-                if (spawner != null && !spawner.isValidSpawnLocation(spawnPos, EntityType.SHEEP)) {
+                if (spawner != null && !spawner.isValidSpawnLocation(spawnPos, EntityType.GOOSE)) {
                     continue;
                 }
 
-                entityManager.spawnEntity(EntityType.SHEEP, spawnPos);
+                entityManager.spawnEntity(EntityType.GOOSE, spawnPos);
                 spawned++;
             }
         }
@@ -78,12 +89,13 @@ public class SheepAnimal implements Animal {
 
     @Override
     public boolean canSpawnInChunk(Chunk chunk) {
+        // Geese can spawn in chunks with grass blocks (plains biome)
         for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
             for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
-                for (int y = WorldConfiguration.WORLD_HEIGHT - 1; y >= 0; y--) {
-                    BlockType b = chunk.getBlock(x, y, z);
-                    if (b == BlockType.GRASS) return true;
-                    if (b != BlockType.AIR) break; // hit a non-grass surface; skip this column
+                for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
+                    if (chunk.getBlock(x, y, z) == BlockType.GRASS) {
+                        return true;
+                    }
                 }
             }
         }
@@ -92,33 +104,38 @@ public class SheepAnimal implements Animal {
 
     @Override
     public double getSpawnProbability() {
-        return 0.3;
+        return 0.2; // 20% chance to spawn geese in valid chunks
     }
 
     @Override
     public int getMinSpawnCount() {
-        return 1;
+        return 3;
     }
 
     @Override
     public int getMaxSpawnCount() {
-        return 4;
+        return 5;
     }
 
+    /**
+     * Checks if the given location is valid for goose spawning.
+     */
     private boolean isValidSpawnLocation(Chunk chunk, int localX, int y, int localZ) {
-        if (localX < 0 || localX >= WorldConfiguration.CHUNK_SIZE
-                || localZ < 0 || localZ >= WorldConfiguration.CHUNK_SIZE) {
+        // Check bounds
+        if (localX < 0 || localX >= WorldConfiguration.CHUNK_SIZE || localZ < 0 || localZ >= WorldConfiguration.CHUNK_SIZE) {
             return false;
         }
         if (y < 1 || y >= WorldConfiguration.WORLD_HEIGHT - 1) {
             return false;
         }
 
+        // Check ground block (must be grass)
         BlockType groundBlock = chunk.getBlock(localX, y - 1, localZ);
         if (groundBlock != BlockType.GRASS) {
             return false;
         }
 
+        // Check spawn space (must be air for goose's height)
         BlockType spawnBlock = chunk.getBlock(localX, y, localZ);
         BlockType aboveBlock = chunk.getBlock(localX, y + 1, localZ);
 

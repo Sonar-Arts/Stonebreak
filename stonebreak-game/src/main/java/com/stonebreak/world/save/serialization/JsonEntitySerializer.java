@@ -151,6 +151,10 @@ public class JsonEntitySerializer {
                 String aiState = JsonParsingUtil.extractStringFromObject(json, "customData", "aiState");
                 customData.put("aiState", aiState);
             }
+            case GOOSE -> {
+                String aiState = JsonParsingUtil.extractStringFromObject(json, "customData", "aiState");
+                customData.put("aiState", aiState);
+            }
             case SHEEP -> {
                 String textureVariant = JsonParsingUtil.extractStringFromObject(json, "customData", "textureVariant");
                 String aiState = JsonParsingUtil.extractStringFromObject(json, "customData", "aiState");
