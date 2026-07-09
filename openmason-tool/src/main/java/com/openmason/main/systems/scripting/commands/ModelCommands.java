@@ -46,26 +46,47 @@ public final class ModelCommands {
     private final ModelDocument doc;
     private final ObjectMapper mapper;
     private final AnimCommands anim;
+    private final TextureCommands tex;
+    private final CanvasCommands canvas;
     private final List<ObjectNode> opsTrace = new ArrayList<>();
 
     public ModelCommands(ModelDocument doc, ObjectMapper mapper) {
         this(doc, mapper, null);
     }
 
-    /**
-     * @param animBaseDir directory relative animation save paths resolve
-     *                    against (the CLI passes the output directory; live
-     *                    runs pass null = absolute paths only)
-     */
     public ModelCommands(ModelDocument doc, ObjectMapper mapper, java.nio.file.Path animBaseDir) {
+        this(doc, mapper, animBaseDir, null);
+    }
+
+    /**
+     * @param animBaseDir   directory relative animation save paths resolve
+     *                      against (the CLI passes the output directory; live
+     *                      runs pass null = absolute paths only)
+     * @param canvasSurface the open texture editor's canvas, or null when it
+     *                      isn't open (canvas ops then raise a teaching error)
+     */
+    public ModelCommands(ModelDocument doc, ObjectMapper mapper, java.nio.file.Path animBaseDir,
+                         com.openmason.main.systems.scripting.doc.CanvasSurface canvasSurface) {
         this.doc = doc;
         this.mapper = mapper;
         this.anim = new AnimCommands(doc, this::trace, animBaseDir);
+        this.tex = new TextureCommands(this, doc, this::trace);
+        this.canvas = new CanvasCommands(canvasSurface, this::trace);
     }
 
     /** Animation authoring commands (detached .omanim clips). */
     public AnimCommands anim() {
         return anim;
+    }
+
+    /** Per-face texture authoring commands (pixel painting; live only). */
+    public TextureCommands tex() {
+        return tex;
+    }
+
+    /** Texture-editor canvas commands (painting + layers; live only). */
+    public CanvasCommands canvas() {
+        return canvas;
     }
 
     // ===================== Results =====================
@@ -736,7 +757,7 @@ public final class ModelCommands {
         return -1;
     }
 
-    private ModelPartDescriptor resolve(String idOrName) {
+    ModelPartDescriptor resolve(String idOrName) {
         if (idOrName == null || idOrName.isBlank()) {
             throw new CommandException("part name is required");
         }
@@ -763,7 +784,7 @@ public final class ModelCommands {
         }
     }
 
-    private void validateLocalFaces(ModelPartDescriptor part, int[] localFaceIds) {
+    void validateLocalFaces(ModelPartDescriptor part, int[] localFaceIds) {
         if (localFaceIds == null || localFaceIds.length == 0) {
             throw new CommandException("faces must be a non-empty selection",
                     "use face indices or a facing direction like \"+y\"");
@@ -778,7 +799,7 @@ public final class ModelCommands {
         }
     }
 
-    private static MeshRange requireRange(ModelPartDescriptor part) {
+    static MeshRange requireRange(ModelPartDescriptor part) {
         MeshRange range = part.meshRange();
         if (range == null) {
             throw new CommandException("Part '" + part.name() + "' has no mesh range");
@@ -831,7 +852,7 @@ public final class ModelCommands {
         return (rgba[3] << 24) | (rgba[0] << 16) | (rgba[1] << 8) | rgba[2];
     }
 
-    private Integer materialIdByName(String name) {
+    Integer materialIdByName(String name) {
         if (name == null) return null;
         for (MaterialDefinition mat : doc.faceTextures().getAllMaterials()) {
             if (mat.name().equals(name)) return mat.materialId();

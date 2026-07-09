@@ -169,6 +169,136 @@ public final class OmHostBridge {
         commands.setFaceUV(part, faces, toFloat(region), rotationDeg);
     }
 
+    // ===================== Face textures (pixel painting; live only) =====================
+
+    @HostAccess.Export
+    public String texCreate(String part, int[] faces, int width, int height,
+                            int[] color, String name) {
+        return commands.tex().create(part, faces, width, height, color, name).name();
+    }
+
+    @HostAccess.Export
+    public int texSetPixels(String part, int face, int[] flatXYRGBA) {
+        return commands.tex().setPixels(part, face, flatXYRGBA);
+    }
+
+    @HostAccess.Export
+    public int texFill(String part, int face, int[] rectOrNull, int[] color) {
+        return commands.tex().fill(part, face, rectOrNull, color);
+    }
+
+    @HostAccess.Export
+    public int texRect(String part, int face, int[] rect, int[] color, boolean filled) {
+        return commands.tex().rect(part, face, rect, color, filled);
+    }
+
+    @HostAccess.Export
+    public int texLine(String part, int face, int x0, int y0, int x1, int y1, int[] color) {
+        return commands.tex().line(part, face, x0, y0, x1, y1, color);
+    }
+
+    @HostAccess.Export
+    public int texFlood(String part, int face, int x, int y, int[] color) {
+        return commands.tex().flood(part, face, x, y, color);
+    }
+
+    @HostAccess.Export
+    public int texNoise(String part, int face, String generator, double seed,
+                        double strength, double scale, boolean gradient,
+                        double blur, int octaves, double spread, double edgeSoftness) {
+        return commands.tex().noise(part, face, generator, (long) seed,
+                (float) strength, (float) scale, gradient,
+                (float) blur, octaves, (float) spread, (float) edgeSoftness);
+    }
+
+    @HostAccess.Export
+    public void texResize(String part, int face, int width, int height) {
+        commands.tex().resize(part, face, width, height);
+    }
+
+    @HostAccess.Export
+    public String texInfoJson(String part, int face) {
+        return toJson(commands.tex().info(part, face));
+    }
+
+    @HostAccess.Export
+    public String texRegionJson(String part, int face, int x, int y, int w, int h) {
+        return toJson(commands.tex().region(part, face, x, y, w, h));
+    }
+
+    // ===================== Texture editor canvas (live only) =====================
+
+    @HostAccess.Export
+    public int canvasSetPixels(int[] flatXYRGBA) {
+        return commands.canvas().setPixels(flatXYRGBA);
+    }
+
+    @HostAccess.Export
+    public int canvasFill(int[] rectOrNull, int[] color) {
+        return commands.canvas().fill(rectOrNull, color);
+    }
+
+    @HostAccess.Export
+    public int canvasRect(int[] rect, int[] color, boolean filled) {
+        return commands.canvas().rect(rect, color, filled);
+    }
+
+    @HostAccess.Export
+    public int canvasLine(int x0, int y0, int x1, int y1, int[] color) {
+        return commands.canvas().line(x0, y0, x1, y1, color);
+    }
+
+    @HostAccess.Export
+    public int canvasFlood(int x, int y, int[] color) {
+        return commands.canvas().flood(x, y, color);
+    }
+
+    @HostAccess.Export
+    public int canvasNoise(String generator, double seed, double strength, double scale,
+                           boolean gradient, double blur, int octaves, double spread,
+                           double edgeSoftness) {
+        return commands.canvas().noise(generator, (long) seed, (float) strength,
+                (float) scale, gradient, (float) blur, octaves, (float) spread,
+                (float) edgeSoftness);
+    }
+
+    @HostAccess.Export
+    public void canvasAddLayer(String name) {
+        commands.canvas().addLayer(name);
+    }
+
+    @HostAccess.Export
+    public void canvasRemoveLayer(int index) {
+        commands.canvas().removeLayer(index);
+    }
+
+    @HostAccess.Export
+    public void canvasSetLayer(int index, Boolean active, Boolean visible,
+                               String name, Double opacity) {
+        commands.canvas().setLayer(index, active, visible, name,
+                opacity != null ? opacity.floatValue() : null);
+    }
+
+    @HostAccess.Export
+    public void canvasExportPng(String path) {
+        commands.canvas().exportPng(path);
+    }
+
+    @HostAccess.Export
+    public String canvasInfoJson() {
+        return toJson(commands.canvas().info());
+    }
+
+    @HostAccess.Export
+    public String canvasLayersJson() {
+        return toJson(commands.canvas().layerInfos());
+    }
+
+    @HostAccess.Export
+    public String canvasRegionJson(int x, int y, int w, int h) {
+        return toJson(commands.canvas().region(x, y, w, h));
+    }
+
     // ===================== Animation (detached .omanim clips) =====================
 
     @HostAccess.Export

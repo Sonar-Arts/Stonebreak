@@ -54,6 +54,27 @@ public class CommandHistory {
     }
 
     /**
+     * Push an ALREADY-APPLIED command onto the undo stack without executing
+     * it (mirrors the model history's pushCompleted) — used when a batch
+     * operation applied its changes itself and only needs undo/redo wiring.
+     *
+     * @param command completed command to record
+     */
+    public void pushCompleted(Command command) {
+        if (command == null) {
+            logger.warn("Cannot record null command");
+            return;
+        }
+        undoStack.push(command);
+        redoStack.clear();
+        if (undoStack.size() > MAX_HISTORY_SIZE) {
+            undoStack.remove(0);
+        }
+        logger.debug("Recorded completed command: {} (undo stack: {})",
+                command.getDescription(), undoStack.size());
+    }
+
+    /**
      * Undo the last command.
      * @return true if undo was performed
      */

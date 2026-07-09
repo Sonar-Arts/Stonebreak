@@ -29,4 +29,12 @@ public interface ModelDocument {
      * whole-model queries). May be null when the document is empty.
      */
     OMOFormat.MeshData extractMeshData();
+
+    /**
+     * Pixel-level access to per-face textures, or {@code null} when the
+     * document has none (headless — face-texture pixels are live-only).
+     */
+    default FacePixelStore pixels() {
+        return null;
+    }
 }

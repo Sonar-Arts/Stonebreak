@@ -5,14 +5,8 @@ import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.threading.MainThreadExecutor;
 import org.lwjgl.BufferUtils;
 
-import javax.imageio.ImageIO;
-import java.awt.Graphics2D;
-import java.awt.Image;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Base64;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -33,18 +27,20 @@ import static org.lwjgl.opengl.GL11.glPixelStorei;
  *
  * <p>The GL readback runs on the main/GL thread via {@link MainThreadExecutor}
  * (same contract as the other MCP services); the captured frame is whatever the
- * viewport last rendered with its current camera. Token efficiency: LLM vision
- * cost scales with pixel area, so the image is downscaled to {@code max_size}
- * on its longest side before encoding (the PNG byte size itself is irrelevant).
+ * viewport last rendered with its current camera. The image is downscaled to
+ * {@code max_size} on its longest side before encoding, never upscaled — the
+ * true source resolution is capped by the on-screen panel-sized FBO
+ * ({@code ViewportMainView} resizes it to the panel each frame), so frames
+ * larger than the panel would require an offscreen high-res render (deferred).
  */
 public final class ViewportCaptureService {
 
     private static final long DEFAULT_TIMEOUT_MS = 10_000;
 
-    /** Default longest-side size — ~350 tokens for a square frame. */
-    static final int DEFAULT_MAX_SIZE = 512;
+    /** Default longest-side size — full panel detail on most screens. */
+    static final int DEFAULT_MAX_SIZE = 1024;
     private static final int MIN_SIZE = 64;
-    private static final int MAX_SIZE = 1024;
+    private static final int MAX_SIZE = 2048;
 
     private final MainImGuiInterface mainInterface;
 
@@ -55,8 +51,8 @@ public final class ViewportCaptureService {
     public McpImageContent capture(int maxSize) {
         int target = Math.clamp(maxSize, MIN_SIZE, MAX_SIZE);
         BufferedImage frame = await(MainThreadExecutor.submit(this::readFramebuffer));
-        BufferedImage scaled = downscale(frame, target);
-        return new McpImageContent(encodePng(scaled), "image/png");
+        BufferedImage scaled = McpImageCodec.downscale(frame, target);
+        return new McpImageContent(McpImageCodec.encodePngBase64(scaled), "image/png");
     }
 
     /** Read the viewport FBO color texture into a BufferedImage (must run on the GL thread). */
@@ -99,39 +95,6 @@ public final class ViewportCaptureService {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         image.setRGB(0, 0, width, height, argb, 0, width);
         return image;
-    }
-
-    /** Scale so the longest side is at most {@code target}, preserving aspect ratio. */
-    private static BufferedImage downscale(BufferedImage source, int target) {
-        int w = source.getWidth();
-        int h = source.getHeight();
-        int longest = Math.max(w, h);
-        if (longest <= target) {
-            return source;
-        }
-        int outW = Math.max(1, Math.round(w * (float) target / longest));
-        int outH = Math.max(1, Math.round(h * (float) target / longest));
-        Image scaled = source.getScaledInstance(outW, outH, Image.SCALE_AREA_AVERAGING);
-        BufferedImage out = new BufferedImage(outW, outH, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = out.createGraphics();
-        try {
-            g.drawImage(scaled, 0, 0, null);
-        } finally {
-            g.dispose();
-        }
-        return out;
-    }
-
-    private static String encodePng(BufferedImage image) {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream(64 * 1024);
-        try {
-            if (!ImageIO.write(image, "png", bytes)) {
-                throw new IllegalStateException("No PNG writer available");
-            }
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to encode viewport capture as PNG", e);
-        }
-        return Base64.getEncoder().encodeToString(bytes.toByteArray());
     }
 
     private static <T> T await(CompletableFuture<T> future) {

@@ -287,6 +287,24 @@ public class PixelCanvas {
     }
 
     /**
+     * Build a canvas from RGBA bytes (row-major, 4 bytes/pixel) — the inverse
+     * of {@link #getPixelsAsRGBABytes()}, used when mirroring a GPU texture
+     * readback into an editable canvas.
+     */
+    public static PixelCanvas fromRGBABytes(int width, int height, byte[] rgba) {
+        PixelCanvas canvas = new PixelCanvas(width, height);
+        int[] pixels = canvas.getPixels();
+        int count = Math.min(pixels.length, rgba.length / 4);
+        for (int i = 0; i < count; i++) {
+            int off = i * 4;
+            pixels[i] = packRGBA(
+                    rgba[off] & 0xFF, rgba[off + 1] & 0xFF,
+                    rgba[off + 2] & 0xFF, rgba[off + 3] & 0xFF);
+        }
+        return canvas;
+    }
+
+    /**
      * Sets the SelectionManager for this canvas.
      * When set, the canvas will use the SelectionManager's selection instead of its own.
      * @param selectionManager The SelectionManager instance (can be null)

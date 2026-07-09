@@ -379,4 +379,22 @@ public class LayerManager {
     public void markCompositeDirty() {
         compositeCacheDirty = true;
     }
+
+    /**
+     * Replace the entire layer stack (used by {@link LayerStackSnapshot}
+     * restore). The caller supplies already-copied layers.
+     *
+     * @param newLayers      replacement stack, bottom to top (non-empty)
+     * @param newActiveIndex active layer index (clamped into range)
+     */
+    public void replaceLayers(List<Layer> newLayers, int newActiveIndex) {
+        if (newLayers == null || newLayers.isEmpty()) {
+            throw new IllegalArgumentException("Layer stack cannot be empty");
+        }
+        layers.clear();
+        layers.addAll(newLayers);
+        activeLayerIndex = Math.clamp(newActiveIndex, 0, layers.size() - 1);
+        compositeCacheDirty = true;
+        logger.debug("Replaced layer stack: {} layers, active {}", layers.size(), activeLayerIndex);
+    }
 }

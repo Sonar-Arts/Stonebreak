@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.openmason.main.systems.scripting.commands.CommandException;
 import com.openmason.main.systems.scripting.commands.ModelCommands;
 import com.openmason.main.systems.scripting.commands.ModelSummary;
+import com.openmason.main.systems.scripting.doc.CanvasSurface;
 import com.openmason.main.systems.scripting.doc.ModelDocument;
 import com.openmason.main.systems.scripting.json.OpBatchException;
 import com.openmason.main.systems.scripting.json.OpBatchExecutor;
@@ -110,13 +111,23 @@ public final class ScriptExecutor {
     }
 
     public ScriptResult run(ModelDocument doc, ScriptSource src, RunOptions opts) {
+        return run(doc, null, src, opts);
+    }
+
+    /**
+     * @param canvas the open texture editor's canvas surface, or null when it
+     *               isn't open (canvas ops then raise a teaching error)
+     */
+    public ScriptResult run(ModelDocument doc, CanvasSurface canvas,
+                            ScriptSource src, RunOptions opts) {
         return switch (src.language()) {
-            case JSON_OPS -> runJson(doc, src, opts);
-            case PYTHON -> runPython(doc, src, opts);
+            case JSON_OPS -> runJson(doc, canvas, src, opts);
+            case PYTHON -> runPython(doc, canvas, src, opts);
         };
     }
 
-    private ScriptResult runJson(ModelDocument doc, ScriptSource src, RunOptions opts) {
+    private ScriptResult runJson(ModelDocument doc, CanvasSurface canvas,
+                                 ScriptSource src, RunOptions opts) {
         OpBatchExecutor batch = new OpBatchExecutor(mapper);
         JsonNode root;
         try {
@@ -130,7 +141,7 @@ public final class ScriptExecutor {
             return new ScriptResult(true, null, null, null, null, null);
         }
 
-        ModelCommands cmds = new ModelCommands(doc, mapper, opts.baseDir());
+        ModelCommands cmds = new ModelCommands(doc, mapper, opts.baseDir(), canvas);
         try {
             batch.execute(root, cmds);
         } catch (OpBatchException e) {
@@ -140,7 +151,8 @@ public final class ScriptExecutor {
         return success(cmds, null, opts);
     }
 
-    private ScriptResult runPython(ModelDocument doc, ScriptSource src, RunOptions opts) {
+    private ScriptResult runPython(ModelDocument doc, CanvasSurface canvas,
+                                   ScriptSource src, RunOptions opts) {
         if (pythonRunner == null) {
             return ScriptResult.failure(new ScriptError(
                     "Python scripting is not available in this build", null, null, null));
@@ -150,7 +162,7 @@ public final class ScriptExecutor {
                     "validate-only is not supported for Python scripts",
                     "run against a scratch document instead, or use a JSON op batch", null, null));
         }
-        ModelCommands cmds = new ModelCommands(doc, mapper, opts.baseDir());
+        ModelCommands cmds = new ModelCommands(doc, mapper, opts.baseDir(), canvas);
         try {
             String stdout = pythonRunner.run(cmds, src.source(), opts.timeoutMs());
             return success(cmds, stdout, opts);
@@ -163,11 +175,12 @@ public final class ScriptExecutor {
     }
 
     private ScriptResult success(ModelCommands cmds, String stdout, RunOptions opts) {
-        // Deferred animation saves flush only now, after the script succeeded —
-        // a failing script never writes files.
-        List<String> files;
+        // Deferred file output (.omanim saves, canvas PNG exports) flushes only
+        // now, after the script succeeded — a failing script never writes files.
+        List<String> files = new java.util.ArrayList<>();
         try {
-            files = cmds.anim().flushSaves();
+            files.addAll(cmds.anim().flushSaves());
+            files.addAll(cmds.canvas().flushExports());
         } catch (CommandException e) {
             return ScriptResult.failure(new ScriptError(e.getMessage(), e.hint(), null, null));
         }

@@ -24,15 +24,16 @@ public final class ViewportToolDefinitions {
                 "viewport_capture",
                 "Capture the 3D viewport's last rendered frame (current camera view) as a PNG image — "
                         + "use it to visually verify the model between edits. Downscaled so the longest "
-                        + "side is max_size (default 512, range 64-1024); keep it small, vision token "
-                        + "cost scales with pixel area. Select a part first (select_part) to frame it.",
+                        + "side is max_size (default 1024, range 64-2048); the source resolution is "
+                        + "capped by the on-screen viewport panel size. Select a part first "
+                        + "(select_part) to frame it.",
                 captureSchema(),
                 args -> capture.capture(optInt(args, "max_size", ViewportCaptureService.DEFAULT_MAX_SIZE))));
     }
 
     private JsonNode captureSchema() {
         return McpSchema.of(mapper)
-                .intg("max_size", "Longest-side pixel cap, 64-1024 (default 512)")
+                .intg("max_size", "Longest-side pixel cap, 64-2048 (default 1024)")
                 .build();
     }
 }

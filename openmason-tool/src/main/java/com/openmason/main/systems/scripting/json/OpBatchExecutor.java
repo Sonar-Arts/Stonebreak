@@ -425,6 +425,258 @@ public final class OpBatchExecutor {
                     return null;
                 }));
 
+        ops.put("texture_create", spec(
+                op -> {
+                    reqStr(op, "part");
+                    facesCheck(op);
+                    pairCheck(op, "size", true);
+                    rgbaCheck(op, "color", false);
+                },
+                (cmds, op, b) -> {
+                    int[] size = reqIntArr(op, "size");
+                    cmds.tex().create(reqStr(op, "part"), resolveFaces(cmds, op, b),
+                            size[0], size[1], optIntArr(op, "color"), optStr(op, "name"));
+                    return null;
+                }));
+
+        ops.put("texture_set_pixels", spec(
+                op -> {
+                    reqStr(op, "part");
+                    reqNum(op, "face");
+                    JsonNode pixels = op.get("pixels");
+                    if (pixels == null || !pixels.isArray() || pixels.isEmpty()
+                            || pixels.size() % 6 != 0) {
+                        throw new IllegalArgumentException(
+                                "pixels must be a flat [x,y,r,g,b,a, ...] array, 6 ints per pixel");
+                    }
+                },
+                (cmds, op, b) -> {
+                    cmds.tex().setPixels(reqStr(op, "part"), (int) reqNum(op, "face"),
+                            reqIntArr(op, "pixels"));
+                    return null;
+                }));
+
+        ops.put("texture_fill", spec(
+                op -> {
+                    reqStr(op, "part");
+                    reqNum(op, "face");
+                    rgbaCheck(op, "color", true);
+                    JsonNode rect = op.get("rect");
+                    if (rect != null && (!rect.isArray() || rect.size() != 4)) {
+                        throw new IllegalArgumentException("rect must be [x,y,w,h]");
+                    }
+                },
+                (cmds, op, b) -> {
+                    cmds.tex().fill(reqStr(op, "part"), (int) reqNum(op, "face"),
+                            optIntArr(op, "rect"), reqIntArr(op, "color"));
+                    return null;
+                }));
+
+        ops.put("texture_rect", spec(
+                op -> {
+                    reqStr(op, "part");
+                    reqNum(op, "face");
+                    JsonNode rect = op.get("rect");
+                    if (rect == null || !rect.isArray() || rect.size() != 4) {
+                        throw new IllegalArgumentException("rect must be [x,y,w,h]");
+                    }
+                    rgbaCheck(op, "color", true);
+                },
+                (cmds, op, b) -> {
+                    cmds.tex().rect(reqStr(op, "part"), (int) reqNum(op, "face"),
+                            reqIntArr(op, "rect"), reqIntArr(op, "color"),
+                            op.path("filled").asBoolean(false));
+                    return null;
+                }));
+
+        ops.put("texture_line", spec(
+                op -> {
+                    reqStr(op, "part");
+                    reqNum(op, "face");
+                    pairCheck(op, "from", true);
+                    pairCheck(op, "to", true);
+                    rgbaCheck(op, "color", true);
+                },
+                (cmds, op, b) -> {
+                    int[] from = reqIntArr(op, "from");
+                    int[] to = reqIntArr(op, "to");
+                    cmds.tex().line(reqStr(op, "part"), (int) reqNum(op, "face"),
+                            from[0], from[1], to[0], to[1], reqIntArr(op, "color"));
+                    return null;
+                }));
+
+        ops.put("texture_flood", spec(
+                op -> {
+                    reqStr(op, "part");
+                    reqNum(op, "face");
+                    pairCheck(op, "at", true);
+                    rgbaCheck(op, "color", true);
+                },
+                (cmds, op, b) -> {
+                    int[] at = reqIntArr(op, "at");
+                    cmds.tex().flood(reqStr(op, "part"), (int) reqNum(op, "face"),
+                            at[0], at[1], reqIntArr(op, "color"));
+                    return null;
+                }));
+
+        ops.put("texture_noise", spec(
+                op -> {
+                    reqStr(op, "part");
+                    reqNum(op, "face");
+                    reqStr(op, "generator");
+                },
+                (cmds, op, b) -> {
+                    Float seed = optFloat(op, "seed");
+                    Float strength = optFloat(op, "strength");
+                    Float scale = optFloat(op, "scale");
+                    Float blur = optFloat(op, "blur");
+                    Float octaves = optFloat(op, "octaves");
+                    Float spread = optFloat(op, "spread");
+                    Float edge = optFloat(op, "edge_softness");
+                    cmds.tex().noise(reqStr(op, "part"), (int) reqNum(op, "face"),
+                            reqStr(op, "generator"),
+                            seed != null ? seed.longValue() : 0L,
+                            strength != null ? strength : 0.5f,
+                            scale != null ? scale : 1.0f,
+                            op.path("gradient").asBoolean(false),
+                            blur != null ? blur : 0f,
+                            octaves != null ? octaves.intValue() : 1,
+                            spread != null ? spread : 0.5f,
+                            edge != null ? edge : 0f);
+                    return null;
+                }));
+
+        ops.put("texture_resize", spec(
+                op -> {
+                    reqStr(op, "part");
+                    reqNum(op, "face");
+                    pairCheck(op, "size", true);
+                },
+                (cmds, op, b) -> {
+                    int[] size = reqIntArr(op, "size");
+                    cmds.tex().resize(reqStr(op, "part"), (int) reqNum(op, "face"),
+                            size[0], size[1]);
+                    return null;
+                }));
+
+        ops.put("canvas_set_pixels", spec(
+                op -> {
+                    JsonNode pixels = op.get("pixels");
+                    if (pixels == null || !pixels.isArray() || pixels.isEmpty()
+                            || pixels.size() % 6 != 0) {
+                        throw new IllegalArgumentException(
+                                "pixels must be a flat [x,y,r,g,b,a, ...] array, 6 ints per pixel");
+                    }
+                },
+                (cmds, op, b) -> {
+                    cmds.canvas().setPixels(reqIntArr(op, "pixels"));
+                    return null;
+                }));
+
+        ops.put("canvas_fill", spec(
+                op -> {
+                    rgbaCheck(op, "color", true);
+                    JsonNode rect = op.get("rect");
+                    if (rect != null && (!rect.isArray() || rect.size() != 4)) {
+                        throw new IllegalArgumentException("rect must be [x,y,w,h]");
+                    }
+                },
+                (cmds, op, b) -> {
+                    cmds.canvas().fill(optIntArr(op, "rect"), reqIntArr(op, "color"));
+                    return null;
+                }));
+
+        ops.put("canvas_rect", spec(
+                op -> {
+                    JsonNode rect = op.get("rect");
+                    if (rect == null || !rect.isArray() || rect.size() != 4) {
+                        throw new IllegalArgumentException("rect must be [x,y,w,h]");
+                    }
+                    rgbaCheck(op, "color", true);
+                },
+                (cmds, op, b) -> {
+                    cmds.canvas().rect(reqIntArr(op, "rect"), reqIntArr(op, "color"),
+                            op.path("filled").asBoolean(false));
+                    return null;
+                }));
+
+        ops.put("canvas_line", spec(
+                op -> {
+                    pairCheck(op, "from", true);
+                    pairCheck(op, "to", true);
+                    rgbaCheck(op, "color", true);
+                },
+                (cmds, op, b) -> {
+                    int[] from = reqIntArr(op, "from");
+                    int[] to = reqIntArr(op, "to");
+                    cmds.canvas().line(from[0], from[1], to[0], to[1], reqIntArr(op, "color"));
+                    return null;
+                }));
+
+        ops.put("canvas_flood", spec(
+                op -> {
+                    pairCheck(op, "at", true);
+                    rgbaCheck(op, "color", true);
+                },
+                (cmds, op, b) -> {
+                    int[] at = reqIntArr(op, "at");
+                    cmds.canvas().flood(at[0], at[1], reqIntArr(op, "color"));
+                    return null;
+                }));
+
+        ops.put("canvas_noise", spec(
+                op -> reqStr(op, "generator"),
+                (cmds, op, b) -> {
+                    Float seed = optFloat(op, "seed");
+                    Float strength = optFloat(op, "strength");
+                    Float scale = optFloat(op, "scale");
+                    Float blur = optFloat(op, "blur");
+                    Float octaves = optFloat(op, "octaves");
+                    Float spread = optFloat(op, "spread");
+                    Float edge = optFloat(op, "edge_softness");
+                    cmds.canvas().noise(reqStr(op, "generator"),
+                            seed != null ? seed.longValue() : 0L,
+                            strength != null ? strength : 0.5f,
+                            scale != null ? scale : 1.0f,
+                            op.path("gradient").asBoolean(false),
+                            blur != null ? blur : 0f,
+                            octaves != null ? octaves.intValue() : 1,
+                            spread != null ? spread : 0.5f,
+                            edge != null ? edge : 0f);
+                    return null;
+                }));
+
+        ops.put("canvas_add_layer", spec(
+                op -> reqStr(op, "name"),
+                (cmds, op, b) -> {
+                    cmds.canvas().addLayer(reqStr(op, "name"));
+                    return null;
+                }));
+
+        ops.put("canvas_remove_layer", spec(
+                op -> reqNum(op, "index"),
+                (cmds, op, b) -> {
+                    cmds.canvas().removeLayer((int) reqNum(op, "index"));
+                    return null;
+                }));
+
+        ops.put("canvas_set_layer", spec(
+                op -> reqNum(op, "index"),
+                (cmds, op, b) -> {
+                    Float opacity = optFloat(op, "opacity");
+                    cmds.canvas().setLayer((int) reqNum(op, "index"),
+                            optBoolBoxed(op, "active"), optBoolBoxed(op, "visible"),
+                            optStr(op, "name"), opacity);
+                    return null;
+                }));
+
+        ops.put("canvas_export_png", spec(
+                op -> reqStr(op, "path"),
+                (cmds, op, b) -> {
+                    cmds.canvas().exportPng(reqStr(op, "path"));
+                    return null;
+                }));
+
         ops.put("set_face_uv", spec(
                 op -> {
                     reqStr(op, "part");
@@ -614,6 +866,40 @@ public final class OpBatchExecutor {
         JsonNode n = op.get(key);
         if (n == null || n.isNull()) return null;
         return new Vector3f(n.get(0).floatValue(), n.get(1).floatValue(), n.get(2).floatValue());
+    }
+
+    /** Validate a 2-int array field like {@code "size": [w,h]} or {@code "at": [x,y]}. */
+    private static void pairCheck(JsonNode op, String key, boolean required) {
+        JsonNode n = op.get(key);
+        if (n == null || n.isNull()) {
+            if (required) {
+                throw new IllegalArgumentException("missing required [a,b] field \"" + key + "\"");
+            }
+            return;
+        }
+        if (!n.isArray() || n.size() != 2 || !n.get(0).isNumber() || !n.get(1).isNumber()) {
+            throw new IllegalArgumentException("\"" + key + "\" must be a 2-int array");
+        }
+    }
+
+    /** Validate an [r,g,b,a] color field (values 0..255). */
+    private static void rgbaCheck(JsonNode op, String key, boolean required) {
+        JsonNode n = op.get(key);
+        if (n == null || n.isNull()) {
+            if (required) {
+                throw new IllegalArgumentException(
+                        "missing required [r,g,b,a] field \"" + key + "\"");
+            }
+            return;
+        }
+        if (!n.isArray() || n.size() != 4) {
+            throw new IllegalArgumentException("\"" + key + "\" must be [r,g,b,a] with values 0..255");
+        }
+        for (int i = 0; i < 4; i++) {
+            if (!n.get(i).isNumber() || n.get(i).intValue() < 0 || n.get(i).intValue() > 255) {
+                throw new IllegalArgumentException("\"" + key + "\" components must be 0..255");
+            }
+        }
     }
 
     private static void reqIntArrCheck(JsonNode op, String key) {

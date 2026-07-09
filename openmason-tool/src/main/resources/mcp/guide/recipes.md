@@ -11,20 +11,38 @@ om.mirror(leg, axis="x", name="leg_fr")
 om.mirror(leg2, axis="x", name="leg_br")
 snout = head.faces(facing="-z").inset(1.0)   # muzzle detail
 ```
-Then: `model_face_list_textures` → `model_face_create_textures` (batch, use
-suggested sizes) → open/draw/commit per face. Verify with `viewport_capture`.
+Then texture it with `om.tex` (next recipe), or `model_face_list_textures` →
+`model_face_create_textures` (batch, use suggested sizes) →
+`model_face_fill`/`set_pixels`. Verify with `viewport_capture`.
 
 - Game-scale reference: the player is ~1.8 blocks tall; a cow-sized mob body is
   roughly 10×6×14 model units at 16 units per block.
 - Mirror limbs instead of duplicating + editing — it keeps symmetry exact.
 - Model the rest pose facing -Z (north).
 
-## Texture a cube face
-1. `model_face_list_textures {part:"head"}` → pick faceId + suggested size.
-2. `model_face_create_textures {faces:[{face_id, width:16, height:16,
-   color:[120,90,60,255]}]}`.
-3. `model_face_open` → `model_face_set_pixels` (batch!) / `model_face_fill` /
-   `draw_line` → `model_face_commit`.
+## Texture a mob part (script)
+```python
+import om
+head = om.part("head")
+t = om.tex.create(head.faces(facing="-z"), size=(16, 16), color=(120, 90, 60))
+t.rect(3, 5, 2, 3, (250, 250, 250), filled=True)    # left eye
+t.rect(11, 5, 2, 3, (250, 250, 250), filled=True)   # right eye
+t.noise("simplex", seed=7, strength=0.25)           # fur grain
+```
+One shared texture covers the whole selection. Live viewport only; the run is
+one model-domain undo entry. Verify with `viewport_capture`.
+
+## Paint the editor canvas via script
+Requires the texture editor window to be OPEN.
+```python
+import om
+om.canvas.fill((90, 60, 40, 255))
+om.canvas.add_layer("shade")                        # becomes the active layer
+om.canvas.noise("value", seed=3, strength=0.4)
+om.canvas.set_layer(1, opacity=0.6)
+```
+Verify with `canvas_capture` (visible composite, or one layer via `layer`).
+Canvas edits land in the texture editor's own history (`undo` domain:"texture").
 
 ## Rig + idle animation
 1. Bones: `bone_create {name:"root"}`, then per limb with parent "root"

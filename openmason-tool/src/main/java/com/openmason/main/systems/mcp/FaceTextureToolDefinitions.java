@@ -16,9 +16,11 @@ import static com.openmason.main.systems.mcp.McpArgs.reqInt;
  * exposing {@link FaceTextureEditingService}.
  *
  * <p>Distinguished from the {@code tex_*} surface (which requires the texture
- * editor to be open and a face region active) by the {@code model_face_*} prefix
- * — these tools operate directly on each face's GPU texture in a session-based
- * read/edit/commit cycle.
+ * editor to be open) by the {@code model_face_*} prefix — these tools operate
+ * directly on each face's GPU texture as sessionless one-shot edits. Multi-step
+ * painting (shapes, flood fill, noise) lives on the scripting surface:
+ * {@code om.tex} via run_python_script, or {@code texture_*} ops via
+ * run_model_ops.
  */
 public final class FaceTextureToolDefinitions {
 
@@ -48,42 +50,13 @@ public final class FaceTextureToolDefinitions {
                         .build(),
                 args -> listTextures(args)));
 
-        // ---------- Session lifecycle ----------
-
-        registry.register(new McpTool(
-                "model_face_open",
-                "Open an editing session for a face: reads the face's GPU texture pixels into an "
-                        + "in-memory canvas so subsequent draw tools can mutate it. Multiple sessions "
-                        + "may be open concurrently. Must be followed by model_face_commit (to upload) "
-                        + "or model_face_discard (to drop).",
-                schema().intg("face_id", "Face identifier").required("face_id").build(),
-                args -> editor.openSession(reqInt(args, "face_id"))));
-
-        registry.register(new McpTool(
-                "model_face_commit",
-                "Commit an open session: uploads the dirty region of the in-memory canvas back to "
-                        + "the GPU texture via glTexSubImage2D, then closes the session.",
-                schema().intg("face_id", "Face identifier").required("face_id").build(),
-                args -> editor.commitSession(reqInt(args, "face_id"))));
-
-        registry.register(new McpTool(
-                "model_face_discard",
-                "Discard an open session without uploading any edits. Returns true if a session was closed.",
-                schema().intg("face_id", "Face identifier").required("face_id").build(),
-                args -> editor.discardSession(reqInt(args, "face_id"))));
-
-        registry.register(new McpTool(
-                "model_face_list_sessions",
-                "List face IDs that currently have an open editing session.",
-                schema().build(),
-                args -> editor.listOpenSessions()));
-
         // ---------- Pixel read ----------
 
         registry.register(new McpTool(
                 "model_face_get_region",
-                "Read a rectangular region of a face's open session canvas as a flat [r,g,b,a, ...] "
-                        + "array, row-major from (x,y). Use w=h=1 for a single pixel.",
+                "Read a rectangular region of a face's texture as a flat [r,g,b,a, ...] array, "
+                        + "row-major from (x,y). Use w=h=1 for a single pixel. Reads the GPU "
+                        + "texture directly — no session needed.",
                 schema()
                         .intg("face_id", "Face identifier")
                         .intg("x", "Origin X").intg("y", "Origin Y")
@@ -94,22 +67,24 @@ public final class FaceTextureToolDefinitions {
                         reqInt(args, "x"), reqInt(args, "y"),
                         reqInt(args, "w"), reqInt(args, "h"))));
 
-        // ---------- Pixel mutations (require open session) ----------
+        // ---------- One-shot mutations (sessionless) ----------
 
         registry.register(new McpTool(
                 "model_face_set_pixels",
-                "Per-pixel write (single or bulk) to a face's open session canvas. 'pixels' is a "
-                        + "flat int array [x,y,r,g,b,a, x,y,r,g,b,a, ...] (6 values per pixel).",
+                "Per-pixel write (single or bulk) applied directly to a face's texture — one call, "
+                        + "one undo step. 'pixels' is a flat int array [x,y,r,g,b,a, ...] (6 values "
+                        + "per pixel). For multi-step painting use om.tex via run_python_script.",
                 pixelsArraySchema(),
                 args -> editor.setPixels(reqInt(args, "face_id"), parsePixels(args.get("pixels")))));
 
         registry.register(new McpTool(
                 "model_face_fill",
-                "Fill a face's open session canvas with a solid RGBA color: the whole canvas, or "
-                        + "just 'rect' [x,y,w,h] when given. color [0,0,0,0] clears to transparent.",
+                "Fill a face's texture with a solid RGBA color: the whole texture, or just 'rect' "
+                        + "[x,y,w,h] when given — one call, one undo step. color [0,0,0,0] clears "
+                        + "to transparent. For shapes/lines/flood fill use om.tex via run_python_script.",
                 rgbaSchema()
                         .intg("face_id", "Face identifier")
-                        .intArr("rect", "Optional [x,y,w,h] rectangle; omit to fill the whole canvas")
+                        .intArr("rect", "Optional [x,y,w,h] rectangle; omit to fill the whole texture")
                         .required("face_id", "color")
                         .build(),
                 args -> {
@@ -129,62 +104,17 @@ public final class FaceTextureToolDefinitions {
                     return editor.fillFace(faceId, c[0], c[1], c[2], c[3]);
                 }));
 
-        registry.register(new McpTool(
-                "model_face_draw_rect",
-                "Draw a rectangle outline (1px thick) on a face's open session canvas.",
-                rectSchema().intg("face_id", "Face identifier")
-                        .required("face_id", "x", "y", "w", "h", "color").build(),
-                args -> {
-                    int[] c = reqRgba(args);
-                    return editor.drawRect(reqInt(args, "face_id"),
-                            reqInt(args, "x"), reqInt(args, "y"),
-                            reqInt(args, "w"), reqInt(args, "h"),
-                            c[0], c[1], c[2], c[3]);
-                }));
-
-        registry.register(new McpTool(
-                "model_face_draw_line",
-                "Draw a 1-pixel Bresenham line between (x0,y0) and (x1,y1) on a face's open session canvas.",
-                rgbaSchema()
-                        .intg("face_id", "Face identifier")
-                        .intg("x0", "Start X").intg("y0", "Start Y")
-                        .intg("x1", "End X").intg("y1", "End Y")
-                        .required("face_id", "x0", "y0", "x1", "y1", "color")
-                        .build(),
-                args -> {
-                    int[] c = reqRgba(args);
-                    return editor.drawLine(reqInt(args, "face_id"),
-                            reqInt(args, "x0"), reqInt(args, "y0"),
-                            reqInt(args, "x1"), reqInt(args, "y1"),
-                            c[0], c[1], c[2], c[3]);
-                }));
-
-        registry.register(new McpTool(
-                "model_face_flood_fill",
-                "4-connected flood fill starting at (x,y) on a face's open session canvas.",
-                rgbaSchema()
-                        .intg("face_id", "Face identifier")
-                        .intg("x", "Seed X").intg("y", "Seed Y")
-                        .required("face_id", "x", "y", "color")
-                        .build(),
-                args -> {
-                    int[] c = reqRgba(args);
-                    return editor.floodFill(reqInt(args, "face_id"),
-                            reqInt(args, "x"), reqInt(args, "y"),
-                            c[0], c[1], c[2], c[3]);
-                }));
-
         // ---------- Create per-face textures ----------
 
         registry.register(new McpTool(
                 "model_face_create_textures",
                 "Allocate a new material + GPU texture (filled with a color) for one or MANY faces "
-                        + "that have no per-face mapping yet, making them addressable via "
-                        + "model_face_open. Validates the whole batch atomically (rejected if any face "
-                        + "is invalid or already has a non-default material), regenerates mesh UVs "
-                        + "once, records one undo step. 'faces' is an array of "
-                        + "{face_id, width, height, color:[r,g,b,a]} with width/height in [1,1024] "
-                        + "(use the suggested sizes from model_face_list_textures detail=true).",
+                        + "that have no per-face mapping yet, making them paintable via "
+                        + "model_face_fill/set_pixels or om.tex scripting. Validates the whole batch "
+                        + "atomically (rejected if any face is invalid or already has a non-default "
+                        + "material), regenerates mesh UVs once, records one undo step. 'faces' is an "
+                        + "array of {face_id, width, height, color:[r,g,b,a]} with width/height in "
+                        + "[1,1024] (use the suggested sizes from model_face_list_textures detail=true).",
                 createTexturesSchema(),
                 args -> editor.createFaceTextures(parseCreateSpecs(args.get("faces")))));
 
@@ -193,8 +123,8 @@ public final class FaceTextureToolDefinitions {
         registry.register(new McpTool(
                 "model_face_resize_texture",
                 "Resize a face's GPU texture (nearest-neighbor); other faces sharing the material are "
-                        + "also affected. Drops any open session for this face. Width/height in [1,1024]; "
-                        + "sets autoResize=false so the editor won't rescale it on later geometry changes.",
+                        + "also affected. Width/height in [1,1024]; sets autoResize=false so the "
+                        + "editor won't rescale it on later geometry changes.",
                 schema()
                         .intg("face_id", "Face identifier")
                         .intg("width", "New width in pixels")
@@ -213,14 +143,6 @@ public final class FaceTextureToolDefinitions {
 
     private McpSchema rgbaSchema() {
         return schema().rgba("color", "RGBA [r,g,b,a], each 0..255");
-    }
-
-    private McpSchema rectSchema() {
-        return rgbaSchema()
-                .intg("x", "Origin X")
-                .intg("y", "Origin Y")
-                .intg("w", "Width in pixels")
-                .intg("h", "Height in pixels");
     }
 
     /** Schema for {@code model_face_create_textures}: a 'faces' array of spec objects. */

@@ -43,6 +43,13 @@ public final class ScriptingToolDefinitions {
                         + "position/rotation/scale/easing — omitted = part's current transform); "
                         + "c.layer(type='overlay', mask=[...]); c.save('x.omanim') (absolute path in "
                         + "live runs; written only on success — load it with anim_load). "
+                        + "Textures: t = om.tex.create(p.faces(facing='+z'), size=(16,16), "
+                        + "color=(r,g,b)); t.fill/rect/line/flood/set_pixels/noise/resize; "
+                        + "om.tex.of(part, face) — live viewport only. Canvas (texture editor must "
+                        + "be open): om.canvas.fill/rect/line/flood/set_pixels/noise + "
+                        + "add_layer/remove_layer/set_layer; om.canvas.export('/abs/out.png') "
+                        + "(written only on success). Verify visually with viewport_capture / "
+                        + "canvas_capture. "
                         + "print(om.help()) for the full cheatsheet. Y-up, degrees, sizes are full "
                         + "extents. Runs on the editor thread — keep scripts under a few seconds.",
                 schema()
@@ -70,7 +77,12 @@ public final class ScriptingToolDefinitions {
                         + "subdivide_edge, move_vertices, set_vertex, set_geometry, define_material, "
                         + "set_face_material, set_face_uv, anim_clip, anim_key (omitted pose = part's "
                         + "current transform), anim_layer, anim_save (detached .omanim, written on "
-                        + "success). Prefer run_python_script when loops or math would avoid repetition.",
+                        + "success), texture_create, texture_set_pixels, texture_fill, texture_rect, "
+                        + "texture_line, texture_flood, texture_noise, texture_resize (live viewport "
+                        + "only), canvas_set_pixels, canvas_fill, canvas_rect, canvas_line, "
+                        + "canvas_flood, canvas_noise, canvas_add_layer, canvas_remove_layer, "
+                        + "canvas_set_layer, canvas_export_png (texture editor must be open). "
+                        + "Prefer run_python_script when loops or math would avoid repetition.",
                 schema()
                         .str("ops", "The op batch as a JSON string")
                         .bool("include_trace", "Include the normalized ops trace in the result")

@@ -3,10 +3,12 @@ package com.openmason.main.systems.scripting.json;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openmason.main.systems.scripting.commands.ModelCommands;
+import com.openmason.main.systems.scripting.doc.FakeFacePixelStore;
 import com.openmason.main.systems.scripting.doc.HeadlessModelDocument;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -154,6 +156,120 @@ class OpBatchExecutorTest {
         assertEquals(2, parsed.tracks().get(0).keyframes().size());
         // Omitted pose at t=0 captured the part's transform.
         assertEquals(3.0f, parsed.tracks().get(0).keyframes().get(0).position().y, 1e-5);
+    }
+
+    // ===================== Texture / canvas ops =====================
+
+    /** Validate a batch whose second op is broken; return the failure. */
+    private OpBatchException expectInvalidSecondOp(String opJson) {
+        OpBatchException e = assertThrows(OpBatchException.class, () -> parseAndValidate("""
+                {"ops":[
+                  {"op":"create_part","shape":"cube","name":"a"},
+                  %s
+                ]}""".formatted(opJson)));
+        assertEquals(1, e.opIndex());
+        return e;
+    }
+
+    @Test
+    void textureOpsValidateRequiredFields() {
+        OpBatchException noSize = expectInvalidSecondOp(
+                """
+                {"op":"texture_create","part":"a","faces":[0]}""");
+        assertTrue(noSize.getMessage().contains("size"));
+
+        OpBatchException badColor = expectInvalidSecondOp(
+                """
+                {"op":"texture_fill","part":"a","face":0,"color":[1,2,3]}""");
+        assertTrue(badColor.getMessage().contains("color"));
+
+        OpBatchException noFrom = expectInvalidSecondOp(
+                """
+                {"op":"texture_line","part":"a","face":0,"to":[7,7],"color":[255,0,0,255]}""");
+        assertTrue(noFrom.getMessage().contains("from"));
+        OpBatchException noTo = expectInvalidSecondOp(
+                """
+                {"op":"texture_line","part":"a","face":0,"from":[0,0],"color":[255,0,0,255]}""");
+        assertTrue(noTo.getMessage().contains("to"));
+
+        // Pixel arrays must be 6 ints per pixel.
+        OpBatchException badPixels = expectInvalidSecondOp(
+                """
+                {"op":"texture_set_pixels","part":"a","face":0,"pixels":[1,2,3,4,5]}""");
+        assertTrue(badPixels.getMessage().contains("pixels"));
+
+        assertEquals(0, doc.parts().getPartCount(), "validation must not create parts");
+    }
+
+    @Test
+    void canvasOpsValidateRequiredFields() {
+        OpBatchException noIndex = expectInvalidSecondOp(
+                """
+                {"op":"canvas_set_layer","name":"Top"}""");
+        assertTrue(noIndex.getMessage().contains("index"));
+
+        OpBatchException noPath = expectInvalidSecondOp(
+                """
+                {"op":"canvas_export_png"}""");
+        assertTrue(noPath.getMessage().contains("path"));
+
+        OpBatchException badPixels = expectInvalidSecondOp(
+                """
+                {"op":"canvas_set_pixels","pixels":[1,2,3,4,5,6,7]}""");
+        assertTrue(badPixels.getMessage().contains("pixels"));
+    }
+
+    @Test
+    void textureBatchPaintsThroughTheFakeStore() {
+        HeadlessModelDocument inner = new HeadlessModelDocument();
+        FakeFacePixelStore store = new FakeFacePixelStore(inner.faceTextures());
+        ModelCommands texCmds = new ModelCommands(
+                FakeFacePixelStore.document(inner, store), mapper);
+
+        batch.execute(parseAndValidate("""
+                {"ops":[
+                  {"op":"create_part","shape":"cube","name":"panel","size":[2,2,2]},
+                  {"op":"texture_create","part":"panel","faces":{"facing":"+y"},
+                   "size":[8,8],"color":[10,20,30,255]}
+                ]}"""), texCmds);
+        assertEquals(1, store.textureCount());
+
+        // The +y face id is only known at runtime — paint it in a second batch.
+        int face = texCmds.selectFacesByDirection("panel", "+y")[0];
+        batch.execute(parseAndValidate("""
+                {"ops":[
+                  {"op":"texture_fill","part":"panel","face":%d,"color":[255,0,0,255]},
+                  {"op":"texture_line","part":"panel","face":%d,
+                   "from":[0,0],"to":[7,7],"color":[0,0,255,255]}
+                ]}""".formatted(face, face)), texCmds);
+
+        // The fake store's bytes changed (first texture is id 1).
+        assertArrayEquals(new int[]{0, 0, 255, 255}, store.pixel(1, 0, 0),
+                "line overdraws the fill on the diagonal");
+        assertArrayEquals(new int[]{0, 0, 255, 255}, store.pixel(1, 7, 7));
+        assertArrayEquals(new int[]{255, 0, 0, 255}, store.pixel(1, 7, 0),
+                "fill shows off the diagonal");
+    }
+
+    @Test
+    void textureRuntimeFailureReportsOpIndex() {
+        HeadlessModelDocument inner = new HeadlessModelDocument();
+        FakeFacePixelStore store = new FakeFacePixelStore(inner.faceTextures());
+        ModelCommands texCmds = new ModelCommands(
+                FakeFacePixelStore.document(inner, store), mapper);
+
+        JsonNode root = parseAndValidate("""
+                {"ops":[
+                  {"op":"create_part","shape":"cube","name":"panel","size":[2,2,2]},
+                  {"op":"create_part","shape":"cube","name":"bare","size":[2,2,2]},
+                  {"op":"texture_create","part":"panel","faces":[0],"size":[8,8]},
+                  {"op":"texture_fill","part":"bare","face":0,"color":[255,0,0,255]}
+                ]}""");
+        OpBatchException e = assertThrows(OpBatchException.class,
+                () -> batch.execute(root, texCmds));
+        assertEquals(3, e.opIndex(), "the unmapped-face fill is op 3");
+        assertTrue(e.getMessage().contains("no texture"));
+        assertTrue(e.hint().contains("texture_create"));
     }
 
     @Test

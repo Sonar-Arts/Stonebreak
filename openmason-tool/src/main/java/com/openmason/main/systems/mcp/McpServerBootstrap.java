@@ -33,7 +33,8 @@ public final class McpServerBootstrap {
             new OpenMasonToolDefinitions(editor, mapper).registerAll(registry);
 
             TextureEditingService textureEditor = new TextureEditingService(mainInterface);
-            new TextureToolDefinitions(textureEditor, mapper).registerAll(registry);
+            CanvasCaptureService canvasCapture = new CanvasCaptureService(mainInterface);
+            new TextureToolDefinitions(textureEditor, canvasCapture, mapper).registerAll(registry);
 
             FaceTextureEditingService faceTextureEditor = new FaceTextureEditingService(mainInterface);
             new FaceTextureToolDefinitions(faceTextureEditor, mapper).registerAll(registry);

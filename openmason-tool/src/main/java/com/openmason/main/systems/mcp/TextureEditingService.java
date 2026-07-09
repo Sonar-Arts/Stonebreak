@@ -4,14 +4,9 @@ import com.openmason.main.systems.MainImGuiInterface;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorController;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
+import com.openmason.main.systems.menus.textureCreator.canvas.PixelPaintOps;
 import com.openmason.main.systems.menus.textureCreator.commands.CommandHistory;
 import com.openmason.main.systems.menus.textureCreator.commands.DrawCommand;
-import com.openmason.main.systems.menus.textureCreator.filters.noise.NoiseConfig;
-import com.openmason.main.systems.menus.textureCreator.filters.noise.NoiseFilter;
-import com.openmason.main.systems.menus.textureCreator.filters.noise.NoiseGenerator;
-import com.openmason.main.systems.menus.textureCreator.filters.noise.SimplexNoiseGenerator;
-import com.openmason.main.systems.menus.textureCreator.filters.noise.ValueNoiseGenerator;
-import com.openmason.main.systems.menus.textureCreator.filters.noise.WhiteNoiseGenerator;
 import com.openmason.main.systems.menus.textureCreator.layers.Layer;
 import com.openmason.main.systems.menus.textureCreator.layers.LayerManager;
 import com.openmason.main.systems.threading.MainThreadExecutor;
@@ -108,11 +103,6 @@ public final class TextureEditingService {
 
     // ===================== Mutate: drawing =====================
 
-    public DrawResult setPixel(int x, int y, int r, int g, int b, int a) {
-        int color = PixelCanvas.packRGBA(r, g, b, a);
-        return runDraw("Set Pixel", canvas -> recordIfEditable(canvas, x, y, color));
-    }
-
     public DrawResult setPixels(List<PixelEntry> pixels) {
         return runDraw("Set Pixels", canvas -> {
             int changed = 0;
@@ -126,15 +116,9 @@ public final class TextureEditingService {
 
     public DrawResult fillCanvas(int r, int g, int b, int a) {
         int color = PixelCanvas.packRGBA(r, g, b, a);
-        return runDraw("Fill Canvas", canvas -> {
-            int changed = 0;
-            for (int y = 0; y < canvas.getHeight(); y++) {
-                for (int x = 0; x < canvas.getWidth(); x++) {
-                    changed += recordIfEditable(canvas, x, y, color);
-                }
-            }
-            return changed;
-        });
+        return runDraw("Fill Canvas", canvas -> PixelPaintOps.rect(
+                (x, y, c) -> recordIfEditable(canvas, x, y, c),
+                0, 0, canvas.getWidth(), canvas.getHeight(), color, true));
     }
 
     public DrawResult clearCanvas() {
@@ -143,56 +127,8 @@ public final class TextureEditingService {
 
     public DrawResult fillRect(int x, int y, int w, int h, int r, int g, int b, int a) {
         int color = PixelCanvas.packRGBA(r, g, b, a);
-        return runDraw("Fill Rect", canvas -> drawRect(canvas, x, y, w, h, color, true));
-    }
-
-    public DrawResult drawRect(int x, int y, int w, int h, int r, int g, int b, int a) {
-        int color = PixelCanvas.packRGBA(r, g, b, a);
-        return runDraw("Draw Rect", canvas -> drawRect(canvas, x, y, w, h, color, false));
-    }
-
-    public DrawResult drawLine(int x0, int y0, int x1, int y1, int r, int g, int b, int a) {
-        int color = PixelCanvas.packRGBA(r, g, b, a);
-        return runDraw("Draw Line", canvas -> bresenhamLine(canvas, x0, y0, x1, y1, color));
-    }
-
-    public DrawResult floodFill(int x, int y, int r, int g, int b, int a) {
-        int color = PixelCanvas.packRGBA(r, g, b, a);
-        return runDraw("Flood Fill", canvas -> {
-            if (!canvas.isValidCoordinate(x, y)) return 0;
-            int target = canvas.getPixel(x, y);
-            if (target == color) return 0;
-            return floodFillInternal(canvas, x, y, target, color);
-        });
-    }
-
-    public DrawResult applyNoise(String generator, long seed, float strength,
-                                  float scale, boolean gradient,
-                                  float blur, int octaves, float spread, float edgeSoftness) {
-        NoiseGenerator gen = parseNoiseGenerator(generator, seed);
-        NoiseConfig config = new NoiseConfig(gen, strength, gradient, scale,
-                blur, octaves, spread, edgeSoftness);
-        return runDraw("Noise", canvas -> {
-            // Snapshot before/after applying the filter so we can build an undoable command.
-            int w = canvas.getWidth(), h = canvas.getHeight();
-            int[] before = new int[w * h];
-            System.arraycopy(canvas.getPixels(), 0, before, 0, before.length);
-
-            new NoiseFilter(config).apply(canvas, canvas.getActiveSelection());
-
-            int[] after = canvas.getPixels();
-            DrawCommand cmd = currentCommand.get();
-            int changed = 0;
-            for (int i = 0; i < before.length; i++) {
-                if (before[i] != after[i]) {
-                    int x = i % w;
-                    int y = i / w;
-                    cmd.recordPixelChange(x, y, before[i], after[i]);
-                    changed++;
-                }
-            }
-            return changed;
-        });
+        return runDraw("Fill Rect", canvas -> PixelPaintOps.rect(
+                (px, py, c) -> recordIfEditable(canvas, px, py, c), x, y, w, h, color, true));
     }
 
     // ===================== Undo / redo =====================
@@ -212,62 +148,6 @@ public final class TextureEditingService {
             boolean done = c.getCommandHistory().redo();
             if (done) c.notifyLayerModified();
             return done;
-        }));
-    }
-
-    // ===================== Mutate: layers =====================
-
-    public LayerView addLayer(String name) {
-        return await(MainThreadExecutor.submit(() -> {
-            TextureCreatorController c = requireController();
-            LayerManager lm = c.getLayerManager();
-            lm.addLayer(name);
-            c.notifyLayerModified();
-            int idx = lm.getActiveLayerIndex();
-            Layer l = lm.getLayer(idx);
-            return new LayerView(idx, l.getName(), l.isVisible(), l.getOpacity(), true);
-        }));
-    }
-
-    public boolean removeLayer(int index) {
-        return await(MainThreadExecutor.submit(() -> {
-            TextureCreatorController c = requireController();
-            LayerManager lm = c.getLayerManager();
-            if (index < 0 || index >= lm.getLayerCount() || lm.getLayerCount() <= 1) {
-                return false;
-            }
-            lm.removeLayer(index);
-            c.notifyLayerModified();
-            return true;
-        }));
-    }
-
-    public boolean setActiveLayer(int index) {
-        return await(MainThreadExecutor.submit(() -> {
-            LayerManager lm = requireController().getLayerManager();
-            if (index < 0 || index >= lm.getLayerCount()) return false;
-            lm.setActiveLayer(index);
-            return true;
-        }));
-    }
-
-    public boolean setLayerVisibility(int index, boolean visible) {
-        return await(MainThreadExecutor.submit(() -> {
-            TextureCreatorController c = requireController();
-            LayerManager lm = c.getLayerManager();
-            if (index < 0 || index >= lm.getLayerCount()) return false;
-            lm.setLayerVisibility(index, visible);
-            c.notifyLayerModified();
-            return true;
-        }));
-    }
-
-    public boolean renameLayer(int index, String name) {
-        return await(MainThreadExecutor.submit(() -> {
-            LayerManager lm = requireController().getLayerManager();
-            if (index < 0 || index >= lm.getLayerCount()) return false;
-            lm.renameLayer(index, name);
-            return true;
         }));
     }
 
@@ -370,72 +250,6 @@ public final class TextureEditingService {
         if (cmd != null) cmd.recordPixelChange(x, y, oldColor, newColor);
         canvas.setPixel(x, y, newColor);
         return 1;
-    }
-
-    private int drawRect(PixelCanvas canvas, int x, int y, int w, int h, int color, boolean filled) {
-        if (w <= 0 || h <= 0) return 0;
-        int x1 = x + w - 1;
-        int y1 = y + h - 1;
-        int changed = 0;
-        for (int yy = y; yy <= y1; yy++) {
-            for (int xx = x; xx <= x1; xx++) {
-                if (!filled && xx != x && xx != x1 && yy != y && yy != y1) continue;
-                changed += recordIfEditable(canvas, xx, yy, color);
-            }
-        }
-        return changed;
-    }
-
-    private int bresenhamLine(PixelCanvas canvas, int x0, int y0, int x1, int y1, int color) {
-        int dx = Math.abs(x1 - x0);
-        int dy = -Math.abs(y1 - y0);
-        int sx = x0 < x1 ? 1 : -1;
-        int sy = y0 < y1 ? 1 : -1;
-        int err = dx + dy;
-        int changed = 0;
-        int x = x0, y = y0;
-        while (true) {
-            changed += recordIfEditable(canvas, x, y, color);
-            if (x == x1 && y == y1) break;
-            int e2 = 2 * err;
-            if (e2 >= dy) { err += dy; x += sx; }
-            if (e2 <= dx) { err += dx; y += sy; }
-        }
-        return changed;
-    }
-
-    private int floodFillInternal(PixelCanvas canvas, int startX, int startY,
-                                   int targetColor, int fillColor) {
-        boolean[][] visited = new boolean[canvas.getWidth()][canvas.getHeight()];
-        java.util.ArrayDeque<int[]> queue = new java.util.ArrayDeque<>();
-        queue.offer(new int[]{startX, startY});
-        int changed = 0;
-        while (!queue.isEmpty()) {
-            int[] pos = queue.poll();
-            int x = pos[0], y = pos[1];
-            if (!canvas.isValidCoordinate(x, y) || visited[x][y]) continue;
-            visited[x][y] = true;
-            if (!canvas.isEditablePixel(x, y)) continue;
-            if (canvas.hasActiveSelection() && !canvas.getActiveSelection().contains(x, y)) continue;
-            if (canvas.getPixel(x, y) != targetColor) continue;
-            changed += recordIfEditable(canvas, x, y, fillColor);
-            queue.offer(new int[]{x + 1, y});
-            queue.offer(new int[]{x - 1, y});
-            queue.offer(new int[]{x, y + 1});
-            queue.offer(new int[]{x, y - 1});
-        }
-        return changed;
-    }
-
-    private static NoiseGenerator parseNoiseGenerator(String name, long seed) {
-        if (name == null) throw new IllegalArgumentException("generator is required");
-        return switch (name.trim().toUpperCase()) {
-            case "SIMPLEX" -> new SimplexNoiseGenerator(seed);
-            case "VALUE" -> new ValueNoiseGenerator(seed);
-            case "WHITE" -> new WhiteNoiseGenerator(seed);
-            default -> throw new IllegalArgumentException(
-                    "Unknown noise generator '" + name + "'. Valid: SIMPLEX, VALUE, WHITE");
-        };
     }
 
     // ===================== Plumbing =====================

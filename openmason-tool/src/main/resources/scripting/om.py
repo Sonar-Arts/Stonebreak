@@ -64,6 +64,16 @@ def _xyz(x, y, z, name):
     return [float(x or 0), float(y or 0), float(z or 0)]
 
 
+def _rgba(value):
+    """Normalize a color: (r,g,b) or (r,g,b,a), 0..255 — 3-tuples get alpha 255."""
+    t = [int(c) for c in value]
+    if len(t) == 3:
+        t.append(255)
+    if len(t) != 4:
+        raise ValueError("color needs (r,g,b) or (r,g,b,a), got " + str(len(t)) + " components")
+    return t
+
+
 class FaceSelection:
     """A set of part-local faces. Topology ops return the newly created faces,
     so calls chain: p.faces(facing="+y").extrude(1.5).inset(0.4)."""
@@ -110,6 +120,11 @@ class FaceSelection:
         r = [float(v) for v in region]
         _b.setFaceUV(self.part.name, self.ids, r, int(rotation))
         return self
+
+    def texture(self, size=(16, 16), color=(255, 255, 255, 255), name=None):
+        """Create ONE texture shared by these faces and return its paint handle
+        (live viewport only). Shorthand for om.tex.create(selection, ...)."""
+        return tex.create(self, size=size, color=color, name=name)
 
 
 class Part:
@@ -301,6 +316,193 @@ class _Anim:
 anim = _Anim()
 
 
+class Texture:
+    """Paint handle for one face's texture (live viewport only). Faces sharing
+    a material share the texture — painting via one face shows on all of them.
+    All mutators return self for chaining."""
+
+    def __init__(self, part_name, face):
+        self.part = part_name
+        self.face = int(face)
+
+    def __repr__(self):
+        i = _json.loads(_b.texInfoJson(self.part, self.face))
+        if not i.get("mapped"):
+            return "<texture: face %d of '%s' (none yet)>" % (self.face, self.part)
+        return "<texture '%s': %dx%d on face %d of '%s'>" % (
+            i["materialName"], i["width"], i["height"], self.face, self.part)
+
+    def fill(self, color, rect=None):
+        """Fill the whole texture, or just rect=(x,y,w,h)."""
+        r = [int(v) for v in rect] if rect is not None else None
+        _b.texFill(self.part, self.face, r, _rgba(color))
+        return self
+
+    def rect(self, x, y, w, h, color, filled=False):
+        """Rectangle — 1px outline, or filled=True."""
+        _b.texRect(self.part, self.face,
+                   [int(x), int(y), int(w), int(h)], _rgba(color), bool(filled))
+        return self
+
+    def line(self, x0, y0, x1, y1, color):
+        """1-pixel line from (x0,y0) to (x1,y1)."""
+        _b.texLine(self.part, self.face, int(x0), int(y0), int(x1), int(y1), _rgba(color))
+        return self
+
+    def flood(self, x, y, color):
+        """Flood-fill (4-connected) from (x,y)."""
+        _b.texFlood(self.part, self.face, int(x), int(y), _rgba(color))
+        return self
+
+    def set_pixels(self, pixels):
+        """Write pixels: [(x, y, (r,g,b,a)), ...], [(x, y, r, g, b, a), ...],
+        or a flat [x,y,r,g,b,a, ...] int list."""
+        _b.texSetPixels(self.part, self.face, _flat_pixels(pixels))
+        return self
+
+    def noise(self, generator="simplex", seed=0, strength=0.5, scale=1.0,
+              gradient=False, blur=0.0, octaves=1, spread=0.5, edge_softness=0.0):
+        """Procedural noise: generator = simplex | value | white."""
+        _b.texNoise(self.part, self.face, generator, float(seed), float(strength),
+                    float(scale), bool(gradient), float(blur), int(octaves),
+                    float(spread), float(edge_softness))
+        return self
+
+    def resize(self, w, h):
+        """Nearest-neighbor resize (UVs unaffected)."""
+        _b.texResize(self.part, self.face, int(w), int(h))
+        return self
+
+    def get_region(self, x, y, w, h):
+        """{'x','y','width','height','rgba': flat [r,g,b,a, ...]} pixel read."""
+        return _json.loads(_b.texRegionJson(self.part, self.face,
+                                            int(x), int(y), int(w), int(h)))
+
+    def info(self):
+        """{'mapped', 'material', 'materialName', 'width', 'height', ...}."""
+        return _json.loads(_b.texInfoJson(self.part, self.face))
+
+
+def _flat_pixels(pixels):
+    entries = list(pixels)
+    if entries and isinstance(entries[0], (int, float)):
+        flat = [int(v) for v in entries]
+        if len(flat) % 6 != 0:
+            raise ValueError("flat pixel list needs 6 ints per pixel: x,y,r,g,b,a")
+        return flat
+    flat = []
+    for entry in entries:
+        e = list(entry)
+        if len(e) == 3:
+            flat.extend([int(e[0]), int(e[1])] + _rgba(e[2]))
+        elif len(e) == 6:
+            flat.extend([int(v) for v in e])
+        else:
+            raise ValueError("each pixel is (x, y, (r,g,b,a)) or (x, y, r, g, b, a)")
+    return flat
+
+
+class _Tex:
+    """om.tex — per-face texture authoring (live viewport only)."""
+
+    def create(self, faces, size=(16, 16), color=(255, 255, 255, 255), name=None):
+        """Create ONE texture (and material) shared by a face selection:
+        t = om.tex.create(p.faces(facing="+z"), size=(16,16), color=(200,120,60)).
+        Returns the paint handle."""
+        if not isinstance(faces, FaceSelection):
+            raise ValueError("om.tex.create needs a FaceSelection, e.g. p.faces(facing='+z')")
+        w, h = int(size[0]), int(size[1])
+        _b.texCreate(faces.part.name, faces.ids, w, h, _rgba(color), name)
+        return Texture(faces.part.name, faces.ids[0])
+
+    def of(self, part, face):
+        """Paint handle for an already-textured face: om.tex.of(p, 3) or om.tex.of("body", 3)."""
+        return Texture(part.name if isinstance(part, Part) else part, int(face))
+
+
+tex = _Tex()
+
+
+class _Canvas:
+    """om.canvas — texture-editor canvas painting + layers (the editor window
+    must be open; live only). Paint targets the ACTIVE layer and honors the
+    editor's shape mask and active selection."""
+
+    def set_pixels(self, pixels):
+        """Write pixels: [(x, y, (r,g,b,a)), ...] or a flat [x,y,r,g,b,a, ...] list."""
+        _b.canvasSetPixels(_flat_pixels(pixels))
+        return self
+
+    def fill(self, color, rect=None):
+        """Fill the active layer, or just rect=(x,y,w,h)."""
+        r = [int(v) for v in rect] if rect is not None else None
+        _b.canvasFill(r, _rgba(color))
+        return self
+
+    def rect(self, x, y, w, h, color, filled=False):
+        """Rectangle — 1px outline, or filled=True."""
+        _b.canvasRect([int(x), int(y), int(w), int(h)], _rgba(color), bool(filled))
+        return self
+
+    def line(self, x0, y0, x1, y1, color):
+        """1-pixel line from (x0,y0) to (x1,y1)."""
+        _b.canvasLine(int(x0), int(y0), int(x1), int(y1), _rgba(color))
+        return self
+
+    def flood(self, x, y, color):
+        """Flood-fill (4-connected) from (x,y)."""
+        _b.canvasFlood(int(x), int(y), _rgba(color))
+        return self
+
+    def noise(self, generator="simplex", seed=0, strength=0.5, scale=1.0,
+              gradient=False, blur=0.0, octaves=1, spread=0.5, edge_softness=0.0):
+        """Procedural noise on the active layer: simplex | value | white."""
+        _b.canvasNoise(generator, float(seed), float(strength), float(scale),
+                       bool(gradient), float(blur), int(octaves), float(spread),
+                       float(edge_softness))
+        return self
+
+    def add_layer(self, name):
+        """Add a new empty layer on top; it becomes the active layer."""
+        _b.canvasAddLayer(name)
+        return self
+
+    def remove_layer(self, index):
+        """Remove a layer by index (the last layer cannot be removed)."""
+        _b.canvasRemoveLayer(int(index))
+        return self
+
+    def set_layer(self, index, active=None, visible=None, name=None, opacity=None):
+        """Update a layer: om.canvas.set_layer(1, active=True, opacity=0.5)."""
+        _b.canvasSetLayer(int(index),
+                          bool(active) if active is not None else None,
+                          bool(visible) if visible is not None else None,
+                          name,
+                          float(opacity) if opacity is not None else None)
+        return self
+
+    def export(self, path):
+        """Queue a PNG export of the flattened visible layers (absolute path;
+        written only when the whole script succeeds)."""
+        _b.canvasExportPng(path)
+        return self
+
+    def info(self):
+        """{'width', 'height', 'layerCount', 'activeLayer', 'activeLayerName'}."""
+        return _json.loads(_b.canvasInfoJson())
+
+    def layers(self):
+        """[{'index', 'name', 'visible', 'opacity', 'active'}, ...]."""
+        return _json.loads(_b.canvasLayersJson())
+
+    def get_region(self, x, y, w, h):
+        """{'x','y','width','height','rgba': flat [r,g,b,a, ...]} read of the active layer."""
+        return _json.loads(_b.canvasRegionJson(int(x), int(y), int(w), int(h)))
+
+
+canvas = _Canvas()
+
+
 # ===================== module-level functions =====================
 
 def _create(shape, name, size, at, rotate, parent):
@@ -412,6 +614,13 @@ Verts:    p.subdivide_edge(0, 1, t=0.5); p.set_vertex(3, (4,5,3)); p.vertex(3)
           p.move_vertices([0,1], (0,0.5,0)); p.set_geometry(verts, tris, faces=[...])
 Material: om.material("shell", tint=(255,120,40)); top.set_material("shell")
           top.set_uv((0,0,0.5,0.5), rotation=90)
+Texture:  t = om.tex.create(p.faces(facing="+z"), size=(16,16), color=(200,120,60))
+          t.fill(c, rect=(x,y,w,h)); t.rect(x,y,w,h,c,filled=True); t.line(x0,y0,x1,y1,c)
+          t.flood(x,y,c); t.set_pixels([(x,y,(r,g,b,a)),...]); t.noise("simplex", seed=7)
+          t.resize(32,32); t.get_region(0,0,4,4); om.tex.of(p, 3)   # live viewport only
+Canvas:   om.canvas.fill(c); om.canvas.rect/line/flood/set_pixels/noise(...)  # texture editor
+          om.canvas.add_layer("shade"); om.canvas.set_layer(1, active=True, opacity=0.5)
+          om.canvas.layers(); om.canvas.info(); om.canvas.export("/abs/out.png")
 Query:    om.summary()  ->  {"totals": {...}, "bbox": [[..],[..]], "parts": [...]}
 Animate:  c = om.anim.clip("idle", duration=2.0, fps=30, loop=True)
           c.key(body, 0.0)                      # omitted pose = part's current transform
@@ -424,7 +633,8 @@ Loops:    import math; [om.box(f"leg{i}", at=(math.cos(i*math.pi/2)*3, 1, math.s
 # Install as the `om` module so user scripts `import om`.
 _om = _types.ModuleType("om")
 _om.__doc__ = HELP
-for _k in ("FaceSelection", "Part", "Clip", "anim", "OmError", "box", "cube", "cylinder",
+for _k in ("FaceSelection", "Part", "Clip", "anim", "Texture", "tex", "canvas", "OmError",
+           "box", "cube", "cylinder",
            "sphere", "cone", "pyramid", "plane", "wedge", "torus", "hemisphere",
            "cross", "sprite", "part", "parts", "mirror", "material", "summary",
            "help", "HELP", "math"):

@@ -31,7 +31,7 @@ class McpToolsListSnapshotTest {
 
     /**
      * Upper bound on the serialized tools/list JSON (name + description +
-     * inputSchema for every tool). Set for the curated 84-tool surface —
+     * inputSchema for every tool). Set for the curated 71-tool surface —
      * growing past it must be a conscious decision, not drift.
      */
     private static final int TOOLS_LIST_BYTE_BUDGET = 60_000;
@@ -47,7 +47,7 @@ class McpToolsListSnapshotTest {
         AttachmentEditingService attachments = new AttachmentEditingService(null);
         AnimationEditingService animation = new AnimationEditingService(null);
         new OpenMasonToolDefinitions(model, mapper).registerAll(registry);
-        new TextureToolDefinitions(texture, mapper).registerAll(registry);
+        new TextureToolDefinitions(texture, new CanvasCaptureService(null), mapper).registerAll(registry);
         new FaceTextureToolDefinitions(faceTexture, mapper).registerAll(registry);
         new BoneToolDefinitions(bones, mapper).registerAll(registry);
         new AttachmentToolDefinitions(attachments, mapper).registerAll(registry);

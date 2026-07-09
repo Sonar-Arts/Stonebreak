@@ -7,11 +7,14 @@ import com.openmason.main.systems.scripting.ScriptExecutor.RunOptions;
 import com.openmason.main.systems.scripting.ScriptExecutor.ScriptResult;
 import com.openmason.main.systems.scripting.ScriptExecutor.ScriptSource;
 import com.openmason.main.systems.scripting.commands.ModelCommands;
+import com.openmason.main.systems.scripting.doc.FakeCanvasSurface;
+import com.openmason.main.systems.scripting.doc.FakeFacePixelStore;
 import com.openmason.main.systems.scripting.doc.HeadlessModelDocument;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -173,6 +176,80 @@ class PythonScriptEngineTest {
         assertFalse(result.ok());
         assertFalse(java.nio.file.Files.exists(tmp.resolve("idle.omanim")),
                 "deferred saves must not flush when the script fails");
+    }
+
+    // ===================== Textures & canvas =====================
+
+    @Test
+    void texApiPaintsFaceTexturesThroughTheStore() {
+        HeadlessModelDocument inner = new HeadlessModelDocument();
+        FakeFacePixelStore store = new FakeFacePixelStore(inner.faceTextures());
+        ScriptResult result = new ScriptExecutor(MAPPER, engine).run(
+                FakeFacePixelStore.document(inner, store),
+                new ScriptSource(Language.PYTHON, "script.py", """
+                        import om
+                        p = om.box("panel", size=2)
+                        t = om.tex.create(p.faces(facing="+y"), size=(8, 8), color=(10, 20, 30))
+                        t.line(0, 0, 7, 7, (255, 0, 0))
+                        r = t.get_region(0, 0, 1, 1)
+                        print(r["rgba"])
+                        """),
+                new RunOptions(false, true, 30_000));
+        assertTrue(result.ok(), () -> "script failed: " + result.error());
+        assertTrue(result.stdout().contains("[255, 0, 0, 255]"),
+                "region read must see the line pixel");
+
+        // The store's bytes changed (first created texture is id 1).
+        assertArrayEquals(new int[]{255, 0, 0, 255}, store.pixel(1, 0, 0));
+        assertArrayEquals(new int[]{10, 20, 30, 255}, store.pixel(1, 7, 0),
+                "fill color (3-tuple gets alpha 255) off the diagonal");
+
+        // Python run traced the texture ops for JSON replay.
+        var ops = result.opsTrace().stream().map(n -> n.get("op").asText()).toList();
+        assertEquals(java.util.List.of("create_part", "texture_create", "texture_line"), ops);
+    }
+
+    @Test
+    void canvasApiPaintsTheEditorSurface() {
+        FakeCanvasSurface surface = new FakeCanvasSurface(16, 16);
+        ScriptResult result = new ScriptExecutor(MAPPER, engine).run(
+                new HeadlessModelDocument(), surface,
+                new ScriptSource(Language.PYTHON, "script.py", """
+                        import om
+                        om.canvas.fill((5, 5, 5))
+                        om.canvas.add_layer("Top")
+                        om.canvas.line(0, 0, 3, 3, (255, 0, 0))
+                        r = om.canvas.get_region(0, 0, 1, 1)
+                        print(r["rgba"], om.canvas.info()["layerCount"])
+                        """),
+                new RunOptions(false, false, 30_000));
+        assertTrue(result.ok(), () -> "script failed: " + result.error());
+        assertTrue(result.stdout().contains("[255, 0, 0, 255] 2"),
+                "region reads the ACTIVE (new) layer; two layers exist");
+        // Background layer got the fill, the new active layer got the line.
+        assertEquals(com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas
+                        .packRGBA(5, 5, 5, 255),
+                surface.layers().getLayer(0).getCanvas().getPixel(8, 8));
+        assertEquals(com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas
+                        .packRGBA(255, 0, 0, 255),
+                surface.layers().getLayer(1).getCanvas().getPixel(2, 2));
+    }
+
+    @Test
+    void texErrorOnMissingPartReportsTheScriptLine() {
+        HeadlessModelDocument inner = new HeadlessModelDocument();
+        FakeFacePixelStore store = new FakeFacePixelStore(inner.faceTextures());
+        ScriptResult result = new ScriptExecutor(MAPPER, engine).run(
+                FakeFacePixelStore.document(inner, store),
+                new ScriptSource(Language.PYTHON, "script.py", """
+                        import om
+                        om.box("panel", size=2)
+                        om.tex.of("nope", 0).fill((1, 2, 3))
+                        """),
+                new RunOptions(false, false, 30_000));
+        assertFalse(result.ok());
+        assertTrue(result.error().error().contains("panel"), "should list known parts");
+        assertEquals(3, result.error().line(), "line must point at the failing tex call");
     }
 
     // ===================== Python ↔ JSON parity =====================

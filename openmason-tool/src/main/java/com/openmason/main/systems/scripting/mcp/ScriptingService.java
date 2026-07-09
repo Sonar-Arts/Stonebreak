@@ -13,14 +13,19 @@ import com.openmason.main.systems.scripting.ScriptExecutor.ScriptSource;
 import com.openmason.main.systems.scripting.doc.LiveModelDocument;
 import com.openmason.main.systems.scripting.json.OpBatchException;
 import com.openmason.main.systems.scripting.json.OpBatchExecutor;
+import com.openmason.main.systems.menus.textureCreator.layers.LayerStackSnapshot;
+import com.openmason.main.systems.scripting.live.CanvasScriptCommand;
+import com.openmason.main.systems.scripting.live.LiveCanvasSurface;
 import com.openmason.main.systems.scripting.live.PartManagerSnapshot;
 import com.openmason.main.systems.scripting.live.ScriptRunCommand;
+import com.openmason.main.systems.scripting.live.TexturePixelDelta;
 import com.openmason.main.systems.scripting.python.PythonScriptEngine;
 import com.openmason.main.systems.services.commands.MeshSnapshot;
 import com.openmason.main.systems.threading.MainThreadExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -97,10 +102,18 @@ public final class ScriptingService {
         PartManagerSnapshot partsBefore = PartManagerSnapshot.capture(vp.getPartManager());
         MeshSnapshot meshBefore = MeshSnapshot.capture(vp.getModelRenderer());
 
+        // Canvas ops target the texture editor when it's open; otherwise the
+        // command layer raises a teaching error on first canvas op.
+        LiveCanvasSurface canvasSurface = null;
+        var textureCreator = mainInterface.getTextureCreator();
+        if (textureCreator != null && textureCreator.getController() != null) {
+            canvasSurface = new LiveCanvasSurface(textureCreator.getController());
+        }
+
         LiveModelDocument doc = new LiveModelDocument(vp);
         ScriptResult result;
         try {
-            result = executor.run(doc, src, opts);
+            result = executor.run(doc, canvasSurface, src, opts);
         } catch (RuntimeException e) {
             logger.error("Script execution failed unexpectedly", e);
             result = ScriptResult.failure(new ScriptError(
@@ -108,8 +121,16 @@ public final class ScriptingService {
         }
 
         if (!result.ok()) {
-            // Roll the model back — part manager AND mesh state.
+            // Roll everything back — canvas layer stack, painted pixels
+            // (restores touched textures + deletes script-created ones),
+            // then parts AND mesh.
             try {
+                if (canvasSurface != null && canvasSurface.touched()) {
+                    canvasSurface.rollback();
+                }
+                if (doc.pixelJournal() != null) {
+                    doc.pixelJournal().rollback();
+                }
                 partsBefore.restore(vp.getPartManager());
                 meshBefore.restore(vp.getModelRenderer());
                 if (vp.getRendererSynchronizer() != null) {
@@ -121,13 +142,25 @@ public final class ScriptingService {
             return result;
         }
 
-        // One undo entry for the whole run.
+        // One undo entry for the whole run (model history).
         if (vp.getCommandHistory() != null && vp.getRendererSynchronizer() != null) {
             PartManagerSnapshot partsAfter = PartManagerSnapshot.capture(vp.getPartManager());
             MeshSnapshot meshAfter = MeshSnapshot.capture(vp.getModelRenderer());
+            List<TexturePixelDelta> pixelDeltas = doc.pixelJournal() != null
+                    ? doc.pixelJournal().buildDeltas() : List.of();
             vp.getCommandHistory().pushCompleted(new ScriptRunCommand(
-                    "Run Script", partsBefore, meshBefore, partsAfter, meshAfter,
+                    "Run Script", partsBefore, meshBefore, partsAfter, meshAfter, pixelDeltas,
                     vp.getPartManager(), vp.getModelRenderer(), vp.getRendererSynchronizer()));
+        }
+
+        // Canvas edits get their own single entry in the texture editor's
+        // history (the two domains keep separate histories by design).
+        if (canvasSurface != null && canvasSurface.touched()
+                && canvasSurface.history() != null) {
+            var layerManager = canvasSurface.layers();
+            canvasSurface.history().pushCompleted(new CanvasScriptCommand(
+                    canvasSurface.before(), LayerStackSnapshot.capture(layerManager),
+                    layerManager, canvasSurface::notifyModified));
         }
         return result;
     }
