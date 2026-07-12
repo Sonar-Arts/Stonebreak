@@ -53,6 +53,7 @@ public final class SbeEntityRegistry {
      */
     public static synchronized int scanAndLoad() {
         BY_OBJECT_ID.clear();
+        com.stonebreak.audio.EntitySounds.invalidate();
         for (String resourcePath : discover()) {
             try {
                 SbeEntityAsset asset = SbeEntityLoader.load(resourcePath);

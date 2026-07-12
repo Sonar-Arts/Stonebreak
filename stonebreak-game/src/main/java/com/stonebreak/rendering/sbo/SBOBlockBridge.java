@@ -52,6 +52,7 @@ public class SBOBlockBridge {
     public void initialize(SBOBlockRegistry registry) {
         sboByBlockType.clear();
         clipCache.clear();
+        com.stonebreak.audio.BlockSounds.invalidate();
 
         for (SBOParseResult result : registry.getAll()) {
             String objectId = result.getObjectId();

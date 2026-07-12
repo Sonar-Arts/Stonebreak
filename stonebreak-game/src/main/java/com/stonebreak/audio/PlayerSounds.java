@@ -1,6 +1,5 @@
 package com.stonebreak.audio;
 
-import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
@@ -8,9 +7,14 @@ import org.joml.Vector3f;
 
 /**
  * Handles all sound-related functionality for the player.
- * This module manages walking sounds, timing, and block-based sound selection.
+ * This module manages walking sound timing; the sample for the block
+ * underfoot comes from that block's SBO {@code sounds[]} data via
+ * {@link BlockSounds} — there is no hardcoded block→sample table.
  */
 public class PlayerSounds {
+
+    /** Gain scale applied to the ground block's authored step volume. */
+    private static final float STEP_VOLUME = 0.3f;
     // Walking sound system
     private float walkingSoundTimer;
     private boolean wasMovingLastFrame;
@@ -66,19 +70,8 @@ public class PlayerSounds {
 
         BlockType groundBlock = world.getBlockAt(blockX, blockY, blockZ);
 
-        // Play appropriate walking sound based on block type
-        SoundSystem soundSystem = Game.getSoundSystem();
-        if (soundSystem != null) {
-            if (groundBlock == BlockType.GRASS) {
-                soundSystem.playSoundWithVariation("grasswalk", 0.3f);
-            } else if (groundBlock == BlockType.SAND || groundBlock == BlockType.RED_SAND) {
-                soundSystem.playSoundWithVariation("sandwalk", 0.3f);
-            } else if (groundBlock == BlockType.WOOD || groundBlock == BlockType.WOOD_PLANKS ||
-                       groundBlock == BlockType.PINE_WOOD_PLANKS || groundBlock == BlockType.ELM_WOOD_LOG ||
-                       groundBlock == BlockType.ELM_WOOD_PLANKS) {
-                soundSystem.playSoundWithVariation("woodwalk", 0.3f);
-            }
-        }
+        // The block's SBO declares its own step sound (or none = silent).
+        BlockSounds.playStepLocal(groundBlock, STEP_VOLUME);
     }
 
     /**

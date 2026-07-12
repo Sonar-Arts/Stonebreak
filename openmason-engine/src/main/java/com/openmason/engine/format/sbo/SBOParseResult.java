@@ -28,6 +28,9 @@ import java.util.Map;
  * @param materials         material definitions with texture PNG bytes; null for texture-only SBOs
  * @param defaultTexturePng raw bytes of the default texture.omt flattened to PNG (may be null)
  * @param embeddedOmtBytes  raw OMT archive bytes for texture-only SBOs (1.2+); null for model-bearing SBOs
+ * @param soundBytes        embedded sound sample bytes keyed by ZIP entry filename (1.7+);
+ *                          empty when no sound def embeds audio (resource-referenced defs
+ *                          carry no bytes)
  */
 public record SBOParseResult(
         SBOFormat.Document manifest,
@@ -40,13 +43,15 @@ public record SBOParseResult(
         Map<String, byte[]> stateOmoBytes,
         Map<String, byte[]> stateOmtBytes,
         Map<String, OMOReader.ReadResult> stateOmoData,
-        Map<String, byte[]> stateClipBytes
+        Map<String, byte[]> stateClipBytes,
+        Map<String, byte[]> soundBytes
 ) {
     public SBOParseResult {
         stateOmoBytes = stateOmoBytes == null ? Collections.emptyMap() : Map.copyOf(stateOmoBytes);
         stateOmtBytes = stateOmtBytes == null ? Collections.emptyMap() : Map.copyOf(stateOmtBytes);
         stateOmoData = stateOmoData == null ? Collections.emptyMap() : Map.copyOf(stateOmoData);
         stateClipBytes = stateClipBytes == null ? Collections.emptyMap() : Map.copyOf(stateClipBytes);
+        soundBytes = soundBytes == null ? Collections.emptyMap() : Map.copyOf(soundBytes);
     }
 
     public String getObjectId() { return manifest.objectId(); }
@@ -82,4 +87,13 @@ public record SBOParseResult(
         }
         return null;
     }
+
+    /** True when this SBO declares one or more sound bindings (1.7+). */
+    public boolean hasSounds() { return manifest.hasSounds(); }
+
+    /** The manifest sound bindings, or null when the SBO declares none (1.7+). */
+    public com.openmason.engine.format.sound.SoundData sounds() { return manifest.sounds(); }
+
+    /** Bytes of an embedded sound sample by entry filename, or null (1.7+). */
+    public byte[] soundBytesFor(String filename) { return soundBytes.get(filename); }
 }

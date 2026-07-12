@@ -2,6 +2,9 @@ package com.openmason.engine.format.sbo;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openmason.engine.format.omo.OMOReader;
+import com.openmason.engine.format.sound.SoundData;
+import com.openmason.engine.format.sound.SoundDef;
+import com.openmason.engine.format.sound.SoundJson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,7 +69,8 @@ public class SBOParser {
                     omoBytes = bytes;
                 } else if (SBOFormat.EMBEDDED_OMT_FILENAME.equals(entryName)) {
                     omtBytes = bytes;
-                } else if (entryName.startsWith(SBOFormat.STATES_DIR_PREFIX)) {
+                } else if (entryName.startsWith(SBOFormat.STATES_DIR_PREFIX)
+                        || entryName.startsWith(SBOFormat.SOUNDS_DIR_PREFIX)) {
                     rawEntries.put(entryName, bytes);
                 }
 
@@ -117,12 +121,14 @@ public class SBOParser {
             }
         }
 
+        Map<String, byte[]> soundBytes = extractSoundBytes(manifest, rawEntries, sboPath);
+
         if (manifest.isModelBearing()) {
             if (omoBytes == null) {
                 throw new IOException("Manifest declares omoFile but model.omo missing: " + sboPath);
             }
             return parseModelBearing(manifest, omoBytes, sboPath, stateOmoBytes, stateOmtBytes,
-                    stateOmoData, stateClipBytes);
+                    stateOmoData, stateClipBytes, soundBytes);
         }
 
         if (manifest.isTextureOnly()) {
@@ -133,17 +139,44 @@ public class SBOParser {
             logger.info("Parsed texture-only SBO: {} ({}) - {} OMT bytes, states={}",
                     manifest.objectName(), manifest.objectId(), omtBytes.length, stateOmtBytes.size());
             return new SBOParseResult(manifest, null, null, null, null, null, omtBytes,
-                    stateOmoBytes, stateOmtBytes, stateOmoData, stateClipBytes);
+                    stateOmoBytes, stateOmtBytes, stateOmoData, stateClipBytes, soundBytes);
         }
 
         throw new IOException("SBO manifest declares neither omoFile nor textureFile: " + sboPath);
+    }
+
+    /**
+     * Pull the embedded bytes of every embedded sound def (1.7+) out of the
+     * raw entry map, keyed by entry filename. Checksum mismatches warn (the
+     * SBO convention); a missing entry is a hard error. Resource-referenced
+     * defs carry no bytes.
+     */
+    private Map<String, byte[]> extractSoundBytes(SBOFormat.Document manifest,
+                                                  Map<String, byte[]> rawEntries,
+                                                  Path sboPath) throws IOException {
+        if (!manifest.hasSounds()) {
+            return Collections.emptyMap();
+        }
+        Map<String, byte[]> soundBytes = new LinkedHashMap<>();
+        for (SoundDef def : manifest.sounds().sounds()) {
+            if (!def.isEmbedded()) continue;
+            byte[] bytes = rawEntries.get(def.filename());
+            if (bytes == null) {
+                throw new IOException("Sound '" + def.event() + "' missing entry "
+                        + def.filename() + " in SBO: " + sboPath);
+            }
+            validateNamedChecksum("sound " + def.filename(), def.checksum(), bytes, sboPath);
+            soundBytes.put(def.filename(), bytes);
+        }
+        return soundBytes;
     }
 
     private SBOParseResult parseModelBearing(SBOFormat.Document manifest, byte[] omoBytes, Path sboPath,
                                               Map<String, byte[]> stateOmoBytes,
                                               Map<String, byte[]> stateOmtBytes,
                                               Map<String, OMOReader.ReadResult> stateOmoData,
-                                              Map<String, byte[]> stateClipBytes) throws IOException {
+                                              Map<String, byte[]> stateClipBytes,
+                                              Map<String, byte[]> soundBytes) throws IOException {
         validateChecksum(manifest, omoBytes, sboPath);
 
         OMOReader.ReadResult omoResult;
@@ -169,7 +202,8 @@ public class SBOParser {
                 stateOmoBytes,
                 stateOmtBytes,
                 stateOmoData,
-                stateClipBytes
+                stateClipBytes,
+                soundBytes
         );
     }
 
@@ -311,6 +345,8 @@ public class SBOParser {
             }
         }
 
+        SoundData sounds = SoundJson.read(root);
+
         return new SBOFormat.Document(
                 root.get("version").asText(),
                 root.get("objectId").asText(),
@@ -328,7 +364,8 @@ public class SBOParser {
                 defaultState,
                 recipes,
                 smeltingRecipes,
-                fuel
+                fuel,
+                sounds
         );
     }
 
@@ -358,12 +395,16 @@ public class SBOParser {
      * @param stateBytes     per-state asset bytes keyed by state name; empty when no states
      * @param stateClipBytes per-state raw {@code .omanim} clip bytes keyed by state
      *                       name (1.6+); empty when no state carries a clip
+     * @param soundBytes     embedded sound sample bytes keyed by ZIP entry filename
+     *                       (1.7+); empty when no sound def embeds audio. Feed back
+     *                       to {@code exportFromDocument} on save.
      */
     public record RawParse(
             SBOFormat.Document manifest,
             byte[] defaultBytes,
             java.util.Map<String, byte[]> stateBytes,
-            java.util.Map<String, byte[]> stateClipBytes
+            java.util.Map<String, byte[]> stateClipBytes,
+            java.util.Map<String, byte[]> soundBytes
     ) {}
 
     /**
@@ -393,7 +434,8 @@ public class SBOParser {
                     omoBytes = bytes;
                 } else if (SBOFormat.EMBEDDED_OMT_FILENAME.equals(name)) {
                     omtBytes = bytes;
-                } else if (name.startsWith(SBOFormat.STATES_DIR_PREFIX)) {
+                } else if (name.startsWith(SBOFormat.STATES_DIR_PREFIX)
+                        || name.startsWith(SBOFormat.SOUNDS_DIR_PREFIX)) {
                     rawEntries.put(name, bytes);
                 }
                 zis.closeEntry();
@@ -432,7 +474,9 @@ public class SBOParser {
             }
         }
 
-        return new RawParse(manifest, defaultBytes, stateBytes, stateClipBytes);
+        Map<String, byte[]> soundBytes = extractSoundBytes(manifest, rawEntries, sboPath);
+
+        return new RawParse(manifest, defaultBytes, stateBytes, stateClipBytes, soundBytes);
     }
 
     private byte[] readBytes(ZipInputStream zis) throws IOException {

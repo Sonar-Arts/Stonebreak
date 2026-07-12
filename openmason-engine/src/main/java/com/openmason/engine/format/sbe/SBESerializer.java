@@ -3,6 +3,10 @@ package com.openmason.engine.format.sbe;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.openmason.engine.format.sound.SoundData;
+import com.openmason.engine.format.sound.SoundDef;
+import com.openmason.engine.format.sound.SoundJson;
+import com.openmason.engine.format.sound.SoundSpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -78,6 +82,7 @@ public class SBESerializer {
             // build the manifest before opening the output stream.
             List<ResolvedState> resolved = resolveStates(params.getStates());
             List<ResolvedVariant> resolvedVariants = resolveVariants(params.getVariants());
+            ResolvedSounds resolvedSounds = resolveSoundSpecs(params.getSounds());
 
             List<SBEFormat.StateEntry> stateEntries = new ArrayList<>(resolved.size());
             for (ResolvedState r : resolved) {
@@ -101,10 +106,11 @@ public class SBESerializer {
                     Instant.now().toString(),
                     SBEFormat.EMBEDDED_OMO_FILENAME,
                     stateEntries,
-                    variantEntries
+                    variantEntries,
+                    resolvedSounds.data()
             );
 
-            writeArchive(outputPath, document, omoBytes, resolved, resolvedVariants);
+            writeArchive(outputPath, document, omoBytes, resolved, resolvedVariants, resolvedSounds);
             logger.info("Exported .SBE file: {} (checksum={}, states={}, variants={})",
                     outputPath, checksum.substring(0, 12) + "...",
                     stateEntries.size(), variantEntries.size());
@@ -124,9 +130,10 @@ public class SBESerializer {
      * @param omoBytes         base OMO bytes
      * @param stateAssetBytes  map keyed by ZIP entry filename
      *                         ({@code states/<name>/model.omo},
-     *                         {@code states/<name>/clip.omanim}, or
-     *                         {@code variants/<name>/model.omo}); every
-     *                         non-null asset in the document must have an entry
+     *                         {@code states/<name>/clip.omanim},
+     *                         {@code variants/<name>/model.omo}, or
+     *                         {@code sounds/…} for embedded sound samples, 1.4+);
+     *                         every non-null asset in the document must have an entry
      * @param outputPath       destination .sbe path
      */
     public boolean exportFromDocument(SBEFormat.Document document,
@@ -206,6 +213,8 @@ public class SBESerializer {
                 rebuiltVariants.add(v.toEntry());
             }
 
+            ResolvedSounds rebuiltSounds = rebuildSounds(document.sounds(), stateAssetBytes);
+
             SBEFormat.Document finalDoc = new SBEFormat.Document(
                     SBEFormat.FORMAT_VERSION,
                     document.objectId(),
@@ -218,10 +227,11 @@ public class SBESerializer {
                     document.createdAt() != null ? document.createdAt() : Instant.now().toString(),
                     SBEFormat.EMBEDDED_OMO_FILENAME,
                     rebuilt,
-                    rebuiltVariants
+                    rebuiltVariants,
+                    rebuiltSounds.data()
             );
 
-            writeArchive(outputPath, finalDoc, omoBytes, resolved, resolvedVariants);
+            writeArchive(outputPath, finalDoc, omoBytes, resolved, resolvedVariants, rebuiltSounds);
             logger.info("Re-bundled .SBE file: {} ({} states, {} variants)",
                     outputPath, rebuilt.size(), rebuiltVariants.size());
             return true;
@@ -386,7 +396,8 @@ public class SBESerializer {
                               SBEFormat.Document document,
                               byte[] omoBytes,
                               List<ResolvedState> resolved,
-                              List<ResolvedVariant> resolvedVariants) throws IOException {
+                              List<ResolvedVariant> resolvedVariants,
+                              ResolvedSounds resolvedSounds) throws IOException {
         Path tempFile = Files.createTempFile("sbe_export_", ".tmp");
         try (FileOutputStream fos = new FileOutputStream(tempFile.toFile());
              ZipOutputStream zos = new ZipOutputStream(fos)) {
@@ -401,8 +412,95 @@ public class SBESerializer {
             for (ResolvedVariant v : resolvedVariants) {
                 if (v.hasModel()) writeEntry(zos, v.modelFilename, v.modelBytes);
             }
+            if (resolvedSounds != null && resolvedSounds.data() != null) {
+                List<SoundDef> defs = resolvedSounds.data().sounds();
+                for (int i = 0; i < defs.size(); i++) {
+                    byte[] bytes = resolvedSounds.embeddedBytes().get(i);
+                    if (bytes != null) writeEntry(zos, defs.get(i).filename(), bytes);
+                }
+            }
         }
         Files.move(tempFile, Path.of(outputPath), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /**
+     * Sound defs plus the embedded bytes for each (aligned by index; a null
+     * bytes slot means the def references a classpath resource instead).
+     */
+    private record ResolvedSounds(SoundData data, List<byte[]> embeddedBytes) {
+        static final ResolvedSounds NONE = new ResolvedSounds(null, List.of());
+    }
+
+    /**
+     * Resolve export-time {@link SoundSpec}s: read each embedded source file
+     * from disk (checksumming it and assigning a {@code sounds/<event>_<n>}
+     * entry path), and pass resource references through untouched.
+     */
+    private ResolvedSounds resolveSoundSpecs(List<SoundSpec> specs) throws IOException {
+        if (specs == null || specs.isEmpty()) {
+            return ResolvedSounds.NONE;
+        }
+        List<SoundDef> defs = new ArrayList<>(specs.size());
+        List<byte[]> bytesList = new ArrayList<>(specs.size());
+        Map<String, Integer> perEventIndex = new LinkedHashMap<>();
+        for (SoundSpec spec : specs) {
+            if (spec.embeds()) {
+                Path src = Path.of(spec.sourcePath());
+                if (!Files.exists(src)) {
+                    throw new SBEExportException("Sound source file for event '"
+                            + spec.event() + "' does not exist: " + src);
+                }
+                byte[] bytes = Files.readAllBytes(src);
+                int index = perEventIndex.merge(spec.event(), 1, Integer::sum) - 1;
+                String entry = SBEFormat.soundEntryPath(spec.event(), index, extensionOf(src));
+                defs.add(new SoundDef(spec.event(), entry, computeChecksum(bytes), null,
+                        spec.volume(), spec.pitchMin(), spec.pitchMax(), spec.variation()));
+                bytesList.add(bytes);
+            } else {
+                defs.add(new SoundDef(spec.event(), null, null, spec.resourcePath(),
+                        spec.volume(), spec.pitchMin(), spec.pitchMax(), spec.variation()));
+                bytesList.add(null);
+            }
+        }
+        return new ResolvedSounds(new SoundData(defs), bytesList);
+    }
+
+    /**
+     * Rebuild a document's sound defs for a round-trip save: embedded defs
+     * keep their entry filename (looked up in the filename-keyed asset map)
+     * but get their checksum recomputed; resource references pass through.
+     */
+    private ResolvedSounds rebuildSounds(SoundData sounds,
+                                         Map<String, byte[]> assetBytesByFilename)
+            throws IOException {
+        if (sounds == null || sounds.isEmpty()) {
+            return ResolvedSounds.NONE;
+        }
+        List<SoundDef> defs = new ArrayList<>(sounds.sounds().size());
+        List<byte[]> bytesList = new ArrayList<>(sounds.sounds().size());
+        for (SoundDef def : sounds.sounds()) {
+            if (def.isEmbedded()) {
+                byte[] bytes = assetBytesByFilename != null
+                        ? assetBytesByFilename.get(def.filename()) : null;
+                if (bytes == null) {
+                    throw new SBEExportException(
+                            "Missing bytes for embedded sound '" + def.filename() + "'");
+                }
+                defs.add(new SoundDef(def.event(), def.filename(), computeChecksum(bytes),
+                        null, def.volume(), def.pitchMin(), def.pitchMax(), def.variation()));
+                bytesList.add(bytes);
+            } else {
+                defs.add(def);
+                bytesList.add(null);
+            }
+        }
+        return new ResolvedSounds(new SoundData(defs), bytesList);
+    }
+
+    private static String extensionOf(Path file) {
+        String name = file.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        return dot >= 0 && dot < name.length() - 1 ? name.substring(dot + 1) : "wav";
     }
 
     private void writeManifest(ZipOutputStream zos, SBEFormat.Document document) throws IOException {
@@ -514,6 +612,7 @@ public class SBESerializer {
         public String omoFile;
         public List<StateEntryDTO> states;
         public List<VariantEntryDTO> variants;
+        public List<SoundJson.SoundDefDTO> sounds;
 
         public ManifestDTO(SBEFormat.Document doc) {
             this.version = doc.version();
@@ -535,6 +634,7 @@ public class SBESerializer {
             for (SBEFormat.VariantEntry e : doc.variants()) {
                 this.variants.add(new VariantEntryDTO(e));
             }
+            this.sounds = SoundJson.toDto(doc.sounds());
         }
     }
 

@@ -2,7 +2,7 @@ package com.stonebreak.mobs.goose;
 
 import org.joml.Vector3f;
 
-import com.stonebreak.audio.GooseSounds;
+import com.stonebreak.audio.MobSounds;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.EntityCollision;
@@ -35,7 +35,8 @@ public class Goose extends LivingEntity {
     private static final float FLIGHT_AIR_DAMPING = 0.99f;
 
     private final GooseAI gooseAI;
-    private final GooseSounds gooseSounds;
+    /** Footsteps: quick light steps, silent while airborne. */
+    private final MobSounds mobSounds;
     /** Per-axis world-block collision used only while airborne (thin wrapper over the world). */
     private final EntityCollision flightCollision;
     /** Set each airborne tick: whether the goose was blocked by a solid this tick. */
@@ -46,7 +47,7 @@ public class Goose extends LivingEntity {
         super(world, position, EntityType.GOOSE);
 
         this.gooseAI = new GooseAI(this);
-        this.gooseSounds = new GooseSounds(world);
+        this.mobSounds = new MobSounds(world, 0.7f, 0.25f, true);
         this.flightCollision = new EntityCollision(world);
 
         this.interactionRange = 2.0f;
@@ -57,7 +58,7 @@ public class Goose extends LivingEntity {
     public void update(float deltaTime) {
         super.update(deltaTime);
         gooseAI.update(deltaTime);
-        gooseSounds.updateSounds(position, velocity, isOnGround());
+        mobSounds.updateSounds(position, velocity, isOnGround());
     }
 
     @Override

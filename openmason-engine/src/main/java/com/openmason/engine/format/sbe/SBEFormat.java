@@ -36,12 +36,18 @@ import java.util.Objects;
  *   <li>1.1 - Added flat animations index (replaced in 1.2)</li>
  *   <li>1.2 - Replaced animations index with a state-based index (per-state model + clip)</li>
  *   <li>1.3 - Added a variants index (per-variant model override) orthogonal to states</li>
+ *   <li>1.4 - Optional {@code sounds[]} block (shared wire shape with SBO 1.7,
+ *       see {@link com.openmason.engine.format.sound.SoundData}). Each entry binds
+ *       a free-form event name (e.g. {@code step}, {@code hurt}, {@code death},
+ *       {@code ambient}) to an audio sample, embedded under {@code sounds/} or
+ *       referenced by game classpath resource path, plus volume and a random
+ *       pitch range. Older readers ignore the field and the ZIP entries.</li>
  * </ul>
  */
 public final class SBEFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.3";
+    public static final String FORMAT_VERSION = "1.4";
 
     /** File extension for SBE files */
     public static final String FILE_EXTENSION = ".sbe";
@@ -69,6 +75,9 @@ public final class SBEFormat {
 
     /** File extension for source animation clips (input only) */
     public static final String ANIMATION_EXTENSION = ".omanim";
+
+    /** Prefix for embedded sound samples (1.4+): {@code sounds/<event>_<n>.<ext>}. */
+    public static final String SOUNDS_DIR_PREFIX = "sounds/";
 
     /** Checksum algorithm used for integrity verification */
     public static final String CHECKSUM_ALGORITHM = "SHA-256";
@@ -102,6 +111,16 @@ public final class SBEFormat {
     /** Returns the conventional ZIP entry path for a variant's model override. */
     public static String variantModelPath(String variantName) {
         return VARIANTS_DIR_PREFIX + variantName + "/" + VARIANT_MODEL_FILENAME;
+    }
+
+    /**
+     * ZIP entry path for an embedded sound sample (1.4+). {@code index}
+     * disambiguates multiple samples on the same event; {@code extension}
+     * preserves the source file's suffix (e.g. {@code "wav"}).
+     */
+    public static String soundEntryPath(String event, int index, String extension) {
+        String ext = extension == null || extension.isBlank() ? "wav" : extension;
+        return SOUNDS_DIR_PREFIX + event + "_" + index + "." + ext;
     }
 
     /** Entity type classification used by the Stonebreak engine. */
@@ -238,6 +257,9 @@ public final class SBEFormat {
      * @param omoFilename  filename of the embedded base OMO file
      * @param states       declared states; never null, may be empty
      * @param variants     declared variants; never null, may be empty
+     * @param sounds       optional sound bindings (1.4+): event name → audio
+     *                     sample (embedded or resource-referenced). {@code null}
+     *                     means the entity declares no sounds.
      */
     public record Document(
             String version,
@@ -251,7 +273,8 @@ public final class SBEFormat {
             String createdAt,
             String omoFilename,
             List<StateEntry> states,
-            List<VariantEntry> variants
+            List<VariantEntry> variants,
+            com.openmason.engine.format.sound.SoundData sounds
     ) {
         public Document {
             Objects.requireNonNull(version, "version cannot be null");
@@ -272,6 +295,9 @@ public final class SBEFormat {
 
         public boolean hasStates() { return !states.isEmpty(); }
         public boolean hasVariants() { return !variants.isEmpty(); }
+
+        /** True when this SBE declares one or more sound bindings (1.4+). */
+        public boolean hasSounds() { return sounds != null && !sounds.isEmpty(); }
     }
 
     /**
@@ -310,6 +336,7 @@ public final class SBEFormat {
         private String description = "";
         private final List<StateBinding> states = new ArrayList<>();
         private final List<VariantBinding> variants = new ArrayList<>();
+        private final List<com.openmason.engine.format.sound.SoundSpec> sounds = new ArrayList<>();
 
         public ExportParameters() {}
 
@@ -348,6 +375,13 @@ public final class SBEFormat {
         }
 
         public void clearVariants() { variants.clear(); }
+
+        public List<com.openmason.engine.format.sound.SoundSpec> getSounds() { return sounds; }
+
+        public void setSounds(List<com.openmason.engine.format.sound.SoundSpec> newSounds) {
+            sounds.clear();
+            if (newSounds != null) sounds.addAll(newSounds);
+        }
 
         public boolean isValid() {
             return !objectId.isBlank()

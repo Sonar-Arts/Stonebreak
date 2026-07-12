@@ -2,6 +2,8 @@ package com.openmason.engine.format.sbe;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openmason.engine.format.sound.SoundDef;
+import com.openmason.engine.format.sound.SoundJson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,7 +53,8 @@ public class SBEParser {
             byte[] omoBytes,
             Map<String, byte[]> stateModelBytes,
             Map<String, byte[]> stateClipBytes,
-            Map<String, byte[]> variantModelBytes
+            Map<String, byte[]> variantModelBytes,
+            Map<String, byte[]> soundBytes
     ) {
         public ParsedSBE {
             stateModelBytes = stateModelBytes == null
@@ -63,11 +66,17 @@ public class SBEParser {
             variantModelBytes = variantModelBytes == null
                     ? Collections.emptyMap()
                     : Collections.unmodifiableMap(variantModelBytes);
+            soundBytes = soundBytes == null
+                    ? Collections.emptyMap()
+                    : Collections.unmodifiableMap(soundBytes);
         }
 
         public byte[] modelFor(String state) { return stateModelBytes.get(state); }
         public byte[] clipFor(String state) { return stateClipBytes.get(state); }
         public byte[] variantModelFor(String variant) { return variantModelBytes.get(variant); }
+
+        /** Bytes of an embedded sound sample by ZIP entry filename, or null (1.4+). */
+        public byte[] soundBytesFor(String filename) { return soundBytes.get(filename); }
     }
 
     /**
@@ -157,9 +166,22 @@ public class SBEParser {
             }
         }
 
+        Map<String, byte[]> soundBytes = new LinkedHashMap<>();
+        if (document.hasSounds()) {
+            for (SoundDef def : document.sounds().sounds()) {
+                if (!def.isEmbedded()) continue;
+                byte[] bytes = archive.entries.get(def.filename());
+                if (bytes == null) {
+                    throw new SBEParseException("Missing sound entry: " + def.filename());
+                }
+                verifyChecksum(def.filename(), bytes, def.checksum());
+                soundBytes.put(def.filename(), bytes);
+            }
+        }
+
         logger.info("Parsed SBE: objectId={} states={} variants={}",
                 document.objectId(), document.states().size(), document.variants().size());
-        return new ParsedSBE(document, omoBytes, modelBytes, clipBytes, variantBytes);
+        return new ParsedSBE(document, omoBytes, modelBytes, clipBytes, variantBytes, soundBytes);
     }
 
     /**
@@ -200,6 +222,13 @@ public class SBEParser {
                     String filename = variant.modelOverride().filename();
                     byte[] bytes = archive.entries.get(filename);
                     if (bytes != null) stateAssets.put(filename, bytes);
+                }
+            }
+            if (document.hasSounds()) {
+                for (SoundDef def : document.sounds().sounds()) {
+                    if (!def.isEmbedded()) continue;
+                    byte[] bytes = archive.entries.get(def.filename());
+                    if (bytes != null) stateAssets.put(def.filename(), bytes);
                 }
             }
 
@@ -267,7 +296,8 @@ public class SBEParser {
                     objectId, objectName,
                     entityType != null ? entityType : SBEFormat.EntityType.OTHER.getId(),
                     objectPack, checksum, author, description, createdAt,
-                    omoFile, states, variants
+                    omoFile, states, variants,
+                    SoundJson.read(root)
             );
         } catch (NullPointerException e) {
             throw new SBEParseException("Manifest is missing a required field: " + e.getMessage(), e);

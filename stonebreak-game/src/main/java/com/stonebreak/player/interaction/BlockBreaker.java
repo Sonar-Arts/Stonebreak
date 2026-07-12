@@ -1,5 +1,6 @@
 package com.stonebreak.player.interaction;
 
+import com.stonebreak.audio.BlockSounds;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
@@ -16,6 +17,9 @@ import org.joml.Vector3i;
  */
 public class BlockBreaker {
 
+    /** Seconds between "hit" sounds while a block is being demolished. */
+    private static final float HIT_SOUND_INTERVAL = 0.25f;
+
     private final RaycastEngine raycastEngine;
     private final Inventory inventory;
     private final AttackController attack;
@@ -24,6 +28,7 @@ public class BlockBreaker {
     private Vector3i breakingBlock;
     private float breakingProgress;
     private float breakingTime;
+    private float hitSoundTimer;
 
     public BlockBreaker(RaycastEngine raycastEngine, Inventory inventory, AttackController attack, World world) {
         this.raycastEngine = raycastEngine;
@@ -57,6 +62,12 @@ public class BlockBreaker {
         breakingTime += Game.getDeltaTime();
         breakingProgress = Math.min(breakingTime / effectiveHardness, 1.0f);
 
+        hitSoundTimer += Game.getDeltaTime();
+        if (hitSoundTimer >= HIT_SOUND_INTERVAL && breakingProgress < 1.0f) {
+            BlockSounds.playHit(blockType, breakingBlock.x, breakingBlock.y, breakingBlock.z);
+            hitSoundTimer = 0.0f;
+        }
+
         if (breakingProgress >= 1.0f) {
             completeBreak(breakingBlock, blockType);
             reset();
@@ -74,6 +85,10 @@ public class BlockBreaker {
             breakingBlock = new Vector3i(blockPos);
             breakingProgress = 0.0f;
             breakingTime = 0.0f;
+            hitSoundTimer = 0.0f;
+            if (blockType.getHardness() > 0.0f) {
+                BlockSounds.playHit(blockType, blockPos.x, blockPos.y, blockPos.z);
+            }
         }
 
         attack.beginAttackForBreak();
@@ -92,6 +107,7 @@ public class BlockBreaker {
         breakingBlock = null;
         breakingProgress = 0.0f;
         breakingTime = 0.0f;
+        hitSoundTimer = 0.0f;
     }
 
     public Vector3i getBreakingBlock() { return breakingBlock; }
@@ -126,6 +142,7 @@ public class BlockBreaker {
         // own server's LocalChannel client. Running DropUtil here too would create a duplicate
         // local drop (in the client EM) alongside the server-spawned shadow.
         world.setBlockAt(pos.x, pos.y, pos.z, BlockType.AIR, true);
+        BlockSounds.playBreak(blockType, pos.x, pos.y, pos.z);
     }
 
     private static boolean isWoodenBlock(BlockType blockType) {

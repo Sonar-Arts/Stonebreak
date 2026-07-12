@@ -196,9 +196,11 @@ public final class SbeEntityLoader {
             }
         }
 
-        logger.info("Loaded SBE '{}' ({}) from {}: {} variant(s), {} animation state(s)",
-                doc.objectName(), doc.objectId(), sourceId, variants.size(), clips.size());
-        return new SbeEntityAsset(doc.objectId(), variants, clips);
+        logger.info("Loaded SBE '{}' ({}) from {}: {} variant(s), {} animation state(s), {} sound def(s)",
+                doc.objectName(), doc.objectId(), sourceId, variants.size(), clips.size(),
+                doc.hasSounds() ? doc.sounds().sounds().size() : 0);
+        return new SbeEntityAsset(doc.objectId(), variants, clips,
+                doc.sounds(), parsed.soundBytes());
     }
 
     private static List<String> partIds(SbeModelGeometry geometry) {

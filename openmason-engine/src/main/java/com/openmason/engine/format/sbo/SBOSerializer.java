@@ -2,6 +2,10 @@ package com.openmason.engine.format.sbo;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.openmason.engine.format.sound.SoundData;
+import com.openmason.engine.format.sound.SoundDef;
+import com.openmason.engine.format.sound.SoundJson;
+import com.openmason.engine.format.sound.SoundSpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -230,6 +234,14 @@ public class SBOSerializer {
             stateClipBytes = Collections.emptyList();
         }
 
+        ResolvedSounds sounds;
+        try {
+            sounds = resolveSoundSpecs(params.getSounds());
+        } catch (IOException e) {
+            logger.error("Failed to resolve sound specs: {}", e.getMessage());
+            return false;
+        }
+
         SBOFormat.Document document = new SBOFormat.Document(
                 SBOFormat.FORMAT_VERSION,
                 params.getObjectId(),
@@ -247,7 +259,8 @@ public class SBOSerializer {
                 defaultStateName,
                 params.getRecipes(),
                 params.getSmeltingRecipes(),
-                params.getFuel()
+                params.getFuel(),
+                sounds.data()
         );
 
         Path tempFile = Files.createTempFile("sbo_export_", ".tmp");
@@ -268,6 +281,8 @@ public class SBOSerializer {
                     writeEntry(zos, e.animation().filename(), stateClipBytes.get(i));
                 }
             }
+
+            writeSoundEntries(zos, sounds);
         }
 
         Files.move(tempFile, Path.of(outputPath), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -316,6 +331,27 @@ public class SBOSerializer {
                                        byte[] defaultBytes,
                                        java.util.Map<String, byte[]> stateBytesByName,
                                        java.util.Map<String, byte[]> stateClipBytesByName,
+                                       String outputPath) {
+        return exportFromDocument(document, defaultBytes, stateBytesByName,
+                stateClipBytesByName, null, outputPath);
+    }
+
+    /**
+     * Variant that also carries embedded sound sample bytes (1.7+), keyed by
+     * ZIP entry filename ({@code sounds/…}). Every embedded {@code SoundDef}
+     * on the document must have its bytes present; the def's checksum is
+     * recomputed from the bytes on save. Resource-referenced defs need no
+     * bytes. Callers round-tripping a parsed SBO pass
+     * {@code RawParse.soundBytes()} straight through.
+     *
+     * @param soundBytesByFilename embedded sound bytes keyed by entry filename;
+     *                             may be null/empty when no def embeds audio
+     */
+    public boolean exportFromDocument(SBOFormat.Document document,
+                                       byte[] defaultBytes,
+                                       java.util.Map<String, byte[]> stateBytesByName,
+                                       java.util.Map<String, byte[]> stateClipBytesByName,
+                                       java.util.Map<String, byte[]> soundBytesByFilename,
                                        String outputPath) {
         if (document == null) {
             logger.error("exportFromDocument: document is null");
@@ -376,6 +412,12 @@ public class SBOSerializer {
             }
         }
 
+        ResolvedSounds rebuiltSounds =
+                rebuildSounds(document.sounds(), soundBytesByFilename);
+        if (rebuiltSounds == null) {
+            return false; // missing embedded bytes; already logged
+        }
+
         SBOFormat.Document finalDoc = new SBOFormat.Document(
                 SBOFormat.FORMAT_VERSION,
                 document.objectId(),
@@ -393,7 +435,8 @@ public class SBOSerializer {
                 rebuiltStates.isEmpty() ? null : document.defaultStateName(),
                 document.recipes(),
                 document.smeltingRecipes(),
-                document.fuel()
+                document.fuel(),
+                rebuiltSounds.data()
         );
 
         outputPath = SBOFormat.ensureExtension(outputPath);
@@ -413,6 +456,8 @@ public class SBOSerializer {
                         writeEntry(zos, e.animation().filename(), resolvedClipBytes.get(e.name()));
                     }
                 }
+
+                writeSoundEntries(zos, rebuiltSounds);
             }
             Files.move(tempFile, Path.of(outputPath), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             logger.info("Saved .SBO file: {} (states={}, recipes={})",
@@ -471,6 +516,99 @@ public class SBOSerializer {
             // SHA-256 is guaranteed to be available in all JVMs
             throw new RuntimeException("SHA-256 algorithm not available", e);
         }
+    }
+
+    /**
+     * Sound defs plus the embedded bytes for each (aligned by index; a null
+     * bytes slot means the def references a classpath resource instead).
+     */
+    private record ResolvedSounds(SoundData data, List<byte[]> embeddedBytes) {
+        static final ResolvedSounds NONE = new ResolvedSounds(null, List.of());
+    }
+
+    /**
+     * Resolve export-time {@link SoundSpec}s: read each embedded source file
+     * from disk (checksumming it and assigning a {@code sounds/<event>_<n>}
+     * entry path), and pass resource references through untouched.
+     */
+    private ResolvedSounds resolveSoundSpecs(List<SoundSpec> specs) throws IOException {
+        if (specs == null || specs.isEmpty()) {
+            return ResolvedSounds.NONE;
+        }
+        List<SoundDef> defs = new ArrayList<>(specs.size());
+        List<byte[]> bytesList = new ArrayList<>(specs.size());
+        java.util.Map<String, Integer> perEventIndex = new java.util.HashMap<>();
+        for (SoundSpec spec : specs) {
+            if (spec.embeds()) {
+                Path src = Path.of(spec.sourcePath());
+                if (!Files.exists(src)) {
+                    throw new IOException("Sound source file for event '" + spec.event()
+                            + "' does not exist: " + src);
+                }
+                byte[] bytes = Files.readAllBytes(src);
+                int index = perEventIndex.merge(spec.event(), 1, Integer::sum) - 1;
+                String entry = SBOFormat.soundEntryPath(spec.event(), index, extensionOf(src));
+                defs.add(new SoundDef(spec.event(), entry, computeChecksum(bytes), null,
+                        spec.volume(), spec.pitchMin(), spec.pitchMax(), spec.variation()));
+                bytesList.add(bytes);
+            } else {
+                defs.add(new SoundDef(spec.event(), null, null, spec.resourcePath(),
+                        spec.volume(), spec.pitchMin(), spec.pitchMax(), spec.variation()));
+                bytesList.add(null);
+            }
+        }
+        return new ResolvedSounds(new SoundData(defs), bytesList);
+    }
+
+    /**
+     * Rebuild a document's sound defs for a round-trip save: embedded defs
+     * keep their entry filename but get their checksum recomputed from the
+     * supplied bytes; resource references pass through. Returns null (after
+     * logging) when an embedded def's bytes are missing.
+     */
+    private ResolvedSounds rebuildSounds(SoundData sounds,
+                                         java.util.Map<String, byte[]> soundBytesByFilename) {
+        if (sounds == null || sounds.isEmpty()) {
+            return ResolvedSounds.NONE;
+        }
+        List<SoundDef> defs = new ArrayList<>(sounds.sounds().size());
+        List<byte[]> bytesList = new ArrayList<>(sounds.sounds().size());
+        for (SoundDef def : sounds.sounds()) {
+            if (def.isEmbedded()) {
+                byte[] bytes = soundBytesByFilename != null
+                        ? soundBytesByFilename.get(def.filename()) : null;
+                if (bytes == null) {
+                    logger.error("exportFromDocument: missing bytes for embedded sound '{}'",
+                            def.filename());
+                    return null;
+                }
+                defs.add(new SoundDef(def.event(), def.filename(), computeChecksum(bytes),
+                        null, def.volume(), def.pitchMin(), def.pitchMax(), def.variation()));
+                bytesList.add(bytes);
+            } else {
+                defs.add(def);
+                bytesList.add(null);
+            }
+        }
+        return new ResolvedSounds(new SoundData(defs), bytesList);
+    }
+
+    /** Write the embedded sound samples of a resolved set (resource refs skip). */
+    private void writeSoundEntries(ZipOutputStream zos, ResolvedSounds sounds) throws IOException {
+        if (sounds.data() == null) return;
+        List<SoundDef> defs = sounds.data().sounds();
+        for (int i = 0; i < defs.size(); i++) {
+            byte[] bytes = sounds.embeddedBytes().get(i);
+            if (bytes != null) {
+                writeEntry(zos, defs.get(i).filename(), bytes);
+            }
+        }
+    }
+
+    private static String extensionOf(Path file) {
+        String name = file.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        return dot >= 0 && dot < name.length() - 1 ? name.substring(dot + 1) : "wav";
     }
 
     /**
@@ -569,6 +707,7 @@ public class SBOSerializer {
         public RecipeDataDTO recipes;
         public SmeltingRecipeDataDTO smeltingRecipes;
         public FuelDataDTO fuel;
+        public List<SoundJson.SoundDefDTO> sounds;
 
         public ManifestDTO(SBOFormat.Document doc) {
             this.version = doc.version();
@@ -601,6 +740,7 @@ public class SBOSerializer {
                     ? new SmeltingRecipeDataDTO(doc.smeltingRecipes())
                     : null;
             this.fuel = doc.hasFuel() ? new FuelDataDTO(doc.fuel()) : null;
+            this.sounds = SoundJson.toDto(doc.sounds());
         }
     }
 

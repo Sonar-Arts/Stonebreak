@@ -148,7 +148,8 @@ class SBOAnimationRoundTripTest {
                 raw.manifest().author(), raw.manifest().description(), raw.manifest().createdAt(),
                 raw.manifest().omoFilename(), raw.manifest().textureFilename(),
                 raw.manifest().gameProperties(), edited, raw.manifest().defaultStateName(),
-                raw.manifest().recipes(), raw.manifest().smeltingRecipes(), raw.manifest().fuel());
+                raw.manifest().recipes(), raw.manifest().smeltingRecipes(), raw.manifest().fuel(),
+                raw.manifest().sounds());
 
         String resaved = dir.resolve("door2.sbo").toString();
         assertTrue(new SBOSerializer().exportFromDocument(editedDoc, raw.defaultBytes(),
@@ -168,7 +169,7 @@ class SBOAnimationRoundTripTest {
                 null, "texture.omt", null,
                 List.of(new SBOFormat.StateEntry("s", "states/s/texture.omt", false, "c",
                         new SBOFormat.AnimationRef("states/s/clip.omanim", "", null, 0, 0, true, null))),
-                "s", null, null, null));
+                "s", null, null, null, null));
     }
 
     @Test

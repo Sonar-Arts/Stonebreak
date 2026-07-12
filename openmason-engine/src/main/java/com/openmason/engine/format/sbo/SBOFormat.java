@@ -57,12 +57,21 @@ import java.util.Objects;
  *       so the game can play one-shot clips that hold their final pose (e.g.
  *       a door opening) or looping clips (e.g. a spinning fan). Model-bearing
  *       SBOs only; older readers ignore both the field and the ZIP entry.</li>
+ *   <li>1.7 - Optional {@code sounds[]} block (shared wire shape with SBE 1.4,
+ *       see {@link com.openmason.engine.format.sound.SoundData}). Each entry
+ *       binds an event name — the standard block events {@code break} /
+ *       {@code hit} / {@code place} / {@code step}, or any custom name — to an
+ *       audio sample that is either embedded under {@code sounds/} or
+ *       referenced by game classpath resource path (so many blocks can share
+ *       one shipped sample), plus volume and a random pitch range. Multiple
+ *       entries per event give playback variation. Older readers ignore the
+ *       field and any {@code sounds/} entries.</li>
  * </ul>
  */
 public final class SBOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.6";
+    public static final String FORMAT_VERSION = "1.7";
 
     /** File extension for SBO files */
     public static final String FILE_EXTENSION = ".sbo";
@@ -81,6 +90,9 @@ public final class SBOFormat {
 
     /** Per-state embedded animation clip filename (1.6+): {@code states/<name>/clip.omanim}. */
     public static final String STATE_CLIP_FILENAME = "clip.omanim";
+
+    /** Prefix for embedded sound samples (1.7+): {@code sounds/<event>_<n>.<ext>}. */
+    public static final String SOUNDS_DIR_PREFIX = "sounds/";
 
     /** Checksum algorithm used for integrity verification */
     public static final String CHECKSUM_ALGORITHM = "SHA-256";
@@ -124,6 +136,16 @@ public final class SBOFormat {
     /** ZIP entry path for a state's embedded animation clip (1.6+). */
     public static String stateClipPath(String stateName) {
         return STATES_DIR_PREFIX + stateName + "/" + STATE_CLIP_FILENAME;
+    }
+
+    /**
+     * ZIP entry path for an embedded sound sample (1.7+). {@code index}
+     * disambiguates multiple samples on the same event; {@code extension}
+     * preserves the source file's suffix (e.g. {@code "wav"}).
+     */
+    public static String soundEntryPath(String event, int index, String extension) {
+        String ext = extension == null || extension.isBlank() ? "wav" : extension;
+        return SOUNDS_DIR_PREFIX + event + "_" + index + "." + ext;
     }
 
     /**
@@ -297,6 +319,9 @@ public final class SBOFormat {
      * @param fuel             optional fuel descriptor (1.5+) declaring how long this
      *                         SBO's own item burns when used as furnace fuel.
      *                         {@code null} means the item is not a fuel.
+     * @param sounds           optional sound bindings (1.7+): event name → audio
+     *                         sample (embedded or resource-referenced).
+     *                         {@code null} means the object declares no sounds.
      */
     public record Document(
             String version,
@@ -315,7 +340,8 @@ public final class SBOFormat {
             String defaultStateName,
             RecipeData recipes,
             SmeltingRecipeData smeltingRecipes,
-            FuelData fuel
+            FuelData fuel,
+            com.openmason.engine.format.sound.SoundData sounds
     ) {
         public Document {
             Objects.requireNonNull(version, "version cannot be null");
@@ -399,6 +425,11 @@ public final class SBOFormat {
         /** True when this SBO declares fuel data (1.5+). */
         public boolean hasFuel() {
             return fuel != null && fuel.burnTicks() > 0;
+        }
+
+        /** True when this SBO declares one or more sound bindings (1.7+). */
+        public boolean hasSounds() {
+            return sounds != null && !sounds.isEmpty();
         }
     }
 
@@ -633,6 +664,7 @@ public final class SBOFormat {
         private RecipeData recipes;
         private SmeltingRecipeData smeltingRecipes;
         private FuelData fuel;
+        private final List<com.openmason.engine.format.sound.SoundSpec> sounds = new ArrayList<>();
 
         public ExportParameters() {}
 
@@ -677,6 +709,12 @@ public final class SBOFormat {
 
         public FuelData getFuel() { return fuel; }
         public void setFuel(FuelData fuel) { this.fuel = fuel; }
+
+        public List<com.openmason.engine.format.sound.SoundSpec> getSounds() { return sounds; }
+        public void setSounds(List<com.openmason.engine.format.sound.SoundSpec> newSounds) {
+            sounds.clear();
+            if (newSounds != null) sounds.addAll(newSounds);
+        }
 
         /**
          * Validates that all required fields are populated.

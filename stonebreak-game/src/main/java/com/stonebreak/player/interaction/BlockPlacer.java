@@ -1,5 +1,6 @@
 package com.stonebreak.player.interaction;
 
+import com.stonebreak.audio.BlockSounds;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
@@ -104,6 +105,7 @@ public class BlockPlacer {
 
         if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType, true)) {
             inventory.removeItem(selectedItem.getItem(), 1);
+            BlockSounds.playPlace(selectedBlockType, placePos.x, placePos.y, placePos.z);
             if (selectedBlockType == BlockType.SNOW) {
                 world.getSnowLayerManager().setSnowLayers(placePos.x, placePos.y, placePos.z, 1);
             }
@@ -189,6 +191,7 @@ public class BlockPlacer {
                 placePos.x, placePos.y, placePos.z, currentLayers + 1);
             inventory.removeItem(selectedItem.getItem(), 1);
             world.triggerChunkRebuild(placePos.x, placePos.y, placePos.z);
+            BlockSounds.playPlace(BlockType.SNOW, placePos.x, placePos.y, placePos.z);
             return;
         }
 
@@ -199,6 +202,7 @@ public class BlockPlacer {
         if (!world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW, true)) return;
         world.getSnowLayerManager().setSnowLayers(abovePos.x, abovePos.y, abovePos.z, 1);
         inventory.removeItem(selectedItem.getItem(), 1);
+        BlockSounds.playPlace(BlockType.SNOW, abovePos.x, abovePos.y, abovePos.z);
     }
 
     private Vector3i findPlacePosition(Vector3i hitBlock) {

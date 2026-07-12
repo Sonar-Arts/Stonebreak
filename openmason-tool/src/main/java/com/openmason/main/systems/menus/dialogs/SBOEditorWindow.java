@@ -42,6 +42,7 @@ public class SBOEditorWindow {
     private final SBORecipeSection recipeSection;
     private final SBOSmeltingSection smeltingSection;
     private final SBOStatesEditor statesEditor;
+    private final SoundsEditor soundsEditor;
     private final NumericIdConflictPopup conflictPopup = new NumericIdConflictPopup();
     private final TakenIdsPopup takenIdsPopup = new TakenIdsPopup();
 
@@ -51,6 +52,7 @@ public class SBOEditorWindow {
     private byte[] loadedDefaultBytes;
     private java.util.Map<String, byte[]> loadedStateBytes;
     private java.util.Map<String, byte[]> loadedStateClipBytes;
+    private java.util.Map<String, byte[]> loadedSoundBytes;
     private boolean dirty;
 
     // Form buffers (mirror manifest)
@@ -98,6 +100,9 @@ public class SBOEditorWindow {
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenOMOInProjectDialog(cb::accept); },
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenOMTInProjectDialog(cb::accept); },
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenOMADialog(cb::accept); });
+        this.soundsEditor = new SoundsEditor(
+                () -> dirty = true,
+                cb -> { if (fileDialogService != null) fileDialogService.showOpenAudioDialog(cb::accept); });
     }
 
     /**
@@ -129,6 +134,7 @@ public class SBOEditorWindow {
             this.loadedDefaultBytes = raw.defaultBytes();
             this.loadedStateBytes = raw.stateBytes();
             this.loadedStateClipBytes = raw.stateClipBytes();
+            this.loadedSoundBytes = raw.soundBytes();
             populateBuffers(raw.manifest());
             this.dirty = false;
             this.visible.set(true);
@@ -172,6 +178,8 @@ public class SBOEditorWindow {
         isFuel = doc.fuel() != null;
         fuelBurnTicks.set(doc.fuel() != null ? doc.fuel().burnTicks() : 1600);
         statesEditor.load(doc, loadedStateBytes, loadedStateClipBytes, loadedDefaultBytes);
+        soundsEditor.load(doc.sounds(),
+                loadedSoundBytes != null ? loadedSoundBytes::get : f -> null);
     }
 
     public void render() {
@@ -234,6 +242,10 @@ public class SBOEditorWindow {
             }
             if (ImGui.beginTabItem("Smelting")) {
                 smeltingSection.render();
+                ImGui.endTabItem();
+            }
+            if (ImGui.beginTabItem("Sounds")) {
+                soundsEditor.render();
                 ImGui.endTabItem();
             }
             ImGui.endTabBar();
@@ -327,6 +339,11 @@ public class SBOEditorWindow {
             if (statusService != null) statusService.updateStatus("Cannot save: " + stateError);
             return;
         }
+        String soundError = soundsEditor.validate();
+        if (soundError != null) {
+            if (statusService != null) statusService.updateStatus("Cannot save: " + soundError);
+            return;
+        }
         if (hasGameProperties) {
             NumericIdValidator.Result result = NumericIdValidator.validate(
                     currentDomain(), numericId.get(), objectId.get().trim());
@@ -347,14 +364,16 @@ public class SBOEditorWindow {
         java.util.Map<String, byte[]> effectiveClipBytes = statesEditor.hasStates()
                 ? statesEditor.stateClipBytesByName()
                 : loadedStateClipBytes;
+        java.util.Map<String, byte[]> effectiveSoundBytes = soundsEditor.soundBytesByFilename();
         boolean ok = serializer.exportFromDocument(edited, effectiveDefaultBytes, effectiveStateBytes,
-                effectiveClipBytes, pathStr);
+                effectiveClipBytes, effectiveSoundBytes, pathStr);
         if (ok) {
             currentPath = Path.of(pathStr);
             loadedManifest = edited;
             loadedDefaultBytes = effectiveDefaultBytes;
             loadedStateBytes = effectiveStateBytes;
             loadedStateClipBytes = effectiveClipBytes;
+            loadedSoundBytes = effectiveSoundBytes;
             dirty = false;
             if (statusService != null) {
                 statusService.updateStatus("Saved SBO: " + currentPath.getFileName());
@@ -390,7 +409,8 @@ public class SBOEditorWindow {
                 statesEditor.defaultStateName(),
                 recipeSection.toRecipeData(),
                 smeltingSection.toSmeltingRecipeData(),
-                isFuel ? new SBOFormat.FuelData(Math.max(1, fuelBurnTicks.get())) : null
+                isFuel ? new SBOFormat.FuelData(Math.max(1, fuelBurnTicks.get())) : null,
+                soundsEditor.toSoundData()
         );
     }
 

@@ -34,14 +34,14 @@ public class AudioDiagnostics {
             System.out.println("OpenAL is functioning correctly");
         }
 
-        // Test if grasswalk sound is loaded
-        if (soundBuffer.isSoundLoaded("grasswalk")) {
-            System.out.println("✓ Grasswalk sound is properly loaded");
-            System.out.println("Attempting to play grasswalk sound...");
+        // Test if the eagerly-loaded pickup sound is present (block/entity
+        // sounds are data-driven and load lazily, so they can't be probed here)
+        if (soundBuffer.isSoundLoaded("blockpickup")) {
+            System.out.println("✓ Blockpickup sound is properly loaded");
         } else {
-            System.err.println("✗ Grasswalk sound failed to load!");
-            System.err.println("soundBuffers contains 'grasswalk': " + buffers.containsKey("grasswalk"));
-            System.err.println("sources contains 'grasswalk': " + sources.containsKey("grasswalk"));
+            System.err.println("✗ Blockpickup sound failed to load!");
+            System.err.println("soundBuffers contains 'blockpickup': " + buffers.containsKey("blockpickup"));
+            System.err.println("sources contains 'blockpickup': " + sources.containsKey("blockpickup"));
 
             // Show what we actually have
             if (!buffers.isEmpty()) {

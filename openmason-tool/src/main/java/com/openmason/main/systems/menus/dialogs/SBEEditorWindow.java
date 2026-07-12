@@ -45,6 +45,7 @@ public class SBEEditorWindow {
     private final SBESerializer serializer = new SBESerializer();
     private final SBEStatesEditor statesEditor;
     private final SBEVariantsEditor variantsEditor;
+    private final SoundsEditor soundsEditor;
 
     /** Popup listing already-registered SBE object ids. */
     private final SBEObjectIndexPopup objectIndexPopup = new SBEObjectIndexPopup();
@@ -53,6 +54,7 @@ public class SBEEditorWindow {
     private Path currentPath;
     private SBEFormat.Document loadedManifest;
     private byte[] loadedOmoBytes;
+    private java.util.Map<String, byte[]> loadedStateAssetBytes = java.util.Map.of();
     /** Human-readable source of the base OMO ("(original)" or a picked filename). */
     private String baseModelLabel;
     private boolean dirty;
@@ -75,6 +77,9 @@ public class SBEEditorWindow {
         this.variantsEditor = new SBEVariantsEditor(
                 () -> dirty = true,
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenOMOInProjectDialog(cb::accept); });
+        this.soundsEditor = new SoundsEditor(
+                () -> dirty = true,
+                cb -> { if (fileDialogService != null) fileDialogService.showOpenAudioDialog(cb::accept); });
     }
 
     // ========================================================================
@@ -106,6 +111,7 @@ public class SBEEditorWindow {
             this.currentPath = path;
             this.loadedManifest = raw.manifest();
             this.loadedOmoBytes = raw.omoBytes();
+            this.loadedStateAssetBytes = raw.stateAssetBytes();
             this.baseModelLabel = "(original)";
             populateBuffers(raw.manifest(), raw.stateAssetBytes());
             this.dirty = false;
@@ -128,6 +134,8 @@ public class SBEEditorWindow {
         entityTypeIndex.set(indexOf(ENTITY_TYPE_LABELS, doc.entityType()));
         statesEditor.load(doc, stateAssetBytes);
         variantsEditor.load(doc, stateAssetBytes);
+        soundsEditor.load(doc.sounds(),
+                stateAssetBytes != null ? stateAssetBytes::get : f -> null);
     }
 
     // ========================================================================
@@ -185,6 +193,10 @@ public class SBEEditorWindow {
             }
             if (ImGui.beginTabItem("Variants")) {
                 variantsEditor.render();
+                ImGui.endTabItem();
+            }
+            if (ImGui.beginTabItem("Sounds")) {
+                soundsEditor.render();
                 ImGui.endTabItem();
             }
             ImGui.endTabBar();
@@ -287,16 +299,24 @@ public class SBEEditorWindow {
             if (statusService != null) statusService.updateStatus("Cannot save: " + variantError);
             return;
         }
+        String soundError = soundsEditor.validate();
+        if (soundError != null) {
+            if (statusService != null) statusService.updateStatus("Cannot save: " + soundError);
+            return;
+        }
 
         SBEFormat.Document edited = buildEditedDocument();
         java.util.Map<String, byte[]> assetBytes = new java.util.LinkedHashMap<>();
         assetBytes.putAll(statesEditor.stateAssetBytesByFilename());
         assetBytes.putAll(variantsEditor.variantAssetBytesByFilename());
+        // Embedded sound samples (1.4+) ride in the same filename-keyed map.
+        assetBytes.putAll(soundsEditor.soundBytesByFilename());
 
         boolean ok = serializer.exportFromDocument(edited, loadedOmoBytes, assetBytes, pathStr);
         if (ok) {
             currentPath = Path.of(pathStr);
             loadedManifest = edited;
+            loadedStateAssetBytes = assetBytes;
             dirty = false;
             if (statusService != null) {
                 statusService.updateStatus("Saved SBE: " + currentPath.getFileName());
@@ -319,7 +339,8 @@ public class SBEEditorWindow {
                 loadedManifest.createdAt(),
                 loadedManifest.omoFilename(),
                 statesEditor.toStateEntries(),
-                variantsEditor.toVariantEntries()
+                variantsEditor.toVariantEntries(),
+                soundsEditor.toSoundData()
         );
     }
 

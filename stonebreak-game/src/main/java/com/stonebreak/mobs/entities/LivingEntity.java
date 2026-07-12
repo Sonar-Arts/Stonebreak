@@ -233,6 +233,12 @@ public abstract class LivingEntity extends Entity {
             if (getNetworkId() >= 0 && amount > 0f) {
                 DamageNumberRenderer.getInstance().spawn(
                     position.x, position.y + height * 0.9f, position.z, amount);
+                // Predicted hurt voice, like the predicted damage number: the
+                // authoritative entity lives in the headless server world, so
+                // this shadow is the only place the local player can hear it.
+                // Plays only when the entity's SBE declares a hurt event.
+                com.stonebreak.audio.EntitySounds.playAt(this,
+                    com.stonebreak.audio.EntitySounds.EVENT_HURT);
                 MultiplayerSession.onLocalEntityDamage(this, amount, source);
             }
             return;
@@ -251,6 +257,11 @@ public abstract class LivingEntity extends Entity {
         if (Game.getWorld() == world) {
             DamageNumberRenderer.getInstance().spawn(
                 position.x, position.y + height * 0.9f, position.z, effectiveAmount);
+            // Data-driven voice: plays only when the entity's SBE declares a
+            // hurt/death sound event (SBE 1.4+); silent otherwise.
+            com.stonebreak.audio.EntitySounds.playAt(this,
+                alive ? com.stonebreak.audio.EntitySounds.EVENT_HURT
+                      : com.stonebreak.audio.EntitySounds.EVENT_DEATH);
         }
         if ((source == DamageSource.PLAYER || source == DamageSource.ARCANE) && creditLocalPlayer) {
             Player player = Game.getPlayer();

@@ -29,14 +29,14 @@ public final class GameBootstrap {
     }
 
     /**
-     * Initializes OpenAL, loads the movement/pickup sound samples, and
-     * applies the saved master-volume setting.
+     * Initializes OpenAL, loads the global (non-asset) sound samples, and
+     * applies the saved master-volume setting. Block/entity sounds are NOT
+     * loaded here — they are declared per asset in SBO/SBE {@code sounds[]}
+     * sections and resolved lazily on first playback (see
+     * {@code com.stonebreak.audio.BlockSounds}/{@code EntitySounds}).
      */
     public static void configureSoundSystem(SoundSystem soundSystem) {
         soundSystem.initialize();
-        com.stonebreak.audio.GameSoundLoader.load(soundSystem, "grasswalk", "/sounds/GrassWalk.wav");
-        com.stonebreak.audio.GameSoundLoader.load(soundSystem, "sandwalk", "/sounds/SandWalk-001.wav");
-        com.stonebreak.audio.GameSoundLoader.load(soundSystem, "woodwalk", "/sounds/WoodWalk.wav");
         com.stonebreak.audio.GameSoundLoader.load(soundSystem, "blockpickup", "/sounds/BlockPickup.wav");
 
         soundSystem.setMasterVolume(Settings.getInstance().getMasterVolume());

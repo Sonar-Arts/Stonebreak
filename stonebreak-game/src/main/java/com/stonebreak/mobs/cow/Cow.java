@@ -10,7 +10,7 @@ import com.stonebreak.util.DropUtil;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.ai.PassiveMobAI;
-import com.stonebreak.audio.CowSounds;
+import com.stonebreak.audio.MobSounds;
 
 /**
  * Cow mob implementation - the first living entity in Stonebreak.
@@ -34,8 +34,8 @@ public class Cow extends LivingEntity {
     private float milkRegenTimer;
     private static final float MILK_REGEN_TIME = 300.0f; // 5 minutes
 
-    // Sound system
-    private final CowSounds cowSounds;
+    // Footsteps: relaxed cadence, tolerant of brief off-ground moments
+    private final MobSounds mobSounds;
 
     /**
      * Creates a new cow at the specified position with default texture variant.
@@ -62,7 +62,7 @@ public class Cow extends LivingEntity {
         this.mobAI = new PassiveMobAI(this, AI_CONFIG);
 
         // Sound system
-        this.cowSounds = new CowSounds(world);
+        this.mobSounds = new MobSounds(world, 1.2f, 0.3f, false);
 
         // Set interaction range for cows
         this.interactionRange = 2.5f;
@@ -80,7 +80,7 @@ public class Cow extends LivingEntity {
         super.update(deltaTime);
 
         updateMilkSystem(deltaTime);
-        cowSounds.updateSounds(position, velocity, isOnGround());
+        mobSounds.updateSounds(position, velocity, isOnGround());
     }
 
     /**
@@ -137,7 +137,7 @@ public class Cow extends LivingEntity {
     @Override
     protected void onDeath() {
         mobAI.cleanup();
-        cowSounds.reset();
+        mobSounds.reset();
         for (ItemStack drop : getDrops()) {
             DropUtil.createItemDrop(world, getPosition(), drop);
         }
@@ -158,11 +158,4 @@ public class Cow extends LivingEntity {
     public void setCanBeMilked(boolean canBeMilked) { this.canBeMilked = canBeMilked; }
     public float getMilkRegenTimer() { return milkRegenTimer; }
     public void setMilkRegenTimer(float timer) { this.milkRegenTimer = timer; }
-
-    /**
-     * Gets the cow's sound system.
-     */
-    public CowSounds getCowSounds() {
-        return cowSounds;
-    }
 }

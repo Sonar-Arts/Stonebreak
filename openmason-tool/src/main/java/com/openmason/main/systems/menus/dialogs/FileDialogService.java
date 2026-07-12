@@ -332,6 +332,16 @@ public class FileDialogService {
     }
 
     /**
+     * Show open audio-sample dialog (.wav). Used by the SBO/SBE editors'
+     * Sounds sections to pick samples to embed; the engine decodes via
+     * {@code javax.sound.sampled}, so WAV is the supported interchange format.
+     */
+    public void showOpenAudioDialog(OpenCallback callback) {
+        showNFDOpenDialog("Opening audio sample...", "WAV Audio", "wav",
+                "Selected audio file", callback);
+    }
+
+    /**
      * Show open OMT (Open Mason Texture) dialog using native file dialog.
      * @param callback callback to receive selected file path
      */

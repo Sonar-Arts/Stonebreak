@@ -117,10 +117,12 @@ module openmason.engine {
     exports com.openmason.engine.format.omt;
     exports com.openmason.engine.format.oma;
     exports com.openmason.engine.format.mesh;
+    exports com.openmason.engine.format.sound;
 
     // Open format packages for Jackson JSON processing
     opens com.openmason.engine.format.sbo to com.fasterxml.jackson.databind;
     opens com.openmason.engine.format.sbe to com.fasterxml.jackson.databind;
+    opens com.openmason.engine.format.sound to com.fasterxml.jackson.databind;
     opens com.openmason.engine.format.sbt to com.fasterxml.jackson.databind;
     opens com.openmason.engine.format.omo to com.fasterxml.jackson.databind;
     opens com.openmason.engine.format.omt to com.fasterxml.jackson.databind;

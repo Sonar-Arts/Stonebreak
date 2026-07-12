@@ -79,6 +79,24 @@ public class SoundSystem {
     }
 
     /**
+     * Plays a 2D (listener-relative) sound at an explicit pitch. For
+     * data-driven sound defs that author their own pitch range.
+     */
+    public void playSound(String name, float volume, float pitch) {
+        soundPlayer.playSound(name, volume, pitch);
+    }
+
+    /** Plays a sound at a 3D world position at an explicit pitch. */
+    public void playSoundAt3D(String name, float volume, float pitch, float x, float y, float z) {
+        soundPlayer.playSoundAt3D(name, volume, pitch, x, y, z);
+    }
+
+    /** Vector convenience for {@link #playSoundAt3D(String, float, float, float, float, float)}. */
+    public void playSoundAt3D(String name, float volume, float pitch, org.joml.Vector3f position) {
+        soundPlayer.playSoundAt3D(name, volume, pitch, position.x, position.y, position.z);
+    }
+
+    /**
      * Plays a sound at a specific 3D position in the world.
      * The sound will have proper 3D audio properties including distance attenuation.
      *
@@ -166,11 +184,11 @@ public class SoundSystem {
      * This method actually plays a sound, unlike testBasicFunctionality().
      */
     public void testSoundPlayback() {
-        if (soundBuffer.isSoundLoaded("grasswalk")) {
-            System.out.println("Testing sound playback with grasswalk...");
-            playSound("grasswalk");
+        if (soundBuffer.isSoundLoaded("blockpickup")) {
+            System.out.println("Testing sound playback with blockpickup...");
+            playSound("blockpickup");
         } else {
-            System.err.println("Cannot test sound playback - grasswalk sound not loaded");
+            System.err.println("Cannot test sound playback - blockpickup sound not loaded");
         }
     }
 
