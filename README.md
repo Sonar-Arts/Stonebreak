@@ -3,7 +3,8 @@
 
 An open source work-in-progress 3D voxel-based sandbox RPG game created with Java and LWJGL. Inspired by games like Minecraft, Neverwinter Nights, and Dwarf Fortress.
 
-<img width="3422" height="1355" alt="image" src="https://github.com/user-attachments/assets/2310d8a6-f1b8-4744-951e-41e07ad2a3fa" />
+<img width="2369" height="1331" alt="image" src="https://github.com/user-attachments/assets/3a989241-9df4-4a45-b881-00e8521ff082" />
+
 
 
 
@@ -11,7 +12,7 @@ An open source work-in-progress 3D voxel-based sandbox RPG game created with Jav
 
 Open mason is our engine/toolset being developed in tandem with Stonebreak. Our intention is to make it close to what the Aurora engine toolset does for Neverwinter Nights, so that players and developers alike can have access to modding and asset creation tools specifically for Stonebreak.
 
-<img width="2529" height="1043" alt="image" src="https://github.com/user-attachments/assets/5c0482f2-7142-4283-a4ea-70750bff8775" />
+<img width="2498" height="1088" alt="image" src="https://github.com/user-attachments/assets/5c02327e-790f-4bef-9761-4c19ea3f299d" />
 
 ## Running Stonebreak & Open Mason
 
