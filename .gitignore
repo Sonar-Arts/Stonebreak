@@ -147,3 +147,6 @@ Theme.ini
 # Qwen Code
 .qwen/
 QWEN.md
+
+# OpenCode
+.opencode/
