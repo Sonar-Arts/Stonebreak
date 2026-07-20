@@ -19,19 +19,19 @@
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <lwjgl.version>3.4.1</lwjgl.version>
+        <lwjgl.version>3.4.2</lwjgl.version>
         <joml.version>1.10.9</joml.version>
         <!-- Default to Windows natives; OS-activated profiles below override
              these for Linux/macOS so the build is cross-platform. -->
         <lwjgl.natives>natives-windows</lwjgl.natives>
         <skija.artifact>skija-windows-x64</skija.artifact>
-        <jackson.version>2.22.0</jackson.version>
+        <jackson.version>2.22.1</jackson.version>
         <jackson.version.annotations>2.22</jackson.version.annotations>
-        <junit.version>6.1.1</junit.version>
+        <junit.version>6.1.2</junit.version>
         <mockito.version>5.23.0</mockito.version>
         <skija.version>0.143.17</skija.version>
         <sqlite.version>3.53.2.0</sqlite.version>
-        <netty.version>4.2.15.Final</netty.version>
+        <netty.version>4.2.16.Final</netty.version>
     </properties>
 
     <dependencyManagement>
@@ -204,13 +204,13 @@
             <dependency>
                 <groupId>org.junit.platform</groupId>
                 <artifactId>junit-platform-suite-api</artifactId>
-                <version>6.1.1</version>
+                <version>6.1.2</version>
                 <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>org.junit.platform</groupId>
                 <artifactId>junit-platform-suite-engine</artifactId>
-                <version>6.1.1</version>
+                <version>6.1.2</version>
                 <scope>test</scope>
             </dependency>
         </dependencies>
