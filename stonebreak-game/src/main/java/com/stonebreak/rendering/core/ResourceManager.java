@@ -69,6 +69,11 @@ public class ResourceManager {
         // LOD distant-water drift time (0 = frozen, matching the water-animation setting).
         shaderProgram.createUniform("u_time");
         shaderProgram.setUniform("u_time", 0.0f);
+        // FastLOD crossfade opacity — 1.0 for everything except LOD nodes
+        // mid-transition (screen-door dither discard, no blending). The LOD
+        // pass sets it per node and restores 1.0 before the next pass.
+        shaderProgram.createUniform("u_lodFade");
+        shaderProgram.setUniform("u_lodFade", 1.0f);
         // Atmospheric distance fog — fogEnd <= fogStart disables; WorldRenderer
         // sets these per frame (sky color + LOD ring bounds).
         shaderProgram.createUniform("u_fogColor");
@@ -180,6 +185,17 @@ public class ResourceManager {
                uniform vec3 u_fogColor;
                uniform float u_fogStart;
                uniform float u_fogEnd;
+               // FastLOD crossfade opacity (1.0 = solid). <1 engages the
+               // screen-door dither below so LOD nodes dissolve over/under the
+               // native chunk mesh without blending or depth artifacts.
+               uniform float u_lodFade;
+
+               // 4x4 Bayer thresholds for the LOD crossfade dither.
+               const float LOD_BAYER[16] = float[16](
+                    0.0,  8.0,  2.0, 10.0,
+                   12.0,  4.0, 14.0,  6.0,
+                    3.0, 11.0,  1.0,  9.0,
+                   15.0,  7.0, 13.0,  5.0);
 
                // Value-noise stack for the LOD distant-water branch. Constants are
                // byte-identical to shaders/water/water.frag (hash/vnoise/fbm) — the
@@ -199,6 +215,14 @@ public class ResourceManager {
                    return lodw_vnoise(p) * 0.65 + lodw_vnoise(p * 2.13 + vec2(17.7, 9.2)) * 0.35;
                }
                void main() {
+                   // FastLOD crossfade: per-pixel screen-door discard. Only LOD
+                   // node draws ever set u_lodFade below 1.0, so this costs one
+                   // coherent branch for all other geometry. Covers the LOD
+                   // water branch too — sea sheets fade with their node.
+                   if (u_lodFade < 1.0) {
+                       int di = (int(gl_FragCoord.y) & 3) * 4 + (int(gl_FragCoord.x) & 3);
+                       if (u_lodFade < (LOD_BAYER[di] + 0.5) / 16.0) discard;
+                   }
                    if (u_isText) {
                        float alpha = texture(texture_sampler, outTexCoord).a;
                        fragColor = vec4(u_color.rgb, u_color.a * alpha);

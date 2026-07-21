@@ -195,7 +195,8 @@ public class WorldRenderer {
         world.ensureFastLodManager(blockTextureArray);
         int lodPlayerCx = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int lodPlayerCz = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
-        lodRenderPass.render(shaderProgram, world.getFastLodManager(), lodPlayerCx, lodPlayerCz, frustumCuller);
+        lodRenderPass.render(shaderProgram, world.getFastLodManager(), lodPlayerCx, lodPlayerCz,
+                frustumCuller, world::isChunkRenderableAt);
 
         // Render SBO blocks (blocks with SBO textures, rendered separately from atlas)
         renderSBOPass(visibleChunks);

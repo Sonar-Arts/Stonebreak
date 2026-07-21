@@ -230,7 +230,16 @@ public final class FastLodManager {
                 } else {
                     try {
                         MmsRenderableHandle h = uploader.upload(r.meshData);
-                        handles.put(r.key, new Entry(r.key, h, r.minY, r.maxY));
+                        Entry entry = new Entry(r.key, h, r.minY, r.maxY);
+                        // Band-change replacement: inherit the outgoing node's
+                        // crossfade state so the level swap doesn't re-dissolve.
+                        FastLodKey oldKey = pendingSupersede.get(r.key);
+                        Entry replacing = (oldKey != null) ? handles.get(oldKey) : null;
+                        if (replacing != null) {
+                            entry.fade = replacing.fade;
+                            entry.nativeCovered = replacing.nativeCovered;
+                        }
+                        handles.put(r.key, entry);
                         residentByColumn.put(packColumn(r.key.chunkX(), r.key.chunkZ()), r.key);
                         retireSupersededFor(r.key);
                     } catch (Exception e) {
@@ -396,7 +405,19 @@ public final class FastLodManager {
         public final MmsRenderableHandle handle;
         /** Exact vertex Y bounds of the node's mesh — feed per-node frustum AABBs. */
         public final float minY, maxY;
-        Entry(FastLodKey key, MmsRenderableHandle handle, float minY, float maxY) {
+        /**
+         * Crossfade opacity in [0,1], owned by the render pass (GL thread only).
+         * New nodes dissolve in from 0; band-change replacements inherit the
+         * superseded node's value so level swaps stay visually atomic.
+         */
+        public float fade;
+        /**
+         * Render-pass bookkeeping: true while a resident native chunk mesh
+         * covers this column, so leaving the native disk snaps the node solid
+         * instead of fading in over a hole.
+         */
+        public boolean nativeCovered;
+        public Entry(FastLodKey key, MmsRenderableHandle handle, float minY, float maxY) {
             this.key = key;
             this.handle = handle;
             this.minY = minY;

@@ -86,8 +86,13 @@ class FastLodManagerLogicTest {
     }
 
     private MmsRenderableHandle handleFor(FastLodKey key) {
+        FastLodManager.Entry e = entryFor(key);
+        return e != null ? e.handle : null;
+    }
+
+    private FastLodManager.Entry entryFor(FastLodKey key) {
         for (FastLodManager.Entry e : manager.visibleHandles()) {
-            if (e.key.equals(key)) return e.handle;
+            if (e.key.equals(key)) return e;
         }
         return null;
     }
@@ -128,6 +133,31 @@ class FastLodManagerLogicTest {
         assertNull(handleFor(oldKey), "retired atomically with the replacement upload");
         assertNotNull(handleFor(FastLodKey.of(FastLodLevel.L0, 3, 0)));
         verify(oldHandle).close();
+    }
+
+    @Test
+    void bandTransitionReplacementInheritsCrossfadeState() {
+        tick(0, 0);
+        FastLodManager.Entry old = entryFor(FastLodKey.of(FastLodLevel.L1, 3, 0));
+        assertNotNull(old);
+        // Simulate the render pass having partially faded this node.
+        old.fade = 0.37f;
+        old.nativeCovered = true;
+
+        tick(1, 0);   // column (3,0) transitions L1 → L0 via the supersede path
+        FastLodManager.Entry replacement = entryFor(FastLodKey.of(FastLodLevel.L0, 3, 0));
+        assertNotNull(replacement);
+        assertEquals(0.37f, replacement.fade, 1e-6f,
+                "level swap must not restart the crossfade");
+        assertTrue(replacement.nativeCovered);
+    }
+
+    @Test
+    void freshUploadsStartFullyFadedOut() {
+        tick(0, 0);
+        for (FastLodManager.Entry e : manager.visibleHandles()) {
+            assertEquals(0f, e.fade, 1e-6f, "new nodes dissolve in from zero");
+        }
     }
 
     @Test
