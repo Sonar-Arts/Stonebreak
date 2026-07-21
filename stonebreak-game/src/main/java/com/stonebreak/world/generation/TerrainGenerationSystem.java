@@ -175,6 +175,10 @@ public class TerrainGenerationSystem {
         BitSet formationMask = cavernResult.formationMask;
         formationMask.or(megaCavernResult.formationMask);
 
+        // Native backend: one SIMD volume fill replaces per-block cave-noise
+        // sampling in determineBlockType. Null on the Java backend.
+        Density3D.Field densityField = density3D.prepareChunk(chunkX, chunkZ, heights);
+
         // Write terrain into paletted storage directly instead of 65k
         // chunk.setBlock calls (each of which churns dirty flags, per-block
         // state removal, and incremental heightmap updates). AIR cells are
@@ -198,7 +202,7 @@ public class TerrainGenerationSystem {
                     } else if (y > 0 && y < height && caveMask.get(bit)) {
                         continue; // carved to air — already the uniform fill
                     } else {
-                        block = determineBlockType(worldX, y, worldZ, height, biome);
+                        block = determineBlockType(worldX, y, worldZ, height, biome, densityField, x, z);
                     }
                     if (block != BlockType.AIR) {
                         storage.set(x, y, z, block);
@@ -272,11 +276,14 @@ public class TerrainGenerationSystem {
         chunk.setFeaturesPopulated(true);
     }
 
-    private BlockType determineBlockType(int worldX, int y, int worldZ, int height, BiomeType biome) {
+    private BlockType determineBlockType(int worldX, int y, int worldZ, int height, BiomeType biome,
+                                         Density3D.Field densityField, int localX, int localZ) {
         if (y == 0) {
             return BlockType.BEDROCK;
         }
-        if (y < height && !density3D.isSolid(worldX, y, worldZ, height, biome)) {
+        if (y < height && !((densityField != null)
+                ? densityField.isSolid(localX, y, localZ, height, biome)
+                : density3D.isSolid(worldX, y, worldZ, height, biome))) {
             return BlockType.AIR;
         }
         if (y < height - 4) {

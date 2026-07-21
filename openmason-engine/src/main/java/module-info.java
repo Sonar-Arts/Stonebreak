@@ -36,6 +36,7 @@ module openmason.engine {
     requires java.management; // JVM memory/GC beans for MemoryProfiler (diagnostics)
 
     // Export rendering API
+    exports com.openmason.engine.cenda;
     exports com.openmason.engine.rendering.api;
     exports com.openmason.engine.rendering.shaders;
     exports com.openmason.engine.rendering.sky;

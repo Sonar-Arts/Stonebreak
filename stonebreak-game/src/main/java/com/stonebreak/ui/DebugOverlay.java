@@ -564,6 +564,7 @@ public class DebugOverlay {
             .row("Facing", facing);
 
         panel.section("Terrain");
+        panel.row("Noise Backend", noiseBackendSummary());
         panel.row("Block Below", blockName);
         panel.row("Biome", biome.name());
         panel.row("Temperature", String.format("%.3f", world.getTemperatureAt(x, z)));
@@ -617,6 +618,15 @@ public class DebugOverlay {
         panel.row("Path Visual", "ON");
 
         return panel;
+    }
+
+    /** One-line world-gen noise backend status: Cenda native kernels vs classic Java. */
+    private static String noiseBackendSummary() {
+        if (com.stonebreak.world.generation.noise.TerrainNoise.backend()
+                == com.stonebreak.world.generation.noise.TerrainNoise.Backend.NATIVE) {
+            return "Cenda FastNoise2 (" + com.openmason.engine.cenda.CendaKernels.simdLevel() + ")";
+        }
+        return "Java (classic simplex)";
     }
 
     /** AI-path line colour, shared across cows. */

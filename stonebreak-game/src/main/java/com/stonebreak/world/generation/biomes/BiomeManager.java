@@ -44,12 +44,25 @@ public class BiomeManager {
     public void populateChunkBiomes(int chunkX, int chunkZ, int[] heights, BiomeType[] out) {
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
-        for (int x = 0; x < CHUNK_SIZE; x++) {
-            for (int z = 0; z < CHUNK_SIZE; z++) {
-                int idx = x * CHUNK_SIZE + z;
-                MultiNoiseSample s = noise.sample(baseX + x, baseZ + z, heights[idx]);
-                out[idx] = selector.select(s);
-            }
+        int cells = CHUNK_SIZE * CHUNK_SIZE;
+        // Batch-fill all five channels (one SIMD call each on the native
+        // backend), then apply the same per-point transforms as NoiseRouter.sample.
+        float[] c = new float[cells];
+        float[] pv = new float[cells];
+        float[] e = new float[cells];
+        float[] d = new float[cells];
+        float[] tRaw = new float[cells];
+        float[] mRaw = new float[cells];
+        noise.fillShapeChannels(baseX, baseZ, CHUNK_SIZE, CHUNK_SIZE, 1, c, pv, e, d);
+        noise.fillClimateChannels(baseX, baseZ, CHUNK_SIZE, CHUNK_SIZE, 1, tRaw, mRaw);
+        for (int idx = 0; idx < cells; idx++) {
+            MultiNoiseSample s = new MultiNoiseSample(
+                c[idx],
+                e[idx],
+                pv[idx],
+                NoiseRouter.temperatureFromRaw(tRaw[idx], heights[idx]),
+                NoiseRouter.moistureFromRaw(mRaw[idx]));
+            out[idx] = selector.select(s);
         }
     }
 }

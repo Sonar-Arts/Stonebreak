@@ -83,21 +83,38 @@ public class HeightMapGenerator {
 
     /** Final surface height including detail noise. */
     public int generateHeight(int x, int z) {
-        float base = (float) baseSpline.interpolate(noise.continentalness(x, z));
-        float pv = (float) peakSpline.interpolate(noise.peaksValleys(x, z));
-        float strength = (float) erosionToPeakStrength.interpolate(noise.erosion(x, z));
-        float detail = noise.detail(x, z) * DETAIL_AMPLITUDE;
-        return clampToWorld(Math.round(base + pv * strength + detail));
+        return heightFromChannels(noise.continentalness(x, z), noise.peaksValleys(x, z),
+            noise.erosion(x, z), noise.detail(x, z));
     }
 
-    /** Fills a 16x16 final-height grid for the given chunk, indexed [x*16+z]. */
+    /**
+     * The single height formula, shared by the per-point path and the batched
+     * chunk path so both produce identical results from identical channel values.
+     */
+    public int heightFromChannels(float c, float pv, float e, float d) {
+        float base = (float) baseSpline.interpolate(c);
+        float peak = (float) peakSpline.interpolate(pv);
+        float strength = (float) erosionToPeakStrength.interpolate(e);
+        float detail = d * DETAIL_AMPLITUDE;
+        return clampToWorld(Math.round(base + peak * strength + detail));
+    }
+
+    /**
+     * Fills a 16x16 final-height grid for the given chunk, indexed [x*16+z].
+     * Channels are batch-filled (one SIMD call each on the native backend)
+     * and combined per cell — values match {@link #generateHeight} exactly.
+     */
     public void populateChunkHeights(int chunkX, int chunkZ, int[] out) {
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
-        for (int x = 0; x < CHUNK_SIZE; x++) {
-            for (int z = 0; z < CHUNK_SIZE; z++) {
-                out[x * CHUNK_SIZE + z] = generateHeight(baseX + x, baseZ + z);
-            }
+        int cells = CHUNK_SIZE * CHUNK_SIZE;
+        float[] c = new float[cells];
+        float[] pv = new float[cells];
+        float[] e = new float[cells];
+        float[] d = new float[cells];
+        noise.fillShapeChannels(baseX, baseZ, CHUNK_SIZE, CHUNK_SIZE, 1, c, pv, e, d);
+        for (int i = 0; i < cells; i++) {
+            out[i] = heightFromChannels(c[i], pv[i], e[i], d[i]);
         }
     }
 
