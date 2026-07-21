@@ -50,6 +50,9 @@ public class TerrainGenerationSystem {
     private final Random animalRandom = new Random();
     private final Object animalRandomLock = new Object();
 
+    /** Native worm-carver terrain context; 0 = Java carver path. */
+    private final long nativeCarverCtx;
+
     public TerrainGenerationSystem(long seed) {
         this.seed = seed;
         this.deterministicRandom = new DeterministicRandom(seed);
@@ -65,6 +68,65 @@ public class TerrainGenerationSystem {
         this.megaCavernCarver = new MegaCavernCarver(seed, heightMapGenerator);
         this.wormCarver.setCavernCarver(cavernCarver);
         this.wormCarver.setMegaCavernCarver(megaCavernCarver);
+
+        // Native worm carving only when the native noise backend is active:
+        // the kernel evaluates heights from the same FastNoise2 channels, so
+        // its surface gates agree with the Java-side terrain. On the Java
+        // backend those channels don't exist — the Java carver stays in charge.
+        long carverCtx = 0L;
+        if (com.stonebreak.world.generation.noise.TerrainNoise.backend()
+                == com.stonebreak.world.generation.noise.TerrainNoise.Backend.NATIVE
+            && !"java".equalsIgnoreCase(System.getProperty("stonebreak.carver.backend", "auto"))) {
+            carverCtx = NoiseRouter.createCarverTerrainContext(seed,
+                HeightMapGenerator.splineXs(), HeightMapGenerator.splineYs(),
+                HeightMapGenerator.splineSizes(), HeightMapGenerator.DETAIL_AMPLITUDE);
+            com.stonebreak.world.generation.noise.TerrainNoise.destroyTerrainOnCollect(this, carverCtx);
+        }
+        this.nativeCarverCtx = carverCtx;
+    }
+
+    /**
+     * Worm carve mask via the native kernel, with cavern-connector anchors
+     * precomputed by the Java cavern carvers so cavern placement stays
+     * consistent with their rasterization. Falls back to the Java carver on
+     * any kernel failure.
+     */
+    private java.util.BitSet nativeWormMask(int chunkX, int chunkZ, int[] heights) {
+        int radius = PerlinWormCarver.scanRadius();
+        java.util.ArrayList<int[]> anchorChunkList = new java.util.ArrayList<>();
+        java.util.ArrayList<float[]> anchorList = new java.util.ArrayList<>();
+        for (int dcx = -radius; dcx <= radius; dcx++) {
+            for (int dcz = -radius; dcz <= radius; dcz++) {
+                int srcCx = chunkX + dcx;
+                int srcCz = chunkZ + dcz;
+                if (!wormCarver.hasWormAt(srcCx, srcCz)) {
+                    continue;
+                }
+                float[] anchor = wormCarver.cavernAnchorFor(srcCx, srcCz);
+                if (anchor != null) {
+                    anchorChunkList.add(new int[]{srcCx, srcCz});
+                    anchorList.add(anchor);
+                }
+            }
+        }
+        int n = anchorChunkList.size();
+        int[] anchorChunks = n == 0 ? null : new int[n * 2];
+        float[] anchors = n == 0 ? null : new float[n * 3];
+        for (int i = 0; i < n; i++) {
+            anchorChunks[i * 2] = anchorChunkList.get(i)[0];
+            anchorChunks[i * 2 + 1] = anchorChunkList.get(i)[1];
+            float[] anchor = anchorList.get(i);
+            anchors[i * 3] = anchor[0];
+            anchors[i * 3 + 1] = anchor[1];
+            anchors[i * 3 + 2] = anchor[2];
+        }
+        long[] mask = new long[1024];
+        long carved = com.openmason.engine.cenda.CendaKernels.carveWorms(
+            nativeCarverCtx, chunkX, chunkZ, heights, anchorChunks, anchors, mask);
+        if (carved < 0) {
+            return wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
+        }
+        return java.util.BitSet.valueOf(mask);
     }
 
     public long getSeed() {
@@ -144,6 +206,71 @@ public class TerrainGenerationSystem {
     }
 
     /**
+     * Batched column probe for coarse samplers (FastLOD): fills heights and,
+     * optionally, surface blocks / tree samples for a {@code count x count}
+     * grid at block positions {@code (worldX0 + ix*stride, worldZ0 + iz*stride)},
+     * indexed {@code [ix*count + iz]}. Six channel fills replace thousands of
+     * per-point samples; results are bit-identical to {@link #getFinalTerrainHeightAt},
+     * {@link #getSurfaceBlockAt} and {@link #getTreeAt} at the same coordinates.
+     *
+     * @param outSurface nullable; length count*count when present
+     * @param outTrees   nullable; length count*count when present (requires outSurface logic)
+     */
+    public void sampleColumns(int worldX0, int worldZ0, int count, int stride,
+                              int[] outHeights,
+                              BlockType[] outSurface,
+                              com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees) {
+        int cells = count * count;
+        float[] c = new float[cells];
+        float[] pv = new float[cells];
+        float[] e = new float[cells];
+        float[] d = new float[cells];
+        noiseRouter.fillShapeChannels(worldX0, worldZ0, count, count, stride, c, pv, e, d);
+
+        float[] tRaw = null;
+        float[] mRaw = null;
+        boolean needBiomes = outSurface != null || outTrees != null;
+        if (needBiomes) {
+            tRaw = new float[cells];
+            mRaw = new float[cells];
+            noiseRouter.fillClimateChannels(worldX0, worldZ0, count, count, stride, tRaw, mRaw);
+        }
+
+        for (int ix = 0; ix < count; ix++) {
+            for (int iz = 0; iz < count; iz++) {
+                int idx = ix * count + iz;
+                int height = heightMapGenerator.heightFromChannels(c[idx], pv[idx], e[idx], d[idx]);
+                outHeights[idx] = height;
+                if (!needBiomes) {
+                    continue;
+                }
+                BlockType surface;
+                BiomeType biome = null;
+                if (height < SEA_LEVEL) {
+                    surface = BlockType.WATER;
+                } else {
+                    // Same tuple as BiomeManager.getBiome: temperature is chilled
+                    // by the SHAPED height (no detail), matching the per-point path.
+                    int shaped = heightMapGenerator.shapedFromChannels(c[idx], pv[idx], e[idx]);
+                    biome = biomeManager.selectBiome(new com.stonebreak.world.generation.noise.MultiNoiseSample(
+                        c[idx], e[idx], pv[idx],
+                        com.stonebreak.world.generation.noise.NoiseRouter.temperatureFromRaw(tRaw[idx], shaped),
+                        com.stonebreak.world.generation.noise.NoiseRouter.moistureFromRaw(mRaw[idx])));
+                    surface = surfaceBlock(biome);
+                }
+                if (outSurface != null) {
+                    outSurface[idx] = surface;
+                }
+                if (outTrees != null) {
+                    outTrees[idx] = (height < SEA_LEVEL) ? null
+                        : com.stonebreak.world.generation.features.VegetationGenerator.probeTree(
+                            worldX0 + ix * stride, worldZ0 + iz * stride, biome, surface, deterministicRandom);
+                }
+            }
+        }
+    }
+
+    /**
      * Result of terrain-only generation: the chunk plus the column profile
      * (heights + biomes) so deferred feature population can reuse it instead
      * of resampling the noise stack.
@@ -166,7 +293,9 @@ public class TerrainGenerationSystem {
         biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
 
         updateLoadingProgress("Applying Biome Materials");
-        BitSet wormMask = wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
+        BitSet wormMask = (nativeCarverCtx != 0L)
+            ? nativeWormMask(chunkX, chunkZ, heights)
+            : wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
         CavernCarver.Result cavernResult = cavernCarver.buildForChunk(chunkX, chunkZ, heights);
         MegaCavernCarver.Result megaCavernResult = megaCavernCarver.buildForChunk(chunkX, chunkZ, heights);
         BitSet caveMask = wormMask;

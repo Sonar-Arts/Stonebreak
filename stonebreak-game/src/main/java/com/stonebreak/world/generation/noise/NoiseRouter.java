@@ -134,6 +134,32 @@ public final class NoiseRouter {
         moistureNoise.fill(mRaw, baseX, baseZ, countX, countZ, stride);
     }
 
+    /**
+     * Creates the native carver terrain context: the four shape channels
+     * (c, pv, e, d) with EXACTLY this router's parameters, plus the height
+     * splines. Returns 0 when the native kernels are unavailable. The caller
+     * owns the handle (destroy via {@link TerrainNoise#destroyTerrainOnCollect}).
+     */
+    public static long createCarverTerrainContext(long seed,
+                                                  double[] splineXs, double[] splineYs,
+                                                  int[] splineSizes, float detailAmplitude) {
+        int[] seeds = {
+            TerrainNoise.nativeSeed(seed + 2), // continentalness
+            TerrainNoise.nativeSeed(seed + 8), // peaks/valleys
+            TerrainNoise.nativeSeed(seed + 5), // erosion
+            TerrainNoise.nativeSeed(seed + 3), // detail
+        };
+        int[] octaves = {8, 5, 5, 3};
+        float[] gain = {0.45f, 0.45f, 0.40f, 0.50f};
+        float[] lacunarity = {2.0f, 2.0f, 2.0f, 2.0f};
+        float[] freq = {CONTINENTALNESS_SCALE, PEAKS_VALLEYS_SCALE, EROSION_SCALE, DETAIL_SCALE};
+        int[] xOff = {0, PV_X_OFF_BLOCKS, EROSION_X_OFF_BLOCKS, 0};
+        int[] zOff = {0, PV_Z_OFF_BLOCKS, EROSION_Z_OFF_BLOCKS, 0};
+        return com.openmason.engine.cenda.CendaKernels.terrainCreate(seed,
+            seeds, octaves, gain, lacunarity, freq, xOff, zOff,
+            splineXs, splineYs, splineSizes, detailAmplitude);
+    }
+
     /** Raw moisture channel value → [0, 1]. */
     public static float moistureFromRaw(float raw) {
         return raw * 0.5f + 0.5f;

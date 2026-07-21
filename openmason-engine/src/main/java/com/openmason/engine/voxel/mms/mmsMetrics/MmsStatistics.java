@@ -28,6 +28,8 @@ public class MmsStatistics {
     // Timing statistics
     private final AtomicLong totalGenerationTimeMs = new AtomicLong(0);
     private final AtomicLong totalUploadTimeMs = new AtomicLong(0);
+    /** Nanosecond-resolution generation time — ms counters round sub-ms builds to 0. */
+    private final AtomicLong totalGenerationTimeNanos = new AtomicLong(0);
 
     // Memory statistics
     private final AtomicLong totalMemoryBytes = new AtomicLong(0);
@@ -51,6 +53,23 @@ public class MmsStatistics {
 
         // Update peak memory
         updatePeakMemory(memoryBytes);
+    }
+
+    /**
+     * Nanosecond-resolution variant of
+     * {@link #recordMeshGeneration(int, int, long, long)}. Keeps the legacy ms
+     * counter in sync (rounded down) so existing dashboards stay meaningful.
+     */
+    public void recordMeshGenerationNanos(int vertexCount, int triangleCount,
+                                          long generationTimeNanos, long memoryBytes) {
+        totalGenerationTimeNanos.addAndGet(generationTimeNanos);
+        recordMeshGeneration(vertexCount, triangleCount, generationTimeNanos / 1_000_000L, memoryBytes);
+    }
+
+    /** Average mesh generation time in microseconds (nanos-recorded builds only). */
+    public double getAverageGenerationTimeMicros() {
+        long count = meshesGenerated.get();
+        return count > 0 ? (double) totalGenerationTimeNanos.get() / 1_000.0 / count : 0.0;
     }
 
     /**
@@ -104,6 +123,7 @@ public class MmsStatistics {
         totalVertices.set(0);
         totalTriangles.set(0);
         totalGenerationTimeMs.set(0);
+        totalGenerationTimeNanos.set(0);
         totalUploadTimeMs.set(0);
         totalMemoryBytes.set(0);
         peakMemoryBytes.set(0);

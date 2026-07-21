@@ -198,7 +198,7 @@ public final class MmsAPI {
             throw new IllegalArgumentException("Chunk cannot be null");
         }
 
-        long startTime = System.currentTimeMillis();
+        long startTime = System.nanoTime();
 
         try {
             // Create CcoChunkData wrapper for the chunk
@@ -211,13 +211,14 @@ public final class MmsAPI {
                 chunk.getCcoDirtyTracker()
             );
 
-            // Record statistics for atlas mesh
+            // Record statistics for atlas mesh (nanosecond resolution — the ms
+            // clock rounded most builds to 0 and made averages meaningless)
             MmsMeshData meshData = meshResult.atlasMesh();
-            long generationTime = System.currentTimeMillis() - startTime;
-            statistics.recordMeshGeneration(
+            long generationNanos = System.nanoTime() - startTime;
+            statistics.recordMeshGenerationNanos(
                 meshData.getVertexCount(),
                 meshData.getTriangleCount(),
-                generationTime,
+                generationNanos,
                 meshData.getMemoryUsageBytes()
             );
 
@@ -709,6 +710,11 @@ public final class MmsAPI {
         @Override
         public BlockType getBlock(int x, int y, int z) {
             return chunk.getBlock(x, y, z);
+        }
+
+        @Override
+        public com.openmason.engine.voxel.cco.data.CcoBlockStorage backingStorage() {
+            return chunk.getBlockStorageView();
         }
 
         @Override

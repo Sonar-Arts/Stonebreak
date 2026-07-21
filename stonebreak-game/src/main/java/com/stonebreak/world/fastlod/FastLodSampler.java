@@ -32,28 +32,26 @@ public final class FastLodSampler {
         int baseX = key.chunkX() * CHUNK_SIZE;
         int baseZ = key.chunkZ() * CHUNK_SIZE;
 
+        // One batched probe over the padded grid (margin ring included). The
+        // interior of the same grid supplies the per-cell surface/tree data,
+        // so the whole key costs six channel fills instead of thousands of
+        // per-point samples. Values are bit-identical to the per-point API.
+        int origin = -cellSize + representativeOffset(cellSize);
         int[] heights = new int[level.heightCount()];
-        for (int hx = 0; hx < stride; hx++) {
-            int cellIx = hx - 1;                       // -1..cellsPerAxis
-            int worldX = baseX + cellIx * cellSize + representativeOffset(cellSize);
-            for (int hz = 0; hz < stride; hz++) {
-                int cellIz = hz - 1;
-                int worldZ = baseZ + cellIz * cellSize + representativeOffset(cellSize);
-                heights[hx * stride + hz] = terrain.getFinalTerrainHeightAt(worldX, worldZ);
-            }
-        }
+        BlockType[] gridSurface = new BlockType[stride * stride];
+        TreeSample[] gridTrees  = level.emitsTrees() ? new TreeSample[stride * stride] : null;
+        terrain.sampleColumns(baseX + origin, baseZ + origin, stride, cellSize,
+            heights, gridSurface, gridTrees);
 
         BlockType[] surface = new BlockType[level.cellCount()];
         TreeSample[] trees  = level.emitsTrees() ? new TreeSample[level.cellCount()] : null;
-
         for (int ix = 0; ix < cellsPerAxis; ix++) {
-            int worldX = baseX + ix * cellSize + representativeOffset(cellSize);
             for (int iz = 0; iz < cellsPerAxis; iz++) {
-                int worldZ = baseZ + iz * cellSize + representativeOffset(cellSize);
                 int idx = ix * cellsPerAxis + iz;
-                surface[idx] = terrain.getSurfaceBlockAt(worldX, worldZ);
+                int gridIdx = (ix + 1) * stride + (iz + 1);
+                surface[idx] = gridSurface[gridIdx];
                 if (trees != null) {
-                    trees[idx] = terrain.getTreeAt(worldX, worldZ);
+                    trees[idx] = gridTrees[gridIdx];
                 }
             }
         }

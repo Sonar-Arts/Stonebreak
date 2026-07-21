@@ -38,21 +38,24 @@ public final class ServerChunkHandler {
     //                                       holes (client dropped the chunk but the server
     //                                       still thinks it was sent).
     /**
-     * Chunks streamed per remote player per tick. Kept modest because the server encode runs
-     * on the main game thread (the integrated server ticks there) and the wire needs
-     * backpressure. 8/tick @ 20 Hz = 160 chunks/s fills a view in ~2 s.
+     * Chunks streamed per remote player per tick. Kept modest because a real
+     * wire needs pacing. 8/tick @ 20 Hz = 160 chunks/s fills a view in ~2 s.
+     * (Encode itself is cheap now — bulk section reads, no per-cell adapters —
+     * and runs on the dedicated SINGLEPLAYER-Server thread, not the render
+     * thread, so the budget is purely about remote bandwidth.)
      */
     private static final int MAX_PUSH_PER_TICK = 8;
     /**
-     * Budget for the LOCAL (host) player. The LocalChannel is an in-JVM object handoff —
-     * no real wire to protect — and the wire-rate throttle was the dominant cause of slow
-     * chunk pop-in for the host (~2 s to fill a view). The client-side install is cheap
-     * enough to absorb this now: decode lands in a detached paletted storage and installs
-     * with one section copy + one heightmap recompute (World.installNetworkChunk).
-     * 64/tick @ 20 Hz fills the default view (r=8, 289 chunks) in ~0.25 s and the
-     * maximum view (r=24, 2401 chunks) in ~1.9 s.
+     * Budget for the LOCAL (host) player. The LocalChannel is an in-JVM object
+     * handoff — no wire to protect. Encode is bulk (section id arrays →
+     * palette, zero per-cell adapter allocations) on the server thread, and
+     * the client decode is bulk too (wire sections → palette sections, no
+     * per-cell set calls), so a large burst neither stalls the server tick nor
+     * hitches the render thread. 128/tick @ 20 Hz fills the default view
+     * (r=8, 289 chunks) in ~0.12 s and the max view (r=24, 2401) in ~0.95 s —
+     * in practice generation/feature throughput is the pacing factor, not this.
      */
-    private static final int LOCAL_PUSH_PER_TICK = 64;
+    private static final int LOCAL_PUSH_PER_TICK = 128;
 
     /** Current version per chunk key; bumped on modification so clients re-receive it.
      *  Primitive-keyed: the view scan probes this per ring cell, and a boxed

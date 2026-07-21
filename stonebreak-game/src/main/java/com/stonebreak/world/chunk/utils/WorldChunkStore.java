@@ -404,43 +404,29 @@ public class WorldChunkStore {
         }
     }
 
-    // Dynamic feature population limit state
-    private int currentFeaturePopulationLimit = 15; // Start at 15 (was 10)
-    private static final int MIN_FEATURE_POPULATION_LIMIT = 5;
-    private static final int MAX_FEATURE_POPULATION_LIMIT = 40;
-    private static final float FEATURE_TARGET_FRAME_TIME_MS = 16.0f;
+    // Feature population is TIME-budgeted per server tick, not count-budgeted.
+    // The old count limit (5..40/tick) adapted off Game.getDeltaTime() — the
+    // RENDER frame delta — even though this runs on the server tick thread,
+    // so it throttled server-side streaming based on an unrelated clock and
+    // capped exploration at ~300-800 chunks/s regardless of how fast
+    // generation actually was. A wall-clock slice of the 50 ms tick is
+    // self-adaptive on the thread that actually pays the cost.
+    private static final long FEATURE_BUDGET_NANOS = 8_000_000L; // 8 ms of the 50 ms tick
+    private static final int FEATURE_HARD_CAP = 256;             // runaway guard per tick
 
     /**
-     * Adjusts feature population limit based on current frame time.
-     * Increases limit when performance is good, decreases when struggling.
-     */
-    private void adjustFeaturePopulationLimit() {
-        float deltaTimeMs = Game.getDeltaTime() * 1000.0f;
-
-        if (deltaTimeMs > 20.0f) {
-            // Frame time too high, reduce feature population
-            currentFeaturePopulationLimit = Math.max(MIN_FEATURE_POPULATION_LIMIT,
-                currentFeaturePopulationLimit - 2);
-        } else if (deltaTimeMs < 14.0f && pendingFeaturePopulation.size() > 10) {
-            // Frame time good and we have backlog, increase limit
-            currentFeaturePopulationLimit = Math.min(MAX_FEATURE_POPULATION_LIMIT,
-                currentFeaturePopulationLimit + 1);
-        }
-    }
-
-    /**
-     * Processes chunks waiting for feature population. Called each frame from World.update().
-     * Only populates features for chunks whose neighbors exist to prevent recursion.
-     * Dynamically adjusts processing limit based on frame time to prevent lag spikes.
+     * Processes chunks waiting for feature population, spending at most
+     * {@link #FEATURE_BUDGET_NANOS} of the server tick. Only populates chunks
+     * whose neighbors exist to prevent recursion.
      */
     public void processPendingFeaturePopulation() {
-        // Adjust limit based on frame time
-        adjustFeaturePopulationLimit();
+        long deadline = System.nanoTime() + FEATURE_BUDGET_NANOS;
 
         ChunkPosition pos;
         int processed = 0;
 
-        while (processed < currentFeaturePopulationLimit && (pos = pendingFeaturePopulation.poll()) != null) {
+        while (processed < FEATURE_HARD_CAP && System.nanoTime() < deadline
+                && (pos = pendingFeaturePopulation.poll()) != null) {
             Chunk chunk = chunks.get(pos);
 
             // Skip if chunk was unloaded or already has features

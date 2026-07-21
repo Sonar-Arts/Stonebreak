@@ -29,6 +29,11 @@ public class BiomeManager {
         return selector.select(noise.sample(x, z, heightMap.shapedHeight(x, z)));
     }
 
+    /** Selection from an already-assembled sample (batched paths). */
+    public BiomeType selectBiome(MultiNoiseSample sample) {
+        return selector.select(sample);
+    }
+
     public float getMoisture(int x, int z) {
         return noise.moisture(x, z);
     }

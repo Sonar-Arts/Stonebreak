@@ -113,6 +113,13 @@ public final class TerrainNoise {
         }
     }
 
+    /** Registers native terrain-context cleanup against the owner's lifetime. */
+    public static void destroyTerrainOnCollect(Object owner, long ctx) {
+        if (ctx != 0L) {
+            CLEANER.register(owner, () -> CendaKernels.terrainDestroy(ctx));
+        }
+    }
+
     /** Original formula, byte-exact with historical terrain. */
     private static final class JavaChannel implements NoiseChannel2D {
         private final NoiseGenerator generator;

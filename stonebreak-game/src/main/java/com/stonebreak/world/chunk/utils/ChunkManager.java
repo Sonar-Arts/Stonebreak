@@ -345,7 +345,7 @@ public class ChunkManager {
     }
 
     // Adaptive GL batch sizing state
-    private static int currentGLBatchSize = 16; // Start at safe default
+    private static int currentGLBatchSize = 24; // Start higher; frame-time adaptation shrinks under pressure
     private static final int MIN_GL_BATCH_SIZE = 2;
     private static final int MAX_GL_BATCH_SIZE = 64;
     private static final float GL_TARGET_FRAME_TIME_MS = 16.0f; // 60 FPS target

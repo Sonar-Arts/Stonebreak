@@ -64,10 +64,14 @@ public final class MmsMeshPipeline {
     // State
     private volatile boolean shutdown = false;
 
-    // Frame budget tracking for adaptive mesh generation
-    private static final int DEFAULT_MAX_MESH_BUILDS_PER_FRAME = 10;
+    // Frame budget tracking for adaptive mesh generation. These only bound
+    // SUBMISSIONS to the worker pool per frame (builds run off-thread); raised
+    // after the mesher went snapshot-based (~0.5 ms/build) so a streaming
+    // burst drains in a few frames instead of dozens. Frame-time adaptation
+    // below still shrinks the budget under real pressure.
+    private static final int DEFAULT_MAX_MESH_BUILDS_PER_FRAME = 16;
     private static final int MIN_MESH_BUILDS_PER_FRAME = 3;
-    private static final int MAX_MESH_BUILDS_PER_FRAME = 20;
+    private static final int MAX_MESH_BUILDS_PER_FRAME = 32;
     private static final float TARGET_FRAME_TIME_MS = 16.0f; // 60 FPS target
     private static final float HIGH_FRAME_TIME_MS = 20.0f; // Reduce if above this
     private static final float LOW_FRAME_TIME_MS = 12.0f; // Increase if below this

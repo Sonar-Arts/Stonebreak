@@ -609,6 +609,15 @@ public class DebugOverlay {
         }
 
         panel.section("Graphics");
+        try {
+            var meshStats = com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.getInstance().getStatistics();
+            if (meshStats.getMeshesGenerated() > 0) {
+                panel.row("Mesh Gen", String.format("%.0f us avg (%d built)",
+                    meshStats.getAverageGenerationTimeMicros(), meshStats.getMeshesGenerated()));
+            }
+        } catch (Exception ignored) {
+            // MMS not initialized yet — row simply absent.
+        }
         queryGPUInfo();
         panel.row("GPU", truncate(gpuRenderer != null ? gpuRenderer : "Unknown", 30));
         panel.row("Vendor", truncate(gpuVendor != null ? gpuVendor : "Unknown", 25));

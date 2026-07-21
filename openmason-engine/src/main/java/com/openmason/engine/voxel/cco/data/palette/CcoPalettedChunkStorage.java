@@ -25,6 +25,15 @@ public final class CcoPalettedChunkStorage implements CcoBlockStorage {
     private final int sizeZ;
     private final CcoPaletteSection[] sections;
 
+    /**
+     * Replaces one section wholesale (bulk decode path). Only safe on a
+     * detached storage that no reader is concurrently observing — network
+     * decode builds into a fresh storage, then installs via {@code copyFrom}.
+     */
+    public void replaceSection(int sectionIndex, CcoPaletteSection section) {
+        sections[sectionIndex] = section;
+    }
+
     private CcoPalettedChunkStorage(int sizeX, int sizeY, int sizeZ, CcoPaletteSection[] sections) {
         this.sizeX = sizeX;
         this.sizeY = sizeY;

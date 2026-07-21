@@ -100,6 +100,9 @@ public class MmsCcoAdapter {
         // Deterministic at first mesh build; no seed races, no stale data.
         emitter.setLightSampler((face, vx, vy, vz, data) ->
             com.openmason.engine.voxel.lighting.VertexLightSampler.sampleCombined(shadowContext, vx, vy, vz, face));
+        // The native mesher's per-id class table must know which ids the SBO
+        // emitter owns so it leaves those cells to the Java pass.
+        CendaMesher.rebuildClassTable(type -> emitter.hasBlock(type));
         logger.debug("[MmsCcoAdapter] SBO stamp emitter set ({} stamp types)", emitter.getCache().size());
     }
 
@@ -157,8 +160,29 @@ public class MmsCcoAdapter {
             // the 65k-cell iteration.
             int maxY = Math.min(chunkData.getHighestNonAirY(), WorldConfiguration.WORLD_HEIGHT - 1);
 
+            // Native fast path: cube culling + lighting in one Cenda kernel
+            // call over a flat snapshot; the Java loop below only runs for the
+            // snapshot's special cells (SBO/cross/water). Falls back to the
+            // classic full loop whenever the kernel or snapshot is unavailable.
+            boolean nativeDone = false;
+            if (CendaMesher.enabled() && world != null && shadowContext != null) {
+                CendaMesher.Snapshot snap = CendaMesher.snapshot(
+                    chunkData, world, shadowContext, CendaMesher.classTable(), maxY);
+                if (snap != null) {
+                    float[][] quadHolder = new float[1][];
+                    int quadCount = CendaMesher.mesh(snap,
+                        com.openmason.engine.voxel.lighting.VertexLightSampler.isSmoothLightingEnabled(),
+                        quadHolder);
+                    if (quadCount >= 0) {
+                        emitNativeQuads(atlasBuilder, quadHolder[0], quadCount, chunkX, chunkZ);
+                        emitSpecialCells(atlasBuilder, waterBuilder, snap, chunkData, chunkX, chunkZ);
+                        nativeDone = true;
+                    }
+                }
+            }
+
             // Iterate through all blocks in the chunk
-            for (int lx = 0; lx < WorldConfiguration.CHUNK_SIZE; lx++) {
+            for (int lx = 0; !nativeDone && lx < WorldConfiguration.CHUNK_SIZE; lx++) {
                 for (int ly = 0; ly <= maxY; ly++) {
                     for (int lz = 0; lz < WorldConfiguration.CHUNK_SIZE; lz++) {
                         BlockType blockType = (BlockType) chunkData.getBlock(lx, ly, lz);
@@ -239,6 +263,98 @@ public class MmsCcoAdapter {
         }
     }
 
+
+    /**
+     * Emits the native kernel's cube quads. Geometry/texture/flag emission is
+     * identical to {@link #addCubeBlockWithCulling}; culling and per-corner
+     * lights were already computed by the kernel (bit-identical semantics).
+     */
+    private void emitNativeQuads(MmsMeshBuilder builder, float[] quads, int quadCount,
+                                 int chunkX, int chunkZ) {
+        for (int q = 0; q < quadCount; q++) {
+            int base = q * 9;
+            int lx = (int) quads[base];
+            int ly = (int) quads[base + 1];
+            int lz = (int) quads[base + 2];
+            int face = (int) quads[base + 3];
+            BlockType blockType = BlockType.getById((int) quads[base + 4]);
+            if (blockType == null) {
+                continue;
+            }
+            float worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
+            float worldY = ly;
+            float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
+
+            float[] vertices = cuboidGenerator.generateFaceVertices(face, worldX, worldY, worldZ);
+            float[] normals = cuboidGenerator.generateFaceNormals(face);
+            float[] texCoords = textureMapper.generateFaceTextureCoordinates(blockType, face);
+            float[] alphaFlags = textureMapper.generateAlphaFlags(blockType);
+            float[] layers = textureMapper.generateFaceLayers(blockType, face);
+
+            builder.beginFace();
+            for (int i = 0; i < 4; i++) {
+                int vIdx = i * 3;
+                int tIdx = i * 2;
+                builder.addVertex(
+                    vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
+                    texCoords[tIdx], texCoords[tIdx + 1],
+                    normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
+                    0.0f, alphaFlags[i], 0.0f, quads[base + 5 + i], layers[i]
+                );
+            }
+            builder.endFace();
+        }
+    }
+
+    /**
+     * Java pass over the snapshot's non-cube cells: SBO stamps, cross blocks
+     * and water keep their existing per-cell emission paths. Mirrors the
+     * branch order of the classic full loop.
+     */
+    private void emitSpecialCells(MmsMeshBuilder atlasBuilder, MmsMeshBuilder waterBuilder,
+                                  CendaMesher.Snapshot snap, CcoChunkData chunkData,
+                                  int chunkX, int chunkZ) {
+        for (int i = 0; i < snap.specialCount(); i++) {
+            int idx = snap.specialCell(i);
+            int lx = idx & 15;
+            int lz = (idx >> 4) & 15;
+            int ly = idx >> 8;
+            BlockType blockType = (BlockType) chunkData.getBlock(lx, ly, lz);
+            if (blockType == null || blockType == BlockType.AIR) {
+                continue;
+            }
+            if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(blockType)) {
+                continue;
+            }
+            if (sboStampEmitter != null && sboStampEmitter.hasBlock(blockType)) {
+                float worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE + 0.5f;
+                float worldY = ly + 0.5f;
+                float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE + 0.5f;
+                float blockHeight = 1.0f;
+                if (blockType == BlockType.SNOW && world != null) {
+                    int wx = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
+                    int wz = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
+                    int layers = world.getSnowLayers(wx, ly, wz);
+                    blockHeight = Math.min(1.0f, Math.max(0.125f, layers * 0.125f));
+                }
+                String stateName = chunkData.getBlockState(lx, ly, lz);
+                sboStampEmitter.emitBlock(atlasBuilder, blockType, lx, ly, lz,
+                        worldX, worldY, worldZ, chunkData, blockHeight, stateName);
+                continue;
+            }
+            if (isCrossBlock(blockType)) {
+                addCrossBlock(atlasBuilder, blockType, lx, ly, lz, chunkX, chunkZ);
+                continue;
+            }
+            if (blockType == BlockType.WATER) {
+                addWaterBlockWithCulling(waterBuilder, lx, ly, lz, chunkX, chunkZ, chunkData);
+                continue;
+            }
+            // A cube-class id shouldn't appear here; emit via the classic path
+            // as a safety net so nothing silently disappears.
+            addCubeBlockWithCulling(atlasBuilder, blockType, lx, ly, lz, chunkX, chunkZ, chunkData);
+        }
+    }
 
     /**
      * Adds a cross-section block to the mesh builder.

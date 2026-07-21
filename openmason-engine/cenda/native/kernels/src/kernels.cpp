@@ -1,4 +1,5 @@
 #include "cenda/kernels.h"
+#include "nodes.hpp"
 
 #include <FastNoise/FastNoise.h>
 
@@ -53,32 +54,7 @@ void* ck_noise_from_encoded_tree(const char* encoded_tree) {
 }
 
 void* ck_noise_simplex_fbm(int32_t octaves, float lacunarity, float gain, float frequency) {
-    if (octaves < 1 || !(frequency > 0.0f)) {
-        return nullptr;
-    }
-    // v1.x generators carry their own feature scale (default 100 world units!);
-    // set it from the requested frequency instead of stacking a DomainScale on
-    // top, otherwise both scales apply and features become enormous.
-    auto simplex = FastNoise::New<FastNoise::Simplex>();
-    simplex->SetScale(1.0f / frequency);
-    auto fbm = FastNoise::New<FastNoise::FractalFBm>();
-    fbm->SetSource(simplex);
-    fbm->SetOctaveCount(octaves);
-    fbm->SetLacunarity(lacunarity);
-    fbm->SetGain(gain);
-    // FastNoise2's fbm sums gain-weighted octaves without normalizing, so its
-    // range grows with octave count. Divide by the amplitude sum to restore
-    // the ~[-1,1] contract the terrain splines / biome thresholds assume.
-    float amplitudeSum = 0.0f;
-    float amplitude = 1.0f;
-    for (int32_t i = 0; i < octaves; ++i) {
-        amplitudeSum += amplitude;
-        amplitude *= gain;
-    }
-    auto normalized = FastNoise::New<FastNoise::Multiply>();
-    normalized->SetLHS(fbm);
-    normalized->SetRHS(1.0f / amplitudeSum);
-    return wrap(normalized);
+    return wrap(cenda::makeSimplexFbm(octaves, lacunarity, gain, frequency));
 }
 
 void ck_noise_destroy(void* node) {

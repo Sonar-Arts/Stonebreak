@@ -98,6 +98,27 @@ class TerrainNoiseParityTest {
     }
 
     @Test
+    void batchedColumnProbeMatchesPerPointApi() {
+        // FastLodSampler now feeds off sampleColumns; every value must equal
+        // the per-point API it replaced (heights, surface blocks, trees).
+        var terrain = new com.stonebreak.world.generation.TerrainGenerationSystem(SEED);
+        int count = 10, stride = 4, x0 = -333, z0 = 777;
+        int[] heights = new int[count * count];
+        var surface = new com.stonebreak.blocks.BlockType[count * count];
+        var trees = new com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[count * count];
+        terrain.sampleColumns(x0, z0, count, stride, heights, surface, trees);
+        for (int ix = 0; ix < count; ix++) {
+            for (int iz = 0; iz < count; iz++) {
+                int idx = ix * count + iz;
+                int wx = x0 + ix * stride, wz = z0 + iz * stride;
+                assertEquals(terrain.getFinalTerrainHeightAt(wx, wz), heights[idx], "height @" + wx + "," + wz);
+                assertEquals(terrain.getSurfaceBlockAt(wx, wz), surface[idx], "surface @" + wx + "," + wz);
+                assertEquals(terrain.getTreeAt(wx, wz), trees[idx], "tree @" + wx + "," + wz);
+            }
+        }
+    }
+
+    @Test
     void nativeBackendIsActiveWhenLibraryPresent() {
         // Documents which backend this test run exercised. Only meaningful
         // when the native lib is built; skipped otherwise so CI without the

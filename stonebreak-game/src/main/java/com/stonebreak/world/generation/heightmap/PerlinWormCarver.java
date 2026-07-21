@@ -141,6 +141,26 @@ public final class PerlinWormCarver {
         this.megaCavernCarver = megaCavernCarver;
     }
 
+    /** Scan radius in chunks — exported for the native carver's anchor precompute. */
+    public static int scanRadius() {
+        return SCAN_RADIUS;
+    }
+
+    /** Whether a source chunk spawns a carver pair (pure hash — native-carver parity). */
+    public boolean hasWormAt(int cx, int cz) {
+        return hasWorm(cx, cz);
+    }
+
+    /**
+     * The cavern-connector anchor for a worm-bearing source chunk, or null when
+     * no cavern/megacavern is in range. The native carver receives these
+     * precomputed so cavern placement stays owned by the Java cavern carvers.
+     */
+    public float[] cavernAnchorFor(int cx, int cz) {
+        float[] origin = computeOrigin(cx, cz);
+        return nearestCavernAnchor(cx, cz, origin[0], origin[1], origin[2]);
+    }
+
     /**
      * Builds the carve mask for a chunk. Bits are packed local positions
      * {@code (x << 12) | (y << 4) | z}; set bits should be replaced with AIR
