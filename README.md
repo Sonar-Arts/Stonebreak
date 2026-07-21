@@ -3,7 +3,7 @@
 
 An open source work-in-progress 3D voxel-based sandbox RPG game created with Java and LWJGL. Inspired by games like Minecraft, Neverwinter Nights, and Dwarf Fortress.
 
-<img width="2369" height="1331" alt="image" src="https://github.com/user-attachments/assets/3a989241-9df4-4a45-b881-00e8521ff082" />
+<img width="2560" height="1326" alt="Screenshot_20260720_215809" src="https://github.com/user-attachments/assets/fca9ee4a-5b58-48e8-b6f4-d3aad8533fb8" />
 
 
 
