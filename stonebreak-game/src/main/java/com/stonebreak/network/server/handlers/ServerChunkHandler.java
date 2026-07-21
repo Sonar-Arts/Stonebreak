@@ -82,6 +82,19 @@ public final class ServerChunkHandler {
     private final LongIntHashMap lastSimEditTick = new LongIntHashMap();
     /** "Never sim-edited" default; far enough in the past to always be outside the grace. */
     private static final int NEVER_TICK = -1_000_000;
+
+    // ── Server-side chunk eviction ──
+    // The headless server world has no ChunkManager ring, so WITHOUT this sweep
+    // residency grows monotonically with exploration: every explored chunk stays
+    // resident forever — dirty-scan sweeps, auto-save batches, sim work and heap
+    // all grow without bound (observed: 30 s auto-saves climbing 473→2602 chunks).
+    // Every EVICT_PERIOD_TICKS, chunks outside EVERY player's keep ring
+    // (view + margin: gen ring +1, forget +2, hysteresis) save-then-unload via
+    // the store's existing path, capped per sweep to smooth bursts (e.g. a
+    // render-distance drop) across a few sweeps.
+    private static final int EVICT_PERIOD_TICKS = 100; // 5 s at 20 Hz
+    private static final int EVICT_KEEP_MARGIN = 6;
+    private static final int MAX_EVICTIONS_PER_SWEEP = 256;
     /** Grace (ticks) after a sim edit before the audit trusts a mismatch again — a little
      *  over the client's 10 s audit period, so the client has re-hashed post-settle state. */
     private static final int SIM_EDIT_AUDIT_GRACE_TICKS = 240; // 12 s at 20 Hz
@@ -165,6 +178,9 @@ public final class ServerChunkHandler {
         World world = ctx.world();
         if (world == null) {
             return;
+        }
+        if (tickCounter % EVICT_PERIOD_TICKS == 0) {
+            evictFarChunks(ctx, world);
         }
         // A version bump anywhere re-arms every player's scan once; the scan itself decides
         // per player whether the bumped chunk is in view (the per-cell version check).
@@ -269,6 +285,47 @@ public final class ServerChunkHandler {
             if (viewComplete) {
                 sp.clearViewScanPending();
             }
+        }
+    }
+
+    /**
+     * Unloads (save-then-unload) chunks outside every player's keep ring. Skips
+     * entirely while any player has no reported position yet (a fresh joiner far
+     * from the others must not get their surroundings evicted before their first
+     * position packet lands).
+     */
+    private void evictFarChunks(ServerWorldContext ctx, World world) {
+        var players = ctx.players();
+        if (players.isEmpty()) {
+            return; // idle server: keep residency; players return to warm chunks
+        }
+        for (ServerPlayer sp : players) {
+            if (sp.lastStateNs() == 0L && sp.lastCx() == Integer.MIN_VALUE) {
+                return;
+            }
+        }
+        int evicted = 0;
+        for (var pos : world.getLoadedChunkPositions()) {
+            boolean keep = false;
+            for (ServerPlayer sp : players) {
+                int pcx = (int) Math.floor(sp.x() / 16.0);
+                int pcz = (int) Math.floor(sp.z() / 16.0);
+                int keepRadius = sp.viewDistanceChunks() + EVICT_KEEP_MARGIN;
+                if (Math.max(Math.abs(pos.getX() - pcx), Math.abs(pos.getZ() - pcz)) <= keepRadius) {
+                    keep = true;
+                    break;
+                }
+            }
+            if (!keep) {
+                world.unloadChunk(pos.getX(), pos.getZ());
+                if (++evicted >= MAX_EVICTIONS_PER_SWEEP) {
+                    break;
+                }
+            }
+        }
+        if (evicted > 0) {
+            System.out.println("[SERVER-CHUNK] Evicted " + evicted + " far chunks ("
+                + world.getLoadedChunkCount() + " resident)");
         }
     }
 
