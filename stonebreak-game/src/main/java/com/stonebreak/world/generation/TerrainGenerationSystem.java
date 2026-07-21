@@ -10,6 +10,10 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.diffusion.DiffusionBridgeConfig;
+import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
+import com.stonebreak.world.generation.diffusion.TerrainTileSource;
+import com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
@@ -18,9 +22,9 @@ import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.heightmap.CavernCarver;
 import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
 import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
-import com.stonebreak.world.generation.noise.NoiseRouter;
 
 import java.util.BitSet;
+import com.stonebreak.world.chunk.utils.LocalBlockKey;
 import com.stonebreak.world.generation.terrain.MobGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -35,7 +39,6 @@ public class TerrainGenerationSystem {
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
     private final long seed;
-    private final NoiseRouter noiseRouter;
     private final HeightMapGenerator heightMapGenerator;
     private final BiomeManager biomeManager;
     private final OreGenerator oreGenerator;
@@ -51,11 +54,32 @@ public class TerrainGenerationSystem {
     private final Object animalRandomLock = new Object();
 
     public TerrainGenerationSystem(long seed) {
+        this(withServicesRunning(seed), new DiffusionTileCache(DiffusionBridgeConfig.fromSystemProperties(), seed));
+    }
+
+    /**
+     * Blocks until the local terrain-diffusion services are up and pinned to {@code seed}
+     * (starting/restarting them if needed — see {@link TerrainServiceProcessManager}), then
+     * returns the seed unchanged. A pass-through so it can sit in the constructor-delegation
+     * chain above without a separate init block.
+     */
+    private static long withServicesRunning(long seed) {
+        TerrainServiceProcessManager.getInstance().ensureRunningForSeed(seed);
+        return seed;
+    }
+
+    /**
+     * Test-only seam: injects a fake {@link TerrainTileSource} instead of the
+     * real HTTP-backed bridge client, so terrain-shape logic (cave carving,
+     * mesh consistency, etc.) can be exercised offline. Production code must
+     * always go through {@link #TerrainGenerationSystem(long)} — no fallback
+     * path, see plan.md Phase 2.
+     */
+    TerrainGenerationSystem(long seed, TerrainTileSource tileSource) {
         this.seed = seed;
         this.deterministicRandom = new DeterministicRandom(seed);
-        this.noiseRouter = new NoiseRouter(seed);
-        this.heightMapGenerator = new HeightMapGenerator(noiseRouter);
-        this.biomeManager = new BiomeManager(noiseRouter, heightMapGenerator);
+        this.heightMapGenerator = new HeightMapGenerator(tileSource);
+        this.biomeManager = new BiomeManager(tileSource);
         this.oreGenerator = new OreGenerator(deterministicRandom);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
         this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, seed);
@@ -71,28 +95,8 @@ public class TerrainGenerationSystem {
         return seed;
     }
 
-    public float getContinentalnessAt(int x, int z) {
-        return noiseRouter.continentalness(x, z);
-    }
-
-    public float getErosionAt(int x, int z) {
-        return noiseRouter.erosion(x, z);
-    }
-
-    public float getPeaksValleysAt(int x, int z) {
-        return noiseRouter.peaksValleys(x, z);
-    }
-
     public BiomeType getBiomeAt(int x, int z) {
         return biomeManager.getBiome(x, z);
-    }
-
-    public float getMoistureAt(int x, int z) {
-        return biomeManager.getMoisture(x, z);
-    }
-
-    public float getTemperatureAt(int x, int z) {
-        return biomeManager.getTemperature(x, z);
     }
 
     /** Continentalness-only base height (debug). */
@@ -191,7 +195,7 @@ public class TerrainGenerationSystem {
                 int worldX = baseX + x;
                 int worldZ = baseZ + z;
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
-                    int bit = (x << 12) | (y << 4) | z;
+                    int bit = LocalBlockKey.pack(x, y, z);
                     BlockType block;
                     if (y > 0 && y < height && formationMask.get(bit)) {
                         block = BlockType.STONE;

@@ -1,6 +1,7 @@
 package com.stonebreak.network.bridge;
 
 import com.stonebreak.world.chunk.utils.LocalBlockKey;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -36,8 +37,8 @@ public final class GameChunkMetaCodec {
 
     private static final int VERSION = 2;
     private static final byte[] EMPTY = new byte[0];
-    /** Sanity bound on entry counts (a chunk column holds 65 536 cells). */
-    private static final int MAX_ENTRIES = 16 * 16 * 256;
+    /** Sanity bound on entry counts (a chunk column holds this many cells). */
+    private static final int MAX_ENTRIES = 16 * 16 * WorldConfiguration.WORLD_HEIGHT;
 
     private GameChunkMetaCodec() {}
 

@@ -779,31 +779,8 @@ public class World {
     
     
     
-    /**
-     * Gets the continentalness value at the specified world position.
-     */
-    public float getContinentalnessAt(int x, int z) {
-        return terrainSystem.getContinentalnessAt(x, z);
-    }
-
     public BiomeType getBiomeAt(int x, int z) {
         return terrainSystem.getBiomeAt(x, z);
-    }
-
-    public float getMoistureAt(int x, int z) {
-        return terrainSystem.getMoistureAt(x, z);
-    }
-
-    public float getTemperatureAt(int x, int z) {
-        return terrainSystem.getTemperatureAt(x, z);
-    }
-
-    public float getErosionAt(int x, int z) {
-        return terrainSystem.getErosionAt(x, z);
-    }
-
-    public float getPeaksValleysAt(int x, int z) {
-        return terrainSystem.getPeaksValleysAt(x, z);
     }
 
     public int getBaseHeightAt(int x, int z) {

@@ -1,6 +1,7 @@
 package com.stonebreak.world.generation.heightmap;
-
+import com.stonebreak.world.chunk.utils.LocalBlockKey;
 import com.stonebreak.world.generation.NoiseGenerator;
+
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.ArrayDeque;
@@ -92,9 +93,14 @@ public final class PerlinWormCarver {
      */
     private static final float CONNECTOR_REACHED_DIST = BASE_RADIUS;
 
-    /** Carver origin Y range. */
-    private static final int ORIGIN_Y_MIN = 14;
-    private static final int ORIGIN_Y_MAX = 50;
+    /**
+     * Carver origin Y range. Expressed as a fraction of {@link WorldConfiguration#SEA_LEVEL}
+     * (the old 14-50 band's share of the old 64-block sea level) so worm tunnels stay
+     * spread through the underground column instead of clustering near bedrock now
+     * that SEA_LEVEL is much taller — same rationale as {@link CavernCarver#CAVERN_Y_MIN}.
+     */
+    private static final int ORIGIN_Y_MIN = WorldConfiguration.SEA_LEVEL * 14 / 64;
+    private static final int ORIGIN_Y_MAX = WorldConfiguration.SEA_LEVEL * 50 / 64;
     /** Termination Y bounds. */
     private static final int Y_FLOOR = 6;
     /** Stop carving once well above the local surface — the carver has fully breached. */
@@ -142,8 +148,8 @@ public final class PerlinWormCarver {
     }
 
     /**
-     * Builds the carve mask for a chunk. Bits are packed local positions
-     * {@code (x << 12) | (y << 4) | z}; set bits should be replaced with AIR
+     * Builds the carve mask for a chunk. Bits use {@link LocalBlockKey#pack(int,int,int)} packed local
+     * positions; set bits should be replaced with AIR
      * by the caller (only when the block would otherwise be solid).
      */
     public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights) {
@@ -450,7 +456,7 @@ public final class PerlinWormCarver {
                     if ((oy * oy) * invRy2 >= maxOyTerm) continue;
                     int by = wy + oy;
                     if (by < 1 || by >= WORLD_HEIGHT) continue;
-                    mask.set((bx << 12) | (by << 4) | bz);
+                    mask.set(LocalBlockKey.pack(bx, by, bz));
                 }
             }
         }

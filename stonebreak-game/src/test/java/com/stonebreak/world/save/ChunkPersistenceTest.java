@@ -8,6 +8,7 @@ import com.stonebreak.world.save.io.ChunkCodec;
 import com.stonebreak.world.save.io.ChunkStorage;
 import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.EntityData;
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -78,7 +79,7 @@ class ChunkPersistenceTest {
             try (DataInputStream blockIn = new DataInputStream(
                     new InflaterInputStream(new ByteArrayInputStream(compressed)))) {
                 CcoBlockStorage storage = chunk.getBlockStorage();
-                for (int y = 0; y < 256; y++) {
+                for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
                     for (int z = 0; z < 16; z++) {
                         for (int x = 0; x < 16; x++) {
                             int id = Short.toUnsignedInt(blockIn.readShort());
@@ -93,7 +94,7 @@ class ChunkPersistenceTest {
 
     private static ChunkData createSampleChunk(int chunkX, int chunkZ) {
         CcoPalettedChunkStorage blocks =
-            CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
+            CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
         BlockType[] palette = {
             BlockType.STONE,
             BlockType.GRASS,
@@ -103,7 +104,7 @@ class ChunkPersistenceTest {
         };
         Random random = new Random(12345L + chunkX * 31L + chunkZ * 17L);
         for (int x = 0; x < 16; x++) {
-            for (int y = 0; y < 256; y++) {
+            for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
                 for (int z = 0; z < 16; z++) {
                     blocks.set(x, y, z, palette[random.nextInt(palette.length)]);
                 }
@@ -188,7 +189,7 @@ class ChunkPersistenceTest {
         CcoBlockStorage expectedBlocks = expected.getBlockStorage();
         CcoBlockStorage actualBlocks = actual.getBlockStorage();
         for (int x = 0; x < 16; x++) {
-            for (int y = 0; y < 256; y++) {
+            for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
                 for (int z = 0; z < 16; z++) {
                     assertEquals(expectedBlocks.get(x, y, z), actualBlocks.get(x, y, z),
                         "Block mismatch at (" + x + "," + y + "," + z + ")");

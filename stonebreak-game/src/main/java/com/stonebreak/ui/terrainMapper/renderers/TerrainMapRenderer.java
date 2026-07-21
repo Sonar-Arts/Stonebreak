@@ -36,12 +36,17 @@ public final class TerrainMapRenderer {
 
         MPainter.fillRect(canvas, mapRect.x(), mapRect.y(), mapRect.width(), mapRect.height(), 0xFF0E0E0E);
 
+        state.applyPendingSeed();
+
         NoiseVisualizer visualizer = state.getVisualizers().get(state.getActiveVisualizer());
         TerrainPreviewCache cache = state.getPreviewCache();
+        // Keyed on the registry's seed, not the text field's — the two differ while a seed edit
+        // is still inside its quiet period, and caching under a seed the visualizers don't yet
+        // use would pin a stale image.
         cache.ensure((int) mapRect.width(), (int) mapRect.height(),
                 state.effectiveSampleStep(),
                 state.getActiveVisualizer(),
-                state.getResolvedSeed(),
+                state.getVisualizers().seed(),
                 visualizer,
                 state.getViewport());
 

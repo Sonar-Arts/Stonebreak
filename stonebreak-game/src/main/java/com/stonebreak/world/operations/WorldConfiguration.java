@@ -7,8 +7,8 @@ package com.stonebreak.world.operations;
 public class WorldConfiguration {
     // World constants
     public static final int CHUNK_SIZE = 16;
-    public static final int WORLD_HEIGHT = 256;
-    public static final int SEA_LEVEL = 64;
+    public static final int WORLD_HEIGHT = 1024;
+    public static final int SEA_LEVEL = 320;
 
     // Rendering settings
     public static final int DEFAULT_RENDER_DISTANCE = 8;

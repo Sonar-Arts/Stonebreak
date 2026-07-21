@@ -71,17 +71,26 @@ import java.util.zip.InflaterInputStream;
  *       only, so stacked snow reset on reload). v1/v2 chunks load with no
  *       tracked layers (every snow block reads as the 1-layer default).
  *       NOTE: v3 saves are unreadable by pre-v3 builds — one-way migration.</li>
+ *   <li>4 — {@code CHUNK_HEIGHT} 256 → 1024 (terrain-diffusion plan.md Phase 3),
+ *       coupled with the switch from spline terrain to the diffusion bridge
+ *       (plan.md Phase 2). Both the column height and the terrain under it
+ *       changed at once, so a v1-v3 chunk cannot be migrated in place: even
+ *       re-slotting its 256-tall block array into a 1024-tall column would
+ *       leave it standing next to diffusion-generated neighbors with an
+ *       unrelated shape and a hard seam at every boundary. Deliberate clean
+ *       break, not an oversight — {@code MIN_READ_VERSION} jumps to 4 and
+ *       older saves are rejected outright rather than silently corrupted.</li>
  * </ul>
  */
 public final class ChunkCodec {
 
     private static final int MAGIC = 0x5342434B; // 'SBCK'
     /** Current write version. */
-    private static final int VERSION = 3;
-    /** Earliest readable version. */
-    private static final int MIN_READ_VERSION = 1;
+    private static final int VERSION = 4;
+    /** Earliest readable version. Pre-v4 saves predate the 256→1024 world-height rescale and diffusion terrain switch; no migration path exists (see class javadoc). */
+    private static final int MIN_READ_VERSION = 4;
     private static final int CHUNK_WIDTH = 16;
-    private static final int CHUNK_HEIGHT = 256;
+    private static final int CHUNK_HEIGHT = com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT;
     private static final int BLOCK_COUNT = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_HEIGHT;
 
     private ChunkCodec() {
@@ -232,7 +241,7 @@ public final class ChunkCodec {
         for (Map.Entry<String, ChunkData.WaterBlockData> entry : metadata.entrySet()) {
             int[] coords = parseKey(entry.getKey());
             out.writeByte(coords[0]); // localX 0-15
-            out.writeShort(coords[1]); // y 0-255
+            out.writeShort(coords[1]); // y 0-(WORLD_HEIGHT-1)
             out.writeByte(coords[2]); // localZ 0-15
             out.writeByte(entry.getValue().level());
             out.writeBoolean(entry.getValue().falling());

@@ -547,10 +547,6 @@ public class DebugOverlay {
         BlockType blockBelow = world.getBlockAt(x, y - 1, z);
         String blockName = blockBelow != null ? blockBelow.name() : "Unknown";
 
-        // Noise channels driving terrain shape
-        float continentalness = world.getContinentalnessAt(x, z);
-        float erosion = world.getErosionAt(x, z);
-        float peaksValleys = world.getPeaksValleysAt(x, z);
         int baseHeight = world.getBaseHeightAt(x, z);
         int shapedHeight = world.getShapedHeightAt(x, z);
         int finalHeight = world.getFinalTerrainHeightAt(x, z);
@@ -566,11 +562,6 @@ public class DebugOverlay {
         panel.section("Terrain");
         panel.row("Block Below", blockName);
         panel.row("Biome", biome.name());
-        panel.row("Temperature", String.format("%.3f", world.getTemperatureAt(x, z)));
-        panel.row("Moisture", String.format("%.3f", world.getMoistureAt(x, z)));
-        panel.row("Continentalness", String.format("%.3f", continentalness));
-        panel.row("Erosion", String.format("%.3f", erosion));
-        panel.row("Peaks/Valleys", String.format("%.3f", peaksValleys));
         panel.row("Height", String.format("%d base / %d shaped (%+d) / %d final (%+d detail)",
                 baseHeight, shapedHeight, shapedHeight - baseHeight,
                 finalHeight, finalHeight - shapedHeight));

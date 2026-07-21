@@ -150,3 +150,7 @@ QWEN.md
 
 # OpenCode
 .opencode/
+
+# Terrain bridge (Phase 1) — venv and on-disk tile cache
+/terrain-bridge/venv/
+/terrain-bridge/tile_cache/

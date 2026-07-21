@@ -167,7 +167,12 @@ public final class TerrainMouseHandler {
             state.clearHoverValue();
             return;
         }
-        float raw = visualizer.sample(worldX, worldZ);
-        state.setHoverValue(worldX, worldZ, raw);
+        try {
+            state.setHoverValue(worldX, worldZ, visualizer.sample(worldX, worldZ));
+        } catch (com.stonebreak.world.generation.diffusion.TerrainBridgeException e) {
+            // Same reasoning as TerrainPreviewCache: a bridge blip blanks the readout, it
+            // doesn't crash the screen.
+            state.clearHoverValue();
+        }
     }
 }

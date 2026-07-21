@@ -43,6 +43,8 @@ module stonebreak.game {
     requires java.management;
     requires java.logging;
     requires java.sql;        // SQLite JDBC driver for FastLod persistent cache
+    requires java.net.http;   // DiffusionTerrainClient (terrain bridge HTTP client)
+    requires static jdk.httpserver; // test-only: DiffusionTerrainClientTest stubs the bridge with com.sun.net.httpserver
 
     // JUnit 5 for testing (requires static = compile-time only)
 

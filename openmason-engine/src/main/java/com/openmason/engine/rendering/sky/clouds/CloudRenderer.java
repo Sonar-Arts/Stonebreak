@@ -40,8 +40,8 @@ public class CloudRenderer {
     private static final float COVERAGE = 0.45f;
     /** Seed for the (fixed) cloud formation pattern. */
     private static final long PATTERN_SEED = 20260517L;
-    /** Altitude of the cloud layer, in world units (world is 256 tall). */
-    private static final float CLOUD_Y = 192.0f;
+    /** Altitude of the cloud layer, in world units (world is 1024 tall). */
+    private static final float CLOUD_Y = 768.0f;
     /** Horizontal drift speed of the cloud layer, in units per second. */
     private static final float DRIFT_SPEED = 0.6f;
     /** Base opacity of the clouds. */

@@ -1341,6 +1341,11 @@ public class Main {
     private void cleanup() {
         Game.logDetailedMemoryInfo("Before cleanup");
 
+        // Stop the terrain-diffusion service processes (if this session started any) before the
+        // rest of cleanup. Independent of the GL context, so safe to run first; also registered
+        // as a JVM shutdown hook as a safety net if cleanup() itself never runs (crash/kill -9).
+        com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager.getInstance().shutdown();
+
         // CRITICAL: Clean up OpenGL resources BEFORE destroying the window
         // OpenGL context must be current when cleaning up OpenGL resources
 

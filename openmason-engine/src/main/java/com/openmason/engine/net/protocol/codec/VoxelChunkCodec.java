@@ -16,7 +16,7 @@ import java.util.Map;
 /**
  * Section-paletted chunk serialization, modelled on Minecraft's chunk format.
  *
- * <p>A chunk (16×256×16) is split into 16 vertical sections of 16×16×16. Each section is
+ * <p>A chunk (16×1024×16) is split into 64 vertical sections of 16×16×16. Each section is
  * encoded as one of:
  * <ul>
  *   <li><b>SINGLE (tag 0)</b> + short blockId — all 4096 blocks identical (the typical
@@ -39,7 +39,7 @@ import java.util.Map;
 public final class VoxelChunkCodec {
 
     public static final int CHUNK_W = 16;
-    public static final int CHUNK_H = 256;
+    public static final int CHUNK_H = 1024;
     public static final int SECTION_H = 16;
     public static final int SECTIONS_PER_CHUNK = CHUNK_H / SECTION_H;
     public static final int BLOCKS_PER_SECTION = CHUNK_W * SECTION_H * CHUNK_W;

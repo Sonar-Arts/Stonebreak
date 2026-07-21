@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.heightmap;
 
+import com.stonebreak.world.chunk.utils.LocalBlockKey;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.BitSet;
@@ -19,9 +20,13 @@ import java.util.Random;
 public final class MegaCavernCarver {
     /** 1 in N chunks spawns a megacavern. Higher => rarer. */
     private static final int MEGA_CAVERN_CHUNK_DIVISOR = 256;
-    /** Megacavern center Y range — broader than normal caverns. */
-    private static final int CAVERN_Y_MIN = 8;
-    private static final int CAVERN_Y_MAX = 50;
+    /**
+     * Megacavern center Y range — broader than normal caverns. Expressed as a fraction
+     * of {@link WorldConfiguration#SEA_LEVEL} (the old 8-50 band's share of the old
+     * 64-block sea level), same rationale as {@link CavernCarver#CAVERN_Y_MIN}.
+     */
+    private static final int CAVERN_Y_MIN = WorldConfiguration.SEA_LEVEL * 8 / 64;
+    private static final int CAVERN_Y_MAX = WorldConfiguration.SEA_LEVEL * 50 / 64;
 
     /** Mean blob radius (blocks). Final radius per blob is BASE_RADIUS * [0.75 .. 1.20]. */
     private static final float BASE_RADIUS = 18f;
@@ -113,8 +118,8 @@ public final class MegaCavernCarver {
 
     /**
      * Builds the megacavern carve mask and formation (stalagmite/stalactite) mask for
-     * the target chunk. Both bitsets use the packed local position
-     * {@code (x << 12) | (y << 4) | z}. Caller must apply formationMask as STONE
+     * the target chunk. Both bitsets use {@link LocalBlockKey#pack(int,int,int)} packed local positions.
+     * Caller must apply formationMask as STONE
      * after applying carveMask as AIR (or apply formations inside the carved volume).
      */
     public Result buildForChunk(int chunkX, int chunkZ, int[] targetHeights) {
@@ -180,7 +185,7 @@ public final class MegaCavernCarver {
                     int by = wyi + oy;
                     if (by < 1 || by >= WORLD_HEIGHT) continue;
                     if (by >= surface) continue;
-                    mask.set((bx << 12) | (by << 4) | bz);
+                    mask.set(LocalBlockKey.pack(bx, by, bz));
                 }
             }
         }
@@ -195,7 +200,7 @@ public final class MegaCavernCarver {
                 int floorY = -1;
                 int ceilY = -1;
                 for (int by = 1; by < WORLD_HEIGHT; by++) {
-                    if (carve.get((bx << 12) | (by << 4) | bz)) {
+                    if (carve.get(LocalBlockKey.pack(bx, by, bz))) {
                         if (floorY < 0) floorY = by;
                         ceilY = by;
                     }
@@ -215,19 +220,19 @@ public final class MegaCavernCarver {
                     stalactiteH = (int) ((long) stalactiteH * gap / total);
                 }
 
-                if (stalagH > 0 && floorY > 0 && !carve.get((bx << 12) | ((floorY - 1) << 4) | bz)) {
+                if (stalagH > 0 && floorY > 0 && !carve.get(LocalBlockKey.pack(bx, floorY - 1, bz))) {
                     for (int h = 0; h < stalagH; h++) {
                         int by = floorY + h;
                         if (by > ceilY) break;
-                        formations.set((bx << 12) | (by << 4) | bz);
+                        formations.set(LocalBlockKey.pack(bx, by, bz));
                     }
                 }
                 if (stalactiteH > 0 && ceilY < WORLD_HEIGHT - 1
-                        && !carve.get((bx << 12) | ((ceilY + 1) << 4) | bz)) {
+                        && !carve.get(LocalBlockKey.pack(bx, ceilY + 1, bz))) {
                     for (int h = 0; h < stalactiteH; h++) {
                         int by = ceilY - h;
                         if (by < floorY) break;
-                        formations.set((bx << 12) | (by << 4) | bz);
+                        formations.set(LocalBlockKey.pack(bx, by, bz));
                     }
                 }
             }

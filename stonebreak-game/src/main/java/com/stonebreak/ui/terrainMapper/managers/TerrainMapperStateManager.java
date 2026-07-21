@@ -46,6 +46,8 @@ public final class TerrainMapperStateManager {
     private String seedText = "";
     private ActiveField activeField = ActiveField.WORLD_NAME;
     private String errorMessage;
+    private boolean seedDirty;
+    private long seedDirtyAtNanos;
 
     // ─────────────────────────────────────────────── Visualization
     private VisualizerKind activeVisualizer = VisualizerKind.HEIGHT;
@@ -225,8 +227,32 @@ public final class TerrainMapperStateManager {
         refreshSeed();
     }
 
+    /**
+     * Marks the seed as changed without touching the visualizers. The rebuild is deferred to
+     * {@link #applyPendingSeed()} because it restarts the local terrain-diffusion processes,
+     * which takes seconds and cannot happen once per keystroke.
+     */
     private void refreshSeed() {
-        visualizers.rebuild(getResolvedSeed());
+        this.seedDirty = true;
+        this.seedDirtyAtNanos = System.nanoTime();
+    }
+
+    /**
+     * Rebuilds the visualizers if the seed changed and has been stable for
+     * {@link TerrainMapperConfig#SEED_APPLY_DELAY_NANOS}. Called from the render path, so a
+     * screen that is no longer being drawn (after {@link #reset()}, say) never restarts the
+     * terrain services behind the back of whoever owns them now.
+     */
+    public void applyPendingSeed() {
+        if (seedDirty) {
+            if (System.nanoTime() - seedDirtyAtNanos < TerrainMapperConfig.SEED_APPLY_DELAY_NANOS) return;
+            seedDirty = false;
+            long resolved = getResolvedSeed();
+            if (resolved != visualizers.seed()) {
+                visualizers.rebuild(resolved);
+            }
+        }
+        visualizers.ensureServices();
     }
 
     private static long deriveSeed(String text) {
@@ -319,9 +345,12 @@ public final class TerrainMapperStateManager {
         hasHoverValue = false;
         clearSpawnPoint();
         viewport.reset();
-        long newSeed = new java.util.Random().nextLong();
-        seedText = Long.toString(newSeed);
-        visualizers.rebuild(newSeed);
+        seedText = Long.toString(new java.util.Random().nextLong());
+        // Deliberately deferred, not rebuilt here: reset() runs on the way *out* of this screen
+        // (back, or world created), and rebuilding would restart the terrain services for a
+        // throwaway random seed — racing the world's own ensureRunningForSeed and killing the
+        // bridge out from under any tile fetch still in flight.
+        refreshSeed();
     }
 
     public void dispose() {

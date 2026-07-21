@@ -44,5 +44,13 @@ public final class TerrainMapperConfig {
 
     /** After a wheel-zoom, keep interactive quality this long before resampling at hi-res. */
     public static final long ZOOM_COOLDOWN_NANOS = 180_000_000L;
+
+    /**
+     * Quiet period after the last seed edit before the visualizers are rebuilt. Rebuilding
+     * restarts the two local terrain-diffusion processes (they can't be reseeded in place —
+     * see TerrainServiceProcessManager), so typing a seed character-by-character must not
+     * trigger one restart per keystroke.
+     */
+    public static final long SEED_APPLY_DELAY_NANOS = 500_000_000L;
 }
 

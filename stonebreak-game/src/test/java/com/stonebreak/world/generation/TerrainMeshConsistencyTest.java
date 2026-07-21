@@ -11,6 +11,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.TestWorld;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.MmsCcoAdapter;
+import com.stonebreak.world.generation.diffusion.FakeTerrainTileSource;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -94,7 +95,7 @@ public class TerrainMeshConsistencyTest {
 
     @Test
     public void renderedTerrainMatchesGeneratedTerrain() {
-        terrain = new TerrainGenerationSystem(SEED);
+        terrain = new TerrainGenerationSystem(SEED, new FakeTerrainTileSource());
         world = new TestWorld(new WorldConfiguration(8, 4), SEED, true);
         adapter = new MmsCcoAdapter(new StubTextureMapper(), world);
 
@@ -374,8 +375,10 @@ public class TerrainMeshConsistencyTest {
     }
 
     private static long key3(int x, int y, int z) {
-        // x,z in roughly [-2^20, 2^20], y in [0,256] — pack into one long.
-        return (((long) (x & 0x1FFFFF)) << 43) | (((long) (y & 0x1FF)) << 21) | (z & 0x1FFFFFL);
+        // x,z in roughly [-2^20, 2^20], y in [0,WORLD_HEIGHT) — pack into one long.
+        // y needs 10 bits for WORLD_HEIGHT=1024 (was 9, sized for the old 256); still fits
+        // well clear of x's bits 43-63.
+        return (((long) (x & 0x1FFFFF)) << 43) | (((long) (y & 0x3FF)) << 21) | (z & 0x1FFFFFL);
     }
 
     private static boolean approxEqual(float a, float b) {

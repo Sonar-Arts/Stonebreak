@@ -3,10 +3,13 @@ package com.stonebreak.ui.terrainMapper.managers;
 import com.stonebreak.ui.terrainMapper.components.TerrainMapViewport;
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
+import com.stonebreak.world.generation.diffusion.TerrainBridgeException;
 import io.github.humbleui.skija.ColorAlphaType;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.ImageInfo;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.IntStream;
 
 /**
@@ -28,6 +31,9 @@ import java.util.stream.IntStream;
  */
 public final class TerrainPreviewCache {
 
+    private static final Logger LOG = Logger.getLogger(TerrainPreviewCache.class.getName());
+    private static final long FAILURE_BACKOFF_NANOS = 1_000_000_000L;
+
     private Image image;
     private int[] pixelBuffer;
 
@@ -37,6 +43,9 @@ public final class TerrainPreviewCache {
     private VisualizerKind cachedKind;
     private long cachedSeed;
     private int cachedViewportStamp;
+
+    /** Wall-clock nanos until which rebuilds are skipped after a bridge failure. */
+    private long retryAfterNanos;
 
     public Image image() { return image; }
 
@@ -58,7 +67,16 @@ public final class TerrainPreviewCache {
                 || cachedSeed != seed
                 || cachedViewportStamp != viewport.stamp();
         if (!changed) return;
-        rebuild(widthPx, heightPx, step, kind, seed, visualizer, viewport);
+        if (System.nanoTime() < retryAfterNanos) return;
+        try {
+            rebuild(widthPx, heightPx, step, kind, seed, visualizer, viewport);
+        } catch (TerrainBridgeException e) {
+            // The preview is a convenience view, not world data, so a bridge blip (typically the
+            // services restarting for a new seed) must not take the game down the way it rightly
+            // does during chunk generation. Keep the last good image and back off before retrying.
+            retryAfterNanos = System.nanoTime() + FAILURE_BACKOFF_NANOS;
+            LOG.log(Level.WARNING, "terrain preview sampling failed; keeping previous image", e);
+        }
     }
 
     public void dispose() {
