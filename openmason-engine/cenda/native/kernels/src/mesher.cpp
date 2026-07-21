@@ -2,10 +2,24 @@
  * Semantics are a 1:1 port of the Java MmsCcoAdapter cube path and
  * VertexLightSampler (smooth + flat modes) — the Java parity test compares
  * output bit-for-bit, so any change here must mirror the Java sampler exactly.
- * No libm is used; float ops are portable with -ffp-contract=off. */
+ * No libm is used; float ops are portable with -ffp-contract=off.
+ *
+ * Two culling implementations produce BYTE-IDENTICAL output (same quads, same
+ * order, same floats — enforced by the C++ scalar-vs-bitmask memcmp fuzz test):
+ *  - scalar: the original per-cell 6-probe loop (CENDA_MESHER_IMPL=scalar).
+ *  - bitmask (default): one linear classification sweep builds z-packed
+ *    uint16 row masks (bit = lz, row = lx*256 + ly), then all six face-cull
+ *    masks per row are a couple of ANDs/shifts; tzcnt iteration over the set
+ *    bits skips empty/buried cells without touching them. Only face EXISTENCE
+ *    is bitmasked — per-corner lighting runs unchanged on emitted faces, and
+ *    transparent cubes (per-id `adj != id` rule, not class-maskable) fall back
+ *    to the scalar probe per cell. Portable <bit> ops only, no intrinsics. */
 #include "cenda/kernels.h"
 
+#include <bit>
 #include <cstddef>
+#include <cstdlib>
+#include <cstring>
 
 namespace {
 
@@ -136,6 +150,220 @@ float aoFactor(const MeshInput& in, int ivx, int ivy, int ivz, int face) {
     return 1.0f - AO_PER_NEIGHBOR * static_cast<float>(count);
 }
 
+/* The exact scalar cull rule, shared by the scalar path and the bitmask
+ * path's transparent-cube cells (whose `adj != id` test is per-id). */
+bool renderFace(const MeshInput& in, int32_t id, bool selfTransparent,
+                int lx, int ly, int lz, int face) {
+    const int32_t adj = in.adjacentId(lx + FACE_DX[face], ly + FACE_DY[face],
+                                      lz + FACE_DZ[face]);
+    if (adj == in.airId) return true;
+    if (selfTransparent) return adj != id;
+    return (in.classOf(adj) & CK_CLASS_TRANSPARENT) != 0;
+}
+
+struct EmitState {
+    float* out;
+    int32_t cap;
+    int32_t quads = 0;
+    int32_t needed = 0;
+};
+
+void emitQuad(const MeshInput& in, EmitState& es, int lx, int ly, int lz,
+              int face, int32_t id, bool smooth) {
+    es.needed++;
+    if (es.quads >= es.cap) {
+        return; // keep counting so the caller can retry sized
+    }
+    float* q = es.out + static_cast<ptrdiff_t>(es.quads) * 9;
+    q[0] = static_cast<float>(lx);
+    q[1] = static_cast<float>(ly);
+    q[2] = static_cast<float>(lz);
+    q[3] = static_cast<float>(face);
+    q[4] = static_cast<float>(id);
+    for (int c = 0; c < 4; c++) {
+        const int ivx = lx + FACE_OFFSETS[face][c][0];
+        const int ivy = ly + FACE_OFFSETS[face][c][1];
+        const int ivz = lz + FACE_OFFSETS[face][c][2];
+        float light = skyFactor(in, ivx, ivy, ivz, face, smooth);
+        if (smooth) {
+            light *= aoFactor(in, ivx, ivy, ivz, face);
+        }
+        q[5 + c] = light;
+    }
+    es.quads++;
+}
+
+/* ─────────────────────────── scalar path ─────────────────────────── */
+
+int32_t meshScalar(const MeshInput& in, int max_y, bool smooth,
+                   float* out_quads, int32_t cap_quads) {
+    EmitState es{out_quads, cap_quads};
+    for (int lx = 0; lx < CS; lx++) {
+        for (int ly = 0; ly <= max_y; ly++) {
+            for (int lz = 0; lz < CS; lz++) {
+                const int32_t id = in.blocks[(ly * CS + lz) * CS + lx];
+                const uint8_t cls = in.classOf(id);
+                if ((cls & CK_CLASS_CUBE) == 0) {
+                    continue;
+                }
+                const bool selfTransparent = (cls & CK_CLASS_TRANSPARENT) != 0;
+                for (int face = 0; face < 6; face++) {
+                    if (renderFace(in, id, selfTransparent, lx, ly, lz, face)) {
+                        emitQuad(in, es, lx, ly, lz, face, id, smooth);
+                    }
+                }
+            }
+        }
+    }
+    return (es.needed > es.cap) ? -es.needed : es.quads;
+}
+
+/* ─────────────────────────── bitmask path ───────────────────────────
+ *
+ * Row layout: uint16 per (lx, ly), bit = lz. All six neighbor directions are
+ * one row lookup (±x: adjacent lx column or a border table; ±y: adjacent ly
+ * row or all-air 0xFFFF at the world caps; ±z: a 1-bit shift of the row with
+ * the border bit injected). Ascending (lx, ly, tzcnt-lz, face) iteration
+ * reproduces the scalar emission order exactly. */
+
+struct Masks {
+    uint16_t opq[CS * WH];   // opaque cubes (CUBE set, TRANSPARENT clear)
+    uint16_t tcube[CS * WH]; // transparent cubes (CUBE and TRANSPARENT)
+    uint16_t n[CS * WH];     // "renderable-against": air OR transparent class
+    uint16_t pxnN[WH];       // N-predicate of plane_xn, bit = z (NULL plane = air)
+    uint16_t pxpN[WH];
+    uint16_t znN[WH];        // N-predicate of plane_zn, bit = x
+    uint16_t zpN[WH];
+};
+
+/* One linear sweep over blocks[] in memory order classifies every cell once.
+ * Build range must reach maxYb = min(max_y+1, 255): cells above max_y are
+ * never emitted but ARE read as +y neighbors (the scalar path probes real
+ * block data there). */
+void buildMasks(const MeshInput& in, int maxYb, Masks& m) {
+    std::memset(m.opq, 0, sizeof(m.opq));
+    std::memset(m.tcube, 0, sizeof(m.tcube));
+    std::memset(m.n, 0, sizeof(m.n));
+
+    for (int y = 0; y <= maxYb; y++) {
+        for (int z = 0; z < CS; z++) {
+            const int16_t* row = in.blocks + static_cast<ptrdiff_t>(y * CS + z) * CS;
+            const auto zbit = static_cast<uint16_t>(1u << z);
+            for (int x = 0; x < CS; x++) {
+                const int32_t id = row[x];
+                if (id == in.airId) {
+                    m.n[x * WH + y] = static_cast<uint16_t>(m.n[x * WH + y] | zbit);
+                    continue;
+                }
+                const uint8_t c = in.classOf(id);
+                if ((c & CK_CLASS_TRANSPARENT) != 0) {
+                    m.n[x * WH + y] = static_cast<uint16_t>(m.n[x * WH + y] | zbit);
+                    if ((c & CK_CLASS_CUBE) != 0) {
+                        m.tcube[x * WH + y] = static_cast<uint16_t>(m.tcube[x * WH + y] | zbit);
+                    }
+                } else if ((c & CK_CLASS_CUBE) != 0) {
+                    m.opq[x * WH + y] = static_cast<uint16_t>(m.opq[x * WH + y] | zbit);
+                }
+            }
+        }
+    }
+
+    for (int y = 0; y < WH; y++) {
+        uint16_t xn = 0, xp = 0, zn = 0, zp = 0;
+        if (y <= maxYb) {
+            if (in.planeXn == nullptr) xn = 0xFFFF;
+            if (in.planeXp == nullptr) xp = 0xFFFF;
+            if (in.planeZn == nullptr) zn = 0xFFFF;
+            if (in.planeZp == nullptr) zp = 0xFFFF;
+            for (int i = 0; i < CS; i++) {
+                const auto bit = static_cast<uint16_t>(1u << i);
+                if (in.planeXn != nullptr) {
+                    const int32_t id = in.planeXn[y * CS + i]; // i = z
+                    if (id == in.airId || (in.classOf(id) & CK_CLASS_TRANSPARENT) != 0) {
+                        xn = static_cast<uint16_t>(xn | bit);
+                    }
+                }
+                if (in.planeXp != nullptr) {
+                    const int32_t id = in.planeXp[y * CS + i];
+                    if (id == in.airId || (in.classOf(id) & CK_CLASS_TRANSPARENT) != 0) {
+                        xp = static_cast<uint16_t>(xp | bit);
+                    }
+                }
+                if (in.planeZn != nullptr) {
+                    const int32_t id = in.planeZn[y * CS + i]; // i = x
+                    if (id == in.airId || (in.classOf(id) & CK_CLASS_TRANSPARENT) != 0) {
+                        zn = static_cast<uint16_t>(zn | bit);
+                    }
+                }
+                if (in.planeZp != nullptr) {
+                    const int32_t id = in.planeZp[y * CS + i];
+                    if (id == in.airId || (in.classOf(id) & CK_CLASS_TRANSPARENT) != 0) {
+                        zp = static_cast<uint16_t>(zp | bit);
+                    }
+                }
+            }
+        }
+        m.pxnN[y] = xn;
+        m.pxpN[y] = xp;
+        m.znN[y] = zn;
+        m.zpN[y] = zp;
+    }
+}
+
+int32_t meshBitmask(const MeshInput& in, int max_y, bool smooth, const Masks& m,
+                    float* out_quads, int32_t cap_quads) {
+    EmitState es{out_quads, cap_quads};
+    for (int lx = 0; lx < CS; lx++) {
+        const uint16_t* selfNCol = &m.n[lx * WH];
+        const uint16_t* westN = (lx > 0) ? &m.n[(lx - 1) * WH] : m.pxnN;
+        const uint16_t* eastN = (lx < CS - 1) ? &m.n[(lx + 1) * WH] : m.pxpN;
+        for (int ly = 0; ly <= max_y; ly++) {
+            const uint16_t opq = m.opq[lx * WH + ly];
+            const uint16_t tc = m.tcube[lx * WH + ly];
+            if ((opq | tc) == 0) {
+                continue; // all-air / non-cube row: 2 loads and done
+            }
+            const uint16_t selfN = selfNCol[ly];
+            const uint16_t fTop = static_cast<uint16_t>(
+                opq & ((ly < WH - 1) ? selfNCol[ly + 1] : uint16_t{0xFFFF}));
+            const uint16_t fBottom = static_cast<uint16_t>(
+                opq & ((ly > 0) ? selfNCol[ly - 1] : uint16_t{0xFFFF}));
+            const uint16_t znBit = static_cast<uint16_t>((m.znN[ly] >> lx) & 1u);
+            const uint16_t zpBit = static_cast<uint16_t>((m.zpN[ly] >> lx) & 1u);
+            const uint16_t fNorth = static_cast<uint16_t>(
+                opq & static_cast<uint16_t>((selfN << 1) | znBit));
+            const uint16_t fSouth = static_cast<uint16_t>(
+                opq & static_cast<uint16_t>((selfN >> 1) | (zpBit << 15)));
+            const uint16_t fEast = static_cast<uint16_t>(opq & eastN[ly]);
+            const uint16_t fWest = static_cast<uint16_t>(opq & westN[ly]);
+
+            uint32_t any = static_cast<uint32_t>(
+                fTop | fBottom | fNorth | fSouth | fEast | fWest | tc);
+            while (any != 0) {
+                const int lz = std::countr_zero(any);
+                any &= any - 1;
+                const int32_t id = in.blocks[(ly * CS + lz) * CS + lx];
+                if (((tc >> lz) & 1u) != 0) {
+                    // Transparent cube: the per-id adj != id rule needs real probes.
+                    for (int face = 0; face < 6; face++) {
+                        if (renderFace(in, id, true, lx, ly, lz, face)) {
+                            emitQuad(in, es, lx, ly, lz, face, id, smooth);
+                        }
+                    }
+                } else {
+                    const uint16_t faceBits[6] = {fTop, fBottom, fNorth, fSouth, fEast, fWest};
+                    for (int face = 0; face < 6; face++) {
+                        if (((faceBits[face] >> lz) & 1u) != 0) {
+                            emitQuad(in, es, lx, ly, lz, face, id, smooth);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return (es.needed > es.cap) ? -es.needed : es.quads;
+}
+
 } // namespace
 
 extern "C" int32_t ck_mesh_chunk(const int16_t* blocks,
@@ -158,58 +386,12 @@ extern "C" int32_t ck_mesh_chunk(const int16_t* blocks,
                        plane_xn, plane_xp, plane_zn, plane_zp,
                        corner_nn, corner_pn, corner_np, corner_pp, heights};
 
-    int32_t quads = 0;
-    int32_t needed = 0;
-
-    for (int lx = 0; lx < CS; lx++) {
-        for (int ly = 0; ly <= max_y; ly++) {
-            for (int lz = 0; lz < CS; lz++) {
-                const int32_t id = blocks[(ly * CS + lz) * CS + lx];
-                const uint8_t cls = in.classOf(id);
-                if ((cls & CK_CLASS_CUBE) == 0) {
-                    continue;
-                }
-                const bool selfTransparent = (cls & CK_CLASS_TRANSPARENT) != 0;
-
-                for (int face = 0; face < 6; face++) {
-                    const int32_t adj = in.adjacentId(lx + FACE_DX[face], ly + FACE_DY[face],
-                                                      lz + FACE_DZ[face]);
-                    bool render;
-                    if (adj == air_id) {
-                        render = true;
-                    } else if (selfTransparent) {
-                        render = adj != id;
-                    } else {
-                        render = (in.classOf(adj) & CK_CLASS_TRANSPARENT) != 0;
-                    }
-                    if (!render) {
-                        continue;
-                    }
-
-                    needed++;
-                    if (quads >= cap_quads) {
-                        continue; // keep counting so the caller can retry sized
-                    }
-                    float* q = out_quads + static_cast<ptrdiff_t>(quads) * 9;
-                    q[0] = static_cast<float>(lx);
-                    q[1] = static_cast<float>(ly);
-                    q[2] = static_cast<float>(lz);
-                    q[3] = static_cast<float>(face);
-                    q[4] = static_cast<float>(id);
-                    for (int c = 0; c < 4; c++) {
-                        const int ivx = lx + FACE_OFFSETS[face][c][0];
-                        const int ivy = ly + FACE_OFFSETS[face][c][1];
-                        const int ivz = lz + FACE_OFFSETS[face][c][2];
-                        float light = skyFactor(in, ivx, ivy, ivz, face, smooth);
-                        if (smooth) {
-                            light *= aoFactor(in, ivx, ivy, ivz, face);
-                        }
-                        q[5 + c] = light;
-                    }
-                    quads++;
-                }
-            }
-        }
+    const char* impl = std::getenv("CENDA_MESHER_IMPL");
+    if (impl != nullptr && std::strcmp(impl, "scalar") == 0) {
+        return meshScalar(in, max_y, smooth, out_quads, cap_quads);
     }
-    return (needed > cap_quads) ? -needed : quads;
+
+    Masks m;
+    buildMasks(in, (max_y + 1 < WH) ? max_y + 1 : WH - 1, m);
+    return meshBitmask(in, max_y, smooth, m, out_quads, cap_quads);
 }

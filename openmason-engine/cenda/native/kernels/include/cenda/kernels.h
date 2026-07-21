@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#define CK_ABI_VERSION 1
+#define CK_ABI_VERSION 2
 
 /* ABI handshake — Java refuses to use the lib if this doesn't match. */
 int32_t ck_abi_version(void);
@@ -130,6 +130,66 @@ int64_t ck_carve_worms(void* ctx, int32_t chunk_x, int32_t chunk_z,
                        int32_t n_anchors, const int32_t* anchor_chunks,
                        const float* anchors,
                        uint64_t* out_mask);
+
+/* ════════════════════ Fused chunk generator ════════════════════
+ *
+ * One call generates a chunk's full block volume: worm carve + cavern &
+ * megacavern carve/formations + 3D cave density + biome block fill + sky
+ * heightmap. Intermediates (carve masks, density volume) never cross the FFM
+ * boundary. Java keeps: height/biome computation (passed in), features,
+ * water layer, snow, chunk installation.
+ *
+ * Bit-identical to the mixed path (native worms + Java caverns + Java fill)
+ * given identical inputs; NOT bit-identical to the pure-Java noise backend —
+ * callers gate on the native backend exactly like the standalone carver.
+ * Cavern-connector anchors are computed natively (pure integer/LCG/float
+ * math, bit-identical to PerlinWormCarver.cavernAnchorFor).
+ *
+ * ck_chunkgen_create:
+ *  - terrain channel/spline params: same 11 as ck_terrain_create.
+ *  - density_*: the Density3D cave-noise node (built via the simplex-fbm
+ *    convenience, frequency inside the node).
+ *  - block_ids: [air, water, stone, bedrock, magma].
+ *  - biome tables: n_biomes entries each, indexed by BiomeType ordinal;
+ *    flags bit0 = magma host biome, bit1 = dry-below-sea biome.
+ *  - magma_feature_hash: Java "magma".hashCode() (DeterministicRandom stream).
+ *  - opacity_table: per block id, 1 = opaque for the sky heightmap
+ *    (BlockOpacity.isOpaque); ids >= opacity_table_len are non-opaque.
+ *
+ * ck_generate_chunk:
+ *  - heights/biomes: 256 entries, [x*16 + z] (populateChunkHeights layout);
+ *    biomes are BiomeType ordinals into the create-time tables.
+ *  - out_blocks: 65536 int16, idx = y*256 + z*16 + x (mesher layout ==
+ *    16 concatenated CCO sections).
+ *  - out_heightmap: 256 int32, [z*16 + x] (ChunkHeightMap layout), Y+1 of the
+ *    topmost opaque block per column, 0 = sky all the way down. NULL to skip.
+ *  - Returns the non-air block count (>= 0), or negative on bad args. */
+
+void* ck_chunkgen_create(
+    int64_t seed,
+    const int32_t* ch_seeds, const int32_t* ch_octaves,
+    const float* ch_gain, const float* ch_lacunarity, const float* ch_freq,
+    const int32_t* ch_xoff, const int32_t* ch_zoff,
+    const double* spline_xs, const double* spline_ys, const int32_t* spline_sizes,
+    float detail_amplitude,
+    int32_t density_seed, int32_t density_octaves,
+    float density_gain, float density_lacunarity, float density_freq,
+    const int32_t* block_ids,
+    int32_t n_biomes,
+    const int16_t* biome_surface_id, const int16_t* biome_subsurface_id,
+    const float* biome_cave_intensity, const float* biome_overhang_intensity,
+    const uint8_t* biome_flags,
+    int32_t magma_feature_hash, float magma_chance,
+    const uint8_t* opacity_table, int32_t opacity_table_len);
+
+#define CK_BIOME_MAGMA 1u          /* biome hosts deep magma pockets            */
+#define CK_BIOME_DRY_BELOW_SEA 2u  /* suppress sub-sea WATER when surface > sea */
+
+void ck_chunkgen_destroy(void* ctx);
+
+int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
+                          const int32_t* heights, const int32_t* biomes,
+                          int16_t* out_blocks, int32_t* out_heightmap);
 
 /* ════════════════════════ zstd codec ════════════════════════ */
 

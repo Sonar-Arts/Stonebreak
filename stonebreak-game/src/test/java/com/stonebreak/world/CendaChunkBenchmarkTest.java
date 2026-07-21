@@ -63,11 +63,25 @@ class CendaChunkBenchmarkTest {
             null, null, null, null, heights, maxY, true, out);
         System.out.printf("mesher: %d quads from real chunk (maxY=%d)%n", quads, maxY);
 
+        // Correctness pre-check: the Java bitmask arm must agree with the
+        // kernel on quad count over the real chunk before it gets benched.
+        int bitmaskQuads = JavaBitmaskMesher.mesh(blocks, classTable, heights, maxY).size();
+        if (bitmaskQuads != quads) {
+            throw new AssertionError("java-bitmask quad count " + bitmaskQuads
+                + " != kernel " + quads);
+        }
+
         long nativeNs = best(30, 200, () -> CendaKernels.meshChunk(blocks, classTable, 0,
             null, null, null, null, null, null, null, null, heights, maxY, true, out));
         long javaNs = best(30, 200, () -> javaReferenceMesh(blocks, classTable, heights, maxY));
-        System.out.printf("mesher: java-flat %.1f us/chunk, native %.1f us/chunk, speedup %.1fx%n",
-            javaNs / 1000.0, nativeNs / 1000.0, (double) javaNs / nativeNs);
+        long javaBitmaskNs = best(30, 200, () -> JavaBitmaskMesher.mesh(blocks, classTable, heights, maxY));
+        // native runs the bitmask path by default; rerun the whole bench with
+        // CENDA_MESHER_IMPL=scalar in the environment for the native-scalar arm.
+        System.out.printf("mesher: java-flat %.1f us/chunk, java-bitmask %.1f us/chunk, "
+                + "native-%s %.1f us/chunk, speedup vs java-flat %.1fx%n",
+            javaNs / 1000.0, javaBitmaskNs / 1000.0,
+            "scalar".equals(System.getenv("CENDA_MESHER_IMPL")) ? "scalar" : "bitmask",
+            nativeNs / 1000.0, (double) javaNs / nativeNs);
 
         // ── Carver ──
         int[] chunkHeights = new int[256];
@@ -87,6 +101,21 @@ class CendaChunkBenchmarkTest {
         System.out.printf("carver: java %.1f us/chunk, native %.1f us/chunk, speedup %.1fx%n",
             javaCarveNs / 1000.0, nativeCarveNs / 1000.0, (double) javaCarveNs / nativeCarveNs);
         CendaKernels.terrainDestroy(ctx);
+
+        // ── Terrain generation: fused native kernel vs legacy mixed path ──
+        // (pure-Java-noise baseline needs a separate JVM run with
+        //  -Dstonebreak.noise.backend=java — the backend is resolved once.)
+        System.setProperty("stonebreak.terraingen.backend", "java");
+        TerrainGenerationSystem legacyTerrain;
+        try {
+            legacyTerrain = new TerrainGenerationSystem(SEED);
+        } finally {
+            System.clearProperty("stonebreak.terraingen.backend");
+        }
+        long fusedGenNs = best(5, 20, () -> terrain.generateTerrainOnly(7, -9));
+        long legacyGenNs = best(5, 20, () -> legacyTerrain.generateTerrainOnly(7, -9));
+        System.out.printf("terraingen: legacy-mixed %.1f us/chunk, fused-native %.1f us/chunk, speedup %.1fx%n",
+            legacyGenNs / 1000.0, fusedGenNs / 1000.0, (double) legacyGenNs / fusedGenNs);
 
         // ── Codec ──
         byte[] raw = new byte[65536 * 2];

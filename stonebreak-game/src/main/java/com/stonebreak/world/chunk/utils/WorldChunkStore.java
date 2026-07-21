@@ -404,23 +404,30 @@ public class WorldChunkStore {
         }
     }
 
-    // Feature population is TIME-budgeted per server tick, not count-budgeted.
-    // The old count limit (5..40/tick) adapted off Game.getDeltaTime() — the
-    // RENDER frame delta — even though this runs on the server tick thread,
-    // so it throttled server-side streaming based on an unrelated clock and
-    // capped exploration at ~300-800 chunks/s regardless of how fast
-    // generation actually was. A wall-clock slice of the 50 ms tick is
-    // self-adaptive on the thread that actually pays the cost.
-    private static final long FEATURE_BUDGET_NANOS = 8_000_000L; // 8 ms of the 50 ms tick
-    private static final int FEATURE_HARD_CAP = 256;             // runaway guard per tick
+    // Feature population is TIME-budgeted, not count-budgeted. On the server
+    // tick the caller passes a DEADLINE anchored at the tick's own start
+    // (World.updateSimulation), so the drain consumes whatever real headroom
+    // this tick has left instead of a fixed private slice — a light tick
+    // populates for ~30 ms, a heavy one backs off automatically. The legacy
+    // render-thread path (single-world World.update) keeps a small fixed
+    // slice to protect the frame.
+    private static final long FEATURE_FRAME_SLICE_NANOS = 8_000_000L; // render-thread path only
+    private static final int FEATURE_HARD_CAP = 512;                 // runaway guard per drain
 
     /**
-     * Processes chunks waiting for feature population, spending at most
-     * {@link #FEATURE_BUDGET_NANOS} of the server tick. Only populates chunks
-     * whose neighbors exist to prevent recursion.
+     * Render-thread variant: drains with a small fixed slice so the frame
+     * stays protected. Server ticks use {@link #processPendingFeaturePopulation(long)}.
      */
     public void processPendingFeaturePopulation() {
-        long deadline = System.nanoTime() + FEATURE_BUDGET_NANOS;
+        processPendingFeaturePopulation(System.nanoTime() + FEATURE_FRAME_SLICE_NANOS);
+    }
+
+    /**
+     * Processes chunks waiting for feature population until {@code deadline}
+     * (nanoTime) passes or the queue empties. Only populates chunks whose
+     * neighbors exist to prevent recursion.
+     */
+    public void processPendingFeaturePopulation(long deadline) {
 
         ChunkPosition pos;
         int processed = 0;
@@ -466,6 +473,7 @@ public class WorldChunkStore {
                     if (!chunk.getCcoMetadata().hasEntities()) {
                         chunk.setEntitiesGenerated(true);
                     }
+                    ChunkPipelineStats.POPULATED.increment();
                     processed++;
                 } catch (Exception e) {
                     System.err.println("Exception populating features for chunk (" + x + ", " + z + "): " + e.getMessage());
@@ -529,6 +537,7 @@ public class WorldChunkStore {
                 return null;
             }
             Chunk chunk = result.chunk();
+            ChunkPipelineStats.GENERATED.increment();
 
             // Keep the column profile so deferred feature population reuses it
             // instead of resampling the noise stack (~3 KB per pending chunk).
@@ -540,7 +549,11 @@ public class WorldChunkStore {
             // Populate the sky-shadow heightmap now that terrain is final.
             // Avoids paying the lazy one-shot scan on the first mesh-build sample
             // (which would otherwise block the mesh thread for ~1 ms/chunk).
-            chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
+            // The fused native generator already returned it (heightMap.populate);
+            // only the legacy path still needs the column rescan.
+            if (!chunk.getHeightMap().isPopulated()) {
+                chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
+            }
 
             // Initial mob spawning is DEFERRED to processPendingFeaturePopulation(): at this
             // point the chunk isn't in the chunk store yet, features haven't landed, and

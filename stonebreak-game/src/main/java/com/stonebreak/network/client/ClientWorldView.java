@@ -63,7 +63,7 @@ public final class ClientWorldView {
     private volatile ClientConnection connection;
 
     private final ClientChunkHandler chunkHandler = new ClientChunkHandler();
-    private final ClientBlockHandler blockHandler = new ClientBlockHandler();
+    private final ClientBlockHandler blockHandler = new ClientBlockHandler(chunkHandler);
     private final ClientEntityHandler entityHandler = new ClientEntityHandler();
     private final ClientPlayerHandler playerHandler = new ClientPlayerHandler();
     private final ClientChatHandler chatHandler = new ClientChatHandler();
@@ -166,6 +166,13 @@ public final class ClientWorldView {
     public void tick() {
         networkClient.inboundQueue().drain(this::dispatch);
 
+        // Install pump runs PER FRAME, not on the 20 Hz client tick: decoded
+        // chunk snapshots drain under a wall-clock budget each frame, so a
+        // streaming burst lands in mass batches (at 20 Hz the same budget
+        // capped installs at a visible trickle). Deferred per-chunk edits
+        // replay here too, immediately after their chunk installs.
+        chunkHandler.tick();
+
         // Dead-peer detection (remote only): the server keepalives every ~5 s, so 30 s of
         // total silence means the connection is gone even if the OS hasn't noticed yet.
         if (remote && !disconnected && lastInboundNs != 0L
@@ -190,7 +197,6 @@ public final class ClientWorldView {
     }
 
     private void clientTick() {
-        chunkHandler.tick();
         entityHandler.tick();
         playerHandler.tick();
         sendLocalPlayerState();
@@ -228,8 +234,8 @@ public final class ClientWorldView {
             int cx = pcx + (idx % side) - radius;
             int cz = pcz + (idx / side) - radius;
             var chunk = world.getChunkIfLoaded(cx, cz);
-            if (chunk == null) {
-                continue;
+            if (chunk == null || chunkHandler.hasPendingInstall(cx, cz)) {
+                continue; // pending install: resident state is legitimately behind the wire
             }
             entries[n * 3] = cx;
             entries[n * 3 + 1] = cz;
@@ -290,7 +296,7 @@ public final class ClientWorldView {
         for (int cz = pcz - radius; cz <= pcz + radius; cz++) {
             for (int cx = pcx - radius; cx <= pcx + radius; cx++) {
                 var chunk = world.getChunkIfLoaded(cx, cz);
-                if (chunk == null) {
+                if (chunk == null || chunkHandler.hasPendingInstall(cx, cz)) {
                     continue;
                 }
                 entries[n * 3] = cx;

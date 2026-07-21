@@ -120,6 +120,13 @@ public final class TerrainNoise {
         }
     }
 
+    /** Registers fused chunk-generator context cleanup against the owner's lifetime. */
+    public static void destroyChunkGenOnCollect(Object owner, long ctx) {
+        if (ctx != 0L) {
+            CLEANER.register(owner, () -> CendaKernels.chunkGenDestroy(ctx));
+        }
+    }
+
     /** Original formula, byte-exact with historical terrain. */
     private static final class JavaChannel implements NoiseChannel2D {
         private final NoiseGenerator generator;

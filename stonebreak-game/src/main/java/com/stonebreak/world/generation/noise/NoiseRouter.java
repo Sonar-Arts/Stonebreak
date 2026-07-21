@@ -143,6 +143,22 @@ public final class NoiseRouter {
     public static long createCarverTerrainContext(long seed,
                                                   double[] splineXs, double[] splineYs,
                                                   int[] splineSizes, float detailAmplitude) {
+        ShapeChannelParams ch = shapeChannelParams(seed);
+        return com.openmason.engine.cenda.CendaKernels.terrainCreate(seed,
+            ch.seeds(), ch.octaves(), ch.gain(), ch.lacunarity(), ch.freq(), ch.xOff(), ch.zOff(),
+            splineXs, splineYs, splineSizes, detailAmplitude);
+    }
+
+    /**
+     * The four shape-channel configs (c, pv, e, d) exactly as this router
+     * builds them — the single packing shared by the native carver and the
+     * fused chunk-generator contexts.
+     */
+    public record ShapeChannelParams(int[] seeds, int[] octaves, float[] gain,
+                                     float[] lacunarity, float[] freq,
+                                     int[] xOff, int[] zOff) {}
+
+    public static ShapeChannelParams shapeChannelParams(long seed) {
         int[] seeds = {
             TerrainNoise.nativeSeed(seed + 2), // continentalness
             TerrainNoise.nativeSeed(seed + 8), // peaks/valleys
@@ -155,9 +171,7 @@ public final class NoiseRouter {
         float[] freq = {CONTINENTALNESS_SCALE, PEAKS_VALLEYS_SCALE, EROSION_SCALE, DETAIL_SCALE};
         int[] xOff = {0, PV_X_OFF_BLOCKS, EROSION_X_OFF_BLOCKS, 0};
         int[] zOff = {0, PV_Z_OFF_BLOCKS, EROSION_Z_OFF_BLOCKS, 0};
-        return com.openmason.engine.cenda.CendaKernels.terrainCreate(seed,
-            seeds, octaves, gain, lacunarity, freq, xOff, zOff,
-            splineXs, splineYs, splineSizes, detailAmplitude);
+        return new ShapeChannelParams(seeds, octaves, gain, lacunarity, freq, xOff, zOff);
     }
 
     /** Raw moisture channel value → [0, 1]. */

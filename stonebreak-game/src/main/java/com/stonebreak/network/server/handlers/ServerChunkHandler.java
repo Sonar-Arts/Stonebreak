@@ -46,16 +46,15 @@ public final class ServerChunkHandler {
      */
     private static final int MAX_PUSH_PER_TICK = 8;
     /**
-     * Budget for the LOCAL (host) player. The LocalChannel is an in-JVM object
-     * handoff — no wire to protect. Encode is bulk (section id arrays →
-     * palette, zero per-cell adapter allocations) on the server thread, and
-     * the client decode is bulk too (wire sections → palette sections, no
-     * per-cell set calls), so a large burst neither stalls the server tick nor
-     * hitches the render thread. 128/tick @ 20 Hz fills the default view
-     * (r=8, 289 chunks) in ~0.12 s and the max view (r=24, 2401) in ~0.95 s —
-     * in practice generation/feature throughput is the pacing factor, not this.
+     * Runaway guard (NOT pacing) for the LOCAL (host) player. The LocalChannel
+     * is an in-JVM object handoff — no wire to protect — and the client now
+     * decodes payloads OFF-thread and installs under its own per-frame budget
+     * (ClientChunkHandler), so the stream needs no server-side pacing at all:
+     * the scan pushes until the view is complete or the channel goes
+     * unwritable. 1024/tick @ 20 Hz only exists so a bug can't spin the tick
+     * forever; even the max view (r=24, 2401 chunks) drains in 3 ticks.
      */
-    private static final int LOCAL_PUSH_PER_TICK = 128;
+    private static final int LOCAL_PUSH_PER_TICK = 1024;
 
     /** Current version per chunk key; bumped on modification so clients re-receive it.
      *  Primitive-keyed: the view scan probes this per ring cell, and a boxed
@@ -245,12 +244,23 @@ public final class ServerChunkHandler {
                             viewComplete = false;
                             continue; // not ready — retry next tick (do NOT mark sent)
                         }
+                        // Real backpressure: chunk sends stay non-droppable (a lost
+                        // chunk is a permanent hole), so instead the SCAN stops while
+                        // the channel is over its write watermark and re-arms next
+                        // tick. This is what actually paces the remote (TCP) path;
+                        // the Local channel rarely trips it and drains as fast as
+                        // the client consumes.
+                        if (!sp.connection().isWritable()) {
+                            viewComplete = false;
+                            break outer;
+                        }
                         byte[] payload = VoxelChunkCodec.encode(new ChunkDataAdapter(chunk));
                         byte[] metaPayload = encodeChunkMeta(world, chunk, cx + dx, cz + dz);
                         sp.send(new ChunkDataS2C(cx + dx, cz + dz, payload, metaPayload), false);
                         sp.markChunkSent(key, version);
+                        com.stonebreak.world.chunk.utils.ChunkPipelineStats.STREAMED.increment();
                         if (--budget <= 0) {
-                            viewComplete = false; // out of budget — outer rings unverified
+                            viewComplete = false; // runaway guard — outer rings unverified
                             break outer;
                         }
                     }

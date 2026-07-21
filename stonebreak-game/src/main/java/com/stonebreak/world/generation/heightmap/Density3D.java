@@ -45,6 +45,14 @@ public final class Density3D {
         TerrainNoise.destroyOnCollect(this, nativeNode);
     }
 
+    /** Density-node parameters for the fused native generator — must mirror the constructor exactly. */
+    public record NodeParams(int seed, int octaves, float gain, float lacunarity, float frequency) {}
+
+    /** The exact node parameters this class would build for {@code worldSeed}. */
+    public static NodeParams nodeParams(long worldSeed) {
+        return new NodeParams(TerrainNoise.nativeSeed(worldSeed + 17), 2, 0.5f, 2.0f, SCALE);
+    }
+
     /**
      * @param surfaceHeight final terrain height for this column (post-erosion)
      * @return true if the block should remain solid; false to carve to air

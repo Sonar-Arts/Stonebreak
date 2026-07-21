@@ -34,6 +34,10 @@ public class TerrainGenerationSystem {
     public static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
+    /** DeterministicRandom stream + chance for deep magma pockets — shared with the fused native generator. */
+    static final String MAGMA_FEATURE = "magma";
+    static final float MAGMA_CHANCE = 0.6f;
+
     private final long seed;
     private final NoiseRouter noiseRouter;
     private final HeightMapGenerator heightMapGenerator;
@@ -52,6 +56,12 @@ public class TerrainGenerationSystem {
 
     /** Native worm-carver terrain context; 0 = Java carver path. */
     private final long nativeCarverCtx;
+
+    /** Fused native chunk-generation context; 0 = legacy (mixed/Java) path. */
+    private final long fusedGenCtx;
+
+    /** One-shot latch so a kernel failure doesn't spam the log per chunk. */
+    private volatile boolean fusedFailureLogged;
 
     public TerrainGenerationSystem(long seed) {
         this.seed = seed;
@@ -83,6 +93,19 @@ public class TerrainGenerationSystem {
             com.stonebreak.world.generation.noise.TerrainNoise.destroyTerrainOnCollect(this, carverCtx);
         }
         this.nativeCarverCtx = carverCtx;
+
+        // Fused native generation (carve + caverns + density + block fill +
+        // heightmap in ONE kernel call) under the same native-backend gate:
+        // its outputs are bit-identical to the mixed path above, and on the
+        // Java backend the channels it samples don't exist.
+        long fusedCtx = 0L;
+        if (com.stonebreak.world.generation.noise.TerrainNoise.backend()
+                == com.stonebreak.world.generation.noise.TerrainNoise.Backend.NATIVE
+            && !"java".equalsIgnoreCase(System.getProperty("stonebreak.terraingen.backend", "auto"))) {
+            fusedCtx = CendaChunkGenerator.createContext(seed);
+            com.stonebreak.world.generation.noise.TerrainNoise.destroyChunkGenOnCollect(this, fusedCtx);
+        }
+        this.fusedGenCtx = fusedCtx;
     }
 
     /**
@@ -131,6 +154,11 @@ public class TerrainGenerationSystem {
 
     public long getSeed() {
         return seed;
+    }
+
+    /** True when the fused native generator owns terrain for this system (test/diagnostic hook). */
+    boolean isFusedGenerationActive() {
+        return fusedGenCtx != 0L;
     }
 
     public float getContinentalnessAt(int x, int z) {
@@ -282,6 +310,7 @@ public class TerrainGenerationSystem {
      * once neighbor chunks exist (prevents recursive generation across chunk borders).
      */
     public TerrainResult generateTerrainOnly(int chunkX, int chunkZ) {
+        long startNanos = System.nanoTime();
         updateLoadingProgress("Generating Base Terrain Shape");
 
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
@@ -293,6 +322,43 @@ public class TerrainGenerationSystem {
         biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
 
         updateLoadingProgress("Applying Biome Materials");
+
+        // Fused native path: carve + caverns + density + block fill + sky
+        // heightmap in one kernel call — intermediates never cross FFM. The
+        // profile stays Java-computed and the outputs are bit-identical to the
+        // legacy body below (FusedChunkGenParityTest pins this).
+        if (fusedGenCtx != 0L) {
+            CendaChunkGenerator.Result fused =
+                CendaChunkGenerator.generate(fusedGenCtx, chunkX, chunkZ, heights, biomes);
+            if (fused != null) {
+                Chunk chunk = new Chunk(chunkX, chunkZ, fused.storage());
+                chunk.getHeightMap().populate(fused.heightmap());
+                chunk.getCcoDirtyTracker().markBlockChanged();
+                chunk.setFeaturesPopulated(false);
+                TerrainGenStats.record(System.nanoTime() - startNanos, TerrainGenStats.Mode.FUSED);
+                return new TerrainResult(chunk, new ColumnProfile(heights, biomes));
+            }
+            if (!fusedFailureLogged) {
+                fusedFailureLogged = true;
+                System.err.println("Fused native chunk generation failed at (" + chunkX + ", "
+                    + chunkZ + "); falling back to the legacy path for this world");
+            }
+        }
+
+        TerrainResult result = generateTerrainLegacy(chunkX, chunkZ, heights, biomes);
+        TerrainGenStats.record(System.nanoTime() - startNanos,
+            nativeCarverCtx != 0L ? TerrainGenStats.Mode.MIXED : TerrainGenStats.Mode.JAVA);
+        return result;
+    }
+
+    /**
+     * The pre-fused generation body: worm/cavern masks and the 65k-cell block
+     * fill in Java (with native noise/carver/density kernels when available).
+     * Remains the runtime fallback for kernel failures and the reference
+     * implementation the fused kernel is parity-tested against.
+     */
+    private TerrainResult generateTerrainLegacy(int chunkX, int chunkZ,
+                                                int[] heights, BiomeType[] biomes) {
         BitSet wormMask = (nativeCarverCtx != 0L)
             ? nativeWormMask(chunkX, chunkZ, heights)
             : wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
@@ -417,7 +483,7 @@ public class TerrainGenerationSystem {
         }
         if (y < height - 4) {
             if (biome == BiomeType.RED_SAND_DESERT && y < height - 10 &&
-                deterministicRandom.shouldGenerate3D(worldX, y, worldZ, "magma", 0.6f)) {
+                deterministicRandom.shouldGenerate3D(worldX, y, worldZ, MAGMA_FEATURE, MAGMA_CHANCE)) {
                 return BlockType.MAGMA;
             }
             return BlockType.STONE;
@@ -437,7 +503,8 @@ public class TerrainGenerationSystem {
         return BlockType.AIR;
     }
 
-    private static BlockType subsurfaceBlock(BiomeType biome) {
+    /** Package-private so the fused native generator's biome tables share this single source. */
+    static BlockType subsurfaceBlock(BiomeType biome) {
         if (biome == null) return BlockType.DIRT;
         return switch (biome) {
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SANDSTONE;
@@ -448,7 +515,8 @@ public class TerrainGenerationSystem {
         };
     }
 
-    private static BlockType surfaceBlock(BiomeType biome) {
+    /** Package-private so the fused native generator's biome tables share this single source. */
+    static BlockType surfaceBlock(BiomeType biome) {
         if (biome == null) return BlockType.DIRT;
         return switch (biome) {
             case DESERT, BEACH -> BlockType.SAND;
