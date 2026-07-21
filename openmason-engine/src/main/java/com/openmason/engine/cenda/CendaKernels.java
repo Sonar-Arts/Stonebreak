@@ -260,9 +260,12 @@ public final class CendaKernels {
         String[] candidates = {
             "openmason-engine/cenda/build/release/native/kernels/" + libName,
             "openmason-engine/cenda/build/debug/native/kernels/" + libName,
+            "openmason-engine/cenda/build/native/kernels/" + libName,
             "../openmason-engine/cenda/build/release/native/kernels/" + libName,
             "../openmason-engine/cenda/build/debug/native/kernels/" + libName,
+            "../openmason-engine/cenda/build/native/kernels/" + libName,
             "cenda/build/release/native/kernels/" + libName,
+            "cenda/build/native/kernels/" + libName,
         };
         for (String candidate : candidates) {
             Path p = Path.of(candidate).toAbsolutePath().normalize();

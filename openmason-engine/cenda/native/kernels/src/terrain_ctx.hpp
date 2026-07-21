@@ -335,7 +335,7 @@ inline void spawnCarvers(const TerrainCtx& ctx, int srcCx, int srcCz, int target
                          MAX_STEPS, MAX_BRANCHES, twinSeed, false, {0, 0, 0}});
     }
     if (spawnConnector) {
-        int neighbor[2];
+        int neighbor[2] = {};
         if (nearestWormChunk(ctx.seed, srcCx, srcCz, neighbor)) {
             float target[3];
             computeOrigin(ctx.seed, neighbor[0], neighbor[1], target);
