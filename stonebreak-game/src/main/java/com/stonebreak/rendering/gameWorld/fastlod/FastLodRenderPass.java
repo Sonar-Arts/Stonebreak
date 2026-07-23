@@ -2,8 +2,11 @@ package com.stonebreak.rendering.gameWorld.fastlod;
 
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.gameWorld.ChunkFrustumCuller;
+import com.stonebreak.rendering.gameWorld.water.WaterRenderer;
 import com.stonebreak.world.fastlod.FastLodManager;
 import com.stonebreak.world.operations.WorldConfiguration;
+
+import java.util.List;
 
 /**
  * Draws the coarse distant-terrain ring built by {@link FastLodManager}.
@@ -56,9 +59,17 @@ public final class FastLodRenderPass {
 
     private long lastFrameNanos;
 
+    /**
+     * Draws the opaque LOD terrain meshes and collects the surviving nodes'
+     * water-sheet handles (with their current crossfade opacity) into
+     * {@code lodWaterOut} for the dedicated water pass later this frame —
+     * fades are advanced here exactly once per frame, so the water pass reads
+     * the same opacity the terrain rendered with.
+     */
     public void render(ShaderProgram shader, FastLodManager manager,
                        int playerChunkX, int playerChunkZ, ChunkFrustumCuller culler,
-                       NativeChunkTest nativeChunks) {
+                       NativeChunkTest nativeChunks,
+                       List<WaterRenderer.LodWaterNode> lodWaterOut) {
         if (manager == null) return;
         manager.applyGLUpdates();
 
@@ -97,6 +108,9 @@ public final class FastLodRenderPass {
                 boundFade = fade;
             }
             entry.handle.render();
+            if (entry.waterHandle != null && lodWaterOut != null) {
+                lodWaterOut.add(new WaterRenderer.LodWaterNode(entry.waterHandle, fade));
+            }
         }
 
         // Everything after this pass renders solid.

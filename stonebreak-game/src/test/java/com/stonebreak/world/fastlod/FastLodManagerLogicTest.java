@@ -61,6 +61,28 @@ class FastLodManagerLogicTest {
         });
         when(terrain.getSurfaceBlockAt(anyInt(), anyInt())).thenReturn(BlockType.GRASS);
         when(terrain.getTreeAt(anyInt(), anyInt())).thenReturn(null);
+        // The sampler feeds off the batched probe; mirror it onto the per-point
+        // stubs above so height-call counting (cooperative-cancellation test)
+        // and the simulated terrain failure keep working.
+        org.mockito.Mockito.doAnswer(inv -> {
+            int x0 = inv.getArgument(0);
+            int z0 = inv.getArgument(1);
+            int count = inv.getArgument(2);
+            int stride = inv.getArgument(3);
+            int[] outHeights = inv.getArgument(4);
+            BlockType[] outSurface = inv.getArgument(5);
+            for (int ix = 0; ix < count; ix++) {
+                for (int iz = 0; iz < count; iz++) {
+                    int idx = ix * count + iz;
+                    int wx = x0 + ix * stride, wz = z0 + iz * stride;
+                    outHeights[idx] = terrain.getFinalTerrainHeightAt(wx, wz);
+                    if (outSurface != null) {
+                        outSurface[idx] = terrain.getSurfaceBlockAt(wx, wz);
+                    }
+                }
+            }
+            return null;
+        }).when(terrain).sampleColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any());
 
         BlockTextureArray textures = mock(BlockTextureArray.class);
         when(textures.getBlockFaceLayer(any(), anyInt())).thenReturn(7);
@@ -103,9 +125,10 @@ class FastLodManagerLogicTest {
         assertEquals(RING_NODES, manager.visibleHandles().size());
         assertEquals(RING_NODES, createdHandles.size());
 
-        // Every entry carries the flat-terrain mesh bounds for frustum culling.
+        // Every entry carries the mesh bounds for frustum culling: tops at the
+        // flat terrain height, minY at 0 from the node-border foundation walls.
         for (FastLodManager.Entry e : manager.visibleHandles()) {
-            assertEquals(80f, e.minY, 1e-4f);
+            assertEquals(0f, e.minY, 1e-4f);
             assertEquals(80f, e.maxY, 1e-4f);
         }
 

@@ -201,16 +201,14 @@ public class TerrainGenerationSystem {
     }
 
     /**
-     * Returns the surface block a column would place at its top air-adjacent cell,
-     * derived from the same biome rules as {@link #determineBlockType}. Submerged
-     * columns (surface below sea level) are reported as {@link BlockType#WATER} so
-     * coarse renderers can paint a water sheet without block data.
+     * Returns the surface block a column places at its terrain top
+     * ({@code y == height - 1}), derived from the same biome rules as
+     * {@link #determineBlockType}. Submerged columns report their real seabed
+     * block — {@code determineBlockType} places {@code surfaceBlock(biome)}
+     * there just like on land — so coarse renderers (FastLOD) can draw the
+     * ocean floor; submergence itself is decided from {@code height < SEA_LEVEL}.
      */
     public BlockType getSurfaceBlockAt(int worldX, int worldZ) {
-        int height = heightMapGenerator.generateHeight(worldX, worldZ);
-        if (height < SEA_LEVEL) {
-            return BlockType.WATER;
-        }
         return surfaceBlock(biomeManager.getBiome(worldX, worldZ));
     }
 
@@ -272,20 +270,16 @@ public class TerrainGenerationSystem {
                 if (!needBiomes) {
                     continue;
                 }
-                BlockType surface;
-                BiomeType biome = null;
-                if (height < SEA_LEVEL) {
-                    surface = BlockType.WATER;
-                } else {
-                    // Same tuple as BiomeManager.getBiome: temperature is chilled
-                    // by the SHAPED height (no detail), matching the per-point path.
-                    int shaped = heightMapGenerator.shapedFromChannels(c[idx], pv[idx], e[idx]);
-                    biome = biomeManager.selectBiome(new com.stonebreak.world.generation.noise.MultiNoiseSample(
-                        c[idx], e[idx], pv[idx],
-                        com.stonebreak.world.generation.noise.NoiseRouter.temperatureFromRaw(tRaw[idx], shaped),
-                        com.stonebreak.world.generation.noise.NoiseRouter.moistureFromRaw(mRaw[idx])));
-                    surface = surfaceBlock(biome);
-                }
+                // Same tuple as BiomeManager.getBiome: temperature is chilled
+                // by the SHAPED height (no detail), matching the per-point path.
+                // Biome is resolved for submerged columns too — their surface
+                // is the real seabed block (see getSurfaceBlockAt).
+                int shaped = heightMapGenerator.shapedFromChannels(c[idx], pv[idx], e[idx]);
+                BiomeType biome = biomeManager.selectBiome(new com.stonebreak.world.generation.noise.MultiNoiseSample(
+                    c[idx], e[idx], pv[idx],
+                    com.stonebreak.world.generation.noise.NoiseRouter.temperatureFromRaw(tRaw[idx], shaped),
+                    com.stonebreak.world.generation.noise.NoiseRouter.moistureFromRaw(mRaw[idx])));
+                BlockType surface = surfaceBlock(biome);
                 if (outSurface != null) {
                     outSurface[idx] = surface;
                 }

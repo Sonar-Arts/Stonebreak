@@ -57,6 +57,7 @@ public class WorldRenderer {
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
     private final List<Chunk> reusableVisibleChunks = new ArrayList<>();
+    private final List<com.stonebreak.rendering.gameWorld.water.WaterRenderer.LodWaterNode> reusableLodWater = new ArrayList<>();
     // Cached so the per-frame chunk visit doesn't allocate a capturing lambda each call.
     private final java.util.function.Consumer<Chunk> frustumCollector = chunk -> {
         if (frustumCuller.isChunkVisible(chunk)) {
@@ -134,12 +135,6 @@ public class WorldRenderer {
         skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), sunDirection, skyColor);
         checkGLError("After sky rendering");
 
-        // Render the voxel cloud layer just after the sky dome, before world geometry.
-        if (com.stonebreak.config.Settings.getInstance().getCloudsEnabled()) {
-            cloudRenderer.renderClouds(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, ambientLightLevel);
-            checkGLError("After cloud rendering");
-        }
-        
         // Ensure proper depth function for world geometry
         glDepthFunc(GL_LESS);
         glEnable(GL_DEPTH_TEST);
@@ -166,7 +161,7 @@ public class WorldRenderer {
         }
 
         // Set common uniforms for world rendering
-        setupWorldUniforms(player, skyColor, fogStart, fogEnd, totalTime);
+        setupWorldUniforms(player, skyColor, fogStart, fogEnd);
         // Water animation setting — consumed by the dedicated water renderer
         // (waves + flow scroll) and the LOD sea-sheet drift (u_time).
         boolean waterAnimationEnabled = settings.getWaterShaderEnabled();
@@ -191,12 +186,14 @@ public class WorldRenderer {
 
         // Render distant-terrain LOD between detail opaque and SBO; shares shader/atlas state.
         // frustumCuller was updated for this frame's camera by cullChunksToFrustum above —
-        // the LOD pass reuses those planes, so keep this call after it.
+        // the LOD pass reuses those planes, so keep this call after it. Surviving nodes'
+        // water sheets are collected for the dedicated water pass below.
         world.ensureFastLodManager(blockTextureArray);
         int lodPlayerCx = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int lodPlayerCz = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
+        reusableLodWater.clear();
         lodRenderPass.render(shaderProgram, world.getFastLodManager(), lodPlayerCx, lodPlayerCz,
-                frustumCuller, world::isChunkRenderableAt);
+                frustumCuller, world::isChunkRenderableAt, reusableLodWater);
 
         // Render SBO blocks (blocks with SBO textures, rendered separately from atlas)
         renderSBOPass(visibleChunks);
@@ -241,8 +238,20 @@ public class WorldRenderer {
         // them — physically correct compositing.
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, sunDirection,
-                ambientLightLevel, waterAnimationEnabled, skyColor, fogStart, fogEnd);
+                ambientLightLevel, waterAnimationEnabled, skyColor, fogStart, fogEnd,
+                reusableLodWater);
         checkGLError("After water pass");
+
+        // Voxel cloud layer — drawn AFTER world geometry and water so it depth
+        // tests against them: clouds behind mountains are rejected, and when
+        // the camera is above the cloud layer the clouds blend over the
+        // terrain/water below instead of being overwritten by it (clouds do
+        // not write depth, so anything drawn later at the same pixels would
+        // win regardless of distance if this ran before the world passes).
+        if (com.stonebreak.config.Settings.getInstance().getCloudsEnabled()) {
+            cloudRenderer.renderClouds(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, ambientLightLevel);
+            checkGLError("After cloud rendering");
+        }
 
         // Render fire bolt cores after the water pass: bolts in front of water
         // draw over it; bolts behind a water surface are depth-occluded by the
@@ -301,7 +310,7 @@ public class WorldRenderer {
      * Set up common uniforms for world rendering.
      */
     private void setupWorldUniforms(Player player, Vector3f skyColor,
-                                    float fogStart, float fogEnd, float totalTime) {
+                                    float fogStart, float fogEnd) {
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
         shaderProgram.setUniform("modelMatrix", new Matrix4f()); // Identity for world chunks
@@ -336,10 +345,6 @@ public class WorldRenderer {
         shaderProgram.setUniform("u_cameraPos", new Vector3f(0, 0, 0));
         shaderProgram.setUniform("u_underwaterFogDensity", 0.0f);
         shaderProgram.setUniform("u_underwaterFogColor", new Vector3f(0, 0, 0));
-
-        // LOD sea-sheet pattern drift — frozen together with the water-animation setting.
-        boolean waterAnim = com.stonebreak.config.Settings.getInstance().getWaterShaderEnabled();
-        shaderProgram.setUniform("u_time", waterAnim ? totalTime : 0.0f);
 
         // Atmospheric distance fog toward the sky color (fogEnd <= fogStart disables).
         shaderProgram.setUniform("u_fogColor", skyColor);

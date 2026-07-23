@@ -11,7 +11,8 @@ import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
  *   <li>{@code heights[stride²]} — terrain height per cell, one-cell margin on
  *   each side so the mesher can emit skirts without reading neighbours.</li>
  *   <li>{@code surface[cellsPerAxis²]} — representative surface block for each
- *   interior cell.</li>
+ *   interior cell; for submerged cells (height below sea level) this is the
+ *   real seabed block, submergence itself is height-derived.</li>
  *   <li>{@code trees[cellsPerAxis²]} — tree silhouettes, populated only at the
  *   finest level ({@link FastLodLevel#L0}); other levels leave this null.</li>
  * </ul>

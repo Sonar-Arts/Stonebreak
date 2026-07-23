@@ -138,11 +138,11 @@ public final class FastLodManager {
             FastLodLevel wanted = FastLodBandPolicy.levelFor(
                     chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range);
             if (wanted == null) {
-                MmsRenderableHandle h = e.getValue().handle;
+                Entry entry = e.getValue();
                 it.remove();
                 long col = packColumn(key.chunkX(), key.chunkZ());
                 residentByColumn.remove(col, key);
-                cleanupQueue.offer(h);
+                enqueueCleanup(entry);
             }
         }
 
@@ -230,7 +230,18 @@ public final class FastLodManager {
                 } else {
                     try {
                         MmsRenderableHandle h = uploader.upload(r.meshData);
-                        Entry entry = new Entry(r.key, h, r.minY, r.maxY);
+                        MmsRenderableHandle wh = null;
+                        if (r.waterMeshData != null) {
+                            try {
+                                wh = uploader.upload(r.waterMeshData);
+                            } catch (Exception waterEx) {
+                                // Keep the pair atomic: a node must never render
+                                // seabed without its sheet.
+                                try { h.close(); } catch (Exception ignored) { }
+                                throw waterEx;
+                            }
+                        }
+                        Entry entry = new Entry(r.key, h, wh, r.minY, r.maxY);
                         // Band-change replacement: inherit the outgoing node's
                         // crossfade state so the level swap doesn't re-dissolve.
                         FastLodKey oldKey = pendingSupersede.get(r.key);
@@ -272,7 +283,7 @@ public final class FastLodManager {
         if (old == null || old.equals(newKey)) return;
         Entry retired = handles.remove(old);
         if (retired != null) {
-            cleanupQueue.offer(retired.handle);
+            enqueueCleanup(retired);
         }
         // residentByColumn was already updated to newKey by the caller before
         // this method ran; the conditional remove below is a no-op in the
@@ -325,16 +336,16 @@ public final class FastLodManager {
         }
         readyToUpload.clear();
 
-        List<MmsRenderableHandle> drained = new ArrayList<>(handles.size());
+        List<Entry> drained = new ArrayList<>(handles.size());
         for (Iterator<Map.Entry<FastLodKey, Entry>> it = handles.entrySet().iterator(); it.hasNext(); ) {
-            drained.add(it.next().getValue().handle);
+            drained.add(it.next().getValue());
             it.remove();
         }
         inFlight.clear();
         residentByColumn.clear();
         pendingSupersede.clear();
-        for (MmsRenderableHandle h : drained) {
-            cleanupQueue.offer(h);
+        for (Entry e : drained) {
+            enqueueCleanup(e);
         }
 
         if (store != null) {
@@ -363,12 +374,13 @@ public final class FastLodManager {
                 }
             }
             FastLodMesher.Result result = mesher.build(data);
-            if (result.mesh().isEmpty()) {
+            if (result.mesh().isEmpty() && result.waterMesh() == null) {
                 inFlight.remove(key);
                 pendingSupersede.remove(key);
                 return;
             }
-            readyToUpload.offer(new Ready(key, result.mesh(), result.minY(), result.maxY()));
+            readyToUpload.offer(new Ready(key, result.mesh(), result.waterMesh(),
+                    result.minY(), result.maxY()));
         } catch (Exception e) {
             inFlight.remove(key);
             pendingSupersede.remove(key);
@@ -377,17 +389,25 @@ public final class FastLodManager {
     }
 
     private void evictAll() {
-        List<MmsRenderableHandle> drained = new ArrayList<>(handles.size());
+        List<Entry> drained = new ArrayList<>(handles.size());
         for (Iterator<Map.Entry<FastLodKey, Entry>> it = handles.entrySet().iterator(); it.hasNext(); ) {
-            drained.add(it.next().getValue().handle);
+            drained.add(it.next().getValue());
             it.remove();
         }
         inFlight.clear();
         readyToUpload.clear();
         residentByColumn.clear();
         pendingSupersede.clear();
-        for (MmsRenderableHandle h : drained) {
-            cleanupQueue.offer(h);
+        for (Entry e : drained) {
+            enqueueCleanup(e);
+        }
+    }
+
+    /** Queues both of an entry's GPU handles (terrain + optional water) for release. */
+    private void enqueueCleanup(Entry entry) {
+        cleanupQueue.offer(entry.handle);
+        if (entry.waterHandle != null) {
+            cleanupQueue.offer(entry.waterHandle);
         }
     }
 
@@ -403,7 +423,13 @@ public final class FastLodManager {
     public static final class Entry {
         public final FastLodKey key;
         public final MmsRenderableHandle handle;
-        /** Exact vertex Y bounds of the node's mesh — feed per-node frustum AABBs. */
+        /**
+         * Water-sheet mesh handle, or {@code null} for nodes without submerged
+         * cells. Drawn by the dedicated water pass (same shader as native
+         * water) at this entry's crossfade opacity.
+         */
+        public final MmsRenderableHandle waterHandle;
+        /** Exact vertex Y bounds of the node's meshes — feed per-node frustum AABBs. */
         public final float minY, maxY;
         /**
          * Crossfade opacity in [0,1], owned by the render pass (GL thread only).
@@ -418,8 +444,14 @@ public final class FastLodManager {
          */
         public boolean nativeCovered;
         public Entry(FastLodKey key, MmsRenderableHandle handle, float minY, float maxY) {
+            this(key, handle, null, minY, maxY);
+        }
+
+        public Entry(FastLodKey key, MmsRenderableHandle handle, MmsRenderableHandle waterHandle,
+                     float minY, float maxY) {
             this.key = key;
             this.handle = handle;
+            this.waterHandle = waterHandle;
             this.minY = minY;
             this.maxY = maxY;
         }
@@ -428,10 +460,13 @@ public final class FastLodManager {
     private static final class Ready {
         final FastLodKey key;
         final MmsMeshData meshData;
+        final MmsMeshData waterMeshData;   // null when the node has no water
         final float minY, maxY;
-        Ready(FastLodKey key, MmsMeshData meshData, float minY, float maxY) {
+        Ready(FastLodKey key, MmsMeshData meshData, MmsMeshData waterMeshData,
+              float minY, float maxY) {
             this.key = key;
             this.meshData = meshData;
+            this.waterMeshData = waterMeshData;
             this.minY = minY;
             this.maxY = maxY;
         }
