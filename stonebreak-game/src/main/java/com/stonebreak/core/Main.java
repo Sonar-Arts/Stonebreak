@@ -50,7 +50,9 @@ public class Main {
      * shows via {@code GL_VERSION}.
      */
     private static final java.util.Set<String> WAYLAND_BLOCKED_NVIDIA_DRIVERS = java.util.Set.of(
-            "595.71.05"
+            "595.71.05",
+            // Open Kernel Module build; same libEGL_nvidia SIGSEGV as 595.71.05.
+            "595.84"
     );
 
     /**
