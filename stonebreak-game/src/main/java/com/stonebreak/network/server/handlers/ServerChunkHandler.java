@@ -38,21 +38,23 @@ public final class ServerChunkHandler {
     //                                       holes (client dropped the chunk but the server
     //                                       still thinks it was sent).
     /**
-     * Chunks streamed per remote player per tick. Kept modest because the server encode runs
-     * on the main game thread (the integrated server ticks there) and the wire needs
-     * backpressure. 8/tick @ 20 Hz = 160 chunks/s fills a view in ~2 s.
+     * Chunks streamed per remote player per tick. Kept modest because a real
+     * wire needs pacing. 8/tick @ 20 Hz = 160 chunks/s fills a view in ~2 s.
+     * (Encode itself is cheap now — bulk section reads, no per-cell adapters —
+     * and runs on the dedicated SINGLEPLAYER-Server thread, not the render
+     * thread, so the budget is purely about remote bandwidth.)
      */
     private static final int MAX_PUSH_PER_TICK = 8;
     /**
-     * Budget for the LOCAL (host) player. The LocalChannel is an in-JVM object handoff —
-     * no real wire to protect — and the wire-rate throttle was the dominant cause of slow
-     * chunk pop-in for the host (~2 s to fill a view). The client-side install is cheap
-     * enough to absorb this now: decode lands in a detached paletted storage and installs
-     * with one section copy + one heightmap recompute (World.installNetworkChunk).
-     * 64/tick @ 20 Hz fills the default view (r=8, 289 chunks) in ~0.25 s and the
-     * maximum view (r=24, 2401 chunks) in ~1.9 s.
+     * Runaway guard (NOT pacing) for the LOCAL (host) player. The LocalChannel
+     * is an in-JVM object handoff — no wire to protect — and the client now
+     * decodes payloads OFF-thread and installs under its own per-frame budget
+     * (ClientChunkHandler), so the stream needs no server-side pacing at all:
+     * the scan pushes until the view is complete or the channel goes
+     * unwritable. 1024/tick @ 20 Hz only exists so a bug can't spin the tick
+     * forever; even the max view (r=24, 2401 chunks) drains in 3 ticks.
      */
-    private static final int LOCAL_PUSH_PER_TICK = 64;
+    private static final int LOCAL_PUSH_PER_TICK = 1024;
 
     /** Current version per chunk key; bumped on modification so clients re-receive it.
      *  Primitive-keyed: the view scan probes this per ring cell, and a boxed
@@ -80,6 +82,19 @@ public final class ServerChunkHandler {
     private final LongIntHashMap lastSimEditTick = new LongIntHashMap();
     /** "Never sim-edited" default; far enough in the past to always be outside the grace. */
     private static final int NEVER_TICK = -1_000_000;
+
+    // ── Server-side chunk eviction ──
+    // The headless server world has no ChunkManager ring, so WITHOUT this sweep
+    // residency grows monotonically with exploration: every explored chunk stays
+    // resident forever — dirty-scan sweeps, auto-save batches, sim work and heap
+    // all grow without bound (observed: 30 s auto-saves climbing 473→2602 chunks).
+    // Every EVICT_PERIOD_TICKS, chunks outside EVERY player's keep ring
+    // (view + margin: gen ring +1, forget +2, hysteresis) save-then-unload via
+    // the store's existing path, capped per sweep to smooth bursts (e.g. a
+    // render-distance drop) across a few sweeps.
+    private static final int EVICT_PERIOD_TICKS = 100; // 5 s at 20 Hz
+    private static final int EVICT_KEEP_MARGIN = 6;
+    private static final int MAX_EVICTIONS_PER_SWEEP = 256;
     /** Grace (ticks) after a sim edit before the audit trusts a mismatch again — a little
      *  over the client's 10 s audit period, so the client has re-hashed post-settle state. */
     private static final int SIM_EDIT_AUDIT_GRACE_TICKS = 240; // 12 s at 20 Hz
@@ -164,6 +179,9 @@ public final class ServerChunkHandler {
         if (world == null) {
             return;
         }
+        if (tickCounter % EVICT_PERIOD_TICKS == 0) {
+            evictFarChunks(ctx, world);
+        }
         // A version bump anywhere re-arms every player's scan once; the scan itself decides
         // per player whether the bumped chunk is in view (the per-cell version check).
         boolean versionsBumped = versionsDirty;
@@ -242,12 +260,23 @@ public final class ServerChunkHandler {
                             viewComplete = false;
                             continue; // not ready — retry next tick (do NOT mark sent)
                         }
+                        // Real backpressure: chunk sends stay non-droppable (a lost
+                        // chunk is a permanent hole), so instead the SCAN stops while
+                        // the channel is over its write watermark and re-arms next
+                        // tick. This is what actually paces the remote (TCP) path;
+                        // the Local channel rarely trips it and drains as fast as
+                        // the client consumes.
+                        if (!sp.connection().isWritable()) {
+                            viewComplete = false;
+                            break outer;
+                        }
                         byte[] payload = VoxelChunkCodec.encode(new ChunkDataAdapter(chunk));
                         byte[] metaPayload = encodeChunkMeta(world, chunk, cx + dx, cz + dz);
                         sp.send(new ChunkDataS2C(cx + dx, cz + dz, payload, metaPayload), false);
                         sp.markChunkSent(key, version);
+                        com.stonebreak.world.chunk.utils.ChunkPipelineStats.STREAMED.increment();
                         if (--budget <= 0) {
-                            viewComplete = false; // out of budget — outer rings unverified
+                            viewComplete = false; // runaway guard — outer rings unverified
                             break outer;
                         }
                     }
@@ -256,6 +285,47 @@ public final class ServerChunkHandler {
             if (viewComplete) {
                 sp.clearViewScanPending();
             }
+        }
+    }
+
+    /**
+     * Unloads (save-then-unload) chunks outside every player's keep ring. Skips
+     * entirely while any player has no reported position yet (a fresh joiner far
+     * from the others must not get their surroundings evicted before their first
+     * position packet lands).
+     */
+    private void evictFarChunks(ServerWorldContext ctx, World world) {
+        var players = ctx.players();
+        if (players.isEmpty()) {
+            return; // idle server: keep residency; players return to warm chunks
+        }
+        for (ServerPlayer sp : players) {
+            if (sp.lastStateNs() == 0L && sp.lastCx() == Integer.MIN_VALUE) {
+                return;
+            }
+        }
+        int evicted = 0;
+        for (var pos : world.getLoadedChunkPositions()) {
+            boolean keep = false;
+            for (ServerPlayer sp : players) {
+                int pcx = (int) Math.floor(sp.x() / 16.0);
+                int pcz = (int) Math.floor(sp.z() / 16.0);
+                int keepRadius = sp.viewDistanceChunks() + EVICT_KEEP_MARGIN;
+                if (Math.max(Math.abs(pos.getX() - pcx), Math.abs(pos.getZ() - pcz)) <= keepRadius) {
+                    keep = true;
+                    break;
+                }
+            }
+            if (!keep) {
+                world.unloadChunk(pos.getX(), pos.getZ());
+                if (++evicted >= MAX_EVICTIONS_PER_SWEEP) {
+                    break;
+                }
+            }
+        }
+        if (evicted > 0) {
+            System.out.println("[SERVER-CHUNK] Evicted " + evicted + " far chunks ("
+                + world.getLoadedChunkCount() + " resident)");
         }
     }
 

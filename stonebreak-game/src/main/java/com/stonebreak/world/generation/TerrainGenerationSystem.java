@@ -115,16 +115,14 @@ public class TerrainGenerationSystem {
     }
 
     /**
-     * Returns the surface block a column would place at its top air-adjacent cell,
-     * derived from the same biome rules as {@link #determineBlockType}. Submerged
-     * columns (surface below sea level) are reported as {@link BlockType#WATER} so
-     * coarse renderers can paint a water sheet without block data.
+     * Returns the surface block a column places at its terrain top
+     * ({@code y == height - 1}), derived from the same biome rules as
+     * {@link #determineBlockType}. Submerged columns report their real seabed
+     * block — {@code determineBlockType} places {@code surfaceBlock(biome)}
+     * there just like on land — so coarse renderers (FastLOD) can draw the
+     * ocean floor; submergence itself is decided from {@code height < SEA_LEVEL}.
      */
     public BlockType getSurfaceBlockAt(int worldX, int worldZ) {
-        int height = heightMapGenerator.generateHeight(worldX, worldZ);
-        if (height < SEA_LEVEL) {
-            return BlockType.WATER;
-        }
         return surfaceBlock(biomeManager.getBiome(worldX, worldZ));
     }
 
@@ -145,6 +143,53 @@ public class TerrainGenerationSystem {
         BiomeType biome = biomeManager.getBiome(worldX, worldZ);
         return com.stonebreak.world.generation.features.VegetationGenerator.probeTree(
                 worldX, worldZ, biome, surface, deterministicRandom);
+    }
+
+    /**
+     * Batched column probe for coarse samplers (FastLOD): fills heights and,
+     * optionally, surface blocks / tree samples for a {@code count x count}
+     * grid at block positions {@code (worldX0 + ix*stride, worldZ0 + iz*stride)},
+     * indexed {@code [ix*count + iz]}. Results are identical to
+     * {@link #getFinalTerrainHeightAt}, {@link #getSurfaceBlockAt} and
+     * {@link #getTreeAt} at the same coordinates.
+     *
+     * <p>On the diffusion generator the batching win lives one layer down: the
+     * heights come from bridge tiles that {@code DiffusionTileCache} already
+     * serves whole, so a straight per-column loop touches each tile once and
+     * needs no separate grid-fill path.
+     *
+     * @param outSurface nullable; length count*count when present
+     * @param outTrees   nullable; length count*count when present
+     */
+    public void sampleColumns(int worldX0, int worldZ0, int count, int stride,
+                              int[] outHeights,
+                              BlockType[] outSurface,
+                              com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees) {
+        boolean needBiomes = outSurface != null || outTrees != null;
+        for (int ix = 0; ix < count; ix++) {
+            for (int iz = 0; iz < count; iz++) {
+                int idx = ix * count + iz;
+                int wx = worldX0 + ix * stride;
+                int wz = worldZ0 + iz * stride;
+                int height = heightMapGenerator.generateHeight(wx, wz);
+                outHeights[idx] = height;
+                if (!needBiomes) {
+                    continue;
+                }
+                // Biome is resolved for submerged columns too — their surface
+                // is the real seabed block (see getSurfaceBlockAt).
+                BiomeType biome = biomeManager.getBiome(wx, wz);
+                BlockType surface = surfaceBlock(biome);
+                if (outSurface != null) {
+                    outSurface[idx] = surface;
+                }
+                if (outTrees != null) {
+                    outTrees[idx] = (height < SEA_LEVEL) ? null
+                        : com.stonebreak.world.generation.features.VegetationGenerator.probeTree(
+                            wx, wz, biome, surface, deterministicRandom);
+                }
+            }
+        }
     }
 
     /**

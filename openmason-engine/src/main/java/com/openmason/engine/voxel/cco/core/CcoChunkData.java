@@ -28,6 +28,16 @@ public interface CcoChunkData {
     IBlockType getBlock(int x, int y, int z);
 
     /**
+     * Optional zero-copy escape hatch: the backing block storage, when this
+     * view wraps one. Native mesh kernels bulk-snapshot through it instead of
+     * 65k virtual {@link #getBlock} calls. Null when the implementation has no
+     * single backing storage; callers must fall back to per-cell access.
+     */
+    default com.openmason.engine.voxel.cco.data.CcoBlockStorage backingStorage() {
+        return null;
+    }
+
+    /**
      * Check if coordinates are within chunk bounds
      *
      * @param x Local X

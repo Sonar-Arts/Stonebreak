@@ -16,7 +16,8 @@ import java.nio.ByteOrder;
  * Wire layout (little-endian):
  * <pre>
  *   magic        u32  'FLOD' (0x444F4C46)
- *   version      u8   current = 1
+ *   version      u8   current = 2 (v2: submerged cells store the real seabed
+ *                     block instead of WATER; submergence is height-derived)
  *   level        u8   0..FastLodLevel.count-1
  *   cellsPerAxis u8
  *   stride       u8
@@ -29,7 +30,7 @@ import java.nio.ByteOrder;
  */
 public final class FastLodSerializer {
 
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
 
     private FastLodSerializer() {}

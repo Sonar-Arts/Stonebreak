@@ -15,7 +15,23 @@ import com.stonebreak.world.World;
  */
 public final class ClientBlockHandler {
 
+    /**
+     * Ordering barrier: chunk snapshots install asynchronously, so any packet
+     * mutating a chunk that has an install pending must wait for it — applying
+     * immediately would fail (chunk not resident → spurious resync) or be
+     * overwritten by the older snapshot (→ audit-mismatch re-stream storms).
+     */
+    private final ClientChunkHandler chunkHandler;
+
+    public ClientBlockHandler(ClientChunkHandler chunkHandler) {
+        this.chunkHandler = chunkHandler;
+    }
+
     public void applyBlockChange(BlockChangeS2C s) {
+        if (chunkHandler.runAfterPendingInstall(
+                Math.floorDiv(s.x(), 16), Math.floorDiv(s.z(), 16), () -> applyBlockChange(s))) {
+            return;
+        }
         World world = Game.getWorld();
         if (world == null) {
             return;
@@ -26,6 +42,10 @@ public final class ClientBlockHandler {
     }
 
     public void applyMultiBlock(MultiBlockChangeS2C m) {
+        if (chunkHandler.runAfterPendingInstall(
+                m.sectionX(), m.sectionZ(), () -> applyMultiBlock(m))) {
+            return;
+        }
         World world = Game.getWorld();
         if (world == null) {
             return;
@@ -75,6 +95,10 @@ public final class ClientBlockHandler {
      * writes the chunk's water layer directly (the render world runs no sim).
      */
     public void applyBlockMeta(BlockMetaS2C m) {
+        if (chunkHandler.runAfterPendingInstall(
+                m.sectionX(), m.sectionZ(), () -> applyBlockMeta(m))) {
+            return; // snapshot install also (re)hydrates snow/water — order matters
+        }
         World world = Game.getWorld();
         if (world == null) {
             return;
@@ -156,6 +180,10 @@ public final class ClientBlockHandler {
      * open furnace UI tracks live.
      */
     public void applyBlockState(com.stonebreak.network.packet.world.BlockStateS2C s) {
+        if (chunkHandler.runAfterPendingInstall(
+                Math.floorDiv(s.x(), 16), Math.floorDiv(s.z(), 16), () -> applyBlockState(s))) {
+            return; // snapshot install replaces the chunk's state map — order matters
+        }
         World world = Game.getWorld();
         if (world == null) {
             return;

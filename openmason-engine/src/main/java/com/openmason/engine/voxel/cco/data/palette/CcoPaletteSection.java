@@ -64,6 +64,40 @@ public final class CcoPaletteSection {
         this.nonAirCount = isAir(fillBlock) ? 0 : volume;
     }
 
+    /**
+     * Builds a byte-indexed section directly from decoded palette data —
+     * the bulk-decode twin of {@link #writeBlockIdsInto}. {@code cellIndices}
+     * (section cell order, values masked {@code & 0xFF}) is taken by reference
+     * (caller hands over ownership); the palette is defensively copied.
+     */
+    public static CcoPaletteSection fromPaletteData(int cellsPerLayer, IBlockType[] palette,
+                                                    byte[] cellIndices) {
+        if (palette.length == 0 || palette.length > MAX_BYTE_PALETTE) {
+            throw new IllegalArgumentException("Palette size out of range: " + palette.length);
+        }
+        int volume = cellsPerLayer * CcoSectionIndexing.SECTION_HEIGHT;
+        if (cellIndices.length != volume) {
+            throw new IllegalArgumentException("Index array length " + cellIndices.length
+                + " != section volume " + volume);
+        }
+        boolean[] airEntry = new boolean[palette.length];
+        for (int i = 0; i < palette.length; i++) {
+            airEntry[i] = isAir(palette[i]);
+        }
+        int nonAir = 0;
+        for (byte cellIndex : cellIndices) {
+            int idx = cellIndex & 0xFF;
+            if (idx >= palette.length) {
+                throw new IllegalArgumentException("Cell index " + idx + " out of palette range");
+            }
+            if (!airEntry[idx]) {
+                nonAir++;
+            }
+        }
+        return new CcoPaletteSection(cellsPerLayer,
+            new State(palette.clone(), cellIndices, null), nonAir);
+    }
+
     private CcoPaletteSection(int cellsPerLayer, State state, int nonAirCount) {
         this.cellsPerLayer = cellsPerLayer;
         this.volume = cellsPerLayer * CcoSectionIndexing.SECTION_HEIGHT;
@@ -144,6 +178,36 @@ public final class CcoPaletteSection {
         }
         wide[cellIndex] = (short) s.palette.length;
         state = new State(palette, null, wide);
+    }
+
+    /**
+     * Bulk-writes this section's block ids into {@code dst} starting at
+     * {@code dstOffset}, one short per cell in section cell order. This is the
+     * zero-virtual-call bulk accessor native kernels and codecs snapshot
+     * through: uniform sections become one fill, indexed sections one palette
+     * id table + a tight index loop.
+     */
+    public void writeBlockIdsInto(short[] dst, int dstOffset) {
+        State s = state;
+        if (s.indices == null && s.wideIndices == null) {
+            java.util.Arrays.fill(dst, dstOffset, dstOffset + volume, (short) s.palette[0].getId());
+            return;
+        }
+        short[] paletteIds = new short[s.palette.length];
+        for (int i = 0; i < s.palette.length; i++) {
+            paletteIds[i] = (short) s.palette[i].getId();
+        }
+        if (s.indices != null) {
+            byte[] indices = s.indices;
+            for (int i = 0; i < volume; i++) {
+                dst[dstOffset + i] = paletteIds[indices[i] & 0xFF];
+            }
+        } else {
+            short[] wide = s.wideIndices;
+            for (int i = 0; i < volume; i++) {
+                dst[dstOffset + i] = paletteIds[wide[i]];
+            }
+        }
     }
 
     /** True if every cell holds the same block. */

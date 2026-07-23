@@ -53,13 +53,33 @@ public final class VoxelChunkCodec {
     /** Hard cap on encoded payload size — protects decode against malicious payloads. */
     private static final int MAX_ENCODED_BYTES = 200 * 1024;
 
+    // Bulk-encode scratch. Wire output is byte-identical to the per-cell path;
+    // the id→palette-index lookup table is reset entry-by-entry after each
+    // section (never bulk-cleared — only touched slots are dirtied).
+    private static final ThreadLocal<short[]> SECTION_IDS =
+        ThreadLocal.withInitial(() -> new short[BLOCKS_PER_SECTION]);
+    private static final ThreadLocal<short[]> SECTION_INDICES =
+        ThreadLocal.withInitial(() -> new short[BLOCKS_PER_SECTION]);
+    private static final ThreadLocal<int[]> PALETTE_LOOKUP = ThreadLocal.withInitial(() -> {
+        int[] lookup = new int[65536];
+        java.util.Arrays.fill(lookup, -1);
+        return lookup;
+    });
+
     private VoxelChunkCodec() {}
 
     public static byte[] encode(IVoxelChunkData chunk) {
+        com.openmason.engine.voxel.IVoxelChunkSections sections =
+            chunk instanceof com.openmason.engine.voxel.IVoxelChunkSections s ? s : null;
+        short[] ids = sections != null ? SECTION_IDS.get() : null;
         ByteArrayOutputStream buf = new ByteArrayOutputStream(4 * 1024);
         try (DataOutputStream out = new DataOutputStream(buf)) {
             for (int sy = 0; sy < SECTIONS_PER_CHUNK; sy++) {
-                encodeSection(chunk, sy, out);
+                if (sections != null && sections.copySectionBlockIds(sy, ids)) {
+                    encodeSectionFromIds(ids, out);
+                } else {
+                    encodeSection(chunk, sy, out);
+                }
             }
         } catch (IOException e) {
             throw new IllegalStateException("Chunk encode failed", e);
@@ -81,6 +101,66 @@ public final class VoxelChunkCodec {
     }
 
     // ─── Section encode ─────────────────────────────────────────────────────
+
+    /**
+     * Bulk section encode over a flat id array (section cell order == wire
+     * order). Produces byte-identical output to the per-cell path: same
+     * first-encounter palette order, same packing.
+     */
+    private static void encodeSectionFromIds(short[] ids, DataOutputStream out) throws IOException {
+        int[] lookup = PALETTE_LOOKUP.get();
+        short[] indices = SECTION_INDICES.get();
+        short[] palette = new short[MAX_PALETTE_ENTRIES];
+        int paletteSize = 0;
+        boolean direct = false;
+
+        for (int i = 0; i < BLOCKS_PER_SECTION; i++) {
+            int id = ids[i] & 0xFFFF;
+            int pi = lookup[id];
+            if (pi < 0) {
+                if (paletteSize >= MAX_PALETTE_ENTRIES) { direct = true; break; }
+                pi = paletteSize;
+                lookup[id] = pi;
+                palette[paletteSize++] = (short) id;
+            }
+            indices[i] = (short) pi;
+        }
+        for (int p = 0; p < paletteSize; p++) {
+            lookup[palette[p] & 0xFFFF] = -1;
+        }
+
+        if (direct) {
+            out.writeByte(TAG_DIRECT);
+            for (int i = 0; i < BLOCKS_PER_SECTION; i++) {
+                out.writeShort(ids[i]);
+            }
+            return;
+        }
+
+        if (paletteSize == 1) {
+            out.writeByte(TAG_SINGLE);
+            out.writeShort(palette[0]);
+            return;
+        }
+
+        int bitsPerBlock = bitsForPalette(paletteSize);
+        int blocksPerLong = 64 / bitsPerBlock;
+        int longCount = (BLOCKS_PER_SECTION + blocksPerLong - 1) / blocksPerLong;
+        long mask = (1L << bitsPerBlock) - 1L;
+        long[] data = new long[longCount];
+        for (int i = 0; i < BLOCKS_PER_SECTION; i++) {
+            int li = i / blocksPerLong;
+            int slot = i % blocksPerLong;
+            data[li] |= ((long) (indices[i] & 0xFFFF) & mask) << (slot * bitsPerBlock);
+        }
+
+        out.writeByte(TAG_PALETTED);
+        out.writeByte(paletteSize == MAX_PALETTE_ENTRIES ? 0 : paletteSize);
+        for (int i = 0; i < paletteSize; i++) out.writeShort(palette[i]);
+        out.writeByte(bitsPerBlock);
+        out.writeInt(longCount);
+        for (long v : data) out.writeLong(v);
+    }
 
     private static void encodeSection(IVoxelChunkData chunk, int sectionY, DataOutputStream out) throws IOException {
         int yBase = sectionY * SECTION_H;
@@ -152,6 +232,9 @@ public final class VoxelChunkCodec {
         switch (tag) {
             case TAG_SINGLE -> {
                 IBlockType b = resolver.byId(in.readShort() & 0xFFFF);
+                if (sink.setSectionUniform(sectionY, b)) {
+                    return;
+                }
                 for (int i = 0; i < BLOCKS_PER_SECTION; i++) {
                     sink.setBlock(i & 15, yBase + ((i >> 8) & 15), (i >> 4) & 15, b);
                 }
@@ -176,6 +259,10 @@ public final class VoxelChunkCodec {
                 long mask = (1L << bitsPerBlock) - 1L;
                 long[] data = new long[longCount];
                 for (int i = 0; i < longCount; i++) data[i] = in.readLong();
+                // Unpack once into a byte index array (palette ≤ 256 always fits),
+                // then hand the whole section to the sink's bulk path when it
+                // has one — per-cell setBlock only as fallback.
+                byte[] cellIndices = new byte[BLOCKS_PER_SECTION];
                 for (int i = 0; i < BLOCKS_PER_SECTION; i++) {
                     int li = i / blocksPerLong;
                     int slot = i % blocksPerLong;
@@ -183,7 +270,14 @@ public final class VoxelChunkCodec {
                     if (p >= paletteSize) {
                         throw new IOException("Palette index out of range: " + p);
                     }
-                    sink.setBlock(i & 15, yBase + ((i >> 8) & 15), (i >> 4) & 15, palette[p]);
+                    cellIndices[i] = (byte) p;
+                }
+                if (sink.setSectionPaletted(sectionY, palette, cellIndices)) {
+                    return;
+                }
+                for (int i = 0; i < BLOCKS_PER_SECTION; i++) {
+                    sink.setBlock(i & 15, yBase + ((i >> 8) & 15), (i >> 4) & 15,
+                        palette[cellIndices[i] & 0xFF]);
                 }
             }
             case TAG_DIRECT -> {

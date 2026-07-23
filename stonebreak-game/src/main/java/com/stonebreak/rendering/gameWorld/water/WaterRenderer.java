@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import com.openmason.engine.rendering.shaders.ShaderProgram;
+import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.world.chunk.Chunk;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -43,6 +44,15 @@ import static org.lwjgl.opengl.GL11.*;
  */
 public class WaterRenderer {
 
+    /**
+     * A FastLOD node's water-sheet mesh plus its crossfade opacity for this
+     * frame (collected by {@code FastLodRenderPass} alongside the terrain
+     * draw). Sheets render through this same shader as native water, so the
+     * near/far water handover is seamless; the fade drives the same
+     * screen-door dither the node's terrain mesh uses in the world shader.
+     */
+    public record LodWaterNode(MmsRenderableHandle handle, float fade) {}
+
     private final ShaderProgram shader;
 
     public WaterRenderer() {
@@ -62,6 +72,7 @@ public class WaterRenderer {
             shader.createUniform("uFogColor");
             shader.createUniform("uFogStart");
             shader.createUniform("uFogEnd");
+            shader.createUniform("uLodFade");
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize water shader", e);
         }
@@ -91,11 +102,13 @@ public class WaterRenderer {
      * @param fogColor          atmospheric fog color (sky color from TimeOfDay)
      * @param fogStart          horizontal distance where fog begins (blocks)
      * @param fogEnd            horizontal distance of full fog; {@code <= fogStart} disables
+     * @param lodWater          FastLOD water-sheet nodes for this frame (nullable/empty when LOD is off)
      */
     public void render(List<Chunk> chunksBackToFront, Matrix4f projection, Matrix4f view,
                        Vector3f cameraPos, float time, Vector3f sunDirection,
                        float ambientLight, boolean wavesEnabled,
-                       Vector3f fogColor, float fogStart, float fogEnd) {
+                       Vector3f fogColor, float fogStart, float fogEnd,
+                       List<LodWaterNode> lodWater) {
         // Save GL state we touch.
         boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
@@ -141,16 +154,18 @@ public class WaterRenderer {
         // sealed junction overlaps).
         //
         // Pass 1 — depth-only prepass: writes the nearest water surface into
-        // the depth buffer (no color output).
+        // the depth buffer (no color output). LOD sheets participate so far
+        // water self-occludes exactly like native water; their dither discard
+        // runs here too, keeping both sub-passes' depths consistent.
         glColorMask(false, false, false, false);
         glDepthMask(true);
-        drawWaterMeshes(chunksBackToFront);
+        drawWaterMeshes(chunksBackToFront, lodWater);
 
         // Pass 2 — color pass: no depth writes; LEQUAL passes only fragments
         // on that nearest surface, so exactly one water layer blends.
         glColorMask(true, true, true, true);
         glDepthMask(false);
-        drawWaterMeshes(chunksBackToFront);
+        drawWaterMeshes(chunksBackToFront, lodWater);
 
         GL30.glBindVertexArray(0);
 
@@ -183,11 +198,29 @@ public class WaterRenderer {
         glPolygonOffset(currentOffsetFactor, currentOffsetUnits);
     }
 
-    private void drawWaterMeshes(List<Chunk> chunksBackToFront) {
+    private void drawWaterMeshes(List<Chunk> chunksBackToFront, List<LodWaterNode> lodWater) {
+        // Native chunks render fully solid; the depth prepass makes draw order
+        // between water meshes irrelevant (only the nearest layer survives),
+        // so LOD sheets can simply follow the chunk list.
+        shader.setUniform("uLodFade", 1.0f);
         for (Chunk chunk : chunksBackToFront) {
             if (chunk.hasWaterMesh()) {
                 chunk.renderWater();
             }
+        }
+        if (lodWater == null || lodWater.isEmpty()) {
+            return;
+        }
+        float boundFade = 1.0f;
+        for (LodWaterNode node : lodWater) {
+            if (node.fade() != boundFade) {
+                shader.setUniform("uLodFade", node.fade());
+                boundFade = node.fade();
+            }
+            node.handle().render();
+        }
+        if (boundFade != 1.0f) {
+            shader.setUniform("uLodFade", 1.0f);
         }
     }
 

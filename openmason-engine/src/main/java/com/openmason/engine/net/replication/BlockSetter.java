@@ -17,4 +17,24 @@ import com.openmason.engine.voxel.IBlockType;
 public interface BlockSetter {
 
     void setBlock(int x, int y, int z, IBlockType type);
+
+    /**
+     * Bulk fast path: replace section {@code sectionY} (16 tall) entirely with
+     * one block. Return false to make the codec fall back to per-cell
+     * {@link #setBlock} calls.
+     */
+    default boolean setSectionUniform(int sectionY, IBlockType block) {
+        return false;
+    }
+
+    /**
+     * Bulk fast path: replace section {@code sectionY} with paletted data.
+     * {@code cellIndices} (4096 entries, section cell order
+     * {@code ((y & 15)*16 + z)*16 + x}, values masked {@code & 0xFF}) index into
+     * {@code palette}. The caller hands over ownership of both arrays.
+     * Return false to fall back to per-cell {@link #setBlock} calls.
+     */
+    default boolean setSectionPaletted(int sectionY, IBlockType[] palette, byte[] cellIndices) {
+        return false;
+    }
 }

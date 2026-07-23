@@ -104,6 +104,12 @@ public class FileSaveRepository {
         chunkStorage.saveChunks(chunks);
     }
 
+    /** Single-chunk save — the parallel save pool fans batches out through this. */
+    public void saveChunk(ChunkData chunk) throws IOException {
+        ensureWorldDirectory();
+        chunkStorage.saveChunk(chunk);
+    }
+
     public Optional<ChunkData> loadChunk(int chunkX, int chunkZ) throws IOException {
         return chunkStorage.loadChunk(chunkX, chunkZ);
     }

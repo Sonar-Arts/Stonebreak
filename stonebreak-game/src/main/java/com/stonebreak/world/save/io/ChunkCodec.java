@@ -80,13 +80,24 @@ import java.util.zip.InflaterInputStream;
  *       unrelated shape and a hard seam at every boundary. Deliberate clean
  *       break, not an oversight — {@code MIN_READ_VERSION} jumps to 4 and
  *       older saves are rejected outright rather than silently corrupted.</li>
+ *   <li>5 — identical body layout to v4, but the block payload is zstd-compressed
+ *       through the Cenda native kernels instead of DEFLATE. Written only when
+ *       the kernels are loaded and readable only with them present; without the
+ *       native library the codec stays on v4 in both directions.</li>
  * </ul>
  */
 public final class ChunkCodec {
 
     private static final int MAGIC = 0x5342434B; // 'SBCK'
-    /** Current write version. */
+    /**
+     * Write versions: v4 = DEFLATE block payload (always readable/writable),
+     * v5 = zstd block payload via the Cenda native kernels — written only when
+     * the kernels are loaded, read back only with them present. The raw block
+     * layout inside is identical across both.
+     */
     private static final int VERSION = 4;
+    private static final int VERSION_ZSTD = 5;
+    private static final int MAX_READ_VERSION = VERSION_ZSTD;
     /** Earliest readable version. Pre-v4 saves predate the 256→1024 world-height rescale and diffusion terrain switch; no migration path exists (see class javadoc). */
     private static final int MIN_READ_VERSION = 4;
     private static final int CHUNK_WIDTH = 16;
@@ -97,10 +108,11 @@ public final class ChunkCodec {
     }
 
     public static byte[] encode(ChunkData chunk) throws IOException {
+        boolean zstd = com.openmason.engine.cenda.CendaKernels.isAvailable();
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(buffer))) {
             out.writeInt(MAGIC);
-            out.writeShort(VERSION);
+            out.writeShort(zstd ? VERSION_ZSTD : VERSION);
             out.writeInt(chunk.getChunkX());
             out.writeInt(chunk.getChunkZ());
             out.writeLong(chunk.getLastModified()
@@ -110,7 +122,7 @@ public final class ChunkCodec {
             out.writeBoolean(chunk.isFeaturesPopulated());
             out.writeBoolean(chunk.hasEntitiesGenerated());
 
-            byte[] compressedBlocks = compressBlocks(chunk.getBlockStorage());
+            byte[] compressedBlocks = compressBlocks(chunk.getBlockStorage(), zstd);
             out.writeInt(compressedBlocks.length);
             out.write(compressedBlocks);
 
@@ -132,8 +144,13 @@ public final class ChunkCodec {
             }
 
             int version = in.readUnsignedShort();
-            if (version < MIN_READ_VERSION || version > VERSION) {
+            if (version < MIN_READ_VERSION || version > MAX_READ_VERSION) {
                 throw new IOException("Unsupported chunk payload version: " + version);
+            }
+            if (version >= VERSION_ZSTD && !com.openmason.engine.cenda.CendaKernels.isAvailable()) {
+                throw new IOException("Chunk payload v" + version
+                    + " is zstd-compressed and requires the Cenda native kernels "
+                    + "(build openmason-engine/cenda, release preset)");
             }
 
             int chunkX = in.readInt();
@@ -151,7 +168,7 @@ public final class ChunkCodec {
                 throw new IOException("Incomplete block buffer: expected " + compressedLength
                     + " bytes, got " + compressedBlocks.length);
             }
-            CcoBlockStorage blocks = decompressBlocks(compressedBlocks);
+            CcoBlockStorage blocks = decompressBlocks(compressedBlocks, version >= VERSION_ZSTD);
 
             Map<String, ChunkData.WaterBlockData> waterMeta = readWaterMetadata(in);
             List<EntityData> entities = readEntities(in);
@@ -300,7 +317,24 @@ public final class ChunkCodec {
      * out in the same y,z,x order, and uniform sections emit one id 4096 times
      * with zero per-cell lookups.
      */
-    private static byte[] compressBlocks(CcoBlockStorage storage) throws IOException {
+    private static byte[] compressBlocks(CcoBlockStorage storage, boolean zstd) throws IOException {
+        byte[] rawBytes = rawBlockBytes(storage);
+        if (zstd) {
+            byte[] compressed = com.openmason.engine.cenda.CendaKernels.zstdCompress(rawBytes, 3);
+            if (compressed == null) {
+                throw new IOException("zstd block compression failed");
+            }
+            return compressed;
+        }
+        ByteArrayOutputStream compressed = new ByteArrayOutputStream();
+        try (DeflaterOutputStream deflater = new DeflaterOutputStream(
+            new BufferedOutputStream(compressed))) {
+            deflater.write(rawBytes);
+        }
+        return compressed.toByteArray();
+    }
+
+    private static byte[] rawBlockBytes(CcoBlockStorage storage) throws IOException {
         if (storage == null) {
             throw new IllegalArgumentException("Chunk blocks cannot be null");
         }
@@ -333,26 +367,29 @@ public final class ChunkCodec {
             }
         }
 
-        ByteArrayOutputStream compressed = new ByteArrayOutputStream();
-        try (DeflaterOutputStream deflater = new DeflaterOutputStream(
-            new BufferedOutputStream(compressed))) {
-            deflater.write(raw.toByteArray());
-        }
-        return compressed.toByteArray();
+        return raw.toByteArray();
     }
 
     private static int blockId(IBlockType block) {
         return block != null ? block.getId() : BlockType.AIR.getId();
     }
 
-    private static CcoBlockStorage decompressBlocks(byte[] compressed) throws IOException {
-        ByteArrayOutputStream raw = new ByteArrayOutputStream(BLOCK_COUNT * Short.BYTES);
-        try (InflaterInputStream inflater = new InflaterInputStream(
-            new BufferedInputStream(new ByteArrayInputStream(compressed)))) {
-            inflater.transferTo(raw);
+    private static CcoBlockStorage decompressBlocks(byte[] compressed, boolean zstd) throws IOException {
+        byte[] rawBytes;
+        if (zstd) {
+            rawBytes = com.openmason.engine.cenda.CendaKernels.zstdDecompress(
+                compressed, BLOCK_COUNT * Short.BYTES);
+            if (rawBytes == null) {
+                throw new IOException("zstd block decompression failed");
+            }
+        } else {
+            ByteArrayOutputStream raw = new ByteArrayOutputStream(BLOCK_COUNT * Short.BYTES);
+            try (InflaterInputStream inflater = new InflaterInputStream(
+                new BufferedInputStream(new ByteArrayInputStream(compressed)))) {
+                inflater.transferTo(raw);
+            }
+            rawBytes = raw.toByteArray();
         }
-
-        byte[] rawBytes = raw.toByteArray();
         if (rawBytes.length != BLOCK_COUNT * Short.BYTES) {
             throw new IOException("Unexpected decompressed block array length: " + rawBytes.length);
         }

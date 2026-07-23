@@ -64,14 +64,38 @@ public final class MmsMeshPipeline {
     // State
     private volatile boolean shutdown = false;
 
-    // Frame budget tracking for adaptive mesh generation
-    private static final int DEFAULT_MAX_MESH_BUILDS_PER_FRAME = 10;
-    private static final int MIN_MESH_BUILDS_PER_FRAME = 3;
-    private static final int MAX_MESH_BUILDS_PER_FRAME = 20;
+    // Frame budget tracking for adaptive mesh generation. These only bound
+    // SUBMISSIONS to the worker pool per frame (builds run off-thread); raised
+    // after the mesher went snapshot-based (~0.5 ms/build) so a streaming
+    // burst drains in a few frames instead of dozens. Frame-time adaptation
+    // below still shrinks the budget under real pressure.
+    // Effectively uncapped: submissions only enqueue to the worker pool (builds
+    // run off-thread on cores/2 workers — the real limit), so metering them
+    // just delayed burst drains. The adaptive floor still backs off under
+    // sustained frame pressure.
+    private static final int DEFAULT_MAX_MESH_BUILDS_PER_FRAME = 256;
+    private static final int MIN_MESH_BUILDS_PER_FRAME = 16;
+    private static final int MAX_MESH_BUILDS_PER_FRAME = 256;
     private static final float TARGET_FRAME_TIME_MS = 16.0f; // 60 FPS target
     private static final float HIGH_FRAME_TIME_MS = 20.0f; // Reduce if above this
     private static final float LOW_FRAME_TIME_MS = 12.0f; // Increase if below this
     private int currentMeshBuildsPerFrame = DEFAULT_MAX_MESH_BUILDS_PER_FRAME;
+
+    // Initial-mesh neighbor gate (Minecraft-style): a chunk's FIRST mesh build
+    // waits until all four cardinal neighbors are resident, so a streaming
+    // burst builds each chunk ~once with full border data instead of building
+    // immediately and then rebuilding as every neighbor lands (up to 5 builds
+    // per installed chunk). Escape hatches: chunks in the player's immediate
+    // ring build at once (close terrain never waits), and a deferred chunk
+    // builds anyway after a timeout (view-edge chunks whose neighbors will
+    // never stream). Rebuilds (chunks that have meshed before) are never gated.
+    private static final int INITIAL_MESH_IMMEDIATE_RING = 2;
+    private static final long INITIAL_MESH_NEIGHBOR_WAIT_NANOS = 400_000_000L;
+    private final java.util.Set<Chunk> meshedOnce = ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<Chunk, Long> initialMeshDeferredSince = new ConcurrentHashMap<>();
+
+    /** Wall-clock GL upload budget per frame — the primary (and generous) guard. */
+    private static final long GL_UPLOAD_BUDGET_NANOS = 8_000_000L;
 
     /**
      * Creates a new mesh pipeline.
@@ -198,9 +222,17 @@ public final class MmsMeshPipeline {
 
         // Process only up to the frame budget limit
         int processedThisFrame = 0;
+        long now = System.nanoTime();
         Iterator<Chunk> iterator = reusableChunkSortList.iterator();
         while (iterator.hasNext() && processedThisFrame < currentMeshBuildsPerFrame) {
             Chunk chunk = iterator.next();
+
+            // Initial-mesh neighbor gate: leave the chunk queued (it is retried
+            // every frame and typically released by its last neighbor landing).
+            if (shouldDeferInitialMesh(chunk, playerChunkX, playerChunkZ, now)) {
+                continue;
+            }
+            initialMeshDeferredSince.remove(chunk);
 
             // Remove from queue and submit to worker thread
             chunksToGenerateMesh.remove(chunk);
@@ -214,6 +246,29 @@ public final class MmsMeshPipeline {
             // Chunks remaining will be processed next frame
             // This spreads the load across multiple frames to prevent stuttering
         }
+    }
+
+    /**
+     * True when this chunk's FIRST mesh should keep waiting for its cardinal
+     * neighbors. Never defers rebuilds, the player's immediate ring, or a
+     * chunk that has already waited out the timeout.
+     */
+    private boolean shouldDeferInitialMesh(Chunk chunk, int playerChunkX, int playerChunkZ, long now) {
+        if (meshedOnce.contains(chunk)) {
+            return false;
+        }
+        int cx = chunk.getChunkX();
+        int cz = chunk.getChunkZ();
+        if (Math.max(Math.abs(cx - playerChunkX), Math.abs(cz - playerChunkZ))
+                <= INITIAL_MESH_IMMEDIATE_RING) {
+            return false;
+        }
+        if (world.hasChunkAt(cx + 1, cz) && world.hasChunkAt(cx - 1, cz)
+                && world.hasChunkAt(cx, cz + 1) && world.hasChunkAt(cx, cz - 1)) {
+            return false;
+        }
+        Long since = initialMeshDeferredSince.putIfAbsent(chunk, now);
+        return since == null || now - since < INITIAL_MESH_NEIGHBOR_WAIT_NANOS;
     }
 
     /**
@@ -286,6 +341,8 @@ public final class MmsMeshPipeline {
             // geometry — a chunk with no visible faces (fully enclosed, all-air, or off-view
             // border) legitimately yields an empty mesh. Only thrown exceptions are retried.
             success = true;
+            meshedOnce.add(chunk);
+            com.stonebreak.world.chunk.utils.ChunkPipelineStats.MESHED.increment();
             // Any part counts: a rebuild that empties one part (e.g. the last
             // water in a chunk drained) must still reach the upload step so the
             // stale handle for that part gets cleared.
@@ -411,7 +468,10 @@ public final class MmsMeshPipeline {
 
         MeshUploadTask task;
         int updatesThisFrame = 0;
-        int maxUpdatesPerFrame = ChunkManager.getOptimizedGLBatchSize();
+        // Wall-clock budget is the real limiter; the adaptive count (24..64)
+        // was sized for count-based pacing, so floor it high and let time rule.
+        int maxUpdatesPerFrame = Math.max(128, ChunkManager.getOptimizedGLBatchSize());
+        long uploadDeadline = System.nanoTime() + GL_UPLOAD_BUDGET_NANOS;
 
         while ((task = meshesReadyForGLUpload.poll()) != null) {
             chunksInUploadQueue.remove(task.chunk);
@@ -419,8 +479,12 @@ public final class MmsMeshPipeline {
             // Player modifications bypass batch limit for instant feedback
             boolean isPlayerPriority = task.priority >= PRIORITY_PLAYER_MODIFICATION;
 
-            // Check batch limit (except for player modifications)
-            if (!isPlayerPriority && updatesThisFrame >= maxUpdatesPerFrame) {
+            // Wall-clock budget first (the actual resource here is render-frame
+            // time, not a count), adaptive count cap as the secondary guard.
+            // At least one upload always goes through so progress is guaranteed.
+            if (!isPlayerPriority && updatesThisFrame >= 1
+                    && (updatesThisFrame >= maxUpdatesPerFrame
+                        || System.nanoTime() >= uploadDeadline)) {
                 // Put task back and stop processing
                 meshesReadyForGLUpload.offer(task);
                 chunksInUploadQueue.add(task.chunk);
@@ -511,6 +575,7 @@ public final class MmsMeshPipeline {
                 }
 
                 updatesThisFrame++;
+                com.stonebreak.world.chunk.utils.ChunkPipelineStats.UPLOADED.increment();
 
             } catch (Exception e) {
                 errorReporter.reportGLUpdateError(task.chunk, e,
@@ -598,6 +663,8 @@ public final class MmsMeshPipeline {
         chunksToGenerateMesh.remove(chunk);
         chunkRetryCount.remove(chunk);
         chunksFailedToGenerateMesh.remove(chunk);
+        meshedOnce.remove(chunk);
+        initialMeshDeferredSince.remove(chunk);
 
         // Remove from upload queue
         if (chunksInUploadQueue.remove(chunk)) {
@@ -754,6 +821,8 @@ public final class MmsMeshPipeline {
         chunksFailedToGenerateMesh.clear();
         chunkRetryCount.clear();
         chunkPriorityMap.clear();
+        meshedOnce.clear();
+        initialMeshDeferredSince.clear();
     }
 
     // === Debug/Statistics ===

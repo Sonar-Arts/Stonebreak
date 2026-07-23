@@ -57,10 +57,34 @@ class FastLodManagerLogicTest {
         terrain = mock(TerrainGenerationSystem.class);
         when(terrain.getFinalTerrainHeightAt(anyInt(), anyInt())).thenAnswer(inv -> {
             if (terrainFails.get()) throw new RuntimeException("simulated terrain failure");
-            return 80;
+            // Above SEA_LEVEL (320), so nodes are dry land: one terrain handle
+            // each, no extra water-sheet mesh to skew the handle counts.
+            return 336;
         });
         when(terrain.getSurfaceBlockAt(anyInt(), anyInt())).thenReturn(BlockType.GRASS);
         when(terrain.getTreeAt(anyInt(), anyInt())).thenReturn(null);
+        // The sampler feeds off the batched probe; mirror it onto the per-point
+        // stubs above so height-call counting (cooperative-cancellation test)
+        // and the simulated terrain failure keep working.
+        org.mockito.Mockito.doAnswer(inv -> {
+            int x0 = inv.getArgument(0);
+            int z0 = inv.getArgument(1);
+            int count = inv.getArgument(2);
+            int stride = inv.getArgument(3);
+            int[] outHeights = inv.getArgument(4);
+            BlockType[] outSurface = inv.getArgument(5);
+            for (int ix = 0; ix < count; ix++) {
+                for (int iz = 0; iz < count; iz++) {
+                    int idx = ix * count + iz;
+                    int wx = x0 + ix * stride, wz = z0 + iz * stride;
+                    outHeights[idx] = terrain.getFinalTerrainHeightAt(wx, wz);
+                    if (outSurface != null) {
+                        outSurface[idx] = terrain.getSurfaceBlockAt(wx, wz);
+                    }
+                }
+            }
+            return null;
+        }).when(terrain).sampleColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any());
 
         BlockTextureArray textures = mock(BlockTextureArray.class);
         when(textures.getBlockFaceLayer(any(), anyInt())).thenReturn(7);
@@ -86,8 +110,13 @@ class FastLodManagerLogicTest {
     }
 
     private MmsRenderableHandle handleFor(FastLodKey key) {
+        FastLodManager.Entry e = entryFor(key);
+        return e != null ? e.handle : null;
+    }
+
+    private FastLodManager.Entry entryFor(FastLodKey key) {
         for (FastLodManager.Entry e : manager.visibleHandles()) {
-            if (e.key.equals(key)) return e.handle;
+            if (e.key.equals(key)) return e;
         }
         return null;
     }
@@ -98,10 +127,11 @@ class FastLodManagerLogicTest {
         assertEquals(RING_NODES, manager.visibleHandles().size());
         assertEquals(RING_NODES, createdHandles.size());
 
-        // Every entry carries the flat-terrain mesh bounds for frustum culling.
+        // Every entry carries the mesh bounds for frustum culling: tops at the
+        // flat terrain height, minY at 0 from the node-border foundation walls.
         for (FastLodManager.Entry e : manager.visibleHandles()) {
-            assertEquals(80f, e.minY, 1e-4f);
-            assertEquals(80f, e.maxY, 1e-4f);
+            assertEquals(0f, e.minY, 1e-4f);
+            assertEquals(336f, e.maxY, 1e-4f);
         }
 
         tick(0, 0);
@@ -128,6 +158,31 @@ class FastLodManagerLogicTest {
         assertNull(handleFor(oldKey), "retired atomically with the replacement upload");
         assertNotNull(handleFor(FastLodKey.of(FastLodLevel.L0, 3, 0)));
         verify(oldHandle).close();
+    }
+
+    @Test
+    void bandTransitionReplacementInheritsCrossfadeState() {
+        tick(0, 0);
+        FastLodManager.Entry old = entryFor(FastLodKey.of(FastLodLevel.L1, 3, 0));
+        assertNotNull(old);
+        // Simulate the render pass having partially faded this node.
+        old.fade = 0.37f;
+        old.nativeCovered = true;
+
+        tick(1, 0);   // column (3,0) transitions L1 → L0 via the supersede path
+        FastLodManager.Entry replacement = entryFor(FastLodKey.of(FastLodLevel.L0, 3, 0));
+        assertNotNull(replacement);
+        assertEquals(0.37f, replacement.fade, 1e-6f,
+                "level swap must not restart the crossfade");
+        assertTrue(replacement.nativeCovered);
+    }
+
+    @Test
+    void freshUploadsStartFullyFadedOut() {
+        tick(0, 0);
+        for (FastLodManager.Entry e : manager.visibleHandles()) {
+            assertEquals(0f, e.fade, 1e-6f, "new nodes dissolve in from zero");
+        }
     }
 
     @Test

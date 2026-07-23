@@ -29,12 +29,22 @@ uniform bool uWavesEnabled;
 uniform vec3 uFogColor;
 uniform float uFogStart;
 uniform float uFogEnd;
+// FastLOD crossfade opacity (1.0 = solid). FastLOD water sheets render
+// through this same shader; while their node dissolves in/out this drives a
+// screen-door dither matching the world shader's terrain fade, so a node's
+// seabed and its water sheet fade together.
+uniform float uLodFade;
 
 out vec4 fragColor;
 
-// NOTE: hash/vnoise/fbm constants are mirrored in the world shader's LOD
-// distant-water branch (ResourceManager, lodw_* helpers) — the patterns must
-// align at the render-distance boundary; change both together.
+// 4x4 Bayer thresholds for the LOD crossfade dither (same table as the world
+// shader so terrain and water dissolve with an identical pattern).
+const float LOD_BAYER[16] = float[16](
+     0.0,  8.0,  2.0, 10.0,
+    12.0,  4.0, 14.0,  6.0,
+     3.0, 11.0,  1.0,  9.0,
+    15.0,  7.0, 13.0,  5.0);
+
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
@@ -52,6 +62,13 @@ float fbm(vec2 p) {
 }
 
 void main() {
+    // FastLOD crossfade: per-pixel screen-door discard, applied in both the
+    // depth prepass and the color pass so their coverage matches exactly.
+    if (uLodFade < 1.0) {
+        int di = (int(gl_FragCoord.y) & 3) * 4 + (int(gl_FragCoord.x) & 3);
+        if (uLodFade < (LOD_BAYER[di] + 0.5) / 16.0) discard;
+    }
+
     float t = uWavesEnabled ? uTime : 0.0;
     bool horizontal = abs(vNormal.y) > 0.5;
 
@@ -122,6 +139,9 @@ void main() {
 
     // Distance fog toward the sky color (horizontal distance, matching the
     // world shader) — alpha untouched so the blend over terrain stays correct.
+    // Native water and FastLOD sheets share this shader, so the near/far
+    // water handover needs no color matching: both sides ARE the same code
+    // blending over real geometry (native seabed vs LOD seabed).
     if (uFogEnd > uFogStart) {
         float horizDist = length(vWorldPos.xz - uCameraPos.xz);
         float fogF = smoothstep(uFogStart, uFogEnd, horizDist);

@@ -768,6 +768,15 @@ public class Chunk {
     }
 
     /**
+     * Raw block storage, exposed for bulk snapshotting (native mesh kernels,
+     * codecs). Treat as read-only — writes must go through setBlock so dirty
+     * tracking and the heightmap stay coherent.
+     */
+    public CcoBlockStorage getBlockStorageView() {
+        return blocks;
+    }
+
+    /**
      * Gets the CCO dirty tracker for this chunk.
      */
     public CcoDirtyTracker getCcoDirtyTracker() {

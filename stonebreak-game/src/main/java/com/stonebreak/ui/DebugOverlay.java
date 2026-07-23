@@ -560,6 +560,7 @@ public class DebugOverlay {
             .row("Facing", facing);
 
         panel.section("Terrain");
+        panel.row("Noise Backend", noiseBackendSummary());
         panel.row("Block Below", blockName);
         panel.row("Biome", biome.name());
         panel.row("Height", String.format("%d base / %d shaped (%+d) / %d final (%+d detail)",
@@ -582,6 +583,7 @@ public class DebugOverlay {
         panel.row("Chunks", String.format("%d loaded", world.getLoadedChunkCount()));
         panel.row("Pending Mesh", String.valueOf(world.getPendingMeshBuildCount()));
         panel.row("Pending GL", String.valueOf(world.getPendingGLUploadCount()));
+        panel.row("Chunk Flow", chunkPipelineSummary());
         com.stonebreak.world.TimeOfDay clock = Game.getTimeOfDay();
         if (clock != null) {
             panel.row("Time", clock.getTimeString());
@@ -599,6 +601,21 @@ public class DebugOverlay {
         }
 
         panel.section("Graphics");
+        try {
+            var meshStats = com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.getInstance().getStatistics();
+            if (meshStats.getMeshesGenerated() > 0) {
+                panel.row("Mesh Gen", String.format("%.0f us avg (%d built)",
+                    meshStats.getAverageGenerationTimeMicros(), meshStats.getMeshesGenerated()));
+            }
+        } catch (Exception ignored) {
+            // MMS not initialized yet — row simply absent.
+        }
+        if (com.stonebreak.world.generation.TerrainGenStats.chunkCount() > 0) {
+            panel.row("Terrain Gen", String.format("%.0f us avg (%d chunks, %s)",
+                com.stonebreak.world.generation.TerrainGenStats.averageMicros(),
+                com.stonebreak.world.generation.TerrainGenStats.chunkCount(),
+                com.stonebreak.world.generation.TerrainGenStats.modeSummary()));
+        }
         queryGPUInfo();
         panel.row("GPU", truncate(gpuRenderer != null ? gpuRenderer : "Unknown", 30));
         panel.row("Vendor", truncate(gpuVendor != null ? gpuVendor : "Unknown", 25));
@@ -608,6 +625,50 @@ public class DebugOverlay {
         panel.row("Path Visual", "ON");
 
         return panel;
+    }
+
+    // Previous ChunkPipelineStats sample for per-second rate derivation.
+    private long pipelineSampleNanos = 0L;
+    private final long[] pipelineLast = new long[6];
+    private final double[] pipelineRates = new double[6];
+
+    /**
+     * Per-second rates through the chunk pipeline stages
+     * (gen → populate → stream → install → mesh → upload), derived from
+     * frame-to-frame deltas of the {@code ChunkPipelineStats} totals.
+     */
+    private String chunkPipelineSummary() {
+        long now = System.nanoTime();
+        long[] totals = {
+            com.stonebreak.world.chunk.utils.ChunkPipelineStats.GENERATED.sum(),
+            com.stonebreak.world.chunk.utils.ChunkPipelineStats.POPULATED.sum(),
+            com.stonebreak.world.chunk.utils.ChunkPipelineStats.STREAMED.sum(),
+            com.stonebreak.world.chunk.utils.ChunkPipelineStats.INSTALLED.sum(),
+            com.stonebreak.world.chunk.utils.ChunkPipelineStats.MESHED.sum(),
+            com.stonebreak.world.chunk.utils.ChunkPipelineStats.UPLOADED.sum(),
+        };
+        // Refresh rates every ~500 ms so the row is readable, not flickering.
+        if (pipelineSampleNanos == 0L || now - pipelineSampleNanos >= 500_000_000L) {
+            double seconds = pipelineSampleNanos == 0L ? 0
+                : (now - pipelineSampleNanos) / 1_000_000_000.0;
+            for (int i = 0; i < totals.length; i++) {
+                pipelineRates[i] = seconds > 0 ? (totals[i] - pipelineLast[i]) / seconds : 0;
+                pipelineLast[i] = totals[i];
+            }
+            pipelineSampleNanos = now;
+        }
+        return String.format("gen %.0f pop %.0f str %.0f inst %.0f mesh %.0f gl %.0f /s",
+            pipelineRates[0], pipelineRates[1], pipelineRates[2],
+            pipelineRates[3], pipelineRates[4], pipelineRates[5]);
+    }
+
+    /** One-line world-gen noise backend status: Cenda native kernels vs classic Java. */
+    private static String noiseBackendSummary() {
+        if (com.stonebreak.world.generation.noise.TerrainNoise.backend()
+                == com.stonebreak.world.generation.noise.TerrainNoise.Backend.NATIVE) {
+            return "Cenda FastNoise2 (" + com.openmason.engine.cenda.CendaKernels.simdLevel() + ")";
+        }
+        return "Java (classic simplex)";
     }
 
     /** AI-path line colour, shared across cows. */

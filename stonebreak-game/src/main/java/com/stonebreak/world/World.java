@@ -355,13 +355,22 @@ public class World {
      * is a no-op. Safe to call with no render infrastructure.
      */
     public void updateSimulation(float deltaTime) {
+        long tickStart = System.nanoTime();
         waterSim.tick(deltaTime);
         com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
         if (fr != null) fr.tick(this, deltaTime);
         if (chunkStore != null) {
-            chunkStore.processPendingFeaturePopulation();
+            // Throughput-bound feature population: drain against the tick's own
+            // clock (leave ~20 ms of the 50 ms period for entity sim + chunk
+            // streaming that follow in ServerLevel.tick) instead of a fixed
+            // 8 ms slice — a light tick populates ~4x more chunks per tick,
+            // a heavy one (water settling etc.) backs off automatically.
+            chunkStore.processPendingFeaturePopulation(tickStart + FEATURE_TICK_DEADLINE_NANOS);
         }
     }
+
+    /** How far into the 50 ms server tick the feature-population drain may run. */
+    private static final long FEATURE_TICK_DEADLINE_NANOS = 30_000_000L;
 
     /**
      * Render-only client update, run by {@code GameLoop} on a {@link #createClientView} world.
@@ -1084,16 +1093,49 @@ public class World {
      *         request a chunk resync, since the server has marked this chunk as sent.
      */
     public boolean installNetworkChunk(int chunkX, int chunkZ, byte[] payload, byte[] metaPayload) {
-        if (chunkStore == null) return false;
-        // Synchronous slot creation — the render-only client has no disk-load or terrain-gen,
-        // so the chunk arrives ready in the same call. No async machinery, no race conditions,
-        // no chance of dropping the payload because the slot "isn't ready yet".
-        Chunk chunk = chunkStore.createOrGetNetworkChunkSlot(chunkX, chunkZ);
-        // Decode into a detached paletted storage, then install with one section-level
-        // copy. The old per-block chunk.setBlock path paid dirty-flag churn, state-map
-        // removals, and an incremental heightmap update per block — and the heightmap
-        // was recomputed wholesale below anyway. This keeps install cost low enough
-        // for the lifted local-player streaming budget (ServerChunkHandler).
+        com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage decoded =
+            decodeNetworkChunkBlocks(chunkX, chunkZ, payload);
+        if (decoded == null) {
+            return false; // caller requests a resync — the server thinks this chunk was sent
+        }
+        return installDecodedNetworkChunk(chunkX, chunkZ, decoded,
+            computeNetworkChunkHeights(decoded), metaPayload);
+    }
+
+    /**
+     * Sky heightmap for a decoded (detached) storage, in {@link com.openmason.engine.voxel.lighting.ChunkHeightMap}
+     * layout/semantics ({@code [lz*16+lx]} = topOpaqueY+1, 0 = sky). Pure —
+     * runs on the decode worker so the main-thread install skips the ~1 ms
+     * per-chunk column rescan that was serializing install throughput.
+     */
+    public static int[] computeNetworkChunkHeights(
+            com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage decoded) {
+        int size = WorldConfiguration.CHUNK_SIZE;
+        int[] heights = new int[size * size];
+        for (int lz = 0; lz < size; lz++) {
+            for (int lx = 0; lx < size; lx++) {
+                int top = 0;
+                for (int y = WorldConfiguration.WORLD_HEIGHT - 1; y >= 0; y--) {
+                    if (com.stonebreak.world.lighting.BlockOpacity.isOpaque(
+                            (com.stonebreak.blocks.BlockType) decoded.get(lx, y, lz))) {
+                        top = y + 1;
+                        break;
+                    }
+                }
+                heights[lz * size + lx] = top;
+            }
+        }
+        return heights;
+    }
+
+    /**
+     * Pure decode half of {@link #installNetworkChunk}: wire payload → detached
+     * paletted storage. Touches no world state, so ClientChunkHandler runs it
+     * on a worker thread while the render thread only pays the install/swap.
+     * Returns null on decode failure (caller should request a resync).
+     */
+    public static com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage
+            decodeNetworkChunkBlocks(int chunkX, int chunkZ, byte[] payload) {
         com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage decoded =
             com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage.createEmpty(
                 WorldConfiguration.CHUNK_SIZE, WorldConfiguration.WORLD_HEIGHT,
@@ -1105,8 +1147,26 @@ public class World {
                     com.stonebreak.network.bridge.GameBlockTypeResolver.INSTANCE);
         } catch (Exception e) {
             System.err.println("[NETWORK] Failed to decode chunk (" + chunkX + "," + chunkZ + "): " + e.getMessage());
-            return false; // caller requests a resync — the server thinks this chunk was sent
+            return null;
         }
+        return decoded;
+    }
+
+    /**
+     * Install half of {@link #installNetworkChunk}: swaps pre-decoded storage
+     * into the chunk slot and applies metadata + mesh scheduling. MUST run on
+     * the main game thread. {@code heights} is the worker-precomputed sky
+     * heightmap ({@link #computeNetworkChunkHeights}); null falls back to a
+     * main-thread rescan.
+     */
+    public boolean installDecodedNetworkChunk(int chunkX, int chunkZ,
+            com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage decoded,
+            int[] heights, byte[] metaPayload) {
+        if (chunkStore == null) return false;
+        // Synchronous slot creation — the render-only client has no disk-load or terrain-gen,
+        // so the chunk arrives ready in the same call. No async machinery, no race conditions,
+        // no chance of dropping the payload because the slot "isn't ready yet".
+        Chunk chunk = chunkStore.createOrGetNetworkChunkSlot(chunkX, chunkZ);
         chunk.replaceAllBlocks(decoded);
         // The bulk block install bypasses Chunk.setBlock, so stale water-layer entries from a
         // previous stream of this chunk would survive it — clear unconditionally; the meta
@@ -1165,9 +1225,13 @@ public class World {
         }
 
         // The chunk was an empty placeholder (all-air heightmap). Now that real blocks are in,
-        // rebuild the heightmap so sky-shadow/lighting and the mesher's Y-scan are correct —
-        // generated/loaded chunks do this; streamed chunks must too.
-        chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
+        // install the heightmap so sky-shadow/lighting and the mesher's Y-scan are correct —
+        // precomputed on the decode worker; the fallback rescan covers direct callers.
+        if (heights != null) {
+            chunk.getHeightMap().populate(heights);
+        } else {
+            chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
+        }
         if (meshPipeline != null) {
             markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
             if (neighborCoordinator != null) {
@@ -1185,6 +1249,7 @@ public class World {
                         meshPipeline::scheduleConditionalMeshBuild);
             }
         }
+        com.stonebreak.world.chunk.utils.ChunkPipelineStats.INSTALLED.increment();
         return true;
     }
 

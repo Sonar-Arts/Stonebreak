@@ -404,43 +404,36 @@ public class WorldChunkStore {
         }
     }
 
-    // Dynamic feature population limit state
-    private int currentFeaturePopulationLimit = 15; // Start at 15 (was 10)
-    private static final int MIN_FEATURE_POPULATION_LIMIT = 5;
-    private static final int MAX_FEATURE_POPULATION_LIMIT = 40;
-    private static final float FEATURE_TARGET_FRAME_TIME_MS = 16.0f;
+    // Feature population is TIME-budgeted, not count-budgeted. On the server
+    // tick the caller passes a DEADLINE anchored at the tick's own start
+    // (World.updateSimulation), so the drain consumes whatever real headroom
+    // this tick has left instead of a fixed private slice — a light tick
+    // populates for ~30 ms, a heavy one backs off automatically. The legacy
+    // render-thread path (single-world World.update) keeps a small fixed
+    // slice to protect the frame.
+    private static final long FEATURE_FRAME_SLICE_NANOS = 8_000_000L; // render-thread path only
+    private static final int FEATURE_HARD_CAP = 512;                 // runaway guard per drain
 
     /**
-     * Adjusts feature population limit based on current frame time.
-     * Increases limit when performance is good, decreases when struggling.
+     * Render-thread variant: drains with a small fixed slice so the frame
+     * stays protected. Server ticks use {@link #processPendingFeaturePopulation(long)}.
      */
-    private void adjustFeaturePopulationLimit() {
-        float deltaTimeMs = Game.getDeltaTime() * 1000.0f;
-
-        if (deltaTimeMs > 20.0f) {
-            // Frame time too high, reduce feature population
-            currentFeaturePopulationLimit = Math.max(MIN_FEATURE_POPULATION_LIMIT,
-                currentFeaturePopulationLimit - 2);
-        } else if (deltaTimeMs < 14.0f && pendingFeaturePopulation.size() > 10) {
-            // Frame time good and we have backlog, increase limit
-            currentFeaturePopulationLimit = Math.min(MAX_FEATURE_POPULATION_LIMIT,
-                currentFeaturePopulationLimit + 1);
-        }
+    public void processPendingFeaturePopulation() {
+        processPendingFeaturePopulation(System.nanoTime() + FEATURE_FRAME_SLICE_NANOS);
     }
 
     /**
-     * Processes chunks waiting for feature population. Called each frame from World.update().
-     * Only populates features for chunks whose neighbors exist to prevent recursion.
-     * Dynamically adjusts processing limit based on frame time to prevent lag spikes.
+     * Processes chunks waiting for feature population until {@code deadline}
+     * (nanoTime) passes or the queue empties. Only populates chunks whose
+     * neighbors exist to prevent recursion.
      */
-    public void processPendingFeaturePopulation() {
-        // Adjust limit based on frame time
-        adjustFeaturePopulationLimit();
+    public void processPendingFeaturePopulation(long deadline) {
 
         ChunkPosition pos;
         int processed = 0;
 
-        while (processed < currentFeaturePopulationLimit && (pos = pendingFeaturePopulation.poll()) != null) {
+        while (processed < FEATURE_HARD_CAP && System.nanoTime() < deadline
+                && (pos = pendingFeaturePopulation.poll()) != null) {
             Chunk chunk = chunks.get(pos);
 
             // Skip if chunk was unloaded or already has features
@@ -480,6 +473,7 @@ public class WorldChunkStore {
                     if (!chunk.getCcoMetadata().hasEntities()) {
                         chunk.setEntitiesGenerated(true);
                     }
+                    ChunkPipelineStats.POPULATED.increment();
                     processed++;
                 } catch (Exception e) {
                     System.err.println("Exception populating features for chunk (" + x + ", " + z + "): " + e.getMessage());
@@ -543,6 +537,7 @@ public class WorldChunkStore {
                 return null;
             }
             Chunk chunk = result.chunk();
+            ChunkPipelineStats.GENERATED.increment();
 
             // Keep the column profile so deferred feature population reuses it
             // instead of resampling the noise stack (~3 KB per pending chunk).
@@ -554,7 +549,11 @@ public class WorldChunkStore {
             // Populate the sky-shadow heightmap now that terrain is final.
             // Avoids paying the lazy one-shot scan on the first mesh-build sample
             // (which would otherwise block the mesh thread for ~1 ms/chunk).
-            chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
+            // The fused native generator already returned it (heightMap.populate);
+            // only the legacy path still needs the column rescan.
+            if (!chunk.getHeightMap().isPopulated()) {
+                chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
+            }
 
             // Initial mob spawning is DEFERRED to processPendingFeaturePopulation(): at this
             // point the chunk isn't in the chunk store yet, features haven't landed, and

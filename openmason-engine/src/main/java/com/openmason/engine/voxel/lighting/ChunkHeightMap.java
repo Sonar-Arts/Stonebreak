@@ -68,6 +68,24 @@ public final class ChunkHeightMap {
     }
 
     /**
+     * Installs externally computed column heights (same {@code [lz*width+lx]}
+     * layout and topOpaqueY+1 semantics as {@link #recomputeAll}) and marks the
+     * map populated. Used when a generator already derived the heightmap —
+     * e.g. the fused native chunk generator — so the per-column rescan is
+     * skipped. Later mutations flow through {@link #onBlockChanged} as usual.
+     */
+    public void populate(int[] columnHeights) {
+        if (columnHeights.length != width * depth) {
+            throw new IllegalArgumentException("Column height array length " + columnHeights.length
+                + " != " + (width * depth));
+        }
+        for (int i = 0; i < columnHeights.length; i++) {
+            heights[i] = (short) columnHeights[i];
+        }
+        populated = true;
+    }
+
+    /**
      * Incremental update after a block at (lx, ly, lz) changed.
      *
      * <p>Four cases:
