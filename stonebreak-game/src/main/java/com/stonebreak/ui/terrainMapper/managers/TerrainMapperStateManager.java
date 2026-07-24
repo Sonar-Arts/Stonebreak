@@ -151,6 +151,14 @@ public final class TerrainMapperStateManager {
         }
     }
 
+    /** Appends every character the active field accepts, dropping the rest (paste). */
+    public void appendToActiveField(String text) {
+        if (text == null) return;
+        for (int i = 0; i < text.length(); i++) {
+            appendToActiveField(text.charAt(i));
+        }
+    }
+
     public void backspaceActiveField() {
         switch (activeField) {
             case WORLD_NAME -> {

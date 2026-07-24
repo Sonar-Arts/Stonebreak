@@ -1,5 +1,6 @@
 package com.stonebreak.ui.worldSelect.handlers;
 
+import com.stonebreak.rendering.UI.masonryUI.MClipboard;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import static org.lwjgl.glfw.GLFW.*;
 
@@ -211,7 +212,30 @@ public class WorldInputHandler {
                         }
                     }
                     break;
+                case GLFW_KEY_V:
+                    // Ctrl+V pastes into the focused field; GLFW emits no
+                    // character event for control combos, so it lands here.
+                    if ((mods & GLFW_MOD_CONTROL) != 0 && stateManager.isShowCreateDialog()) {
+                        pasteIntoFocusedField();
+                    }
+                    break;
             }
+        }
+    }
+
+    /**
+     * Pastes the clipboard into the focused create-dialog field. Characters the
+     * field rejects (and the length overflow) are dropped, exactly as if the
+     * text had been typed.
+     */
+    private void pasteIntoFocusedField() {
+        String clip = MClipboard.read();
+        if (clip.isEmpty()) return;
+
+        if (nameInputMode) {
+            stateManager.appendToWorldName(clip);
+        } else {
+            stateManager.appendToWorldSeed(clip);
         }
     }
 
