@@ -236,13 +236,24 @@ public final class ShadowMapRenderer {
             depthShader.bind();
             depthShader.setUniform("u_lightViewProj", cascades[i].lightViewProj);
             if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
-                // Region VAOs carry the standard attribute layout, so the
-                // depth shader draws the same multidraw batches as the main
-                // passes — one draw per region per cascade instead of one
-                // per caster chunk.
-                com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance()
-                    .drawChunks(cascadeChunks.get(i),
+                var regionRenderer =
+                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance();
+                // GL 4.3+ path: compute-shader cull against this cascade's
+                // light frustum + one indirect multidraw per region.
+                if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()
+                        && regionRenderer.drawLayerGpuCulled(
+                            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
+                            cascades[i].lightViewProj)) {
+                    regionRenderer.drawLegacyOnly(cascadeChunks.get(i),
                         com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
+                } else {
+                    // Region VAOs carry the standard attribute layout, so the
+                    // depth shader draws the same multidraw batches as the main
+                    // passes — one draw per region per cascade instead of one
+                    // per caster chunk.
+                    regionRenderer.drawChunks(cascadeChunks.get(i),
+                        com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
+                }
             } else {
                 for (Chunk chunk : cascadeChunks.get(i)) {
                     chunk.render();

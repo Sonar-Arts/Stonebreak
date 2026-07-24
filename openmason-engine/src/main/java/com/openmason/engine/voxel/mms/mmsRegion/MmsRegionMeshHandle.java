@@ -15,16 +15,28 @@ public final class MmsRegionMeshHandle implements AutoCloseable {
     final MmsArenaAllocator.Segment vertexSegment;
     final MmsArenaAllocator.Segment indexSegment;
     private final int indexCount;
+    /** World-space bounding box, supplied at upload (GPU-cull metadata). */
+    final float minX, minY, minZ, maxX, maxY, maxZ;
+    /** Position in the region's live-handle list (swap-remove bookkeeping). */
+    int liveIndex;
     private boolean closed;
 
     MmsRegionMeshHandle(MmsChunkRegion region,
                         MmsArenaAllocator.Segment vertexSegment,
                         MmsArenaAllocator.Segment indexSegment,
-                        int indexCount) {
+                        int indexCount,
+                        float minX, float minY, float minZ,
+                        float maxX, float maxY, float maxZ) {
         this.region = region;
         this.vertexSegment = vertexSegment;
         this.indexSegment = indexSegment;
         this.indexCount = indexCount;
+        this.minX = minX;
+        this.minY = minY;
+        this.minZ = minZ;
+        this.maxX = maxX;
+        this.maxY = maxY;
+        this.maxZ = maxZ;
     }
 
     public MmsChunkRegion region() {

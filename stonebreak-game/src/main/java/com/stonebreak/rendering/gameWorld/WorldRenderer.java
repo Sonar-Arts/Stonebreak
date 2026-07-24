@@ -60,6 +60,11 @@ public class WorldRenderer {
     private final List<Chunk> reusableLoadedChunks = new ArrayList<>();
     private final List<Chunk> reusableTranslucentChunks = new ArrayList<>();
     private long[] sortKeys = new long[512];
+    // Region-level frustum pre-cull grid: one classifying AABB test per
+    // 8x8-chunk-column region decides whole regions; only INTERSECT regions
+    // fall through to per-chunk tests. Reused across frames.
+    private int[] regionVisibility = new int[0];
+    private int regionGridMinRx, regionGridMinRz, regionGridWidth, regionGridHeight;
     private final List<com.stonebreak.rendering.gameWorld.water.WaterRenderer.LodWaterNode> reusableLodWater = new ArrayList<>();
     // Cached so the per-frame chunk visit doesn't allocate a capturing lambda each call.
     private final java.util.function.Consumer<Chunk> loadedCollector = reusableLoadedChunks::add;
@@ -387,18 +392,72 @@ public class WorldRenderer {
 
     /**
      * Filters this frame's loaded-chunk list down to those intersecting the
-     * camera view frustum. Returns a reused list; allocation-free.
+     * camera view frustum. A region-level pre-cull (one classifying AABB test
+     * per 8x8-chunk-column region) skips or wholesale-accepts entire regions,
+     * so per-chunk tests only run where a region straddles the frustum edge.
+     * Returns a reused list; allocation-free.
      */
     private List<Chunk> cullChunksToFrustum(World world, Player player) {
         frustumCuller.update(projectionMatrix, player.getViewMatrix());
         reusableVisibleChunks.clear();
-        for (int i = 0; i < reusableLoadedChunks.size(); i++) {
+        int count = reusableLoadedChunks.size();
+        if (count == 0) {
+            return reusableVisibleChunks;
+        }
+        computeRegionVisibility();
+        int shift = com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion.REGION_SHIFT;
+        for (int i = 0; i < count; i++) {
             Chunk chunk = reusableLoadedChunks.get(i);
-            if (frustumCuller.isChunkVisible(chunk)) {
+            int ix = (chunk.getChunkX() >> shift) - regionGridMinRx;
+            int iz = (chunk.getChunkZ() >> shift) - regionGridMinRz;
+            int vis = regionVisibility[ix * regionGridHeight + iz];
+            if (vis >= 0) {
+                continue; // Whole region outside (vis = index of the culling plane).
+            }
+            if (vis == org.joml.FrustumIntersection.INSIDE || frustumCuller.isChunkVisible(chunk)) {
                 reusableVisibleChunks.add(chunk);
             }
         }
         return reusableVisibleChunks;
+    }
+
+    /**
+     * Classifies every region covering this frame's loaded chunks against the
+     * camera frustum (INSIDE / INTERSECT / plane index when fully outside).
+     * Must run after {@code frustumCuller.update}.
+     */
+    private void computeRegionVisibility() {
+        int shift = com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion.REGION_SHIFT;
+        int minCx = Integer.MAX_VALUE, maxCx = Integer.MIN_VALUE;
+        int minCz = Integer.MAX_VALUE, maxCz = Integer.MIN_VALUE;
+        for (int i = 0; i < reusableLoadedChunks.size(); i++) {
+            Chunk chunk = reusableLoadedChunks.get(i);
+            int cx = chunk.getChunkX();
+            int cz = chunk.getChunkZ();
+            if (cx < minCx) minCx = cx;
+            if (cx > maxCx) maxCx = cx;
+            if (cz < minCz) minCz = cz;
+            if (cz > maxCz) maxCz = cz;
+        }
+        regionGridMinRx = minCx >> shift;
+        regionGridMinRz = minCz >> shift;
+        regionGridWidth = (maxCx >> shift) - regionGridMinRx + 1;
+        regionGridHeight = (maxCz >> shift) - regionGridMinRz + 1;
+        int cells = regionGridWidth * regionGridHeight;
+        if (regionVisibility.length < cells) {
+            regionVisibility = new int[cells];
+        }
+        float regionBlocks = com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion.REGION_SPAN
+                * (float) WorldConfiguration.CHUNK_SIZE;
+        for (int ix = 0; ix < regionGridWidth; ix++) {
+            float minX = (regionGridMinRx + ix) * regionBlocks;
+            for (int iz = 0; iz < regionGridHeight; iz++) {
+                float minZ = (regionGridMinRz + iz) * regionBlocks;
+                regionVisibility[ix * regionGridHeight + iz] = frustumCuller.intersectAab(
+                        minX, 0f, minZ,
+                        minX + regionBlocks, WorldConfiguration.WORLD_HEIGHT, minZ + regionBlocks);
+            }
+        }
     }
 
     /**
@@ -416,11 +475,24 @@ public class WorldRenderer {
         }
 
         if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            var regionRenderer =
+                com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance();
+            // GL 4.3+ path: compute-shader per-mesh cull + one indirect
+            // multidraw per region — no per-chunk CPU visibility work for the
+            // opaque pass at all. Falls back to the CPU multidraw when the
+            // cull program is unavailable.
+            if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()
+                    && regionRenderer.drawLayerGpuCulled(
+                        com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
+                        frustumCuller.projectionView())) {
+                regionRenderer.drawLegacyOnly(visibleChunks,
+                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
+                return;
+            }
             // One multidraw per visible region instead of a VAO bind + draw
             // call per chunk (legacy-handle stragglers draw individually).
-            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance()
-                .drawChunks(visibleChunks,
-                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
+            regionRenderer.drawChunks(visibleChunks,
+                com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
             return;
         }
         for (Chunk chunk : visibleChunks) {

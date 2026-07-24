@@ -598,6 +598,11 @@ public class DebugOverlay {
             panel.row("Chunk Draws", String.format("%d cmds / %d region draws / %d legacy",
                 regions.publishedCommands(), regions.publishedRegionDraws(),
                 regions.publishedLegacyDraws()));
+            if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()) {
+                panel.row("GPU Cull", String.format("%d cmds / %d regions / %d pre-culled",
+                    regions.publishedGpuCommands(), regions.publishedGpuRegionDraws(),
+                    regions.publishedGpuPreCulledRegions()));
+            }
         }
         com.stonebreak.world.TimeOfDay clock = Game.getTimeOfDay();
         if (clock != null) {
