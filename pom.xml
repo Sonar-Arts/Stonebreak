@@ -25,7 +25,7 @@
              these for Linux/macOS so the build is cross-platform. -->
         <lwjgl.natives>natives-windows</lwjgl.natives>
         <skija.artifact>skija-windows-x64</skija.artifact>
-        <jackson.version>2.22.0</jackson.version>
+        <jackson.version>2.22.1</jackson.version>
         <jackson.version.annotations>2.22</jackson.version.annotations>
         <junit.version>6.1.1</junit.version>
         <mockito.version>5.23.0</mockito.version>
