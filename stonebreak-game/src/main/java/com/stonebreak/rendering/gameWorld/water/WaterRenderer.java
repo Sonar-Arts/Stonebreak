@@ -203,9 +203,17 @@ public class WaterRenderer {
         // between water meshes irrelevant (only the nearest layer survives),
         // so LOD sheets can simply follow the chunk list.
         shader.setUniform("uLodFade", 1.0f);
-        for (Chunk chunk : chunksBackToFront) {
-            if (chunk.hasWaterMesh()) {
-                chunk.renderWater();
+        if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            // One multidraw per region holding water geometry (water meshes
+            // live in their own region arenas, same 40-byte vertex layout).
+            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance()
+                .drawChunks(chunksBackToFront,
+                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_WATER);
+        } else {
+            for (Chunk chunk : chunksBackToFront) {
+                if (chunk.hasWaterMesh()) {
+                    chunk.renderWater();
+                }
             }
         }
         if (lodWater == null || lodWater.isEmpty()) {

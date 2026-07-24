@@ -62,6 +62,15 @@ public class Chunk {
     // Water geometry lives in its own handle, drawn by the dedicated
     // WaterRenderer after the world's transparent pass (never by render()).
     private MmsRenderableHandle waterRenderableHandle;
+    // Region-mode geometry: segments in the shared per-region arenas instead
+    // of per-chunk VAOs. Exactly one representation is populated per mesh —
+    // region handles when ChunkRegionRenderer is enabled (legacy handles then
+    // remain only for the rare mesh that can't join a region).
+    private com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionAtlasHandle;
+    private com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionWaterHandle;
+    // Whether the current atlas mesh contains any translucent (ice) geometry —
+    // lets the transparent pass skip chunks that would contribute nothing.
+    private boolean atlasHasTranslucent;
     private List<com.openmason.engine.voxel.sbo.SBORenderData> sboRenderDataList;
     private boolean meshGenerated = false;
 
@@ -276,28 +285,69 @@ public class Chunk {
 
         try {
             if (pendingMmsMeshData == null || pendingMmsMeshData.isEmpty()) {
-                // Empty mesh - clean up existing resources
+                // Empty atlas mesh - clean up existing atlas resources
                 if (meshGenerated && renderableHandle != null) {
                     renderableHandle.close();
                     renderableHandle = null;
                     meshGenerated = false;
                 }
+                if (regionAtlasHandle != null) {
+                    regionAtlasHandle.close();
+                    regionAtlasHandle = null;
+                    meshGenerated = false;
+                }
+                atlasHasTranslucent = false;
                 if (waterRenderableHandle != null) {
                     waterRenderableHandle.close();
                     waterRenderableHandle = null;
+                }
+                if (regionWaterHandle != null) {
+                    regionWaterHandle.close();
+                    regionWaterHandle = null;
+                }
+                // An empty atlas can still carry water geometry (ocean-only
+                // chunk) — upload it so this path matches the pipeline path.
+                if (pendingChunkMeshResult != null && pendingChunkMeshResult.hasWaterMesh()) {
+                    var rr = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()
+                        ? com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance() : null;
+                    if (rr != null) {
+                        regionWaterHandle = rr.upload(
+                            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_WATER,
+                            x, z, pendingChunkMeshResult.waterMesh());
+                    }
+                    if (regionWaterHandle == null) {
+                        waterRenderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingChunkMeshResult.waterMesh());
+                    }
+                    meshGenerated = true;
                 }
                 stateManager.removeState(CcoChunkState.MESH_CPU_READY);
                 stateManager.addState(CcoChunkState.BLOCKS_POPULATED);
                 return;
             }
 
-            // Upload mesh to GPU using MMS API
+            // Upload mesh to GPU — into the shared region arenas when region
+            // rendering is enabled, else a legacy per-chunk handle.
             if (meshGenerated && renderableHandle != null) {
                 // Clean up old handle before creating new one
                 renderableHandle.close();
+                renderableHandle = null;
+            }
+            if (regionAtlasHandle != null) {
+                regionAtlasHandle.close();
+                regionAtlasHandle = null;
             }
 
-            renderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingMmsMeshData);
+            var regionRenderer = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()
+                ? com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance() : null;
+            if (regionRenderer != null) {
+                regionAtlasHandle = regionRenderer.upload(
+                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
+                    x, z, pendingMmsMeshData);
+            }
+            if (regionAtlasHandle == null) {
+                renderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingMmsMeshData);
+            }
+            atlasHasTranslucent = pendingMmsMeshData.hasTranslucentGeometry();
             meshGenerated = true;
 
             // Upload the water mesh; clear the handle when this rebuild
@@ -306,8 +356,19 @@ public class Chunk {
                 waterRenderableHandle.close();
                 waterRenderableHandle = null;
             }
+            if (regionWaterHandle != null) {
+                regionWaterHandle.close();
+                regionWaterHandle = null;
+            }
             if (pendingChunkMeshResult != null && pendingChunkMeshResult.hasWaterMesh()) {
-                waterRenderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingChunkMeshResult.waterMesh());
+                if (regionRenderer != null) {
+                    regionWaterHandle = regionRenderer.upload(
+                        com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_WATER,
+                        x, z, pendingChunkMeshResult.waterMesh());
+                }
+                if (regionWaterHandle == null) {
+                    waterRenderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingChunkMeshResult.waterMesh());
+                }
             }
 
             // Upload SBO meshes if present (one per block type)
@@ -368,7 +429,40 @@ public class Chunk {
 
     /** Whether this chunk currently has uploaded water geometry. */
     public boolean hasWaterMesh() {
-        return waterRenderableHandle != null;
+        return waterRenderableHandle != null || regionWaterHandle != null;
+    }
+
+    /** Whether the current atlas mesh contains any translucent (ice) geometry. */
+    public boolean atlasHasTranslucent() {
+        return atlasHasTranslucent;
+    }
+
+    public void setAtlasHasTranslucent(boolean hasTranslucent) {
+        this.atlasHasTranslucent = hasTranslucent;
+    }
+
+    /** Region-mode atlas geometry handle, or null (legacy mode / no geometry). */
+    public com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle getRegionAtlasHandle() {
+        return regionAtlasHandle;
+    }
+
+    public void setRegionAtlasHandle(com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle handle) {
+        this.regionAtlasHandle = handle;
+        if (handle != null) {
+            this.meshGenerated = true;
+        }
+    }
+
+    /** Region-mode water geometry handle, or null (legacy mode / no water). */
+    public com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle getRegionWaterHandle() {
+        return regionWaterHandle;
+    }
+
+    public void setRegionWaterHandle(com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle handle) {
+        this.regionWaterHandle = handle;
+        if (handle != null) {
+            this.meshGenerated = true;
+        }
     }
 
     /**
@@ -488,8 +582,8 @@ public class Chunk {
      *
      * CRITICAL: Creates an ATOMIC snapshot by copying the block storage immediately.
      * This prevents race conditions where the chunk is modified after the snapshot is created
-     * but before it's serialized. The copy is cheap with paletted storage (~35 KB,
-     * uniform air sections cost almost nothing).
+     * but before it's serialized. The copy is O(1) per section: paletted sections share
+     * state copy-on-write, so nothing is cloned unless the live chunk mutates afterwards.
      *
      * @param world World instance to extract water metadata and entities from
      * @return Immutable snapshot including blocks, water metadata, and entities
@@ -742,6 +836,15 @@ public class Chunk {
             waterRenderableHandle.close();
             waterRenderableHandle = null;
         }
+        if (regionAtlasHandle != null) {
+            regionAtlasHandle.close();
+            regionAtlasHandle = null;
+        }
+        if (regionWaterHandle != null) {
+            regionWaterHandle.close();
+            regionWaterHandle = null;
+        }
+        atlasHasTranslucent = false;
         closeSBORenderData();
         meshGenerated = false;
 

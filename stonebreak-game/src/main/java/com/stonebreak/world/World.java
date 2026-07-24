@@ -548,7 +548,10 @@ public class World {
      */
     public boolean isChunkRenderableAt(int chunkX, int chunkZ) {
         Chunk c = getChunkIfLoaded(chunkX, chunkZ);
-        return c != null && c.getMmsRenderableHandle() != null;
+        // Either mesh representation counts: legacy per-chunk handle, or a
+        // segment in the shared region arenas (region rendering mode).
+        return c != null
+            && (c.getMmsRenderableHandle() != null || c.getRegionAtlasHandle() != null);
     }
 
     /**
@@ -899,6 +902,13 @@ public class World {
         // Deferred AFTER chunkStore.cleanup() so anything it queued is included in the
         // final main-thread drain (nothing ticks this pipeline's queue once the world is
         // swapped out).
+        //
+        // NOTE deliberately NO ChunkRegionRenderer.reset() here: the region renderer is
+        // a process-wide singleton, and cleanup() also runs for worlds that never owned
+        // the active regions (superseded ClientWorld-Build instances, the headless
+        // server world) — a wholesale reset from those would delete regions the ACTIVE
+        // world is drawing. The per-chunk cleanup above frees every region segment this
+        // world held, and the next rendered frame's beginFrame() prunes emptied regions.
         if (meshPipeline != null) {
             final MmsMeshPipeline mp = meshPipeline;
             com.stonebreak.core.Game.getInstance().runOnMainThread(mp::processGpuCleanupQueue);

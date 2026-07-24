@@ -87,7 +87,13 @@ public final class CcoChunkMetadata {
      * Creates a copy with updated timestamp.
      */
     public CcoChunkMetadata withUpdatedTimestamp() {
-        return new CcoChunkMetadata(chunkX, chunkZ, createdTime, System.currentTimeMillis(),
+        long now = System.currentTimeMillis();
+        if (now == lastModifiedTime) {
+            // Bulk edits (water sim, explosions, worldgen) call this per changed
+            // block; same-millisecond updates would allocate identical copies.
+            return this;
+        }
+        return new CcoChunkMetadata(chunkX, chunkZ, createdTime, now,
             generationSeed, hasStructures, needsDecoration, hasEntities);
     }
 

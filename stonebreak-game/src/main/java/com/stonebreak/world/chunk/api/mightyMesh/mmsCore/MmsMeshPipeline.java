@@ -49,7 +49,9 @@ public final class MmsMeshPipeline {
     private final PriorityBlockingQueue<MeshUploadTask> meshesReadyForGLUpload;
     private final Set<Chunk> chunksInUploadQueue; // O(1) lookup mirror of meshesReadyForGLUpload
     private final Queue<Chunk> chunksFailedToGenerateMesh;
-    private final Queue<MmsRenderableHandle> handlesPendingGpuCleanup;
+    // Element type is AutoCloseable so legacy per-chunk handles and
+    // region-arena segment handles ride the same deferred GL-thread queue.
+    private final Queue<AutoCloseable> handlesPendingGpuCleanup;
     private final Map<Chunk, Integer> chunkRetryCount;
     private final Map<Chunk, Integer> chunkPriorityMap;
 
@@ -494,21 +496,44 @@ public final class MmsMeshPipeline {
             try {
                 // Upload the atlas mesh. It may legitimately be empty when the
                 // result reached upload only for its water/SBO parts — in that
-                // case the stale atlas handle is cleared instead.
-                MmsRenderableHandle handle = (task.meshData != null && !task.meshData.isEmpty())
-                    ? MmsAPI.getInstance().uploadMeshToGPU(task.meshData)
-                    : null;
+                // case the stale atlas handle is cleared instead. Region mode
+                // uploads into the shared per-region arenas; a mesh that can't
+                // join a region (non-packed/u32 — practically never) falls
+                // back to a legacy per-chunk handle.
+                boolean regionMode = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled();
+                com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionHandle = null;
+                MmsRenderableHandle handle = null;
+                boolean atlasTranslucent = false;
+                if (task.meshData != null && !task.meshData.isEmpty()) {
+                    atlasTranslucent = task.meshData.hasTranslucentGeometry();
+                    if (regionMode) {
+                        regionHandle = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer
+                            .getInstance().upload(
+                                com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
+                                task.chunk.getChunkX(), task.chunk.getChunkZ(), task.meshData);
+                    }
+                    if (regionHandle == null) {
+                        handle = MmsAPI.getInstance().uploadMeshToGPU(task.meshData);
+                    }
+                }
 
                 // Store handle in chunk for rendering
                 synchronized (task.chunk) {
-                    // Clean up old handle if exists
+                    // Clean up old handles if they exist (either representation)
                     MmsRenderableHandle oldHandle = task.chunk.getMmsRenderableHandle();
                     if (oldHandle != null) {
                         handlesPendingGpuCleanup.offer(oldHandle);
                     }
+                    com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle oldRegionHandle =
+                        task.chunk.getRegionAtlasHandle();
+                    if (oldRegionHandle != null) {
+                        handlesPendingGpuCleanup.offer(oldRegionHandle);
+                    }
 
-                    // Set new handle and mark GPU ready
+                    // Set new handles and mark GPU ready
                     task.chunk.setMmsRenderableHandle(handle);
+                    task.chunk.setRegionAtlasHandle(regionHandle);
+                    task.chunk.setAtlasHasTranslucent(atlasTranslucent);
 
                     com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult meshResult = task.chunk.getPendingChunkMeshResult();
 
@@ -520,10 +545,26 @@ public final class MmsMeshPipeline {
                     if (oldWater != null) {
                         handlesPendingGpuCleanup.offer(oldWater);
                     }
-                    task.chunk.setWaterRenderableHandle(
-                        meshResult != null && meshResult.hasWaterMesh()
-                            ? MmsAPI.getInstance().uploadMeshToGPU(meshResult.waterMesh())
-                            : null);
+                    com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle oldRegionWater =
+                        task.chunk.getRegionWaterHandle();
+                    if (oldRegionWater != null) {
+                        handlesPendingGpuCleanup.offer(oldRegionWater);
+                    }
+                    com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle newRegionWater = null;
+                    MmsRenderableHandle newWater = null;
+                    if (meshResult != null && meshResult.hasWaterMesh()) {
+                        if (regionMode) {
+                            newRegionWater = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer
+                                .getInstance().upload(
+                                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_WATER,
+                                    task.chunk.getChunkX(), task.chunk.getChunkZ(), meshResult.waterMesh());
+                        }
+                        if (newRegionWater == null) {
+                            newWater = MmsAPI.getInstance().uploadMeshToGPU(meshResult.waterMesh());
+                        }
+                    }
+                    task.chunk.setWaterRenderableHandle(newWater);
+                    task.chunk.setRegionWaterHandle(newRegionWater);
 
                     // Upload SBO meshes if the chunk has any (one per block type)
                     if (meshResult != null && meshResult.hasSBOMesh()) {
@@ -602,7 +643,7 @@ public final class MmsMeshPipeline {
         // Intentionally NOT gated on `shutdown`: World.cleanup shuts the pipeline down and
         // THEN defers a final drain to the main thread — skipping it would leak every handle
         // still queued from recent chunk unloads.
-        MmsRenderableHandle handle;
+        AutoCloseable handle;
         int cleaned = 0;
 
         while ((handle = handlesPendingGpuCleanup.poll()) != null) {
@@ -643,6 +684,19 @@ public final class MmsMeshPipeline {
             if (waterHandle != null) {
                 handlesPendingGpuCleanup.offer(waterHandle);
                 chunk.setWaterRenderableHandle(null);
+            }
+            com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionAtlas =
+                chunk.getRegionAtlasHandle();
+            if (regionAtlas != null) {
+                handlesPendingGpuCleanup.offer(regionAtlas);
+                chunk.setRegionAtlasHandle(null);
+                chunk.getCcoStateManager().removeState(CcoChunkState.MESH_GPU_UPLOADED);
+            }
+            com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionWater =
+                chunk.getRegionWaterHandle();
+            if (regionWater != null) {
+                handlesPendingGpuCleanup.offer(regionWater);
+                chunk.setRegionWaterHandle(null);
             }
         }
     }

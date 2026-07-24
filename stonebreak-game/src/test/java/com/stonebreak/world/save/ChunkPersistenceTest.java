@@ -22,7 +22,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.zip.InflaterInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -54,38 +53,101 @@ class ChunkPersistenceTest {
     }
 
     @Test
-    void encodedBlockStreamMatchesLegacyLayout() throws IOException {
-        // The on-disk block section must stay a deflated little chain of
-        // big-endian short ids in y,z,x order — exactly what pre-palette
-        // builds wrote and read. This pins the layout so old worlds load
-        // and new saves load in old builds.
-        ChunkData chunk = createSampleChunk(2, 7);
+    void palettedSectionStreamStaysCompact() throws IOException {
+        // v5 pins: version 5, and the uncompressed section stream must be the
+        // paletted form — a realistic chunk (terrain below y=64, air above)
+        // stays far below the old fixed 128 KB dense stream.
+        CcoPalettedChunkStorage blocks =
+            CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
+        Random random = new Random(99L);
+        BlockType[] palette = {BlockType.STONE, BlockType.DIRT, BlockType.GRASS};
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                for (int y = 0; y < 64; y++) {
+                    blocks.set(x, y, z, palette[random.nextInt(palette.length)]);
+                }
+            }
+        }
+        ChunkData chunk = ChunkData.builder()
+            .chunkX(2).chunkZ(7)
+            .blocks(blocks)
+            .lastModified(LocalDateTime.of(2024, 1, 1, 12, 0))
+            .featuresPopulated(true)
+            .hasEntitiesGenerated(false)
+            .waterMetadata(new HashMap<>())
+            .entities(new ArrayList<>())
+            .snowLayers(new HashMap<>())
+            .build();
         byte[] payload = ChunkCodec.encode(chunk);
 
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(payload))) {
             in.readInt();              // magic
-            in.readUnsignedShort();    // version
+            assertEquals(5, in.readUnsignedShort(), "writer emits v5");
             in.readInt();              // chunkX
             in.readInt();              // chunkZ
             in.readLong();             // lastModified
             in.readBoolean();          // featuresPopulated
             in.readBoolean();          // hasEntitiesGenerated
+            in.readByte();             // compression flag
+            int rawLength = in.readInt();
+            // 4 mixed sections (~4.1 KB each) + 12 uniform air sections (3 B each).
+            assertTrue(rawLength < 20_000,
+                "paletted stream must stay compact, was " + rawLength + " bytes");
+        }
 
-            int compressedLength = in.readInt();
-            byte[] compressed = in.readNBytes(compressedLength);
-            assertEquals(compressedLength, compressed.length, "Incomplete block buffer");
+        assertChunksEqual(chunk, ChunkCodec.decode(payload));
+    }
 
-            try (DataInputStream blockIn = new DataInputStream(
-                    new InflaterInputStream(new ByteArrayInputStream(compressed)))) {
-                CcoBlockStorage storage = chunk.getBlockStorage();
-                for (int y = 0; y < 256; y++) {
-                    for (int z = 0; z < 16; z++) {
-                        for (int x = 0; x < 16; x++) {
-                            int id = Short.toUnsignedInt(blockIn.readShort());
-                            assertEquals(((BlockType) storage.get(x, y, z)).getId(), id,
-                                "Block id mismatch at (" + x + "," + y + "," + z + ")");
-                        }
+    @Test
+    void legacyV3PayloadStillDecodes() throws IOException {
+        // Hand-built v3 payload (deflated dense big-endian short ids in
+        // y,z,x order) — pins that pre-palette worlds keep loading.
+        ChunkData expected = createSampleChunk(-4, 9);
+        CcoBlockStorage storage = expected.getBlockStorage();
+
+        java.io.ByteArrayOutputStream rawBlocks = new java.io.ByteArrayOutputStream(65536 * 2);
+        try (java.io.DataOutputStream rawOut = new java.io.DataOutputStream(rawBlocks)) {
+            for (int y = 0; y < 256; y++) {
+                for (int z = 0; z < 16; z++) {
+                    for (int x = 0; x < 16; x++) {
+                        rawOut.writeShort(((BlockType) storage.get(x, y, z)).getId());
                     }
+                }
+            }
+        }
+        java.io.ByteArrayOutputStream deflated = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.DeflaterOutputStream deflater =
+                 new java.util.zip.DeflaterOutputStream(deflated)) {
+            deflater.write(rawBlocks.toByteArray());
+        }
+        byte[] compressed = deflated.toByteArray();
+
+        java.io.ByteArrayOutputStream payload = new java.io.ByteArrayOutputStream();
+        try (java.io.DataOutputStream out = new java.io.DataOutputStream(payload)) {
+            out.writeInt(0x5342434B);           // magic
+            out.writeShort(3);                   // version
+            out.writeInt(expected.getChunkX());
+            out.writeInt(expected.getChunkZ());
+            out.writeLong(0L);                   // lastModified
+            out.writeBoolean(expected.isFeaturesPopulated());
+            out.writeBoolean(expected.hasEntitiesGenerated());
+            out.writeInt(compressed.length);
+            out.write(compressed);
+            out.writeInt(0);                     // waterCount
+            out.writeInt(0);                     // entityCount
+            out.writeInt(0);                     // blockStateCount (v2+)
+            out.writeInt(0);                     // snowCount (v3+)
+        }
+
+        ChunkData decoded = ChunkCodec.decode(payload.toByteArray());
+        assertEquals(expected.getChunkX(), decoded.getChunkX());
+        assertEquals(expected.getChunkZ(), decoded.getChunkZ());
+        CcoBlockStorage actualBlocks = decoded.getBlockStorage();
+        for (int x = 0; x < 16; x++) {
+            for (int y = 0; y < 256; y++) {
+                for (int z = 0; z < 16; z++) {
+                    assertEquals(storage.get(x, y, z), actualBlocks.get(x, y, z),
+                        "Block mismatch at (" + x + "," + y + "," + z + ")");
                 }
             }
         }

@@ -251,6 +251,13 @@ public final class MmsMeshValidator {
             return ValidationResult.valid();
         }
 
+        // Packed meshes validate on their compact form directly — structural
+        // sizes were enforced by fromPacked, so only index bounds and finite
+        // positions remain (no SoA materialization).
+        if (meshData.isPacked()) {
+            return validatePacked(meshData);
+        }
+
         // Validate array sizes
         ValidationResult sizeResult = validateArraySizes(
             meshData.getVertexPositions(),
@@ -284,6 +291,49 @@ public final class MmsMeshValidator {
             return finiteResult;
         }
 
+        return ValidationResult.valid();
+    }
+
+    /** Index-bounds + finite-position checks over the packed byte layout. */
+    private static ValidationResult validatePacked(MmsMeshData meshData) {
+        byte[] vertexBytes = meshData.getPackedVertexData();
+        byte[] indexBytes = meshData.getPackedIndexData();
+        int vertexCount = meshData.getVertexCount();
+        int indexCount = meshData.getIndexCount();
+
+        java.nio.ByteBuffer indexBuf =
+            java.nio.ByteBuffer.wrap(indexBytes).order(java.nio.ByteOrder.nativeOrder());
+        if (meshData.hasShortIndices()) {
+            for (int i = 0; i < indexCount; i++) {
+                int index = Short.toUnsignedInt(indexBuf.getShort(i * Short.BYTES));
+                if (index >= vertexCount) {
+                    return ValidationResult.invalid(String.format(
+                        "Index %d out of bounds: %d (vertex count: %d)", i, index, vertexCount));
+                }
+            }
+        } else {
+            for (int i = 0; i < indexCount; i++) {
+                int index = indexBuf.getInt(i * Integer.BYTES);
+                if (index < 0 || index >= vertexCount) {
+                    return ValidationResult.invalid(String.format(
+                        "Index %d out of bounds: %d (vertex count: %d)", i, index, vertexCount));
+                }
+            }
+        }
+
+        java.nio.ByteBuffer vertexBuf =
+            java.nio.ByteBuffer.wrap(vertexBytes).order(java.nio.ByteOrder.nativeOrder());
+        int stride = MmsBufferLayout.VERTEX_STRIDE_BYTES;
+        for (int i = 0; i < vertexCount; i++) {
+            int base = i * stride;
+            for (int c = 0; c < 3; c++) {
+                float value = vertexBuf.getFloat(base + c * Float.BYTES);
+                if (!Float.isFinite(value)) {
+                    return ValidationResult.invalid(String.format(
+                        "Non-finite vertex position at vertex %d: %f", i, value));
+                }
+            }
+        }
         return ValidationResult.valid();
     }
 

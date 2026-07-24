@@ -14,8 +14,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * v4 (zstd) chunk payload round-trip: real generated terrain in, identical
- * blocks out, version byte confirms the zstd path was actually taken.
+ * zstd chunk payload round-trip: real generated terrain in, identical
+ * blocks out, header bytes confirm the zstd path was actually taken.
  */
 class ChunkCodecZstdTest {
 
@@ -38,9 +38,11 @@ class ChunkCodecZstdTest {
             .build();
 
         byte[] payload = ChunkCodec.encode(data);
-        // Bytes 4..5 are the big-endian version; with kernels loaded it must be 4 (zstd).
+        // Bytes 4..5 are the big-endian version (5 = paletted sections);
+        // byte 24 is the compression flag — with kernels loaded it must be zstd (1).
         int version = ((payload[4] & 0xFF) << 8) | (payload[5] & 0xFF);
-        assertEquals(4, version, "kernels present => zstd payload version");
+        assertEquals(5, version, "writer emits the paletted section format");
+        assertEquals(1, payload[24], "kernels present => zstd compression flag");
 
         ChunkData restored = ChunkCodec.decode(payload);
         for (int x = 0; x < 16; x++) {

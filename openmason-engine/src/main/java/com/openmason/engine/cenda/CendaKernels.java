@@ -237,6 +237,55 @@ public final class CendaKernels {
         return segment;
     }
 
+    /**
+     * Per-thread grow-on-demand native scratch segments for per-chunk kernel
+     * calls (mesher, generator, carver, zstd). Each slot is one argument role
+     * of one call; contents are only valid for the duration of that downcall.
+     * Replaces the confined-Arena-per-call pattern, which allocated and freed
+     * ~130 KB of off-heap memory on every chunk mesh/generate/compress.
+     */
+    private static final int SCRATCH_SLOT_COUNT = 12;
+    private static final ThreadLocal<MemorySegment[]> SCRATCH =
+        ThreadLocal.withInitial(() -> new MemorySegment[SCRATCH_SLOT_COUNT]);
+
+    private static MemorySegment scratch(int slot, long bytes) {
+        MemorySegment[] slots = SCRATCH.get();
+        MemorySegment segment = slots[slot];
+        if (segment == null || segment.byteSize() < bytes) {
+            segment = Arena.ofAuto().allocate(Math.max(bytes, 4096L), 8L);
+            slots[slot] = segment;
+        }
+        return segment;
+    }
+
+    private static MemorySegment scratchFrom(int slot, byte[] data, int offset, int length) {
+        MemorySegment segment = scratch(slot, length);
+        MemorySegment.copy(data, offset, segment, ValueLayout.JAVA_BYTE, 0L, length);
+        return segment;
+    }
+
+    private static MemorySegment scratchFrom(int slot, short[] data) {
+        MemorySegment segment = scratch(slot, (long) data.length * Short.BYTES);
+        MemorySegment.copy(data, 0, segment, ValueLayout.JAVA_SHORT, 0L, data.length);
+        return segment;
+    }
+
+    private static MemorySegment scratchFrom(int slot, int[] data) {
+        MemorySegment segment = scratch(slot, (long) data.length * Integer.BYTES);
+        MemorySegment.copy(data, 0, segment, ValueLayout.JAVA_INT, 0L, data.length);
+        return segment;
+    }
+
+    private static MemorySegment scratchFrom(int slot, float[] data) {
+        MemorySegment segment = scratch(slot, (long) data.length * Float.BYTES);
+        MemorySegment.copy(data, 0, segment, ValueLayout.JAVA_FLOAT, 0L, data.length);
+        return segment;
+    }
+
+    private static MemorySegment scratchFromNullable(int slot, short[] data) {
+        return data == null ? MemorySegment.NULL : scratchFrom(slot, data);
+    }
+
     private CendaKernels() {
     }
 
@@ -387,10 +436,6 @@ public final class CendaKernels {
 
     // ═══════════════════════ Chunk mesher ═══════════════════════
 
-    private static MemorySegment copyOrNull(Arena arena, short[] data) {
-        return data == null ? MemorySegment.NULL : arena.allocateFrom(ValueLayout.JAVA_SHORT, data);
-    }
-
     /**
      * Culls + lights one chunk's standard-cube faces natively. Layouts and
      * semantics per cenda/kernels.h (ck_mesh_chunk). Returns the number of
@@ -409,17 +454,17 @@ public final class CendaKernels {
             return Integer.MIN_VALUE;
         }
         int capQuads = outQuads.length / 9;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment blocksSeg = arena.allocateFrom(ValueLayout.JAVA_SHORT, blocks);
-            MemorySegment clsSeg = arena.allocateFrom(ValueLayout.JAVA_BYTE, classTable);
-            MemorySegment heightsSeg = arena.allocateFrom(ValueLayout.JAVA_SHORT, heights18);
-            MemorySegment outSeg = arena.allocate(ValueLayout.JAVA_FLOAT, (long) capQuads * 9);
+        try {
+            MemorySegment blocksSeg = scratchFrom(0, blocks);
+            MemorySegment clsSeg = scratchFrom(1, classTable, 0, classTable.length);
+            MemorySegment heightsSeg = scratchFrom(2, heights18);
+            MemorySegment outSeg = scratch(3, (long) capQuads * 9 * Float.BYTES);
             int result = (int) MESH_CHUNK.invokeExact(
                 blocksSeg, clsSeg, classTable.length, airId,
-                copyOrNull(arena, planeXn), copyOrNull(arena, planeXp),
-                copyOrNull(arena, planeZn), copyOrNull(arena, planeZp),
-                copyOrNull(arena, cornerNn), copyOrNull(arena, cornerPn),
-                copyOrNull(arena, cornerNp), copyOrNull(arena, cornerPp),
+                scratchFromNullable(4, planeXn), scratchFromNullable(5, planeXp),
+                scratchFromNullable(6, planeZn), scratchFromNullable(7, planeZp),
+                scratchFromNullable(8, cornerNn), scratchFromNullable(9, cornerPn),
+                scratchFromNullable(10, cornerNp), scratchFromNullable(11, cornerPp),
                 heightsSeg, maxY, smooth ? 1 : 0, outSeg, capQuads);
             if (result > 0) {
                 MemorySegment.copy(outSeg, ValueLayout.JAVA_FLOAT, 0L, outQuads, 0, result * 9);
@@ -490,15 +535,15 @@ public final class CendaKernels {
             return -1L;
         }
         int nAnchors = anchorChunks == null ? 0 : anchorChunks.length / 2;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment maskSeg = arena.allocate(ValueLayout.JAVA_LONG, 1024);
+        try {
+            MemorySegment maskSeg = scratch(0, 1024L * Long.BYTES);
             MemorySegment anchorChunksSeg = nAnchors == 0 ? MemorySegment.NULL
-                : arena.allocateFrom(ValueLayout.JAVA_INT, anchorChunks);
+                : scratchFrom(1, anchorChunks);
             MemorySegment anchorsSeg = nAnchors == 0 ? MemorySegment.NULL
-                : arena.allocateFrom(ValueLayout.JAVA_FLOAT, anchors);
+                : scratchFrom(2, anchors);
             long carved = (long) CARVE_WORMS.invokeExact(
                 MemorySegment.ofAddress(ctx), chunkX, chunkZ,
-                arena.allocateFrom(ValueLayout.JAVA_INT, heights256),
+                scratchFrom(3, heights256),
                 nAnchors, anchorChunksSeg, anchorsSeg, maskSeg);
             if (carved >= 0) {
                 MemorySegment.copy(maskSeg, ValueLayout.JAVA_LONG, 0L, outMask, 0, 1024);
@@ -594,14 +639,14 @@ public final class CendaKernels {
         if (!AVAILABLE || ctx == 0L) {
             return -1L;
         }
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment blocksSeg = arena.allocate(ValueLayout.JAVA_SHORT, 65536);
+        try {
+            MemorySegment blocksSeg = scratch(0, 65536L * Short.BYTES);
             MemorySegment heightmapSeg = outHeightmap == null ? MemorySegment.NULL
-                : arena.allocate(ValueLayout.JAVA_INT, 256);
+                : scratch(1, 256L * Integer.BYTES);
             long nonAir = (long) GENERATE_CHUNK.invokeExact(
                 MemorySegment.ofAddress(ctx), chunkX, chunkZ,
-                arena.allocateFrom(ValueLayout.JAVA_INT, heights256),
-                arena.allocateFrom(ValueLayout.JAVA_INT, biomes256),
+                scratchFrom(2, heights256),
+                scratchFrom(3, biomes256),
                 blocksSeg, heightmapSeg);
             if (nonAir >= 0) {
                 MemorySegment.copy(blocksSeg, ValueLayout.JAVA_SHORT, 0L, outBlocks, 0, 65536);
@@ -617,28 +662,86 @@ public final class CendaKernels {
 
     // ═══════════════════════ zstd codec ═══════════════════════
 
-    /** Compresses with zstd. Returns null when unavailable or on error. */
-    public static byte[] zstdCompress(byte[] src, int level) {
-        if (!AVAILABLE || src == null) {
-            return null;
+    /**
+     * Worst-case compressed size for {@code srcLen} input bytes — size
+     * caller-provided destination buffers with this before calling
+     * {@link #zstdCompress(byte[], int, byte[], int)}. Mirrors
+     * ZSTD_compressBound without a native call.
+     */
+    public static int zstdCompressBound(int srcLen) {
+        return srcLen + (srcLen >> 8) + 512;
+    }
+
+    /**
+     * Compresses {@code src[0..srcLen)} into the caller's reusable {@code dst}
+     * buffer (size it with {@link #zstdCompressBound}). Returns the number of
+     * compressed bytes written, or -1 when unavailable, on error, or when
+     * {@code dst} is too small. Allocation-free: per-thread native scratch.
+     */
+    public static int zstdCompress(byte[] src, int srcLen, byte[] dst, int level) {
+        if (!AVAILABLE || src == null || dst == null || srcLen <= 0 || srcLen > src.length) {
+            return -1;
         }
-        try (Arena arena = Arena.ofConfined()) {
-            long bound = (long) ZSTD_BOUND.invokeExact((long) src.length);
+        try {
+            long bound = (long) ZSTD_BOUND.invokeExact((long) srcLen);
             if (bound <= 0) {
-                return null;
+                return -1;
             }
-            MemorySegment dst = arena.allocate(bound);
-            MemorySegment srcSeg = arena.allocateFrom(ValueLayout.JAVA_BYTE, src);
-            long written = (long) ZSTD_COMPRESS.invokeExact(dst, bound, srcSeg, (long) src.length, level);
-            if (written <= 0) {
-                return null;
+            MemorySegment srcSeg = scratchFrom(0, src, 0, srcLen);
+            MemorySegment dstSeg = scratch(1, bound);
+            long written = (long) ZSTD_COMPRESS.invokeExact(dstSeg, bound, srcSeg, (long) srcLen, level);
+            if (written <= 0 || written > dst.length) {
+                return -1;
             }
-            byte[] out = new byte[(int) written];
-            MemorySegment.copy(dst, ValueLayout.JAVA_BYTE, 0L, out, 0, (int) written);
-            return out;
+            MemorySegment.copy(dstSeg, ValueLayout.JAVA_BYTE, 0L, dst, 0, (int) written);
+            return (int) written;
         } catch (Throwable t) {
             throw new IllegalStateException("ck_zstd_compress failed", t);
         }
+    }
+
+    /**
+     * Decompresses {@code src[srcOff..srcOff+srcLen)} — whose original size is
+     * known exactly — into the caller's reusable {@code dst} buffer. Returns
+     * false when unavailable, on error, or on size mismatch. Allocation-free:
+     * per-thread native scratch.
+     */
+    public static boolean zstdDecompress(byte[] src, int srcOff, int srcLen,
+                                         byte[] dst, int expectedSize) {
+        if (!AVAILABLE || src == null || dst == null || expectedSize <= 0
+                || dst.length < expectedSize || srcOff < 0 || srcLen <= 0
+                || srcOff + srcLen > src.length) {
+            return false;
+        }
+        try {
+            MemorySegment srcSeg = scratchFrom(0, src, srcOff, srcLen);
+            MemorySegment dstSeg = scratch(1, expectedSize);
+            long restored = (long) ZSTD_DECOMPRESS.invokeExact(
+                dstSeg, (long) expectedSize, srcSeg, (long) srcLen);
+            if (restored != expectedSize) {
+                return false;
+            }
+            MemorySegment.copy(dstSeg, ValueLayout.JAVA_BYTE, 0L, dst, 0, expectedSize);
+            return true;
+        } catch (Throwable t) {
+            throw new IllegalStateException("ck_zstd_decompress failed", t);
+        }
+    }
+
+    /**
+     * Compresses with zstd. Returns null when unavailable, on error, or for
+     * empty input (empty payloads are not a supported compression case).
+     */
+    public static byte[] zstdCompress(byte[] src, int level) {
+        if (src == null) {
+            return null;
+        }
+        byte[] dst = new byte[zstdCompressBound(src.length)];
+        int written = zstdCompress(src, src.length, dst, level);
+        if (written < 0) {
+            return null;
+        }
+        return java.util.Arrays.copyOf(dst, written);
     }
 
     /**
@@ -646,21 +749,13 @@ public final class CendaKernels {
      * Returns null when unavailable, on error, or on size mismatch.
      */
     public static byte[] zstdDecompress(byte[] src, int expectedSize) {
-        if (!AVAILABLE || src == null || expectedSize <= 0) {
+        if (src == null || expectedSize <= 0) {
             return null;
         }
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment dst = arena.allocate(expectedSize);
-            MemorySegment srcSeg = arena.allocateFrom(ValueLayout.JAVA_BYTE, src);
-            long restored = (long) ZSTD_DECOMPRESS.invokeExact(dst, (long) expectedSize, srcSeg, (long) src.length);
-            if (restored != expectedSize) {
-                return null;
-            }
-            byte[] out = new byte[expectedSize];
-            MemorySegment.copy(dst, ValueLayout.JAVA_BYTE, 0L, out, 0, expectedSize);
-            return out;
-        } catch (Throwable t) {
-            throw new IllegalStateException("ck_zstd_decompress failed", t);
+        byte[] out = new byte[expectedSize];
+        if (!zstdDecompress(src, 0, src.length, out, expectedSize)) {
+            return null;
         }
+        return out;
     }
 }

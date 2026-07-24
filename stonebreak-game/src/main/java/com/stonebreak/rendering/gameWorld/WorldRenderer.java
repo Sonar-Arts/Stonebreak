@@ -57,13 +57,12 @@ public class WorldRenderer {
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
     private final List<Chunk> reusableVisibleChunks = new ArrayList<>();
+    private final List<Chunk> reusableLoadedChunks = new ArrayList<>();
+    private final List<Chunk> reusableTranslucentChunks = new ArrayList<>();
+    private long[] sortKeys = new long[512];
     private final List<com.stonebreak.rendering.gameWorld.water.WaterRenderer.LodWaterNode> reusableLodWater = new ArrayList<>();
     // Cached so the per-frame chunk visit doesn't allocate a capturing lambda each call.
-    private final java.util.function.Consumer<Chunk> frustumCollector = chunk -> {
-        if (frustumCuller.isChunkVisible(chunk)) {
-            reusableVisibleChunks.add(chunk);
-        }
-    };
+    private final java.util.function.Consumer<Chunk> loadedCollector = reusableLoadedChunks::add;
     
     /**
      * Creates a WorldRenderer with the required dependencies.
@@ -125,10 +124,22 @@ public class WorldRenderer {
             ambientLightLevel = 1.0f;
         }
 
+        // Region-batched chunk rendering: publish last frame's stats and prune
+        // emptied regions before this frame's first draws.
+        if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance().beginFrame();
+        }
+
+        // ONE grid walk over the render-distance ring collects every loaded
+        // chunk for the frame; the shadow caster cull and the camera frustum
+        // cull below both iterate this list (previously each did its own
+        // ~2401-cell ConcurrentHashMap walk per frame at 24-chunk distance).
+        collectLoadedChunks(world, player);
+
         // Cascaded sun-shadow depth pre-pass. Runs before anything samples the
         // shadow map this frame; restores the caller's framebuffer and viewport,
         // so it is safe even when the post-fx scene FBO is already bound.
-        shadowMapRenderer.renderShadowPass(world, player, sunDirection, entityRenderer);
+        shadowMapRenderer.renderShadowPass(world, player, sunDirection, entityRenderer, reusableLoadedChunks);
         checkGLError("After shadow depth pre-pass");
 
         // Render sky first (before world geometry for proper depth testing)
@@ -363,17 +374,30 @@ public class WorldRenderer {
     }
 
     /**
-     * Visits the chunks around the player and collects those intersecting the camera view
-     * frustum. Returns a reused list; the visit itself is allocation-free (no intermediate
-     * map of nearby chunks — at 24-chunk render distance that map was ~2,401 entries of
-     * per-frame garbage).
+     * The frame's single render-distance grid walk: collects every loaded
+     * chunk into a reused list shared by the shadow caster cull and the
+     * camera frustum cull. Allocation-free.
      */
-    private List<Chunk> cullChunksToFrustum(World world, Player player) {
+    private void collectLoadedChunks(World world, Player player) {
         int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
+        reusableLoadedChunks.clear();
+        world.forEachChunkAroundPlayer(playerChunkX, playerChunkZ, loadedCollector);
+    }
+
+    /**
+     * Filters this frame's loaded-chunk list down to those intersecting the
+     * camera view frustum. Returns a reused list; allocation-free.
+     */
+    private List<Chunk> cullChunksToFrustum(World world, Player player) {
         frustumCuller.update(projectionMatrix, player.getViewMatrix());
         reusableVisibleChunks.clear();
-        world.forEachChunkAroundPlayer(playerChunkX, playerChunkZ, frustumCollector);
+        for (int i = 0; i < reusableLoadedChunks.size(); i++) {
+            Chunk chunk = reusableLoadedChunks.get(i);
+            if (frustumCuller.isChunkVisible(chunk)) {
+                reusableVisibleChunks.add(chunk);
+            }
+        }
         return reusableVisibleChunks;
     }
 
@@ -391,6 +415,14 @@ public class WorldRenderer {
             debugOpaquePassCount++;
         }
 
+        if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            // One multidraw per visible region instead of a VAO bind + draw
+            // call per chunk (legacy-handle stragglers draw individually).
+            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance()
+                .drawChunks(visibleChunks,
+                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
+            return;
+        }
         for (Chunk chunk : visibleChunks) {
             chunk.render(); // Shader will discard water fragments
         }
@@ -438,35 +470,57 @@ public class WorldRenderer {
         // mesh — it has its own per-chunk mesh drawn by the dedicated
         // WaterRenderer right after this pass, which also made the old
         // two-sub-layer scheme (u_translucentLayer 0/1) unnecessary.
+        //
+        // Only chunks whose atlas mesh actually CONTAINS translucent geometry
+        // draw here — previously every visible chunk's whole mesh re-drew for
+        // its shader-discarded fragments, doubling world geometry per frame.
         glDepthMask(true);
-        for (Chunk chunk : reusableSortedChunks) {
+        reusableTranslucentChunks.clear();
+        for (int i = 0; i < reusableSortedChunks.size(); i++) {
+            Chunk chunk = reusableSortedChunks.get(i);
+            if (chunk.atlasHasTranslucent()) {
+                reusableTranslucentChunks.add(chunk);
+            }
+        }
+        if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance()
+                .drawChunks(reusableTranslucentChunks,
+                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
+            return;
+        }
+        for (Chunk chunk : reusableTranslucentChunks) {
             chunk.render();
         }
     }
-    
+
     /**
      * Sort chunks from back to front for proper transparent rendering.
+     * Distance keys are computed once per chunk and sorted as packed longs
+     * (IEEE bits of a non-negative float are order-preserving), replacing the
+     * comparator that re-derived both chunk centers on every comparison.
      */
     private void sortChunksBackToFront(List<Chunk> visibleChunks, Player player) {
         reusableSortedChunks.clear();
-        reusableSortedChunks.addAll(visibleChunks);
+        int count = visibleChunks.size();
+        if (count == 0) {
+            return;
+        }
+        if (sortKeys.length < count) {
+            sortKeys = new long[Math.max(count, sortKeys.length * 2)];
+        }
         Vector3f playerPos = player.getPosition();
-        
-        Collections.sort(reusableSortedChunks, (c1, c2) -> {
-            // Calculate distance squared from player to center of each chunk
-            float c1CenterX = c1.getWorldX(WorldConfiguration.CHUNK_SIZE / 2);
-            float c1CenterZ = c1.getWorldZ(WorldConfiguration.CHUNK_SIZE / 2);
-            float c2CenterX = c2.getWorldX(WorldConfiguration.CHUNK_SIZE / 2);
-            float c2CenterZ = c2.getWorldZ(WorldConfiguration.CHUNK_SIZE / 2);
-
-            float distSq1 = (playerPos.x - c1CenterX) * (playerPos.x - c1CenterX) +
-                            (playerPos.z - c1CenterZ) * (playerPos.z - c1CenterZ);
-            float distSq2 = (playerPos.x - c2CenterX) * (playerPos.x - c2CenterX) +
-                            (playerPos.z - c2CenterZ) * (playerPos.z - c2CenterZ);
-            
-            // Sort in descending order of distance (farthest first)
-            return Float.compare(distSq2, distSq1);
-        });
+        for (int i = 0; i < count; i++) {
+            Chunk chunk = visibleChunks.get(i);
+            float dx = playerPos.x - chunk.getWorldX(WorldConfiguration.CHUNK_SIZE / 2);
+            float dz = playerPos.z - chunk.getWorldZ(WorldConfiguration.CHUNK_SIZE / 2);
+            float distSq = dx * dx + dz * dz;
+            sortKeys[i] = ((long) Float.floatToIntBits(distSq) << 32) | (i & 0xFFFFFFFFL);
+        }
+        java.util.Arrays.sort(sortKeys, 0, count);
+        // Descending distance = farthest first.
+        for (int i = count - 1; i >= 0; i--) {
+            reusableSortedChunks.add(visibleChunks.get((int) sortKeys[i]));
+        }
     }
     
     /**

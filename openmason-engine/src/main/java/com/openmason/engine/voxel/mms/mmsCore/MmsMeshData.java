@@ -9,22 +9,36 @@ import java.util.Objects;
  * This is the core data structure for all mesh operations in MMS.
  * Follows SOLID principles through immutability and single responsibility.
  *
+ * <p>Two representations exist:
+ * <ul>
+ *   <li><b>Packed</b> (built by {@link MmsMeshBuilder#build()}): one interleaved
+ *       vertex byte array in the exact GPU layout ({@link MmsBufferLayout},
+ *       40 bytes/vertex, flags pre-quantized to unsigned bytes) plus an index
+ *       byte array (u16 when the mesh has ≤65536 vertices, u32 otherwise).
+ *       Upload is a bulk copy; retained CPU memory is ~40 B/vertex instead of
+ *       the 52 B/vertex of eight separate float arrays. The SoA getters below
+ *       still work on packed instances but MATERIALIZE a fresh array per call
+ *       (flags come back 1/255-quantized — the exact values the GPU sees) —
+ *       they are for tests/tools, not hot paths.</li>
+ *   <li><b>SoA</b> (the public constructors): eight per-attribute float arrays,
+ *       interleaved at upload time. Used by FastLOD and direct constructors.</li>
+ * </ul>
+ *
+ * <p>{@code equals}/{@code hashCode} are representation-sensitive: two meshes
+ * compare equal only when they hold the same representation with identical
+ * content.
+ *
  * Design Philosophy:
  * - Immutable: Thread-safe by design (KISS principle)
  * - Validated: All data validated on construction (fail-fast)
  * - Efficient: Zero-copy transfer to GPU buffers
  * - Extensible: Easy to add new vertex attributes
  *
- * Performance:
- * - Memory: ~40 bytes overhead + vertex data arrays
- * - Construction: O(1) time, validation O(n) where n = vertex count
- * - Thread-safe: Immutable, safe for concurrent access
- *
  * @since MMS 1.0
  */
 public final class MmsMeshData {
 
-    // Vertex attributes (interleaved format: pos[3] + tex[2] + normal[3] + flags[2])
+    // Vertex attributes (SoA representation; all null when packed)
     private final float[] vertexPositions;    // x, y, z per vertex
     private final float[] textureCoordinates;  // u, v per vertex
     private final float[] vertexNormals;       // nx, ny, nz per vertex
@@ -34,14 +48,21 @@ public final class MmsMeshData {
     private final float[] lightValues;         // per-vertex world light in [0,1], 1.0 = fully lit
     private final float[] layerIndices;        // texture-array layer index per vertex
 
-    // Index data
+    // Index data (SoA representation; null when packed)
     private final int[] indices;
     private final int indexCount;
+
+    // Packed representation (both null in SoA form)
+    private final byte[] packedVertexData;     // interleaved MmsBufferLayout stride, native order
+    private final byte[] packedIndexData;      // u16 or u32 indices, native order
+    private final boolean shortIndices;
 
     // Metadata
     private final int vertexCount;
     private final int triangleCount;
     private final long memoryUsageBytes;
+    /** True when any vertex carries a non-zero translucent flag (ice). */
+    private final boolean hasTranslucent;
 
     // Empty mesh singleton
     private static final MmsMeshData EMPTY = new MmsMeshData(
@@ -105,6 +126,9 @@ public final class MmsMeshData {
         this.layerIndices = Objects.requireNonNull(layerIndices, "layerIndices cannot be null");
         this.indices = Objects.requireNonNull(indices, "indices cannot be null");
         this.indexCount = indexCount;
+        this.packedVertexData = null;
+        this.packedIndexData = null;
+        this.shortIndices = false;
 
         // Validate index count
         if (indexCount < 0 || indexCount > indices.length) {
@@ -124,6 +148,88 @@ public final class MmsMeshData {
 
         // Calculate memory usage
         this.memoryUsageBytes = estimateMemoryUsage();
+
+        boolean translucent = false;
+        for (float flag : translucentFlags) {
+            if (flag != 0f) {
+                translucent = true;
+                break;
+            }
+        }
+        this.hasTranslucent = translucent;
+    }
+
+    /** Packed-representation constructor; see {@link #fromPacked}. */
+    private MmsMeshData(byte[] packedVertexData, byte[] packedIndexData, boolean shortIndices,
+                        int vertexCount, int indexCount) {
+        this.vertexPositions = null;
+        this.textureCoordinates = null;
+        this.vertexNormals = null;
+        this.waterHeightFlags = null;
+        this.alphaTestFlags = null;
+        this.translucentFlags = null;
+        this.lightValues = null;
+        this.layerIndices = null;
+        this.indices = null;
+        this.packedVertexData = packedVertexData;
+        this.packedIndexData = packedIndexData;
+        this.shortIndices = shortIndices;
+        this.vertexCount = vertexCount;
+        this.indexCount = indexCount;
+        this.triangleCount = indexCount / 3;
+        this.memoryUsageBytes = packedVertexData.length + packedIndexData.length + 64L;
+
+        // Translucent flag = byte 2 of the packed flags word per vertex.
+        boolean translucent = false;
+        int stride = MmsBufferLayout.VERTEX_STRIDE_BYTES;
+        int flagByte = (int) MmsBufferLayout.FLAGS_OFFSET + 2;
+        for (int i = 0; i < vertexCount; i++) {
+            if (packedVertexData[i * stride + flagByte] != 0) {
+                translucent = true;
+                break;
+            }
+        }
+        this.hasTranslucent = translucent;
+    }
+
+    /**
+     * Creates a packed-representation mesh from data already interleaved into
+     * the {@link MmsBufferLayout} GPU layout (native byte order). The arrays
+     * are taken by reference — the caller hands over ownership.
+     *
+     * @param packedVertexData exactly {@code vertexCount * VERTEX_STRIDE_BYTES} bytes
+     * @param packedIndexData  exactly {@code indexCount * 2} bytes (u16) or
+     *                         {@code indexCount * 4} bytes (u32)
+     * @param shortIndices     true when indices are unsigned shorts
+     */
+    public static MmsMeshData fromPacked(byte[] packedVertexData, byte[] packedIndexData,
+                                         boolean shortIndices, int vertexCount, int indexCount) {
+        Objects.requireNonNull(packedVertexData, "packedVertexData cannot be null");
+        Objects.requireNonNull(packedIndexData, "packedIndexData cannot be null");
+        if (vertexCount <= 0 || indexCount <= 0) {
+            throw new IllegalArgumentException("Packed meshes cannot be empty; use empty()");
+        }
+        if (packedVertexData.length != vertexCount * MmsBufferLayout.VERTEX_STRIDE_BYTES) {
+            throw new IllegalArgumentException(String.format(
+                "Packed vertex data size mismatch: expected %d bytes, got %d",
+                vertexCount * MmsBufferLayout.VERTEX_STRIDE_BYTES, packedVertexData.length));
+        }
+        int bytesPerIndex = shortIndices ? Short.BYTES : Integer.BYTES;
+        if (packedIndexData.length != indexCount * bytesPerIndex) {
+            throw new IllegalArgumentException(String.format(
+                "Packed index data size mismatch: expected %d bytes, got %d",
+                indexCount * bytesPerIndex, packedIndexData.length));
+        }
+        if (indexCount % 3 != 0) {
+            throw new IllegalArgumentException(
+                "Index count must be multiple of 3 (triangles): " + indexCount);
+        }
+        if (shortIndices && vertexCount > 65536) {
+            throw new IllegalArgumentException(
+                "u16 indices cannot address " + vertexCount + " vertices");
+        }
+        return new MmsMeshData(packedVertexData, packedIndexData, shortIndices,
+            vertexCount, indexCount);
     }
 
     /**
@@ -226,96 +332,175 @@ public final class MmsMeshData {
                64L;
     }
 
-    // === Getters (defensive copies not needed due to immutability contract) ===
+    // === Packed representation accessors ===
+
+    /** True when this mesh holds the packed (interleaved bytes) representation. */
+    public boolean isPacked() {
+        return packedVertexData != null;
+    }
 
     /**
-     * Gets vertex position data.
-     * WARNING: Do not modify the returned array. This is a direct reference for performance.
-     *
-     * @return Vertex positions array (x,y,z per vertex)
+     * Interleaved vertex bytes in the {@link MmsBufferLayout} GPU layout;
+     * null for SoA-form meshes. Do not modify.
+     */
+    public byte[] getPackedVertexData() {
+        return packedVertexData;
+    }
+
+    /** Index bytes (u16 or u32, native order); null for SoA-form meshes. Do not modify. */
+    public byte[] getPackedIndexData() {
+        return packedIndexData;
+    }
+
+    /** True when the packed index data is unsigned shorts. */
+    public boolean hasShortIndices() {
+        return shortIndices;
+    }
+
+    /**
+     * True when any vertex carries a non-zero translucent flag (ice). Lets
+     * the transparent render pass skip meshes that would contribute nothing —
+     * previously every visible chunk's whole geometry re-drew in that pass
+     * just for its shader-discarded fragments.
+     */
+    public boolean hasTranslucentGeometry() {
+        return hasTranslucent;
+    }
+
+    // === Getters ===
+    // On SoA-form meshes these return direct references (do not modify).
+    // On packed meshes they MATERIALIZE a fresh array per call by decoding the
+    // interleaved bytes — flag/light values come back 1/255-quantized, exactly
+    // what the GPU sees. Test/tool use only; never call these per frame.
+
+    /**
+     * Gets vertex position data (x,y,z per vertex).
      */
     public float[] getVertexPositions() {
+        if (packedVertexData != null) {
+            return materializeFloats(0, 3);
+        }
         return vertexPositions;
     }
 
     /**
-     * Gets texture coordinate data.
-     * WARNING: Do not modify the returned array. This is a direct reference for performance.
-     *
-     * @return Texture coordinates array (u,v per vertex)
+     * Gets texture coordinate data (u,v per vertex).
      */
     public float[] getTextureCoordinates() {
+        if (packedVertexData != null) {
+            return materializeFloats((int) MmsBufferLayout.TEXTURE_OFFSET, 2);
+        }
         return textureCoordinates;
     }
 
     /**
-     * Gets vertex normal data.
-     * WARNING: Do not modify the returned array. This is a direct reference for performance.
-     *
-     * @return Vertex normals array (nx,ny,nz per vertex)
+     * Gets vertex normal data (nx,ny,nz per vertex).
      */
     public float[] getVertexNormals() {
+        if (packedVertexData != null) {
+            return materializeFloats((int) MmsBufferLayout.NORMAL_OFFSET, 3);
+        }
         return vertexNormals;
     }
 
     /**
-     * Gets water height flag data.
-     * WARNING: Do not modify the returned array. This is a direct reference for performance.
-     *
-     * @return Water height flags array (1 float per vertex)
+     * Gets water height flag data (1 float per vertex).
      */
     public float[] getWaterHeightFlags() {
+        if (packedVertexData != null) {
+            return materializeFlagBytes(0);
+        }
         return waterHeightFlags;
     }
 
     /**
-     * Gets alpha test flag data.
-     * WARNING: Do not modify the returned array. This is a direct reference for performance.
-     *
-     * @return Alpha test flags array (1 float per vertex)
+     * Gets alpha test flag data (1 float per vertex).
      */
     public float[] getAlphaTestFlags() {
+        if (packedVertexData != null) {
+            return materializeFlagBytes(1);
+        }
         return alphaTestFlags;
     }
 
     /**
-     * Gets translucent flag data.
-     * WARNING: Do not modify the returned array. This is a direct reference for performance.
-     *
-     * @return Translucent flags array (1 float per vertex, 1.0 = translucent)
+     * Gets translucent flag data (1 float per vertex, 1.0 = translucent).
      */
     public float[] getTranslucentFlags() {
+        if (packedVertexData != null) {
+            return materializeFlagBytes(2);
+        }
         return translucentFlags;
     }
 
     /**
-     * Gets per-vertex world light values in [0,1].
-     * WARNING: Do not modify the returned array.
-     *
-     * @return Light values array (1 float per vertex)
+     * Gets per-vertex world light values in [0,1] (1 float per vertex).
      */
     public float[] getLightValues() {
+        if (packedVertexData != null) {
+            return materializeFlagBytes(3);
+        }
         return lightValues;
     }
 
     /**
-     * Gets per-vertex texture-array layer indices.
-     * WARNING: Do not modify the returned array.
-     *
-     * @return Layer index array (1 float per vertex)
+     * Gets per-vertex texture-array layer indices (1 float per vertex).
      */
     public float[] getLayerIndices() {
+        if (packedVertexData != null) {
+            return materializeFloats((int) MmsBufferLayout.LAYER_OFFSET, 1);
+        }
         return layerIndices;
     }
 
     /**
      * Gets index data.
-     * WARNING: Do not modify the returned array. This is a direct reference for performance.
-     *
-     * @return Index array
      */
     public int[] getIndices() {
+        if (packedIndexData != null) {
+            int[] out = new int[indexCount];
+            java.nio.ByteBuffer buf =
+                java.nio.ByteBuffer.wrap(packedIndexData).order(java.nio.ByteOrder.nativeOrder());
+            if (shortIndices) {
+                for (int i = 0; i < indexCount; i++) {
+                    out[i] = Short.toUnsignedInt(buf.getShort(i * Short.BYTES));
+                }
+            } else {
+                for (int i = 0; i < indexCount; i++) {
+                    out[i] = buf.getInt(i * Integer.BYTES);
+                }
+            }
+            return out;
+        }
         return indices;
+    }
+
+    /** Decodes {@code components} floats per vertex starting at a stride offset. */
+    private float[] materializeFloats(int byteOffset, int components) {
+        float[] out = new float[vertexCount * components];
+        java.nio.ByteBuffer buf =
+            java.nio.ByteBuffer.wrap(packedVertexData).order(java.nio.ByteOrder.nativeOrder());
+        int stride = MmsBufferLayout.VERTEX_STRIDE_BYTES;
+        for (int i = 0; i < vertexCount; i++) {
+            int base = i * stride + byteOffset;
+            for (int c = 0; c < components; c++) {
+                out[i * components + c] = buf.getFloat(base + c * Float.BYTES);
+            }
+        }
+        return out;
+    }
+
+    /** Decodes one packed flag byte per vertex back to a [0,1] float. */
+    private float[] materializeFlagBytes(int flagByte) {
+        float[] out = new float[vertexCount];
+        int stride = MmsBufferLayout.VERTEX_STRIDE_BYTES;
+        java.nio.ByteBuffer buf =
+            java.nio.ByteBuffer.wrap(packedVertexData).order(java.nio.ByteOrder.nativeOrder());
+        for (int i = 0; i < vertexCount; i++) {
+            int packed = buf.getInt(i * stride + (int) MmsBufferLayout.FLAGS_OFFSET);
+            out[i] = ((packed >>> (flagByte * 8)) & 0xFF) / 255.0f;
+        }
+        return out;
     }
 
     /**
@@ -361,9 +546,16 @@ public final class MmsMeshData {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         MmsMeshData that = (MmsMeshData) o;
-        return indexCount == that.indexCount &&
-               vertexCount == that.vertexCount &&
-               Arrays.equals(vertexPositions, that.vertexPositions) &&
+        if (indexCount != that.indexCount || vertexCount != that.vertexCount
+                || isPacked() != that.isPacked()) {
+            return false;
+        }
+        if (isPacked()) {
+            return shortIndices == that.shortIndices &&
+                   Arrays.equals(packedVertexData, that.packedVertexData) &&
+                   Arrays.equals(packedIndexData, that.packedIndexData);
+        }
+        return Arrays.equals(vertexPositions, that.vertexPositions) &&
                Arrays.equals(textureCoordinates, that.textureCoordinates) &&
                Arrays.equals(vertexNormals, that.vertexNormals) &&
                Arrays.equals(waterHeightFlags, that.waterHeightFlags) &&
@@ -377,6 +569,11 @@ public final class MmsMeshData {
     @Override
     public int hashCode() {
         int result = Objects.hash(indexCount, vertexCount);
+        if (isPacked()) {
+            result = 31 * result + Arrays.hashCode(packedVertexData);
+            result = 31 * result + Arrays.hashCode(packedIndexData);
+            return result;
+        }
         result = 31 * result + Arrays.hashCode(vertexPositions);
         result = 31 * result + Arrays.hashCode(textureCoordinates);
         result = 31 * result + Arrays.hashCode(vertexNormals);
