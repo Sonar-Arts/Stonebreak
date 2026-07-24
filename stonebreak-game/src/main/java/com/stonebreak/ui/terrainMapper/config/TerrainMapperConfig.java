@@ -32,7 +32,15 @@ public final class TerrainMapperConfig {
     // ─────────────────────────────────────────────── Viewport
     /** Pixels-per-world-block at zoom 1.0. A block maps to a single pixel. */
     public static final float BASE_WORLD_SCALE = 1f;
-    public static final float ZOOM_MIN = 0.25f;
+    /**
+     * Furthest zoom-out: 1/16 means one pixel stands for 16 world blocks, so a ~1200 px map
+     * spans ~19k blocks. What bounds this is not the sample count — that is fixed by the
+     * viewport size and {@link #SAMPLE_STEP_PX} — but the number of distinct 256-block bridge
+     * tiles the samples land in, since an uncached tile costs a diffusion inference. Sampling
+     * runs off the render thread (see TerrainPreviewLoader), so a wide view degrades into a
+     * slow "Sampling terrain..." rather than a freeze.
+     */
+    public static final float ZOOM_MIN = 0.0625f;
     public static final float ZOOM_MAX = 8f;
     public static final float ZOOM_STEP = 1.15f;
 
@@ -52,5 +60,25 @@ public final class TerrainMapperConfig {
      * trigger one restart per keystroke.
      */
     public static final long SEED_APPLY_DELAY_NANOS = 500_000_000L;
+
+    // ─────────────────────────────────────────────── Topography visualizer
+    /**
+     * Block height that maps to the top (white) of the topography land ramp; anything higher
+     * clamps to white. Deliberately well below WORLD_HEIGHT: the bridge maps elevation as
+     * {@code SEA_LEVEL + elev_m / 15} (terrain-bridge/bridge/height_mapping.py), so real peaks
+     * land far short of 1023 and ramping to the world ceiling would waste most of the palette.
+     */
+    public static final int TOPO_LAND_CEILING = 700;
+
+    /**
+     * Blocks of contour interval to allow per block of sample-cell width. A paper map picks a
+     * coarser interval as its scale drops for exactly this reason: lines land roughly
+     * {@code interval / (slope * blocksPerSample)} samples apart, so holding the interval fixed
+     * while zooming out multiplies their on-screen density until they merge into black mush.
+     *
+     * <p>2.5 is "keep lines ~5 samples apart on a half-block-per-block slope", which reproduces
+     * the familiar 5/10-block interval at close zoom and backs off to 100/200 at ZOOM_MIN.
+     */
+    public static final float TOPO_CONTOUR_INTERVAL_SCALE = 2.5f;
 }
 

@@ -2,6 +2,7 @@ package com.stonebreak.ui.terrainMapper.visualization;
 
 import com.stonebreak.ui.terrainMapper.visualization.impl.BiomeVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.impl.HeightVisualizer;
+import com.stonebreak.ui.terrainMapper.visualization.impl.TopographyVisualizer;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.diffusion.DiffusionBridgeConfig;
 import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
@@ -36,9 +37,12 @@ public final class VisualizerRegistry {
      * Starts (or restarts) the local terrain-diffusion services for the current seed, blocking
      * until they are healthy. Deliberately not called from {@link #rebuild} or the constructor:
      * this registry is built during game init, and booting a CUDA model server there would cost
-     * every launch ~a minute for a screen the player may never open. The render path calls this
-     * instead, so the services come up when the mapper is actually shown; it is a cheap no-op
-     * once they are running for this seed.
+     * every launch ~a minute for a screen the player may never open.
+     *
+     * <p>Called instead by {@code TerrainPreviewLoader}'s worker thread as the first step of
+     * each sampling job, so the services come up when the mapper is actually shown without the
+     * ~minute-long boot stalling the render thread. Never call it from the render path. It is a
+     * cheap no-op once they are running for this seed.
      */
     public void ensureServices() {
         TerrainServiceProcessManager.getInstance().ensureRunningForSeed(seed);
@@ -51,7 +55,11 @@ public final class VisualizerRegistry {
         HeightMapGenerator heightMap = new HeightMapGenerator(tileCache);
         BiomeManager biomes = new BiomeManager(tileCache);
 
+        // HEIGHT and TOPOGRAPHY deliberately share one HeightMapGenerator: they are two
+        // renderings of the same block heights, so a second generator would only double the
+        // tile traffic to the bridge for identical data.
         visualizers.put(VisualizerKind.HEIGHT, new HeightVisualizer(heightMap));
+        visualizers.put(VisualizerKind.TOPOGRAPHY, new TopographyVisualizer(heightMap));
         visualizers.put(VisualizerKind.BIOME, new BiomeVisualizer(biomes));
     }
 }

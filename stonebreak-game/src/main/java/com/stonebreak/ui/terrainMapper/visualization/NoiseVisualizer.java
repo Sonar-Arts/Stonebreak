@@ -32,4 +32,20 @@ public interface NoiseVisualizer {
     default String formatValue(float raw) {
         return String.format("%.3f", raw);
     }
+
+    /**
+     * Optional whole-grid pass run after every pixel has been colored. Default is a no-op.
+     *
+     * <p>Exists because {@link #colorFor(float)} only ever sees one sample: features that
+     * depend on neighbours — contour lines, hillshading — cannot be expressed per-pixel.
+     * {@code raw} holds the pre-normalize samples in the same row-major order as
+     * {@code pixels}, so an implementation can compare a sample against the one to its left
+     * or above and overwrite pixels accordingly.
+     *
+     * @param blocksPerSample world blocks covered by one sample cell; lets an implementation
+     *                        drop detail that would be unreadable at the current zoom.
+     */
+    default void postProcess(float[] raw, int[] pixels, int width, int height, float blocksPerSample) {
+        // no-op
+    }
 }

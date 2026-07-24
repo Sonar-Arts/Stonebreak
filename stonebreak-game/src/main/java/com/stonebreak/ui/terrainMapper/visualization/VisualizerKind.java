@@ -6,6 +6,7 @@ package com.stonebreak.ui.terrainMapper.visualization;
  */
 public enum VisualizerKind {
     HEIGHT("Height"),
+    TOPOGRAPHY("Topography"),
     BIOME("Biome");
 
     private final String displayName;

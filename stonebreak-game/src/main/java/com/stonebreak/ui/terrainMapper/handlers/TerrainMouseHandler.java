@@ -3,8 +3,10 @@ package com.stonebreak.ui.terrainMapper.handlers;
 import com.stonebreak.rendering.UI.masonryUI.MCategoryButton;
 import com.stonebreak.ui.terrainMapper.TerrainMapperLayout;
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
+import com.stonebreak.ui.terrainMapper.managers.PreviewSnapshot;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager.ActiveField;
+import com.stonebreak.ui.terrainMapper.managers.TerrainPreviewLoader;
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
 
@@ -152,6 +154,14 @@ public final class TerrainMouseHandler {
         state.getCenterOnSpawnButton().updateHover(mx, my);
     }
 
+    /**
+     * Reads the hovered value out of the published preview snapshot rather than resampling.
+     * This runs inside the GLFW cursor callback on the main thread, so it must never touch the
+     * terrain bridge — a single {@code visualizer.sample()} here can block on a diffusion
+     * inference and stall the whole game just from moving the mouse. Reading the snapshot also
+     * guarantees the number in the footer is exactly the one behind the pixel under the cursor,
+     * including while a fresh sample is still in flight.
+     */
     private void updateHoverReadout(float mx, float my, TerrainMapperLayout layout) {
         TerrainMapperLayout.Rect map = layout.map();
         if (!map.contains(mx, my)) {
@@ -160,19 +170,35 @@ public final class TerrainMouseHandler {
         }
         float centerX = map.centerX();
         float centerZ = map.y() + map.height() / 2f;
-        int worldX = Math.round(state.getViewport().screenToWorldX(mx, centerX));
-        int worldZ = Math.round(state.getViewport().screenToWorldZ(my, centerZ));
-        NoiseVisualizer visualizer = state.getVisualizers().get(state.getActiveVisualizer());
-        if (visualizer == null) {
+        float worldX = state.getViewport().screenToWorldX(mx, centerX);
+        float worldZ = state.getViewport().screenToWorldZ(my, centerZ);
+        float value = drawnValueAt(worldX, worldZ);
+        if (Float.isNaN(value)) {
+            // Cursor is over map area nothing on screen speaks for — blank, not stale.
             state.clearHoverValue();
             return;
         }
-        try {
-            state.setHoverValue(worldX, worldZ, visualizer.sample(worldX, worldZ));
-        } catch (com.stonebreak.world.generation.diffusion.TerrainBridgeException e) {
-            // Same reasoning as TerrainPreviewCache: a bridge blip blanks the readout, it
-            // doesn't crash the screen.
-            state.clearHoverValue();
-        }
+        state.setHoverValue(Math.round(worldX), Math.round(worldZ), value);
+    }
+
+    /**
+     * The value behind the drawn pixel, read through the same two layers the renderer paints:
+     * the running pass first, then the backdrop showing through wherever it hasn't reached.
+     *
+     * <p>A layer sampled by a different visualizer is skipped rather than read. Its numbers would
+     * be formatted by whichever mode is selected now — a height reported as a biome — and the
+     * renderer already dims that layer to say it isn't the answer to the question being asked.
+     */
+    private float drawnValueAt(float worldX, float worldZ) {
+        NoiseVisualizer active = state.getVisualizers().get(state.getActiveVisualizer());
+        TerrainPreviewLoader loader = state.getPreviewLoader();
+        float value = valueFrom(loader.snapshot(), active, worldX, worldZ);
+        if (!Float.isNaN(value)) return value;
+        return valueFrom(loader.backdrop(), active, worldX, worldZ);
+    }
+
+    private static float valueFrom(PreviewSnapshot layer, NoiseVisualizer active, float worldX, float worldZ) {
+        if (layer == null || layer.request().visualizer() != active) return Float.NaN;
+        return layer.valueAt(worldX, worldZ);
     }
 }

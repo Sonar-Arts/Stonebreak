@@ -53,9 +53,9 @@ public final class TerrainMapperStateManager {
     private VisualizerKind activeVisualizer = VisualizerKind.HEIGHT;
     private final VisualizerRegistry visualizers;
 
-    // ─────────────────────────────────────────────── Viewport + cache
+    // ─────────────────────────────────────────────── Viewport + preview
     private final TerrainMapViewport viewport = new TerrainMapViewport();
-    private final TerrainPreviewCache previewCache = new TerrainPreviewCache();
+    private final TerrainPreviewLoader previewLoader = new TerrainPreviewLoader(new TerrainPreviewSampler()::sample);
 
     // ─────────────────────────────────────────────── Map drag
     private boolean dragging;
@@ -242,17 +242,20 @@ public final class TerrainMapperStateManager {
      * {@link TerrainMapperConfig#SEED_APPLY_DELAY_NANOS}. Called from the render path, so a
      * screen that is no longer being drawn (after {@link #reset()}, say) never restarts the
      * terrain services behind the back of whoever owns them now.
+     *
+     * <p>Safe to call per frame: {@code rebuild} only allocates a tile cache and a couple of
+     * generators, with no I/O. Booting the terrain services for the new seed — the part that
+     * blocks for up to two minutes — is deliberately <em>not</em> done here; it happens on
+     * {@link TerrainPreviewLoader}'s worker thread as the first step of each sampling job.
      */
     public void applyPendingSeed() {
-        if (seedDirty) {
-            if (System.nanoTime() - seedDirtyAtNanos < TerrainMapperConfig.SEED_APPLY_DELAY_NANOS) return;
-            seedDirty = false;
-            long resolved = getResolvedSeed();
-            if (resolved != visualizers.seed()) {
-                visualizers.rebuild(resolved);
-            }
+        if (!seedDirty) return;
+        if (System.nanoTime() - seedDirtyAtNanos < TerrainMapperConfig.SEED_APPLY_DELAY_NANOS) return;
+        seedDirty = false;
+        long resolved = getResolvedSeed();
+        if (resolved != visualizers.seed()) {
+            visualizers.rebuild(resolved);
         }
-        visualizers.ensureServices();
     }
 
     private static long deriveSeed(String text) {
@@ -265,10 +268,10 @@ public final class TerrainMapperStateManager {
         }
     }
 
-    // ─────────────────────────────────────────────── Viewport + cache
+    // ─────────────────────────────────────────────── Viewport + preview
 
     public TerrainMapViewport getViewport() { return viewport; }
-    public TerrainPreviewCache getPreviewCache() { return previewCache; }
+    public TerrainPreviewLoader getPreviewLoader() { return previewLoader; }
 
     // ─────────────────────────────────────────────── Drag state
 
@@ -345,6 +348,9 @@ public final class TerrainMapperStateManager {
         hasHoverValue = false;
         clearSpawnPoint();
         viewport.reset();
+        // Back to a blank map, so re-entering the screen doesn't briefly show the previous
+        // world's terrain under the new seed.
+        previewLoader.reset();
         seedText = Long.toString(new java.util.Random().nextLong());
         // Deliberately deferred, not rebuilt here: reset() runs on the way *out* of this screen
         // (back, or world created), and rebuilding would restart the terrain services for a
@@ -354,6 +360,6 @@ public final class TerrainMapperStateManager {
     }
 
     public void dispose() {
-        previewCache.dispose();
+        previewLoader.dispose();
     }
 }
