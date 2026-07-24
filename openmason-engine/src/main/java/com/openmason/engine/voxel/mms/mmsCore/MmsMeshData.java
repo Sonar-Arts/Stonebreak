@@ -1,5 +1,7 @@
 package com.openmason.engine.voxel.mms.mmsCore;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -230,6 +232,52 @@ public final class MmsMeshData {
         }
         return new MmsMeshData(packedVertexData, packedIndexData, shortIndices,
             vertexCount, indexCount);
+    }
+
+    /**
+     * Converts an SoA mesh into the packed representation: one interleaved
+     * vertex byte array in the exact {@link MmsBufferLayout} GPU layout (flags
+     * quantized to unsigned bytes, native byte order — byte-identical to what
+     * {@link MmsMeshBuilder#build()} and the legacy upload interleave produce)
+     * plus a u16 (≤65536 vertices) or u32 index byte array.
+     *
+     * <p>Intended for worker threads: packing off the render thread turns the
+     * GL upload into a bulk copy and lets the mesh join shared region arenas
+     * (which require packed u16 form). Packed and empty meshes return
+     * {@code this} unchanged.
+     */
+    public MmsMeshData toPacked() {
+        if (isPacked() || isEmpty()) {
+            return this;
+        }
+        byte[] vertexBytes = new byte[vertexCount * MmsBufferLayout.VERTEX_STRIDE_BYTES];
+        ByteBuffer vertexBuf = ByteBuffer.wrap(vertexBytes).order(ByteOrder.nativeOrder());
+        for (int i = 0; i < vertexCount; i++) {
+            int p3 = i * 3, p2 = i * 2;
+            vertexBuf.putFloat(vertexPositions[p3])
+                     .putFloat(vertexPositions[p3 + 1])
+                     .putFloat(vertexPositions[p3 + 2]);
+            vertexBuf.putFloat(textureCoordinates[p2]).putFloat(textureCoordinates[p2 + 1]);
+            vertexBuf.putFloat(vertexNormals[p3])
+                     .putFloat(vertexNormals[p3 + 1])
+                     .putFloat(vertexNormals[p3 + 2]);
+            vertexBuf.putInt(MmsBufferLayout.packFlags(
+                waterHeightFlags[i], alphaTestFlags[i], translucentFlags[i], lightValues[i]));
+            vertexBuf.putFloat(layerIndices[i]);
+        }
+        boolean shortIdx = vertexCount <= 65536;
+        byte[] indexBytes = new byte[indexCount * (shortIdx ? Short.BYTES : Integer.BYTES)];
+        ByteBuffer indexBuf = ByteBuffer.wrap(indexBytes).order(ByteOrder.nativeOrder());
+        if (shortIdx) {
+            for (int i = 0; i < indexCount; i++) {
+                indexBuf.putShort((short) indices[i]);
+            }
+        } else {
+            for (int i = 0; i < indexCount; i++) {
+                indexBuf.putInt(indices[i]);
+            }
+        }
+        return fromPacked(vertexBytes, indexBytes, shortIdx, vertexCount, indexCount);
     }
 
     /**

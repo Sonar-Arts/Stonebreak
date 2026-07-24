@@ -66,25 +66,35 @@ public final class MmsChunkRegion {
     private int cycleStamp = Integer.MIN_VALUE;
 
     public MmsChunkRegion() {
-        this.vertexAlloc = new MmsArenaAllocator(INITIAL_VERTEX_CAPACITY);
-        this.indexAlloc = new MmsArenaAllocator(INITIAL_INDEX_CAPACITY);
+        this(INITIAL_VERTEX_CAPACITY, INITIAL_INDEX_CAPACITY);
+    }
+
+    /**
+     * Creates a region with custom initial arena capacities (element units).
+     * Callers whose regions hold many more meshes than the 8×8-column default
+     * (e.g. 16×16-column LOD regions) start larger to avoid several
+     * grow-and-compact cycles during the initial fill.
+     */
+    public MmsChunkRegion(int initialVertexCapacity, int initialIndexCapacity) {
+        this.vertexAlloc = new MmsArenaAllocator(initialVertexCapacity);
+        this.indexAlloc = new MmsArenaAllocator(initialIndexCapacity);
 
         this.vertexBufferId = GL15.glGenBuffers();
         GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, vertexBufferId);
         GL15.glBufferData(GL31.GL_COPY_WRITE_BUFFER,
-            (long) INITIAL_VERTEX_CAPACITY * MmsBufferLayout.VERTEX_STRIDE_BYTES, GL15.GL_STATIC_DRAW);
+            (long) initialVertexCapacity * MmsBufferLayout.VERTEX_STRIDE_BYTES, GL15.GL_STATIC_DRAW);
 
         this.indexBufferId = GL15.glGenBuffers();
         GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, indexBufferId);
         GL15.glBufferData(GL31.GL_COPY_WRITE_BUFFER,
-            (long) INITIAL_INDEX_CAPACITY * Short.BYTES, GL15.GL_STATIC_DRAW);
+            (long) initialIndexCapacity * Short.BYTES, GL15.GL_STATIC_DRAW);
         GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, 0);
 
         this.vaoId = GL30.glGenVertexArrays();
         rebuildVao();
 
-        trackedBytes = (long) INITIAL_VERTEX_CAPACITY * MmsBufferLayout.VERTEX_STRIDE_BYTES
-            + (long) INITIAL_INDEX_CAPACITY * Short.BYTES;
+        trackedBytes = (long) initialVertexCapacity * MmsBufferLayout.VERTEX_STRIDE_BYTES
+            + (long) initialIndexCapacity * Short.BYTES;
         GpuMemoryTracker.getInstance().track(GpuMemoryTracker.Category.CHUNK_MESH, trackedBytes);
     }
 

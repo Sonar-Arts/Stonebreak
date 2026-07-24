@@ -64,10 +64,22 @@ public final class FastLodManager {
         MmsRenderableHandle upload(MmsMeshData mesh);
     }
 
+    /**
+     * Optional shared-arena upload seam, supplied per-frame by the render side
+     * (the {@code FastLodRegionBatcher}). When present and the mesh qualifies
+     * (packed, u16), nodes upload into region arenas and draw via multidraw
+     * batches; otherwise the legacy per-node {@link Uploader} path is used.
+     */
+    public interface RegionUploader {
+        com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle upload(
+                boolean water, int chunkX, int chunkZ, MmsMeshData mesh,
+                float minY, float maxY);
+    }
+
     private final Set<FastLodKey> inFlight = ConcurrentHashMap.newKeySet();
     private final Queue<Ready> readyToUpload = new ConcurrentLinkedQueue<>();
     private final Map<FastLodKey, Entry> handles = new ConcurrentHashMap<>();
-    private final Queue<MmsRenderableHandle> cleanupQueue = new ConcurrentLinkedQueue<>();
+    private final Queue<AutoCloseable> cleanupQueue = new ConcurrentLinkedQueue<>();
     /** Columns that have the node at the listed key already resident — used to avoid double-scheduling. */
     private final Map<Long, FastLodKey> residentByColumn = new ConcurrentHashMap<>();
     /** newKey → previous resident key at that column; retires the old handle only once the new one has uploaded. */
@@ -209,6 +221,16 @@ public final class FastLodManager {
     }
 
     public void applyGLUpdates() {
+        applyGLUpdates(null);
+    }
+
+    /**
+     * Drains ready meshes to the GPU and closes retired handles. When
+     * {@code regionUploader} is non-null, terrain/water meshes upload into the
+     * shared region arenas (multidraw batching); null keeps the legacy
+     * per-node handle path (regions disabled, headless tests, teardown drain).
+     */
+    public void applyGLUpdates(RegionUploader regionUploader) {
         if (!shutdown) {
             // Upload until we hit either the hard count cap or the wall-clock
             // budget. The count cap is a safety belt; the time budget is what
@@ -229,19 +251,37 @@ public final class FastLodManager {
                     pendingSupersede.remove(r.key);
                 } else {
                     try {
-                        MmsRenderableHandle h = uploader.upload(r.meshData);
+                        // Region path first (multidraw batching); legacy
+                        // per-node handle when unavailable or unqualified.
+                        com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle rh = null;
+                        MmsRenderableHandle h = null;
+                        if (regionUploader != null) {
+                            rh = regionUploader.upload(false, r.key.chunkX(), r.key.chunkZ(),
+                                    r.meshData, r.minY, r.maxY);
+                        }
+                        if (rh == null) {
+                            h = uploader.upload(r.meshData);
+                        }
+                        com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle rwh = null;
                         MmsRenderableHandle wh = null;
                         if (r.waterMeshData != null) {
                             try {
-                                wh = uploader.upload(r.waterMeshData);
+                                if (regionUploader != null) {
+                                    rwh = regionUploader.upload(true, r.key.chunkX(), r.key.chunkZ(),
+                                            r.waterMeshData, r.minY, r.maxY);
+                                }
+                                if (rwh == null) {
+                                    wh = uploader.upload(r.waterMeshData);
+                                }
                             } catch (Exception waterEx) {
                                 // Keep the pair atomic: a node must never render
                                 // seabed without its sheet.
-                                try { h.close(); } catch (Exception ignored) { }
+                                closeQuietly(rh);
+                                closeQuietly(h);
                                 throw waterEx;
                             }
                         }
-                        Entry entry = new Entry(r.key, h, wh, r.minY, r.maxY);
+                        Entry entry = new Entry(r.key, h, wh, rh, rwh, r.minY, r.maxY);
                         // Band-change replacement: inherit the outgoing node's
                         // crossfade state so the level swap doesn't re-dissolve.
                         FastLodKey oldKey = pendingSupersede.get(r.key);
@@ -265,12 +305,17 @@ public final class FastLodManager {
 
         int cleanupBudget = shutdown ? Integer.MAX_VALUE : MAX_CLEANUPS_PER_FRAME;
         for (int i = 0; i < cleanupBudget; i++) {
-            MmsRenderableHandle h = cleanupQueue.poll();
+            AutoCloseable h = cleanupQueue.poll();
             if (h == null) break;
             try { h.close(); } catch (Exception e) {
                 System.err.println("[FastLodManager] Cleanup error: " + e.getMessage());
             }
         }
+    }
+
+    private static void closeQuietly(AutoCloseable c) {
+        if (c == null) return;
+        try { c.close(); } catch (Exception ignored) { }
     }
 
     /**
@@ -379,7 +424,11 @@ public final class FastLodManager {
                 pendingSupersede.remove(key);
                 return;
             }
-            readyToUpload.offer(new Ready(key, result.mesh(), result.waterMesh(),
+            // Pack to the interleaved GPU layout here on the worker: the GL
+            // upload becomes a bulk copy and the meshes qualify for the shared
+            // region arenas (multidraw batching) instead of per-node VAOs.
+            readyToUpload.offer(new Ready(key, result.mesh().toPacked(),
+                    result.waterMesh() != null ? result.waterMesh().toPacked() : null,
                     result.minY(), result.maxY()));
         } catch (Exception e) {
             inFlight.remove(key);
@@ -403,11 +452,19 @@ public final class FastLodManager {
         }
     }
 
-    /** Queues both of an entry's GPU handles (terrain + optional water) for release. */
+    /** Queues an entry's GPU handles (either representation) for release. */
     private void enqueueCleanup(Entry entry) {
-        cleanupQueue.offer(entry.handle);
+        if (entry.handle != null) {
+            cleanupQueue.offer(entry.handle);
+        }
         if (entry.waterHandle != null) {
             cleanupQueue.offer(entry.waterHandle);
+        }
+        if (entry.regionHandle != null) {
+            cleanupQueue.offer(entry.regionHandle);
+        }
+        if (entry.regionWaterHandle != null) {
+            cleanupQueue.offer(entry.regionWaterHandle);
         }
     }
 
@@ -422,13 +479,19 @@ public final class FastLodManager {
 
     public static final class Entry {
         public final FastLodKey key;
+        /** Legacy per-node terrain handle; null when the mesh lives in a region arena. */
         public final MmsRenderableHandle handle;
         /**
          * Water-sheet mesh handle, or {@code null} for nodes without submerged
-         * cells. Drawn by the dedicated water pass (same shader as native
-         * water) at this entry's crossfade opacity.
+         * cells (or whose sheet lives in a region arena). Drawn by the
+         * dedicated water pass (same shader as native water) at this entry's
+         * crossfade opacity.
          */
         public final MmsRenderableHandle waterHandle;
+        /** Region-arena terrain handle (multidraw batching); null on the legacy path. */
+        public final com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionHandle;
+        /** Region-arena water-sheet handle; null when no water or on the legacy path. */
+        public final com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionWaterHandle;
         /** Exact vertex Y bounds of the node's meshes — feed per-node frustum AABBs. */
         public final float minY, maxY;
         /**
@@ -444,14 +507,23 @@ public final class FastLodManager {
          */
         public boolean nativeCovered;
         public Entry(FastLodKey key, MmsRenderableHandle handle, float minY, float maxY) {
-            this(key, handle, null, minY, maxY);
+            this(key, handle, null, null, null, minY, maxY);
         }
 
         public Entry(FastLodKey key, MmsRenderableHandle handle, MmsRenderableHandle waterHandle,
                      float minY, float maxY) {
+            this(key, handle, waterHandle, null, null, minY, maxY);
+        }
+
+        public Entry(FastLodKey key, MmsRenderableHandle handle, MmsRenderableHandle waterHandle,
+                     com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionHandle,
+                     com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionWaterHandle,
+                     float minY, float maxY) {
             this.key = key;
             this.handle = handle;
             this.waterHandle = waterHandle;
+            this.regionHandle = regionHandle;
+            this.regionWaterHandle = regionWaterHandle;
             this.minY = minY;
             this.maxY = maxY;
         }

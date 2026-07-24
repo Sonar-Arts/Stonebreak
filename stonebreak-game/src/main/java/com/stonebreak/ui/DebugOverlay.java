@@ -603,6 +603,11 @@ public class DebugOverlay {
                     regions.publishedGpuCommands(), regions.publishedGpuRegionDraws(),
                     regions.publishedGpuPreCulledRegions()));
             }
+            var lodBatcher = com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.active();
+            if (lodBatcher != null) {
+                panel.row("LOD Draws", String.format("%d cmds / %d region draws",
+                    lodBatcher.publishedCommands(), lodBatcher.publishedRegionDraws()));
+            }
         }
         com.stonebreak.world.TimeOfDay clock = Game.getTimeOfDay();
         if (clock != null) {

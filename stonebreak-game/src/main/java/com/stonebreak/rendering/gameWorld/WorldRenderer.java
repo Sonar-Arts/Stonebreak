@@ -51,6 +51,9 @@ public class WorldRenderer {
     private final com.stonebreak.rendering.gameWorld.water.WaterRenderer waterRenderer;
     private final com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer shadowMapRenderer;
     private final FastLodRenderPass lodRenderPass;
+    // Shared region arenas for FastLOD nodes (multidraw batching); created
+    // lazily on the GL thread once region rendering is known to be enabled.
+    private com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher lodRegionBatcher;
     private final ChunkFrustumCuller frustumCuller = new ChunkFrustumCuller();
     private final com.stonebreak.rendering.models.entities.FishingLineRenderer fishingLineRenderer;
 
@@ -208,8 +211,13 @@ public class WorldRenderer {
         int lodPlayerCx = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int lodPlayerCz = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
         reusableLodWater.clear();
-        lodRenderPass.render(shaderProgram, world.getFastLodManager(), lodPlayerCx, lodPlayerCz,
-                frustumCuller, world::isChunkRenderableAt, reusableLodWater);
+        if (lodRegionBatcher == null
+                && com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            lodRegionBatcher = new com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher();
+        }
+        int lodStamp = lodRenderPass.render(shaderProgram, world.getFastLodManager(),
+                lodPlayerCx, lodPlayerCz,
+                frustumCuller, world::isChunkRenderableAt, lodRegionBatcher, reusableLodWater);
 
         // Render SBO blocks (blocks with SBO textures, rendered separately from atlas)
         renderSBOPass(visibleChunks);
@@ -255,7 +263,7 @@ public class WorldRenderer {
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, sunDirection,
                 ambientLightLevel, waterAnimationEnabled, skyColor, fogStart, fogEnd,
-                reusableLodWater);
+                reusableLodWater, lodRegionBatcher, lodStamp);
         checkGLError("After water pass");
 
         // Voxel cloud layer — drawn AFTER world geometry and water so it depth
@@ -1002,6 +1010,9 @@ public class WorldRenderer {
         }
         if (waterRenderer != null) {
             waterRenderer.cleanup();
+        }
+        if (lodRegionBatcher != null) {
+            lodRegionBatcher.cleanup();
         }
     }
 }

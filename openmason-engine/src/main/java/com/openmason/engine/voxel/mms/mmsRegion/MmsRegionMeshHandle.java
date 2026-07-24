@@ -1,5 +1,8 @@
 package com.openmason.engine.voxel.mms.mmsRegion;
 
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL32;
+
 /**
  * One chunk mesh living inside a region's arenas: a vertex segment plus a
  * u16 index segment. Where a legacy {@code MmsRenderableHandle} owns a whole
@@ -59,6 +62,19 @@ public final class MmsRegionMeshHandle implements AutoCloseable {
 
     public boolean isClosed() {
         return closed;
+    }
+
+    /**
+     * Draws just this mesh: binds the region VAO and issues one
+     * {@code glDrawElementsBaseVertex}. Meant for the rare cases where a
+     * region-resident mesh needs individual state (e.g. a per-node fade
+     * uniform) — batched paths should go through the region's multidraw.
+     * The caller unbinds the VAO after its loop.
+     */
+    public void render() {
+        region.bind();
+        GL32.glDrawElementsBaseVertex(GL11.GL_TRIANGLES, indexCount, GL11.GL_UNSIGNED_SHORT,
+            indexOffsetBytes(), baseVertex());
     }
 
     @Override

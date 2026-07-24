@@ -50,8 +50,26 @@ public class WaterRenderer {
      * draw). Sheets render through this same shader as native water, so the
      * near/far water handover is seamless; the fade drives the same
      * screen-door dither the node's terrain mesh uses in the world shader.
+     *
+     * <p>With region batching active, only CROSSFADING sheets travel through
+     * this record (they need a per-node {@code uLodFade}); fully-faded sheets
+     * are bucketed into the {@code FastLodRegionBatcher}'s water regions and
+     * draw as multidraws. Exactly one of {@code handle} (legacy per-node
+     * mesh) / {@code regionHandle} (region-arena mesh) is non-null.
      */
-    public record LodWaterNode(MmsRenderableHandle handle, float fade) {}
+    public record LodWaterNode(MmsRenderableHandle handle,
+                               com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionHandle,
+                               float fade) {
+        void render() {
+            if (regionHandle != null) {
+                if (!regionHandle.isClosed() && !regionHandle.region().isDeleted()) {
+                    regionHandle.render();
+                }
+            } else if (handle != null) {
+                handle.render();
+            }
+        }
+    }
 
     private final ShaderProgram shader;
 
@@ -102,13 +120,21 @@ public class WaterRenderer {
      * @param fogColor          atmospheric fog color (sky color from TimeOfDay)
      * @param fogStart          horizontal distance where fog begins (blocks)
      * @param fogEnd            horizontal distance of full fog; {@code <= fogStart} disables
-     * @param lodWater          FastLOD water-sheet nodes for this frame (nullable/empty when LOD is off)
+     * @param lodWater          crossfading FastLOD water-sheet nodes for this frame
+     *                          (nullable/empty when LOD is off); fully-faded sheets
+     *                          come through {@code lodBatcher}'s buckets instead
+     * @param lodBatcher        LOD region batcher holding this frame's solid
+     *                          water-sheet buckets (null when LOD/regions off)
+     * @param lodStamp          the batcher cycle stamp returned by this frame's
+     *                          {@code FastLodRenderPass.render}
      */
     public void render(List<Chunk> chunksBackToFront, Matrix4f projection, Matrix4f view,
                        Vector3f cameraPos, float time, Vector3f sunDirection,
                        float ambientLight, boolean wavesEnabled,
                        Vector3f fogColor, float fogStart, float fogEnd,
-                       List<LodWaterNode> lodWater) {
+                       List<LodWaterNode> lodWater,
+                       com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher lodBatcher,
+                       int lodStamp) {
         // Save GL state we touch.
         boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
@@ -159,13 +185,13 @@ public class WaterRenderer {
         // runs here too, keeping both sub-passes' depths consistent.
         glColorMask(false, false, false, false);
         glDepthMask(true);
-        drawWaterMeshes(chunksBackToFront, lodWater);
+        drawWaterMeshes(chunksBackToFront, lodWater, lodBatcher, lodStamp);
 
         // Pass 2 — color pass: no depth writes; LEQUAL passes only fragments
         // on that nearest surface, so exactly one water layer blends.
         glColorMask(true, true, true, true);
         glDepthMask(false);
-        drawWaterMeshes(chunksBackToFront, lodWater);
+        drawWaterMeshes(chunksBackToFront, lodWater, lodBatcher, lodStamp);
 
         GL30.glBindVertexArray(0);
 
@@ -198,7 +224,9 @@ public class WaterRenderer {
         glPolygonOffset(currentOffsetFactor, currentOffsetUnits);
     }
 
-    private void drawWaterMeshes(List<Chunk> chunksBackToFront, List<LodWaterNode> lodWater) {
+    private void drawWaterMeshes(List<Chunk> chunksBackToFront, List<LodWaterNode> lodWater,
+                                 com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher lodBatcher,
+                                 int lodStamp) {
         // Native chunks render fully solid; the depth prepass makes draw order
         // between water meshes irrelevant (only the nearest layer survives),
         // so LOD sheets can simply follow the chunk list.
@@ -216,16 +244,23 @@ public class WaterRenderer {
                 }
             }
         }
+        // Fully-faded LOD sheets: one multidraw per touched LOD region
+        // (buckets were filled by this frame's FastLodRenderPass; the same
+        // stamp serves both water sub-passes).
+        if (lodBatcher != null) {
+            lodBatcher.drawWater(lodStamp);
+        }
         if (lodWater == null || lodWater.isEmpty()) {
             return;
         }
+        // Crossfading sheets (ring edges) draw individually with their fade.
         float boundFade = 1.0f;
         for (LodWaterNode node : lodWater) {
             if (node.fade() != boundFade) {
                 shader.setUniform("uLodFade", node.fade());
                 boundFade = node.fade();
             }
-            node.handle().render();
+            node.render();
         }
         if (boundFade != 1.0f) {
             shader.setUniform("uLodFade", 1.0f);
