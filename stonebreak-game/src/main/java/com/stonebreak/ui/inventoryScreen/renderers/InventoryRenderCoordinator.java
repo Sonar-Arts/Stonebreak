@@ -49,6 +49,7 @@ public class InventoryRenderCoordinator {
   private final MasonryUI ui;
   private final MButton recipeButton;
   private final MButton craftAllButton;
+  private final MButton sortButton;
   private final MHotbarRenderer mHotbarRenderer;
 
   // Tab buttons — visual only; click detection is in InventoryInputManager
@@ -133,6 +134,7 @@ public class InventoryRenderCoordinator {
         // scaleText so their labels grow with the UI scale like the panel geometry.
         this.recipeButton   = new MButton("Recipes").scaleText(true);
         this.craftAllButton = new MButton("Craft All").fontSize(MStyle.FONT_META).scaleText(true);
+        this.sortButton     = new MButton("Sort").fontSize(MStyle.FONT_META).scaleText(true);
 
     this.tabInventory = new MButton("Inventory").fontSize(MStyle.FONT_META);
     this.tabCharacter = new MButton("Character").fontSize(MStyle.FONT_META);
@@ -157,6 +159,7 @@ public class InventoryRenderCoordinator {
     updateButtonPositions(center);
     recipeButton.updateHover(mx, my);
     craftAllButton.updateHover(mx, my);
+    sortButton.updateHover(mx, my);
     updateTabBounds(layout3);
     tabInventory.updateHover(mx, my);
     tabCharacter.updateHover(mx, my);
@@ -510,6 +513,8 @@ public class InventoryRenderCoordinator {
       drawSlot(sx, sy, slotSize, mouseX, mouseY, i == selectedHotbar);
       checkHover(hotbarSlots[i], sx, sy, slotSize, mouseX, mouseY);
     }
+
+    sortButton.render(ui);
   }
 
   private void drawSlot(float x, float y, int size, float mouseX, float mouseY,
@@ -738,6 +743,10 @@ public class InventoryRenderCoordinator {
     inputManager.updateCraftAllButtonBoundsForRendering(center);
     craftAllButton.bounds(inputManager.getCraftAllButtonX(), inputManager.getCraftAllButtonY(),
         inputManager.getCraftAllButtonWidth(), inputManager.getCraftAllButtonHeight());
+
+    inputManager.updateSortButtonBoundsForRendering(center);
+    sortButton.bounds(inputManager.getSortButtonX(), inputManager.getSortButtonY(),
+        inputManager.getSortButtonWidth(), inputManager.getSortButtonHeight());
   }
     private void drawTab(Canvas canvas, float x, float y, String label, boolean active, boolean hovered,
                          int tabW, int tabH) {

@@ -39,6 +39,12 @@ public class InventoryInputManager {
     // Craft All button properties
     private float craftAllButtonX, craftAllButtonY, craftAllButtonWidth, craftAllButtonHeight;
 
+    // Sort button properties. Only InventoryRenderCoordinator calls
+    // updateSortButtonBoundsForRendering — the workbench screen never does,
+    // so these stay at 0 there and the button is un-clickable, keeping
+    // sorting an inventory-screen-only feature (same trick Craft All uses).
+    private float sortButtonX, sortButtonY, sortButtonWidth, sortButtonHeight;
+
     // Tab bounds (mirroring InventoryRenderCoordinator tab geometry)
     private float charTabX, charTabY, charTabWidth, charTabHeight;
     private float classesTabX, skillsTabX, featsTabX;
@@ -147,6 +153,13 @@ public class InventoryInputManager {
                 return;
             }
 
+            // Check sort button
+            if (isSortButtonClicked(mouseX, mouseY, layout)) {
+                handleSort();
+                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                return;
+            }
+
             // Try to pick up item
             if (tryPickUpItem(mouseX, mouseY, layout)) {
                 recordClick(mouseX, mouseY);
@@ -207,6 +220,26 @@ public class InventoryInputManager {
         // Position button below the output slot
         craftAllButtonX = layout.outputSlotX + (InventoryLayoutCalculator.getSlotSize() - craftAllButtonWidth) / 2;
         craftAllButtonY = layout.outputSlotY + InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding();
+    }
+
+    private boolean isSortButtonClicked(float mouseX, float mouseY,
+                                       InventoryLayoutCalculator.InventoryLayout layout) {
+        updateSortButtonBounds(layout);
+        return mouseX >= sortButtonX && mouseX <= sortButtonX + sortButtonWidth &&
+               mouseY >= sortButtonY && mouseY <= sortButtonY + sortButtonHeight;
+    }
+
+    private void updateSortButtonBounds(InventoryLayoutCalculator.InventoryLayout layout) {
+        sortButtonWidth = Math.max(70, InventoryLayoutCalculator.getSlotSize() * 1.5f);
+        sortButtonHeight = InventoryLayoutCalculator.getSlotSize() / 2f;
+
+        int gridWidth = Inventory.MAIN_INVENTORY_COLS *
+            (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding())
+            - InventoryLayoutCalculator.getSlotPadding();
+
+        // Right-aligned above the main-inventory grid.
+        sortButtonX = layout.inventorySectionStartX + gridWidth - sortButtonWidth;
+        sortButtonY = layout.mainInvContentStartY - sortButtonHeight - InventoryLayoutCalculator.getSlotPadding();
     }
 
     private boolean isCharTabClicked(float mouseX, float mouseY,
@@ -292,6 +325,11 @@ public class InventoryInputManager {
                 }
             }
         }
+    }
+
+    private void handleSort() {
+        if (dragState.isDragging()) return; // defensive; unreachable via handleLeftClick anyway
+        inventory.sortInventory();
     }
 
     private boolean tryPickUpItem(float mouseX, float mouseY,
@@ -431,6 +469,11 @@ public class InventoryInputManager {
     public float getCraftAllButtonWidth() { return craftAllButtonWidth; }
     public float getCraftAllButtonHeight() { return craftAllButtonHeight; }
 
+    public float getSortButtonX() { return sortButtonX; }
+    public float getSortButtonY() { return sortButtonY; }
+    public float getSortButtonWidth() { return sortButtonWidth; }
+    public float getSortButtonHeight() { return sortButtonHeight; }
+
     /**
      * Updates recipe button bounds for rendering. Should be called before rendering the button.
      */
@@ -443,6 +486,15 @@ public class InventoryInputManager {
      */
     public void updateCraftAllButtonBoundsForRendering(InventoryLayoutCalculator.InventoryLayout layout) {
         updateCraftAllButtonBounds(layout);
+    }
+
+    /**
+     * Updates sort button bounds for rendering. Should be called before rendering the button.
+     * Only called from InventoryRenderCoordinator — deliberately not wired into the workbench
+     * screen, so the button's hit-box stays 0x0 there (see field comment above).
+     */
+    public void updateSortButtonBoundsForRendering(InventoryLayoutCalculator.InventoryLayout layout) {
+        updateSortButtonBounds(layout);
     }
 
     /**
