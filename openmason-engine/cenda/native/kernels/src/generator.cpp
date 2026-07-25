@@ -584,11 +584,18 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
     for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE; i++) {
         maxSurface = std::max(maxSurface, heights[i]);
     }
-    std::vector<float> volume;
+    /* Reused per generation thread — a fresh ~256 KB vector per chunk was the
+     * only per-call heap allocation in this kernel. Contents for [0, yCount)
+     * rows are fully overwritten by GenUniformGrid3D; vol is null when this
+     * call generated no rows, so stale data from a previous chunk is never
+     * read. */
+    thread_local std::vector<float> volume;
     int yCount = 0;
     if (maxSurface > DENSITY_CAVE_FLOOR) {
         yCount = maxSurface - DENSITY_CAVE_FLOOR;
-        volume.resize(static_cast<size_t>(yCount) * CHUNK_SIZE * CHUNK_SIZE);
+        if (volume.size() < static_cast<size_t>(yCount) * CHUNK_SIZE * CHUNK_SIZE) {
+            volume.resize(static_cast<size_t>(yCount) * CHUNK_SIZE * CHUNK_SIZE);
+        }
         ctx->densityNode->GenUniformGrid3D(
             volume.data(),
             static_cast<float>(chunk_z * CHUNK_SIZE),
@@ -598,7 +605,7 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
             1.0f, 1.0f, DENSITY_Y_SQUASH,
             ctx->densitySeed);
     }
-    const float* vol = volume.empty() ? nullptr : volume.data();
+    const float* vol = yCount > 0 ? volume.data() : nullptr;
 
     /* Block fill — exact port of the generateTerrainOnly loop + determineBlockType. */
     std::fill_n(out_blocks, 65536, ctx->airId);

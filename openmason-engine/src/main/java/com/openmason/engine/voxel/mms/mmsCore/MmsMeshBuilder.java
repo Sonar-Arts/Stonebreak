@@ -1,5 +1,7 @@
 package com.openmason.engine.voxel.mms.mmsCore;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Arrays;
 
 /**
@@ -345,11 +347,22 @@ public final class MmsMeshBuilder {
     }
 
     /**
-     * Builds the final immutable mesh data.
+     * Builds the final immutable mesh data in the PACKED representation:
+     * one pass interleaves the builder's per-attribute scratch straight into
+     * the {@link MmsBufferLayout} GPU byte layout (flags quantized to unsigned
+     * bytes, indices as u16 when they fit), so the retained payload is the
+     * upload-ready bytes instead of nine trimmed copies of the scratch arrays,
+     * and the GL thread's upload becomes a bulk copy.
+     *
+     * <p>When validation is enabled, finite positions and index bounds are
+     * checked during the same pass.
      *
      * @return Immutable MmsMeshData
      * @throws IllegalStateException if beginFace() called without endFace()
-     * @throws IllegalArgumentException if validation fails
+     * @throws IllegalArgumentException if the index count is not a triangle
+     *         multiple (a hard invariant, checked regardless of the
+     *         validation flag) or, when validation is enabled, on non-finite
+     *         positions / out-of-bounds indices
      */
     public MmsMeshData build() {
         // Check for incomplete face
@@ -361,31 +374,48 @@ public final class MmsMeshBuilder {
         if (isEmpty()) {
             return MmsMeshData.empty();
         }
-
-        // Trim arrays to exact size (no boxing - just array copy)
-        float[] posArray = Arrays.copyOf(positions, posSize);
-        float[] texArray = Arrays.copyOf(texCoords, texSize);
-        float[] normArray = Arrays.copyOf(normals, normSize);
-        float[] waterArray = Arrays.copyOf(waterFlags, waterSize);
-        float[] alphaArray = Arrays.copyOf(alphaFlags, alphaSize);
-        float[] translucentArray = Arrays.copyOf(translucentFlags, translucentSize);
-        float[] lightArray = Arrays.copyOf(lightValues, lightSize);
-        float[] layerArray = Arrays.copyOf(layerIndices, layerSize);
-        int[] indexArray = Arrays.copyOf(indices, indexSize);
-
-        // Create mesh data
-        MmsMeshData meshData = new MmsMeshData(
-            posArray, texArray, normArray, waterArray, alphaArray, translucentArray, lightArray,
-            layerArray, indexArray, indexArray.length
-        );
-
-        // Validate if enabled
-        if (validateOnBuild) {
-            MmsMeshValidator.ValidationResult result = MmsMeshValidator.validate(meshData);
-            result.throwIfInvalid();
+        if (indexSize % 3 != 0) {
+            throw new IllegalArgumentException(
+                "Index count must be multiple of 3 (triangles): " + indexSize);
         }
 
-        return meshData;
+        int vertexCount = totalVertices;
+        byte[] vertexBytes = new byte[vertexCount * MmsBufferLayout.VERTEX_STRIDE_BYTES];
+        ByteBuffer vertexBuf = ByteBuffer.wrap(vertexBytes).order(ByteOrder.nativeOrder());
+        for (int i = 0; i < vertexCount; i++) {
+            float x = positions[i * 3];
+            float y = positions[i * 3 + 1];
+            float z = positions[i * 3 + 2];
+            if (validateOnBuild && (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z))) {
+                throw new IllegalArgumentException(
+                    "Mesh validation failed: non-finite vertex position at vertex " + i);
+            }
+            vertexBuf.putFloat(x).putFloat(y).putFloat(z);
+            vertexBuf.putFloat(texCoords[i * 2]).putFloat(texCoords[i * 2 + 1]);
+            vertexBuf.putFloat(normals[i * 3]).putFloat(normals[i * 3 + 1]).putFloat(normals[i * 3 + 2]);
+            vertexBuf.putInt(MmsBufferLayout.packFlags(
+                waterFlags[i], alphaFlags[i], translucentFlags[i], lightValues[i]));
+            vertexBuf.putFloat(layerIndices[i]);
+        }
+
+        boolean shortIndices = vertexCount <= 65536;
+        byte[] indexBytes = new byte[indexSize * (shortIndices ? Short.BYTES : Integer.BYTES)];
+        ByteBuffer indexBuf = ByteBuffer.wrap(indexBytes).order(ByteOrder.nativeOrder());
+        for (int i = 0; i < indexSize; i++) {
+            int index = indices[i];
+            if (validateOnBuild && (index < 0 || index >= vertexCount)) {
+                throw new IllegalArgumentException(String.format(
+                    "Mesh validation failed: index %d out of bounds: %d (vertex count: %d)",
+                    i, index, vertexCount));
+            }
+            if (shortIndices) {
+                indexBuf.putShort((short) index);
+            } else {
+                indexBuf.putInt(index);
+            }
+        }
+
+        return MmsMeshData.fromPacked(vertexBytes, indexBytes, shortIndices, vertexCount, indexSize);
     }
 
     /**

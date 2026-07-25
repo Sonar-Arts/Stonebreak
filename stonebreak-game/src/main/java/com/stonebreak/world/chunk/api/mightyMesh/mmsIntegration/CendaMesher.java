@@ -35,6 +35,28 @@ public final class CendaMesher {
     private static final ThreadLocal<short[]> BLOCK_BUFFER =
         ThreadLocal.withInitial(() -> new short[CELLS]);
 
+    /**
+     * Reusable per-thread neighbor extraction scratch (border planes, corner
+     * columns, height ring, special-cell worklist) — previously ~40 KB of
+     * fresh short[]/int[] per mesh build. Fill methods overwrite every element
+     * they expose, so stale contents can never leak between builds.
+     */
+    private static final class NeighborScratch {
+        final short[] planeXn = new short[CS * WH];
+        final short[] planeXp = new short[CS * WH];
+        final short[] planeZn = new short[CS * WH];
+        final short[] planeZp = new short[CS * WH];
+        final short[] cornerNn = new short[WH];
+        final short[] cornerPn = new short[WH];
+        final short[] cornerNp = new short[WH];
+        final short[] cornerPp = new short[WH];
+        final short[] heights = new short[18 * 18];
+        int[] special = new int[256];
+    }
+
+    private static final ThreadLocal<NeighborScratch> NEIGHBOR_SCRATCH =
+        ThreadLocal.withInitial(NeighborScratch::new);
+
     private CendaMesher() {
     }
 
@@ -84,8 +106,9 @@ public final class CendaMesher {
     /**
      * Builds the snapshot, or returns null when the chunk has no paletted
      * backing storage (callers then use the classic per-cell path).
-     * The returned blocks/quads arrays are thread-local scratch — consume the
-     * snapshot fully before the next build on the same thread.
+     * EVERY array the snapshot references (blocks, border planes, corner
+     * columns, heights, special worklist) is thread-local scratch — consume
+     * the snapshot fully before the next build on the same thread.
      */
     public static Snapshot snapshot(CcoChunkData chunkData, World world,
                                     WorldLightingContext lightingContext,
@@ -100,10 +123,12 @@ public final class CendaMesher {
             paletted.getSection(s).writeBlockIdsInto(blocks, s * CS * CS * CcoSectionIndexing.SECTION_HEIGHT);
         }
 
+        NeighborScratch scratch = NEIGHBOR_SCRATCH.get();
+
         // Collect the cells the Java pass owns (water/cross/SBO/animated):
         // non-air ids whose class lacks the CUBE bit.
         int airId = BlockType.AIR.getId();
-        int[] special = new int[256];
+        int[] special = scratch.special;
         int specialCount = 0;
         int scanTop = Math.min(maxY, WH - 1);
         for (int y = 0; y <= scanTop; y++) {
@@ -117,6 +142,7 @@ public final class CendaMesher {
                 if ((cls & CendaKernels.CLASS_CUBE) == 0) {
                     if (specialCount == special.length) {
                         special = java.util.Arrays.copyOf(special, special.length * 2);
+                        scratch.special = special;
                     }
                     special[specialCount++] = base + i;
                 }
@@ -126,16 +152,16 @@ public final class CendaMesher {
         int chunkX = chunkData.getChunkX();
         int chunkZ = chunkData.getChunkZ();
 
-        short[] planeXn = borderPlaneX(world, chunkX - 1, chunkZ, CS - 1);
-        short[] planeXp = borderPlaneX(world, chunkX + 1, chunkZ, 0);
-        short[] planeZn = borderPlaneZ(world, chunkX, chunkZ - 1, CS - 1);
-        short[] planeZp = borderPlaneZ(world, chunkX, chunkZ + 1, 0);
-        short[] cornerNn = cornerColumn(world, chunkX - 1, chunkZ - 1, CS - 1, CS - 1);
-        short[] cornerPn = cornerColumn(world, chunkX + 1, chunkZ - 1, 0, CS - 1);
-        short[] cornerNp = cornerColumn(world, chunkX - 1, chunkZ + 1, CS - 1, 0);
-        short[] cornerPp = cornerColumn(world, chunkX + 1, chunkZ + 1, 0, 0);
+        short[] planeXn = fillBorderPlaneX(world, chunkX - 1, chunkZ, CS - 1, scratch.planeXn);
+        short[] planeXp = fillBorderPlaneX(world, chunkX + 1, chunkZ, 0, scratch.planeXp);
+        short[] planeZn = fillBorderPlaneZ(world, chunkX, chunkZ - 1, CS - 1, scratch.planeZn);
+        short[] planeZp = fillBorderPlaneZ(world, chunkX, chunkZ + 1, 0, scratch.planeZp);
+        short[] cornerNn = fillCornerColumn(world, chunkX - 1, chunkZ - 1, CS - 1, CS - 1, scratch.cornerNn);
+        short[] cornerPn = fillCornerColumn(world, chunkX + 1, chunkZ - 1, 0, CS - 1, scratch.cornerPn);
+        short[] cornerNp = fillCornerColumn(world, chunkX - 1, chunkZ + 1, CS - 1, 0, scratch.cornerNp);
+        short[] cornerPp = fillCornerColumn(world, chunkX + 1, chunkZ + 1, 0, 0, scratch.cornerPp);
 
-        short[] heights = new short[18 * 18];
+        short[] heights = scratch.heights;
         int baseX = chunkX * CS;
         int baseZ = chunkZ * CS;
         for (int lz = -1; lz <= CS; lz++) {
@@ -243,13 +269,16 @@ public final class CendaMesher {
         return chunk.getBlockStorageView() instanceof CcoPalettedChunkStorage p ? p : null;
     }
 
-    /** Column plane at fixed local x of the neighbor chunk; dst[y*16 + z]. */
-    private static short[] borderPlaneX(World world, int cx, int cz, int localX) {
+    /**
+     * Column plane at fixed local x of the neighbor chunk; dst[y*16 + z].
+     * Fills the caller's scratch array and returns it, or null when the
+     * neighbor is not loaded (every element is overwritten when non-null).
+     */
+    private static short[] fillBorderPlaneX(World world, int cx, int cz, int localX, short[] plane) {
         CcoPalettedChunkStorage storage = palettedStorage(world, cx, cz);
         if (storage == null) {
             return null;
         }
-        short[] plane = new short[CS * WH];
         for (int s = 0; s < storage.getSectionCount(); s++) {
             CcoPaletteSection section = storage.getSection(s);
             int yBase = s * CcoSectionIndexing.SECTION_HEIGHT;
@@ -267,13 +296,15 @@ public final class CendaMesher {
         return plane;
     }
 
-    /** Column plane at fixed local z of the neighbor chunk; dst[y*16 + x]. */
-    private static short[] borderPlaneZ(World world, int cx, int cz, int localZ) {
+    /**
+     * Column plane at fixed local z of the neighbor chunk; dst[y*16 + x].
+     * Same fill-scratch-or-null contract as {@link #fillBorderPlaneX}.
+     */
+    private static short[] fillBorderPlaneZ(World world, int cx, int cz, int localZ, short[] plane) {
         CcoPalettedChunkStorage storage = palettedStorage(world, cx, cz);
         if (storage == null) {
             return null;
         }
-        short[] plane = new short[CS * WH];
         for (int s = 0; s < storage.getSectionCount(); s++) {
             CcoPaletteSection section = storage.getSection(s);
             int yBase = s * CcoSectionIndexing.SECTION_HEIGHT;
@@ -291,12 +322,13 @@ public final class CendaMesher {
         return plane;
     }
 
-    private static short[] cornerColumn(World world, int cx, int cz, int localX, int localZ) {
+    /** Same fill-scratch-or-null contract as {@link #fillBorderPlaneX}. */
+    private static short[] fillCornerColumn(World world, int cx, int cz, int localX, int localZ,
+                                            short[] column) {
         CcoPalettedChunkStorage storage = palettedStorage(world, cx, cz);
         if (storage == null) {
             return null;
         }
-        short[] column = new short[WH];
         for (int s = 0; s < storage.getSectionCount(); s++) {
             CcoPaletteSection section = storage.getSection(s);
             int yBase = s * CcoSectionIndexing.SECTION_HEIGHT;

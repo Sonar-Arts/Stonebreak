@@ -35,6 +35,9 @@ public final class MmsRenderableHandle implements AutoCloseable {
     private final int vboId;
     private final int eboId;
     private final int indexCount;
+    /** GL index element type: GL_UNSIGNED_SHORT for packed u16 meshes, else GL_UNSIGNED_INT. */
+    private final int indexType;
+    private final int bytesPerIndex;
 
     // Buffer sizes (for pooling)
     private final int vboSizeBytes;
@@ -60,13 +63,15 @@ public final class MmsRenderableHandle implements AutoCloseable {
      * @param memoryUsageBytes Estimated GPU memory usage
      * @param useBufferPool Whether to return buffers to pool on close
      */
-    private MmsRenderableHandle(int vaoId, int vboId, int eboId, int indexCount,
+    private MmsRenderableHandle(int vaoId, int vboId, int eboId, int indexCount, int indexType,
                                 int vboSizeBytes, int eboSizeBytes, long memoryUsageBytes,
                                 boolean useBufferPool) {
         this.vaoId = vaoId;
         this.vboId = vboId;
         this.eboId = eboId;
         this.indexCount = indexCount;
+        this.indexType = indexType;
+        this.bytesPerIndex = indexType == GL15.GL_UNSIGNED_SHORT ? Short.BYTES : Integer.BYTES;
         this.vboSizeBytes = vboSizeBytes;
         this.eboSizeBytes = eboSizeBytes;
         this.memoryUsageBytes = memoryUsageBytes;
@@ -107,10 +112,23 @@ public final class MmsRenderableHandle implements AutoCloseable {
             throw new IllegalArgumentException("Cannot upload empty mesh data");
         }
 
-        // Prepare interleaved data (mixed float + packed-byte layout)
-        ByteBuffer interleavedData = createInterleavedVertexData(meshData);
+        // Prepare interleaved data. Packed meshes (the chunk path) already
+        // hold the exact GPU byte layout — staging is a bulk copy; SoA meshes
+        // interleave here as before.
+        boolean packed = meshData.isPacked();
+        ByteBuffer interleavedData;
+        if (packed) {
+            interleavedData = MmsUploadBufferPool.acquire(meshData.getPackedVertexData().length);
+            interleavedData.put(meshData.getPackedVertexData());
+            interleavedData.flip();
+        } else {
+            interleavedData = createInterleavedVertexData(meshData);
+        }
+        int indexType = packed && meshData.hasShortIndices()
+            ? GL15.GL_UNSIGNED_SHORT : GL15.GL_UNSIGNED_INT;
         int vboSizeBytes = interleavedData.remaining();
-        int eboSizeBytes = meshData.getIndexCount() * Integer.BYTES;
+        int eboSizeBytes = meshData.getIndexCount()
+            * (indexType == GL15.GL_UNSIGNED_SHORT ? Short.BYTES : Integer.BYTES);
 
         // Acquire buffers from pool or allocate new
         MmsBufferPool pool = useBufferPool ? MmsBufferPool.getInstance() : null;
@@ -129,7 +147,8 @@ public final class MmsRenderableHandle implements AutoCloseable {
         // Bind VAO and setup buffers
         GL30.glBindVertexArray(vaoId);
 
-        // Upload VBO data
+        // Upload VBO data (glBufferData consumes the staging buffer
+        // synchronously, so it is free for the EBO staging below)
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vboId);
         GL15.glBufferData(GL15.GL_ARRAY_BUFFER, interleavedData, GL15.GL_STATIC_DRAW);
 
@@ -138,7 +157,14 @@ public final class MmsRenderableHandle implements AutoCloseable {
 
         // Upload EBO data
         GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
-        GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, meshData.getIndices(), GL15.GL_STATIC_DRAW);
+        if (packed) {
+            ByteBuffer indexData = MmsUploadBufferPool.acquire(meshData.getPackedIndexData().length);
+            indexData.put(meshData.getPackedIndexData());
+            indexData.flip();
+            GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indexData, GL15.GL_STATIC_DRAW);
+        } else {
+            GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, meshData.getIndices(), GL15.GL_STATIC_DRAW);
+        }
 
         // Unbind (good practice)
         GL30.glBindVertexArray(0);
@@ -155,7 +181,7 @@ public final class MmsRenderableHandle implements AutoCloseable {
             .track(GpuMemoryTracker.Category.CHUNK_MESH, memoryUsage);
 
         return new MmsRenderableHandle(
-            vaoId, vboId, eboId, meshData.getIndexCount(),
+            vaoId, vboId, eboId, meshData.getIndexCount(), indexType,
             vboSizeBytes, eboSizeBytes, memoryUsage, useBufferPool
         );
     }
@@ -220,8 +246,12 @@ public final class MmsRenderableHandle implements AutoCloseable {
      * Three float attributes (position, tex, normal) plus one packed-byte vec4
      * attribute (water/alpha/translucent/light), normalized so the shader
      * reads it as a [0,1] vec4.
+     *
+     * <p>Public because the region renderer sets up the identical layout on
+     * its per-region VAOs (the currently bound GL_ARRAY_BUFFER supplies the
+     * data in both cases).
      */
-    private static void setupVertexAttributes() {
+    public static void setupVertexAttributes() {
         int stride = MmsBufferLayout.VERTEX_STRIDE_BYTES;
 
         // Position attribute (location 0) — 3 floats
@@ -291,7 +321,7 @@ public final class MmsRenderableHandle implements AutoCloseable {
         ensureNotDisposed();
 
         GL30.glBindVertexArray(vaoId);
-        GL15.glDrawElements(GL15.GL_TRIANGLES, indexCount, GL15.GL_UNSIGNED_INT, 0);
+        GL15.glDrawElements(GL15.GL_TRIANGLES, indexCount, indexType, 0);
         GL30.glBindVertexArray(0);
     }
 
@@ -299,11 +329,11 @@ public final class MmsRenderableHandle implements AutoCloseable {
      * Renders a sub-range of the mesh indices.
      * VAO must be bound first via {@link #bind()}.
      *
-     * @param indexOffset byte offset into the index buffer (index * 4 for GL_UNSIGNED_INT)
+     * @param indexOffset offset into the index buffer, in indices
      * @param count       number of indices to draw
      */
     public void renderRange(int indexOffset, int count) {
-        GL15.glDrawElements(GL15.GL_TRIANGLES, count, GL15.GL_UNSIGNED_INT, (long) indexOffset * 4L);
+        GL15.glDrawElements(GL15.GL_TRIANGLES, count, indexType, (long) indexOffset * bytesPerIndex);
     }
 
     /**

@@ -48,4 +48,24 @@ public class ChunkFrustumCuller {
                                 float maxX, float maxY, float maxZ) {
         return frustum.testAab(minX, minY, minZ, maxX, maxY, maxZ);
     }
+
+    /**
+     * Classifying box test for the region-level pre-cull: returns
+     * {@link FrustumIntersection#INSIDE} (every chunk in the box is visible —
+     * per-chunk tests can be skipped), {@link FrustumIntersection#INTERSECT}
+     * (fall through to per-chunk tests), or {@code >= 0} (the index of a
+     * culling plane — the whole box is outside).
+     */
+    public int intersectAab(float minX, float minY, float minZ,
+                            float maxX, float maxY, float maxZ) {
+        return frustum.intersectAab(minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    /**
+     * The combined projection-view matrix from the last {@link #update} —
+     * the GPU cull pass extracts its frustum planes from this.
+     */
+    public Matrix4f projectionView() {
+        return projectionViewMatrix;
+    }
 }

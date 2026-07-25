@@ -51,19 +51,26 @@ public class WorldRenderer {
     private final com.stonebreak.rendering.gameWorld.water.WaterRenderer waterRenderer;
     private final com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer shadowMapRenderer;
     private final FastLodRenderPass lodRenderPass;
+    // Shared region arenas for FastLOD nodes (multidraw batching); created
+    // lazily on the GL thread once region rendering is known to be enabled.
+    private com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher lodRegionBatcher;
     private final ChunkFrustumCuller frustumCuller = new ChunkFrustumCuller();
     private final com.stonebreak.rendering.models.entities.FishingLineRenderer fishingLineRenderer;
 
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
     private final List<Chunk> reusableVisibleChunks = new ArrayList<>();
+    private final List<Chunk> reusableLoadedChunks = new ArrayList<>();
+    private final List<Chunk> reusableTranslucentChunks = new ArrayList<>();
+    private long[] sortKeys = new long[512];
+    // Region-level frustum pre-cull grid: one classifying AABB test per
+    // 8x8-chunk-column region decides whole regions; only INTERSECT regions
+    // fall through to per-chunk tests. Reused across frames.
+    private int[] regionVisibility = new int[0];
+    private int regionGridMinRx, regionGridMinRz, regionGridWidth, regionGridHeight;
     private final List<com.stonebreak.rendering.gameWorld.water.WaterRenderer.LodWaterNode> reusableLodWater = new ArrayList<>();
     // Cached so the per-frame chunk visit doesn't allocate a capturing lambda each call.
-    private final java.util.function.Consumer<Chunk> frustumCollector = chunk -> {
-        if (frustumCuller.isChunkVisible(chunk)) {
-            reusableVisibleChunks.add(chunk);
-        }
-    };
+    private final java.util.function.Consumer<Chunk> loadedCollector = reusableLoadedChunks::add;
     
     /**
      * Creates a WorldRenderer with the required dependencies.
@@ -125,10 +132,22 @@ public class WorldRenderer {
             ambientLightLevel = 1.0f;
         }
 
+        // Region-batched chunk rendering: publish last frame's stats and prune
+        // emptied regions before this frame's first draws.
+        if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance().beginFrame();
+        }
+
+        // ONE grid walk over the render-distance ring collects every loaded
+        // chunk for the frame; the shadow caster cull and the camera frustum
+        // cull below both iterate this list (previously each did its own
+        // ~2401-cell ConcurrentHashMap walk per frame at 24-chunk distance).
+        collectLoadedChunks(world, player);
+
         // Cascaded sun-shadow depth pre-pass. Runs before anything samples the
         // shadow map this frame; restores the caller's framebuffer and viewport,
         // so it is safe even when the post-fx scene FBO is already bound.
-        shadowMapRenderer.renderShadowPass(world, player, sunDirection, entityRenderer);
+        shadowMapRenderer.renderShadowPass(world, player, sunDirection, entityRenderer, reusableLoadedChunks);
         checkGLError("After shadow depth pre-pass");
 
         // Render sky first (before world geometry for proper depth testing)
@@ -192,8 +211,13 @@ public class WorldRenderer {
         int lodPlayerCx = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int lodPlayerCz = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
         reusableLodWater.clear();
-        lodRenderPass.render(shaderProgram, world.getFastLodManager(), lodPlayerCx, lodPlayerCz,
-                frustumCuller, world::isChunkRenderableAt, reusableLodWater);
+        if (lodRegionBatcher == null
+                && com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            lodRegionBatcher = new com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher();
+        }
+        int lodStamp = lodRenderPass.render(shaderProgram, world.getFastLodManager(),
+                lodPlayerCx, lodPlayerCz,
+                frustumCuller, world::isChunkRenderableAt, lodRegionBatcher, reusableLodWater);
 
         // Render SBO blocks (blocks with SBO textures, rendered separately from atlas)
         renderSBOPass(visibleChunks);
@@ -239,7 +263,7 @@ public class WorldRenderer {
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, sunDirection,
                 ambientLightLevel, waterAnimationEnabled, skyColor, fogStart, fogEnd,
-                reusableLodWater);
+                reusableLodWater, lodRegionBatcher, lodStamp);
         checkGLError("After water pass");
 
         // Voxel cloud layer — drawn AFTER world geometry and water so it depth
@@ -363,18 +387,85 @@ public class WorldRenderer {
     }
 
     /**
-     * Visits the chunks around the player and collects those intersecting the camera view
-     * frustum. Returns a reused list; the visit itself is allocation-free (no intermediate
-     * map of nearby chunks — at 24-chunk render distance that map was ~2,401 entries of
-     * per-frame garbage).
+     * The frame's single render-distance grid walk: collects every loaded
+     * chunk into a reused list shared by the shadow caster cull and the
+     * camera frustum cull. Allocation-free.
      */
-    private List<Chunk> cullChunksToFrustum(World world, Player player) {
+    private void collectLoadedChunks(World world, Player player) {
         int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
+        reusableLoadedChunks.clear();
+        world.forEachChunkAroundPlayer(playerChunkX, playerChunkZ, loadedCollector);
+    }
+
+    /**
+     * Filters this frame's loaded-chunk list down to those intersecting the
+     * camera view frustum. A region-level pre-cull (one classifying AABB test
+     * per 8x8-chunk-column region) skips or wholesale-accepts entire regions,
+     * so per-chunk tests only run where a region straddles the frustum edge.
+     * Returns a reused list; allocation-free.
+     */
+    private List<Chunk> cullChunksToFrustum(World world, Player player) {
         frustumCuller.update(projectionMatrix, player.getViewMatrix());
         reusableVisibleChunks.clear();
-        world.forEachChunkAroundPlayer(playerChunkX, playerChunkZ, frustumCollector);
+        int count = reusableLoadedChunks.size();
+        if (count == 0) {
+            return reusableVisibleChunks;
+        }
+        computeRegionVisibility();
+        int shift = com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion.REGION_SHIFT;
+        for (int i = 0; i < count; i++) {
+            Chunk chunk = reusableLoadedChunks.get(i);
+            int ix = (chunk.getChunkX() >> shift) - regionGridMinRx;
+            int iz = (chunk.getChunkZ() >> shift) - regionGridMinRz;
+            int vis = regionVisibility[ix * regionGridHeight + iz];
+            if (vis >= 0) {
+                continue; // Whole region outside (vis = index of the culling plane).
+            }
+            if (vis == org.joml.FrustumIntersection.INSIDE || frustumCuller.isChunkVisible(chunk)) {
+                reusableVisibleChunks.add(chunk);
+            }
+        }
         return reusableVisibleChunks;
+    }
+
+    /**
+     * Classifies every region covering this frame's loaded chunks against the
+     * camera frustum (INSIDE / INTERSECT / plane index when fully outside).
+     * Must run after {@code frustumCuller.update}.
+     */
+    private void computeRegionVisibility() {
+        int shift = com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion.REGION_SHIFT;
+        int minCx = Integer.MAX_VALUE, maxCx = Integer.MIN_VALUE;
+        int minCz = Integer.MAX_VALUE, maxCz = Integer.MIN_VALUE;
+        for (int i = 0; i < reusableLoadedChunks.size(); i++) {
+            Chunk chunk = reusableLoadedChunks.get(i);
+            int cx = chunk.getChunkX();
+            int cz = chunk.getChunkZ();
+            if (cx < minCx) minCx = cx;
+            if (cx > maxCx) maxCx = cx;
+            if (cz < minCz) minCz = cz;
+            if (cz > maxCz) maxCz = cz;
+        }
+        regionGridMinRx = minCx >> shift;
+        regionGridMinRz = minCz >> shift;
+        regionGridWidth = (maxCx >> shift) - regionGridMinRx + 1;
+        regionGridHeight = (maxCz >> shift) - regionGridMinRz + 1;
+        int cells = regionGridWidth * regionGridHeight;
+        if (regionVisibility.length < cells) {
+            regionVisibility = new int[cells];
+        }
+        float regionBlocks = com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion.REGION_SPAN
+                * (float) WorldConfiguration.CHUNK_SIZE;
+        for (int ix = 0; ix < regionGridWidth; ix++) {
+            float minX = (regionGridMinRx + ix) * regionBlocks;
+            for (int iz = 0; iz < regionGridHeight; iz++) {
+                float minZ = (regionGridMinRz + iz) * regionBlocks;
+                regionVisibility[ix * regionGridHeight + iz] = frustumCuller.intersectAab(
+                        minX, 0f, minZ,
+                        minX + regionBlocks, WorldConfiguration.WORLD_HEIGHT, minZ + regionBlocks);
+            }
+        }
     }
 
     /**
@@ -391,6 +482,27 @@ public class WorldRenderer {
             debugOpaquePassCount++;
         }
 
+        if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            var regionRenderer =
+                com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance();
+            // GL 4.3+ path: compute-shader per-mesh cull + one indirect
+            // multidraw per region — no per-chunk CPU visibility work for the
+            // opaque pass at all. Falls back to the CPU multidraw when the
+            // cull program is unavailable.
+            if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()
+                    && regionRenderer.drawLayerGpuCulled(
+                        com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
+                        frustumCuller.projectionView())) {
+                regionRenderer.drawLegacyOnly(visibleChunks,
+                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
+                return;
+            }
+            // One multidraw per visible region instead of a VAO bind + draw
+            // call per chunk (legacy-handle stragglers draw individually).
+            regionRenderer.drawChunks(visibleChunks,
+                com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
+            return;
+        }
         for (Chunk chunk : visibleChunks) {
             chunk.render(); // Shader will discard water fragments
         }
@@ -438,35 +550,57 @@ public class WorldRenderer {
         // mesh — it has its own per-chunk mesh drawn by the dedicated
         // WaterRenderer right after this pass, which also made the old
         // two-sub-layer scheme (u_translucentLayer 0/1) unnecessary.
+        //
+        // Only chunks whose atlas mesh actually CONTAINS translucent geometry
+        // draw here — previously every visible chunk's whole mesh re-drew for
+        // its shader-discarded fragments, doubling world geometry per frame.
         glDepthMask(true);
-        for (Chunk chunk : reusableSortedChunks) {
+        reusableTranslucentChunks.clear();
+        for (int i = 0; i < reusableSortedChunks.size(); i++) {
+            Chunk chunk = reusableSortedChunks.get(i);
+            if (chunk.atlasHasTranslucent()) {
+                reusableTranslucentChunks.add(chunk);
+            }
+        }
+        if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance()
+                .drawChunks(reusableTranslucentChunks,
+                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
+            return;
+        }
+        for (Chunk chunk : reusableTranslucentChunks) {
             chunk.render();
         }
     }
-    
+
     /**
      * Sort chunks from back to front for proper transparent rendering.
+     * Distance keys are computed once per chunk and sorted as packed longs
+     * (IEEE bits of a non-negative float are order-preserving), replacing the
+     * comparator that re-derived both chunk centers on every comparison.
      */
     private void sortChunksBackToFront(List<Chunk> visibleChunks, Player player) {
         reusableSortedChunks.clear();
-        reusableSortedChunks.addAll(visibleChunks);
+        int count = visibleChunks.size();
+        if (count == 0) {
+            return;
+        }
+        if (sortKeys.length < count) {
+            sortKeys = new long[Math.max(count, sortKeys.length * 2)];
+        }
         Vector3f playerPos = player.getPosition();
-        
-        Collections.sort(reusableSortedChunks, (c1, c2) -> {
-            // Calculate distance squared from player to center of each chunk
-            float c1CenterX = c1.getWorldX(WorldConfiguration.CHUNK_SIZE / 2);
-            float c1CenterZ = c1.getWorldZ(WorldConfiguration.CHUNK_SIZE / 2);
-            float c2CenterX = c2.getWorldX(WorldConfiguration.CHUNK_SIZE / 2);
-            float c2CenterZ = c2.getWorldZ(WorldConfiguration.CHUNK_SIZE / 2);
-
-            float distSq1 = (playerPos.x - c1CenterX) * (playerPos.x - c1CenterX) +
-                            (playerPos.z - c1CenterZ) * (playerPos.z - c1CenterZ);
-            float distSq2 = (playerPos.x - c2CenterX) * (playerPos.x - c2CenterX) +
-                            (playerPos.z - c2CenterZ) * (playerPos.z - c2CenterZ);
-            
-            // Sort in descending order of distance (farthest first)
-            return Float.compare(distSq2, distSq1);
-        });
+        for (int i = 0; i < count; i++) {
+            Chunk chunk = visibleChunks.get(i);
+            float dx = playerPos.x - chunk.getWorldX(WorldConfiguration.CHUNK_SIZE / 2);
+            float dz = playerPos.z - chunk.getWorldZ(WorldConfiguration.CHUNK_SIZE / 2);
+            float distSq = dx * dx + dz * dz;
+            sortKeys[i] = ((long) Float.floatToIntBits(distSq) << 32) | (i & 0xFFFFFFFFL);
+        }
+        java.util.Arrays.sort(sortKeys, 0, count);
+        // Descending distance = farthest first.
+        for (int i = count - 1; i >= 0; i--) {
+            reusableSortedChunks.add(visibleChunks.get((int) sortKeys[i]));
+        }
     }
     
     /**
@@ -876,6 +1010,9 @@ public class WorldRenderer {
         }
         if (waterRenderer != null) {
             waterRenderer.cleanup();
+        }
+        if (lodRegionBatcher != null) {
+            lodRegionBatcher.cleanup();
         }
     }
 }

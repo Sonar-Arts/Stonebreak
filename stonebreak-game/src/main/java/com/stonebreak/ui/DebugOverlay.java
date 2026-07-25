@@ -584,6 +584,22 @@ public class DebugOverlay {
         panel.row("Pending Mesh", String.valueOf(world.getPendingMeshBuildCount()));
         panel.row("Pending GL", String.valueOf(world.getPendingGLUploadCount()));
         panel.row("Chunk Flow", chunkPipelineSummary());
+        if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            var regions = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance();
+            panel.row("Chunk Draws", String.format("%d cmds / %d region draws / %d legacy",
+                regions.publishedCommands(), regions.publishedRegionDraws(),
+                regions.publishedLegacyDraws()));
+            if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()) {
+                panel.row("GPU Cull", String.format("%d cmds / %d regions / %d pre-culled",
+                    regions.publishedGpuCommands(), regions.publishedGpuRegionDraws(),
+                    regions.publishedGpuPreCulledRegions()));
+            }
+            var lodBatcher = com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.active();
+            if (lodBatcher != null) {
+                panel.row("LOD Draws", String.format("%d cmds / %d region draws",
+                    lodBatcher.publishedCommands(), lodBatcher.publishedRegionDraws()));
+            }
+        }
         com.stonebreak.world.TimeOfDay clock = Game.getTimeOfDay();
         if (clock != null) {
             panel.row("Time", clock.getTimeString());

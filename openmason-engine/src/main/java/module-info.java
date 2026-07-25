@@ -83,6 +83,7 @@ module openmason.engine {
 
     // Export MMS (Mighty Mesh System) - being migrated
     exports com.openmason.engine.voxel.mms.mmsCore;
+    exports com.openmason.engine.voxel.mms.mmsRegion;
     exports com.openmason.engine.voxel.mms.mmsGeometry;
     exports com.openmason.engine.voxel.mms.mmsTexturing;
     exports com.openmason.engine.voxel.mms.mmsMetrics;

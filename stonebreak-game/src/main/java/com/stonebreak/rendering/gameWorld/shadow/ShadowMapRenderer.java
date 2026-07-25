@@ -185,7 +185,8 @@ public final class ShadowMapRenderer {
      * is skipped and {@link #applyToShader} will disable sampling.
      */
     public void renderShadowPass(World world, Player player, Vector3f sunDirection,
-                                 EntityRenderer entityRenderer) {
+                                 EntityRenderer entityRenderer,
+                                 java.util.List<Chunk> loadedChunks) {
         active = false;
         if (world == null || player == null) {
             return;
@@ -206,7 +207,7 @@ public final class ShadowMapRenderer {
 
         computeUpdateMask(player);
         calculator.update(cascades, player.getViewMatrix(), projectionMatrix, sunDir, settings, updateMask);
-        collectCasterChunks(world, player);
+        collectCasterChunks(loadedChunks);
 
         // Save state we clobber (the scene FBO may already be bound by post-fx).
         int prevFbo = glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
@@ -234,8 +235,29 @@ public final class ShadowMapRenderer {
 
             depthShader.bind();
             depthShader.setUniform("u_lightViewProj", cascades[i].lightViewProj);
-            for (Chunk chunk : cascadeChunks.get(i)) {
-                chunk.render();
+            if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+                var regionRenderer =
+                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance();
+                // GL 4.3+ path: compute-shader cull against this cascade's
+                // light frustum + one indirect multidraw per region.
+                if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()
+                        && regionRenderer.drawLayerGpuCulled(
+                            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
+                            cascades[i].lightViewProj)) {
+                    regionRenderer.drawLegacyOnly(cascadeChunks.get(i),
+                        com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
+                } else {
+                    // Region VAOs carry the standard attribute layout, so the
+                    // depth shader draws the same multidraw batches as the main
+                    // passes — one draw per region per cascade instead of one
+                    // per caster chunk.
+                    regionRenderer.drawChunks(cascadeChunks.get(i),
+                        com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
+                }
+            } else {
+                for (Chunk chunk : cascadeChunks.get(i)) {
+                    chunk.render();
+                }
             }
             depthShader.unbind();
 
@@ -306,13 +328,17 @@ public final class ShadowMapRenderer {
      * swept toward the sun (a tall caster offset sunward still lands shadows in
      * the volume).
      */
-    private void collectCasterChunks(World world, Player player) {
+    private void collectCasterChunks(java.util.List<Chunk> loadedChunks) {
         for (List<Chunk> list : cascadeChunks) {
             list.clear();
         }
-        int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
-        int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
-        world.forEachChunkAroundPlayer(playerChunkX, playerChunkZ, chunk -> {
+        if (loadedChunks == null) {
+            return;
+        }
+        // Iterates the frame's shared loaded-chunk list (collected once by
+        // WorldRenderer) instead of doing a second render-distance grid walk.
+        for (int c = 0; c < loadedChunks.size(); c++) {
+            Chunk chunk = loadedChunks.get(c);
             float minX = chunk.getWorldX(0);
             float minZ = chunk.getWorldZ(0);
             float maxX = minX + WorldConfiguration.CHUNK_SIZE;
@@ -323,7 +349,7 @@ public final class ShadowMapRenderer {
                     cascadeChunks.get(i).add(chunk);
                 }
             }
-        });
+        }
     }
 
     public void cleanup() {

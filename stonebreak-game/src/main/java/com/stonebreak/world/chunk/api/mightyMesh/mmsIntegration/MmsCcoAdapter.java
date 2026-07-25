@@ -135,9 +135,9 @@ public class MmsCcoAdapter {
         stateManager.addState(CcoChunkState.MESH_GENERATING);
 
         // Pooled builder — reused across chunks to avoid the ~640 KB
-        // float[]/int[] allocation per build. The build() call below deep-copies
-        // its data into the immutable MmsMeshData, so the builder is safe to
-        // release back to the pool as soon as that returns.
+        // float[]/int[] allocation per build. The build() call below packs its
+        // data into the immutable MmsMeshData's interleaved GPU bytes, so the
+        // builder is safe to release back to the pool as soon as that returns.
         MmsMeshBuilderPool builderPool = MmsMeshBuilderPool.getInstance();
         MmsMeshBuilder atlasBuilder = builderPool.acquire(
             WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE * 64

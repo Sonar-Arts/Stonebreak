@@ -154,3 +154,8 @@ QWEN.md
 # Terrain bridge (Phase 1) — venv and on-disk tile cache
 /terrain-bridge/venv/
 /terrain-bridge/tile_cache/
+/terrain-bridge/**/__pycache__/
+# The upstream diffusion model install it talks to lives in
+# Dev Working/terrain-diffusion-spike/ (checkout + venv + global rasters, ~7.5 GB);
+# no rule needed here, /Dev Working/ above already covers it. Setup steps are in
+# that directory's README.md.
