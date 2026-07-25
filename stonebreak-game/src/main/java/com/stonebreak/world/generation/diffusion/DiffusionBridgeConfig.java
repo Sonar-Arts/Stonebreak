@@ -17,7 +17,8 @@ public record DiffusionBridgeConfig(
         int maxRetries,
         long initialBackoffMs,
         long maxBackoffMs,
-        int maxCachedTiles
+        int maxCachedTiles,
+        long unreachableGraceMs
 ) {
     public static DiffusionBridgeConfig fromSystemProperties() {
         return new DiffusionBridgeConfig(
@@ -34,7 +35,16 @@ public record DiffusionBridgeConfig(
                 Integer.getInteger("stonebreak.terrainBridge.maxRetries", 3),
                 Long.getLong("stonebreak.terrainBridge.initialBackoffMs", 250L),
                 Long.getLong("stonebreak.terrainBridge.maxBackoffMs", 4_000L),
-                Integer.getInteger("stonebreak.terrainBridge.maxCachedTiles", 64)
+                Integer.getInteger("stonebreak.terrainBridge.maxCachedTiles", 64),
+                // Separate, far more patient budget for "nothing is listening on the port at all",
+                // which in practice means TerrainServiceProcessManager is mid-restart: it stops both
+                // processes and the upstream one needs seconds to reload the model before it binds
+                // again. The normal maxRetries/backoff ladder spans under two seconds, so without
+                // this a restart turns every request in flight into a hard TerrainBridgeException.
+                // 60 s covers a restart with wide margin while still failing eventually when the
+                // services are genuinely absent (a fetch is not allowed to hang a chunk worker
+                // forever). See DiffusionTerrainClient.attemptFetch.
+                Long.getLong("stonebreak.terrainBridge.unreachableGraceMs", 60_000L)
         );
     }
 }

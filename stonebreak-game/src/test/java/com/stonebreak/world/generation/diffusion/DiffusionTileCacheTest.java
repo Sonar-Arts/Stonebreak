@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class DiffusionTileCacheTest {
 
     private static DiffusionBridgeConfig config(int tileSize, int maxCachedTiles) {
-        return new DiffusionBridgeConfig("http://unused", tileSize, 1000, 1000, 0, 10, 50, maxCachedTiles);
+        return new DiffusionBridgeConfig("http://unused", tileSize, 1000, 1000, 0, 10, 50, maxCachedTiles, 1000);
     }
 
     private static TerrainTile stubTile(int tileX, int tileZ, int tileSize) {

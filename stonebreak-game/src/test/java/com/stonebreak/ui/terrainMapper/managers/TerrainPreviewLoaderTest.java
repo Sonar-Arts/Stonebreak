@@ -1,8 +1,8 @@
 package com.stonebreak.ui.terrainMapper.managers;
 
+import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerRegistry;
-import com.stonebreak.world.generation.diffusion.TerrainTile;
-import com.stonebreak.world.generation.diffusion.TerrainTileSource;
+import com.stonebreak.world.generation.diffusion.StaleSeedException;
 import io.github.humbleui.skija.ColorAlphaType;
 import io.github.humbleui.skija.ColorType;
 import io.github.humbleui.skija.Image;
@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -29,19 +30,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>The sampler is faked: the real one would need the terrain bridge, and what is under test
  * here is the loader's scheduling, not terrain production. The snapshots it returns still carry a
  * real (1x1) raster image, because handing images back for closing is part of what the loader
- * does with a published snapshot. Requests are told apart by their tile source, which is what
- * distinguishes them in production too — a reseed installs a fresh one. The registry is real but with service
- * autostart switched off — the same escape hatch developers use to run the two Python services by
- * hand — so {@code ensureServices()} is the no-op it is meant to be once they are up.
+ * does with a published snapshot. Requests are told apart by their visualizer instance, which is
+ * what distinguishes them in production too — a reseed installs fresh ones. The registry is real
+ * but with service autostart switched off — the same escape hatch developers use to run the two
+ * Python services by hand — so {@code ensureServices()} is the no-op it is meant to be once they
+ * are up.
  */
 class TerrainPreviewLoaderTest {
 
     /**
-     * Two distinct terrain sources, standing in for two seeds. Neither is ever read: the loader
-     * schedules around requests, and the fake sampler never samples.
+     * Two distinct visualizer instances, standing in for two seeds — which is exactly how a
+     * reseed shows up in a request, since {@code VisualizerRegistry.rebuild} installs fresh
+     * instances. Neither is ever sampled: the loader schedules around requests, and the fake
+     * sampler never reads terrain.
      */
-    private static final TerrainTileSource ONE_SEED = unusedSource();
-    private static final TerrainTileSource ANOTHER_SEED = unusedSource();
+    private static final NoiseVisualizer ONE_SEED = unusedVisualizer("one-seed");
+    private static final NoiseVisualizer ANOTHER_SEED = unusedVisualizer("another-seed");
 
     private static VisualizerRegistry registry;
 
@@ -52,9 +56,12 @@ class TerrainPreviewLoaderTest {
         registry = new VisualizerRegistry(1234L);
     }
 
-    private static TerrainTileSource unusedSource() {
-        return (worldX, worldZ) -> {
-            throw new UnsupportedOperationException("loader scheduling must not touch terrain");
+    private static NoiseVisualizer unusedVisualizer(String name) {
+        return new NoiseVisualizer() {
+            @Override public String displayName() { return name; }
+            @Override public float sample(int worldX, int worldZ) {
+                throw new UnsupportedOperationException("loader scheduling must not touch terrain");
+            }
         };
     }
 
@@ -100,12 +107,12 @@ class TerrainPreviewLoaderTest {
         loader.dispose();
     }
 
-    private static SampleRequest requestFor(TerrainTileSource tiles) {
-        return requestFor(tiles, 1f);
+    private static SampleRequest requestFor(NoiseVisualizer visualizer) {
+        return requestFor(visualizer, 1f);
     }
 
-    private static SampleRequest requestFor(TerrainTileSource tiles, float zoom) {
-        return new SampleRequest(tiles, registry, 320, 240, 2, 0f, 0f, zoom);
+    private static SampleRequest requestFor(NoiseVisualizer visualizer, float zoom) {
+        return new SampleRequest(visualizer, registry, 320, 240, 2, 0f, 0f, zoom);
     }
 
     @Test
@@ -155,7 +162,9 @@ class TerrainPreviewLoaderTest {
         loader.request(requestFor(ANOTHER_SEED));
         assertTrue(fake.started.await(2, TimeUnit.SECONDS));
 
-        assertEquals("Sampling terrain...", loader.statusMessage());
+        // Named, not generic: with a previous mode's image still up, "Sampling terrain..." gives
+        // no way to tell a mode switch that is working from one that is stuck.
+        assertEquals("Sampling another-seed...", loader.statusMessage());
     }
 
     @Test
@@ -237,6 +246,38 @@ class TerrainPreviewLoaderTest {
             assertSame(full, zooming.backdrop(), "a half-drawn pass must not become the backdrop");
         } finally {
             zooming.dispose();
+        }
+    }
+
+    @Test
+    void aPassRejectedForAStaleSeedIsNotReportedAsFailure() throws InterruptedException {
+        // The bridge 400s a pass still asking for the seed it started under, which happens
+        // routinely while a reseed hands over. That is superseded work, not breakage: the map must
+        // keep the picture it has and say nothing, or the user gets "Terrain preview failed" for a
+        // seed change that worked.
+        CountDownLatch rejected = new CountDownLatch(1);
+        TerrainPreviewLoader reseeding = new TerrainPreviewLoader((request, sink) -> {
+            if (request.zoom() == 1f) return snapshotFor(request, true);
+            rejected.countDown();
+            throw new StaleSeedException("this bridge instance is pinned to seed 1; got 2");
+        });
+        try {
+            reseeding.request(requestFor(ONE_SEED, 1f));
+            PreviewSnapshot good = awaitSnapshot(reseeding);
+
+            reseeding.request(requestFor(ANOTHER_SEED, 0.5f));
+            assertTrue(rejected.await(2, TimeUnit.SECONDS), "the second pass should have run");
+
+            // Phase settles back rather than sitting on SAMPLING with nothing sampling.
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (reseeding.phase() != TerrainPreviewLoader.Phase.READY && System.nanoTime() < deadline) {
+                Thread.sleep(5);
+            }
+            assertEquals(TerrainPreviewLoader.Phase.READY, reseeding.phase(), "must not report FAILED");
+            assertNull(reseeding.statusMessage(), "no failure text belongs on the map");
+            assertSame(good, reseeding.snapshot(), "the picture the user had must survive");
+        } finally {
+            reseeding.dispose();
         }
     }
 

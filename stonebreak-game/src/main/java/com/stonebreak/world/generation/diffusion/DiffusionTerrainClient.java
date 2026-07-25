@@ -1,7 +1,9 @@
 package com.stonebreak.world.generation.diffusion;
 
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
@@ -22,6 +24,12 @@ import java.util.logging.Logger;
  * exponential backoff; once retries are exhausted the returned future
  * completes exceptionally with {@link TerrainBridgeException} — callers must
  * not substitute a fallback (plan.md Phase 2).
+ *
+ * <p>Two failure classes, two policies. A bridge that <em>answers</em> with 5xx gets the
+ * {@code maxRetries} exponential ladder (well under two seconds total). A bridge that is not
+ * accepting connections at all gets a separate wall-clock grace period instead, because that
+ * state normally means {@code TerrainServiceProcessManager} is restarting the pair for a
+ * different seed rather than that the bridge is gone — see {@link Deadline}.
  */
 public class DiffusionTerrainClient {
 
@@ -53,8 +61,66 @@ public class DiffusionTerrainClient {
 
     public CompletableFuture<TerrainTile> fetchTile(int worldX, int worldZ) {
         CompletableFuture<TerrainTile> result = new CompletableFuture<>();
-        attemptFetch(worldX, worldZ, 0, result);
+        attemptFetch(worldX, worldZ, 0, result, new Deadline());
         return result;
+    }
+
+    /**
+     * Wall-clock budget for "the port is not accepting connections", separate from the
+     * {@code maxRetries} ladder. Started lazily on the first connect failure so a fetch that never
+     * sees one costs nothing, and restarted per outage episode: a seed switch away and back
+     * restarts the services twice in a row (exactly what the log of the reported failure shows),
+     * and the second window should not inherit an already-spent budget. Worst case for one fetch
+     * is therefore bounded by {@code maxRetries} episodes rather than a single grace period.
+     *
+     * <p>Exists because a connect failure is overwhelmingly not a dead bridge but a restarting
+     * one: {@code TerrainServiceProcessManager} stops both processes whenever the requested seed
+     * differs from the pinned one, and the upstream model server takes seconds to reload before it
+     * binds again. Failing those requests after the normal sub-two-second ladder produced
+     * {@code TerrainBridgeException}s for tiles that would have succeeded a moment later.
+     *
+     * <p>Unsynchronized on purpose: one fetch's attempts never overlap, and each hop between the
+     * threads involved (HTTP completion → retry scheduler → next completion) goes through an
+     * executor submission or a {@link CompletableFuture} stage, both of which carry the
+     * happens-before edge these fields need.
+     */
+    private final class Deadline {
+        private long expiresAtNanos;
+        private boolean waiting;
+        private int connectAttempts;
+
+        /** True while connect failures should keep being retried rather than surfaced. */
+        boolean tolerateUnreachable(int worldX, int worldZ) {
+            long now = System.nanoTime();
+            connectAttempts++;
+            if (!waiting) {
+                waiting = true;
+                expiresAtNanos = now + config.unreachableGraceMs() * 1_000_000L;
+                // One line per fetch that hits the window, not one per retry: a seed switch can put
+                // dozens of in-flight tiles here at once and each would otherwise log every attempt.
+                LOG.info(() -> "terrain bridge at " + config.baseUrl() + " is not accepting connections"
+                        + " (likely restarting for a new seed); waiting up to "
+                        + config.unreachableGraceMs() + "ms for tile (" + worldX + "," + worldZ + ")");
+                return true;
+            }
+            return now < expiresAtNanos;
+        }
+
+        /** Notes that the bridge answered again, so the recovery is visible in the log. */
+        void recovered(int worldX, int worldZ) {
+            if (waiting) {
+                waiting = false;
+                LOG.info(() -> "terrain bridge reachable again; tile (" + worldX + "," + worldZ + ") resumed");
+            }
+        }
+
+        boolean waited() {
+            return waiting;
+        }
+
+        int connectAttempts() {
+            return connectAttempts;
+        }
     }
 
     /** Fire-and-forget warm; failures are logged, never thrown — this is an optimization hint. */
@@ -72,7 +138,8 @@ public class DiffusionTerrainClient {
                 });
     }
 
-    private void attemptFetch(int worldX, int worldZ, int attemptNumber, CompletableFuture<TerrainTile> result) {
+    private void attemptFetch(int worldX, int worldZ, int attemptNumber,
+                              CompletableFuture<TerrainTile> result, Deadline deadline) {
         HttpRequest request = requestBuilder("/generate_heightmap")
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody(worldX, worldZ), StandardCharsets.UTF_8))
                 .build();
@@ -80,15 +147,18 @@ public class DiffusionTerrainClient {
         httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray())
                 .whenComplete((response, err) -> {
                     if (err == null) {
+                        deadline.recovered(worldX, worldZ);
                         try {
                             if (response.statusCode() == 200) {
                                 result.complete(parseTile(response));
                                 return;
                             }
                             if (!isRetryableStatus(response.statusCode())) {
-                                result.completeExceptionally(new TerrainBridgeException(
-                                        "terrain bridge returned " + response.statusCode() + " for (" +
-                                        worldX + "," + worldZ + "): " + bodyPreview(response)));
+                                String detail = "terrain bridge returned " + response.statusCode()
+                                        + " for (" + worldX + "," + worldZ + "): " + bodyPreview(response);
+                                result.completeExceptionally(isSeedMismatch(response.statusCode())
+                                        ? new StaleSeedException(detail)
+                                        : new TerrainBridgeException(detail));
                                 return;
                             }
                         } catch (RuntimeException parseError) {
@@ -98,11 +168,29 @@ public class DiffusionTerrainClient {
                         }
                     }
 
-                    if (attemptNumber >= config.maxRetries()) {
+                    // "Nothing listening on the port" gets its own patient budget and does NOT
+                    // consume the retry ladder — see Deadline. Keeps a service restart from
+                    // failing every tile that happens to be in flight.
+                    boolean unreachable = isConnectFailure(err);
+                    if (unreachable && deadline.tolerateUnreachable(worldX, worldZ)) {
+                        retryScheduler.schedule(
+                                () -> attemptFetch(worldX, worldZ, attemptNumber, result, deadline),
+                                config.maxBackoffMs(), TimeUnit.MILLISECONDS);
+                        return;
+                    }
+
+                    if (unreachable || attemptNumber >= config.maxRetries()) {
                         String detail = err != null ? err.toString() : "HTTP " + response.statusCode();
+                        // The connect path retries on its own budget, so attemptNumber alone would
+                        // report "1 attempt" for a fetch that spent a minute knocking on the port.
+                        String waited = unreachable && deadline.waited()
+                                ? " (" + deadline.connectAttempts() + " connect attempts over "
+                                  + config.unreachableGraceMs() + "ms; is the terrain service"
+                                  + " running? see Dev Working/terrain-diffusion-spike/logs)"
+                                : "";
                         result.completeExceptionally(new TerrainBridgeException(
                                 "terrain bridge unreachable for (" + worldX + "," + worldZ + ") after " +
-                                (attemptNumber + 1) + " attempt(s): " + detail, err));
+                                (attemptNumber + 1) + " attempt(s): " + detail + waited, err));
                         return;
                     }
 
@@ -110,15 +198,43 @@ public class DiffusionTerrainClient {
                             config.initialBackoffMs() * (1L << attemptNumber),
                             config.maxBackoffMs());
                     retryScheduler.schedule(
-                            () -> attemptFetch(worldX, worldZ, attemptNumber + 1, result),
+                            () -> attemptFetch(worldX, worldZ, attemptNumber + 1, result, deadline),
                             backoffMs, TimeUnit.MILLISECONDS);
                 });
     }
 
+    /**
+     * True when the failure is "could not open a connection" rather than a bridge that answered.
+     * {@code HttpClient} reports this as a {@link ConnectException} — which on Linux commonly wraps
+     * a {@link java.nio.channels.ClosedChannelException} with no message at all, so the cause chain
+     * is walked rather than the top-level type inspected — or, when the TCP handshake itself hangs,
+     * an {@link HttpConnectTimeoutException}.
+     */
+    private static boolean isConnectFailure(Throwable err) {
+        for (Throwable t = err; t != null; t = t.getCause()) {
+            if (t instanceof ConnectException || t instanceof HttpConnectTimeoutException) {
+                return true;
+            }
+            if (t.getCause() == t) break;
+        }
+        return false;
+    }
+
     private static boolean isRetryableStatus(int statusCode) {
-        // 400 (seed mismatch) is a config error, not transient — retrying won't help.
+        // 400 (seed mismatch) is a state error, not transient — retrying won't help.
         // 5xx (including the bridge's 502 for an unreachable upstream) is worth retrying.
         return statusCode >= 500;
+    }
+
+    /**
+     * True for the bridge's seed-pinning rejection. Keyed on the bare status code because
+     * {@code _require_matching_seed} is the ONLY producer of 400 in
+     * terrain-bridge/bridge/main.py — its other failures are 502 (upstream unreachable) and
+     * FastAPI's own 422 (malformed body). Reading the {@code detail} text instead would couple
+     * this to an English sentence for no extra certainty.
+     */
+    private static boolean isSeedMismatch(int statusCode) {
+        return statusCode == 400;
     }
 
     private HttpRequest.Builder requestBuilder(String path) {

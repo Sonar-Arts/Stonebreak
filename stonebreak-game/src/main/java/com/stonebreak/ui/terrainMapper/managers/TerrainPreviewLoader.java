@@ -1,5 +1,6 @@
 package com.stonebreak.ui.terrainMapper.managers;
 
+import com.stonebreak.world.generation.diffusion.StaleSeedException;
 import com.stonebreak.world.generation.diffusion.TerrainBridgeException;
 import io.github.humbleui.skija.Image;
 
@@ -244,12 +245,25 @@ public final class TerrainPreviewLoader {
     }
 
     private void runJob(SampleRequest request, int startedAt) {
+        JobSink sink = new JobSink(startedAt);
         try {
+            // Checked BEFORE ensureServices(), not just before sampling. That call pins the
+            // terrain services to this request's seed, restarting both processes when it differs
+            // from whatever is pinned — so an abandoned job doing it anyway is not merely wasted
+            // work, it re-pins a seed nobody wants any more. That is what made leaving the mapper
+            // screen restart the services for its throwaway seed (TerrainMapperStateManager.reset
+            // bumps the generation precisely to prevent this) and then get restarted straight back
+            // by the world's own ensureRunningForSeed, killing every tile fetch in flight across
+            // both windows.
+            if (sink.abandoned()) return;
             phase = Phase.STARTING_SERVICES;
             request.registry().ensureServices();
+            // Re-checked after: booting a CUDA model server can take a minute, which is ample time
+            // for the user to switch visualizer, drag the map, or leave the screen entirely.
+            if (sink.abandoned()) return;
             samplingLabel = request.visualizer().displayName();
             phase = Phase.SAMPLING;
-            PreviewSnapshot finished = sampler.sample(request, new JobSink(startedAt));
+            PreviewSnapshot finished = sampler.sample(request, sink);
             // Abandoned: the partials it published stand, and the request that replaced this one
             // is already waiting in drain(). Leaving the phase on SAMPLING is honest — the next
             // job starts immediately.
@@ -258,6 +272,19 @@ public final class TerrainPreviewLoader {
             failureMessage = null;
             retryAfterNanos = 0L;
             phase = Phase.READY;
+        } catch (StaleSeedException e) {
+            // Not a failure: the bridge is pinned to a seed this pass is no longer sampling for.
+            // A pass in flight when the seed changes keeps drawing tiles from the registry it
+            // started with, so its requests carry the old seed until it notices it was abandoned —
+            // and its result is unwanted either way. Treated like abandonment: keep the last good
+            // image and publish no "preview failed" message for what is normal hand-off. Backed off
+            // only so a screen somehow stuck in this state cannot re-request every frame.
+            retryAfterNanos = System.nanoTime() + FAILURE_BACKOFF_NANOS;
+            // Unlike abandonment, nothing is guaranteed to be queued behind this to set the phase,
+            // and leaving it on SAMPLING would leave "Sampling ..." on screen with nothing running.
+            PreviewSnapshot standing = snapshot;
+            phase = (standing != null && standing.complete()) ? Phase.READY : Phase.IDLE;
+            LOG.log(Level.FINE, "terrain preview pass dropped: bridge re-pinned to another seed", e);
         } catch (TerrainBridgeException e) {
             // The preview is a convenience view, not world data, so a bridge blip (typically the
             // services restarting for a new seed) must not take the game down the way it rightly
