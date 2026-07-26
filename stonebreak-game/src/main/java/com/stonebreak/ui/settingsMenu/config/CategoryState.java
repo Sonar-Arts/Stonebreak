@@ -11,7 +11,7 @@ public enum CategoryState {
     PERFORMANCE(2, new SettingType[]{SettingType.RENDER_DISTANCE, SettingType.VSYNC, SettingType.MAX_FPS}),
     ADVANCED(3, new SettingType[]{SettingType.ARM_MODEL, SettingType.LOD_ENABLED, SettingType.LOD_DISTANCE}),
     EXTRAS(4, new SettingType[]{SettingType.CROSSHAIR_STYLE, SettingType.CROSSHAIR_SIZE, SettingType.PLAYER_NAME_TAGS}),
-    AUDIO(5, new SettingType[]{SettingType.VOLUME});
+    AUDIO(5, new SettingType[]{SettingType.VOLUME, SettingType.MUSIC_VOLUME, SettingType.MUSIC_ENABLED});
     
     private final int index;
     private final SettingType[] settings;
@@ -88,7 +88,9 @@ public enum CategoryState {
         SHADOW_QUALITY(18),
         SHADOW_DISTANCE(19),
         SMOOTH_LIGHTING(20),
-        PLAYER_NAME_TAGS(21);
+        PLAYER_NAME_TAGS(21),
+        MUSIC_VOLUME(22),
+        MUSIC_ENABLED(23);
         
         private final int index;
         

@@ -73,6 +73,7 @@ public class Game {
     private CraftingManager craftingManager; // Crafting manager
     private SmeltingManager smeltingManager; // Smelting manager for furnace
     private com.stonebreak.audio.emitters.SoundEmitterManager soundEmitterManager; // Sound emitter management
+    private com.stonebreak.audio.MusicManager musicManager; // Background music playback
     private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
     private DebugOverlay debugOverlay; // Debug overlay (F3)
     private LoadingScreen loadingScreen; // Loading screen for world generation
@@ -167,6 +168,10 @@ public class Game {
 
         this.soundSystem = SoundSystem.getInstance();
         com.stonebreak.core.bootstrap.GameBootstrap.configureSoundSystem(this.soundSystem);
+
+        this.musicManager = new com.stonebreak.audio.MusicManager(this.soundSystem);
+        this.musicManager.setVolume(com.stonebreak.config.Settings.getInstance().getMusicVolume());
+        this.musicManager.setEnabled(com.stonebreak.config.Settings.getInstance().getMusicEnabled());
 
         this.mainMenu = new MainMenu(this.renderer.getSkijaBackend());
         this.settingsMenu = new SettingsMenu(this.renderer.getSkijaBackend());
@@ -647,6 +652,13 @@ public class Game {
      */
     public static com.stonebreak.audio.emitters.SoundEmitterManager getSoundEmitterManager() {
         return getInstance().soundEmitterManager;
+    }
+
+    /**
+     * Gets the background music manager.
+     */
+    public static com.stonebreak.audio.MusicManager getMusicManager() {
+        return getInstance().musicManager;
     }
 
     /**

@@ -118,6 +118,8 @@ public final class InputHandler {
         switch (current) {
             case RESOLUTION -> adjustResolution(direction);
             case VOLUME -> adjustSlider(stateManager.getVolumeSlider(), direction * SettingsConfig.VOLUME_STEP);
+            case MUSIC_VOLUME -> adjustSlider(stateManager.getMusicVolumeSlider(), direction * SettingsConfig.VOLUME_STEP);
+            case MUSIC_ENABLED -> { if (direction != 0) actionHandler.toggleMusic(); }
             case ARM_MODEL -> adjustArmModel(direction);
             case CROSSHAIR_STYLE -> adjustCrosshairStyle(direction);
             case CROSSHAIR_SIZE -> adjustSlider(stateManager.getCrosshairSizeSlider(), direction * SettingsConfig.CROSSHAIR_SIZE_STEP);

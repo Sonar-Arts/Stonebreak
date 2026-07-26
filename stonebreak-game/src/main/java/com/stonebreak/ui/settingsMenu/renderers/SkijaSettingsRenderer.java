@@ -235,6 +235,7 @@ public final class SkijaSettingsRenderer {
 
     private static boolean isSlider(CategoryState.SettingType type) {
         return type == CategoryState.SettingType.VOLUME
+                || type == CategoryState.SettingType.MUSIC_VOLUME
                 || type == CategoryState.SettingType.CROSSHAIR_SIZE
                 || type == CategoryState.SettingType.SHADOW_DISTANCE
                 || type == CategoryState.SettingType.RENDER_DISTANCE
@@ -247,6 +248,8 @@ public final class SkijaSettingsRenderer {
         return switch (type) {
             case RESOLUTION       -> state.getResolutionButton();
             case VOLUME           -> state.getVolumeSlider();
+            case MUSIC_VOLUME     -> state.getMusicVolumeSlider();
+            case MUSIC_ENABLED    -> state.getMusicEnabledButton();
             case ARM_MODEL        -> state.getArmModelButton();
             case CROSSHAIR_STYLE  -> state.getCrosshairStyleButton();
             case CROSSHAIR_SIZE   -> state.getCrosshairSizeSlider();

@@ -83,6 +83,31 @@ public class AudioLoader {
         }
     }
 
+    /**
+     * Loads a music track from a caller-supplied {@link InputStream}, preserving stereo (up to 2
+     * channels) rather than forcing mono like {@link #loadSound(String, InputStream)} does for 3D
+     * positional SFX. Intended for use with {@link SoundSystem#loadMusic(String, InputStream)}.
+     * The stream is always closed by this method.
+     *
+     * @param name logical track name (used for logging/diagnostics)
+     * @param is   the audio data stream, or {@code null}
+     * @return the load result; failure if {@code is} is {@code null} or decoding fails
+     */
+    public LoadResult loadMusic(String name, InputStream is) {
+        if (is == null) {
+            String errorMsg = "InputStream is NULL for music: " + name;
+            logger.error(errorMsg);
+            return LoadResult.failure(errorMsg);
+        }
+        try (InputStream finalIs = is) {
+            return decodeToBuffer(name, finalIs, name, false);
+        } catch (IOException e) {
+            String errorMsg = "IOException loading music " + name + ": " + e.getMessage();
+            logger.error(errorMsg, e);
+            return LoadResult.failure(errorMsg);
+        }
+    }
+
     private void logResourceDebugInfo(String resourcePath) {
         logger.trace("Class: {}", getClass().getName());
         logger.trace("ClassLoader: {}", getClass().getClassLoader());
@@ -156,6 +181,18 @@ public class AudioLoader {
     }
 
     private LoadResult loadSoundFromStream(String name, InputStream is, String path) {
+        // For 3D positional audio, sources need MONO sounds - see SoundBuffer's source setup.
+        return decodeToBuffer(name, is, path, true);
+    }
+
+    /**
+     * Decodes {@code is} to 16-bit PCM and uploads it to a new OpenAL buffer.
+     *
+     * @param forceMono when true, downmixes to mono (required for the 3D-positional SFX sources
+     *                  in {@link SoundBuffer}); when false, preserves up to 2 channels (music,
+     *                  played back on {@link MusicChannel}'s plain 2D source).
+     */
+    private LoadResult decodeToBuffer(String name, InputStream is, String path, boolean forceMono) {
         try {
             try (BufferedInputStream bis = new BufferedInputStream(is);
                  AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(bis)) {
@@ -163,9 +200,8 @@ public class AudioLoader {
 
                 logger.debug("Sound '{}' original format: {}", name, format);
 
-                // For 3D positional audio, we need MONO sounds. Convert stereo to mono.
-                int targetChannels = 1; // Force mono for 3D audio compatibility
-                if (format.getChannels() > 1) {
+                int targetChannels = forceMono ? 1 : Math.min(format.getChannels(), 2);
+                if (forceMono && format.getChannels() > 1) {
                     logger.debug("Converting {}-channel audio to MONO for 3D positional audio", format.getChannels());
                 }
 
@@ -173,8 +209,8 @@ public class AudioLoader {
                     AudioFormat.Encoding.PCM_SIGNED,
                     format.getSampleRate(),
                     16,
-                    targetChannels,        // Always use 1 channel (mono)
-                    targetChannels * 2,    // Frame size: 1 channel * 2 bytes
+                    targetChannels,
+                    targetChannels * 2,    // Frame size: channels * 2 bytes
                     format.getSampleRate(),
                     false
                 );
@@ -191,12 +227,7 @@ public class AudioLoader {
                     logger.debug("Sound '{}' converted: {} channels, {} Hz, {} bytes",
                             name, channels, sampleRate, audioData.length);
 
-                    // Since we're forcing mono, this should always be 1 channel
-                    int alFormat = AL_FORMAT_MONO16;
-                    if (channels != 1) {
-                        logger.error("Expected 1 channel after conversion, got {}", channels);
-                        return LoadResult.failure("Mono conversion failed: got " + channels + " channels");
-                    }
+                    int alFormat = channels == 1 ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
 
                     int bufferPointer = alGenBuffers();
                     alBufferData(bufferPointer, alFormat, audioBuffer, sampleRate);

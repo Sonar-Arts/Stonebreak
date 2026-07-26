@@ -12,7 +12,9 @@ public class Settings {
     private int windowWidth = 1280;
     private int windowHeight = 720;
     private float masterVolume = 1.0f;
-    
+    private float musicVolume = 0.6f;
+    private boolean musicEnabled = true;
+
     // Player model settings
     private String armModelType = "REGULAR"; // "REGULAR" or "SLIM"
 
@@ -108,6 +110,8 @@ public class Settings {
             json.append("  \"windowWidth\": ").append(windowWidth).append(",\n");
             json.append("  \"windowHeight\": ").append(windowHeight).append(",\n");
             json.append("  \"masterVolume\": ").append(masterVolume).append(",\n");
+            json.append("  \"musicVolume\": ").append(musicVolume).append(",\n");
+            json.append("  \"musicEnabled\": ").append(musicEnabled).append(",\n");
             json.append("  \"armModelType\": \"").append(armModelType).append("\",\n");
             json.append("  \"selectedHat\": \"").append(selectedHat).append("\",\n");
             json.append("  \"crosshairStyle\": \"").append(crosshairStyle).append("\",\n");
@@ -196,6 +200,20 @@ public class Settings {
                     } catch (NumberFormatException e) {
                         System.err.println("Invalid masterVolume value: " + value);
                     }
+                }
+            } else if (line.contains("musicVolume")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        musicVolume = Float.parseFloat(value);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid musicVolume value: " + value);
+                    }
+                }
+            } else if (line.contains("musicEnabled")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    musicEnabled = Boolean.parseBoolean(value);
                 }
             } else if (line.contains("armModelType")) {
                 String value = extractStringValue(line);
@@ -430,7 +448,9 @@ public class Settings {
     public int getWindowWidth() { return windowWidth; }
     public int getWindowHeight() { return windowHeight; }
     public float getMasterVolume() { return masterVolume; }
-    
+    public float getMusicVolume() { return musicVolume; }
+    public boolean getMusicEnabled() { return musicEnabled; }
+
     // Player model getters
     public String getArmModelType() { return armModelType; }
     public boolean isSlimArms() { return "SLIM".equals(armModelType); }
@@ -483,7 +503,15 @@ public class Settings {
     public void setMasterVolume(float volume) {
         this.masterVolume = Math.max(0.0f, Math.min(1.0f, volume));
     }
-    
+
+    public void setMusicVolume(float volume) {
+        this.musicVolume = Math.max(0.0f, Math.min(1.0f, volume));
+    }
+
+    public void setMusicEnabled(boolean enabled) {
+        this.musicEnabled = enabled;
+    }
+
     // Player model setters
     public void setArmModelType(String armModelType) {
         if ("REGULAR".equals(armModelType) || "SLIM".equals(armModelType)) {

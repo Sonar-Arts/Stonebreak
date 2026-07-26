@@ -19,6 +19,8 @@ public class SoundSystem {
     private final SoundPlayer soundPlayer;
     private final AudioListener audioListener;
     private final AudioDiagnostics audioDiagnostics;
+    private final MusicChannel musicChannel;
+    private float musicVolume = 1.0f;
 
     private SoundSystem() {
         this.openALContext = new OpenALContext();
@@ -28,6 +30,7 @@ public class SoundSystem {
         this.soundPlayer = new SoundPlayer(soundBuffer, volumeController);
         this.audioListener = new AudioListener();
         this.audioDiagnostics = new AudioDiagnostics(openALContext, soundBuffer);
+        this.musicChannel = new MusicChannel();
     }
 
     public static SoundSystem getInstance() {
@@ -64,6 +67,51 @@ public class SoundSystem {
         } else {
             logger.error("Failed to load sound {}: {}", name, result.errorMessage);
         }
+    }
+
+    /**
+     * Loads a background-music track from a caller-supplied {@link java.io.InputStream}, preserving
+     * stereo (unlike {@link #loadSound(String, java.io.InputStream)}, which forces mono for 3D
+     * positional SFX). The stream is closed by this method.
+     */
+    public void loadMusic(String name, java.io.InputStream stream) {
+        AudioLoader.LoadResult result = audioLoader.loadMusic(name, stream);
+        if (result.success) {
+            musicChannel.addTrack(name, result.buffer);
+        } else {
+            logger.error("Failed to load music {}: {}", name, result.errorMessage);
+        }
+    }
+
+    public boolean isMusicLoaded(String name) {
+        return musicChannel.isTrackLoaded(name);
+    }
+
+    /** Plays {@code name} on the dedicated music channel, replacing whatever was playing. */
+    public void playMusic(String name) {
+        musicChannel.play(name, musicVolume * volumeController.getMasterVolume());
+    }
+
+    public void stopMusic() {
+        musicChannel.stop();
+    }
+
+    /** False once the current track has finished — callers poll this to advance a playlist. */
+    public boolean isMusicPlaying() {
+        return musicChannel.isPlaying();
+    }
+
+    /**
+     * Sets background-music volume (0..1), independent of per-SFX volumes. Applies live to
+     * whatever track is currently playing, unlike SFX volume which is baked in at play-call time.
+     */
+    public void setMusicVolume(float volume) {
+        this.musicVolume = Math.max(0f, Math.min(1f, volume));
+        musicChannel.setGain(this.musicVolume * volumeController.getMasterVolume());
+    }
+
+    public float getMusicVolume() {
+        return musicVolume;
     }
 
     public void playSound(String name) {
@@ -242,6 +290,7 @@ public class SoundSystem {
      */
     public void setMasterVolume(float volume) {
         volumeController.setMasterVolume(volume);
+        musicChannel.setGain(musicVolume * volumeController.getMasterVolume());
     }
 
     /**
@@ -254,6 +303,7 @@ public class SoundSystem {
 
     public void cleanup() {
         soundBuffer.cleanup();
+        musicChannel.cleanup();
         openALContext.cleanup();
     }
 }
